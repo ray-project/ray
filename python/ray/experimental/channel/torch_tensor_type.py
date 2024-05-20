@@ -1,180 +1,155 @@
-from typing import TYPE_CHECKING, Any, List, Optional, Tuple
+from typing import TYPE_CHECKING, List, Optional, Tuple, Union
 
 import ray
-from ray.experimental.channel import ChannelOutputType
-from ray.util.annotations import DeveloperAPI, PublicAPI
+from ray.experimental.channel import ChannelContext, ChannelOutputType
+from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
-    import numpy as np
     import torch
 
-# Add this much padding to all shared memory buffers used to store tensors.
-# This shouldn't affect performance because the buffer is allocated once and
-# when transferring across nodes, only the serialized buffer is copied.
-TENSOR_BUFFER_PADDING_FRACTION = 0.2
-# 100KB so that we have room to store an exception if needed.
-MIN_TENSOR_BUFFER_SIZE = 100_000
+# 100KB to store metadata and/or exceptions.
+# NOTE(swang): This will consume memory but it should not affect performance
+# because we only copy the actual data stored, not the maximum size of the
+# shared meomry buffer.
+TENSOR_METADATA_SIZE_BYTES = 100_000
+
+
+def _get_default_torch_device() -> "torch.device":
+    from ray.air._internal import torch_utils
+
+    if not ray.get_gpu_ids():
+        import torch
+
+        # torch_utils defaults to returning GPU 0 if no GPU IDs were assigned
+        # by Ray. We instead want the default to be CPU.
+        return torch.device("cpu")
+
+    return torch_utils.get_devices()[0]
 
 
 @PublicAPI(stability="alpha")
 class TorchTensorType(ChannelOutputType):
+    AUTO = "auto"
     NCCL = "nccl"
 
     def __init__(
-        self, shape: Tuple[int], dtype: "torch.dtype", transport: Optional[str] = None
+        self,
+        shape: Union[int, Tuple[int], str] = AUTO,
+        dtype: "torch.dtype" = AUTO,
+        transport: Optional[str] = None,
     ):
+        """
+        A type hint that can be used to annotate DAG nodes that return a
+        torch.Tensor.
+
+        NOTE: Use of this type in the DAG will register a custom serializer for
+        torch.Tensor that moves the tensor to the correct device on the
+        receiver. If you are using ray.cloudpickle to serialize objects and you
+        do not want this behavior, you should deregister the custom serializer
+        using ray.util.serialization.deregister_serializer(torch.Tensor).
+
+        Args:
+            shape: The expected shape of the torch.Tensor. "auto" (default)
+                means that the shape will be dynamically inferred. For tensors
+                passed via host memory (default), the shape is a hint for the
+                maximum size of the tensor. If a DAG node's returned serialized
+                tensor exceeds this size, the task will error. For tensors
+                passed via NCCL, the returned tensor must *match* the given
+                shape; if it does not match, the task will error.
+            dtype: The expected dtype of the torch.Tensor. Similar to the
+                shape, this may be statically or dynamically declared.
+            transport: "auto" (default) means that tensors will be passed via
+                host memory, using numpy as the serialization format. Pass
+                TorchTensorType.NCCL or "nccl" to use NCCL instead, avoiding
+                the host memory copy.
+        """
+        super().__init__()
+
+        if isinstance(shape, str):
+            shape = shape.lower()
+        if isinstance(dtype, str):
+            dtype = dtype.lower()
+
         self.shape = shape
         self.dtype = dtype
         self.transport = transport
+        self._nccl_group_id: Optional[str] = None
 
-    @staticmethod
-    def register_custom_serializer(outer: Any) -> None:
-        # Helper method to run on the DAG driver and actors to register custom
-        # serializers.
+    def register_custom_serializer(self) -> None:
         import torch
 
-        from ray.air._internal import torch_utils
+        default_device = _get_default_torch_device()
+        ctx = ChannelContext.get_current()
+        ctx.serialization_context.set_torch_device(default_device)
 
-        if ray.get_gpu_ids():
-            default_device = torch_utils.get_devices()[0]
-        else:
-            # torch_utils defaults to returning GPU 0 if no
-            # GPU IDs were assigned by Ray. We instead want
-            # the default to be CPU.
-            default_device = torch.device("cpu")
+        def serialize(t):
+            ctx = ChannelContext.get_current()
+            return ctx.serialization_context.serialize_tensor(t)
 
-        torch_tensor_serializer = _TorchTensorSerializer(default_device)
+        def deserialize(b):
+            ctx = ChannelContext.get_current()
+            return ctx.serialization_context.deserialize_tensor(b)
 
-        CUSTOM_SERIALIZERS = (
-            (
-                _TorchTensorWrapper,
-                torch_tensor_serializer.serialize_to_numpy,
-                torch_tensor_serializer.deserialize_from_numpy,
-            ),
+        ray.util.serialization.register_serializer(
+            torch.Tensor,
+            serializer=serialize,
+            deserializer=deserialize,
         )
-
-        for cls, serializer, deserializer in CUSTOM_SERIALIZERS:
-            ray.util.serialization.register_serializer(
-                cls, serializer=serializer, deserializer=deserializer
-            )
-
-        outer._torch_tensor_serializer = torch_tensor_serializer
 
     def create_channel(
         self,
         writer: Optional["ray.actor.ActorHandle"],
         readers: List[Optional["ray.actor.ActorHandle"]],
     ) -> type:
-        if self.transport == self.NCCL:
+        if self.requires_nccl():
             from ray.experimental.channel.torch_tensor_nccl_channel import (
                 TorchTensorNcclChannel,
             )
 
             return TorchTensorNcclChannel(writer, readers, self)
-        else:
-            import torch
 
-            from ray.experimental.channel.shared_memory_channel import Channel
-
-            TORCH_DTYPE_ITEMSIZE_MAP = {
-                # INT types
-                torch.int: 4,
-                torch.uint8: 1,
-                torch.int8: 1,
-                torch.int32: 4,
-                torch.int64: 8,
-                torch.long: 8,
-                # FLOAT types
-                torch.half: 2,
-                torch.float: 4,
-                torch.float16: 2,
-                torch.float32: 4,
-                torch.float64: 8,
-                torch.double: 8,
-            }
-
-            shape = self.shape
-            if isinstance(shape, int):
-                shape = (shape,)
-
-            num_elements = 1
-            for dim in shape:
-                num_elements *= dim
-            element_size_bytes = TORCH_DTYPE_ITEMSIZE_MAP[self.dtype]
-            buffer_size_bytes = int(
-                (num_elements * element_size_bytes)
-                * (1 + TENSOR_BUFFER_PADDING_FRACTION)
-            )
-            buffer_size_bytes = max(buffer_size_bytes, MIN_TENSOR_BUFFER_SIZE)
-
-            return Channel(writer, readers, buffer_size_bytes)
-
-
-@DeveloperAPI
-class _TorchTensorWrapper:
-    def __init__(
-        self,
-        tensor: "torch.Tensor",
-        typ: TorchTensorType,
-    ):
+        # Transfer via host memory using a shared-memory channel.
         import torch
 
-        if not isinstance(tensor, torch.Tensor):
-            raise ValueError(
-                "DAG nodes wrapped with ray.experimental.TorchTensor must return a "
-                "torch.Tensor."
-            )
-        if tensor.shape != typ.shape:
-            raise ValueError(
-                "DAG node wrapped with ray.experimental.TorchTensor(shape="
-                f"{typ.shape}) returned "
-                f"a torch.Tensor of the shape {tensor.shape}"
-            )
-        if tensor.dtype != typ.dtype:
-            raise ValueError(
-                "DAG node wrapped with ray.experimental.TorchTensor(dtype="
-                f"{typ.dtype}) returned "
-                f"a torch.Tensor of the dtype {tensor.dtype}"
-            )
+        from ray.experimental.channel.shared_memory_channel import Channel
 
-        self.tensor = tensor
-        self.typ = typ
+        TORCH_DTYPE_ITEMSIZE_MAP = {
+            # INT types
+            torch.int: 4,
+            torch.uint8: 1,
+            torch.int8: 1,
+            torch.int32: 4,
+            torch.int64: 8,
+            torch.long: 8,
+            # FLOAT types
+            torch.half: 2,
+            torch.float: 4,
+            torch.float16: 2,
+            torch.bfloat16: 2,
+            torch.float32: 4,
+            torch.float64: 8,
+            torch.double: 8,
+        }
 
+        shape = self.shape
+        if isinstance(shape, int):
+            shape = (shape,)
 
-class _TorchTensorSerializer:
-    def __init__(self, device: "torch.device"):
-        self.device = device
+        num_elements = 1
+        for dim in shape:
+            num_elements *= dim
+        element_size_bytes = TORCH_DTYPE_ITEMSIZE_MAP[self.dtype]
+        buffer_size_bytes = int(num_elements * element_size_bytes)
+        buffer_size_bytes += TENSOR_METADATA_SIZE_BYTES
 
-    @staticmethod
-    def serialize_to_numpy(instance: "_TorchTensorWrapper") -> "np.ndarray":
-        tensor = instance.tensor
-        # Transfer through Ray's shared memory store for now.
-        # TODO(swang): This requires two copies, one to transfer from GPU to
-        # CPU and another from CPU to shared memory. Ideally we should elide
-        # the first copy and memcpy directly from GPU to the shared memory
-        # buffer.
-        if tensor.device.type == "cuda":
-            tensor = tensor.to("cpu")
+        return Channel(writer, readers, buffer_size_bytes)
 
-        return tensor.numpy()
+    def requires_nccl(self) -> bool:
+        return self.transport == self.NCCL
 
-    def deserialize_from_numpy(self, np_array: "np.ndarray"):
-        import torch
+    def set_nccl_group_id(self, group_id: str) -> None:
+        self._nccl_group_id = group_id
 
-        # TODO(swang): Support local P2P transfers if available.
-        # If there is a GPU assigned to this worker, move it there.
-        if self.device.type == "cuda":
-            # Use zero-copy from_numpy() because we are going to copy to GPU
-            # anyway.
-            # TODO: Pin the np_array memory to reduce data movement time.
-            # TODO: Set np_array.flags.writeable=True to avoid the PyTorch
-            # warning about not owning the underlying memory. This is safe to
-            # do as long as all other readers are also copying the data to a
-            # GPU.
-            cpu_tensor = torch.from_numpy(np_array)
-            return cpu_tensor.to(device=self.device)
-
-        # TODO(swang): Use zero-copy from_numpy() if np_array.flags.writeable
-        # is True. This is safe to set when deserializing np_array if the
-        # upstream task has num_readers=1.
-        return torch.tensor(np_array, device=self.device)
+    @property
+    def nccl_group_id(self) -> str:
+        return self._nccl_group_id
