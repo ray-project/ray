@@ -15,10 +15,16 @@ from typing import Union
 
 import ray
 from ray import air, tune
+from ray.air.constants import TRAINING_ITERATION
 from ray.rllib.algorithms.ppo import PPO, PPOConfig
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.utils.annotations import override
+from ray.rllib.utils.metrics import (
+    ENV_RUNNER_RESULTS,
+    EPISODE_RETURN_MEAN,
+    NUM_ENV_STEPS_SAMPLED_LIFETIME,
+)
 from ray.rllib.utils.test_utils import check_learning_achieved
 from ray.rllib.utils.typing import PartialAlgorithmConfigDict
 from ray.tune import PlacementGroupFactory
@@ -100,7 +106,7 @@ class PPORemoteInference(PPO):
             bundles=[
                 {
                     # Single CPU for the local worker. This CPU hosts the
-                    # main model in this example (num_workers=0).
+                    # main model in this example (num_env_runners=0).
                     "CPU": 1,
                     # Possibly add n GPUs to this.
                     "GPU": cf.num_gpus,
@@ -140,7 +146,7 @@ if __name__ == "__main__":
             num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")),
             # Set the number of CPUs used by the (local) worker, aka "driver"
             # to match the number of Ray remote envs.
-            num_cpus_for_local_worker=args.num_envs_per_worker + 1,
+            num_cpus_for_main_process=args.num_envs_per_worker + 1,
         )
     )
 
@@ -154,17 +160,17 @@ if __name__ == "__main__":
             print(pretty_print(result))
             # Stop training if the target train steps or reward are reached.
             if (
-                result["timesteps_total"] >= args.stop_timesteps
-                or result["episode_reward_mean"] >= args.stop_reward
+                result[f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}"] >= args.stop_timesteps
+                or result[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN] >= args.stop_reward
             ):
                 break
 
     # Run with Tune for auto env and algorithm creation and TensorBoard.
     else:
         stop = {
-            "training_iteration": args.stop_iters,
-            "num_env_steps_sampled_lifetime": args.stop_timesteps,
-            "env_runner_results/episode_return_mean": args.stop_reward,
+            TRAINING_ITERATION: args.stop_iters,
+            NUM_ENV_STEPS_SAMPLED_LIFETIME: args.stop_timesteps,
+            f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": args.stop_reward,
         }
 
         results = tune.Tuner(

@@ -27,29 +27,19 @@ from ray.util.timer import _Timer
 
 
 REMOTE_CONFIGS = {
-    "remote-cpu": AlgorithmConfig.overrides(num_learner_workers=1),
-    "remote-gpu": AlgorithmConfig.overrides(
-        num_learner_workers=1, num_gpus_per_learner_worker=1
-    ),
-    "multi-gpu-ddp": AlgorithmConfig.overrides(
-        num_learner_workers=2, num_gpus_per_learner_worker=1
-    ),
-    "multi-cpu-ddp": AlgorithmConfig.overrides(
-        num_learner_workers=2, num_cpus_per_learner_worker=2
-    ),
+    "remote-cpu": AlgorithmConfig.overrides(num_learners=1),
+    "remote-gpu": AlgorithmConfig.overrides(num_learners=1, num_gpus_per_learner=1),
+    "multi-gpu-ddp": AlgorithmConfig.overrides(num_learners=2, num_gpus_per_learner=1),
+    "multi-cpu-ddp": AlgorithmConfig.overrides(num_learners=2, num_cpus_per_learner=2),
     # "multi-gpu-ddp-pipeline": AlgorithmConfig.overrides(
-    #     num_learner_workers=2, num_gpus_per_learner_worker=2
+    #     num_learners=2, num_gpus_per_learner=2
     # ),
 }
 
 
 LOCAL_CONFIGS = {
-    "local-cpu": AlgorithmConfig.overrides(
-        num_learner_workers=0, num_gpus_per_learner_worker=0
-    ),
-    "local-gpu": AlgorithmConfig.overrides(
-        num_learner_workers=0, num_gpus_per_learner_worker=1
-    ),
+    "local-cpu": AlgorithmConfig.overrides(num_learners=0, num_gpus_per_learner=0),
+    "local-gpu": AlgorithmConfig.overrides(num_learners=0, num_gpus_per_learner=1),
 }
 
 

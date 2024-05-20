@@ -77,7 +77,7 @@ You can test the `strategy` deployment using RayServeHandle inside Ray:
 :start-after: docs-calc-start
 ```
 
-This code executes the calculation of each bank's each indicator serially, and sends it to Ray for execution. You can make the calculation concurrent, which not only improves the calculation efficiency, but also solves the bottleneck of single machine.
+This code executes the calculation of each bank's indicator serially, and sends it to Ray for execution. You can make the calculation concurrent, which not only improves the calculation efficiency, but also solves the bottleneck of single machine.
 
 ```{literalinclude} ../../../../java/serve/src/test/java/io/ray/serve/docdemo/StrategyCalcOnRayServe.java
 :end-before: docs-parallel-calc-end

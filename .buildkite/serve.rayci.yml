@@ -37,7 +37,7 @@ steps:
     instance_type: large
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/serve/... //python/ray/tests/...  serve 
-        --except-tags post_wheel_build,gpu,worker-container,ha_integration
+        --except-tags post_wheel_build,gpu,ha_integration
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
         --build-name servebuild --test-env=EXPECTED_PYTHON_VERSION=3.9
     depends_on: "servebuild"
@@ -51,7 +51,7 @@ steps:
     soft_fail: true
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/serve/... //python/ray/tests/...  serve 
-        --except-tags post_wheel_build,gpu,worker-container,ha_integration
+        --except-tags post_wheel_build,gpu,ha_integration
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
         --build-name servepydantic1build --test-env=EXPECTED_PYTHON_VERSION=3.9 --test-env=EXPECTED_PYDANTIC_VERSION=1.10.12
     depends_on: servepydantic1build
@@ -64,7 +64,7 @@ steps:
     instance_type: large
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/serve/... //python/ray/tests/...  serve
-        --except-tags post_wheel_build,gpu,worker-container,ha_integration
+        --except-tags post_wheel_build,gpu,ha_integration
         --workers 2 --worker-id {{matrix.worker_id}} --parallelism-per-worker 3
         --python-version {{matrix.python}}
         --test-env=EXPECTED_PYTHON_VERSION={{matrix.python}}

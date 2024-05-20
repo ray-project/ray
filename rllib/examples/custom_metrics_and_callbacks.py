@@ -17,12 +17,14 @@ import os
 
 import ray
 from ray import air, tune
+from ray.air.constants import TRAINING_ITERATION
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.env import BaseEnv
 from ray.rllib.evaluation import Episode, RolloutWorker
 from ray.rllib.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.utils.metrics import ENV_RUNNER_RESULTS
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
@@ -143,14 +145,15 @@ class MyCallbacks(DefaultCallbacks):
         # of the given metric.
         # For the sake of this example, we will instead compute the variance and mean
         # of the pole angle over the evaluation episodes.
-        pole_angle = result["custom_metrics"]["pole_angle"]
+        custom_metrics = result[ENV_RUNNER_RESULTS]["custom_metrics"]
+        pole_angle = custom_metrics["pole_angle"]
         var = np.var(pole_angle)
         mean = np.mean(pole_angle)
-        result["custom_metrics"]["pole_angle_var"] = var
-        result["custom_metrics"]["pole_angle_mean"] = mean
+        custom_metrics["pole_angle_var"] = var
+        custom_metrics["pole_angle_mean"] = mean
         # We are not interested in these original values
-        del result["custom_metrics"]["pole_angle"]
-        del result["custom_metrics"]["num_batches"]
+        del custom_metrics["pole_angle"]
+        del custom_metrics["num_batches"]
 
     def on_learn_on_batch(
         self, *, policy: Policy, train_batch: SampleBatch, result: dict, **kwargs
@@ -197,9 +200,7 @@ if __name__ == "__main__":
     tuner = tune.Tuner(
         "PPO",
         run_config=air.RunConfig(
-            stop={
-                "training_iteration": args.stop_iters,
-            },
+            stop={TRAINING_ITERATION: args.stop_iters},
         ),
         param_space=config,
     )
@@ -207,7 +208,7 @@ if __name__ == "__main__":
     result = tuner.fit().get_best_result()
 
     # Verify episode-related custom metrics are there.
-    custom_metrics = result.metrics["custom_metrics"]
+    custom_metrics = result.metrics["env_runners"]["custom_metrics"]
     print(custom_metrics)
     assert "pole_angle_mean" in custom_metrics
     assert "pole_angle_var" in custom_metrics
