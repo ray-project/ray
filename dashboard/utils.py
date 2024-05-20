@@ -670,7 +670,7 @@ def compose_state_message(death_info_dict: dict) -> Optional[str]:
     elif death_reason == "AUTOSCALER_DRAIN_PREEMPTED":
         state_message = "Terminated due to preemption from cloud provider"
     elif death_reason == "AUTOSCALER_DRAIN_IDLE":
-        state_message = "Terminated due to idle (no Ray activities)"
+        state_message = "Terminated due to idle (no Ray activity)"
     else:
         state_message = None
 
