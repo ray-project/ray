@@ -22,20 +22,9 @@
 
 namespace {
 
-inline int64_t GetDefaultGcsTimeoutMs() {
+inline int64_t GetGcsTimeoutMs() {
   return absl::ToInt64Milliseconds(
       absl::Seconds(RayConfig::instance().gcs_server_request_timeout_seconds()));
-}
-
-/// Gets the timeout in milliseconds, used by a GCS Client RPC call.
-/// -1 means infinite retry.
-/// 0 means system default (= RAY_gcs_server_request_timeout_seconds)
-/// positive means a user specific timeout value.
-inline int64_t GetGcsTimeoutMs(int64_t timeout_ms) {
-  if (timeout_ms == 0) {
-    return GetDefaultGcsTimeoutMs();
-  }
-  return timeout_ms;
 }
 
 }  // namespace
@@ -231,7 +220,7 @@ Status ActorInfoAccessor::SyncGetByName(const std::string &name,
   request.set_name(name);
   request.set_ray_namespace(ray_namespace);
   auto status = client_impl_->GetGcsRpcClient().SyncGetNamedActorInfo(
-      request, &reply, GetDefaultGcsTimeoutMs());
+      request, &reply, GetGcsTimeoutMs());
   if (status.ok()) {
     actor_table_data = reply.actor_table_data();
     task_spec = reply.task_spec();
@@ -271,7 +260,7 @@ Status ActorInfoAccessor::SyncListNamedActors(
   request.set_ray_namespace(ray_namespace);
   rpc::ListNamedActorsReply reply;
   auto status = client_impl_->GetGcsRpcClient().SyncListNamedActors(
-      request, &reply, GetDefaultGcsTimeoutMs());
+      request, &reply, GetGcsTimeoutMs());
   if (!status.ok()) {
     return status;
   }
@@ -307,7 +296,7 @@ Status ActorInfoAccessor::SyncRegisterActor(const ray::TaskSpecification &task_s
   rpc::RegisterActorReply reply;
   request.mutable_task_spec()->CopyFrom(task_spec.GetMessage());
   auto status = client_impl_->GetGcsRpcClient().SyncRegisterActor(
-      request, &reply, GetDefaultGcsTimeoutMs());
+      request, &reply, GetGcsTimeoutMs());
   return status;
 }
 
@@ -933,7 +922,7 @@ Status PlacementGroupInfoAccessor::SyncCreatePlacementGroup(
   rpc::CreatePlacementGroupReply reply;
   request.mutable_placement_group_spec()->CopyFrom(placement_group_spec.GetMessage());
   auto status = client_impl_->GetGcsRpcClient().SyncCreatePlacementGroup(
-      request, &reply, GetDefaultGcsTimeoutMs());
+      request, &reply, GetGcsTimeoutMs());
   if (status.ok()) {
     RAY_LOG(DEBUG) << "Finished registering placement group. placement group id = "
                    << placement_group_spec.PlacementGroupId();
@@ -950,7 +939,7 @@ Status PlacementGroupInfoAccessor::SyncRemovePlacementGroup(
   rpc::RemovePlacementGroupReply reply;
   request.set_placement_group_id(placement_group_id.Binary());
   auto status = client_impl_->GetGcsRpcClient().SyncRemovePlacementGroup(
-      request, &reply, GetDefaultGcsTimeoutMs());
+      request, &reply, GetGcsTimeoutMs());
   return status;
 }
 
@@ -1047,7 +1036,7 @@ Status InternalKVAccessor::AsyncInternalKVGet(
           callback(status, reply.value());
         }
       },
-      GetGcsTimeoutMs(timeout_ms));
+      timeout_ms);
   return Status::OK();
 }
 Status InternalKVAccessor::AsyncInternalKVMultiGet(
@@ -1076,7 +1065,7 @@ Status InternalKVAccessor::AsyncInternalKVMultiGet(
           callback(Status::OK(), map);
         }
       },
-      GetGcsTimeoutMs(timeout_ms));
+      timeout_ms);
   return Status::OK();
 }
 
@@ -1096,7 +1085,7 @@ Status InternalKVAccessor::AsyncInternalKVPut(const std::string &ns,
       [callback](const Status &status, const rpc::InternalKVPutReply &reply) {
         callback(status, reply.added_num());
       },
-      GetGcsTimeoutMs(timeout_ms));
+      timeout_ms);
   return Status::OK();
 }
 
@@ -1113,7 +1102,7 @@ Status InternalKVAccessor::AsyncInternalKVExists(
       [callback](const Status &status, const rpc::InternalKVExistsReply &reply) {
         callback(status, reply.exists());
       },
-      GetGcsTimeoutMs(timeout_ms));
+      timeout_ms);
   return Status::OK();
 }
 
@@ -1130,7 +1119,7 @@ Status InternalKVAccessor::AsyncInternalKVDel(const std::string &ns,
       [callback](const Status &status, const rpc::InternalKVDelReply &reply) {
         callback(status);
       },
-      GetGcsTimeoutMs(timeout_ms));
+      timeout_ms);
   return Status::OK();
 }
 
@@ -1151,7 +1140,7 @@ Status InternalKVAccessor::AsyncInternalKVKeys(
           callback(status, VectorFromProtobuf(reply.results()));
         }
       },
-      GetGcsTimeoutMs(timeout_ms));
+      timeout_ms);
   return Status::OK();
 }
 

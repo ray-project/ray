@@ -683,7 +683,7 @@ class InternalKVAccessor {
   ///
   /// \param ns The namespace to scan.
   /// \param prefix The prefix to scan.
-  /// \param timeout_ms -1 means infinite, 0 means default.
+  /// \param timeout_ms -1 means infinite.
   /// \param callback Callback that will be called after scanning.
   /// \return Status
   virtual Status AsyncInternalKVKeys(
@@ -696,7 +696,7 @@ class InternalKVAccessor {
   ///
   /// \param ns The namespace to lookup.
   /// \param key The key to lookup.
-  /// \param timeout_ms -1 means infinite, 0 means default.
+  /// \param timeout_ms -1 means infinite.
   /// \param callback Callback that will be called after get the value.
   virtual Status AsyncInternalKVGet(const std::string &ns,
                                     const std::string &key,
@@ -707,7 +707,7 @@ class InternalKVAccessor {
   ///
   /// \param ns The namespace to lookup.
   /// \param keys The keys to lookup.
-  /// \param timeout_ms -1 means infinite, 0 means default.
+  /// \param timeout_ms -1 means infinite.
   /// \param callback Callback that will be called after get the values.
   virtual Status AsyncInternalKVMultiGet(
       const std::string &ns,
@@ -721,7 +721,7 @@ class InternalKVAccessor {
   /// \param ns The namespace to put the key.
   /// \param key The key in <key, value> pair
   /// \param value The value associated with the key
-  /// \param timeout_ms -1 means infinite, 0 means default.
+  /// \param timeout_ms -1 means infinite.
   /// \param callback Callback that will be called after the operation.
   /// \return Status
   virtual Status AsyncInternalKVPut(const std::string &ns,
@@ -735,7 +735,7 @@ class InternalKVAccessor {
   ///
   /// \param ns The namespace to check.
   /// \param key The key to check.
-  /// \param timeout_ms -1 means infinite, 0 means default.
+  /// \param timeout_ms -1 means infinite.
   /// \param callback Callback that will be called after the operation.
   /// \return Status
   virtual Status AsyncInternalKVExists(const std::string &ns,
@@ -748,7 +748,7 @@ class InternalKVAccessor {
   /// \param ns The namespace to delete from.
   /// \param key The key to delete.
   /// \param del_by_prefix If set to be true, delete all keys with prefix as `key`.
-  /// \param timeout_ms -1 means infinite, 0 means default.
+  /// \param timeout_ms -1 means infinite.
   /// \param callback Callback that will be called after the operation.
   /// \return Status
   virtual Status AsyncInternalKVDel(const std::string &ns,
@@ -766,7 +766,7 @@ class InternalKVAccessor {
   ///
   /// \param ns The namespace to scan.
   /// \param prefix The prefix to scan.
-  /// \param timeout_ms -1 means infinite, 0 means default.
+  /// \param timeout_ms -1 means infinite.
   /// \param value It's an output parameter. It'll be set to the keys with `prefix`
   /// \return Status
   virtual Status Keys(const std::string &ns,
@@ -784,7 +784,7 @@ class InternalKVAccessor {
   /// \param value The value of the pair
   /// \param overwrite If it's true, it'll overwrite existing <key, value> if it
   ///     exists.
-  /// \param timeout_ms -1 means infinite, 0 means default.
+  /// \param timeout_ms -1 means infinite.
   /// \param added It's an output parameter. It'll be set to be true if
   ///     any row is added.
   /// \return Status
@@ -802,7 +802,7 @@ class InternalKVAccessor {
   ///
   /// \param ns The namespace to lookup.
   /// \param key The key to lookup.
-  /// \param timeout_ms -1 means infinite, 0 means default.
+  /// \param timeout_ms -1 means infinite.
   /// \param value It's an output parameter. It'll be set to the value of the key
   /// \return Status
   virtual Status Get(const std::string &ns,
@@ -814,7 +814,7 @@ class InternalKVAccessor {
   ///
   /// \param ns The namespace to lookup.
   /// \param keys The keys to lookup.
-  /// \param timeout_ms -1 means infinite, 0 means default.
+  /// \param timeout_ms -1 means infinite.
   /// \param values It's an output parameter. It'll be set to the values of the keys.
   virtual Status MultiGet(const std::string &ns,
                           const std::vector<std::string> &keys,
@@ -829,7 +829,7 @@ class InternalKVAccessor {
   /// \param ns The namespace to delete from.
   /// \param key The key to delete
   /// \param del_by_prefix If set to be true, delete all keys with prefix as `key`.
-  /// \param timeout_ms -1 means infinite, 0 means default.
+  /// \param timeout_ms -1 means infinite.
   /// \return Status
   virtual Status Del(const std::string &ns,
                      const std::string &key,
@@ -843,7 +843,7 @@ class InternalKVAccessor {
   ///
   /// \param ns The namespace to check.
   /// \param key The key to check
-  /// \param timeout_ms -1 means infinite, 0 means default.
+  /// \param timeout_ms -1 means infinite.
   /// \param exist It's an output parameter. It'll be true if the key exists in the
   ///    system. Otherwise, it'll be set to be false.
   /// \return Status
