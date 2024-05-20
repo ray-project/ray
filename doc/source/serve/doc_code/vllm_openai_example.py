@@ -129,7 +129,7 @@ if __name__ == "__main__":
     serve.run(
         build_app(
             {
-                "model": "NousResearch/Meta-Llama-3-8B-Instruct",
+                "model": "google/gemma-2b",
                 "tensor-parallel-size": "1",
                 "dtype": "half",
             }
