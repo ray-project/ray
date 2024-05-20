@@ -88,12 +88,15 @@ A: Large. The binding itself is OK-ish, but there are so many callsites to chang
 # We need to best-effort import everything we need.
 
 from asyncio import Future
-
+from typing import List
 from ray.includes.common cimport (
     CGcsClient,
+    PyDefaultCallback,
     PyBytesCallback,
     PyOptionalIntCallback,
     PyOptionalBytesCallback,
+    PyOptionalBoolCallback,
+    PyMultiBytesCallback,
     PyPairBytesCallback,
     PyStatusCallback,
 )
@@ -104,10 +107,10 @@ cdef class MyGcsClient:
         shared_ptr[CGcsClient] inner
 
 
-    """
-    Sync methods.
-    """
-    def internal_kv_get(self, c_string key, namespace=None, timeout=None):
+    #############################################################
+    # Internal KV sync methods
+    #############################################################
+    def internal_kv_get(self, c_string key, namespace=None, timeout=None) -> Optional[bytes]:
         cdef:
             c_string ns = namespace or b""
             # int64_t timeout_ms = round(1000 * timeout) if timeout else -1
@@ -121,18 +124,64 @@ cdef class MyGcsClient:
             check_status(status)
             return value
 
-    """
-    Async methods.
-    """
+    # TODO: internal_kv_multi_get
 
-    async def get_next_job_id(self):
-        cdef PyBytesCallback cy_callback
-        fut, cb = make_future_and_callback(postprocess=JobID)
-        cy_callback = PyBytesCallback(cb)
+    def internal_kv_put(self, c_string key, c_string value, c_bool overwrite=False,
+                        namespace=None, timeout=None) -> int:
+        """
+        Returns 1 if the key is newly added, 0 if the key is overwritten.
+        """
+        cdef:
+            c_string ns = namespace or b""
+            # int64_t timeout_ms = round(1000 * timeout) if timeout else -1
+            c_bool added = False
+            CRayStatus status
         with nogil:
-            check_status(self.inner.get().Jobs().AsyncGetNextJobID(cy_callback))
-        return fut
-        
+            status = self.inner.get().InternalKV().Put(ns, key, value, overwrite, added)
+        check_status(status)
+        return 1 if added else 0
+
+    def internal_kv_del(self, c_string key, c_bool del_by_prefix,
+                        namespace=None, timeout=None) -> int:
+        """
+        Returns 1 if the key is deleted, 0 if the key is not found.
+        """
+        cdef:
+            c_string ns = namespace or b""
+            # int64_t timeout_ms = round(1000 * timeout) if timeout else -1
+            CRayStatus status
+        with nogil:
+            status = self.inner.get().InternalKV().Del(ns, key, del_by_prefix)
+        check_status(status)
+        # TODO: let `Delete` return an int
+        return 1
+    
+    def internal_kv_keys(self, c_string prefix, namespace=None, timeout=None) -> List[bytes]:
+        cdef:
+            c_string ns = namespace or b""
+            c_vector[c_string] keys
+            CRayStatus status
+        with nogil:
+            status = self.inner.get().InternalKV().Keys(ns, prefix, keys)
+        check_status(status)
+
+        result = [key for key in keys]
+        return result
+    
+    def internal_kv_exists(self, c_string key, namespace=None, timeout=None) -> bool:
+        cdef:
+            c_string ns = namespace or b""
+            c_bool exists = False
+            CRayStatus status
+        with nogil:
+            status = self.inner.get().InternalKV().Exists(ns, key, exists)
+        check_status(status)
+        return exists
+
+    #############################################################
+    # Internal KV async methods
+    #############################################################
+
     def async_internal_kv_get(self, c_string key, namespace=None, timeout=None) -> Future[Optional[bytes]]:
         cdef:
             c_string ns = namespace or b""
@@ -143,8 +192,10 @@ cdef class MyGcsClient:
             check_status(self.inner.get().InternalKV().AsyncInternalKVGet(ns, key, cy_callback))
         return fut
 
+    # TODO: async_internal_kv_multi_get
+
     def async_internal_kv_put(self, c_string key, c_string value, c_bool overwrite=False,
-                        namespace=None, timeout=None) -> Future[Optional[int]]:
+                        namespace=None, timeout=None) -> Future[int]:
         cdef:
             c_string ns = namespace or b""
             # TODO: timeout is not yet
@@ -153,6 +204,51 @@ cdef class MyGcsClient:
         with nogil:
             check_status(self.inner.get().InternalKV().AsyncInternalKVPut(ns, key, value, overwrite, cy_callback))
         return fut
+
+    def async_internal_kv_del(self, c_string key, c_bool del_by_prefix,
+                        namespace=None, timeout=None) -> Future[int]:
+        cdef:
+            c_string ns = namespace or b""
+        # TODO: let `AsyncInternalKVDel` return an int
+        def postprocess(s):
+            check_status_parts(s)
+            return 1
+        fut, cb = make_future_and_callback(postprocess=postprocess)
+        cdef PyStatusCallback cy_callback = PyStatusCallback(cb)
+        with nogil:
+            check_status(self.inner.get().InternalKV().AsyncInternalKVDel(ns, key, del_by_prefix, cy_callback))
+        return fut
+    
+    def async_internal_kv_keys(self, c_string prefix, namespace=None, timeout=None) -> Future[List[bytes]]:
+        cdef:
+            c_string ns = namespace or b""
+        fut, cb = make_future_and_callback(postprocess=check_status_or_return)
+        cdef PyDefaultCallback cy_callback = PyDefaultCallback(cb)
+        with nogil:
+            check_status(self.inner.get().InternalKV().AsyncInternalKVKeys(ns, prefix, cy_callback))
+        return fut
+
+    def async_internal_kv_exists(self, c_string key, namespace=None, timeout=None) -> Future[bool]:
+        cdef:
+            c_string ns = namespace or b""
+        fut, cb = make_future_and_callback(postprocess=check_status_or_return)
+        cdef PyDefaultCallback cy_callback = PyDefaultCallback(cb)
+        with nogil:
+            check_status(self.inner.get().InternalKV().AsyncInternalKVExists(ns, key, cy_callback))
+        return fut
+
+    #############################################################
+    # Job async methods
+    #############################################################
+
+    async def get_next_job_id(self):
+        cdef PyBytesCallback cy_callback
+        fut, cb = make_future_and_callback(postprocess=JobID)
+        cy_callback = PyBytesCallback(cb)
+        with nogil:
+            check_status(self.inner.get().Jobs().AsyncGetNextJobID(cy_callback))
+        return fut
+        
     
 # Ideally we want to pass CRayStatus around. However it's not easy to wrap a
 # `ray::Status` to a `PythonObject*` so we marshall it to a 3-tuple like this. It can be

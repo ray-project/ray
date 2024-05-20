@@ -29,6 +29,9 @@ namespace ray {
 // Converts C++ types to PyObject*.
 // None of the converters hold the GIL, but all of them requires the GIL to be held.
 // This means the caller should hold the GIL before calling these functions.
+//
+// By default you can use `DefaultConverter::convert` to convert any type. If you need
+// special handling you can compose out your own.
 namespace {
 class BytesConverter {
   // Specialization for types with a SerializeToString method
@@ -141,10 +144,55 @@ class StatusConverter {
   }
 };
 
+// Default converter, converts all types implemented above.
+// Resolution:
+// - single bool, int: BoolConverter, IntConverter
+// - Status: StatusConverter
+// - optional<T>: OptionalConverter<T>
+// - vector<T>: VectorConverter<T>
+// - single generic argument: BytesConverter
+// - 2 args (T, U): PairConverter<T, U>
+// - map<K, V>: MapConverter<K, V> (we can't do generics over MapType for collision w/
+// BytesConverter, so we specialize for std::unordered_map and absl::flat_hash_map)
+
+class DefaultConverter {
+ public:
+  static PyObject *convert(bool arg) { return BoolConverter::convert(arg); }
+  static PyObject *convert(int arg) { return IntConverter::convert(arg); }
+  static PyObject *convert(const Status &arg) { return StatusConverter::convert(arg); }
+
+  template <typename T>
+  static PyObject *convert(const T &arg) {
+    return BytesConverter::convert(arg);
+  }
+  template <typename T>
+  static PyObject *convert(const boost::optional<T> &arg) {
+    return OptionalConverter<DefaultConverter>::convert(arg);
+  }
+  template <typename T>
+  static PyObject *convert(const std::vector<T> &arg) {
+    return VectorConverter<DefaultConverter>::convert(arg);
+  }
+  template <typename T, typename U>
+  static PyObject *convert(const T &left, const U &right) {
+    return PairConverter<DefaultConverter, DefaultConverter>::convert(left, right);
+  }
+  template <typename Key, typename Value>
+  static PyObject *convert(const std::unordered_map<Key, Value> &arg) {
+    return MapConverter<DefaultConverter, DefaultConverter>::convert(arg);
+  }
+  template <typename Key, typename Value>
+  static PyObject *convert(const absl::flat_hash_map<Key, Value> &arg) {
+    return MapConverter<DefaultConverter, DefaultConverter>::convert(arg);
+  }
+};
+
 using OptionalBytesConverter =
     PairConverter<StatusConverter, OptionalConverter<BytesConverter>>;
 using OptionalIntConverter =
     PairConverter<StatusConverter, OptionalConverter<IntConverter>>;
+using OptionalBoolConverter =
+    PairConverter<StatusConverter, OptionalConverter<BoolConverter>>;
 using MultiBytesConverter =
     PairConverter<StatusConverter, VectorConverter<BytesConverter>>;
 using PairBytesConverter = PairConverter<BytesConverter, BytesConverter>;
@@ -224,6 +272,8 @@ class PyCallback {
 // `(Status)` below means a 3-tuple of (StatusCode: int, error_message: bytes, rpc_code:
 // int).
 //
+using PyDefaultCallback = PyCallback<DefaultConverter>;
+//
 // For StatusCallback
 // (Status) -> (Status)
 using PyStatusCallback = PyCallback<StatusConverter>;
@@ -232,6 +282,8 @@ using PyStatusCallback = PyCallback<StatusConverter>;
 using PyOptionalBytesCallback = PyCallback<OptionalBytesConverter>;
 // (Status, boost::optional<int>) -> (Status, Optional[int])
 using PyOptionalIntCallback = PyCallback<OptionalIntConverter>;
+// (Status, boost::optional[bool]) -> (Status, Optional[bool])
+using PyOptionalBoolCallback = PyCallback<OptionalBoolConverter>;
 // For MultiItemCallback<Serializable>
 // (Status, std::vector<T>) -> (Status, List[bytes])
 using PyMultiBytesCallback = PyCallback<MultiBytesConverter>;

@@ -374,6 +374,10 @@ cdef extern from "ray/core_worker/common.h" nogil:
         const c_bool GetDidSpill() const
 cdef extern from "ray/gcs/gcs_client/python_callbacks.h" namespace "ray" nogil:
     # Each type needs default constructors asked by cython.
+
+    cdef cppclass PyDefaultCallback:
+        PyDefaultCallback()
+        PyDefaultCallback(object py_callback)
     cdef cppclass PyStatusCallback:
         PyStatusCallback()
         PyStatusCallback(object py_callback)
@@ -383,6 +387,9 @@ cdef extern from "ray/gcs/gcs_client/python_callbacks.h" namespace "ray" nogil:
     cdef cppclass PyOptionalIntCallback:
         PyOptionalIntCallback()
         PyOptionalIntCallback(object py_callback)
+    cdef cppclass PyOptionalBoolCallback:
+        PyOptionalBoolCallback()
+        PyOptionalBoolCallback(object py_callback)
     cdef cppclass PyMultiBytesCallback:
         PyMultiBytesCallback()
         PyMultiBytesCallback(object py_callback)
@@ -404,10 +411,10 @@ cdef extern from "ray/gcs/gcs_client/accessor.h" nogil:
             const PyBytesCallback &callback)
     cdef cppclass CInternalKVAccessor "ray::gcs::InternalKVAccessor":
         # TODO: no timeout args. Now, C++ GcsClient has fixed timeout = gcs_server_request_timeout_seconds
-        CRayStatus AsyncInternalKVKeys(const c_string &ns, const c_string &prefix, const PyMultiBytesCallback &callback)
+        CRayStatus AsyncInternalKVKeys(const c_string &ns, const c_string &prefix, const PyDefaultCallback &callback)
         CRayStatus AsyncInternalKVGet(const c_string &ns, const c_string &key, const PyOptionalBytesCallback &callback)
         CRayStatus AsyncInternalKVPut(const c_string &ns, const c_string &key, const c_string &value, c_bool overwrite, const PyOptionalIntCallback &callback)
-        CRayStatus AsyncInternalKVExists(const c_string &ns, const c_string &key, const PyOptionalBytesCallback &callback)
+        CRayStatus AsyncInternalKVExists(const c_string &ns, const c_string &key, const PyDefaultCallback &callback)
         CRayStatus AsyncInternalKVDel(const c_string &ns, const c_string &key, c_bool del_by_prefix, const PyStatusCallback &callback)
         CRayStatus Keys(const c_string &ns, const c_string &prefix, c_vector[c_string] &value)
         CRayStatus Put(const c_string &ns, const c_string &key, const c_string &value, c_bool overwrite, c_bool &added)
