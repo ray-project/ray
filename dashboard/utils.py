@@ -662,7 +662,7 @@ def compose_state_message(death_info_dict: dict) -> str:
     Args:
         death_info_dict: the node_death field in GcsNodeInfo, in dict type.
     """
-    death_reason = death_info_dict.get("reason", None)
+    death_reason = death_info_dict.get("reason", "")
     if death_reason == "EXPECTED_TERMINATION":
         node_message = "Expected termination"
     elif death_reason == "UNEXPECTED_TERMINATION":
@@ -672,9 +672,9 @@ def compose_state_message(death_info_dict: dict) -> str:
     elif death_reason == "AUTOSCALER_DRAIN_IDLE":
         node_message = "Terminated due to idle"
     else:
-        node_message = None
+        node_message = ""
 
-    death_reason_message = death_info_dict.get("reasonMessage", None)
+    death_reason_message = death_info_dict.get("reasonMessage", "")
     if death_reason_message:
         if node_message:
             node_message += f": ({death_reason_message})"
