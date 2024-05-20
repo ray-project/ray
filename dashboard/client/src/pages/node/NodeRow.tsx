@@ -77,7 +77,7 @@ const useStyles = makeStyles((theme) =>
     labels: {
       maxWidth: 200,
     },
-    message: {
+    stateMessage: {
       maxWidth: 200,
     },
   }),
@@ -132,9 +132,9 @@ export const NodeRow = ({
       </TableCell>
       <TableCell>
         <CodeDialogButtonWithPreview
-          className={classes.message}
-          title="Message"
-          code={raylet.message}
+          className={classes.stateMessage}
+          title="State Message"
+          code={raylet.stateMessage}
         />
       </TableCell>
       <TableCell align="center">

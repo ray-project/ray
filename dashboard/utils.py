@@ -656,8 +656,8 @@ def get_address_for_submission_client(address: Optional[str]) -> str:
     return address
 
 
-def compose_node_message(death_info_dict: dict) -> str:
-    """Compose node message based on death information.
+def compose_state_message(death_info_dict: dict) -> str:
+    """Compose node state message based on death information.
 
     Args:
         death_info_dict: the node_death field in GcsNodeInfo, in dict type.
