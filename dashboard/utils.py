@@ -664,20 +664,20 @@ def compose_state_message(death_info_dict: dict) -> str:
     """
     death_reason = death_info_dict.get("reason", "")
     if death_reason == "EXPECTED_TERMINATION":
-        node_message = "Expected termination"
+        state_message = "Expected termination"
     elif death_reason == "UNEXPECTED_TERMINATION":
-        node_message = "Unexpected termination"
+        state_message = "Unexpected termination"
     elif death_reason == "AUTOSCALER_DRAIN_PREEMPTED":
-        node_message = "Terminated due to preemption"
+        state_message = "Terminated due to preemption"
     elif death_reason == "AUTOSCALER_DRAIN_IDLE":
-        node_message = "Terminated due to idle"
+        state_message = "Terminated due to idle"
     else:
-        node_message = ""
+        state_message = ""
 
     death_reason_message = death_info_dict.get("reasonMessage", "")
     if death_reason_message:
-        if node_message:
-            node_message += f": ({death_reason_message})"
+        if state_message:
+            state_message += f": ({death_reason_message})"
         else:
-            node_message = death_reason_message
-    return node_message
+            state_message = death_reason_message
+    return state_message
