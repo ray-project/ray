@@ -95,6 +95,11 @@ class TestBackwardCompatibility(unittest.TestCase):
             # Test, whether both keys (that map to the same new key) still work.
             "num_workers": 2,
             "num_rollout_workers": 2,
+            # Resource settings.
+            "num_cpus_for_local_worker": 2,
+            "num_cpus_per_learner_worker": 3,
+            "num_gpus_per_learner_worker": 4,
+            "num_learner_workers": 5,
         }
         config = AlgorithmConfig.from_dict(config_dict)
         self.assertFalse(config.in_evaluation)
@@ -105,6 +110,10 @@ class TestBackwardCompatibility(unittest.TestCase):
         self.assertTrue(eval_config.in_evaluation)
         self.assertTrue(eval_config.lr == 0.1)
         self.assertTrue(config.num_env_runners == 2)
+        self.assertTrue(config.num_cpus_for_main_process == 2)
+        self.assertTrue(config.num_cpus_per_learner == 3)
+        self.assertTrue(config.num_gpus_per_learner == 4)
+        self.assertTrue(config.num_learners == 5)
 
         register_env(
             "test",
@@ -121,7 +130,7 @@ class TestBackwardCompatibility(unittest.TestCase):
                 "num_envs_per_worker": 4,  # old key -> num_envs_per_env_runner
                 "explore": False,
             },
-            "evaluation_num_env_runners": 1,
+            "evaluation_num_workers": 1,  # old key -> evaluation_num_env_runners
             "multiagent": {
                 "policies": {
                     "policy1": PolicySpec(),

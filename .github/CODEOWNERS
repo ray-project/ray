@@ -42,7 +42,6 @@
 /ci/lint/format.sh @richardliaw @ericl @edoakes
 
 # Docker image and build scripts.
-/ci/build/build-docker-images.py @ray-project/ray-core @ray-project/ray-ci
 /ci/docker @ray-project/ray-ci
 /ci/ray_ci @ray-project/ray-ci
 
@@ -126,3 +125,5 @@
 /release/ray_release @ray-project/ray-ci-reviewers
 
 /.github/ISSUE_TEMPLATE/ @ericl @stephanie-wang @scv119 @pcmoritz
+
+/.github/workflows/ @ray-project/ray-ci-reviewers

@@ -194,20 +194,22 @@ class NestedDict(Generic[T], MutableMapping[str, Union[T, "NestedDict"]]):
         Raises:
             KeyError: if `k` is not in the `NestedDict` and default is None.
         """
-        k = _flatten_index(k)
+        from ray.rllib.utils import force_tuple
 
-        if k not in self:
-            if default is not None:
-                return default
-            else:
-                raise KeyError(k)
+        k = force_tuple(k)
 
         data_ptr = self._data
         for key in k:
             # This is to avoid the recursion on __getitem__
             if isinstance(data_ptr, NestedDict):
                 data_ptr = data_ptr._data
-            data_ptr = data_ptr[key]
+            try:
+                data_ptr = data_ptr[key]
+            except KeyError as e:
+                if default is not None:
+                    return default
+                else:
+                    raise (e)
         return data_ptr
 
     def __getitem__(self, k: SeqStrType) -> T:

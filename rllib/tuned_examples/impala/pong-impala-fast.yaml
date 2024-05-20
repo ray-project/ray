@@ -1,3 +1,4 @@
+# @OldAPIStack
 # This can reach 18-19 reward in ~3 minutes on p3.16xl head w/m4.16xl workers
 #   128 workers -> 3 minutes (best case)
 #    64 workers -> 4 minutes
@@ -14,7 +15,7 @@ pong-impala-fast:
             repeat_action_probability: 0.0
         rollout_fragment_length: 50
         train_batch_size: 1000
-        num_workers: 128
+        num_env_runners: 128
         num_envs_per_env_runner: 5
         broadcast_interval: 5
         max_sample_requests_in_flight_per_worker: 1

@@ -35,6 +35,7 @@ from ray._private.test_utils import (
     wait_until_server_available,
     wait_until_succeeded_without_exception,
 )
+from ray.core.generated import gcs_pb2
 import ray.scripts.scripts as scripts
 from ray.dashboard import dashboard
 from ray.dashboard.head import DashboardHead
@@ -197,7 +198,7 @@ def test_raylet_and_agent_share_fate(shutdown_only):
 
     ray.shutdown()
 
-    ray.init()
+    ray_context = ray.init()
     all_processes = ray._private.worker._global_node.all_processes
     raylet_proc_info = all_processes[ray_constants.PROCESS_TYPE_RAYLET][0]
     raylet_proc = psutil.Process(raylet_proc_info.process.pid)
@@ -211,6 +212,19 @@ def test_raylet_and_agent_share_fate(shutdown_only):
     agent_proc.kill()
     agent_proc.wait()
     raylet_proc.wait(15)
+
+    worker_node_id = ray_context.address_info["node_id"]
+    worker_node_info = [
+        node for node in ray.nodes() if node["NodeID"] == worker_node_id
+    ][0]
+    assert not worker_node_info["Alive"]
+    assert worker_node_info["DeathReason"] == gcs_pb2.NodeDeathInfo.Reason.Value(
+        "UNEXPECTED_TERMINATION"
+    )
+    assert (
+        "failed and raylet fate-shares with it."
+        in worker_node_info["DeathReasonMessage"]
+    )
 
 
 @pytest.mark.parametrize("parent_health_check_by_pipe", [True, False])
@@ -940,7 +954,11 @@ def test_dashboard_port_conflict(ray_start_with_dashboard):
     os.environ.get("RAY_MINIMAL") == "1",
     reason="This test is not supposed to work for minimal installation.",
 )
-def test_gcs_check_alive(fast_gcs_failure_detection, ray_start_with_dashboard):
+def test_gcs_check_alive(
+    fast_gcs_failure_detection, ray_start_with_dashboard, call_ray_stop_only
+):
+    # call_ray_stop_only is used to ensure a clean environment (especially
+    # killing dashboard agent in time) before the next test runs.
     assert wait_until_server_available(ray_start_with_dashboard["webui_url"]) is True
 
     all_processes = ray._private.worker._global_node.all_processes

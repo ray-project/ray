@@ -4,11 +4,14 @@ examples:
     skill_level: beginner
     frameworks:
       - pytorch
+    use_cases:
+      - computer vision
     link: tutorials/serve-ml-models
   - title: Serve a Stable Diffusion Model
     skill_level: beginner
     use_cases:
       - computer vision
+      - generative ai
     link: tutorials/stable-diffusion
   - title: Serve a Text Classification Model
     skill_level: beginner
@@ -20,12 +23,16 @@ examples:
     use_cases:
       - computer vision
     link: tutorials/object-detection
-
   - title: Serve an Inference Model on AWS NeuronCores Using FastAPI
     skill_level: intermediate
+    use_cases:
+      - natural language processing
     link: tutorials/aws-neuron-core-inference
   - title: Serve an Inference with Stable Diffusion Model on AWS NeuronCores Using FastAPI
     skill_level: intermediate
+    use_cases:
+      - computer vision
+      - generative ai
     link: tutorials/aws-neuron-core-inference-stable-diffusion
   - title: Serve a model on Intel Gaudi Accelerator
     skill_level: intermediate
@@ -37,15 +44,30 @@ examples:
     link: tutorials/intel-gaudi-inference
   - title: Scale a Gradio App with Ray Serve
     skill_level: intermediate
+    use_cases:
+      - generative ai
+      - large language models
+      - natural language processing
     link: tutorials/gradio-integration
   - title: Serve a Text Generator with Request Batching
     skill_level: intermediate
+    use_cases:
+      - generative ai
+      - large language models
+      - natural language processing
     link: tutorials/batch
   - title: Serve a Chatbot with Request and Response Streaming
     skill_level: intermediate
+    use_cases:
+      - generative ai
+      - large language models
+      - natural language processing
     link: tutorials/streaming
   - title: Serving models with Triton Server in Ray Serve
     skill_level: intermediate
+    use_cases:
+      - computer vision
+      - generative ai
     link: tutorials/triton-server-integration
 
   - title: Serve a Java App

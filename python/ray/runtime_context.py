@@ -251,7 +251,7 @@ class RuntimeContext(object):
         """
         # only worker mode has actor_id
         if self.worker.mode != ray._private.worker.WORKER_MODE:
-            logger.warning(
+            logger.debug(
                 "This method is only available when the process is a "
                 f"worker. Current mode: {self.worker.mode}"
             )

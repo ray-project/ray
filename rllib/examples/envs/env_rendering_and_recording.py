@@ -71,14 +71,7 @@ from ray.tune.registry import get_trainable_cls, register_env
 from ray import tune
 
 parser = add_rllib_example_script_args(default_reward=20.0)
-# TODO (sven): Move this command line option into the generic
-#  `add_rllib_example_script_args` and `run_rllib_example_script_experiment`.
-parser.add_argument(
-    "--env",
-    type=str,
-    default="ALE/Pong-v5",
-    help="The gym.Env identifier to run the experiment with.",
-)
+parser.set_defaults(env="ALE/Pong-v5")
 
 
 class EnvRenderCallback(DefaultCallbacks):
