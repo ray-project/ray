@@ -656,13 +656,13 @@ def get_address_for_submission_client(address: Optional[str]) -> str:
     return address
 
 
-def compose_state_message(death_info_dict: dict) -> str:
+def compose_state_message(death_info_dict: dict) -> Optional[str]:
     """Compose node state message based on death information.
 
     Args:
         death_info_dict: the node_death field in GcsNodeInfo, in dict type.
     """
-    death_reason = death_info_dict.get("reason", "")
+    death_reason = death_info_dict.get("reason", None)
     if death_reason == "EXPECTED_TERMINATION":
         state_message = "Expected termination"
     elif death_reason == "UNEXPECTED_TERMINATION":
@@ -672,9 +672,9 @@ def compose_state_message(death_info_dict: dict) -> str:
     elif death_reason == "AUTOSCALER_DRAIN_IDLE":
         state_message = "Terminated due to idle"
     else:
-        state_message = ""
+        state_message = None
 
-    death_reason_message = death_info_dict.get("reasonMessage", "")
+    death_reason_message = death_info_dict.get("reasonMessage", None)
     if death_reason_message:
         if state_message:
             state_message += f": ({death_reason_message})"

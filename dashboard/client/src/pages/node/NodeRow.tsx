@@ -130,12 +130,16 @@ export const NodeRow = ({
       <TableCell>
         <StatusChip type="node" status={raylet.state} />
       </TableCell>
-      <TableCell>
-        <CodeDialogButtonWithPreview
-          className={classes.stateMessage}
-          title="State Message"
-          code={raylet.stateMessage}
-        />
+      <TableCell align="center">
+        {raylet.stateMessage ? (
+          <CodeDialogButtonWithPreview
+            className={classes.stateMessage}
+            title="State Message"
+            code={raylet.stateMessage}
+          />
+        ) : (
+          "-"
+        )}
       </TableCell>
       <TableCell align="center">
         <Tooltip title={raylet.nodeId} arrow>
