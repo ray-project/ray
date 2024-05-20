@@ -125,7 +125,12 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
       const NodeID &node_id) const;
 
   /// Set the death info of the node.
-  void SetDeathInfo(const NodeID &node_id, rpc::NodeDeathInfo death_info);
+  ///
+  /// \param node_id The ID of the node.
+  /// \param death_info The death info of the node. If absent, it implies that the node
+  /// death is detected via health check and the inferred death info will be set.
+  /// \return if node death is inferred to be caused by draining.
+  bool SetDeathInfo(const NodeID &node_id, shared_ptr<rpc::NodeDeathInfo> death_info);
 
   /// Get all alive nodes.
   ///

@@ -408,11 +408,7 @@ def test_scheduling_tasks_and_actors_during_draining(ray_start_cluster):
     ray.get(obj, timeout=2) == head_node_id
 
 
-@pytest.mark.parametrize(
-    "graceful",
-    [False, True],
-)
-def test_draining_reason(ray_start_cluster, graceful):
+def test_draining_reason(ray_start_cluster):
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=1, resources={"node1": 1})
     ray.init(
@@ -442,11 +438,12 @@ def test_draining_reason(ray_start_cluster, graceful):
         node2_id,
         autoscaler_pb2.DrainNodeReason.Value("DRAIN_NODE_REASON_PREEMPTION"),
         "preemption",
-        2**63 - 1,
+        1,
     )
     assert is_accepted
 
-    cluster.remove_node(n, graceful)
+    # Simulate node provider forcefully terminates the worker node
+    cluster.remove_node(n, False)
     try:
         ray.get(actor.ping.remote())
         raise
