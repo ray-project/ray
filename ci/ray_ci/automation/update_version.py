@@ -16,9 +16,9 @@ def main(new_version: str, root_dir: Optional[str] = None):
     Update the version in the files to the specified version.
     """
     if not root_dir:
-        root_dir = os.environ.get("BUILD_WORKSPACE_DIRECTORY", "")
+        root_dir = os.environ.get("BUILD_WORKSPACE_DIRECTORY")
         if not root_dir:
-            raise Exception("Argument root_dir is not found.")
+            raise Exception("Please specify --root_dir when not running with Bazel.")
 
     main_version, java_version = get_current_version(root_dir)
 
