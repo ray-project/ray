@@ -128,9 +128,10 @@ def build_app(cli_args: Dict[str, str]) -> serve.Application:
 if __name__ == "__main__":
     serve.run(
         build_app(
-            cli_args={
+            {
                 "model": "NousResearch/Meta-Llama-3-8B-Instruct",
                 "tensor-parallel-size": "1",
+                "dtype": "half",
             }
         )
     )
