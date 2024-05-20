@@ -100,7 +100,7 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
         assert self._component in AVAILABLE_COMPONENT_NAMES_FOR_METRICS
         self._dashboard_proc = psutil.Process()
 
-        self._event_loop_lag_samples: List[float] = []
+        self._event_loop_lag_s_max: Optional[float] = None
 
     @routes.get("/api/grafana_health")
     async def grafana_health(self, req) -> aiohttp.web.Response:
@@ -325,16 +325,16 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
             SessionName=self._session_name,
         ).set(float(self._dashboard_proc.memory_full_info().uss) / 1.0e6)
 
-        # Report the max lag since the last export.
-        max_lag = max(self._event_loop_lag_samples)
-        self._event_loop_lag_samples = []
-        self._dashboard_head.metrics.metrics_event_loop_lag.labels(
-            ip=self._ip,
-            pid=self._pid,
-            Version=ray.__version__,
-            Component=self._component,
-            SessionName=self._session_name,
-        ).set(float(max_lag))
+        # Report the max lag since the last export, if any.
+        if self._event_loop_lag_s_max is not None:
+            self._dashboard_head.metrics.metrics_event_loop_lag.labels(
+                ip=self._ip,
+                pid=self._pid,
+                Version=ray.__version__,
+                Component=self._component,
+                SessionName=self._session_name,
+            ).set(float(self._event_loop_lag_s_max))
+            self._event_loop_lag_s_max = None
 
     async def run(self, server):
         self._create_default_grafana_configs()
@@ -342,7 +342,7 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
 
         def on_new_lag(lag_s):
             # Record the lag. It's exported in `record_dashboard_metrics`
-            self._event_loop_lag_samples.append(lag_s)
+            self._event_loop_lag_s_max = max(self._event_loop_lag_s_max or 0, lag_s)
 
         enable_monitor_loop_lag(on_new_lag)
 

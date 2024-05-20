@@ -110,12 +110,6 @@ class TestHead(dashboard_utils.DashboardHeadModule):
         logger.info("test file: %s", file_path)
         return aiohttp.web.FileResponse(file_path)
 
-    async def blocking_async_func(self, seconds):
-        import time
-
-        time.sleep(seconds)
-        return seconds
-
     @routes.get("/test/block_event_loop")
     async def block_event_loop(self, req) -> aiohttp.web.Response:
         """
@@ -123,8 +117,8 @@ class TestHead(dashboard_utils.DashboardHeadModule):
         task that blocks the event loop for a specified number of seconds.
         """
         seconds = float(req.query.get("seconds", 0.0))
-        t = asyncio.get_event_loop().create_task(self.blocking_async_func(seconds))
-        await t
+        time.sleep(seconds)
+
         return dashboard_optional_utils.rest_response(
             success=True,
             message=f"Blocked event loop for {seconds} seconds",

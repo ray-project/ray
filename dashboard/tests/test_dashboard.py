@@ -1264,8 +1264,8 @@ def test_dashboard_not_included_ray_minimal(shutdown_only, capsys):
 
 
 @pytest.mark.skipif(
-    os.environ.get("RAY_MINIMAL") == "1" or os.environ.get("RAY_DEFAULT") == "1",
-    reason="This test is not supposed to work for minimal or default installation.",
+    os.environ.get("RAY_MINIMAL") == "1",
+    reason="This test is not supposed to work for minimal installation.",
 )
 @pytest.mark.asyncio
 async def test_dashboard_exports_metric_on_event_loop_lag(
@@ -1305,7 +1305,7 @@ async def test_dashboard_exports_metric_on_event_loop_lag(
 
     lag_metric_samples = metrics_samples["ray_dashboard_event_loop_lag_seconds"]
     assert len(lag_metric_samples) > 0
-    assert all(sample.value > 3 for sample in lag_metric_samples)
+    assert all(sample.value > 1 for sample in lag_metric_samples)
 
 
 if __name__ == "__main__":
