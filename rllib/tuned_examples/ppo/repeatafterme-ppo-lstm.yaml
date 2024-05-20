@@ -1,3 +1,4 @@
+# @OldAPIStack
 repeat-after-me-ppo-w-lstm:
     # Default case: Discrete(2) observations/actions.
     env: ray.rllib.examples.envs.classes.repeat_after_me_env.RepeatAfterMeEnv
@@ -14,7 +15,7 @@ repeat-after-me-ppo-w-lstm:
             repeat_delay: 2
         gamma: 0.9
         lr: 0.0003
-        num_workers: 0
+        num_env_runners: 0
         num_envs_per_env_runner: 20
         num_sgd_iter: 5
         entropy_coeff: 0.00001

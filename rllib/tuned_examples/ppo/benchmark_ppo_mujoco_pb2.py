@@ -38,7 +38,7 @@ benchmark_envs = {
 
 pb2_scheduler = PB2(
     time_attr=f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}",
-    metric="episode_reward_mean",
+    metric="env_runners/episode_return_mean",
     mode="max",
     perturbation_interval=50000,
     # Copy bottom % with top % weights.
@@ -79,13 +79,13 @@ for env, stop_criteria in benchmark_envs.items():
             num_env_runners=num_rollout_workers,
             # TODO (sven, simon): Add resources.
         )
-        .resources(
+        .learners(
             # Let's start with a small number of learner workers and
             # add later a tune grid search for these resources.
             # TODO (simon): Either add tune grid search here or make
             # an extra script to only test scalability.
-            num_learner_workers=1,
-            num_gpus_per_learner_worker=1,
+            num_learners=1,
+            num_gpus_per_learner=1,
         )
         # TODO (simon): Adjust to new model_config_dict.
         .training(
