@@ -491,22 +491,47 @@ Status NodeInfoAccessor::AsyncRegister(const rpc::GcsNodeInfo &node_info,
 
 Status NodeInfoAccessor::AsyncCheckSelfAlive(
     const std::function<void(Status, bool)> &callback, int64_t timeout_ms = -1) {
+  std::vector<std::string> raylet_addresses = {
+      local_node_info_.node_manager_address() + ":" +
+      std::to_string(local_node_info_.node_manager_port())};
+
+  return AsyncCheckAlive(
+      raylet_addresses,
+      timeout_ms,
+      [callback](const Status &status, const std::vector<bool> &nodes_alive) {
+        if (!status.ok()) {
+          callback(status, false);
+          return;
+        } else {
+          RAY_CHECK(nodes_alive.size() == 1);
+          callback(status, nodes_alive[0]);
+        }
+      });
+}
+
+Status NodeInfoAccessor::AsyncCheckAlive(const std::vector<std::string> &raylet_addresses,
+                                         int64_t timeout_ms,
+                                         const MultiItemCallback<bool> &callback) {
   rpc::CheckAliveRequest request;
-  auto node_addr = local_node_info_.node_manager_address() + ":" +
-                   std::to_string(local_node_info_.node_manager_port());
-  RAY_CHECK(callback != nullptr);
-  request.add_raylet_address(node_addr);
+  for (const auto &raylet_address : raylet_addresses) {
+    request.add_raylet_address(raylet_address);
+  }
+  size_t num_raylets = raylet_addresses.size();
   client_impl_->GetGcsRpcClient().CheckAlive(
       request,
-      [callback](auto status, const auto &reply) {
+      [num_raylets, callback](const Status &status, const rpc::CheckAliveReply &reply) {
         if (status.ok()) {
-          RAY_CHECK(reply.raylet_alive().size() == 1);
-          callback(status, reply.raylet_alive()[0]);
+          RAY_CHECK(reply.raylet_alive().size() == num_raylets);
+          std::vector<bool> is_alive;
+          is_alive.reserve(num_raylets);
+          for (const bool &alive : reply.raylet_alive()) {
+            is_alive.push_back(alive);
+          }
+          callback(status, std::move(is_alive));
         } else {
-          callback(status, true);
+          callback(status, {});
         }
-      },
-      timeout_ms);
+      });
   return Status::OK();
 }
 
@@ -589,6 +614,20 @@ const GcsNodeInfo *NodeInfoAccessor::Get(const NodeID &node_id,
 
 const absl::flat_hash_map<NodeID, GcsNodeInfo> &NodeInfoAccessor::GetAll() const {
   return node_cache_;
+}
+
+Status NodeInfoAccessor::CheckAlive(const std::vector<std::string> &raylet_addresses,
+                                    int64_t timeout_ms,
+                                    std::vector<bool> &nodes_alive) {
+  std::promise<Status> ret_promise;
+  RAY_RETURN_NOT_OK(AsyncCheckAlive(
+      raylet_addresses,
+      timeout_ms,
+      [&ret_promise, &nodes_alive](Status status, const std::vector<bool> &alive) {
+        nodes_alive = alive;
+        ret_promise.set_value(status);
+      }));
+  return ret_promise.get_future().get();
 }
 
 bool NodeInfoAccessor::IsRemoved(const NodeID &node_id) const {
@@ -1075,14 +1114,14 @@ Status InternalKVAccessor::AsyncInternalKVExists(
 Status InternalKVAccessor::AsyncInternalKVDel(const std::string &ns,
                                               const std::string &key,
                                               bool del_by_prefix,
-                                              const StatusCallback &callback) {
+                                              const OptionalItemCallback<int> &callback) {
   rpc::InternalKVDelRequest req;
   req.set_namespace_(ns);
   req.set_key(key);
   client_impl_->GetGcsRpcClient().InternalKVDel(
       req,
       [callback](const Status &status, const rpc::InternalKVDelReply &reply) {
-        callback(status);
+        callback(status, reply.deleted_num());
       },
       /*timeout_ms*/ GetGcsTimeoutMs());
   return Status::OK();
@@ -1154,23 +1193,29 @@ Status InternalKVAccessor::Get(const std::string &ns,
 
 Status InternalKVAccessor::Del(const std::string &ns,
                                const std::string &key,
-                               bool del_by_prefix) {
+                               bool del_by_prefix,
+                               int &num_deleted) {
   std::promise<Status> ret_promise;
-  RAY_CHECK_OK(AsyncInternalKVDel(ns, key, del_by_prefix, [&ret_promise](Status status) {
-    ret_promise.set_value(status);
-  }));
+  RAY_CHECK_OK(AsyncInternalKVDel(
+      ns,
+      key,
+      del_by_prefix,
+      [&ret_promise, &num_deleted](Status status, const boost::optional<int> &value) {
+        num_deleted = value.value_or(0);
+        ret_promise.set_value(status);
+      }));
   return ret_promise.get_future().get();
 }
 
 Status InternalKVAccessor::Exists(const std::string &ns,
                                   const std::string &key,
-                                  bool &exist) {
+                                  bool &exists) {
   std::promise<Status> ret_promise;
   RAY_CHECK_OK(AsyncInternalKVExists(
-      ns, key, [&ret_promise, &exist](Status status, const boost::optional<bool> &value) {
-        if (value) {
-          exist = *value;
-        }
+      ns,
+      key,
+      [&ret_promise, &exists](Status status, const boost::optional<bool> &value) {
+        exists = value.value_or(false);
         ret_promise.set_value(status);
       }));
   return ret_promise.get_future().get();
