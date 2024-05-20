@@ -216,50 +216,24 @@ enum class RayLogLevel {
 // which hide the implementation into logging.cc file.
 // In logging.cc, we can choose different log libs using different macros.
 
-// This is also a null log which does not output anything.
-class RayLogBase {
- public:
-  virtual ~RayLogBase(){};
-
-  // By default, this class is a null log because it return false here.
-  virtual bool IsEnabled() const { return false; };
-
-  // This function to judge whether current log is fatal or not.
-  virtual bool IsFatal() const { return false; };
-
-  template <typename T>
-  RayLogBase &operator<<(const T &t) {
-    if (IsEnabled()) {
-      Stream() << t;
-    }
-    if (IsFatal()) {
-      ExposeStream() << t;
-    }
-    return *this;
-  }
-
- protected:
-  virtual std::ostream &Stream() { return std::cerr; };
-  virtual std::ostream &ExposeStream() { return std::cerr; };
-};
-
 /// Callback function which will be triggered to expose fatal log.
 /// The first argument: a string representing log type or label.
 /// The second argument: log content.
 using FatalLogCallback = std::function<void(const std::string &, const std::string &)>;
 
-class RayLog : public RayLogBase {
+class RayLog {
  public:
   RayLog(const char *file_name, int line_number, RayLogLevel severity);
 
-  virtual ~RayLog();
+  ~RayLog();
 
   /// Return whether or not current logging instance is enabled.
   ///
   /// \return True if logging is enabled and false otherwise.
-  virtual bool IsEnabled() const;
+  bool IsEnabled() const;
 
-  virtual bool IsFatal() const;
+  /// This function to judge whether current log is fatal or not.
+  bool IsFatal() const;
 
   /// The init function of ray log for a program which should be called only once.
   ///
@@ -315,6 +289,17 @@ class RayLog : public RayLogBase {
   static void AddFatalLogCallbacks(
       const std::vector<FatalLogCallback> &expose_log_callbacks);
 
+  template <typename T>
+  RayLog &operator<<(const T &t) {
+    if (IsEnabled()) {
+      Stream() << t;
+    }
+    if (IsFatal()) {
+      ExposeStream() << t;
+    }
+    return *this;
+  }
+
  private:
   FRIEND_TEST(PrintLogTest, TestRayLogEveryNOrDebug);
   FRIEND_TEST(PrintLogTest, TestRayLogEveryN);
@@ -327,7 +312,7 @@ class RayLog : public RayLogBase {
   RayLogLevel severity_;
   /// Whether current log is fatal or not.
   bool is_fatal_ = false;
-  /// String stream of exposed log content.
+  /// String stream of exposed fatal log content.
   std::shared_ptr<std::ostringstream> expose_osstream_ = nullptr;
   /// Whether or not the log is initialized.
   static std::atomic<bool> initialized_;
@@ -353,8 +338,9 @@ class RayLog : public RayLogBase {
   static std::string logger_name_;
 
  protected:
-  virtual std::ostream &Stream();
-  virtual std::ostream &ExposeStream();
+  std::ostream &Stream();
+  // Fatal log that will be exposed as event.
+  std::ostream &ExposeStream();
 };
 
 // This class make RAY_CHECK compilation pass to change the << operator to void.
@@ -363,7 +349,7 @@ class Voidify {
   Voidify() {}
   // This has to be an operator with a precedence lower than << but
   // higher than ?:
-  void operator&(RayLogBase &) {}
+  void operator&(RayLog &) {}
 };
 
 }  // namespace ray
