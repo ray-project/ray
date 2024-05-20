@@ -2360,7 +2360,6 @@ pyx_library(
         "python/ray/__init__.py",
         "python/ray/_raylet.pxd",
         "python/ray/_raylet.pyx",
-        "python/ray/_gcs_client.pyx",
         "python/ray/includes/*.pxd",
         "python/ray/includes/*.pxi",
     ]),

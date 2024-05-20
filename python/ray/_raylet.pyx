@@ -82,7 +82,6 @@ from ray.includes.common cimport (
     CRayStatus,
     CActorTableData,
     CErrorTableData,
-    # CCoreWorker,
     CGcsClientOptions,
     CGcsNodeInfo,
     CJobTableData,
@@ -2652,6 +2651,7 @@ def _auto_reconnect(f):
                 raise
 
     return wrapper
+
 
 cdef class GcsClient:
     """Cython wrapper class of C++ `ray::gcs::GcsClient`."""
