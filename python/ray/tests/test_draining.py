@@ -211,7 +211,7 @@ def test_preemption_after_draining_deadline(ray_start_cluster):
         "AUTOSCALER_DRAIN_PREEMPTED"
     )
     assert (
-        worker_node["DeathReasonMessage"] == "preemption (Node was forcibly terminated)"
+        worker_node["DeathReasonMessage"] == "preemption (Node was forcibly preempted)"
     )
 
 

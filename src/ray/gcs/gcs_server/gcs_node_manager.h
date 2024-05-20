@@ -101,11 +101,12 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   /// \param node The info of the node to be added.
   void AddNode(std::shared_ptr<rpc::GcsNodeInfo> node);
 
-  /// Add a draining node.
+  /// Set the node to be draining.
   ///
-  /// \param node_id The ID of the draining node. This node must already be in the alive
-  /// nodes. \param request The drain node request.
-  void AddDrainingNode(const NodeID &node_id,
+  /// \param node_id The ID of the draining node. This node must already
+  /// be in the alive nodes.
+  /// \param request The drain node request.
+  void SetNodeDraining(const NodeID &node_id,
                        std::shared_ptr<rpc::autoscaler::DrainNodeRequest> request);
 
   /// Remove from alive nodes.

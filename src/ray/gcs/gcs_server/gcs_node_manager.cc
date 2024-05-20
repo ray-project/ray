@@ -246,7 +246,7 @@ void GcsNodeManager::AddNode(std::shared_ptr<rpc::GcsNodeInfo> node) {
   }
 }
 
-void GcsNodeManager::AddDrainingNode(
+void GcsNodeManager::SetNodeDraining(
     const NodeID &node_id,
     std::shared_ptr<rpc::autoscaler::DrainNodeRequest> drain_request) {
   auto maybe_node = GetAliveNode(node_id);
@@ -331,11 +331,14 @@ void GcsNodeManager::OnNodeFailure(const NodeID &node_id,
           rpc::autoscaler::DrainNodeReason::DRAIN_NODE_REASON_PREEMPTION) {
         node_death_info->set_reason(rpc::NodeDeathInfo::AUTOSCALER_DRAIN_PREEMPTED);
         node_death_info->set_reason_message(drain_request->reason_message() +
-                                            " (Node was forcibly terminated)");
+                                            " (Node was forcibly preempted)");
       } else {
-        node_death_info->set_reason(rpc::NodeDeathInfo::AUTOSCALER_DRAIN_IDLE);
-        node_death_info->set_reason_message(drain_request->reason_message() +
-                                            " (Node was forcibly terminated)");
+        RAY_CHECK(drain_request->reason() ==
+                  rpc::autoscaler::DrainNodeReason::DRAIN_NODE_REASON_IDLE_TERMINATION);
+        node_death_info->set_reason(rpc::NodeDeathInfo::UNEXPECTED_TERMINATION);
+        node_death_info->set_reason_message(
+            drain_request->reason_message() +
+            " (Node was forcibly terminated during idle termination)");
       }
     } else {
       node_death_info->set_reason(rpc::NodeDeathInfo::UNEXPECTED_TERMINATION);
