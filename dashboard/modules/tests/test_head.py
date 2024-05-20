@@ -1,6 +1,5 @@
 import logging
 import time
-import asyncio
 
 import aiohttp.web
 

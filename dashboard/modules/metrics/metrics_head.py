@@ -5,7 +5,7 @@ import logging
 import os
 import shutil
 
-from typing import Optional, List
+from typing import Optional
 
 import psutil
 from urllib.parse import quote
