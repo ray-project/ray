@@ -690,7 +690,6 @@ class InternalKVAccessor {
       const std::string &ns,
       const std::string &prefix,
       const int64_t timeout_ms,
-
       const OptionalItemCallback<std::vector<std::string>> &callback);
 
   /// Asynchronously get the value for a given key.
@@ -729,7 +728,6 @@ class InternalKVAccessor {
                                     const std::string &key,
                                     const std::string &value,
                                     bool overwrite,
-
                                     const int64_t timeout_ms,
                                     const OptionalItemCallback<int> &callback);
 
@@ -743,7 +741,6 @@ class InternalKVAccessor {
   virtual Status AsyncInternalKVExists(const std::string &ns,
                                        const std::string &key,
                                        const int64_t timeout_ms,
-
                                        const OptionalItemCallback<bool> &callback);
 
   /// Asynchronously delete a key
