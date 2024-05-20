@@ -155,7 +155,6 @@ build:ci --curses=no
 build:ci --keep_going
 build:ci --progress_report_interval=100
 build:ci --show_progress_rate_limit=15
-build:ci --show_task_finish
 build:ci --ui_actions_shown=1024
 build:ci --show_timestamps
 build:ci-travis --disk_cache=~/ray-bazel-cache
