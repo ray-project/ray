@@ -34,25 +34,25 @@ class LanceDatasource(Datasource):
         self.columns = columns
         self.filter = filter
         self.storage_options = storage_options
-
         self.lance_ds = lance.dataset(uri=uri, storage_options=storage_options)
-        fragments = self.lance_ds.get_fragments()
-        self.fragment_ids = [f.metadata.id for f in fragments]
-        self.schema = fragments[0].schema if len(fragments) > 0 else None
 
     def get_read_tasks(self, parallelism: int) -> List[ReadTask]:
         read_tasks = []
-        for fragment_ids in np.array_split(self.fragment_ids, parallelism):
-            if len(fragment_ids) <= 0:
+        for fragments in np.array_split(self.lance_ds.get_fragments(), parallelism):
+            if len(fragments) <= 0:
                 continue
 
+            fragment_ids = [f.metadata.id for f in fragments]
+            num_rows = sum(f.count_rows() for f in fragments)
+            input_files = [
+                data_file.path() for f in fragments for data_file in f.data_files()
+            ]
+
             # TODO(chengsu): Take column projection into consideration for schema.
-            # NOTE: avoid calling `fragment.count_rows()` which opens the actual file,
-            # so it would be slow when number of fragments are large.
             metadata = BlockMetadata(
-                num_rows=None,
-                schema=self.schema,
-                input_files=None,
+                num_rows=num_rows,
+                schema=fragments[0].schema,
+                input_files=input_files,
                 size_bytes=None,
                 exec_stats=None,
             )
@@ -61,7 +61,9 @@ class LanceDatasource(Datasource):
             lance_ds = self.lance_ds
 
             read_task = ReadTask(
-                lambda f=fragment_ids: _read_fragments(f, lance_ds, columns, row_filter),
+                lambda f=fragment_ids: _read_fragments(
+                    f, lance_ds, columns, row_filter
+                ),
                 metadata,
             )
             read_tasks.append(read_task)
@@ -73,12 +75,17 @@ class LanceDatasource(Datasource):
         return None
 
 
-def _read_fragments(fragment_ids, lance_ds, columns, row_filter) -> Iterator["pyarrow.Table"]:
-    """Read Lance fragments in batches."""
+def _read_fragments(
+    fragment_ids, lance_ds, columns, row_filter
+) -> Iterator["pyarrow.Table"]:
+    """Read Lance fragments in batches.
+
+    NOTE: Use fragment ids, instead of fragments as parameter, because pickling
+    LanceFragment is expensive.
+    """
     import pyarrow
 
-    for fragment_id in fragment_ids:
-        fragment = lance_ds.get_fragment(fragment_id)
-        batches = fragment.to_batches(columns=columns, filter=row_filter)
-        for batch in batches:
-            yield pyarrow.Table.from_batches([batch])
+    fragments = [lance_ds.get_fragment(id) for id in fragment_ids]
+    scanner = lance_ds.scanner(columns, filter=row_filter, fragments=fragments)
+    for batch in scanner.to_reader():
+        yield pyarrow.Table.from_batches([batch])
