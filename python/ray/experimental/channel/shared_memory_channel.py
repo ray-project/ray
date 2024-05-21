@@ -3,12 +3,10 @@ import logging
 from typing import Any, List, Optional, Union
 
 import ray
+from ray._raylet import SerializedObject
 from ray.experimental.channel.common import ChannelInterface, ChannelOutputType
 from ray.experimental.channel.torch_tensor_type import TorchTensorType
 from ray.util.annotations import PublicAPI
-from ray._raylet import (
-        SerializedObject,
-        )
 
 # Logger for this module. It should be configured at the entry point
 # into the program using Ray. Ray provides a default configuration at
@@ -120,7 +118,9 @@ class SharedMemoryType(ChannelOutputType):
             )
 
             if self._contains_type.transport == TorchTensorType.NCCL:
-                cpu_data_typ = SharedMemoryType(buffer_size_bytes=self.buffer_size_bytes)
+                cpu_data_typ = SharedMemoryType(
+                    buffer_size_bytes=self.buffer_size_bytes
+                )
                 return NestedTorchTensorNcclChannel(
                     writer,
                     readers,
@@ -342,7 +342,9 @@ class Channel(ChannelInterface):
 
         if not isinstance(value, SerializedObject):
             try:
-                serialized_value = self._worker.get_serialization_context().serialize(value)
+                serialized_value = self._worker.get_serialization_context().serialize(
+                    value
+                )
             except TypeError as e:
                 sio = io.StringIO()
                 ray.util.inspect_serializability(value, print_file=sio)

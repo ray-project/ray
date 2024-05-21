@@ -75,7 +75,6 @@ class TorchTensorType(ChannelOutputType):
         if isinstance(dtype, str):
             dtype = dtype.lower()
 
-
         self.shape = shape
         self.dtype = dtype
         self.direct_return = direct_return

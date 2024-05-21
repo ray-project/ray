@@ -4,7 +4,6 @@ from typing import Any, Dict, List, Tuple, Union, Optional, Set
 import logging
 import traceback
 import threading
-import copy
 
 import ray
 from ray.exceptions import RayTaskError
@@ -142,7 +141,9 @@ def _exec_task(self, task: "ExecutableTask", idx: int) -> bool:
     Returns:
         True if we are done executing all tasks of this actor, False otherwise.
     """
-    self._serialization_ctx.set_use_external_transport(task.output_type_hint.requires_nccl())
+    self._serialization_ctx.set_use_external_transport(
+        task.output_type_hint.requires_nccl()
+    )
 
     # TODO: for cases where output is passed as input to a task on
     # the same actor, introduce a "LocalChannel" to avoid the overhead
@@ -678,7 +679,9 @@ class CompiledDAG:
         input_task.dag_node.type_hint.register_custom_serializer()
         ctx = ChannelContext.get_current()
         self.serialization_ctx = ctx.serialization_context
-        self.serialization_ctx.set_use_external_transport(input_task.dag_node.type_hint.requires_nccl())
+        self.serialization_ctx.set_use_external_transport(
+            input_task.dag_node.type_hint.requires_nccl()
+        )
 
         self.dag_input_channel = input_task.output_channel
 
@@ -777,7 +780,9 @@ class CompiledDAG:
                 for actor in outer.actor_refs:
                     logger.info(f"Cancelling compiled worker on actor: {actor}")
                 cancel_refs = [
-                        actor.__ray_call__.remote(do_cancel_executable_tasks, tasks) for actor, tasks in outer.actor_to_executable_tasks.items()]
+                    actor.__ray_call__.remote(do_cancel_executable_tasks, tasks)
+                    for actor, tasks in outer.actor_to_executable_tasks.items()
+                ]
                 for cancel_ref in cancel_refs:
                     try:
                         # TODO(swang): Suppress exceptions from actors trying to

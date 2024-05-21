@@ -4,9 +4,6 @@ if TYPE_CHECKING:
     import numpy as np
     import torch
 
-    from ray.experimenal.channel import ChannelOutputType
-    from ray.experimental.channel.torch_tensor_type import TorchTensorType
-
 
 class _SerializationContext:
     def __init__(self):
@@ -26,8 +23,6 @@ class _SerializationContext:
         return prev_tensors
 
     def serialize_tensor(self, tensor: "torch.Tensor") -> Union[int, "np.ndarray"]:
-        from ray.experimental.channel.torch_tensor_type import TorchTensorType
-
         if self.use_external_transport:
             # Add the actual tensor to a buffer. The buffer of tensors should
             # later be popped by the caller and sent via external transport.

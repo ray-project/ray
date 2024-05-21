@@ -277,11 +277,12 @@ class TorchTensorNcclChannel(ChannelInterface):
             if self._meta_channel is None:
                 if meta_list != [None]:
                     raise ValueError(
-                    "DAGNode annotated with "
-                    "TorchTensorType(shape=shape, dtype=dtype))` can return at "
-                    "most one tensor with the declared `shape` and `dtype`. "
-                    "Use TorchTensorType() if value contains more than one "
-                    "tensor or tensor of dynamic size.")
+                        "DAGNode annotated with "
+                        "TorchTensorType(shape=shape, dtype=dtype))` can return at "
+                        "most one tensor with the declared `shape` and `dtype`. "
+                        "Use TorchTensorType() if value contains more than one "
+                        "tensor or tensor of dynamic size."
+                    )
             else:
                 self._meta_channel.write(meta_list)
         else:

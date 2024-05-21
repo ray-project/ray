@@ -1,9 +1,9 @@
 import asyncio
 import concurrent
+import copy
 import threading
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
-import copy
 
 import ray
 from ray.experimental.channel.nccl_group import _NcclGroup
