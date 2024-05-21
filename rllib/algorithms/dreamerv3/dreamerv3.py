@@ -141,17 +141,13 @@ class DreamerV3Config(AlgorithmConfig):
         # Override some of AlgorithmConfig's default values with DreamerV3-specific
         # values.
         self.lr = None
-        self.framework_str = "tf2"
+        self.framework_str = "torch"
         self.gamma = 0.997  # [1] eq. 7.
         # Do not use! Set `batch_size_B` and `batch_length_T` instead.
         self.train_batch_size = None
         self.env_runner_cls = DreamerV3EnvRunner
         self.num_env_runners = 0
         self.rollout_fragment_length = 1
-        # Since we are using a gymnasium-based EnvRunner, we can utilitze its
-        # vectorization capabilities w/o suffering performance losses (as we would
-        # with RLlib's `RemoteVectorEnv`).
-        self.remote_worker_envs = True
         # Dreamer only runs on the new API stack.
         self.enable_rl_module_and_learner = True
         self.enable_env_runner_and_connector_v2 = True

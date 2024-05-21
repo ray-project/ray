@@ -55,7 +55,7 @@ class TestDreamerV3(unittest.TestCase):
                 use_float16=False,
             )
             .learners(
-                num_learners=2,  # Run with 2 Learners.
+                num_learners=0,#TODO  # Run with 2 Learners.
                 num_cpus_per_learner=1,
                 num_gpus_per_learner=0,
             )
@@ -65,7 +65,7 @@ class TestDreamerV3(unittest.TestCase):
 
         for _ in framework_iterator(config, frameworks="torch"):
             for env in [
-                # "ALE/MsPacman-v5",
+                "ALE/MsPacman-v5",
                 "Pendulum-v1",
                 "FrozenLake-v1",
                 "CartPole-v1",

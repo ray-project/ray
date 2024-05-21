@@ -88,23 +88,35 @@ class DreamerV3EnvRunner(EnvRunner):
             # However, in Danijar's repo, Atari100k experiments are configured as:
             # noop=30, 64x64x3 (no grayscaling), sticky actions=False,
             # full action space=False,
-            wrappers = [
-                partial(gym.wrappers.TimeLimit, max_episode_steps=108000),
-                partial(resize_v1, x_size=64, y_size=64),  # resize to 64x64
-                NormalizedImageEnv,
-                NoopResetEnv,
-                MaxAndSkipEnv,
-            ]
+
+            def _entry_point():
+                return gym.make(
+                    self.config.env,
+                    **dict(
+                        self.config.env_config,
+                        **{
+                            # "sticky actions" but not according to Danijar's 100k configs.
+                            "repeat_action_probability": 0.0,
+                            # "full action space" but not according to Danijar's 100k configs.
+                            "full_action_space": False,
+                            # Already done by MaxAndSkip wrapper: "action repeat" == 4.
+                            "frameskip": 1,
+                        },
+                    ),
+                )
+            gym.register("rllib-single-agent-env-v0", entry_point=_entry_point)
 
             self.env = gym.vector.make(
-                "GymV26Environment-v0",
-                env_id=self.config.env,
-                wrappers=wrappers,
+                "rllib-single-agent-env-v0",
                 num_envs=self.config.num_envs_per_env_runner,
                 asynchronous=self.config.remote_worker_envs,
-                make_kwargs=dict(
-                    self.config.env_config, **{"render_mode": "rgb_array"}
-                ),
+                wrappers=[
+                    partial(gym.wrappers.TimeLimit, max_episode_steps=108000),
+                    partial(resize_v1, x_size=64, y_size=64),  # resize to 64x64
+                    NormalizedImageEnv,
+                    NoopResetEnv,
+                    MaxAndSkipEnv,
+                ],
             )
         # DeepMind Control.
         elif self.config.env.startswith("DMC/"):

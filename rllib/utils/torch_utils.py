@@ -795,13 +795,14 @@ def two_hot(
     # use for the scatter_nd op.
     indices_k = torch.stack([batch_indices, k], dim=-1)
     indices_kp1 = torch.stack([batch_indices, kp1], dim=-1)
-    indices = torch.cat([indices_k, indices_kp1], dim=0)
+    indices = torch.cat([indices_k, indices_kp1], dim=0).long()
     # The actual values (weights adding up to 1.0) to place at the computed indices.
     updates = torch.cat([weights_k, weights_kp1], dim=0)
     # Call the actual scatter update op, returning a zero-filled tensor, only changed
     # at the given indices.
     output = torch.zeros(value.shape[0], num_buckets)
-    output[indices.t().long().numpy()] = updates
+    # Set our two-hot values at computed indices.
+    output[indices[:, 0], indices[:, 1]] = updates
     return output
 
 
