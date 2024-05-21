@@ -228,8 +228,6 @@ void GcsNodeManager::SetDeathInfo(const NodeID &node_id,
                                   const rpc::NodeDeathInfo &death_info) {
   auto maybe_node = GetAliveNode(node_id);
   if (!maybe_node.has_value()) {
-    RAY_LOG(INFO) << "Skip setting death info for node " << node_id
-                  << " which is already removed.";
     return;
   }
 
@@ -302,6 +300,8 @@ void GcsNodeManager::SetNodeDraining(
   auto iter = draining_nodes_.find(node_id);
   if (iter == draining_nodes_.end()) {
     draining_nodes_.emplace(node_id, drain_request);
+    RAY_LOG(INFO) << "Set node " << node_id
+                  << " to be draining, request = " << drain_request->DebugString();
   } else {
     RAY_LOG(INFO) << "Drain request for node " << node_id << " already exists. "
                   << "Overwriting the existing request " << iter->second->DebugString()
