@@ -521,7 +521,7 @@ Status NodeInfoAccessor::AsyncCheckAlive(const std::vector<std::string> &raylet_
       request,
       [num_raylets, callback](const Status &status, const rpc::CheckAliveReply &reply) {
         if (status.ok()) {
-          RAY_CHECK(reply.raylet_alive().size() == num_raylets);
+          RAY_CHECK(static_cast<size_t>(reply.raylet_alive().size()) == num_raylets);
           std::vector<bool> is_alive;
           is_alive.reserve(num_raylets);
           for (const bool &alive : reply.raylet_alive()) {
