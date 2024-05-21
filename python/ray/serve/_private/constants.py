@@ -345,3 +345,9 @@ RAY_SERVE_ENABLE_TASK_EVENTS = (
 RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY = (
     os.environ.get("RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY", "0") == "1"
 )
+
+# Run sync methods defined in the replica in a thread pool by default.
+# XXX: off by default.
+RAY_SERVE_RUN_SYNC_IN_THREADPOOL = (
+    os.environ.get("RAY_SERVE_RUN_SYNC_IN_THREADPOOL", "1") == "1"
+)
