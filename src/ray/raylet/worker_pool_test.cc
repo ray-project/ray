@@ -2082,7 +2082,7 @@ TEST_F(WorkerPoolTest, RegisterFirstPythonDriverWaitForWorkerStart) {
   ASSERT_FALSE(callback_called);
 }
 
-TEST_F(WorkerPoolTest, RegisterSecondPythonDriverCallbackImmediately) {
+TEST_F(WorkerPoolTest, RegisterSecondPyDefaultCallbackImmediately) {
   auto driver =
       worker_pool_->CreateWorker(Process::CreateNewDummy(), Language::PYTHON, JOB_ID);
   driver->AssignTaskId(TaskID::ForDriverTask(JOB_ID));

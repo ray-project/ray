@@ -16,10 +16,13 @@
 
 #include <Python.h>
 
+#include <boost/optional/optional.hpp>
 #include <functional>
 #include <string>
 #include <type_traits>
+#include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "ray/common/status.h"
 #include "ray/util/logging.h"
 
@@ -30,37 +33,50 @@ namespace ray {
 // None of the converters hold the GIL, but all of them requires the GIL to be held.
 // This means the caller should hold the GIL before calling these functions.
 //
+// A Converter is a functor that takes a C++ type and returns a PyObject*.
+// The conversion may fail, in which case the converter should set an exception and return
+// nullptr.
+//
 // By default you can use `DefaultConverter::convert` to convert any type. If you need
 // special handling you can compose out your own.
 namespace {
 class BytesConverter {
+  // Serializes the message to a string. Returns false if the serialization fails.
+  // template <typename T>
+  // static bool serialize(const T &message, std::string &result);
+
   // Specialization for types with a SerializeToString method
   template <typename Message>
-  static std::string serialize(
-      const Message &message,
-      typename std::enable_if<std::is_member_function_pointer<
-          decltype(&Message::SerializeToString)>::value>::type * = 0) {
-    std::string result;
-    if (message.SerializeToString(&result)) {
-      return result;
-    }
-    return {};  // Return an empty string if serialization fails
+  static bool serialize(const Message &message,
+                        std::string &result,
+                        typename std::enable_if<std::is_member_function_pointer<
+                            decltype(&Message::SerializeToString)>::value>::type * = 0) {
+    return message.SerializeToString(&result);
   }
 
   // Specialization for types with a Binary method, i.e. `BaseID`s
-  template <typename Message>
-  static std::string serialize(const Message &message,
-                               typename std::enable_if<std::is_member_function_pointer<
-                                   decltype(&Message::Binary)>::value>::type * = 0) {
-    return message.Binary();
+  // Never fails.
+  template <typename ID>
+  static bool serialize(
+      const ID &id,
+      std::string &result,
+      typename std::enable_if<
+          std::is_member_function_pointer<decltype(&ID::Binary)>::value>::type * = 0) {
+    result = id.Binary();
+    return true;
   }
 
  public:
   template <typename T>
   static PyObject *convert(const T &arg) {
-    std::string serialized_message = serialize(arg);
-    return PyBytes_FromStringAndSize(serialized_message.data(),
-                                     serialized_message.size());
+    std::string serialized_message;
+    if (serialize(arg, serialized_message)) {
+      return PyBytes_FromStringAndSize(serialized_message.data(),
+                                       serialized_message.size());
+    } else {
+      PyErr_SetString(PyExc_ValueError, "Failed to serialize message.");
+      Py_RETURN_NONE;
+    }
   }
 
   static PyObject *convert(const std::string &arg) {
@@ -98,6 +114,12 @@ class VectorConverter {
   static PyObject *convert(const std::vector<T> &arg) {
     PyObject *list = PyList_New(arg.size());
     for (size_t i = 0; i < arg.size(); i++) {
+      PyObject *item = Inner::convert(arg[i]);
+      if (item == nullptr) {
+        // Failed to convert an item. Free the list and all items within.
+        Py_DECREF(list);
+        return nullptr;
+      }
       PyList_SetItem(list, i, Inner::convert(arg[i]));
     }
     return list;
@@ -110,7 +132,20 @@ class PairConverter {
  public:
   template <typename T, typename U>
   static PyObject *convert(const T &left, const U &right) {
-    return PyTuple_Pack(2, Left::convert(left), Right::convert(right));
+    PyObject *result = PyTuple_New(2);
+    PyObject *left_obj = Left::convert(left);
+    if (left_obj == nullptr) {
+      Py_DECREF(result);
+      return nullptr;
+    }
+    PyTuple_SetItem(result, 0, left_obj);
+    PyObject *right_obj = Right::convert(right);
+    if (right_obj == nullptr) {
+      Py_DECREF(result);
+      return nullptr;
+    }
+    PyTuple_SetItem(result, 1, right_obj);
+    return result;
   }
 };
 
@@ -122,8 +157,22 @@ class MapConverter {
     PyObject *dict = PyDict_New();
     for (const auto &pair : arg) {
       PyObject *key = KeyConverter::convert(pair.first);
+      if (key == nullptr) {
+        Py_DECREF(dict);
+        return nullptr;
+      }
       PyObject *value = ValueConverter::convert(pair.second);
-      PyDict_SetItem(dict, key, value);
+      if (value == nullptr) {
+        Py_DECREF(key);
+        Py_DECREF(dict);
+        return nullptr;
+      }
+      if (PyDict_SetItem(dict, key, value) < 0) {
+        Py_DECREF(key);
+        Py_DECREF(value);
+        Py_DECREF(dict);
+        return nullptr;
+      }
       Py_XDECREF(key);
       Py_XDECREF(value);
     }
@@ -146,15 +195,14 @@ class StatusConverter {
 
 // Default converter, converts all types implemented above.
 // Resolution:
-// - single bool, int: BoolConverter, IntConverter
-// - Status: StatusConverter
-// - optional<T>: OptionalConverter<T>
-// - vector<T>: VectorConverter<T>
-// - single generic argument: BytesConverter
-// - 2 args (T, U): PairConverter<T, U>
-// - map<K, V>: MapConverter<K, V> (we can't do generics over MapType for collision w/
-// BytesConverter, so we specialize for std::unordered_map and absl::flat_hash_map)
-
+// - single bool, int, status: BoolConverter, IntConverter, StatusConverter
+// - optional<T>:              OptionalConverter<T>
+// - vector<T>:                VectorConverter<T>
+// - single generic argument:  BytesConverter
+// - 2 args (T, U):            PairConverter<T, U>
+// - map<K, V>:                MapConverter<K, V> (we can't do generics over MapType for
+// collision w/ BytesConverter, so we specialize for std::unordered_map and
+// absl::flat_hash_map)
 class DefaultConverter {
  public:
   static PyObject *convert(bool arg) { return BoolConverter::convert(arg); }
@@ -187,19 +235,9 @@ class DefaultConverter {
   }
 };
 
-using OptionalBytesConverter =
-    PairConverter<StatusConverter, OptionalConverter<BytesConverter>>;
-using OptionalIntConverter =
-    PairConverter<StatusConverter, OptionalConverter<IntConverter>>;
-using OptionalBoolConverter =
-    PairConverter<StatusConverter, OptionalConverter<BoolConverter>>;
-using MultiBytesConverter =
-    PairConverter<StatusConverter, VectorConverter<BytesConverter>>;
-using PairBytesConverter = PairConverter<BytesConverter, BytesConverter>;
-
 }  // namespace
 
-// Wraps a Python `Callable[[T], None]` into a C++ `std::function<void(U)>`.
+// Wraps a Python `Callable[[T, Exception], None]` into a C++ `std::function<void(U)>`.
 // This is a base class for all the callbacks, with subclass handling the conversion.
 // The base class handles:
 // - GIL management
@@ -253,6 +291,12 @@ class PyCallback {
 
   // Typically Args is just a single argument, but we allow multiple arguments for e.g.
   // (Status, boost::optional<MessageType>).
+  //
+  // Converts the arguments to a Python Object and may raise exceptions.
+  // Invokes the Python callable with (converted_arg, None), or (None, exception).
+  //
+  // The callback should not return anything and should not raise exceptions. If it
+  // raises, we catch it and log it.
   template <typename... Args>
   void operator()(const Args &...args) {
     if (py_callable == nullptr) {
@@ -262,39 +306,47 @@ class PyCallback {
     // Hold the GIL.
     PythonGilHolder gil;
     PyObject *arg_obj = Converter::convert(args...);
-    PyObject *result = PyObject_CallFunctionObjArgs(py_callable.get(), arg_obj, NULL);
-    Py_XDECREF(arg_obj);
-    Py_XDECREF(result);
+    if (arg_obj == nullptr) {
+      // Failed to convert the arguments. The exception is set by the converter.
+      PyObject *exc_obj = PyErr_Occurred();
+      if (exc_obj == nullptr) {
+        // The converter didn't set an exception?
+        RAY_LOG(WARNING) << "Failed to convert arguments, but no exception set.";
+        PyErr_SetString(PyExc_ValueError, "Failed to convert arguments.");
+        exc_obj = PyErr_Occurred();
+      }
+      PyObject *result =
+          PyObject_CallFunctionObjArgs(py_callable.get(), Py_None, exc_obj, NULL);
+      Py_XDECREF(result);
+    } else {
+      PyObject *result =
+          PyObject_CallFunctionObjArgs(py_callable.get(), arg_obj, Py_None, NULL);
+      Py_XDECREF(arg_obj);
+      Py_XDECREF(result);
+    }
+    if (PyErr_Occurred()) {
+      // Our binding code raised exceptions. Not much we can do here. Print it out.
+      PyObject *ptype, *pvalue, *ptraceback;
+      PyErr_Fetch(&ptype, &pvalue, &ptraceback);
+      PyErr_NormalizeException(&ptype, &pvalue, &ptraceback);
+      PyObject *str_exc = PyObject_Str(pvalue);
+      const char *exc_str = PyUnicode_AsUTF8(str_exc);
+
+      RAY_LOG(ERROR) << "Python exception in cpython binding callback: " << exc_str;
+
+      // Clean up
+      Py_XDECREF(ptype);
+      Py_XDECREF(pvalue);
+      Py_XDECREF(ptraceback);
+      Py_XDECREF(str_exc);
+
+      PyErr_Clear();
+    }
   }
 };
 
 // Concrete callback types.
-// `(Status)` below means a 3-tuple of (StatusCode: int, error_message: bytes, rpc_code:
-// int).
-//
+// Most types are using the DefaultConverter, but we allow specialization for some types.
 using PyDefaultCallback = PyCallback<DefaultConverter>;
-//
-// For StatusCallback
-// (Status) -> (Status)
-using PyStatusCallback = PyCallback<StatusConverter>;
-// For OptionalItemCallback<Serializable>
-// (Status, boost::optional<T>) -> (Status, Optional[bytes])
-using PyOptionalBytesCallback = PyCallback<OptionalBytesConverter>;
-// (Status, boost::optional<int>) -> (Status, Optional[int])
-using PyOptionalIntCallback = PyCallback<OptionalIntConverter>;
-// (Status, boost::optional[bool]) -> (Status, Optional[bool])
-using PyOptionalBoolCallback = PyCallback<OptionalBoolConverter>;
-// For MultiItemCallback<Serializable>
-// (Status, std::vector<T>) -> (Status, List[bytes])
-using PyMultiBytesCallback = PyCallback<MultiBytesConverter>;
-// For ItemCallback<Serializable>
-// (T) -> (bytes)
-using PyBytesCallback = PyCallback<BytesConverter>;
-// For ItemCallback<std::unordered_map<Serializable, Serializable>
-// (std::unordered_map<K, V>) -> (Dict[bytes, bytes])
-using PyMapCallback = PyCallback<MapConverter<BytesConverter, BytesConverter>>;
-// For SubscribeCallback<ID, Serializable>
-// (ID, T) -> (bytes, bytes)
-using PyPairBytesCallback = PyCallback<PairBytesConverter>;
 
 }  // namespace ray
