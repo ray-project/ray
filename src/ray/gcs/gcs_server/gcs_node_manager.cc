@@ -224,25 +224,32 @@ absl::optional<std::shared_ptr<rpc::GcsNodeInfo>> GcsNodeManager::GetAliveNode(
   return iter->second;
 }
 
-bool GcsNodeManager::SetDeathInfo(const NodeID &node_id,
+void GcsNodeManager::SetDeathInfo(const NodeID &node_id,
                                   shared_ptr<rpc::NodeDeathInfo> death_info) {
   auto maybe_node = GetAliveNode(node_id);
   if (!maybe_node.has_value()) {
-    return false;
+    RAY_LOG(INFO) << "Skip setting death info for node " << node_id
+                  << " which is already removed.";
+    return;
   }
 
+  RAY_CHECK(death_info) << "death_info should not be nullptr";
   auto node = std::move(maybe_node.value());
   auto node_death_info = node->mutable_death_info();
-  if (death_info) {
-    node_death_info->CopyFrom(*death_info);
-    RAY_LOG(INFO) << "Setting death info for node " << node_id << ": Reason = "
-                  << rpc::NodeDeathInfo_Reason_Name(node_death_info->reason())
-                  << ", message = " << node_death_info->reason_message();
-    return false;
-  }
+  node_death_info->CopyFrom(*death_info);
+  RAY_LOG(INFO) << "Setting death info for node " << node_id << ": Reason = "
+                << rpc::NodeDeathInfo_Reason_Name(node_death_info->reason())
+                << ", message = " << node_death_info->reason_message();
+}
 
+shared_ptr<rpc::NodeDeathInfo> GcsNodeManager::InferDeathInfo(const NodeID &node_id,
+                                                              bool &caused_by_draining) {
+  auto maybe_node = GetAliveNode(node_id);
+  RAY_CHECK(maybe_node.has_value())
+      << "InferDeathInfo() should be called before node is removed";
+  auto node = maybe_node.value();
   auto iter = draining_nodes_.find(node_id);
-  bool caused_by_draining;
+  auto death_info = std::make_shared<rpc::NodeDeathInfo>();
   if (iter == draining_nodes_.end()) {
     caused_by_draining = false;
   } else if (iter->second->deadline_timestamp_ms() == 0) {
@@ -259,26 +266,20 @@ bool GcsNodeManager::SetDeathInfo(const NodeID &node_id,
     std::shared_ptr<rpc::autoscaler::DrainNodeRequest> drain_request = iter->second;
     if (drain_request->reason() ==
         rpc::autoscaler::DrainNodeReason::DRAIN_NODE_REASON_PREEMPTION) {
-      node_death_info->set_reason(rpc::NodeDeathInfo::AUTOSCALER_DRAIN_PREEMPTED);
-      node_death_info->set_reason_message(drain_request->reason_message() +
-                                          " (Node was forcibly preempted)");
+      death_info->set_reason(rpc::NodeDeathInfo::AUTOSCALER_DRAIN_PREEMPTED);
+      death_info->set_reason_message(drain_request->reason_message() +
+                                     " (Node was forcibly preempted)");
     } else {
-      RAY_CHECK(drain_request->reason() ==
-                rpc::autoscaler::DrainNodeReason::DRAIN_NODE_REASON_IDLE_TERMINATION);
-      node_death_info->set_reason(rpc::NodeDeathInfo::UNEXPECTED_TERMINATION);
-      node_death_info->set_reason_message(
+      death_info->set_reason(rpc::NodeDeathInfo::UNEXPECTED_TERMINATION);
+      death_info->set_reason_message(
           drain_request->reason_message() +
           " (Node was forcibly terminated during idle termination)");
     }
   } else {
-    node_death_info->set_reason(rpc::NodeDeathInfo::UNEXPECTED_TERMINATION);
-    node_death_info->set_reason_message(
-        "Health check failed: missing too many heartbeats.");
+    death_info->set_reason(rpc::NodeDeathInfo::UNEXPECTED_TERMINATION);
+    death_info->set_reason_message("Health check failed: missing too many heartbeats.");
   }
-  RAY_LOG(INFO) << "Setting death info for node " << node_id << ": Reason = "
-                << rpc::NodeDeathInfo_Reason_Name(node_death_info->reason())
-                << ", message = " << node_death_info->reason_message();
-  return caused_by_draining;
+  return death_info;
 }
 
 void GcsNodeManager::AddNode(std::shared_ptr<rpc::GcsNodeInfo> node) {
@@ -361,7 +362,10 @@ std::shared_ptr<rpc::GcsNodeInfo> GcsNodeManager::RemoveNode(
 
 void GcsNodeManager::OnNodeFailure(const NodeID &node_id,
                                    const StatusCallback &node_table_updated_callback) {
-  bool caused_by_draining = SetDeathInfo(node_id, nullptr);
+  bool caused_by_draining;
+  auto death_info = InferDeathInfo(node_id, caused_by_draining);
+  SetDeathInfo(node_id, death_info);
+
   if (auto node = RemoveNode(node_id, /* is_intended = */ caused_by_draining)) {
     node->set_state(rpc::GcsNodeInfo::DEAD);
     node->set_end_time_ms(current_sys_time_ms());
