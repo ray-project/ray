@@ -69,6 +69,7 @@ def plan_read_op(op: Read) -> PhysicalOperator:
         _warn_on_high_parallelism(parallelism, len(read_tasks))
 
 
+        # Follow up on the comment below
         start = time.time()
         bundle = [
             RefBundle(
