@@ -61,13 +61,14 @@ class TorchTensorWorker:
         return
 
 
+@pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
 def test_torch_tensor_p2p(ray_start_regular):
     if USE_GPU:
         assert sum(node["Resources"].get("GPU", 0) for node in ray.nodes()) > 0
 
     actor_cls = TorchTensorWorker
     if USE_GPU:
-        actor_cls = TorchTensorWorker.options(num_gpus=1)
+        actor_cls = TorchTensorWorker.options(num_cpus=0, num_gpus=1)
 
     sender = actor_cls.remote()
     receiver = actor_cls.remote()
@@ -117,13 +118,14 @@ def test_torch_tensor_p2p(ray_start_regular):
     compiled_dag.teardown()
 
 
+@pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
 def test_torch_tensor_as_dag_input(ray_start_regular):
     if USE_GPU:
         assert sum(node["Resources"].get("GPU", 0) for node in ray.nodes()) > 0
 
     actor_cls = TorchTensorWorker
     if USE_GPU:
-        actor_cls = TorchTensorWorker.options(num_gpus=1)
+        actor_cls = TorchTensorWorker.options(num_cpus=0, num_gpus=1)
 
     receiver = actor_cls.remote()
 
@@ -158,6 +160,7 @@ def test_torch_tensor_as_dag_input(ray_start_regular):
     compiled_dag.teardown()
 
 
+@pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
 def test_torch_tensor_nccl(ray_start_regular):
     if not USE_GPU:
         pytest.skip("NCCL tests require GPUs")
@@ -166,7 +169,7 @@ def test_torch_tensor_nccl(ray_start_regular):
         sum(node["Resources"].get("GPU", 0) for node in ray.nodes()) > 1
     ), "This test requires at least 2 GPUs"
 
-    actor_cls = TorchTensorWorker.options(num_gpus=1)
+    actor_cls = TorchTensorWorker.options(num_cpus=0, num_gpus=1)
 
     sender = actor_cls.remote()
     receiver = actor_cls.remote()
@@ -195,7 +198,13 @@ def test_torch_tensor_nccl(ray_start_regular):
     with InputNode() as inp:
         torch_inp = inp.with_type_hint(TorchTensorType(shape, dtype, transport="nccl"))
         dag = receiver.recv.bind(torch_inp)
-    with pytest.raises(ValueError, match=r"DAG inputs cannot be transferred via NCCL"):
+    with pytest.raises(
+        ValueError,
+        match=(
+            r"DAG inputs cannot be transferred "
+            "via NCCL because the driver cannot participate in the NCCL group"
+        ),
+    ):
         compiled_dag = dag.experimental_compile()
 
     # Test that actors can be reused for a valid DAG.
@@ -219,6 +228,7 @@ def test_torch_tensor_nccl(ray_start_regular):
     # ray.get(receiver.ping.remote())
 
 
+@pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
 def test_torch_tensor_nccl_dynamic(ray_start_regular):
     if not USE_GPU:
         pytest.skip("NCCL tests require GPUs")
@@ -227,7 +237,7 @@ def test_torch_tensor_nccl_dynamic(ray_start_regular):
         sum(node["Resources"].get("GPU", 0) for node in ray.nodes()) > 1
     ), "This test requires at least 2 GPUs"
 
-    actor_cls = TorchTensorWorker.options(num_gpus=1)
+    actor_cls = TorchTensorWorker.options(num_cpus=0, num_gpus=1)
 
     sender = actor_cls.remote()
     receiver = actor_cls.remote()
@@ -251,7 +261,42 @@ def test_torch_tensor_nccl_dynamic(ray_start_regular):
 
     compiled_dag.teardown()
 
+@pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
+def test_torch_tensor_nccl_wrong_shape(ray_start_regular):
+    if not USE_GPU:
+        pytest.skip("NCCL tests require GPUs")
 
+    assert (
+        sum(node["Resources"].get("GPU", 0) for node in ray.nodes()) > 1
+    ), "This test requires at least 2 GPUs"
+
+    actor_cls = TorchTensorWorker.options(num_cpus=0, num_gpus=1)
+
+    sender = actor_cls.remote()
+    receiver = actor_cls.remote()
+
+    shape = (10,)
+    dtype = torch.float16
+
+    # Passing tensors of the wrong shape will error.
+    with InputNode() as inp:
+        dag = sender.send.bind(shape, dtype, inp)
+        dag = dag.with_type_hint(TorchTensorType((20,), dtype, transport="nccl"))
+        dag = receiver.recv.bind(dag)
+
+    compiled_dag = dag.experimental_compile()
+
+    output_channel = compiled_dag.execute(1)
+    with pytest.raises(OSError):
+        output_channel.begin_read()
+
+    compiled_dag.teardown()
+
+    ray.kill(sender)
+    ray.kill(receiver)
+
+
+@pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
 def test_torch_tensor_nccl_nested(ray_start_regular):
     """
     Test nested torch.Tensor passed via NCCL. Its shape and dtype is statically
@@ -295,6 +340,7 @@ def test_torch_tensor_nccl_nested(ray_start_regular):
     compiled_dag.teardown()
 
 
+@pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
 def test_torch_tensor_nccl_nested_dynamic(ray_start_regular):
     """
     Test nested torch.Tensor passed via NCCL. Its shape and dtype is
@@ -336,40 +382,6 @@ def test_torch_tensor_nccl_nested_dynamic(ray_start_regular):
         output_channel.end_read()
 
     compiled_dag.teardown()
-
-
-def test_torch_tensor_nccl_wrong_shape(ray_start_regular):
-    if not USE_GPU:
-        pytest.skip("NCCL tests require GPUs")
-
-    assert (
-        sum(node["Resources"].get("GPU", 0) for node in ray.nodes()) > 1
-    ), "This test requires at least 2 GPUs"
-
-    actor_cls = TorchTensorWorker.options(num_gpus=1)
-
-    sender = actor_cls.remote()
-    receiver = actor_cls.remote()
-
-    shape = (10,)
-    dtype = torch.float16
-
-    # Passing tensors of the wrong shape will error.
-    with InputNode() as inp:
-        dag = sender.send.bind(shape, dtype, inp)
-        dag = dag.with_type_hint(TorchTensorType((20,), dtype, transport="nccl"))
-        dag = receiver.recv.bind(dag)
-
-    compiled_dag = dag.experimental_compile()
-
-    output_channel = compiled_dag.execute(1)
-    with pytest.raises(OSError):
-        output_channel.begin_read()
-
-    compiled_dag.teardown()
-
-    # TODO(swang): This test causes a segfault without this sleep statement.
-    time.sleep(3)
 
 
 if __name__ == "__main__":

@@ -1,3 +1,4 @@
+# @OldAPIStack
 # This can reach 18-19 reward in ~5-7 minutes on a Titan XP GPU
 # with 32 workers and 8 envs per worker. IMPALA, when ran with
 # similar configurations, solved Pong in 10-12 minutes.
@@ -21,7 +22,7 @@ pong-appo:
         use_kl_loss: false
         rollout_fragment_length: 50
         train_batch_size: 750
-        num_workers: 32
+        num_env_runners: 32
         broadcast_interval: 1
         max_sample_requests_in_flight_per_worker: 1
         num_multi_gpu_tower_stacks: 1

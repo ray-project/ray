@@ -34,11 +34,11 @@ class NotSerializable(Exception):
 # -------
 
 # Message explaining there are no GPUs available for the
-# num_gpus=n or num_gpus_per_worker=m settings.
+# num_gpus=n or num_gpus_per_env_runner=m settings.
 ERR_MSG_NO_GPUS = """Found {} GPUs on your machine (GPU devices found: {})! If your
-    machine does not have any GPUs, you should set the config keys `num_gpus` and
-    `num_gpus_per_worker` to 0 (they may be set to 1 by default for your
-    particular RL algorithm)."""
+    machine does not have any GPUs, you should set the config keys
+    `num_gpus_per_learner` and `num_gpus_per_env_runner` to 0 (they may be set to
+    1 by default for your particular RL algorithm)."""
 
 ERR_MSG_INVALID_ENV_DESCRIPTOR = """The env string you provided ('{}') is:
 a) Not a supported/installed environment.

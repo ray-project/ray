@@ -21,7 +21,16 @@ class ChannelOutputType:
 
     def register_custom_serializer(self) -> None:
         """
-        Register any custom serializers needed to pass data of this type.
+        Register any custom serializers needed to pass data of this type. This
+        method should be run on the reader(s) and writer of a channel, which
+        are the driver and/or Ray actors.
+
+        NOTE: When custom serializers are registered with Ray, the registered
+        deserializer is shipped with the serialized value and used on the
+        receiving end. Therefore, the deserializer function should *not*
+        capture state that is meant to be worker-local, such as the worker's
+        default device. Instead, these should be extracted from the
+        worker-local _SerializationContext.
         """
         if self._contains_type is not None:
             self._contains_type.register_custom_serializer()
@@ -161,8 +170,9 @@ class ChannelInterface:
 
     def close(self) -> None:
         """
-        Close this channel. This method must not block. Any existing values in
-        the channel may be lost after the channel is closed.
+        Close this channel. This method must not block and it must be made
+        idempotent. Any existing values in the channel may be lost after the
+        channel is closed.
         """
         raise NotImplementedError
 

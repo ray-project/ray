@@ -1,92 +1,36 @@
 group: lint
 steps:
-  - label: ":lint-roller: lint: clang format"
+  - label: ":lint-roller: lint: {{matrix}}"
+    key: lint-small
     depends_on:
       - forge
     commands:
-      - pip install -c python/requirements_compiled.txt clang-format
-      - ./ci/lint/check-git-clang-format-output.sh
+      - ./ci/lint/lint.sh {{matrix}}
+    matrix:
+      - clang_format
+      - code_format
+      - untested_code_snippet
+      - banned_words
+      - doc_readme
+      - dashboard_format
+      - copyright_format
+      - bazel_team
+      - bazel_buildifier
+      - pytest_format
+      - test_coverage
+      - documentation_style
 
-  - label: ":lint-roller: lint: code format"
-    depends_on:
-      - forge
-    commands:
-      - pip install -c python/requirements_compiled.txt -r python/requirements/lint-requirements.txt
-      - FORMAT_SH_PRINT_DIFF=1 ./ci/lint/format.sh --all-scripts
-
-  - label: ":lint-roller: lint: untested code snippet"
-    depends_on:
-      - forge
-    commands:
-      - pip install -c python/requirements_compiled.txt semgrep
-      - semgrep ci --config semgrep.yml
-
-  - label: ":lint-roller: lint: banned words"
-    depends_on:
-      - forge
-    commands:
-      - ./ci/lint/check-banned-words.sh
-
-  - label: ":lint-roller: lint: doc readme"
-    depends_on:
-      - forge
-    commands:
-      - pip install -c python/requirements_compiled.txt docutils
-      - cd python && python setup.py check --restructuredtext --strict --metadata
-
-  - label: ":lint-roller: lint: dashboard format"
-    depends_on:
-      - forge
-    commands:
-      - ./ci/lint/check-dashboard-format.sh
-
-  - label: ":lint-roller: lint: copyright format"
-    depends_on:
-      - forge
-    commands:
-      - ./ci/lint/copyright-format.sh -c
-
-  - label: ":lint-roller: lint: bazel team"
-    depends_on:
-      - forge
-    commands:
-      - bazel query 'kind("cc_test", //...)' --output=xml | python ./ci/lint/check-bazel-team-owner.py
-      - bazel query 'kind("py_test", //...)' --output=xml | python ./ci/lint/check-bazel-team-owner.py
-
-  - label: ":lint-roller: lint: bazel buildifier"
-    depends_on:
-      - forge
-    commands:
-      - ./ci/lint/check-bazel-buildifier.sh
-
-  - label: ":lint-roller: lint: pytest format"
-    depends_on:
-      - forge
-    commands:
-      - pip install -c python/requirements_compiled.txt yq
-      - ./ci/lint/check-pytest-format.sh
-
-  - label: ":lint-roller: lint: test coverage"
-    depends_on:
-      - forge
-    commands:
-      - python ci/pipeline/check-test-run.py
-
-  - label: ":lint-roller: lint: api annotations"
-    depends_on:
-      - forge
+  - label: ":lint-roller: lint: {{matrix}}"
+    key: lint-medium
     instance_type: medium
-    commands:
-      - RAY_DISABLE_EXTRA_CPP=1 pip install -e python/[all]
-      - ./ci/lint/check_api_annotations.py
-
-  - label: ":lint-roller: lint: documentation style"
     depends_on:
       - forge
     commands:
-      - ./ci/lint/check-documentation-style.sh
+      - ./ci/lint/lint.sh {{matrix}}
+    matrix:
+      - api_annotations
 
-  - label: ":lint-roller: lint: all linkcheck"
+  - label: ":lint-roller: lint: linkcheck"
     instance_type: medium
     commands:
       - make -C doc/ linkcheck_all

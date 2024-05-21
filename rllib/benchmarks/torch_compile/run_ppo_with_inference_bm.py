@@ -64,9 +64,9 @@ def main(pargs):
             torch_compile_worker_dynamo_backend=pargs.backend,
             torch_compile_worker_dynamo_mode=pargs.mode,
         )
-        .resources(
-            num_learner_workers=1,
-            num_gpus_per_learner_worker=0 if pargs.smoke_test else 1,
+        .learners(
+            num_learners=1,
+            num_gpus_per_learner=0 if pargs.smoke_test else 1,
         )
     )
 

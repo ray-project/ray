@@ -32,7 +32,7 @@ recomm-sys001-ppo:
         # Larger batch sizes seem to help (more stability, even with higher lr).
         #train_batch_size: 32
 
-        #num_workers: 2
+        #num_env_runners: 2
         #num_gpus: 0
 
         #lr_choice_model: 0.002
