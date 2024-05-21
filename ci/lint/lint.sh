@@ -61,6 +61,12 @@ api_annotations() {
   ./ci/lint/check_api_annotations.py
 }
 
+api_discrepancy() {
+  # shellcheck disable=SC2102
+  RAY_DISABLE_EXTRA_CPP=1 pip install -e python/[all]
+  ./ci/lint/check_api_discrepancy.py
+}
+
 documentation_style() {
   ./ci/lint/check-documentation-style.sh
 }
