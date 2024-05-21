@@ -9,10 +9,7 @@ import copy
 import ray
 from ray.exceptions import RayTaskError
 from ray.experimental.channel import (
-<<<<<<< HEAD
     ChannelContext,
-=======
->>>>>>> fab4bcb5b304058b18da97dbfa0f12da91a1214f
     ChannelInterface,
     ChannelOutputType,
     ReaderInterface,
@@ -80,6 +77,9 @@ def do_exec_tasks(
     Args:
         tasks: the executable tasks corresponding to the actor methods.
     """
+    ctx = ChannelContext.get_current()
+    self._serialization_ctx = ctx.serialization_context
+
     try:
         self._input_readers = []
         self._output_writers = []
@@ -120,20 +120,10 @@ def _prep_task(self, task: "ExecutableTask") -> None:
         else:
             task.resolved_inputs.append(inp)
 
-<<<<<<< HEAD
     for typ_hint in task.input_type_hints:
         typ_hint.register_custom_serializer()
     task.output_type_hint.register_custom_serializer()
 
-    ctx = ChannelContext.get_current()
-    self._serialization_ctx = ctx.serialization_context
-
-=======
-    for type_hint in task.input_type_hints:
-        type_hint.register_custom_serializer()
-    task.output_type_hint.register_custom_serializer()
-
->>>>>>> fab4bcb5b304058b18da97dbfa0f12da91a1214f
     input_reader: ReaderInterface = SynchronousReader(task.input_channels)
     output_writer: WriterInterface = SynchronousWriter(task.output_channel)
     self._input_readers.append(input_reader)
@@ -383,13 +373,8 @@ class CompiledDAG:
         # Type hints specified by the user for DAG (intermediate) outputs.
         self._type_hints = []
 
-<<<<<<< HEAD
-        # Uniquely identifies the _NCCLGroup that will be used within this DAG,
-        # if any.
-=======
         # Uniquely identifies the NCCL communicator that will be used within
         # this DAG, if any.
->>>>>>> fab4bcb5b304058b18da97dbfa0f12da91a1214f
         self._nccl_group_id: Optional[str] = None
 
     def _add_node(self, node: "ray.dag.DAGNode") -> None:
@@ -459,24 +444,15 @@ class CompiledDAG:
                     nccl_actors.add(actor_handle)
             elif isinstance(dag_node, InputNode):
                 if dag_node.type_hint.requires_nccl():
-<<<<<<< HEAD
-                    raise ValueError("DAG inputs cannot be transferred via NCCL")
-=======
                     raise ValueError(
                         "DAG inputs cannot be transferred via NCCL because "
                         "the driver cannot participate in the NCCL group"
                     )
->>>>>>> fab4bcb5b304058b18da97dbfa0f12da91a1214f
 
             if type(task.dag_node.type_hint) == ChannelOutputType:
                 # No type hint specified by the user. Replace
                 # with the default type hint for this DAG.
-<<<<<<< HEAD
-                default_type_hint = copy.deepcopy(self._default_type_hint)
-                task.dag_node.with_type_hint(default_type_hint)
-=======
                 task.dag_node.with_type_hint(self._default_type_hint)
->>>>>>> fab4bcb5b304058b18da97dbfa0f12da91a1214f
 
             for arg_idx, arg in enumerate(task.args):
                 if not isinstance(arg, DAGNode):
@@ -700,12 +676,9 @@ class CompiledDAG:
         input_task = self.idx_to_task[self.input_task_idx]
         # Register custom serializers for inputs provided to dag.execute().
         input_task.dag_node.type_hint.register_custom_serializer()
-<<<<<<< HEAD
         ctx = ChannelContext.get_current()
         self.serialization_ctx = ctx.serialization_context
         self.serialization_ctx.set_use_external_transport(input_task.dag_node.type_hint.requires_nccl())
-=======
->>>>>>> fab4bcb5b304058b18da97dbfa0f12da91a1214f
 
         self.dag_input_channel = input_task.output_channel
 
