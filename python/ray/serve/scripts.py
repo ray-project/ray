@@ -578,8 +578,7 @@ def run(
                     except Exception:
                         traceback.print_exc()
                         cli_logger.error(
-                            "Received unexpected error, deployment failed. New change "
-                            "are not re-deployed"
+                            "Deploying the latest version of the application failed."
                         )
 
     except KeyboardInterrupt:

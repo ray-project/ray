@@ -49,11 +49,15 @@ def ping_endpoint(endpoint: str, params: str = ""):
         return CONNECTION_ERROR_MSG
 
 
-def check_app_running(app_name: str):
+def check_app_status(app_name: str, expected_status: str):
     status_response = subprocess.check_output(["serve", "status"])
     status = yaml.safe_load(status_response)["applications"]
-    assert status[app_name]["status"] == "RUNNING"
+    assert status[app_name]["status"] == expected_status
     return True
+
+
+def check_app_running(app_name: str):
+    return check_app_status(app_name, "RUNNING")
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
@@ -810,9 +814,10 @@ def test_run_reload_basic(ray_start_stop, tmp_path):
     code_template = """
 from ray import serve
 
-@serve.deployment{invalid_suffix}
+@serve.deployment
 class MessageDeployment:
     def __init__(self, msg):
+        {invalid_suffix}
         self.msg = msg
 
     def __call__(self):
@@ -851,10 +856,13 @@ msg_app = MessageDeployment.bind("Hello {message}!")
     write_file("Updated")
     wait_for_condition(lambda: ping_endpoint("") == "Hello Updated!", timeout=10)
 
-    # Ensure a bad change doesn't shut down serve.
+    # Ensure a bad change doesn't shut down serve and serve reports deploy failed.
     write_file(message="update1", invalid_suffix="foobar")
-    time.sleep(5)  # Sleep for 5s to ensure this file change is picked up.
-    wait_for_condition(lambda: ping_endpoint("") == "Hello Updated!", timeout=10)
+    wait_for_condition(
+        condition_predictor=check_app_status,
+        app_name="default",
+        expected_status="DEPLOY_FAILED",
+    )
 
     # Ensure the following reload happens as expected.
     write_file("Updated2")
