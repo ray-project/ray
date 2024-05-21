@@ -45,13 +45,14 @@ class Stride2D(nn.Module):
         self.stride_w = stride_w
         self.stride_h = stride_h
 
-        self.zeros = torch.zeros(
+        self.register_buffer("zeros", torch.zeros(
             size=(
                 self.width * self.stride_w - (self.stride_w - 1),
                 self.height * self.stride_h - (self.stride_h - 1),
             ),
             dtype=torch.float32,
-        )
+        ))
+
         self.out_width, self.out_height = self.zeros.shape[0], self.zeros.shape[1]
         # Squeeze in batch and channel dims.
         self.zeros = self.zeros.unsqueeze(0).unsqueeze(0)
@@ -67,6 +68,7 @@ class Stride2D(nn.Module):
         ]
         # Squeeze in batch and channel dims and convert to bool.
         self.where_template = self.where_template.unsqueeze(0).unsqueeze(0).bool()
+        self.register_buffer("where_template", self.where_template)
 
     def forward(self, x):
         # Repeat incoming image stride(w/h) times to match the strided output template.
