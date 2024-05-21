@@ -20,7 +20,7 @@ class PPORLModule(RLModule, abc.ABC):
     def setup(self):
         # __sphinx_doc_begin__
         catalog = self.config.get_catalog()
-        # If we have a stateful model states for the critic need to be collected 
+        # If we have a stateful model states for the critic need to be collected
         # during sampling and `inference-only` needs to be `False`.
         self.inference_only = not self.config.model_config_dict["use_lstm"]
         # If this is not a learner module, we use only a single value network. This
