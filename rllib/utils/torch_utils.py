@@ -724,6 +724,7 @@ def two_hot(
     num_buckets: int = 255,
     lower_bound: float = -20.0,
     upper_bound: float = 20.0,
+    device: Optional[str] = None,
 ):
     """Returns a two-hot vector of dim=num_buckets with two entries that are non-zero.
 
@@ -768,7 +769,7 @@ def two_hot(
     # First make sure, values are clipped.
     value = torch.clamp(value, lower_bound, upper_bound)
     # Tensor of batch indices: [0, B=batch size).
-    batch_indices = torch.arange(0, value.shape[0]).float()
+    batch_indices = torch.arange(0, value.shape[0], device=device).float()
     # Calculate the step deltas (how much space between each bucket's central value?).
     bucket_delta = (upper_bound - lower_bound) / (num_buckets - 1)
     # Compute the float indices (might be non-int numbers: sitting between two buckets).
@@ -800,7 +801,7 @@ def two_hot(
     updates = torch.cat([weights_k, weights_kp1], dim=0)
     # Call the actual scatter update op, returning a zero-filled tensor, only changed
     # at the given indices.
-    output = torch.zeros(value.shape[0], num_buckets)
+    output = torch.zeros(value.shape[0], num_buckets, device=device)
     # Set our two-hot values at computed indices.
     output[indices[:, 0], indices[:, 1]] = updates
     return output

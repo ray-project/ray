@@ -476,7 +476,6 @@ class LayerNorm1D(nn.Module):
     def forward(self, x):
         # x shape: (B, dim, dim, channels).
         batch_size, channels, h, w = x.size()
-        print(channels, h, w)
         # Reshape to (batch_size * height * width, channels) for LayerNorm
         x = x.permute(0, 2, 3, 1).reshape(-1, channels)
         # Apply LayerNorm

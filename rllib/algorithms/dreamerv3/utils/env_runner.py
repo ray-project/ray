@@ -15,6 +15,7 @@ import gymnasium as gym
 import numpy as np
 import tree  # pip install dm_tree
 
+import ray
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.core import DEFAULT_AGENT_ID, DEFAULT_MODULE_ID
 from ray.rllib.core.columns import Columns
@@ -24,7 +25,7 @@ from ray.rllib.env.wrappers.atari_wrappers import NoopResetEnv, MaxAndSkipEnv
 from ray.rllib.env.wrappers.dm_control_wrapper import DMCEnv
 from ray.rllib.env.utils import _gym_env_creator
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.framework import try_import_tf
+from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.metrics import (
     EPISODE_DURATION_SEC_MEAN,
     EPISODE_LEN_MAX,
@@ -48,6 +49,7 @@ from ray.rllib.utils.typing import ResultDict
 from ray.tune.registry import ENV_CREATOR, _global_registry
 
 _, tf, _ = try_import_tf()
+torch, _ = try_import_torch()
 
 
 # TODO (sven): Use SingleAgentEnvRunner instead of this as soon as we have the new
@@ -179,8 +181,18 @@ class DreamerV3EnvRunner(EnvRunner):
 
         self.metrics = MetricsLogger()
 
+        self._device = None
+        if (
+            torch
+            and torch.cuda.is_available()
+            and self.config.framework_str == "torch"
+            and self.config.share_module_between_env_runner_and_learner
+            and self.config.num_gpus_per_learner > 0
+        ):
+            gpu_ids = ray.get_gpu_ids()
+            self._device = f"cuda:{gpu_ids[0]}"
         self.convert_to_tensor = (
-            convert_to_torch_tensor
+            partial(convert_to_torch_tensor, device=self._device)
             if self.config.framework_str == "torch"
             else tf.convert_to_tensor
         )
