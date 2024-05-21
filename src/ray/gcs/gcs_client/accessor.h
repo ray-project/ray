@@ -765,8 +765,7 @@ class InternalKVAccessor {
 
   /// List keys with prefix stored in internal kv
   ///
-  /// The RPC will timeout after the timeout_ms, or if not set, the default GCS RPC
-  /// timeout is exceeded.
+  /// The RPC will timeout after the timeout_ms, or wait infinitely if timeout_ms is -1.
   ///
   /// \param ns The namespace to scan.
   /// \param prefix The prefix to scan.
@@ -780,8 +779,7 @@ class InternalKVAccessor {
 
   /// Set the <key, value> in the store
   ///
-  /// The RPC will timeout after the timeout_ms, or if not set, the default GCS RPC
-  /// timeout is exceeded.
+  /// The RPC will timeout after the timeout_ms, or wait infinitely if timeout_ms is -1.
   ///
   /// \param ns The namespace to put the key.
   /// \param key The key of the pair
@@ -801,8 +799,7 @@ class InternalKVAccessor {
 
   /// Retrive the value associated with a key
   ///
-  /// The RPC will timeout after the timeout_ms, or if not set, the default GCS RPC
-  /// timeout is exceeded.
+  /// The RPC will timeout after the timeout_ms, or wait infinitely if timeout_ms is -1.
   ///
   /// \param ns The namespace to lookup.
   /// \param key The key to lookup.
@@ -827,8 +824,7 @@ class InternalKVAccessor {
 
   /// Delete the key
   ///
-  /// The RPC will timeout after the timeout_ms, or if not set, the default GCS RPC
-  /// timeout is exceeded.
+  /// The RPC will timeout after the timeout_ms, or wait infinitely if timeout_ms is -1.
   ///
   /// \param ns The namespace to delete from.
   /// \param key The key to delete
@@ -842,8 +838,7 @@ class InternalKVAccessor {
 
   /// Check existence of a key in the store
   ///
-  /// The RPC will timeout after the timeout_ms, or if not set, the default GCS RPC
-  /// timeout is exceeded.
+  /// The RPC will timeout after the timeout_ms, or wait infinitely if timeout_ms is -1.
   ///
   /// \param ns The namespace to check.
   /// \param key The key to check
