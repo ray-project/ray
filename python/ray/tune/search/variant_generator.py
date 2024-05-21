@@ -425,11 +425,18 @@ def _grid_search_generator(
         yield unresolved_spec
         return
 
-    # a skeleton is easier to copy for every iteration
+    # instantiating each resolved spec requires copying the generic spec and
+    # populating the values in the copy, but large spec copy can be expensive;
+
+    # a skeleton of the spec, where values-to-fill are None, is easier to copy
+    # make the skeleton and set values -to-fill to None for faster copy
     unresolved_spec_skeleton = copy.deepcopy(unresolved_spec)
     for path, _ in grid_vars:
         assign_value(unresolved_spec_skeleton, path, None)
+
+    # main resolution loop
     while value_indices[-1] < len(grid_vars[-1][1]):
+        # copy the lighter skeleton spec and fill the resolved values
         spec = copy.deepcopy(unresolved_spec_skeleton)
         for i, (path, values) in enumerate(grid_vars):
             assign_value(spec, path, values[value_indices[i]])
