@@ -13,6 +13,7 @@ def log_batch_dict_to_proto(log_json: dict) -> LogBatch:
         lines=log_json.get("lines"),
         actor_name=log_json.get("actor_name"),
         task_name=log_json.get("task_name"),
+        user_actor_name=log_json.get("user_actor_name"),
     )
 
 
@@ -26,4 +27,5 @@ def log_batch_proto_to_dict(log_batch: LogBatch) -> dict:
         "lines": log_batch.lines,
         "actor_name": log_batch.actor_name,
         "task_name": log_batch.task_name,
+        "user_actor_name": log_batch.user_actor_name,
     }

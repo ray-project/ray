@@ -90,6 +90,14 @@ PARENT_HEALTH_CHECK_BY_PIPE = env_bool(
     "RAY_enable_pipe_based_agent_to_parent_health_check", False
 )
 
+import sys
+
+DASHBOARD_DISABLE_RAY_TOKEN_AUTH = (
+    env_bool("BYTED_RAY_DISABLE_TOKEN_AUTH", False) or sys.platform == "darwin"
+)
+
+import os
+
 _history_server_enabled = os.getenv("BYTED_RAY_HISTORY_SERVER_ENABLED") == "true"
 
 

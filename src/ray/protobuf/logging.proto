@@ -33,4 +33,6 @@ message LogBatch {
   string actor_name = 6;
   // Name of the task.
   string task_name = 7;
+  // User specified name of the actor.
+  string user_actor_name = 8;
 }

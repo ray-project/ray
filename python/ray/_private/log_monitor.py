@@ -65,6 +65,7 @@ class LogFileInfo:
         self.worker_pid = worker_pid
         self.actor_name = None
         self.task_name = None
+        self.user_actor_name = None
 
     def reopen_if_necessary(self):
         """Check if the file's inode has changed and reopen it if necessary.
@@ -95,6 +96,7 @@ class LogFileInfo:
             f"\tjob_id: {self.job_id}\n"
             f"\tworker_pid: {self.worker_pid}\n"
             f"\tactor_name: {self.actor_name}\n"
+            f"\tuser_actor_name: {self.user_actor_name}\n"
             f"\ttask_name: {self.task_name}\n"
             ")"
         )
@@ -352,6 +354,7 @@ class LogMonitor:
                     "lines": lines_to_publish,
                     "actor_name": file_info.actor_name,
                     "task_name": file_info.task_name,
+                    "user_actor_name": file_info.user_actor_name,
                 }
                 try:
                     self.publisher.publish_logs(data)
@@ -412,6 +415,12 @@ class LogMonitor:
                         # Also skip the following line, which is an
                         # empty line.
                         file_info.file_handle.readline()
+                    elif next_line.startswith(ray_constants.LOG_PREFIX_USER_ACTOR_NAME):
+                        flush()  # Possible change of task/actor name.
+                        file_info.user_actor_name = next_line.split(
+                            ray_constants.LOG_PREFIX_USER_ACTOR_NAME, 1
+                        )[1]
+                        file_info.task_name = None
                     else:
                         lines_to_publish.append(next_line)
                 except Exception:

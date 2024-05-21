@@ -780,6 +780,48 @@ def test_log_monitor_actor_task_name_and_job_id(tmp_path):
     )
 
 
+def test_log_monitor_user_actor_name(tmp_path):
+    log_dir = tmp_path / "logs"
+    log_dir.mkdir()
+    worker_id = "6df6d5dd8ca5215658e4a8f9a569a9d98e27094f9cc35a4ca43d272c"
+    job_id = "01000000"
+    pid = "47660"
+
+    mock_publisher = MagicMock()
+    log_monitor = LogMonitor(
+        str(log_dir), mock_publisher, lambda _: True, max_files_open=5
+    )
+    worker_out_log_file = f"worker-{worker_id}-{job_id}-{pid}.out"
+    first_line = "First line\n"
+    create_file(log_dir, worker_out_log_file, first_line)
+    log_monitor.update_log_filenames()
+    log_monitor.open_closed_files()
+    assert len(log_monitor.open_file_infos) == 1
+    file_info = log_monitor.open_file_infos[0]
+
+    # Test the user actor name is updated.
+    user_actor_name = "actor_name_specified by user"
+    with open(file_info.filename, "a") as f:
+        # Write 150 more lines.
+        f.write(f"{ray_constants.LOG_PREFIX_USER_ACTOR_NAME}{user_actor_name}\n")
+        f.write("line2")
+    log_monitor.check_log_files_and_publish_updates()
+    assert file_info.task_name is None
+    assert file_info.user_actor_name == user_actor_name
+    mock_publisher.publish_logs.assert_any_call(
+        {
+            "ip": log_monitor.ip,
+            "pid": file_info.worker_pid,
+            "job": file_info.job_id,
+            "is_err": file_info.is_err_file,
+            "lines": ["line2"],
+            "actor_name": None,
+            "user_actor_name": user_actor_name,
+            "task_name": None,
+        }
+    )
+
+
 @pytest.fixture
 def mock_timer():
     f = time.time

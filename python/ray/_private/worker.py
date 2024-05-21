@@ -2036,6 +2036,8 @@ def print_worker_logs(data: Dict[str, str], print_file: Any):
             res = "pid="
             if data.get("actor_name"):
                 res = f"{data['actor_name']} {res}"
+            if data.get("user_actor_name"):
+                res = data["user_actor_name"] + " " + res
             elif data.get("task_name"):
                 res = f"{data['task_name']} {res}"
             return res

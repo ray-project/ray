@@ -552,6 +552,7 @@ cdef extern from "src/ray/protobuf/gcs.pb.h" nogil:
         c_string job_id() const
         c_bool is_error() const
         c_string actor_name() const
+        c_string user_actor_name() const
         c_string task_name() const
 
         void set_ip(const c_string &ip)
@@ -560,6 +561,7 @@ cdef extern from "src/ray/protobuf/gcs.pb.h" nogil:
         void set_is_error(c_bool is_error)
         void add_lines(const c_string &line)
         void set_actor_name(const c_string &actor_name)
+        void set_user_actor_name(const c_string &actor_name)
         void set_task_name(const c_string &task_name)
 
     cdef cppclass CActorTableData "ray::rpc::ActorTableData":

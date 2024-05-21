@@ -2145,6 +2145,14 @@ cdef execute_task_with_cancellation_handler(
         print(actor_magic_token, end="")
         print(actor_magic_token, file=sys.stderr, end="")
 
+        user_actor_name = core_worker._get_actor_name(actor_id)
+        if user_actor_name:
+            actor_magic_token = "{}{}\n".format(
+                ray_constants.LOG_PREFIX_USER_ACTOR_NAME, user_actor_name)
+            # Flush to both .out and .err
+            print(actor_magic_token, end="")
+            print(actor_magic_token, file=sys.stderr, end="")
+
         # Initial eventloops for asyncio for this actor.
         if core_worker.current_actor_is_asyncio():
             core_worker.initialize_eventloops_for_actor_concurrency_group(
@@ -3078,6 +3086,8 @@ cdef class GcsPublisher:
             log_batch.add_lines(line)
         actor_name = log_json.get("actor_name")
         log_batch.set_actor_name(actor_name.encode() if actor_name else b"")
+        user_actor_name = log_json.get("user_actor_name")
+        log_batch.set_user_actor_name(user_actor_name.encode() if user_actor_name else b"")
         task_name = log_json.get("task_name")
         log_batch.set_task_name(task_name.encode() if task_name else b"")
 
@@ -3215,6 +3225,7 @@ cdef class GcsLogSubscriber(_GcsSubscriber):
             "is_err": log_batch.is_error(),
             "lines": log_lines,
             "actor_name": log_batch.actor_name().decode(),
+            "user_actor_name": log_batch.user_actor_name().decode(),
             "task_name": log_batch.task_name().decode(),
         }
 
@@ -4409,6 +4420,12 @@ cdef class CoreWorker:
             CActorID c_actor_id = actor_id.native()
         return self.make_actor_handle(
             CCoreWorkerProcess.GetCoreWorker().GetActorHandle(c_actor_id))
+
+    def _get_actor_name(self, ActorID actor_id):
+        cdef:
+            CActorID c_actor_id = actor_id.native()
+        handle = CCoreWorkerProcess.GetCoreWorker().GetActorHandle(c_actor_id)
+        return <str>dereference(handle).GetName()
 
     def list_named_actors(self, c_bool all_namespaces):
         """Returns (namespace, name) for named actors in the system.

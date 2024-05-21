@@ -307,6 +307,10 @@ LOG_PREFIX_EVENT_SUMMARY = ":event_summary:"
 LOG_PREFIX_INFO_MESSAGE = ":info_message:"
 # Actor names are recorded in the logs with this magic token as a prefix.
 LOG_PREFIX_ACTOR_NAME = ":actor_name:"
+# User specifed Actor names are recorded in the logs with this magic token as a prefix.
+# FooActor.options(name='FooActor-1').remote()
+# The user_actor_name will be 'FooActor-1'
+LOG_PREFIX_USER_ACTOR_NAME = ":user_actor_name:"
 # Task names are recorded in the logs with this magic token as a prefix.
 LOG_PREFIX_TASK_NAME = ":task_name:"
 # Job ids are recorded in the logs with this magic token as a prefix.
