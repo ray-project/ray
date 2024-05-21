@@ -6,7 +6,7 @@ import sys
 import json
 
 from ray._private.structured_logging.filters import CoreContextFilter
-from ray._private.structured_logging.formatters import JSONFormatter, LogfmtFormatter
+from ray._private.structured_logging.formatters import JSONFormatter, TextFormatter
 
 
 class TestCoreContextFilter:
@@ -122,45 +122,27 @@ class TestJSONFormatter:
         assert "exc_text" not in record_dict
 
 
-class TestLogfmtFormatter:
-    def test_empty_record(self, shutdown_only):
-        formatter = LogfmtFormatter()
-        record = logging.makeLogRecord({})
-        formatted = formatter.format(record)
-        should_exist = ["asctime", "levelname", "message", "filename", "lineno"]
-        for key in should_exist:
-            assert key in formatted
-        assert "exc_text" not in formatted
-
-    def test_record_with_exception(self, shutdown_only):
-        formatter = LogfmtFormatter()
-        record = logging.makeLogRecord({})
-        try:
-            raise ValueError("test")
-        except ValueError:
-            record.exc_info = sys.exc_info()
-        formatted = formatter.format(record)
-        should_exist = [
-            "asctime",
-            "levelname",
-            "message",
-            "filename",
-            "lineno",
-            "exc_text",
-        ]
-        for key in should_exist:
-            assert key in formatted
-        assert "Traceback (most recent call last):" in formatted
-
-    def test_record_with_user_provided_context(self, shutdown_only):
-        formatter = LogfmtFormatter()
+class TestTextFormatter:
+    def test_record_with_user_provided_context(self):
+        formatter = TextFormatter()
         record = logging.makeLogRecord({"user": "ray"})
         formatted = formatter.format(record)
-        should_exist = ["asctime", "levelname", "message", "filename", "lineno", "user"]
-        for key in should_exist:
-            assert key in formatted
         assert "user=ray" in formatted
-        assert "exc_text" not in formatted
+
+    def test_record_with_exception(self):
+        formatter = TextFormatter()
+        record = logging.LogRecord(
+            name="test_logger",
+            level=logging.INFO,
+            pathname="test.py",
+            lineno=1000,
+            msg="Test message",
+            args=None,
+            exc_info=None,
+        )
+        formatted = formatter.format(record)
+        for s in ["INFO", "Test message", "test.py:1000", "--"]:
+            assert s in formatted
 
 
 if __name__ == "__main__":

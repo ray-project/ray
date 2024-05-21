@@ -1,4 +1,4 @@
-from ray._private.structured_logging.formatters import LogfmtFormatter
+from ray._private.structured_logging.formatters import TextFormatter
 from ray._private.structured_logging.filters import CoreContextFilter
 
 # A dictionary to map encoding types to their corresponding logging configurations.
@@ -7,8 +7,8 @@ LOG_MODE_DICT = {
         "version": 1,
         "disable_existing_loggers": False,
         "formatters": {
-            "logfmt": {
-                "()": LogfmtFormatter,
+            "text": {
+                "()": TextFormatter,
             },
         },
         "filters": {
@@ -20,7 +20,7 @@ LOG_MODE_DICT = {
             "console": {
                 "level": "INFO",
                 "class": "logging.StreamHandler",
-                "formatter": "logfmt",
+                "formatter": "text",
                 "filters": ["core_context"],
             },
         },
