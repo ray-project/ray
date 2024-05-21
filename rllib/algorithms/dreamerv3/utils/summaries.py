@@ -218,13 +218,17 @@ def report_sampling_and_replay_buffer(*, metrics, replay_buffer):
     added_steps = replay_buffer.get_added_timesteps()
 
     # Summarize buffer, sampling, and train ratio stats.
-    metrics.log_dict({
-        "capacity": replay_buffer.capacity,
-        "size_num_episodes": episodes_in_buffer,
-        "size_timesteps": ts_in_buffer,
-        "replayed_steps": replayed_steps,
-        "added_steps": added_steps,
-    }, key=REPLAY_BUFFER_RESULTS, window=1)  # window=1 b/c these are current (total count/state) values.
+    metrics.log_dict(
+        {
+            "capacity": replay_buffer.capacity,
+            "size_num_episodes": episodes_in_buffer,
+            "size_timesteps": ts_in_buffer,
+            "replayed_steps": replayed_steps,
+            "added_steps": added_steps,
+        },
+        key=REPLAY_BUFFER_RESULTS,
+        window=1,
+    )  # window=1 b/c these are current (total count/state) values.
 
 
 def _report_obs(

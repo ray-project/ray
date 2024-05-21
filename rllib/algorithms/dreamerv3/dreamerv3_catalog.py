@@ -233,8 +233,12 @@ class DreamerV3Catalog(Catalog):
             world_model=world_model,
             actor=actor,
             critic=critic,
-            **({} if framework == "torch" else {
-                "horizon": horizon,
-                "gamma": gamma,
-            }),
+            **(
+                {}
+                if framework == "torch"
+                else {
+                    "horizon": horizon,
+                    "gamma": gamma,
+                }
+            ),
         )

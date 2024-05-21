@@ -394,7 +394,9 @@ class LearnerGroup:
             #  "lockstep"), the `ShardBatchIterator` should not be used.
             if episodes is None:
                 partials = [
-                    partial(_learner_update, _batch_shard=batch_shard, _timesteps=timesteps)
+                    partial(
+                        _learner_update, _batch_shard=batch_shard, _timesteps=timesteps
+                    )
                     for batch_shard in ShardBatchIterator(batch, len(self._workers))
                 ]
             # Single- or MultiAgentEpisodes: Shard into equal pieces (only roughly equal

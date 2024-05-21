@@ -170,7 +170,7 @@ class DreamerV3EnvRunner(EnvRunner):
         self.convert_to_tensor = (
             convert_to_torch_tensor
             if self.config.framework_str == "torch"
-            else _convert_to_tf
+            else tf.convert_to_tensor
         )
 
         self._needs_initial_reset = True
@@ -491,7 +491,6 @@ class DreamerV3EnvRunner(EnvRunner):
             episode_length = len(eps)
             episode_return = eps.get_return()
             episode_duration_s = eps.get_duration_s()
-
 
             # Don't forget about the already returned chunks of this episode.
             if eps.id_ in self._ongoing_episodes_for_metrics:

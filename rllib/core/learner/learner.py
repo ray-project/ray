@@ -1047,7 +1047,7 @@ class Learner:
         self,
         batch: MultiAgentBatch,
         *,
-        timesteps=None, #TODO
+        timesteps=None,  # TODO
         # TODO (sven): Deprecate these in favor of config attributes for only those
         #  algos that actually need (and know how) to do minibatching.
         minibatch_size: Optional[int] = None,
@@ -1095,7 +1095,7 @@ class Learner:
         self,
         episodes: List[EpisodeType],
         *,
-        timesteps=None, #TODO
+        timesteps=None,  # TODO
         # TODO (sven): Deprecate these in favor of config attributes for only those
         #  algos that actually need (and know how) to do minibatching.
         minibatch_size: Optional[int] = None,
@@ -1355,20 +1355,6 @@ class Learner:
                 )
 
         self._set_slicing_by_batch_id(batch, value=False)
-
-        # Already done in `additional_update`.
-        ## Log all current learning rates of all our optimizers (registered under the
-        ## different ModuleIDs).
-        #self.metrics.log_dict(
-        #    {
-        #        (mid, f"{full_name[len(mid) + 1 :]}_lr"): convert_to_numpy(
-        #            self._get_optimizer_lr(self._named_optimizers[full_name])
-        #        )
-        #        for mid, full_names in self._module_optimizers.items()
-        #        for full_name in full_names
-        #    },
-        #    window=1,
-        #)
 
         self._after_update(timesteps)
 

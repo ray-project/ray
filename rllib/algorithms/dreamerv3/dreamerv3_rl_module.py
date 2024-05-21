@@ -90,7 +90,9 @@ class DreamerV3RLModule(RLModule, abc.ABC):
                 observations=_convert_to_tf(test_obs, dtype=tf.float32),
                 actions=_convert_to_tf(test_actions, dtype=tf.float32),
                 is_first=_convert_to_tf(np.ones((B, T)), dtype=tf.bool),
-                start_is_terminated_BxT=_convert_to_tf(np.zeros((B * T,)), dtype=tf.bool),
+                start_is_terminated_BxT=_convert_to_tf(
+                    np.zeros((B * T,)), dtype=tf.bool
+                ),
                 gamma=gamma,
             )
 

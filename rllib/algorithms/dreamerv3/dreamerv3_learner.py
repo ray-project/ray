@@ -7,13 +7,8 @@ https://arxiv.org/pdf/2301.04104v1.pdf
 D. Hafner, T. Lillicrap, M. Norouzi, J. Ba
 https://arxiv.org/pdf/2010.02193.pdf
 """
-from typing import Any, DefaultDict, Dict
-
-from ray.rllib.algorithms.dreamerv3.dreamerv3 import DreamerV3Config
 from ray.rllib.core.learner.learner import Learner
-from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.typing import ModuleID, TensorType
 
 
 class DreamerV3Learner(Learner):
@@ -22,21 +17,6 @@ class DreamerV3Learner(Learner):
     Only implements the `additional_update_for_module()` method to define the logic
     for updating the critic EMA-copy after each training step.
     """
-
-    #@override(Learner)
-    #def additional_update_for_module(
-    #    self,
-    #    *,
-    #    module_id: ModuleID,
-    #    config: DreamerV3Config,
-    #    timestep: int,
-    #) -> None:
-    #    """Updates the EMA weights of the critic network."""
-
-        # Call the base class' method.
-        #super().additional_update_for_module(
-        #    module_id=module_id, config=config, timestep=timestep
-        #)
 
     @override(Learner)
     def _after_update(self, timesteps):

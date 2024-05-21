@@ -7,7 +7,7 @@ https://arxiv.org/pdf/2301.04104v1.pdf
 D. Hafner, T. Lillicrap, M. Norouzi, J. Ba
 https://arxiv.org/pdf/2010.02193.pdf
 """
-from typing import Any, Dict, Mapping, Tuple
+from typing import Any, Dict, Tuple
 
 import gymnasium as gym
 
@@ -117,14 +117,18 @@ class DreamerV3TorchLearner(DreamerV3Learner, TorchLearner):
             # DreamerV3 stats have the format: [WORLD_MODEL|ACTOR|CRITIC]_[stats name].
             self.metrics.log_dict(
                 {
-                    optimizer_name.upper() + "_gradients_global_norm": (
-                        global_norm.item()
-                    ),
-                    optimizer_name.upper() + "_gradients_maxabs_after_clipping": (
+                    optimizer_name.upper()
+                    + "_gradients_global_norm": (global_norm.item()),
+                    optimizer_name.upper()
+                    + "_gradients_maxabs_after_clipping": (
                         torch.max(
-                            torch.abs(torch.cat(
-                                [g.flatten() for g in grads_sub_dict.values()]))
-                        ).item()                    ),
+                            torch.abs(
+                                torch.cat(
+                                    [g.flatten() for g in grads_sub_dict.values()]
+                                )
+                            )
+                        ).item()
+                    ),
                 },
                 key=module_id,
                 window=1,  # <- single items (should not be mean/ema-reduced over time).
@@ -273,7 +277,9 @@ class DreamerV3TorchLearner(DreamerV3Learner, TorchLearner):
             self.metrics.log_dict(
                 {
                     # Replace 'T' with '1'.
-                    "DREAM_DATA_" + key[:-1] + "1": value[..., config.batch_size_B_per_learner]
+                    "DREAM_DATA_"
+                    + key[:-1]
+                    + "1": value[..., config.batch_size_B_per_learner]
                     for key, value in dream_data.items()
                     if key.endswith("H_BxT")
                 },

@@ -914,11 +914,11 @@ def framework_iterator(
             logger.warning("Skipping `framework=tf` (new API stack configured)!")
             continue
         # Skip if tf/tf2 and py >= 3.11.
-        #elif fw in ["tf", "tf2"] and (
-        #    sys.version_info.major == 3 and sys.version_info.minor >= 9
-        #):
-        #    logger.warning("Skipping `framework=tf/tf2` (python >= 3.9)!")
-        #    continue
+        elif fw in ["tf", "tf2"] and (
+            sys.version_info.major == 3 and sys.version_info.minor >= 9
+        ):
+            logger.warning("Skipping `framework=tf/tf2` (python >= 3.9)!")
+            continue
 
         # Skip non-installed frameworks.
         if fw == "torch" and not torch:

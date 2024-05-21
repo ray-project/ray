@@ -59,7 +59,7 @@ class ConvTransposeAtari(nn.Module):
             cnn_transpose_activation="silu",
         )
         # Make sure the output dims match Atari.
-        #assert config.output_dims == (64, 64, 1 if self.gray_scaled else 3)
+        # assert config.output_dims == (64, 64, 1 if self.gray_scaled else 3)
 
         self._transpose_2d_head = config.build(framework="torch")
 

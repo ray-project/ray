@@ -44,7 +44,7 @@ config = (
             "full_action_space": False,
             # Already done by MaxAndSkip wrapper: "action repeat" == 4.
             "frameskip": 1,
-        }
+        },
     )
     .learners(
         num_learners=0 if args.num_gpus == 1 else args.num_gpus,
