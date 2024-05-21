@@ -2140,10 +2140,10 @@ py_test(
 
 #@OldAPIStack
 py_test(
-    name = "examples/checkpoints/restore_1_of_n_agents_from_checkpoint",
+    name = "examples/checkpoints/old_stack_restore_1_of_n_agents_from_checkpoint",
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
-    srcs = ["examples/checkpoints/restore_1_of_n_agents_from_checkpoint.py"],
+    srcs = ["examples/checkpoints/old_stack_restore_1_of_n_agents_from_checkpoint.py"],
     args = ["--pre-training-iters=1", "--stop-iters=1", "--num-cpus=4"]
 )
 
@@ -2733,11 +2733,11 @@ py_test(
 # )
 
 py_test(
-    name = "examples/multi_agent/restore_1_of_n_agents_from_checkpoint",
-    main = "examples/multi_agent/restore_1_of_n_agents_from_checkpoint.py",
+    name = "examples/checkpoints/restore_1_of_n_agents_from_checkpoint",
+    main = "examples/checkpoints/restore_1_of_n_agents_from_checkpoint.py",
     tags = ["team:rllib", "exclusive", "examples", "examples_use_all_core"],
     size = "large",
-    srcs = ["examples/multi_agent/restore_1_of_n_agents_from_checkpoint.py"],
+    srcs = ["examples/checkpoints/restore_1_of_n_agents_from_checkpoint.py"],
     args = ["--enable-new-api-stack", "--num-agents=2", "--as-test", "--framework=torch", "--checkpoint-freq=4", "--checkpoint-at-end", "--num-cpus=4"]
 )
 
