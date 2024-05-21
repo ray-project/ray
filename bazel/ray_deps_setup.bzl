@@ -112,7 +112,7 @@ def ray_deps_setup():
         patches = [
             "@com_github_ray_project_ray//thirdparty/patches:redis-quiet.patch",
         ],
-        workspace_file_content = 'workspace(name = "com_github_antirez_redis")'
+        workspace_file_content = 'workspace(name = "com_github_antirez_redis")',
     )
 
     auto_http_archive(
@@ -354,11 +354,10 @@ def ray_deps_setup():
         sha256 = "7fbbbc05c112c44e9b406612e6a7a7f4789a6918d7aacefef4c35c105286930c",
     )
 
-
     http_archive(
         name = "jemalloc",
         urls = ["https://github.com/jemalloc/jemalloc/releases/download/5.3.0/jemalloc-5.3.0.tar.bz2"],
-         build_file = "@com_github_ray_project_ray//bazel:BUILD.jemalloc",
+        build_file = "@com_github_ray_project_ray//bazel:BUILD.jemalloc",
         sha256 = "2db82d1e7119df3e71b7640219b6dfe84789bc0537983c3b7ac4f7189aecfeaa",
         strip_prefix = "jemalloc-5.3.0",
-     )
+    )
