@@ -2,10 +2,11 @@ import asyncio
 import concurrent
 import threading
 from dataclasses import dataclass
-from typing import Any, List, Optional
+from typing import Any, Dict, List, Optional
 
 import ray
 from ray.experimental.channel.nccl_group import _NcclGroup
+from ray.experimental.channel.serialization_context import _SerializationContext
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
 # The context singleton on this process.
@@ -15,10 +16,18 @@ _context_lock = threading.Lock()
 
 @PublicAPI(stability="alpha")
 class ChannelOutputType:
-    @staticmethod
-    def register_custom_serializer() -> None:
+    def register_custom_serializer(self) -> None:
         """
-        Register any custom serializers needed to pass data of this type.
+        Register any custom serializers needed to pass data of this type. This
+        method should be run on the reader(s) and writer of a channel, which
+        are the driver and/or Ray actors.
+
+        NOTE: When custom serializers are registered with Ray, the registered
+        deserializer is shipped with the serialized value and used on the
+        receiving end. Therefore, the deserializer function should *not*
+        capture state that is meant to be worker-local, such as the worker's
+        default device. Instead, these should be extracted from the
+        worker-local _SerializationContext.
         """
         pass
 
@@ -41,29 +50,22 @@ class ChannelOutputType:
         """
         raise NotImplementedError
 
+    def requires_nccl(self) -> bool:
+        # By default, channels do not require NCCL.
+        return False
 
-def _do_register_custom_serializers(
-    self: Any, channel_output_types: List[type]
-) -> None:
-    """
-    Register custom serializers for the given channel types. This method should
-    be run on the reader(s) and writer of a channel, which are the driver
-    and/or Ray actors.
-
-    Args:
-        self: This method should be run on the driver or the Ray actor. The Ray
-            actor should be passed as `self`.
-        channel_output_types: The list of channel output types to register.
-    """
-    for typ in channel_output_types:
-        typ.register_custom_serializer(self)
+    def set_nccl_group_id(self, group_id: str) -> None:
+        raise NotImplementedError
 
 
 @DeveloperAPI
 @dataclass
 class ChannelContext:
-    # Used for the torch.Tensor NCCL transport.
-    nccl_group: Optional["_NcclGroup"] = None
+    serialization_context = _SerializationContext()
+
+    def __init__(self):
+        # Used for the torch.Tensor NCCL transport.
+        self.nccl_groups: Dict[str, "_NcclGroup"] = {}
 
     @staticmethod
     def get_current() -> "ChannelContext":
@@ -149,8 +151,9 @@ class ChannelInterface:
 
     def close(self) -> None:
         """
-        Close this channel. This method must not block. Any existing values in
-        the channel may be lost after the channel is closed.
+        Close this channel. This method must not block and it must be made
+        idempotent. Any existing values in the channel may be lost after the
+        channel is closed.
         """
         raise NotImplementedError
 
