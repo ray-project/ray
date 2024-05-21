@@ -2,7 +2,7 @@ import itertools
 import math
 import random
 import time
-from typing import Any, List
+from typing import Any, List, Tuple
 from unittest.mock import patch
 
 import numpy as np
