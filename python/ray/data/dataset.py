@@ -4872,21 +4872,6 @@ class Dataset:
         """Return the DataContext used to create this Dataset."""
         return self._plan._context
 
-    def _divide(self, block_idx: int) -> ("Dataset", "Dataset"):
-        block_list = self._plan.execute()
-        left, right = block_list.divide(block_idx)
-        l_ds = Dataset(
-            ExecutionPlan(
-                left, self._plan.stats(), run_by_consumer=block_list._owned_by_consumer
-            ),
-        )
-        r_ds = Dataset(
-            ExecutionPlan(
-                right, self._plan.stats(), run_by_consumer=block_list._owned_by_consumer
-            ),
-        )
-        return l_ds, r_ds
-
     def _aggregate_on(
         self, agg_cls: type, on: Optional[Union[str, List[str]]], *args, **kwargs
     ):
