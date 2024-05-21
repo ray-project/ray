@@ -344,17 +344,18 @@ void CoreWorkerDirectActorTaskSubmitter::FailTaskWithError(
   if (!task.actor_preempted) {
     error_info = task.timeout_error_info;
   } else {
-    // Special error for preempted actor. The task "timed out" because the actor may
-    // not have sent a notification to the gcs; regardless we already know it's
-    // preempted and it's dead.
-    rpc::ActorDeathCause &actor_death_cause = *error_info.mutable_actor_died_error();
-    actor_death_cause.mutable_actor_died_error_context()->set_actor_id(
-        task.task_spec.ActorId().Binary());
-    actor_death_cause.mutable_actor_died_error_context()->set_preempted(
-        task.actor_preempted);
+    // // Special error for preempted actor. The task "timed out" because the actor may
+    // // not have sent a notification to the gcs; regardless we already know it's
+    // // preempted and it's dead.
+    // rpc::ActorDeathCause &actor_death_cause = *error_info.mutable_actor_died_error();
+    // actor_death_cause.mutable_actor_died_error_context()->set_actor_id(
+    //     task.task_spec.ActorId().Binary());
+    // actor_death_cause.mutable_actor_died_error_context()->set_preempted(
+    //     task.actor_preempted);
 
-    error_info.set_error_type(rpc::ErrorType::ACTOR_DIED);
-    error_info.set_error_message("Actor died by preemption.");
+    // error_info.set_error_type(rpc::ErrorType::ACTOR_DIED);
+    // error_info.set_error_message("Actor died by preemption.");
+    RAY_LOG(ERROR) << "Unexpected path";
   }
   GetTaskFinisherWithoutMu().FailPendingTask(
       task.task_spec.TaskId(), error_info.error_type(), &task.status, &error_info);
@@ -375,7 +376,7 @@ void CoreWorkerDirectActorTaskSubmitter::CheckTimeoutTasks() {
       while (deque_itr != deque.end() && (*deque_itr)->deadline_ms < now) {
         // Populate the info of whether the actor is preempted. If so we hard fail the
         // task.
-        (*deque_itr)->actor_preempted = client_queue.preempted;
+        // (*deque_itr)->actor_preempted = client_queue.preempted;
         timeout_tasks.push_back(*deque_itr);
         deque_itr = deque.erase(deque_itr);
       }
