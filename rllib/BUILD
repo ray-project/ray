@@ -2733,6 +2733,15 @@ py_test(
 # )
 
 py_test(
+    name = "examples/multi_agent/restore_1_of_n_agents_from_checkpoint",
+    main = "examples/multi_agent/restore_1_of_n_agents_from_checkpoint.py",
+    tags = ["team:rllib", "exclusive", "examples", "examples_use_all_core"],
+    size = "large",
+    srcs = ["examples/multi_agent/restore_1_of_n_agents_from_checkpoint.py"],
+    args = ["--enable-new-api-stack", "--num-agents=2", "--as-test", "--framework=torch", "--checkpoint-freq=4", "--checkpoint-at-end", "--num-cpus=4"]
+)
+
+py_test(
     name = "examples/multi_agent/rock_paper_scissors_heuristic_vs_learned",
     main = "examples/multi_agent/rock_paper_scissors_heuristic_vs_learned.py",
     tags = ["team:rllib", "exclusive", "examples"],

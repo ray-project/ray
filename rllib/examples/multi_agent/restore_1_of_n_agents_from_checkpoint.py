@@ -67,10 +67,6 @@ parser.add_argument("--num-policies", type=int, default=2)
 if __name__ == "__main__":
     args = parser.parse_args()
 
-    # args.enable_new_api_stack = True
-    # args.num_agents = 2
-    # args.checkpoint_freq = 4
-    # args.checkpoint_at_end = True
     # Register our environment with tune.
     if args.num_agents > 1:
         register_env(
