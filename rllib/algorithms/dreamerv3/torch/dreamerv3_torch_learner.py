@@ -11,18 +11,16 @@ from typing import Any, Dict, Mapping, Tuple
 
 import gymnasium as gym
 
-from ray.rllib.algorithms.dreamerv3.dreamerv3_learner import (
-    DreamerV3Learner,
-    DreamerV3LearnerHyperparameters,
-)
-from ray.rllib.core.rl_module.marl_module import ModuleID
+from ray.rllib.algorithms.dreamerv3.dreamerv3 import DreamerV3Config
+from ray.rllib.algorithms.dreamerv3.dreamerv3_learner import DreamerV3Learner
+from ray.rllib.core import DEFAULT_MODULE_ID
+from ray.rllib.core.columns import Columns
 from ray.rllib.core.learner.learner import ParamDict
 from ray.rllib.core.learner.torch.torch_learner import TorchLearner
-from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.torch_utils import symlog, two_hot, clip_gradients
-from ray.rllib.utils.typing import TensorType
+from ray.rllib.utils.typing import ModuleID, TensorType
 
 torch, nn = try_import_torch()
 
@@ -40,7 +38,7 @@ class DreamerV3TorchLearner(DreamerV3Learner, TorchLearner):
 
     @override(TorchLearner)
     def configure_optimizers_for_module(
-        self, module_id: ModuleID, hps: DreamerV3LearnerHyperparameters
+        self, module_id: ModuleID, config: DreamerV3Config = None
     ):
         """Create the 3 optimizers for Dreamer learning: world_model, actor, critic.
 
@@ -53,35 +51,35 @@ class DreamerV3TorchLearner(DreamerV3Learner, TorchLearner):
 
         # World Model optimizer.
         optim_world_model = torch.optim.Adam(
-            dreamerv3_module.world_model.parameters(), lr=hps.world_model_lr, eps=1e-8
+            dreamerv3_module.world_model.parameters(),
+            eps=1e-8,
         )
         self.register_optimizer(
             module_id=module_id,
             optimizer_name="world_model",
             optimizer=optim_world_model,
             params=list(dreamerv3_module.world_model.parameters()),
+            lr_or_lr_schedule=config.world_model_lr,
         )
 
         # Actor optimizer.
-        optim_actor = torch.optim.Adam(
-            dreamerv3_module.actor.parameters(), lr=hps.actor_lr, eps=1e-5
-        )
+        optim_actor = torch.optim.Adam(dreamerv3_module.actor.parameters(), eps=1e-5)
         self.register_optimizer(
             module_id=module_id,
             optimizer_name="actor",
             optimizer=optim_actor,
             params=list(dreamerv3_module.actor.parameters()),
+            lr_or_lr_schedule=config.actor_lr,
         )
 
         # Critic optimizer.
-        optim_critic = torch.optim.Adam(
-            dreamerv3_module.critic.parameters(), lr=hps.critic_lr, eps=1e-5
-        )
+        optim_critic = torch.optim.Adam(dreamerv3_module.critic.parameters(), eps=1e-5)
         self.register_optimizer(
             module_id=module_id,
             optimizer_name="critic",
             optimizer=optim_critic,
             params=list(dreamerv3_module.critic.parameters()),
+            lr_or_lr_schedule=config.critic_lr,
         )
 
     @override(TorchLearner)
@@ -89,7 +87,7 @@ class DreamerV3TorchLearner(DreamerV3Learner, TorchLearner):
         self,
         *,
         module_id: ModuleID,
-        hps: DreamerV3LearnerHyperparameters,
+        config: DreamerV3Config,
         module_gradients_dict: Dict[str, Any],
     ) -> ParamDict:
         """Performs gradient clipping on the 3 module components' computed grads.
@@ -105,11 +103,11 @@ class DreamerV3TorchLearner(DreamerV3Learner, TorchLearner):
             )
             # Figure out which grad clip setting to use.
             grad_clip = (
-                hps.world_model_grad_clip_by_global_norm
+                config.world_model_grad_clip_by_global_norm
                 if optimizer_name == "world_model"
-                else hps.actor_grad_clip_by_global_norm
+                else config.actor_grad_clip_by_global_norm
                 if optimizer_name == "actor"
-                else hps.critic_grad_clip_by_global_norm
+                else config.critic_grad_clip_by_global_norm
             )
             global_norm = clip_gradients(
                 grads_sub_dict, grad_clip=grad_clip, grad_clip_by="global_norm"
@@ -117,17 +115,19 @@ class DreamerV3TorchLearner(DreamerV3Learner, TorchLearner):
             module_gradients_dict.update(grads_sub_dict)
 
             # DreamerV3 stats have the format: [WORLD_MODEL|ACTOR|CRITIC]_[stats name].
-            self.register_metric(
-                module_id,
-                optimizer_name.upper() + "_gradients_global_norm",
-                global_norm.item(),
-            )
-            self.register_metric(
-                module_id,
-                optimizer_name.upper() + "_gradients_maxabs_after_clipping",
-                torch.max(
-                    torch.abs(torch.cat([g.flatten() for g in grads_sub_dict.values()]))
-                ).item(),
+            self.metrics.log_dict(
+                {
+                    optimizer_name.upper() + "_gradients_global_norm": (
+                        global_norm.item()
+                    ),
+                    optimizer_name.upper() + "_gradients_maxabs_after_clipping": (
+                        torch.max(
+                            torch.abs(torch.cat(
+                                [g.flatten() for g in grads_sub_dict.values()]))
+                        ).item()                    ),
+                },
+                key=module_id,
+                window=1,  # <- single items (should not be mean/ema-reduced over time).
             )
 
         return module_gradients_dict
@@ -148,9 +148,9 @@ class DreamerV3TorchLearner(DreamerV3Learner, TorchLearner):
 
         grads = {}
         for component in ["world_model", "actor", "critic"]:
-            self._metrics[DEFAULT_POLICY_ID][component.upper() + "_L_total"].backward(
-                retain_graph=True
-            )
+            self.metrics.peek(
+                (DEFAULT_MODULE_ID, component.upper() + "_L_total")
+            ).backward(retain_graph=True)
             grads.update(
                 {
                     pid: p.grad
@@ -166,15 +166,14 @@ class DreamerV3TorchLearner(DreamerV3Learner, TorchLearner):
     def compute_loss_for_module(
         self,
         module_id: ModuleID,
-        hps: DreamerV3LearnerHyperparameters,
-        batch: SampleBatch,
-        fwd_out: Mapping[str, TensorType],
+        config: DreamerV3Config,
+        batch: Dict[str, TensorType],
+        fwd_out: Dict[str, TensorType],
     ) -> TensorType:
-
         # World model losses.
         prediction_losses = self._compute_world_model_prediction_losses(
-            hps=hps,
-            rewards_B_T=batch[SampleBatch.REWARDS],
+            config=config,
+            rewards_B_T=batch[Columns.REWARDS],
             continues_B_T=(1.0 - batch["is_terminated"]),
             fwd_out=fwd_out,
         )
@@ -183,7 +182,7 @@ class DreamerV3TorchLearner(DreamerV3Learner, TorchLearner):
             L_dyn_B_T,
             L_rep_B_T,
         ) = self._compute_world_model_dynamics_and_representation_loss(
-            hps=hps, fwd_out=fwd_out
+            config=config, fwd_out=fwd_out
         )
         L_dyn = torch.mean(L_dyn_B_T)
         L_rep = torch.mean(L_rep_B_T)
@@ -206,9 +205,8 @@ class DreamerV3TorchLearner(DreamerV3Learner, TorchLearner):
         L_world_model_total = torch.mean(L_world_model_total_B_T)
 
         # Register world model loss stats.
-        self.register_metrics(
-            module_id=module_id,
-            metrics_dict={
+        self.metrics.log_dict(
+            {
                 "WORLD_MODEL_learned_initial_h": self.module[module_id]
                 .unwrapped()
                 .world_model.initial_h,
@@ -228,21 +226,24 @@ class DreamerV3TorchLearner(DreamerV3Learner, TorchLearner):
                 # Total loss.
                 "WORLD_MODEL_L_total": L_world_model_total,
             },
+            key=module_id,
+            window=1,  # <- single items (should not be mean/ema-reduced over time).
         )
-        if hps.report_individual_batch_item_stats:
-            self.register_metrics(
-                module_id=module_id,
-                metrics_dict={
+        if config.report_individual_batch_item_stats:
+            self.metrics.log_dict(
+                {
                     "WORLD_MODEL_L_decoder_B_T": prediction_losses["L_decoder_B_T"],
                     "WORLD_MODEL_L_reward_B_T": prediction_losses["L_reward_B_T"],
                     "WORLD_MODEL_L_continue_B_T": prediction_losses["L_continue_B_T"],
-                    "WORLD_MODEL_L_prediction_B_T": prediction_losses[
-                        "L_prediction_B_T"
-                    ],
+                    "WORLD_MODEL_L_prediction_B_T": (
+                        prediction_losses["L_prediction_B_T"]
+                    ),
                     "WORLD_MODEL_L_dynamics_B_T": L_dyn_B_T,
                     "WORLD_MODEL_L_representation_B_T": L_rep_B_T,
                     "WORLD_MODEL_L_total_B_T": L_world_model_total_B_T,
                 },
+                key=module_id,
+                window=1,  # <- single items (should not be mean/ema-reduced over time).
             )
 
         # Dream trajectories starting in all internal states (h + z_posterior) that were
@@ -259,50 +260,55 @@ class DreamerV3TorchLearner(DreamerV3Learner, TorchLearner):
                     "z": fwd_out["z_posterior_states_BxT"],
                 },
                 start_is_terminated=batch["is_terminated"].reshape(-1),  # -> BxT
-                timesteps_H=hps.horizon_H,
-                gamma=hps.gamma,
+                timesteps_H=config.horizon_H,
+                gamma=config.gamma,
             )
         )
-        if hps.report_dream_data:
+        if config.report_dream_data:
             # To reduce this massive amount of data a little, slice out a T=1 piece
             # from each stats that has the shape (H, BxT), meaning convert e.g.
             # `rewards_dreamed_t0_to_H_BxT` into `rewards_dreamed_t0_to_H_Bx1`.
             # This will reduce the amount of data to be transferred and reported
             # by the factor of `batch_length_T`.
-            self.register_metrics(
-                module_id,
+            self.metrics.log_dict(
                 {
                     # Replace 'T' with '1'.
-                    "DREAM_DATA_" + key[:-1] + "1": value[..., hps.batch_size_B]
+                    "DREAM_DATA_" + key[:-1] + "1": value[..., config.batch_size_B_per_learner]
                     for key, value in dream_data.items()
                     if key.endswith("H_BxT")
                 },
+                key=module_id,
+                window=1,  # <- single items (should not be mean/ema-reduced over time).
             )
 
         value_targets_t0_to_Hm1_BxT = self._compute_value_targets(
-            hps=hps,
+            config=config,
             # Learn critic in symlog'd space.
             rewards_t0_to_H_BxT=dream_data["rewards_dreamed_t0_to_H_BxT"],
             intrinsic_rewards_t1_to_H_BxT=(
-                dream_data["rewards_intrinsic_t1_to_H_B"] if hps.use_curiosity else None
+                dream_data["rewards_intrinsic_t1_to_H_B"]
+                if config.use_curiosity
+                else None
             ),
             continues_t0_to_H_BxT=dream_data["continues_dreamed_t0_to_H_BxT"],
             value_predictions_t0_to_H_BxT=dream_data["values_dreamed_t0_to_H_BxT"],
         )
-        self.register_metric(
-            module_id, "VALUE_TARGETS_H_BxT", value_targets_t0_to_Hm1_BxT
+        self.metrics.log_value(
+            key=(module_id, "VALUE_TARGETS_H_BxT"),
+            value=value_targets_t0_to_Hm1_BxT,
+            window=1,  # <- single items (should not be mean/ema-reduced over time).
         )
 
         CRITIC_L_total = self._compute_critic_loss(
             module_id=module_id,
-            hps=hps,
+            config=config,
             dream_data=dream_data,
             value_targets_t0_to_Hm1_BxT=value_targets_t0_to_Hm1_BxT,
         )
-        if hps.train_actor:
+        if config.train_actor:
             ACTOR_L_total = self._compute_actor_loss(
                 module_id=module_id,
-                hps=hps,
+                config=config,
                 dream_data=dream_data,
                 value_targets_t0_to_Hm1_BxT=value_targets_t0_to_Hm1_BxT,
             )
@@ -315,11 +321,11 @@ class DreamerV3TorchLearner(DreamerV3Learner, TorchLearner):
     def _compute_world_model_prediction_losses(
         self,
         *,
-        hps: DreamerV3LearnerHyperparameters,
+        config: DreamerV3Config,
         rewards_B_T: TensorType,
         continues_B_T: TensorType,
-        fwd_out: Mapping[str, TensorType],
-    ) -> Mapping[str, TensorType]:
+        fwd_out: Dict[str, TensorType],
+    ) -> Dict[str, TensorType]:
         """Helper method computing all world-model related prediction losses.
 
         Prediction losses are used to train the predictors of the world model, which
@@ -327,7 +333,7 @@ class DreamerV3TorchLearner(DreamerV3Learner, TorchLearner):
         observations).
 
         Args:
-            hps: The DreamerV3LearnerHyperparameters to use.
+            config: The DreamerV3Config to use.
             rewards_B_T: The rewards batch in the shape (B, T) and of type float32.
             continues_B_T: The continues batch in the shape (B, T) and of type float32
                 (1.0 -> continue; 0.0 -> end of episode).
@@ -340,7 +346,7 @@ class DreamerV3TorchLearner(DreamerV3Learner, TorchLearner):
         obs_BxT = fwd_out["sampled_obs_symlog_BxT"]
         obs_distr_means = fwd_out["obs_distribution_means_BxT"]
 
-        # Reshape observations to (B*T, -1)
+        # Leave time dim folded (BxT) and flatten all other (e.g. image) dims.
         obs_BxT = obs_BxT.reshape(obs_BxT.shape[0], -1)
 
         # Squared diff loss w/ sum(!) over all (already folded) obs dims.
@@ -350,9 +356,9 @@ class DreamerV3TorchLearner(DreamerV3Learner, TorchLearner):
         # of the Gaussian.
         decoder_loss_BxT = torch.sum(torch.square(obs_distr_means - obs_BxT), dim=-1)
 
-        # Reshape decoder loss to (B, T)
+        # Unfold time rank back in.
         decoder_loss_B_T = decoder_loss_BxT.reshape(
-            hps.batch_size_B, hps.batch_length_T
+            config.batch_size_B_per_learner, config.batch_length_T
         )
         L_decoder = torch.mean(decoder_loss_B_T)
 
@@ -362,7 +368,7 @@ class DreamerV3TorchLearner(DreamerV3Learner, TorchLearner):
         reward_logits_BxT = fwd_out["reward_logits_BxT"]
         # Learn to produce symlog'd reward predictions.
         rewards_symlog_B_T = symlog(rewards_B_T)
-        # Reshape rewards to (B*T,)
+        # Fold time dim.
         rewards_symlog_BxT = rewards_symlog_B_T.reshape(-1)
 
         # Two-hot encode.
@@ -375,9 +381,9 @@ class DreamerV3TorchLearner(DreamerV3Learner, TorchLearner):
         reward_loss_two_hot_BxT = -torch.sum(
             reward_log_pred_BxT * two_hot_rewards_symlog_BxT, dim=-1
         )
-        # Reshape reward loss to (B, T)
+        # Unfold time rank back in.
         reward_loss_two_hot_B_T = reward_loss_two_hot_BxT.reshape(
-            hps.batch_size_B, hps.batch_length_T
+            config.batch_size_B_per_learner, config.batch_length_T
         )
         L_reward_two_hot = torch.mean(reward_loss_two_hot_B_T)
 
@@ -385,12 +391,12 @@ class DreamerV3TorchLearner(DreamerV3Learner, TorchLearner):
         # [B]
         continue_distr = fwd_out["continue_distribution_BxT"]
         # -log(p) loss
-        # Reshape continues to (B*T,)
+        # Fold time dim.
         continues_BxT = continues_B_T.reshape(-1)
         continue_loss_BxT = -continue_distr.log_prob(continues_BxT)
-        # Reshape continue loss to (B, T)
+        # Unfold time rank back in.
         continue_loss_B_T = continue_loss_BxT.reshape(
-            hps.batch_size_B, hps.batch_length_T
+            config.batch_size_B_per_learner, config.batch_length_T
         )
         L_continue = torch.mean(continue_loss_B_T)
 
@@ -410,12 +416,12 @@ class DreamerV3TorchLearner(DreamerV3Learner, TorchLearner):
         }
 
     def _compute_world_model_dynamics_and_representation_loss(
-        self, *, hps: DreamerV3LearnerHyperparameters, fwd_out: Dict[str, Any]
+        self, *, config: DreamerV3Config, fwd_out: Dict[str, Any]
     ) -> Tuple[TensorType, TensorType]:
         """Helper method computing the world-model's dynamics and representation losses.
 
         Args:
-            hps: The DreamerV3LearnerHyperparameters to use.
+            config: The DreamerV3Config to use.
             fwd_out: The `forward_train` outputs of the DreamerV3RLModule.
 
         Returns:
@@ -465,7 +471,9 @@ class DreamerV3TorchLearner(DreamerV3Learner, TorchLearner):
             min=1.0,
         )
         # Unfold time rank back in.
-        L_dyn_B_T = L_dyn_BxT.reshape(hps.batch_size_B, hps.batch_length_T)
+        L_dyn_B_T = L_dyn_BxT.reshape(
+            config.batch_size_B_per_learner, config.batch_length_T
+        )
 
         L_rep_BxT = torch.clamp(
             torch.distributions.kl.kl_divergence(
@@ -474,7 +482,9 @@ class DreamerV3TorchLearner(DreamerV3Learner, TorchLearner):
             min=1.0,
         )
         # Unfold time rank back in.
-        L_rep_B_T = L_rep_BxT.reshape(hps.batch_size_B, hps.batch_length_T)
+        L_rep_B_T = L_rep_BxT.reshape(
+            config.batch_size_B_per_learner, config.batch_length_T
+        )
 
         return L_dyn_B_T, L_rep_B_T
 
@@ -482,7 +492,7 @@ class DreamerV3TorchLearner(DreamerV3Learner, TorchLearner):
         self,
         *,
         module_id: ModuleID,
-        hps: DreamerV3LearnerHyperparameters,
+        config: DreamerV3Config,
         dream_data: Dict[str, TensorType],
         value_targets_t0_to_Hm1_BxT: TensorType,
     ) -> TensorType:
@@ -490,7 +500,7 @@ class DreamerV3TorchLearner(DreamerV3Learner, TorchLearner):
 
         Args:
             module_id: The module_id for which to compute the actor loss.
-            hps: The DreamerV3LearnerHyperparameters to use.
+            config: The DreamerV3Config to use.
             dream_data: The data generated by dreaming for H steps (horizon) starting
                 from any BxT state (sampled from the buffer for the train batch).
             value_targets_t0_to_Hm1_BxT: The computed value function targets of the
@@ -504,7 +514,7 @@ class DreamerV3TorchLearner(DreamerV3Learner, TorchLearner):
         # Note: `scaled_value_targets_t0_to_Hm1_B` are NOT stop_gradient'd yet.
         scaled_value_targets_t0_to_Hm1_B = self._compute_scaled_value_targets(
             module_id=module_id,
-            hps=hps,
+            config=config,
             value_targets_t0_to_Hm1_BxT=value_targets_t0_to_Hm1_BxT,
             value_predictions_t0_to_Hm1_BxT=dream_data["values_dreamed_t0_to_H_BxT"][
                 :-1
@@ -538,7 +548,8 @@ class DreamerV3TorchLearner(DreamerV3Learner, TorchLearner):
             )
             # First term of loss function. [1] eq. 11.
             logp_loss_H_B = (
-                logp_actions_dreamed_t0_to_Hm1_B * scaled_value_targets_t0_to_Hm1_B
+                logp_actions_dreamed_t0_to_Hm1_B
+                * scaled_value_targets_t0_to_Hm1_B.detach()
             )
         # Box space.
         else:
@@ -556,16 +567,16 @@ class DreamerV3TorchLearner(DreamerV3Learner, TorchLearner):
         entropy = torch.mean(entropy_H_B)
 
         L_actor_reinforce_term_H_B = -logp_loss_H_B
-        L_actor_action_entropy_term_H_B = -hps.entropy_scale * entropy_H_B
+        L_actor_action_entropy_term_H_B = -config.entropy_scale * entropy_H_B
 
         L_actor_H_B = L_actor_reinforce_term_H_B + L_actor_action_entropy_term_H_B
         # Mask out everything that goes beyond a predicted continue=False boundary.
         L_actor_H_B *= dream_data["dream_loss_weights_t0_to_H_BxT"][:-1].detach()
         L_actor = torch.mean(L_actor_H_B)
 
-        self.register_metrics(
-            module_id,
-            metrics_dict={
+        # Log important actor loss stats.
+        self.metrics.log_dict(
+            {
                 "ACTOR_L_total": L_actor,
                 "ACTOR_value_targets_pct95_ema": actor.ema_value_target_pct95,
                 "ACTOR_value_targets_pct5_ema": actor.ema_value_target_pct5,
@@ -576,11 +587,12 @@ class DreamerV3TorchLearner(DreamerV3Learner, TorchLearner):
                 ),
                 "ACTOR_L_neg_entropy_term": torch.mean(L_actor_action_entropy_term_H_B),
             },
+            key=module_id,
+            window=1,  # <- single items (should not be mean/ema-reduced over time).
         )
-        if hps.report_individual_batch_item_stats:
-            self.register_metrics(
-                module_id,
-                metrics_dict={
+        if config.report_individual_batch_item_stats:
+            self.metrics.log_dict(
+                {
                     "ACTOR_L_total_H_BxT": L_actor_H_B,
                     "ACTOR_logp_actions_dreamed_H_BxT": (
                         logp_actions_dreamed_t0_to_Hm1_B
@@ -593,6 +605,8 @@ class DreamerV3TorchLearner(DreamerV3Learner, TorchLearner):
                     "ACTOR_L_neglogp_reinforce_term_H_BxT": L_actor_reinforce_term_H_B,
                     "ACTOR_L_neg_entropy_term_H_BxT": L_actor_action_entropy_term_H_B,
                 },
+                key=module_id,
+                window=1,  # <- single items (should not be mean/ema-reduced over time).
             )
 
         return L_actor
@@ -601,7 +615,7 @@ class DreamerV3TorchLearner(DreamerV3Learner, TorchLearner):
         self,
         *,
         module_id: ModuleID,
-        hps: DreamerV3LearnerHyperparameters,
+        config: DreamerV3Config,
         dream_data: Dict[str, TensorType],
         value_targets_t0_to_Hm1_BxT: TensorType,
     ) -> TensorType:
@@ -609,7 +623,7 @@ class DreamerV3TorchLearner(DreamerV3Learner, TorchLearner):
 
         Args:
             module_id: The ModuleID for which to compute the critic loss.
-            hps: The DreamerV3LearnerHyperparameters to use.
+            config: The DreamerV3Config to use.
             dream_data: The data generated by dreaming for H steps (horizon) starting
                 from any BxT state (sampled from the buffer for the train batch).
             value_targets_t0_to_Hm1_BxT: The computed value function targets of the
@@ -636,7 +650,7 @@ class DreamerV3TorchLearner(DreamerV3Learner, TorchLearner):
         # Unfold time rank.
         value_symlog_targets_two_hot_t0_to_Hm1_B = (
             value_symlog_targets_two_hot_HxB.view(
-                [Hm1, B] + list(value_symlog_targets_two_hot_HxB.shape[-1:])
+                [Hm1, B, value_symlog_targets_two_hot_HxB.shape[-1]]
             )
         )
 
@@ -644,7 +658,7 @@ class DreamerV3TorchLearner(DreamerV3Learner, TorchLearner):
         value_symlog_logits_HxB = dream_data["values_symlog_dreamed_logits_t0_to_HxBxT"]
         # Unfold time rank and cut last time index to match value targets.
         value_symlog_logits_t0_to_Hm1_B = value_symlog_logits_HxB.view(
-            [H, B] + list(value_symlog_logits_HxB.shape[-1:])
+            [H, B, value_symlog_logits_HxB.shape[-1]]
         )[:-1]
 
         values_log_pred_Hm1_B = value_symlog_logits_t0_to_Hm1_B - torch.logsumexp(
@@ -667,7 +681,7 @@ class DreamerV3TorchLearner(DreamerV3Learner, TorchLearner):
         value_symlog_ema_two_hot_HxB = two_hot(value_symlog_ema_HxB)
         # Unfold time rank.
         value_symlog_ema_two_hot_t0_to_Hm1_B = value_symlog_ema_two_hot_HxB.view(
-            [Hm1, B] + list(value_symlog_ema_two_hot_HxB.shape[-1:])
+            [Hm1, B, value_symlog_ema_two_hot_HxB.shape[-1]]
         )
 
         # Compute ema regularizer loss.
@@ -690,9 +704,9 @@ class DreamerV3TorchLearner(DreamerV3Learner, TorchLearner):
         # Sum over time and batch rank.
         L_critic = L_critic_H_B.sum()
 
-        self.register_metrics(
-            module_id=module_id,
-            metrics_dict={
+        # Log important critic loss stats.
+        self.metrics.log_dict(
+            {
                 "CRITIC_L_total": L_critic,
                 "CRITIC_L_neg_logp_of_value_targets": torch.mean(
                     value_loss_two_hot_H_B
@@ -701,11 +715,13 @@ class DreamerV3TorchLearner(DreamerV3Learner, TorchLearner):
                     ema_regularization_loss_H_B
                 ),
             },
+            key=module_id,
+            window=1,  # <- single items (should not be mean/ema-reduced over time).
         )
-        if hps.report_individual_batch_item_stats:
-            self.register_metrics(
-                module_id=module_id,
-                metrics_dict={
+        if config.report_individual_batch_item_stats:
+            # Log important critic loss stats.
+            self.metrics.log_dict(
+                {
                     # Symlog'd value targets. Critic learns to predict symlog'd values.
                     "VALUE_TARGETS_symlog_H_BxT": value_symlog_targets_t0_to_Hm1_B,
                     # Critic loss terms.
@@ -715,6 +731,8 @@ class DreamerV3TorchLearner(DreamerV3Learner, TorchLearner):
                         ema_regularization_loss_H_B
                     ),
                 },
+                key=module_id,
+                window=1,  # <- single items (should not be mean/ema-reduced over time).
             )
 
         return L_critic
@@ -722,7 +740,7 @@ class DreamerV3TorchLearner(DreamerV3Learner, TorchLearner):
     def _compute_value_targets(
         self,
         *,
-        hps: DreamerV3LearnerHyperparameters,
+        config: DreamerV3Config,
         rewards_t0_to_H_BxT: torch.Tensor,
         intrinsic_rewards_t1_to_H_BxT: torch.Tensor,
         continues_t0_to_H_BxT: torch.Tensor,
@@ -749,7 +767,7 @@ class DreamerV3TorchLearner(DreamerV3Learner, TorchLearner):
         b/c the target value equals vf prediction in that location anyways.
 
         Args:
-            hps: The DreamerV3LearnerHyperparameters to use.
+            config: The DreamerV3Config to use.
             rewards_t0_to_H_BxT: The reward predictor's predictions over the
                 dreamed trajectory t0 to H (and for the batch BxT).
             intrinsic_rewards_t1_to_H_BxT: The predicted intrinsic rewards over the
@@ -772,17 +790,17 @@ class DreamerV3TorchLearner(DreamerV3Learner, TorchLearner):
         # In all the following, when building value targets for t=1 to T=H,
         # exclude rewards & continues for t=1 b/c we don't need r1 or c1.
         # The target (R1) for V1 is built from r2, c2, and V2/R2.
-        discount = continues_t0_to_H_BxT[1:] * hps.gamma  # shape=[2-16, BxT]
+        discount = continues_t0_to_H_BxT[1:] * config.gamma  # shape=[2-16, BxT]
         Rs = [value_predictions_t0_to_H_BxT[-1]]  # Rs indices=[16]
         intermediates = (
             rewards_t1_to_H_BxT
-            + discount * (1 - hps.gae_lambda) * value_predictions_t0_to_H_BxT[1:]
+            + discount * (1 - config.gae_lambda) * value_predictions_t0_to_H_BxT[1:]
         )
         # intermediates.shape=[2-16, BxT]
 
         # Loop through reversed timesteps (axis=1) from T+1 to t=2.
         for t in reversed(range(discount.shape[0])):
-            Rs.append(intermediates[t] + discount[t] * hps.gae_lambda * Rs[-1])
+            Rs.append(intermediates[t] + discount[t] * config.gae_lambda * Rs[-1])
 
         # Reverse along time axis and cut the last entry (value estimate at very end
         # cannot be learnt from as it's the same as the ... well ... value estimate).
@@ -793,8 +811,9 @@ class DreamerV3TorchLearner(DreamerV3Learner, TorchLearner):
 
     def _compute_scaled_value_targets(
         self,
+        *,
         module_id: ModuleID,
-        hps: DreamerV3LearnerHyperparameters,
+        config: DreamerV3Config,
         value_targets_t0_to_Hm1_BxT: torch.Tensor,
         value_predictions_t0_to_Hm1_BxT: torch.Tensor,
     ) -> torch.Tensor:
@@ -802,7 +821,7 @@ class DreamerV3TorchLearner(DreamerV3Learner, TorchLearner):
 
         Args:
             module_id: The module_id to compute value targets for.
-            hps: The DreamerV3LearnerHyperparameters to use.
+            config: The DreamerV3Config to use.
             value_targets_t0_to_Hm1_BxT: The value targets computed by
                 `self._compute_value_targets` in the shape of (t0 to H-1, BxT)
                 and of type float32.
@@ -832,8 +851,8 @@ class DreamerV3TorchLearner(DreamerV3Learner, TorchLearner):
             Per_R_5,
             # Later update (something already stored in EMA variable): Update EMA.
             (
-                hps.return_normalization_decay * actor.ema_value_target_pct5
-                + (1.0 - hps.return_normalization_decay) * Per_R_5
+                config.return_normalization_decay * actor.ema_value_target_pct5
+                + (1.0 - config.return_normalization_decay) * Per_R_5
             ),
         )
         actor.ema_value_target_pct5.data = new_val_pct5
@@ -844,14 +863,13 @@ class DreamerV3TorchLearner(DreamerV3Learner, TorchLearner):
             # Later update (something already stored in EMA variable): Update EMA.
             Per_R_95,
             (
-                hps.return_normalization_decay * actor.ema_value_target_pct95
-                + (1.0 - hps.return_normalization_decay) * Per_R_95
+                config.return_normalization_decay * actor.ema_value_target_pct95
+                + (1.0 - config.return_normalization_decay) * Per_R_95
             ),
         )
         actor.ema_value_target_pct95.data = new_val_pct95
 
         # [1] eq. 11 (first term).
-        # Danijar's code: TODO: describe ...
         offset = actor.ema_value_target_pct5
         invscale = torch.clamp(
             (actor.ema_value_target_pct95 - actor.ema_value_target_pct5),

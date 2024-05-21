@@ -222,6 +222,7 @@ class WorldModel(nn.Module):
         """
         B = observations.shape[0]
         initial_states = tree.map_structure(
+            # Repeat only the batch dimension (B times).
             lambda s: s.tile(B, *([1] * (len(s.shape) - 1))),
             self.get_initial_state(),
         )

@@ -161,7 +161,7 @@ class TorchMLP(nn.Module):
                 # Insert a layer normalization in between layer's output and
                 # the activation.
                 if hidden_layer_use_layernorm:
-                    layers.append(nn.LayerNorm(dims[i + 1]))
+                    layers.append(nn.LayerNorm(dims[i + 1], eps=0.001))
                 # Add the activation function.
                 if hidden_activation is not None:
                     layers.append(hidden_activation())
