@@ -2339,7 +2339,7 @@ tornado==6.1
     #   notebook
     #   pymars
     #   terminado
-tqdm==4.64.1
+tqdm==4.66.3
     # via
     #   -r /ray/ci/../python/requirements/test-requirements.txt
     #   aim
