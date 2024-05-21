@@ -129,7 +129,7 @@ if __name__ == "__main__":
     serve.run(
         build_app(
             {
-                "model": "google/gemma-2b",
+                "model": "microsoft/phi-2",
                 "tensor-parallel-size": "1",
                 "dtype": "half",
             }
@@ -146,7 +146,7 @@ if __name__ == "__main__":
         api_key="NOT A REAL KEY",
     )
     chat_completion = client.chat.completions.create(
-        model="NousResearch/Meta-Llama-3-8B-Instruct",
+        model="microsoft/phi-2",
         messages=[
             {"role": "system", "content": "You are a helpful assistant."},
             {
