@@ -305,7 +305,7 @@ class WorldModel(nn.Module):
 
         # Make actions and `is_first` time-major.
         actions = actions.transpose(0, 1)
-        is_first = is_first.transpose(0, 1)
+        is_first = is_first.transpose(0, 1).float()
 
         # Loop through the T-axis of our samples and perform one computation step at
         # a time. This is necessary because the sequence model's output (h(t+1)) depends

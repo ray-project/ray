@@ -61,14 +61,14 @@ class TestDreamerV3(unittest.TestCase):
             )
         )
 
-        num_iterations = 2
+        num_iterations = 3
 
         for _ in framework_iterator(config, frameworks="torch"):
             for env in [
+                # "ALE/MsPacman-v5",
+                "Pendulum-v1",
                 "FrozenLake-v1",
                 "CartPole-v1",
-                "ALE/MsPacman-v5",
-                "Pendulum-v1",
             ]:
                 print("Env={}".format(env))
                 # Add one-hot observations for FrozenLake env.
@@ -100,8 +100,8 @@ class TestDreamerV3(unittest.TestCase):
                     start_states=rl_module.dreamer_model.get_initial_state(),
                     timesteps_burn_in=5,
                     timesteps_H=45,
-                    observations=sample["obs"][:1],  # B=1
-                    actions=(
+                    observations=torch.from_numpy(sample["obs"][:1]),  # B=1
+                    actions=torch.from_numpy(
                         one_hot(
                             sample["actions"],
                             depth=act_space.n,
@@ -112,19 +112,19 @@ class TestDreamerV3(unittest.TestCase):
                         :1
                     ],  # B=1
                 )
-                self.assertTrue(
-                    dream["actions_dreamed_t0_to_H_BxT"].shape
-                    == (46, 1)
+                check(
+                    dream["actions_dreamed_t0_to_H_BxT"].shape,
+                    (46, 1)
                     + (
                         (act_space.n,)
                         if isinstance(act_space, gym.spaces.Discrete)
                         else tuple(act_space.shape)
                     )
                 )
-                self.assertTrue(dream["continues_dreamed_t0_to_H_BxT"].shape == (46, 1))
-                self.assertTrue(
-                    dream["observations_dreamed_t0_to_H_BxT"].shape
-                    == [46, 1] + list(obs_space.shape)
+                check(dream["continues_dreamed_t0_to_H_BxT"].shape, (46, 1))
+                check(
+                    dream["observations_dreamed_t0_to_H_BxT"].shape,
+                    [46, 1] + list(obs_space.shape)
                 )
                 algo.stop()
 

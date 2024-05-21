@@ -279,7 +279,7 @@ class DreamerModel(nn.Module):
         # completely zero'd out. In general, we don't use dreamed data past any
         # predicted (or actual first) continue=False flags.
         c_dreamed_H_B = torch.cat(
-            [1.0 - start_is_terminated.unsqueeze(0), c_dreamed_H_B[1:]], dim=0
+            [1.0 - start_is_terminated.unsqueeze(0).float(), c_dreamed_H_B[1:]], dim=0
         )
 
         # Loss weights for each individual dreamed timestep. Zero-out all timesteps
@@ -382,7 +382,7 @@ class DreamerModel(nn.Module):
             states = self.world_model.forward_inference(
                 observations=observations[:, i],
                 previous_states=states,
-                is_first=torch.where(i == 0, torch.tensor(1.0), torch.tensor(0.0)),
+                is_first=torch.full((B,), 1.0 if i == 0 else 0.0),
             )
             states["a"] = actions[:, i]
 
@@ -425,30 +425,37 @@ class DreamerModel(nn.Module):
         # Fold time-rank for upcoming batch-predictions (no sequences needed anymore).
         h_states_t0_to_H_B = torch.stack(h_states_t0_to_H, dim=0)
         h_states_t0_to_HxB = h_states_t0_to_H_B.reshape(
-            [-1] + h_states_t0_to_H_B.shape[2:]
+            [-1] + list(h_states_t0_to_H_B.shape[2:])
         )
 
         z_states_prior_t0_to_H_B = torch.stack(z_states_prior_t0_to_H, dim=0)
         z_states_prior_t0_to_HxB = z_states_prior_t0_to_H_B.reshape(
-            [-1] + z_states_prior_t0_to_H_B.shape[2:]
+            [-1] + list(z_states_prior_t0_to_H_B.shape[2:])
         )
 
         a_t0_to_H_B = torch.stack(a_t0_to_H, dim=0)
 
+        # Compute o using decoder.
+        o_dreamed_t0_to_HxB = self.world_model.decoder(
+            h=h_states_t0_to_HxB,
+            z=z_states_prior_t0_to_HxB,
+        )
+        if self.world_model.symlog_obs:
+            o_dreamed_t0_to_HxB = inverse_symlog(o_dreamed_t0_to_HxB)
+
         # Compute r using reward predictor.
-        r_dreamed_t0_to_HxB = inverse_symlog(
+        r_dreamed_t0_to_H_B = inverse_symlog(
             self.world_model.reward_predictor(
                 h=h_states_t0_to_HxB,
                 z=z_states_prior_t0_to_HxB,
             )
-        )
-        r_dreamed_t0_to_HxB = r_dreamed_t0_to_HxB.reshape([-1, B])
+        ).reshape([-1, B])
 
         # Compute continues using continue predictor.
-        c_dreamed_t0_to_HxB = self.world_model.continue_predictor(
+        c_dreamed_t0_to_H_B = self.world_model.continue_predictor(
             h=h_states_t0_to_HxB,
             z=z_states_prior_t0_to_HxB,
-        )
+        ).reshape([-1, B])
 
         # Return everything as time-major (H, B, ...), where H is the timesteps dreamed
         # (NOT burn-in'd) and B is a batch dimension (this might or might not include
@@ -457,8 +464,12 @@ class DreamerModel(nn.Module):
         ret = {
             "h_states_t0_to_H_BxT": h_states_t0_to_H_B,
             "z_states_prior_t0_to_H_BxT": z_states_prior_t0_to_H_B,
-            "rewards_dreamed_t0_to_H_BxT": r_dreamed_t0_to_HxB,
-            "continues_dreamed_t0_to_H_BxT": c_dreamed_t0_to_HxB,
+            # Unfold time-ranks in predictions.
+            "observations_dreamed_t0_to_H_BxT": torch.reshape(
+                o_dreamed_t0_to_HxB, [-1, B] + list(observations.shape)[2:]
+            ),
+            "rewards_dreamed_t0_to_H_BxT": r_dreamed_t0_to_H_B,
+            "continues_dreamed_t0_to_H_BxT": c_dreamed_t0_to_H_B,
         }
 
         # Figure out action key (random, sampled from env, dreamed?).

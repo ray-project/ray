@@ -174,7 +174,7 @@ class DreamerV3TorchLearner(DreamerV3Learner, TorchLearner):
         prediction_losses = self._compute_world_model_prediction_losses(
             config=config,
             rewards_B_T=batch[Columns.REWARDS],
-            continues_B_T=(1.0 - batch["is_terminated"]),
+            continues_B_T=(1.0 - batch["is_terminated"].float()),
             fwd_out=fwd_out,
         )
 

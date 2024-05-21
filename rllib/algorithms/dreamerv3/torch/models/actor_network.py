@@ -162,7 +162,11 @@ class ActorNetwork(nn.Module):
 
         elif isinstance(self.action_space, gym.spaces.Box):
             # Compute Normal distribution from action_logits and std_logits
-            loc, scale = torch.split(action_dist_params_T_B, 2, dim=-1)
+            loc, scale = torch.split(
+                action_dist_params_T_B,
+                action_dist_params_T_B.shape[-1] // 2,
+                dim=-1,
+            )
             distr = torch.distributions.Normal(loc=loc, scale=scale)
 
             # If action_space is a box with multiple dims, make individual dims
