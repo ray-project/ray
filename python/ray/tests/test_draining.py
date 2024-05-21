@@ -143,7 +143,9 @@ def test_preemption(ray_start_cluster):
     assert worker_node["DeathReasonMessage"] == "preemption"
 
 
-def test_preemption_after_draining_deadline(ray_start_cluster):
+def test_preemption_after_draining_deadline(
+    ray_start_cluster, fast_node_failure_detection
+):
     cluster = ray_start_cluster
     head_node = cluster.add_node(resources={"head": 1})
     ray.init(address=cluster.address)
@@ -181,12 +183,9 @@ def test_preemption_after_draining_deadline(ray_start_cluster):
     # after the draining deadline.
     cluster.remove_node(worker_node, False)
 
-    # Use a larger timeout to wait for GCS health checker
-    # marks the worker node as dead.
     wait_for_condition(
         lambda: {node["NodeID"] for node in ray.nodes() if (node["Alive"])}
         == {head_node_id},
-        timeout=100,
     )
 
     worker_node = [node for node in ray.nodes() if node["NodeID"] == worker_node_id][0]
@@ -198,7 +197,9 @@ def test_preemption_after_draining_deadline(ray_start_cluster):
     )
 
 
-def test_node_death_before_draining_deadline(ray_start_cluster):
+def test_node_death_before_draining_deadline(
+    ray_start_cluster, fast_node_failure_detection
+):
     cluster = ray_start_cluster
     head_node = cluster.add_node(resources={"head": 1})
     ray.init(address=cluster.address)
@@ -235,12 +236,9 @@ def test_node_death_before_draining_deadline(ray_start_cluster):
     # Simulate the worker node crashes before the draining deadline.
     cluster.remove_node(worker_node, False)
 
-    # Use a larger timeout to wait for GCS health checker
-    # marks the worker node as dead.
     wait_for_condition(
         lambda: {node["NodeID"] for node in ray.nodes() if (node["Alive"])}
         == {head_node_id},
-        timeout=100,
     )
 
     # Since worker node failure is detected to be before the draining deadline,
