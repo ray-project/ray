@@ -28,6 +28,10 @@
 namespace ray {
 namespace gcs {
 
+// Default GCS Client timeout in milliseconds, as defined in
+// RAY_gcs_server_request_timeout_seconds
+int64_t GetGcsTimeoutMs();
+
 using SubscribeOperation = std::function<Status(const StatusCallback &done)>;
 using FetchDataOperation = std::function<void(const StatusCallback &done)>;
 
