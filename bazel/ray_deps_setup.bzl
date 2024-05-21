@@ -64,7 +64,7 @@ def auto_http_archive(
         ]
         urls.insert(0 if prefer_url_over_mirrors else len(urls), canonical_url)
     else:
-        print("No implicit mirrors used because urls were explicitly provided")
+        print("No implicit mirrors used for %s because urls were explicitly provided" % name)
 
     if strip_prefix == True:
         prefix_without_v = url_filename_parts[0]
@@ -189,8 +189,8 @@ def ray_deps_setup():
     auto_http_archive(
         name = "cython",
         build_file = True,
-        url = "https://github.com/cython/cython/archive/c48361d0a0969206e227ec016f654c9d941c2b69.tar.gz",
-        sha256 = "37c466fea398da9785bc37fe16f1455d2645d21a72e402103991d9e2fa1c6ff3",
+        url = "https://github.com/cython/cython/archive/refs/tags/0.29.37.tar.gz",
+        sha256 = "824eb14045d85c5af677536134199dd6709db8fb0835452fd2d54bc3c8df8887",
     )
 
     auto_http_archive(
