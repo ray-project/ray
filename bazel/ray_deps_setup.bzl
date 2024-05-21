@@ -125,7 +125,7 @@ def ray_deps_setup():
         ],
     )
 
-    http_archive(
+    auto_http_archive(
         name = "com_github_spdlog",
         build_file = "@com_github_ray_project_ray//bazel:BUILD.spdlog",
         urls = ["https://github.com/gabime/spdlog/archive/v1.12.0.zip"],
@@ -212,7 +212,7 @@ def ray_deps_setup():
 
     # OpenCensus depends on Abseil so we have to explicitly pull it in.
     # This is how diamond dependencies are prevented.
-    http_archive(
+    auto_http_archive(
         name = "com_google_absl",
         sha256 = "5366d7e7fa7ba0d915014d387b66d0d002c03236448e1ba9ef98122c13b35c36",
         strip_prefix = "abseil-cpp-20230125.3",
