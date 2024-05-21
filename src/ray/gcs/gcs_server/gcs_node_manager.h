@@ -179,18 +179,15 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   /// Set the death info of the node.
   ///
   /// \param node_id The ID of the node.
-  /// \param death_info The death info of the node, must be non-null.
-  void SetDeathInfo(const NodeID &node_id, shared_ptr<rpc::NodeDeathInfo> death_info);
+  /// \param death_info The death info of the node.
+  void SetDeathInfo(const NodeID &node_id, const rpc::NodeDeathInfo &death_info);
 
   /// Infer death cause of the node based on existing draining requests.
   ///
-  /// \param[in] node_id The ID of the node. The node must not be removed
+  /// \param node_id The ID of the node. The node must not be removed
   /// from alive nodes yet.
-  /// \param[out] caused_by_draining The inferred result that whether the node death
-  /// is caused by draining.
-  /// \return The inferred death info of the node, non-null.
-  shared_ptr<rpc::NodeDeathInfo> InferDeathInfo(const NodeID &node_id,
-                                                bool &caused_by_draining);
+  /// \return The inferred death info of the node.
+  rpc::NodeDeathInfo InferDeathInfo(const NodeID &node_id);
 
   /// Alive nodes.
   absl::flat_hash_map<NodeID, std::shared_ptr<rpc::GcsNodeInfo>> alive_nodes_;

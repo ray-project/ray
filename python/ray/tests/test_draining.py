@@ -14,17 +14,13 @@ from ray.util.scheduling_strategies import (
 
 def test_idle_termination(ray_start_cluster):
     cluster = ray_start_cluster
-    cluster.add_node(resources={"head": 1})
+    head_node = cluster.add_node(resources={"head": 1})
     ray.init(address=cluster.address)
-    cluster.add_node(resources={"worker": 1})
+    worker_node = cluster.add_node(resources={"worker": 1})
     cluster.wait_for_nodes()
 
-    @ray.remote
-    def get_node_id():
-        return ray.get_runtime_context().get_node_id()
-
-    head_node_id = ray.get(get_node_id.options(resources={"head": 1}).remote())
-    worker_node_id = ray.get(get_node_id.options(resources={"worker": 1}).remote())
+    head_node_id = head_node.node_id
+    worker_node_id = worker_node.node_id
 
     wait_for_condition(
         lambda: {node["NodeID"] for node in ray.nodes() if (node["Alive"])}
@@ -90,17 +86,13 @@ def test_idle_termination(ray_start_cluster):
 
 def test_preemption(ray_start_cluster):
     cluster = ray_start_cluster
-    cluster.add_node(resources={"head": 1})
+    head_node = cluster.add_node(resources={"head": 1})
     ray.init(address=cluster.address)
-    cluster.add_node(resources={"worker": 1})
+    worker_node = cluster.add_node(resources={"worker": 1})
     cluster.wait_for_nodes()
 
-    @ray.remote
-    def get_node_id():
-        return ray.get_runtime_context().get_node_id()
-
-    head_node_id = ray.get(get_node_id.options(resources={"head": 1}).remote())
-    worker_node_id = ray.get(get_node_id.options(resources={"worker": 1}).remote())
+    head_node_id = head_node.node_id
+    worker_node_id = worker_node.node_id
 
     @ray.remote(num_cpus=1, resources={"worker": 1})
     class Actor:
@@ -153,17 +145,13 @@ def test_preemption(ray_start_cluster):
 
 def test_preemption_after_draining_deadline(ray_start_cluster):
     cluster = ray_start_cluster
-    cluster.add_node(resources={"head": 1})
+    head_node = cluster.add_node(resources={"head": 1})
     ray.init(address=cluster.address)
     worker_node = cluster.add_node(resources={"worker": 1})
     cluster.wait_for_nodes()
 
-    @ray.remote
-    def get_node_id():
-        return ray.get_runtime_context().get_node_id()
-
-    head_node_id = ray.get(get_node_id.options(resources={"head": 1}).remote())
-    worker_node_id = ray.get(get_node_id.options(resources={"worker": 1}).remote())
+    head_node_id = head_node.node_id
+    worker_node_id = worker_node.node_id
 
     wait_for_condition(
         lambda: {node["NodeID"] for node in ray.nodes() if (node["Alive"])}
@@ -180,22 +168,17 @@ def test_preemption_after_draining_deadline(ray_start_cluster):
 
     gcs_client = GcsClient(address=ray.get_runtime_context().gcs_address)
 
-    # Set draining deadline as 2 seconds later.
-    delay_seconds = 2
-    draining_deadline_timestamp_ms = int(time.time() * 1000.0) + delay_seconds * 1000
-
     # The worker node is not idle but the drain request should be still accepted.
     is_accepted, _ = gcs_client.drain_node(
         worker_node_id,
         autoscaler_pb2.DrainNodeReason.Value("DRAIN_NODE_REASON_PREEMPTION"),
         "preemption",
-        draining_deadline_timestamp_ms,
+        1,
     )
     assert is_accepted
 
     # Simulate node provider forcefully terminates the worker node
-    # after the draining timeline.
-    time.sleep(delay_seconds)
+    # after the draining deadline.
     cluster.remove_node(worker_node, False)
 
     # Use a larger timeout to wait for GCS health checker
@@ -217,17 +200,13 @@ def test_preemption_after_draining_deadline(ray_start_cluster):
 
 def test_node_death_before_draining_deadline(ray_start_cluster):
     cluster = ray_start_cluster
-    cluster.add_node(resources={"head": 1})
+    head_node = cluster.add_node(resources={"head": 1})
     ray.init(address=cluster.address)
     worker_node = cluster.add_node(resources={"worker": 1})
     cluster.wait_for_nodes()
 
-    @ray.remote
-    def get_node_id():
-        return ray.get_runtime_context().get_node_id()
-
-    head_node_id = ray.get(get_node_id.options(resources={"head": 1}).remote())
-    worker_node_id = ray.get(get_node_id.options(resources={"worker": 1}).remote())
+    head_node_id = head_node.node_id
+    worker_node_id = worker_node.node_id
 
     wait_for_condition(
         lambda: {node["NodeID"] for node in ray.nodes() if (node["Alive"])}
@@ -244,21 +223,16 @@ def test_node_death_before_draining_deadline(ray_start_cluster):
 
     gcs_client = GcsClient(address=ray.get_runtime_context().gcs_address)
 
-    # Set draining deadline as 60 seconds later.
-    delay_seconds = 60
-    draining_deadline_timestamp_ms = int(time.time() * 1000.0) + delay_seconds * 1000
-    print(f"draining_deadline_timestamp_ms: {draining_deadline_timestamp_ms}")
-
     # The worker node is not idle but the drain request should be still accepted.
     is_accepted, _ = gcs_client.drain_node(
         worker_node_id,
         autoscaler_pb2.DrainNodeReason.Value("DRAIN_NODE_REASON_PREEMPTION"),
         "preemption",
-        draining_deadline_timestamp_ms,
+        2**63 - 1,
     )
     assert is_accepted
 
-    # Simulate the worker node crashes before the draining timeline.
+    # Simulate the worker node crashes before the draining deadline.
     cluster.remove_node(worker_node, False)
 
     # Use a larger timeout to wait for GCS health checker
@@ -284,19 +258,15 @@ def test_node_death_before_draining_deadline(ray_start_cluster):
 def test_scheduling_placement_groups_during_draining(ray_start_cluster):
     """Test that the draining node is unschedulable for new pgs."""
     cluster = ray_start_cluster
-    cluster.add_node(num_cpus=1, resources={"node1": 1})
+    node1 = cluster.add_node(num_cpus=1, resources={"node1": 1})
     ray.init(address=cluster.address)
-    cluster.add_node(num_cpus=1, resources={"node2": 1})
+    node2 = cluster.add_node(num_cpus=1, resources={"node2": 1})
     cluster.add_node(num_cpus=2, resources={"node3": 1})
     cluster.wait_for_nodes()
 
-    @ray.remote
-    def get_node_id():
-        return ray.get_runtime_context().get_node_id()
-
-    node1_id = ray.get(get_node_id.options(resources={"node1": 1}).remote())
-    node2_id = ray.get(get_node_id.options(resources={"node2": 1}).remote())
-    node3_id = ray.get(get_node_id.options(resources={"node3": 1}).remote())
+    node1_id = node1.node_id
+    node2_id = node2.node_id
+    node3_id = node2.node_id
 
     gcs_client = GcsClient(address=ray.get_runtime_context().gcs_address)
 
@@ -308,6 +278,10 @@ def test_scheduling_placement_groups_during_draining(ray_start_cluster):
         2**63 - 1,
     )
     assert is_accepted
+
+    @ray.remote
+    def get_node_id():
+        return ray.get_runtime_context().get_node_id()
 
     # Even though node3 is the best for pack but it's draining
     # so the pg should be on node1 and node2
@@ -335,17 +309,13 @@ def test_scheduling_placement_groups_during_draining(ray_start_cluster):
 def test_scheduling_tasks_and_actors_during_draining(ray_start_cluster):
     """Test that the draining node is unschedulable for new tasks and actors."""
     cluster = ray_start_cluster
-    cluster.add_node(num_cpus=1, resources={"head": 1})
+    head_node = cluster.add_node(num_cpus=1, resources={"head": 1})
     ray.init(address=cluster.address)
-    cluster.add_node(num_cpus=1, resources={"worker": 1})
+    worker_node = cluster.add_node(num_cpus=1, resources={"worker": 1})
     cluster.wait_for_nodes()
 
-    @ray.remote
-    def get_node_id():
-        return ray.get_runtime_context().get_node_id()
-
-    head_node_id = ray.get(get_node_id.options(resources={"head": 1}).remote())
-    worker_node_id = ray.get(get_node_id.options(resources={"worker": 1}).remote())
+    head_node_id = head_node.node_id
+    worker_node_id = worker_node.node_id
 
     @ray.remote
     class Actor:
@@ -365,6 +335,10 @@ def test_scheduling_tasks_and_actors_during_draining(ray_start_cluster):
         2**63 - 1,
     )
     assert is_accepted
+
+    @ray.remote
+    def get_node_id():
+        return ray.get_runtime_context().get_node_id()
 
     assert (
         ray.get(get_node_id.options(scheduling_strategy="SPREAD").remote())
@@ -414,7 +388,7 @@ def test_draining_reason(ray_start_cluster):
     ray.init(
         address=cluster.address,
     )
-    n = cluster.add_node(num_cpus=1, resources={"node2": 1})
+    node2 = cluster.add_node(num_cpus=1, resources={"node2": 1})
 
     @ray.remote
     class Actor:
@@ -423,11 +397,7 @@ def test_draining_reason(ray_start_cluster):
 
     gcs_client = GcsClient(address=ray.get_runtime_context().gcs_address)
 
-    @ray.remote
-    def get_node_id():
-        return ray.get_runtime_context().get_node_id()
-
-    node2_id = ray.get(get_node_id.options(resources={"node2": 1}).remote())
+    node2_id = node2.node_id
 
     # Schedule actor
     actor = Actor.options(num_cpus=0, resources={"node2": 1}).remote()
@@ -443,7 +413,7 @@ def test_draining_reason(ray_start_cluster):
     assert is_accepted
 
     # Simulate node provider forcefully terminates the worker node
-    cluster.remove_node(n, False)
+    cluster.remove_node(node2, False)
     try:
         ray.get(actor.ping.remote())
         raise

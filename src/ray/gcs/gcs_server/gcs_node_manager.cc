@@ -113,7 +113,7 @@ void GcsNodeManager::HandleUnregisterNode(rpc::UnregisterNodeRequest request,
                                           rpc::SendReplyCallback send_reply_callback) {
   NodeID node_id = NodeID::FromBinary(request.node_id());
   RAY_LOG(DEBUG) << "HandleUnregisterNode() for node id = " << node_id;
-  SetDeathInfo(node_id, std::make_shared<rpc::NodeDeathInfo>(request.node_death_info()));
+  SetDeathInfo(node_id, request.node_death_info());
   auto node = RemoveNode(node_id, /* is_intended = */ true);
   if (!node) {
     RAY_LOG(INFO) << "Node " << node_id << " is already removed";
@@ -225,7 +225,7 @@ absl::optional<std::shared_ptr<rpc::GcsNodeInfo>> GcsNodeManager::GetAliveNode(
 }
 
 void GcsNodeManager::SetDeathInfo(const NodeID &node_id,
-                                  shared_ptr<rpc::NodeDeathInfo> death_info) {
+                                  const rpc::NodeDeathInfo &death_info) {
   auto maybe_node = GetAliveNode(node_id);
   if (!maybe_node.has_value()) {
     RAY_LOG(INFO) << "Skip setting death info for node " << node_id
@@ -233,51 +233,48 @@ void GcsNodeManager::SetDeathInfo(const NodeID &node_id,
     return;
   }
 
-  RAY_CHECK(death_info) << "death_info should not be nullptr";
   auto node = std::move(maybe_node.value());
   auto node_death_info = node->mutable_death_info();
-  node_death_info->CopyFrom(*death_info);
-  RAY_LOG(INFO) << "Setting death info for node " << node_id << ": Reason = "
-                << rpc::NodeDeathInfo_Reason_Name(node_death_info->reason())
-                << ", message = " << node_death_info->reason_message();
+  node_death_info->CopyFrom(death_info);
 }
 
-shared_ptr<rpc::NodeDeathInfo> GcsNodeManager::InferDeathInfo(const NodeID &node_id,
-                                                              bool &caused_by_draining) {
+rpc::NodeDeathInfo GcsNodeManager::InferDeathInfo(const NodeID &node_id) {
   auto maybe_node = GetAliveNode(node_id);
   RAY_CHECK(maybe_node.has_value())
       << "InferDeathInfo() should be called before node is removed";
   auto node = maybe_node.value();
   auto iter = draining_nodes_.find(node_id);
-  auto death_info = std::make_shared<rpc::NodeDeathInfo>();
+  rpc::NodeDeathInfo death_info;
+
+  bool may_expect_force_termination;
   if (iter == draining_nodes_.end()) {
-    caused_by_draining = false;
+    may_expect_force_termination = false;
   } else if (iter->second->deadline_timestamp_ms() == 0) {
-    // If there is no draining deadline, there should not be force termination
-    caused_by_draining = false;
+    // If there is no draining deadline, there should be no force termination
+    may_expect_force_termination = false;
   } else {
-    caused_by_draining = current_sys_time_ms() > iter->second->deadline_timestamp_ms();
+    may_expect_force_termination =
+        current_sys_time_ms() > iter->second->deadline_timestamp_ms();
   }
 
-  RAY_LOG(INFO) << "For the death of node " << node_id
-                << ", inferred caused_by_draining = " << caused_by_draining;
-
-  if (caused_by_draining) {
+  if (may_expect_force_termination) {
     std::shared_ptr<rpc::autoscaler::DrainNodeRequest> drain_request = iter->second;
     if (drain_request->reason() ==
         rpc::autoscaler::DrainNodeReason::DRAIN_NODE_REASON_PREEMPTION) {
-      death_info->set_reason(rpc::NodeDeathInfo::AUTOSCALER_DRAIN_PREEMPTED);
-      death_info->set_reason_message(drain_request->reason_message() +
-                                     " (Node was forcibly preempted)");
+      death_info.set_reason(rpc::NodeDeathInfo::AUTOSCALER_DRAIN_PREEMPTED);
+      death_info.set_reason_message(drain_request->reason_message() +
+                                    " (Node was forcibly preempted)");
     } else {
-      death_info->set_reason(rpc::NodeDeathInfo::UNEXPECTED_TERMINATION);
-      death_info->set_reason_message(
+      RAY_CHECK_EQ(drain_request->reason(),
+                   rpc::autoscaler::DrainNodeReason::DRAIN_NODE_REASON_IDLE_TERMINATION);
+      death_info.set_reason(rpc::NodeDeathInfo::UNEXPECTED_TERMINATION);
+      death_info.set_reason_message(
           drain_request->reason_message() +
           " (Node was forcibly terminated during idle termination)");
     }
   } else {
-    death_info->set_reason(rpc::NodeDeathInfo::UNEXPECTED_TERMINATION);
-    death_info->set_reason_message("Health check failed: missing too many heartbeats.");
+    death_info.set_reason(rpc::NodeDeathInfo::UNEXPECTED_TERMINATION);
+    death_info.set_reason_message("Health check failed: missing too many heartbeats.");
   }
   return death_info;
 }
@@ -319,8 +316,11 @@ std::shared_ptr<rpc::GcsNodeInfo> GcsNodeManager::RemoveNode(
   auto iter = alive_nodes_.find(node_id);
   if (iter != alive_nodes_.end()) {
     removed_node = std::move(iter->second);
+    auto death_info = removed_node->death_info();
     RAY_LOG(INFO) << "Removing node, node id = " << node_id
-                  << ", node name = " << removed_node->node_name();
+                  << ", node name = " << removed_node->node_name() << ", death reason = "
+                  << rpc::NodeDeathInfo_Reason_Name(death_info.reason())
+                  << ", death message = " << death_info.reason_message();
     // Record stats that there's a new removed node.
     stats::NodeFailureTotal.Record(1);
     // Remove from alive nodes.
@@ -362,11 +362,11 @@ std::shared_ptr<rpc::GcsNodeInfo> GcsNodeManager::RemoveNode(
 
 void GcsNodeManager::OnNodeFailure(const NodeID &node_id,
                                    const StatusCallback &node_table_updated_callback) {
-  bool caused_by_draining;
-  auto death_info = InferDeathInfo(node_id, caused_by_draining);
+  rpc::NodeDeathInfo death_info = InferDeathInfo(node_id);
   SetDeathInfo(node_id, death_info);
-
-  if (auto node = RemoveNode(node_id, /* is_intended = */ caused_by_draining)) {
+  bool is_expected_termination =
+      (death_info.reason() != rpc::NodeDeathInfo::UNEXPECTED_TERMINATION);
+  if (auto node = RemoveNode(node_id, is_expected_termination)) {
     node->set_state(rpc::GcsNodeInfo::DEAD);
     node->set_end_time_ms(current_sys_time_ms());
 
