@@ -130,7 +130,7 @@ class NonTerminatedNodes:
         self.multi_host_replicas_to_workers = defaultdict(list)
 
         for node in self.all_node_ids:
-            tags = self.provider.node_tags(node)
+            tags = provider.node_tags(node)
             node_kind = tags[TAG_RAY_NODE_KIND]
             if node_kind == NODE_KIND_WORKER:
                 self.worker_ids.append(node)
