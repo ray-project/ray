@@ -26,19 +26,20 @@ def test_normal_termination(ray_start_cluster):
     assert worker_node_info["DeathReasonMessage"] == "received SIGTERM"
 
 
-def test_abnormal_termination(ray_start_cluster, fast_node_failure_detection):
+def test_abnormal_termination(monkeypatch, ray_start_cluster):
+    monkeypatch.setenv("RAY_health_check_failure_threshold", "3")
+    monkeypatch.setenv("RAY_health_check_timeout_ms", "100")
+    monkeypatch.setenv("RAY_health_check_period_ms", "1000")
+    monkeypatch.setenv("RAY_health_check_initial_delay_ms", "0")
+
     cluster = ray_start_cluster
-    cluster.add_node(resources={"head": 1})
+    head_node = cluster.add_node(resources={"head": 1})
     ray.init(address=cluster.address)
     worker_node = cluster.add_node(resources={"worker": 1})
     cluster.wait_for_nodes()
 
-    @ray.remote
-    def get_node_id():
-        return ray.get_runtime_context().get_node_id()
-
-    head_node_id = ray.get(get_node_id.options(resources={"head": 1}).remote())
-    worker_node_id = ray.get(get_node_id.options(resources={"worker": 1}).remote())
+    head_node_id = head_node.node_id
+    worker_node_id = worker_node.node_id
 
     wait_for_condition(
         lambda: {node["NodeID"] for node in ray.nodes() if (node["Alive"])}

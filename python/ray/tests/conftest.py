@@ -772,34 +772,6 @@ def use_tls(request):
         teardown_tls(key_filepath, cert_filepath, temp_dir)
 
 
-@pytest.fixture
-def fast_node_failure_detection():
-    """
-    This fixture sets the environment variables to configure
-    the GCS health checker for fast node failure detection.
-    """
-    initial_delay_ms = os.getenv("RAY_health_check_initial_delay_ms", None)
-    period_ms = os.getenv("RAY_health_check_period_ms", None)
-    failure_threshold = os.getenv("RAY_health_check_failure_threshold", None)
-
-    os.environ["RAY_health_check_initial_delay_ms"] = "0"
-    os.environ["RAY_health_check_period_ms"] = "1000"
-    os.environ["RAY_health_check_failure_threshold"] = "3"
-    yield
-    if initial_delay_ms is None:
-        del os.environ["RAY_health_check_initial_delay_ms"]
-    else:
-        os.environ["RAY_health_check_initial_delay_ms"] = initial_delay_ms
-    if period_ms is None:
-        del os.environ["RAY_health_check_period_ms"]
-    else:
-        os.environ["RAY_health_check_period_ms"] = period_ms
-    if failure_threshold is None:
-        del os.environ["RAY_health_check_failure_threshold"]
-    else:
-        os.environ["RAY_health_check_failure_threshold"] = failure_threshold
-
-
 """
 Object spilling test fixture
 """

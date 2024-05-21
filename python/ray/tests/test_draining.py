@@ -143,9 +143,12 @@ def test_preemption(ray_start_cluster):
     assert worker_node["DeathReasonMessage"] == "preemption"
 
 
-def test_preemption_after_draining_deadline(
-    ray_start_cluster, fast_node_failure_detection
-):
+def test_preemption_after_draining_deadline(monkeypatch, ray_start_cluster):
+    monkeypatch.setenv("RAY_health_check_failure_threshold", "3")
+    monkeypatch.setenv("RAY_health_check_timeout_ms", "100")
+    monkeypatch.setenv("RAY_health_check_period_ms", "1000")
+    monkeypatch.setenv("RAY_health_check_initial_delay_ms", "0")
+
     cluster = ray_start_cluster
     head_node = cluster.add_node(resources={"head": 1})
     ray.init(address=cluster.address)
@@ -195,9 +198,12 @@ def test_preemption_after_draining_deadline(
     assert worker_node["DeathReasonMessage"] == "preemption"
 
 
-def test_node_death_before_draining_deadline(
-    ray_start_cluster, fast_node_failure_detection
-):
+def test_node_death_before_draining_deadline(monkeypatch, ray_start_cluster):
+    monkeypatch.setenv("RAY_health_check_failure_threshold", "3")
+    monkeypatch.setenv("RAY_health_check_timeout_ms", "100")
+    monkeypatch.setenv("RAY_health_check_period_ms", "1000")
+    monkeypatch.setenv("RAY_health_check_initial_delay_ms", "0")
+
     cluster = ray_start_cluster
     head_node = cluster.add_node(resources={"head": 1})
     ray.init(address=cluster.address)
