@@ -57,18 +57,18 @@ class Stride2D(nn.Module):
         # Squeeze in batch and channel dims.
         self.zeros = self.zeros.unsqueeze(0).unsqueeze(0)
 
-        self.where_template = torch.zeros(
+        where_template = torch.zeros(
             (self.stride_w, self.stride_h), dtype=torch.float32
         )
         # Set upper/left corner to 1.0.
-        self.where_template[0][0] = 1.0
+        where_template[0][0] = 1.0
         # then tile across the entire (strided) image size.
-        self.where_template = self.where_template.repeat((self.height, self.width))[
+        where_template = where_template.repeat((self.height, self.width))[
             : -(self.stride_w - 1), : -(self.stride_h - 1)
         ]
         # Squeeze in batch and channel dims and convert to bool.
-        self.where_template = self.where_template.unsqueeze(0).unsqueeze(0).bool()
-        self.register_buffer("where_template", self.where_template)
+        where_template = where_template.unsqueeze(0).unsqueeze(0).bool()
+        self.register_buffer("where_template", where_template)
 
     def forward(self, x):
         # Repeat incoming image stride(w/h) times to match the strided output template.

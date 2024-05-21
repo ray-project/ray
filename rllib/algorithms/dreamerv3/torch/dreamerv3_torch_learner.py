@@ -378,7 +378,7 @@ class DreamerV3TorchLearner(DreamerV3Learner, TorchLearner):
         rewards_symlog_BxT = rewards_symlog_B_T.reshape(-1)
 
         # Two-hot encode.
-        two_hot_rewards_symlog_BxT = two_hot(rewards_symlog_BxT)
+        two_hot_rewards_symlog_BxT = two_hot(rewards_symlog_BxT, device=self._device)
         # two_hot_rewards_symlog_BxT=[B*T, num_buckets]
         reward_log_pred_BxT = reward_logits_BxT - torch.logsumexp(
             reward_logits_BxT, dim=-1, keepdim=True
@@ -652,7 +652,7 @@ class DreamerV3TorchLearner(DreamerV3Learner, TorchLearner):
         value_symlog_targets_HxB = value_symlog_targets_t0_to_Hm1_B.view(
             -1,
         )
-        value_symlog_targets_two_hot_HxB = two_hot(value_symlog_targets_HxB)
+        value_symlog_targets_two_hot_HxB = two_hot(value_symlog_targets_HxB, device=self._device)
         # Unfold time rank.
         value_symlog_targets_two_hot_t0_to_Hm1_B = (
             value_symlog_targets_two_hot_HxB.view(
@@ -684,7 +684,7 @@ class DreamerV3TorchLearner(DreamerV3Learner, TorchLearner):
         value_symlog_ema_HxB = value_symlog_ema_t0_to_Hm1_B.view(
             -1,
         )
-        value_symlog_ema_two_hot_HxB = two_hot(value_symlog_ema_HxB)
+        value_symlog_ema_two_hot_HxB = two_hot(value_symlog_ema_HxB, device=self._device)
         # Unfold time rank.
         value_symlog_ema_two_hot_t0_to_Hm1_B = value_symlog_ema_two_hot_HxB.view(
             [Hm1, B, value_symlog_ema_two_hot_HxB.shape[-1]]
