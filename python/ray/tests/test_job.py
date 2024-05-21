@@ -25,6 +25,8 @@ from ray.job_config import JobConfig
 from ray.job_submission import JobSubmissionClient
 from ray.dashboard.modules.job.pydantic_models import JobDetails
 
+from ray._private.structured_logging.utils import LoggingConfig
+
 
 def execute_driver(commands: List[str], input: bytes = None):
     p = None
@@ -193,25 +195,26 @@ def test_config_metadata(shutdown_only):
 
 class TestPyLogConfig:
     def test_serialized_log_config_dict(self):
-        log_config_dict = {"abc": "xyz"}
-        serialized_log_config_dict = pickle.dumps(log_config_dict)
-        job_config = JobConfig(py_log_config=log_config_dict)
+        py_log_config = LoggingConfig({"abc": "xyz"})
+        serialized_py_log_config = pickle.dumps(py_log_config)
+        job_config = JobConfig(py_log_config=py_log_config)
         pb = job_config._get_proto_job_config()
-        assert pb.serialized_log_config_dict == serialized_log_config_dict
+        assert pb.serialized_py_log_config == serialized_py_log_config
 
     def test_log_config_str(self):
-        log_config_str = "log_config_str"
-        job_config = JobConfig(py_log_config=log_config_str)
+        py_log_config = LoggingConfig("TEXT")
+        serialized_py_log_config = pickle.dumps(py_log_config)
+        job_config = JobConfig(py_log_config=py_log_config)
         pb = job_config._get_proto_job_config()
-        assert pb.log_config_str == log_config_str
+        assert pb.serialized_py_log_config == serialized_py_log_config
 
     def test_read_log_config_from_json(self):
-        log_config_dict = {"abc": "xyz"}
-        serialized_log_config_dict = pickle.dumps(log_config_dict)
-        job_config_json = {"py_log_config": log_config_dict}
+        py_log_config = LoggingConfig({"abc": "xyz"})
+        serialized_py_log_config = pickle.dumps(py_log_config)
+        job_config_json = {"py_log_config": py_log_config}
         job_config = JobConfig.from_json(job_config_json)
         pb = job_config._get_proto_job_config()
-        assert pb.serialized_log_config_dict == serialized_log_config_dict
+        assert pb.serialized_py_log_config == serialized_py_log_config
 
 
 def test_get_entrypoint():

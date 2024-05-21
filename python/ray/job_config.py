@@ -2,6 +2,7 @@ import uuid
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
 import ray.cloudpickle as pickle
+from ray._private.structured_logging.utils import LoggingConfig
 from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
@@ -51,7 +52,7 @@ class JobConfig:
         ray_namespace: Optional[str] = None,
         default_actor_lifetime: str = "non_detached",
         _py_driver_sys_path: Optional[List[str]] = None,
-        py_log_config: Optional[Union[dict, str]] = None,
+        py_log_config: Optional[LoggingConfig] = None,
     ):
         #: The jvm options for java workers of the job.
         self.jvm_options = jvm_options or []
@@ -193,10 +194,7 @@ class JobConfig:
             if self._default_actor_lifetime is not None:
                 pb.default_actor_lifetime = self._default_actor_lifetime
             if self.py_log_config is not None:
-                if isinstance(self.py_log_config, dict):
-                    pb.serialized_log_config_dict = pickle.dumps(self.py_log_config)
-                else:
-                    pb.log_config_str = self.py_log_config
+                pb.serialized_py_log_config = pickle.dumps(self.py_log_config)
             self._cached_pb = pb
 
         return self._cached_pb

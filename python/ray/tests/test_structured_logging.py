@@ -151,8 +151,11 @@ class TestTextModeE2E:
         script = """
 import ray
 import logging
+from ray._private.structured_logging.utils import LoggingConfig
 
-ray.init(job_config=ray.job_config.JobConfig(py_log_config="TEXT"))
+ray.init(
+    job_config=ray.job_config.JobConfig(py_log_config=LoggingConfig("TEXT"))
+)
 
 @ray.remote
 def f():
@@ -179,17 +182,21 @@ ray.get(obj_ref)
         script = """
 import ray
 import logging
+from ray._private.structured_logging.utils import LoggingConfig
 
-ray.init(job_config=ray.job_config.JobConfig(py_log_config="TEXT"))
+ray.init(
+    job_config=ray.job_config.JobConfig(py_log_config=LoggingConfig("TEXT"))
+)
 
 @ray.remote
 class actor:
     def __init__(self):
         pass
+
     def print_message(self):
         logger = logging.getLogger()
         logger.info("This is a Ray actor")
-    
+
 actor_instance = actor.remote()
 ray.get(actor_instance.print_message.remote())
 """
