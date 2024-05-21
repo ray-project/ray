@@ -810,7 +810,7 @@ def test_run_reload_basic(ray_start_stop, tmp_path):
     code_template = """
 from ray import serve
 
-@serve.deployment
+@serve.deployment{invalid_suffix}
 class MessageDeployment:
     def __init__(self, msg):
         self.msg = msg
@@ -822,9 +822,9 @@ class MessageDeployment:
 msg_app = MessageDeployment.bind("Hello {message}!")
     """
 
-    def write_file(message: str):
+    def write_file(message: str, invalid_suffix: str = ""):
         with open(os.path.join(tmp_path, "reload_serve.py"), "w") as f:
-            code = code_template.format(message=message)
+            code = code_template.format(invalid_suffix=invalid_suffix, message=message)
             print(f"Writing updated code:\n{code}")
             f.write(code)
             f.flush()
@@ -850,6 +850,15 @@ msg_app = MessageDeployment.bind("Hello {message}!")
     # Write the file: an update should be auto-triggered.
     write_file("Updated")
     wait_for_condition(lambda: ping_endpoint("") == "Hello Updated!", timeout=10)
+
+    # Ensure a bad change doesn't shut down serve.
+    write_file(message="update1", invalid_suffix="foobar")
+    time.sleep(5)  # Sleep for 5s to ensure this file change is picked up.
+    wait_for_condition(lambda: ping_endpoint("") == "Hello Updated!", timeout=10)
+
+    # Ensure the following reload happens as expected.
+    write_file("Updated2")
+    wait_for_condition(lambda: ping_endpoint("") == "Hello Updated2!", timeout=10)
 
     p.send_signal(signal.SIGINT)
     p.wait()
