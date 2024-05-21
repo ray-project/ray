@@ -1,8 +1,14 @@
+from enum import Enum
 from typing import Optional
 import inspect
 import sys
 import warnings
 from functools import wraps
+
+class AnnotationType(Enum):
+    PUBLIC_API = "PublicAPI"
+    DEVELOPER_API = "DeveloperAPI"
+    DEPRECATED = "Deprecated"
 
 
 def PublicAPI(*args, **kwargs):
@@ -54,7 +60,7 @@ def PublicAPI(*args, **kwargs):
             )
             _append_doc(obj, message=message)
 
-        _mark_annotated(obj)
+        _mark_annotated(obj, type=AnnotationType.PUBLIC_API)
         return obj
 
     return wrap
@@ -81,7 +87,7 @@ def DeveloperAPI(*args, **kwargs):
             obj,
             message="**DeveloperAPI:** This API may change across minor Ray releases.",
         )
-        _mark_annotated(obj)
+        _mark_annotated(obj, type=AnnotationType.DEVELOPER_API)
         return obj
 
     return wrap
@@ -144,7 +150,7 @@ def Deprecated(*args, **kwargs):
 
     def inner(obj):
         _append_doc(obj, message=doc_message, directive="warning")
-        _mark_annotated(obj)
+        _mark_annotated(obj, type=AnnotationType.DEPRECATED)
 
         if not warning:
             return obj
@@ -237,12 +243,22 @@ def _get_indent(docstring: str) -> int:
     return len(non_empty_lines[1]) - len(non_empty_lines[1].lstrip())
 
 
-def _mark_annotated(obj) -> None:
+def _mark_annotated(obj, type: AnnotationType) -> None:
     # Set magic token for check_api_annotations linter.
     if hasattr(obj, "__name__"):
         obj._annotated = obj.__name__
+        obj._annotated_type = type
 
 
 def _is_annotated(obj) -> bool:
     # Check the magic token exists and applies to this class (not a subclass).
     return hasattr(obj, "_annotated") and obj._annotated == obj.__name__
+
+def _is_public_api(obj) -> bool:
+    return _is_annotated(obj) and obj._annotated_type == AnnotationType.PUBLIC_API
+
+def _is_developer_api(obj) -> bool:
+    return _is_annotated(obj) and obj._annotated_type == AnnotationType.DEVELOPER_API
+
+def _is_deprecated(obj) -> bool:
+    return _is_annotated(obj) and obj._annotated_type == AnnotationType.DEPRECATED
