@@ -23,7 +23,7 @@ def test_normal_termination(ray_start_cluster):
     assert worker_node_info["DeathReason"] == gcs_pb2.NodeDeathInfo.Reason.Value(
         "EXPECTED_TERMINATION"
     )
-    assert worker_node_info["DeathReasonMessage"] == "Received SIGTERM"
+    assert worker_node_info["DeathReasonMessage"] == "received SIGTERM"
 
 
 def test_abnormal_termination(ray_start_cluster, fast_node_failure_detection):
@@ -59,7 +59,7 @@ def test_abnormal_termination(ray_start_cluster, fast_node_failure_detection):
     )
     assert (
         worker_node["DeathReasonMessage"]
-        == "Health check failed: missing too many heartbeats."
+        == "health check failed due to missing too many heartbeats"
     )
 
 

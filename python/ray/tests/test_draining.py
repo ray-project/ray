@@ -192,9 +192,7 @@ def test_preemption_after_draining_deadline(
     assert worker_node["DeathReason"] == gcs_pb2.NodeDeathInfo.Reason.Value(
         "AUTOSCALER_DRAIN_PREEMPTED"
     )
-    assert (
-        worker_node["DeathReasonMessage"] == "preemption (Node was forcibly preempted)"
-    )
+    assert worker_node["DeathReasonMessage"] == "preemption"
 
 
 def test_node_death_before_draining_deadline(
@@ -249,7 +247,7 @@ def test_node_death_before_draining_deadline(
     )
     assert (
         worker_node["DeathReasonMessage"]
-        == "Health check failed: missing too many heartbeats."
+        == "health check failed due to missing too many heartbeats"
     )
 
 

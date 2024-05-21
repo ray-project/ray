@@ -244,35 +244,27 @@ rpc::NodeDeathInfo GcsNodeManager::InferDeathInfo(const NodeID &node_id) {
   auto iter = draining_nodes_.find(node_id);
   rpc::NodeDeathInfo death_info;
 
-  bool may_expect_force_termination;
+  bool expect_force_termination;
   if (iter == draining_nodes_.end()) {
-    may_expect_force_termination = false;
+    expect_force_termination = false;
   } else if (iter->second->deadline_timestamp_ms() == 0) {
     // If there is no draining deadline, there should be no force termination
-    may_expect_force_termination = false;
+    expect_force_termination = false;
   } else {
-    may_expect_force_termination =
-        current_sys_time_ms() > iter->second->deadline_timestamp_ms();
+    expect_force_termination =
+        (current_sys_time_ms() > iter->second->deadline_timestamp_ms()) &&
+        (iter->second->reason() ==
+         rpc::autoscaler::DrainNodeReason::DRAIN_NODE_REASON_PREEMPTION);
   }
 
-  if (may_expect_force_termination) {
-    std::shared_ptr<rpc::autoscaler::DrainNodeRequest> drain_request = iter->second;
-    if (drain_request->reason() ==
-        rpc::autoscaler::DrainNodeReason::DRAIN_NODE_REASON_PREEMPTION) {
-      death_info.set_reason(rpc::NodeDeathInfo::AUTOSCALER_DRAIN_PREEMPTED);
-      death_info.set_reason_message(drain_request->reason_message() +
-                                    " (Node was forcibly preempted)");
-    } else {
-      RAY_CHECK_EQ(drain_request->reason(),
-                   rpc::autoscaler::DrainNodeReason::DRAIN_NODE_REASON_IDLE_TERMINATION);
-      death_info.set_reason(rpc::NodeDeathInfo::UNEXPECTED_TERMINATION);
-      death_info.set_reason_message(
-          drain_request->reason_message() +
-          " (Node was forcibly terminated during idle termination)");
-    }
+  if (expect_force_termination) {
+    death_info.set_reason(rpc::NodeDeathInfo::AUTOSCALER_DRAIN_PREEMPTED);
+    death_info.set_reason_message(iter->second->reason_message());
+    RAY_LOG(INFO) << "Node " << node_id << " was forcibly preempted";
   } else {
     death_info.set_reason(rpc::NodeDeathInfo::UNEXPECTED_TERMINATION);
-    death_info.set_reason_message("Health check failed: missing too many heartbeats.");
+    death_info.set_reason_message(
+        "health check failed due to missing too many heartbeats");
   }
   return death_info;
 }
@@ -365,7 +357,7 @@ void GcsNodeManager::OnNodeFailure(const NodeID &node_id,
   rpc::NodeDeathInfo death_info = InferDeathInfo(node_id);
   SetDeathInfo(node_id, death_info);
   bool is_expected_termination =
-      (death_info.reason() != rpc::NodeDeathInfo::UNEXPECTED_TERMINATION);
+      (death_info.reason() == rpc::NodeDeathInfo::AUTOSCALER_DRAIN_PREEMPTED);
   if (auto node = RemoveNode(node_id, is_expected_termination)) {
     node->set_state(rpc::GcsNodeInfo::DEAD);
     node->set_end_time_ms(current_sys_time_ms());
