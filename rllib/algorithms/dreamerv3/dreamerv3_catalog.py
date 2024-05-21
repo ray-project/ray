@@ -160,6 +160,7 @@ class DreamerV3Catalog(Catalog):
 
         return WorldModel(
             model_size=self.model_size,
+            observation_space=self.observation_space,
             action_space=self.action_space,
             batch_length_T=self._model_config_dict["batch_length_T"],
             encoder=encoder,
@@ -213,7 +214,7 @@ class DreamerV3Catalog(Catalog):
             raise ValueError(f"`framework={framework}` not supported!")
 
     def build_dreamer_model(
-        self, framework: str, *, world_model, actor, critic
+        self, framework: str, *, world_model, actor, critic, horizon=None, gamma=None
     ) -> Model:
         if framework == "torch":
             from ray.rllib.algorithms.dreamerv3.torch.models.dreamer_model import (
@@ -232,4 +233,8 @@ class DreamerV3Catalog(Catalog):
             world_model=world_model,
             actor=actor,
             critic=critic,
+            **({} if framework == "torch" else {
+                "horizon": horizon,
+                "gamma": gamma,
+            }),
         )

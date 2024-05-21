@@ -20,9 +20,13 @@ import numpy as np
 import ray
 from ray.rllib.algorithms.dreamerv3 import dreamerv3
 from ray.rllib.core import DEFAULT_MODULE_ID
+from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.numpy import one_hot
-from ray.rllib.utils.test_utils import framework_iterator
+from ray.rllib.utils.test_utils import check, framework_iterator
 from ray import tune
+
+_, tf, _ = try_import_tf()
+torch, nn = try_import_torch()
 
 
 class TestDreamerV3(unittest.TestCase):
@@ -133,12 +137,44 @@ class TestDreamerV3(unittest.TestCase):
         # encoder/decoder nets with 5x1024 nodes (which corresponds to XL) regardless of
         # the `model_size` settings (iff >="S").
         expected_num_params_world_model = {
+            # XS encoder
+            # kernel=[4, 256], (no bias), layernorm=[256],[256]
+            # XS reward_predictor
+            # kernel=[1280, 256], (no bias), layernorm[256],[256]
+            # kernel=[256, 255] bias=[255]
+            # 1280=1024 (z-state) + 256 (h-state)
+            # XS continue_predictor
+            # kernel=[1280, 256], (no bias), layernorm=[256],[256]
+            # kernel=[256, 1] bias=[1]
+            # XS sequence_model
+            # [[1026, 256], [256], [256], [256, 768], [256, 768], [2, 768]]
+            # XS decoder
+            # kernel=[1280, 256], (no bias), layernorm=[256],[256]
+            # kernel=[256, 4] bias=[4]
+            # XS posterior_mlp
+            # kernel=[512, 256], (no bias), layernorm=[256],[256]
+            # XS posterior_representation_layer
+            # kernel=[256, 1024], bias=[1024]
             "XS_cartpole": 2435076,
+
             "S_cartpole": 7493380,
             "M_cartpole": 16206084,
             "L_cartpole": 37802244,
             "XL_cartpole": 108353796,
+
+            # XS encoder (atari)
+            # cnn kernel=[4, 4, 3, 24], (no bias), layernorm=[24],[24],
+            # cnn kernel=[4, 4, 24, 48], (no bias), layernorm=[48],[48],
+            # cnn kernel=[4, 4, 48, 96], (no bias), layernorm=[96],[96],
+            # cnn kernel=[4, 4, 96, 192], (no bias), layernorm=[192],[192],
+            # XS decoder (atari)
+            # init dense kernel[1280, 3072] bias=[3072] -> reshape into image
+            # [4, 4, 96, 192], [96], [96]
+            # [4, 4, 48, 96], [48], [48],
+            # [4, 4, 24, 48], [24], [24],
+            # [4, 4, 3, 24], [3] <- no layernorm at end
             "XS_atari": 7538979,
+
             "S_atari": 15687811,
             "M_atari": 32461635,
             "L_atari": 68278275,
@@ -185,13 +221,12 @@ class TestDreamerV3(unittest.TestCase):
             symlog_obs=True,
         )
 
-        for fw in framework_iterator(config, frameworks="torch"):
-            # Check all model_sizes described in the paper ([1]) on matching the number
-            # of parameters to RLlib's implementation.
-            for model_size in ["XS", "S", "M", "L", "XL"]:
-                config.model_size = model_size
-                # config.training(model={"model_size": model_size})
+        # Check all model_sizes described in the paper ([1]) on matching the number
+        # of parameters to RLlib's implementation.
+        for model_size in ["XS", "S", "M", "L", "XL"]:
+            config.model_size = model_size
 
+            for fw in framework_iterator(config, frameworks=("tf2", "torch")):
                 # Atari and CartPole spaces.
                 for obs_space, num_actions, env_name in [
                     (gym.spaces.Box(-1.0, 0.0, (4,), np.float32), 2, "cartpole"),
@@ -226,6 +261,11 @@ class TestDreamerV3(unittest.TestCase):
                             for v in rl_module.critic.parameters()
                             if v.requires_grad
                         )
+                        assert rl_module.dreamer_model.world_model is rl_module.world_model
+                        assert rl_module.dreamer_model.actor is rl_module.actor
+                        assert rl_module.dreamer_model.critic is rl_module.critic
+                        assert rl_module.encoder is rl_module.world_model.encoder
+                        assert rl_module.decoder is rl_module.world_model.decoder
                     else:
                         num_params_world_model = sum(
                             np.prod(v.shape.as_list())
@@ -253,6 +293,160 @@ class TestDreamerV3(unittest.TestCase):
                         expected_num_params_critic[f"{model_size}_{env_name}"],
                     )
                     print("\tok")
+
+    def test_dreamer_v3_tf_vs_torch_model_outputs(self):
+        config = dreamerv3.DreamerV3Config().training(
+            batch_length_T=16,
+            horizon_H=5,
+            symlog_obs=True,
+        ).framework(eager_tracing=True)
+        tf.compat.v1.enable_eager_execution()
+        tf.config.run_functions_eagerly(True)
+
+        # Check all model sizes' outputs for torch vs tf versions, given
+        # that all weights are randomized the same way and a common input.
+        for model_size in ["XS", "S", "M", "L", "XL"]:
+            config.model_size = model_size
+
+            # Atari and CartPole spaces.
+            for obs_space, num_actions, env_name in [
+                (gym.spaces.Box(-1.0, 0.0, (4,), np.float32), 2, "cartpole"),
+                (gym.spaces.Box(-1.0, 0.0, (64, 64, 3), np.float32), 6, "atari"),
+            ]:
+                print(f"Testing model_size={model_size} on env-type: {env_name} ..")
+                config.environment(
+                    observation_space=obs_space,
+                    action_space=gym.spaces.Discrete(num_actions),
+                )
+
+                modules = []
+                tf_weights = []
+
+                for fw in framework_iterator(config, frameworks=("tf2", "torch")):
+                    # Create our RLModule to compute actions with.
+                    policy_dict, _ = config.get_multi_agent_setup()
+                    module_spec = config.get_marl_module_spec(policy_dict=policy_dict)
+                    rl_module = module_spec.build()[DEFAULT_MODULE_ID]
+                    if fw == "torch":
+                        torch_weights = [
+                            p for p in rl_module.actor.parameters() if p.requires_grad
+                        ] + [
+                            p for p in rl_module.critic.parameters() if p.requires_grad
+                        ] + [
+                            p for p in rl_module.world_model.encoder.parameters() if p.requires_grad
+                        ] + [
+                            p for p in rl_module.world_model.decoder.parameters() if p.requires_grad
+                        ] + [
+                            p for p in rl_module.world_model.reward_predictor.parameters() if p.requires_grad
+                        ] + [
+                            p for p in rl_module.world_model.continue_predictor.parameters() if p.requires_grad
+                        ] + [
+                            p for p in rl_module.world_model.posterior_mlp.parameters() if p.requires_grad
+                        ] + [
+                            p for p in rl_module.world_model.posterior_representation_layer.parameters() if p.requires_grad
+                        ]
+                        for torch_weight in torch_weights:
+                            values = torch.from_numpy(tf_weights.pop(0).numpy())
+                            # Kernel matrix -> Torch needs to permutate.
+                            if len(values.shape) == 2:
+                                values = values.T
+                            with torch.no_grad():
+                                torch_weight.set_(values)
+
+                        torch_sequence_weights = [
+                            p for p in
+                            rl_module.world_model.sequence_model.parameters() if
+                            p.requires_grad
+                        ]
+                        assert len(torch_sequence_weights) == 7
+                        for i in range(5):
+                            values = torch.from_numpy(tf_weights.pop(0).numpy())
+                            if len(values.shape) == 2:
+                                values = values.T
+                            with torch.no_grad():
+                                torch_sequence_weights[i].set_(values)
+                        values1, values2 = torch.from_numpy(tf_weights.pop(0).numpy())
+                        with torch.no_grad():
+                            rl_module.world_model.sequence_model.gru_unit.bias_ih_l0.copy_(values2)
+                            rl_module.world_model.sequence_model.gru_unit.bias_hh_l0.copy_(values1)
+                            #torch_sequence_weights[6].set_(values2)
+                    else:
+                        tf_weights.extend(rl_module.actor.trainable_variables)
+                        tf_weights.extend(rl_module.critic.trainable_variables)
+                        tf_weights.extend(rl_module.world_model.encoder.trainable_variables)
+                        tf_weights.extend(rl_module.world_model.decoder.trainable_variables)
+                        tf_weights.extend(rl_module.world_model.reward_predictor.trainable_variables)
+                        tf_weights.extend(rl_module.world_model.continue_predictor.trainable_variables)
+                        tf_weights.extend(rl_module.world_model.posterior_mlp.trainable_variables)
+                        tf_weights.extend(rl_module.world_model.posterior_representation_layer.trainable_variables)
+                        tf_weights.extend(rl_module.world_model.sequence_model.trainable_variables)
+                    modules.append(rl_module)
+
+                B = 10
+                print("Comparing actors")
+                a_one_hot = one_hot(np.random.random_integers(0, 1, (B,)), 2)
+                h = np.random.random_sample((B, 256)).astype(np.float32)
+                z = np.random.random_sample((B, 32, 32)).astype(np.float32)
+                tf_out = modules[0].actor(
+                    tf.convert_to_tensor(h), tf.convert_to_tensor(z)
+                )
+                torch_out = modules[1].actor(
+                    torch.from_numpy(h), torch.from_numpy(z), True
+                )
+                check(tf_out[1], torch_out[1], rtol=0.005)
+                print("Comparing critics")
+                tf_out = modules[0].critic(
+                    tf.convert_to_tensor(h), tf.convert_to_tensor(z), use_ema=False
+                )
+                torch_out = modules[1].critic(
+                    torch.from_numpy(h), torch.from_numpy(z), use_ema=False, return_logits=True
+                )
+                check(tf_out[1], torch_out[1], rtol=0.005)
+                print("Comparing world models - reward predictor")
+                tf_out = modules[0].world_model.reward_predictor(
+                    tf.convert_to_tensor(h), tf.convert_to_tensor(z)
+                )
+                torch_out = modules[1].world_model.reward_predictor(
+                    torch.from_numpy(h), torch.from_numpy(z), return_logits=True
+                )
+                check(tf_out[1], torch_out[1], rtol=0.005)
+                print("Comparing world models - continue predictor")
+                tf_out = modules[0].world_model.continue_predictor(
+                    tf.convert_to_tensor(h), tf.convert_to_tensor(z)
+                )
+                torch_out = modules[1].world_model.continue_predictor(
+                    torch.from_numpy(h), torch.from_numpy(z)
+                )
+                check(tf_out[0], torch_out, rtol=0.005)
+
+                print("Comparing world models - encoder")
+                input_ = np.random.random_sample((B, 4)).astype(np.float32)
+                tf_out = modules[0].world_model.encoder(tf.convert_to_tensor(input_))
+                torch_out = modules[1].world_model.encoder(torch.from_numpy(input_))
+                check(tf_out, torch_out, rtol=0.005)
+
+                print("Comparing world models - decoder")
+                tf_out = modules[0].world_model.decoder(
+                    tf.convert_to_tensor(h), tf.convert_to_tensor(z)
+                )
+                torch_out = modules[1].world_model.decoder(
+                    torch.from_numpy(h), torch.from_numpy(z)
+                )
+                check(tf_out, torch_out, rtol=0.005)
+
+                print("Comparing world models - sequence model")
+                tf_out = modules[0].world_model.sequence_model(
+                    a=tf.convert_to_tensor(a_one_hot),
+                    h=tf.convert_to_tensor(h),
+                    z=tf.convert_to_tensor(z),
+                )
+                torch_out = modules[1].world_model.sequence_model(
+                    a=torch.from_numpy(a_one_hot),
+                    h=torch.from_numpy(h),
+                    z=torch.from_numpy(z),
+                )
+                check(tf_out, torch_out, rtol=0.005)
+
 
 
 if __name__ == "__main__":

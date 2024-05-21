@@ -145,6 +145,8 @@ class CriticNetwork(nn.Module):
             self.return_layer_ema.parameters(), self.return_layer.parameters()
         ):
             param_ema.data.copy_(param.data)
+            # Make all EMA parameters non-trainable.
+            param_ema.requires_grad = False
 
     def update_ema(self) -> None:
         """Updates the EMA-copy of the critic according to the update formula:

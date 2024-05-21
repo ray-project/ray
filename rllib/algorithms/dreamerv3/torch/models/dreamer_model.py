@@ -292,6 +292,7 @@ class DreamerModel(nn.Module):
         v, v_symlog_dreamed_logits_HxB = self.critic(
             h=h_states_HxB,
             z=z_states_prior_HxB,
+            use_ema=False,
             return_logits=True,
         )
         v_dreamed_HxB = inverse_symlog(v)
@@ -317,6 +318,7 @@ class DreamerModel(nn.Module):
             "values_dreamed_t0_to_H_BxT": v_dreamed_H_B,
             "values_symlog_dreamed_logits_t0_to_HxBxT": v_symlog_dreamed_logits_HxB,
             "v_symlog_dreamed_ema_t0_to_H_BxT": v_symlog_dreamed_ema_H_B,
+            # Loss weights for critic- and actor losses.
             "dream_loss_weights_t0_to_H_BxT": dream_loss_weights_H_B,
         }
 
@@ -331,6 +333,7 @@ class DreamerModel(nn.Module):
 
     def dream_trajectory_with_burn_in(
         self,
+        *,
         start_states,
         timesteps_burn_in: int,
         timesteps_H: int,

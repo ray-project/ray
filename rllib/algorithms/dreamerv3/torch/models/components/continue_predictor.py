@@ -54,7 +54,7 @@ class ContinuePredictor(nn.Module):
         out = self.mlp(out)
         logits = out.squeeze(dim=-1)
         bernoulli = torch.distributions.Bernoulli(logits=logits)
-        # Use the mode of the Bernoulli distribution to
+        # Use the mode of the Bernoulli distribution (greedy, deterministic "sample").
         continue_ = torch.where(bernoulli.probs > 0.5, True, False)
 
         if return_distribution:

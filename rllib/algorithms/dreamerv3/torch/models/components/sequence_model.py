@@ -92,8 +92,8 @@ class SequenceModel(nn.Module):
         out = torch.cat([z, a], dim=-1)
         # Pass through pre-GRU layer.
         out = self.pre_gru_layer(out)
-        # Pass through GRU.
+        # Pass through GRU (add extra time axis at 0 to make time-major).
         h_next, _ = self.gru_unit(out.unsqueeze(0), h.unsqueeze(0))
-        h_next = h_next.squeeze(0)  # Remove time dimension
+        h_next = h_next.squeeze(0)  # Remove extra time dimension again.
         # Return the GRU's output (the next h-state).
         return h_next

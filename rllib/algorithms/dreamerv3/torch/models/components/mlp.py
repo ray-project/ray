@@ -62,14 +62,14 @@ class MLP(nn.Module):
         for _ in range(num_dense_layers):
             # In this order: layer, normalization, activation.
             layers.append(nn.Linear(input_size, dense_hidden_units, bias=False))
-            layers.append(nn.LayerNorm(dense_hidden_units))
+            layers.append(nn.LayerNorm(dense_hidden_units, eps=0.001))
             layers.append(nn.SiLU())
             input_size = dense_hidden_units
             self.output_size = (dense_hidden_units,)
 
         self.output_layer = None
         if output_layer_size:
-            layers.append(nn.Linear(input_size, output_layer_size, bias=False))
+            layers.append(nn.Linear(input_size, output_layer_size))
             self.output_size = (output_layer_size,)
 
         self._net = nn.Sequential(*layers)

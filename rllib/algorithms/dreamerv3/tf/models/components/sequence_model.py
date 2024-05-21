@@ -76,7 +76,6 @@ class SequenceModel(tf.keras.Model):
             num_gru_units,
             return_sequences=False,
             return_state=False,
-            time_major=True,
             # Note: Changing these activations is most likely a bad idea!
             # In experiments, setting one of both of them to silu deteriorated
             # performance significantly.
@@ -139,7 +138,8 @@ class SequenceModel(tf.keras.Model):
         )
         # Pass through pre-GRU layer.
         out = self.pre_gru_layer(out)
-        # Pass through (time-major) GRU.
-        h_next = self.gru_unit(tf.expand_dims(out, axis=0), initial_state=h)
+        out = tf.reshape(out, [-1, 1, out.shape[1]])
+        # Pass through GRU (expand axis=1 as a time-axis; our GRU unit is batch-major).
+        h_next = self.gru_unit(out, initial_state=h)
         # Return the GRU's output (the next h-state).
         return h_next

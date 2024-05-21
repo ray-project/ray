@@ -62,6 +62,7 @@ class WorldModel(nn.Module):
         self,
         *,
         model_size: str = "XS",
+        observation_space: gym.Space,
         action_space: gym.Space,
         batch_length_T: int = 64,
         encoder: nn.Module,

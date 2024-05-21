@@ -294,7 +294,8 @@ class TorchCNN(nn.Module):
 
             # Layernorm.
             if cnn_use_layernorm:
-                layers.append(nn.LayerNorm((out_depth, out_size[0], out_size[1])))
+                # We use an epsilon of 0.001 here to mimick the Tf default behavior.
+                layers.append(nn.LayerNorm((out_depth,), eps=0.001))
             # Activation.
             if cnn_activation is not None:
                 layers.append(cnn_activation())
@@ -446,7 +447,7 @@ class TorchCNNTranspose(nn.Module):
             layers.append(layer)
             # Layernorm (never for final layer).
             if cnn_transpose_use_layernorm and not is_final_layer:
-                layers.append(nn.LayerNorm((out_depth, out_size[0], out_size[1])))
+                layers.append(nn.LayerNorm((out_depth,), eps=0.001))
             # Last layer is never activated (regardless of config).
             if cnn_transpose_activation is not None and not is_final_layer:
                 layers.append(cnn_transpose_activation())
