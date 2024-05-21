@@ -64,7 +64,7 @@ def auto_http_archive(
         ]
         urls.insert(0 if prefer_url_over_mirrors else len(urls), canonical_url)
     else:
-        print("No implicit mirrors used because urls were explicitly provided")
+        print("No implicit mirrors used for %s because urls were explicitly provided" % name)
 
     if strip_prefix == True:
         prefix_without_v = url_filename_parts[0]
