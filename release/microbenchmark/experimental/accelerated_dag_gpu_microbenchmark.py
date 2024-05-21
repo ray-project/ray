@@ -11,13 +11,10 @@ import ray
 from ray.air._internal import torch_utils
 import ray.cluster_utils
 from ray.dag import InputNode
-from ray.tests.conftest import *  # noqa
 from ray.util.collective.collective_group import nccl_util
 
 from ray.experimental.channel.torch_tensor_type import TorchTensorType
 from ray._private.ray_microbenchmark_helpers import timeit
-
-# from ray.experimental.torch_serializer import TorchTensor
 
 
 logger = logging.getLogger(__name__)
@@ -160,7 +157,8 @@ def exec_ray_dag_ipc(label, sender, receiver, use_nccl=False):
         dag = sender.send.bind(SHAPE, DTYPE, inp)
         dag = receiver.recv.bind(
             dag,
-            SHAPE[0] * DTYPE.itemsize,
+            # torch.float16 has item size of 2 bytes.
+            SHAPE[0] * 2,
             SHAPE,
             nccl_util.TORCH_NUMPY_DTYPE_MAP[DTYPE],
         )
@@ -347,7 +345,6 @@ def main():
     results += exec_ray_dag_gpu_cpu_gpu()
     results += exec_ray_dag_gpu_nccl(dynamic_shape=True)
     results += exec_ray_dag_gpu_nccl(dynamic_shape=False)
-    results += exec_ray_dag_gpu_ipc_gpu()
 
 
 if __name__ == "__main__":
