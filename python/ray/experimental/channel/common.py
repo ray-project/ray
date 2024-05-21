@@ -3,6 +3,7 @@ import concurrent
 import threading
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
+import copy
 
 import ray
 from ray.experimental.channel.nccl_group import _NcclGroup
@@ -36,6 +37,15 @@ class ChannelOutputType:
             self._contains_type.register_custom_serializer()
 
     @property
+    def is_direct_return(self) -> bool:
+        """
+        Some channels may contain other values that should be sent via a
+        different channel. This returns whether the value is a direct return or
+        if it is "nested" inside a different channel.
+        """
+        return True
+
+    @property
     def contains_type(self) -> "ChannelOutputType":
         return self._contains_type
 
@@ -44,7 +54,7 @@ class ChannelOutputType:
 
         if typ is not None and not isinstance(typ, TorchTensorType):
             raise ValueError("Contained type must be of type TorchTensorType")
-        self._contains_type = typ
+        self._contains_type = copy.deepcopy(typ)
 
     def create_channel(
         self,

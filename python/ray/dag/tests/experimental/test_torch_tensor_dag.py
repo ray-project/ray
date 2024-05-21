@@ -179,7 +179,10 @@ def test_torch_tensor_nccl(ray_start_regular):
 
     with InputNode() as inp:
         dag = sender.send.bind(shape, dtype, inp)
-        dag = dag.with_type_hint(TorchTensorType(shape, dtype, transport="nccl"))
+        # TODO(swang): Test that we are using the minimum number of
+        # channels/messages when direct_return=True.
+        dag = dag.with_type_hint(TorchTensorType(shape, dtype, transport="nccl",
+            direct_return=True))
         dag = receiver.recv.bind(dag)
 
     # Test normal execution.
@@ -244,7 +247,10 @@ def test_torch_tensor_nccl_dynamic(ray_start_regular):
 
     with InputNode() as inp:
         dag = sender.send_with_tuple_args.bind(inp)
-        dag = dag.with_type_hint(TorchTensorType(transport="nccl"))
+        # TODO(swang): Test that we are using the minimum number of
+        # channels/messages when direct_return=True.
+        dag = dag.with_type_hint(TorchTensorType(transport="nccl",
+            direct_return=True))
         dag = receiver.recv.bind(dag)
 
     compiled_dag = dag.experimental_compile()
@@ -281,7 +287,7 @@ def test_torch_tensor_nccl_wrong_shape(ray_start_regular):
     # Passing tensors of the wrong shape will error.
     with InputNode() as inp:
         dag = sender.send.bind(shape, dtype, inp)
-        dag = dag.with_type_hint(TorchTensorType((20,), dtype, transport="nccl"))
+        dag = dag.with_type_hint(TorchTensorType((20,), dtype, transport="nccl",))
         dag = receiver.recv.bind(dag)
 
     compiled_dag = dag.experimental_compile()
@@ -292,8 +298,9 @@ def test_torch_tensor_nccl_wrong_shape(ray_start_regular):
 
     compiled_dag.teardown()
 
-    ray.kill(sender)
-    ray.kill(receiver)
+    # TODO(swang): This currently requires time.sleep to avoid some issue with
+    # following tests.
+    time.sleep(3)
 
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
@@ -319,7 +326,7 @@ def test_torch_tensor_nccl_nested(ray_start_regular):
 
     with InputNode() as inp:
         dag = sender.send_dict_with_tuple_args.bind(inp)
-        dag = dag.with_contains_type_hint(TorchTensorType(
+        dag = dag.with_type_hint(TorchTensorType(
             shape=shape, dtype=dtype, transport="nccl"))
         dag = receiver.recv_dict.bind(dag)
 
@@ -360,7 +367,7 @@ def test_torch_tensor_nccl_nested_dynamic(ray_start_regular):
 
     with InputNode() as inp:
         dag = sender.send_dict_with_tuple_args.bind(inp)
-        dag = dag.with_contains_type_hint(TorchTensorType(transport="nccl"))
+        dag = dag.with_type_hint(TorchTensorType(transport="nccl"))
         dag = receiver.recv_dict.bind(dag)
 
     compiled_dag = dag.experimental_compile()

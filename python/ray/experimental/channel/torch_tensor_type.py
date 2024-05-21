@@ -36,6 +36,7 @@ class TorchTensorType(ChannelOutputType):
         self,
         shape: Union[int, Tuple[int], str] = AUTO,
         dtype: "torch.dtype" = AUTO,
+        direct_return: Optional[bool] = False,
         transport: Optional[str] = None,
     ):
         """
@@ -58,6 +59,10 @@ class TorchTensorType(ChannelOutputType):
                 shape; if it does not match, the task will error.
             dtype: The expected dtype of the torch.Tensor. Similar to the
                 shape, this may be statically or dynamically declared.
+            direct_return: Whether the tensor is sent directly or inside of
+                other metadata. For GPU-GPU channels, this allows the sender
+                and receiver to eliminate the additional channel used to
+                transfer the metadata.
             transport: "auto" (default) means that tensors will be passed via
                 host memory, using numpy as the serialization format. Pass
                 TorchTensorType.NCCL or "nccl" to use NCCL instead, avoiding
@@ -73,8 +78,13 @@ class TorchTensorType(ChannelOutputType):
 
         self.shape = shape
         self.dtype = dtype
+        self.direct_return = direct_return
         self.transport = transport
         self._nccl_group_id: Optional[str] = None
+
+    @property
+    def is_direct_return(self) -> bool:
+        return self.direct_return
 
     def register_custom_serializer(self) -> None:
         super().register_custom_serializer()

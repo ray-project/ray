@@ -277,7 +277,7 @@ class TorchTensorNcclChannel(ChannelInterface):
             if self._meta_channel is None:
                 if meta_list != [None]:
                     raise ValueError(
-                    "DAGNode annotated `.with_contains_type_hint("
+                    "DAGNode annotated with "
                     "TorchTensorType(shape=shape, dtype=dtype))` can return at "
                     "most one tensor with the declared `shape` and `dtype`. "
                     "Use TorchTensorType() if value contains more than one "
