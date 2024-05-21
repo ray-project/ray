@@ -1,6 +1,5 @@
 from typing import List, Tuple
 
-from ray.data._internal.block_list import BlockList
 from ray.data._internal.execution.interfaces import RefBundle
 from ray.data._internal.split import _calculate_blocks_rows, _split_at_indices
 from ray.data.block import Block, BlockMetadata, BlockPartition
@@ -10,8 +9,8 @@ from ray.types import ObjectRef
 def _equalize(
     per_split_bundles: List[RefBundle],
     owned_by_consumer: bool,
-) -> List[BlockList]:
-    """Equalize split block lists into equal number of rows.
+) -> List[RefBundle]:
+    """Equalize split ref bundles into equal number of rows.
 
     Args:
         per_split_bundles: ref bundles to equalize.
@@ -52,11 +51,11 @@ def _equalize(
         num_shaved_rows = sum([meta.num_rows for _, meta in shaved_splits[i]])
         assert num_shaved_rows == target_split_size
 
-    # Compose the result back to blocklists
-    equalized_block_lists: List[BlockList] = []
+    # Compose the result back to RefBundle
+    equalized_ref_bundles: List[RefBundle] = []
     for split in shaved_splits:
-        equalized_block_lists.append(RefBundle(split, owns_blocks=owned_by_consumer))
-    return equalized_block_lists
+        equalized_ref_bundles.append(RefBundle(split, owns_blocks=owned_by_consumer))
+    return equalized_ref_bundles
 
 
 def _shave_one_split(
