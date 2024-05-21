@@ -12,7 +12,6 @@ from ray.util.annotations import PublicAPI
 logger = logging.getLogger(__name__)
 
 DEFAULT_MAX_BUFFER_SIZE = int(100 * 1e6)  # 100MB
-MIN_BUFFER_SIZE = int(100 * 1e3)  # 100KB
 
 
 def _get_node_id(self) -> "ray.NodeID":
@@ -87,6 +86,7 @@ class SharedMemoryType(ChannelOutputType):
                 metadata. Writes to the channel must produce serialized data and
                 metadata less than or equal to this value.
         """
+        super().__init__()
         self.buffer_size_bytes = buffer_size_bytes
 
     def create_channel(
@@ -157,6 +157,20 @@ class Channel(ChannelInterface):
             )
 
         if _writer_ref is None:
+            # We are the writer. Check that the passed handle matches the
+            # current actor (or it is the driver).
+            # TODO(swang): Channels must be initially constructed by the writer
+            # actor, so we shouldn't need to include `writer` in the
+            # constructor args. Either support Channels being constructed by
+            # someone other than the writer or remove it from the args.
+            self_actor = None
+            try:
+                self_actor = ray.get_runtime_context().current_actor
+            except RuntimeError:
+                # This is the driver so there is no current actor handle.
+                pass
+            assert writer == self_actor
+
             self._writer_node_id = (
                 ray.runtime_context.get_runtime_context().get_node_id()
             )

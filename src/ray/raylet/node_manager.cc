@@ -16,30 +16,29 @@
 
 #include <cctype>
 #include <csignal>
-#include <filesystem>
 #include <fstream>
 #include <memory>
+#include <utility>
 
 #include "absl/functional/bind_front.h"
-#include "absl/synchronization/notification.h"
 #include "absl/time/clock.h"
-#include "boost/system/error_code.hpp"
 #include "ray/common/asio/asio_util.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/buffer.h"
 #include "ray/common/common_protocol.h"
 #include "ray/common/constants.h"
 #include "ray/common/memory_monitor.h"
+#include "ray/common/scheduling/scheduling_ids.h"
 #include "ray/common/status.h"
+#include "ray/common/task/task_common.h"
 #include "ray/gcs/pb_util.h"
 #include "ray/raylet/format/node_manager_generated.h"
-#include "ray/raylet/raylet_util.h"
+#include "ray/raylet/scheduling/cluster_task_manager.h"
 #include "ray/raylet/worker_killing_policy.h"
+#include "ray/rpc/node_manager/node_manager_client.h"
 #include "ray/stats/metric_defs.h"
-#include "ray/stats/stats.h"
 #include "ray/util/event.h"
 #include "ray/util/event_label.h"
-#include "ray/util/sample.h"
 #include "ray/util/util.h"
 
 namespace {
@@ -99,16 +98,19 @@ void NodeManagerConfig::AddDefaultLabels(const std::string &self_node_id) {
   labels[kLabelKeyNodeID] = self_node_id;
 }
 
-NodeManager::NodeManager(instrumented_io_context &io_service,
-                         const NodeID &self_node_id,
-                         const std::string &self_node_name,
-                         const NodeManagerConfig &config,
-                         const ObjectManagerConfig &object_manager_config,
-                         std::shared_ptr<gcs::GcsClient> gcs_client)
+NodeManager::NodeManager(
+    instrumented_io_context &io_service,
+    const NodeID &self_node_id,
+    const std::string &self_node_name,
+    const NodeManagerConfig &config,
+    const ObjectManagerConfig &object_manager_config,
+    std::shared_ptr<gcs::GcsClient> gcs_client,
+    std::function<void(const rpc::NodeDeathInfo &)> shutdown_raylet_gracefully)
     : self_node_id_(self_node_id),
       self_node_name_(self_node_name),
       io_service_(io_service),
       gcs_client_(gcs_client),
+      shutdown_raylet_gracefully_(shutdown_raylet_gracefully),
       worker_pool_(
           io_service,
           self_node_id_,
@@ -299,16 +301,16 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
           // safely drained when this function reports zero.
           int64_t bytes_used = local_object_manager_.GetPrimaryBytes();
           // Report nonzero if we have objects spilled to the local filesystem.
-          if (bytes_used == 0) {
-            bytes_used = local_object_manager_.HasLocallySpilledObjects();
+          if (bytes_used == 0 && local_object_manager_.HasLocallySpilledObjects()) {
+            bytes_used = 1;
           }
           return bytes_used;
-        } else {
-          return object_manager_.GetUsedMemory();
         }
+        return object_manager_.GetUsedMemory();
       },
       /*get_pull_manager_at_capacity*/
       [this]() { return object_manager_.PullManagerHasPullsQueued(); },
+      shutdown_raylet_gracefully,
       /*labels*/
       config.labels);
 
@@ -321,8 +323,9 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
   RAY_CHECK(RayConfig::instance().max_task_args_memory_fraction() > 0 &&
             RayConfig::instance().max_task_args_memory_fraction() <= 1)
       << "max_task_args_memory_fraction must be a nonzero fraction.";
-  int64_t max_task_args_memory = object_manager_.GetMemoryCapacity() *
-                                 RayConfig::instance().max_task_args_memory_fraction();
+  auto max_task_args_memory =
+      static_cast<int64_t>(static_cast<float>(object_manager_.GetMemoryCapacity()) *
+                           RayConfig::instance().max_task_args_memory_fraction());
   if (max_task_args_memory <= 0) {
     RAY_LOG(WARNING)
         << "Max task args should be a fraction of the object store capacity, but object "
@@ -360,9 +363,9 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
       RayConfig::instance().worker_cap_initial_backoff_delay_ms(),
       "NodeManager.ScheduleAndDispatchTasks");
 
-  RAY_CHECK_OK(store_client_->Connect(config.store_socket_name.c_str()));
+  RAY_CHECK_OK(store_client_->Connect(config.store_socket_name));
   // Run the node manger rpc server.
-  node_manager_server_.RegisterService(node_manager_service_, false /* token_auth */);
+  node_manager_server_.RegisterService(node_manager_service_, false);
   node_manager_server_.RegisterService(ray_syncer_service_);
   node_manager_server_.Run();
   // GCS will check the health of the service named with the node id.
@@ -379,8 +382,10 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
       config.node_manager_address,
       config.runtime_env_agent_port, /*delay_executor=*/
       [this](std::function<void()> task, uint32_t delay_ms) {
-        return execute_after(io_service_, task, std::chrono::milliseconds(delay_ms));
-      });
+        return execute_after(
+            io_service_, std::move(task), std::chrono::milliseconds(delay_ms));
+      },
+      shutdown_raylet_gracefully_);
 
   worker_pool_.SetRuntimeEnvAgentClient(runtime_env_agent_client_);
   worker_pool_.Start();
@@ -468,7 +473,7 @@ ray::Status NodeManager::RegisterGcs() {
         HandleUnexpectedWorkerFailure(worker_failure_data);
       };
   RAY_CHECK_OK(gcs_client_->Workers().AsyncSubscribeToWorkerFailures(
-      worker_failure_handler, /*done_callback=*/nullptr));
+      worker_failure_handler, nullptr));
 
   // Subscribe to job updates.
   const auto job_subscribe_handler = [this](const JobID &job_id,
@@ -1960,16 +1965,20 @@ void NodeManager::HandleDrainRaylet(rpc::DrainRayletRequest request,
                                     rpc::DrainRayletReply *reply,
                                     rpc::SendReplyCallback send_reply_callback) {
   RAY_LOG(INFO) << "Drain raylet RPC has received. Deadline is "
-                << request.deadline_timestamp_ms()
-                << ". Drain reason: " << request.reason_message();
+                << request.deadline_timestamp_ms() << ". Drain reason: "
+                << rpc::autoscaler::DrainNodeReason_Name(request.reason())
+                << ". Drain reason message: " << request.reason_message();
 
   if (request.reason() ==
       rpc::autoscaler::DrainNodeReason::DRAIN_NODE_REASON_IDLE_TERMINATION) {
     const bool is_idle =
         cluster_resource_scheduler_->GetLocalResourceManager().IsLocalNodeIdle();
     if (is_idle) {
+      rpc::NodeDeathInfo node_death_info;
+      node_death_info.set_reason(rpc::NodeDeathInfo::AUTOSCALER_DRAIN_IDLE);
+      node_death_info.set_reason_message(request.reason_message());
       cluster_resource_scheduler_->GetLocalResourceManager().SetLocalNodeDraining(
-          request.deadline_timestamp_ms());
+          request.deadline_timestamp_ms(), node_death_info);
       reply->set_is_accepted(true);
     } else {
       reply->set_is_accepted(false);
@@ -1980,8 +1989,11 @@ void NodeManager::HandleDrainRaylet(rpc::DrainRayletRequest request,
     // Non-rejectable draining request.
     RAY_CHECK_EQ(request.reason(),
                  rpc::autoscaler::DrainNodeReason::DRAIN_NODE_REASON_PREEMPTION);
+    rpc::NodeDeathInfo node_death_info;
+    node_death_info.set_reason(rpc::NodeDeathInfo::AUTOSCALER_DRAIN_PREEMPTED);
+    node_death_info.set_reason_message(request.reason_message());
     cluster_resource_scheduler_->GetLocalResourceManager().SetLocalNodeDraining(
-        request.deadline_timestamp_ms());
+        request.deadline_timestamp_ms(), node_death_info);
     reply->set_is_accepted(true);
   }
 
@@ -2002,12 +2014,15 @@ void NodeManager::HandleShutdownRaylet(rpc::ShutdownRayletRequest request,
                      "request RPC is ignored.";
     return;
   }
-  auto shutdown_after_reply = []() {
+  auto shutdown_after_reply = [&]() {
     rpc::DrainServerCallExecutor();
     // Note that the callback is posted to the io service after the shutdown GRPC request
     // is replied. Otherwise, the RPC might not be replied to GCS before it shutsdown
     // itself.
-    ShutdownRayletGracefully();
+    rpc::NodeDeathInfo node_death_info;
+    node_death_info.set_reason(rpc::NodeDeathInfo::EXPECTED_TERMINATION);
+    node_death_info.set_reason_message("Terminated by autoscaler.");
+    shutdown_raylet_gracefully_(node_death_info);
   };
   is_shutdown_request_received_ = true;
   send_reply_callback(Status::OK(), shutdown_after_reply, shutdown_after_reply);
@@ -2051,7 +2066,7 @@ void NodeManager::HandleCancelWorkerLease(rpc::CancelWorkerLeaseRequest request,
 
 void NodeManager::MarkObjectsAsFailed(
     const ErrorType &error_type,
-    const std::vector<rpc::ObjectReference> objects_to_fail,
+    const std::vector<rpc::ObjectReference> &objects_to_fail,
     const JobID &job_id) {
   // TODO(swang): Ideally we should return the error directly to the client
   // that needs this object instead of storing the object in plasma, which is
@@ -2300,7 +2315,7 @@ void NodeManager::ProcessSubscribePlasmaReady(
       << "No worker exists for CoreWorker with client: " << client->DebugString();
 
   auto message = flatbuffers::GetRoot<protocol::SubscribePlasmaReady>(message_data);
-  ObjectID id = from_flatbuf<ObjectID>(*message->object_id());
+  auto id = from_flatbuf<ObjectID>(*message->object_id());
 
   if (dependency_manager_.CheckObjectLocal(id)) {
     // Object is already local, so we directly fire the callback to tell the core worker
@@ -3009,9 +3024,10 @@ void NodeManager::SetTaskFailureReason(const TaskID &task_id,
 
 void NodeManager::GCTaskFailureReason() {
   for (const auto &entry : task_failure_reasons_) {
-    auto duration = (uint64_t)std::chrono::duration_cast<std::chrono::milliseconds>(
-                        std::chrono::steady_clock::now() - entry.second.creation_time)
-                        .count();
+    auto duration = static_cast<uint64_t>(
+        std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now() - entry.second.creation_time)
+            .count());
     if (duration > RayConfig::instance().task_failure_entry_ttl_ms()) {
       RAY_LOG(INFO) << "Removing task failure reason since it expired, task: "
                     << entry.first;
@@ -3083,7 +3099,8 @@ std::unique_ptr<AgentManager> NodeManager::CreateDashboardAgentManager(
       /*delay_executor=*/
       [this](std::function<void()> task, uint32_t delay_ms) {
         return execute_after(io_service_, task, std::chrono::milliseconds(delay_ms));
-      });
+      },
+      shutdown_raylet_gracefully_);
 }
 
 std::unique_ptr<AgentManager> NodeManager::CreateRuntimeEnvAgentManager(
@@ -3114,7 +3131,8 @@ std::unique_ptr<AgentManager> NodeManager::CreateRuntimeEnvAgentManager(
       /*delay_executor=*/
       [this](std::function<void()> task, uint32_t delay_ms) {
         return execute_after(io_service_, task, std::chrono::milliseconds(delay_ms));
-      });
+      },
+      shutdown_raylet_gracefully_);
 }
 
 }  // namespace raylet

@@ -1,3 +1,4 @@
+# @OldAPIStack
 # Runs on a g3.16xl node with 3 m4.16xl workers
 # See https://github.com/ray-project/rl-experiments for results
 atari-impala:
@@ -16,7 +17,7 @@ atari-impala:
             repeat_action_probability: 0.0
         rollout_fragment_length: 50
         train_batch_size: 500
-        num_workers: 32
+        num_env_runners: 32
         num_envs_per_env_runner: 5
         clip_rewards: True
         lr_schedule: [

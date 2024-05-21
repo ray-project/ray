@@ -743,8 +743,9 @@ TEST_F(ClusterTaskManagerTest, DrainingWhileResolving) {
   ASSERT_EQ(pool_.workers.size(), 1);
 
   // Drain the local node.
+  rpc::NodeDeathInfo node_death_info;
   scheduler_->GetLocalResourceManager().SetLocalNodeDraining(
-      std::numeric_limits<int64_t>::max());
+      std::numeric_limits<int64_t>::max(), node_death_info);
 
   // Arg is resolved.
   missing_objects_.erase(missing_arg);
@@ -1077,8 +1078,9 @@ TEST_F(ClusterTaskManagerTest, NotOKPopWorkerAfterDrainingTest) {
   AddNode(remote_node_id, 5);
 
   // Drain the local node.
+  rpc::NodeDeathInfo node_death_info;
   scheduler_->GetLocalResourceManager().SetLocalNodeDraining(
-      std::numeric_limits<int64_t>::max());
+      std::numeric_limits<int64_t>::max(), node_death_info);
 
   pool_.callbacks[task1.GetTaskSpecification().GetRuntimeEnvHash()].front()(
       nullptr, PopWorkerStatus::WorkerPendingRegistration, "");
@@ -2635,8 +2637,9 @@ TEST_F(ClusterTaskManagerTest, PopWorkerBeforeDraining) {
   task_manager_.QueueAndScheduleTask(task, false, false, &reply, callback);
 
   // Drain the local node.
+  rpc::NodeDeathInfo node_death_info;
   scheduler_->GetLocalResourceManager().SetLocalNodeDraining(
-      std::numeric_limits<int64_t>::max());
+      std::numeric_limits<int64_t>::max(), node_death_info);
 
   std::shared_ptr<MockWorker> worker =
       std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234);
@@ -2674,8 +2677,9 @@ TEST_F(ClusterTaskManagerTest, UnscheduleableWhileDraining) {
   AddNode(remote_node_id, 5);
 
   // Drain the local node.
+  rpc::NodeDeathInfo node_death_info;
   scheduler_->GetLocalResourceManager().SetLocalNodeDraining(
-      std::numeric_limits<int64_t>::max());
+      std::numeric_limits<int64_t>::max(), node_death_info);
 
   RayTask spillback_task = CreateTask({{ray::kCPU_ResourceLabel, 1}});
   rpc::RequestWorkerLeaseReply spillback_reply;
