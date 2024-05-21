@@ -16,19 +16,35 @@ import numpy as np
 import tree  # pip install dm_tree
 
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
-from ray.rllib.core import DEFAULT_MODULE_ID
+from ray.rllib.core import DEFAULT_AGENT_ID, DEFAULT_MODULE_ID
 from ray.rllib.core.columns import Columns
 from ray.rllib.env.env_runner import EnvRunner
+from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 from ray.rllib.env.wrappers.atari_wrappers import NoopResetEnv, MaxAndSkipEnv
 from ray.rllib.env.wrappers.dm_control_wrapper import DMCEnv
 from ray.rllib.env.utils import _gym_env_creator
-from ray.rllib.evaluation.metrics import RolloutMetrics
-from ray.rllib.policy.eager_tf_policy import _convert_to_tf
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
-from ray.rllib.env.single_agent_episode import SingleAgentEpisode
+from ray.rllib.utils.metrics import (
+    EPISODE_DURATION_SEC_MEAN,
+    EPISODE_LEN_MAX,
+    EPISODE_LEN_MEAN,
+    EPISODE_LEN_MIN,
+    EPISODE_RETURN_MAX,
+    EPISODE_RETURN_MEAN,
+    EPISODE_RETURN_MIN,
+    NUM_AGENT_STEPS_SAMPLED,
+    NUM_AGENT_STEPS_SAMPLED_LIFETIME,
+    NUM_EPISODES,
+    NUM_ENV_STEPS_SAMPLED,
+    NUM_ENV_STEPS_SAMPLED_LIFETIME,
+    NUM_MODULE_STEPS_SAMPLED,
+    NUM_MODULE_STEPS_SAMPLED_LIFETIME,
+)
+from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
 from ray.rllib.utils.numpy import convert_to_numpy, one_hot
 from ray.rllib.utils.torch_utils import convert_to_torch_tensor
+from ray.rllib.utils.typing import ResultDict
 from ray.tune.registry import ENV_CREATOR, _global_registry
 
 _, tf, _ = try_import_tf()
@@ -149,6 +165,8 @@ class DreamerV3EnvRunner(EnvRunner):
             # TODO (sven): DreamerV3 is currently single-agent only.
             self.module = self.marl_module_spec.build()[DEFAULT_MODULE_ID]
 
+        self.metrics = MetricsLogger()
+
         self.convert_to_tensor = (
             convert_to_torch_tensor
             if self.config.framework_str == "torch"
@@ -166,7 +184,6 @@ class DreamerV3EnvRunner(EnvRunner):
         #  via its replay buffer, etc..).
         self._done_episodes_for_metrics = []
         self._ongoing_episodes_for_metrics = defaultdict(list)
-        self._ts_since_last_metrics = 0
 
     @override(EnvRunner)
     def sample(
@@ -236,7 +253,7 @@ class DreamerV3EnvRunner(EnvRunner):
         explore: bool = True,
         random_actions: bool = False,
         force_reset: bool = False,
-    ) -> Tuple[List[SingleAgentEpisode], List[SingleAgentEpisode]]:
+    ) -> List[SingleAgentEpisode]:
         """Helper method to run n timesteps.
 
         See docstring of self.sample() for more details.
@@ -364,9 +381,9 @@ class DreamerV3EnvRunner(EnvRunner):
         for eps in ongoing_episodes:
             self._ongoing_episodes_for_metrics[eps.id_].append(eps)
 
-        self._ts_since_last_metrics += ts
+        self._increase_sampled_metrics(ts)
 
-        return done_episodes_to_return, ongoing_episodes
+        return done_episodes_to_return + ongoing_episodes
 
     def _sample_episodes(
         self,
@@ -456,41 +473,51 @@ class DreamerV3EnvRunner(EnvRunner):
                     is_first[i] = False
 
         self._done_episodes_for_metrics.extend(done_episodes_to_return)
-        self._ts_since_last_metrics += sum(len(eps) for eps in done_episodes_to_return)
 
         # If user calls sample(num_timesteps=..) after this, we must reset again
         # at the beginning.
         self._needs_initial_reset = True
 
+        ts = sum(map(len, done_episodes_to_return))
+        self._increase_sampled_metrics(ts)
+
         return done_episodes_to_return
 
-    # TODO (sven): Remove the requirement for EnvRunners/RolloutWorkers to have this
-    #  API. Instead Algorithm should compile episode metrics itself via its local
-    #  buffer.
-    def get_metrics(self) -> List[RolloutMetrics]:
+    def get_metrics(self) -> ResultDict:
         # Compute per-episode metrics (only on already completed episodes).
-        metrics = []
         for eps in self._done_episodes_for_metrics:
+            assert eps.is_done
+
             episode_length = len(eps)
-            episode_reward = eps.get_return()
+            episode_return = eps.get_return()
+            episode_duration_s = eps.get_duration_s()
+
+
             # Don't forget about the already returned chunks of this episode.
             if eps.id_ in self._ongoing_episodes_for_metrics:
                 for eps2 in self._ongoing_episodes_for_metrics[eps.id_]:
                     episode_length += len(eps2)
-                    episode_reward += eps2.get_return()
+                    episode_return += eps2.get_return()
                 del self._ongoing_episodes_for_metrics[eps.id_]
 
-            metrics.append(
-                RolloutMetrics(
-                    episode_length=episode_length,
-                    episode_reward=episode_reward,
-                )
+            self._log_episode_metrics(
+                episode_length, episode_return, episode_duration_s
             )
 
-        self._done_episodes_for_metrics.clear()
-        self._ts_since_last_metrics = 0
+        # Log num episodes counter for this iteration.
+        self.metrics.log_value(
+            NUM_EPISODES,
+            len(self._done_episodes_for_metrics),
+            reduce="sum",
+            # Reset internal data on `reduce()` call below (not a lifetime count).
+            clear_on_reduce=True,
+        )
 
-        return metrics
+        # Now that we have logged everything, clear cache of done episodes.
+        self._done_episodes_for_metrics.clear()
+
+        # Return reduced metrics.
+        return self.metrics.reduce()
 
     # TODO (sven): Remove the requirement for EnvRunners/RolloutWorkers to have this
     #  API. Replace by proper state overriding via `EnvRunner.set_state()`
@@ -510,6 +537,52 @@ class DreamerV3EnvRunner(EnvRunner):
     def stop(self):
         # Close our env object via gymnasium's API.
         self.env.close()
+
+    def _increase_sampled_metrics(self, num_steps):
+        # Per sample cycle stats.
+        self.metrics.log_value(
+            NUM_ENV_STEPS_SAMPLED, num_steps, reduce="sum", clear_on_reduce=True
+        )
+        self.metrics.log_value(
+            (NUM_AGENT_STEPS_SAMPLED, DEFAULT_AGENT_ID),
+            num_steps,
+            reduce="sum",
+            clear_on_reduce=True,
+        )
+        self.metrics.log_value(
+            (NUM_MODULE_STEPS_SAMPLED, DEFAULT_MODULE_ID),
+            num_steps,
+            reduce="sum",
+            clear_on_reduce=True,
+        )
+        # Lifetime stats.
+        self.metrics.log_value(NUM_ENV_STEPS_SAMPLED_LIFETIME, num_steps, reduce="sum")
+        self.metrics.log_value(
+            (NUM_AGENT_STEPS_SAMPLED_LIFETIME, DEFAULT_AGENT_ID),
+            num_steps,
+            reduce="sum",
+        )
+        self.metrics.log_value(
+            (NUM_MODULE_STEPS_SAMPLED_LIFETIME, DEFAULT_MODULE_ID),
+            num_steps,
+            reduce="sum",
+        )
+        return num_steps
+
+    def _log_episode_metrics(self, length, ret, sec):
+        # Log general episode metrics.
+        # To mimick the old API stack behavior, we'll use `window` here for
+        # these particular stats (instead of the default EMA).
+        win = self.config.metrics_num_episodes_for_smoothing
+        self.metrics.log_value(EPISODE_LEN_MEAN, length, window=win)
+        self.metrics.log_value(EPISODE_RETURN_MEAN, ret, window=win)
+        self.metrics.log_value(EPISODE_DURATION_SEC_MEAN, sec, window=win)
+
+        # For some metrics, log min/max as well.
+        self.metrics.log_value(EPISODE_LEN_MIN, length, reduce="min")
+        self.metrics.log_value(EPISODE_RETURN_MIN, ret, reduce="min")
+        self.metrics.log_value(EPISODE_LEN_MAX, length, reduce="max")
+        self.metrics.log_value(EPISODE_RETURN_MAX, ret, reduce="max")
 
 
 class NormalizedImageEnv(gym.ObservationWrapper):

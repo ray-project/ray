@@ -14,6 +14,7 @@ from ray.rllib.algorithms.dreamerv3.utils.debugging import (
     create_frozenlake_dream_image,
 )
 from ray.rllib.core.columns import Columns
+from ray.rllib.utils.metrics import REPLAY_BUFFER_RESULTS
 from ray.rllib.utils.tf_utils import inverse_symlog
 
 
@@ -115,7 +116,7 @@ def report_dreamed_trajectory(
 
 def report_predicted_vs_sampled_obs(
     *,
-    results,
+    metrics,
     sample,
     batch_size_B,
     batch_length_T,
@@ -133,8 +134,7 @@ def report_predicted_vs_sampled_obs(
     Continues: Compute MSE (sampled vs predicted).
 
     Args:
-        results: The results dict that was returned by
-            `LearnerGroup.update_from_batch()`.
+        metrics: The MetricsLogger object of the DreamerV3 algo.
         sample: The sampled data (dict) from the replay buffer. Already tf-tensor
             converted.
         batch_size_B: The batch size (B). This is the number of trajectories sampled
@@ -142,11 +142,11 @@ def report_predicted_vs_sampled_obs(
         batch_length_T: The batch length (T). This is the length of an individual
             trajectory sampled from the buffer.
     """
-    predicted_observation_means_BxT = results[
+    predicted_observation_means_BxT = metrics.peek(
         "WORLD_MODEL_fwd_out_obs_distribution_means_BxT"
-    ]
+    )
     _report_obs(
-        results=results,
+        metrics=metrics,
         computed_float_obs_B_T_dims=np.reshape(
             predicted_observation_means_BxT,
             (batch_size_B, batch_length_T) + sample[Columns.OBS].shape[2:],
@@ -160,7 +160,7 @@ def report_predicted_vs_sampled_obs(
 
 def report_dreamed_eval_trajectory_vs_samples(
     *,
-    results,
+    metrics,
     dream_data,
     sample,
     burn_in_T,
@@ -179,7 +179,7 @@ def report_dreamed_eval_trajectory_vs_samples(
     tH = t0 + dreamed_T
     # Observation MSE and - if applicable - images comparisons.
     mse_sampled_vs_dreamed_obs = _report_obs(
-        results=results,
+        metrics=metrics,
         # Have to transpose b/c dreamed data is time-major.
         computed_float_obs_B_T_dims=np.transpose(
             dreamed_obs_T_B,
@@ -193,7 +193,7 @@ def report_dreamed_eval_trajectory_vs_samples(
 
     # Reward MSE.
     _report_rewards(
-        results=results,
+        metrics=metrics,
         computed_rewards=dream_data["rewards_dreamed_t0_to_H_BxT"],
         sampled_rewards=sample[Columns.REWARDS][:, t0 : tH + 1],
         descr_prefix="EVALUATION",
@@ -202,7 +202,7 @@ def report_dreamed_eval_trajectory_vs_samples(
 
     # Continues MSE.
     _report_continues(
-        results=results,
+        metrics=metrics,
         computed_continues=dream_data["continues_dreamed_t0_to_H_BxT"],
         sampled_continues=(1.0 - sample["is_terminated"])[:, t0 : tH + 1],
         descr_prefix="EVALUATION",
@@ -211,25 +211,25 @@ def report_dreamed_eval_trajectory_vs_samples(
     return mse_sampled_vs_dreamed_obs
 
 
-def report_sampling_and_replay_buffer(*, replay_buffer):
+def report_sampling_and_replay_buffer(*, metrics, replay_buffer):
     episodes_in_buffer = replay_buffer.get_num_episodes()
     ts_in_buffer = replay_buffer.get_num_timesteps()
     replayed_steps = replay_buffer.get_sampled_timesteps()
     added_steps = replay_buffer.get_added_timesteps()
 
     # Summarize buffer, sampling, and train ratio stats.
-    return {
-        "BUFFER_capacity": replay_buffer.capacity,
-        "BUFFER_size_num_episodes": episodes_in_buffer,
-        "BUFFER_size_timesteps": ts_in_buffer,
-        "BUFFER_replayed_steps": replayed_steps,
-        "BUFFER_added_steps": added_steps,
-    }
+    metrics.log_dict({
+        "capacity": replay_buffer.capacity,
+        "size_num_episodes": episodes_in_buffer,
+        "size_timesteps": ts_in_buffer,
+        "replayed_steps": replayed_steps,
+        "added_steps": added_steps,
+    }, key=REPLAY_BUFFER_RESULTS, window=1)  # window=1 b/c these are current (total count/state) values.
 
 
 def _report_obs(
     *,
-    results,
+    metrics,
     computed_float_obs_B_T_dims,
     sampled_obs_B_T_dims,
     descr_prefix=None,
@@ -239,6 +239,7 @@ def _report_obs(
     """Summarizes computed- vs sampled observations: MSE and (if applicable) images.
 
     Args:
+        metrics: The MetricsLogger object of the DreamerV3 algo.
         computed_float_obs_B_T_dims: Computed float observations
             (not clipped, not cast'd). Shape=(B, T, [dims ...]).
         sampled_obs_B_T_dims: Sampled observations (as-is from the environment, meaning
@@ -279,16 +280,16 @@ def _report_obs(
         if len(sampled_obs_B_T_dims.shape) == 2 + 2:
             sampled_vs_computed_images = np.expand_dims(sampled_vs_computed_images, -1)
 
-        results.update(
-            {f"{descr_prefix}sampled_vs_{descr_obs}_videos": sampled_vs_computed_images}
+        metrics.log_value(
+            f"{descr_prefix}sampled_vs_{descr_obs}_videos",
+            sampled_vs_computed_images,
+            window=1,
         )
-
-    # return mse_sampled_vs_computed_obs
 
 
 def _report_rewards(
     *,
-    results,
+    metrics,
     computed_rewards,
     sampled_rewards,
     descr_prefix=None,
@@ -299,18 +300,16 @@ def _report_rewards(
         np.square(computed_rewards - sampled_rewards)
     )
     mse_sampled_vs_computed_rewards = np.mean(mse_sampled_vs_computed_rewards)
-    results.update(
-        {
-            f"{descr_prefix}sampled_vs_{descr_reward}_rewards_mse": (
-                mse_sampled_vs_computed_rewards
-            ),
-        }
+    metrics.log_value(
+        f"{descr_prefix}sampled_vs_{descr_reward}_rewards_mse",
+        mse_sampled_vs_computed_rewards,
+        window=1,
     )
 
 
 def _report_continues(
     *,
-    results,
+    metrics,
     computed_continues,
     sampled_continues,
     descr_prefix=None,
@@ -323,10 +322,8 @@ def _report_continues(
             computed_continues - sampled_continues.astype(computed_continues.dtype)
         )
     )
-    results.update(
-        {
-            f"{descr_prefix}sampled_vs_{descr_cont}_continues_mse": (
-                mse_sampled_vs_computed_continues
-            ),
-        }
+    metrics.log_value(
+        f"{descr_prefix}sampled_vs_{descr_cont}_continues_mse",
+        mse_sampled_vs_computed_continues,
+        window=1,
     )
