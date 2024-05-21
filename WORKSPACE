@@ -1,6 +1,15 @@
 workspace(name = "com_github_ray_project_ray")
 
 load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+
+http_archive(
+    name = "platforms",
+    sha256 = "5eda539c841265031c2f82d8ae7a3a6490bd62176e0c038fc469eabf91f6149b",
+    urls = [
+        "https://github.com/bazelbuild/platforms/releases/download/0.0.9/platforms-0.0.9.tar.gz",
+    ],
+)
+
 load("//bazel:ray_deps_setup.bzl", "ray_deps_setup")
 
 ray_deps_setup()
@@ -19,7 +28,7 @@ grpc_extra_deps()
 load("@bazel_skylib//lib:versions.bzl", "versions")
 
 # Please keep this in sync with the .bazeliskrc file.
-versions.check(minimum_bazel_version = "5.4.1")
+versions.check(minimum_bazel_version = "6.5.0")
 
 # Tools to generate `compile_commands.json` to enable awesome tooling of the C language family.
 # Just run `bazel run @hedron_compile_commands//:refresh_all`
