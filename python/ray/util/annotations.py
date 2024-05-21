@@ -5,10 +5,12 @@ import sys
 import warnings
 from functools import wraps
 
+
 class AnnotationType(Enum):
     PUBLIC_API = "PublicAPI"
     DEVELOPER_API = "DeveloperAPI"
     DEPRECATED = "Deprecated"
+    UNKNOWN = "Unknown"
 
 
 def PublicAPI(*args, **kwargs):
@@ -243,7 +245,7 @@ def _get_indent(docstring: str) -> int:
     return len(non_empty_lines[1]) - len(non_empty_lines[1].lstrip())
 
 
-def _mark_annotated(obj, type: AnnotationType) -> None:
+def _mark_annotated(obj, type: AnnotationType = AnnotationType.UNKNOWN) -> None:
     # Set magic token for check_api_annotations linter.
     if hasattr(obj, "__name__"):
         obj._annotated = obj.__name__
@@ -254,11 +256,9 @@ def _is_annotated(obj) -> bool:
     # Check the magic token exists and applies to this class (not a subclass).
     return hasattr(obj, "_annotated") and obj._annotated == obj.__name__
 
-def _is_public_api(obj) -> bool:
-    return _is_annotated(obj) and obj._annotated_type == AnnotationType.PUBLIC_API
 
-def _is_developer_api(obj) -> bool:
-    return _is_annotated(obj) and obj._annotated_type == AnnotationType.DEVELOPER_API
+def _get_annotation_type(obj) -> Optional[str]:
+    if not _is_annotated(obj):
+        return None
 
-def _is_deprecated(obj) -> bool:
-    return _is_annotated(obj) and obj._annotated_type == AnnotationType.DEPRECATED
+    return obj._annotated_type.value
