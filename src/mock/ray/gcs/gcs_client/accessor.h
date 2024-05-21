@@ -335,7 +335,7 @@ class MockInternalKVAccessor : public InternalKVAccessor {
               (const std::string &ns,
                const std::string &key,
                bool del_by_prefix,
-               const StatusCallback &callback),
+               const OptionalItemCallback<int> &callback),
               (override));
 };
 
