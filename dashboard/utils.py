@@ -677,7 +677,7 @@ def compose_state_message(death_info_dict: dict) -> Optional[str]:
     death_reason_message = death_info_dict.get("reasonMessage", None)
     if death_reason_message:
         if state_message:
-            state_message += f": ({death_reason_message})"
+            state_message += f": {death_reason_message}"
         else:
             state_message = death_reason_message
     return state_message
