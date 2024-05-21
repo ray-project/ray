@@ -503,7 +503,7 @@ Status NodeInfoAccessor::AsyncCheckSelfAlive(
           callback(status, false);
           return;
         } else {
-          RAY_CHECK_EQ(nodes_alive.size(), 1);
+          RAY_CHECK_EQ(nodes_alive.size(), static_cast<size_t>(1));
           callback(status, nodes_alive[0]);
         }
       });
