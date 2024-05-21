@@ -1,3 +1,4 @@
+# @OldAPIStack
 # Can expect improvement to -140 reward in ~300-500k timesteps.
 pendulum-ppo:
     env: ray.rllib.examples.envs.classes.transformed_action_space_env.TransformedActionPendulum

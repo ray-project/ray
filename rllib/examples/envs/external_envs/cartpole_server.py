@@ -44,7 +44,7 @@ from ray.tune.registry import get_trainable_cls
 
 SERVER_ADDRESS = "localhost"
 # In this example, the user can run the policy server with
-# n workers, opening up listen ports 9900 - 990n (n = num_workers - 1)
+# n workers, opening up listen ports 9900 - 990n (n = num_env_runners - 1)
 # to each of which different clients may connect.
 SERVER_BASE_PORT = 9900  # + worker-idx - 1
 
@@ -147,7 +147,7 @@ if __name__ == "__main__":
     # `InputReader` generator (returns None if no input reader is needed on
     # the respective worker).
     def _input(ioctx):
-        # We are remote worker or we are local worker with num_workers=0:
+        # We are remote worker or we are local worker with num_env_runners=0:
         # Create a PolicyServerInput.
         if ioctx.worker_index > 0 or ioctx.worker.num_workers == 0:
             return PolicyServerInput(

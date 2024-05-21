@@ -1,3 +1,4 @@
+# @OldAPIStack
 # You can expect ~20 reward within 1.1m timesteps / 2.1 hours on a K80 GPU
 pong-deterministic-dqn:
     env: ALE/Pong-v5

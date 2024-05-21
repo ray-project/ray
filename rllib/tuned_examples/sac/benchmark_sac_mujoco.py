@@ -85,11 +85,11 @@ config = (
         rollout_fragment_length=1,
         num_env_runners=0,
     )
-    .resources(
+    .learners(
         # Note, we have a sample/train ratio of 1:1 and a small train
         # batch, so 1 learner with a single GPU should suffice.
-        num_learner_workers=1,
-        num_gpus_per_learner_worker=1,
+        num_learners=1,
+        num_gpus_per_learner=1,
     )
     # TODO (simon): Adjust to new model_config_dict.
     .training(

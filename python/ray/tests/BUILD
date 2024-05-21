@@ -731,16 +731,6 @@ py_test_module_list(
 
 py_test_module_list(
   files = [
-    "test_actor_in_container.py",
-  ],
-  size = "large",
-  tags = ["exclusive", "worker-container", "team:serve"],
-  # Now we run this test in a container which has installed ray
-  deps = [],
-)
-
-py_test_module_list(
-  files = [
     "test_object_spilling.py",
     "test_object_spilling_2.py",
     "test_object_spilling_3.py",
