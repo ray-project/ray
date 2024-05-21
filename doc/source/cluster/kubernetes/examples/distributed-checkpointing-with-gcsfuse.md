@@ -48,7 +48,7 @@ The KubeRay operator Pod must be on the CPU node if you set up the taint for the
 Create a GCS bucket that will be used as the remote filesystem.
 ```
 BUCKET=<your GCS bucket>
-gcloud storage buckets create gs://$BUCKET
+gcloud storage buckets create gs://$BUCKET --uniform-bucket-level-access
 ```
 
 Create a Kubernetes ServiceAccount that will be used to grant the RayCluster access to mount the GCS bucket:
