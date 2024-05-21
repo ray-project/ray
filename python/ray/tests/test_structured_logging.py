@@ -7,6 +7,7 @@ import json
 
 from ray._private.structured_logging.filters import CoreContextFilter
 from ray._private.structured_logging.formatters import JSONFormatter, TextFormatter
+from ray._private.test_utils import run_string_as_driver
 
 
 class TestCoreContextFilter:
@@ -143,6 +144,67 @@ class TestTextFormatter:
         formatted = formatter.format(record)
         for s in ["INFO", "Test message", "test.py:1000", "--"]:
             assert s in formatted
+
+
+class TestTextModeE2E:
+    def test_text_mode_task(self, shutdown_only):
+        script = """
+import ray
+import logging
+
+ray.init(job_config=ray.job_config.JobConfig(py_log_config="TEXT"))
+
+@ray.remote
+def f():
+    logger = logging.getLogger()
+    logger.info("This is a Ray task")
+
+obj_ref = f.remote()
+ray.get(obj_ref)
+"""
+        stderr = run_string_as_driver(script)
+        should_exist = [
+            "job_id",
+            "worker_id",
+            "node_id",
+            "task_id",
+            "INFO",
+            "This is a Ray task",
+        ]
+        for s in should_exist:
+            assert s in stderr
+        assert "actor_id" not in stderr
+
+    def test_text_mode_actor(self, shutdown_only):
+        script = """
+import ray
+import logging
+
+ray.init(job_config=ray.job_config.JobConfig(py_log_config="TEXT"))
+
+@ray.remote
+class actor:
+    def __init__(self):
+        pass
+    def print_message(self):
+        logger = logging.getLogger()
+        logger.info("This is a Ray actor")
+    
+actor_instance = actor.remote()
+ray.get(actor_instance.print_message.remote())
+"""
+        stderr = run_string_as_driver(script)
+        should_exist = [
+            "job_id",
+            "worker_id",
+            "node_id",
+            "actor_id",
+            "task_id",
+            "INFO",
+            "This is a Ray actor",
+        ]
+        for s in should_exist:
+            assert s in stderr
 
 
 if __name__ == "__main__":
