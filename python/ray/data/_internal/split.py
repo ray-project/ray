@@ -296,25 +296,3 @@ def _split_at_indices(
 def _get_num_rows(block: Block) -> int:
     """Get the number of rows contained in the provided block."""
     return BlockAccessor.for_block(block).num_rows()
-
-
-def _split_at_index(
-    block_list: BlockList,
-    index: int,
-) -> Tuple[
-    List[ObjectRef[Block]],
-    List[BlockMetadata],
-    List[ObjectRef[Block]],
-    List[BlockMetadata],
-]:
-    """Split blocks at the provided index.
-    Args:
-        blocks_with_metadata: Block futures to split, including the associated metadata.
-        index: The (global) index at which to split the blocks.
-    Returns:
-        The block split futures and their metadata for left and right of the index.
-    """
-    blocks_splits, metadata_splits = _split_at_indices(
-        block_list.get_blocks_with_metadata(), [index], block_list._owned_by_consumer
-    )
-    return blocks_splits[0], metadata_splits[0], blocks_splits[1], metadata_splits[1]
