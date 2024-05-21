@@ -8,14 +8,10 @@ if TYPE_CHECKING:
     import torch
 
 # 100KB to store metadata and/or exceptions.
-<<<<<<< HEAD
-TENSOR_PADDING_SIZE_BYTES = 100_000
-=======
 # NOTE(swang): This will consume memory but it should not affect performance
 # because we only copy the actual data stored, not the maximum size of the
 # shared meomry buffer.
 TENSOR_METADATA_SIZE_BYTES = 100_000
->>>>>>> fab4bcb5b304058b18da97dbfa0f12da91a1214f
 
 
 def _get_default_torch_device() -> "torch.device":
@@ -73,16 +69,7 @@ class TorchTensorType(ChannelOutputType):
             shape = shape.lower()
         if isinstance(dtype, str):
             dtype = dtype.lower()
-<<<<<<< HEAD
-        self.shape = shape
-        self.dtype = dtype
-        self.transport = transport
-        self.nccl_group_id: Optional[str] = None
 
-    def register_custom_serializer(self) -> None:
-        super().register_custom_serializer()
-
-=======
 
         self.shape = shape
         self.dtype = dtype
@@ -90,7 +77,8 @@ class TorchTensorType(ChannelOutputType):
         self._nccl_group_id: Optional[str] = None
 
     def register_custom_serializer(self) -> None:
->>>>>>> fab4bcb5b304058b18da97dbfa0f12da91a1214f
+        super().register_custom_serializer()
+
         import torch
 
         default_device = _get_default_torch_device()
@@ -111,12 +99,9 @@ class TorchTensorType(ChannelOutputType):
             deserializer=deserialize,
         )
 
-<<<<<<< HEAD
     def set_contains_type(self, typ: "ChannelOutputType") -> None:
         raise ValueError("TorchTensorType cannot contain other types")
 
-=======
->>>>>>> fab4bcb5b304058b18da97dbfa0f12da91a1214f
     def create_channel(
         self,
         writer: Optional["ray.actor.ActorHandle"],
@@ -146,10 +131,7 @@ class TorchTensorType(ChannelOutputType):
             torch.half: 2,
             torch.float: 4,
             torch.float16: 2,
-<<<<<<< HEAD
-=======
             torch.bfloat16: 2,
->>>>>>> fab4bcb5b304058b18da97dbfa0f12da91a1214f
             torch.float32: 4,
             torch.float64: 8,
             torch.double: 8,
@@ -164,11 +146,7 @@ class TorchTensorType(ChannelOutputType):
             num_elements *= dim
         element_size_bytes = TORCH_DTYPE_ITEMSIZE_MAP[self.dtype]
         buffer_size_bytes = int(num_elements * element_size_bytes)
-<<<<<<< HEAD
-        buffer_size_bytes += TENSOR_PADDING_SIZE_BYTES
-=======
         buffer_size_bytes += TENSOR_METADATA_SIZE_BYTES
->>>>>>> fab4bcb5b304058b18da97dbfa0f12da91a1214f
 
         return Channel(writer, readers, buffer_size_bytes)
 
@@ -176,12 +154,8 @@ class TorchTensorType(ChannelOutputType):
         return self.transport == self.NCCL
 
     def set_nccl_group_id(self, group_id: str) -> None:
-<<<<<<< HEAD
-        self.nccl_group_id = group_id
-=======
         self._nccl_group_id = group_id
 
     @property
     def nccl_group_id(self) -> str:
         return self._nccl_group_id
->>>>>>> fab4bcb5b304058b18da97dbfa0f12da91a1214f
