@@ -35,12 +35,12 @@ DEFAULT_PYTHON_VERSION = tuple(
 DATAPLANE_ECR_REPO = "anyscale/ray"
 DATAPLANE_ECR_ML_REPO = "anyscale/ray-ml"
 
-MACOS_TEST_PREFIX = "darwin://"
-LINUX_TEST_PREFIX = "linux://"
-WINDOWS_TEST_PREFIX = "windows://"
+MACOS_TEST_PREFIX = "darwin:"
+LINUX_TEST_PREFIX = "linux:"
+WINDOWS_TEST_PREFIX = "windows:"
 MACOS_BISECT_DAILY_RATE_LIMIT = 3
-LINUX_BISECT_DAILY_RATE_LIMIT = 0  # linux bisect is disabled
-WINDOWS_BISECT_DAILY_RATE_LIMIT = 0  # windows bisect is disabled
+LINUX_BISECT_DAILY_RATE_LIMIT = 3
+WINDOWS_BISECT_DAILY_RATE_LIMIT = 3
 BISECT_DAILY_RATE_LIMIT = 10
 
 _asyncio_thread_pool = concurrent.futures.ThreadPoolExecutor()
@@ -204,10 +204,19 @@ class Test(dict):
         ]
         step_id_to_tests = {}
         for test in high_impact_tests:
-            step_id = test.get_test_results(limit=1)[0].rayci_step_id
-            if not step_id:
+            recent_results = test.get_test_results()
+            if not recent_results:
                 continue
-            step_id_to_tests[step_id] = step_id_to_tests.get(step_id, []) + [test]
+            recent_commit = recent_results[0].commit
+            for result in recent_results:
+                # consider all results with the same recent commit; this is to make sure
+                # we will include different job flavors of the same test
+                if result.commit != recent_commit:
+                    continue
+                step_id = result.rayci_step_id
+                if not step_id:
+                    continue
+                step_id_to_tests[step_id] = step_id_to_tests.get(step_id, []) + [test]
 
         return step_id_to_tests
 
@@ -479,7 +488,11 @@ class Test(dict):
         )
 
     def get_test_results(
-        self, limit: int = 10, refresh: bool = False, aws_bucket: str = None
+        self,
+        limit: int = 10,
+        refresh: bool = False,
+        aws_bucket: str = None,
+        use_async: bool = False,
     ) -> List[TestResult]:
         """
         Get test result from test object, or s3
@@ -501,11 +514,27 @@ class Test(dict):
             key=lambda file: int(file["LastModified"].timestamp()),
             reverse=True,
         )[:limit]
-        self.test_results = _asyncio_thread_pool.submit(
-            lambda: asyncio.run(
-                self._gen_test_results(bucket, [file["Key"] for file in files])
-            )
-        ).result()
+        if use_async:
+            self.test_results = _asyncio_thread_pool.submit(
+                lambda: asyncio.run(
+                    self._gen_test_results(bucket, [file["Key"] for file in files])
+                )
+            ).result()
+        else:
+            self.test_results = [
+                TestResult.from_dict(
+                    json.loads(
+                        s3_client.get_object(
+                            Bucket=bucket,
+                            Key=file["Key"],
+                        )
+                        .get("Body")
+                        .read()
+                        .decode("utf-8")
+                    )
+                )
+                for file in files
+            ]
 
         return self.test_results
 

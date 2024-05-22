@@ -19,6 +19,13 @@ from ray.rllib.env.utils import _gym_env_creator
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.metrics import (
+    EPISODE_DURATION_SEC_MEAN,
+    EPISODE_LEN_MAX,
+    EPISODE_LEN_MEAN,
+    EPISODE_LEN_MIN,
+    EPISODE_RETURN_MAX,
+    EPISODE_RETURN_MEAN,
+    EPISODE_RETURN_MIN,
     NUM_AGENT_STEPS_SAMPLED,
     NUM_AGENT_STEPS_SAMPLED_LIFETIME,
     NUM_ENV_STEPS_SAMPLED,
@@ -272,8 +279,8 @@ class SingleAgentEnvRunner(EnvRunner):
 
                 # RLModule forward pass: Explore or not.
                 if explore:
-                    env_steps_lifetime = self.metrics.peek(
-                        NUM_ENV_STEPS_SAMPLED_LIFETIME
+                    env_steps_lifetime = (
+                        self.metrics.peek(NUM_ENV_STEPS_SAMPLED_LIFETIME) + ts
                     )
                     to_env = self.module.forward_exploration(
                         to_module, t=env_steps_lifetime
@@ -303,7 +310,7 @@ class SingleAgentEnvRunner(EnvRunner):
             )
             obs, actions = unbatch(obs), unbatch(actions)
 
-            ts += self._increase_sampled_metrics(self.num_envs)
+            ts += self.num_envs
 
             for env_index in range(self.num_envs):
                 # TODO (simon): This might be unfortunate if a user needs to set a
@@ -407,6 +414,8 @@ class SingleAgentEnvRunner(EnvRunner):
         # Continue collecting into the cut Episode chunks.
         self._episodes = ongoing_episodes_continuations
 
+        self._increase_sampled_metrics(ts)
+
         # Return collected episode data.
         return done_episodes_to_return + ongoing_episodes_to_return
 
@@ -463,8 +472,8 @@ class SingleAgentEnvRunner(EnvRunner):
 
                 # RLModule forward pass: Explore or not.
                 if explore:
-                    env_steps_lifetime = self.metrics.peek(
-                        NUM_ENV_STEPS_SAMPLED_LIFETIME
+                    env_steps_lifetime = (
+                        self.metrics.peek(NUM_ENV_STEPS_SAMPLED_LIFETIME) + ts
                     )
                     to_env = self.module.forward_exploration(
                         to_module, t=env_steps_lifetime
@@ -493,7 +502,7 @@ class SingleAgentEnvRunner(EnvRunner):
                 actions_for_env
             )
             obs, actions = unbatch(obs), unbatch(actions)
-            ts += self._increase_sampled_metrics(self.num_envs)
+            ts += self.num_envs
 
             for env_index in range(self.num_envs):
                 extra_model_output = {k: v[env_index] for k, v in to_env.items()}
@@ -555,6 +564,8 @@ class SingleAgentEnvRunner(EnvRunner):
 
         # Initialized episodes have to be removed as they lack `extra_model_outputs`.
         samples = [episode for episode in done_episodes_to_return if episode.t > 0]
+
+        self._increase_sampled_metrics(ts)
 
         return samples
 
@@ -739,56 +750,54 @@ class SingleAgentEnvRunner(EnvRunner):
 
     def _increase_sampled_metrics(self, num_steps):
         # Per sample cycle stats.
-        self.metrics.log_dict(
-            {
-                NUM_ENV_STEPS_SAMPLED: num_steps,
-                NUM_AGENT_STEPS_SAMPLED: {DEFAULT_AGENT_ID: num_steps},
-                NUM_MODULE_STEPS_SAMPLED: {DEFAULT_MODULE_ID: num_steps},
-            },
+        self.metrics.log_value(
+            NUM_ENV_STEPS_SAMPLED, num_steps, reduce="sum", clear_on_reduce=True
+        )
+        self.metrics.log_value(
+            (NUM_AGENT_STEPS_SAMPLED, DEFAULT_AGENT_ID),
+            num_steps,
+            reduce="sum",
+            clear_on_reduce=True,
+        )
+        self.metrics.log_value(
+            (NUM_MODULE_STEPS_SAMPLED, DEFAULT_MODULE_ID),
+            num_steps,
             reduce="sum",
             clear_on_reduce=True,
         )
         # Lifetime stats.
-        self.metrics.log_dict(
-            {
-                NUM_ENV_STEPS_SAMPLED_LIFETIME: num_steps,
-                NUM_AGENT_STEPS_SAMPLED_LIFETIME: {DEFAULT_AGENT_ID: num_steps},
-                NUM_MODULE_STEPS_SAMPLED_LIFETIME: {
-                    DEFAULT_MODULE_ID: num_steps,
-                },
-            },
+        self.metrics.log_value(NUM_ENV_STEPS_SAMPLED_LIFETIME, num_steps, reduce="sum")
+        self.metrics.log_value(
+            (NUM_AGENT_STEPS_SAMPLED_LIFETIME, DEFAULT_AGENT_ID),
+            num_steps,
+            reduce="sum",
+        )
+        self.metrics.log_value(
+            (NUM_MODULE_STEPS_SAMPLED_LIFETIME, DEFAULT_MODULE_ID),
+            num_steps,
             reduce="sum",
         )
         return num_steps
 
     def _log_episode_metrics(self, length, ret, sec):
         # Log general episode metrics.
-        self.metrics.log_dict(
-            {
-                "episode_len_mean": length,
-                "episode_return_mean": ret,
-                "episode_duration_sec_mean": sec,
-                # Per-agent returns.
-                "agent_episode_returns_mean": {DEFAULT_AGENT_ID: ret},
-                # Per-RLModule returns.
-                "module_episode_returns_mean": {DEFAULT_MODULE_ID: ret},
-            },
-            # To mimick the old API stack behavior, we'll use `window` here for
-            # these particular stats (instead of the default EMA).
-            window=self.config.metrics_num_episodes_for_smoothing,
+        # To mimick the old API stack behavior, we'll use `window` here for
+        # these particular stats (instead of the default EMA).
+        win = self.config.metrics_num_episodes_for_smoothing
+        self.metrics.log_value(EPISODE_LEN_MEAN, length, window=win)
+        self.metrics.log_value(EPISODE_RETURN_MEAN, ret, window=win)
+        self.metrics.log_value(EPISODE_DURATION_SEC_MEAN, sec, window=win)
+        # Per-agent returns.
+        self.metrics.log_value(
+            ("agent_episode_returns_mean", DEFAULT_AGENT_ID), ret, window=win
         )
+        # Per-RLModule returns.
+        self.metrics.log_value(
+            ("module_episode_returns_mean", DEFAULT_MODULE_ID), ret, window=win
+        )
+
         # For some metrics, log min/max as well.
-        self.metrics.log_dict(
-            {
-                "episode_len_min": length,
-                "episode_return_min": ret,
-            },
-            reduce="min",
-        )
-        self.metrics.log_dict(
-            {
-                "episode_len_max": length,
-                "episode_return_max": ret,
-            },
-            reduce="max",
-        )
+        self.metrics.log_value(EPISODE_LEN_MIN, length, reduce="min")
+        self.metrics.log_value(EPISODE_RETURN_MIN, ret, reduce="min")
+        self.metrics.log_value(EPISODE_LEN_MAX, length, reduce="max")
+        self.metrics.log_value(EPISODE_RETURN_MAX, ret, reduce="max")

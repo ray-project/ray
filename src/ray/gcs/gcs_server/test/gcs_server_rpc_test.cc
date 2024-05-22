@@ -118,13 +118,14 @@ class GcsServerTest : public ::testing::Test {
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
-  bool DrainNode(const rpc::DrainNodeRequest &request) {
+  bool UnregisterNode(const rpc::UnregisterNodeRequest &request) {
     std::promise<bool> promise;
-    client_->DrainNode(
-        request, [&promise](const Status &status, const rpc::DrainNodeReply &reply) {
+    client_->UnregisterNode(
+        request, [&promise](const Status &status, const rpc::UnregisterNodeReply &reply) {
           RAY_CHECK_OK(status);
           promise.set_value(true);
         });
+
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
@@ -280,18 +281,23 @@ TEST_F(GcsServerTest, TestNodeInfo) {
   ASSERT_TRUE(RegisterNode(register_node_info_request));
   std::vector<rpc::GcsNodeInfo> node_info_list = GetAllNodeInfo();
   ASSERT_TRUE(node_info_list.size() == 1);
-  ASSERT_TRUE(node_info_list[0].state() ==
-              rpc::GcsNodeInfo_GcsNodeState::GcsNodeInfo_GcsNodeState_ALIVE);
+  ASSERT_TRUE(node_info_list[0].state() == rpc::GcsNodeInfo::ALIVE);
 
   // Unregister node info
-  rpc::DrainNodeRequest unregister_node_info_request;
-  auto draining_request = unregister_node_info_request.add_drain_node_data();
-  draining_request->set_node_id(gcs_node_info->node_id());
-  ASSERT_TRUE(DrainNode(unregister_node_info_request));
+  rpc::UnregisterNodeRequest unregister_node_request;
+  unregister_node_request.set_node_id(gcs_node_info->node_id());
+  rpc::NodeDeathInfo node_death_info;
+  node_death_info.set_reason(rpc::NodeDeathInfo::EXPECTED_TERMINATION);
+  std::string reason_message = "Terminate node for testing.";
+  node_death_info.set_reason_message(reason_message);
+  unregister_node_request.mutable_node_death_info()->CopyFrom(node_death_info);
+  ASSERT_TRUE(UnregisterNode(unregister_node_request));
   node_info_list = GetAllNodeInfo();
   ASSERT_TRUE(node_info_list.size() == 1);
-  ASSERT_TRUE(node_info_list[0].state() ==
-              rpc::GcsNodeInfo_GcsNodeState::GcsNodeInfo_GcsNodeState_DEAD);
+  ASSERT_TRUE(node_info_list[0].state() == rpc::GcsNodeInfo::DEAD);
+  ASSERT_TRUE(node_info_list[0].death_info().reason() ==
+              rpc::NodeDeathInfo::EXPECTED_TERMINATION);
+  ASSERT_TRUE(node_info_list[0].death_info().reason_message() == reason_message);
 }
 
 TEST_F(GcsServerTest, TestWorkerInfo) {

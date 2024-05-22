@@ -1,3 +1,4 @@
+# @OldAPIStack
 # Runs on a p2.8xlarge single head node machine.
 # Should reach ~400 reward in about 1h and after 15-20M ts.
 atari-impala:
@@ -14,8 +15,8 @@ atari-impala:
         rollout_fragment_length: 50
         train_batch_size: 4000
         num_gpus: 4
-        num_workers: 31
-        num_gpus_per_worker: 0  # works also for partial GPUs (<1.0) per worker
+        num_env_runners: 31
+        num_gpus_per_env_runner: 0  # works also for partial GPUs (<1.0) per worker
         num_envs_per_env_runner: 5
         clip_rewards: True
         lr_schedule: [

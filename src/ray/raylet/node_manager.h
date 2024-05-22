@@ -15,16 +15,13 @@
 #pragma once
 
 // clang-format off
-#include "ray/rpc/grpc_client.h"
 #include "ray/rpc/node_manager/node_manager_server.h"
-#include "ray/rpc/node_manager/node_manager_client.h"
 #include "ray/common/id.h"
 #include "ray/common/memory_monitor.h"
 #include "ray/common/task/task.h"
 #include "ray/common/ray_object.h"
 #include "ray/common/ray_syncer/ray_syncer.h"
 #include "ray/common/client_connection.h"
-#include "ray/common/task/task_common.h"
 #include "ray/common/task/task_util.h"
 #include "ray/common/scheduling/resource_set.h"
 #include "ray/pubsub/subscriber.h"
@@ -33,16 +30,13 @@
 #include "ray/raylet/runtime_env_agent_client.h"
 #include "ray/raylet_client/raylet_client.h"
 #include "ray/raylet/local_object_manager.h"
-#include "ray/common/scheduling/scheduling_ids.h"
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
-#include "ray/raylet/scheduling/cluster_task_manager.h"
 #include "ray/raylet/scheduling/cluster_task_manager_interface.h"
 #include "ray/raylet/dependency_manager.h"
 #include "ray/raylet/local_task_manager.h"
 #include "ray/raylet/wait_manager.h"
 #include "ray/raylet/worker_pool.h"
 #include "ray/rpc/worker/core_worker_client_pool.h"
-#include "ray/util/ordered_set.h"
 #include "ray/util/throttler.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/bundle_spec.h"
@@ -128,14 +122,16 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
  public:
   /// Create a node manager.
   ///
-  /// \param resource_config The initial set of node resources.
-  /// \param object_manager A reference to the local object manager.
+  /// \param config Configuration of node manager, e.g. initial resources, ports, etc.
+  /// \param object_manager_config Configuration of object manager, e.g. initial memory
+  /// allocation.
   NodeManager(instrumented_io_context &io_service,
               const NodeID &self_node_id,
               const std::string &self_node_name,
               const NodeManagerConfig &config,
               const ObjectManagerConfig &object_manager_config,
-              std::shared_ptr<gcs::GcsClient> gcs_client);
+              std::shared_ptr<gcs::GcsClient> gcs_client,
+              std::function<void(const rpc::NodeDeathInfo &)> shutdown_raylet_gracefully);
 
   /// Process a new client connection.
   ///
@@ -196,7 +192,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// \param object_ids The object ids to store error messages into.
   /// \param job_id The optional job to push errors to if the writes fail.
   void MarkObjectsAsFailed(const ErrorType &error_type,
-                           const std::vector<rpc::ObjectReference> object_ids,
+                           const std::vector<rpc::ObjectReference> &object_ids,
                            const JobID &job_id);
 
   /// Stop this node manager.
@@ -717,6 +713,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   instrumented_io_context &io_service_;
   /// A client connection to the GCS.
   std::shared_ptr<gcs::GcsClient> gcs_client_;
+  /// The function to shutdown raylet gracefully.
+  std::function<void(const rpc::NodeDeathInfo &)> shutdown_raylet_gracefully_;
   /// A pool of workers.
   WorkerPool worker_pool_;
   /// The `ClientCallManager` object that is shared by all `NodeManagerClient`s

@@ -2,6 +2,7 @@ import logging
 from io import BytesIO
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
+from ray.air.util.tensor_extensions.arrow import pyarrow_table_from_pydict
 from ray.data.context import DataContext
 from ray.data.datasource.file_based_datasource import FileBasedDatasource
 from ray.util.annotations import PublicAPI
@@ -116,7 +117,7 @@ class JSONDatasource(FileBasedDatasource):
             for row in parsed_json:
                 for k, v in row.items():
                     dct[k].append(v)
-            yield pa.Table.from_pydict(dct)
+            yield pyarrow_table_from_pydict(dct)
 
     # TODO(ekl) The PyArrow JSON reader doesn't support streaming reads.
     def _read_stream(self, f: "pyarrow.NativeFile", path: str):
