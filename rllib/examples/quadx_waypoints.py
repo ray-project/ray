@@ -35,8 +35,9 @@ parser = add_rllib_example_script_args(
 parser.add_argument(
     "--run", type=str, default="PPO", help="The RLlib-registered algorithm to use."
 )
-parser.add_argument('--env-name', type=str, default="quadx_waypoints")
+parser.add_argument("--env-name", type=str, default="quadx_waypoints")
 parser.add_argument("--num-envs-per-worker", type=int, default=4)
+
 
 class RewardWrapper(gym.RewardWrapper):
     def __init__(self, env):
@@ -73,9 +74,7 @@ if __name__ == "__main__":
     algo_cls = get_trainable_cls(args.run)
     config = algo_cls.get_default_config()
 
-    config.environment(
-        env=args.env_name
-    ).resources(
+    config.environment(env=args.env_name).resources(
         num_learner_workers=num_gpus,
         num_gpus_per_learner_worker=num_gpus,
     ).rollouts(
@@ -97,7 +96,7 @@ if __name__ == "__main__":
                 "fcnet_activation": "linear",
                 "vf_share_layers": True,
             }
-        )  
+        )
         config.training(
             sgd_minibatch_size=128,
             train_batch_size=10000,
