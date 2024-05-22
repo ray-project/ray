@@ -9,7 +9,7 @@ froms: ["nvidia/cuda:11.8.0-cudnn8-devel-ubuntu20.04"]
 dockerfile: ci/docker/base.gpu.Dockerfile
 srcs:
   - .bazelrc
-  - .bazeliskrc
+  - .bazelversion
   - ci/ci.sh
   - ci/env/install-dependencies.sh
   - ci/env/install-llvm-binaries.sh

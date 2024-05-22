@@ -1,3 +1,4 @@
+# @OldAPIStack
 # NOTE: This example will not run w/o a proper config.multiagent setup,
 #       which currently cannot be done in yaml.
 
@@ -34,7 +35,7 @@ unity3d-soccer-strikers-vs-goalie-ppo:
         clip_param: 0.2
         # For running in editor, just use one Worker (we only have
         # one Unity running)!
-        num_workers: 10
+        num_env_runners: 10
         num_sgd_iter: 20
         rollout_fragment_length: 200
         model:
