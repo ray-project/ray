@@ -151,12 +151,11 @@ py_test_run_all_subdirectory(
 )
 
 py_test_run_all_subdirectory(
-    size = "enormous",
+    size = "medium",
     include = [
         "source/serve/doc_code/distilbert.py",
         "source/serve/doc_code/stable_diffusion.py",
         "source/serve/doc_code/object_detection.py",
-        "source/serve/doc_code/vllm_openai_example.py"
     ],
     exclude = [
         "source/serve/doc_code/aws_neuron_core_inference_serve.py",

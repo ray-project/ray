@@ -7,10 +7,6 @@ steps:
   - name: servebuild
     wanda: ci/docker/serve.build.py39.wanda.yaml
 
-  - name: servegpubuild
-    wanda: ci/docker/serve.gpu.build.wanda.yaml
-    depends_on: oss-ci-base_gpu
-
   - name: servebuild-multipy
     label: "wanda: servebuild-py{{matrix}}"
     wanda: ci/docker/serve.build.wanda.yaml
@@ -170,7 +166,6 @@ steps:
       - servebuild
 
   - label: ":ray-serve: serve: doc gpu tests"
-    key: serve-doc-gpu
     tags: 
       - serve
       - doc
@@ -178,9 +173,9 @@ steps:
     instance_type: gpu
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //doc/... serve 
-        --build-name servegpubuild
+        --build-name docgpubuild
         --only-tags gpu
-    depends_on: servegpubuild
+    depends_on: docgpubuild
 
   - label: ":ray-serve: serve: flaky tests"
     tags: 

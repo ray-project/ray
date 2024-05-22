@@ -1,9 +1,0 @@
-name: "servegpubuild"
-froms: ["cr.ray.io/rayproject/oss-ci-base_gpu"]
-dockerfile: ci/docker/serve.gpu.build.Dockerfile
-srcs:
-  - python/requirements.txt
-  - python/requirements_compiled.txt
-  - python/requirements/test-requirements.txt
-tags:
-  - cr.ray.io/rayproject/servegpubuild
