@@ -213,6 +213,7 @@ void RayLog::StartRayLog(const std::string &app_name,
                          RayLogLevel severity_threshold,
                          const std::string &log_dir) {
   const char *var_value = std::getenv("RAY_BACKEND_LOG_LEVEL");
+  bool should_redirect = false;
   if (var_value != nullptr) {
     std::string data = var_value;
     std::transform(data.begin(), data.end(), data.begin(), ::tolower);
@@ -252,44 +253,57 @@ void RayLog::StartRayLog(const std::string &app_name,
     }
   }
 
-  if (!log_dir_.empty()) {
-    // Enable log file if log_dir_ is not empty.
+  // Reset log pattern and level and we assume a log file can be rotated with
+  // 10 files in max size 512M by default.
+  if (std::getenv("RAY_ROTATION_MAX_BYTES")) {
+    long max_size = std::atol(std::getenv("RAY_ROTATION_MAX_BYTES"));
+    // 0 means no log rotation in python, but not in spdlog. We just use the default
+    // value here.
+    if (max_size != 0) {
+      log_rotation_max_size_ = max_size;
+    }
+  }
+  if (std::getenv("RAY_ROTATION_BACKUP_COUNT")) {
+    long file_num = std::atol(std::getenv("RAY_ROTATION_BACKUP_COUNT"));
+    if (file_num != 0) {
+      log_rotation_file_num_ = file_num;
+    }
+  }
+  const char *env_value = std::getenv("RAY_LOG_TO_STDERR");
+  if (env_value != nullptr && std::string(env_value) == "1") {
+    should_redirect = true;
+  }
+  if (!should_redirect) {
+    if (app_name_without_path != "gcs_server" && app_name_without_path != "raylet") {
+      // Enable log file if log_dir_ is not empty.
 #ifdef _WIN32
-    int pid = _getpid();
+      int pid = _getpid();
 #else
-    pid_t pid = getpid();
+      pid_t pid = getpid();
 #endif
-    // Reset log pattern and level and we assume a log file can be rotated with
-    // 10 files in max size 512M by default.
-    if (std::getenv("RAY_ROTATION_MAX_BYTES")) {
-      long max_size = std::atol(std::getenv("RAY_ROTATION_MAX_BYTES"));
-      // 0 means no log rotation in python, but not in spdlog. We just use the default
-      // value here.
-      if (max_size != 0) {
-        log_rotation_max_size_ = max_size;
+
+      spdlog::set_pattern(log_format_pattern_);
+      spdlog::set_level(static_cast<spdlog::level::level_enum>(severity_threshold_));
+      // Sink all log stuff to default file logger we defined here. We may need
+      // multiple sinks for different files or loglevel.
+      auto file_logger = spdlog::get(RayLog::GetLoggerName());
+      if (file_logger) {
+        // Drop this old logger first if we need reset filename or reconfig
+        // logger.
+        spdlog::drop(RayLog::GetLoggerName());
       }
+      auto file_sink = std::make_shared<spdlog::sinks::rotating_file_sink_mt>(
+          JoinPaths(log_dir_, app_name_without_path + "_" + std::to_string(pid) + ".log"),
+          log_rotation_max_size_,
+          log_rotation_file_num_);
+      sinks.push_back(file_sink);
+    } else {
+      auto file_sink = std::make_shared<spdlog::sinks::rotating_file_sink_mt>(
+          JoinPaths(log_dir_, app_name_without_path + ".out"),
+          log_rotation_max_size_,
+          log_rotation_file_num_);
+      sinks.push_back(file_sink);
     }
-    if (std::getenv("RAY_ROTATION_BACKUP_COUNT")) {
-      long file_num = std::atol(std::getenv("RAY_ROTATION_BACKUP_COUNT"));
-      if (file_num != 0) {
-        log_rotation_file_num_ = file_num;
-      }
-    }
-    spdlog::set_pattern(log_format_pattern_);
-    spdlog::set_level(static_cast<spdlog::level::level_enum>(severity_threshold_));
-    // Sink all log stuff to default file logger we defined here. We may need
-    // multiple sinks for different files or loglevel.
-    auto file_logger = spdlog::get(RayLog::GetLoggerName());
-    if (file_logger) {
-      // Drop this old logger first if we need reset filename or reconfig
-      // logger.
-      spdlog::drop(RayLog::GetLoggerName());
-    }
-    auto file_sink = std::make_shared<spdlog::sinks::rotating_file_sink_mt>(
-        JoinPaths(log_dir_, app_name_without_path + "_" + std::to_string(pid) + ".log"),
-        log_rotation_max_size_,
-        log_rotation_file_num_);
-    sinks.push_back(file_sink);
   } else {
     // Format pattern is 2020-08-21 17:00:00,000 I 100 1001 msg.
     // %L is loglevel, %P is process id, %t for thread id.

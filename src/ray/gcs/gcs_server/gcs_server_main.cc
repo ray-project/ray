@@ -38,15 +38,16 @@ DEFINE_string(session_name,
               "session_name: The session name (ClusterID) of the cluster.");
 
 int main(int argc, char *argv[]) {
+  // Retrieve the log storage path from the command.
+  gflags::ParseCommandLineFlags(&argc, &argv, true);
   InitShutdownRAII ray_log_shutdown_raii(ray::RayLog::StartRayLog,
                                          ray::RayLog::ShutDownRayLog,
                                          argv[0],
                                          ray::RayLogLevel::INFO,
-                                         /*log_dir=*/"");
+                                         /*log_dir=*/FLAGS_log_dir);
   ray::RayLog::InstallFailureSignalHandler(argv[0]);
   ray::RayLog::InstallTerminateHandler();
 
-  gflags::ParseCommandLineFlags(&argc, &argv, true);
   const std::string redis_address = FLAGS_redis_address;
   const int redis_port = static_cast<int>(FLAGS_redis_port);
   const std::string log_dir = FLAGS_log_dir;
