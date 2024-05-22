@@ -3,10 +3,11 @@ import concurrent.futures
 import enum
 import os
 import platform
+import subprocess
 import json
 import time
 from itertools import chain
-from typing import Awaitable, Optional, List, Dict
+from typing import Awaitable, Optional, List, Dict, Set
 from dataclasses import dataclass
 
 import aioboto3
@@ -219,6 +220,70 @@ class Test(dict):
                 step_id_to_tests[step_id] = step_id_to_tests.get(step_id, []) + [test]
 
         return step_id_to_tests
+
+    @classmethod
+    def get_changed_tests(cls, bazel_workspace_dir: str) -> Set[str]:
+        """
+        Get all changed tests in the current PR
+        """
+        return set(
+            chain.from_iterable(
+                [
+                    cls._get_test_targets_per_file(file, bazel_workspace_dir)
+                    for file in cls._get_changed_files(bazel_workspace_dir)
+                ]
+            )
+        )
+
+    @classmethod
+    def _get_changed_files(cls, bazel_workspace_dir: str) -> Set[str]:
+        """
+        Get all changed files in the current PR
+        """
+        base = os.environ.get("BUILDKITE_PULL_REQUEST_BASE_BRANCH")
+        head = os.environ.get("BUILDKITE_COMMIT")
+        if not base or not head:
+            # if not in a PR, return an empty set
+            return set()
+
+        changes = subprocess.check_output(
+            ["git", "diff", "--name-only", f"origin/{base}...{head}"],
+            cwd=bazel_workspace_dir,
+        )
+        return {
+            file.strip() for file in changes.decode().splitlines() if file is not None
+        }
+
+    @classmethod
+    def _get_test_targets_per_file(
+        cls, file: str, bazel_workspace_dir: str
+    ) -> Set[str]:
+        """
+        Get the test target from a file path
+        """
+        try:
+            package = (
+                subprocess.check_output(
+                    ["bazel", "query", file], cwd=bazel_workspace_dir
+                )
+                .decode()
+                .strip()
+            )
+            if not package:
+                return set()
+            targets = subprocess.check_output(
+                ["bazel", "query", f"tests(attr('srcs', {package}, //...))"],
+                cwd=bazel_workspace_dir,
+            )
+            targets = {
+                target.strip()
+                for target in targets.decode().splitlines()
+                if target is not None
+            }
+
+            return targets
+        except subprocess.CalledProcessError:
+            return set()
 
     def is_jailed_with_open_issue(self, ray_github: Repository) -> bool:
         """
