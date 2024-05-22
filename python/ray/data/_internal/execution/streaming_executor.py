@@ -125,7 +125,9 @@ class StreamingExecutor(Executor, threading.Thread):
                 )
 
         # Setup the streaming DAG topology and start the runner thread.
+        logger.get_logger(log_to_stdout=False).info('Starting to create DAG topology')
         self._topology, _ = build_streaming_topology(dag, self._options)
+        logger.get_logger(log_to_stdout=False).info('Finished creating DAG topology')
         self._resource_manager = ResourceManager(self._topology, self._options)
         self._backpressure_policies = get_backpressure_policies(self._topology)
 
