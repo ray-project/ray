@@ -130,6 +130,9 @@ def test_get_test_targets() -> None:
         ), mock.patch(
             "ci.ray_ci.tester._get_changed_tests",
             return_value=set(),
+        ), mock.patch(
+            "ci.ray_ci.tester._get_new_tests",
+            return_value=set(),
         ):
             assert set(
                 _get_test_targets(
@@ -269,17 +272,15 @@ def test_get_high_impact_test_targets() -> None:
             )
 
 
-@mock.patch("ci.ray_ci.tester_container.TesterContainer.run_script_with_output")
+@mock.patch("subprocess.check_output")
 @mock.patch("ray_release.test.Test.gen_from_s3")
-def test_get_new_tests(mock_gen_from_s3, mock_run_script_with_output) -> None:
+def test_get_new_tests(mock_gen_from_s3, mock_check_output) -> None:
     mock_gen_from_s3.return_value = [
         _stub_test({"name": "linux://old_test_01"}),
         _stub_test({"name": "linux://old_test_02"}),
     ]
-    mock_run_script_with_output.return_value = "//old_test_01\n//new_test"
-    assert _get_new_tests(
-        "linux", LinuxTesterContainer("test", skip_ray_installation=True)
-    ) == {"//new_test"}
+    mock_check_output.return_value = b"//old_test_01\n//new_test"
+    assert _get_new_tests("linux") == {"//new_test"}
 
 
 @mock.patch.dict(
