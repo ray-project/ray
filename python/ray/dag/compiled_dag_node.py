@@ -76,9 +76,6 @@ def do_exec_tasks(
     Args:
         tasks: the executable tasks corresponding to the actor methods.
     """
-    ctx = ChannelContext.get_current()
-    self._serialization_ctx = ctx.serialization_context
-
     try:
         self._input_readers = []
         self._output_writers = []
@@ -141,10 +138,6 @@ def _exec_task(self, task: "ExecutableTask", idx: int) -> bool:
     Returns:
         True if we are done executing all tasks of this actor, False otherwise.
     """
-    self._serialization_ctx.set_use_external_transport(
-        task.output_type_hint.requires_nccl()
-    )
-
     # TODO: for cases where output is passed as input to a task on
     # the same actor, introduce a "LocalChannel" to avoid the overhead
     # of serialization/deserialization and synchronization.
@@ -677,11 +670,6 @@ class CompiledDAG:
         input_task = self.idx_to_task[self.input_task_idx]
         # Register custom serializers for inputs provided to dag.execute().
         input_task.dag_node.type_hint.register_custom_serializer()
-        ctx = ChannelContext.get_current()
-        self.serialization_ctx = ctx.serialization_context
-        self.serialization_ctx.set_use_external_transport(
-            input_task.dag_node.type_hint.requires_nccl()
-        )
 
         self.dag_input_channel = input_task.output_channel
 
@@ -779,6 +767,7 @@ class CompiledDAG:
 
                 for actor in outer.actor_refs:
                     logger.info(f"Cancelling compiled worker on actor: {actor}")
+                # Cancel all actor loops in parallel.
                 cancel_refs = [
                     actor.__ray_call__.remote(do_cancel_executable_tasks, tasks)
                     for actor, tasks in outer.actor_to_executable_tasks.items()

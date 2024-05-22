@@ -23,9 +23,11 @@ class _SerializationContext:
         return prev_tensors
 
     def serialize_tensor(self, tensor: "torch.Tensor") -> Union[int, "np.ndarray"]:
-        if self.use_external_transport:
-            # Add the actual tensor to a buffer. The buffer of tensors should
-            # later be popped by the caller and sent via external transport.
+        if self.use_external_transport and tensor.device == self.torch_device:
+            # External transport is enabled and we found a tensor that matches
+            # our device.  Add the actual tensor to a buffer. The buffer of
+            # tensors should later be popped by the caller and sent via
+            # external transport.
             self.tensors.append(tensor)
             # Return a placeholder.
             return len(self.tensors) - 1

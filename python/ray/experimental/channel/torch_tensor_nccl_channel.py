@@ -40,9 +40,20 @@ class NestedTorchTensorNcclChannel(ChannelInterface):
         self._readers = readers
 
         if _gpu_data_channel is not None or _cpu_data_channel is not None:
+            # This path is used when the NestedTorchTensorNcclChannel is being
+            # deserialized.
+            assert (
+                writer is None
+                and readers is None
+                and gpu_data_typ is None
+                and cpu_data_typ is None
+            )
+            assert _gpu_data_channel is not None and _cpu_data_channel is not None
             self._gpu_data_channel = _gpu_data_channel
             self._cpu_data_channel = _cpu_data_channel
         else:
+            # This path is used when the NestedTorchTensorNcclChannel is first
+            # being created, by the writer of the channel.
             self._gpu_data_channel: TorchTensorNcclChannel = (
                 gpu_data_typ.create_channel(writer, readers)
             )
@@ -91,6 +102,8 @@ class NestedTorchTensorNcclChannel(ChannelInterface):
 
     def write(self, value: Any):
         self.serialization_ctx.reset_tensors([])
+        # All tensors found in `value` will be transferred via NCCL.
+        self.serialization_ctx.set_use_external_transport(True)
 
         try:
             serialized_cpu_data = self._worker.get_serialization_context().serialize(
@@ -105,8 +118,12 @@ class NestedTorchTensorNcclChannel(ChannelInterface):
                 f"{sio.getvalue()}"
             )
             raise TypeError(msg) from e
-
-        tensors_to_send = self.serialization_ctx.reset_tensors([])
+        finally:
+            # Pop the tensors that were found during serialization of `value`.
+            tensors_to_send = self.serialization_ctx.reset_tensors([])
+            # Reset the serialization method to now serialize torch.Tensors
+            # normally.
+            self.serialization_ctx.set_use_external_transport(False)
 
         self._gpu_data_channel.write(tensors_to_send)
         self._cpu_data_channel.write(serialized_cpu_data)
@@ -263,7 +280,7 @@ class TorchTensorNcclChannel(ChannelInterface):
 
     def write(
         self,
-        tensors: Union["torch.Tensor", List["torch.Tensor"]],
+        tensors: Union["torch.Tensor", List["torch.Tensor"], Exception],
     ):
         if isinstance(tensors, ray.exceptions.RayTaskError):
             # TODO(swang): Write exceptions to the meta channel if it is
@@ -274,7 +291,9 @@ class TorchTensorNcclChannel(ChannelInterface):
             meta_list = []
             for tensor in tensors:
                 meta_list.append(self._get_tensor_meta(tensor))
-            if self._meta_channel is None:
+            if self.has_static_type():
+                # Make sure that there is exactly one tensor to send, and its
+                # metadata should have matched the static type.
                 if meta_list != [None]:
                     raise ValueError(
                         "DAGNode annotated with "

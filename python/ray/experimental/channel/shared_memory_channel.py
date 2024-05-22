@@ -117,7 +117,7 @@ class SharedMemoryType(ChannelOutputType):
                 NestedTorchTensorNcclChannel,
             )
 
-            if self._contains_type.transport == TorchTensorType.NCCL:
+            if self._contains_type.requires_nccl():
                 cpu_data_typ = SharedMemoryType(
                     buffer_size_bytes=self.buffer_size_bytes
                 )

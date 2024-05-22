@@ -52,8 +52,10 @@ class ChannelOutputType:
     def set_contains_type(self, typ: "ChannelOutputType") -> None:
         from ray.experimental.channel.torch_tensor_type import TorchTensorType
 
-        if typ is not None and not isinstance(typ, TorchTensorType):
-            raise ValueError("Contained type must be of type TorchTensorType")
+        if typ is not None:
+            assert isinstance(
+                typ, TorchTensorType
+            ), "Contained type must be of type TorchTensorType"
         self._contains_type = copy.deepcopy(typ)
 
     def create_channel(
