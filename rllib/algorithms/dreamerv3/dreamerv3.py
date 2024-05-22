@@ -664,7 +664,7 @@ class DreamerV3(Algorithm):
                 # (videos are `config.batch_length_T` frames long).
                 if (
                     self.config.report_images_and_videos
-                    and self.training_iteration % 100
+                    and self.training_iteration % 100 == 0
                 ):
                     report_predicted_vs_sampled_obs(
                         # TODO (sven): DreamerV3 is single-agent only.
