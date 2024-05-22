@@ -2738,7 +2738,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "examples", "examples_use_all_core", "no_main"],
     size = "large",
     srcs = ["examples/checkpoints/restore_1_of_n_agents_from_checkpoint.py"],
-    args = ["--enable-new-api-stack", "--num-agents=2", "--as-test", "--framework=torch", "--checkpoint-freq=20", "--checkpoint-at-end", "--num-cpus=4"]
+    args = ["--enable-new-api-stack", "--num-agents=2", "--framework=torch", "--checkpoint-freq=20", "--checkpoint-at-end", "--num-cpus=4", "--algo=PPO"]
 )
 
 py_test(
