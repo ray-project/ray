@@ -2,14 +2,15 @@
 
 import click
 import inspect
+from typing import Dict, Set
 
 import ray
-from ray.util.annotations import _is_annotated
+from ray.util.annotations import _is_annotated, _get_annotation_type
 
 
 VISITED = set()
-ANNOTATED_CLASSES = set()
-ANNOTATED_FUNCTIONS = set()
+ANNOTATED_CLASSES = {}
+ANNOTATED_FUNCTIONS = {}
 
 
 @click.command()
@@ -19,14 +20,16 @@ def main() -> None:
     discrepancies between the annotations and the documentation.
     """
     walk(ray.data)  # TODO(can): parameterize the module to walk
+    _print(ANNOTATED_CLASSES, "classes")
+    _print(ANNOTATED_FUNCTIONS, "functions")
 
-    print("ANNOTATED CLASSES")
-    for classes in sorted(ANNOTATED_CLASSES):
-        print(classes)
-    print("\n")
-    print("ANNOTATED FUNCTIONS")
-    for functions in sorted(ANNOTATED_FUNCTIONS):
-        print(functions)
+
+def _print(annotated: Dict[str, Set[str]], prefix: str) -> None:
+    for type, objs in annotated.items():
+        print(f"{prefix} {type}".upper())
+        for obj in sorted(objs):
+            print(obj)
+        print("\n")
 
 
 def walk(module) -> None:
@@ -46,12 +49,20 @@ def walk(module) -> None:
         if inspect.ismodule(attribute):
             walk(attribute)
         if inspect.isclass(attribute):
-            if _is_annotated(attribute):
-                ANNOTATED_CLASSES.add(_fullname(attribute))
+            _add_if_annotated(attribute, ANNOTATED_CLASSES)
             walk(attribute)
         if inspect.isfunction(attribute) and _is_annotated(attribute):
-            ANNOTATED_FUNCTIONS.add(_fullname(attribute))
+            _add_if_annotated(attribute, ANNOTATED_FUNCTIONS)
     return
+
+
+def _add_if_annotated(attribute, result: Dict[str, Set[str]]):
+    if not _is_annotated(attribute):
+        return
+    type = _get_annotation_type(attribute)
+    if type not in result:
+        result[type] = set()
+    result[type].add(_fullname(attribute))
 
 
 def _fullname(attr):
