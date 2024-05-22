@@ -16,6 +16,7 @@ from ci.ray_ci.tester import (
     _get_high_impact_test_targets,
     _get_flaky_test_targets,
     _get_tag_matcher,
+    _get_new_tests,
     _get_changed_files,
     _get_changed_tests,
     _get_human_specified_tests,
@@ -215,6 +216,7 @@ def test_get_high_impact_test_targets() -> None:
         {
             "input": [],
             "new_tests": set(),
+            "changed_tests": set(),
             "human_tests": set(),
             "output": set(),
         },
@@ -234,6 +236,7 @@ def test_get_high_impact_test_targets() -> None:
                 ),
             ],
             "new_tests": {"//core_new"},
+            "changed_tests": {"//core_new"},
             "human_tests": {"//human_test"},
             "output": {
                 "//core_good",
@@ -247,8 +250,11 @@ def test_get_high_impact_test_targets() -> None:
             "ray_release.test.Test.gen_high_impact_tests",
             return_value={"step": test["input"]},
         ), mock.patch(
-            "ci.ray_ci.tester._get_changed_tests",
+            "ci.ray_ci.tester._get_new_tests",
             return_value=test["new_tests"],
+        ), mock.patch(
+            "ci.ray_ci.tester._get_changed_tests",
+            return_value=test["changed_tests"],
         ), mock.patch(
             "ci.ray_ci.tester._get_human_specified_tests",
             return_value=test["human_tests"],
@@ -261,6 +267,19 @@ def test_get_high_impact_test_targets() -> None:
                 )
                 == test["output"]
             )
+
+
+@mock.patch("ci.ray_ci.tester_container.TesterContainer.run_script_with_output")
+@mock.patch("ray_release.test.Test.gen_from_s3")
+def test_get_new_tests(mock_gen_from_s3, mock_run_script_with_output) -> None:
+    mock_gen_from_s3.return_value = [
+        _stub_test({"name": "linux://old_test_01"}),
+        _stub_test({"name": "linux://old_test_02"}),
+    ]
+    mock_run_script_with_output.return_value = "//old_test_01\n//new_test"
+    assert _get_new_tests(
+        "linux", LinuxTesterContainer("test", skip_ray_installation=True)
+    ) == {"//new_test"}
 
 
 @mock.patch.dict(

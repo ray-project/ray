@@ -416,10 +416,15 @@ def _get_high_impact_test_targets(
         for test in itertools.chain.from_iterable(step_id_to_tests.values())
         if test.get_oncall() == team
     }
+    new_tests = _get_new_tests(os_prefix, container)
     changed_tests = _get_changed_tests()
     human_specified_tests = _get_human_specified_tests()
 
-    return high_impact_tests.union(changed_tests).union(human_specified_tests)
+    return (
+        high_impact_tests.union(new_tests)
+        .union(changed_tests)
+        .union(human_specified_tests)
+    )
 
 
 def _get_human_specified_tests() -> Set[str]:
@@ -443,6 +448,20 @@ def _get_human_specified_tests() -> Set[str]:
     logger.info(f"Human specified tests: {tests}")
 
     return tests
+
+
+def _get_new_tests(prefix: str, container: TesterContainer) -> Set[str]:
+    """
+    Get all local test targets that are not in database
+    """
+    local_test_targets = set(
+        container.run_script_with_output(['bazel query "tests(//...)"'])
+        .strip()
+        .split(os.linesep)
+    )
+    db_test_targets = {test.get_target() for test in Test.gen_from_s3(prefix=prefix)}
+
+    return local_test_targets.difference(db_test_targets)
 
 
 def _get_changed_tests() -> Set[str]:
