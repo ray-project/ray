@@ -151,7 +151,7 @@ py_test_run_all_subdirectory(
 )
 
 py_test_run_all_subdirectory(
-    size = "medium",
+    size = "enormous",
     include = [
         "source/serve/doc_code/distilbert.py",
         "source/serve/doc_code/stable_diffusion.py",
