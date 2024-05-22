@@ -495,7 +495,6 @@ class ExecutionPlan:
                 )
         if not self.has_computed_output():
             from ray.data._internal.execution.legacy_compat import (
-                _block_list_to_bundles,
                 _get_initial_stats_from_plan,
                 execute_to_legacy_block_list,
                 get_legacy_lazy_block_list_read_only,
