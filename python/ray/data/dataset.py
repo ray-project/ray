@@ -2602,30 +2602,12 @@ class Dataset:
         """
 
         # First check if the schema is already known from materialized blocks.
-        base_schema = self._plan.schema(fetch_if_missing=False)
+        base_schema = self._plan.schema(fetch_if_missing=fetch_if_missing)
         if base_schema is not None:
-            return Schema(base_schema)
-        if not fetch_if_missing:
-            return None
-
-        if self._plan.is_read_only():
-            # For read-only plans, there is special logic for fetching the
-            # schema from already known metadata
-            # (see `get_legacy_lazy_block_list_read_only()`). This requires
-            # the underlying logical plan to be read-only, so we skip appending
-            # the Limit[1] operation as we do in the else case below. There is
-            # no downside in this case, since it doesn't execute any read tasks.
-            base_schema = self._plan.schema(fetch_if_missing=fetch_if_missing)
+            schema = Schema(base_schema)
         else:
-            # Lazily execute only the first block to minimize computation.
-            # We achieve this by appending a Limit[1] operation to a copy
-            # of this Dataset, which we then execute to get its schema.
-            base_schema = self.limit(1)._plan.schema(fetch_if_missing=fetch_if_missing)
-        if base_schema:
-            self._plan.cache_schema(base_schema)
-            return Schema(base_schema)
-        else:
-            return None
+            schema = None
+        return schema
 
     @ConsumptionAPI(
         if_more_than_read=True,

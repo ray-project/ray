@@ -1,4 +1,4 @@
-from typing import Callable, Iterable, List, Optional
+from typing import Callable, Iterable, List, Optional, Union
 
 import numpy as np
 
@@ -78,6 +78,14 @@ class Datasource:
     def supports_distributed_reads(self) -> bool:
         """If ``False``, only launch read tasks on the driver's node."""
         return True
+
+    def num_rows(self) -> Optional[int]:
+        """Return the number of rows in the datasource, or ``None`` if unknown."""
+        return None
+
+    def schema(self) -> Optional[Union[type, "pyarrow.lib.Schema"]]:
+        """Return the schema of the datasource, or ``None`` if unknown."""
+        return None
 
 
 @Deprecated

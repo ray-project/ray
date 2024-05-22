@@ -72,6 +72,10 @@ class RefBundle:
         """Size of the blocks of this bundle in bytes."""
         return sum(b[1].size_bytes for b in self.blocks)
 
+    @property
+    def metadata(self) -> Tuple[BlockMetadata]:
+        return (b[1] for b in self.blocks)
+
     def destroy_if_owned(self) -> int:
         """Clears the object store memory for these blocks if owned.
 

@@ -1,7 +1,9 @@
+import itertools
 from typing import Callable, List, Optional
 
 from ray.data._internal.execution.interfaces import RefBundle
 from ray.data._internal.logical.interfaces import LogicalOperator
+from ray.data._internal.util import unify_block_metadata_schema
 
 
 class InputData(LogicalOperator):
@@ -24,3 +26,20 @@ class InputData(LogicalOperator):
         )
         self.input_data = input_data
         self.input_data_factory = input_data_factory
+
+    def schema(self):
+        if self.input_data is None:
+            return None
+
+        metadata = list(itertools.chain(bundle.metadata for bundle in self.input_data))
+        return unify_block_metadata_schema(metadata)
+
+    def num_rows(self):
+        if self.input_data is None:
+            return None
+
+        return sum(
+            block_metadata.num_rows
+            for bundle in self.input_data
+            for block_metadata in bundle.metadata
+        )

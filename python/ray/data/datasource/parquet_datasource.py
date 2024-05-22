@@ -470,6 +470,16 @@ class ParquetDatasource(Datasource):
 
         return read_tasks
 
+    def num_rows(self) -> Optional[int]:
+        # If there is a filter operation, the total row count is unknown.
+        if self._to_batches_kwargs.get("filter") is not None:
+            return None
+
+        return sum(metadata.num_rows for metadata in self._metadata)
+
+    def schema(self) -> "pyarrow.Schema":
+        return self._inferred_schema
+
     def _estimate_files_encoding_ratio(self) -> float:
         """Return an estimate of the Parquet files encoding ratio.
 

@@ -51,3 +51,9 @@ class LogicalOperator(Operator):
 
     def post_order_iter(self) -> Iterator["LogicalOperator"]:
         return super().post_order_iter()  # type: ignore
+
+    def schema(self):
+        return None
+
+    def num_rows(self):
+        return None
