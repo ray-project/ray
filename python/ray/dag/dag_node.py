@@ -2,6 +2,7 @@ import ray
 from ray.dag.base import DAGNodeBase
 from ray.dag.py_obj_scanner import _PyObjScanner
 from ray.util.annotations import DeveloperAPI
+import copy
 
 from typing import (
     Optional,
@@ -17,6 +18,7 @@ import uuid
 import asyncio
 
 from ray.dag.compiled_dag_node import build_compiled_dag_from_ray_dag
+from ray.experimental.channel import ChannelOutputType
 
 T = TypeVar("T")
 
@@ -60,6 +62,16 @@ class DAGNode(DAGNodeBase):
         self._stable_uuid = uuid.uuid4().hex
         # Cached values from last call to execute()
         self.cache_from_last_execute = {}
+
+        self._type_hint: Optional[ChannelOutputType] = ChannelOutputType()
+
+    def with_type_hint(self, typ: ChannelOutputType):
+        self._type_hint = copy.deepcopy(typ)
+        return self
+
+    @property
+    def type_hint(self) -> Optional[ChannelOutputType]:
+        return self._type_hint
 
     def get_args(self) -> Tuple[Any]:
         """Return the tuple of arguments for this node."""
@@ -352,6 +364,7 @@ class DAGNode(DAGNodeBase):
             new_args, new_kwargs, new_options, new_other_args_to_resolve
         )
         instance._stable_uuid = self._stable_uuid
+        instance = instance.with_type_hint(self.type_hint)
         return instance
 
     def __getstate__(self):
