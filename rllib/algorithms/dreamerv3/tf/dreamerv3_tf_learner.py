@@ -735,7 +735,7 @@ class DreamerV3TfLearner(DreamerV3Learner, TfLearner):
             :-1
         ]
 
-        # Reduce over H- (time) axis (sum) and then B-axis (mean).
+        # Reduce over both H- (time) axis and B-axis (mean).
         L_critic = tf.reduce_mean(L_critic_H_B)
 
         # Log important critic loss stats.

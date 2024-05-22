@@ -732,8 +732,8 @@ class DreamerV3TorchLearner(DreamerV3Learner, TorchLearner):
         # Mask out everything that goes beyond a predicted continue=False boundary.
         L_critic_H_B *= dream_data["dream_loss_weights_t0_to_H_BxT"].detach()[:-1]
 
-        # Sum over time and batch rank.
-        L_critic = L_critic_H_B.sum()
+        # Reduce over both H- (time) axis and B-axis (mean).
+        L_critic = L_critic_H_B.mean()
 
         # Log important critic loss stats.
         self.metrics.log_dict(
