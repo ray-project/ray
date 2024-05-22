@@ -296,12 +296,14 @@ class MockInternalKVAccessor : public InternalKVAccessor {
               AsyncInternalKVKeys,
               (const std::string &ns,
                const std::string &prefix,
+               const int64_t timeout_ms,
                const OptionalItemCallback<std::vector<std::string>> &callback),
               (override));
   MOCK_METHOD(Status,
               AsyncInternalKVGet,
               (const std::string &ns,
                const std::string &key,
+               const int64_t timeout_ms,
                const OptionalItemCallback<std::string> &callback),
               (override));
   MOCK_METHOD(Status,
@@ -310,12 +312,14 @@ class MockInternalKVAccessor : public InternalKVAccessor {
                const std::string &key,
                const std::string &value,
                bool overwrite,
+               const int64_t timeout_ms,
                const OptionalItemCallback<int> &callback),
               (override));
   MOCK_METHOD(Status,
               AsyncInternalKVExists,
               (const std::string &ns,
                const std::string &key,
+               const int64_t timeout_ms,
                const OptionalItemCallback<bool> &callback),
               (override));
   MOCK_METHOD(Status,
@@ -323,6 +327,7 @@ class MockInternalKVAccessor : public InternalKVAccessor {
               (const std::string &ns,
                const std::string &key,
                bool del_by_prefix,
+               const int64_t timeout_ms,
                const StatusCallback &callback),
               (override));
 };
