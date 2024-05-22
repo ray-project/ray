@@ -173,6 +173,26 @@ class TestJobSubmit:
         stdout, _ = _run_cmd(f"ray job submit -- bash -c '{cmd}'")
         assert "hello" in stdout
 
+    def test_submit_allow_exists(self, ray_start_stop):
+        """
+        Should not raise exception when using --allow-exists
+        and an existing submission id.
+        """
+        cmd = "echo hello"
+        stdout, _ = _run_cmd(
+            "ray job submit --submission-id test-allow-exists "
+            f"--no-wait -- bash -c '{cmd}'"
+        )
+        assert "hello" not in stdout
+        assert "Tailing logs until the job exits" not in stdout
+
+        stdout, _ = _run_cmd(
+            "ray job submit --submission-id test-allow-exists "
+            f"--allow-exists -- bash -c '{cmd}'"
+        )
+        assert "Job 'test-allow-exists' already exists" in stdout
+        assert "hello" in stdout
+
     def test_multiple_ray_init(self, ray_start_stop):
         cmd = (
             "python -c 'import ray; ray.init(); ray.shutdown(); "
