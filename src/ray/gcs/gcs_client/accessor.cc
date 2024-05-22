@@ -20,17 +20,15 @@
 #include "ray/common/common_protocol.h"
 #include "ray/gcs/gcs_client/gcs_client.h"
 
-namespace {
-inline int64_t GetGcsTimeoutMs() {
-  return absl::ToInt64Milliseconds(
-      absl::Seconds(RayConfig::instance().gcs_server_request_timeout_seconds()));
-}
-}  // namespace
-
 namespace ray {
 namespace gcs {
 
 using namespace ray::rpc;
+
+int64_t GetGcsTimeoutMs() {
+  return absl::ToInt64Milliseconds(
+      absl::Seconds(RayConfig::instance().gcs_server_request_timeout_seconds()));
+}
 
 JobInfoAccessor::JobInfoAccessor(GcsClient *client_impl) : client_impl_(client_impl) {}
 
@@ -205,7 +203,7 @@ Status ActorInfoAccessor::AsyncGetByName(
         RAY_LOG(DEBUG) << "Finished getting actor info, status = " << status
                        << ", name = " << name;
       },
-      /*timeout_ms*/ timeout_ms);
+      timeout_ms);
   return Status::OK();
 }
 
@@ -218,7 +216,7 @@ Status ActorInfoAccessor::SyncGetByName(const std::string &name,
   request.set_name(name);
   request.set_ray_namespace(ray_namespace);
   auto status = client_impl_->GetGcsRpcClient().SyncGetNamedActorInfo(
-      request, &reply, /*timeout_ms*/ GetGcsTimeoutMs());
+      request, &reply, GetGcsTimeoutMs());
   if (status.ok()) {
     actor_table_data = reply.actor_table_data();
     task_spec = reply.task_spec();
@@ -984,7 +982,7 @@ Status PlacementGroupInfoAccessor::AsyncGetByName(
         RAY_LOG(DEBUG) << "Finished getting named placement group info, status = "
                        << status << ", name = " << name;
       },
-      /*timeout_ms*/ timeout_ms);
+      timeout_ms);
   return Status::OK();
 }
 
@@ -1020,6 +1018,7 @@ InternalKVAccessor::InternalKVAccessor(GcsClient *client_impl)
 Status InternalKVAccessor::AsyncInternalKVGet(
     const std::string &ns,
     const std::string &key,
+    const int64_t timeout_ms,
     const OptionalItemCallback<std::string> &callback) {
   rpc::InternalKVGetRequest req;
   req.set_key(key);
@@ -1033,7 +1032,37 @@ Status InternalKVAccessor::AsyncInternalKVGet(
           callback(status, reply.value());
         }
       },
-      /*timeout_ms*/ GetGcsTimeoutMs());
+      timeout_ms);
+  return Status::OK();
+}
+
+Status InternalKVAccessor::AsyncInternalKVMultiGet(
+    const std::string &ns,
+    const std::vector<std::string> &keys,
+    const int64_t timeout_ms,
+    const OptionalItemCallback<absl::flat_hash_map<std::string, std::string>> &callback) {
+  rpc::InternalKVMultiGetRequest req;
+  for (const auto &key : keys) {
+    req.add_keys(key);
+  }
+  req.set_namespace_(ns);
+  client_impl_->GetGcsRpcClient().InternalKVMultiGet(
+      req,
+      [callback](const Status &status, const rpc::InternalKVMultiGetReply &reply) {
+        absl::flat_hash_map<std::string, std::string> map;
+        if (!status.ok()) {
+          callback(status, map);
+        } else {
+          // TODO(ryw): reply.status() is not examined. It's never populated in
+          // src/ray/gcs/gcs_server/gcs_kv_manager.cc either anyway so it's ok for now.
+          // Investigate if we wanna remove that field.
+          for (const auto &entry : reply.results()) {
+            map[entry.key()] = entry.value();
+          }
+          callback(Status::OK(), map);
+        }
+      },
+      timeout_ms);
   return Status::OK();
 }
 
@@ -1041,6 +1070,7 @@ Status InternalKVAccessor::AsyncInternalKVPut(const std::string &ns,
                                               const std::string &key,
                                               const std::string &value,
                                               bool overwrite,
+                                              const int64_t timeout_ms,
                                               const OptionalItemCallback<int> &callback) {
   rpc::InternalKVPutRequest req;
   req.set_namespace_(ns);
@@ -1052,13 +1082,14 @@ Status InternalKVAccessor::AsyncInternalKVPut(const std::string &ns,
       [callback](const Status &status, const rpc::InternalKVPutReply &reply) {
         callback(status, reply.added_num());
       },
-      /*timeout_ms*/ GetGcsTimeoutMs());
+      timeout_ms);
   return Status::OK();
 }
 
 Status InternalKVAccessor::AsyncInternalKVExists(
     const std::string &ns,
     const std::string &key,
+    const int64_t timeout_ms,
     const OptionalItemCallback<bool> &callback) {
   rpc::InternalKVExistsRequest req;
   req.set_namespace_(ns);
@@ -1068,13 +1099,14 @@ Status InternalKVAccessor::AsyncInternalKVExists(
       [callback](const Status &status, const rpc::InternalKVExistsReply &reply) {
         callback(status, reply.exists());
       },
-      /*timeout_ms*/ GetGcsTimeoutMs());
+      timeout_ms);
   return Status::OK();
 }
 
 Status InternalKVAccessor::AsyncInternalKVDel(const std::string &ns,
                                               const std::string &key,
                                               bool del_by_prefix,
+                                              const int64_t timeout_ms,
                                               const StatusCallback &callback) {
   rpc::InternalKVDelRequest req;
   req.set_namespace_(ns);
@@ -1084,13 +1116,14 @@ Status InternalKVAccessor::AsyncInternalKVDel(const std::string &ns,
       [callback](const Status &status, const rpc::InternalKVDelReply &reply) {
         callback(status);
       },
-      /*timeout_ms*/ GetGcsTimeoutMs());
+      timeout_ms);
   return Status::OK();
 }
 
 Status InternalKVAccessor::AsyncInternalKVKeys(
     const std::string &ns,
     const std::string &prefix,
+    const int64_t timeout_ms,
     const OptionalItemCallback<std::vector<std::string>> &callback) {
   rpc::InternalKVKeysRequest req;
   req.set_namespace_(ns);
@@ -1104,7 +1137,7 @@ Status InternalKVAccessor::AsyncInternalKVKeys(
           callback(status, VectorFromProtobuf(reply.results()));
         }
       },
-      /*timeout_ms*/ GetGcsTimeoutMs());
+      timeout_ms);
   return Status::OK();
 }
 
@@ -1112,6 +1145,7 @@ Status InternalKVAccessor::Put(const std::string &ns,
                                const std::string &key,
                                const std::string &value,
                                bool overwrite,
+                               const int64_t timeout_ms,
                                bool &added) {
   std::promise<Status> ret_promise;
   RAY_CHECK_OK(AsyncInternalKVPut(
@@ -1119,6 +1153,7 @@ Status InternalKVAccessor::Put(const std::string &ns,
       key,
       value,
       overwrite,
+      timeout_ms,
       [&ret_promise, &added](Status status, boost::optional<int> added_num) {
         added = static_cast<bool>(added_num.value_or(0));
         ret_promise.set_value(status);
@@ -1128,10 +1163,11 @@ Status InternalKVAccessor::Put(const std::string &ns,
 
 Status InternalKVAccessor::Keys(const std::string &ns,
                                 const std::string &prefix,
+                                const int64_t timeout_ms,
                                 std::vector<std::string> &value) {
   std::promise<Status> ret_promise;
   RAY_CHECK_OK(AsyncInternalKVKeys(
-      ns, prefix, [&ret_promise, &value](Status status, auto &values) {
+      ns, prefix, timeout_ms, [&ret_promise, &value](Status status, auto &values) {
         value = values.value_or(std::vector<std::string>());
         ret_promise.set_value(status);
       }));
@@ -1140,10 +1176,11 @@ Status InternalKVAccessor::Keys(const std::string &ns,
 
 Status InternalKVAccessor::Get(const std::string &ns,
                                const std::string &key,
+                               const int64_t timeout_ms,
                                std::string &value) {
   std::promise<Status> ret_promise;
-  RAY_CHECK_OK(
-      AsyncInternalKVGet(ns, key, [&ret_promise, &value](Status status, auto &v) {
+  RAY_CHECK_OK(AsyncInternalKVGet(
+      ns, key, timeout_ms, [&ret_promise, &value](Status status, auto &v) {
         if (v) {
           value = *v;
         }
@@ -1152,22 +1189,45 @@ Status InternalKVAccessor::Get(const std::string &ns,
   return ret_promise.get_future().get();
 }
 
+Status InternalKVAccessor::MultiGet(
+    const std::string &ns,
+    const std::vector<std::string> &keys,
+    const int64_t timeout_ms,
+    absl::flat_hash_map<std::string, std::string> &values) {
+  std::promise<Status> ret_promise;
+  RAY_CHECK_OK(AsyncInternalKVMultiGet(
+      ns, keys, timeout_ms, [&ret_promise, &values](Status status, auto &vs) {
+        values.clear();
+        if (vs) {
+          values = std::move(*vs);
+        }
+        ret_promise.set_value(status);
+      }));
+  return ret_promise.get_future().get();
+}
+
 Status InternalKVAccessor::Del(const std::string &ns,
                                const std::string &key,
-                               bool del_by_prefix) {
+                               bool del_by_prefix,
+                               const int64_t timeout_ms) {
   std::promise<Status> ret_promise;
-  RAY_CHECK_OK(AsyncInternalKVDel(ns, key, del_by_prefix, [&ret_promise](Status status) {
-    ret_promise.set_value(status);
-  }));
+  RAY_CHECK_OK(AsyncInternalKVDel(
+      ns, key, del_by_prefix, timeout_ms, [&ret_promise](Status status) {
+        ret_promise.set_value(status);
+      }));
   return ret_promise.get_future().get();
 }
 
 Status InternalKVAccessor::Exists(const std::string &ns,
                                   const std::string &key,
+                                  const int64_t timeout_ms,
                                   bool &exist) {
   std::promise<Status> ret_promise;
   RAY_CHECK_OK(AsyncInternalKVExists(
-      ns, key, [&ret_promise, &exist](Status status, const boost::optional<bool> &value) {
+      ns,
+      key,
+      timeout_ms,
+      [&ret_promise, &exist](Status status, const boost::optional<bool> &value) {
         if (value) {
           exist = *value;
         }
