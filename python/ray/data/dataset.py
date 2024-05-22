@@ -1521,7 +1521,7 @@ class Dataset:
             blocks = allocation_per_actor[actor]
             metadata = [metadata_mapping[b] for b in blocks]
             bundle = RefBundle(
-                tuple(zip(blocks, metadata)), owned_by_consumer=owned_by_consumer
+                tuple(zip(blocks, metadata)), owns_blocks=owned_by_consumer
             )
             per_split_bundles.append(bundle)
 
