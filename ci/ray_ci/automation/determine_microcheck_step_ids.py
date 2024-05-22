@@ -20,8 +20,8 @@ def main() -> None:
     ci_init()
     steps = (
         Test.gen_microcheck_step_ids(LINUX_TEST_PREFIX, BAZEL_WORKSPACE_DIR)
-        + Test.gen_microcheck_step_ids(WINDOWS_TEST_PREFIX, BAZEL_WORKSPACE_DIR)
-        + Test.gen_microcheck_step_ids(MACOS_TEST_PREFIX, BAZEL_WORKSPACE_DIR)
+        .union(Test.gen_microcheck_step_ids(WINDOWS_TEST_PREFIX, BAZEL_WORKSPACE_DIR))
+        .union(Test.gen_microcheck_step_ids(MACOS_TEST_PREFIX, BAZEL_WORKSPACE_DIR))
     )
 
     print(",".join(steps))

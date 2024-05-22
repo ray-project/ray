@@ -392,11 +392,15 @@ def _get_test_targets(
     if get_high_impact_tests:
         # run high impact test cases, so we include only high impact tests in the list
         # of targets provided by users
+        prefix = f"{operating_system}:"
+        # TODO(can): we should also move the logic of _get_new_tests into the
+        # gen_microcheck_tests function; this is currently blocked by the fact that
+        # we need a container to run _get_new_tests
         high_impact_tests = Test.gen_microcheck_tests(
-            prefix=f"{operating_system}:",
+            prefix=prefix,
             bazel_workspace_dir=bazel_workspace_dir,
             team=team,
-        ).union(_get_new_tests(f"{operating_system}:", container)
+        ).union(_get_new_tests(prefix, container))
         final_targets = high_impact_tests.intersection(final_targets)
 
     return list(final_targets)

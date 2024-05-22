@@ -197,36 +197,29 @@ class Test(dict):
             for file in files
         ]
 
-    def _get_step_ids(self) -> List[str]:
-        """
-        Obtain the rayci step id for this test from the most recent test results
-        """
-        step_ids = []
-        recent_results = self.get_test_results()
-        if not recent_results:
-            return step_ids
-        recent_commit = recent_results[0].commit
-        for result in recent_results:
-            # consider all results with the same recent commit; this is to make sure
-            # we will include different job flavors of the same test
-            if result.commit != recent_commit:
-                continue
-            step_id = result.rayci_step_id
-            if not step_id:
-                continue
-            step_ids.append(step_id)
-
-        return step_ids
-
     @classmethod
     def gen_microcheck_step_ids(cls, prefix: str, bazel_workspace_dir: str) -> Set[str]:
+        """
+        This function is used to get the buildkite step ids of the microcheck tests
+        with the given test prefix. This is used to determine the buildkite steps in
+        the microcheck pipeline.
+        """
         step_ids = set()
         test_targets = cls.gen_microcheck_tests(prefix, bazel_workspace_dir)
         for test_target in test_targets:
             test = cls.gen_from_name(f"{prefix}{test_target}")
             if not test:
                 continue
-            step_ids.update(test._get_step_ids())
+            recent_results = test.get_test_results()
+            if not recent_results:
+                continue
+            test_step_ids = {
+                result.rayci_step_id
+                for result in recent_results
+                if result.commit == recent_results[0].commit and result.rayci_step_id
+            }
+            if test_step_ids and not step_ids.intersection(test_step_ids):
+                step_ids.add(test_step_ids.pop())
 
         return step_ids
 
@@ -237,6 +230,19 @@ class Test(dict):
         """
         Obtain all microcheck tests with the given prefix
         """
+        high_impact_tests = Test._gen_high_impact_tests(prefix, team)
+        changed_tests = Test._get_changed_tests(bazel_workspace_dir)
+        human_specified_tests = Test._get_human_specified_tests(bazel_workspace_dir)
+
+        return high_impact_tests.union(changed_tests, human_specified_tests)
+
+    @classmethod
+    def _gen_high_impact_tests(
+        cls, prefix: str, team: Optional[str] = None
+    ) -> Set[str]:
+        """
+        Obtain all high impact tests with the given prefix
+        """
         high_impact_tests = [
             test for test in cls.gen_from_s3(prefix) if test.is_high_impact()
         ]
@@ -245,19 +251,10 @@ class Test(dict):
                 test for test in high_impact_tests if test.get_oncall() == team
             ]
 
-        high_impact_test_targets = {test.get_target() for test in high_impact_tests}
-        new_test_targets = Test.get_new_tests(prefix, bazel_workspace_dir)
-        changed_test_targets = Test.get_changed_tests(bazel_workspace_dir)
-        human_specified_test_targets = Test.get_human_specified_tests(
-            bazel_workspace_dir
-        )
-
-        return high_impact_test_targets.union(
-            new_test_targets, changed_test_targets, human_specified_test_targets
-        )
+        return {test.get_target() for test in high_impact_tests}
 
     @classmethod
-    def get_human_specified_tests(cls, bazel_workspace_dir: str) -> Set[str]:
+    def _get_human_specified_tests(cls, bazel_workspace_dir: str) -> Set[str]:
         """
         Get all test targets that are specified by humans
         """
@@ -280,7 +277,7 @@ class Test(dict):
         return tests
 
     @classmethod
-    def get_changed_tests(cls, bazel_workspace_dir: str) -> Set[str]:
+    def _get_changed_tests(cls, bazel_workspace_dir: str) -> Set[str]:
         """
         Get all changed tests in the current PR
         """

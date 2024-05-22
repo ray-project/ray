@@ -13,17 +13,9 @@ from ci.ray_ci.tester import (
     _get_container,
     _get_all_test_query,
     _get_test_targets,
-<<<<<<< HEAD
-    _get_high_impact_test_targets,
     _get_new_tests,
-=======
->>>>>>> [ci][microcheck/13] sync microcheck test determinator
     _get_flaky_test_targets,
     _get_tag_matcher,
-    _get_new_tests,
-    _get_changed_files,
-    _get_changed_tests,
-    _get_human_specified_tests,
 )
 from ray_release.test import Test, TestState
 
@@ -129,6 +121,9 @@ def test_get_test_targets() -> None:
             "ray_release.test.Test.gen_from_s3",
             return_value=test_objects,
         ), mock.patch(
+            "ci.ray_ci.tester._get_new_tests",
+            return_value=set(),
+        ), mock.patch(
             "ray_release.test.Test.gen_microcheck_tests",
             return_value={test.get_target() for test in test_objects},
         ):
@@ -212,65 +207,6 @@ def test_get_all_test_query() -> None:
     )
 
 
-<<<<<<< HEAD
-def test_get_high_impact_test_targets() -> None:
-    test_harness = [
-        {
-            "input": [],
-            "new_tests": set(),
-            "changed_tests": set(),
-            "human_tests": set(),
-            "output": set(),
-        },
-        {
-            "input": [
-                _stub_test(
-                    {
-                        "name": "linux://core_good",
-                        "team": "core",
-                    }
-                ),
-                _stub_test(
-                    {
-                        "name": "linux://serve_good",
-                        "team": "serve",
-                    }
-                ),
-            ],
-            "new_tests": {"//core_new"},
-            "changed_tests": {"//core_new"},
-            "human_tests": {"//human_test"},
-            "output": {
-                "//core_good",
-                "//core_new",
-                "//human_test",
-            },
-        },
-    ]
-    for test in test_harness:
-        with mock.patch(
-            "ray_release.test.Test.gen_high_impact_tests",
-            return_value={"step": test["input"]},
-        ), mock.patch(
-            "ray_release.test.Test.get_new_tests",
-            return_value=test["new_tests"],
-        ), mock.patch(
-            "ray_release.test.Test.get_changed_tests",
-            return_value=test["changed_tests"],
-        ), mock.patch(
-            "ray_release.test.Test.get_human_specified_tests",
-            return_value=test["human_tests"],
-        ):
-            assert (
-                _get_high_impact_test_targets(
-                    "core",
-                    "linux",
-                    LinuxTesterContainer("test", skip_ray_installation=True),
-                )
-                == test["output"]
-            )
-
-
 @mock.patch("ci.ray_ci.tester_container.TesterContainer.run_script_with_output")
 @mock.patch("ray_release.test.Test.gen_from_s3")
 def test_get_new_tests(mock_gen_from_s3, mock_run_script_with_output) -> None:
@@ -278,47 +214,12 @@ def test_get_new_tests(mock_gen_from_s3, mock_run_script_with_output) -> None:
         _stub_test({"name": "linux://old_test_01"}),
         _stub_test({"name": "linux://old_test_02"}),
     ]
-    mock_check_output.return_value = b"//old_test_01\n//new_test"
-    assert _get_new_tests("linux") == {"//new_test"}
+    mock_run_script_with_output.return_value = "//old_test_01\n//new_test"
+    assert _get_new_tests(
+        "linux", LinuxTesterContainer("test", skip_ray_installation=True)
+    ) == {"//new_test"}
 
 
-@mock.patch.dict(
-    os.environ,
-    {"BUILDKITE_PULL_REQUEST_BASE_BRANCH": "base", "BUILDKITE_COMMIT": "commit"},
-)
-@mock.patch("subprocess.check_call")
-@mock.patch("subprocess.check_output")
-def test_get_changed_files(mock_check_output, mock_check_call) -> None:
-    mock_check_output.return_value = b"file1\nfile2\n"
-    assert _get_changed_files() == {"file1", "file2"}
-
-
-@mock.patch("ci.ray_ci.tester._get_test_targets_per_file")
-@mock.patch("ci.ray_ci.tester._get_changed_files")
-def test_get_changed_tests(
-    mock_get_changed_files, mock_get_test_targets_per_file
-) -> None:
-    mock_get_changed_files.return_value = {"test_src", "build_src"}
-    mock_get_test_targets_per_file.side_effect = (
-        lambda x: {"//t1", "//t2"} if x == "test_src" else {}
-    )
-
-    assert _get_changed_tests() == {"//t1", "//t2"}
-
-
-@mock.patch.dict(
-    os.environ,
-    {"BUILDKITE_PULL_REQUEST_BASE_BRANCH": "base", "BUILDKITE_COMMIT": "commit"},
-)
-@mock.patch("subprocess.check_call")
-@mock.patch("subprocess.check_output")
-def test_get_human_specified_tests(mock_check_output, mock_check_call) -> None:
-    mock_check_output.return_value = b"hi\n@microcheck //test01 //test02\nthere"
-    assert _get_human_specified_tests() == {"//test01", "//test02"}
-
-
-=======
->>>>>>> [ci][microcheck/13] sync microcheck test determinator
 def test_get_flaky_test_targets() -> None:
     test_harness = [
         {
