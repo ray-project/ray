@@ -350,7 +350,7 @@ std::unique_ptr<std::string> GlobalStateAccessor::GetInternalKV(const std::strin
   absl::ReaderMutexLock lock(&mutex_);
   std::string value;
 
-  Status status = gcs_client_->InternalKV().Get(ns, key, value);
+  Status status = gcs_client_->InternalKV().Get(ns, key, GetGcsTimeoutMs(), value);
   return status.ok() ? std::make_unique<std::string>(value) : nullptr;
 }
 

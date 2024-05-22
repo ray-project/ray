@@ -79,8 +79,8 @@
 /doc/source/workflows/ @ericl @iycheng @stephanie-wang @suquark @maxpumperla @ray-project/ray-docs
 
 # RLlib.
-/rllib/ @sven1977 @avnishn @arturniederfahrenhorst @maxpumperla @kouroshhakha @simonsays1980
-/doc/source/rllib/ @sven1977 @avnishn @arturniederfahrenhorst @maxpumperla @kouroshhakha @simonsays1980 @ray-project/ray-docs
+/rllib/ @sven1977 @arturniederfahrenhorst @simonsays1980
+/doc/source/rllib/ @sven1977 @arturniederfahrenhorst @maxpumperla @simonsays1980 @ray-project/ray-docs
 
 # Cluster (docs)
 /doc/source/cluster/ @architkulkarni @maxpumperla @pcmoritz @kevin85421 @ray-project/ray-docs
