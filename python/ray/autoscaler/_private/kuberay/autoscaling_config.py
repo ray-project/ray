@@ -248,7 +248,7 @@ def _get_ray_resources_from_group_spec(
 
     num_cpus = _get_num_cpus(ray_start_params, k8s_resource_limits, group_name)
     num_gpus = _get_num_gpus(ray_start_params, k8s_resource_limits, group_name)
-    num_tpus = _get_num_tpus(ray_start_params, k8s_resource_limits, group_name)
+    num_tpus = _get_num_tpus(k8s_resource_limits, group_name)
     custom_resource_dict = _get_custom_resources(ray_start_params, group_name)
     memory = _get_memory(ray_start_params, k8s_resource_limits)
 
@@ -264,7 +264,7 @@ def _get_ray_resources_from_group_spec(
         resources["GPU"] = num_gpus
 
     if num_tpus is not None:
-        # Add TPU Ray resource if not already added by ray_start_params,
+        # Add TPU Ray resource if not already added,
         # but specified in k8s_resource_limits.
         if "TPU" not in custom_resource_dict:
             resources["TPU"] = num_tpus
@@ -362,26 +362,20 @@ def _get_num_gpus(
 
 
 def _get_num_tpus(
-    ray_start_params: Dict[str, str],
     k8s_resource_limits: Dict[str, Any],
     group_name: str,
 ) -> Optional[int]:
-    """Get TPU custom resource annotation from ray_start_params or k8s_resource_limits,
-    with priority for ray_start_params.
-    """
+    """Auto-detect requested TPU Pod resources from k8s_resource_limits."""
 
-    if "TPU" in ray_start_params:
-        return int(ray_start_params["TPU"])
-    else:
-        for key in k8s_resource_limits:
-            if key == "google.com/tpu":
-                # Typically, this is a string representing an integer, e.g. "1".
-                tpu_resource_quantity = k8s_resource_limits[key]
-                # Convert to int, making no assumptions on the tpu_resource_quantity,
-                # besides that it's valid as a K8s resource quantity.
-                num_tpus = _round_up_k8s_quantity(tpu_resource_quantity)
-                if num_tpus > 0:
-                    return num_tpus
+    for key in k8s_resource_limits:
+        if key == "google.com/tpu":
+            # Typically, this is a string representing an integer, e.g. "1".
+            tpu_resource_quantity = k8s_resource_limits[key]
+            # Convert to int, making no assumptions on the tpu_resource_quantity,
+            # besides that it's valid as a K8s resource quantity.
+            num_tpus = _round_up_k8s_quantity(tpu_resource_quantity)
+            if num_tpus > 0:
+                return num_tpus
     return None
 
 
