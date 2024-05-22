@@ -475,6 +475,9 @@ class ParquetDatasource(Datasource):
         if self._to_batches_kwargs.get("filter") is not None:
             return None
 
+        if not self._metadata:
+            return None
+
         return sum(metadata.num_rows for metadata in self._metadata)
 
     def schema(self) -> "pyarrow.Schema":

@@ -435,6 +435,13 @@ class ExecutionPlan:
             num_rows = None
         return num_rows
 
+    def _get_num_rows_from_blocks_metadata(self, blocks: BlockList) -> Optional[int]:
+        metadata = blocks.get_metadata() if blocks else None
+        if metadata and all(m.num_rows is not None for m in metadata):
+            return sum(m.num_rows for m in metadata)
+        else:
+            return None
+
     @omit_traceback_stdout
     def execute_to_iterator(
         self,
@@ -607,7 +614,7 @@ class ExecutionPlan:
 
             # Set the snapshot to the output of the final operator.
             self._snapshot_blocks = blocks
-            if isinstance(blocks, BlockList):
+            if not isinstance(blocks, LazyBlockList):
                 self._snapshot_bundle = RefBundle(
                     tuple(blocks.iter_blocks_with_metadata()),
                     owns_blocks=blocks._owned_by_consumer,
