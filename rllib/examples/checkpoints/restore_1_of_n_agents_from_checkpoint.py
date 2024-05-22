@@ -14,15 +14,15 @@ This example:
 How to run this script
 ----------------------
 `python [script file name].py --enable-new-api-stack --num-agents=2
---checkpoint-freq=4 --checkpoint-at-end`
+--checkpoint-freq=20 --checkpoint-at-end`
 
 Control the number of agents and policies (RLModules) via --num-agents and
 --num-policies.
 
-Control the number of checkpoints by setting --checkpoint-freq to a value > 0.
+Control the number of checkpoints by setting `--checkpoint-freq` to a value > 0.
 Note that the checkpoint frequency is per iteration and this example needs at
 least a single checkpoint to load the RLModule weights for policy 0.
-If --checkpoint-at-end is set, a checkpoint will be saved at the end of the
+If `--checkpoint-at-end` is set, a checkpoint will be saved at the end of the
 experiment.
 
 For debugging, use the following additional command line options

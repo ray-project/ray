@@ -2735,10 +2735,10 @@ py_test(
 py_test(
     name = "examples/checkpoints/restore_1_of_n_agents_from_checkpoint",
     main = "examples/checkpoints/restore_1_of_n_agents_from_checkpoint.py",
-    tags = ["team:rllib", "exclusive", "examples", "examples_use_all_core"],
+    tags = ["team:rllib", "exclusive", "examples", "examples_use_all_core", "no_main"],
     size = "large",
     srcs = ["examples/checkpoints/restore_1_of_n_agents_from_checkpoint.py"],
-    args = ["--enable-new-api-stack", "--num-agents=2", "--as-test", "--framework=torch", "--checkpoint-freq=4", "--checkpoint-at-end", "--num-cpus=4"]
+    args = ["--enable-new-api-stack", "--num-agents=2", "--as-test", "--framework=torch", "--checkpoint-freq=20", "--checkpoint-at-end", "--num-cpus=4"]
 )
 
 py_test(
