@@ -56,7 +56,7 @@ class _SerializationContext:
 
         # TODO(swang): Support local P2P transfers if available.
         # If there is a GPU assigned to this worker, move it there.
-        if self.torch_device.type == "cuda":
+        if self.torch_device is not None and self.torch_device.type == "cuda":
             # Use zero-copy from_numpy() because we are going to copy to GPU
             # anyway.
             # TODO: Pin the np_array memory to reduce data movement time.
