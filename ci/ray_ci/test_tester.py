@@ -128,7 +128,7 @@ def test_get_test_targets() -> None:
             "ray_release.test.Test.get_changed_tests",
             return_value=set(),
         ), mock.patch(
-            "ci.ray_ci.tester._get_new_tests",
+            "ray_release.test.Test.get_new_tests",
             return_value=set(),
         ):
             assert set(
@@ -250,7 +250,7 @@ def test_get_high_impact_test_targets() -> None:
             "ray_release.test.Test.gen_high_impact_tests",
             return_value={"step": test["input"]},
         ), mock.patch(
-            "ci.ray_ci.tester._get_new_tests",
+            "ray_release.test.Test.get_new_tests",
             return_value=test["new_tests"],
         ), mock.patch(
             "ray_release.test.Test.get_changed_tests",
