@@ -288,7 +288,7 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
                             for i in range(len(eps))
                         ]
                     )
-                # Increase index.
+                # Increase index to the new length of `self._indices`.
                 j = len(self._indices)
 
     @override(EpisodeReplayBuffer)
