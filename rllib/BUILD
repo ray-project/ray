@@ -2141,6 +2141,7 @@ py_test(
 #@OldAPIStack
 py_test(
     name = "examples/checkpoints/old_stack_restore_1_of_n_agents_from_checkpoint",
+    main = "examples/checkpoints/old_stack_restore_1_of_n_agents_from_checkpoint.py",
     tags = ["team:rllib", "exclusive", "examples", "no_main"],
     size = "medium",
     srcs = ["examples/checkpoints/old_stack_restore_1_of_n_agents_from_checkpoint.py"],
