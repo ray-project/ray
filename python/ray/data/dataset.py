@@ -1531,7 +1531,7 @@ class Dataset:
 
         split_datasets = []
         for bundle in per_split_bundles:
-            logical_plan = LogicalPlan(InputData(input_data=bundle))
+            logical_plan = LogicalPlan(InputData(input_data=[bundle]))
             block_split = _bundles_to_block_list([bundle])
             split_datasets.append(
                 MaterializedDataset(
