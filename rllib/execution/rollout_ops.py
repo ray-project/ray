@@ -2,13 +2,14 @@ import logging
 from typing import List, Optional, Union
 import tree
 
-from ray.rllib.evaluation.worker_set import WorkerSet
+from ray.rllib.env.env_runner_group import EnvRunnerGroup
 from ray.rllib.policy.sample_batch import (
     SampleBatch,
     DEFAULT_POLICY_ID,
     concat_samples,
 )
 from ray.rllib.utils.annotations import ExperimentalAPI, OldAPIStack
+from ray.rllib.utils.metrics import NUM_AGENT_STEPS_SAMPLED, NUM_ENV_STEPS_SAMPLED
 from ray.rllib.utils.sgd import standardized
 from ray.rllib.utils.typing import EpisodeType, SampleBatchType
 
@@ -18,12 +19,13 @@ logger = logging.getLogger(__name__)
 @ExperimentalAPI
 def synchronous_parallel_sample(
     *,
-    worker_set: WorkerSet,
+    worker_set: EnvRunnerGroup,
     max_agent_steps: Optional[int] = None,
     max_env_steps: Optional[int] = None,
     concat: bool = True,
     sample_timeout_s: Optional[float] = 60.0,
     _uses_new_env_runners: bool = False,
+    _return_metrics: bool = False,
 ) -> Union[List[SampleBatchType], SampleBatchType, List[EpisodeType], EpisodeType]:
     """Runs parallel and synchronous rollouts on all remote workers.
 
@@ -36,7 +38,7 @@ def synchronous_parallel_sample(
     `remote_fn()`, which will be applied to the worker(s) instead.
 
     Args:
-        worker_set: The WorkerSet to use for sampling.
+        worker_set: The EnvRunnerGroup to use for sampling.
         remote_fn: If provided, use `worker.apply.remote(remote_fn)` instead
             of `worker.sample.remote()` to generate the requests.
         max_agent_steps: Optional number of agent steps to be included in the
@@ -77,6 +79,7 @@ def synchronous_parallel_sample(
     agent_or_env_steps = 0
     max_agent_or_env_steps = max_agent_steps or max_env_steps or None
     sample_batches_or_episodes = []
+    all_stats_dicts = []
 
     # Stop collecting batches as soon as one criterium is met.
     while (max_agent_or_env_steps is None and agent_or_env_steps == 0) or (
@@ -87,12 +90,17 @@ def synchronous_parallel_sample(
         # samples.
         if worker_set.num_remote_workers() <= 0:
             sampled_data = [worker_set.local_worker().sample()]
+            if _return_metrics:
+                stats_dicts = [worker_set.local_worker().get_metrics()]
         # Loop over remote workers' `sample()` method in parallel.
         else:
             sampled_data = worker_set.foreach_worker(
-                lambda w: w.sample(),
+                (
+                    (lambda w: w.sample())
+                    if not _return_metrics
+                    else (lambda w: (w.sample(), w.get_metrics()))
+                ),
                 local_worker=False,
-                healthy_only=True,
                 timeout_seconds=sample_timeout_s,
             )
             # Nothing was returned (maybe all workers are stalling) or no healthy
@@ -105,38 +113,59 @@ def synchronous_parallel_sample(
                         "No samples returned from remote workers. If you have a "
                         "slow environment or model, consider increasing the "
                         "`sample_timeout_s` or decreasing the "
-                        "`rollout_fragment_length` in `AlgorithmConfig.rollouts()."
+                        "`rollout_fragment_length` in `AlgorithmConfig.env_runners()."
                     )
                 elif worker_set.num_healthy_remote_workers() <= 0:
                     logger.warning(
                         "No healthy remote workers left. Trying to restore workers ..."
                     )
                 break
+
+            if _return_metrics:
+                stats_dicts = [s[1] for s in sampled_data]
+                sampled_data = [s[0] for s in sampled_data]
+
         # Update our counters for the stopping criterion of the while loop.
-        for batch_or_episode in sampled_data:
+        if _return_metrics:
             if max_agent_steps:
-                agent_or_env_steps += (
-                    sum(e.agent_steps() for e in batch_or_episode)
-                    if _uses_new_env_runners
-                    else batch_or_episode.agent_steps()
+                agent_or_env_steps += sum(
+                    int(agent_stat)
+                    for stat_dict in stats_dicts
+                    for agent_stat in stat_dict[NUM_AGENT_STEPS_SAMPLED].values()
                 )
             else:
-                agent_or_env_steps += (
-                    sum(e.env_steps() for e in batch_or_episode)
-                    if _uses_new_env_runners
-                    else batch_or_episode.env_steps()
+                agent_or_env_steps += sum(
+                    int(stat_dict[NUM_ENV_STEPS_SAMPLED]) for stat_dict in stats_dicts
                 )
+        else:
+            for batch_or_episode in sampled_data:
+                if max_agent_steps:
+                    agent_or_env_steps += (
+                        sum(e.agent_steps() for e in batch_or_episode)
+                        if _uses_new_env_runners
+                        else batch_or_episode.agent_steps()
+                    )
+                else:
+                    agent_or_env_steps += (
+                        sum(e.env_steps() for e in batch_or_episode)
+                        if _uses_new_env_runners
+                        else batch_or_episode.env_steps()
+                    )
         sample_batches_or_episodes.extend(sampled_data)
+        if _return_metrics:
+            all_stats_dicts.extend(stats_dicts)
 
     if concat is True:
         # If we have episodes flatten the episode list.
         if _uses_new_env_runners:
-            return tree.flatten(sample_batches_or_episodes)
+            sample_batches_or_episodes = tree.flatten(sample_batches_or_episodes)
         # Otherwise we concatenate the `SampleBatch` objects
         else:
-            return concat_samples(sample_batches_or_episodes)
-    else:
-        return sample_batches_or_episodes
+            sample_batches_or_episodes = concat_samples(sample_batches_or_episodes)
+
+    if _return_metrics:
+        return sample_batches_or_episodes, all_stats_dicts
+    return sample_batches_or_episodes
 
 
 @OldAPIStack

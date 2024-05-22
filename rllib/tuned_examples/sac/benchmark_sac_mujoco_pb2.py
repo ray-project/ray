@@ -1,6 +1,10 @@
 import time
 from ray.rllib.algorithms.sac.sac import SACConfig
-from ray.rllib.env.single_agent_env_runner import SingleAgentEnvRunner
+from ray.rllib.utils.metrics import (
+    NUM_ENV_STEPS_SAMPLED_LIFETIME,
+    ENV_RUNNER_RESULTS,
+    EPISODE_RETURN_MEAN,
+)
 from ray.tune.schedulers.pb2 import PB2
 from ray import train, tune
 
@@ -18,23 +22,23 @@ from ray import train, tune
 #   AgileRL: https://github.com/AgileRL/AgileRL?tab=readme-ov-file#benchmarks
 benchmark_envs = {
     "HalfCheetah-v4": {
-        "timesteps_total": 3000000,
+        f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}": 3000000,
     },
     "Hopper-v4": {
-        "timesteps_total": 1000000,
+        f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}": 1000000,
     },
     "Humanoid-v4": {
-        "timesteps_total": 10000000,
+        f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}": 10000000,
     },
-    "Ant-v4": {"timesteps_total": 3000000},
+    "Ant-v4": {f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}": 3000000},
     "Walker2d-v4": {
-        "timesteps_total": 3000000,
+        f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}": 3000000,
     },
 }
 
 pb2_scheduler = PB2(
-    time_attr="timesteps_total",
-    metric="episode_reward_mean",
+    time_attr=NUM_ENV_STEPS_SAMPLED_LIFETIME,
+    metric=f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}",
     mode="max",
     perturbation_interval=50000,
     # Copy bottom % with top % weights.
@@ -58,18 +62,20 @@ for env, stop_criteria in benchmark_envs.items():
         SACConfig()
         .environment(env=env)
         # Enable new API stack and use EnvRunner.
-        .experimental(_enable_new_api_stack=True)
-        .rollouts(
+        .api_stack(
+            enable_rl_module_and_learner=True,
+            enable_env_runner_and_connector_v2=True,
+        )
+        .env_runners(
             rollout_fragment_length="auto",
-            env_runner_cls=SingleAgentEnvRunner,
-            num_rollout_workers=1,
+            num_env_runners=1,
             # TODO (sven, simon): Add resources.
         )
-        .resources(
+        .learners(
             # Note, we have a small batch and a sample/train ratio
             # of 1:1, so a single GPU should be enough.
-            num_learner_workers=1,
-            num_gpus_per_learner_worker=1,
+            num_learners=1,
+            num_gpus_per_learner=1,
         )
         # TODO (simon): Adjust to new model_config_dict.
         .training(
@@ -103,7 +109,7 @@ for env, stop_criteria in benchmark_envs.items():
         .evaluation(
             evaluation_duration="auto",
             evaluation_interval=1,
-            evaluation_num_workers=1,
+            evaluation_num_env_runners=1,
             evaluation_parallel_to_training=True,
             evaluation_config={
                 "explore": False,

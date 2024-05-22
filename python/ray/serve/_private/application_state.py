@@ -767,7 +767,7 @@ class ApplicationState:
             ]
             and status_msg != self._status_msg
         ):
-            logger.warning(status_msg)
+            logger.error(status_msg)
 
         self._status = status
         self._status_msg = status_msg
@@ -1127,6 +1127,8 @@ def override_deployment_info(
                 new_config.update(autoscaling_config)
 
             options["autoscaling_config"] = AutoscalingConfig(**new_config)
+
+            ServeUsageTag.AUTO_NUM_REPLICAS_USED.record("1")
 
         # What to pass to info.update
         override_options = dict()

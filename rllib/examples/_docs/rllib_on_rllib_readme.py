@@ -1,5 +1,9 @@
 import gymnasium as gym
 from ray.rllib.algorithms.ppo import PPOConfig
+from ray.rllib.utils.metrics import (
+    ENV_RUNNER_RESULTS,
+    EPISODE_RETURN_MEAN,
+)
 
 
 # Define your problem using python and Farama-Foundation's gymnasium API:
@@ -59,7 +63,7 @@ config = (
         env_config={"parrot_shriek_range": gym.spaces.Box(-5.0, 5.0, (1,))},
     )
     # Parallelize environment rollouts.
-    .rollouts(num_rollout_workers=3)
+    .env_runners(num_env_runners=3)
 )
 algo = config.build()
 
@@ -69,7 +73,7 @@ algo = config.build()
 # we can expect to reach an optimal episode reward of 0.0.
 for i in range(5):
     results = algo.train()
-    print(f"Iter: {i}; avg. reward={results['episode_reward_mean']}")
+    print(f"Iter: {i}; avg. reward={results[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN]}")
 
 # Perform inference (action computations) based on given env observations.
 # Note that we are using a slightly simpler env here (-3.0 to 3.0, instead

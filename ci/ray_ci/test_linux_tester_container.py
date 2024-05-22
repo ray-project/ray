@@ -8,6 +8,7 @@ from unittest import mock
 from typing import List, Optional
 
 from ci.ray_ci.linux_tester_container import LinuxTesterContainer
+from ci.ray_ci.tester_container import RUN_PER_FLAKY_TEST
 from ci.ray_ci.utils import chunk_into_n, ci_init
 from ci.ray_ci.container import _DOCKER_ECR_REPO, _RAYCI_BUILD_ID
 from ray_release.configs.global_config import get_global_config
@@ -116,19 +117,22 @@ def test_run_tests_in_docker() -> None:
             "bazel test --jobs=1 --config=ci $(./ci/run/bazel_export_options) "
             "--config=ci-debug --test_env v=k --test_arg flag t1 t2" in input_str
         )
+        assert f"--runs_per_test {RUN_PER_FLAKY_TEST} " not in input_str
 
         LinuxTesterContainer("team")._run_tests_in_docker(
-            ["t1", "t2"], [], "/tmp", ["v=k"]
+            ["t1", "t2"], [], "/tmp", ["v=k"], run_flaky_tests=True
         )
         input_str = inputs[-1]
         assert "--env BUILDKITE_BUILD_URL" in input_str
         assert "--gpus" not in input_str
+        assert f"--runs_per_test {RUN_PER_FLAKY_TEST} " in input_str
 
 
 def test_run_script_in_docker() -> None:
-    def _mock_check_output(input: List[str]) -> None:
+    def _mock_check_output(input: List[str]) -> bytes:
         input_str = " ".join(input)
         assert "/bin/bash -iecuo pipefail -- run command" in input_str
+        return b""
 
     with mock.patch(
         "subprocess.check_output", side_effect=_mock_check_output
@@ -199,6 +203,7 @@ def test_run_tests() -> None:
         bazel_log_dir: str,
         test_envs: List[str],
         test_arg: Optional[str] = None,
+        run_flaky_tests: Optional[bool] = False,
     ) -> MockPopen:
         return MockPopen(test_targets)
 
@@ -247,19 +252,19 @@ def test_get_test_results() -> None:
         json.dumps(log)
         for log in [
             {
-                "id": {"testResult": {"label": "//ray/ci:test"}},
+                "id": {"testResult": {"label": "//ray/ci:test", "run": "1"}},
                 "testResult": {"status": "FAILED"},
             },
             {
-                "id": {"testResult": {"label": "//ray/ci:reef"}},
+                "id": {"testResult": {"label": "//ray/ci:reef", "run": "1"}},
                 "testResult": {"status": "FAILED"},
             },
             {
-                "id": {"testResult": {"label": "//ray/ci:test"}},
+                "id": {"testResult": {"label": "//ray/ci:test", "run": "2"}},
                 "testResult": {"status": "FAILED"},
             },
             {
-                "id": {"testResult": {"label": "//ray/ci:test"}},
+                "id": {"testResult": {"label": "//ray/ci:test", "run": "1"}},
                 "testResult": {"status": "PASSED"},
             },
         ]
@@ -280,6 +285,11 @@ def test_get_test_results() -> None:
         assert test.get_name() == f"{platform.system().lower()}://ray/ci:test"
         assert test.get_oncall() == "manu"
         assert result.is_passing()
+
+        test, result = results[2]
+        assert test.get_name() == f"{platform.system().lower()}://ray/ci:test"
+        assert test.get_oncall() == "manu"
+        assert result.is_failing()
 
 
 if __name__ == "__main__":

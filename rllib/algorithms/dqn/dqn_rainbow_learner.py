@@ -1,12 +1,23 @@
 import abc
 
-from typing import Any, Dict
+from typing import TYPE_CHECKING
 
-from ray.rllib.algorithms.dqn.dqn import DQNConfig
 from ray.rllib.core.learner.learner import Learner
-from ray.rllib.utils.annotations import override
+from ray.rllib.connectors.common.add_observations_from_episodes_to_batch import (
+    AddObservationsFromEpisodesToBatch,
+)
+from ray.rllib.connectors.learner.add_next_observations_from_episodes_to_train_batch import (  # noqa
+    AddNextObservationsFromEpisodesToTrainBatch,
+)
+from ray.rllib.utils.annotations import (
+    override,
+    OverrideToImplementCustomLogic_CallToSuperRecommended,
+)
 from ray.rllib.utils.metrics import LAST_TARGET_UPDATE_TS, NUM_TARGET_UPDATES
 from ray.rllib.utils.typing import ModuleID
+
+if TYPE_CHECKING:
+    from ray.rllib.algorithms.dqn.dqn import DQNConfig
 
 # Now, this is double defined: In `SACRLModule` and here. I would keep it here
 # or push it into the `Learner` as these are recurring keys in RL.
@@ -26,38 +37,45 @@ TD_ERROR_MEAN_KEY = "td_error_mean"
 
 
 class DQNRainbowLearner(Learner):
+    @OverrideToImplementCustomLogic_CallToSuperRecommended
+    @override(Learner)
+    def build(self) -> None:
+        super().build()
+        # Prepend a NEXT_OBS from episodes to train batch connector piece (right
+        # after the observation default piece).
+        if self.config.add_default_connectors_to_learner_pipeline:
+            self._learner_connector.insert_after(
+                AddObservationsFromEpisodesToBatch,
+                AddNextObservationsFromEpisodesToTrainBatch(),
+            )
+
     @override(Learner)
     def additional_update_for_module(
-        self,
-        *,
-        module_id: ModuleID,
-        config: DQNConfig,
-        timestep: int,
-        last_update: int,
-        **kwargs
-    ) -> Dict[str, Any]:
+        self, *, module_id: ModuleID, config: "DQNConfig", timestep: int, **kwargs
+    ) -> None:
         """Updates the target Q Networks."""
-        results = super().additional_update_for_module(
+        super().additional_update_for_module(
             module_id=module_id,
             config=config,
             timestep=timestep,
         )
 
         # TODO (Sven): APPO uses `config.target_update_frequency`. Can we
-        # choose a standard here?
-        if (timestep - last_update) >= config.target_network_update_freq:
+        #  choose a standard here?
+        last_update_ts_key = (module_id, LAST_TARGET_UPDATE_TS)
+        if (
+            timestep - self.metrics.peek(last_update_ts_key, default=0)
+            >= config.target_network_update_freq
+        ):
             self._update_module_target_networks(module_id, config)
-            results[NUM_TARGET_UPDATES] = 1
-            results[LAST_TARGET_UPDATE_TS] = timestep
-        else:
-            results[NUM_TARGET_UPDATES] = 0
-            results[LAST_TARGET_UPDATE_TS] = last_update
-
-        return results
+            # Increase lifetime target network update counter by one.
+            self.metrics.log_value((module_id, NUM_TARGET_UPDATES), 1, reduce="sum")
+            # Update the (single-value -> window=1) last updated timestep metric.
+            self.metrics.log_value(last_update_ts_key, timestep, window=1)
 
     @abc.abstractmethod
     def _update_module_target_networks(
-        self, module_id: ModuleID, config: DQNConfig
+        self, module_id: ModuleID, config: "DQNConfig"
     ) -> None:
         """Update the target Q network(s) of each module with the current Q network.
 

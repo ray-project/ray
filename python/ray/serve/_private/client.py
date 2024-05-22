@@ -409,36 +409,31 @@ class ServeControllerClient:
     def get_handle(
         self,
         deployment_name: str,
-        app_name: Optional[str] = "default",
-        missing_ok: Optional[bool] = False,
+        app_name: Optional[str] = SERVE_DEFAULT_APP_NAME,
+        check_exists: bool = True,
     ) -> DeploymentHandle:
         """Construct a handle for the specified deployment.
 
         Args:
             deployment_name: Deployment name.
             app_name: Application name.
-            missing_ok: If true, then Serve won't check the deployment
-                is registered. False by default.
+            check_exists: If False, then Serve won't check the deployment
+                is registered. True by default.
 
         Returns:
             DeploymentHandle
         """
         from ray.serve.context import _get_internal_replica_context
 
-        cache_key = (deployment_name, app_name, missing_ok)
+        deployment_id = DeploymentID(name=deployment_name, app_name=app_name)
+        cache_key = (deployment_name, app_name, check_exists)
         if cache_key in self.handle_cache:
             return self.handle_cache[cache_key]
 
-        all_deployments = ray.get(self._controller.list_deployment_ids.remote())
-        if (
-            not missing_ok
-            and DeploymentID(name=deployment_name, app_name=app_name)
-            not in all_deployments
-        ):
-            raise KeyError(
-                f"Deployment '{deployment_name}' in application '{app_name}' does not "
-                "exist."
-            )
+        if check_exists:
+            all_deployments = ray.get(self._controller.list_deployment_ids.remote())
+            if deployment_id not in all_deployments:
+                raise KeyError(f"{deployment_id} does not exist.")
 
         if _get_internal_replica_context() is not None:
             handle = DeploymentHandle(

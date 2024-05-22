@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from typing import Mapping, Any, TYPE_CHECKING, Optional, Type, Dict, Union
 
 import gymnasium as gym
-import tree
+import tree  # pip install dm_tree
 
 if TYPE_CHECKING:
     from ray.rllib.core.rl_module.marl_module import (
@@ -16,10 +16,8 @@ if TYPE_CHECKING:
     from ray.rllib.core.models.catalog import Catalog
 
 import ray
+from ray.rllib.core import DEFAULT_MODULE_ID
 from ray.rllib.core.columns import Columns
-from ray.rllib.policy.policy import get_gym_space_from_struct_of_tensors
-from ray.rllib.policy.view_requirement import ViewRequirement
-
 from ray.rllib.core.models.specs.typing import SpecType
 from ray.rllib.core.models.specs.checker import (
     check_input_specs,
@@ -27,7 +25,9 @@ from ray.rllib.core.models.specs.checker import (
     convert_to_canonical_format,
 )
 from ray.rllib.models.distributions import Distribution
-from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
+from ray.rllib.policy.policy import get_gym_space_from_struct_of_tensors
+from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.policy.view_requirement import ViewRequirement
 from ray.rllib.utils.annotations import (
     ExperimentalAPI,
     OverrideToImplementCustomLogic,
@@ -177,11 +177,11 @@ class SingleAgentRLModuleSpec:
             self.load_state_path = self.load_state_path or other.load_state_path
 
     def as_multi_agent(self) -> "MultiAgentRLModuleSpec":
-        """Returns a MultiAgentRLModuleSpec (`self` under DEFAULT_POLICY_ID key)."""
+        """Returns a MultiAgentRLModuleSpec (`self` under DEFAULT_MODULE_ID key)."""
         from ray.rllib.core.rl_module.marl_module import MultiAgentRLModuleSpec
 
         return MultiAgentRLModuleSpec(
-            module_specs={DEFAULT_POLICY_ID: self},
+            module_specs={DEFAULT_MODULE_ID: self},
             load_state_path=self.load_state_path,
         )
 
@@ -374,9 +374,28 @@ class RLModule(abc.ABC):
     """
 
     framework: str = None
+    inference_only: bool = None
 
     def __init__(self, config: RLModuleConfig):
         self.config = config
+
+        from ray.rllib.core.rl_module.marl_module import MultiAgentRLModule
+
+        if isinstance(self, MultiAgentRLModule) or not hasattr(
+            self.config, "model_config_dict"
+        ):
+            # A MARL module is always a learner module b/c it only contains
+            # the single-agent modules. Each of the contained modules can be
+            # single.
+            self.inference_only = False
+        else:
+            # By default, each module is a learner module and contains all
+            # building blocks, such as target networks or critic networks
+            # used in the training process.
+            self.inference_only = self.config.model_config_dict.get(
+                "_inference_only", False
+            )
+
         # Make sure, `setup()` is only called once, no matter what. In some cases
         # of multiple inheritance (and with our __post_init__ functionality in place,
         # this might get called twice.
@@ -397,7 +416,7 @@ class RLModule(abc.ABC):
         def init_decorator(previous_init):
             def new_init(self, *args, **kwargs):
                 previous_init(self, *args, **kwargs)
-                if type(self) == cls:
+                if type(self) is cls:
                     self.__post_init__()
 
             return new_init
@@ -439,7 +458,7 @@ class RLModule(abc.ABC):
         therefore, the subclass should call super.__init__() in its constructor. This
         abstraction can be used to create any component that your RLModule needs.
         """
-        pass
+        return None
 
     @OverrideToImplementCustomLogic
     def get_train_action_dist_cls(self) -> Type[Distribution]:
@@ -684,14 +703,14 @@ class RLModule(abc.ABC):
         """Forward-pass during training. See forward_train for details."""
 
     @OverrideToImplementCustomLogic
-    def get_state(self) -> Mapping[str, Any]:
+    def get_state(self, inference_only: bool = False) -> Mapping[str, Any]:
         """Returns the state dict of the module."""
         return {}
 
     @OverrideToImplementCustomLogic
     def set_state(self, state_dict: Mapping[str, Any]) -> None:
         """Sets the state dict of the module."""
-        pass
+        return None
 
     @OverrideToImplementCustomLogic
     def save_state(self, dir: Union[str, pathlib.Path]) -> None:
@@ -700,7 +719,7 @@ class RLModule(abc.ABC):
         Args:
             dir: The directory to save the checkpoint to.
         """
-        pass
+        return None
 
     @OverrideToImplementCustomLogic
     def load_state(
@@ -712,7 +731,7 @@ class RLModule(abc.ABC):
         Args:
             dir: The directory to load the checkpoint from.
         """
-        pass
+        return None
 
     def _module_metadata(
         self,
@@ -852,7 +871,7 @@ class RLModule(abc.ABC):
         from ray.rllib.core.rl_module.marl_module import MultiAgentRLModule
 
         marl_module = MultiAgentRLModule()
-        marl_module.add_module(DEFAULT_POLICY_ID, self)
+        marl_module.add_module(DEFAULT_MODULE_ID, self)
         return marl_module
 
     def unwrapped(self) -> "RLModule":

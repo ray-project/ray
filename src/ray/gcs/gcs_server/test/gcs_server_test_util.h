@@ -120,7 +120,20 @@ struct GcsServerMocker {
     }
 
     void GetResourceLoad(
-        const ray::rpc::ClientCallback<ray::rpc::GetResourceLoadReply> &) override {}
+        const ray::rpc::ClientCallback<rpc::GetResourceLoadReply> &) override {}
+
+    void RegisterMutableObjectReader(
+        const ObjectID &object_id,
+        int64_t num_readers,
+        const ObjectID &local_reader_object_id,
+        const rpc::ClientCallback<rpc::RegisterMutableObjectReply> &callback) override {}
+
+    void PushMutableObject(
+        const ObjectID &object_id,
+        uint64_t data_size,
+        uint64_t metadata_size,
+        void *data,
+        const rpc::ClientCallback<rpc::PushMutableObjectReply> &callback) override {}
 
     // Trigger reply to RequestWorkerLease.
     bool GrantWorkerLease(const std::string &address,
@@ -383,8 +396,6 @@ struct GcsServerMocker {
                         const gcs::StatusCallback &callback) override {
       return Status::NotImplemented("");
     }
-
-    Status DrainSelf() override { return Status::NotImplemented(""); }
 
     const NodeID &GetSelfId() const override {
       static NodeID node_id;

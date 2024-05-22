@@ -1,11 +1,10 @@
-from typing import Any, Dict, Iterable, List, Optional, Union
+from typing import Any, Dict, Iterable, List, Optional, Tuple, Union
 
 from ray.data._internal.compute import ComputeStrategy
-from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.logical.interfaces import LogicalPlan
 from ray.data._internal.logical.operators.all_to_all_operator import Aggregate
 from ray.data.aggregate import AggregateFn, Count, Max, Mean, Min, Std, Sum
-from ray.data.block import BlockAccessor, UserDefinedFunction
+from ray.data.block import BlockAccessor, CallableClass, UserDefinedFunction
 from ray.data.dataset import DataBatch, Dataset
 from ray.util.annotations import PublicAPI
 
@@ -110,6 +109,11 @@ class GroupedData:
         batch_format: Optional[str] = "default",
         fn_args: Optional[Iterable[Any]] = None,
         fn_kwargs: Optional[Dict[str, Any]] = None,
+        fn_constructor_args: Optional[Iterable[Any]] = None,
+        fn_constructor_kwargs: Optional[Dict[str, Any]] = None,
+        num_cpus: Optional[float] = None,
+        num_gpus: Optional[float] = None,
+        concurrency: Optional[Union[int, Tuple[int, int]]] = None,
         **ray_remote_args,
     ) -> "Dataset":
         """Apply the given function to each group of records of this dataset.
@@ -163,6 +167,16 @@ class GroupedData:
                 exactly as is with no additional formatting.
             fn_args: Arguments to `fn`.
             fn_kwargs: Keyword arguments to `fn`.
+            fn_constructor_args: Positional arguments to pass to ``fn``'s constructor.
+                You can only provide this if ``fn`` is a callable class. These arguments
+                are top-level arguments in the underlying Ray actor construction task.
+            fn_constructor_kwargs: Keyword arguments to pass to ``fn``'s constructor.
+                This can only be provided if ``fn`` is a callable class. These arguments
+                are top-level arguments in the underlying Ray actor construction task.
+            num_cpus: The number of CPUs to reserve for each parallel map worker.
+            num_gpus: The number of GPUs to reserve for each parallel map worker. For
+                example, specify `num_gpus=1` to request 1 GPU for each parallel map
+                worker.
             ray_remote_args: Additional resource requirements to request from
                 ray (e.g., num_gpus=1 to request GPUs for the map tasks).
 
@@ -201,14 +215,13 @@ class GroupedData:
 
         # The batch is the entire block, because we have batch_size=None for
         # map_batches() below.
-        def group_fn(batch, *args, **kwargs):
+        def apply_udf_to_groups(udf, batch, *args, **kwargs):
             block = BlockAccessor.batch_to_block(batch)
             block_accessor = BlockAccessor.for_block(block)
             if self._key:
                 boundaries = get_key_boundaries(block_accessor)
             else:
                 boundaries = [block_accessor.num_rows()]
-            builder = DelegatingBlockBuilder()
             start = 0
             for end in boundaries:
                 group_block = block_accessor.slice(start, end)
@@ -217,21 +230,44 @@ class GroupedData:
                 # block format here can be different from batch format
                 # (e.g. block is Arrow format, and batch is NumPy format).
                 group_batch = group_block_accessor.to_batch_format(batch_format)
-                applied = fn(group_batch, *args, **kwargs)
-                builder.add_batch(applied)
+                applied = udf(group_batch, *args, **kwargs)
+                yield applied
                 start = end
-            rs = builder.build()
-            return rs
+
+        if isinstance(fn, CallableClass):
+
+            class wrapped_fn:
+                def __init__(self, *args, **kwargs):
+                    self.fn = fn(*args, **kwargs)
+
+                def __call__(self, batch, *args, **kwargs):
+                    yield from apply_udf_to_groups(self.fn, batch, *args, **kwargs)
+
+        else:
+
+            def wrapped_fn(batch, *args, **kwargs):
+                yield from apply_udf_to_groups(fn, batch, *args, **kwargs)
+
+        # Change the name of the wrapped function so that users see the name of their
+        # function rather than `wrapped_fn` in the progress bar.
+        wrapped_fn.__name__ = fn.__name__
 
         # Note we set batch_size=None here, so it will use the entire block as a batch,
         # which ensures that each group will be contained within a batch in entirety.
-        return sorted_ds.map_batches(
-            group_fn,
+        return sorted_ds._map_batches_without_batch_size_validation(
+            wrapped_fn,
             batch_size=None,
             compute=compute,
             batch_format=batch_format,
+            zero_copy_batch=False,
             fn_args=fn_args,
             fn_kwargs=fn_kwargs,
+            fn_constructor_args=fn_constructor_args,
+            fn_constructor_kwargs=fn_constructor_kwargs,
+            num_cpus=num_cpus,
+            num_gpus=num_gpus,
+            concurrency=concurrency,
+            ray_remote_args_fn=None,
             **ray_remote_args,
         )
 

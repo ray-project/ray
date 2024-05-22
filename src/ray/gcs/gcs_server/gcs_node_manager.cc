@@ -108,6 +108,36 @@ void GcsNodeManager::HandleCheckAlive(rpc::CheckAliveRequest request,
   GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
 }
 
+void GcsNodeManager::HandleUnregisterNode(rpc::UnregisterNodeRequest request,
+                                          rpc::UnregisterNodeReply *reply,
+                                          rpc::SendReplyCallback send_reply_callback) {
+  NodeID node_id = NodeID::FromBinary(request.node_id());
+  RAY_LOG(DEBUG) << "HandleUnregisterNode() for node id = " << node_id;
+  SetDeathInfo(node_id, request.node_death_info());
+  auto node = RemoveNode(node_id, /* is_intended = */ true);
+  if (!node) {
+    RAY_LOG(INFO) << "Node " << node_id << " is already removed";
+    return;
+  }
+
+  node->set_state(rpc::GcsNodeInfo::DEAD);
+  node->set_end_time_ms(current_sys_time_ms());
+
+  AddDeadNodeToCache(node);
+
+  auto node_info_delta = std::make_shared<rpc::GcsNodeInfo>();
+  node_info_delta->set_node_id(node->node_id());
+  node_info_delta->mutable_death_info()->CopyFrom(request.node_death_info());
+  node_info_delta->set_state(node->state());
+  node_info_delta->set_end_time_ms(node->end_time_ms());
+
+  auto on_put_done = [=](const Status &status) {
+    RAY_CHECK_OK(gcs_publisher_->PublishNodeInfo(node_id, *node_info_delta, nullptr));
+  };
+  RAY_CHECK_OK(gcs_table_storage_->NodeTable().Put(node_id, *node, on_put_done));
+  GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
+}
+
 void GcsNodeManager::HandleDrainNode(rpc::DrainNodeRequest request,
                                      rpc::DrainNodeReply *reply,
                                      rpc::SendReplyCallback send_reply_callback) {
@@ -125,57 +155,30 @@ void GcsNodeManager::HandleDrainNode(rpc::DrainNodeRequest request,
 }
 
 void GcsNodeManager::DrainNode(const NodeID &node_id) {
-  RAY_LOG(INFO) << "Shutting down raylet, node id = " << node_id;
-  auto node = RemoveNode(node_id, /* is_intended = */ true);
-  if (!node) {
-    RAY_LOG(INFO) << "Node " << node_id << " is already removed";
+  RAY_LOG(INFO) << "DrainNode() for node id = " << node_id;
+  auto maybe_node = GetAliveNode(node_id);
+  if (!maybe_node.has_value()) {
+    RAY_LOG(WARNING) << "Skip draining node " << node_id << " which is already removed";
     return;
   }
-
-  // Do the procedure to drain a node.
-  node->set_state(rpc::GcsNodeInfo::DEAD);
-  node->set_end_time_ms(current_sys_time_ms());
-  AddDeadNodeToCache(node);
-  auto node_info_delta = std::make_shared<rpc::GcsNodeInfo>();
-  node_info_delta->set_node_id(node->node_id());
-  node_info_delta->set_state(node->state());
-  node_info_delta->set_end_time_ms(node->end_time_ms());
+  auto node = maybe_node.value();
 
   // Set the address.
   rpc::Address remote_address;
   remote_address.set_raylet_id(node->node_id());
   remote_address.set_ip_address(node->node_manager_address());
   remote_address.set_port(node->node_manager_port());
-  auto on_put_done = [this,
-                      remote_address = remote_address,
-                      node_id,
-                      node_info_delta = node_info_delta](const Status &status) {
-    auto raylet_client = raylet_client_pool_->GetOrConnectByAddress(remote_address);
-    RAY_CHECK(raylet_client);
-    // NOTE(sang): Drain API is not supposed to kill the raylet, but we are doing
-    // this until the proper "drain" behavior is implemented. Currently, before
-    // raylet is killed, it sends a drain request to GCS. That said, this can
-    // happen;
-    // - GCS updates the drain state and kills a raylet gracefully.
-    // - Raylet kills itself and send a drain request of itself to GCS.
-    // - Drain request will become a no-op in GCS.
-    // This behavior is redundant, but harmless. We'll keep this behavior until we
-    // implement the right drain behavior for the simplicity. Check
-    // https://github.com/ray-project/ray/pull/19350 for more details.
-    raylet_client->ShutdownRaylet(
-        node_id,
-        /*graceful*/ true,
-        [this, node_id, node_info_delta = node_info_delta](
-            const Status &status, const rpc::ShutdownRayletReply &reply) {
-          RAY_LOG(INFO) << "Raylet " << node_id << " is drained. Status " << status
-                        << ". The information will be published to the cluster.";
-          /// Once the raylet is shutdown, inform all nodes that the raylet is dead.
-          RAY_CHECK_OK(
-              gcs_publisher_->PublishNodeInfo(node_id, *node_info_delta, nullptr));
-        });
-  };
-  // Update node state to DEAD instead of deleting it.
-  RAY_CHECK_OK(gcs_table_storage_->NodeTable().Put(node_id, *node, on_put_done));
+
+  auto raylet_client = raylet_client_pool_->GetOrConnectByAddress(remote_address);
+  RAY_CHECK(raylet_client);
+  // NOTE(sang): Drain API is not supposed to kill the raylet, but we are doing
+  // this until the proper "drain" behavior is implemented.
+  raylet_client->ShutdownRaylet(
+      node_id,
+      /*graceful*/ true,
+      [node_id](const Status &status, const rpc::ShutdownRayletReply &reply) {
+        RAY_LOG(INFO) << "Raylet " << node_id << " is drained. Status " << status;
+      });
 }
 
 void GcsNodeManager::HandleGetAllNodeInfo(rpc::GetAllNodeInfoRequest request,
@@ -221,11 +224,49 @@ absl::optional<std::shared_ptr<rpc::GcsNodeInfo>> GcsNodeManager::GetAliveNode(
   return iter->second;
 }
 
-void GcsNodeManager::SetDeathInfo(const NodeID &node_id, rpc::NodeDeathInfo death_info) {
+void GcsNodeManager::SetDeathInfo(const NodeID &node_id,
+                                  const rpc::NodeDeathInfo &death_info) {
   auto maybe_node = GetAliveNode(node_id);
-  RAY_CHECK(maybe_node.has_value());
+  if (!maybe_node.has_value()) {
+    return;
+  }
+
   auto node = std::move(maybe_node.value());
-  node->mutable_death_info()->CopyFrom(death_info);
+  auto node_death_info = node->mutable_death_info();
+  node_death_info->CopyFrom(death_info);
+}
+
+rpc::NodeDeathInfo GcsNodeManager::InferDeathInfo(const NodeID &node_id) {
+  auto maybe_node = GetAliveNode(node_id);
+  RAY_CHECK(maybe_node.has_value())
+      << "InferDeathInfo() should be called before node is removed";
+  auto node = maybe_node.value();
+  auto iter = draining_nodes_.find(node_id);
+  rpc::NodeDeathInfo death_info;
+
+  bool expect_force_termination;
+  if (iter == draining_nodes_.end()) {
+    expect_force_termination = false;
+  } else if (iter->second->deadline_timestamp_ms() == 0) {
+    // If there is no draining deadline, there should be no force termination
+    expect_force_termination = false;
+  } else {
+    expect_force_termination =
+        (current_sys_time_ms() > iter->second->deadline_timestamp_ms()) &&
+        (iter->second->reason() ==
+         rpc::autoscaler::DrainNodeReason::DRAIN_NODE_REASON_PREEMPTION);
+  }
+
+  if (expect_force_termination) {
+    death_info.set_reason(rpc::NodeDeathInfo::AUTOSCALER_DRAIN_PREEMPTED);
+    death_info.set_reason_message(iter->second->reason_message());
+    RAY_LOG(INFO) << "Node " << node_id << " was forcibly preempted";
+  } else {
+    death_info.set_reason(rpc::NodeDeathInfo::UNEXPECTED_TERMINATION);
+    death_info.set_reason_message(
+        "health check failed due to missing too many heartbeats");
+  }
+  return death_info;
 }
 
 void GcsNodeManager::AddNode(std::shared_ptr<rpc::GcsNodeInfo> node) {
@@ -243,19 +284,42 @@ void GcsNodeManager::AddNode(std::shared_ptr<rpc::GcsNodeInfo> node) {
   }
 }
 
+void GcsNodeManager::SetNodeDraining(
+    const NodeID &node_id,
+    std::shared_ptr<rpc::autoscaler::DrainNodeRequest> drain_request) {
+  auto maybe_node = GetAliveNode(node_id);
+  RAY_CHECK(maybe_node.has_value());
+  auto iter = draining_nodes_.find(node_id);
+  if (iter == draining_nodes_.end()) {
+    draining_nodes_.emplace(node_id, drain_request);
+    RAY_LOG(INFO) << "Set node " << node_id
+                  << " to be draining, request = " << drain_request->DebugString();
+  } else {
+    RAY_LOG(INFO) << "Drain request for node " << node_id << " already exists. "
+                  << "Overwriting the existing request " << iter->second->DebugString()
+                  << " with the new request " << drain_request->DebugString();
+    iter->second = drain_request;
+  }
+}
+
 std::shared_ptr<rpc::GcsNodeInfo> GcsNodeManager::RemoveNode(
     const ray::NodeID &node_id, bool is_intended /*= false*/) {
   std::shared_ptr<rpc::GcsNodeInfo> removed_node;
   auto iter = alive_nodes_.find(node_id);
   if (iter != alive_nodes_.end()) {
     removed_node = std::move(iter->second);
+    auto death_info = removed_node->death_info();
     RAY_LOG(INFO) << "Removing node, node id = " << node_id
-                  << ", node name = " << removed_node->node_name();
+                  << ", node name = " << removed_node->node_name() << ", death reason = "
+                  << rpc::NodeDeathInfo_Reason_Name(death_info.reason())
+                  << ", death message = " << death_info.reason_message();
     // Record stats that there's a new removed node.
     stats::NodeFailureTotal.Record(1);
     // Remove from alive nodes.
     alive_nodes_.erase(iter);
     node_map_.left.erase(node_id);
+    // Remove from draining nodes if present.
+    draining_nodes_.erase(node_id);
     if (!is_intended) {
       // Broadcast a warning to all of the drivers indicating that the node
       // has been marked as dead.
@@ -290,18 +354,20 @@ std::shared_ptr<rpc::GcsNodeInfo> GcsNodeManager::RemoveNode(
 
 void GcsNodeManager::OnNodeFailure(const NodeID &node_id,
                                    const StatusCallback &node_table_updated_callback) {
-  if (auto node = RemoveNode(node_id, /* is_intended = */ false)) {
+  rpc::NodeDeathInfo death_info = InferDeathInfo(node_id);
+  SetDeathInfo(node_id, death_info);
+  bool is_expected_termination =
+      (death_info.reason() == rpc::NodeDeathInfo::AUTOSCALER_DRAIN_PREEMPTED);
+  if (auto node = RemoveNode(node_id, is_expected_termination)) {
     node->set_state(rpc::GcsNodeInfo::DEAD);
     node->set_end_time_ms(current_sys_time_ms());
-    if (node->death_info().reason() == rpc::NodeDeathInfo::UNSPECIFIED) {
-      // There was no drain in progress.
-      node->mutable_death_info()->set_reason(rpc::NodeDeathInfo::UNEXPECTED_TERMINATION);
-    }
+
     AddDeadNodeToCache(node);
     auto node_info_delta = std::make_shared<rpc::GcsNodeInfo>();
     node_info_delta->set_node_id(node->node_id());
     node_info_delta->set_state(node->state());
     node_info_delta->set_end_time_ms(node->end_time_ms());
+    node_info_delta->mutable_death_info()->CopyFrom(node->death_info());
 
     auto on_done = [this, node_id, node_table_updated_callback, node_info_delta](
                        const Status &status) {

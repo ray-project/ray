@@ -58,10 +58,10 @@ class TestImpalaLearner(unittest.TestCase):
         """
         config = (
             ImpalaConfig()
-            .experimental(_enable_new_api_stack=True)
+            .api_stack(enable_rl_module_and_learner=True)
             .environment("CartPole-v1")
-            .rollouts(
-                num_rollout_workers=0,
+            .env_runners(
+                num_env_runners=0,
                 rollout_fragment_length=frag_length,
             )
             .resources(num_gpus=0)
@@ -89,7 +89,7 @@ class TestImpalaLearner(unittest.TestCase):
                 )
 
             algo_config = config.copy(copy_frozen=False)
-            algo_config.num_learner_workers = 0
+            algo_config.num_learners = 0
             learner_group = algo_config.build_learner_group(
                 env=algo.workers.local_worker().env
             )

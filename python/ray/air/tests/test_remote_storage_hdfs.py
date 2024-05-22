@@ -1,4 +1,5 @@
 """Test remote_storage in a ci environment with real hdfs setup."""
+
 import os
 
 import pytest
@@ -6,13 +7,12 @@ import pytest
 from ray import train
 from ray.train.base_trainer import TrainingFailedError
 from ray.train.data_parallel_trainer import DataParallelTrainer
-
 from ray.train.tests.test_new_persistence import (
     TestConstants,
-    train_fn,
     _assert_storage_contents,
     _get_local_inspect_dir,
     _resume_from_checkpoint,
+    train_fn,
 )
 
 
@@ -40,7 +40,6 @@ def setup_hdfs():
 def test_hdfs_train_checkpointing(tmp_path, monkeypatch, setup_hdfs):
     """See `ray.train.tests.test_new_persistence` for details."""
     LOCAL_CACHE_DIR = tmp_path / "ray_results"
-    monkeypatch.setenv("RAY_AIR_LOCAL_CACHE_DIR", str(LOCAL_CACHE_DIR))
     exp_name = "trainer_new_persistence"
     no_checkpoint_ranks = [0]
 
@@ -82,14 +81,12 @@ def test_hdfs_train_checkpointing(tmp_path, monkeypatch, setup_hdfs):
     restored_trainer = DataParallelTrainer.restore(path=storage_path + exp_name)
     result = restored_trainer.fit()
 
-    with monkeypatch.context() as m:
-        # This is so that the `resume_from_checkpoint` run doesn't mess up the
-        # assertions later for the `storage_path=None` case.
-        m.setenv("RAY_AIR_LOCAL_CACHE_DIR", str(tmp_path / "resume_from_checkpoint"))
-        _resume_from_checkpoint(
-            result.checkpoint,
-            expected_state={"iter": TestConstants.NUM_ITERATIONS - 1},
-        )
+    # This is so that the `resume_from_checkpoint` run doesn't mess up the
+    # assertions later for the `storage_path=None` case.
+    _resume_from_checkpoint(
+        result.checkpoint,
+        expected_state={"iter": TestConstants.NUM_ITERATIONS - 1},
+    )
 
     local_inspect_dir, storage_fs_path = _get_local_inspect_dir(
         root_local_path=tmp_path,
