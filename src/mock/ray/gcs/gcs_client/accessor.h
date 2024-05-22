@@ -139,6 +139,12 @@ class MockNodeInfoAccessor : public NodeInfoAccessor {
               (const std::function<void(Status, bool)> &callback, int64_t timeout_ms),
               (override));
   MOCK_METHOD(Status,
+              AsyncCheckAlive,
+              (const std::vector<std::string> &raylet_addresses,
+               int64_t timeout_ms,
+               const MultiItemCallback<bool> &callback),
+              (override));
+  MOCK_METHOD(Status,
               AsyncGetAll,
               (const MultiItemCallback<rpc::GcsNodeInfo> &callback),
               (override));
@@ -155,6 +161,12 @@ class MockNodeInfoAccessor : public NodeInfoAccessor {
               GetAll,
               (),
               (const, override));
+  MOCK_METHOD(Status,
+              CheckAlive,
+              (const std::vector<std::string> &raylet_addresses,
+               int64_t timeout_ms,
+               std::vector<bool> &nodes_alive),
+              (override));
   MOCK_METHOD(bool, IsRemoved, (const NodeID &node_id), (const, override));
   MOCK_METHOD(void, AsyncResubscribe, (), (override));
   MOCK_METHOD(Status,
@@ -328,7 +340,7 @@ class MockInternalKVAccessor : public InternalKVAccessor {
                const std::string &key,
                bool del_by_prefix,
                const int64_t timeout_ms,
-               const StatusCallback &callback),
+               const OptionalItemCallback<int> &callback),
               (override));
 };
 

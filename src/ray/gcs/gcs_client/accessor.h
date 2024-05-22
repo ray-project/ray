@@ -316,13 +316,22 @@ class NodeInfoAccessor {
   virtual Status AsyncRegister(const rpc::GcsNodeInfo &node_info,
                                const StatusCallback &callback);
 
-  /// Send a check alive request to GCS for the liveness of some node.
+  /// Send a check alive request to GCS for the liveness of this node.
   ///
   /// \param callback The callback function once the request is finished.
   /// \param timeout_ms The timeout for this request.
   /// \return Status
   virtual Status AsyncCheckSelfAlive(const std::function<void(Status, bool)> &callback,
                                      int64_t timeout_ms);
+
+  /// Send a check alive request to GCS for the liveness of some nodes.
+  ///
+  /// \param callback The callback function once the request is finished.
+  /// \param timeout_ms The timeout for this request.
+  /// \return Status
+  virtual Status AsyncCheckAlive(const std::vector<std::string> &raylet_addresses,
+                                 int64_t timeout_ms,
+                                 const MultiItemCallback<bool> &callback);
 
   /// Drain (remove the information of the node from the cluster) the local node from GCS
   /// asynchronously.
@@ -370,6 +379,16 @@ class NodeInfoAccessor {
   ///
   /// \return All nodes in cache.
   virtual const absl::flat_hash_map<NodeID, rpc::GcsNodeInfo> &GetAll() const;
+
+  /// Send a check alive request to GCS for the liveness of some nodes.
+  ///
+  /// \param raylet_addresses The addresses of the nodes to check, each like "ip:port".
+  /// \param timeout_ms The timeout for this request.
+  /// \param nodes_alive The liveness of the nodes. Only valid if the status is OK.
+  /// \return Status
+  virtual Status CheckAlive(const std::vector<std::string> &raylet_addresses,
+                            int64_t timeout_ms,
+                            std::vector<bool> &nodes_alive);
 
   /// Search the local cache to find out if the given node is removed.
   /// Non-thread safe.
@@ -740,7 +759,8 @@ class InternalKVAccessor {
   /// \param ns The namespace to check.
   /// \param key The key to check.
   /// \param timeout_ms -1 means infinite.
-  /// \param callback Callback that will be called after the operation.
+  /// \param callback Callback that will be called after the operation. Called with `true`
+  /// if the key is deleted; `false` if it doesn't exist.
   /// \return Status
   virtual Status AsyncInternalKVExists(const std::string &ns,
                                        const std::string &key,
@@ -753,13 +773,14 @@ class InternalKVAccessor {
   /// \param key The key to delete.
   /// \param del_by_prefix If set to be true, delete all keys with prefix as `key`.
   /// \param timeout_ms -1 means infinite.
-  /// \param callback Callback that will be called after the operation.
+  /// \param callback Callback that will be called after the operation. Called with number
+  /// of keys deleted.
   /// \return Status
   virtual Status AsyncInternalKVDel(const std::string &ns,
                                     const std::string &key,
                                     bool del_by_prefix,
                                     const int64_t timeout_ms,
-                                    const StatusCallback &callback);
+                                    const OptionalItemCallback<int> &callback);
 
   // These are sync functions of the async above
 
@@ -830,11 +851,13 @@ class InternalKVAccessor {
   /// \param key The key to delete
   /// \param del_by_prefix If set to be true, delete all keys with prefix as `key`.
   /// \param timeout_ms -1 means infinite.
+  /// \param deleted It's an output parameter. It'll be set to be number of keys deleted.
   /// \return Status
   virtual Status Del(const std::string &ns,
                      const std::string &key,
                      bool del_by_prefix,
-                     const int64_t timeout_ms);
+                     const int64_t timeout_ms,
+                     int &num_deleted);
 
   /// Check existence of a key in the store
   ///
@@ -849,7 +872,7 @@ class InternalKVAccessor {
   virtual Status Exists(const std::string &ns,
                         const std::string &key,
                         const int64_t timeout_ms,
-                        bool &exist);
+                        bool &exists);
 
  private:
   GcsClient *client_impl_;
