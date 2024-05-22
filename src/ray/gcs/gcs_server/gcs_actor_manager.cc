@@ -215,8 +215,8 @@ const ray::rpc::ActorDeathCause GcsActorManager::GenNodeDiedCause(
   // TODO(vitsai): Publish this information as well
   if (auto death_info = node->death_info();
       death_info.reason() == rpc::NodeDeathInfo::AUTOSCALER_DRAIN_PREEMPTED) {
-      auto node_death_info = actor_died_error_ctx->mutable_node_death_info();
-      node_death_info->CopyFrom(node->death_info());
+    auto node_death_info = actor_died_error_ctx->mutable_node_death_info();
+    node_death_info->CopyFrom(node->death_info());
   }
   return death_cause;
 }
