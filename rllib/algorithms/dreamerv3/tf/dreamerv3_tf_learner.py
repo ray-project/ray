@@ -239,8 +239,9 @@ class DreamerV3TfLearner(DreamerV3Learner, TfLearner):
         # Add the predicted obs distributions for possible (video) summarization.
         if config.report_images_and_videos:
             self.metrics.log_value(
-                (module_id, "WORLD_MODEL_fwd_out_obs_distribution_means_BxT"),
-                fwd_out["obs_distribution_means_BxT"],
+                (module_id, "WORLD_MODEL_fwd_out_obs_distribution_means_b0xT"),
+                fwd_out["obs_distribution_means_BxT"][:self.config.batch_length_T],
+                reduce=None,  # No reduction, we want the tensor to stay in-tact.
                 window=1,  # <- single items (should not be mean/ema-reduced over time).
             )
 

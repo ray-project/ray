@@ -229,7 +229,7 @@ class DreamerV3TorchLearner(DreamerV3Learner, TorchLearner):
         # over T axis!).
         L_world_model_total = torch.mean(L_world_model_total_B_T)
 
-        # Register world model loss stats.
+        # Log world model loss stats.
         self.metrics.log_dict(
             {
                 "WORLD_MODEL_learned_initial_h": self.module[module_id]
@@ -254,7 +254,18 @@ class DreamerV3TorchLearner(DreamerV3Learner, TorchLearner):
             key=module_id,
             window=1,  # <- single items (should not be mean/ema-reduced over time).
         )
+
+        # Add the predicted obs distributions for possible (video) summarization.
+        if config.report_images_and_videos:
+            self.metrics.log_value(
+                (module_id, "WORLD_MODEL_fwd_out_obs_distribution_means_b0xT"),
+                fwd_out["obs_distribution_means_BxT"][:self.config.batch_length_T],
+                reduce=None,  # No reduction, we want the obs tensor to stay in-tact.
+                window=1,  # <- single items (should not be mean/ema-reduced over time).
+            )
+
         if config.report_individual_batch_item_stats:
+            # Log important world-model loss stats.
             self.metrics.log_dict(
                 {
                     "WORLD_MODEL_L_decoder_B_T": prediction_losses["L_decoder_B_T"],

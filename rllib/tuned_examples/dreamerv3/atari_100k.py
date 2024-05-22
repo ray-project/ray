@@ -59,7 +59,7 @@ config = (
     )
     .reporting(
         metrics_num_episodes_for_smoothing=(args.num_gpus or 1),
-        report_images_and_videos=False,
+        report_images_and_videos=True,# TODO: False
         report_dream_data=False,
         report_individual_batch_item_stats=False,
     )

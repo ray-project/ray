@@ -13,8 +13,12 @@ from ray.rllib.algorithms.dreamerv3.utils.debugging import (
     create_cartpole_dream_image,
     create_frozenlake_dream_image,
 )
+from ray.rllib.core import DEFAULT_MODULE_ID
 from ray.rllib.core.columns import Columns
-from ray.rllib.utils.metrics import REPLAY_BUFFER_RESULTS
+from ray.rllib.utils.metrics import (
+    LEARNER_RESULTS,
+    REPLAY_BUFFER_RESULTS,
+)
 from ray.rllib.utils.tf_utils import inverse_symlog
 
 
@@ -142,18 +146,19 @@ def report_predicted_vs_sampled_obs(
         batch_length_T: The batch length (T). This is the length of an individual
             trajectory sampled from the buffer.
     """
-    predicted_observation_means_BxT = metrics.peek(
-        "WORLD_MODEL_fwd_out_obs_distribution_means_BxT"
-    )
+    predicted_observation_means_single_example = metrics.peek(
+        (LEARNER_RESULTS, DEFAULT_MODULE_ID, "WORLD_MODEL_fwd_out_obs_distribution_means_b0xT")
+    )[-1]  # logged as a non-reduced item (still a list)
     _report_obs(
         metrics=metrics,
         computed_float_obs_B_T_dims=np.reshape(
-            predicted_observation_means_BxT,
-            (batch_size_B, batch_length_T) + sample[Columns.OBS].shape[2:],
+            predicted_observation_means_single_example,
+            # WandB videos need to be channels first.
+            (1, batch_length_T) + sample[Columns.OBS].shape[2:],
         ),
-        sampled_obs_B_T_dims=sample[Columns.OBS],
+        sampled_obs_B_T_dims=sample[Columns.OBS][0:1],
         descr_prefix="WORLD_MODEL",
-        descr_obs=f"predicted_posterior_T{batch_length_T}",
+        descr_obs=f"predicted_posterior_b0x{batch_length_T}",
         symlog_obs=symlog_obs,
     )
 
@@ -259,6 +264,10 @@ def _report_obs(
     # 4=[B, T, w, h] grayscale image; 5=[B, T, w, h, C] RGB image.
     if len(sampled_obs_B_T_dims.shape) in [4, 5]:
         descr_prefix = (descr_prefix + "_") if descr_prefix else ""
+        # WandB videos need to be channels first.
+        transpose_axes = (
+            (0, 1, 4, 2, 3) if len(sampled_obs_B_T_dims.shape) == 5 else (0, 3, 1, 2)
+        )
 
         if symlog_obs:
             computed_float_obs_B_T_dims = inverse_symlog(computed_float_obs_B_T_dims)
@@ -270,15 +279,17 @@ def _report_obs(
             sampled_obs_B_T_dims = np.clip(sampled_obs_B_T_dims, 0.0, 255.0).astype(
                 np.uint8
             )
+            sampled_obs_B_T_dims = np.transpose(sampled_obs_B_T_dims, transpose_axes)
         computed_images = np.clip(computed_float_obs_B_T_dims, 0.0, 255.0).astype(
             np.uint8
         )
+        computed_images = np.transpose(computed_images, transpose_axes)
         # Concat sampled and computed images along the height axis (3) such that
         # real images show below respective predicted ones.
         # (B, T, C, h, w)
         sampled_vs_computed_images = np.concatenate(
             [computed_images, sampled_obs_B_T_dims],
-            axis=3,
+            axis=-1,  # concat on width axis (looks nicer)
         )
         # Add grayscale dim, if necessary.
         if len(sampled_obs_B_T_dims.shape) == 2 + 2:
@@ -287,6 +298,7 @@ def _report_obs(
         metrics.log_value(
             f"{descr_prefix}sampled_vs_{descr_obs}_videos",
             sampled_vs_computed_images,
+            reduce=None,  # No reduction, we want the obs tensor to stay in-tact.
             window=1,
         )
 
