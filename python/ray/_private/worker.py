@@ -2061,7 +2061,7 @@ def print_worker_logs(data: Dict[str, str], print_file: Any):
                 color_post = colorama.Style.RESET_ALL
             print(
                 f"{color_pre}({prefix_for(data)}{pid}{ip_prefix}){color_post} "
-                + f"{message_for(data, line)}",
+                f"{message_for(data, line)}",
                 file=print_file,
             )
     # Restore once at end of batch to avoid excess hiding/unhiding of tqdm.
