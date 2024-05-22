@@ -14,10 +14,9 @@ from ci.ray_ci.tester import (
     _get_all_test_query,
     _get_test_targets,
     _get_high_impact_test_targets,
+    _get_new_tests,
     _get_flaky_test_targets,
     _get_tag_matcher,
-    _get_new_tests,
-    _get_human_specified_tests,
 )
 from ray_release.test import Test, TestState
 
@@ -257,7 +256,7 @@ def test_get_high_impact_test_targets() -> None:
             "ray_release.test.Test.get_changed_tests",
             return_value=test["changed_tests"],
         ), mock.patch(
-            "ci.ray_ci.tester._get_human_specified_tests",
+            "ray_release.test.Test.get_human_specified_tests",
             return_value=test["human_tests"],
         ):
             assert (
@@ -281,17 +280,6 @@ def test_get_new_tests(mock_gen_from_s3, mock_run_script_with_output) -> None:
     assert _get_new_tests(
         "linux", LinuxTesterContainer("test", skip_ray_installation=True)
     ) == {"//new_test"}
-
-
-@mock.patch.dict(
-    os.environ,
-    {"BUILDKITE_PULL_REQUEST_BASE_BRANCH": "base", "BUILDKITE_COMMIT": "commit"},
-)
-@mock.patch("subprocess.check_call")
-@mock.patch("subprocess.check_output")
-def test_get_human_specified_tests(mock_check_output, mock_check_call) -> None:
-    mock_check_output.return_value = b"hi\n@microcheck //test01 //test02\nthere"
-    assert _get_human_specified_tests() == {"//test01", "//test02"}
 
 
 def test_get_flaky_test_targets() -> None:

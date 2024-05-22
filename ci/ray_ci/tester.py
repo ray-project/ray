@@ -1,6 +1,5 @@
 import itertools
 import os
-import subprocess
 import sys
 from typing import List, Set, Tuple, Optional
 
@@ -18,7 +17,7 @@ from ci.ray_ci.builder_container import (
 from ci.ray_ci.linux_tester_container import LinuxTesterContainer
 from ci.ray_ci.windows_tester_container import WindowsTesterContainer
 from ci.ray_ci.tester_container import TesterContainer
-from ci.ray_ci.utils import docker_login, ci_init, logger
+from ci.ray_ci.utils import docker_login, ci_init
 from ray_release.test import Test, TestState
 
 CUDA_COPYRIGHT = """
@@ -418,36 +417,13 @@ def _get_high_impact_test_targets(
     }
     new_tests = _get_new_tests(os_prefix, container)
     changed_tests = Test.get_changed_tests(bazel_workspace_dir)
-    human_specified_tests = _get_human_specified_tests()
+    human_specified_tests = Test.get_human_specified_tests(bazel_workspace_dir)
 
     return (
         high_impact_tests.union(new_tests)
         .union(changed_tests)
         .union(human_specified_tests)
     )
-
-
-def _get_human_specified_tests() -> Set[str]:
-    """
-    Get all test targets that are specified by humans
-    """
-    base = os.environ.get("BUILDKITE_PULL_REQUEST_BASE_BRANCH")
-    head = os.environ.get("BUILDKITE_COMMIT")
-    if not base or not head:
-        # if not in a PR, return an empty set
-        return set()
-
-    tests = set()
-    messages = subprocess.check_output(
-        ["git", "rev-list", "--format=%b", f"origin/{base}...{head}"],
-        cwd=bazel_workspace_dir,
-    )
-    for message in messages.decode().splitlines():
-        if message.startswith(MICROCHECK_COMMAND):
-            tests = tests.union(message[len(MICROCHECK_COMMAND) :].strip().split(" "))
-    logger.info(f"Human specified tests: {tests}")
-
-    return tests
 
 
 def _get_new_tests(prefix: str, container: TesterContainer) -> Set[str]:
