@@ -352,8 +352,6 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
             f"Generated prometheus and grafana configurations in: {self._metrics_root}"
         )
 
-        await asyncio.gather(self.record_dashboard_metrics())
-
     async def _query_prometheus(self, query):
         async with self.http_session.get(
             f"{self.prometheus_host}/api/v1/query?query={quote(query)}"
