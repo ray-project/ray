@@ -142,28 +142,45 @@ class DreamerV3TorchLearner(DreamerV3Learner, TorchLearner):
         loss_per_module,
         **kwargs,
     ):
-        # Override of the default gradient computation method.
-        # For DreamerV3, we need to compute gradients over the individual loss terms
-        # as otherwise, the world model's parameters would have their gradients also
-        # be influenced by the actor- and critic loss terms/gradient computations.
-        for optim in self._optimizer_parameters:
-            # `set_to_none=True` is a faster way to zero out the gradients.
-            optim.zero_grad(set_to_none=True)
+        """Override of the default gradient computation method.
 
+        For DreamerV3, we need to compute gradients over the individual loss terms
+        as otherwise, the world model's parameters would have their gradients also
+        be influenced by the actor- and critic loss terms/gradient computations.
+        """
         grads = {}
-        for component in ["world_model", "actor", "critic"]:
+
+        # Do actor and critic's grad computations first, such that after those two,
+        # we can zero out the gradients of the world model again (they will have values
+        # in them from the actor/critic backwards).
+        for component in ["actor", "critic"]:
+            optim = self.get_optimizer(DEFAULT_MODULE_ID, component)
+            optim.zero_grad(set_to_none=True)
+            # Do the backward pass
             self.metrics.peek(
                 (DEFAULT_MODULE_ID, component.upper() + "_L_total")
             ).backward(retain_graph=True)
-            grads.update(
-                {
-                    pid: p.grad
-                    for pid, p in self.filter_param_dict_for_optimizer(
-                        self._params, self.get_optimizer(optimizer_name=component)
-                    ).items()
-                }
-            )
+            grads.update({
+                pid: p.grad
+                for pid, p in self.filter_param_dict_for_optimizer(
+                    self._params, optim
+                ).items()
+            })
 
+        # Now do the world model.
+        component = "world_model"
+        optim = self.get_optimizer(DEFAULT_MODULE_ID, component)
+        optim.zero_grad(set_to_none=True)
+        # Do the backward pass
+        self.metrics.peek(
+            (DEFAULT_MODULE_ID, component.upper() + "_L_total")
+        ).backward()
+        grads.update({
+            pid: p.grad
+            for pid, p in self.filter_param_dict_for_optimizer(
+                self._params, optim
+            ).items()
+        })
         return grads
 
     @override(TorchLearner)
