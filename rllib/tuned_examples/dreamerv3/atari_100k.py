@@ -51,7 +51,7 @@ config = (
         # If we use >1 GPU and increase the batch size accordingly, we should also
         # increase the number of envs per worker.
         num_envs_per_env_runner=(args.num_gpus or 1),
-        remote_worker_envs=True,
+        remote_worker_envs=False, #TODO
     )
     .learners(
         num_learners=0 if args.num_gpus == 1 else args.num_gpus,

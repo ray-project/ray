@@ -617,6 +617,18 @@ class MetricsLogger:
                 clear_on_reduce=clear_on_reduce,
             )
 
+    def delete(self, *key: Tuple[str]) -> None:
+        """Deletes th egiven `key` from this metrics logger's stats.
+
+        Args:
+            key: The key or key sequence (for nested location within self.stats),
+                to delete from this MetricsLogger's stats.
+
+        Raises:
+            KeyError: If `key` cannot be found in `self`.
+        """
+        self._del_key(key)
+
     def reduce(
         self,
         key: Optional[Union[str, Tuple[str]]] = None,
@@ -778,6 +790,17 @@ class MetricsLogger:
         for i, key in enumerate(flat_key):
             if i == len(flat_key) - 1:
                 _dict[key] = stats
+                return
+            if key not in _dict:
+                _dict[key] = {}
+            _dict = _dict[key]
+
+    def _del_key(self, flat_key):
+        flat_key = force_tuple(tree.flatten(flat_key))
+        _dict = self.stats
+        for i, key in enumerate(flat_key):
+            if i == len(flat_key) - 1:
+                del _dict[key]
                 return
             if key not in _dict:
                 _dict[key] = {}

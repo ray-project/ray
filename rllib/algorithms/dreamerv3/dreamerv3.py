@@ -658,7 +658,14 @@ class DreamerV3(Algorithm):
                     NUM_ENV_STEPS_TRAINED_LIFETIME, replayed_steps, reduce="sum"
                 )
 
-                if self.config.report_images_and_videos:
+                # Log videos showing how the decoder produces observation predictions
+                # from the posterior states.
+                # Only every n iterations and only for the first sampled batch row
+                # (videos are `config.batch_length_T` frames long).
+                if (
+                    self.config.report_images_and_videos
+                    and self.training_iteration % 100
+                ):
                     report_predicted_vs_sampled_obs(
                         # TODO (sven): DreamerV3 is single-agent only.
                         metrics=self.metrics,
@@ -669,6 +676,12 @@ class DreamerV3(Algorithm):
                             env_runner.env.single_observation_space,
                             self.config.symlog_obs,
                         ),
+                    )
+                else:
+                    self.metrics.delete(
+                        LEARNER_RESULTS,
+                        DEFAULT_MODULE_ID,
+                        "WORLD_MODEL_fwd_out_obs_distribution_means_b0xT",
                     )
 
                 sub_iter += 1
@@ -688,11 +701,11 @@ class DreamerV3(Algorithm):
 
         # Try trick from https://medium.com/dive-into-ml-ai/dealing-with-memory-leak-
         # issue-in-keras-model-training-e703907a6501
-        if self.config.gc_frequency_train_steps and (
-            self.training_iteration % self.config.gc_frequency_train_steps == 0
-        ):
-            with self.metrics.log_time((TIMERS, GARBAGE_COLLECTION_TIMER)):
-                gc.collect()
+        #if self.config.gc_frequency_train_steps and (
+        #    self.training_iteration % self.config.gc_frequency_train_steps == 0
+        #):
+        #    with self.metrics.log_time((TIMERS, GARBAGE_COLLECTION_TIMER)):
+        #        gc.collect()
 
         # Add train results and the actual training ratio to stats. The latter should
         # be close to the configured `training_ratio`.
