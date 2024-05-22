@@ -1253,14 +1253,14 @@ Status InternalKVAccessor::Del(const std::string &ns,
                                int &num_deleted) {
   std::promise<Status> ret_promise;
   RAY_CHECK_OK(AsyncInternalKVDel(
-      
       ns,
       key,
-      del_by_prefix, timeout_ms,
+      del_by_prefix,
+      timeout_ms,
       [&ret_promise, &num_deleted](Status status, const boost::optional<int> &value) {
-            num_deleted = value.value_or(0);
+        num_deleted = value.value_or(0);
         ret_promise.set_value(status);
-          }));
+      }));
   return ret_promise.get_future().get();
 }
 
@@ -1271,10 +1271,8 @@ Status InternalKVAccessor::Exists(const std::string &ns,
   std::promise<Status> ret_promise;
   RAY_CHECK_OK(AsyncInternalKVExists(
       ns,
-     
       key,
       timeout_ms,
-     
       [&ret_promise, &exists](Status status, const boost::optional<bool> &value) {
         exists = value.value_or(false);
         ret_promise.set_value(status);

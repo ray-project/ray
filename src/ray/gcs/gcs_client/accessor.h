@@ -854,13 +854,10 @@ class InternalKVAccessor {
   /// \param deleted It's an output parameter. It'll be set to be number of keys deleted.
   /// \return Status
   virtual Status Del(const std::string &ns,
-                    
                      const std::string &key,
-                    
                      bool del_by_prefix,
                      const int64_t timeout_ms,
-                     int &num_deleted
-                     );
+                     int &num_deleted);
 
   /// Check existence of a key in the store
   ///
