@@ -61,7 +61,10 @@ class MLP(nn.Module):
         layers = []
         for _ in range(num_dense_layers):
             # In this order: layer, normalization, activation.
-            layers.append(nn.Linear(input_size, dense_hidden_units, bias=False))
+            linear = nn.Linear(input_size, dense_hidden_units, bias=False)
+            # Use same initializers as the Author's and our tf versions.
+            nn.init.xavier_uniform_(linear.weight)
+            layers.append(linear)
             layers.append(nn.LayerNorm(dense_hidden_units, eps=0.001))
             layers.append(nn.SiLU())
             input_size = dense_hidden_units
@@ -69,7 +72,10 @@ class MLP(nn.Module):
 
         self.output_layer = None
         if output_layer_size:
-            layers.append(nn.Linear(input_size, output_layer_size))
+            linear = nn.Linear(input_size, output_layer_size)
+            # Use same initializers as the Author's and our tf versions.
+            nn.init.xavier_uniform_(linear.weight)
+            layers.append(linear)
             self.output_size = (output_layer_size,)
 
         self._net = nn.Sequential(*layers)

@@ -62,6 +62,8 @@ class RepresentationLayer(nn.Module):
             self.num_categoricals * self.num_classes_per_categorical,
             bias=True,
         )
+        # Use same initializers as the Author's and our tf versions.
+        nn.init.xavier_uniform_(self.z_generating_layer.weight)
 
     def forward(self, inputs, return_z_probs=False):
         """Produces a discrete, differentiable z-sample from some 1D input tensor.
