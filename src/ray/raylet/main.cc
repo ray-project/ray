@@ -443,7 +443,7 @@ int main(int argc, char *argv[]) {
                             const boost::system::error_code &error, int signal_number) {
     ray::rpc::NodeDeathInfo node_death_info;
     node_death_info.set_reason(ray::rpc::NodeDeathInfo::EXPECTED_TERMINATION);
-    node_death_info.set_reason_message("Received SIGTERM");
+    node_death_info.set_reason_message("received SIGTERM");
     shutdown_raylet_gracefully_internal(node_death_info);
   };
   boost::asio::signal_set signals(main_service);
