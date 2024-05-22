@@ -197,22 +197,64 @@ class Test(dict):
             for file in files
         ]
 
-    @classmethod
-    def gen_high_impact_tests(cls, prefix: str) -> Dict[str, List]:
+    def _get_step_ids(self) -> List[str]:
         """
-        Obtain the mapping from rayci step id to high impact tests with the given prefix
+        Obtain the rayci step id for this test from the most recent test results
+        """
+        step_ids = []
+        recent_results = self.get_test_results()
+        if not recent_results:
+            return step_ids
+        recent_commit = recent_results[0].commit
+        for result in recent_results:
+            # consider all results with the same recent commit; this is to make sure
+            # we will include different job flavors of the same test
+            if result.commit != recent_commit:
+                continue
+            step_id = result.rayci_step_id
+            if not step_id:
+                continue
+            step_ids.append(step_id)
+
+        return step_ids
+
+    @classmethod
+    def gen_microcheck_step_ids(cls, prefix: str, bazel_workspace_dir: str) -> Set[str]:
+        step_ids = set()
+        test_targets = cls.gen_microcheck_tests(prefix, bazel_workspace_dir)
+        for test_target in test_targets:
+            test = cls.gen_from_name(f"{prefix}{test_target}")
+            if not test:
+                continue
+            step_ids.update(test._get_step_ids())
+
+        return step_ids
+
+    @classmethod
+    def gen_microcheck_tests(
+        cls, prefix: str, bazel_workspace_dir: str, team: Optional[str] = None
+    ) -> Set[str]:
+        """
+        Obtain all microcheck tests with the given prefix
         """
         high_impact_tests = [
             test for test in cls.gen_from_s3(prefix) if test.is_high_impact()
         ]
-        step_id_to_tests = {}
-        for test in high_impact_tests:
-            step_id = test.get_test_results(limit=1)[0].rayci_step_id
-            if not step_id:
-                continue
-            step_id_to_tests[step_id] = step_id_to_tests.get(step_id, []) + [test]
+        if team:
+            high_impact_tests = [
+                test for test in high_impact_tests if test.get_oncall() == team
+            ]
 
-        return step_id_to_tests
+        high_impact_test_targets = {test.get_target() for test in high_impact_tests}
+        new_test_targets = Test.get_new_tests(prefix, bazel_workspace_dir)
+        changed_test_targets = Test.get_changed_tests(bazel_workspace_dir)
+        human_specified_test_targets = Test.get_human_specified_tests(
+            bazel_workspace_dir
+        )
+
+        return high_impact_test_targets.union(
+            new_test_targets, changed_test_targets, human_specified_test_targets
+        )
 
     @classmethod
     def get_human_specified_tests(cls, bazel_workspace_dir: str) -> Set[str]:

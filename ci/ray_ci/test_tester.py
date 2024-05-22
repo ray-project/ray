@@ -13,8 +13,11 @@ from ci.ray_ci.tester import (
     _get_container,
     _get_all_test_query,
     _get_test_targets,
+<<<<<<< HEAD
     _get_high_impact_test_targets,
     _get_new_tests,
+=======
+>>>>>>> [ci][microcheck/13] sync microcheck test determinator
     _get_flaky_test_targets,
     _get_tag_matcher,
     _get_new_tests,
@@ -126,14 +129,8 @@ def test_get_test_targets() -> None:
             "ray_release.test.Test.gen_from_s3",
             return_value=test_objects,
         ), mock.patch(
-            "ray_release.test.Test.gen_high_impact_tests",
-            return_value={"step": test_objects},
-        ), mock.patch(
-            "ray_release.test.Test.get_changed_tests",
-            return_value=set(),
-        ), mock.patch(
-            "ray_release.test.Test.get_new_tests",
-            return_value=set(),
+            "ray_release.test.Test.gen_microcheck_tests",
+            return_value={test.get_target() for test in test_objects},
         ):
             assert set(
                 _get_test_targets(
@@ -215,6 +212,7 @@ def test_get_all_test_query() -> None:
     )
 
 
+<<<<<<< HEAD
 def test_get_high_impact_test_targets() -> None:
     test_harness = [
         {
@@ -319,6 +317,8 @@ def test_get_human_specified_tests(mock_check_output, mock_check_call) -> None:
     assert _get_human_specified_tests() == {"//test01", "//test02"}
 
 
+=======
+>>>>>>> [ci][microcheck/13] sync microcheck test determinator
 def test_get_flaky_test_targets() -> None:
     test_harness = [
         {
