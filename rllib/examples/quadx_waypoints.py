@@ -1,32 +1,42 @@
-import argparse
+"""Example using the PyFlyt Gymnasium environment to train a UAV to reach waypoints.
+
+PyFlyt GitHub Repository: https://github.com/jjshoots/PyFlyt/tree/master/PyFlyt
+
+How to run this script
+----------------------
+`python [script file name].py --enable-new-api-stack`
+
+
+For debugging, use the following additional command line options
+`--no-tune --num-env-runners=0`
+which should allow you to set breakpoints anywhere in the RLlib code and
+have the execution stop there for inspection and debugging.
+
+For logging to your WandB account, use:
+`--wandb-key=[your WandB API key] --wandb-project=[some project name]
+--wandb-run-name=[optional: WandB run name (within the defined project)]`
+"""
+
 import os
 
 from ray.rllib.utils.test_utils import check_learning_achieved
 from ray.tune.registry import get_trainable_cls
 import gymnasium as gym
+from ray.rllib.utils.test_utils import (
+    add_rllib_example_script_args,
+    run_rllib_example_script_experiment,
+)
 
-parser = argparse.ArgumentParser()
+parser = add_rllib_example_script_args(
+    default_iters=200,
+    default_timesteps=100000,
+    default_reward=90.0,
+)
 parser.add_argument(
     "--run", type=str, default="PPO", help="The RLlib-registered algorithm to use."
 )
 parser.add_argument('--env-name', type=str, default="quadx_waypoints")
-parser.add_argument("--num-cpus", type=int, default=4)
 parser.add_argument("--num-envs-per-worker", type=int, default=4)
-parser.add_argument(
-    "--framework",
-    choices=["tf2", "torch"],
-    default="torch",
-    help="The DL framework specifier.",
-)
-
-parser.add_argument("--as-test", type=bool, default=True)
-
-parser.add_argument(
-    "--stop-iters", type=int, default=500, help="Number of iterations to train."
-)
-parser.add_argument(
-    "--stop-reward", type=float, default=90.0, help="Reward at which we stop training."
-)
 
 class RewardWrapper(gym.RewardWrapper):
     def __init__(self, env):
@@ -57,8 +67,6 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
     num_gpus = int(os.environ.get("RLLIB_NUM_GPUS", "0"))
-
-    ray.init()
 
     register_env(args.env_name, env_creator=create_quadx_waypoints_env)
 
@@ -101,18 +109,14 @@ if __name__ == "__main__":
 
     stop = {
         "training_iteration": args.stop_iters,
-        "env_runner_results/episode_return_mean": args.stop_reward,
+        "env_runners/episode_reward_mean": args.stop_reward,
     }
 
-    tuner = tune.Tuner(
-        args.run,
-        param_space=config.to_dict(),
-        run_config=air.RunConfig(
-            stop=stop,
-        ),
+    run_rllib_example_script_experiment(
+        config,
+        args,
+        stop=stop,
+        success_metric={
+            "env_runners/episode_reward_mean": args.stop_reward,
+        },
     )
-    results = tuner.fit()
-
-    if args.as_test:
-        check_learning_achieved(results, args.stop_reward)
-    ray.shutdown()
