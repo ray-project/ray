@@ -27,7 +27,7 @@ grpc_extra_deps()
 
 load("@bazel_skylib//lib:versions.bzl", "versions")
 
-# Please keep this in sync with the .bazeliskrc file.
+# Please keep this in sync with the .bazelversion file.
 versions.check(minimum_bazel_version = "6.5.0")
 
 # Tools to generate `compile_commands.json` to enable awesome tooling of the C language family.
