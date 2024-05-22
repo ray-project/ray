@@ -380,7 +380,6 @@ class ExecutionPlan:
         else:
             schema = None
 
-        assert isinstance(schema, (type, pyarrow.Schema, type(None))), type(schema)
         self._schema = schema
         return self._schema
 
