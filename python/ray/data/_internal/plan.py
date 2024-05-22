@@ -359,6 +359,7 @@ class ExecutionPlan:
             print("Using cached schema")
             return self._schema
 
+        schema = None
         if (
             self._snapshot_bundle is not None
             and not self._snapshot_operator.output_dependencies
@@ -369,6 +370,7 @@ class ExecutionPlan:
             print("Using schema from logical plan")
             schema = self._logical_plan.dag.schema()
         elif fetch_if_missing:
+            print(self._logical_plan.dag)
             print("Actually loading data")
             blocks_with_metadata, _, _ = self.execute_to_iterator()
             for _, metadata in blocks_with_metadata:
@@ -377,8 +379,6 @@ class ExecutionPlan:
                 ):
                     schema = metadata.schema
                     break
-        else:
-            schema = None
 
         self._schema = schema
         return self._schema

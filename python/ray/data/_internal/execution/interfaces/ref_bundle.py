@@ -74,7 +74,7 @@ class RefBundle:
 
     @property
     def metadata(self) -> Tuple[BlockMetadata]:
-        return (b[1] for b in self.blocks)
+        return tuple(b[1] for b in self.blocks)
 
     def destroy_if_owned(self) -> int:
         """Clears the object store memory for these blocks if owned.

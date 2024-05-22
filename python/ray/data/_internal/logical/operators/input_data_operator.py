@@ -31,7 +31,9 @@ class InputData(LogicalOperator):
         if self.input_data is None:
             return None
 
-        metadata = list(itertools.chain(bundle.metadata for bundle in self.input_data))
+        metadata = list(
+            itertools.chain.from_iterable(bundle.metadata for bundle in self.input_data)
+        )
         return unify_block_metadata_schema(metadata)
 
     def num_rows(self):
