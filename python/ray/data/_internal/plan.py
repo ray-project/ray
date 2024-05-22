@@ -384,6 +384,37 @@ class ExecutionPlan:
         self._schema = schema
         return self._schema
 
+    def _get_unified_blocks_schema(
+        self, blocks: BlockList, fetch_if_missing: bool = False
+    ) -> Union[type, "pyarrow.lib.Schema"]:
+        """Get the unified schema of the blocks.
+        Args:
+            blocks: the blocks to get schema
+            fetch_if_missing: Whether to execute the blocks to fetch the schema.
+        """
+
+        # Ensure the first block has schema information available in the metadata.
+        # Otherwise, this will trigger computation on the first block
+        # for a schema read.
+        if isinstance(blocks, LazyBlockList):
+            blocks.ensure_metadata_for_first_block()
+
+        metadata = blocks.get_metadata(fetch_if_missing=False)
+
+        unified_schema = unify_block_metadata_schema(metadata)
+        if unified_schema is not None:
+            return unified_schema
+        if not fetch_if_missing:
+            return None
+        # Synchronously fetch the schema.
+        # For lazy block lists, this launches read tasks and fetches block metadata
+        # until we find the first valid block schema. This is to minimize new
+        # computations when fetching the schema.
+        for _, m in blocks.iter_blocks_with_metadata():
+            if m.schema is not None and (m.num_rows is None or m.num_rows > 0):
+                return m.schema
+        return None
+
     def meta_count(self) -> Optional[int]:
         """Get the number of rows after applying all plan optimizations, if possible.
 
