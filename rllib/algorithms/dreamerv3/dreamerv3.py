@@ -658,34 +658,28 @@ class DreamerV3(Algorithm):
                     NUM_ENV_STEPS_TRAINED_LIFETIME, replayed_steps, reduce="sum"
                 )
 
-                # Log videos showing how the decoder produces observation predictions
-                # from the posterior states.
-                # Only every n iterations and only for the first sampled batch row
-                # (videos are `config.batch_length_T` frames long).
-                if (
-                    self.config.report_images_and_videos
-                    and self.training_iteration % 100 == 0
-                ):
-                    report_predicted_vs_sampled_obs(
-                        # TODO (sven): DreamerV3 is single-agent only.
-                        metrics=self.metrics,
-                        sample=sample,
-                        batch_size_B=self.config.batch_size_B,
-                        batch_length_T=self.config.batch_length_T,
-                        symlog_obs=do_symlog_obs(
-                            env_runner.env.single_observation_space,
-                            self.config.symlog_obs,
-                        ),
-                    )
-                else:
-                    self.metrics.delete(
-                        LEARNER_RESULTS,
-                        DEFAULT_MODULE_ID,
-                        "WORLD_MODEL_fwd_out_obs_distribution_means_b0xT",
-                    )
-
                 sub_iter += 1
                 self.metrics.log_value(NUM_GRAD_UPDATES_LIFETIME, 1, reduce="sum")
+
+        # Log videos showing how the decoder produces observation predictions
+        # from the posterior states.
+        # Only every n iterations and only for the first sampled batch row
+        # (videos are `config.batch_length_T` frames long).
+        report_predicted_vs_sampled_obs(
+            # TODO (sven): DreamerV3 is single-agent only.
+            metrics=self.metrics,
+            sample=sample,
+            batch_size_B=self.config.batch_size_B,
+            batch_length_T=self.config.batch_length_T,
+            symlog_obs=do_symlog_obs(
+                env_runner.env.single_observation_space,
+                self.config.symlog_obs,
+            ),
+            delete=not (
+                self.config.report_images_and_videos
+                and self.training_iteration % 100 == 0
+            )
+        )
 
         # Update weights - after learning on the LearnerGroup - on all EnvRunner
         # workers.
@@ -699,11 +693,12 @@ class DreamerV3(Algorithm):
                     inference_only=True,
                 )
 
+        # TODO (sven): Remove this comment here: Probably only ever useful for tf2.
         # Try trick from https://medium.com/dive-into-ml-ai/dealing-with-memory-leak-
         # issue-in-keras-model-training-e703907a6501
-        #if self.config.gc_frequency_train_steps and (
+        # if self.config.gc_frequency_train_steps and (
         #    self.training_iteration % self.config.gc_frequency_train_steps == 0
-        #):
+        # ):
         #    with self.metrics.log_time((TIMERS, GARBAGE_COLLECTION_TIMER)):
         #        gc.collect()
 

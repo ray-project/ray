@@ -125,6 +125,7 @@ def report_predicted_vs_sampled_obs(
     batch_size_B,
     batch_length_T,
     symlog_obs: bool = True,
+    delete: bool = False,
 ):
     """Summarizes sampled data (from the replay buffer) vs world-model predictions.
 
@@ -146,9 +147,20 @@ def report_predicted_vs_sampled_obs(
         batch_length_T: The batch length (T). This is the length of an individual
             trajectory sampled from the buffer.
     """
-    predicted_observation_means_single_example = metrics.peek(
-        (LEARNER_RESULTS, DEFAULT_MODULE_ID, "WORLD_MODEL_fwd_out_obs_distribution_means_b0xT")
-    )[-1]  # logged as a non-reduced item (still a list)
+    fwd_output_key = (
+        LEARNER_RESULTS,
+        DEFAULT_MODULE_ID,
+        "WORLD_MODEL_fwd_out_obs_distribution_means_b0xT",
+    )
+    # logged as a non-reduced item (still a list)
+    predicted_observation_means_single_example = metrics.peek(fwd_output_key)[-1]
+    metrics.delete(fwd_output_key)
+
+    final_result_key = f"WORLD_MODEL_sampled_vs_predicted_posterior_b0x{batch_length_T}_videos"
+    if delete:
+        metrics.delete(final_result_key, key_error=False)
+        return
+
     _report_obs(
         metrics=metrics,
         computed_float_obs_B_T_dims=np.reshape(
@@ -157,8 +169,7 @@ def report_predicted_vs_sampled_obs(
             (1, batch_length_T) + sample[Columns.OBS].shape[2:],
         ),
         sampled_obs_B_T_dims=sample[Columns.OBS][0:1],
-        descr_prefix="WORLD_MODEL",
-        descr_obs=f"predicted_posterior_b0x{batch_length_T}",
+        metrics_key=final_result_key,
         symlog_obs=symlog_obs,
     )
 
@@ -191,8 +202,7 @@ def report_dreamed_eval_trajectory_vs_samples(
             axes=[1, 0] + list(range(2, len(dreamed_obs_T_B.shape))),
         ),
         sampled_obs_B_T_dims=sample[Columns.OBS][:, t0 : tH + 1],
-        descr_prefix="EVALUATION",
-        descr_obs=f"dreamed_prior_H{dreamed_T}",
+        metrics_key=f"EVALUATION_sampled_vs_dreamed_prior_H{dreamed_T}_videos",
         symlog_obs=symlog_obs,
     )
 
@@ -241,8 +251,7 @@ def _report_obs(
     metrics,
     computed_float_obs_B_T_dims,
     sampled_obs_B_T_dims,
-    descr_prefix=None,
-    descr_obs,
+    metrics_key,
     symlog_obs,
 ):
     """Summarizes computed- vs sampled observations: MSE and (if applicable) images.
@@ -253,17 +262,15 @@ def _report_obs(
             (not clipped, not cast'd). Shape=(B, T, [dims ...]).
         sampled_obs_B_T_dims: Sampled observations (as-is from the environment, meaning
             this could be uint8, 0-255 clipped images). Shape=(B, T, [dims ...]).
-        B: The batch size B (see shapes of `computed_float_obs_B_T_dims` and
-            `sampled_obs_B_T_dims` above).
-        T: The batch length T (see shapes of `computed_float_obs_B_T_dims` and
-            `sampled_obs_B_T_dims` above).
-        descr: A string used to describe the computed data to be used in the TB
-            summaries.
+        metrics_key: The metrics key (or key sequence) under which to log ths resulting
+            video sequence.
+        symlog_obs: Whether to inverse-symlog the computed observations or not. Set this
+            to True for environments, in which we should symlog the observations.
+            
     """
     # Videos: Create summary, comparing computed images with actual sampled ones.
     # 4=[B, T, w, h] grayscale image; 5=[B, T, w, h, C] RGB image.
     if len(sampled_obs_B_T_dims.shape) in [4, 5]:
-        descr_prefix = (descr_prefix + "_") if descr_prefix else ""
         # WandB videos need to be channels first.
         transpose_axes = (
             (0, 1, 4, 2, 3) if len(sampled_obs_B_T_dims.shape) == 5 else (0, 3, 1, 2)
@@ -296,7 +303,7 @@ def _report_obs(
             sampled_vs_computed_images = np.expand_dims(sampled_vs_computed_images, -1)
 
         metrics.log_value(
-            f"{descr_prefix}sampled_vs_{descr_obs}_videos",
+            metrics_key,
             sampled_vs_computed_images,
             reduce=None,  # No reduction, we want the obs tensor to stay in-tact.
             window=1,
