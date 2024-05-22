@@ -160,12 +160,14 @@ class DreamerV3TorchLearner(DreamerV3Learner, TorchLearner):
             self.metrics.peek(
                 (DEFAULT_MODULE_ID, component.upper() + "_L_total")
             ).backward(retain_graph=True)
-            grads.update({
-                pid: p.grad
-                for pid, p in self.filter_param_dict_for_optimizer(
-                    self._params, optim
-                ).items()
-            })
+            grads.update(
+                {
+                    pid: p.grad
+                    for pid, p in self.filter_param_dict_for_optimizer(
+                        self._params, optim
+                    ).items()
+                }
+            )
 
         # Now do the world model.
         component = "world_model"
@@ -175,12 +177,14 @@ class DreamerV3TorchLearner(DreamerV3Learner, TorchLearner):
         self.metrics.peek(
             (DEFAULT_MODULE_ID, component.upper() + "_L_total")
         ).backward()
-        grads.update({
-            pid: p.grad
-            for pid, p in self.filter_param_dict_for_optimizer(
-                self._params, optim
-            ).items()
-        })
+        grads.update(
+            {
+                pid: p.grad
+                for pid, p in self.filter_param_dict_for_optimizer(
+                    self._params, optim
+                ).items()
+            }
+        )
         return grads
 
     @override(TorchLearner)
@@ -669,7 +673,9 @@ class DreamerV3TorchLearner(DreamerV3Learner, TorchLearner):
         value_symlog_targets_HxB = value_symlog_targets_t0_to_Hm1_B.view(
             -1,
         )
-        value_symlog_targets_two_hot_HxB = two_hot(value_symlog_targets_HxB, device=self._device)
+        value_symlog_targets_two_hot_HxB = two_hot(
+            value_symlog_targets_HxB, device=self._device
+        )
         # Unfold time rank.
         value_symlog_targets_two_hot_t0_to_Hm1_B = (
             value_symlog_targets_two_hot_HxB.view(
@@ -701,7 +707,9 @@ class DreamerV3TorchLearner(DreamerV3Learner, TorchLearner):
         value_symlog_ema_HxB = value_symlog_ema_t0_to_Hm1_B.view(
             -1,
         )
-        value_symlog_ema_two_hot_HxB = two_hot(value_symlog_ema_HxB, device=self._device)
+        value_symlog_ema_two_hot_HxB = two_hot(
+            value_symlog_ema_HxB, device=self._device
+        )
         # Unfold time rank.
         value_symlog_ema_two_hot_t0_to_Hm1_B = value_symlog_ema_two_hot_HxB.view(
             [Hm1, B, value_symlog_ema_two_hot_HxB.shape[-1]]

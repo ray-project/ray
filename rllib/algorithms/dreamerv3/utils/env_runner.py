@@ -97,15 +97,18 @@ class DreamerV3EnvRunner(EnvRunner):
                     **dict(
                         self.config.env_config,
                         **{
-                            # "sticky actions" but not according to Danijar's 100k configs.
+                            # "sticky actions" but not according to Danijar's 100k
+                            # configs.
                             "repeat_action_probability": 0.0,
-                            # "full action space" but not according to Danijar's 100k configs.
+                            # "full action space" but not according to Danijar's 100k
+                            # configs.
                             "full_action_space": False,
                             # Already done by MaxAndSkip wrapper: "action repeat" == 4.
                             "frameskip": 1,
                         },
                     ),
                 )
+
             gym.register("rllib-single-agent-env-v0", entry_point=_entry_point)
 
             self.env = gym.vector.make(

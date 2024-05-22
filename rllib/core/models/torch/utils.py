@@ -45,13 +45,16 @@ class Stride2D(nn.Module):
         self.stride_w = stride_w
         self.stride_h = stride_h
 
-        self.register_buffer("zeros", torch.zeros(
-            size=(
-                self.width * self.stride_w - (self.stride_w - 1),
-                self.height * self.stride_h - (self.stride_h - 1),
+        self.register_buffer(
+            "zeros",
+            torch.zeros(
+                size=(
+                    self.width * self.stride_w - (self.stride_w - 1),
+                    self.height * self.stride_h - (self.stride_h - 1),
+                ),
+                dtype=torch.float32,
             ),
-            dtype=torch.float32,
-        ))
+        )
 
         self.out_width, self.out_height = self.zeros.shape[0], self.zeros.shape[1]
         # Squeeze in batch and channel dims.
