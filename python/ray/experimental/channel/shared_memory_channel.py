@@ -12,7 +12,6 @@ from ray.util.annotations import PublicAPI
 logger = logging.getLogger(__name__)
 
 DEFAULT_MAX_BUFFER_SIZE = int(100 * 1e6)  # 100MB
-MIN_BUFFER_SIZE = int(100 * 1e3)  # 100KB
 
 
 def _get_node_id(self) -> "ray.NodeID":
@@ -87,6 +86,7 @@ class SharedMemoryType(ChannelOutputType):
                 metadata. Writes to the channel must produce serialized data and
                 metadata less than or equal to this value.
         """
+        super().__init__()
         self.buffer_size_bytes = buffer_size_bytes
 
     def create_channel(

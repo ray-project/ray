@@ -146,6 +146,8 @@ def test_location_pending(ray_start_cluster):
 # sys.getsizeof. The caller then asserts the object size from the API
 # `ray.experimental.get_local_object_locations` is > the actual memory consumed.
 
+BIG_OBJ_SIZE = 3 * 1024 * 1024  # 3 MiB
+
 
 class BigObject:
     def __init__(self):
@@ -179,8 +181,8 @@ def test_get_local_locations(ray_start_regular):
     """
     obj_ref = gen_big_object.remote(3)
     ray.wait([obj_ref])
-    # The dataframe consists of 3 * 100MiB of NumPy NDArrays.
-    assert_object_size_gt(obj_ref, 3 * 100 * 1024 * 1024)
+    # The dataframe consists of 3 MiB of NumPy NDArrays.
+    assert_object_size_gt(obj_ref, BIG_OBJ_SIZE)
 
 
 def test_get_local_locations_generator(ray_start_regular):
@@ -190,8 +192,8 @@ def test_get_local_locations_generator(ray_start_regular):
     """
     for obj_ref in gen_big_objects.remote(3, 10):
         # No need to ray.wait, the object ref must have been ready before it's yielded.
-        # The dataframe consists of 3 * 100MiB of NumPy NDArrays.
-        assert_object_size_gt(obj_ref, 3 * 100 * 1024 * 1024)
+        # The dataframe consists of 3 MiB of NumPy NDArrays.
+        assert_object_size_gt(obj_ref, BIG_OBJ_SIZE)
 
 
 def test_get_local_locations_multi_nodes(ray_start_cluster):
@@ -217,8 +219,8 @@ def test_get_local_locations_multi_nodes(ray_start_cluster):
             )
         ).remote(3)
         ray.wait([obj_ref])
-        # The dataframe consists of 3 * 100MiB of NumPy NDArrays.
-        assert_object_size_gt(obj_ref, 3 * 100 * 1024 * 1024)
+        # The dataframe consists of 3 MiB of NumPy NDArrays.
+        assert_object_size_gt(obj_ref, BIG_OBJ_SIZE)
 
     ray.get(
         caller.options(
@@ -254,7 +256,7 @@ def test_get_local_locations_generator_multi_nodes(ray_start_cluster):
         for obj_ref in gen:
             # No need to ray.wait, the object ref must have been ready before it's
             # yielded.
-            assert_object_size_gt(obj_ref, 3 * 100 * 1024 * 1024)
+            assert_object_size_gt(obj_ref, BIG_OBJ_SIZE)
 
     ray.get(
         caller.options(

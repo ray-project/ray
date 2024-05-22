@@ -33,7 +33,10 @@ from ray.data._internal.compute import ComputeStrategy
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.equalize import _equalize
 from ray.data._internal.execution.interfaces import RefBundle
-from ray.data._internal.execution.legacy_compat import _block_list_to_bundles
+from ray.data._internal.execution.legacy_compat import (
+    _block_list_to_bundles,
+    _bundles_to_block_list,
+)
 from ray.data._internal.iterator.iterator_impl import DataIteratorImpl
 from ray.data._internal.iterator.stream_split_iterator import StreamSplitDataIterator
 from ray.data._internal.lazy_block_list import LazyBlockList
@@ -1513,23 +1516,23 @@ class Dataset:
 
         assert len(remaining_block_refs) == 0, len(remaining_block_refs)
 
-        per_split_block_lists = [
-            BlockList(
-                allocation_per_actor[actor],
-                [metadata_mapping[b] for b in allocation_per_actor[actor]],
-                owned_by_consumer=owned_by_consumer,
+        per_split_bundles = []
+        for actor in locality_hints:
+            blocks = allocation_per_actor[actor]
+            metadata = [metadata_mapping[b] for b in blocks]
+            bundle = RefBundle(
+                tuple(zip(blocks, metadata)), owns_blocks=owned_by_consumer
             )
-            for actor in locality_hints
-        ]
+            per_split_bundles.append(bundle)
 
         if equal:
             # equalize the splits
-            per_split_block_lists = _equalize(per_split_block_lists, owned_by_consumer)
+            per_split_bundles = _equalize(per_split_bundles, owned_by_consumer)
 
         split_datasets = []
-        for block_split in per_split_block_lists:
-            ref_bundles = _block_list_to_bundles(block_split, owned_by_consumer)
-            logical_plan = LogicalPlan(InputData(input_data=ref_bundles))
+        for bundle in per_split_bundles:
+            logical_plan = LogicalPlan(InputData(input_data=[bundle]))
+            block_split = _bundles_to_block_list([bundle])
             split_datasets.append(
                 MaterializedDataset(
                     ExecutionPlan(
@@ -4871,21 +4874,6 @@ class Dataset:
     def context(self) -> DataContext:
         """Return the DataContext used to create this Dataset."""
         return self._plan._context
-
-    def _divide(self, block_idx: int) -> ("Dataset", "Dataset"):
-        block_list = self._plan.execute()
-        left, right = block_list.divide(block_idx)
-        l_ds = Dataset(
-            ExecutionPlan(
-                left, self._plan.stats(), run_by_consumer=block_list._owned_by_consumer
-            ),
-        )
-        r_ds = Dataset(
-            ExecutionPlan(
-                right, self._plan.stats(), run_by_consumer=block_list._owned_by_consumer
-            ),
-        )
-        return l_ds, r_ds
 
     def _aggregate_on(
         self, agg_cls: type, on: Optional[Union[str, List[str]]], *args, **kwargs

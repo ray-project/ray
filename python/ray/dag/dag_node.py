@@ -2,6 +2,7 @@ import ray
 from ray.dag.base import DAGNodeBase
 from ray.dag.py_obj_scanner import _PyObjScanner
 from ray.util.annotations import DeveloperAPI
+import copy
 
 from typing import (
     Optional,
@@ -62,10 +63,10 @@ class DAGNode(DAGNodeBase):
         # Cached values from last call to execute()
         self.cache_from_last_execute = {}
 
-        self._type_hint: Optional[ChannelOutputType] = None
+        self._type_hint: Optional[ChannelOutputType] = ChannelOutputType()
 
     def with_type_hint(self, typ: ChannelOutputType):
-        self._type_hint = typ
+        self._type_hint = copy.deepcopy(typ)
         return self
 
     @property
