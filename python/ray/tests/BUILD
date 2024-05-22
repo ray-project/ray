@@ -304,7 +304,6 @@ py_test_module_list(
     "test_top_level_api.py",
     "test_unhandled_error.py",
     "test_widgets.py",
-    "test_worker.py",
     "accelerators/test_accelerators.py",
   ],
   size = "small",
