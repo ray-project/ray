@@ -52,7 +52,7 @@ class CNNAtari(nn.Module):
             cnn_use_bias=False,
             cnn_use_layernorm=True,
             cnn_activation="silu",
-            cnn_kernel_initializer=nn.init.xavier_,
+            cnn_kernel_initializer=nn.init.xavier_uniform_,
             flatten_at_end=True,
         )
         self.cnn_stack = config.build(framework="torch")

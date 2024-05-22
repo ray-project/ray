@@ -48,7 +48,7 @@ class ConvTransposeAtari(nn.Module):
         config = CNNTransposeHeadConfig(
             input_dims=[input_size],
             initial_image_dims=(4, 4, 8 * cnn_multiplier),
-            initial_dense_weights_initializer=nn.init.xavier_,
+            initial_dense_weights_initializer=nn.init.xavier_uniform_,
             cnn_transpose_filter_specifiers=[
                 [4 * cnn_multiplier, 4, 2],
                 [2 * cnn_multiplier, 4, 2],
@@ -58,7 +58,7 @@ class ConvTransposeAtari(nn.Module):
             cnn_transpose_use_bias=False,
             cnn_transpose_use_layernorm=True,
             cnn_transpose_activation="silu",
-            cnn_transpose_kernel_initializer=nn.init.xavier_,
+            cnn_transpose_kernel_initializer=nn.init.xavier_uniform_,
         )
         # Make sure the output dims match Atari.
         # assert config.output_dims == (64, 64, 1 if self.gray_scaled else 3)
