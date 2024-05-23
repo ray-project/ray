@@ -228,7 +228,7 @@ class DataContext:
             execution starts.
         s3_try_create_dir: If ``True``, try to create directories on S3 when a write
             call is made with a S3 URI.
-        default_wait_for_min_actors_s: The default time to wait for minimum requested
+        wait_for_min_actors_s: The default time to wait for minimum requested
             actors to start before raising a timeout, in seconds.
     """
 
@@ -275,7 +275,7 @@ class DataContext:
     )
     print_on_execution_start: bool = True
     s3_try_create_dir: bool = DEFAULT_S3_TRY_CREATE_DIR
-    default_wait_for_min_actors_s: int = DEFAULT_WAIT_FOR_MIN_ACTORS_S
+    wait_for_min_actors_s: int = DEFAULT_WAIT_FOR_MIN_ACTORS_S
 
     def __post_init__(self):
         # The additonal ray remote args that should be added to
