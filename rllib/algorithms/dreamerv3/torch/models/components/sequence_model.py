@@ -75,6 +75,15 @@ class SequenceModel(nn.Module):
             hidden_size=num_gru_units,
             batch_first=False,  # time major
         )
+        # Make sure GRU weights are initialized the exact same way as in tf keras.
+        layer_idx = 0
+        # Glorot Uniform initialization for weights
+        nn.init.xavier_uniform_(self.gru_unit.weight_ih_l[layer_idx])
+        # Orthogonal initialization for recurrent weights
+        nn.init.orthogonal_(self.gru_unit.weight_hh_l[layer_idx])
+        # Biases are initialized to zero by default in PyTorch, but to be explicit:
+        nn.init.zeros_(self.gru_unit.bias_ih_l[layer_idx])
+        nn.init.zeros_(self.gru_unit.bias_hh_l[layer_idx])
 
     def forward(self, a, h, z):
         """
