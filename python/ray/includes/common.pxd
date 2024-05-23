@@ -389,12 +389,19 @@ cdef extern from "ray/gcs/gcs_client/accessor.h" nogil:
     cdef cppclass CJobInfoAccessor "ray::gcs::JobInfoAccessor":
         CRayStatus AsyncGetNextJobID(
             const PyDefaultCallback &callback)
+        CRayStatus AsyncGetAll(
+            const PyDefaultCallback &callback)
         
     cdef cppclass CNodeInfoAccessor "ray::gcs::NodeInfoAccessor":
         CRayStatus AsyncCheckAlive(
             const c_vector[c_string] &raylet_addresses,
             int64_t timeout_ms,
             const PyMultiItemCallback[BoolConverter] &callback)
+
+        CRayStatus CheckAlive(
+            const c_vector[c_string] &raylet_addresses,
+            int64_t timeout_ms,
+            c_vector[c_bool] &result)
 
     cdef cppclass CInternalKVAccessor "ray::gcs::InternalKVAccessor":
         CRayStatus AsyncInternalKVKeys(

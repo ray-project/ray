@@ -2660,11 +2660,13 @@ cdef class GcsClient:
         object address
         object _nums_reconnect_retry
         ClusterID cluster_id
+        MyGcsClient my_gcs_client
 
     def __cinit__(self, address,
                   nums_reconnect_retry=RayConfig.instance().nums_py_gcs_reconnect_retry(
                   ),
                   cluster_id: str = None):
+        self.my_gcs_client = MyGcsClient.standalone(address, cluster_id)
         cdef GcsClientOptions gcs_options = GcsClientOptions.from_gcs_address(address)
         self.inner.reset(new CPythonGcsClient(dereference(gcs_options.native())))
         self.address = address
@@ -2704,115 +2706,23 @@ cdef class GcsClient:
     def _nums_reconnect_retry(self):
         return self._nums_reconnect_retry
 
-    @_auto_reconnect
-    def check_alive(
-        self, node_ips: c_vector[c_string], timeout: Optional[float] = None
-    ):
-        cdef:
-            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
-            c_vector[c_bool] c_result
-        with nogil:
-            check_status(self.inner.get().CheckAlive(node_ips, timeout_ms, c_result))
-        result = []
-        for r in c_result:
-            result.append(r)
-        return result
+    def __getattr__(self, name):
+        my_gcs_client_methods = [
+            "internal_kv_get",
+            "internal_kv_multi_get",
+            "internal_kv_put",
+            "internal_kv_del",
+            "internal_kv_exists",
+            "internal_kv_keys",
+            "check_alive",
+        ]
+        if name in my_gcs_client_methods:
+            if "TEST_RAY_COLLECT_KV_FREQUENCY" in os.environ:
+                with ray._private.utils._CALLED_FREQ_LOCK:
+                    ray._private.utils._CALLED_FREQ[name] += 1
 
-    @_auto_reconnect
-    def internal_kv_get(self, c_string key, namespace=None, timeout=None):
-        cdef:
-            c_string ns = namespace or b""
-            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
-            c_string value
-            CRayStatus status
-        with nogil:
-            status = self.inner.get().InternalKVGet(ns, key, timeout_ms, value)
-        if status.IsKeyError():
-            return None
-        else:
-            check_status(status)
-            return value
-
-    @_auto_reconnect
-    def internal_kv_multi_get(self, keys, namespace=None, timeout=None):
-        cdef:
-            c_string ns = namespace or b""
-            c_vector[c_string] c_keys
-            c_string c_key
-            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
-            unordered_map[c_string, c_string] c_result
-            unordered_map[c_string, c_string].iterator it
-
-        for c_key in keys:
-            c_keys.push_back(c_key)
-        with nogil:
-            check_status(self.inner.get().InternalKVMultiGet(
-                ns, c_keys, timeout_ms, c_result))
-
-        result = {}
-        it = c_result.begin()
-        while it != c_result.end():
-            key = dereference(it).first
-            value = dereference(it).second
-            result[key] = value
-            postincrement(it)
-        return result
-
-    @_auto_reconnect
-    def internal_kv_put(self, c_string key, c_string value, c_bool overwrite=False,
-                        namespace=None, timeout=None):
-        cdef:
-            c_string ns = namespace or b""
-            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
-            int num_added = 0
-        with nogil:
-            check_status(self.inner.get().InternalKVPut(
-                ns, key, value, overwrite, timeout_ms, num_added))
-
-        return num_added
-
-    @_auto_reconnect
-    def internal_kv_del(self, c_string key, c_bool del_by_prefix,
-                        namespace=None, timeout=None):
-        cdef:
-            c_string ns = namespace or b""
-            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
-            int num_deleted = 0
-        with nogil:
-            check_status(self.inner.get().InternalKVDel(
-                ns, key, del_by_prefix, timeout_ms, num_deleted))
-
-        return num_deleted
-
-    @_auto_reconnect
-    def internal_kv_keys(self, c_string prefix, namespace=None, timeout=None):
-        cdef:
-            c_string ns = namespace or b""
-            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
-            c_vector[c_string] keys
-            c_string key
-
-        with nogil:
-            check_status(self.inner.get().InternalKVKeys(
-                ns, prefix, timeout_ms, keys))
-
-        result = []
-
-        for key in keys:
-            result.append(key)
-
-        return result
-
-    @_auto_reconnect
-    def internal_kv_exists(self, c_string key, namespace=None, timeout=None):
-        cdef:
-            c_string ns = namespace or b""
-            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
-            c_bool exists = False
-        with nogil:
-            check_status(self.inner.get().InternalKVExists(
-                ns, key, timeout_ms, exists))
-        return exists
+            return getattr(self.my_gcs_client, name)
+        raise AttributeError(f"'GcsClient' object has no attribute '{name}'")
 
     @_auto_reconnect
     def pin_runtime_env_uri(self, str uri, int expiration_s, timeout=None):

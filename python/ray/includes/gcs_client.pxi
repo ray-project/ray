@@ -36,6 +36,18 @@ GcsClient. It it natively async and has the same semantics as the C++ GcsClient.
 4. Implement the rest of the GcsClient methods, redirect callsites.
 5. Remove PythonGcsClient.
 
+## Issues
+
+There are many nuanced API differences between the PythonGcsClient and the C++ GcsClient.
+In this PR I randomly "fixed" some of the issues, but we may really wanna keep the interface
+consistent with older versions so we must revisit:
+
+- timeout: PythonGcsClient returns RpcError, C++ GcsClient returns TimedOut -> GetTimeoutError
+- get not found: PythonGcsClient returns KeyError, C++ GcsClient returns NotFound
+- C++ GcsClient Del() had arg del_by_prefix but did not really support it (bug)
+- maybe more
+- bad test infra in stop_gcs_server
+
 ## Notes
 
 ### Async API
@@ -94,7 +106,7 @@ cdef class MyGcsClient:
     # Creates and connects a standalone GcsClient.
     # cluster_id is in hex, if any.
     @staticmethod
-    def standalone(gcs_address: c_string, cluster_id: str = None) -> "MyGcsClient":
+    def standalone(gcs_address: str, cluster_id: str = None) -> "MyGcsClient":
         cdef GcsClientOptions gcs_options = GcsClientOptions.from_gcs_address(gcs_address)
         cdef CClusterID c_cluster_id = CClusterID.Nil() if cluster_id is None else CClusterID.FromHex(cluster_id)
         cdef shared_ptr[CGcsClient] inner = ConnectToGcsStandalone(dereference(gcs_options.native()), c_cluster_id)
@@ -104,7 +116,7 @@ cdef class MyGcsClient:
 
     @property
     def address(self) -> str:
-        cdef pair = self.inner.get().GetGcsServerAddress()
+        cdef c_pair[c_string, int] pair = self.inner.get().GetGcsServerAddress()
         return f"{pair.first}:{pair.second}"
 
     @property
@@ -123,7 +135,7 @@ cdef class MyGcsClient:
             CRayStatus status
         with nogil:
             status = self.inner.get().InternalKV().Get(ns, key, timeout_ms, value)
-        if status.IsKeyError():
+        if status.IsNotFound():
             return None
         else:
             check_status(status)
@@ -213,7 +225,14 @@ cdef class MyGcsClient:
         cdef:
             c_string ns = namespace or b""
             int64_t timeout_ms = round(1000 * timeout) if timeout else -1
-        fut, cb = make_future_and_callback(postprocess=check_status_or_return)
+        def postprocess(tup: Tuple[StatusParts, Any]):
+            status_parts, val = tup
+            cdef CRayStatus c_ray_status = to_c_ray_status(status_parts)
+            if c_ray_status.IsNotFound():
+                return None
+            check_status(c_ray_status)
+            return val
+        fut, cb = make_future_and_callback(postprocess=postprocess)
         cdef PyDefaultCallback cy_callback = PyDefaultCallback(cb)
         with nogil:
             check_status(self.inner.get().InternalKV().AsyncInternalKVGet(ns, key, timeout_ms, cy_callback))
@@ -276,6 +295,17 @@ cdef class MyGcsClient:
     # NodeInfo methods
     #############################################################
 
+    def check_alive(self, node_ips: List[bytes], timeout: Optional[float] = None) -> List[bool]:
+        cdef:
+            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
+            c_vector[c_string] c_node_ips = [ip for ip in node_ips]
+            c_vector[c_bool] results
+            CRayStatus status
+        with nogil:
+            status = self.inner.get().Nodes().CheckAlive(c_node_ips, timeout_ms, results)
+        check_status(status)
+        return [result for result in results]
+
     def async_check_alive(
         self, node_ips: List[bytes], timeout: Optional[float] = None
     ) -> Future[List[bool]]:
@@ -292,7 +322,7 @@ cdef class MyGcsClient:
     # Job async methods
     #############################################################
 
-    def get_next_job_id(self) -> Future[JobID]:
+    def async_get_next_job_id(self) -> Future[JobID]:
         cdef PyDefaultCallback cy_callback
         fut, cb = make_future_and_callback(postprocess=lambda binary: JobID(binary))
         cy_callback = PyDefaultCallback(cb)
@@ -300,6 +330,20 @@ cdef class MyGcsClient:
             check_status(self.inner.get().Jobs().AsyncGetNextJobID(cy_callback))
         return fut
         
+    def async_get_all_job_info(self) -> Future[Dict[str, gcs_pb2.JobTableData]]:
+        def postprocess(binary):
+            list_of_bytes: List[bytes] = check_status_or_return(binary)
+            job_table_data = {}
+            for b in list_of_bytes:
+                proto = gcs_pb2.JobTableData()
+                proto.ParseFromString(b)
+                job_table_data[proto.job_id()] = proto
+            return job_table_data
+        fut, cb = make_future_and_callback(postprocess=postprocess)
+        cdef PyDefaultCallback cy_callback = PyDefaultCallback(cb)
+        with nogil:
+            check_status(self.inner.get().Jobs().AsyncGetAll(cy_callback))
+        return fut
     
 # Ideally we want to pass CRayStatus around. However it's not easy to wrap a
 # `ray::Status` to a `PythonObject*` so we marshall it to a 3-tuple like this. It can be
