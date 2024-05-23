@@ -83,21 +83,6 @@ Learn more
             :expand:
 
             Learn how to use Ray Data
-    
-    .. grid-item-card::
-
-        **Ray Distributed Debugger**
-        ^^^
-
-        VS Code extension for interactive debugging.
-
-        +++
-        .. button-link:: https://www.anyscale.com/blog/ray-distributed-debugger
-            :color: primary
-            :outline:
-            :expand:
-
-            Download
 
     .. grid-item-card::
 
