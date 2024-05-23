@@ -112,7 +112,7 @@ def build_app(cli_args: Dict[str, str]) -> serve.Application:
         pg_resources.append({"CPU": 1, "GPU": 1})  # for the vLLM actors
 
     # We use the "STRICT_PACK" strategy below to ensure all vLLM actors are placed on
-    # the same ray node.
+    # the same Ray node.
     return VLLMDeployment.options(
         placement_group_bundles=pg_resources, placement_group_strategy="STRICT_PACK"
     ).bind(
