@@ -88,7 +88,7 @@ TEST_F(UsageStatsClientTest, TestRecordExtraUsageTag) {
       [this]() {
         std::string value;
         RAY_CHECK_OK(this->gcs_client_->InternalKV().Get(
-            "usage_stats", "extra_usage_tag__test1", value));
+            "usage_stats", "extra_usage_tag__test1", gcs::GetGcsTimeoutMs(), value));
         return value == "value1";
       },
       10000));
@@ -98,7 +98,7 @@ TEST_F(UsageStatsClientTest, TestRecordExtraUsageTag) {
       [this]() {
         std::string value;
         RAY_CHECK_OK(this->gcs_client_->InternalKV().Get(
-            "usage_stats", "extra_usage_tag__test2", value));
+            "usage_stats", "extra_usage_tag__test2", gcs::GetGcsTimeoutMs(), value));
         return value == "value2";
       },
       10000));

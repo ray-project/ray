@@ -160,10 +160,11 @@ class WorkerPoolMock : public WorkerPool {
   using WorkerPool::PopWorkerCallbackInternal;
 
   // Mock `PopWorkerCallbackAsync` to synchronized function.
-  void PopWorkerCallbackAsync(const PopWorkerCallback &callback,
+  void PopWorkerCallbackAsync(const TaskSpecification &task_spec,
+                              const PopWorkerCallback &callback,
                               std::shared_ptr<WorkerInterface> worker,
                               PopWorkerStatus status = PopWorkerStatus::OK) override {
-    PopWorkerCallbackInternal(callback, worker, status);
+    PopWorkerCallbackInternal(task_spec, callback, worker, status);
   }
 
   Process StartProcess(const std::vector<std::string> &worker_command_args,
@@ -1375,6 +1376,86 @@ TEST_F(WorkerPoolDriverRegisteredTest, TestWorkerCappingWithExitDelay) {
   }
 
   ASSERT_EQ(worker_pool_->GetIdleWorkerSize(), workers.size());
+}
+
+TEST_F(WorkerPoolDriverRegisteredTest, TestJobFinishedForPopWorker) {
+  // Test to make sure that if job finishes,
+  // PopWorker should fail with PopWorkerStatus::JobFinished
+
+  auto job_id = JOB_ID;
+
+  /// Add worker to the pool.
+  PopWorkerStatus status;
+  auto [proc, token] = worker_pool_->StartWorkerProcess(
+      Language::PYTHON, rpc::WorkerType::WORKER, job_id, &status);
+  auto worker = worker_pool_->CreateWorker(Process(), Language::PYTHON, job_id);
+  worker->SetStartupToken(worker_pool_->GetStartupToken(proc));
+  RAY_CHECK_OK(worker_pool_->RegisterWorker(
+      worker, proc.GetId(), worker_pool_->GetStartupToken(proc), [](Status, int) {}));
+  worker_pool_->OnWorkerStarted(worker);
+  worker_pool_->PushWorker(worker);
+  ASSERT_EQ(worker_pool_->GetIdleWorkerSize(), 1);
+
+  auto mock_rpc_client_it = mock_worker_rpc_clients_.find(worker->WorkerId());
+  auto mock_rpc_client = mock_rpc_client_it->second;
+
+  // Finish the job.
+  worker_pool_->HandleJobFinished(job_id);
+
+  auto task_spec = ExampleTaskSpec(/*actor_id=*/ActorID::Nil(), Language::PYTHON, job_id);
+  PopWorkerStatus pop_worker_status;
+  // This PopWorker should fail since the job finished.
+  worker = worker_pool_->PopWorkerSync(task_spec, false, &pop_worker_status);
+  ASSERT_EQ(pop_worker_status, PopWorkerStatus::JobFinished);
+  ASSERT_FALSE(worker);
+  ASSERT_EQ(worker_pool_->GetIdleWorkerSize(), 1);
+
+  worker_pool_->TryKillingIdleWorkers();
+  ASSERT_EQ(mock_rpc_client->exit_count, 1);
+  ASSERT_EQ(mock_rpc_client->last_exit_forced, true);
+  mock_rpc_client->ExitReplySucceed();
+
+  job_id = JOB_ID2;
+  rpc::JobConfig job_config;
+  RegisterDriver(Language::PYTHON, job_id, job_config);
+  task_spec = ExampleTaskSpec(/*actor_id=*/ActorID::Nil(), Language::PYTHON, job_id);
+  pop_worker_status = PopWorkerStatus::OK;
+  // This will start a new worker.
+  worker_pool_->PopWorker(
+      task_spec,
+      [&](const std::shared_ptr<WorkerInterface> worker,
+          PopWorkerStatus status,
+          const std::string &runtime_env_setup_error_message) -> bool {
+        pop_worker_status = status;
+        return false;
+      });
+  auto process = worker_pool_->LastStartedWorkerProcess();
+  RAY_CHECK(process.IsValid());
+  ASSERT_EQ(1, worker_pool_->NumWorkersStarting());
+
+  worker = worker_pool_->CreateWorker(Process());
+  worker->SetStartupToken(worker_pool_->GetStartupToken(process));
+  RAY_CHECK_OK(worker_pool_->RegisterWorker(
+      worker, process.GetId(), worker_pool_->GetStartupToken(process), [](Status, int) {
+      }));
+  // Call `OnWorkerStarted` to emulate worker port announcement.
+  worker_pool_->OnWorkerStarted(worker);
+
+  mock_rpc_client_it = mock_worker_rpc_clients_.find(worker->WorkerId());
+  mock_rpc_client = mock_rpc_client_it->second;
+
+  // Finish the job.
+  worker_pool_->HandleJobFinished(job_id);
+
+  // This will trigger the PopWorker callback.
+  worker_pool_->PushWorker(worker);
+  ASSERT_EQ(pop_worker_status, PopWorkerStatus::JobFinished);
+  ASSERT_EQ(worker_pool_->GetIdleWorkerSize(), 1);
+
+  worker_pool_->TryKillingIdleWorkers();
+  ASSERT_EQ(mock_rpc_client->exit_count, 1);
+  ASSERT_EQ(mock_rpc_client->last_exit_forced, true);
+  mock_rpc_client->ExitReplySucceed();
 }
 
 TEST_F(WorkerPoolDriverRegisteredTest, TestJobFinishedForceKillIdleWorker) {

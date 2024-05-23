@@ -27,7 +27,6 @@
 #include "absl/strings/str_format.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/status.h"
-#include "ray/raylet/raylet_util.h"
 #include "ray/util/logging.h"
 #include "src/ray/protobuf/runtime_env_agent.pb.h"
 
@@ -251,19 +250,22 @@ inline constexpr std::string_view HTTP_PATH_DELETE_RUNTIME_ENV_IF_POSSIBLE =
 
 class HttpRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
  public:
-  HttpRuntimeEnvAgentClient(instrumented_io_context &io_context,
-                            const std::string &address,
-                            int port,
-                            std::function<std::shared_ptr<boost::asio::deadline_timer>(
-                                std::function<void()>, uint32_t delay_ms)> delay_executor,
-                            uint32_t agent_register_timeout_ms,
-                            uint32_t agent_manager_retry_interval_ms,
-                            uint32_t session_pool_size = 10)
+  HttpRuntimeEnvAgentClient(
+      instrumented_io_context &io_context,
+      const std::string &address,
+      int port,
+      std::function<std::shared_ptr<boost::asio::deadline_timer>(
+          std::function<void()>, uint32_t delay_ms)> delay_executor,
+      std::function<void(const rpc::NodeDeathInfo &)> shutdown_raylet_gracefully,
+      uint32_t agent_register_timeout_ms,
+      uint32_t agent_manager_retry_interval_ms,
+      uint32_t session_pool_size = 10)
       : io_context_(io_context),
         session_pool_(session_pool_size),
         address_(address),
         port_str_(std::to_string(port)),
         delay_executor_(delay_executor),
+        shutdown_raylet_gracefully_(shutdown_raylet_gracefully),
         agent_register_timeout_ms_(agent_register_timeout_ms),
         agent_manager_retry_interval_ms_(agent_manager_retry_interval_ms) {}
   ~HttpRuntimeEnvAgentClient() = default;
@@ -283,7 +285,10 @@ class HttpRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
            "file structure here "
            "https://docs.ray.io/en/master/ray-observability/user-guides/"
            "configure-logging.html#logging-directory-structure.\n";
-    ShutdownRayletGracefully();
+    rpc::NodeDeathInfo node_death_info;
+    node_death_info.set_reason(rpc::NodeDeathInfo::UNEXPECTED_TERMINATION);
+    node_death_info.set_reason_message("Raylet could not connect to Runtime Env Agent");
+    shutdown_raylet_gracefully_(node_death_info);
     // If the process is not terminated within 10 seconds, forcefully kill itself.
     delay_executor_([]() { QuickExit(); }, /*ms*/ 10000);
   }
@@ -500,6 +505,7 @@ class HttpRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
   std::function<std::shared_ptr<boost::asio::deadline_timer>(std::function<void()>,
                                                              uint32_t delay_ms)>
       delay_executor_;
+  std::function<void(const rpc::NodeDeathInfo &)> shutdown_raylet_gracefully_;
   const uint32_t agent_register_timeout_ms_;
   const uint32_t agent_manager_retry_interval_ms_;
 };
@@ -511,12 +517,14 @@ std::shared_ptr<RuntimeEnvAgentClient> RuntimeEnvAgentClient::Create(
     int port,
     std::function<std::shared_ptr<boost::asio::deadline_timer>(
         std::function<void()>, uint32_t delay_ms)> delay_executor,
+    std::function<void(const rpc::NodeDeathInfo &)> shutdown_raylet_gracefully,
     uint32_t agent_register_timeout_ms,
     uint32_t agent_manager_retry_interval_ms) {
   return std::make_shared<HttpRuntimeEnvAgentClient>(io_context,
                                                      address,
                                                      port,
                                                      delay_executor,
+                                                     shutdown_raylet_gracefully,
                                                      agent_register_timeout_ms,
                                                      agent_manager_retry_interval_ms);
 }

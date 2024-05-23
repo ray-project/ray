@@ -34,17 +34,16 @@ class LanceDatasource(Datasource):
         self.columns = columns
         self.filter = filter
         self.storage_options = storage_options
-
         self.lance_ds = lance.dataset(uri=uri, storage_options=storage_options)
-        self.fragments = self.lance_ds.get_fragments()
 
     def get_read_tasks(self, parallelism: int) -> List[ReadTask]:
         read_tasks = []
-        for fragments in np.array_split(self.fragments, parallelism):
+        for fragments in np.array_split(self.lance_ds.get_fragments(), parallelism):
             if len(fragments) <= 0:
                 continue
 
-            num_rows = sum([f.count_rows() for f in fragments])
+            fragment_ids = [f.metadata.id for f in fragments]
+            num_rows = sum(f.count_rows() for f in fragments)
             input_files = [
                 data_file.path() for f in fragments for data_file in f.data_files()
             ]
@@ -59,9 +58,12 @@ class LanceDatasource(Datasource):
             )
             columns = self.columns
             row_filter = self.filter
+            lance_ds = self.lance_ds
 
             read_task = ReadTask(
-                lambda f=fragments: _read_fragments(f, columns, row_filter),
+                lambda f=fragment_ids: _read_fragments(
+                    f, lance_ds, columns, row_filter
+                ),
                 metadata,
             )
             read_tasks.append(read_task)
@@ -73,11 +75,17 @@ class LanceDatasource(Datasource):
         return None
 
 
-def _read_fragments(fragments, columns, row_filter) -> Iterator["pyarrow.Table"]:
-    """Read Lance fragments in batches."""
+def _read_fragments(
+    fragment_ids, lance_ds, columns, row_filter
+) -> Iterator["pyarrow.Table"]:
+    """Read Lance fragments in batches.
+
+    NOTE: Use fragment ids, instead of fragments as parameter, because pickling
+    LanceFragment is expensive.
+    """
     import pyarrow
 
-    for fragment in fragments:
-        batches = fragment.to_batches(columns=columns, filter=row_filter)
-        for batch in batches:
-            yield pyarrow.Table.from_batches([batch])
+    fragments = [lance_ds.get_fragment(id) for id in fragment_ids]
+    scanner = lance_ds.scanner(columns, filter=row_filter, fragments=fragments)
+    for batch in scanner.to_reader():
+        yield pyarrow.Table.from_batches([batch])

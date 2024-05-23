@@ -100,10 +100,11 @@ class AutoscalingState:
         self._target_capacity: Optional[float] = None
         self._target_capacity_direction: Optional[TargetCapacityDirection] = None
 
-    def register(
-        self, info: DeploymentInfo, curr_target_num_replicas: Optional[int] = None
-    ) -> int:
-        """Registers an autoscaling deployment's info."""
+    def register(self, info: DeploymentInfo, curr_target_num_replicas: int) -> int:
+        """Registers an autoscaling deployment's info.
+
+        Returns the number of replicas the target should be set to.
+        """
 
         config = info.deployment_config.autoscaling_config
         if (
@@ -331,7 +332,7 @@ class AutoscalingStateManager:
         self,
         deployment_id: DeploymentID,
         info: DeploymentInfo,
-        curr_target_num_replicas: Optional[int] = None,
+        curr_target_num_replicas: int,
     ) -> int:
         """Register autoscaling deployment info."""
         assert info.deployment_config.autoscaling_config
