@@ -65,7 +65,7 @@ class CoreWorkerDirectActorTaskSubmitterInterface {
 
   /// Mark that the corresponding actor is preempted (e.g., spot preemption).
   /// If called, preempted = true will be set in the death cause upon actor death.
-  // virtual void SetPreempted(const ActorID &actor_id) = 0;
+  virtual void SetPreempted(const ActorID &actor_id) = 0;
 
   virtual ~CoreWorkerDirectActorTaskSubmitterInterface() {}
 };
@@ -90,12 +90,12 @@ class CoreWorkerDirectActorTaskSubmitter
         ::RayConfig::instance().actor_excess_queueing_warn_threshold();
   }
 
-  // void SetPreempted(const ActorID &actor_id) {
-  //   absl::MutexLock lock(&mu_);
-  //   if (auto iter = client_queues_.find(actor_id); iter != client_queues_.end()) {
-  //     iter->second.preempted = true;
-  //   }
-  // }
+  void SetPreempted(const ActorID &actor_id) {
+    absl::MutexLock lock(&mu_);
+    if (auto iter = client_queues_.find(actor_id); iter != client_queues_.end()) {
+      iter->second.preempted = true;
+    }
+  }
 
   /// Add an actor queue. This should be called whenever a reference to an
   /// actor is created in the language frontend.
@@ -293,7 +293,7 @@ class CoreWorkerDirectActorTaskSubmitter
     /// messages from the GCS.
     int64_t num_restarts = -1;
     /// Whether this actor exits by spot preemption.
-    // bool preempted = false;
+    bool preempted = false;
     /// The RPC client. We use shared_ptr to enable shared_from_this for
     /// pending client callbacks.
     std::shared_ptr<rpc::CoreWorkerClientInterface> rpc_client = nullptr;

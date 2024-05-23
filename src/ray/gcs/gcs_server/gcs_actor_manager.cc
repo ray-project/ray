@@ -1108,31 +1108,31 @@ void GcsActorManager::OnNodeDead(std::shared_ptr<rpc::GcsNodeInfo> node,
   }
 }
 
-// void GcsActorManager::SetPreemptedAndPublish(const NodeID &node_id) {
-//   // The node has received a drain request, so we mark all of its actors
-//   // preempted. This state will be published to the raylets so that the
-//   // preemption may be retrieved upon actor death.
-//   if (created_actors_.find(node_id) == created_actors_.end()) {
-//     return;
-//   }
+void GcsActorManager::SetPreemptedAndPublish(const NodeID &node_id) {
+  // The node has received a drain request, so we mark all of its actors
+  // preempted. This state will be published to the raylets so that the
+  // preemption may be retrieved upon actor death.
+  if (created_actors_.find(node_id) == created_actors_.end()) {
+    return;
+  }
 
-//   for (const auto &id_iter : created_actors_.find(node_id)->second) {
-//     auto actor_iter = registered_actors_.find(id_iter.second);
-//     RAY_CHECK(actor_iter != registered_actors_.end())
-//         << "Could not find actor " << id_iter.second.Hex() << " in registered actors.";
+  for (const auto &id_iter : created_actors_.find(node_id)->second) {
+    auto actor_iter = registered_actors_.find(id_iter.second);
+    RAY_CHECK(actor_iter != registered_actors_.end())
+        << "Could not find actor " << id_iter.second.Hex() << " in registered actors.";
 
-//     actor_iter->second->GetMutableActorTableData()->set_preempted(true);
+    actor_iter->second->GetMutableActorTableData()->set_preempted(true);
 
-//     const auto &actor_id = id_iter.second;
-//     const auto &actor_table_data = actor_iter->second->GetActorTableData();
+    const auto &actor_id = id_iter.second;
+    const auto &actor_table_data = actor_iter->second->GetActorTableData();
 
-//     RAY_CHECK_OK(gcs_table_storage_->ActorTable().Put(
-//         actor_id, actor_table_data, [this, actor_id, actor_table_data](Status status) {
-//           RAY_CHECK_OK(gcs_publisher_->PublishActor(
-//               actor_id, *GenActorDataOnlyWithStates(actor_table_data), nullptr));
-//         }));
-//   }
-// }
+    RAY_CHECK_OK(gcs_table_storage_->ActorTable().Put(
+        actor_id, actor_table_data, [this, actor_id, actor_table_data](Status status) {
+          RAY_CHECK_OK(gcs_publisher_->PublishActor(
+              actor_id, *GenActorDataOnlyWithStates(actor_table_data), nullptr));
+        }));
+  }
+}
 
 void GcsActorManager::ReconstructActor(const ActorID &actor_id,
                                        bool need_reschedule,
