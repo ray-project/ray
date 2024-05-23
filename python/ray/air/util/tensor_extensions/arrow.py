@@ -553,9 +553,7 @@ class ArrowTensorArray(_ArrowTensorScalarIndexingMixin, pa.ExtensionArray):
             )
         else:
             if len(to_concat) == 1:
-                single_array = to_concat[0]
-                # Preserve the exact behavior by converting to numpy and back
-                return ArrowTensorArray.from_numpy(single_array.to_numpy())
+                return to_concat[0]
             storage = pa.concat_arrays([c.storage for c in to_concat])
 
             return ArrowTensorArray.from_storage(to_concat[0].type, storage)
