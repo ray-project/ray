@@ -2795,7 +2795,7 @@ class Dataset:
                 arguments for each dataset block.
             num_rows_per_file: The target number of rows to write to each file. If
                 ``None``, Ray Data writes a system-chosen number of rows to each file.
-                The specified value is a hint, not a strict limit. Ray Data might write 
+                The specified value is a hint, not a strict limit. Ray Data might write
                 more or fewer rows to each file.
             ray_remote_args: Kwargs passed to :meth:`~ray.remote` in the write tasks.
             concurrency: The maximum number of Ray tasks to run concurrently. Set this
@@ -2905,7 +2905,7 @@ class Dataset:
                 arguments for each dataset block.
             num_rows_per_file: The target number of rows to write to each file. If
                 ``None``, Ray Data writes a system-chosen number of rows to each file.
-                The specified value is a hint, not a strict limit. Ray Data might write 
+                The specified value is a hint, not a strict limit. Ray Data might write
                 more or fewer rows to each file.
             ray_remote_args: kwargs passed to :meth:`~ray.remote` in the write tasks.
             concurrency: The maximum number of Ray tasks to run concurrently. Set this
@@ -3087,7 +3087,7 @@ class Dataset:
                 write arguments for each dataset block.
             num_rows_per_file: The target number of rows to write to each file. If
                 ``None``, Ray Data writes a system-chosen number of rows to each file.
-                The specified value is a hint, not a strict limit. Ray Data might write 
+                The specified value is a hint, not a strict limit. Ray Data might write
                 more or fewer rows to each file.
             ray_remote_args: kwargs passed to :meth:`~ray.remote` in the write tasks.
             concurrency: The maximum number of Ray tasks to run concurrently. Set this
@@ -3189,7 +3189,7 @@ class Dataset:
                 look like.
             num_rows_per_file: The target number of rows to write to each file. If
                 ``None``, Ray Data writes a system-chosen number of rows to each file.
-                The specified value is a hint, not a strict limit. Ray Data might write 
+                The specified value is a hint, not a strict limit. Ray Data might write
                 more or fewer rows to each file.
             ray_remote_args: kwargs passed to :meth:`~ray.remote` in the write tasks.
             concurrency: The maximum number of Ray tasks to run concurrently. Set this
@@ -3364,7 +3364,7 @@ class Dataset:
                 look like.
             num_rows_per_file: The target number of rows to write to each file. If
                 ``None``, Ray Data writes a system-chosen number of rows to each file.
-                The specified value is a hint, not a strict limit. Ray Data might write 
+                The specified value is a hint, not a strict limit. Ray Data might write
                 more or fewer rows to each file.
             ray_remote_args: kwargs passed to :meth:`~ray.remote` in the write tasks.
             concurrency: The maximum number of Ray tasks to run concurrently. Set this
