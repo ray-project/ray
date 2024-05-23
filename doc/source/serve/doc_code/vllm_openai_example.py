@@ -139,7 +139,7 @@ if __name__ == "__main__":
 
     # Note: Ray Serve doesn't support all OpenAI client arguments and may ignore some.
     client = OpenAI(
-        # Replace the URL if deploying your application remotely
+        # Replace the URL if deploying your app remotely
         # (e.g., on Anyscale or KubeRay).
         base_url="http://localhost:8000/v1",
         api_key="NOT A REAL KEY",
