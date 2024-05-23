@@ -16,15 +16,20 @@ GcsClient. It it natively async and has the same semantics as the C++ GcsClient.
 ## Progress
 - [x] InternalKV sync methods
 - [x] InternalKV async methods
-- [ ] InternalKV timeout_ms argument (https://github.com/ray-project/ray/pull/45444)
-- [ ] InternalKV multi-get (https://github.com/ray-project/ray/pull/45444)
-- [ ] InternalKV().Del() return num_deleted (https://github.com/ray-project/ray/pull/45451)
+- [x] InternalKV timeout_ms argument (https://github.com/ray-project/ray/pull/45444)
+- [x] InternalKV multi-get (https://github.com/ray-project/ray/pull/45444)
+- [x] InternalKV().Del() return num_deleted (https://github.com/ray-project/ray/pull/45451)
 (here is when we can merge this PR)
 - [ ] Nodes().CheckAlive (https://github.com/ray-project/ray/pull/45451)
 - [ ] RuntimeEnvGcsService::PinRuntimeEnvURI
 - [ ] GetAllNodeInfo
 - [ ] GetAllResourceUsage
 - [ ] Autoscaler APIs
+
+## Limitations
+
+- The C++ GcsClient lives on the ASIO event loop, meaning you can't create one without
+    a running Ray CoreWorker. How to use it in agents and tests?
 
 ## Roadmap
 
@@ -70,7 +75,7 @@ from ray.includes.common cimport (
     PyDefaultCallback,
 )
 from ray.core.generated import gcs_pb2
-
+from cython.operator import dereference, postincrement
 
 cdef class MyGcsClient:
     cdef:
@@ -82,18 +87,38 @@ cdef class MyGcsClient:
     def internal_kv_get(self, c_string key, namespace=None, timeout=None) -> Optional[bytes]:
         cdef:
             c_string ns = namespace or b""
-            # int64_t timeout_ms = round(1000 * timeout) if timeout else -1
+            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
             c_string value
             CRayStatus status
         with nogil:
-            status = self.inner.get().InternalKV().Get(ns, key, value)
+            status = self.inner.get().InternalKV().Get(ns, key, timeout_ms, value)
         if status.IsKeyError():
             return None
         else:
             check_status(status)
             return value
 
-    # TODO: internal_kv_multi_get
+    def internal_kv_multi_get(self, keys: List[bytes], namespace=None, timeout=None) -> Dict[bytes,bytes]:
+        cdef:
+            c_string ns = namespace or b""
+            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
+            c_vector[c_string] c_keys = [key for key in keys]
+            unordered_map[c_string, c_string] values
+            CRayStatus status
+        with nogil:
+            status = self.inner.get().InternalKV().MultiGet(ns, c_keys, timeout_ms, values)
+        
+        check_status(status)
+
+        result = {}
+        it = values.begin()
+        while it != values.end():
+            key = dereference(it).first
+            value = dereference(it).second
+            result[key] = value
+            postincrement(it)
+        return result
+
 
     def internal_kv_put(self, c_string key, c_string value, c_bool overwrite=False,
                         namespace=None, timeout=None) -> int:
@@ -102,36 +127,37 @@ cdef class MyGcsClient:
         """
         cdef:
             c_string ns = namespace or b""
-            # int64_t timeout_ms = round(1000 * timeout) if timeout else -1
+            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
             c_bool added = False
             CRayStatus status
         with nogil:
-            status = self.inner.get().InternalKV().Put(ns, key, value, overwrite, added)
+            status = self.inner.get().InternalKV().Put(ns, key, value, overwrite, timeout_ms, added)
         check_status(status)
         return 1 if added else 0
 
     def internal_kv_del(self, c_string key, c_bool del_by_prefix,
                         namespace=None, timeout=None) -> int:
         """
-        Returns 1 if the key is deleted, 0 if the key is not found.
+        Returns number of keys deleted.
         """
         cdef:
             c_string ns = namespace or b""
-            # int64_t timeout_ms = round(1000 * timeout) if timeout else -1
+            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
             CRayStatus status
+            int num_deleted = 0
         with nogil:
-            status = self.inner.get().InternalKV().Del(ns, key, del_by_prefix)
+            status = self.inner.get().InternalKV().Del(ns, key, del_by_prefix, timeout_ms, num_deleted)
         check_status(status)
-        # TODO: let `Delete` return an int
-        return 1
+        return num_deleted
     
     def internal_kv_keys(self, c_string prefix, namespace=None, timeout=None) -> List[bytes]:
         cdef:
             c_string ns = namespace or b""
+            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
             c_vector[c_string] keys
             CRayStatus status
         with nogil:
-            status = self.inner.get().InternalKV().Keys(ns, prefix, keys)
+            status = self.inner.get().InternalKV().Keys(ns, prefix, timeout_ms, keys)
         check_status(status)
 
         result = [key for key in keys]
@@ -140,10 +166,11 @@ cdef class MyGcsClient:
     def internal_kv_exists(self, c_string key, namespace=None, timeout=None) -> bool:
         cdef:
             c_string ns = namespace or b""
+            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
             c_bool exists = False
             CRayStatus status
         with nogil:
-            status = self.inner.get().InternalKV().Exists(ns, key, exists)
+            status = self.inner.get().InternalKV().Exists(ns, key, timeout_ms, exists)
         check_status(status)
         return exists
 
@@ -154,56 +181,64 @@ cdef class MyGcsClient:
     def async_internal_kv_get(self, c_string key, namespace=None, timeout=None) -> Future[Optional[bytes]]:
         cdef:
             c_string ns = namespace or b""
-            # TODO: timeout is not yet
+            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
         fut, cb = make_future_and_callback(postprocess=check_status_or_return)
         cdef PyDefaultCallback cy_callback = PyDefaultCallback(cb)
         with nogil:
-            check_status(self.inner.get().InternalKV().AsyncInternalKVGet(ns, key, cy_callback))
+            check_status(self.inner.get().InternalKV().AsyncInternalKVGet(ns, key, timeout_ms, cy_callback))
         return fut
 
-    # TODO: async_internal_kv_multi_get
+    def async_internal_kv_multi_get(self, keys: List[bytes], namespace=None, timeout=None) -> Future[Dict[bytes,bytes]]:
+        cdef:
+            c_string ns = namespace or b""
+            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
+            c_vector[c_string] c_keys = [key for key in keys]
+        fut, cb = make_future_and_callback(postprocess=check_status_or_return)
+        cdef PyDefaultCallback cy_callback = PyDefaultCallback(cb)
+        with nogil:
+            check_status(self.inner.get().InternalKV().AsyncInternalKVMultiGet(ns, c_keys, timeout_ms, cy_callback))
+        return fut
 
     def async_internal_kv_put(self, c_string key, c_string value, c_bool overwrite=False,
                         namespace=None, timeout=None) -> Future[int]:
         cdef:
             c_string ns = namespace or b""
-            # TODO: timeout is not yet
+            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
         fut, cb = make_future_and_callback(postprocess=check_status_or_return)
         cdef PyDefaultCallback cy_callback = PyDefaultCallback(cb)
         with nogil:
-            check_status(self.inner.get().InternalKV().AsyncInternalKVPut(ns, key, value, overwrite, cy_callback))
+            check_status(self.inner.get().InternalKV().AsyncInternalKVPut(ns, key, value, overwrite, timeout_ms, cy_callback))
         return fut
 
     def async_internal_kv_del(self, c_string key, c_bool del_by_prefix,
                         namespace=None, timeout=None) -> Future[int]:
         cdef:
             c_string ns = namespace or b""
-        # TODO: let `AsyncInternalKVDel` return an int
-        def postprocess(s):
-            check_status_parts(s)
-            return 1
-        fut, cb = make_future_and_callback(postprocess=postprocess)
+            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
+        fut, cb = make_future_and_callback(postprocess=check_status_or_return)
         cdef PyDefaultCallback cy_callback = PyDefaultCallback(cb)
         with nogil:
-            check_status(self.inner.get().InternalKV().AsyncInternalKVDel(ns, key, del_by_prefix, cy_callback))
+            check_status(self.inner.get().InternalKV().AsyncInternalKVDel(ns, key, del_by_prefix, timeout_ms, cy_callback))
         return fut
     
     def async_internal_kv_keys(self, c_string prefix, namespace=None, timeout=None) -> Future[List[bytes]]:
         cdef:
             c_string ns = namespace or b""
+            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
         fut, cb = make_future_and_callback(postprocess=check_status_or_return)
         cdef PyDefaultCallback cy_callback = PyDefaultCallback(cb)
         with nogil:
-            check_status(self.inner.get().InternalKV().AsyncInternalKVKeys(ns, prefix, cy_callback))
+            check_status(self.inner.get().InternalKV().AsyncInternalKVKeys(ns, prefix, timeout_ms, cy_callback))
         return fut
 
     def async_internal_kv_exists(self, c_string key, namespace=None, timeout=None) -> Future[bool]:
         cdef:
             c_string ns = namespace or b""
+            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
         fut, cb = make_future_and_callback(postprocess=check_status_or_return)
         cdef PyDefaultCallback cy_callback = PyDefaultCallback(cb)
         with nogil:
-            check_status(self.inner.get().InternalKV().AsyncInternalKVExists(ns, key, cy_callback))
+            check_status(self.inner.get().InternalKV().AsyncInternalKVExists(ns, key, timeout_ms, cy_callback))
         return fut
 
     #############################################################

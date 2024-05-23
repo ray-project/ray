@@ -386,39 +386,50 @@ cdef extern from "ray/gcs/gcs_client/accessor.h" nogil:
             const PyDefaultCallback &callback)
 
     cdef cppclass CInternalKVAccessor "ray::gcs::InternalKVAccessor":
-        # TODO: no timeout args. Now, C++ GcsClient has fixed timeout =
-        # gcs_server_request_timeout_seconds
         CRayStatus AsyncInternalKVKeys(
             const c_string &ns, 
             const c_string &prefix, 
+            int64_t timeout_ms, 
             const PyDefaultCallback &callback)
         
         CRayStatus AsyncInternalKVGet(
             const c_string &ns, 
             const c_string &key, 
+            int64_t timeout_ms, 
             const PyDefaultCallback &callback)
         
+
+        CRayStatus AsyncInternalKVMultiGet(
+            const c_string &ns, 
+            const c_vector[c_string] &keys, 
+            int64_t timeout_ms, 
+            const PyDefaultCallback &callback)
+         
         CRayStatus AsyncInternalKVPut(
             const c_string &ns, 
             const c_string &key, 
             const c_string &value, 
             c_bool overwrite, 
+            int64_t timeout_ms, 
             const PyDefaultCallback &callback)
         
         CRayStatus AsyncInternalKVExists(
             const c_string &ns, 
             const c_string &key, 
+            int64_t timeout_ms, 
             const PyDefaultCallback &callback)
         
         CRayStatus AsyncInternalKVDel(
             const c_string &ns, 
             const c_string &key, 
             c_bool del_by_prefix, 
+            int64_t timeout_ms, 
             const PyDefaultCallback &callback)
         
         CRayStatus Keys(
             const c_string &ns, 
             const c_string &prefix, 
+            int64_t timeout_ms, 
             c_vector[c_string] &value)
         
         CRayStatus Put(
@@ -426,22 +437,33 @@ cdef extern from "ray/gcs/gcs_client/accessor.h" nogil:
             const c_string &key, 
             const c_string &value, 
             c_bool overwrite, 
+            int64_t timeout_ms, 
             c_bool &added)
         
         CRayStatus Get(
             const c_string &ns, 
             const c_string &key, 
+            int64_t timeout_ms, 
             c_string &value)
+        
+        CRayStatus MultiGet(
+            const c_string &ns, 
+            const c_vector[c_string] &keys, 
+            int64_t timeout_ms, 
+            unordered_map[c_string, c_string] &values) 
         
         CRayStatus Del(
             const c_string &ns, 
             const c_string &key, 
-            c_bool del_by_prefix)
+            c_bool del_by_prefix, 
+            int64_t timeout_ms,
+            int& num_deleted)
         
         CRayStatus Exists(
             const c_string &ns, 
             const c_string &key, 
-            c_bool &exist)
+            int64_t timeout_ms, 
+            c_bool &exists)
 
 cdef extern from "ray/gcs/gcs_client/gcs_client.h" nogil:
     cdef enum CGrpcStatusCode "grpc::StatusCode":

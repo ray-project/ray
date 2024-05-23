@@ -736,8 +736,7 @@ class InternalKVAccessor {
       const std::string &ns,
       const std::vector<std::string> &keys,
       const int64_t timeout_ms,
-      const OptionalItemCallback<absl::flat_hash_map<std::string, std::string>>
-          &callback);
+      const OptionalItemCallback<std::unordered_map<std::string, std::string>> &callback);
 
   /// Asynchronously set the value for a given key.
   ///
@@ -841,7 +840,7 @@ class InternalKVAccessor {
   virtual Status MultiGet(const std::string &ns,
                           const std::vector<std::string> &keys,
                           const int64_t timeout_ms,
-                          absl::flat_hash_map<std::string, std::string> &values);
+                          std::unordered_map<std::string, std::string> &values);
 
   /// Delete the key
   ///

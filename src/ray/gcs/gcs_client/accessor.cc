@@ -1080,7 +1080,7 @@ Status InternalKVAccessor::AsyncInternalKVMultiGet(
     const std::string &ns,
     const std::vector<std::string> &keys,
     const int64_t timeout_ms,
-    const OptionalItemCallback<absl::flat_hash_map<std::string, std::string>> &callback) {
+    const OptionalItemCallback<std::unordered_map<std::string, std::string>> &callback) {
   rpc::InternalKVMultiGetRequest req;
   for (const auto &key : keys) {
     req.add_keys(key);
@@ -1089,7 +1089,7 @@ Status InternalKVAccessor::AsyncInternalKVMultiGet(
   client_impl_->GetGcsRpcClient().InternalKVMultiGet(
       req,
       [callback](const Status &status, const rpc::InternalKVMultiGetReply &reply) {
-        absl::flat_hash_map<std::string, std::string> map;
+        std::unordered_map<std::string, std::string> map;
         if (!status.ok()) {
           callback(status, map);
         } else {
@@ -1233,7 +1233,7 @@ Status InternalKVAccessor::MultiGet(
     const std::string &ns,
     const std::vector<std::string> &keys,
     const int64_t timeout_ms,
-    absl::flat_hash_map<std::string, std::string> &values) {
+    std::unordered_map<std::string, std::string> &values) {
   std::promise<Status> ret_promise;
   RAY_CHECK_OK(AsyncInternalKVMultiGet(
       ns, keys, timeout_ms, [&ret_promise, &values](Status status, auto &vs) {
