@@ -44,7 +44,7 @@ from ray.serve._private.utils import (
 from ray.serve.config import AutoscalingConfig
 from ray.serve.exceptions import RayServeException
 from ray.serve.generated.serve_pb2 import DeploymentLanguage
-from ray.serve.schema import DeploymentDetails, ServeApplicationSchema
+from ray.serve.schema import APIType, DeploymentDetails, ServeApplicationSchema
 from ray.types import ObjectRef
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
@@ -59,14 +59,6 @@ class BuildAppStatus(Enum):
     IN_PROGRESS = 2
     SUCCEEDED = 3
     FAILED = 4
-
-
-class APIType(Enum):
-    """Tracks the type of API that an application originates from."""
-
-    UNKNOWN = 0
-    IMPERATIVE = 1
-    DECLARATIVE = 2
 
 
 @dataclass
@@ -733,7 +725,7 @@ class ApplicationState:
     def get_application_status_info(self) -> ApplicationStatusInfo:
         """Return the application status information"""
         return ApplicationStatusInfo(
-            self._status,
+            status=self._status,
             message=self._status_msg,
             deployment_timestamp=self._deployment_timestamp,
         )
@@ -940,6 +932,9 @@ class ApplicationStateManager:
             return None
 
         return self._application_states[name].ingress_deployment
+
+    def get_app_source(self, name: str) -> APIType:
+        return self._application_states[name].api_type
 
     def list_app_statuses(self) -> Dict[str, ApplicationStatusInfo]:
         """Return a dictionary with {app name: application info}"""

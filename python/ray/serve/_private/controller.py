@@ -891,6 +891,7 @@ class ServeController:
                 # This can be none if the app was deployed through
                 # serve.run, or if the app is in deleting state
                 deployed_app_config=self.get_app_config(app_name),
+                source=self.application_state_manager.get_app_source(app_name),
                 deployments=self.application_state_manager.list_deployment_details(
                     app_name
                 ),
