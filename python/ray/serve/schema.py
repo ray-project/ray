@@ -965,6 +965,7 @@ class DeploymentDetails(BaseModel, extra=Extra.forbid, frozen=True):
         return v
 
 
+@PublicAPI(stability="alpha")
 class APIType(Enum):
     """Tracks the type of API that an application originates from."""
 
