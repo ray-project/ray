@@ -75,4 +75,4 @@ config = (
 if __name__ == "__main__":
     from ray.rllib.utils.test_utils import run_rllib_example_script_experiment
 
-    run_rllib_example_script_experiment(config, args, keep_config=True)
+    run_rllib_example_script_experiment(config, args, stop={}, keep_config=True)

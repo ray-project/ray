@@ -690,8 +690,8 @@ class DreamerV3(Algorithm):
         report_dreamed_eval_trajectory_vs_samples(
             metrics=self.metrics,
             sample=sample,
-            burn_in_T=1,
-            dreamed_T=self.config.horizon_H,
+            burn_in_T=0,
+            dreamed_T=self.config.horizon_H + 1,
             dreamer_model=self.workers.local_worker().module.dreamer_model,
             symlog_obs=do_symlog_obs(
                 env_runner.env.single_observation_space,

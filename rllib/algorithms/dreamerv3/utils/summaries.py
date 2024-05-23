@@ -207,6 +207,17 @@ def report_dreamed_eval_trajectory_vs_samples(
             the report/videos.
     """
     dream_data = metrics.peek(LEARNER_RESULTS, DEFAULT_MODULE_ID, "dream_data")
+    metrics.delete(LEARNER_RESULTS, DEFAULT_MODULE_ID, "dream_data")
+
+    final_result_key_obs = f"EVALUATION_sampled_vs_dreamed_prior_H{dreamed_T}_obs"
+    final_result_key_rew = f"EVALUATION_sampled_vs_dreamed_prior_H{dreamed_T}_rewards_MSE"
+    final_result_key_cont = f"EVALUATION_sampled_vs_dreamed_prior_H{dreamed_T}_continues_MSE"
+    if not do_report:
+        metrics.delete(final_result_key_obs, key_error=False)
+        metrics.delete(final_result_key_rew, key_error=False)
+        metrics.delete(final_result_key_cont, key_error=False)
+        return
+
 
     # Obs MSE.
     dreamed_obs_H_B = reconstruct_obs_from_h_and_z(
@@ -215,18 +226,19 @@ def report_dreamed_eval_trajectory_vs_samples(
         dreamer_model=dreamer_model,
         obs_dims_shape=sample[Columns.OBS].shape[2:],
     )
-    t0 = burn_in_T - 1
+    t0 = burn_in_T
     tH = t0 + dreamed_T
     # Observation MSE and - if applicable - images comparisons.
     _report_obs(
         metrics=metrics,
         # Have to transpose b/c dreamed data is time-major.
-        computed_float_obs_B_T_dims=np.transpose(
+        computed_float_obs_B_T_dims=np.reshape(
             dreamed_obs_H_B,
-            axes=[1, 0] + list(range(2, len(dreamed_obs_H_B.shape))),
+            # WandB videos need to be 5D (B, L, c, h, w).
+            (16, tH - t0) + sample[Columns.OBS].shape[2:],
         ),
-        sampled_obs_B_T_dims=sample[Columns.OBS][:, t0 : tH + 1],
-        metrics_key=f"EVALUATION_sampled_vs_dreamed_prior_H{dreamed_T}_obs",
+        sampled_obs_B_T_dims=sample[Columns.OBS][:, t0 : tH],
+        metrics_key=final_result_key_obs,
         symlog_obs=symlog_obs,
     )
 
@@ -234,16 +246,16 @@ def report_dreamed_eval_trajectory_vs_samples(
     _report_rewards(
         metrics=metrics,
         computed_rewards=dream_data["rewards_dreamed_t0_to_H_Bx1"][0],
-        sampled_rewards=sample[Columns.REWARDS][:, t0 : tH + 1],
-        metrics_key=f"EVALUATION_sampled_vs_dreamed_prior_H{dreamed_T}_rewards_MSE",
+        sampled_rewards=sample[Columns.REWARDS][:, t0 : tH],
+        metrics_key=final_result_key_rew,
     )
 
     # Continues MSE.
     _report_continues(
         metrics=metrics,
         computed_continues=dream_data["continues_dreamed_t0_to_H_Bx1"][0],
-        sampled_continues=(1.0 - sample["is_terminated"])[:, t0 : tH + 1],
-        metrics_key=f"EVALUATION_sampled_vs_dreamed_prior_H{dreamed_T}_continues_MSE",
+        sampled_continues=(1.0 - sample["is_terminated"])[:, t0 : tH],
+        metrics_key=final_result_key_cont,
     )
 
 
