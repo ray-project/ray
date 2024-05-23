@@ -1,5 +1,6 @@
 import gymnasium as gym
-from gymnasium.spaces import Discrete, Tuple
+from gymnasium.spaces import Box, Discrete, Tuple
+import numpy as np
 import random
 
 
@@ -18,14 +19,14 @@ class CorrelatedActionsEnv(gym.Env):
     There are 20 steps. Hence, the best score would be ~200 reward.
     """
 
-    def __init__(self, _):
-        self.observation_space = Discrete(2)
+    def __init__(self, _=None):
+        self.observation_space = Box(0, 1, shape=(1,), dtype=np.float32)
         self.action_space = Tuple([Discrete(2), Discrete(2)])
         self.last_observation = None
 
     def reset(self, *, seed=None, options=None):
         self.t = 0
-        self.last_observation = random.choice([0, 1])
+        self.last_observation = np.array([random.choice([0, 1])], dtype=np.float32)
         return self.last_observation, {}
 
     def step(self, action):
@@ -39,5 +40,5 @@ class CorrelatedActionsEnv(gym.Env):
         if a1 == a2:
             reward += 5
         done = truncated = self.t > 20
-        self.last_observation = random.choice([0, 1])
+        self.last_observation = np.array([random.choice([0, 1])], dtype=np.float32)
         return self.last_observation, reward, done, truncated, {}
