@@ -51,7 +51,9 @@ def reconstruct_obs_from_h_and_z(
     reconstructed_obs_distr_means_TxB = dreamer_model.world_model.decoder(
         # Fold time rank.
         h=torch.from_numpy(h_t0_to_H).reshape((T * B, -1)).to(device),
-        z=torch.from_numpy(z_t0_to_H).reshape((T * B,) + z_t0_to_H.shape[2:]).to(device),
+        z=torch.from_numpy(z_t0_to_H).reshape(
+            (T * B,) + z_t0_to_H.shape[2:]
+        ).to(device),
     ).detach().cpu().numpy()
     # Unfold time rank again.
     reconstructed_obs_T_B = np.reshape(
@@ -192,15 +194,22 @@ def report_dreamed_eval_trajectory_vs_samples(
     symlog_obs: bool = True,
     do_report: bool = True,
 ) -> None:
-    """
-    
+    """Logs dreamed observations, rewards, continues and compares them vs sampled data.
+
+    For obs, we'll try to create videos (side-by-side comparison) of the dreamed,
+    recreated-from-prior obs vs the sampled ones (over dreamed_T timesteps).
+
     Args:
-        metrics: 
-        sample: 
-        burn_in_T: 
-        dreamed_T: 
-        dreamer_model: 
-        symlog_obs: 
+        metrics: The MetricsLogger object of the DreamerV3 algo.
+        sample: The sampled data (dict) from the replay buffer. Already tf-tensor
+            converted.
+        burn_in_T: The number of burn-in timesteps (these will be skipped over in the
+            reported video comparisons and MSEs).
+        dreamed_T: The number of timesteps to produce dreamed data for.
+        dreamer_model: The DreamerModel to use to create observation vectors/images
+            from dreamed h- and (prior) z-states.
+        symlog_obs: Whether to inverse-symlog the computed observations or not. Set this
+            to True for environments, in which we should symlog the observations.
         do_report: Whether to actually log the report (default). If this is set to
             False, this function serves as a clean-up on the given metrics, making sure
             they do NOT contain anymore any (spacious) data relevant for producing
@@ -210,14 +219,17 @@ def report_dreamed_eval_trajectory_vs_samples(
     metrics.delete(LEARNER_RESULTS, DEFAULT_MODULE_ID, "dream_data")
 
     final_result_key_obs = f"EVALUATION_sampled_vs_dreamed_prior_H{dreamed_T}_obs"
-    final_result_key_rew = f"EVALUATION_sampled_vs_dreamed_prior_H{dreamed_T}_rewards_MSE"
-    final_result_key_cont = f"EVALUATION_sampled_vs_dreamed_prior_H{dreamed_T}_continues_MSE"
+    final_result_key_rew = (
+        f"EVALUATION_sampled_vs_dreamed_prior_H{dreamed_T}_rewards_MSE"
+    )
+    final_result_key_cont = (
+        f"EVALUATION_sampled_vs_dreamed_prior_H{dreamed_T}_continues_MSE"
+    )
     if not do_report:
         metrics.delete(final_result_key_obs, key_error=False)
         metrics.delete(final_result_key_rew, key_error=False)
         metrics.delete(final_result_key_cont, key_error=False)
         return
-
 
     # Obs MSE.
     dreamed_obs_H_B = reconstruct_obs_from_h_and_z(
@@ -231,13 +243,11 @@ def report_dreamed_eval_trajectory_vs_samples(
     # Observation MSE and - if applicable - images comparisons.
     _report_obs(
         metrics=metrics,
-        # Have to transpose b/c dreamed data is time-major.
-        computed_float_obs_B_T_dims=np.reshape(
-            dreamed_obs_H_B,
-            # WandB videos need to be 5D (B, L, c, h, w).
-            (16, tH - t0) + sample[Columns.OBS].shape[2:],
-        ),
-        sampled_obs_B_T_dims=sample[Columns.OBS][:, t0 : tH],
+        # WandB videos need to be 5D (B, L, c, h, w) -> transpose/swap H and B axes.
+        computed_float_obs_B_T_dims=np.swapaxes(
+            dreamed_obs_H_B, 0, 1
+        )[0:1],  # for now: only B=1
+        sampled_obs_B_T_dims=sample[Columns.OBS][0:1, t0 : tH],
         metrics_key=final_result_key_obs,
         symlog_obs=symlog_obs,
     )
