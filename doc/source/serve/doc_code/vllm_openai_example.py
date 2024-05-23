@@ -95,7 +95,7 @@ def parse_vllm_args(cli_args: Dict[str, str]):
 def build_app(cli_args: Dict[str, str]) -> serve.Application:
     """Builds the Serve app based on CLI arguments.
 
-    Refer to https://docs.vllm.ai/en/latest/serving/openai_compatible_server.html#command-line-arguments-for-the-server
+    See https://docs.vllm.ai/en/latest/serving/openai_compatible_server.html#command-line-arguments-for-the-server
     for the complete set of arguments.
 
     Supported engine arguments: https://docs.vllm.ai/en/latest/models/engine_args.html.
