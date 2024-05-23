@@ -5,7 +5,7 @@ orphan: true
 (serve-vllm-tutorial)=
 
 # Serve a Large Language Model with vLLM
-This example runs a large language model with Ray Serve using [vLLM](https://docs.vllm.ai/en/latest/), a popular open-source library for serving LLMs. It uses the [OpenAI Chat Completions API](https://platform.openai.com/docs/guides/text-generation/chat-completions-api) which easily integrates with other LLM tools. The example also demonstrates how to set up multi-GPU serving with Ray Serve using placement groups. For more advanced features like multi-lora support with serve multiplexing, JSON mode function calling and further performance improvements, please try out our LLM deployment solutions on [Anyscale](https://www.anyscale.com/). 
+This example runs a large language model with Ray Serve using [vLLM](https://docs.vllm.ai/en/latest/), a popular open-source library for serving LLMs. It uses the [OpenAI Chat Completions API](https://platform.openai.com/docs/guides/text-generation/chat-completions-api), which easily integrates with other LLM tools. The example also sets up multi-GPU serving with Ray Serve using placement groups. For more advanced features like multi-lora support with serve multiplexing, JSON mode function calling and further performance improvements, try LLM deployment solutions on [Anyscale](https://www.anyscale.com/). 
 
 To run this example, install the following:
 
