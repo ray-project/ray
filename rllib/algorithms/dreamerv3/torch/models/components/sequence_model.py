@@ -70,19 +70,24 @@ class SequenceModel(nn.Module):
             output_layer_size=None,
         )
         gru_input_size = get_dense_hidden_units(model_size)
-        self.gru_unit = nn.GRU(
-            input_size=gru_input_size,
-            hidden_size=num_gru_units,
-            batch_first=False,  # time major
-        )
+
+        #TODO: Test using our own GRU unit w/ Normal init (just like Danijar's GRU).
+        self.gru_unit = ManualGRU(input_size=gru_input_size, cell_size=num_gru_units)
+        #self.gru_unit = nn.GRU(
+        #    input_size=gru_input_size,
+        #    hidden_size=num_gru_units,
+        #    batch_first=False,  # time major
+        #)
+
+        # END: TEST
         # Make sure GRU weights are initialized the exact same way as in tf keras.
         # Glorot Uniform initialization for weights
-        nn.init.xavier_uniform_(self.gru_unit.weight_ih_l0)
+        #nn.init.xavier_uniform_(self.gru_unit.weight_ih_l0)
         # Orthogonal initialization for recurrent weights
-        nn.init.orthogonal_(self.gru_unit.weight_hh_l0)
+        #nn.init.orthogonal_(self.gru_unit.weight_hh_l0)
         # Biases are initialized to zero by default in PyTorch, but to be explicit:
-        nn.init.zeros_(self.gru_unit.bias_ih_l0)
-        nn.init.zeros_(self.gru_unit.bias_hh_l0)
+        #nn.init.zeros_(self.gru_unit.bias_ih_l0)
+        #nn.init.zeros_(self.gru_unit.bias_hh_l0)
 
     def forward(self, a, h, z):
         """
@@ -105,3 +110,23 @@ class SequenceModel(nn.Module):
         h_next = h_next.squeeze(0)  # Remove extra time dimension again.
         # Return the GRU's output (the next h-state).
         return h_next
+
+
+class ManualGRU(nn.Module):
+    """Analogous to Danijar's JAX GRU unit code."""
+    def __init__(self, input_size, cell_size):
+        super().__init__()
+        self.cell_size = cell_size
+        self.linear = nn.Linear(input_size + self.cell_size, 3 * self.cell_size)
+        nn.init.normal_(self.linear.weight)
+        nn.init.zeros_(self.linear.bias)
+
+    def forward(self, x, h):
+        x = torch.cat([h, x], dim=-1)
+        x = self.linear(x)
+        reset, cand, update = torch.split(x, self.cell_size, dim=-1)
+        reset = torch.sigmoid(reset)
+        cand = torch.tanh(reset * cand)
+        update = torch.sigmoid(update - 1)
+        h = update * cand + (1 - update) * h
+        return h, h
