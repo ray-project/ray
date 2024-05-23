@@ -137,7 +137,7 @@ if __name__ == "__main__":
     # __query_example_begin__
     from openai import OpenAI
 
-    # Note: not all OpenAI client arguments are supported and some may be ignored.
+    # Note: Ray Serve doesn't support all OpenAI client arguments and may ignore some.
     client = OpenAI(
         # Replace the URL if deploying your application remotely
         # (e.g., on Anyscale or KubeRay).
