@@ -480,11 +480,14 @@ cdef extern from "ray/gcs/gcs_client/gcs_client.h" nogil:
         CGcsClient(const CGcsClientOptions &options)
 
         c_pair[c_string, int] GetGcsServerAddress() const
+        CClusterID GetClusterId() const
 
         CActorInfoAccessor& Actors()
         CJobInfoAccessor& Jobs()
         CInternalKVAccessor& InternalKV()
 
+    shared_ptr[CGcsClient] ConnectToGcsStandalone(
+        const CGcsClientOptions &options, const CClusterID &cluster_id)
 
     cdef cppclass CPythonGcsClient "ray::gcs::PythonGcsClient":
         CPythonGcsClient(const CGcsClientOptions &options)

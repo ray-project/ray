@@ -96,6 +96,13 @@ class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient> {
 
   virtual std::pair<std::string, int> GetGcsServerAddress() const;
 
+  virtual ClusterID GetClusterId() const {
+    if (client_call_manager_) {
+      return client_call_manager_->GetClusterId();
+    }
+    return ClusterID::Nil();
+  }
+
   /// Return client information for debug.
   virtual std::string DebugString() const { return ""; }
 

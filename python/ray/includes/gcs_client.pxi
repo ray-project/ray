@@ -27,12 +27,6 @@ GcsClient. It it natively async and has the same semantics as the C++ GcsClient.
 - [ ] GetAllResourceUsage
 - [ ] Autoscaler APIs
 
-## Limitations
-
-- The C++ GcsClient lives on the ASIO event loop, meaning you can't create one without
-    a running Ray CoreWorker. How to use it in agents and tests?
-- Hence, we only allow to *get* a GcsClient from the CoreWorker for now.
-
 ## Roadmap
 
 1. Implement InternalKV sync and async methods to feature parity with PythonGcsClient.
@@ -74,6 +68,7 @@ from asyncio import Future
 from typing import List
 from ray.includes.common cimport (
     CGcsClient,
+    ConnectToGcsStandalone,
     PyDefaultCallback,
 )
 from ray.core.generated import gcs_pb2
@@ -83,10 +78,37 @@ cdef class MyGcsClient:
     cdef:
         shared_ptr[CGcsClient] inner
 
+    @staticmethod
+    def from_core_worker() -> "MyGcsClient":
+        worker = ray._private.worker.global_worker
+        worker.check_connected()
+
+        cdef shared_ptr[CGcsClient] inner = CCoreWorkerProcess.GetCoreWorker().GetGcsClient()
+        my = MyGcsClient()
+        my.inner = inner
+        return my
+
+
+    # Creates and connects a standalone GcsClient.
+    # cluster_id is in hex, if any.
+    @staticmethod
+    def standalone(gcs_address: c_string, cluster_id: str = None) -> "MyGcsClient":
+        cdef GcsClientOptions gcs_options = GcsClientOptions.from_gcs_address(gcs_address)
+        cdef CClusterID c_cluster_id = CClusterID.Nil() if cluster_id is None else CClusterID.FromHex(cluster_id)
+        cdef shared_ptr[CGcsClient] inner = ConnectToGcsStandalone(dereference(gcs_options.native()), c_cluster_id)
+        my = MyGcsClient()
+        my.inner = inner
+        return my
+
     @property
     def address(self) -> str:
         cdef pair = self.inner.get().GetGcsServerAddress()
         return f"{pair.first}:{pair.second}"
+
+    @property
+    def cluster_id(self) -> ray.ClusterID:
+        cdef CClusterID cluster_id = self.inner.get().GetClusterId()
+        return ray.ClusterID.from_binary(cluster_id.Binary())
 
     #############################################################
     # Internal KV sync methods
@@ -325,11 +347,3 @@ cdef make_future_and_callback(postprocess = None):
 
 
 
-cdef make_my_gcs_client():
-    cdef shared_ptr[CGcsClient] inner = CCoreWorkerProcess.GetCoreWorker().GetGcsClient()
-    my = MyGcsClient()
-    my.inner = inner
-    return my
-
-def my_gcs_client():
-    return make_my_gcs_client()
