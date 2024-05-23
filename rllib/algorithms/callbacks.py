@@ -387,16 +387,21 @@ class DefaultCallbacks(metaclass=_CallbackMeta):
         or truncated were True:
 
         - The env is stepped: `final_obs, rewards, ... = env.step([action])`
+
         - The step results are logged `episode.add_env_step(final_obs, rewards)`
+
         - Callback `on_episode_step` is fired.
+
         - Another env-to-module connector call is made (even though we won't need any
-        RLModule forward pass anymore). We make this additional call to ensure that in
-        case users use the connector pipeline to process observations (and write them
-        back into the episode), the episode object has all observations - even the
-        terminal one - properly processed.
+          RLModule forward pass anymore). We make this additional call to ensure that in
+          case users use the connector pipeline to process observations (and write them
+          back into the episode), the episode object has all observations - even the
+          terminal one - properly processed.
+
         - ---> This callback `on_episode_end()` is fired. <---
+
         - The episode is finalized (i.e. lists of obs/rewards/actions/etc.. are
-        converted into numpy arrays).
+          converted into numpy arrays).
 
         Args:
             episode: The terminated/truncated SingleAgent- or MultiAgentEpisode object
