@@ -479,6 +479,8 @@ cdef extern from "ray/gcs/gcs_client/gcs_client.h" nogil:
     cdef cppclass CGcsClient "ray::gcs::GcsClient":
         CGcsClient(const CGcsClientOptions &options)
 
+        c_pair[c_string, int] GetGcsServerAddress() const
+
         CActorInfoAccessor& Actors()
         CJobInfoAccessor& Jobs()
         CInternalKVAccessor& InternalKV()

@@ -19,6 +19,7 @@ GcsClient. It it natively async and has the same semantics as the C++ GcsClient.
 - [x] InternalKV timeout_ms argument (https://github.com/ray-project/ray/pull/45444)
 - [x] InternalKV multi-get (https://github.com/ray-project/ray/pull/45444)
 - [x] InternalKV().Del() return num_deleted (https://github.com/ray-project/ray/pull/45451)
+- [ ] GcsClient ctor standalone from Ray CoreWorker
 (here is when we can merge this PR)
 - [ ] Nodes().CheckAlive (https://github.com/ray-project/ray/pull/45451)
 - [ ] RuntimeEnvGcsService::PinRuntimeEnvURI
@@ -30,6 +31,7 @@ GcsClient. It it natively async and has the same semantics as the C++ GcsClient.
 
 - The C++ GcsClient lives on the ASIO event loop, meaning you can't create one without
     a running Ray CoreWorker. How to use it in agents and tests?
+- Hence, we only allow to *get* a GcsClient from the CoreWorker for now.
 
 ## Roadmap
 
@@ -80,6 +82,11 @@ from cython.operator import dereference, postincrement
 cdef class MyGcsClient:
     cdef:
         shared_ptr[CGcsClient] inner
+
+    @property
+    def address(self) -> str:
+        cdef pair = self.inner.get().GetGcsServerAddress()
+        return f"{pair.first}:{pair.second}"
 
     #############################################################
     # Internal KV sync methods
