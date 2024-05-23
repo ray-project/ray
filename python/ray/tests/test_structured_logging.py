@@ -154,7 +154,7 @@ import logging
 from ray._private.structured_logging.utils import LoggingConfig
 
 ray.init(
-    job_config=ray.job_config.JobConfig(py_log_config=LoggingConfig("TEXT"))
+    job_config=ray.job_config.JobConfig(py_logging_config=LoggingConfig("TEXT"))
 )
 
 @ray.remote
@@ -185,7 +185,7 @@ import logging
 from ray._private.structured_logging.utils import LoggingConfig
 
 ray.init(
-    job_config=ray.job_config.JobConfig(py_log_config=LoggingConfig("TEXT"))
+    job_config=ray.job_config.JobConfig(py_logging_config=LoggingConfig("TEXT"))
 )
 
 @ray.remote

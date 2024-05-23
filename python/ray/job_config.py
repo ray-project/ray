@@ -52,7 +52,7 @@ class JobConfig:
         ray_namespace: Optional[str] = None,
         default_actor_lifetime: str = "non_detached",
         _py_driver_sys_path: Optional[List[str]] = None,
-        py_log_config: Optional[LoggingConfig] = None,
+        py_logging_config: Optional[LoggingConfig] = None,
     ):
         #: The jvm options for java workers of the job.
         self.jvm_options = jvm_options or []
@@ -74,7 +74,7 @@ class JobConfig:
         # A list of directories that specify the search path for python workers.
         self._py_driver_sys_path = _py_driver_sys_path or []
         # Python logging configurations that will be passed to Ray tasks/actors.
-        self.py_log_config = py_log_config
+        self.py_logging_config = py_logging_config
 
     def set_metadata(self, key: str, value: str) -> None:
         """Add key-value pair to the metadata dictionary.
@@ -193,8 +193,8 @@ class JobConfig:
 
             if self._default_actor_lifetime is not None:
                 pb.default_actor_lifetime = self._default_actor_lifetime
-            if self.py_log_config is not None:
-                pb.serialized_py_log_config = pickle.dumps(self.py_log_config)
+            if self.py_logging_config is not None:
+                pb.serialized_py_logging_config = pickle.dumps(self.py_logging_config)
             self._cached_pb = pb
 
         return self._cached_pb
@@ -233,5 +233,5 @@ class JobConfig:
             ray_namespace=job_config_json.get("ray_namespace", None),
             _client_job=job_config_json.get("client_job", False),
             _py_driver_sys_path=job_config_json.get("py_driver_sys_path", None),
-            py_log_config=job_config_json.get("py_log_config", None),
+            py_logging_config=job_config_json.get("py_logging_config", None),
         )

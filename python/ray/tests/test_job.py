@@ -195,26 +195,26 @@ def test_config_metadata(shutdown_only):
 
 class TestPyLogConfig:
     def test_serialized_log_config_dict(self):
-        py_log_config = LoggingConfig({"abc": "xyz"})
-        serialized_py_log_config = pickle.dumps(py_log_config)
-        job_config = JobConfig(py_log_config=py_log_config)
+        py_logging_config = LoggingConfig({"abc": "xyz"})
+        serialized_py_logging_config = pickle.dumps(py_logging_config)
+        job_config = JobConfig(py_logging_config=py_logging_config)
         pb = job_config._get_proto_job_config()
-        assert pb.serialized_py_log_config == serialized_py_log_config
+        assert pb.serialized_py_logging_config == serialized_py_logging_config
 
     def test_log_config_str(self):
-        py_log_config = LoggingConfig("TEXT")
-        serialized_py_log_config = pickle.dumps(py_log_config)
-        job_config = JobConfig(py_log_config=py_log_config)
+        py_logging_config = LoggingConfig("TEXT")
+        serialized_py_logging_config = pickle.dumps(py_logging_config)
+        job_config = JobConfig(py_logging_config=py_logging_config)
         pb = job_config._get_proto_job_config()
-        assert pb.serialized_py_log_config == serialized_py_log_config
+        assert pb.serialized_py_logging_config == serialized_py_logging_config
 
     def test_read_log_config_from_json(self):
-        py_log_config = LoggingConfig({"abc": "xyz"})
-        serialized_py_log_config = pickle.dumps(py_log_config)
-        job_config_json = {"py_log_config": py_log_config}
+        py_logging_config = LoggingConfig({"abc": "xyz"})
+        serialized_py_logging_config = pickle.dumps(py_logging_config)
+        job_config_json = {"py_logging_config": py_logging_config}
         job_config = JobConfig.from_json(job_config_json)
         pb = job_config._get_proto_job_config()
-        assert pb.serialized_py_log_config == serialized_py_log_config
+        assert pb.serialized_py_logging_config == serialized_py_logging_config
 
 
 def test_get_entrypoint():

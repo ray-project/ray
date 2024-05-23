@@ -7,7 +7,7 @@ from ray._private.ray_constants import LOGGER_FORMAT
 def generate_record_format_attrs(
     formatter: logging.Formatter,
     record: logging.LogRecord,
-    exclude_standard_attrs=False,
+    exclude_standard_attrs,
 ) -> dict:
     record_format_attrs = {}
     # If `exclude_standard_attrs` is False, include the standard attributes.
@@ -34,16 +34,18 @@ def generate_record_format_attrs(
 
 class JSONFormatter(logging.Formatter):
     def format(self, record):
-        record_format_attrs = generate_record_format_attrs(self, record)
+        record_format_attrs = generate_record_format_attrs(
+            self, record, exclude_standard_attrs=False
+        )
         return json.dumps(record_format_attrs)
 
 
 class TextFormatter(logging.Formatter):
     def __init__(self) -> None:
-        self.inner_formatter = logging.Formatter(LOGGER_FORMAT)
+        self._inner_formatter = logging.Formatter(LOGGER_FORMAT)
 
     def format(self, record: logging.LogRecord) -> str:
-        s = self.inner_formatter.format(record)
+        s = self._inner_formatter.format(record)
         record_format_attrs = generate_record_format_attrs(
             self, record, exclude_standard_attrs=True
         )
