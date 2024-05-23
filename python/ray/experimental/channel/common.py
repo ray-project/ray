@@ -1,4 +1,4 @@
-import asyncio
+s_import asyncio
 import concurrent
 import copy
 import threading
@@ -47,9 +47,20 @@ class ChannelOutputType:
 
     @property
     def contains_type(self) -> "ChannelOutputType":
+        """
+        Some channel values may contain an object that should be sent through a
+        different channel. For example, a Python object containing a GPU tensor
+        may be sent over two channels, one to serialize the Python data on CPU
+        memory and another to transfer the GPU data over NCCL. This function
+        returns the type of this nested value, if any.
+        """
         return self._contains_type
 
     def set_contains_type(self, typ: "ChannelOutputType") -> None:
+        """
+        Mark that values sent on this channel may contain objects that should
+        be sent through a different channel.
+        """
         from ray.experimental.channel.torch_tensor_type import TorchTensorType
 
         if typ is not None:
