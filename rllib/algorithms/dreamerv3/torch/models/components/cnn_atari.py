@@ -5,6 +5,9 @@ https://arxiv.org/pdf/2301.04104v1.pdf
 """
 from typing import Optional
 
+from ray.rllib.algorithms.dreamerv3.torch.models.components import (
+    dreamerv3_normal_initializer
+)
 from ray.rllib.algorithms.dreamerv3.utils import get_cnn_multiplier
 from ray.rllib.core.models.base import ENCODER_OUT
 from ray.rllib.core.models.configs import CNNEncoderConfig
@@ -52,7 +55,7 @@ class CNNAtari(nn.Module):
             cnn_use_bias=False,
             cnn_use_layernorm=True,
             cnn_activation="silu",
-            cnn_kernel_initializer=nn.init.xavier_uniform_,
+            cnn_kernel_initializer=dreamerv3_normal_initializer,
             flatten_at_end=True,
         )
         self.cnn_stack = config.build(framework="torch")

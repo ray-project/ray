@@ -7,6 +7,9 @@ from typing import Optional
 
 import gymnasium as gym
 
+from ray.rllib.algorithms.dreamerv3.torch.models.components import (
+    dreamerv3_normal_initializer
+)
 from ray.rllib.algorithms.dreamerv3.torch.models.components.mlp import MLP
 from ray.rllib.algorithms.dreamerv3.utils import get_gru_units, get_dense_hidden_units
 from ray.rllib.utils.framework import try_import_torch
@@ -72,14 +75,14 @@ class SequenceModel(nn.Module):
         gru_input_size = get_dense_hidden_units(model_size)
 
         #TODO: Test using our own GRU unit w/ Normal init (just like Danijar's GRU).
-        self.gru_unit = ManualGRU(input_size=gru_input_size, cell_size=num_gru_units)
+        self.gru_unit = DreamerV3GRU(input_size=gru_input_size, cell_size=num_gru_units)
         #self.gru_unit = nn.GRU(
         #    input_size=gru_input_size,
         #    hidden_size=num_gru_units,
         #    batch_first=False,  # time major
         #)
-
         # END: TEST
+
         # Make sure GRU weights are initialized the exact same way as in tf keras.
         # Glorot Uniform initialization for weights
         #nn.init.xavier_uniform_(self.gru_unit.weight_ih_l0)
@@ -112,14 +115,13 @@ class SequenceModel(nn.Module):
         return h_next
 
 
-class ManualGRU(nn.Module):
+class DreamerV3GRU(nn.Module):
     """Analogous to Danijar's JAX GRU unit code."""
     def __init__(self, input_size, cell_size):
         super().__init__()
         self.cell_size = cell_size
         self.linear = nn.Linear(input_size + self.cell_size, 3 * self.cell_size)
-        nn.init.normal_(self.linear.weight)
-        nn.init.zeros_(self.linear.bias)
+        dreamerv3_normal_initializer(list(self.linear.parameters()))
 
     def forward(self, x, h):
         x = torch.cat([h, x], dim=-1)

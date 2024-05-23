@@ -5,6 +5,9 @@ https://arxiv.org/pdf/2301.04104v1.pdf
 """
 from typing import Optional
 
+from ray.rllib.algorithms.dreamerv3.torch.models.components import (
+    dreamerv3_normal_initializer
+)
 from ray.rllib.algorithms.dreamerv3.utils import get_cnn_multiplier
 from ray.rllib.core.models.configs import CNNTransposeHeadConfig
 from ray.rllib.utils.framework import try_import_torch
@@ -48,7 +51,7 @@ class ConvTransposeAtari(nn.Module):
         config = CNNTransposeHeadConfig(
             input_dims=[input_size],
             initial_image_dims=(4, 4, 8 * cnn_multiplier),
-            initial_dense_weights_initializer=nn.init.xavier_uniform_,
+            initial_dense_weights_initializer=dreamerv3_normal_initializer,
             cnn_transpose_filter_specifiers=[
                 [4 * cnn_multiplier, 4, 2],
                 [2 * cnn_multiplier, 4, 2],
@@ -58,7 +61,7 @@ class ConvTransposeAtari(nn.Module):
             cnn_transpose_use_bias=False,
             cnn_transpose_use_layernorm=True,
             cnn_transpose_activation="silu",
-            cnn_transpose_kernel_initializer=nn.init.xavier_uniform_,
+            cnn_transpose_kernel_initializer=dreamerv3_normal_initializer,
         )
         # Make sure the output dims match Atari.
         # assert config.output_dims == (64, 64, 1 if self.gray_scaled else 3)
