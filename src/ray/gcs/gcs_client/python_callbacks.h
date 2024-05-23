@@ -39,7 +39,6 @@ namespace ray {
 //
 // By default you can use `DefaultConverter::convert` to convert any type. If you need
 // special handling you can compose out your own.
-namespace {
 class BytesConverter {
   // Serializes the message to a string. Returns false if the serialization fails.
   // template <typename T>
@@ -235,8 +234,6 @@ class DefaultConverter {
   }
 };
 
-}  // namespace
-
 // Wraps a Python `Callable[[T, Exception], None]` into a C++ `std::function<void(U)>`.
 // This is a base class for all the callbacks, with subclass handling the conversion.
 // The base class handles:
@@ -348,5 +345,11 @@ class PyCallback {
 // Concrete callback types.
 // Most types are using the DefaultConverter, but we allow specialization for some types.
 using PyDefaultCallback = PyCallback<DefaultConverter>;
+// Specialization for a pair of (Status, Vector<T>).
+// We need this because `MultiItemCallback` uses (Status, std::vector<T>&&) not const ref.
+// and C++ can't deduce it well (will implicit convert the vector&& to bool)
+template <typename ItemConverter>
+using PyMultiItemCallback =
+    PyCallback<PairConverter<StatusConverter, VectorConverter<ItemConverter>>>;
 
 }  // namespace ray

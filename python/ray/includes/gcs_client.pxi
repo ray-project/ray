@@ -70,6 +70,8 @@ from ray.includes.common cimport (
     CGcsClient,
     ConnectToGcsStandalone,
     PyDefaultCallback,
+    PyMultiItemCallback,
+    BoolConverter,
 )
 from ray.core.generated import gcs_pb2
 from cython.operator import dereference, postincrement
@@ -268,6 +270,22 @@ cdef class MyGcsClient:
         cdef PyDefaultCallback cy_callback = PyDefaultCallback(cb)
         with nogil:
             check_status(self.inner.get().InternalKV().AsyncInternalKVExists(ns, key, timeout_ms, cy_callback))
+        return fut
+
+    #############################################################
+    # NodeInfo methods
+    #############################################################
+
+    def async_check_alive(
+        self, node_ips: List[bytes], timeout: Optional[float] = None
+    ) -> Future[List[bool]]:
+        cdef:
+            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
+            c_vector[c_string] c_node_ips = [ip for ip in node_ips]
+        fut, cb = make_future_and_callback(postprocess=check_status_or_return)
+        cdef PyMultiItemCallback[BoolConverter] cy_callback = PyMultiItemCallback[BoolConverter](cb)
+        with nogil:
+            check_status(self.inner.get().Nodes().AsyncCheckAlive(c_node_ips, timeout_ms, cy_callback))
         return fut
 
     #############################################################

@@ -377,6 +377,11 @@ cdef extern from "ray/gcs/gcs_client/python_callbacks.h" namespace "ray" nogil:
     cdef cppclass PyDefaultCallback:
         PyDefaultCallback()
         PyDefaultCallback(object py_callback)
+    cdef cppclass PyMultiItemCallback[Item]:
+        PyMultiItemCallback()
+        PyMultiItemCallback(object py_callback)
+    cdef cppclass BoolConverter:
+        pass
 cdef extern from "ray/gcs/gcs_client/accessor.h" nogil:
     cdef cppclass CActorInfoAccessor "ray::gcs::ActorInfoAccessor":
         pass
@@ -384,6 +389,12 @@ cdef extern from "ray/gcs/gcs_client/accessor.h" nogil:
     cdef cppclass CJobInfoAccessor "ray::gcs::JobInfoAccessor":
         CRayStatus AsyncGetNextJobID(
             const PyDefaultCallback &callback)
+        
+    cdef cppclass CNodeInfoAccessor "ray::gcs::NodeInfoAccessor":
+        CRayStatus AsyncCheckAlive(
+            const c_vector[c_string] &raylet_addresses,
+            int64_t timeout_ms,
+            const PyMultiItemCallback[BoolConverter] &callback)
 
     cdef cppclass CInternalKVAccessor "ray::gcs::InternalKVAccessor":
         CRayStatus AsyncInternalKVKeys(
@@ -485,6 +496,7 @@ cdef extern from "ray/gcs/gcs_client/gcs_client.h" nogil:
         CActorInfoAccessor& Actors()
         CJobInfoAccessor& Jobs()
         CInternalKVAccessor& InternalKV()
+        CNodeInfoAccessor& Nodes()
 
     shared_ptr[CGcsClient] ConnectToGcsStandalone(
         const CGcsClientOptions &options, const CClusterID &cluster_id)

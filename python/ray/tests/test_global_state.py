@@ -526,7 +526,7 @@ def test_get_draining_nodes(ray_start_cluster):
 
 @pytest.mark.asyncio
 async def test_my_gcs_client(ray_start_regular):
-    my_gcs_client = ray._raylet.my_gcs_client()
+    my_gcs_client = ray._raylet.MyGcsClient.from_core_worker()
     # Test 1: get_next_job_id
     job_id = await my_gcs_client.get_next_job_id()
     assert isinstance(job_id, ray.JobID)

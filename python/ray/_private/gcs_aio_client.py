@@ -48,9 +48,9 @@ class AsyncProxy:
 class GcsAioClient:
     def __init__(
         self,
+        address: str = None,
         loop=None,
         executor=None,
-        address: Optional[str] = None,
         nums_reconnect_retry: int = 5,
     ):
         if loop is None:
@@ -144,10 +144,30 @@ class GcsAioClient:
         logger.debug(f"internal_kv_keys {prefix!r} {namespace!r}")
         return await self._async_proxy.internal_kv_keys(prefix, namespace, timeout)
 
-    async def get_all_job_info(
-        self, timeout: Optional[float] = None
-    ) -> Dict[bytes, gcs_pb2.JobTableData]:
-        """
-        Return dict key: bytes of job_id; value: JobTableData pb message.
-        """
-        return await self._async_proxy.get_all_job_info(timeout)
+from ray._raylet import MyGcsClient
+
+class GcsAioClient:
+    def __init__(
+        self,
+        address: str = None,
+        loop=None,
+        executor=None,
+        nums_reconnect_retry: int = 5,
+    ):
+        self.my_gcs_client = MyGcsClient.from_standalone(address)
+    
+    def __getattr__(self, name):
+        known_names = [
+            "internal_kv_get",
+            "internal_kv_multi_get",
+            "internal_kv_put",
+            "internal_kv_del",
+            "internal_kv_exists",
+            "internal_kv_keys",
+            "check_alive",
+        ]
+        if name in known_names:
+            return getattr(self.my_gcs_client, "async_" + name)
+        raise AttributeError(f"'{self.__class__.__name__}' object has no attribute '{name}'")
+
+        
