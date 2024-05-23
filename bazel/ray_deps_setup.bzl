@@ -64,7 +64,7 @@ def auto_http_archive(
         ]
         urls.insert(0 if prefer_url_over_mirrors else len(urls), canonical_url)
     else:
-        print("No implicit mirrors used because urls were explicitly provided")
+        print("No implicit mirrors used for %s because urls were explicitly provided" % name)
 
     if strip_prefix == True:
         prefix_without_v = url_filename_parts[0]
@@ -341,17 +341,6 @@ def ray_deps_setup():
         url = "https://github.com/Tencent/rapidjson/archive/v1.1.0.zip",
         build_file = True,
         sha256 = "8e00c38829d6785a2dfb951bb87c6974fa07dfe488aa5b25deec4b8bc0f6a3ab",
-    )
-
-    # The following should be removed after this commit
-    # (https://github.com/bazelbuild/bazel/commit/676a0c8dea0e7782e47a386396e386a51566087f) released.
-    http_archive(
-        name = "platforms",
-        urls = [
-            "https://mirror.bazel.build/github.com/bazelbuild/platforms/releases/download/0.0.5/platforms-0.0.5.tar.gz",
-            "https://github.com/bazelbuild/platforms/releases/download/0.0.5/platforms-0.0.5.tar.gz",
-        ],
-        sha256 = "379113459b0feaf6bfbb584a91874c065078aa673222846ac765f86661c27407",
     )
 
     # Hedron's Compile Commands Extractor for Bazel
