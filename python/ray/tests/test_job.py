@@ -17,6 +17,7 @@ from ray._private.test_utils import (
     run_string_as_driver_nonblocking,
     wait_for_condition,
     format_web_url,
+    wait_for_pid_to_exit,
 )
 from ray.job_config import JobConfig
 from ray.job_submission import JobSubmissionClient
@@ -294,6 +295,99 @@ ray.get(f.remote())
 
         # Test client
         # TODO(sang): Client entrypoint not supported yet.
+
+
+def test_task_spec_root_detached_actor_id(shutdown_only):
+    """Test to make sure root detached actor id is set correctly
+    for task spec of submitted task or actor.
+    """
+
+    ray.init()
+
+    @ray.remote
+    def get_task_root_detached_actor_id():
+        core_worker = ray._private.worker.global_worker.core_worker
+        return core_worker.get_current_root_detached_actor_id().hex()
+
+    @ray.remote
+    class Actor:
+        def get_root_detached_actor_id(self):
+            core_worker = ray._private.worker.global_worker.core_worker
+            return core_worker.get_current_root_detached_actor_id().hex()
+
+    @ray.remote(lifetime="detached")
+    class DetachedActor:
+        def check(self):
+            core_worker = ray._private.worker.global_worker.core_worker
+            assert (
+                ray.get_runtime_context().get_actor_id()
+                == core_worker.get_current_root_detached_actor_id().hex()
+            )
+            assert ray.get_runtime_context().get_actor_id() == ray.get(
+                get_task_root_detached_actor_id.remote()
+            )
+            actor = Actor.remote()
+            assert ray.get_runtime_context().get_actor_id() == ray.get(
+                actor.get_root_detached_actor_id.remote()
+            )
+
+    assert (
+        ray.get(get_task_root_detached_actor_id.remote())
+        == ray._raylet.ActorID.nil().hex()
+    )
+    actor = Actor.remote()
+    assert (
+        ray.get(actor.get_root_detached_actor_id.remote())
+        == ray._raylet.ActorID.nil().hex()
+    )
+    detached_actor = DetachedActor.remote()
+    ray.get(detached_actor.check.remote())
+
+
+def test_no_process_leak_after_job_finishes(ray_start_cluster):
+    """Test to make sure when a job finishes,
+    all the worker processes belonging to it exit.
+    """
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=8)
+    ray.init(address=cluster.address)
+
+    @ray.remote(num_cpus=0)
+    class PidActor:
+        def __init__(self):
+            self.pids = set()
+            self.pids.add(os.getpid())
+
+        def add_pid(self, pid):
+            self.pids.add(pid)
+
+        def get_pids(self):
+            return self.pids
+
+    @ray.remote
+    def child(pid_actor):
+        # child worker process should be forcibly killed
+        # when the job finishes.
+        ray.get(pid_actor.add_pid.remote(os.getpid()))
+        time.sleep(1000000)
+
+    @ray.remote
+    def parent(pid_actor):
+        ray.get(pid_actor.add_pid.remote(os.getpid()))
+        child.remote(pid_actor)
+
+    pid_actor = PidActor.remote()
+    ray.get(parent.remote(pid_actor))
+
+    wait_for_condition(lambda: len(ray.get(pid_actor.get_pids.remote())) == 3)
+
+    pids = ray.get(pid_actor.get_pids.remote())
+
+    ray.shutdown()
+    # Job finishes at this point
+
+    for pid in pids:
+        wait_for_pid_to_exit(pid)
 
 
 if __name__ == "__main__":

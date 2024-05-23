@@ -65,8 +65,8 @@ class DefaultAutoscaler(Autoscaler):
         elif actor_pool.current_size() >= actor_pool.max_size():
             # Do not scale up, if the actor pool is already at max size.
             return False
-        # Do not scale up, if the op still has enough resources to run.
-        if op_state._scheduling_status.under_resource_limits:
+        # Do not scale up, if the op does not have more resources.
+        if not op_state._scheduling_status.under_resource_limits:
             return False
         # Do not scale up, if the op has enough free slots for the existing inputs.
         if op_state.num_queued() <= actor_pool.num_free_task_slots():
