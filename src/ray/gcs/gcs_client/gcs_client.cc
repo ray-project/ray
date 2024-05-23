@@ -148,6 +148,39 @@ std::pair<std::string, int> GcsClient::GetGcsServerAddress() const {
 
 PythonGcsClient::PythonGcsClient(const GcsClientOptions &options) : options_(options) {}
 
+class SingletonIoContext {
+ public:
+  static SingletonIoContext &Instance() {
+    static SingletonIoContext instance;
+    return instance;
+  }
+
+  instrumented_io_context &GetIoService() { return io_service_; }
+
+ private:
+  SingletonIoContext() : work_(io_service_) {
+    io_thread_ = std::thread([this] { io_service_.run(); });
+  }
+  ~SingletonIoContext() {
+    io_service_.stop();
+    if (io_thread_.joinable()) {
+      io_thread_.join();
+    }
+  }
+
+  instrumented_io_context io_service_;
+  boost::asio::io_service::work work_;  // to keep io_service_ running
+  std::thread io_thread_;
+};
+
+std::shared_ptr<GcsClient> ConnectToGcsStandalone(
+    const GcsClientOptions &options, const ClusterID &cluster_id = ClusterID::Nil()) {
+  auto gcs_client = std::make_shared<GcsClient>(options, UniqueID::FromRandom());
+  instrumented_io_context &io_service = SingletonIoContext::Instance().GetIoService();
+  // This only returns OK status right now.
+  RAY_CHECK_OK(gcs_client->Connect(io_service, cluster_id));
+}
+
 namespace {
 Status HandleGcsError(rpc::GcsStatus status) {
   RAY_CHECK_NE(status.code(), static_cast<int>(StatusCode::OK));
