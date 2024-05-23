@@ -28,22 +28,20 @@ from ray.rllib.utils.test_utils import (
 from ray.rllib.utils.metrics import (
     ENV_RUNNER_RESULTS,
     EPISODE_RETURN_MEAN,
-    EVALUATION_RESULTS,
-    TRAINING_ITERATION_TIMER
+    TRAINING_ITERATION_TIMER,
 )
 
 parser = add_rllib_example_script_args(
-    default_iters=2000,
+    default_iters=200,
     default_timesteps=100000,
     default_reward=90.0,
 )
 parser.add_argument(
     "--run", type=str, default="PPO", help="The RLlib-registered algorithm to use."
 )
-parser.add_argument('--env-name', type=str, default="quadx_waypoints")
+parser.add_argument("--env-name", type=str, default="quadx_waypoints")
 parser.add_argument("--num-envs-per-worker", type=int, default=4)
-parser.add_argument("--use-prev-action", action="store_true")
-parser.add_argument("--use-prev-reward", action="store_true")
+
 
 class RewardWrapper(gym.RewardWrapper):
     def __init__(self, env):
@@ -78,9 +76,7 @@ if __name__ == "__main__":
     algo_cls = get_trainable_cls(args.run)
     config = algo_cls.get_default_config()
 
-    config.environment(
-        env=args.env_name
-    ).resources(
+    config.environment(env=args.env_name).resources(
         num_learner_workers=num_gpus,
         num_gpus_per_learner_worker=num_gpus,
     ).rollouts(
@@ -98,12 +94,11 @@ if __name__ == "__main__":
     if args.run == "PPO":
         config.rl_module(
             model_config_dict={
-                "use_lstm": True,
-                "lstm_cell_size": 32,
-                "lstm_use_prev_action": args.use_prev_action,
-                "lstm_use_prev_reward": args.use_prev_reward,
+                "fcnet_hiddens": [32],
+                "fcnet_activation": "linear",
+                "vf_share_layers": True,
             }
-        )  
+        )
         config.training(
             sgd_minibatch_size=128,
             train_batch_size=10000,
@@ -113,9 +108,11 @@ if __name__ == "__main__":
         config.resources(num_gpus=0)
         config.training(vf_loss_coeff=0.01)
 
+    EPISODE_RETURN_MEAN_KEY = f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}"
+
     stop = {
         TRAINING_ITERATION_TIMER: args.stop_iters,
-        f"{EVALUATION_RESULTS}/{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": args.stop_reward,
+        EPISODE_RETURN_MEAN_KEY: args.stop_reward,
     }
 
     run_rllib_example_script_experiment(
@@ -123,6 +120,6 @@ if __name__ == "__main__":
         args,
         stop=stop,
         success_metric={
-            f"{EVALUATION_RESULTS}/{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": args.stop_reward,
+            EPISODE_RETURN_MEAN_KEY: args.stop_reward,
         },
     )
