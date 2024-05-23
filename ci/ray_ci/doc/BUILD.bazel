@@ -18,9 +18,6 @@ py_library(
         ],
     ),
     visibility = ["//ci/ray_ci/doc:__subpackages__"],
-    deps = [
-        "//ci/ray_ci:ray_ci_lib",
-    ],
 )
 
 py_test(
