@@ -386,16 +386,16 @@ class DefaultCallbacks(metaclass=_CallbackMeta):
         infos) have been logged to the given `episode` object, where either terminated
         or truncated were True:
 
-        1) The env is stepped: `final_obs, rewards, ... = env.step([action])`
-        2) The step results are logged `episode.add_env_step(final_obs, rewards)`
-        3) Callback `on_episode_step` is fired.
-        4) Another env-to-module connector call is made (even though we won't need any
+        - The env is stepped: `final_obs, rewards, ... = env.step([action])`
+        - The step results are logged `episode.add_env_step(final_obs, rewards)`
+        - Callback `on_episode_step` is fired.
+        - Another env-to-module connector call is made (even though we won't need any
         RLModule forward pass anymore). We make this additional call to ensure that in
         case users use the connector pipeline to process observations (and write them
         back into the episode), the episode object has all observations - even the
         terminal one - properly processed.
-        5) ---> This callback `on_episode_end()` is fired. <---
-        6) The episode is finalized (i.e. lists of obs/rewards/actions/etc.. are
+        - ---> This callback `on_episode_end()` is fired. <---
+        - The episode is finalized (i.e. lists of obs/rewards/actions/etc.. are
         converted into numpy arrays).
 
         Args:
