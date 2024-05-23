@@ -3,7 +3,8 @@ class MockClass:
     This class is used for testing purpose only. It should not be used in production.
     """
 
-    _attribute = None
+    _annotated = None
+    _annotated_type = "PublicAPI"
 
 
 def mock_function():
@@ -13,4 +14,5 @@ def mock_function():
     pass
 
 
-mock_function._attribute = None
+mock_function._annotated = None
+mock_function._annotated_type = "Deprecated"
