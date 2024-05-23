@@ -29,6 +29,7 @@ steps:
       - ./ci/lint/lint.sh {{matrix}}
     matrix:
       - api_annotations
+      - api_discrepancy
 
   - label: ":lint-roller: lint: linkcheck"
     instance_type: medium

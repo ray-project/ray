@@ -27,4 +27,4 @@ torch-cluster==1.6.1
 torch-spline-conv==1.2.2
 torch-geometric==2.3.1
 
-cupy-cuda11x==13.1.0
+cupy-cuda11x==13.1.0; sys_platform != 'darwin'
