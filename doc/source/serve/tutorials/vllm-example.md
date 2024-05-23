@@ -13,7 +13,7 @@ To run this example, install the following:
 pip install "ray[serve]" requests vllm
 ```
 
-This example uses the [NousResearch/Meta-Llama-3-8B-Instruct](https://huggingface.co/NousResearch/Meta-Llama-3-8B-Instruct) model. Save the following code to a file named llm.py.
+This example uses the [NousResearch/Meta-Llama-3-8B-Instruct](https://huggingface.co/NousResearch/Meta-Llama-3-8B-Instruct) model. Save the following code to a file named `llm.py`.
 
 The Serve code is as follows:
 ```{literalinclude} ../doc_code/vllm_openai_example.py
