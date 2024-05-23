@@ -233,5 +233,4 @@ class JobConfig:
             ray_namespace=job_config_json.get("ray_namespace", None),
             _client_job=job_config_json.get("client_job", False),
             _py_driver_sys_path=job_config_json.get("py_driver_sys_path", None),
-            py_logging_config=job_config_json.get("py_logging_config", None),
         )

@@ -2589,7 +2589,7 @@ def maybe_initialize_job_config():
             core_worker.get_job_config().serialized_py_logging_config
         if serialized_py_logging_config:
             py_logging_config = pickle.loads(serialized_py_logging_config)
-            log_config_dict = py_logging_config.get_log_config()
+            log_config_dict = py_logging_config.get_dict_config()
         if log_config_dict:
             logging.config.dictConfig(log_config_dict)
 

@@ -1,3 +1,4 @@
+import logging.config
 import pytest
 import ray
 import os
@@ -7,6 +8,7 @@ import json
 
 from ray._private.structured_logging.filters import CoreContextFilter
 from ray._private.structured_logging.formatters import JSONFormatter, TextFormatter
+from ray._private.structured_logging.utils import LoggingConfig
 from ray._private.test_utils import run_string_as_driver
 
 
@@ -144,6 +146,19 @@ class TestTextFormatter:
         formatted = formatter.format(record)
         for s in ["INFO", "Test message", "test.py:1000", "--"]:
             assert s in formatted
+
+
+class TestLoggingConfig:
+    def test_log_level(self):
+        log_level = "DEBUG"
+        logging_config = LoggingConfig(log_level=log_level)
+        dict_config = logging_config.get_dict_config()
+        assert dict_config["handlers"]["console"]["level"] == log_level
+        assert dict_config["root"]["level"] == log_level
+
+    def test_invalid_log_config(self):
+        with pytest.raises(ValueError):
+            LoggingConfig(log_config="INVALID").get_dict_config()
 
 
 class TestTextModeE2E:
