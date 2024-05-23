@@ -966,12 +966,12 @@ class DeploymentDetails(BaseModel, extra=Extra.forbid, frozen=True):
 
 
 @PublicAPI(stability="alpha")
-class APIType(Enum):
+class APIType(str, Enum):
     """Tracks the type of API that an application originates from."""
 
-    UNKNOWN = 0
-    IMPERATIVE = 1
-    DECLARATIVE = 2
+    UNKNOWN = "unknown"
+    IMPERATIVE = "imperative"
+    DECLARATIVE = "declarative"
 
 
 @PublicAPI(stability="stable")

@@ -365,11 +365,13 @@ def test_get_serve_instance_details(ray_start_stop, f_deployment_options, url):
             "route_prefix": "/apple",
             "docs_path": None,
             "deployments": {"f", "BasicDriver"},
+            "source": "declarative",
         },
         "app2": {
             "route_prefix": "/banana",
             "docs_path": "/my_docs",
             "deployments": {"FastAPIDeployment"},
+            "source": "declarative",
         },
     }
 
