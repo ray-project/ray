@@ -168,7 +168,6 @@ def gen_big_objects(block_size, block_count):
 
 def assert_object_size_gt(obj_ref: ray.ObjectRef, size: int):
     d = ray.experimental.get_local_object_locations([obj_ref])
-    print(d)
     assert d is not None
     assert len(d) == 1
     assert d[obj_ref]["object_size"] > size
