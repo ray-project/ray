@@ -8,7 +8,7 @@ D. Hafner, T. Lillicrap, M. Norouzi, J. Ba
 https://arxiv.org/pdf/2010.02193.pdf
 """
 
-import gc
+#import gc
 import logging
 from typing import Any, Dict, Optional, Union
 
@@ -20,6 +20,7 @@ from ray.rllib.algorithms.dreamerv3.dreamerv3_catalog import DreamerV3Catalog
 from ray.rllib.algorithms.dreamerv3.utils import do_symlog_obs
 from ray.rllib.algorithms.dreamerv3.utils.env_runner import DreamerV3EnvRunner
 from ray.rllib.algorithms.dreamerv3.utils.summaries import (
+    report_dreamed_eval_trajectory_vs_samples,
     report_predicted_vs_sampled_obs,
     report_sampling_and_replay_buffer,
 )
@@ -34,7 +35,7 @@ from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.numpy import one_hot
 from ray.rllib.utils.metrics import (
     ENV_RUNNER_RESULTS,
-    GARBAGE_COLLECTION_TIMER,
+    #GARBAGE_COLLECTION_TIMER,
     LEARN_ON_BATCH_TIMER,
     LEARNER_RESULTS,
     NUM_AGENT_STEPS_SAMPLED,
@@ -675,11 +676,32 @@ class DreamerV3(Algorithm):
                 env_runner.env.single_observation_space,
                 self.config.symlog_obs,
             ),
-            delete=not (
+            do_report=(
                 self.config.report_images_and_videos
                 and self.training_iteration % 100 == 0
             )
         )
+
+        # Log videos showing some of the dreamed trajectories and compare them with the
+        # actual trajectories from the train batch.
+        # Only every n iterations and only for the first sampled batch row AND first ts.
+        # (videos are `config.horizon_H` frames long originating from the observation
+        # at B=0 and T=0 in the train batch).
+        #report_dreamed_eval_trajectory_vs_samples(
+        #    metrics=self.metrics,
+        #    sample=sample,
+        #    burn_in_T=1,
+        #    dreamed_T=self.config.horizon_H,
+        #    dreamer_model=self.workers.local_worker().module.dreamer_model,
+        #    symlog_obs=do_symlog_obs(
+        #        env_runner.env.single_observation_space,
+        #        self.config.symlog_obs,
+        #    ),
+        #    do_report=(
+        #        self.config.report_dream_data
+        #        and self.training_iteration % 100 == 0
+        #    )
+        #)
 
         # Update weights - after learning on the LearnerGroup - on all EnvRunner
         # workers.

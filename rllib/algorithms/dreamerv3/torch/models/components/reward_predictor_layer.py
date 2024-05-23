@@ -64,8 +64,10 @@ class RewardPredictorLayer(nn.Module):
         self.reward_buckets_layer = nn.Linear(
             in_features=input_size, out_features=self.num_buckets, bias=True
         )
-        self.reward_buckets_layer.weight.data.fill_(0.0)
-        self.reward_buckets_layer.bias.data.fill_(0.0)
+        nn.init.zeros_(self.reward_buckets_layer.weight)
+        nn.init.zeros_(self.reward_buckets_layer.bias)
+        #self.reward_buckets_layer.weight.data.fill_(0.0)
+        #self.reward_buckets_layer.bias.data.fill_(0.0)
 
     def forward(self, inputs, return_logits=False):
         """Computes the expected reward using N equal sized buckets of possible values.
@@ -92,10 +94,12 @@ class RewardPredictorLayer(nn.Module):
         possible_outcomes = torch.linspace(
             self.lower_bound, self.upper_bound, self.num_buckets, device=logits.device
         )
+        # probs=possible_outcomes=[B, `num_buckets`]
 
         # Simple vector dot product (over last dim) to get the mean reward
         # weighted sum, where all weights sum to 1.0.
         expected_rewards = torch.sum(probs * possible_outcomes, dim=-1)
+        # expected_rewards=[B]
 
         if return_logits:
             return expected_rewards, logits

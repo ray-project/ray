@@ -125,7 +125,7 @@ def report_predicted_vs_sampled_obs(
     batch_size_B,
     batch_length_T,
     symlog_obs: bool = True,
-    delete: bool = False,
+    do_report: bool = True,
 ):
     """Summarizes sampled data (from the replay buffer) vs world-model predictions.
 
@@ -146,6 +146,10 @@ def report_predicted_vs_sampled_obs(
             from the buffer.
         batch_length_T: The batch length (T). This is the length of an individual
             trajectory sampled from the buffer.
+        do_report: Whether to actually log the report (default). If this is set to
+            False, this function serves as a clean-up on the given metrics, making sure
+            they do NOT contain anymore any (spacious) data relevant for producing
+            the report/videos.
     """
     fwd_output_key = (
         LEARNER_RESULTS,
@@ -157,7 +161,7 @@ def report_predicted_vs_sampled_obs(
     metrics.delete(fwd_output_key)
 
     final_result_key = f"WORLD_MODEL_sampled_vs_predicted_posterior_b0x{batch_length_T}_videos"
-    if delete:
+    if not do_report:
         metrics.delete(final_result_key, key_error=False)
         return
 
@@ -177,17 +181,33 @@ def report_predicted_vs_sampled_obs(
 def report_dreamed_eval_trajectory_vs_samples(
     *,
     metrics,
-    dream_data,
     sample,
     burn_in_T,
     dreamed_T,
     dreamer_model,
     symlog_obs: bool = True,
-):
+    do_report: bool = True,
+) -> None:
+    """
+    
+    Args:
+        metrics: 
+        sample: 
+        burn_in_T: 
+        dreamed_T: 
+        dreamer_model: 
+        symlog_obs: 
+        do_report: Whether to actually log the report (default). If this is set to
+            False, this function serves as a clean-up on the given metrics, making sure
+            they do NOT contain anymore any (spacious) data relevant for producing
+            the report/videos.
+    """
+    dream_data = metrics.peek(LEARNER_RESULTS, DEFAULT_MODULE_ID, "dream_data")
+
     # Obs MSE.
-    dreamed_obs_T_B = reconstruct_obs_from_h_and_z(
-        h_t0_to_H=dream_data["h_states_t0_to_H_BxT"],
-        z_t0_to_H=dream_data["z_states_prior_t0_to_H_BxT"],
+    dreamed_obs_H_B = reconstruct_obs_from_h_and_z(
+        h_t0_to_H=dream_data["h_states_t0_to_H_Bx1"][0],
+        z_t0_to_H=dream_data["z_states_prior_t0_to_H_Bx1"][0],
         dreamer_model=dreamer_model,
         obs_dims_shape=sample[Columns.OBS].shape[2:],
     )
@@ -198,8 +218,8 @@ def report_dreamed_eval_trajectory_vs_samples(
         metrics=metrics,
         # Have to transpose b/c dreamed data is time-major.
         computed_float_obs_B_T_dims=np.transpose(
-            dreamed_obs_T_B,
-            axes=[1, 0] + list(range(2, len(dreamed_obs_T_B.shape))),
+            dreamed_obs_H_B,
+            axes=[1, 0] + list(range(2, len(dreamed_obs_H_B.shape))),
         ),
         sampled_obs_B_T_dims=sample[Columns.OBS][:, t0 : tH + 1],
         metrics_key=f"EVALUATION_sampled_vs_dreamed_prior_H{dreamed_T}_videos",

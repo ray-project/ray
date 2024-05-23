@@ -110,10 +110,10 @@ class RepresentationLayer(nn.Module):
         logits = torch.log(probs)
 
         # Create the distribution object using the unimix'd logits.
-        # Note that in the tf-version, we use an tfp.distribution.Independent
-        # wrapper, which is unnecessary, b/c we only sample from our distribution.
-        # We do NOT need to compute logps (for the combined 32 categoricals).
-        distribution = torch.distributions.OneHotCategorical(logits=logits)
+        distribution = torch.distributions.Independent(
+            torch.distributions.OneHotCategorical(logits=logits),
+            reinterpreted_batch_ndims=1,
+        )
 
         # Draw a one-hot sample (B, num_categoricals, num_classes).
         sample = distribution.sample()
