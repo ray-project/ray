@@ -80,7 +80,7 @@ class VLLMDeployment:
 def parse_vllm_args(cli_args: Dict[str, str]):
     """Parses vLLM args based on CLI inputs.
 
-    Currently uses argparse because vLLM does not expose Python models for all of the
+    Currently uses argparse because vLLM doesn't expose Python models for all of the
     config options we want to support.
     """
     parser = make_arg_parser()
