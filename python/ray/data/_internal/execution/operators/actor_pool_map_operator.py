@@ -128,7 +128,7 @@ class ActorPoolMapOperator(MapOperator):
         # upstream operators, leading to a spike in memory usage prior to steady state.
         logger.debug(f"{self._name}: Waiting for {len(refs)} pool actors to start...")
         try:
-            timeout = DataContext.get_current().wait_for_min_actors_timeout_s
+            timeout = DataContext.get_current().wait_for_min_actors_s
             ray.get(refs, timeout=timeout)
         except ray.exceptions.GetTimeoutError:
             raise ray.exceptions.GetTimeoutError(

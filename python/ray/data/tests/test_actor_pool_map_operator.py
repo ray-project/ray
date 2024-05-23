@@ -525,7 +525,7 @@ def test_start_actor_timeout(ray_start_regular_shared, restore_data_context):
 
     from ray.exceptions import GetTimeoutError
 
-    ray.data.DataContext.get_current().wait_for_min_actors_timeout_s = 1
+    ray.data.DataContext.get_current().wait_for_min_actors_s = 1
 
     with pytest.raises(
         GetTimeoutError,
