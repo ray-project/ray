@@ -388,6 +388,59 @@ def test_failed_job_env_no_hang(shutdown_only, runtime_env_class):
         ray.get(f.remote())
 
 
+RT_ENV_AGENT_SLOW_STARTUP_PLUGIN_CLASS_PATH = (
+    "ray.tests.test_runtime_env.RtEnvAgentSlowStartupPlugin"  # noqa
+)
+RT_ENV_AGENT_SLOW_STARTUP_PLUGIN_NAME = "RtEnvAgentSlowStartupPlugin"
+RT_ENV_AGENT_SLOW_STARTUP_PLUGIN_CLASS_PATH = (
+    "ray.tests.test_runtime_env.RtEnvAgentSlowStartupPlugin"
+)
+
+
+class RtEnvAgentSlowStartupPlugin(RuntimeEnvPlugin):
+
+    name = RT_ENV_AGENT_SLOW_STARTUP_PLUGIN_NAME
+
+    def __init__(self):
+        # This happens in Runtime Env Agent start up process. Make it slow.
+        import time
+
+        time.sleep(5)
+        print("starting...")
+
+
+@pytest.mark.parametrize(
+    "set_runtime_env_plugins",
+    [
+        '[{"class":"' + RT_ENV_AGENT_SLOW_STARTUP_PLUGIN_CLASS_PATH + '"}]',
+    ],
+    indirect=True,
+)
+def test_slow_runtime_env_agent_startup_on_task_pressure(
+    shutdown_only, set_runtime_env_plugins
+):
+    """
+    Starts nodes with runtime env agent and a slow plugin. Then when the runtime env
+    agent is still starting up, we submit a lot of tasks to the cluster. The tasks
+    should wait for the runtime env agent to start up and then run.
+    https://github.com/ray-project/ray/issues/45353
+    """
+    ray.init()
+
+    @ray.remote(num_cpus=0.1)
+    def get_foo():
+        return os.environ.get("foo")
+
+    # Each task has a different runtime env to ensure the agent is invoked for each.
+    vals = ray.get(
+        [
+            get_foo.options(runtime_env={"env_vars": {"foo": f"bar{i}"}}).remote()
+            for i in range(100)
+        ]
+    )
+    assert vals == [f"bar{i}" for i in range(100)]
+
+
 class TestURICache:
     def test_zero_cache_size(self):
         uris_to_sizes = {"5": 5, "3": 3}
