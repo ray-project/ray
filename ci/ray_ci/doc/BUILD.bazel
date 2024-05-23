@@ -1,6 +1,12 @@
 load("@rules_python//python:defs.bzl", "py_library", "py_test")
 load("@py_deps_buildkite//:requirements.bzl", ci_require = "requirement")
 
+py_binary(
+    name = "cmd_check_api_discrepancy",
+    srcs = ["cmd_check_api_discrepancy.py"],
+    deps = [":doc"],
+)
+
 py_library(
     name = "doc",
     srcs = glob(
@@ -12,6 +18,9 @@ py_library(
         ],
     ),
     visibility = ["//ci/ray_ci/doc:__subpackages__"],
+    deps = [
+        "//ci/ray_ci:ray_ci_lib",
+    ],
 )
 
 py_test(
