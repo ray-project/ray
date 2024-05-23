@@ -687,21 +687,21 @@ class DreamerV3(Algorithm):
         # Only every n iterations and only for the first sampled batch row AND first ts.
         # (videos are `config.horizon_H` frames long originating from the observation
         # at B=0 and T=0 in the train batch).
-        #report_dreamed_eval_trajectory_vs_samples(
-        #    metrics=self.metrics,
-        #    sample=sample,
-        #    burn_in_T=1,
-        #    dreamed_T=self.config.horizon_H,
-        #    dreamer_model=self.workers.local_worker().module.dreamer_model,
-        #    symlog_obs=do_symlog_obs(
-        #        env_runner.env.single_observation_space,
-        #        self.config.symlog_obs,
-        #    ),
-        #    do_report=(
-        #        self.config.report_dream_data
-        #        and self.training_iteration % 100 == 0
-        #    )
-        #)
+        report_dreamed_eval_trajectory_vs_samples(
+            metrics=self.metrics,
+            sample=sample,
+            burn_in_T=1,
+            dreamed_T=self.config.horizon_H,
+            dreamer_model=self.workers.local_worker().module.dreamer_model,
+            symlog_obs=do_symlog_obs(
+                env_runner.env.single_observation_space,
+                self.config.symlog_obs,
+            ),
+            do_report=(
+                self.config.report_dream_data
+                and self.training_iteration % 100 == 0
+            )
+        )
 
         # Update weights - after learning on the LearnerGroup - on all EnvRunner
         # workers.

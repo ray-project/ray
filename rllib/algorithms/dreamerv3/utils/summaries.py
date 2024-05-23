@@ -15,11 +15,14 @@ from ray.rllib.algorithms.dreamerv3.utils.debugging import (
 )
 from ray.rllib.core import DEFAULT_MODULE_ID
 from ray.rllib.core.columns import Columns
+from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.metrics import (
     LEARNER_RESULTS,
     REPLAY_BUFFER_RESULTS,
 )
 from ray.rllib.utils.tf_utils import inverse_symlog
+
+torch, _ = try_import_torch()
 
 
 def _summarize(*, results, data_to_summarize, keys_to_log, include_histograms=False):
@@ -44,11 +47,12 @@ def reconstruct_obs_from_h_and_z(
     # Note that the last h-state (T+1) is NOT used here as it's already part of
     # a new trajectory.
     # Use mean() of the Gaussian, no sample! -> No need to construct dist object here.
+
     reconstructed_obs_distr_means_TxB = dreamer_model.world_model.decoder(
         # Fold time rank.
-        h=np.reshape(h_t0_to_H, (T * B, -1)),
-        z=np.reshape(z_t0_to_H, (T * B,) + z_t0_to_H.shape[2:]),
-    )
+        h=torch.from_numpy(h_t0_to_H).reshape((T * B, -1)),
+        z=torch.from_numpy(z_t0_to_H).reshape((T * B,) + z_t0_to_H.shape[2:]),
+    ).detach().numpy()
     # Unfold time rank again.
     reconstructed_obs_T_B = np.reshape(
         reconstructed_obs_distr_means_TxB, (T, B) + obs_dims_shape
@@ -214,7 +218,7 @@ def report_dreamed_eval_trajectory_vs_samples(
     t0 = burn_in_T - 1
     tH = t0 + dreamed_T
     # Observation MSE and - if applicable - images comparisons.
-    mse_sampled_vs_dreamed_obs = _report_obs(
+    _report_obs(
         metrics=metrics,
         # Have to transpose b/c dreamed data is time-major.
         computed_float_obs_B_T_dims=np.transpose(
@@ -222,28 +226,25 @@ def report_dreamed_eval_trajectory_vs_samples(
             axes=[1, 0] + list(range(2, len(dreamed_obs_H_B.shape))),
         ),
         sampled_obs_B_T_dims=sample[Columns.OBS][:, t0 : tH + 1],
-        metrics_key=f"EVALUATION_sampled_vs_dreamed_prior_H{dreamed_T}_videos",
+        metrics_key=f"EVALUATION_sampled_vs_dreamed_prior_H{dreamed_T}_obs",
         symlog_obs=symlog_obs,
     )
 
     # Reward MSE.
     _report_rewards(
         metrics=metrics,
-        computed_rewards=dream_data["rewards_dreamed_t0_to_H_BxT"],
+        computed_rewards=dream_data["rewards_dreamed_t0_to_H_Bx1"][0],
         sampled_rewards=sample[Columns.REWARDS][:, t0 : tH + 1],
-        descr_prefix="EVALUATION",
-        descr_reward=f"dreamed_prior_H{dreamed_T}",
+        metrics_key=f"EVALUATION_sampled_vs_dreamed_prior_H{dreamed_T}_rewards_MSE",
     )
 
     # Continues MSE.
     _report_continues(
         metrics=metrics,
-        computed_continues=dream_data["continues_dreamed_t0_to_H_BxT"],
+        computed_continues=dream_data["continues_dreamed_t0_to_H_Bx1"][0],
         sampled_continues=(1.0 - sample["is_terminated"])[:, t0 : tH + 1],
-        descr_prefix="EVALUATION",
-        descr_cont=f"dreamed_prior_H{dreamed_T}",
+        metrics_key=f"EVALUATION_sampled_vs_dreamed_prior_H{dreamed_T}_continues_MSE",
     )
-    return mse_sampled_vs_dreamed_obs
 
 
 def report_sampling_and_replay_buffer(*, metrics, replay_buffer):
@@ -335,16 +336,14 @@ def _report_rewards(
     metrics,
     computed_rewards,
     sampled_rewards,
-    descr_prefix=None,
-    descr_reward,
+    metrics_key,
 ):
-    descr_prefix = (descr_prefix + "_") if descr_prefix else ""
     mse_sampled_vs_computed_rewards = np.mean(
         np.square(computed_rewards - sampled_rewards)
     )
     mse_sampled_vs_computed_rewards = np.mean(mse_sampled_vs_computed_rewards)
     metrics.log_value(
-        f"{descr_prefix}sampled_vs_{descr_reward}_rewards_mse",
+        metrics_key,
         mse_sampled_vs_computed_rewards,
         window=1,
     )
@@ -355,10 +354,8 @@ def _report_continues(
     metrics,
     computed_continues,
     sampled_continues,
-    descr_prefix=None,
-    descr_cont,
+    metrics_key,
 ):
-    descr_prefix = (descr_prefix + "_") if descr_prefix else ""
     # Continue MSE.
     mse_sampled_vs_computed_continues = np.mean(
         np.square(
@@ -366,7 +363,7 @@ def _report_continues(
         )
     )
     metrics.log_value(
-        f"{descr_prefix}sampled_vs_{descr_cont}_continues_mse",
+        metrics_key,
         mse_sampled_vs_computed_continues,
         window=1,
     )
