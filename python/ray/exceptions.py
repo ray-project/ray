@@ -160,6 +160,12 @@ class RayTaskError(RayError):
                 # https://stackoverflow.com/a/49715949/2213289
                 self.args = (cause,)
 
+            def __new__(cls, cause):.
+                if sys.version_info >= (3, 11) and issubclass(cls, BaseExceptionGroup):
+                    return super().__new__(cls, "", (cause,))
+                else:
+                    return super().__new__(cls)
+
             def __getattr__(self, name):
                 return getattr(self.cause, name)
 
