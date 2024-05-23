@@ -89,7 +89,7 @@ Learn more
         **Ray Distributed Debugger**
         ^^^
 
-        VSCode extension designed to streamline the debugging process for Ray users.
+        VS Code extension for interactive debugging.
 
         +++
         .. button-link:: https://www.anyscale.com/blog/ray-distributed-debugger
@@ -97,7 +97,7 @@ Learn more
             :outline:
             :expand:
 
-            Download for free
+            Download
 
     .. grid-item-card::
 

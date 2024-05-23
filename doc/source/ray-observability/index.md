@@ -40,10 +40,10 @@ The remainder of this section covers the observability tools that Ray provides t
 
 ## Ray Distributed Debugger
 
-The Ray Distributed Debugger is a VSCode extension designed to streamline the debugging process for Ray open source users, offering interactive debugging experience with Visual Studio Code and Ray >= 2.9.1. The Ray Debugger enables you to:
+The Ray Distributed Debugger is a VS Code extension that streamlines the debugging process for Ray open source users with an interactive debugging experience. The debugger uses Visual Studio Code and Ray >= 2.9.1. The Ray Debugger enables you to:
 
-- Break into Remote Tasks: Set breakpoints anywhere in your Ray cluster. When your code hits the breakpoints, it will pause execution and allow you to connect with VSCode for debugging.
+- Break into remote tasks: Set breakpoints anywhere in your Ray cluster. When your code hits the breakpoints, it pauses execution and allows you to connect with VS Code for debugging.
 
-- Post-Mortem Debugging: When Ray tasks fail with unhandled exceptions, Ray automatically freezes the failing task and waits for the Ray Debugger to attach, allowing you to investigate to inspect the state of the program at the time of the error.
+- Post-mortem debugging: When Ray tasks fail with unhandled exceptions, Ray automatically freezes the failing task and waits for the Ray Debugger to attach, allowing you to investigate to inspect the state of the program at the time of the error.
 
-Say goodbye to the complexities of debugging distributed systems. Ray Distributed Debugger empowers you to debug Ray applications more efficiently, saving you time and effort in your development workflow. [Download for free.](https://www.anyscale.com/blog/ray-distributed-debugger)
+The Ray Distributed Debugger abstracts away the complexities of debugging distributed systems. It empowers you to debug Ray apps more efficiently, saving you time and effort in your development workflow. [Download](https://www.anyscale.com/blog/ray-distributed-debugger)
