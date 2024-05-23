@@ -47,12 +47,12 @@ def reconstruct_obs_from_h_and_z(
     # Note that the last h-state (T+1) is NOT used here as it's already part of
     # a new trajectory.
     # Use mean() of the Gaussian, no sample! -> No need to construct dist object here.
-
+    device = next(iter(dreamer_model.world_model.decoder.parameters())).device
     reconstructed_obs_distr_means_TxB = dreamer_model.world_model.decoder(
         # Fold time rank.
-        h=torch.from_numpy(h_t0_to_H).reshape((T * B, -1)),
-        z=torch.from_numpy(z_t0_to_H).reshape((T * B,) + z_t0_to_H.shape[2:]),
-    ).detach().numpy()
+        h=torch.from_numpy(h_t0_to_H).reshape((T * B, -1)).to(device),
+        z=torch.from_numpy(z_t0_to_H).reshape((T * B,) + z_t0_to_H.shape[2:]).to(device),
+    ).detach().cpu().numpy()
     # Unfold time rank again.
     reconstructed_obs_T_B = np.reshape(
         reconstructed_obs_distr_means_TxB, (T, B) + obs_dims_shape
