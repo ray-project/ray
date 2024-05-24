@@ -167,6 +167,7 @@ test:ci --flaky_test_attempts=3
 test:ci --nocache_test_results
 test:ci --spawn_strategy=local
 test:ci --test_output=errors
+test:ci --experimental_ui_max_stdouterr_bytes=-1
 test:ci --test_verbose_timeout_warnings
 test:ci-debug -c dbg
 test:ci-debug --copt="-g"

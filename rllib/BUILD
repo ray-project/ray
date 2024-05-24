@@ -463,6 +463,25 @@ py_test(
     args = ["--dir=tuned_examples/sac"]
 )
 
+# TODO (simon): These tests are not learning, yet.
+# py_test(
+#     name = "learning_tests_multi_agent_pendulum_sac",
+#     main = "tuned_examples/sac/multi_agent_pendulum_sac.py",
+#     tags = ["team:rllib", "exclusive", "learning_tests", "torch_only", "learning_tests_pendulum", "learning_tests_continuous"],
+#     size = "large",
+#     srcs = ["tuned_examples/sac/multi_agent_pendulum_sac.py"],
+#     args = ["--enable-new-api-stack", "--num-agents=2"]
+# )
+
+# py_test(
+#     name = "learning_tests_multi_agent_pendulum_sac_multi_gpu",
+#     main = "tuned_examples/sac/multi_agent_pendulum_sac.py",
+#     tags = ["team:rllib", "exclusive", "learning_tests", "torch_only", "learning_tests_pendulum", "learning_tests_continuous", "multi_gpu"],
+#     size = "large",
+#     srcs = ["tuned_examples/sac/multi_agent_pendulum_sac.py"],
+#     args = ["--enable-new-api-stack", "--num-agents=2", "--num-gpus=2"]
+# )
+
 # --------------------------------------------------------------------
 # Algorithms (Compilation, Losses, simple functionality tests)
 # rllib/algorithms/
