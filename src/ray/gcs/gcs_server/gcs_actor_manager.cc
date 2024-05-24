@@ -259,8 +259,8 @@ void GcsActorManager::HandleRegisterActor(rpc::RegisterActorRequest request,
   auto actor_id =
       ActorID::FromBinary(request.task_spec().actor_creation_task_spec().actor_id());
 
-  RAY_LOG(INFO) << "Registering actor, job id = " << actor_id.JobId()
-                << ", actor id = " << actor_id;
+  RAY_LOG(INFO) << "Registering actor" << RAY_LOG_FIELD(kLogKeyJobID, actor_id.JobId())
+                << RAY_LOG_FIELD(kLogKeyActorID, actor_id);
   Status status =
       RegisterActor(request,
                     [reply, send_reply_callback, actor_id](
@@ -1419,18 +1419,18 @@ void GcsActorManager::Initialize(const GcsInitData &gcs_init_data) {
   }
 }
 
-const absl::flat_hash_map<NodeID, absl::flat_hash_map<WorkerID, ActorID>>
-    &GcsActorManager::GetCreatedActors() const {
+const absl::flat_hash_map<NodeID, absl::flat_hash_map<WorkerID, ActorID>> &
+GcsActorManager::GetCreatedActors() const {
   return created_actors_;
 }
 
-const absl::flat_hash_map<ActorID, std::shared_ptr<GcsActor>>
-    &GcsActorManager::GetRegisteredActors() const {
+const absl::flat_hash_map<ActorID, std::shared_ptr<GcsActor>> &
+GcsActorManager::GetRegisteredActors() const {
   return registered_actors_;
 }
 
-const absl::flat_hash_map<ActorID, std::vector<RegisterActorCallback>>
-    &GcsActorManager::GetActorRegisterCallbacks() const {
+const absl::flat_hash_map<ActorID, std::vector<RegisterActorCallback>> &
+GcsActorManager::GetActorRegisterCallbacks() const {
   return actor_to_register_callbacks_;
 }
 

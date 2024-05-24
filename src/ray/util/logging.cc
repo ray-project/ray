@@ -55,6 +55,7 @@ constexpr char kLogFormatJsonPattern[] =
 
 RayLogLevel RayLog::severity_threshold_ = RayLogLevel::INFO;
 std::string RayLog::app_name_ = "";
+std::string RayLog::component_name_ = "";
 std::string RayLog::log_dir_ = "";
 bool RayLog::log_format_json_ = false;
 std::string RayLog::log_format_pattern_ = kLogFormatTextPattern;
@@ -279,8 +280,7 @@ void RayLog::StartRayLog(const std::string &app_name,
     file_sink->set_level(level);
     sinks.push_back(file_sink);
   } else {
-    // Format pattern is 2020-08-21 17:00:00,000 I 100 1001 msg.
-    // %L is loglevel, %P is process id, %t for thread id.
+    component_name_ = app_name_without_path;
     auto console_sink = std::make_shared<spdlog::sinks::stdout_color_sink_mt>();
     console_sink->set_level(level);
     sinks.push_back(console_sink);
@@ -420,6 +420,9 @@ RayLog::RayLog(const char *file_name, int line_number, RayLogLevel severity)
                                               strerror(errno));
   }
   if (is_enabled_) {
+    if (!component_name_.empty()) {
+      msg_osstream_ << "(" << component_name_ << ") ";
+    }
     if (log_format_json_) {
       context_osstream_ << ",\"" << kLogKeyFilename << "\":\"" << ConstBasename(file_name)
                         << "\",\"" << kLogKeyLineno << "\":" << line_number;

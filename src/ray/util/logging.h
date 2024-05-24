@@ -351,6 +351,10 @@ class RayLog {
   static std::vector<FatalLogCallback> fatal_log_callbacks_;
   static RayLogLevel severity_threshold_;
   static std::string app_name_;
+  /// This is used when we log to stderr
+  /// to indicate which component generates the log.
+  /// This is empty if we log to file.
+  static std::string component_name_;
   /// The directory where the log files are stored.
   /// If this is empty, logs are printed to stdout.
   static std::string log_dir_;
