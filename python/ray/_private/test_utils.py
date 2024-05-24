@@ -24,6 +24,7 @@ import uuid
 from dataclasses import dataclass
 
 import requests
+import paramiko
 from ray._raylet import Config
 
 import psutil  # We must import psutil after ray because we bundle it with ray.
@@ -1532,6 +1533,34 @@ class NodeKillerActor(ResourceKillerActor):
                 f"{node_to_kill_ip}, port: {node_to_kill_port}"
             )
             self.killed.add(node_id)
+
+    def _kill_node(self, ip):
+        # This command uses IMDSv2 to get the host instance id and region.
+        # After that it terminates itself using aws cli.
+        command = """
+        TOKEN=$(curl -X PUT "http://169.254.169.254/latest/api/token" -H "X-aws-ec2-metadata-token-ttl-seconds: 21600")
+
+        instanceId=$(curl -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/instance-id/)
+        region=$(curl -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/placement/region)
+
+        aws ec2 terminate-instances --region $region --instance-ids $instanceId
+        """  # noqa: E501
+
+        ssh = paramiko.SSHClient()
+        ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+
+        # This is a feature on Anyscale platform that enables
+        # easy ssh access to worker nodes.
+        ssh.connect(ip, username="ray", port=2222)
+
+        stdin, stdout, stderr = ssh.exec_command(command)
+        output = stdout.read().decode()
+        error = stderr.read().decode()
+
+        stdin.close()
+
+        print(f"STDOUT:\n{output}")
+        print(f"STDERR:\n{error}")
 
     def _kill_raylet(self, ip, port, graceful=False):
         import grpc
