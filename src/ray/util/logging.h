@@ -85,6 +85,17 @@ enum { ERROR = 0 };
 #endif
 
 namespace ray {
+constexpr char kLogKeyAsctime[] = "asctime";
+constexpr char kLogKeyLevelname[] = "levelname";
+constexpr char kLogKeyMessage[] = "message";
+constexpr char kLogKeyFilename[] = "filename";
+constexpr char kLogKeyLineno[] = "lineno";
+constexpr char kLogKeyJobID[] = "job_id";
+constexpr char kLogKeyWorkerID[] = "worker_id";
+constexpr char kLogKeyNodeID[] = "node_id";
+constexpr char kLogKeyActorID[] = "actor_id";
+constexpr char kLogKeyTaskID[] = "task_id";
+
 class StackTrace {
   /// This dumps the current stack trace information.
   friend std::ostream &operator<<(std::ostream &os, const StackTrace &stack_trace);
@@ -103,17 +114,11 @@ enum class RayLogLevel {
 
 #define RAY_LOG_ENABLED(level) ray::RayLog::IsLevelEnabled(ray::RayLogLevel::level)
 
-#define GET_MACRO(_1, _2, _3, NAME, ...) NAME
-#define RAY_LOG(...) GET_MACRO(__VA_ARGS__, RAY_LOG3, RAY_LOG2, RAY_LOG1)(__VA_ARGS__)
+#define RAY_LOG_FIELD(key, value) ::ray::MakeRayLogField(key, value)
 
-#define RAY_LOG1(level)                                     \
+#define RAY_LOG(level)                                      \
   if (ray::RayLog::IsLevelEnabled(ray::RayLogLevel::level)) \
-  RAY_LOG_INTERNAL(ray::RayLogLevel::level) << "\"msg\": \""
-
-#define RAY_LOG3(level, key1, value1)                                 \
-  if (ray::RayLog::IsLevelEnabled(ray::RayLogLevel::level))           \
-  RAY_LOG_INTERNAL(ray::RayLogLevel::level) << "\"" << key1 << "\": " \
-                                            << "\"" << value1 << "\", \"msg\": \""
+  RAY_LOG_INTERNAL(ray::RayLogLevel::level)
 
 #define RAY_IGNORE_EXPR(expr) ((void)(expr))
 
@@ -221,6 +226,19 @@ enum class RayLogLevel {
 /// The second argument: log content.
 using FatalLogCallback = std::function<void(const std::string &, const std::string &)>;
 
+template <typename T>
+struct RayLogField {
+  RayLogField(const std::string &key, const T &value) : key(key), value(value) {}
+
+  const std::string &key;
+  const T &value;
+};
+
+template <typename T>
+RayLogField<T> MakeRayLogField(const std::string &key, const T &value) {
+  return RayLogField<T>(key, value);
+}
+
 class RayLog {
  public:
   RayLog(const char *file_name, int line_number, RayLogLevel severity);
@@ -292,10 +310,20 @@ class RayLog {
   template <typename T>
   RayLog &operator<<(const T &t) {
     if (IsEnabled()) {
-      Stream() << t;
+      msg_osstream_ << t;
     }
     if (IsFatal()) {
-      ExposeStream() << t;
+      expose_fatal_osstream_ << t;
+    }
+    return *this;
+  }
+
+  template <typename T>
+  RayLog &operator<<(const RayLogField<T> &f) {
+    if (log_format_json_) {
+      context_osstream_ << ",\"" << f.key << "\"=\"" << f.value << "\"";
+    } else {
+      context_osstream_ << " " << f.key << "=" << f.value;
     }
     return *this;
   }
@@ -303,24 +331,28 @@ class RayLog {
  private:
   FRIEND_TEST(PrintLogTest, TestRayLogEveryNOrDebug);
   FRIEND_TEST(PrintLogTest, TestRayLogEveryN);
-  // Hide the implementation of log provider by void *.
-  // Otherwise, lib user may define the same macro to use the correct header file.
-  void *logging_provider_;
+
+  static void InitSeverityThreshold(RayLogLevel severity_threshold);
+  static void InitLogFormat();
+
   /// True if log messages should be logged and false if they should be ignored.
   bool is_enabled_;
   /// log level.
   RayLogLevel severity_;
   /// Whether current log is fatal or not.
   bool is_fatal_ = false;
+  /// String stream of the log message
+  std::ostringstream msg_osstream_;
+  /// String stream of the log contexts: a list of key-value pairs.
+  std::ostringstream context_osstream_;
   /// String stream of exposed fatal log content.
-  std::shared_ptr<std::ostringstream> expose_osstream_ = nullptr;
+  std::ostringstream expose_fatal_osstream_;
+
   /// Whether or not the log is initialized.
   static std::atomic<bool> initialized_;
   /// Callback functions which will be triggered to expose fatal log.
   static std::vector<FatalLogCallback> fatal_log_callbacks_;
   static RayLogLevel severity_threshold_;
-  // In InitGoogleLogging, it simply keeps the pointer.
-  // We need to make sure the app name passed to InitGoogleLogging exist.
   static std::string app_name_;
   /// The directory where the log files are stored.
   /// If this is empty, logs are printed to stdout.
@@ -328,6 +360,8 @@ class RayLog {
   /// This flag is used to avoid calling UninstallSignalAction in ShutDownRayLog if
   /// InstallFailureSignalHandler was not called.
   static bool is_failure_signal_handler_installed_;
+  /// Whether emit json logs.
+  static bool log_format_json_;
   // Log format content.
   static std::string log_format_pattern_;
   // Log rotation file size limitation.
@@ -338,9 +372,7 @@ class RayLog {
   static std::string logger_name_;
 
  protected:
-  std::ostream &Stream();
-  // Fatal log that will be exposed as event.
-  std::ostream &ExposeStream();
+  virtual std::ostream &Stream() { return msg_osstream_; }
 };
 
 // This class make RAY_CHECK compilation pass to change the << operator to void.
