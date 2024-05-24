@@ -417,7 +417,7 @@ def _get_high_impact_test_targets(
         if test.get_oncall() == team
     }
     new_tests = _get_new_tests(os_prefix, container)
-    changed_tests = _get_changed_tests()
+    changed_tests = Test.get_changed_tests(bazel_workspace_dir)
     human_specified_tests = _get_human_specified_tests()
 
     return (
@@ -462,65 +462,6 @@ def _get_new_tests(prefix: str, container: TesterContainer) -> Set[str]:
     db_test_targets = {test.get_target() for test in Test.gen_from_s3(prefix=prefix)}
 
     return local_test_targets.difference(db_test_targets)
-
-
-def _get_changed_tests() -> Set[str]:
-    """
-    Get all changed tests in the current PR
-    """
-    changed_files = _get_changed_files()
-    logger.info(f"Changed files: {changed_files}")
-    return set(
-        itertools.chain.from_iterable(
-            [_get_test_targets_per_file(file) for file in _get_changed_files()]
-        )
-    )
-
-
-def _get_test_targets_per_file(file: str) -> Set[str]:
-    """
-    Get the test target from a file path
-    """
-    try:
-        package = (
-            subprocess.check_output(["bazel", "query", file], cwd=bazel_workspace_dir)
-            .decode()
-            .strip()
-        )
-        if not package:
-            return set()
-        targets = subprocess.check_output(
-            ["bazel", "query", f"tests(attr('srcs', {package}, //...))"],
-            cwd=bazel_workspace_dir,
-        )
-        targets = {
-            target.strip()
-            for target in targets.decode().splitlines()
-            if target is not None
-        }
-        logger.info(f"Found test targets for file {file}: {targets}")
-
-        return targets
-    except subprocess.CalledProcessError:
-        logger.info(f"File {file} is not a test target")
-        return set()
-
-
-def _get_changed_files() -> Set[str]:
-    """
-    Get all changed files in the current PR
-    """
-    base = os.environ.get("BUILDKITE_PULL_REQUEST_BASE_BRANCH")
-    head = os.environ.get("BUILDKITE_COMMIT")
-    if not base or not head:
-        # if not in a PR, return an empty set
-        return set()
-
-    changes = subprocess.check_output(
-        ["git", "diff", "--name-only", f"origin/{base}...{head}"],
-        cwd=bazel_workspace_dir,
-    )
-    return {file.strip() for file in changes.decode().splitlines() if file is not None}
 
 
 def _get_flaky_test_targets(
