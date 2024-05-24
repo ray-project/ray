@@ -2157,16 +2157,6 @@ py_test(
     srcs = ["examples/checkpoints/onnx_torch.py"],
 )
 
-#@OldAPIStack
-py_test(
-    name = "examples/checkpoints/old_stack_restore_1_of_n_agents_from_checkpoint",
-    main = "examples/checkpoints/old_stack_restore_1_of_n_agents_from_checkpoint.py",
-    tags = ["team:rllib", "exclusive", "examples", "no_main"],
-    size = "medium",
-    srcs = ["examples/checkpoints/old_stack_restore_1_of_n_agents_from_checkpoint.py"],
-    args = ["--pre-training-iters=1", "--stop-iters=1", "--num-cpus=4"]
-)
-
 # subdirectory: connectors/
 # ....................................
 # Framestacking examples only run in smoke-test mode (a few iters only).
