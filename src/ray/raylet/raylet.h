@@ -89,6 +89,10 @@ class Raylet {
   /// Handle an accepted client connection.
   void HandleAccept(const boost::system::error_code &error);
 
+  /// Adjust the provided node death info based on existing drain request.
+  ///
+  /// \param node_death_info The node death info to adjust.
+  /// \return The adjusted node death info.
   const rpc::NodeDeathInfo &AdjustDeathInfo(const rpc::NodeDeathInfo &node_death_info);
 
   friend class TestObjectManagerIntegration;

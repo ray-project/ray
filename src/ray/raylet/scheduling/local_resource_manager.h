@@ -159,9 +159,14 @@ class LocalResourceManager : public syncer::ReporterInterface {
 
   bool IsLocalNodeDraining() const { return drain_request_ != nullptr; }
 
-  const rpc::NodeDeathInfo &DeathInfoFromDraining();
+  /// Generate node death info from existing drain request.
+  const rpc::NodeDeathInfo &DeathInfoFromDrainRequest();
 
-  const rpc::NodeDeathInfo &AdjustDeathInfo(const rpc::NodeDeathInfo &death_info);
+  /// Adjust the provided node death info based on existing drain request.
+  ///
+  /// \param node_death_info: The node death info to adjust.
+  /// \return The adjusted node death info.
+  const rpc::NodeDeathInfo &AdjustDeathInfo(const rpc::NodeDeathInfo &node_death_info);
 
  private:
   struct ResourceUsage {
@@ -210,8 +215,11 @@ class LocalResourceManager : public syncer::ReporterInterface {
 
   absl::optional<absl::Time> GetResourceIdleTime() const;
 
+  /// Get the draining deadline if node is in draining state.
+  ///
+  /// \return The draining deadline if node is in draining state, otherwise -1.
   int64_t GetDrainingDeadline() const {
-    return drain_request_ ? drain_request_->deadline_timestamp_ms() : 0;
+    return drain_request_ ? drain_request_->deadline_timestamp_ms() : -1;
   }
   /// Identifier of local node.
   scheduling::NodeID local_node_id_;
