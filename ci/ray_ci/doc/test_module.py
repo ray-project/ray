@@ -2,16 +2,18 @@ import sys
 import pytest
 
 from ci.ray_ci.doc.module import Module
+from ci.ray_ci.doc.api import AnnotationType, CodeType
 
 
 def test_walk():
     module = Module("ci.ray_ci.doc.mock_module")
-    assert module.get_class_apis() == {
-        "ci.ray_ci.doc.mock_module.MockClass",
-    }
-    assert module.get_function_apis() == {
-        "ci.ray_ci.doc.mock_module.mock_function",
-    }
+    apis = module.get_apis()
+    assert apis[0].name == "ci.ray_ci.doc.mock_module.MockClass"
+    assert apis[0].annotation_type.value == AnnotationType.PUBLIC_API.value
+    assert apis[0].code_type.value == CodeType.CLASS.value
+    assert apis[1].name == "ci.ray_ci.doc.mock_module.mock_function"
+    assert apis[1].annotation_type.value == AnnotationType.DEPRECATED.value
+    assert apis[1].code_type.value == CodeType.FUNCTION.value
 
 
 if __name__ == "__main__":

@@ -1,26 +1,23 @@
 import importlib
 import inspect
 from types import ModuleType
-from typing import Set
+from typing import List
+
+from ci.ray_ci.doc.api import API, AnnotationType, CodeType
 
 
 class Module:
     def __init__(self, module: str):
         self._module = importlib.import_module(module)
         self._visited = set()
-        self._class_apis = set()
-        self._function_apis = set()
+        self._apis = []
 
     def walk(self) -> None:
         self._walk(self._module)
 
-    def get_class_apis(self) -> Set:
+    def get_apis(self) -> List[API]:
         self.walk()
-        return self._class_apis
-
-    def get_function_apis(self) -> Set:
-        self.walk()
-        return self._function_apis
+        return self._apis
 
     def _walk(self, module: ModuleType) -> None:
         """
@@ -29,7 +26,7 @@ class Module:
         """
         if module in self._visited:
             return
-        self._visited.add(module)
+        self._visited.add(module.__hash__)
 
         if not self._is_valid_child(module):
             return
@@ -41,11 +38,23 @@ class Module:
                 self._walk(attribute)
             if inspect.isclass(attribute):
                 if self._is_api(attribute):
-                    self._class_apis.add(self._fullname(attribute))
+                    self._apis.append(
+                        API(
+                            name=self._fullname(attribute),
+                            annotation_type=self._get_annotation_type(attribute),
+                            code_type=CodeType.CLASS,
+                        )
+                    )
                 self._walk(attribute)
             if inspect.isfunction(attribute):
                 if self._is_api(attribute):
-                    self._function_apis.add(self._fullname(attribute))
+                    self._apis.append(
+                        API(
+                            name=self._fullname(attribute),
+                            annotation_type=self._get_annotation_type(attribute),
+                            code_type=CodeType.FUNCTION,
+                        )
+                    )
 
         return
 
@@ -54,10 +63,16 @@ class Module:
 
     def _is_valid_child(self, module: ModuleType) -> bool:
         """
-        This module is a valid child of the top level module if its module name
-        starts with the top level module name.
+        This module is a valid child of the top level module if it is the top level
+        module itself, or its module name starts with the top level module name.
         """
-        return inspect.getmodule(module).__name__.startswith(self._module.__name__)
+        module = inspect.getmodule(module)
+        if not hasattr(module, "__name__"):
+            return False
+        return module.__name__.startswith(self._module.__name__)
 
     def _is_api(self, module: ModuleType) -> bool:
-        return self._is_valid_child(module) and hasattr(module, "_attribute")
+        return self._is_valid_child(module) and hasattr(module, "_annotated")
+
+    def _get_annotation_type(self, module: ModuleType) -> AnnotationType:
+        return AnnotationType(module._annotated_type.value)

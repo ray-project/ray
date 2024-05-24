@@ -8,6 +8,7 @@ py_library(
         exclude = [
             "test_*.py",
             "cmd_*.py",
+            "mock_module.py",
         ],
     ),
     visibility = ["//ci/ray_ci/doc:__subpackages__"],
@@ -16,7 +17,7 @@ py_library(
 py_test(
     name = "test_module",
     size = "small",
-    srcs = ["test_module.py"],
+    srcs = ["test_module.py", "mock_module.py"],
     exec_compatible_with = ["//:hermetic_python"],
     tags = [
         "ci_unit",
