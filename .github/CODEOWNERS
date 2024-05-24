@@ -86,12 +86,12 @@
 /doc/source/cluster/ @architkulkarni @maxpumperla @pcmoritz @kevin85421 @ray-project/ray-docs
 
 # Tune
-/python/ray/tune/ @matthewdeng @justinvyu @woshiyyya
-/doc/source/tune/ @matthewdeng @justinvyu @woshiyyya @ray-project/ray-docs
+/python/ray/tune/ @hongpeng-guo @justinvyu @matthewdeng @raulchen @woshiyyya
+/doc/source/tune/ @hongpeng-guo @justinvyu @matthewdeng @raulchen @woshiyyya @ray-project/ray-docs
 
 # Train
-/python/ray/train/ @matthewdeng @justinvyu @woshiyyya
-/doc/source/train/ @matthewdeng @justinvyu @woshiyyya @ray-project/ray-docs
+/python/ray/train/ @hongpeng-guo @justinvyu @matthewdeng @raulchen @woshiyyya
+/doc/source/train/ @hongpeng-guo @justinvyu @matthewdeng @raulchen @woshiyyya @ray-project/ray-docs
 
 # Serve (docs)
 /doc/source/serve/ @edoakes @shrekris-anyscale @zcin @GeneDer @akshay-anyscale @ray-project/ray-docs
