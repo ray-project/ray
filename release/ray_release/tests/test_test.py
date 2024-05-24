@@ -61,11 +61,11 @@ def _stub_test(val: dict) -> Test:
 
 
 def _stub_test_result(
-    status: ResultStatus = ResultStatus.SUCCESS, rayci_step_id="123", commit="456"
+    status: ResultStatus = ResultStatus.SUCCESS, rayci_step_id="123"
 ) -> TestResult:
     return TestResult(
         status=status.value,
-        commit=commit,
+        commit="1234567890",
         branch="master",
         url="url",
         timestamp=0,
@@ -340,7 +340,7 @@ def gen_high_impact_tests(mock_gen_from_s3) -> None:
             "name": "core_test",
             Test.KEY_IS_HIGH_IMPACT: "false",
             "test_results": [
-                _stub_test_result(rayci_step_id="corebuild", commit="123"),
+                _stub_test_result(rayci_step_id="corebuild"),
             ],
         }
     )
@@ -349,9 +349,7 @@ def gen_high_impact_tests(mock_gen_from_s3) -> None:
             "name": "data_test_01",
             Test.KEY_IS_HIGH_IMPACT: "true",
             "test_results": [
-                _stub_test_result(rayci_step_id="databuild", commit="123"),
-                _stub_test_result(rayci_step_id="data15build", commit="123"),
-                _stub_test_result(rayci_step_id="data12build", commit="456"),
+                _stub_test_result(rayci_step_id="databuild"),
             ],
         }
     )
@@ -360,7 +358,7 @@ def gen_high_impact_tests(mock_gen_from_s3) -> None:
             "name": "data_test_02",
             Test.KEY_IS_HIGH_IMPACT: "true",
             "test_results": [
-                _stub_test_result(rayci_step_id="databuild", commit="789"),
+                _stub_test_result(rayci_step_id="databuild"),
             ],
         }
     )
@@ -368,8 +366,7 @@ def gen_high_impact_tests(mock_gen_from_s3) -> None:
     mock_gen_from_s3.return_value = [core_test, data_test_01, data_test_02]
 
     assert Test.gen_high_impact_tests("linux") == {
-        "databuild": [data_test_01, data_test_02],
-        "data15build": [data_test_01],
+        "databuild": [data_test_01, data_test_02]
     }
 
 

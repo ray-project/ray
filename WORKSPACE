@@ -1,6 +1,15 @@
 workspace(name = "com_github_ray_project_ray")
 
 load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+
+http_archive(
+    name = "platforms",
+    sha256 = "5eda539c841265031c2f82d8ae7a3a6490bd62176e0c038fc469eabf91f6149b",
+    urls = [
+        "https://github.com/bazelbuild/platforms/releases/download/0.0.9/platforms-0.0.9.tar.gz",
+    ],
+)
+
 load("//bazel:ray_deps_setup.bzl", "ray_deps_setup")
 
 ray_deps_setup()
@@ -18,7 +27,7 @@ grpc_extra_deps()
 
 load("@bazel_skylib//lib:versions.bzl", "versions")
 
-# Please keep this in sync with the .bazeliskrc file.
+# Please keep this in sync with the .bazelversion file.
 versions.check(minimum_bazel_version = "5.4.1")
 
 # Tools to generate `compile_commands.json` to enable awesome tooling of the C language family.
@@ -76,5 +85,5 @@ filegroup(
 )
 """,
     sha256 = "daa629648e1d1d10fc8bde5e6ce4176cbc0cd48a32211b28c3fd806e0fa5f29b",
-    urls = ["https://github.com/google/go-containerregistry/releases/download/v0.19.0/go-containerregistry_Linux_x86_64.tar.gz"]
+    urls = ["https://github.com/google/go-containerregistry/releases/download/v0.19.0/go-containerregistry_Linux_x86_64.tar.gz"],
 )
