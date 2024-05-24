@@ -28,6 +28,7 @@ from ray._private.ray_constants import (
 from ray._private.utils import get_or_create_event_loop
 from ray._private.test_utils import (
     format_web_url,
+    fetch_prometheus_metrics,
     get_error_message,
     init_error_pubsub,
     run_string_as_driver,
@@ -1280,5 +1281,50 @@ def test_dashboard_not_included_ray_minimal(shutdown_only, capsys):
         requests.get("http://localhost:8265")
 
 
+@pytest.mark.skipif(
+    os.environ.get("RAY_MINIMAL") == "1",
+    reason="This test is not supposed to work for minimal installation.",
+)
+@pytest.mark.asyncio
+async def test_dashboard_exports_metric_on_event_loop_lag(
+    enable_test_module, ray_start_with_dashboard
+):
+    """
+    When the event loop is blocked, the dashboard should export a metric.
+    Uses aiohttp to send concurrent requests to block the event loop.
+    As the number of blocking call goes up, the event loop lag converges to ~5s on my
+    laptop. We assert it to be >1s to be safe.
+    """
+    import aiohttp
+    from prometheus_client.samples import Sample
+    from typing import List, Dict
+
+    ray_context = ray_start_with_dashboard
+    assert wait_until_server_available(ray_context["webui_url"]) is True
+    webui_url = format_web_url(ray_context["webui_url"])
+    blocking_url = webui_url + "/test/block_event_loop?seconds=1"
+
+    async def make_blocking_call():
+        async with aiohttp.ClientSession() as session:
+            async with session.get(blocking_url) as resp:
+                resp.raise_for_status()
+                return await resp.text()
+
+    # Blocks the event loop for 1 second for 10 times.
+    tasks = [make_blocking_call() for _ in range(10)]
+    await asyncio.gather(*tasks)
+
+    # Fetch the metrics from the dashboard.
+    addr = ray_context["raylet_ip_address"]
+    prom_addresses = [f"{addr}:{dashboard_consts.DASHBOARD_METRIC_PORT}"]
+
+    metrics_samples: Dict[str, List[Sample]] = fetch_prometheus_metrics(prom_addresses)
+    print(metrics_samples)
+
+    lag_metric_samples = metrics_samples["ray_dashboard_event_loop_lag_seconds"]
+    assert len(lag_metric_samples) > 0
+    assert any(sample.value > 1 for sample in lag_metric_samples)
+
+
 if __name__ == "__main__":
-    sys.exit(pytest.main(["-v", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

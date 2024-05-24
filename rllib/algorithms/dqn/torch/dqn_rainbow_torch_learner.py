@@ -14,13 +14,13 @@ from ray.rllib.algorithms.dqn.dqn_rainbow_learner import (
     QF_TARGET_NEXT_PROBS,
     QF_PREDS,
     QF_PROBS,
-    TD_ERROR_KEY,
     TD_ERROR_MEAN_KEY,
 )
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.learner.torch.torch_learner import TorchLearner
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
+from ray.rllib.utils.metrics import TD_ERROR_KEY
 from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.typing import ModuleID, TensorType
 
