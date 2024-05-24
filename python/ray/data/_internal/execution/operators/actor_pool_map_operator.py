@@ -146,9 +146,7 @@ class ActorPoolMapOperator(MapOperator):
                 "enough resources for the requested actor pool."
             )
         total_latency = time.time() - start
-        logger.get_logger(log_to_stdout=False).info(
-            f"{self._name}: Took {total_latency} seconds to provision actors"
-        )
+        logger.get_logger.info(f"{self._name}: Took {total_latency} seconds to provision actors")
         self.actor_pool_creation_latency.observe(total_latency * 1000)
 
     def should_add_input(self) -> bool:
