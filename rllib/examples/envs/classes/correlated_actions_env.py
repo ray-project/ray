@@ -14,7 +14,7 @@ class CorrelatedActionsEnv(gym.Env):
     to a1. I.e., +10 at most per step.
 
     One way to effectively learn this is through correlated action
-    distributions, e.g., in examples/autoregressive_action_dist.py
+    distributions, e.g., in examples/rl_modules/autoregressive_action_rlm.py
 
     There are 20 steps. Hence, the best score would be ~200 reward.
     """

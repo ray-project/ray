@@ -1,30 +1,50 @@
 from abc import abstractmethod
 from typing import Any, Dict, Type
 
-from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.core import Columns
 from ray.rllib.core.models.base import ENCODER_OUT
-from ray.rllib.core.models.catalog import Catalog
 from ray.rllib.core.models.configs import MLPHeadConfig
 from ray.rllib.core.models.specs.specs_dict import SpecDict
-from ray.rllib.core.rl_module.rl_module import RLModule, SingleAgentRLModuleSpec
+from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.core.rl_module.torch.torch_rl_module import TorchRLModule
-from ray.rllib.examples.envs.classes.correlated_actions_env import CorrelatedActionsEnv
 from ray.rllib.models.distributions import Distribution
-from ray.rllib.utils.annotations import override
+from ray.rllib.utils.annotations import (
+    override,
+    OverrideToImplementCustomLogic_CallToSuperRecommended,
+)
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.torch_utils import convert_to_torch_tensor
 from ray.rllib.utils.typing import TensorType
 
-from ray.tune import register_env
-
-register_env("correlated_actions_env", lambda _: CorrelatedActionsEnv(_))
-
-
 torch, nn = try_import_torch()
 
 
+# TODO (simon): Improvements: `inference-only` mode.
 class AutoregressiveActionRLM(RLModule):
+    """An RLModule that implements an autoregressive action distribution.
+
+    This RLModule implements an autoregressive action distribution, where the
+    action is sampled in two steps. First, the prior action is sampled from a
+    prior distribution. Then, the posterior action is sampled from a posterior
+    distribution that depends on the prior action and the input data. The prior
+    and posterior distributions are implemented as MLPs.
+
+    The following components are implemented:
+    - ENCODER: An encoder that processes the observations from the environment.
+    - PI: A Policy head that outputs the actions, the log probabilities of the
+        actions, and the input to the action distribution. This head is composed
+        of two sub-heads:
+        - A prior head that outputs the logits for the prior action distribution.
+        - A posterior head that outputs the logits for the posterior action
+            distribution.
+    - A value function head that outputs the value function.
+
+    Note, this RLModule is implemented for the `PPO` algorithm only. It is not
+    guaranteed to work with other algorithms.
+    """
+
+    @override(RLModule)
+    @OverrideToImplementCustomLogic_CallToSuperRecommended
     def setup(self):
         super().setup()
 
@@ -40,7 +60,6 @@ class AutoregressiveActionRLM(RLModule):
         # the partial distributions.
         self.required_output_dims = self.action_dist_cls.required_input_dim(
             space=self.config.action_space,
-            model_config=self.config.model_config_dict,
             as_list=True,
         )
         action_dims = self.config.action_space[0].shape or (1,)
@@ -56,7 +75,7 @@ class AutoregressiveActionRLM(RLModule):
             output_layer_dim=self.required_output_dims[0],
             output_layer_activation="linear",
         )
-
+        # Build the posterior head.
         posterior_config = MLPHeadConfig(
             input_dims=(latent_dims[0] + action_dims[0],),
             hidden_layer_dims=self.config.model_config_dict["post_fcnet_hiddens"],
@@ -96,11 +115,11 @@ class AutoregressiveActionRLM(RLModule):
 
     @override(RLModule)
     def output_specs_inference(self) -> SpecDict:
-        return [Columns.ACTION_DIST_INPUTS, Columns.ACTIONS, Columns.ACTION_LOGP]
+        return [Columns.ACTIONS]
 
     @override(RLModule)
     def output_specs_exploration(self) -> SpecDict:
-        return self.output_specs_inference()
+        return [Columns.ACTION_DIST_INPUTS, Columns.ACTIONS, Columns.ACTION_LOGP]
 
     @override(RLModule)
     def output_specs_train(self) -> SpecDict:
@@ -141,7 +160,9 @@ class AutoregressiveActionRLM(RLModule):
 
 class AutoregressiveActionTorchRLM(TorchRLModule, AutoregressiveActionRLM):
     @override(AutoregressiveActionRLM)
-    def pi(self, batch: Dict[str, TensorType]) -> Dict[str, TensorType]:
+    def pi(
+        self, batch: Dict[str, TensorType], inference: bool = False
+    ) -> Dict[str, TensorType]:
         pi_outs = {}
 
         # Prior forward pass.
@@ -149,50 +170,76 @@ class AutoregressiveActionTorchRLM(TorchRLModule, AutoregressiveActionRLM):
         prior_logits = torch.cat(
             [
                 prior_out,
+                # We add zeros for the posterior logits, which we do not have at
+                # this point of time.
                 torch.zeros(size=(prior_out.shape[0], self.required_output_dims[1])),
             ],
             dim=-1,
         )
         # Get the prior action distribution to sample the prior action.
-        prior_action_dist = self.action_dist_cls.from_logits(prior_logits)
-        # Note, `TorchMultiDistribution from_logits` does set the `logits`, but not
-        # the `probs` attribute. We need to set the `probs` attribute to be able to
-        # sample from the distribution in a differentiable way.
-        prior_action_dist._flat_child_distributions[0].probs = torch.softmax(
-            prior_out, dim=-1
-        )
-        prior_action_dist._flat_child_distributions[0].logits = None
-        # Note, we need to be able to backpropagate through the prior action that's
-        # why we sample from the distribution using the `rsample` method.
-        # TODO (simon, sven): Check, if we need return the one-hot sampled action
-        # instead of the
-        prior_action = torch.argmax(
-            prior_action_dist._flat_child_distributions[0].rsample(),
-            dim=-1,
-        )
-        # We need the log probability of the sampled action for the loss calculation.
-        prior_action_logp = prior_action_dist._flat_child_distributions[0].logp(
-            prior_action
-        )
+        if inference:
+            # If in inference mode, we need to set the distribution to be deterministic.
+            prior_action_dist = self.action_dist_cls.from_logits(
+                prior_logits
+            ).to_deterministic()
+            # If in inference mode, we can sample in a simple way.
+            prior_action = prior_action_dist._flat_child_distributions[0].sample()
+        else:
+            prior_action_dist = self.action_dist_cls.from_logits(prior_logits)
+            # Note, `TorchMultiDistribution.from_logits` does set the `logits`, but not
+            # the `probs` attribute. We need to set the `probs` attribute to be able to
+            # sample from the distribution in a differentiable way.
+            prior_action_dist._flat_child_distributions[0].probs = torch.softmax(
+                prior_out, dim=-1
+            )
+            prior_action_dist._flat_child_distributions[0].logits = None
+            # Otherwise, we need to be able to backpropagate through the prior action
+            # that's why we sample from the distribution using the `rsample` method.
+            # TODO (simon, sven): Check, if we need to return the one-hot sampled action
+            # instead of the real-valued one.
+            prior_action = torch.argmax(
+                prior_action_dist._flat_child_distributions[0].rsample(),
+                dim=-1,
+            )
 
         # Posterior forward pass.
         posterior_batch = torch.cat([batch, prior_action.view(-1, 1)], dim=-1)
         posterior_out = self.posterior(posterior_batch)
         # Concatenate the prior and posterior logits to get the final logits.
         posterior_logits = torch.cat([prior_out, posterior_out], dim=-1)
-        # Get the posterior action distribution to sample the posterior action.
-        posterior_action_dist = self.action_dist_cls.from_logits(posterior_logits)
-        posterior_action = posterior_action_dist._flat_child_distributions[1].sample()
-        posterior_action_logp = posterior_action_dist._flat_child_distributions[1].logp(
-            posterior_action
-        )
+        if inference:
+            posterior_action_dist = self.action_dist_cls.from_logits(
+                posterior_logits
+            ).to_deterministic()
+            # Sample the posterior action.
+            posterior_action = posterior_action_dist._flat_child_distributions[
+                1
+            ].sample()
+
+        else:
+            # Get the posterior action distribution to sample the posterior action.
+            posterior_action_dist = self.action_dist_cls.from_logits(posterior_logits)
+            # Sample the posterior action.
+            posterior_action = posterior_action_dist._flat_child_distributions[
+                1
+            ].sample()
+
+            # We need the log probabilities of the sampled actions for the loss
+            # calculation.
+            prior_action_logp = prior_action_dist._flat_child_distributions[0].logp(
+                prior_action
+            )
+            posterior_action_logp = posterior_action_dist._flat_child_distributions[
+                1
+            ].logp(posterior_action)
+            pi_outs[Columns.ACTION_LOGP] = prior_action_logp + posterior_action_logp
+            # We also need the input to the action distribution to calculate the
+            # KL-divergence.
+            pi_outs[Columns.ACTION_DIST_INPUTS] = posterior_logits
 
         # Concatenate the prior and posterior actions and log probabilities.
         pi_outs[Columns.ACTIONS] = (prior_action, posterior_action)
-        pi_outs[Columns.ACTION_LOGP] = torch.cat(
-            [prior_action_logp, posterior_action_logp], dim=-1
-        )
-        pi_outs[Columns.ACTION_DIST_INPUTS] = posterior_logits
+
         return pi_outs
 
     @override(TorchRLModule)
@@ -202,13 +249,17 @@ class AutoregressiveActionTorchRLM(TorchRLModule, AutoregressiveActionRLM):
         encoder_out = self.encoder(batch)
 
         # Policy head forward pass.
-        return self.pi(encoder_out[ENCODER_OUT])
+        return self.pi(encoder_out[ENCODER_OUT], inference=True)
 
     @override(TorchRLModule)
     def _forward_exploration(
         self, batch: Dict[str, TensorType], **kwargs
     ) -> Dict[str, TensorType]:
-        return self._forward_inference(batch)
+        # Encoder forward pass.
+        encoder_out = self.encoder(batch)
+
+        # Policy head forward pass.
+        return self.pi(encoder_out[ENCODER_OUT], inference=False)
 
     @override(TorchRLModule)
     def _forward_train(self, batch: Dict[str, TensorType]) -> Dict[str, TensorType]:
@@ -242,54 +293,3 @@ class AutoregressiveActionTorchRLM(TorchRLModule, AutoregressiveActionRLM):
 
         # Squeeze out last dimension (single node value head).
         return vf_out.squeeze(-1)
-
-
-# from gymnasium.envs.registration import register
-# import gymnasium as gym
-
-# register(
-#     id="correlated_actions_env",
-#     entry_point="ray.rllib.examples.envs.classes.correlated_actions_env:CorrelatedActionsEnv",
-# )
-# env = gym.make("correlated_actions_env")
-# spec = SingleAgentRLModuleSpec(
-#     module_class=AutoregressiveActionTorchRLM,
-#     observation_space=env.observation_space,
-#     action_space=env.action_space,
-#     model_config_dict={
-#         "fcnet_hiddens": [64],
-#         "post_fcnet_hiddens": [256],
-#         "post_fcnet_activation": "relu",
-#     },
-#     catalog_class=Catalog,
-# )
-# module = spec.build()
-# obs = env.observation_space.sample()
-# outs = module._forward_inference({Columns.OBS: torch.tensor(obs).view(-1, 1)})
-config = (
-    PPOConfig()
-    .environment(env="correlated_actions_env")
-    .api_stack(
-        enable_rl_module_and_learner=True,
-        enable_env_runner_and_connector_v2=True,
-    )
-    .rl_module(
-        model_config_dict={
-            "post_fcnet_hiddens": [256],
-        },
-        rl_module_spec=SingleAgentRLModuleSpec(
-            module_class=AutoregressiveActionTorchRLM,
-            catalog_class=Catalog,
-        ),
-    )
-    .env_runners(
-        num_env_runners=0,
-        num_envs_per_env_runner=1,
-    )
-)
-
-algo = config.build()
-
-for _ in range(2):
-
-    results = algo.train()
