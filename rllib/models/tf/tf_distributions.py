@@ -129,9 +129,9 @@ class TfCategorical(TfDistribution):
     ) -> "tfp.distributions.Distribution":
         return tfp.distributions.Categorical(probs=probs, logits=logits)
 
-    @staticmethod
+    @classmethod
     @override(Distribution)
-    def required_input_dim(space: gym.Space, **kwargs) -> int:
+    def required_input_dim(cls, space: gym.Space, **kwargs) -> int:
         assert isinstance(space, gym.spaces.Discrete)
         return int(space.n)
 
@@ -215,9 +215,9 @@ class TfDiagGaussian(TfDistribution):
     def kl(self, other: "TfDistribution") -> TensorType:
         return tf.math.reduce_sum(super().kl(other), axis=-1)
 
-    @staticmethod
+    @classmethod
     @override(Distribution)
-    def required_input_dim(space: gym.Space, **kwargs) -> int:
+    def required_input_dim(cls, space: gym.Space, **kwargs) -> int:
         assert isinstance(space, gym.spaces.Box)
         return int(np.prod(space.shape, dtype=np.int32) * 2)
 
@@ -296,9 +296,9 @@ class TfDeterministic(Distribution):
     def kl(self, other: "Distribution", **kwargs) -> TensorType:
         raise RuntimeError(f"`kl()` not supported for {self.__class__.__name__}.")
 
-    @staticmethod
+    @classmethod
     @override(Distribution)
-    def required_input_dim(space: gym.Space, **kwargs) -> int:
+    def required_input_dim(cls, space: gym.Space, **kwargs) -> int:
         assert isinstance(space, gym.spaces.Box)
         return int(np.prod(space.shape, dtype=np.int32))
 
@@ -354,9 +354,9 @@ class TfMultiCategorical(Distribution):
         )
         return tf.reduce_sum(kls, axis=-1)
 
-    @staticmethod
+    @classmethod
     @override(Distribution)
-    def required_input_dim(space: gym.Space, **kwargs) -> int:
+    def required_input_dim(cls, space: gym.Space, **kwargs) -> int:
         assert isinstance(space, gym.spaces.MultiDiscrete)
         return int(np.sum(space.nvec))
 
@@ -489,9 +489,11 @@ class TfMultiDistribution(Distribution):
         )
         return tree.map_structure(lambda s: s.sample(), child_distributions_struct)
 
-    @staticmethod
+    @classmethod
     @override(Distribution)
-    def required_input_dim(space: gym.Space, input_lens: List[int], **kwargs) -> int:
+    def required_input_dim(
+        cls, space: gym.Space, input_lens: List[int], **kwargs
+    ) -> int:
         return sum(input_lens)
 
     @classmethod
