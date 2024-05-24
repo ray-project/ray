@@ -948,6 +948,22 @@ def test_map_batches_preserves_empty_block_format(ray_start_regular_shared):
     assert type(ray.get(block_refs[0])) == pd.DataFrame
 
 
+def test_map_with_objects_and_tensors(ray_start_regular_shared):
+    # Tests https://github.com/ray-project/ray/issues/45235
+
+    class UnsupportedType:
+        pass
+
+    def f(batch):
+        batch_size = len(batch["id"])
+        return {
+            "array": np.zeros((batch_size, 32, 32, 3)),
+            "unsupported": [UnsupportedType()] * batch_size,
+        }
+
+    ray.data.range(1).map_batches(f).materialize()
+
+
 def test_random_sample(ray_start_regular_shared):
     import math
 

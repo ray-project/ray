@@ -28,12 +28,6 @@ def test_from_dask(ray_start_regular_shared):
 
 @pytest.mark.parametrize("ds_format", ["pandas", "arrow"])
 def test_to_dask(ray_start_regular_shared, ds_format):
-    def assert_frame_equal(df1, df2) -> None:
-        # Check if two DataFrames are equal, ignoring the index.
-        df1 = df1.reset_index(drop=True)
-        df2 = df2.reset_index(drop=True)
-        assert df1.equals(df2)
-
     from ray.util.dask import ray_dask_get
 
     df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
