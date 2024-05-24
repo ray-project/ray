@@ -5,8 +5,8 @@ This guide helps contributors to understand the Continuous Integration (CI)
 workflow on a PR. Here CI stands for the automated testing of the codebase
 on the PR.
 
-microcheck: default tests on your PR
-------------------------------------
+`microcheck`: default tests on your PR
+--------------------------------------
 With every commit on your PR, by default, we'll run a set of tests
 called `microcheck`.
 
