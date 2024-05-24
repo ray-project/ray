@@ -3413,6 +3413,20 @@ class Algorithm(Trainable, AlgorithmBase):
     ):
         # Return dict (shallow copy of `train_results`).
         results: ResultDict = train_results.copy()
+
+        # TODO (sven): Fix Tune, instead, to be tolerant against possibly missing result
+        #  keys. Otherwise, we'll have to guess here, what "popular" keys users use in
+        #  order to protect them from running into Tune KeyErrors.
+        if ENV_RUNNER_RESULTS not in results:
+            results[ENV_RUNNER_RESULTS] = {}
+        for must_have in [
+            EPISODE_RETURN_MEAN,
+            EPISODE_RETURN_MIN,
+            EPISODE_RETURN_MAX,
+        ]:
+            if must_have not in results[ENV_RUNNER_RESULTS]:
+                results[ENV_RUNNER_RESULTS][must_have] = np.nan
+
         # Evaluation results.
         if eval_results:
             results.update(eval_results)
