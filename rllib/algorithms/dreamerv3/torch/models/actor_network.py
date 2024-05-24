@@ -66,16 +66,16 @@ class ActorNetwork(nn.Module):
         #  inputs are pushed through a shared MLP, then only the two output linear
         #  layers are separate for std- and mean logits.
         elif isinstance(action_space, gym.spaces.Box):
-            output_size = np.prod(action_space.shape)
+            output_layer_size = np.prod(action_space.shape)
             self.mlp = MLP(
                 input_size=self.input_size,
                 model_size=self.model_size,
-                output_layer_size=output_size,
+                output_layer_size=output_layer_size,
             )
             self.std_mlp = MLP(
                 input_size=self.input_size,
                 model_size=self.model_size,
-                output_layer_size=output_size,
+                output_layer_size=output_layer_size,
             )
         else:
             raise ValueError(f"Invalid action space: {action_space}")

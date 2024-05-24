@@ -25,14 +25,6 @@ from ray.rllib.utils.tf_utils import inverse_symlog
 torch, _ = try_import_torch()
 
 
-def _summarize(*, results, data_to_summarize, keys_to_log, include_histograms=False):
-    for k in keys_to_log:
-        if data_to_summarize[k].shape == ():
-            results.update({k: data_to_summarize[k]})
-        elif include_histograms:
-            results.update({k: data_to_summarize[k]})
-
-
 def reconstruct_obs_from_h_and_z(
     h_t0_to_H,
     z_t0_to_H,
