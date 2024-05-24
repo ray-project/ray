@@ -1533,7 +1533,7 @@ class NodeKillerActor(ResourceKillerActor):
             )
             self.killed.add(node_id)
 
-    def _kill_node(self, ip):
+    def _terminate_ec2_instance(self, ip):
         # This command uses IMDSv2 to get the host instance id and region.
         # After that it terminates itself using aws cli.
         multi_line_command = (
