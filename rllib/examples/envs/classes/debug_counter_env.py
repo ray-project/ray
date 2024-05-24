@@ -44,18 +44,22 @@ class MultiAgentDebugCounterEnv(MultiAgentEnv):
         # 1=episode ID (0.0 for obs after reset).
         # 2=env ID (0.0 for obs after reset).
         # 3=ts (of the agent).
-        self.observation_space = gym.spaces.Dict({
-            aid: gym.spaces.Box(float("-inf"), float("inf"), (4,))
-            for aid in range(self.num_agents)
-        })
+        self.observation_space = gym.spaces.Dict(
+            {
+                aid: gym.spaces.Box(float("-inf"), float("inf"), (4,))
+                for aid in range(self.num_agents)
+            }
+        )
         self._obs_space_in_preferred_format = True
 
         # Actions are always:
         # (episodeID, envID) as floats.
-        self.action_space = gym.spaces.Dict({
-            aid: gym.spaces.Box(-float("inf"), float("inf"), shape=(2,))
-            for aid in range(self.num_agents)
-        })
+        self.action_space = gym.spaces.Dict(
+            {
+                aid: gym.spaces.Box(-float("inf"), float("inf"), shape=(2,))
+                for aid in range(self.num_agents)
+            }
+        )
         self._action_space_in_preferred_format = True
 
         self.timesteps = [0] * self.num_agents

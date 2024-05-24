@@ -835,7 +835,10 @@ class MultiAgentEpisodeReplayBuffer(EpisodeReplayBuffer):
                 self._num_module_episodes[module_id] += 1
 
     def _add_new_module_indices(
-        self, ma_episode: MultiAgentEpisode, episode_idx: int, ma_episode_exists: bool = True
+        self,
+        ma_episode: MultiAgentEpisode,
+        episode_idx: int,
+        ma_episode_exists: bool = True,
     ) -> None:
         """Adds the module indices for new episode chunks.
 
@@ -848,8 +851,7 @@ class MultiAgentEpisodeReplayBuffer(EpisodeReplayBuffer):
         existing_ma_episode = None
         if ma_episode_exists:
             existing_ma_episode = self.episodes[
-                self.episode_id_to_index[ma_episode.id_]
-                - self._num_episodes_evicted
+                self.episode_id_to_index[ma_episode.id_] - self._num_episodes_evicted
             ]
 
         for agent_id in ma_episode.agent_ids:
@@ -861,7 +863,7 @@ class MultiAgentEpisodeReplayBuffer(EpisodeReplayBuffer):
             module_eps = ma_episode.agent_episodes[agent_id]
 
             # Is the agent episode already in the buffer's existing `ma_episode`?
-            if ma_episode_exists and agent_id in existing_ma_episode.agent_episodes: 
+            if ma_episode_exists and agent_id in existing_ma_episode.agent_episodes:
                 existing_sa_eps_len = len(existing_ma_episode.agent_episodes[agent_id])
 
             # Add new module indices.

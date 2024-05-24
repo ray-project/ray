@@ -15,10 +15,9 @@ parser.set_defaults(num_agents=2)
 # and (if needed) use their values to set up `config` below.
 args = parser.parse_args()
 
-from ray.rllib.examples.envs.classes.debug_counter_env import MultiAgentDebugCounterEnv
 register_env(
     "multi_agent_pendulum",
-    lambda _: MultiAgentDebugCounterEnv({"num_agents": args.num_agents}),
+    lambda _: MultiAgentPendulum({"num_agents": args.num_agents}),
 )
 
 config = (
