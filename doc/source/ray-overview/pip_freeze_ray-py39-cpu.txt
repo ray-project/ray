@@ -32,13 +32,13 @@ click==8.1.7
 cloudpickle==2.2.0
 colorful==0.5.5
 commonmark==0.9.1
-conda @ file:///home/conda/feedstock_root/build_artifacts/conda_1714990897816/work
+conda @ file:///home/conda/feedstock_root/build_artifacts/conda_1715631935758/work
 conda-content-trust @ file:///croot/conda-content-trust_1714483159009/work
 conda-libmamba-solver @ file:///croot/conda-libmamba-solver_1706733287605/work/src
 conda-package-handling @ file:///croot/conda-package-handling_1714483155348/work
 conda_package_streaming @ file:///croot/conda-package-streaming_1690987966409/work
 cryptography==38.0.1
-Cython==0.29.32
+Cython==0.29.37
 distlib==0.3.7
 distro @ file:///croot/distro_1714488253808/work
 dm-tree==0.1.8
@@ -47,6 +47,7 @@ Farama-Notifications==0.0.4
 fastapi==0.109.2
 filelock==3.13.1
 flatbuffers==24.3.25
+frozendict @ file:///croot/frozendict_1713194832637/work
 frozenlist==1.4.0
 fsspec==2023.5.0
 google-api-core==1.34.0
@@ -126,7 +127,7 @@ python-dotenv==1.0.1
 pytz==2022.7.1
 PyWavelets==1.5.0
 PyYAML==6.0.1
-ray @ file:///home/ray/ray-3.0.0.dev0-cp39-cp39-manylinux2014_x86_64.whl#sha256=70227b0c3ff3294e988d6e1e826eecab3e9e1c312d94efe3e146e3b2097cad85
+ray @ file:///home/ray/ray-3.0.0.dev0-cp39-cp39-manylinux2014_x86_64.whl#sha256=6eea101b354aa060bb290e3f2a2a747448cc52bf757cdf7e3532edacb7146dcd
 redis==3.5.3
 requests @ file:///croot/requests_1707355572290/work
 requests-oauthlib==2.0.0
