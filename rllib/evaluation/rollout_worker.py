@@ -488,7 +488,7 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
         num_gpus = (
             self.config.num_gpus
             if self.worker_index == 0
-            else self.config.num_gpus_per_worker
+            else self.config.num_gpus_per_env_runner
         )
 
         # This is only for the old API where local_worker was responsible for learning

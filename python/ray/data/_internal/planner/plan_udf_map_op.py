@@ -85,6 +85,7 @@ def plan_udf_map_op(
         target_max_block_size=None,
         compute_strategy=compute,
         min_rows_per_bundle=op._min_rows_per_bundled_input,
+        ray_remote_args_fn=op._ray_remote_args_fn,
         ray_remote_args=op._ray_remote_args,
     )
 

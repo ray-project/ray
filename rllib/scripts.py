@@ -5,6 +5,7 @@ from rich.console import Console
 from rich.table import Table
 import typer
 
+from ray.air.constants import TRAINING_ITERATION
 from ray.rllib import train as train_module
 from ray.rllib.common import CLIArguments as cli
 from ray.rllib.common import (
@@ -108,7 +109,7 @@ def run(example_id: str = typer.Argument(..., help="Example ID to run.")):
         checkpoint_freq=1,
         checkpoint_at_end=True,
         keep_checkpoints_num=None,
-        checkpoint_score_attr="training_iteration",
+        checkpoint_score_attr=TRAINING_ITERATION,
         framework=FrameworkEnum.tf2,
         v=True,
         vv=False,

@@ -32,6 +32,7 @@ import random
 import gymnasium as gym
 from pettingzoo.classic import rps_v2
 
+from ray.air.constants import TRAINING_ITERATION
 from ray.rllib.connectors.env_to_module import (
     AddObservationsFromEpisodesToBatch,
     FlattenObservations,
@@ -40,6 +41,10 @@ from ray.rllib.connectors.env_to_module import (
 from ray.rllib.core.rl_module.marl_module import MultiAgentRLModuleSpec
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.env.wrappers.pettingzoo_env import ParallelPettingZooEnv
+from ray.rllib.utils.metrics import (
+    ENV_RUNNER_RESULTS,
+    NUM_ENV_STEPS_SAMPLED_LIFETIME,
+)
 from ray.rllib.utils.test_utils import (
     add_rllib_example_script_args,
     run_rllib_example_script_experiment,
@@ -135,9 +140,9 @@ if __name__ == "__main__":
 
     # Make `args.stop_reward` "point" to the reward of the learned policy.
     stop = {
-        "training_iteration": args.stop_iters,
-        "env_runner_results/module_episode_returns_mean/learned": args.stop_reward,
-        "num_env_steps_sampled_lifetime": args.stop_timesteps,
+        TRAINING_ITERATION: args.stop_iters,
+        f"{ENV_RUNNER_RESULTS}/module_episode_returns_mean/learned": args.stop_reward,
+        NUM_ENV_STEPS_SAMPLED_LIFETIME: args.stop_timesteps,
     }
 
     run_rllib_example_script_experiment(
@@ -145,6 +150,8 @@ if __name__ == "__main__":
         args,
         stop=stop,
         success_metric={
-            "env_runner_results/module_episode_returns_mean/learned": args.stop_reward,
+            f"{ENV_RUNNER_RESULTS}/module_episode_returns_mean/learned": (
+                args.stop_reward
+            ),
         },
     )
