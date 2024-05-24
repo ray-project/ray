@@ -137,7 +137,7 @@ def try_import_tf(error: bool = False):
     else:
         version = 2 if "2." in tf_module.__version__[:2] else 1
 
-    return None, tf_module, version
+    return tf1_module, tf_module, version
 
 
 # Fake module for tf.

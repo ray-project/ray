@@ -155,8 +155,8 @@ def report_predicted_vs_sampled_obs(
         "WORLD_MODEL_fwd_out_obs_distribution_means_b0xT",
     )
     # logged as a non-reduced item (still a list)
-    predicted_observation_means_single_example = metrics.peek(fwd_output_key)[-1]
-    metrics.delete(fwd_output_key)
+    predicted_observation_means_single_example = metrics.peek(fwd_output_key, [None])[-1]
+    metrics.delete(fwd_output_key, error=False)
 
     final_result_key = f"WORLD_MODEL_sampled_vs_predicted_posterior_b0x{batch_length_T}_videos"
     if not do_report:
