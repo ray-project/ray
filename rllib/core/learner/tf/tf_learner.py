@@ -280,8 +280,7 @@ class TfLearner(Learner):
 
     @override(Learner)
     def get_param_ref(self, param: Param) -> Hashable:
-        tf_var = param if isinstance(param, tf.Variable) else param.handle
-        return tf_var.ref()
+        return param.ref()
 
     @override(Learner)
     def get_parameters(self, module: RLModule) -> Sequence[Param]:
@@ -304,11 +303,10 @@ class TfLearner(Learner):
             )
         for param in params:
             if not isinstance(param, tf.Variable):
-                pass
-                #raise ValueError(
-                #    f"One of the parameters ({param}) in the registered optimizer "
-                #    "is not a tf.Variable!"
-                #)
+                raise ValueError(
+                    f"One of the parameters ({param}) in the registered optimizer "
+                    "is not a tf.Variable!"
+                )
 
     @override(Learner)
     def _convert_batch_type(self, batch: MultiAgentBatch) -> MultiAgentBatch:

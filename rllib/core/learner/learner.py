@@ -1357,20 +1357,6 @@ class Learner:
 
         self._set_slicing_by_batch_id(batch, value=False)
 
-        # Already done in `additional_update`.
-        ## Log all current learning rates of all our optimizers (registered under the
-        ## different ModuleIDs).
-        #self.metrics.log_dict(
-        #    {
-        #        (mid, f"{full_name[len(mid) + 1 :]}_lr"): convert_to_numpy(
-        #            self._get_optimizer_lr(self._named_optimizers[full_name])
-        #        )
-        #        for mid, full_names in self._module_optimizers.items()
-        #        for full_name in full_names
-        #    },
-        #    window=1,
-        #)
-
         self._after_update(timesteps)
 
         # Reduce results across all minibatch update steps.

@@ -15,6 +15,7 @@ import gymnasium as gym
 import numpy as np
 import tree  # pip install dm_tree
 
+import ray
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.core import DEFAULT_AGENT_ID, DEFAULT_MODULE_ID
 from ray.rllib.core.columns import Columns
@@ -24,7 +25,7 @@ from ray.rllib.env.wrappers.atari_wrappers import NoopResetEnv, MaxAndSkipEnv
 from ray.rllib.env.wrappers.dm_control_wrapper import DMCEnv
 from ray.rllib.env.utils import _gym_env_creator
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.framework import try_import_tf
+from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.metrics import (
     EPISODE_DURATION_SEC_MEAN,
     EPISODE_LEN_MAX,
@@ -42,11 +43,13 @@ from ray.rllib.utils.metrics import (
     NUM_MODULE_STEPS_SAMPLED_LIFETIME,
 )
 from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
-from ray.rllib.utils.numpy import one_hot
+from ray.rllib.utils.numpy import convert_to_numpy, one_hot
+from ray.rllib.utils.torch_utils import convert_to_torch_tensor
 from ray.rllib.utils.typing import ResultDict
 from ray.tune.registry import ENV_CREATOR, _global_registry
 
 _, tf, _ = try_import_tf()
+torch, _ = try_import_torch()
 
 
 # TODO (sven): Use SingleAgentEnvRunner instead of this as soon as we have the new
@@ -87,23 +90,38 @@ class DreamerV3EnvRunner(EnvRunner):
             # However, in Danijar's repo, Atari100k experiments are configured as:
             # noop=30, 64x64x3 (no grayscaling), sticky actions=False,
             # full action space=False,
-            wrappers = [
-                partial(gym.wrappers.TimeLimit, max_episode_steps=108000),
-                partial(resize_v1, x_size=64, y_size=64),  # resize to 64x64
-                NormalizedImageEnv,
-                NoopResetEnv,
-                MaxAndSkipEnv,
-            ]
+
+            def _entry_point():
+                return gym.make(
+                    self.config.env,
+                    **dict(
+                        self.config.env_config,
+                        **{
+                            # "sticky actions" but not according to Danijar's 100k
+                            # configs.
+                            "repeat_action_probability": 0.0,
+                            # "full action space" but not according to Danijar's 100k
+                            # configs.
+                            "full_action_space": False,
+                            # Already done by MaxAndSkip wrapper: "action repeat" == 4.
+                            "frameskip": 1,
+                        },
+                    ),
+                )
+
+            gym.register("rllib-single-agent-env-v0", entry_point=_entry_point)
 
             self.env = gym.vector.make(
-                "GymV26Environment-v0",
-                env_id=self.config.env,
-                wrappers=wrappers,
+                "rllib-single-agent-env-v0",
                 num_envs=self.config.num_envs_per_env_runner,
                 asynchronous=self.config.remote_worker_envs,
-                make_kwargs=dict(
-                    self.config.env_config, **{"render_mode": "rgb_array"}
-                ),
+                wrappers=[
+                    partial(gym.wrappers.TimeLimit, max_episode_steps=108000),
+                    partial(resize_v1, x_size=64, y_size=64),  # resize to 64x64
+                    NormalizedImageEnv,
+                    NoopResetEnv,
+                    MaxAndSkipEnv,
+                ],
             )
         # DeepMind Control.
         elif self.config.env.startswith("DMC/"):
@@ -165,6 +183,22 @@ class DreamerV3EnvRunner(EnvRunner):
             self.module = self.marl_module_spec.build()[DEFAULT_MODULE_ID]
 
         self.metrics = MetricsLogger()
+
+        self._device = None
+        if (
+            torch
+            and torch.cuda.is_available()
+            and self.config.framework_str == "torch"
+            and self.config.share_module_between_env_runner_and_learner
+            and self.config.num_gpus_per_learner > 0
+        ):
+            gpu_ids = ray.get_gpu_ids()
+            self._device = f"cuda:{gpu_ids[0]}"
+        self.convert_to_tensor = (
+            partial(convert_to_torch_tensor, device=self._device)
+            if self.config.framework_str == "torch"
+            else tf.convert_to_tensor
+        )
 
         self._needs_initial_reset = True
         self._episodes = [None for _ in range(self.num_envs)]
@@ -256,7 +290,7 @@ class DreamerV3EnvRunner(EnvRunner):
         # Get initial states for all `batch_size_B` rows in the forward batch.
         initial_states = tree.map_structure(
             lambda s: np.repeat(s, self.num_envs, axis=0),
-            self.module.get_initial_state(),
+            convert_to_numpy(self.module.get_initial_state()),
         )
 
         # Have to reset the env (on all vector sub-envs).
@@ -484,7 +518,6 @@ class DreamerV3EnvRunner(EnvRunner):
             episode_length = len(eps)
             episode_return = eps.get_return()
             episode_duration_s = eps.get_duration_s()
-
 
             # Don't forget about the already returned chunks of this episode.
             if eps.id_ in self._ongoing_episodes_for_metrics:

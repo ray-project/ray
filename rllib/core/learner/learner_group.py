@@ -391,10 +391,12 @@ class LearnerGroup:
             # TODO (sven): The sharder used here destroys - for multi-agent only -
             #  the relationship of the different agents' timesteps to each other.
             #  Thus, in case the algorithm requires agent-synchronized data (aka.
-            #  "lockstep"), this `ShardBatchIterator` should NOT be used.
+            #  "lockstep"), the `ShardBatchIterator` should not be used.
             if episodes is None:
                 partials = [
-                    partial(_learner_update, _batch_shard=batch_shard, _timesteps=timesteps)
+                    partial(
+                        _learner_update, _batch_shard=batch_shard, _timesteps=timesteps
+                    )
                     for batch_shard in ShardBatchIterator(batch, len(self._workers))
                 ]
             # Single- or MultiAgentEpisodes: Shard into equal pieces (only roughly equal
