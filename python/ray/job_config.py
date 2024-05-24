@@ -12,6 +12,38 @@ if TYPE_CHECKING:
 @PublicAPI(stability="alpha")
 class LoggingConfig:
     def __init__(self, log_config: Union[dict, str] = "TEXT", log_level: str = "INFO"):
+        """
+        The class is used to store the Python logging configuration. It will be passed
+        to all Ray tasks and actors that belong to this job.
+
+        Examples:
+            .. testcode::
+
+                import ray
+                import logging
+                from ray.job_config import LoggingConfig
+
+                ray.init(
+                    job_config=ray.job_config.JobConfig(py_logging_config=LoggingConfig("TEXT"))
+                )
+
+                @ray.remote
+                def f():
+                    logger = logging.getLogger()
+                    logger.info("This is a Ray task")
+
+                obj_ref = f.remote()
+                ray.get(obj_ref)
+
+        Args:
+            log_config: log_config can be a string or a dictionary. If it is a
+                string, it should be one of the keys in LOG_MODE_DICT, which has
+                the corresponding predefined logging configuration. If it is a
+                dictionary, it should be a valid logging configuration dictionary
+                that can be passed to the function `logging.config.dictConfig`.
+            log_level: The log level for the logging configuration. It only takes
+                effect when log_config is a string.
+        """
         if isinstance(log_config, str):
             if log_config not in LOG_MODE_DICT:
                 raise ValueError(
