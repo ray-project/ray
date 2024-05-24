@@ -13,6 +13,14 @@ examples:
       - computer vision
       - generative ai
     link: tutorials/stable-diffusion
+  - title: Serve a Large Language Model
+    skill_level: beginner
+    use_cases:
+      - generative ai
+      - large language models
+      - natural language processing
+    link: tutorials/vllm-example
+    related_technology: ml applications
   - title: Serve a Text Classification Model
     skill_level: beginner
     use_cases:
