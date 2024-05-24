@@ -89,6 +89,8 @@ class Raylet {
   /// Handle an accepted client connection.
   void HandleAccept(const boost::system::error_code &error);
 
+  const rpc::NodeDeathInfo &AdjustDeathInfo(const rpc::NodeDeathInfo &node_death_info);
+
   friend class TestObjectManagerIntegration;
 
   /// ID of this node.

@@ -223,6 +223,11 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
     return mutable_object_provider_;
   }
 
+  const rpc::NodeDeathInfo &AdjustDeathInfo(const rpc::NodeDeathInfo &node_death_info) {
+    return cluster_resource_scheduler_->GetLocalResourceManager().AdjustDeathInfo(
+        node_death_info);
+  }
+
  private:
   void ReleaseWorker(const WorkerID &worker_id) {
     leased_workers_.erase(worker_id);
