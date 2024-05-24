@@ -23,10 +23,6 @@ register_env(
 
 config = (
     SACConfig()
-    .api_stack(
-        enable_rl_module_and_learner=True,
-        enable_env_runner_and_connector_v2=True,
-    )
     .environment(env="multi_agent_pendulum")
     .training(
         initial_alpha=1.001,
@@ -46,16 +42,16 @@ config = (
         model_config_dict={
             "fcnet_hiddens": [256, 256],
             "fcnet_activation": "relu",
-            #"post_fcnet_hiddens": [],
-            #"post_fcnet_activation": None,
-            #"post_fcnet_weights_initializer": "orthogonal_",
-            #"post_fcnet_weights_initializer_config": {"gain": 0.01},
+            # "post_fcnet_hiddens": [],
+            # "post_fcnet_activation": None,
+            # "post_fcnet_weights_initializer": "orthogonal_",
+            # "post_fcnet_weights_initializer_config": {"gain": 0.01},
         }
     )
-    #.reporting(
-    #    metrics_num_episodes_for_smoothing=5,
-    #    min_sample_timesteps_per_iteration=1000,
-    #)
+    .reporting(
+        metrics_num_episodes_for_smoothing=5,
+        min_sample_timesteps_per_iteration=1000,
+    )
 )
 
 if args.num_agents > 0:
@@ -67,7 +63,7 @@ if args.num_agents > 0:
 stop = {
     NUM_ENV_STEPS_SAMPLED_LIFETIME: 500000,
     # `episode_return_mean` is the sum of all agents/policies' returns.
-    #f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": -400.0 * args.num_agents,
+    f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": -400.0 * args.num_agents,
 }
 
 if __name__ == "__main__":

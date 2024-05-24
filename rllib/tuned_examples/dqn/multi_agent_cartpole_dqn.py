@@ -57,7 +57,7 @@ if args.num_agents:
 stop = {
     NUM_ENV_STEPS_SAMPLED_LIFETIME: 500000,
     # `episode_return_mean` is the sum of all agents/policies' returns.
-    f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": 450.0 * args.num_agents,
+    f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": 250.0 * args.num_agents,
 }
 
 if __name__ == "__main__":

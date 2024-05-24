@@ -1,5 +1,5 @@
 import logging
-from typing import Any, Dict, Optional, Type, Union
+from typing import Any, Dict, Optional, Tuple, Type, Union
 
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
 from ray.rllib.algorithms.dqn.dqn import DQN
@@ -127,7 +127,7 @@ class SACConfig(AlgorithmConfig):
         tau: Optional[float] = NotProvided,
         initial_alpha: Optional[float] = NotProvided,
         target_entropy: Optional[Union[str, float]] = NotProvided,
-        n_step: Optional[int] = NotProvided,
+        n_step: Optional[Union[int, Tuple[int, int]]] = NotProvided,
         store_buffer_in_checkpoints: Optional[bool] = NotProvided,
         replay_buffer_config: Optional[Dict[str, Any]] = NotProvided,
         training_intensity: Optional[float] = NotProvided,
@@ -169,9 +169,10 @@ class SACConfig(AlgorithmConfig):
                 automatically.
             n_step: N-step target updates. If >1, sars' tuples in trajectories will be
                 postprocessed to become sa[discounted sum of R][s t+n] tuples. An
-                integer will be interpreted as a fixed n-step value. In case of a tuple
-                the n-step value will be drawn for each sample in the train batch from
-                a uniform distribution over the  interval defined by the 'n-step'-tuple.
+                integer will be interpreted as a fixed n-step value. If a tuple of 2
+                ints is provided here, the n-step value will be drawn for each sample(!)
+                in the train batch from a uniform distribution over the closed interval
+                defined by `[n_step[0], n_step[1]]`.
             store_buffer_in_checkpoints: Set this to True, if you want the contents of
                 your buffer(s) to be stored in any saved checkpoints as well.
                 Warnings will be created if:
