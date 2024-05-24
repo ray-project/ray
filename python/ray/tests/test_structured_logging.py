@@ -8,7 +8,7 @@ import json
 
 from ray._private.structured_logging.filters import CoreContextFilter
 from ray._private.structured_logging.formatters import JSONFormatter, TextFormatter
-from ray._private.structured_logging.utils import LoggingConfig
+from ray.job_config import LoggingConfig
 from ray._private.test_utils import run_string_as_driver
 
 
@@ -166,7 +166,7 @@ class TestTextModeE2E:
         script = """
 import ray
 import logging
-from ray._private.structured_logging.utils import LoggingConfig
+from ray.job_config import LoggingConfig
 
 ray.init(
     job_config=ray.job_config.JobConfig(py_logging_config=LoggingConfig("TEXT"))
@@ -197,7 +197,7 @@ ray.get(obj_ref)
         script = """
 import ray
 import logging
-from ray._private.structured_logging.utils import LoggingConfig
+from ray.job_config import LoggingConfig
 
 ray.init(
     job_config=ray.job_config.JobConfig(py_logging_config=LoggingConfig("TEXT"))

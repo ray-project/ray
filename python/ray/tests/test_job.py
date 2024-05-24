@@ -21,11 +21,9 @@ from ray._private.test_utils import (
     format_web_url,
     wait_for_pid_to_exit,
 )
-from ray.job_config import JobConfig
+from ray.job_config import JobConfig, LoggingConfig
 from ray.job_submission import JobSubmissionClient
 from ray.dashboard.modules.job.pydantic_models import JobDetails
-
-from ray._private.structured_logging.utils import LoggingConfig
 
 
 def execute_driver(commands: List[str], input: bytes = None):
