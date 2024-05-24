@@ -689,7 +689,7 @@ def test_csv_write(ray_start_regular_shared, fs, data_path, endpoint_url):
         storage_options = dict(client_kwargs=dict(endpoint_url=endpoint_url))
     # Single block.
     df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
-    ds = ray.data.from_pandas([df1])
+    ds = ray.data.from_blocks([df1])
     ds._set_uuid("data")
     ds.write_csv(data_path, filesystem=fs)
     file_path = os.path.join(data_path, "data_000000_000000.csv")

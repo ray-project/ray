@@ -26,6 +26,7 @@ from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.lazy_block_list import LazyBlockList
 from ray.data._internal.logical.operators.from_operators import (
     FromArrow,
+    FromBlocks,
     FromItems,
     FromNumpy,
     FromPandas,
@@ -104,6 +105,37 @@ if TYPE_CHECKING:
 T = TypeVar("T")
 
 logger = logging.getLogger(__name__)
+
+
+@DeveloperAPI
+def from_blocks(blocks: List[Block]):
+    """Create a :class:`~ray.data.Dataset` from a list of blocks.
+
+    This method is primarily used for testing. Unlike other methods like
+    :func:`~ray.data.from_pandas` and :func:`~ray.data.from_arrow`, this method
+    gaurentees that it won't modify the number of blocks.
+
+    Args:
+        blocks: List of blocks to create the dataset from.
+
+    Returns:
+        A :class:`~ray.data.Dataset` holding the blocks.
+    """
+    block_refs = [ray.put(block) for block in blocks]
+    metadata = [
+        BlockAccessor.for_block(block).get_metadata(input_files=None, exec_stats=None)
+        for block in blocks
+    ]
+    from_blocks_op = FromBlocks(block_refs, metadata)
+    logical_plan = LogicalPlan(from_blocks_op)
+    return MaterializedDataset(
+        ExecutionPlan(
+            BlockList(block_refs, metadata, owned_by_consumer=False),
+            DatasetStats(metadata={"FromBlocks": metadata}, parent=None),
+            run_by_consumer=False,
+        ),
+        logical_plan,
+    )
 
 
 @PublicAPI
