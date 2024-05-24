@@ -51,7 +51,7 @@ namespace ray {
 // %L is loglevel, %P is process id, %t for thread id.
 constexpr char kLogFormatTextPattern[] = "[%Y-%m-%d %H:%M:%S,%e %L %P %t] %v";
 constexpr char kLogFormatJsonPattern[] =
-    "{\"asctime\":\"%Y-%m-%d %H:%M:%S,%e\", \"levelname\": \"%L\", %v}";
+    "{\"asctime\":\"%Y-%m-%d %H:%M:%S,%e\",\"levelname\":\"%L\"%v}";
 
 RayLogLevel RayLog::severity_threshold_ = RayLogLevel::INFO;
 std::string RayLog::app_name_ = "";
@@ -390,6 +390,8 @@ bool RayLog::IsLevelEnabled(RayLogLevel log_level) {
   return log_level >= severity_threshold_;
 }
 
+std::string RayLog::GetLogFormatPattern() { return log_format_pattern_; }
+
 std::string RayLog::GetLoggerName() { return logger_name_; }
 
 void RayLog::AddFatalLogCallbacks(
@@ -419,8 +421,8 @@ RayLog::RayLog(const char *file_name, int line_number, RayLogLevel severity)
   }
   if (is_enabled_) {
     if (log_format_json_) {
-      context_osstream_ << "\"" << kLogKeyFilename << "\":" << ConstBasename(file_name)
-                        << ",\"" << kLogKeyLineno << "\":" << line_number;
+      context_osstream_ << ",\"" << kLogKeyFilename << "\":\"" << ConstBasename(file_name)
+                        << "\",\"" << kLogKeyLineno << "\":" << line_number;
     } else {
       msg_osstream_ << ConstBasename(file_name) << ":" << line_number << ": ";
     }

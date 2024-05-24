@@ -296,9 +296,6 @@ class RayLog {
   /// To check failure signal handler enabled or not.
   static bool IsFailureSignalHandlerEnabled();
 
-  /// Get the log level from environment variable.
-  static RayLogLevel GetLogLevelFromEnv();
-
   static std::string GetLogFormatPattern();
 
   static std::string GetLoggerName();
@@ -321,7 +318,7 @@ class RayLog {
   template <typename T>
   RayLog &operator<<(const RayLogField<T> &f) {
     if (log_format_json_) {
-      context_osstream_ << ",\"" << f.key << "\"=\"" << f.value << "\"";
+      context_osstream_ << ",\"" << f.key << "\":\"" << f.value << "\"";
     } else {
       context_osstream_ << " " << f.key << "=" << f.value;
     }
