@@ -381,7 +381,7 @@ std::optional<syncer::RaySyncMessage> LocalResourceManager::CreateSyncMessage(
 void LocalResourceManager::OnResourceOrStateChanged() {
   if (IsLocalNodeDraining() && IsLocalNodeIdle()) {
     RAY_LOG(INFO) << "The node is drained, continue to shut down raylet...";
-    const rpc::NodeDeathInfo node_death_info = DeathInfoFromDrainRequest();
+    rpc::NodeDeathInfo node_death_info = DeathInfoFromDrainRequest();
     shutdown_raylet_gracefully_(std::move(node_death_info));
   }
 
@@ -415,15 +415,15 @@ rpc::NodeDeathInfo LocalResourceManager::AdjustDeathInfo(
   }
   if (drain_request_ == nullptr) {
     RAY_LOG(DEBUG) << "Skip adjusting node death info because there is no existing "
-                      "draining request.";
+                      "drain request.";
     return death_info;
   } else if (drain_request_->reason() !=
                  rpc::autoscaler::DrainNodeReason::DRAIN_NODE_REASON_PREEMPTION ||
              drain_request_->deadline_timestamp_ms() == 0 ||
              drain_request_->deadline_timestamp_ms() > current_time_ms()) {
     RAY_LOG(DEBUG)
-        << "Skip adjusting node death info because the existing draining request "
-           "would not be the cause of current termination. Existing draining request: "
+        << "Skip adjusting node death info because the existing drain request "
+           "would not be the cause of current termination. Existing drain request: "
         << drain_request_->DebugString();
     return death_info;
   }
