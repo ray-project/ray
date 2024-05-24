@@ -1,24 +1,33 @@
 import json
 import os
+import pickle
 import re
 import shutil
+from pathlib import Path
 from unittest.mock import patch
 
+import grpc
 import pytest
 import requests
 import starlette
+from starlette.requests import Request
+from starlette.responses import StreamingResponse
 
 import ray
 from ray import serve
 from ray.anyscale.serve._private.tracing_utils import (
     DEFAULT_TRACING_EXPORTER_IMPORT_PATH,
+    _extract_value_from_method_args,
     _load_span_processors,
     _validate_tracing_exporter,
     _validate_tracing_exporter_processors,
+    get_trace_context,
     setup_tracing,
 )
 from ray.serve._private.common import ServeComponentType
 from ray.serve._private.logging_utils import get_serve_logs_dir
+from ray.serve.config import gRPCOptions
+from ray.serve.generated import serve_pb2, serve_pb2_grpc
 from ray.serve.tests.conftest import *  # noqa
 from ray.tests.conftest import *  # noqa
 
@@ -31,14 +40,6 @@ except ImportError:
     )
 
 CUSTOM_EXPORTER_OUTPUT_FILENAME = "spans.txt"
-
-
-def custom_tracing_exporter():
-    return [
-        SimpleSpanProcessor(
-            ConsoleSpanExporter(out=open(CUSTOM_EXPORTER_OUTPUT_FILENAME, "a"))
-        )
-    ]
 
 
 @pytest.fixture
@@ -59,7 +60,9 @@ def serve_and_ray_shutdown():
 
 
 def test_disable_tracing_exporter():
-
+    """Test that setting `tracing_exporter_import_path`
+    to an empty string disables tracing.
+    """
     is_tracing_setup_successful = setup_tracing(
         component_type=ServeComponentType.REPLICA,
         component_name="component_name",
@@ -70,8 +73,82 @@ def test_disable_tracing_exporter():
     assert is_tracing_setup_successful is False
 
 
-def test_default_tracing_exporter(ray_start_cluster):
+def test_validate_tracing_exporter_with_string():
+    """Test exception message for invalid exporter type."""
+    invalid_exporters = [1, "string", []]
+    expected_exception = "Tracing exporter must be a function."
 
+    for invalid_exporter in invalid_exporters:
+        with pytest.raises(TypeError, match=expected_exception):
+            _validate_tracing_exporter(invalid_exporter)
+
+
+def test_validate_tracing_exporter_with_args():
+    """Test exception message for _validate_tracing_exporter.
+    if exporter contains an argument.
+    """
+
+    def test_exporter(arg):
+        return arg
+
+    expected_exception = "Tracing exporter cannot take any arguments."
+
+    with pytest.raises(TypeError, match=expected_exception):
+        _validate_tracing_exporter(test_exporter)
+
+
+def test_validate_tracing_exporter_processors_list():
+    """Test exception message for _validate_tracing_exporter.
+    if exporter returns invalid return type.
+    """
+    invalid_span_processors = [1, "string"]
+    for invalid_span_processor in invalid_span_processors:
+        expected_exception = re.escape(
+            "Output of tracing exporter needs to be of type "
+            "List[SpanProcessor], but received type "
+            f"{type(invalid_span_processor)}."
+        )
+        with pytest.raises(TypeError, match=expected_exception):
+            _validate_tracing_exporter_processors(invalid_span_processor)
+
+
+def test_validate_tracing_exporter_processors_full_output():
+    """Test exception message for _validate_tracing_exporter.
+    if exporter returns invalid return type.
+    """
+    invalid_span_processors = [[1, 2], ["1", "2"]]
+    for invalid_span_processor in invalid_span_processors:
+        expected_exception = re.escape(
+            "Output of tracing exporter needs to be of "
+            "type List[SpanProcessor], "
+            f"but received type {type(invalid_span_processor[0])}."
+        )
+        with pytest.raises(TypeError, match=expected_exception):
+            _validate_tracing_exporter_processors(invalid_span_processor)
+
+
+def test_missing_dependencies():
+    """Test that setup_tracing raises an exception if
+    tracing module is not installed.
+    """
+    expected_exception = (
+        "You must `pip install opentelemetry-api` and "
+        "`pip install opentelemetry-sdk` "
+        "to enable tracing on Ray Serve."
+    )
+    with patch("ray.anyscale.serve._private.tracing_utils.trace", new=None):
+        with pytest.raises(ImportError, match=expected_exception):
+            setup_tracing(
+                component_type=ServeComponentType.REPLICA,
+                component_name="component_name",
+                component_id="component_id",
+            )
+
+
+def test_default_tracing_exporter(ray_start_cluster):
+    """Test that the default tracing exporter returns
+    List[SimpleSpanProcessor].
+    """
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=1)
     cluster.wait_for_nodes()
@@ -89,6 +166,7 @@ def test_default_tracing_exporter(ray_start_cluster):
 
 
 def test_custom_tracing_exporter(use_custom_tracing_exporter):
+    """Test setup_tracing with a custom tracing exporter."""
     custom_tracing_exporter_path = use_custom_tracing_exporter
 
     span_processors = _load_span_processors(
@@ -101,9 +179,9 @@ def test_custom_tracing_exporter(use_custom_tracing_exporter):
         assert isinstance(span_processor, SimpleSpanProcessor)
 
     is_tracing_setup_successful = setup_tracing(
-        ServeComponentType.REPLICA,
         "component_name",
         "component_id",
+        ServeComponentType.REPLICA,
         custom_tracing_exporter_path,
     )
 
@@ -114,13 +192,16 @@ def test_custom_tracing_exporter(use_custom_tracing_exporter):
 
 
 def test_tracing_sampler(use_custom_tracing_exporter):
+    """Test that tracing sampler is properly configured
+    through tracing_sampling_ratio argument.
+    """
     custom_tracing_exporter_path = use_custom_tracing_exporter
     tracing_sampling_ratio = 1
 
     is_tracing_setup_successful = setup_tracing(
-        ServeComponentType.REPLICA,
         "component_name",
         "component_id",
+        ServeComponentType.REPLICA,
         custom_tracing_exporter_path,
         tracing_sampling_ratio,
     )
@@ -141,99 +222,304 @@ def test_tracing_sampler(use_custom_tracing_exporter):
     assert sampler_data["_rate"] == tracing_sampling_ratio
 
 
-def test_validate_tracing_exporter_with_string():
-    invalid_exporters = [1, "string", []]
-    expected_exception = "Tracing exporter must be a function."
+def test_extract_value_from_method_args():
+    """Given a path to an argument, extract the value from either
+    the function's positional arguments or keyword arguments.
 
-    for invalid_exporter in invalid_exporters:
-        with pytest.raises(TypeError, match=expected_exception):
-            _validate_tracing_exporter(invalid_exporter)
+    Test that `_extract_value_from_method_args` behaves correctly if:
+    1. The function belongs to a class.
+    2. The value maps to either positional or keyword arguments.
+    3. Nested objects are passed into the arguments.
+    4. Objects are depickled if they are serialized.
+    """
 
+    class RequestType:
+        def __init__(self, request_type, is_streaming_request=True):
+            self.request_type = request_type
+            self.is_streaming_request = is_streaming_request
 
-def test_validate_tracing_exporter_with_args():
-    def test_exporter(arg):
-        return arg
+        @property
+        def is_streaming(self) -> str:
+            return self.is_streaming_request
 
-    expected_exception = "Tracing exporter cannot take any arguments."
+    # Example usage
+    class RequestMetadata:
+        def __init__(self, request_id, request_type="http", is_streaming_request=True):
+            self.request_id = request_id
+            self.request_type = RequestType(request_type, is_streaming_request)
 
-    with pytest.raises(TypeError, match=expected_exception):
-        _validate_tracing_exporter(test_exporter)
+    pickled_object = pickle.dumps({"data": "pickled_data"})
 
+    class TestClass:
+        def __init__(self):
+            self.class_val = 1
 
-def test_validate_tracing_exporter_processors_list():
-    invalid_span_processors = [1, "string"]
-    for invalid_span_processor in invalid_span_processors:
-        expected_exception = re.escape(
-            "Output of tracing exporter needs to be of type "
-            "List[SimpleSpanProcessor], but received type "
-            f"{type(invalid_span_processor)}."
+        def test_function(self, val1, val2, request_metadata, pickled_object):
+            return
+
+    cls = TestClass()
+    func = cls.test_function
+
+    request_metadata = RequestMetadata(request_id="123")
+
+    kwargs = {"request_metadata": request_metadata, "pickled_object": pickled_object}
+    args = (cls, 2, 3)
+
+    assert _extract_value_from_method_args(func, "self.class_val", *args, **kwargs) == 1
+    assert _extract_value_from_method_args(func, "val1", *args, **kwargs) == 2
+    assert _extract_value_from_method_args(func, "val2", *args, **kwargs) == 3
+    assert (
+        _extract_value_from_method_args(
+            func, "request_metadata.request_id", *args, **kwargs
         )
-        with pytest.raises(TypeError, match=expected_exception):
-            _validate_tracing_exporter_processors(invalid_span_processor)
-
-
-def test_validate_tracing_exporter_processors_full_output():
-    invalid_span_processors = [[1, 2], ["1", "2"]]
-    for invalid_span_processor in invalid_span_processors:
-        expected_exception = re.escape(
-            "Output of tracing exporter needs to be of "
-            "type List[SimpleSpanProcessor], "
-            f"but received type {type(invalid_span_processor[0])}."
-        )
-        with pytest.raises(TypeError, match=expected_exception):
-            _validate_tracing_exporter_processors(invalid_span_processor)
-
-
-def test_missing_dependencies():
-    expected_exception = (
-        "You must `pip install opentelemetry-api` and "
-        "`pip install opentelemetry-sdk` "
-        "to enable tracing on Ray Serve."
+        == "123"
     )
-    with patch(
-        "ray.anyscale.serve._private.tracing_utils.ConsoleSpanExporter", new=None
-    ):
-        with pytest.raises(ImportError, match=expected_exception):
-            setup_tracing(
-                component_type=ServeComponentType.REPLICA,
-                component_name="component_name",
-                component_id="component_id",
-            )
+    assert (
+        _extract_value_from_method_args(
+            func, "request_metadata.request_type.request_type", *args, **kwargs
+        )
+        == "http"
+    )
+    assert (
+        _extract_value_from_method_args(
+            func, "request_metadata.request_type.is_streaming", *args, **kwargs
+        )
+        is True
+    )
+    assert (
+        _extract_value_from_method_args(func, "pickled_object.data", *args, **kwargs)
+        == "pickled_data"
+    )
 
 
-def test_tracing_e2e(serve_and_ray_shutdown):
+@pytest.mark.parametrize(
+    ("serve_application", "expected_proxy_spans_path", "expected_replica_spans_path"),
+    [
+        (
+            "basic",
+            "fixtures/basic_proxy_spans.json",
+            "fixtures/basic_replica_spans.json",
+        ),
+        (
+            "streaming",
+            "fixtures/streaming_proxy_spans.json",
+            "fixtures/streaming_replica_spans.json",
+        ),
+        ("grpc", "fixtures/grpc_proxy_spans.json", "fixtures/grpc_replica_spans.json"),
+    ],
+)
+def test_tracing_e2e(
+    serve_and_ray_shutdown,
+    serve_application,
+    expected_proxy_spans_path,
+    expected_replica_spans_path,
+):
+    """Test tracing e2e."""
+
     @serve.deployment
-    class Model:
+    class BasicModel:
         def __call__(self, req: starlette.requests.Request):
             replica_context = serve.get_replica_context()
             tracer = trace.get_tracer(__name__)
-            with tracer.start_as_current_span("example_span") as span:
-                span.set_attribute("deployment_name", replica_context.deployment)
+            with tracer.start_as_current_span(
+                "application_span", context=get_trace_context()
+            ) as span:
+                span.set_attribute("deployment", replica_context.deployment)
+                span.set_attribute("replica_id", replica_context.replica_id.unique_id)
+                return "hello"
+
+    def hi_gen_sync():
+        for i in range(10):
+            yield f"hello_{i}"
+
+    @serve.deployment
+    class StreamingModel:
+        def __call__(self, request: Request) -> StreamingResponse:
+            gen = hi_gen_sync()
+            replica_context = serve.get_replica_context()
+            tracer = trace.get_tracer(__name__)
+            with tracer.start_as_current_span(
+                "application_span", context=get_trace_context()
+            ) as span:
+                span.set_attribute("deployment", replica_context.deployment)
+                span.set_attribute("replica_id", replica_context.replica_id.unique_id)
+                return StreamingResponse(gen, media_type="text/plain")
+
+    @serve.deployment
+    class GrpcDeployment:
+        def __call__(self, user_message):
+            replica_context = serve.get_replica_context()
+            tracer = trace.get_tracer(__name__)
+            with tracer.start_as_current_span(
+                "application_span", context=get_trace_context()
+            ) as span:
+                span.set_attribute("deployment", replica_context.deployment)
                 span.set_attribute("replica_id", replica_context.replica_id.unique_id)
 
-    serve.run(Model.bind())
-    requests.post("http://127.0.0.1:8000/")
+                greeting = f"Hello {user_message.name} from {user_message.foo}"
+                num_x2 = user_message.num * 2
+                user_response = serve_pb2.UserDefinedResponse(
+                    greeting=greeting,
+                    num_x2=num_x2,
+                )
+                return user_response
+
+    if serve_application == "basic":
+        serve.run(BasicModel.bind())
+        r = requests.post("http://127.0.0.1:8000/")
+        assert r.text == "hello"
+
+    elif serve_application == "streaming":
+        serve.run(StreamingModel.bind())
+        r = requests.get("http://localhost:8000", stream=True)
+        r.raise_for_status()
+        for i, chunk in enumerate(r.iter_content(chunk_size=None, decode_unicode=True)):
+            assert chunk == f"hello_{i}"
+
+    elif serve_application == "grpc":
+
+        grpc_port = 9000
+        grpc_servicer_functions = [
+            "ray.serve.generated.serve_pb2_grpc"
+            ".add_UserDefinedServiceServicer_to_server",
+            "ray.serve.generated.serve_pb2_grpc.add_FruitServiceServicer_to_server",
+        ]
+
+        serve.start(
+            grpc_options=gRPCOptions(
+                port=grpc_port,
+                grpc_servicer_functions=grpc_servicer_functions,
+            ),
+        )
+        g = GrpcDeployment.options(name="grpc-deployment").bind()
+        serve.run(g)
+
+        channel = grpc.insecure_channel("localhost:9000")
+
+        stub = serve_pb2_grpc.UserDefinedServiceStub(channel)
+        request = serve_pb2.UserDefinedMessage(name="foo", num=30, foo="bar")
+        response, call = stub.__call__.with_call(request=request)
+
+        assert call.code() == grpc.StatusCode.OK, call.code()
+        assert response.greeting == "Hello foo from bar", response.greeting
+
+    serve.shutdown()
 
     serve_logs_dir = get_serve_logs_dir()
     spans_dir = os.path.join(serve_logs_dir, "spans")
 
     files = os.listdir(spans_dir)
 
-    assert len(files) == 1
+    assert len(files) == 2
 
-    tracing_file = files[0]
+    replica_filename = None
+    proxy_filename = None
+    for file in files:
+        if "replica" in file:
+            replica_filename = file
+        elif "proxy" in file:
+            proxy_filename = file
+        else:
+            assert False, f"Did not expect tracing file with name {file}"
 
-    with open(os.path.join(spans_dir, tracing_file), "r") as file:
-        data = json.load(file)
+    assert replica_filename and proxy_filename
 
-    assert "attributes" in data
+    proxy_spans = load_spans(os.path.join(spans_dir, proxy_filename))
+    replica_spans = load_spans(os.path.join(spans_dir, replica_filename))
 
-    attributes = data["attributes"]
+    entire_trace = replica_spans + proxy_spans
+    validate_span_associations_in_trace(entire_trace)
 
-    assert "deployment_name" in attributes and attributes["deployment_name"] == "Model"
-    assert "replica_id" in attributes
+    expected_proxy_spans = load_json_fixture(expected_proxy_spans_path)
+    expected_replica_spans = load_json_fixture(expected_replica_spans_path)
+
+    sanitize_spans(proxy_spans)
+    sanitize_spans(replica_spans)
+
+    assert proxy_spans == expected_proxy_spans
+    assert replica_spans == expected_replica_spans
 
     shutil.rmtree(spans_dir)
+
+
+def custom_tracing_exporter():
+    """Custom tracing exporter used for testing."""
+    return [
+        SimpleSpanProcessor(
+            ConsoleSpanExporter(out=open(CUSTOM_EXPORTER_OUTPUT_FILENAME, "a"))
+        )
+    ]
+
+
+def load_json_fixture(file_path):
+    """Load json from a fixture."""
+    with Path(__file__).parent.joinpath(file_path).open() as f:
+        return json.load(f)
+
+
+def load_spans(file_path):
+    """Load and parse spans from a `.span` file.
+    This requires special handling because ConsoleSpanExporter
+    does not write proper JSON since the data is streamed.
+    """
+    with open(file_path, "r") as file:
+        file_contents = file.read()
+
+    raw_spans = file_contents.split("}\n{")
+    spans = []
+    for i, raw_span in enumerate(raw_spans):
+        if len(raw_spans) > 1:
+            if i == 0:
+                raw_span = raw_span + "}"
+            elif i == (len(raw_spans) - 1):
+                raw_span = "{" + raw_span
+            elif i != 0:
+                raw_span = "{" + raw_span + "}"
+
+        span_dict = json.loads(raw_span)
+
+        spans.append(span_dict)
+
+    spans.sort(reverse=True, key=lambda x: x["start_time"])
+
+    return spans
+
+
+def sanitize_spans(spans):
+    """Remove span attributes with ephemeral data."""
+    for span in spans:
+        del span["context"]
+        del span["parent_id"]
+        del span["start_time"]
+        del span["end_time"]
+        del span["resource"]
+        for k, _ in span["attributes"].items():
+            if "_id" in k:
+                span["attributes"][k] = ""
+
+
+def validate_span_associations_in_trace(spans):
+    """Validate that all spans in a
+    trace are correctly associated with each
+    other through the parent_id relationship.
+    """
+    if len(spans) <= 1:
+        return
+    parent_span_id = spans[0]["parent_id"]
+
+    for span in spans[1:]:
+        current_span_id = span["context"]["span_id"]
+
+        if parent_span_id[:2] == "0x":
+            parent_span_id = parent_span_id[2:]
+
+        if current_span_id[:2] == "0x":
+            current_span_id = current_span_id[2:]
+
+        assert current_span_id and parent_span_id
+        assert current_span_id == parent_span_id
+
+        parent_span_id = span["parent_id"]
 
 
 if __name__ == "__main__":

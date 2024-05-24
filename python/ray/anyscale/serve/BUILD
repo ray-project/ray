@@ -5,6 +5,7 @@ py_test_module_list(
     size = "medium",
     tags = ["team:serve", "exclusive"],
     deps = ["//:ray_lib", ":conftest"],
+    data = glob(["tests/fixtures/*.*"]),
 )
 
 py_library(
@@ -28,4 +29,5 @@ py_test_module_list(
   size = "medium",
   tags = ["team:serve", "exclusive"],
   deps = ["//:ray_lib", ":conftest"],
+  data = glob(["tests/fixtures/*.*"]),
 )

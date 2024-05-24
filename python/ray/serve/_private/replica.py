@@ -17,6 +17,11 @@ import ray
 from ray import cloudpickle
 from ray._private.utils import get_or_create_event_loop
 from ray.actor import ActorClass
+from ray.anyscale.serve._private.tracing_utils import (
+    set_span_attributes,
+    setup_tracing,
+    tracing_decorator_factory,
+)
 from ray.remote_function import RemoteFunction
 from ray.serve import metrics
 from ray.serve._private.common import (
@@ -301,10 +306,6 @@ class ReplicaActor:
     ):
 
         # ===== Begin Anyscale proprietary code ======
-        # Load the setup_tracing function lazily
-        # as Opentelemetry imports are time-consuming.
-        from ray.anyscale.serve._private.tracing_utils import setup_tracing
-
         try:
             is_tracing_setup_successful = setup_tracing(
                 component_type=ServeComponentType.REPLICA,
@@ -359,6 +360,18 @@ class ReplicaActor:
         2) Records the access log message (if not disabled).
         3) Records per-request metrics via the metrics manager.
         """
+        trace_attributes = {
+            "request_id": request_metadata.request_id,
+            "replica_id": self._replica_id.unique_id,
+            "deployment": self._deployment_id.name,
+            "app": self._deployment_id.app_name,
+            "call_method": request_metadata.call_method,
+            "route": request_metadata.route,
+            "multiplexed_model_id": request_metadata.multiplexed_model_id,
+            "is_streaming": request_metadata.is_streaming,
+        }
+        set_span_attributes(trace_attributes)
+
         ray.serve.context._serve_request_context.set(
             ray.serve.context._RequestContext(
                 request_metadata.route,
@@ -410,6 +423,10 @@ class ReplicaActor:
         if user_exception is not None:
             raise user_exception from None
 
+    @tracing_decorator_factory(
+        trace_name="replica_handle_request",
+        propagated_trace_context_path="pickled_request_metadata.tracing_context",
+    )
     async def handle_request(
         self,
         pickled_request_metadata: bytes,
@@ -490,6 +507,10 @@ class ReplicaActor:
             if wait_for_message_task is not None and not wait_for_message_task.done():
                 wait_for_message_task.cancel()
 
+    @tracing_decorator_factory(
+        trace_name="replica_handle_request",
+        propagated_trace_context_path="pickled_request_metadata.tracing_context",
+    )
     async def handle_request_streaming(
         self,
         pickled_request_metadata: bytes,
@@ -506,6 +527,10 @@ class ReplicaActor:
             ):
                 yield result
 
+    @tracing_decorator_factory(
+        trace_name="replica_handle_request",
+        propagated_trace_context_path="pickled_request_metadata.tracing_context",
+    )
     async def handle_request_with_rejection(
         self,
         pickled_request_metadata: bytes,
