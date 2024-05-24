@@ -12,6 +12,7 @@ import ray
 from ray import serve
 from ray._private.test_utils import wait_for_condition
 import ray._private.ray_constants as ray_constants
+from ray.serve.tests.test_config_files import world
 from ray.util.state import list_actors
 from ray.serve._private.constants import SERVE_NAMESPACE
 from ray.serve.tests.conftest import *  # noqa: F401 F403
@@ -360,6 +361,13 @@ def test_get_serve_instance_details(ray_start_stop, f_deployment_options, url):
             },
         ],
     }
+
+    # Deploy app1 and app2 through the declarative API
+    deploy_config_multi_app(config, url)
+
+    # Deploy app3 through the imperative API
+    serve.run(world.DagNode, name="app3", route_prefix="/grape")
+
     expected_values = {
         "app1": {
             "route_prefix": "/apple",
@@ -373,9 +381,13 @@ def test_get_serve_instance_details(ray_start_stop, f_deployment_options, url):
             "deployments": {"FastAPIDeployment"},
             "source": "declarative",
         },
+        "app3": {
+            "route_prefix": "/grape",
+            "docs_path": None,
+            "deployments": {"f", "BasicDriver"},
+            "source": "imperative",
+        },
     }
-
-    deploy_config_multi_app(config, url)
 
     def applications_running():
         response = requests.get(url, timeout=15)
@@ -385,6 +397,7 @@ def test_get_serve_instance_details(ray_start_stop, f_deployment_options, url):
         return (
             serve_details.applications["app1"].status == ApplicationStatus.RUNNING
             and serve_details.applications["app2"].status == ApplicationStatus.RUNNING
+            and serve_details.applications["app3"].status == ApplicationStatus.RUNNING
         )
 
     wait_for_condition(applications_running, timeout=15)
