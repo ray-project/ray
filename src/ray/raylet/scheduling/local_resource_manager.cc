@@ -381,8 +381,8 @@ std::optional<syncer::RaySyncMessage> LocalResourceManager::CreateSyncMessage(
 void LocalResourceManager::OnResourceOrStateChanged() {
   if (IsLocalNodeDraining() && IsLocalNodeIdle()) {
     RAY_LOG(INFO) << "The node is drained, continue to shut down raylet...";
-    const rpc::NodeDeathInfo &node_death_info = DeathInfoFromDrainRequest();
-    shutdown_raylet_gracefully_(node_death_info);
+    const rpc::NodeDeathInfo node_death_info = DeathInfoFromDrainRequest();
+    shutdown_raylet_gracefully_(std::move(node_death_info));
   }
 
   ++version_;
@@ -392,39 +392,46 @@ void LocalResourceManager::OnResourceOrStateChanged() {
   resource_change_subscriber_(ToNodeResources());
 }
 
-const rpc::NodeDeathInfo &LocalResourceManager::DeathInfoFromDrainRequest() {
-  auto death_info = std::make_shared<rpc::NodeDeathInfo>();
+rpc::NodeDeathInfo LocalResourceManager::DeathInfoFromDrainRequest() {
+  rpc::NodeDeathInfo death_info;
   RAY_CHECK(drain_request_ != nullptr);
   if (drain_request_->reason() ==
       rpc::autoscaler::DrainNodeReason::DRAIN_NODE_REASON_IDLE_TERMINATION) {
-    death_info->set_reason(rpc::NodeDeathInfo::AUTOSCALER_DRAIN_IDLE);
-    death_info->set_reason_message(drain_request_->reason_message());
+    death_info.set_reason(rpc::NodeDeathInfo::AUTOSCALER_DRAIN_IDLE);
+    death_info.set_reason_message(drain_request_->reason_message());
   } else {
     RAY_CHECK_EQ(drain_request_->reason(),
                  rpc::autoscaler::DrainNodeReason::DRAIN_NODE_REASON_PREEMPTION);
-    death_info->set_reason(rpc::NodeDeathInfo::AUTOSCALER_DRAIN_PREEMPTED);
-    death_info->set_reason_message(drain_request_->reason_message());
+    death_info.set_reason(rpc::NodeDeathInfo::AUTOSCALER_DRAIN_PREEMPTED);
+    death_info.set_reason_message(drain_request_->reason_message());
   }
-  return *death_info;
+  return death_info;
 }
 
-const rpc::NodeDeathInfo &LocalResourceManager::AdjustDeathInfo(
+rpc::NodeDeathInfo LocalResourceManager::AdjustDeathInfo(
     const rpc::NodeDeathInfo &death_info) {
   if (death_info.reason() != rpc::NodeDeathInfo::EXPECTED_TERMINATION) {
     return death_info;
   }
-  if (drain_request_ == nullptr ||
-      drain_request_->reason() !=
-          rpc::autoscaler::DrainNodeReason::DRAIN_NODE_REASON_PREEMPTION ||
-      drain_request_->deadline_timestamp_ms() == 0 ||
-      drain_request_->deadline_timestamp_ms() < current_time_ms()) {
+  if (drain_request_ == nullptr) {
+    RAY_LOG(DEBUG) << "Skip adjusting node death info because there is no existing "
+                      "draining request.";
+    return death_info;
+  } else if (drain_request_->reason() !=
+                 rpc::autoscaler::DrainNodeReason::DRAIN_NODE_REASON_PREEMPTION ||
+             drain_request_->deadline_timestamp_ms() == 0 ||
+             drain_request_->deadline_timestamp_ms() > current_time_ms()) {
+    RAY_LOG(DEBUG)
+        << "Skip adjusting node death info because the existing draining request "
+           "would not be the cause of current termination. Existing draining request: "
+        << drain_request_->DebugString();
     return death_info;
   }
 
-  auto adjusted_death_info = std::make_shared<rpc::NodeDeathInfo>(death_info);
-  adjusted_death_info->set_reason(rpc::NodeDeathInfo::AUTOSCALER_DRAIN_PREEMPTED);
-  adjusted_death_info->set_reason_message(drain_request_->reason_message());
-  return *adjusted_death_info;
+  rpc::NodeDeathInfo adjusted_death_info;
+  adjusted_death_info.set_reason(rpc::NodeDeathInfo::AUTOSCALER_DRAIN_PREEMPTED);
+  adjusted_death_info.set_reason_message(drain_request_->reason_message());
+  return adjusted_death_info;
 }
 
 bool LocalResourceManager::ResourcesExist(scheduling::ResourceID resource_id) const {

@@ -93,7 +93,7 @@ class Raylet {
   ///
   /// \param node_death_info The node death info to adjust.
   /// \return The adjusted node death info.
-  const rpc::NodeDeathInfo &AdjustDeathInfo(const rpc::NodeDeathInfo &node_death_info);
+  rpc::NodeDeathInfo AdjustDeathInfo(const rpc::NodeDeathInfo &node_death_info);
 
   friend class TestObjectManagerIntegration;
 

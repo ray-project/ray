@@ -160,13 +160,13 @@ class LocalResourceManager : public syncer::ReporterInterface {
   bool IsLocalNodeDraining() const { return drain_request_ != nullptr; }
 
   /// Generate node death info from existing drain request.
-  const rpc::NodeDeathInfo &DeathInfoFromDrainRequest();
+  rpc::NodeDeathInfo DeathInfoFromDrainRequest();
 
   /// Adjust the provided node death info based on existing drain request.
   ///
   /// \param node_death_info: The node death info to adjust.
   /// \return The adjusted node death info.
-  const rpc::NodeDeathInfo &AdjustDeathInfo(const rpc::NodeDeathInfo &node_death_info);
+  rpc::NodeDeathInfo AdjustDeathInfo(const rpc::NodeDeathInfo &node_death_info);
 
  private:
   struct ResourceUsage {

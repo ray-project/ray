@@ -120,12 +120,13 @@ void Raylet::Start() {
 
 void Raylet::UnregisterSelf(const rpc::NodeDeathInfo &node_death_info,
                             std::function<void()> unregister_done_callback) {
-  const rpc::NodeDeathInfo &adjusted_death_info = AdjustDeathInfo(node_death_info);
+  const rpc::NodeDeathInfo adjusted_death_info = AdjustDeathInfo(node_death_info);
+  RAY_LOG(INFO) << "After checking existing draining request, adjusted node death info: "
+                << adjusted_death_info.DebugString();
   gcs_client_->Nodes().UnregisterSelf(adjusted_death_info, unregister_done_callback);
 }
 
-const rpc::NodeDeathInfo &Raylet::AdjustDeathInfo(
-    const rpc::NodeDeathInfo &node_death_info) {
+rpc::NodeDeathInfo Raylet::AdjustDeathInfo(const rpc::NodeDeathInfo &node_death_info) {
   return node_manager_.AdjustDeathInfo(node_death_info);
 }
 
