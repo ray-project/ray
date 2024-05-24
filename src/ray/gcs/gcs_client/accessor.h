@@ -28,6 +28,10 @@
 namespace ray {
 namespace gcs {
 
+// Default GCS Client timeout in milliseconds, as defined in
+// RAY_gcs_server_request_timeout_seconds
+int64_t GetGcsTimeoutMs();
+
 using SubscribeOperation = std::function<Status(const StatusCallback &done)>;
 using FetchDataOperation = std::function<void(const StatusCallback &done)>;
 
@@ -286,13 +290,13 @@ class NodeInfoAccessor {
   virtual Status RegisterSelf(const rpc::GcsNodeInfo &local_node_info,
                               const StatusCallback &callback);
 
-  /// Drain (remove the information of the node from the cluster) the local node from GCS
-  /// synchronously.
+  /// Unregister local node to GCS asynchronously.
   ///
-  /// Once the RPC is replied, it is guaranteed that GCS drains the information of the
-  /// local node, and all the nodes in the cluster will "eventually" be informed that the
-  /// node is drained. \return Status
-  virtual Status DrainSelf();
+  /// \param node_death_info The death information regarding why to unregister from GCS.
+  /// \param unregister_done_callback Callback that will be called when unregistration is
+  /// done.
+  virtual void UnregisterSelf(const rpc::NodeDeathInfo &node_death_info,
+                              std::function<void()> unregister_done_callback);
 
   /// Get id of local node which was registered by 'RegisterSelf'.
   ///
@@ -312,13 +316,22 @@ class NodeInfoAccessor {
   virtual Status AsyncRegister(const rpc::GcsNodeInfo &node_info,
                                const StatusCallback &callback);
 
-  /// Send a check alive request to GCS for the liveness of some node.
+  /// Send a check alive request to GCS for the liveness of this node.
   ///
   /// \param callback The callback function once the request is finished.
   /// \param timeout_ms The timeout for this request.
   /// \return Status
   virtual Status AsyncCheckSelfAlive(const std::function<void(Status, bool)> &callback,
                                      int64_t timeout_ms);
+
+  /// Send a check alive request to GCS for the liveness of some nodes.
+  ///
+  /// \param callback The callback function once the request is finished.
+  /// \param timeout_ms The timeout for this request.
+  /// \return Status
+  virtual Status AsyncCheckAlive(const std::vector<std::string> &raylet_addresses,
+                                 int64_t timeout_ms,
+                                 const MultiItemCallback<bool> &callback);
 
   /// Drain (remove the information of the node from the cluster) the local node from GCS
   /// asynchronously.
@@ -366,6 +379,16 @@ class NodeInfoAccessor {
   ///
   /// \return All nodes in cache.
   virtual const absl::flat_hash_map<NodeID, rpc::GcsNodeInfo> &GetAll() const;
+
+  /// Send a check alive request to GCS for the liveness of some nodes.
+  ///
+  /// \param raylet_addresses The addresses of the nodes to check, each like "ip:port".
+  /// \param timeout_ms The timeout for this request.
+  /// \param nodes_alive The liveness of the nodes. Only valid if the status is OK.
+  /// \return Status
+  virtual Status CheckAlive(const std::vector<std::string> &raylet_addresses,
+                            int64_t timeout_ms,
+                            std::vector<bool> &nodes_alive);
 
   /// Search the local cache to find out if the given node is removed.
   /// Non-thread safe.
@@ -683,43 +706,65 @@ class InternalKVAccessor {
   ///
   /// \param ns The namespace to scan.
   /// \param prefix The prefix to scan.
+  /// \param timeout_ms -1 means infinite.
   /// \param callback Callback that will be called after scanning.
   /// \return Status
   virtual Status AsyncInternalKVKeys(
       const std::string &ns,
       const std::string &prefix,
+      const int64_t timeout_ms,
       const OptionalItemCallback<std::vector<std::string>> &callback);
 
   /// Asynchronously get the value for a given key.
   ///
   /// \param ns The namespace to lookup.
   /// \param key The key to lookup.
+  /// \param timeout_ms -1 means infinite.
   /// \param callback Callback that will be called after get the value.
   virtual Status AsyncInternalKVGet(const std::string &ns,
                                     const std::string &key,
+                                    const int64_t timeout_ms,
                                     const OptionalItemCallback<std::string> &callback);
+
+  /// Asynchronously get the value for multiple keys.
+  ///
+  /// \param ns The namespace to lookup.
+  /// \param keys The keys to lookup.
+  /// \param timeout_ms -1 means infinite.
+  /// \param callback Callback that will be called after get the values.
+  virtual Status AsyncInternalKVMultiGet(
+      const std::string &ns,
+      const std::vector<std::string> &keys,
+      const int64_t timeout_ms,
+      const OptionalItemCallback<absl::flat_hash_map<std::string, std::string>>
+          &callback);
 
   /// Asynchronously set the value for a given key.
   ///
   /// \param ns The namespace to put the key.
   /// \param key The key in <key, value> pair
   /// \param value The value associated with the key
+  /// \param timeout_ms -1 means infinite.
   /// \param callback Callback that will be called after the operation.
   /// \return Status
   virtual Status AsyncInternalKVPut(const std::string &ns,
                                     const std::string &key,
                                     const std::string &value,
                                     bool overwrite,
+                                    const int64_t timeout_ms,
                                     const OptionalItemCallback<int> &callback);
 
   /// Asynchronously check the existence of a given key
   ///
   /// \param ns The namespace to check.
   /// \param key The key to check.
-  /// \param callback Callback that will be called after the operation.
+  /// \param timeout_ms -1 means infinite.
+  /// \param callback Callback that will be called after the operation. Called with `true`
+  /// if the key is deleted; `false` if it doesn't exist.
   /// \return Status
   virtual Status AsyncInternalKVExists(const std::string &ns,
                                        const std::string &key,
+                                       const int64_t timeout_ms,
                                        const OptionalItemCallback<bool> &callback);
 
   /// Asynchronously delete a key
@@ -727,36 +772,42 @@ class InternalKVAccessor {
   /// \param ns The namespace to delete from.
   /// \param key The key to delete.
   /// \param del_by_prefix If set to be true, delete all keys with prefix as `key`.
-  /// \param callback Callback that will be called after the operation.
+  /// \param timeout_ms -1 means infinite.
+  /// \param callback Callback that will be called after the operation. Called with number
+  /// of keys deleted.
   /// \return Status
   virtual Status AsyncInternalKVDel(const std::string &ns,
                                     const std::string &key,
                                     bool del_by_prefix,
-                                    const StatusCallback &callback);
+                                    const int64_t timeout_ms,
+                                    const OptionalItemCallback<int> &callback);
 
   // These are sync functions of the async above
 
   /// List keys with prefix stored in internal kv
   ///
-  /// The RPC will timeout after the default GCS RPC timeout is exceeded.
+  /// The RPC will timeout after the timeout_ms, or wait infinitely if timeout_ms is -1.
   ///
   /// \param ns The namespace to scan.
   /// \param prefix The prefix to scan.
+  /// \param timeout_ms -1 means infinite.
   /// \param value It's an output parameter. It'll be set to the keys with `prefix`
   /// \return Status
   virtual Status Keys(const std::string &ns,
                       const std::string &prefix,
+                      const int64_t timeout_ms,
                       std::vector<std::string> &value);
 
   /// Set the <key, value> in the store
   ///
-  /// The RPC will timeout after the default GCS RPC timeout is exceeded.
+  /// The RPC will timeout after the timeout_ms, or wait infinitely if timeout_ms is -1.
   ///
   /// \param ns The namespace to put the key.
   /// \param key The key of the pair
   /// \param value The value of the pair
   /// \param overwrite If it's true, it'll overwrite existing <key, value> if it
   ///     exists.
+  /// \param timeout_ms -1 means infinite.
   /// \param added It's an output parameter. It'll be set to be true if
   ///     any row is added.
   /// \return Status
@@ -764,38 +815,64 @@ class InternalKVAccessor {
                      const std::string &key,
                      const std::string &value,
                      bool overwrite,
+                     const int64_t timeout_ms,
                      bool &added);
 
   /// Retrive the value associated with a key
   ///
-  /// The RPC will timeout after the default GCS RPC timeout is exceeded.
+  /// The RPC will timeout after the timeout_ms, or wait infinitely if timeout_ms is -1.
   ///
   /// \param ns The namespace to lookup.
-  /// \param key The key to lookup
+  /// \param key The key to lookup.
+  /// \param timeout_ms -1 means infinite.
   /// \param value It's an output parameter. It'll be set to the value of the key
   /// \return Status
-  virtual Status Get(const std::string &ns, const std::string &key, std::string &value);
+  virtual Status Get(const std::string &ns,
+                     const std::string &key,
+                     const int64_t timeout_ms,
+                     std::string &value);
+
+  /// Retrive the values associated with some keys
+  ///
+  /// \param ns The namespace to lookup.
+  /// \param keys The keys to lookup.
+  /// \param timeout_ms -1 means infinite.
+  /// \param values It's an output parameter. It'll be set to the values of the keys.
+  virtual Status MultiGet(const std::string &ns,
+                          const std::vector<std::string> &keys,
+                          const int64_t timeout_ms,
+                          absl::flat_hash_map<std::string, std::string> &values);
 
   /// Delete the key
   ///
-  /// The RPC will timeout after the default GCS RPC timeout is exceeded.
+  /// The RPC will timeout after the timeout_ms, or wait infinitely if timeout_ms is -1.
   ///
   /// \param ns The namespace to delete from.
   /// \param key The key to delete
   /// \param del_by_prefix If set to be true, delete all keys with prefix as `key`.
+  /// \param timeout_ms -1 means infinite.
+  /// \param deleted It's an output parameter. It'll be set to be number of keys deleted.
   /// \return Status
-  virtual Status Del(const std::string &ns, const std::string &key, bool del_by_prefix);
+  virtual Status Del(const std::string &ns,
+                     const std::string &key,
+                     bool del_by_prefix,
+                     const int64_t timeout_ms,
+                     int &num_deleted);
 
   /// Check existence of a key in the store
   ///
-  /// The RPC will timeout after the default GCS RPC timeout is exceeded.
+  /// The RPC will timeout after the timeout_ms, or wait infinitely if timeout_ms is -1.
   ///
   /// \param ns The namespace to check.
   /// \param key The key to check
+  /// \param timeout_ms -1 means infinite.
   /// \param exist It's an output parameter. It'll be true if the key exists in the
   ///    system. Otherwise, it'll be set to be false.
   /// \return Status
-  virtual Status Exists(const std::string &ns, const std::string &key, bool &exist);
+  virtual Status Exists(const std::string &ns,
+                        const std::string &key,
+                        const int64_t timeout_ms,
+                        bool &exists);
 
  private:
   GcsClient *client_impl_;

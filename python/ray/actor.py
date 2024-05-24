@@ -237,6 +237,7 @@ class ActorMethod:
         _generator_backpressure_num_objects=None,
     ):
         from ray.dag.class_node import (
+            BIND_INDEX_KEY,
             PARENT_CLASS_NODE_KEY,
             PREV_CLASS_METHOD_CALL_KEY,
             ClassMethodNode,
@@ -259,7 +260,9 @@ class ActorMethod:
         other_args_to_resolve = {
             PARENT_CLASS_NODE_KEY: actor,
             PREV_CLASS_METHOD_CALL_KEY: None,
+            BIND_INDEX_KEY: actor._ray_dag_bind_index,
         }
+        actor._ray_dag_bind_index += 1
 
         node = ClassMethodNode(
             self._method_name,
@@ -1306,6 +1309,11 @@ class ActorHandle:
             actor_creation_function_descriptor
         )
         self._ray_function_descriptor = {}
+        # This is incremented each time `bind()` is called on an actor handle
+        # (in Ray DAGs), therefore capturing the bind order of the actor methods.
+        # TODO: this does not work properly if the caller has two copies of the
+        # same actor handle, and needs to be fixed.
+        self._ray_dag_bind_index = 0
 
         if not self._ray_is_cross_language:
             assert isinstance(

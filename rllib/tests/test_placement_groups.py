@@ -2,10 +2,10 @@ import os
 import unittest
 
 import ray
-from ray import air
-from ray import tune
-from ray.tune import Callback
+from ray import air, tune
+from ray.air.constants import TRAINING_ITERATION
 from ray.rllib.algorithms.ppo import PPO, PPOConfig
+from ray.tune import Callback
 from ray.tune.experiment import Trial
 from ray.tune.execution.placement_groups import PlacementGroupFactory
 
@@ -62,7 +62,7 @@ class TestPlacementGroups(unittest.TestCase):
             "my_trainable",
             param_space=config,
             run_config=air.RunConfig(
-                stop={"training_iteration": 2},
+                stop={TRAINING_ITERATION: 2},
                 verbose=2,
                 callbacks=[_TestCallback()],
             ),
@@ -71,15 +71,16 @@ class TestPlacementGroups(unittest.TestCase):
     def test_default_resource_request(self):
         config = (
             PPOConfig()
+            .resources(placement_strategy="SPREAD")
             .env_runners(
                 num_env_runners=2,
+                num_cpus_per_env_runner=2,
             )
             .training(
                 model={"fcnet_hiddens": [10]}, lr=tune.grid_search([0.1, 0.01, 0.001])
             )
             .environment("CartPole-v1")
             .framework("torch")
-            .resources(placement_strategy="SPREAD", num_cpus_per_worker=2)
         )
         # 3 Trials: Can only run 1 at a time (num_cpus=6; needed: 5).
 
@@ -87,7 +88,7 @@ class TestPlacementGroups(unittest.TestCase):
             PPO,
             param_space=config,
             run_config=air.RunConfig(
-                stop={"training_iteration": 2},
+                stop={TRAINING_ITERATION: 2},
                 verbose=2,
                 callbacks=[_TestCallback()],
             ),
@@ -106,7 +107,7 @@ class TestPlacementGroups(unittest.TestCase):
             tune.Tuner(
                 tune.with_resources(PPO, PlacementGroupFactory([{"CPU": 1}])),
                 param_space=config,
-                run_config=air.RunConfig(stop={"training_iteration": 2}, verbose=2),
+                run_config=air.RunConfig(stop={TRAINING_ITERATION: 2}, verbose=2),
             ).fit()
         except ValueError as e:
             assert "have been automatically set to" in e.args[0]

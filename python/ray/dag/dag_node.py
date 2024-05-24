@@ -2,6 +2,7 @@ import ray
 from ray.dag.base import DAGNodeBase
 from ray.dag.py_obj_scanner import _PyObjScanner
 from ray.util.annotations import DeveloperAPI
+import copy
 
 from typing import (
     Optional,
@@ -17,8 +18,7 @@ import uuid
 import asyncio
 
 from ray.dag.compiled_dag_node import build_compiled_dag_from_ray_dag
-
-from ray.dag.experimental.types import DAGNodeOutputType
+from ray.experimental.channel import ChannelOutputType
 
 T = TypeVar("T")
 
@@ -63,14 +63,14 @@ class DAGNode(DAGNodeBase):
         # Cached values from last call to execute()
         self.cache_from_last_execute = {}
 
-        self._type_hint: Optional[DAGNodeOutputType] = None
+        self._type_hint: Optional[ChannelOutputType] = ChannelOutputType()
 
-    def with_type_hint(self, typ: DAGNodeOutputType):
-        self._type_hint = typ
+    def with_type_hint(self, typ: ChannelOutputType):
+        self._type_hint = copy.deepcopy(typ)
         return self
 
     @property
-    def type_hint(self) -> Optional[DAGNodeOutputType]:
+    def type_hint(self) -> Optional[ChannelOutputType]:
         return self._type_hint
 
     def get_args(self) -> Tuple[Any]:
