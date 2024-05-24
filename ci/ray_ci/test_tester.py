@@ -14,9 +14,9 @@ from ci.ray_ci.tester import (
     _get_all_test_query,
     _get_test_targets,
     _get_high_impact_test_targets,
-    _get_new_tests,
     _get_flaky_test_targets,
     _get_tag_matcher,
+    _get_new_tests,
 )
 from ray_release.test import Test, TestState
 
