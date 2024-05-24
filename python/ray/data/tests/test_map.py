@@ -831,7 +831,8 @@ def test_map_batches_block_bundling_skewed_manual(
 ):
     num_blocks = len(block_sizes)
     ds = ray.data.from_pandas(
-        [pd.DataFrame({"a": [1] * block_size}) for block_size in block_sizes]
+        [pd.DataFrame({"a": [1] * block_size}) for block_size in block_sizes],
+        override_num_blocks=num_blocks,
     )
     # Confirm that we have the expected number of initial blocks.
     assert ds._plan.initial_num_blocks() == num_blocks
@@ -857,7 +858,8 @@ def test_map_batches_block_bundling_skewed_auto(
 ):
     num_blocks = len(block_sizes)
     ds = ray.data.from_pandas(
-        [pd.DataFrame({"a": [1] * block_size}) for block_size in block_sizes]
+        [pd.DataFrame({"a": [1] * block_size}) for block_size in block_sizes],
+        override_num_blocks=num_blocks,
     )
     # Confirm that we have the expected number of initial blocks.
     assert ds._plan.initial_num_blocks() == num_blocks
