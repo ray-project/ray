@@ -636,21 +636,20 @@ class Algorithm(Trainable, AlgorithmBase):
             )
             self.config.off_policy_estimation_methods = ope_dict
 
-        if not self.config.input_ or not self.config._enable_new_api_stack:
-            # Create a set of env runner actors via a EnvRunnerGroup.
-            self.workers = EnvRunnerGroup(
-                env_creator=self.env_creator,
-                validate_env=self.validate_env,
-                default_policy_class=self.get_default_policy_class(self.config),
-                config=self.config,
-                num_workers=self.config.num_env_runners,
-                local_worker=True,
-                logdir=self.logdir,
-            )
+        # Create a set of env runner actors via a EnvRunnerGroup.
+        self.workers = EnvRunnerGroup(
+            env_creator=self.env_creator,
+            validate_env=self.validate_env,
+            default_policy_class=self.get_default_policy_class(self.config),
+            config=self.config,
+            num_env_runners=0 if self.config.input_ else self.config.num_env_runners,
+            local_env_runner=True,
+            logdir=self.logdir,
+        )
 
-            # Ensure remote workers are initially in sync with the local worker.
-            self.workers.sync_weights(inference_only=True)
-        else:
+        # Ensure remote workers are initially in sync with the local worker.
+        self.workers.sync_weights(inference_only=True)
+        if self.config.input_ and self.config._enable_new_api_stack:
             from ray.rllib.offline.offline_data import OfflineData
 
             self.offline_data = OfflineData(self.config)

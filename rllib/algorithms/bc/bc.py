@@ -4,14 +4,18 @@ from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.bc.bc_catalog import BCCatalog
 from ray.rllib.algorithms.marwil.marwil import MARWIL, MARWILConfig
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
-from ray.rllib.execution.rollout_ops import synchronous_parallel_sample
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.metrics import (
     ALL_MODULES,
-    NUM_AGENT_STEPS_SAMPLED,
-    NUM_ENV_STEPS_SAMPLED,
-    SAMPLE_TIMER,
+    LEARNER_RESULTS,
+    LEARNER_UPDATE_TIMER,
+    OFFLINE_SAMPLING_TIMER,
+    NUM_ENV_STEPS_TRAINED,
+    NUM_ENV_STEPS_TRAINED_LIFETIME,
+    NUM_MODULE_STEPS_TRAINED,
+    NUM_MODULE_STEPS_TRAINED_LIFETIME,
     SYNCH_WORKER_WEIGHTS_TIMER,
+    TIMERS,
 )
 from ray.rllib.utils.typing import RLModuleSpec, ResultDict
 
@@ -149,51 +153,58 @@ class BC(MARWIL):
             # now all rewards are `nan`, which possibly confuses
             # the user that sth. is not right, although it is as
             # we do not step the env.
-            with self._timers[SAMPLE_TIMER]:
+            with self.metrics.log_time((TIMERS, OFFLINE_SAMPLING_TIMER)):
                 # Sampling from offline data.
                 # TODO (simon): We have to remove the `RolloutWorker`
                 # here and just use the already distributed `dataset`
                 # for sampling. Only in online evaluation
                 # `RolloutWorker/EnvRunner` should be used.
-                if self.config.count_steps_by == "agent_steps":
-                    train_batch = synchronous_parallel_sample(
-                        worker_set=self.workers,
-                        max_agent_steps=self.config.train_batch_size,
-                    )
-                else:
-                    train_batch = synchronous_parallel_sample(
-                        worker_set=self.workers,
-                        max_env_steps=self.config.train_batch_size,
-                    )
+                episodes = self.offline_data.sample(
+                    num_samples=self.config.train_batch_size
+                )
 
-                train_batch = train_batch.as_multi_agent()
-                self._counters[NUM_AGENT_STEPS_SAMPLED] += train_batch.agent_steps()
-                self._counters[NUM_ENV_STEPS_SAMPLED] += train_batch.env_steps()
+            with self.metrics.log_time((TIMERS, LEARNER_UPDATE_TIMER)):
+                # Updating the policy.
+                learner_results = self.learner_group.update_from_episodes(
+                    episodes=episodes
+                )
 
-            # Updating the policy.
-            train_results = self.learner_group.update_from_batch(batch=train_batch)
-
+                self.metrics.log_n_dicts(learner_results, key=LEARNER_RESULTS)
+                self.metrics.log_value(
+                    NUM_ENV_STEPS_TRAINED_LIFETIME,
+                    self.metrics.peek(
+                        LEARNER_RESULTS, ALL_MODULES, NUM_ENV_STEPS_TRAINED
+                    ),
+                    reduce="sum",
+                )
+                self.metrics.log_dict(
+                    {
+                        (LEARNER_RESULTS, mid, NUM_MODULE_STEPS_TRAINED_LIFETIME): (
+                            stats[NUM_MODULE_STEPS_TRAINED]
+                        )
+                        for mid, stats in self.metrics.peek(LEARNER_RESULTS).items()
+                    },
+                    reduce="sum",
+                )
             # Synchronize weights.
             # As the results contain for each policy the loss and in addition the
             # total loss over all policies is returned, this total loss has to be
             # removed.
-            policies_to_update = set(train_results.keys()) - {ALL_MODULES}
+            policies_to_update = set(learner_results.keys()) - {ALL_MODULES}
 
-            global_vars = {
-                "timestep": self._counters[NUM_AGENT_STEPS_SAMPLED],
-            }
-
-            with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
+            # Update weights and global_vars - after learning on the local worker -
+            # on all remote workers.
+            with self.metrics.log_time((TIMERS, SYNCH_WORKER_WEIGHTS_TIMER)):
                 if self.workers.num_remote_workers() > 0:
+                    # NOTE: the new API stack does not use global vars.
                     self.workers.sync_weights(
                         from_worker_or_learner_group=self.learner_group,
                         policies=policies_to_update,
-                        global_vars=global_vars,
+                        global_vars=None,
                     )
-                # Get weights from Learner to local worker.
+                # Then we must have a local worker.
                 else:
-                    self.workers.local_worker().set_weights(
-                        self.learner_group.get_weights()
-                    )
+                    weights = self.learner_group.get_weights(inference_only=True)
+                    self.workers.local_worker().set_weights(weights)
 
-            return train_results
+            return self.metrics.reduce()
