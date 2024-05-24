@@ -320,6 +320,10 @@ class MultiAgentEnvRunner(EnvRunner):
                 extra_model_outputs=extra_model_outputs,
             )
 
+            # Make the `on_episode_step` callback (before finalizing the episode
+            # object).
+            self._make_on_episode_callback("on_episode_step")
+
             # Episode is done for all agents. Wrap up the old one and create a new
             # one (and reset it) to continue.
             if self._episode.is_done:
@@ -329,17 +333,20 @@ class MultiAgentEnvRunner(EnvRunner):
                 # a call and in case the structure of the observations change
                 # sufficiently, the following `finalize()` call on the episode will
                 # fail.
-                self._env_to_module(
-                    episodes=[self._episode],
-                    explore=explore,
-                    rl_module=self.module,
-                    shared_data=self._shared_data,
-                )
+                if self.module is not None:
+                    self._env_to_module(
+                        episodes=[self._episode],
+                        explore=explore,
+                        rl_module=self.module,
+                        shared_data=self._shared_data,
+                    )
 
-                # Make the `on_episode_step` and `on_episode_end` callbacks (before
-                # finalizing the episode object).
-                self._make_on_episode_callback("on_episode_step")
+                # Make the `on_episode_end` callback (before finalizing the episode,
+                # but after(!) the last env-to-module connector call has been made.
+                # -> All obs (even the terminal one) should have been processed now (by
+                # the connector, if applicable).
                 self._make_on_episode_callback("on_episode_end")
+
                 # Finalize (numpy'ize) the episode.
                 self._episode.finalize(drop_zero_len_single_agent_episodes=True)
                 done_episodes_to_return.append(self._episode)
@@ -355,10 +362,6 @@ class MultiAgentEnvRunner(EnvRunner):
 
                 # Make the `on_episode_start` callback.
                 self._make_on_episode_callback("on_episode_start")
-
-            else:
-                # Make the `on_episode_step` callback.
-                self._make_on_episode_callback("on_episode_step")
 
         # Already perform env-to-module connector call for next call to
         # `_sample_timesteps()`. See comment in c'tor for `self._cached_to_module`.
@@ -531,7 +534,24 @@ class MultiAgentEnvRunner(EnvRunner):
                 # Increase episode count.
                 eps += 1
 
-                # Make `on_episode_end` callback before finalizing the episode.
+                # We have to perform an extra env-to-module pass here, just in case
+                # the user's connector pipeline performs (permanent) transforms
+                # on each observation (including this final one here). Without such
+                # a call and in case the structure of the observations change
+                # sufficiently, the following `finalize()` call on the episode will
+                # fail.
+                if self.module is not None:
+                    self._env_to_module(
+                        episodes=[_episode],
+                        explore=explore,
+                        rl_module=self.module,
+                        shared_data=_shared_data,
+                    )
+
+                # Make the `on_episode_end` callback (before finalizing the episode,
+                # but after(!) the last env-to-module connector call has been made.
+                # -> All obs (even the terminal one) should have been processed now (by
+                # the connector, if applicable).
                 self._make_on_episode_callback("on_episode_end")
 
                 # Finish the episode.
