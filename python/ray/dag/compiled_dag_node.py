@@ -106,38 +106,6 @@ def _prep_task(self, task: "ExecutableTask") -> None:
     """
     Prepare the task for execution.
     """
-    for arg_idx, inp in enumerate(task.resolved_args):
-        if isinstance(inp, ChannelInterface) or isinstance(inp, DAGInputAdapter):
-            if isinstance(inp, ChannelInterface):
-                channel = inp
-            else:
-                adapter = inp
-                channel = adapter.get_dag_input_channel()
-                task.dag_input_adapters[arg_idx] = adapter
-
-            if channel in task.input_channel_to_idx:
-                # Input channel already exists for this task:
-                # add arg index to the list of indices for this channel.
-                task.input_channel_arg_idxs[task.input_channel_to_idx[channel]].append(
-                    arg_idx
-                )
-            else:
-                # Add a new channel to the list of input channels.
-                task.input_channels.append(channel)
-                task.input_channel_arg_idxs.append([arg_idx])
-                task.input_channel_to_idx[channel] = (
-                    len(task.input_channel_arg_idxs) - 1
-                )
-
-            # Add a placeholder for later resolution.
-            task.resolved_inputs.append(None)
-        else:
-            task.resolved_inputs.append(inp)
-
-    for type_hint in task.input_type_hints:
-        type_hint.register_custom_serializer()
-    task.output_type_hint.register_custom_serializer()
-
     input_reader: ReaderInterface = SynchronousReader(task.input_channels)
     output_writer: WriterInterface = SynchronousWriter(task.output_channel)
     self._input_readers.append(input_reader)
@@ -177,16 +145,12 @@ def _exec_task(self, task: "ExecutableTask", idx: int) -> bool:
         input_reader.end_read()
         return False
 
-    for arg_idxs, output in zip(task.input_channel_arg_idxs, res):
-        for arg_idx in arg_idxs:
-            if arg_idx in task.dag_input_adapters:
-                adapter = task.dag_input_adapters[arg_idx]
-                task.resolved_inputs[arg_idx] = adapter.adapt(output)
-            else:
-                task.resolved_inputs[arg_idx] = output
+    resolved_inputs = []
+    for task_input in task.task_inputs:
+        resolved_inputs.append(task_input.resolve(res))
 
     try:
-        output_val = method(*task.resolved_inputs)
+        output_val = method(*resolved_inputs)
         output_writer.write(output_val)
     except Exception as exc:
         output_writer.write(_wrap_exception(exc))
@@ -268,44 +232,6 @@ Output: {self.output_channel}
 
 
 @DeveloperAPI
-class ExecutableTask:
-    """A task that can be executed in a compiled DAG, and it
-    corresponds to an actor method.
-    """
-
-    def __init__(
-        self,
-        task: "CompiledTask",
-        resolved_args: List[Any],
-    ):
-        """
-        Args:
-            task: The CompiledTask that this ExecutableTask corresponds to.
-            resolved_args: The arguments to the method. Arguments that are
-                not Channels will get passed through to the actor method.
-                If the argument is a channel, it will be replaced by the
-                value read from the channel before the method executes.
-        """
-        self.method_name = task.dag_node.get_method_name()
-        self.bind_index = task.dag_node._get_bind_index()
-        self.output_channel = task.output_channel
-        self.resolved_args = resolved_args
-        self.input_type_hints: List["ChannelOutputType"] = task.arg_type_hints
-        self.output_type_hint: "ChannelOutputType" = task.dag_node.type_hint
-
-        self.resolved_inputs: List[Union[Any, ChannelInterface]] = []
-        self.input_channels: List[ChannelInterface] = []
-        # The inner list is indices of resolved_args that correspond
-        # to each input channel.
-        self.input_channel_arg_idxs: List[List[int]] = []
-
-        self.dag_input_adapters: dict[int, DAGInputAdapter] = {}
-        # Reverse map for input_channels: maps an input channel to
-        # its index in input_channels.
-        self.input_channel_to_idx: dict[ChannelInterface, int] = {}
-
-
-@DeveloperAPI
 class DAGInputAdapter:
     """Adapter to extract individual positional arguments and kwargs
     from objects read from DAG input channel."""
@@ -335,6 +261,97 @@ class DAGInputAdapter:
 
     def get_dag_input_channel(self):
         return self._dag_input_channel
+
+
+class ExecutableTaskInput:
+    """Represents an input to an ExecutableTask.
+
+    Args:
+        input_variant: either an unresolved input (when type is ChannelInterface
+            or DAGInputAdapter), or a resolved input value (when type is Any)
+        channel_idx: if input_variant is an unresolved input, this is the index
+            into the input channels list.
+    """
+
+    def __init__(
+        self,
+        input_variant: Union[ChannelInterface, DAGInputAdapter, Any],
+        channel_idx: Optional[int],
+    ):
+        self.input_variant = input_variant
+        self.channel_idx = channel_idx
+
+    def resolve(self, channel_results):
+        """
+        Resolve the input value from the channel results.
+
+        Args:
+            channel_results: The results from reading the input channels.
+        """
+        if isinstance(self.input_variant, ChannelInterface):
+            value = channel_results[self.channel_idx]
+        elif isinstance(self.input_variant, DAGInputAdapter):
+            adapter = self.input_variant
+            value = adapter.adapt(channel_results[self.channel_idx])
+        else:
+            value = self.input_variant
+        return value
+
+
+@DeveloperAPI
+class ExecutableTask:
+    """A task that can be executed in a compiled DAG, and it
+    corresponds to an actor method.
+    """
+
+    def __init__(
+        self,
+        task: "CompiledTask",
+        resolved_args: List[Any],
+    ):
+        """
+        Args:
+            task: The CompiledTask that this ExecutableTask corresponds to.
+            resolved_args: The arguments to the method. Arguments that are
+                not Channels will get passed through to the actor method.
+                If the argument is a channel, it will be replaced by the
+                value read from the channel before the method executes.
+        """
+        self.method_name = task.dag_node.get_method_name()
+        self.bind_index = task.dag_node._get_bind_index()
+        self.output_channel = task.output_channel
+        self.input_type_hints: List["ChannelOutputType"] = task.arg_type_hints
+        self.output_type_hint: "ChannelOutputType" = task.dag_node.type_hint
+
+        # self.resolved_inputs: List[Union[Any, ChannelInterface]] = []
+        self.input_channels: List[ChannelInterface] = []
+        self.task_inputs: List[ExecutableTaskInput] = []
+
+        # Reverse map for input_channels: maps an input channel to
+        # its index in input_channels.
+        input_channel_to_idx: dict[ChannelInterface, int] = {}
+
+        for arg in resolved_args:
+            if isinstance(arg, ChannelInterface) or isinstance(arg, DAGInputAdapter):
+                if isinstance(arg, ChannelInterface):
+                    channel = arg
+                else:
+                    adapter = arg
+                    channel = adapter.get_dag_input_channel()
+
+                if channel in input_channel_to_idx:
+                    # The same channel was added before, so reuse the index.
+                    channel_idx = input_channel_to_idx[channel]
+                else:
+                    # Add a new channel to the list of input channels.
+                    self.input_channels.append(channel)
+                    channel_idx = len(self.input_channels) - 1
+                    input_channel_to_idx[channel] = channel_idx
+
+                task_input = ExecutableTaskInput(arg, channel_idx)
+            else:
+                task_input = ExecutableTaskInput(arg, None)
+            self.task_inputs.append(task_input)
 
 
 @DeveloperAPI
@@ -529,17 +546,7 @@ class CompiledDAG:
                 # If the upstream node is an InputAttributeNode, treat the
                 # DAG's input node as the actual upstream node
                 if isinstance(upstream_node.dag_node, InputAttributeNode):
-                    assert (
-                        "dag_input_node"
-                        in upstream_node.dag_node.get_other_args_to_resolve()
-                    )
-                    dag_input_node_index = self.dag_node_to_idx[
-                        upstream_node.dag_node.get_other_args_to_resolve()[
-                            "dag_input_node"
-                        ]
-                    ]
-                    assert dag_input_node_index == self.input_task_idx
-                    upstream_node = self.idx_to_task[dag_input_node_index]
+                    upstream_node = self.idx_to_task[self.input_task_idx]
 
                 upstream_node.downstream_node_idxs[node_idx] = downstream_actor_handle
                 task.arg_type_hints.append(upstream_node.dag_node.type_hint)
