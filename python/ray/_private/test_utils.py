@@ -1546,7 +1546,7 @@ class NodeKillerActor(ResourceKillerActor):
         # easy ssh access to worker nodes.
         ssh_command = f"ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p 2222 ray@{ip} '{multi_line_command}'"  # noqa: E501
 
-        result = subprocess.run(ssh_command, shell=True, capture_output=True, text=True)
+        result = subprocess.run(ssh_command, shell=True, capture_output=True, text=True, check=True)
         print(f"STDOUT:\n{result.stdout}\n")
         print(f"STDERR:\n{result.stderr}\n")
 
