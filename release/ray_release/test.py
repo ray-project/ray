@@ -219,7 +219,7 @@ class Test(dict):
                 if result.commit == recent_results[0].commit and result.rayci_step_id
             }
             if test_step_ids and not step_ids.intersection(test_step_ids):
-                step_ids.add(test_step_ids.pop())
+                step_ids.add(sorted(test_step_ids)[0])
 
         return step_ids
 
