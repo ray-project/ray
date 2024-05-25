@@ -106,6 +106,10 @@ def _prep_task(self, task: "ExecutableTask") -> None:
     """
     Prepare the task for execution.
     """
+    for type_hint in task.input_type_hints:
+        type_hint.register_custom_serializer()
+    task.output_type_hint.register_custom_serializer()
+
     input_reader: ReaderInterface = SynchronousReader(task.input_channels)
     output_writer: WriterInterface = SynchronousWriter(task.output_channel)
     self._input_readers.append(input_reader)
@@ -238,9 +242,17 @@ class DAGInputAdapter:
 
     def __init__(
         self,
-        input_attr_node: "ray.dag.InputAttributeNode",
+        input_attr_node: Optional["ray.dag.InputAttributeNode"],
         dag_input_channel: "ray.experimental.channel.ChannelInterface",
     ):
+        """
+        Args:
+            input_attr_node: The input attribute node that this adapter is
+                created for. None should be used when creating an adapter for
+                the DAG input node itself; in this case, the adapter will
+                extract the 0th positional argument.
+            dag_input_channel: The DAG input channel.
+        """
         self._dag_input_channel = dag_input_channel
 
         def extractor(key: Union[int, str]):
@@ -253,7 +265,10 @@ class DAGInputAdapter:
 
             return extract_arg
 
-        key = input_attr_node.get_other_args_to_resolve()["key"]
+        if input_attr_node:
+            key = input_attr_node.get_other_args_to_resolve()["key"]
+        else:
+            key = 0
         self._adapt_method = extractor(key)
 
     def adapt(self, input):
@@ -263,6 +278,7 @@ class DAGInputAdapter:
         return self._dag_input_channel
 
 
+@DeveloperAPI
 class ExecutableTaskInput:
     """Represents an input to an ExecutableTask.
 
@@ -723,7 +739,11 @@ class CompiledDAG:
                 resolved_args = []
                 has_at_least_one_channel_input = False
                 for arg in task.args:
-                    if isinstance(arg, InputAttributeNode):
+                    if isinstance(arg, InputNode):
+                        input_adapter = DAGInputAdapter(None, self.dag_input_channel)
+                        resolved_args.append(input_adapter)
+                        has_at_least_one_channel_input = True
+                    elif isinstance(arg, InputAttributeNode):
                         input_adapter = DAGInputAdapter(arg, self.dag_input_channel)
                         resolved_args.append(input_adapter)
                         has_at_least_one_channel_input = True

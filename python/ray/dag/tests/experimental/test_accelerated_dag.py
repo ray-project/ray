@@ -381,17 +381,6 @@ def test_dag_errors(ray_start_regular):
     ):
         dag.experimental_compile()
 
-    with InputNode() as inp:
-        dag = a.inc.bind(inp)
-        dag2 = a.inc.bind(inp)
-        dag3 = a.inc_two.bind(dag, dag2)
-    with pytest.raises(
-        NotImplementedError,
-        match=r"Compiled DAGs currently do not support binding the same input "
-        "on the same actor multiple times.*",
-    ):
-        dag3.experimental_compile()
-
     @ray.remote
     def f(x):
         return x
@@ -401,24 +390,6 @@ def test_dag_errors(ray_start_regular):
     with pytest.raises(
         NotImplementedError,
         match="Compiled DAGs currently only support actor method nodes",
-    ):
-        dag.experimental_compile()
-
-    with InputNode() as inp:
-        dag = a.inc_two.bind(inp[0], inp[1])
-    with pytest.raises(
-        NotImplementedError,
-        match="Compiled DAGs currently do not support kwargs or multiple args "
-        "for InputNode",
-    ):
-        dag.experimental_compile()
-
-    with InputNode() as inp:
-        dag = a.inc_two.bind(inp.x, inp.y)
-    with pytest.raises(
-        NotImplementedError,
-        match="Compiled DAGs currently do not support kwargs or multiple args "
-        "for InputNode",
     ):
         dag.experimental_compile()
 
