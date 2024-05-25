@@ -667,7 +667,7 @@ def equalize_helper(input_block_lists: List[List[List[Any]]]):
     result_block_lists = []
     for bundle in result:
         block_list = []
-        for block_ref, _ in bundle.blocks:
+        for block_ref in bundle.block_refs:
             block = ray.get(block_ref)
             block_accessor = BlockAccessor.for_block(block)
             block_list.append(list(block_accessor.to_default()["id"]))

@@ -370,8 +370,7 @@ class MapOperator(OneToOneOperator, ABC):
         assert self._started
         bundle = self._output_queue.get_next()
         self._metrics.on_output_dequeued(bundle)
-        for _, meta in bundle.blocks:
-            self._output_metadata.append(meta)
+        self._output_metadata.extend(bundle.metadata)
         return bundle
 
     @abstractmethod
