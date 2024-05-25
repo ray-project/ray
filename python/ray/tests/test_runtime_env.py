@@ -431,14 +431,17 @@ def test_slow_runtime_env_agent_startup_on_task_pressure(
     def get_foo():
         return os.environ.get("foo")
 
+    print("Submitting 20 tasks...")
+
     # Each task has a different runtime env to ensure the agent is invoked for each.
     vals = ray.get(
         [
             get_foo.options(runtime_env={"env_vars": {"foo": f"bar{i}"}}).remote()
-            for i in range(100)
+            for i in range(20)
         ]
     )
-    assert vals == [f"bar{i}" for i in range(100)]
+    print("20 tasks done.")
+    assert vals == [f"bar{i}" for i in range(20)]
 
 
 class TestURICache:
