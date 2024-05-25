@@ -426,7 +426,7 @@ def _map_task(
     map_transformer.set_target_max_block_size(ctx.target_max_block_size)
     for b_out in map_transformer.apply_transform(iter(blocks), ctx):
         # TODO(Clark): Add input file propagation from input blocks.
-        m_out = BlockAccessor.for_block(b_out).get_metadata([], None)
+        m_out = BlockAccessor.for_block(b_out).get_metadata()
         m_out.exec_stats = stats.build()
         m_out.exec_stats.udf_time_s = map_transformer.udf_time()
         m_out.exec_stats.task_idx = ctx.task_idx
