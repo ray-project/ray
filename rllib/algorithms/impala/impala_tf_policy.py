@@ -227,7 +227,7 @@ class VTraceOptimizer:
         config = self.config
         if config["opt_type"] == "adam":
             if config["framework"] == "tf2":
-                optim = tf.keras.optimizers.Adam(self.cur_lr)
+                optim = tf.keras.optimizers.Adam(float(self.cur_lr))
                 if config["_separate_vf_optimizer"]:
                     return optim, tf.keras.optimizers.Adam(config["_lr_vf"])
             else:
