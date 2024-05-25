@@ -381,5 +381,40 @@ def test_get_test_target():
         assert Test({"name": input}).get_target() == output
 
 
+@mock.patch.dict(
+    os.environ,
+    {"BUILDKITE_PULL_REQUEST_BASE_BRANCH": "base", "BUILDKITE_COMMIT": "commit"},
+)
+@mock.patch("subprocess.check_call")
+@mock.patch("subprocess.check_output")
+def test_get_changed_files(mock_check_output, mock_check_call) -> None:
+    mock_check_output.return_value = b"file1\nfile2\n"
+    assert Test._get_changed_files("") == {"file1", "file2"}
+
+
+@mock.patch("ray_release.test.Test._get_test_targets_per_file")
+@mock.patch("ray_release.test.Test._get_changed_files")
+def test_get_changed_tests(
+    mock_get_changed_files, mock_get_test_targets_per_file
+) -> None:
+    mock_get_changed_files.return_value = {"test_src", "build_src"}
+    mock_get_test_targets_per_file.side_effect = (
+        lambda x, _: {"//t1", "//t2"} if x == "test_src" else {}
+    )
+
+    assert Test.get_changed_tests("") == {"//t1", "//t2"}
+
+
+@mock.patch.dict(
+    os.environ,
+    {"BUILDKITE_PULL_REQUEST_BASE_BRANCH": "base", "BUILDKITE_COMMIT": "commit"},
+)
+@mock.patch("subprocess.check_call")
+@mock.patch("subprocess.check_output")
+def test_get_human_specified_tests(mock_check_output, mock_check_call) -> None:
+    mock_check_output.return_value = b"hi\n@microcheck //test01 //test02\nthere"
+    assert Test.get_human_specified_tests("") == {"//test01", "//test02"}
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))

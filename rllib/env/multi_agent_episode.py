@@ -58,6 +58,30 @@ class MultiAgentEpisode:
     up to here, b/c there is nothing to learn from these "premature" rewards.
     """
 
+    __slots__ = (
+        "id_",
+        "agent_to_module_mapping_fn",
+        "_agent_to_module_mapping",
+        "observation_space",
+        "action_space",
+        "env_t_started",
+        "env_t",
+        "agent_t_started",
+        "env_t_to_agent_t",
+        "_hanging_actions_end",
+        "_hanging_extra_model_outputs_end",
+        "_hanging_rewards_end",
+        "_hanging_actions_begin",
+        "_hanging_extra_model_outputs_begin",
+        "_hanging_rewards_begin",
+        "is_terminated",
+        "is_truncated",
+        "agent_episodes",
+        "_temporary_timestep_data",
+        "_start_time",
+        "_last_step_time",
+    )
+
     SKIP_ENV_TS_TAG = "S"
 
     def __init__(
