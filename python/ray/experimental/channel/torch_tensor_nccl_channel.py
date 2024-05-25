@@ -36,6 +36,16 @@ class NestedTorchTensorNcclChannel(ChannelInterface):
         _gpu_data_channel: Optional["TorchTensorNcclChannel"] = None,
         _cpu_data_channel: Optional["Channel"] = None,
     ):
+        """
+        Can be used to send GPU tensors nested inside other data. The data is
+        sent via shared memory while the GPU tensors are sent through a P2P
+        transport (NCCL).
+
+        NOTE: This class is currently not thread-safe because it reads and
+        writes the worker-local
+        ray.experimental.channel.serialization_context._SerializationContext
+        when serializing data.
+        """
         self._writer = writer
         self._readers = readers
 
@@ -106,6 +116,9 @@ class NestedTorchTensorNcclChannel(ChannelInterface):
         self.serialization_ctx.set_use_external_transport(True)
 
         try:
+            # Serialize the data. All tensors that match our current device
+            # will be extracted into the serialization context and replaced
+            # with a placeholder.
             serialized_cpu_data = self._worker.get_serialization_context().serialize(
                 value
             )
@@ -125,7 +138,10 @@ class NestedTorchTensorNcclChannel(ChannelInterface):
             # normally.
             self.serialization_ctx.set_use_external_transport(False)
 
+        # Send the extracted tensors through a GPU-specific channel.
         self._gpu_data_channel.write(tensors_to_send)
+        # Send the rest of the data, with placeholders for the extracted
+        # tensors, through a CPU-specific channel.
         self._cpu_data_channel.write(serialized_cpu_data)
 
     def begin_read(self) -> Any:

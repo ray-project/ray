@@ -1,3 +1,4 @@
+import logging
 from typing import TYPE_CHECKING, List, Optional, Tuple, Union
 
 import ray
@@ -6,6 +7,8 @@ from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
     import torch
+
+logger = logging.getLogger(__name__)
 
 # 100KB to store metadata and/or exceptions.
 # NOTE(swang): This will consume memory but it should not affect performance
@@ -36,8 +39,8 @@ class TorchTensorType(ChannelOutputType):
         self,
         shape: Union[int, Tuple[int], str] = AUTO,
         dtype: "torch.dtype" = AUTO,
+        transport: Optional[str] = AUTO,
         direct_return: Optional[bool] = False,
-        transport: Optional[str] = None,
     ):
         """
         A type hint that can be used to annotate DAG nodes that return a
@@ -56,17 +59,19 @@ class TorchTensorType(ChannelOutputType):
                 maximum size of the tensor. If a DAG node's returned serialized
                 tensor exceeds this size, the task will error. For tensors
                 passed via NCCL, the returned tensor must *match* the given
-                shape; if it does not match, the task will error.
+                shape; if it does not match, the task will error. Specifying
+                the shape and dtype ahead of time will eliminate the
+                performance overhead from an additional metadata transfer.
             dtype: The expected dtype of the torch.Tensor. Similar to the
                 shape, this may be statically or dynamically declared.
-            direct_return: Whether the tensor is sent directly or inside of
-                other metadata. For GPU-GPU channels, this allows the sender
-                and receiver to eliminate the additional channel used to
-                transfer the metadata.
             transport: "auto" (default) means that tensors will be passed via
                 host memory, using numpy as the serialization format. Pass
                 TorchTensorType.NCCL or "nccl" to use NCCL instead, avoiding
                 the host memory copy.
+            direct_return: Whether the tensor is sent directly or inside of
+                other data. If a non-default `transport` is used, this allows
+                the sender and receiver to eliminate performance overhead from
+                an additional data transfer.
         """
         super().__init__()
 
@@ -78,8 +83,20 @@ class TorchTensorType(ChannelOutputType):
         self.shape = shape
         self.dtype = dtype
         self.direct_return = direct_return
+
+        if transport not in [self.AUTO, self.NCCL]:
+            raise ValueError(
+                "`transport` must be TorchTensorType.AUTO or TorchTensorType.NCCL"
+            )
         self.transport = transport
+
         self._nccl_group_id: Optional[str] = None
+
+        if self.direct_return and self.transport == self.AUTO:
+            logger.info(
+                "TorchTensorType(direct_return=True) has no effect when "
+                "`transport` is TorchTensorType.AUTO (default)."
+            )
 
     @property
     def is_direct_return(self) -> bool:

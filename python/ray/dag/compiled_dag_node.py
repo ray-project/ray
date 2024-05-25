@@ -775,7 +775,7 @@ class CompiledDAG:
                     try:
                         # TODO(swang): Suppress exceptions from actors trying to
                         # read closed channels when DAG is being torn down.
-                        ray.get(cancel_ref)
+                        ray.get(cancel_ref, timeout=30)
                     except Exception:
                         logger.exception("Error cancelling worker task")
                         pass

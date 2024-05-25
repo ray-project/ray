@@ -123,6 +123,26 @@ def test_torch_tensor_p2p(ray_start_regular):
         result = output_channel.begin_read()
     compiled_dag.teardown()
 
+    # Passing a torch.tensor inside of other data is okay even if
+    # direct_return=True, if `transport` is not set.
+    with InputNode() as inp:
+        dag = sender.send_dict_with_tuple_args.bind(inp)
+        dag = dag.with_type_hint(
+            TorchTensorType(
+                shape=shape,
+                dtype=dtype,
+                direct_return=True,
+            )
+        )
+        dag = receiver.recv_dict.bind(dag)
+
+    compiled_dag = dag.experimental_compile()
+
+    output_channel = compiled_dag.execute((shape, dtype, 1))
+    output_channel.begin_read()
+    output_channel.end_read()
+    compiled_dag.teardown()
+
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
 def test_torch_tensor_as_dag_input(ray_start_regular):
@@ -403,6 +423,48 @@ def test_torch_tensor_nccl_nested_dynamic(ray_start_regular):
         output_channel.end_read()
 
     compiled_dag.teardown()
+
+
+@pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
+def test_torch_tensor_nccl_direct_return_error(ray_start_regular):
+    if not USE_GPU:
+        pytest.skip("NCCL tests require GPUs")
+
+    assert (
+        sum(node["Resources"].get("GPU", 0) for node in ray.nodes()) > 1
+    ), "This test requires at least 2 GPUs"
+
+    actor_cls = TorchTensorWorker.options(num_cpus=0, num_gpus=1)
+
+    sender = actor_cls.remote()
+    receiver = actor_cls.remote()
+
+    shape = (10,)
+    dtype = torch.float16
+
+    # Passing a non-tensor value when direct_return=True and tranport="nccl"
+    # fails.
+    with InputNode() as inp:
+        dag = sender.send_dict_with_tuple_args.bind(inp)
+        dag = dag.with_type_hint(
+            TorchTensorType(
+                transport=TorchTensorType.NCCL,
+                direct_return=True,
+            )
+        )
+        dag = receiver.recv_dict.bind(dag)
+
+    compiled_dag = dag.experimental_compile()
+
+    output_channel = compiled_dag.execute((shape, dtype, 1))
+    with pytest.raises(OSError):
+        output_channel.begin_read()
+
+    compiled_dag.teardown()
+
+    # TODO(swang): This currently requires time.sleep to avoid some issue with
+    # following tests.
+    time.sleep(3)
 
 
 if __name__ == "__main__":
