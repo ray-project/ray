@@ -157,16 +157,15 @@ class LocalResourceManager : public syncer::ReporterInterface {
   /// After that, no new tasks can be scheduled onto the local node.
   void SetLocalNodeDraining(const rpc::DrainRayletRequest &drain_request);
 
-  bool IsLocalNodeDraining() const { return drain_request_ != nullptr; }
+  bool IsLocalNodeDraining() const { return drain_request_.has_value(); }
+
+  /// Get the local drain request.
+  std::optional<rpc::DrainRayletRequest> GetLocalDrainRequest() const {
+    return drain_request_;
+  }
 
   /// Generate node death info from existing drain request.
   rpc::NodeDeathInfo DeathInfoFromDrainRequest();
-
-  /// Adjust the provided node death info based on existing drain request.
-  ///
-  /// \param node_death_info: The node death info to adjust.
-  /// \return The adjusted node death info.
-  rpc::NodeDeathInfo AdjustDeathInfo(const rpc::NodeDeathInfo &node_death_info);
 
  private:
   struct ResourceUsage {
@@ -219,7 +218,7 @@ class LocalResourceManager : public syncer::ReporterInterface {
   ///
   /// \return The draining deadline if node is in draining state, otherwise -1.
   int64_t GetDrainingDeadline() const {
-    return drain_request_ ? drain_request_->deadline_timestamp_ms() : -1;
+    return drain_request_.has_value() ? drain_request_->deadline_timestamp_ms() : -1;
   }
   /// Identifier of local node.
   scheduling::NodeID local_node_id_;
@@ -242,7 +241,7 @@ class LocalResourceManager : public syncer::ReporterInterface {
   int64_t version_ = 0;
 
   /// The draining request this node received.
-  std::unique_ptr<rpc::DrainRayletRequest> drain_request_;
+  std::optional<rpc::DrainRayletRequest> drain_request_;
 
   FRIEND_TEST(ClusterResourceSchedulerTest, SchedulingUpdateTotalResourcesTest);
   FRIEND_TEST(ClusterResourceSchedulerTest, AvailableResourceInstancesOpsTest);

@@ -223,9 +223,9 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
     return mutable_object_provider_;
   }
 
-  rpc::NodeDeathInfo AdjustDeathInfo(const rpc::NodeDeathInfo &node_death_info) {
-    return cluster_resource_scheduler_->GetLocalResourceManager().AdjustDeathInfo(
-        node_death_info);
+  /// Get the local drain request.
+  optional<rpc::DrainRayletRequest> GetLocalDrainRequest() const {
+    return cluster_resource_scheduler_->GetLocalResourceManager().GetLocalDrainRequest();
   }
 
  private:

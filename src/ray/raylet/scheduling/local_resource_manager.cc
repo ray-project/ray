@@ -394,7 +394,7 @@ void LocalResourceManager::OnResourceOrStateChanged() {
 
 rpc::NodeDeathInfo LocalResourceManager::DeathInfoFromDrainRequest() {
   rpc::NodeDeathInfo death_info;
-  RAY_CHECK(drain_request_ != nullptr);
+  RAY_CHECK(drain_request_.has_value());
   if (drain_request_->reason() ==
       rpc::autoscaler::DrainNodeReason::DRAIN_NODE_REASON_IDLE_TERMINATION) {
     death_info.set_reason(rpc::NodeDeathInfo::AUTOSCALER_DRAIN_IDLE);
@@ -406,32 +406,6 @@ rpc::NodeDeathInfo LocalResourceManager::DeathInfoFromDrainRequest() {
     death_info.set_reason_message(drain_request_->reason_message());
   }
   return death_info;
-}
-
-rpc::NodeDeathInfo LocalResourceManager::AdjustDeathInfo(
-    const rpc::NodeDeathInfo &death_info) {
-  if (death_info.reason() != rpc::NodeDeathInfo::EXPECTED_TERMINATION) {
-    return death_info;
-  }
-  if (drain_request_ == nullptr) {
-    RAY_LOG(DEBUG) << "Skip adjusting node death info because there is no existing "
-                      "drain request.";
-    return death_info;
-  } else if (drain_request_->reason() !=
-                 rpc::autoscaler::DrainNodeReason::DRAIN_NODE_REASON_PREEMPTION ||
-             drain_request_->deadline_timestamp_ms() == 0 ||
-             drain_request_->deadline_timestamp_ms() > current_time_ms()) {
-    RAY_LOG(DEBUG)
-        << "Skip adjusting node death info because the existing drain request "
-           "would not be the cause of current termination. Existing drain request: "
-        << drain_request_->DebugString();
-    return death_info;
-  }
-
-  rpc::NodeDeathInfo adjusted_death_info;
-  adjusted_death_info.set_reason(rpc::NodeDeathInfo::AUTOSCALER_DRAIN_PREEMPTED);
-  adjusted_death_info.set_reason_message(drain_request_->reason_message());
-  return adjusted_death_info;
 }
 
 bool LocalResourceManager::ResourcesExist(scheduling::ResourceID resource_id) const {
@@ -487,7 +461,7 @@ void LocalResourceManager::RecordMetrics() const {
 
 void LocalResourceManager::SetLocalNodeDraining(
     const rpc::DrainRayletRequest &drain_request) {
-  drain_request_ = std::make_unique<rpc::DrainRayletRequest>(drain_request);
+  drain_request_ = std::make_optional(drain_request);
   OnResourceOrStateChanged();
 }
 
