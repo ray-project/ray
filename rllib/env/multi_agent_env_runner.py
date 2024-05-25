@@ -139,7 +139,7 @@ class MultiAgentEnvRunner(EnvRunner):
         assert not (num_timesteps is not None and num_episodes is not None)
 
         # If no execution details are provided, use the config to try to infer the
-        # desired timesteps/episodes to sample and exploration behavior.
+        # desired timesteps/episodes to sample and the exploration behavior.
         if explore is None:
             explore = self.config.explore
         if num_timesteps is None and num_episodes is None:
@@ -610,8 +610,9 @@ class MultiAgentEnvRunner(EnvRunner):
                     episode_return += return_eps2
                     episode_duration_s += eps2.get_duration_s()
                     for sa_eps in eps2.agent_episodes.values():
-                        agent_episode_returns[str(sa_eps.agent_id)] += return_eps2
-                        module_episode_returns[sa_eps.module_id] += return_eps2
+                        return_sa = sa_eps.get_return()
+                        agent_episode_returns[str(sa_eps.agent_id)] += return_sa
+                        module_episode_returns[sa_eps.module_id] += return_sa
                 del self._ongoing_episodes_for_metrics[eps.id_]
 
             self._log_episode_metrics(

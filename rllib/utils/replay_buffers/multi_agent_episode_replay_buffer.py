@@ -455,7 +455,7 @@ class MultiAgentEpisodeReplayBuffer(EpisodeReplayBuffer):
         self,
         batch_size_B: Optional[int],
         batch_length_T: Optional[int],
-        n_step: Optional[Union[int, Tuple]],
+        n_step: Optional[Union[int, Tuple[int, int]]],
         gamma: float,
         include_infos: bool,
         include_extra_model_outputs: bool,
@@ -465,7 +465,7 @@ class MultiAgentEpisodeReplayBuffer(EpisodeReplayBuffer):
 
         actual_n_step = n_step or 1
         # Sample the n-step if necessary.
-        random_n_step = isinstance(n_step, tuple)
+        random_n_step = isinstance(n_step, (tuple, list))
 
         sampled_episodes = []
         # TODO (simon): Ensure that the module has data and if not, skip it.

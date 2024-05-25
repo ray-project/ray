@@ -86,6 +86,7 @@ class SACConfig(AlgorithmConfig):
         self.target_network_update_freq = 0
 
         # .env_runners()
+        # Set to `self.n_step`, if 'auto'.
         self.rollout_fragment_length = "auto"
         self.compress_observations = False
         self.exploration_config = {
@@ -363,7 +364,10 @@ class SACConfig(AlgorithmConfig):
     @override(AlgorithmConfig)
     def get_rollout_fragment_length(self, worker_index: int = 0) -> int:
         if self.rollout_fragment_length == "auto":
-            return self.n_step[1] if isinstance(self.n_step, tuple) else self.n_step
+            return (
+                self.n_step[1] if isinstance(self.n_step, (tuple, list))
+                else self.n_step
+            )
         else:
             return self.rollout_fragment_length
 
