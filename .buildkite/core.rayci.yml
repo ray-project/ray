@@ -142,10 +142,10 @@ steps:
     commands:
       - bazel run //ci/ray_ci:test_in_docker --
         python/ray/util/dask/... python/ray/tests/modin/... core
-        --build-name data15build
+        --build-name data16build
         --parallelism-per-worker 2
     depends_on:
-      - data15build
+      - data16build
       - forge
 
   - label: ":ray: core: dashboard tests"
