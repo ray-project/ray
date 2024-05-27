@@ -514,6 +514,7 @@ class PandasBlockAccessor(TableBlockAccessor):
             ret = pd.concat(blocks, ignore_index=True)
             columns, ascending = sort_key.to_pandas_sort_args()
             ret = ret.sort_values(by=columns, ascending=ascending)
+            ret.reset_index(drop=True, inplace=True)
         return ret, PandasBlockAccessor(ret).get_metadata(
             None, exec_stats=stats.build()
         )
