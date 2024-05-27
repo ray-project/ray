@@ -592,6 +592,14 @@ py_test(
     data = ["tests/data/cartpole/large.json"],
     srcs = ["algorithms/bc/tests/test_bc.py"]
 )
+py_test(
+    name = "test_bc_new_stack",
+    tags = ["team:rllib", "algorithms_dir"],
+    size = "medium",
+    # Include the json data file.
+    data = ["tests/data/cartpole/large.json"],
+    srcs = ["algorithms/bc/tests/test_bc_new_stack.py"]
+)
 
 # CQL
 py_test(
