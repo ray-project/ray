@@ -365,7 +365,8 @@ class SACConfig(AlgorithmConfig):
     def get_rollout_fragment_length(self, worker_index: int = 0) -> int:
         if self.rollout_fragment_length == "auto":
             return (
-                self.n_step[1] if isinstance(self.n_step, (tuple, list))
+                self.n_step[1]
+                if isinstance(self.n_step, (tuple, list))
                 else self.n_step
             )
         else:
