@@ -328,6 +328,17 @@ class ReporterAgent(
             logical_cpu_count = psutil.cpu_count()
             physical_cpu_count = psutil.cpu_count(logical=False)
         self._cpu_counts = (logical_cpu_count, physical_cpu_count)
+        self._attrs = [
+                    "pid",
+                    "create_time",
+                    "cpu_percent",
+                    "cpu_times",
+                    "cmdline",
+                    "memory_info",
+                    "memory_full_info",
+                ]
+        if sys.platform != "win32":
+            self._attrs.append("num_fds")
         self._gcs_aio_client = dashboard_agent.gcs_aio_client
         self._ip = dashboard_agent.ip
         self._log_dir = dashboard_agent.log_dir
@@ -592,9 +603,12 @@ class ReporterAgent(
         if raylet_proc is None:
             return []
         else:
-            workers = {
-                self._generate_worker_key(proc): proc for proc in raylet_proc.children()
-            }
+            workers = {}
+            # windows, get the child process not the runner
+            for child in raylet_proc.children():
+                if child.children():
+                    child = child.children()[0]
+                workers[self._generate_worker_key(child)] = child
 
             # We should keep `raylet_proc.children()` in `self` because
             # when `cpu_percent` is first called, it returns the meaningless 0.
@@ -625,29 +639,22 @@ class ReporterAgent(
                     # the process may have terminated due to race condition.
                     continue
 
-                result.append(
-                    w.as_dict(
-                        attrs=[
-                            "pid",
-                            "create_time",
-                            "cpu_percent",
-                            "cpu_times",
-                            "cmdline",
-                            "memory_info",
-                            "memory_full_info",
-                            "num_fds",
-                        ]
-                    )
-                )
+                result.append(w.as_dict(attrs=self._attrs))
             return result
 
     def _get_raylet_proc(self):
         try:
             if not self._raylet_proc:
                 curr_proc = psutil.Process()
-                # Here, parent is always raylet because the
-                # dashboard agent is a child of the raylet process.
-                self._raylet_proc = curr_proc.parent()
+                # The dashboard agent is a child of the raylet process.
+                # It is not necessarily the direct child (python-windows
+                # typically uses a py.exe runner to run python), so search
+                candidate = curr_proc.parent()
+                while candidate:
+                    if "raylet" in candidate.name():
+                        break
+                    candidate = candidate.parent()
+                self._raylet_proc = candidate
 
             if self._raylet_proc is not None:
                 if self._raylet_proc.pid == 1:
@@ -664,35 +671,13 @@ class ReporterAgent(
         if raylet_proc is None:
             return {}
         else:
-            return raylet_proc.as_dict(
-                attrs=[
-                    "pid",
-                    "create_time",
-                    "cpu_percent",
-                    "cpu_times",
-                    "cmdline",
-                    "memory_info",
-                    "memory_full_info",
-                    "num_fds",
-                ]
-            )
+            return raylet_proc.as_dict(attrs=self._attrs)
 
     def _get_agent(self):
         # Current proc == agent proc
         if not self._agent_proc:
             self._agent_proc = psutil.Process()
-        return self._agent_proc.as_dict(
-            attrs=[
-                "pid",
-                "create_time",
-                "cpu_percent",
-                "cpu_times",
-                "cmdline",
-                "memory_info",
-                "memory_full_info",
-                "num_fds",
-            ]
-        )
+        return self._agent_proc.as_dict(attrs=self._attrs)
 
     def _get_load_avg(self):
         if sys.platform == "win32":
