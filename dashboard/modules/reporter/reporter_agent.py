@@ -329,14 +329,14 @@ class ReporterAgent(
             physical_cpu_count = psutil.cpu_count(logical=False)
         self._cpu_counts = (logical_cpu_count, physical_cpu_count)
         self._attrs = [
-                    "pid",
-                    "create_time",
-                    "cpu_percent",
-                    "cpu_times",
-                    "cmdline",
-                    "memory_info",
-                    "memory_full_info",
-                ]
+            "pid",
+            "create_time",
+            "cpu_percent",
+            "cpu_times",
+            "cmdline",
+            "memory_info",
+            "memory_full_info",
+        ]
         if sys.platform != "win32":
             self._attrs.append("num_fds")
         self._gcs_aio_client = dashboard_agent.gcs_aio_client
