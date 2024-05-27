@@ -1368,6 +1368,16 @@ py_test(
     srcs = ["offline/estimators/tests/test_dr_learning.py"],
 )
 
+py_test(
+    name = "test_offline_data",
+    tags = ["team:rllib", "offline"],
+    size = "small",
+    srcs = ["offline/tests/test_offline_data.py"],
+    data = [
+        "tests/data/pendulum/small.json",
+    ],
+)
+
 # --------------------------------------------------------------------
 # Policies
 # rllib/policy/
