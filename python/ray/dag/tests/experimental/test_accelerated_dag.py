@@ -66,15 +66,30 @@ class Actor:
         self.i += y
         return self.i
 
-    def inc_three(self, x, y, z):
-        self.i += x
-        self.i += y
-        self.i += z
-        return self.i
-
     def sleep(self, x):
         time.sleep(x)
         return x
+
+
+@ray.remote
+class Collector:
+    def __init__(self):
+        self.results = []
+
+    def collect(self, x):
+        self.results.append(x)
+        return self.results
+
+    def collect_two(self, x, y):
+        self.results.append(x)
+        self.results.append(y)
+        return self.results
+
+    def collect_three(self, x, y, z):
+        self.results.append(x)
+        self.results.append(y)
+        self.results.append(z)
+        return self.results
 
 
 def test_basic(ray_start_regular):
@@ -184,50 +199,50 @@ def test_regular_args(ray_start_regular):
 def test_multi_args_basic(ray_start_regular):
     a1 = Actor.remote(0)
     a2 = Actor.remote(0)
-    a3 = Actor.remote(0)
+    c = Collector.remote()
     with InputNode() as i:
         branch1 = a1.inc.bind(i[0])
         branch2 = a2.inc.bind(i[1])
-        dag = a3.inc_two.bind(branch1, branch2)
+        dag = c.collect_two.bind(branch2, branch1)
 
     compiled_dag = dag.experimental_compile()
 
     output_channel = compiled_dag.execute(2, 3)
     result = output_channel.begin_read()
-    assert result == 5
+    assert result == [3, 2]
     output_channel.end_read()
 
     compiled_dag.teardown()
 
 
 def test_multi_args_single_actor(ray_start_regular):
-    a = Actor.remote(0)
+    c = Collector.remote()
     with InputNode() as i:
-        dag = a.inc_two.bind(i[0], i[1])
+        dag = c.collect_two.bind(i[1], i[0])
 
     compiled_dag = dag.experimental_compile()
 
     for i in range(3):
         output_channel = compiled_dag.execute(2, 3)
         result = output_channel.begin_read()
-        assert result == (i + 1) * 5
+        assert result == [3, 2] * (i + 1)
         output_channel.end_read()
 
     compiled_dag.teardown()
 
 
 def test_multi_args_branch(ray_start_regular):
-    a1 = Actor.remote(0)
-    a2 = Actor.remote(0)
+    a = Actor.remote(0)
+    c = Collector.remote()
     with InputNode() as i:
-        branch = a1.inc.bind(i[0])
-        dag = a2.inc_two.bind(branch, i[1])
+        branch = a.inc.bind(i[0])
+        dag = c.collect_two.bind(branch, i[1])
 
     compiled_dag = dag.experimental_compile()
 
     output_channel = compiled_dag.execute(2, 3)
     result = output_channel.begin_read()
-    assert result == 5
+    assert result == [2, 3]
     output_channel.end_read()
 
     compiled_dag.teardown()
@@ -236,50 +251,50 @@ def test_multi_args_branch(ray_start_regular):
 def test_kwargs_basic(ray_start_regular):
     a1 = Actor.remote(0)
     a2 = Actor.remote(0)
-    a3 = Actor.remote(0)
+    c = Collector.remote()
     with InputNode() as i:
         branch1 = a1.inc.bind(i.x)
         branch2 = a2.inc.bind(i.y)
-        dag = a3.inc_two.bind(branch1, branch2)
+        dag = c.collect_two.bind(branch2, branch1)
 
     compiled_dag = dag.experimental_compile()
 
     output_channel = compiled_dag.execute(x=2, y=3)
     result = output_channel.begin_read()
-    assert result == 5
+    assert result == [3, 2]
     output_channel.end_read()
 
     compiled_dag.teardown()
 
 
 def test_kwargs_single_actor(ray_start_regular):
-    a = Actor.remote(0)
+    c = Collector.remote()
     with InputNode() as i:
-        dag = a.inc_two.bind(i.x, i.y)
+        dag = c.collect_two.bind(i.y, i.x)
 
     compiled_dag = dag.experimental_compile()
 
     for i in range(3):
         output_channel = compiled_dag.execute(x=2, y=3)
         result = output_channel.begin_read()
-        assert result == (i + 1) * 5
+        assert result == [3, 2] * (i + 1)
         output_channel.end_read()
 
     compiled_dag.teardown()
 
 
 def test_kwargs_branch(ray_start_regular):
-    a1 = Actor.remote(0)
-    a2 = Actor.remote(0)
+    a = Actor.remote(0)
+    c = Collector.remote()
     with InputNode() as i:
-        branch = a1.inc.bind(i.x)
-        dag = a2.inc_two.bind(branch, i.y)
+        branch = a.inc.bind(i.x)
+        dag = c.collect_two.bind(i.y, branch)
 
     compiled_dag = dag.experimental_compile()
 
     output_channel = compiled_dag.execute(x=2, y=3)
     result = output_channel.begin_read()
-    assert result == 5
+    assert result == [3, 2]
     output_channel.end_read()
 
     compiled_dag.teardown()
@@ -288,17 +303,17 @@ def test_kwargs_branch(ray_start_regular):
 def test_multi_args_and_kwargs(ray_start_regular):
     a1 = Actor.remote(0)
     a2 = Actor.remote(0)
-    a3 = Actor.remote(0)
+    c = Collector.remote()
     with InputNode() as i:
         branch1 = a1.inc.bind(i[0])
         branch2 = a2.inc.bind(i.y)
-        dag = a3.inc_three.bind(branch1, branch2, i.z)
+        dag = c.collect_three.bind(branch2, i.z, branch1)
 
     compiled_dag = dag.experimental_compile()
 
     output_channel = compiled_dag.execute(2, y=3, z=4)
     result = output_channel.begin_read()
-    assert result == 9
+    assert result == [3, 4, 2]
     output_channel.end_read()
 
     compiled_dag.teardown()

@@ -106,8 +106,8 @@ def _prep_task(self, task: "ExecutableTask") -> None:
     """
     Prepare the task for execution.
     """
-    for type_hint in task.input_type_hints:
-        type_hint.register_custom_serializer()
+    for typ_hint in task.input_type_hints:
+        typ_hint.register_custom_serializer()
     task.output_type_hint.register_custom_serializer()
 
     input_reader: ReaderInterface = SynchronousReader(task.input_channels)
