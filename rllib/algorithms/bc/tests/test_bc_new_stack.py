@@ -1,35 +1,78 @@
 from pathlib import Path
+import unittest
+import ray
 
 from ray.rllib.algorithms.bc import BCConfig
-
-data_path = "tests/data/pendulum/small.json"
-base_path = Path(__file__).parents[3]
-print(f"base_path={base_path}")
-data_path = "local://" + base_path.joinpath(data_path).as_posix()
-print(f"data_path={data_path}")
+from ray.rllib.utils.metrics import ENV_RUNNER_RESULTS, EPISODE_RETURN_MEAN
 
 
-config = (
-    BCConfig()
-    .environment(env="Pendulum-v1")
-    .api_stack(
-        enable_rl_module_and_learner=True,
-        enable_env_runner_and_connector_v2=True,
-    )
-    .evaluation(
-        evaluation_interval=3,
-        evaluation_num_env_runners=1,
-        evaluation_duration=5,
-        evaluation_parallel_to_training=True,
-    )
-    .offline_data(input_=[data_path])
-    .training(
-        train_batch_size=32,
-    )
-)
+class TestBC(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        ray.init()
 
-algo = config.build()
+    @classmethod
+    def tearDownClass(cls) -> None:
+        ray.shutdown()
 
-for _ in range(10):
-    results = algo.train()
-    print(results)
+    def test_bc_compilation_and_learning_from_offline_file(self):
+        data_path = "tests/data/cartpole/large.json"
+        base_path = Path(__file__).parents[3]
+        print(f"base_path={base_path}")
+        data_path = "local://" + base_path.joinpath(data_path).as_posix()
+        print(f"data_path={data_path}")
+
+        # Define the BC config.
+        config = (
+            BCConfig()
+            .environment(env="CartPole-v1")
+            .api_stack(
+                enable_rl_module_and_learner=True,
+                enable_env_runner_and_connector_v2=True,
+            )
+            .evaluation(
+                evaluation_interval=3,
+                evaluation_num_env_runners=1,
+                evaluation_duration=5,
+                evaluation_parallel_to_training=True,
+            )
+            .offline_data(input_=[data_path])
+            .training(
+                lr=0.0008,
+            )
+        )
+
+        num_iterations = 350
+        min_reward = 120.0
+
+        # TODO (simon): Add support for recurrent modules.
+        algo = config.build()
+        learnt = False
+        for i in range(num_iterations):
+            results = algo.train()
+            print(results)
+
+            eval_results = results.get("evaluation", {})
+            if eval_results:
+                episode_return_mean = eval_results[ENV_RUNNER_RESULTS][
+                    EPISODE_RETURN_MEAN
+                ]
+                print(f"iter={i}, R={episode_return_mean}")
+                if episode_return_mean > min_reward:
+                    print("BC has learnt the task!")
+                    learnt = True
+                    break
+
+        if not learnt:
+            raise ValueError(
+                f"`BC` did not reach {min_reward} reward from expert offline data!"
+            )
+
+        algo.stop()
+
+
+if __name__ == "__main__":
+    import pytest
+    import sys
+
+    sys.exit(pytest.main(["-v", __file__]))

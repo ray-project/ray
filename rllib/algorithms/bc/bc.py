@@ -190,7 +190,7 @@ class BC(MARWIL):
             # As the results contain for each policy the loss and in addition the
             # total loss over all policies is returned, this total loss has to be
             # removed.
-            policies_to_update = set(learner_results.keys()) - {ALL_MODULES}
+            modules_to_update = set(learner_results[0].keys()) - {ALL_MODULES}
 
             # Update weights and global_vars - after learning on the local worker -
             # on all remote workers.
@@ -199,8 +199,9 @@ class BC(MARWIL):
                     # NOTE: the new API stack does not use global vars.
                     self.workers.sync_weights(
                         from_worker_or_learner_group=self.learner_group,
-                        policies=policies_to_update,
+                        policies=modules_to_update,
                         global_vars=None,
+                        inference_only=True,
                     )
                 # Then we must have a local worker.
                 else:

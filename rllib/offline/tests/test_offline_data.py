@@ -33,7 +33,7 @@ class TestOfflineData(unittest.TestCase):
 
         offline_data = OfflineData(config={"input_": data_path})
 
-        batch = offline_data.data.take_batch(batch_size=1)
+        batch = offline_data.data.take_batch(batch_size=10)
         episodes = offline_data._convert_to_episodes(batch)
 
         self.assertTrue(len(episodes) == 10)
