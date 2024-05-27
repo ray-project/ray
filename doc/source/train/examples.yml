@@ -55,26 +55,6 @@ examples:
       - natural language processing
     contributor: community
     link: examples/intel_gaudi/bert
-  - title: "Fine-tune Llama-2-7b with Intel Gaudi"
-    frameworks:
-      - accelerate
-      - transformers
-    skill_level: intermediate
-    use_cases:
-      - natural language processing
-      - large language models
-    contributor: community
-    link: examples/intel_gaudi/llama
-  - title: "Fine-tune Llama-2-70b with Deepspeed on Intel Gaudi"
-    frameworks:
-      - accelerate
-      - transformers
-    skill_level: intermediate
-    use_cases:
-      - natural language processing
-      - large language models
-    contributor: community
-    link: examples/intel_gaudi/llama_deepspeed
 
   - title: Train a text classifier with DeepSpeed
     frameworks:
@@ -107,6 +87,16 @@ examples:
     use_cases:
       - natural language processing
     link: examples/transformers/huggingface_text_classification
+  - title: "Fine-tune Llama-2-7b and Llama-2-70b with Intel Gaudi"
+    frameworks:
+      - accelerate
+      - transformers
+    skill_level: intermediate
+    use_cases:
+      - natural language processing
+      - large language models
+    contributor: community
+    link: examples/intel_gaudi/llama
 
   - title: Fine-tune a Llama-2 text generation models with DeepSpeed and Hugging Face Accelerate
     frameworks:
