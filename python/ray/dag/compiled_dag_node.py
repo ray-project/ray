@@ -875,13 +875,16 @@ class CompiledDAG:
 
                 for actor in outer.actor_refs:
                     logger.info(f"Cancelling compiled worker on actor: {actor}")
-                for actor, tasks in outer.actor_to_executable_tasks.items():
+                # Cancel all actor loops in parallel.
+                cancel_refs = [
+                    actor.__ray_call__.remote(do_cancel_executable_tasks, tasks)
+                    for actor, tasks in outer.actor_to_executable_tasks.items()
+                ]
+                for cancel_ref in cancel_refs:
                     try:
                         # TODO(swang): Suppress exceptions from actors trying to
                         # read closed channels when DAG is being torn down.
-                        ray.get(
-                            actor.__ray_call__.remote(do_cancel_executable_tasks, tasks)
-                        )
+                        ray.get(cancel_ref, timeout=30)
                     except Exception:
                         logger.exception("Error cancelling worker task")
                         pass

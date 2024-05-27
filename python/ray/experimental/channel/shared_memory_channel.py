@@ -3,7 +3,9 @@ import logging
 from typing import Any, List, Optional, Union
 
 import ray
+from ray._raylet import SerializedObject
 from ray.experimental.channel.common import ChannelInterface, ChannelOutputType
+from ray.experimental.channel.torch_tensor_type import TorchTensorType
 from ray.util.annotations import PublicAPI
 
 # Logger for this module. It should be configured at the entry point
@@ -106,7 +108,34 @@ class SharedMemoryType(ChannelOutputType):
             A ChannelInterface that can be used to pass data
                 of this type.
         """
+        if self._contains_type is not None:
+            assert isinstance(
+                self._contains_type, TorchTensorType
+            ), "_contains_type must be of type TorchTensorType"
+
+            from ray.experimental.channel.torch_tensor_nccl_channel import (
+                NestedTorchTensorNcclChannel,
+            )
+
+            if self._contains_type.requires_nccl():
+                cpu_data_typ = SharedMemoryType(
+                    buffer_size_bytes=self.buffer_size_bytes
+                )
+                return NestedTorchTensorNcclChannel(
+                    writer,
+                    readers,
+                    gpu_data_typ=self._contains_type,
+                    cpu_data_typ=cpu_data_typ,
+                )
+
         return Channel(writer, readers)
+
+    def set_nccl_group_id(self, group_id: str) -> None:
+        assert self.requires_nccl()
+
+        # Shared memory channels don't need NCCL but they can
+        # contain objects that use NCCL.
+        self._contains_type.set_nccl_group_id(group_id)
 
 
 @PublicAPI(stability="alpha")
@@ -311,17 +340,22 @@ class Channel(ChannelInterface):
     def write(self, value: Any):
         self.ensure_registered_as_writer()
 
-        try:
-            serialized_value = self._worker.get_serialization_context().serialize(value)
-        except TypeError as e:
-            sio = io.StringIO()
-            ray.util.inspect_serializability(value, print_file=sio)
-            msg = (
-                "Could not serialize the put value "
-                f"{repr(value)}:\n"
-                f"{sio.getvalue()}"
-            )
-            raise TypeError(msg) from e
+        if not isinstance(value, SerializedObject):
+            try:
+                serialized_value = self._worker.get_serialization_context().serialize(
+                    value
+                )
+            except TypeError as e:
+                sio = io.StringIO()
+                ray.util.inspect_serializability(value, print_file=sio)
+                msg = (
+                    "Could not serialize the put value "
+                    f"{repr(value)}:\n"
+                    f"{sio.getvalue()}"
+                )
+                raise TypeError(msg) from e
+        else:
+            serialized_value = value
 
         self._worker.core_worker.experimental_channel_put_serialized(
             serialized_value,
