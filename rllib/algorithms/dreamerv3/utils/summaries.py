@@ -155,8 +155,10 @@ def report_predicted_vs_sampled_obs(
         "WORLD_MODEL_fwd_out_obs_distribution_means_b0xT",
     )
     # logged as a non-reduced item (still a list)
-    predicted_observation_means_single_example = metrics.peek(fwd_output_key)[-1]
-    metrics.delete(fwd_output_key)
+    predicted_observation_means_single_example = metrics.peek(
+        fwd_output_key, default=[None]
+    )[-1]
+    metrics.delete(fwd_output_key, key_error=False)
 
     final_result_key = f"WORLD_MODEL_sampled_vs_predicted_posterior_b0x{batch_length_T}_videos"
     if not do_report:
@@ -207,8 +209,13 @@ def report_dreamed_eval_trajectory_vs_samples(
             they do NOT contain anymore any (spacious) data relevant for producing
             the report/videos.
     """
-    dream_data = metrics.peek(LEARNER_RESULTS, DEFAULT_MODULE_ID, "dream_data")
-    metrics.delete(LEARNER_RESULTS, DEFAULT_MODULE_ID, "dream_data")
+    dream_data = metrics.peek(
+        LEARNER_RESULTS,
+        DEFAULT_MODULE_ID,
+        "dream_data",
+        default={},
+    )
+    metrics.delete(LEARNER_RESULTS, DEFAULT_MODULE_ID, "dream_data", key_error=False)
 
     final_result_key_obs = f"EVALUATION_sampled_vs_dreamed_prior_H{dreamed_T}_obs"
     final_result_key_rew = (
