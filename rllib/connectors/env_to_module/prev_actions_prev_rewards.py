@@ -121,7 +121,7 @@ class PrevActionsPrevRewardsConnector(ConnectorV2):
             episodes, zip_with_batch_column=observations
         ):
             # Episode is not finalized yet and thus still operates on lists of items.
-            assert not sa_episode.is_finalized
+            assert not sa_episode.is_numpy
 
             if self.n_prev_actions:
                 prev_n_actions = flatten_to_single_ndarray(

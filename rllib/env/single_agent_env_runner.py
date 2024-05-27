@@ -354,8 +354,17 @@ class SingleAgentEnvRunner(EnvRunner):
 
                     self._make_on_episode_callback("on_episode_end", env_index)
 
-                    # Then finalize (numpy'ize) the episode.
-                    done_episodes_to_return.append(self._episodes[env_index].finalize())
+                    # Numpy'ize the episode.
+                    if self.config.episodes_to_numpy_from_env_runner:
+                        # Any possibly compress observations.
+                        done_episodes_to_return.append(
+                            self._episodes[env_index].to_numpy(
+                                compress_observations=self.config.compress_observations
+                            )
+                        )
+                    # Leave episode as lists of individual (obs, action, etc..) items.
+                    else:
+                        done_episodes_to_return.append(self._episodes[env_index])
 
                     # Create a new episode object with already the reset data in it.
                     self._episodes[env_index] = SingleAgentEpisode(
@@ -410,8 +419,15 @@ class SingleAgentEnvRunner(EnvRunner):
                 continue
             eps.validate()
             self._ongoing_episodes_for_metrics[eps.id_].append(eps)
-            # Return finalized (numpy'ized) Episodes.
-            ongoing_episodes_to_return.append(eps.finalize())
+            # Numpy'ize the episode.
+            if self.config.episodes_to_numpy_from_env_runner:
+                # Any possibly compress observations.
+                ongoing_episodes_to_return.append(eps.to_numpy(
+                    compress_observations=self.config.compress_observations
+                ))
+            # Leave episode as lists of individual (obs, action, etc..) items.
+            else:
+                ongoing_episodes_to_return.append(eps)
 
         # Continue collecting into the cut Episode chunks.
         self._episodes = ongoing_episodes_continuations
@@ -549,8 +565,15 @@ class SingleAgentEnvRunner(EnvRunner):
                         "on_episode_end", env_index, episodes
                     )
 
-                    # Finalize (numpy'ize) the episode.
-                    done_episodes_to_return.append(episodes[env_index].finalize())
+                    # Numpy'ize the episode.
+                    if self.config.episodes_to_numpy_from_env_runner:
+                        # Any possibly compress observations.
+                        done_episodes_to_return.append(episodes[env_index].to_numpy(
+                            compress_observations=self.config.compress_observations
+                        ))
+                    # Leave episode as lists of individual (obs, action, etc..) items.
+                    else:
+                        done_episodes_to_return.append(episodes[env_index])
 
                     # Also early-out if we reach the number of episodes within this
                     # for-loop.

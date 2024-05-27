@@ -87,6 +87,7 @@ class SACConfig(AlgorithmConfig):
 
         # .env_runners()
         self.rollout_fragment_length = "auto"
+        self.episodes_to_numpy_from_env_runner = False
         self.compress_observations = False
         self.exploration_config = {
             # The Exploration class to use. In the simplest case, this is the name

@@ -82,7 +82,7 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
         for i in range(num_timesteps):
             # If terminated we create a new episode.
             if terminated:
-                episodes.append(eps.finalize())
+                episodes.append(eps.to_numpy())
                 eps = SingleAgentEpisode()
                 obs, info = env.reset()
                 eps.add_env_reset(obs, info)

@@ -449,12 +449,12 @@ class TestSingelAgentEpisode(unittest.TestCase):
         episode = self._create_episode(100)
         self.assertTrue(episode.t == 100 and episode.t_started == 0)
         # Convert to numpy before splitting.
-        episode.finalize()
+        episode.to_numpy()
         # Create two 50/50 episode chunks.
         e1 = episode[:50]
-        self.assertTrue(e1.is_finalized)
+        self.assertTrue(e1.is_numpy)
         e2 = episode.slice(slice(50, None))
-        self.assertTrue(e2.is_finalized)
+        self.assertTrue(e2.is_numpy)
         # Make sure, `e1` and `e2` make sense.
         self.assertTrue(len(e1) == 50)
         self.assertTrue(len(e2) == 50)
@@ -473,12 +473,12 @@ class TestSingelAgentEpisode(unittest.TestCase):
         episode = self._create_episode(99)
         self.assertTrue(episode.t == 99 and episode.t_started == 0)
         # Convert to numpy before splitting.
-        episode.finalize()
+        episode.to_numpy()
         # Create two 50/50 episode chunks.
         e1 = episode.slice(slice(None, 33))
-        self.assertTrue(e1.is_finalized)
+        self.assertTrue(e1.is_numpy)
         e2 = episode[33:]
-        self.assertTrue(e2.is_finalized)
+        self.assertTrue(e2.is_numpy)
         # Make sure, `e1` and `e2` chunk make sense.
         self.assertTrue(len(e1) == 33)
         self.assertTrue(len(e2) == 66)
@@ -500,12 +500,12 @@ class TestSingelAgentEpisode(unittest.TestCase):
         )
         self.assertTrue(episode.t == 65 and episode.t_started == 15)
         # Convert to numpy before splitting.
-        episode.finalize()
+        episode.to_numpy()
         # Create two 20/30 episode chunks.
         e1 = episode.slice(slice(None, 20))
-        self.assertTrue(e1.is_finalized)
+        self.assertTrue(e1.is_numpy)
         e2 = episode[20:]
-        self.assertTrue(e2.is_finalized)
+        self.assertTrue(e2.is_numpy)
         # Make sure, `e1` and `e2` make sense.
         self.assertTrue(len(e1) == 20)
         self.assertTrue(len(e2) == 30)

@@ -11,6 +11,7 @@ from typing import Any, Dict, List, Optional, SupportsFloat, Union
 from ray.rllib.core.columns import Columns
 from ray.rllib.env.utils.infinite_lookback_buffer import InfiniteLookbackBuffer
 from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.typing import AgentID, ModuleID
 from ray.util.annotations import PublicAPI
 
@@ -200,7 +201,7 @@ class SingleAgentEpisode:
                 automatically (given the data and the `len_lookback_buffer` argument).
             observation_space: An optional gym.Space, which all individual observations
                 should abide to. If not None and this SingleAgentEpisode is finalized
-                (via the `self.finalize()` method), and data is appended or set, the new
+                (via the `self.to_numpy()` method), and data is appended or set, the new
                 data will be checked for correctness.
             infos: Either a list of individual info dicts from a sampling or
                 an already instantiated `InfiniteLookbackBuffer` object (possibly
@@ -212,7 +213,7 @@ class SingleAgentEpisode:
                 automatically (given the data and the `len_lookback_buffer` argument).
             action_space: An optional gym.Space, which all individual actions
                 should abide to. If not None and this SingleAgentEpisode is finalized
-                (via the `self.finalize()` method), and data is appended or set, the new
+                (via the `self.to_numpy()` method), and data is appended or set, the new
                 data will be checked for correctness.
             rewards: Either a list of individual rewards from a sampling or
                 an already instantiated `InfiniteLookbackBuffer` object (possibly
@@ -432,7 +433,7 @@ class SingleAgentEpisode:
         self.is_truncated = truncated
 
         # Only check spaces if finalized AND every n timesteps.
-        if self.is_finalized and self.t % 50:
+        if self.is_numpy and self.t % 100:
             if self.observation_space is not None:
                 assert self.observation_space.contains(observation), (
                     f"`observation` {observation} does NOT fit SingleAgentEpisode's "
@@ -484,7 +485,7 @@ class SingleAgentEpisode:
                 assert len(v) == len(self.observations) - 1
 
     @property
-    def is_finalized(self) -> bool:
+    def is_numpy(self) -> bool:
         """True, if the data in this episode is already stored as numpy arrays."""
         # If rewards are still a list, return False.
         # Otherwise, rewards should already be a (1D) numpy array.
@@ -500,7 +501,7 @@ class SingleAgentEpisode:
         """
         return self.is_terminated or self.is_truncated
 
-    def finalize(self) -> "SingleAgentEpisode":
+    def to_numpy(self) -> "SingleAgentEpisode":
         """Converts this Episode's list attributes to numpy arrays.
 
         This means in particular that this episodes' lists of (possibly complex)
@@ -508,10 +509,10 @@ class SingleAgentEpisode:
         structs, whose leafs are now numpy arrays. Each of these leaf numpy arrays will
         have the same length (batch dimension) as the length of the original lists.
 
-        Note that Columns.INFOS are NEVER numpy'ized and will remain a list
-        (normally, a list of the original, env-returned dicts). This is due to the
-        herterogenous nature of INFOS returned by envs, which would make it unwieldy to
-        convert this information to numpy arrays.
+        Note that the data under the Columns.INFOS are NEVER numpy'ized and will remain
+        a list (normally, a list of the original, env-returned dicts). This is due to
+        the herterogenous nature of INFOS returned by envs, which would make it unwieldy
+        to convert this information to numpy arrays.
 
         After calling this method, no further data may be added to this episode via
         the `self.add_env_step()` method.
@@ -529,12 +530,12 @@ class SingleAgentEpisode:
                 actions=[1, 2, 3],
                 rewards=[1, 2, 3],
                 # Note: terminated/truncated have nothing to do with an episode
-                # being `finalized` or not (via the `self.finalize()` method)!
+                # being `finalized` or not (via the `self.to_numpy()` method)!
                 terminated=False,
                 len_lookback_buffer=0,  # no lookback; all data is actually "in" episode
             )
             # Episode has not been finalized (numpy'ized) yet.
-            assert not episode.is_finalized
+            assert not episode.is_numpy
             # We are still operating on lists.
             assert episode.get_observations([1]) == [1]
             assert episode.get_observations(slice(None, 2)) == [0, 1]
@@ -546,11 +547,11 @@ class SingleAgentEpisode:
                 terminated=True,
             )
             # Still NOT finalized.
-            assert not episode.is_finalized
+            assert not episode.is_numpy
 
             # Let's finalize the episode.
-            episode.finalize()
-            assert episode.is_finalized
+            episode.to_numpy()
+            assert episode.is_numpy
 
             # We cannot add data anymore. The following would crash.
             # episode.add_env_step(observation=5, action=5, reward=5)
@@ -1382,7 +1383,7 @@ class SingleAgentEpisode:
         """Temporarily adds (until `finalized()` called) per-timestep data to self.
 
         The given `data` is appended to a list (`self._temporary_timestep_data`), which
-        is cleared upon calling `self.finalize()`. To get the thus-far accumulated
+        is cleared upon calling `self.to_numpy()`. To get the thus-far accumulated
         temporary timestep data for a certain key, use the `get_temporary_timestep_data`
         API.
         Note that the size of the per timestep list is NOT checked or validated against
@@ -1393,7 +1394,7 @@ class SingleAgentEpisode:
                 the first data to be added for this key, start a new list.
             data: The data item (representing a single timestep) to be stored.
         """
-        if self.is_finalized:
+        if self.is_numpy:
             raise ValueError(
                 "Cannot use the `add_temporary_timestep_data` API on an already "
                 f"finalized {type(self).__name__}!"
@@ -1404,16 +1405,16 @@ class SingleAgentEpisode:
         """Returns all temporarily stored data items (list) under the given key.
 
         Note that all temporary timestep data is erased/cleared when calling
-        `self.finalize()`.
+        `self.to_numpy()`.
 
         Returns:
             The current list storing temporary timestep data under `key`.
         """
-        if self.is_finalized:
+        if self.is_numpy:
             raise ValueError(
                 "Cannot use the `get_temporary_timestep_data` API on an already "
                 f"finalized {type(self).__name__}! All temporary data has been erased "
-                f"upon `{type(self).__name__}.finalize()`."
+                f"upon `{type(self).__name__}.to_numpy()`."
             )
         try:
             return self._temporary_timestep_data[key]
@@ -1563,7 +1564,7 @@ class SingleAgentEpisode:
         truncateds = [False] * (len(self) - 1) + [self.is_truncated]
         eps_id = [self.id_] * len(self)
 
-        if self.is_finalized:
+        if self.is_numpy:
             t = np.array(t)
             terminateds = np.array(terminateds)
             truncateds = np.array(truncateds)
@@ -1759,3 +1760,11 @@ class SingleAgentEpisode:
                 f"SingleAgentEpisode does not support getting item '{item}'! "
                 "Only slice objects allowed with the syntax: `episode[a:b]`."
             )
+
+    @Deprecated(new="SingleAgentEpisode.is_numpy()", error=True)
+    def is_finalized(self):
+        pass
+
+    @Deprecated(new="SingleAgentEpisode.to_numpy()", error=True)
+    def finalize(self):
+        pass

@@ -349,6 +349,7 @@ class AlgorithmConfig(_Config):
         # TODO (sven): Rename into `sample_mode`.
         self.batch_mode = "truncate_episodes"
         self.compress_observations = False
+        self.episodes_to_numpy_from_env_runner = False
         # @OldAPIStack
         self.remote_worker_envs = False
         self.remote_env_batch_wait_ms = 0

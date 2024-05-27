@@ -128,7 +128,7 @@ class AddStatesFromEpisodesToBatch(ConnectorV2):
         output_data = connector(
             rl_module=rl_module,
             data={},
-            episodes=[episode.finalize()],
+            episodes=[episode.to_numpy()],
             shared_data={},
         )
         check(
@@ -235,7 +235,7 @@ class AddStatesFromEpisodesToBatch(ConnectorV2):
             agents_that_stepped_only=not self._as_learner_connector,
         ):
             if self._as_learner_connector:
-                assert sa_episode.is_finalized
+                assert sa_episode.is_numpy
 
                 # Multi-agent case: Extract correct single agent RLModule (to get the
                 # state for individually).
@@ -316,7 +316,7 @@ class AddStatesFromEpisodesToBatch(ConnectorV2):
                     single_agent_episode=sa_episode,
                 )
             else:
-                assert not sa_episode.is_finalized
+                assert not sa_episode.is_numpy
 
                 # Multi-agent case: Extract correct single agent RLModule (to get the
                 # state for individually).
