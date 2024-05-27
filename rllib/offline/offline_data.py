@@ -1,3 +1,4 @@
+import functools
 import logging
 import numpy as np
 from pathlib import Path
@@ -63,33 +64,37 @@ class OfflineData:
         num_samples: int,
         return_iterator: bool = False,
         num_shards: int = 1,
-        as_episodes: bool = True,
     ):
+        if (
+            not return_iterator
+            or return_iterator
+            and num_shards <= 1
+            and not self.batch_iterator
+        ):
+            self.batch_iterator = self.data.map_batches(
+                functools.partial(self._map_to_episodes, self.is_multi_agent)
+            ).iter_batches(
+                batch_size=num_samples,
+                prefetch_batches=1,
+                local_shuffle_buffer_size=num_samples * 10,
+            )
 
         if return_iterator:
             if num_shards > 1:
-                return self.data.shards(num_shards)
+                return self.data.map_batches(
+                    functools.partial(self._map_to_episodes, self.is_multi_agent)
+                ).streaming_split(n=num_shards, equal=True)
             else:
-                return self.data.iter_batches(
-                    batch_size=num_samples,
-                    batch_format="numpy",
-                    local_shuffle_buffer_size=num_samples * 10,
-                )
+                return self.batch_iterator
         else:
-            if not self.batch_iterator:
-                self.batch_iterator = self.data.iter_batches(
-                    batch_size=num_samples,
-                    batch_format="numpy",
-                    local_shuffle_buffer_size=num_samples * 10,
-                )
             # Return a single batch
-            if as_episodes:
-                return self._convert_to_episodes(next(iter(self.batch_iterator)))
-            else:
-                return self.data.take_batch(batch_size=num_samples)
+            return next(iter(self.batch_iterator))["episodes"]
 
-    def _convert_to_episodes(self, batch: Dict[str, np.ndarray]) -> List[EpisodeType]:
-        """Converts a batch of data to episodes."""
+    @staticmethod
+    def _map_to_episodes(
+        is_multi_agent: bool, batch: Dict[str, np.ndarray]
+    ) -> List[EpisodeType]:
+        """Maps a batch of data to episodes."""
 
         episodes = []
         # TODO (simon): Give users possibility to provide a custom schema.
@@ -97,7 +102,7 @@ class OfflineData:
 
             # If multi-agent we need to extract the agent ID.
             # TODO (simon): Check, what happens with the module ID.
-            if self.is_multi_agent:
+            if is_multi_agent:
                 agent_id = (
                     batch[Columns.AGENT_ID][i][0]
                     if Columns.AGENT_ID in batch
@@ -110,7 +115,7 @@ class OfflineData:
             else:
                 agent_id = None
 
-            if self.is_multi_agent:
+            if is_multi_agent:
                 # TODO (simon): Add support for multi-agent episodes.
                 pass
             else:
@@ -144,4 +149,4 @@ class OfflineData:
                     len_lookback_buffer=0,
                 )
             episodes.append(episode)
-        return episodes
+        return {"episodes": episodes}

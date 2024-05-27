@@ -160,7 +160,9 @@ class BC(MARWIL):
                 # for sampling. Only in online evaluation
                 # `RolloutWorker/EnvRunner` should be used.
                 episodes = self.offline_data.sample(
-                    num_samples=self.config.train_batch_size
+                    num_samples=self.config.train_batch_size,
+                    num_shards=self.config.num_learners,
+                    return_iterator=True if self.config.num_learners > 1 else False,
                 )
 
             with self.metrics.log_time((TIMERS, LEARNER_UPDATE_TIMER)):

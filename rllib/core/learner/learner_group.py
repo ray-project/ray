@@ -393,42 +393,57 @@ class LearnerGroup:
             # Single- or MultiAgentEpisodes: Shard into equal pieces (only roughly equal
             # in case of multi-agent).
             else:
-                eps_shards = list(ShardEpisodesIterator(episodes, len(self._workers)))
-                # In the multi-agent case AND `minibatch_size` AND num_workers > 1, we
-                # compute a max iteration counter such that the different Learners will
-                # not go through a different number of iterations.
-                min_total_mini_batches = 0
-                if (
-                    isinstance(episodes[0], MultiAgentEpisode)
-                    and minibatch_size
-                    and len(self._workers) > 1
-                ):
-                    # Find episode w/ the largest single-agent episode in it, then
-                    # compute this single-agent episode's total number of mini batches
-                    # (if we iterated over it num_sgd_iter times with the mini batch
-                    # size).
-                    longest_ts = 0
-                    per_mod_ts = defaultdict(int)
-                    for i, shard in enumerate(eps_shards):
-                        for ma_episode in shard:
-                            for sa_episode in ma_episode.agent_episodes.values():
-                                key = (i, sa_episode.module_id)
-                                per_mod_ts[key] += len(sa_episode)
-                                if per_mod_ts[key] > longest_ts:
-                                    longest_ts = per_mod_ts[key]
-                    min_total_mini_batches = self._compute_num_total_mini_batches(
-                        batch_size=longest_ts,
-                        mini_batch_size=minibatch_size,
-                        num_iters=num_iters,
+                from ray.data.iterator import DataIterator
+
+                if isinstance(episodes[0], DataIterator):
+                    min_total_mini_batches = 0
+                    partials = [
+                        partial(
+                            _learner_update,
+                            episodes_shard=episodes_shard,
+                            min_total_mini_batches=min_total_mini_batches,
+                        )
+                        for episodes_shard in episodes
+                    ]
+                else:
+                    eps_shards = list(
+                        ShardEpisodesIterator(episodes, len(self._workers))
                     )
-                partials = [
-                    partial(
-                        _learner_update,
-                        episodes_shard=eps_shard,
-                        min_total_mini_batches=min_total_mini_batches,
-                    )
-                    for eps_shard in eps_shards
-                ]
+                    # In the multi-agent case AND `minibatch_size` AND num_workers
+                    # > 1, we compute a max iteration counter such that the different
+                    # Learners will not go through a different number of iterations.
+                    min_total_mini_batches = 0
+                    if (
+                        isinstance(episodes[0], MultiAgentEpisode)
+                        and minibatch_size
+                        and len(self._workers) > 1
+                    ):
+                        # Find episode w/ the largest single-agent episode in it, then
+                        # compute this single-agent episode's total number of mini
+                        # batches (if we iterated over it num_sgd_iter times with the
+                        # mini batch size).
+                        longest_ts = 0
+                        per_mod_ts = defaultdict(int)
+                        for i, shard in enumerate(eps_shards):
+                            for ma_episode in shard:
+                                for sa_episode in ma_episode.agent_episodes.values():
+                                    key = (i, sa_episode.module_id)
+                                    per_mod_ts[key] += len(sa_episode)
+                                    if per_mod_ts[key] > longest_ts:
+                                        longest_ts = per_mod_ts[key]
+                        min_total_mini_batches = self._compute_num_total_mini_batches(
+                            batch_size=longest_ts,
+                            mini_batch_size=minibatch_size,
+                            num_iters=num_iters,
+                        )
+                    partials = [
+                        partial(
+                            _learner_update,
+                            episodes_shard=eps_shard,
+                            min_total_mini_batches=min_total_mini_batches,
+                        )
+                        for eps_shard in eps_shards
+                    ]
 
             if async_update:
                 # Retrieve all ready results (kicked off by prior calls to this method).
