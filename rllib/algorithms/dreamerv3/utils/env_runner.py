@@ -304,7 +304,7 @@ class DreamerV3EnvRunner(EnvRunner):
             # Set initial obs and states in the episodes.
             for i in range(self.num_envs):
                 self._episodes[i].add_env_reset(observation=obs[i])
-                self._states[i] = None #{k: s[i] for k, s in initial_states.items()}
+                self._states[i] = None
 
         # Don't reset existing envs; continue in already started episodes.
         else:
