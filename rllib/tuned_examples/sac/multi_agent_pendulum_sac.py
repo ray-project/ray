@@ -25,6 +25,7 @@ register_env(
 config = (
     SACConfig()
     .environment(env="multi_agent_pendulum")
+    .env_runners(num_env_runners=2)
     .training(
         initial_alpha=1.001,
         lr=3e-4,
