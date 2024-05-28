@@ -1888,7 +1888,7 @@ class MultiAgentEpisode:
         `env.step()` call.
 
         Returns:
-            A set of AgentIDs that are suposed to send actions to the next `env.step()`
+            A set of AgentIDs that are supposed to send actions to the next `env.step()`
             call.
         """
         return {
