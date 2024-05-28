@@ -7,6 +7,7 @@ import threading
 
 import ray
 from ray.exceptions import RayTaskError
+from ray.experimental.compiled_dag_ref import CompiledDAGRef
 from ray.experimental.channel import (
     ChannelInterface,
     ChannelOutputType,
@@ -146,7 +147,6 @@ def _exec_task(self, task: "ExecutableTask", idx: int) -> bool:
         # exception in a RayTaskError here because it has already been wrapped
         # by the previous task.
         output_writer.write(exc)
-        input_reader.end_read()
         return False
 
     resolved_inputs = []
@@ -159,10 +159,6 @@ def _exec_task(self, task: "ExecutableTask", idx: int) -> bool:
     except Exception as exc:
         output_writer.write(_wrap_exception(exc))
 
-    try:
-        input_reader.end_read()
-    except IOError:
-        return True
     return False
 
 
@@ -185,21 +181,11 @@ class AwaitableDAGOutput:
         self._fut = fut
         self._reader = ReaderInterface
 
-    async def begin_read(self):
+    async def get(self):
         ret = await self._fut
         if isinstance(ret, Exception):
             raise ret
         return ret
-
-    def end_read(self):
-        self._reader.end_read()
-
-    async def __aenter__(self):
-        ret = await self._fut
-        return ret
-
-    async def __aexit__(self, exc_type, exc_value, traceback):
-        self.end_read()
 
 
 @DeveloperAPI
@@ -463,6 +449,8 @@ class CompiledDAG:
         # Uniquely identifies the NCCL communicator that will be used within
         # this DAG, if any.
         self._nccl_group_id: Optional[str] = None
+        self._execution_index = 0
+        self._result_buffer = []
 
     def _add_node(self, node: "ray.dag.DAGNode") -> None:
         idx = self.counter
@@ -907,11 +895,31 @@ class CompiledDAG:
         monitor.start()
         return monitor
 
+    def _execute_until(
+        self,
+        execution_index: int,
+    ) -> Any:
+        """Repeatedly execute this DAG until the given execution index.
+
+        Args:
+            execution_index: The execution index to execute until.
+
+        Returns:
+            The execution result corresponding to the given execution index.
+        """
+        while execution_index >= len(self._result_buffer):
+            # TODO: limit _result_buffer size
+            self._result_buffer.append(self._dag_output_fetcher.begin_read())
+
+        result = self._result_buffer[execution_index]
+        self._result_buffer[execution_index] = None
+        return result
+
     def execute(
         self,
         *args,
         **kwargs,
-    ) -> ReaderInterface:
+    ) -> Union[CompiledDAGRef, List[CompiledDAGRef]]:
         """Execute this DAG using the compiled execution path.
 
         Args:
@@ -929,7 +937,9 @@ class CompiledDAG:
         inp = (args, kwargs)
         self._dag_submitter.write(inp)
 
-        return self._dag_output_fetcher
+        ref = CompiledDAGRef(self, self._execution_index)
+        self._execution_index += 1
+        return ref
 
     async def execute_async(
         self,

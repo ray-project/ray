@@ -150,7 +150,7 @@ class MutableObjectProvider {
   std::shared_ptr<plasma::PlasmaClientInterface> plasma_;
 
   // Object manager for the mutable objects.
-  ray::experimental::MutableObjectManager object_manager_;
+  std::shared_ptr<ray::experimental::MutableObjectManager> object_manager_;
 
   // Protects `remote_writer_object_to_local_reader_`.
   absl::Mutex remote_writer_object_to_local_reader_lock_;

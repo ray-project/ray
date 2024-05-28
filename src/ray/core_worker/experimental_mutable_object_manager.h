@@ -34,8 +34,26 @@
 namespace ray {
 namespace experimental {
 
-class MutableObjectManager {
+class MutableObjectManager : public std::enable_shared_from_this<MutableObjectManager> {
  public:
+  class ChannelBuffer : public SharedMemoryBuffer {
+   public:
+    ChannelBuffer(std::shared_ptr<MutableObjectManager> mutable_object_manager,
+                  std::shared_ptr<Buffer> buffer,
+                  const ObjectID &object_id)
+        : SharedMemoryBuffer(buffer, 0, buffer->Size()),
+          mutable_object_manager_(mutable_object_manager),
+          object_id_(object_id) {}
+
+    ~ChannelBuffer();
+
+    const ObjectID &object_id() const { return object_id_; }
+
+   private:
+    std::shared_ptr<MutableObjectManager> mutable_object_manager_;
+    ObjectID object_id_;
+  };
+
   struct Channel {
     Channel(std::unique_ptr<plasma::MutableObject> mutable_object_ptr)
         : lock(std::make_unique<std::mutex>()),
