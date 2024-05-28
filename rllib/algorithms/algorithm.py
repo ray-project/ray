@@ -1304,7 +1304,7 @@ class Algorithm(Trainable, AlgorithmBase):
             )
             num_episodes = env_runner_results[NUM_EPISODES]
         else:
-            self.metrics.log_n_dicts(
+            self.metrics.merge_and_log_n_dicts(
                 all_metrics,
                 key=(EVALUATION_RESULTS, ENV_RUNNER_RESULTS),
             )
@@ -1492,7 +1492,7 @@ class Algorithm(Trainable, AlgorithmBase):
             )
             num_episodes = env_runner_results[NUM_EPISODES]
         else:
-            self.metrics.log_n_dicts(
+            self.metrics.merge_and_log_n_dicts(
                 all_metrics,
                 key=(EVALUATION_RESULTS, ENV_RUNNER_RESULTS),
             )
@@ -1633,7 +1633,7 @@ class Algorithm(Trainable, AlgorithmBase):
         train_batch = train_batch.as_multi_agent()
 
         # Reduce EnvRunner metrics over the n EnvRunners.
-        self.metrics.log_n_dicts(env_runner_results, key=ENV_RUNNER_RESULTS)
+        self.metrics.merge_and_log_n_dicts(env_runner_results, key=ENV_RUNNER_RESULTS)
 
         # Only train if train_batch is not empty.
         # In an extreme situation, all rollout workers die during the
@@ -3327,7 +3327,7 @@ class Algorithm(Trainable, AlgorithmBase):
                 NUM_ENV_STEPS_SAMPLED_THIS_ITER, 0
             )
         else:
-            self.metrics.log_n_dicts(
+            self.metrics.merge_and_log_n_dicts(
                 all_metrics,
                 key=(EVALUATION_RESULTS, ENV_RUNNER_RESULTS),
             )
