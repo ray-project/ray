@@ -216,7 +216,7 @@ class SACConfig(AlgorithmConfig):
             training_intensity: The intensity with which to update the model (vs
                 collecting samples from the env).
                 If None, uses "natural" values of:
-                `train_batch_size` / (`rollout_fragment_length` x `num_workers` x
+                `train_batch_size` / (`rollout_fragment_length` x `num_env_runners` x
                 `num_envs_per_env_runner`).
                 If not None, will make sure that the ratio between timesteps inserted
                 into and sampled from th buffer matches the given values.
@@ -224,7 +224,7 @@ class SACConfig(AlgorithmConfig):
                 training_intensity=1000.0
                 train_batch_size=250
                 rollout_fragment_length=1
-                num_workers=1 (or 0)
+                num_env_runners=1 (or 0)
                 num_envs_per_env_runner=1
                 -> natural value = 250 / 1 = 250.0
                 -> will make sure that replay+train op will be executed 4x asoften as

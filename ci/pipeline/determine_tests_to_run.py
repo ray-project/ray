@@ -308,8 +308,7 @@ if __name__ == "__main__":
                 # These scripts are always run as part of the build process
                 RAY_CI_TOOLS_AFFECTED = 1
             elif (
-                changed_file.endswith("build-docker-images.py")
-                or changed_file == ".buildkite/base.rayci.yml"
+                changed_file == ".buildkite/base.rayci.yml"
                 or changed_file == ".buildkite/build.rayci.yml"
                 or changed_file == ".buildkite/pipeline.arm64.yml"
                 or changed_file == "ci/docker/manylinux.Dockerfile"

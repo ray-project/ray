@@ -16,7 +16,7 @@ args = parser.parse_args()
 
 register_env(
     "multi_agent_pendulum",
-    lambda _: MultiAgentPendulum({"num_agents": 2}),
+    lambda _: MultiAgentPendulum({"num_agents": args.num_agents or 2}),
 )
 
 config = (
@@ -50,10 +50,8 @@ config = (
         train_batch_size_per_learner=256,
         target_network_update_freq=1,
         replay_buffer_config={
-            "type": "MultiAgentPrioritizedEpisodeReplayBuffer",
+            "type": "MultiAgentEpisodeReplayBuffer",
             "capacity": 100000,
-            "alpha": 1.0,
-            "beta": 0.0,
         },
         num_steps_sampled_before_learning_starts=256,
     )
@@ -61,12 +59,13 @@ config = (
         metrics_num_episodes_for_smoothing=5,
         min_sample_timesteps_per_iteration=1000,
     )
-    .multi_agent(
-        policy_mapping_fn=lambda aid, *arg, **kw: f"p{aid}",
-        policies={"p0", "p1"},
-    )
 )
 
+if args.num_agents:
+    config.multi_agent(
+        policy_mapping_fn=lambda aid, *arg, **kw: f"p{aid}",
+        policies={f"p{i}" for i in range(args.num_agents)},
+    )
 
 stop = {
     NUM_ENV_STEPS_SAMPLED_LIFETIME: 500000,

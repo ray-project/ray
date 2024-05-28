@@ -1,3 +1,4 @@
+# @OldAPIStack
 halfcheetah-ppo:
     env: HalfCheetah-v2
     run: PPO
@@ -16,7 +17,7 @@ halfcheetah-ppo:
         clip_param: 0.2
         sgd_minibatch_size: 4096
         train_batch_size: 65536
-        num_workers: 16
+        num_env_runners: 16
         num_gpus: 1
         grad_clip: 0.5
         num_envs_per_env_runner:
