@@ -10,14 +10,14 @@ steps:
     depends_on: data6build
     job_env: forge
 
-  - label: ":database: data: runtime arrow 15 tests"
+  - label: ":database: data: runtime arrow 16 tests"
     instance_type: medium
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/anyscale/data/... data 
         --parallelism-per-worker 3
-        --build-name data15build
+        --build-name data16build
         --test-env RAY_DATA_USE_STREAMING_EXECUTOR=1
-    depends_on: data15build
+    depends_on: data16build
     job_env: forge
 
   - label: ":database: data: runtime arrow nightly tests"
