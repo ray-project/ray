@@ -217,35 +217,26 @@ def test_resize_channel_on_different_nodes(ray_start_cluster):
             pass
 
         def read(self, channel, val):
-            print("A\n")
             read_val = channel.begin_read()
             if isinstance(val, np.ndarray):
                 assert np.array_equal(read_val, val)
             else:
                 assert read_val == val
-            print("B\n")
             channel.end_read()
-            print("C\n")
 
     def _test(channel, actor, val):
-        print("Writer A\n")
         channel.write(val)
-        print("Writer B\n")
         ray.get(actor.read.remote(channel, val))
-        print("Writer C\n")
 
     a = Actor.remote()
     chan = ray_channel.Channel(None, [a], 1000)
 
-    print("Driver A\n")
     # `np.random.rand(100)` requires more than 1000 bytes of storage. The channel is
     # allocated above with a backing store size of 1000 bytes.
     _test(chan, a, np.random.rand(100))
-    print("Driver B\n")
 
     # Check that another write still works.
     _test(chan, a, np.random.rand(5))
-    print("Driver C\n")
 
 
 @pytest.mark.skipif(

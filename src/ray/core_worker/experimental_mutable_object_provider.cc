@@ -14,8 +14,6 @@
 
 #include "ray/core_worker/experimental_mutable_object_provider.h"
 
-#include <fstream>
-
 #include "absl/strings/str_format.h"
 
 namespace ray {
@@ -61,9 +59,6 @@ void MutableObjectProvider::RegisterWriterChannel(const ObjectID &object_id,
     RAY_CHECK(reader);
     // TODO(jhumphri): Extend this to support multiple channels. Currently, we must have
     // one thread per channel because the thread blocks on the channel semaphore.
-    std::ofstream f;
-    f.open("/tmp/blah", std::ofstream::app);
-    f << "RegisterWriterChannel tid is " << GetTid() << std::endl;
 
     io_service.post(
         [this, &io_service, object_id, reader]() {
@@ -87,10 +82,6 @@ void MutableObjectProvider::HandleRegisterMutableObject(
     const ObjectID &writer_object_id,
     int64_t num_readers,
     const ObjectID &reader_object_id) {
-  std::ofstream f;
-  f.open("/tmp/blah", std::ofstream::app);
-  f << "HandleRegisterMutableObject, writer_object_id " << writer_object_id
-    << ", reader_object_id " << reader_object_id << std::endl;
   absl::MutexLock guard(&remote_writer_object_to_local_reader_lock_);
 
   LocalReaderInfo info;
@@ -177,11 +168,6 @@ void MutableObjectProvider::PollWriterClosure(
     instrumented_io_context &io_service,
     const ObjectID &object_id,
     std::shared_ptr<MutableObjectReaderInterface> reader) {
-  {
-        std::ofstream f;
-        f.open("/tmp/blah", std::ofstream::app);
-        f << "PollWriterClosure A" << std::endl;
-  }
   std::shared_ptr<RayObject> object;
   Status status = object_manager_.ReadAcquire(object_id, object);
   // Check if the thread returned from ReadAcquire() because the process is exiting, not
@@ -191,11 +177,6 @@ void MutableObjectProvider::PollWriterClosure(
     return;
   }
   RAY_CHECK_EQ(static_cast<int>(status.code()), static_cast<int>(StatusCode::OK));
-  {
-        std::ofstream f;
-        f.open("/tmp/blah", std::ofstream::app);
-        f << "PollWriterClosure B" << std::endl;
-  }
 
   RAY_CHECK(object->GetData());
   RAY_CHECK(object->GetMetadata());
@@ -207,12 +188,7 @@ void MutableObjectProvider::PollWriterClosure(
       object->GetData()->Data(),
       [this, &io_service, object_id, reader](const Status &status,
                                              const rpc::PushMutableObjectReply &reply) {
-        std::ofstream f;
-        f.open("/tmp/blah", std::ofstream::app);
-        f << "Callback invoked :), object id " << object_id << std::endl;
-
         RAY_CHECK_OK(object_manager_.ReadRelease(object_id));
-        f << "Callback, got past ReadRelease" << std::endl;
 
         io_service.post(
             [this, &io_service, object_id, reader]() {
@@ -223,9 +199,6 @@ void MutableObjectProvider::PollWriterClosure(
 }
 
 void MutableObjectProvider::RunIOService(instrumented_io_context &io_service) {
-    std::ofstream f;
-    f.open("/tmp/blah", std::ofstream::app);
-    f << "New thread, tid is " << GetTid() << std::endl;
   // TODO(jhumphri): Decompose this.
 #ifndef _WIN32
   // Block SIGINT and SIGTERM so they will be handled by the main thread.
@@ -237,9 +210,7 @@ void MutableObjectProvider::RunIOService(instrumented_io_context &io_service) {
 #endif
 
   SetThreadName("worker.channel_io");
-  while (true) {
-    io_service.run();
-  }
+  io_service.run();
   RAY_LOG(INFO) << "Core worker channel io service stopped.";
 }
 

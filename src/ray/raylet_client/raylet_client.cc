@@ -14,8 +14,6 @@
 
 #include "ray/raylet_client/raylet_client.h"
 
-#include <fstream>
-
 #include "ray/common/client_connection.h"
 #include "ray/common/common_protocol.h"
 #include "ray/common/ray_config.h"
@@ -433,31 +431,14 @@ void raylet::RayletClient::PushMutableObject(
   // This assumes that the format of the object is a contiguous buffer of (data |
   // metadata).
   request.set_data(data, data_size + metadata_size);
-  {
-    std::ofstream f;
-    f.open("/tmp/blah", std::ofstream::app);
-    f << "Send RPC for " << writer_object_id << std::endl;
-    f << "Also, my TID is " << GetTid() << std::endl;
-  }
   grpc_client_->PushMutableObject(
       request,
       [callback](const Status &status, const rpc::PushMutableObjectReply &reply) {
-        std::ofstream f;
-        f.open("/tmp/blah", std::ofstream::app);
-        f << "GOT RPC RESPONSE!!!" << std::endl;
-        f << "RPC response TID is " << GetTid() << std::endl;
-
         if (!status.ok()) {
           RAY_LOG(INFO) << "Error pushing mutable object: " << status;
         }
         callback(status, reply);
-        f << "GOT RPC RESPONSE!!! Now ret :)" << std::endl;
       });
-  {
-    std::ofstream f;
-    f.open("/tmp/blah", std::ofstream::app);
-    f << "Done with clal to grpc_client_->PushMutableObject()" << std::endl;
-  }
 }
 
 void raylet::RayletClient::ReleaseUnusedWorkers(

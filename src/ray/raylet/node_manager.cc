@@ -824,11 +824,7 @@ void NodeManager::HandleRegisterMutableObject(
 void NodeManager::HandlePushMutableObject(rpc::PushMutableObjectRequest request,
                                           rpc::PushMutableObjectReply *reply,
                                           rpc::SendReplyCallback send_reply_callback) {
-  std::ofstream f;
-  f.open("/tmp/blah", std::ofstream::app);
-  f << "Server got HandlePushMutableObject!" << std::endl;
   mutable_object_provider_->HandlePushMutableObject(request, reply);
-  f << "Now server will send response..." << std::endl;
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 

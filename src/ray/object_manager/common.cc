@@ -14,8 +14,6 @@
 
 #include "ray/object_manager/common.h"
 
-#include <fstream>
-
 #include "absl/functional/bind_front.h"
 #include "absl/strings/str_format.h"
 
@@ -79,13 +77,7 @@ Status PlasmaObjectHeader::CheckHasError() const {
 Status PlasmaObjectHeader::TryToAcquireSemaphore(sem_t *sem) const {
   // Check `has_error` first to avoid blocking forever on the semaphore.
   RAY_RETURN_NOT_OK(CheckHasError());
-  int ret = sem_wait(sem);
-  if (ret) {
-    std::ofstream f;
-    f.open("/tmp/blah", std::ofstream::app);
-    f << "sem_wait ret is " << ret << ", errno is " << errno << std::endl;
-    RAY_CHECK(false);
-  }
+  RAY_CHECK_EQ(sem_wait(sem), 0);
   // Check `has_error` again so that no more than one thread is ever in the critical
   // section after `SetErrorUnlocked()` has been called. One thread could be in the
   // critical section when that is called, but no additional thread will enter the

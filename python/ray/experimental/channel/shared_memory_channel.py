@@ -80,13 +80,6 @@ def _create_channel_ref(
             "store was full of pinned objects."
         )
         raise
-    print(
-        "created channel ref, the new size is "
-        + str(buffer_size_bytes)
-        + ", ref is + "
-        + str(object_ref)
-        + "\n"
-    )
     return object_ref
 
 
@@ -303,13 +296,6 @@ class Channel(ChannelInterface):
             actor_id = ray.ActorID.nil()
         else:
             actor_id = self._readers[0]._actor_id
-        print(
-            "writer register, writer ref is "
-            + str(self._writer_ref)
-            + ", reader ref is "
-            + str(self._reader_ref)
-            + "\n"
-        )
         self._worker.core_worker.experimental_channel_register_writer(
             self._writer_ref,
             self._reader_ref,
@@ -368,7 +354,6 @@ class Channel(ChannelInterface):
         # metadata explicitly.
         size = serialized_value.total_bytes + len(serialized_value.metadata)
         if size > self._typ.buffer_size_bytes:
-            print("resize to " + str(size) + "\n")
             # Now make the channel backing store larger.
             self._typ.buffer_size_bytes = size
             # TODO(jhumphri): I assume the current writer ref object is automatically
@@ -381,16 +366,10 @@ class Channel(ChannelInterface):
                 # are on a different node than the writer.
                 # If they are on the same node, this is not necessary because the
                 # writer_ref allocated above is already accessible to the reader.
-                print(
-                    "Writer here, tell reader to update size to "
-                    + str(self._typ.buffer_size_bytes)
-                    + "\n"
-                )
                 fn = self._readers[0].__ray_call__
                 self._reader_ref = ray.get(
                     fn.remote(_create_channel_ref, self._typ.buffer_size_bytes)
                 )
-                print("Writer here, new reader ref is " + str(self._reader_ref) + "\n")
             else:
                 self._reader_ref = self._writer_ref
 
@@ -430,22 +409,17 @@ class Channel(ChannelInterface):
         else:
             serialized_value = value
 
-        print("write() 1\n")
         self.resize_channel_if_needed(serialized_value)
-        print("write() 2\n")
 
         self._worker.core_worker.experimental_channel_put_serialized(
             serialized_value,
             self._writer_ref,
             self._num_readers,
         )
-        print("write() 3\n")
 
     def begin_read(self) -> Any:
         self.ensure_registered_as_reader()
-        print("reader begin read " + str(self._reader_ref) + "\n")
         ret = ray.get(self._reader_ref)
-        print("reader done with first get\n")
 
         if isinstance(ret, ResizeChannel):
             # The writer says we need to update the channel backing store (due to a
@@ -454,7 +428,6 @@ class Channel(ChannelInterface):
                 [self._reader_ref]
             )
             self._reader_ref = ret._reader_ref
-            print("reader here, update reader ref to " + str(self._reader_ref) + "\n")
             # We need to register the new reader_ref.
             self._reader_registered = False
             self.ensure_registered_as_reader()
