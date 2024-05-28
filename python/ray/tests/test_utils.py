@@ -115,7 +115,7 @@ def test_get_current_node_cpu_model_name():
 async def test_list_named_actors_with_normal_task(shutdown_only):
     # The following parameters are all designed to increase the
     # probability of reproducing the situation where
-    # `list_named_actors`` gets stuck.
+    # `list_named_actors` gets hang.
     TEST_RANGE = 10
     NORMAL_TASK_PER_ITEM = 100
     LIST_NAMED_ACTORS_PER_ITEM = 10
