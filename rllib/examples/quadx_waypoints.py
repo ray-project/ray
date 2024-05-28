@@ -28,7 +28,7 @@ from ray.rllib.utils.test_utils import (
 from ray.rllib.utils.metrics import (
     ENV_RUNNER_RESULTS,
     EPISODE_RETURN_MEAN,
-    TRAINING_ITERATION_TIMER,
+    TRAINING_ITERATION
 )
 
 parser = add_rllib_example_script_args(
@@ -111,8 +111,8 @@ if __name__ == "__main__":
     EPISODE_RETURN_MEAN_KEY = f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}"
 
     stop = {
-        TRAINING_ITERATION_TIMER: args.stop_iters,
-        EPISODE_RETURN_MEAN_KEY: args.stop_reward,
+        TRAINING_ITERATION: args.stop_iters,
+        f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": args.stop_reward,
     }
 
     run_rllib_example_script_experiment(
@@ -120,6 +120,6 @@ if __name__ == "__main__":
         args,
         stop=stop,
         success_metric={
-            EPISODE_RETURN_MEAN_KEY: args.stop_reward,
+            f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": args.stop_reward,
         },
     )
