@@ -627,4 +627,15 @@ class Stats:
                 else:
                     reduced = float(reduced)
 
-            return reduced, values
+            # For window=None|inf (infinite window) and reduce != mean, we don't have to
+            # keep any values, except the last (reduced) one.
+            if window in [None, float("inf")] and self._reduce_method != "mean":
+                # TODO (sven): What if out values are torch tensors? In this case, we
+                #  would have to do reduction using `torch` above (not numpy) and only
+                #  then return the python primitive AND put the reduced new torch
+                #  tensor in `new_values`.
+                return reduced, [reduced]
+            # In all other cases, keep the values that were also used for the reduce
+            # operation.
+            else:
+                return reduced, values
