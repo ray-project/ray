@@ -616,7 +616,7 @@ class DQN(Algorithm):
             # Add the sampled experiences to the replay buffer.
             self.local_replay_buffer.add(episodes)
             # Reduce EnvRunner metrics over the n EnvRunners.
-            self.metrics.log_n_dicts(env_runner_results, key=ENV_RUNNER_RESULTS)
+            self.metrics.merge_and_log_n_dicts(env_runner_results, key=ENV_RUNNER_RESULTS)
 
         self.metrics.log_value(
             NUM_ENV_STEPS_SAMPLED_LIFETIME,
@@ -683,7 +683,9 @@ class DQN(Algorithm):
                         mid: {TD_ERROR_KEY: np.concatenate(s, axis=0)}
                         for mid, s in td_errors.items()
                     }
-                    self.metrics.log_n_dicts(learner_results, key=LEARNER_RESULTS)
+                    self.metrics.merge_and_log_n_dicts(
+                        learner_results, key=LEARNER_RESULTS
+                    )
                     self.metrics.log_value(
                         NUM_ENV_STEPS_TRAINED_LIFETIME,
                         self.metrics.peek(
@@ -722,7 +724,9 @@ class DQN(Algorithm):
                         timestep=current_ts,
                     )
                     # log the additional results as well.
-                    self.metrics.log_n_dicts(additional_results, key=LEARNER_RESULTS)
+                    self.metrics.merge_and_log_n_dicts(
+                        additional_results, key=LEARNER_RESULTS
+                    )
 
             # Update weights and global_vars - after learning on the local worker -
             # on all remote workers.

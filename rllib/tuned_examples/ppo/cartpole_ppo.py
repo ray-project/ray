@@ -35,16 +35,18 @@ config = (
         vf_loss_coeff=0.01,
         use_kl_loss=True,
     )
-    .evaluation(
-        evaluation_num_env_runners=1,
-        evaluation_interval=1,
-        evaluation_parallel_to_training=True,
-    )
+    #.evaluation(
+    #    evaluation_num_env_runners=1,
+    #    evaluation_interval=1,
+    #    evaluation_parallel_to_training=True,
+    #)
+    .reporting(metrics_num_episodes_for_smoothing=30)
 )
 
 stop = {
-    f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}": 100000,
-    f"{EVALUATION_RESULTS}/{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": 150.0,
+    f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}": 200000,
+    #f"{EVALUATION_RESULTS}/{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": 150.0,
+    f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": 450.0,
 }
 
 
