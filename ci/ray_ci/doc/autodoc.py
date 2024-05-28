@@ -2,17 +2,24 @@ import os
 import re
 from typing import List
 
-from ci.ray_ci.doc.api import API, SPHINX_AUTOSUMMARY_HEADER, SPHINX_AUTOCLASS_HEADER, SPHINX_CURRENTMODULE_HEADER
+from ci.ray_ci.doc.api import (
+    API,
+    SPHINX_AUTOSUMMARY_HEADER,
+    SPHINX_AUTOCLASS_HEADER,
+    SPHINX_CURRENTMODULE_HEADER,
+)
+
 
 class Autodoc:
     """
     Autodoc class represents the top level sphinx autodoc landing page and finds
-    autodoc APIs that would be generated from sphinx
+    autodoc APIs that would be generated from sphinx from all sub-pages
     """
+
     def __init__(self, head_rst_file: str):
         """
         Args:
-            head_rst_file: The path to the landing page rst file that contains the list 
+            head_rst_file: The path to the landing page rst file that contains the list
             of children rsts of the autodoc APIs
         """
         self._head_rst_file = head_rst_file
@@ -43,7 +50,7 @@ class Autodoc:
         if self._autodoc_rsts:
             return self._autodoc_rsts
 
-        dir = os.dir(self._head_rst_file)
+        dir = os.path.dirname(self._head_rst_file)
         with open(self._head_rst_file, "r") as f:
             for line in f:
                 line = line.strip()
@@ -70,16 +77,18 @@ class Autodoc:
         """
         apis = []
         current_module = None
-        current_line = "start" # dummy non-empty value
+        current_line = "start"  # dummy non-empty value
         with open(rst_file, "r") as f:
             while current_line:
                 current_line = current_line.strip()
 
                 if current_line.startswith(SPHINX_CURRENTMODULE_HEADER):
-                    current_module = current_line[len(SPHINX_CURRENTMODULE_HEADER):].strip()
+                    current_module = current_line[
+                        len(SPHINX_CURRENTMODULE_HEADER) :
+                    ].strip()
 
                 if current_line.startswith(SPHINX_AUTOCLASS_HEADER):
-                    apis.append(API.from_autoclass(line, current_module))
+                    apis.append(API.from_autoclass(current_line, current_module))
 
                 if current_line.startswith(SPHINX_AUTOSUMMARY_HEADER):
                     doc = current_line
@@ -87,7 +96,7 @@ class Autodoc:
                     # collect lines until the end of the autosummary block
                     while line:
                         if line.strip() and not re.match(r"\s", line):
-                            # end of autosummary block if as_line does not start with 
+                            # end of autosummary block if as_line does not start with
                             # whitespace
                             break
                         doc += line
