@@ -70,7 +70,7 @@ void MutableObjectProvider::RegisterWriterChannel(const ObjectID &object_id,
         },
         "experimental::MutableObjectProvider.PollWriter");
     io_threads_.push_back(std::make_unique<std::thread>(
-        &MutableObjectProvider::RunIOService, this, io_service));
+        &MutableObjectProvider::RunIOService, this, std::ref(io_service)));
   }
 }
 
