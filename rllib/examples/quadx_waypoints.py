@@ -28,7 +28,7 @@ from ray.rllib.utils.test_utils import (
 from ray.rllib.utils.metrics import (
     ENV_RUNNER_RESULTS,
     EPISODE_RETURN_MEAN,
-    TRAINING_ITERATION
+    TRAINING_ITERATION,
 )
 
 parser = add_rllib_example_script_args(
