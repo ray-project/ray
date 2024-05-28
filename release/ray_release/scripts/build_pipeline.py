@@ -58,7 +58,7 @@ def main(test_collection_file: Optional[str] = None, no_clone_repo: bool = False
         # the test configuration file. Otherwise, we might be missing newly
         # added test.
 
-        tmpdir = tempfile.mktemp()
+        tmpdir = tempfile.NamedTemporaryFile().name
 
         current_release_dir = os.path.abspath(
             os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
