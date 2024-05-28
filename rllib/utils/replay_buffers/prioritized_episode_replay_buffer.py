@@ -228,6 +228,8 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
             self._num_episodes_evicted += 1
 
         # Remove corresponding indices, if episodes were evicted.
+        # TODO (simon): Refactor into method such that MultiAgent 
+        # version can inherit.
         if eps_evicted_idxs:
             new_indices = []
             i = 0

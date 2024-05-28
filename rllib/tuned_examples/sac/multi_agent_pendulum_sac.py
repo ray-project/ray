@@ -13,7 +13,7 @@ parser = add_rllib_example_script_args()
 # Use `parser` to add your own custom command line options to this script
 # and (if needed) use their values to set up `config` below.
 args = parser.parse_args()
-
+args.num_agents = 2
 register_env(
     "multi_agent_pendulum",
     lambda _: MultiAgentPendulum({"num_agents": args.num_agents or 2}),
@@ -38,7 +38,7 @@ config = (
     )
     .env_runners(
         rollout_fragment_length=1,
-        num_env_runners=2,
+        num_env_runners=0,
         num_envs_per_env_runner=1,
     )
     .training(
@@ -50,8 +50,10 @@ config = (
         train_batch_size_per_learner=256,
         target_network_update_freq=1,
         replay_buffer_config={
-            "type": "MultiAgentEpisodeReplayBuffer",
+            "type": "MultiAgentPrioritizedEpisodeReplayBuffer",
             "capacity": 100000,
+            "alpha": 0.6,
+            "beta": 0.4,
         },
         num_steps_sampled_before_learning_starts=256,
     )
@@ -75,5 +77,5 @@ stop = {
 
 if __name__ == "__main__":
     from ray.rllib.utils.test_utils import run_rllib_example_script_experiment
-
+    args.local_mode = True
     run_rllib_example_script_experiment(config, args, stop=stop)

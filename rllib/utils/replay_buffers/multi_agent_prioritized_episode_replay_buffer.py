@@ -87,7 +87,7 @@ class MultiAgentPrioritizedEpisodeReplayBuffer(
             weight_per_module = weight
             weight = np.mean(list(weight.values()))
 
-        episodes = force_list(episodes)
+        episodes: List["MultiAgentEpisode"] = force_list(episodes)
 
         new_episode_ids: List[str] = [eps.id_ for eps in episodes]
         total_env_timesteps = sum([eps.env_steps() for eps in episodes])
@@ -145,13 +145,11 @@ class MultiAgentPrioritizedEpisodeReplayBuffer(
                 if idx_tuple[0] in eps_evicted_idxs:
                     # Here we need the index of a multi-agent sample in the segment
                     # tree.
-                    # TODO (simon): Adapt the correct index here.
                     self._free_nodes.appendleft(idx_tuple[2])
                     # Remove also the potentially maximum index.
                     self._max_idx -= 1 if self._max_idx == idx_tuple[2] else 0
                     self._sum_segment[idx_tuple[2]] = 0.0
                     self._min_segment[idx_tuple[2]] = float("inf")
-                    # TODO (simon): Check, if this does harm performance.
                     sample_idx = self._tree_idx_to_sample_idx[idx_tuple[2]]
                     self._tree_idx_to_sample_idx.pop(idx_tuple[2])
                     self._sample_idx_to_tree_idx.pop(sample_idx)
@@ -256,7 +254,7 @@ class MultiAgentPrioritizedEpisodeReplayBuffer(
 
         for agent_id in ma_episode.agent_ids:
             # Get the corresponding module id.
-            module_id = ma_episode._agent_to_module_mapping[agent_id]
+            module_id = ma_episode.module_for(agent_id)
             # Get the module episode.
             module_eps = ma_episode.agent_episodes[agent_id]
             # Check if the module episode is already in the buffer.
@@ -427,11 +425,7 @@ class MultiAgentPrioritizedEpisodeReplayBuffer(
 
         actual_n_step = n_step or 1
         # Sample the n-step if necessary.
-        if isinstance(n_step, tuple):
-            # Use random n-step sampling.
-            random_n_step = True
-        else:
-            random_n_step = False
+        random_n_step = isinstance(n_step, tuple)
 
         # Keep track of the indices that were sampled last for updating the
         # weights later (see `ray.rllib.utils.replay_buffer.utils.
