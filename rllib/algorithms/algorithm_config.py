@@ -4413,7 +4413,9 @@ class AlgorithmConfig(_Config):
     @staticmethod
     def _serialize_dict(config):
         # Serialize classes to classpaths:
-        config["callbacks_class"] = serialize_type(config["callbacks_class"])
+        config["callbacks_class"] = config["callbacks"] = serialize_type(
+            config["callbacks_class"]
+        )
         config["sample_collector"] = serialize_type(config["sample_collector"])
         if isinstance(config["env"], type):
             config["env"] = serialize_type(config["env"])
@@ -4438,10 +4440,10 @@ class AlgorithmConfig(_Config):
             if isinstance(ma_config.get("policies"), (set, tuple)):
                 ma_config["policies"] = list(ma_config["policies"])
             # Do NOT serialize functions/lambdas.
-            if ma_config.get("_policy_mapping_fn") and (
-                ma_config["_policy_mapping_fn"] != "auto"
+            if ma_config.get("policy_mapping_fn") and (
+                ma_config["policy_mapping_fn"] != "auto"
             ):
-                ma_config["_policy_mapping_fn"] = NOT_SERIALIZABLE
+                ma_config["policy_mapping_fn"] = NOT_SERIALIZABLE
             if ma_config.get("policies_to_train"):
                 ma_config["policies_to_train"] = NOT_SERIALIZABLE
         # However, if these "multiagent" settings have been provided directly
@@ -4465,7 +4467,7 @@ class AlgorithmConfig(_Config):
                 key = cls.DEPRECATED_KEYS[key]
             # Deprecated keys not replaced with anything (setting invalid).
             elif cls.DEPRECATED_KEYS[key] is None and warn_deprecated:
-                deprecation_warning(old=key, error=True)
+                deprecation_warning(old=f"AlgorithmConfig.{key}", error=True)
         return key
 
     def _check_if_correct_nn_framework_installed(self, _tf1, _tf, _torch):

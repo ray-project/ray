@@ -51,7 +51,7 @@ class TestAlgorithmConfig(unittest.TestCase):
         # It'll turn into a classpath that's not really usable b/c the class
         # was created on-the-fly.
         self.assertEqual(
-            serialized["callbacks"],
+            serialized["callbacks_class"],
             "ray.rllib.algorithms.callbacks.make_multi_callbacks.<locals>."
             "_MultiCallbacks",
         )
