@@ -156,9 +156,9 @@ class TestLoggingConfig:
         assert dict_config["handlers"]["console"]["level"] == log_level
         assert dict_config["root"]["level"] == log_level
 
-    def test_invalid_log_config(self):
+    def test_invalid_dict_config(self):
         with pytest.raises(ValueError):
-            LoggingConfig(log_config="INVALID").get_dict_config()
+            LoggingConfig(dict_config="INVALID").get_dict_config()
 
 
 class TestTextModeE2E:

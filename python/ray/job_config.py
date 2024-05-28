@@ -11,7 +11,7 @@ if TYPE_CHECKING:
 
 @PublicAPI(stability="alpha")
 class LoggingConfig:
-    def __init__(self, log_config: Union[dict, str] = "TEXT", log_level: str = "INFO"):
+    def __init__(self, dict_config: Union[dict, str] = "TEXT", log_level: str = "INFO"):
         """
         The class is used to store the Python logging configuration. It will be passed
         to all Ray tasks and actors that belong to this job.
@@ -36,21 +36,21 @@ class LoggingConfig:
                 ray.get(obj_ref)
 
         Args:
-            log_config: log_config can be a string or a dictionary. If it is a
+            dict_config: dict_config can be a string or a dictionary. If it is a
                 string, it should be one of the keys in LOG_MODE_DICT, which has
                 the corresponding predefined logging configuration. If it is a
                 dictionary, it should be a valid logging configuration dictionary
                 that can be passed to the function `logging.config.dictConfig`.
             log_level: The log level for the logging configuration. It only takes
-                effect when log_config is a string.
+                effect when dict_config is a string.
         """
-        if isinstance(log_config, str):
-            if log_config not in LOG_MODE_DICT:
+        if isinstance(dict_config, str):
+            if dict_config not in LOG_MODE_DICT:
                 raise ValueError(
-                    f"Invalid encoding type: {log_config}. "
+                    f"Invalid encoding type: {dict_config}. "
                     f"Valid encoding types are: {list(LOG_MODE_DICT.keys())}"
                 )
-        self.log_config = log_config
+        self.dict_config = dict_config
         self.log_level = log_level
 
     def get_dict_config(self) -> dict:
@@ -58,9 +58,9 @@ class LoggingConfig:
         Returns:
             dict: The logging configuration.
         """
-        if isinstance(self.log_config, str):
-            return LOG_MODE_DICT[self.log_config](self.log_level)
-        return self.log_config
+        if isinstance(self.dict_config, str):
+            return LOG_MODE_DICT[self.dict_config](self.log_level)
+        return self.dict_config
 
 
 @PublicAPI
