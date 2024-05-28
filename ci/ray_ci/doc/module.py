@@ -11,6 +11,7 @@ class Module:
     Module class represents the top level module to walk through and find annotated
     APIs.
     """
+
     def __init__(self, module: str):
         self._module = importlib.import_module(module)
         self._visited = set()

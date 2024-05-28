@@ -1,19 +1,47 @@
+import os
+import tempfile
 import sys
 import pytest
 
 from ci.ray_ci.doc.autodoc import Autodoc
-from ci.ray_ci.doc.api import AnnotationType, CodeType
+from ci.ray_ci.doc.api import API, AnnotationType, CodeType
 
 
 def test_walk():
-    module = Module("ci.ray_ci.doc.mock_module")
-    apis = module.get_apis()
-    assert apis[0].name == "ci.ray_ci.doc.mock_module.MockClass"
-    assert apis[0].annotation_type.value == AnnotationType.PUBLIC_API.value
-    assert apis[0].code_type.value == CodeType.CLASS.value
-    assert apis[1].name == "ci.ray_ci.doc.mock_module.mock_function"
-    assert apis[1].annotation_type.value == AnnotationType.DEPRECATED.value
-    assert apis[1].code_type.value == CodeType.FUNCTION.value
+    with tempfile.TemporaryDirectory() as tmp:
+        with open(os.path.join(tmp, "head.rst"), "w") as f:
+            f.write(".. toctree::\n\n")
+            f.write("\tapi_01.rst\n")
+            f.write("\tapi_02.rst\n")
+        with open(os.path.join(tmp, "api_01.rst"), "w") as f:
+            f.write(".. autosummary::\n\n")
+            f.write("\tfunc_01\n")
+            f.write("\tfunc_02\n")
+        with open(os.path.join(tmp, "api_02.rst"), "w") as f:
+            f.write(".. currentmodule:: mymodule\n")
+            f.write(".. autoclass:: class_01\n")
+
+        autodoc = Autodoc(os.path.join(tmp, "head.rst"))
+        apis = autodoc.get_apis()
+        assert str(apis) == str(
+            [
+                API(
+                    name="func_01",
+                    annotation_type=AnnotationType.PUBLIC_API,
+                    code_type=CodeType.FUNCTION,
+                ),
+                API(
+                    name="func_02",
+                    annotation_type=AnnotationType.PUBLIC_API,
+                    code_type=CodeType.FUNCTION,
+                ),
+                API(
+                    name="mymodule.class_01",
+                    annotation_type=AnnotationType.PUBLIC_API,
+                    code_type=CodeType.CLASS,
+                ),
+            ]
+        )
 
 
 if __name__ == "__main__":
