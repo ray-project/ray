@@ -113,24 +113,28 @@ def test_get_current_node_cpu_model_name():
 
 @pytest.mark.asyncio
 async def test_list_named_actors_with_normal_task(shutdown_only):
-    # The following parameters are all designed to increase the 
-    # probability of reproducing the situation where 
+    # The following parameters are all designed to increase the
+    # probability of reproducing the situation where
     # `list_named_actors`` gets stuck.
     TEST_RANGE = 10
     NORMAL_TASK_PER_ITEM = 100
     LIST_NAMED_ACTORS_PER_ITEM = 10
     for _ in range(TEST_RANGE):
         time.sleep(1)
+
         @ray.remote
         def test():
             return True
+
         res = []
         for i in range(NORMAL_TASK_PER_ITEM):
             res.append(test.remote())
+
         async def run():
             for i in range(LIST_NAMED_ACTORS_PER_ITEM):
                 await asyncio.sleep(0)
                 ray.util.list_named_actors(True)
+
         res.append(run())
         await asyncio.gather(*res)
 
