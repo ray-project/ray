@@ -1533,6 +1533,25 @@ class NodeKillerActor(ResourceKillerActor):
             )
             self.killed.add(node_id)
 
+    def _terminate_ec2_instance(self, ip):
+        # This command uses IMDSv2 to get the host instance id and region.
+        # After that it terminates itself using aws cli.
+        multi_line_command = (
+            'TOKEN=$(curl -X PUT "http://169.254.169.254/latest/api/token" -H "X-aws-ec2-metadata-token-ttl-seconds: 21600");'  # noqa: E501
+            'instanceId=$(curl -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/instance-id/);'  # noqa: E501
+            'region=$(curl -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/placement/region);'  # noqa: E501
+            "aws ec2 terminate-instances --region $region --instance-ids $instanceId"  # noqa: E501
+        )
+        # This is a feature on Anyscale platform that enables
+        # easy ssh access to worker nodes.
+        ssh_command = f"ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p 2222 ray@{ip} '{multi_line_command}'"  # noqa: E501
+
+        result = subprocess.run(
+            ssh_command, shell=True, capture_output=True, text=True, check=True
+        )
+        print(f"STDOUT:\n{result.stdout}\n")
+        print(f"STDERR:\n{result.stderr}\n")
+
     def _kill_raylet(self, ip, port, graceful=False):
         import grpc
         from grpc._channel import _InactiveRpcError
