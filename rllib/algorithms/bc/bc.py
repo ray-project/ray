@@ -146,19 +146,12 @@ class BC(MARWIL):
             return super().training_step()
         else:
             # Implement logic using RLModule and Learner API.
-            # TODO (sven): Remove RolloutWorkers/EnvRunners for
-            # datasets. Use RolloutWorker/EnvRunner only for
-            # env stepping.
             # TODO (simon): Take care of sampler metrics: right
             # now all rewards are `nan`, which possibly confuses
             # the user that sth. is not right, although it is as
             # we do not step the env.
             with self.metrics.log_time((TIMERS, OFFLINE_SAMPLING_TIMER)):
                 # Sampling from offline data.
-                # TODO (simon): We have to remove the `RolloutWorker`
-                # here and just use the already distributed `dataset`
-                # for sampling. Only in online evaluation
-                # `RolloutWorker/EnvRunner` should be used.
                 episodes = self.offline_data.sample(
                     num_samples=self.config.train_batch_size,
                     num_shards=self.config.num_learners,

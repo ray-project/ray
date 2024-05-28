@@ -3,7 +3,7 @@ import logging
 import numpy as np
 from pathlib import Path
 import ray
-from typing import Any, Dict, List, Union
+from typing import Dict, List
 
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.core.columns import Columns
@@ -35,28 +35,28 @@ SCHEMA = [
 
 
 class OfflineData:
-    def __init__(self, config: Union[Dict[str, Any], AlgorithmConfig]):
+    def __init__(self, config: AlgorithmConfig):
 
         self.config = config
-        self.is_multi_agent = (
-            config.is_multi_agent()
-            if isinstance(config, AlgorithmConfig)
-            else len(config.get("policies", {})) > 1
-        )
+        self.is_multi_agent = config.is_multi_agent()
         self.path = (
             config.get("input_")
             if isinstance(config.get("input_"), list)
             else Path(config.get("input_"))
         )
         # Use `read_json` as default data read method.
-        self.data_read_method = config.get("data_read_method", "read_json")
+        self.data_read_method = config.get("input_read_method", "read_json")
+        # If the observation data is compressed. Note, if compressed, the
+        # data must have been compressed with the `pack_if_needed` function.
         self.compressed = config.get("compressed", False)
         try:
+            # TODO (simon): Add support for `kwargs`.
             self.data = getattr(ray.data, self.data_read_method)(self.path)
             logger.info("Reading data from {}".format(self.path))
             logger.info(self.data.schema())
         except Exception as e:
             logger.error(e)
+        # Avoids reinstantiating the batch iterator each time we sample.
         self.batch_iterator = None
 
     def sample(
@@ -71,6 +71,8 @@ class OfflineData:
             and num_shards <= 1
             and not self.batch_iterator
         ):
+            # If no iterator should be returned, or if we want to return a single
+            # batch iterator, we instantiate the batch iterator once, here.
             self.batch_iterator = self.data.map_batches(
                 functools.partial(self._map_to_episodes, self.is_multi_agent)
             ).iter_batches(
@@ -79,21 +81,25 @@ class OfflineData:
                 local_shuffle_buffer_size=num_samples * 10,
             )
 
+        # Do we want to return an iterator or a single batch?
         if return_iterator:
+            # In case of multiple shards, we return multiple
+            # `StreamingSplitIterator` instances.
             if num_shards > 1:
                 return self.data.map_batches(
                     functools.partial(self._map_to_episodes, self.is_multi_agent)
                 ).streaming_split(n=num_shards, equal=True)
+            # Otherwise, we return a simple batch `DataIterator`.
             else:
                 return self.batch_iterator
         else:
-            # Return a single batch
+            # Return a single batch from the iterator.
             return next(iter(self.batch_iterator))["episodes"]
 
     @staticmethod
     def _map_to_episodes(
         is_multi_agent: bool, batch: Dict[str, np.ndarray]
-    ) -> List[EpisodeType]:
+    ) -> Dict[str, List[EpisodeType]]:
         """Maps a batch of data to episodes."""
 
         episodes = []
@@ -149,4 +155,5 @@ class OfflineData:
                     len_lookback_buffer=0,
                 )
             episodes.append(episode)
+        # Note, `map_batches` expects a `Dict` as return value.
         return {"episodes": episodes}

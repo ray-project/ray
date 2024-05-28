@@ -29,7 +29,7 @@ torch, _ = try_import_torch()
 class TestMARWIL(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        ray.init(local_mode=True)
+        ray.init()
 
     @classmethod
     def tearDownClass(cls):

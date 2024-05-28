@@ -430,6 +430,7 @@ class AlgorithmConfig(_Config):
 
         # `self.offline_data()`
         self.input_ = "sampler"
+        self.input_read_method = "read_json"
         self.input_config = {}
         self.actions_in_input_normalized = False
         self.postprocess_inputs = False
@@ -2357,6 +2358,7 @@ class AlgorithmConfig(_Config):
         self,
         *,
         input_=NotProvided,
+        input_read_method=NotProvided,
         input_config=NotProvided,
         actions_in_input_normalized=NotProvided,
         input_evaluation=NotProvided,
@@ -2381,6 +2383,10 @@ class AlgorithmConfig(_Config):
                 - A callable that takes an `IOContext` object as only arg and returns a
                 ray.rllib.offline.InputReader.
                 - A string key that indexes a callable with tune.registry.register_input
+            input_read_method: Read method for the `ray.data.Dataset` to read in the
+                offline data from `input_`. The default is `read_json` for JSON files.
+                See https://docs.ray.io/en/latest/data/api/input_output.html for more
+                info about available read methods in `ray.data`.
             input_config: Arguments that describe the settings for reading the input.
                 If input is `sample`, this will be environment configuation, e.g.
                 `env_name` and `env_config`, etc. See `EnvContext` for more info.
@@ -2419,6 +2425,8 @@ class AlgorithmConfig(_Config):
         """
         if input_ is not NotProvided:
             self.input_ = input_
+        if input_read_method is not NotProvided:
+            self.input_read_method = input_read_method
         if input_config is not NotProvided:
             if not isinstance(input_config, dict):
                 raise ValueError(

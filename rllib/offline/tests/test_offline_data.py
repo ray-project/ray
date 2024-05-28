@@ -3,6 +3,7 @@ import unittest
 
 from pathlib import Path
 
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 from ray.rllib.offline.offline_data import OfflineData
 
@@ -20,7 +21,9 @@ class TestOfflineData(unittest.TestCase):
         base_path = Path(__file__).parents[2]
         data_path = "local://" + base_path.joinpath(data_path).as_posix()
 
-        offline_data = OfflineData(config={"input_": data_path})
+        config = AlgorithmConfig().offline_data(input_=[data_path])
+
+        offline_data = OfflineData(config)
 
         single_row = offline_data.data.take_batch(batch_size=1)
         self.assertTrue("obs" in single_row)
@@ -31,7 +34,9 @@ class TestOfflineData(unittest.TestCase):
         base_path = Path(__file__).parents[2]
         data_path = "local://" + base_path.joinpath(data_path).as_posix()
 
-        offline_data = OfflineData(config={"input_": data_path})
+        config = AlgorithmConfig().offline_data(input_=[data_path])
+
+        offline_data = OfflineData(config)
 
         batch = offline_data.data.take_batch(batch_size=10)
         episodes = offline_data._map_to_episodes(False, batch)["episodes"]
