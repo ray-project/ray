@@ -7,6 +7,7 @@ import threading
 
 import ray
 from ray.exceptions import RayTaskError
+from ray.experimental import CompiledDAGRef
 from ray.experimental.channel import (
     ChannelInterface,
     ChannelOutputType,
@@ -803,7 +804,7 @@ class CompiledDAG:
         self,
         *args,
         **kwargs,
-    ) -> ReaderInterface:
+    ) -> CompiledDAGRef:
         """Execute this DAG using the compiled execution path.
 
         Args:
@@ -828,7 +829,7 @@ class CompiledDAG:
         inp = args[0]
         self._dag_submitter.write(inp)
 
-        return self._dag_output_fetcher
+        return CompiledDAGRef(self._dag_output_fetcher)
 
     async def execute_async(
         self,
