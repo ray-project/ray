@@ -144,7 +144,7 @@ class MutableObjectProvider {
                          std::shared_ptr<MutableObjectReaderInterface> reader);
 
   // Kicks off `io_service_`.
-  void RunIOService();
+  void RunIOService(instrumented_io_context &io_service);
 
   // The plasma store.
   std::shared_ptr<plasma::PlasmaClientInterface> plasma_;

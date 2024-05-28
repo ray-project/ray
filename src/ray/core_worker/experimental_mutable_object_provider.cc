@@ -54,8 +54,7 @@ void MutableObjectProvider::RegisterWriterChannel(const ObjectID &object_id,
 
     io_services_.push_back(std::make_unique<instrumented_io_context>());
     instrumented_io_context &io_service = *io_services_.back();
-    client_call_managers_.push_back(
-        std::make_unique<rpc::ClientCallManager>(io_services));
+    client_call_managers_.push_back(std::make_unique<rpc::ClientCallManager>(io_service));
     std::shared_ptr<MutableObjectReaderInterface> reader =
         raylet_client_factory_(*node_id, *client_call_managers_.back());
     RAY_CHECK(reader);
@@ -66,9 +65,12 @@ void MutableObjectProvider::RegisterWriterChannel(const ObjectID &object_id,
     f << "RegisterWriterChannel tid is " << GetTid() << std::endl;
 
     io_service.post(
-        [this, object_id, reader]() { PollWriterClosure(io_service, object_id, reader); },
+        [this, &io_service, object_id, reader]() {
+          PollWriterClosure(io_service, object_id, reader);
+        },
         "experimental::MutableObjectProvider.PollWriter");
-    io_threads_.push_back(std::make_unique<std::thread>(RunIOService));
+    io_threads_.push_back(std::make_unique<std::thread>(
+        &MutableObjectProvider::RunIOService, this, io_service));
   }
 }
 
@@ -192,8 +194,8 @@ void MutableObjectProvider::PollWriterClosure(
       object->GetData()->Size(),
       object->GetMetadata()->Size(),
       object->GetData()->Data(),
-      [this, object_id, reader](const Status &status,
-                                const rpc::PushMutableObjectReply &reply) {
+      [this, &io_service, object_id, reader](const Status &status,
+                                             const rpc::PushMutableObjectReply &reply) {
         std::ofstream f;
         f.open("/tmp/blah", std::ofstream::app);
         f << "Callback invoked :), object id " << object_id << std::endl;
@@ -202,12 +204,14 @@ void MutableObjectProvider::PollWriterClosure(
         f << "Callback, got past ReadRelease" << std::endl;
 
         io_service.post(
-            [this, object_id, reader]() { PollWriterClosure(object_id, reader); },
+            [this, &io_service, object_id, reader]() {
+              PollWriterClosure(io_service, object_id, reader);
+            },
             "experimental::MutableObjectProvider.PollWriter");
       });
 }
 
-void MutableObjectProvider::RunIOService() {
+void MutableObjectProvider::RunIOService(instrumented_io_context &io_service) {
   // TODO(jhumphri): Decompose this.
 #ifndef _WIN32
   // Block SIGINT and SIGTERM so they will be handled by the main thread.
@@ -220,7 +224,7 @@ void MutableObjectProvider::RunIOService() {
 
   SetThreadName("worker.channel_io");
   while (true) {
-    io_service_.run();
+    io_service.run();
   }
   RAY_LOG(INFO) << "Core worker channel io service stopped.";
 }
