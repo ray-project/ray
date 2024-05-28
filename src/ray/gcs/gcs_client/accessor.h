@@ -244,9 +244,11 @@ class JobInfoAccessor {
 
   /// Get all job info from GCS asynchronously.
   ///
+  /// \param timeout_ms -1 means infinite.
   /// \param callback Callback that will be called after lookup finished.
   /// \return Status
-  virtual Status AsyncGetAll(const MultiItemCallback<rpc::JobTableData> &callback);
+  virtual Status AsyncGetAll(int64_t timeout_ms,
+                             const MultiItemCallback<rpc::JobTableData> &callback);
 
   /// Reestablish subscription.
   /// This should be called when GCS server restarts from a failure.

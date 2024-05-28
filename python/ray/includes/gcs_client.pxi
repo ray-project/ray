@@ -330,7 +330,8 @@ cdef class MyGcsClient:
             check_status(self.inner.get().Jobs().AsyncGetNextJobID(cy_callback))
         return fut
         
-    def async_get_all_job_info(self) -> Future[Dict[str, gcs_pb2.JobTableData]]:
+    def async_get_all_job_info(self, timeout: Optional[float] = None) -> Future[Dict[str, gcs_pb2.JobTableData]]:
+        cdef int64_t timeout_ms = round(1000 * timeout) if timeout else -1
         def postprocess(binary):
             list_of_bytes: List[bytes] = check_status_or_return(binary)
             job_table_data = {}
@@ -342,7 +343,7 @@ cdef class MyGcsClient:
         fut, cb = make_future_and_callback(postprocess=postprocess)
         cdef PyDefaultCallback cy_callback = PyDefaultCallback(cb)
         with nogil:
-            check_status(self.inner.get().Jobs().AsyncGetAll(cy_callback))
+            check_status(self.inner.get().Jobs().AsyncGetAll(timeout_ms, cy_callback))
         return fut
     
 # Ideally we want to pass CRayStatus around. However it's not easy to wrap a

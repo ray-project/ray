@@ -528,7 +528,7 @@ def test_get_draining_nodes(ray_start_cluster):
 async def test_my_gcs_client(ray_start_regular):
     my_gcs_client = ray._raylet.MyGcsClient.from_core_worker()
     # Test 1: get_next_job_id
-    job_id = await my_gcs_client.get_next_job_id()
+    job_id = await my_gcs_client.async_get_next_job_id()
     assert isinstance(job_id, ray.JobID)
 
     # Test 2: internal_kv_put and get
