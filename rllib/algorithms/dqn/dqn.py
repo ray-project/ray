@@ -616,7 +616,9 @@ class DQN(Algorithm):
             # Add the sampled experiences to the replay buffer.
             self.local_replay_buffer.add(episodes)
             # Reduce EnvRunner metrics over the n EnvRunners.
-            self.metrics.merge_and_log_n_dicts(env_runner_results, key=ENV_RUNNER_RESULTS)
+            self.metrics.merge_and_log_n_dicts(
+                env_runner_results, key=ENV_RUNNER_RESULTS
+            )
 
         self.metrics.log_value(
             NUM_ENV_STEPS_SAMPLED_LIFETIME,

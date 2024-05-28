@@ -309,7 +309,7 @@ class Stats:
         .. testcode::
             from ray.rllib.utils.metrics.stats import Stats
             from ray.rllib.utils.test_utils import check
-            
+
             # Parallel-merge two (reduce=mean) stats with window=3.
             stats = Stats(reduce="mean", window=3)
             stats1 = Stats(reduce="mean", window=3)
@@ -325,9 +325,12 @@ class Stats:
             stats.merge_in_parallel(stats1, stats2)
             # Fill new merged-values list:
             # - Start with index -1, moving to the start.
-            # - Thereby always reducing across the different Stats objects' at the current index.
-            # - The resulting reduced value (across Stats at current index) is then repeated AND
-            #   added to the new merged-values list n times (where n is the number of Stats, across
+            # - Thereby always reducing across the different Stats objects' at the
+            #   current index.
+            # - The resulting reduced value (across Stats at current index) is then
+            #   repeated AND
+            #   added to the new merged-values list n times (where n is the number of
+            #   Stats, across
             #   which we merge).
             # - The merged-values list is reversed.
             # Here:
@@ -336,8 +339,8 @@ class Stats:
             # STOP after merged list contains >= 3 items (window size)
             # reverse: [3.5, 3.5, 4.5, 4.5]
             check(stats.values, [3.5, 3.5, 4.5, 4.5])
-            check(stats.peek(), (3.5 + 4.5 + 4.5) / 3)  # mean over last 3 items (window size)
-            
+            check(stats.peek(), (3.5 + 4.5 + 4.5) / 3)  # mean last 3 items (window)
+
             # Parallel-merge two (reduce=max) stats with window=3.
             stats = Stats(reduce="max", window=3)
             stats1 = Stats(reduce="max", window=3)
@@ -351,9 +354,12 @@ class Stats:
             stats.merge_in_parallel(stats1, stats2)
             # Same here: Fill new merged-values list:
             # - Start with index -1, moving to the start.
-            # - Thereby always reducing across the different Stats objects' at the current index.
-            # - The resulting reduced value (across Stats at current index) is then repeated AND
-            #   added to the new merged-values list n times (where n is the number of Stats, across
+            # - Thereby always reducing across the different Stats objects' at the
+            #   current index.
+            # - The resulting reduced value (across Stats at current index) is then
+            #   repeated AND
+            #   added to the new merged-values list n times (where n is the number of
+            #   Stats, across
             #   which we merge).
             # - The merged-values list is reversed.
             # Here:
@@ -363,7 +369,7 @@ class Stats:
             # reverse: [5, 5, 6, 6]
             check(stats.values, [5, 5, 6, 6])
             check(stats.peek(), 6)  # max is 6
-            
+
             # Parallel-merge two (reduce=min) stats with window=4.
             stats = Stats(reduce="min", window=4)
             stats1 = Stats(reduce="min", window=4)
@@ -384,9 +390,10 @@ class Stats:
             # reverse: [1, 1, 4, 4]
             check(stats.values, [1, 1, 4, 4])
             check(stats.peek(), 1)  # min is 1
-            
+
             # Parallel-merge two (reduce=sum) stats with no window.
-            # Note that when reduce="sum", we do NOT reduce across the indices of the parallel 
+            # Note that when reduce="sum", we do NOT reduce across the indices of the
+            # parallel
             stats = Stats(reduce="sum")
             stats1 = Stats(reduce="sum")
             stats1.push(1)
@@ -406,9 +413,10 @@ class Stats:
             stats.merge_in_parallel(stats1, stats2)
             check(stats.values, [1, 4, 2, 5, 0, 6, 3])
             check(stats.peek(), 21)
-            
+
             # Parallel-merge two "concat" (reduce=None) stats with no window.
-            # Note that when reduce=None, we do NOT reduce across the indices of the parallel 
+            # Note that when reduce=None, we do NOT reduce across the indices of the
+            # parallel
             stats = Stats(reduce=None, window=float("inf"), clear_on_reduce=True)
             stats1 = Stats(reduce=None, window=float("inf"), clear_on_reduce=True)
             stats1.push(1)
@@ -437,11 +445,17 @@ class Stats:
         # Stop as soon as we reach the window size.
         new_values = []
         tmp_values = []
+        # Loop from index=-1 backward to index=start until our new_values list has
+        # at least a len of `win`.
         for i in range(1, max(map(len, [self, *others])) + 1):
+            # Per index, loop through all involved stats, including `self` and add
+            # to `tmp_values`.
             for stats in [self, *others]:
                 if len(stats) < i:
                     continue
                 tmp_values.append(stats.values[-i])
+
+            # Now reduce across `tmp_values` based on the reduce-settings of this Stats.
             # TODO (sven) : explain why all this
             if self._ema_coeff is not None:
                 new_values.extend([np.nanmean(tmp_values)] * len(tmp_values))
@@ -449,7 +463,8 @@ class Stats:
                 new_values.extend(tmp_values)
             else:
                 new_values.extend(
-                    [self._reduced_values(values=tmp_values)[0]] * len(tmp_values)
+                    [self._reduced_values(values=tmp_values, window=float("inf"))[0]]
+                    * len(tmp_values)
                 )
             tmp_values.clear()
             if len(new_values) >= win:
@@ -549,7 +564,7 @@ class Stats:
             clear_on_reduce=other._clear_on_reduce,
         )
 
-    def _reduced_values(self, values=None) -> Tuple[Any, Any]:
+    def _reduced_values(self, values=None, window=None) -> Tuple[Any, Any]:
         """Runs a non-commited reduction procedure on given values (or `self.values`).
 
         Note that this method does NOT alter any state of `self` or the possibly
@@ -558,17 +573,19 @@ class Stats:
 
         Args:
             values: The list of values to reduce. If not None, use `self.values`
+            window: A possible override window setting to use (instead of
+                `self._window`). Use float('inf') here for an infinite window size.
 
         Returns:
             A tuple containing 1) the reduced value and 2) the new internal values list
             to be used.
         """
-        # Apply the window (if provided and not inf).
         values = values if values is not None else self.values
+        window = window if window is not None else self._window
+
+        # Apply the window (if provided and not inf).
         values = (
-            values
-            if self._window is None or self._window == float("inf")
-            else values[-self._window :]
+            values if window is None or window == float("inf") else values[-window:]
         )
 
         # No reduction method. Return list as-is OR reduce list to len=window.
@@ -610,18 +627,4 @@ class Stats:
                 else:
                     reduced = float(reduced)
 
-            # For window=None|inf (infinite window) and reduce != mean, we don't have to
-            # keep any values, except the last (reduced) one.
-            #if (
-            #    self._window is None or self._window == float("inf")
-            #) and self._reduce_method != "mean":
-            #    # TODO (sven): What if out values are torch tensors? In this case, we
-            #    #  would have to do reduction using `torch` above (not numpy) and only
-            #    #  then return the python primitive AND put the reduced new torch
-            #    #  tensor in `new_values`.
-            #    new_values = [reduced]
-            ## In all other cases, keep the values that were also used for the reduce
-            ## operation.
-            #else:
-            #    new_values = values
             return reduced, values
