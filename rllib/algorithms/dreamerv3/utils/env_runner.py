@@ -44,6 +44,7 @@ from ray.rllib.utils.metrics import (
 )
 from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
 from ray.rllib.utils.numpy import convert_to_numpy, one_hot
+from ray.rllib.utils.spaces.space_utils import batch, unbatch
 from ray.rllib.utils.torch_utils import convert_to_torch_tensor
 from ray.rllib.utils.typing import ResultDict
 from ray.tune.registry import ENV_CREATOR, _global_registry
@@ -296,41 +297,19 @@ class DreamerV3EnvRunner(EnvRunner):
         # Have to reset the env (on all vector sub-envs).
         if force_reset or self._needs_initial_reset:
             obs, _ = self.env.reset()
+            self._needs_initial_reset = False
 
             self._episodes = [SingleAgentEpisode() for _ in range(self.num_envs)]
-            states = initial_states
-            # Set is_first to True for all rows (all sub-envs just got reset).
-            is_first = np.ones((self.num_envs,))
-            self._needs_initial_reset = False
 
             # Set initial obs and states in the episodes.
             for i in range(self.num_envs):
                 self._episodes[i].add_env_reset(observation=obs[i])
-                self._states[i] = {k: s[i] for k, s in states.items()}
+                self._states[i] = None
+
         # Don't reset existing envs; continue in already started episodes.
         else:
             # Pick up stored observations and states from previous timesteps.
             obs = np.stack([eps.observations[-1] for eps in self._episodes])
-            # Compile the initial state for each batch row: If episode just started, use
-            # model's initial state, if not, use state stored last in
-            # SingleAgentEpisode.
-            states = {
-                k: np.stack(
-                    [
-                        initial_states[k][i]
-                        if self._states[i] is None
-                        else self._states[i][k]
-                        for i, eps in enumerate(self._episodes)
-                    ]
-                )
-                for k in initial_states.keys()
-            }
-            # If a batch row is at the beginning of an episode, set its `is_first` flag
-            # to 1.0, otherwise 0.0.
-            is_first = np.zeros((self.num_envs,))
-            for i, eps in enumerate(self._episodes):
-                if len(eps) == 0:
-                    is_first[i] = 1.0
 
         # Loop through env for n timesteps.
         ts = 0
@@ -340,7 +319,12 @@ class DreamerV3EnvRunner(EnvRunner):
                 actions = self.env.action_space.sample()
             # Compute an action using our RLModule.
             else:
-                batch = {
+                is_first = np.zeros((self.num_envs,))
+                for i, eps in enumerate(self._episodes):
+                    if self._states[i] is None:
+                        is_first[i] = 1.0
+                        self._states[i] = {k: s[i] for k, s in initial_states.items()}
+                to_module = {
                     Columns.STATE_IN: tree.map_structure(
                         lambda s: tf.convert_to_tensor(s), states
                     ),
@@ -349,24 +333,21 @@ class DreamerV3EnvRunner(EnvRunner):
                 }
                 # Explore or not.
                 if explore:
-                    outs = self.module.forward_exploration(batch)
+                    outs = self.module.forward_exploration(to_module)
                 else:
-                    outs = self.module.forward_inference(batch)
+                    outs = self.module.forward_inference(to_module)
 
                 # Model outputs one-hot actions (if discrete). Convert to int actions
                 # as well.
-                actions = outs[Columns.ACTIONS].numpy()
+                actions = convert_to_numpy(outs[Columns.ACTIONS])
                 if isinstance(self.env.single_action_space, gym.spaces.Discrete):
                     actions = np.argmax(actions, axis=-1)
-                states = tree.map_structure(
-                    lambda s: s.numpy(), outs[Columns.STATE_OUT]
-                )
+                self._states = unbatch(convert_to_numpy(outs[Columns.STATE_OUT]))
 
             obs, rewards, terminateds, truncateds, infos = self.env.step(actions)
             ts += self.num_envs
 
             for i in range(self.num_envs):
-                s = {k: s[i] for k, s in states.items()}
                 # The last entry in self.observations[i] is already the reset
                 # obs of the new episode.
                 if terminateds[i] or truncateds[i]:
@@ -379,12 +360,7 @@ class DreamerV3EnvRunner(EnvRunner):
                         terminated=terminateds[i],
                         truncated=truncateds[i],
                     )
-                    self._states[i] = s
-                    # Reset h-states to the model's initial ones b/c we are starting a
-                    # new episode.
-                    for k, v in self.module.get_initial_state().items():
-                        states[k][i] = v.numpy()
-                    is_first[i] = True
+                    self._states[i] = None
                     done_episodes_to_return.append(self._episodes[i])
                     # Create a new episode object.
                     self._episodes[i] = SingleAgentEpisode(observations=[obs[i]])
@@ -394,9 +370,6 @@ class DreamerV3EnvRunner(EnvRunner):
                         action=actions[i],
                         reward=rewards[i],
                     )
-                    is_first[i] = False
-
-                self._states[i] = s
 
         # Return done episodes ...
         self._done_episodes_for_metrics.extend(done_episodes_to_return)
@@ -430,7 +403,7 @@ class DreamerV3EnvRunner(EnvRunner):
         # Multiply states n times according to our vector env batch size (num_envs).
         states = tree.map_structure(
             lambda s: np.repeat(s, self.num_envs, axis=0),
-            self.module.get_initial_state(),
+            convert_to_numpy(self.module.get_initial_state()),
         )
         is_first = np.ones((self.num_envs,))
 
@@ -455,12 +428,10 @@ class DreamerV3EnvRunner(EnvRunner):
                 else:
                     outs = self.module.forward_inference(batch)
 
-                actions = outs[Columns.ACTIONS].numpy()
+                actions = convert_to_numpy(outs[Columns.ACTIONS])
                 if isinstance(self.env.single_action_space, gym.spaces.Discrete):
                     actions = np.argmax(actions, axis=-1)
-                states = tree.map_structure(
-                    lambda s: s.numpy(), outs[Columns.STATE_OUT]
-                )
+                states = convert_to_numpy(outs[Columns.STATE_OUT])
 
             obs, rewards, terminateds, truncateds, infos = self.env.step(actions)
 
@@ -486,8 +457,10 @@ class DreamerV3EnvRunner(EnvRunner):
 
                     # Reset h-states to the model's initial ones b/c we are starting a
                     # new episode.
-                    for k, v in self.module.get_initial_state().items():
-                        states[k][i] = v.numpy()
+                    for k, v in convert_to_numpy(
+                        self.module.get_initial_state()
+                    ).items():
+                        states[k][i] = v
                     is_first[i] = True
 
                     episodes[i] = SingleAgentEpisode(observations=[obs[i]])
