@@ -271,3 +271,15 @@ execution time exceeds some user-defined threshold:
   *submitted*, not executed.
 
 This callback API is currently unstable and subject to change.
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   ray.util.dask.callbacks.RayDaskCallback
+   ray.util.dask.callbacks.RayDaskCallback._ray_presubmit
+   ray.util.dask.callbacks.RayDaskCallback._ray_postsubmit
+   ray.util.dask.callbacks.RayDaskCallback._ray_pretask
+   ray.util.dask.callbacks.RayDaskCallback._ray_posttask
+   ray.util.dask.callbacks.RayDaskCallback._ray_postsubmit_all
+   ray.util.dask.callbacks.RayDaskCallback._ray_finish
