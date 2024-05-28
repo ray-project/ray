@@ -54,6 +54,7 @@ void MutableObjectProvider::RegisterWriterChannel(const ObjectID &object_id,
 
     io_services_.push_back(std::make_unique<instrumented_io_context>());
     instrumented_io_context &io_service = *io_services_.back();
+    io_works_.push_back(std::make_unique<boost::asio::io_service::work>(io_service));
     client_call_managers_.push_back(std::make_unique<rpc::ClientCallManager>(io_service));
     std::shared_ptr<MutableObjectReaderInterface> reader =
         raylet_client_factory_(*node_id, *client_call_managers_.back());
@@ -176,6 +177,11 @@ void MutableObjectProvider::PollWriterClosure(
     instrumented_io_context &io_service,
     const ObjectID &object_id,
     std::shared_ptr<MutableObjectReaderInterface> reader) {
+  {
+        std::ofstream f;
+        f.open("/tmp/blah", std::ofstream::app);
+        f << "PollWriterClosure A" << std::endl;
+  }
   std::shared_ptr<RayObject> object;
   Status status = object_manager_.ReadAcquire(object_id, object);
   // Check if the thread returned from ReadAcquire() because the process is exiting, not
@@ -185,6 +191,11 @@ void MutableObjectProvider::PollWriterClosure(
     return;
   }
   RAY_CHECK_EQ(static_cast<int>(status.code()), static_cast<int>(StatusCode::OK));
+  {
+        std::ofstream f;
+        f.open("/tmp/blah", std::ofstream::app);
+        f << "PollWriterClosure B" << std::endl;
+  }
 
   RAY_CHECK(object->GetData());
   RAY_CHECK(object->GetMetadata());
@@ -212,6 +223,9 @@ void MutableObjectProvider::PollWriterClosure(
 }
 
 void MutableObjectProvider::RunIOService(instrumented_io_context &io_service) {
+    std::ofstream f;
+    f.open("/tmp/blah", std::ofstream::app);
+    f << "New thread, tid is " << GetTid() << std::endl;
   // TODO(jhumphri): Decompose this.
 #ifndef _WIN32
   // Block SIGINT and SIGTERM so they will be handled by the main thread.

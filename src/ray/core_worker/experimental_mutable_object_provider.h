@@ -165,6 +165,8 @@ class MutableObjectProvider {
   std::function<std::shared_ptr<MutableObjectReaderInterface>(
       const NodeID &node_id, rpc::ClientCallManager &client_call_manager)>
       raylet_client_factory_;
+  // Manages RPCs for inter-node communication of mutable objects.
+  std::vector<std::unique_ptr<boost::asio::io_service::work>> io_works_;
   // Context in which the application looks for local changes to mutable objects and sends
   // the changes to remote nodes via the network.
   std::vector<std::unique_ptr<instrumented_io_context>> io_services_;
