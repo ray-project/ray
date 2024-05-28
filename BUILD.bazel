@@ -2226,6 +2226,7 @@ ray_cc_test(
     deps = [
         ":redis_store_client",
         ":store_client_test_lib",
+        "@boost//:optional",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -2253,6 +2254,7 @@ ray_cc_test(
     deps = [
         ":redis_store_client",
         ":store_client_test_lib",
+        "@boost//:optional",
         "@com_google_googletest//:gtest_main",
     ],
 )

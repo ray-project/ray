@@ -151,8 +151,7 @@ BIG_OBJ_SIZE = 3 * 1024 * 1024  # 3 MiB
 
 class BigObject:
     def __init__(self):
-        # 100 MiB of memory used...
-        self.data = np.zeros((100 * 1024 * 1024), dtype=np.uint8)
+        self.data = np.zeros((BIG_OBJ_SIZE,), dtype=np.uint8)
 
 
 @ray.remote

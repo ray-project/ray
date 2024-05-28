@@ -15,4 +15,4 @@ torch-sparse==0.6.17+pt20cu118
 torch-cluster==1.6.1+pt20cu118
 torch-spline-conv==1.2.2+pt20cu118
 
-cupy-cuda11x==13.1.0
+cupy-cuda11x==13.1.0; sys_platform != 'darwin'

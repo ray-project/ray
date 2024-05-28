@@ -1,15 +1,3 @@
-import gymnasium as gym
-
-from ray.rllib.connectors.env_to_module.frame_stacking import FrameStackingEnvToModule
-from ray.rllib.connectors.learner.frame_stacking import FrameStackingLearner
-from ray.rllib.env.wrappers.atari_wrappers import wrap_atari_for_new_api_stack
-from ray.rllib.examples.envs.classes.multi_agent import make_multi_agent
-from ray.rllib.utils.test_utils import (
-    add_rllib_example_script_args,
-    run_rllib_example_script_experiment,
-)
-from ray.tune.registry import get_trainable_cls
-
 """ Example using connectors (V2) for frame-stacking in Atari environments.
 
 How to run this script
@@ -23,6 +11,17 @@ For logging to your WandB account, use:
 `--wandb-key=[your WandB API key] --wandb-project=[some project name]
 --wandb-run-name=[optional: WandB run name (within the defined project)]`
 """
+import gymnasium as gym
+
+from ray.rllib.connectors.env_to_module.frame_stacking import FrameStackingEnvToModule
+from ray.rllib.connectors.learner.frame_stacking import FrameStackingLearner
+from ray.rllib.env.wrappers.atari_wrappers import wrap_atari_for_new_api_stack
+from ray.rllib.examples.envs.classes.multi_agent import make_multi_agent
+from ray.rllib.utils.test_utils import (
+    add_rllib_example_script_args,
+    run_rllib_example_script_experiment,
+)
+from ray.tune.registry import get_trainable_cls
 
 # Read in common example script command line arguments.
 parser = add_rllib_example_script_args(
@@ -138,7 +137,7 @@ if __name__ == "__main__":
         )
     )
     if args.enable_new_api_stack:
-        base_config = base_config.rl_module(
+        base_config.rl_module(
             model_config_dict=dict(
                 {
                     "vf_share_layers": True,
@@ -147,11 +146,11 @@ if __name__ == "__main__":
                     "post_fcnet_hiddens": [256],
                     "uses_new_env_runners": True,
                 },
-            ),
+            )
         )
     else:
-        base_config = base_config.training(
-            {
+        base_config.training(
+            model={
                 "vf_share_layers": True,
                 "conv_filters": [[16, 4, 2], [32, 4, 2], [64, 4, 2], [128, 4, 2]],
                 "conv_activation": "relu",
