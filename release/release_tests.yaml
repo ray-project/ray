@@ -2760,8 +2760,8 @@
     cluster_compute: 8gpus_96cpus.yaml
 
   run:
-    timeout: 18000
-    script: python ../../rllib/tuned_examples/pong_ppo.py --enable-new-api-stack --num-gpus=4 --num-env-runners-95 --as-test
+    timeout: 1800
+    script: python ../../rllib/tuned_examples/pong_ppo.py --enable-new-api-stack --num-gpus=4 --num-env-runners=95 --as-test
 
   alert: default
 
