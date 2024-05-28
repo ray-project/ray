@@ -1,8 +1,8 @@
 import logging
+from ray._raylet import MyGcsClient
 
 logger = logging.getLogger(__name__)
 
-from ray._raylet import MyGcsClient
 
 
 class GcsAioClient:
