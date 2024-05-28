@@ -30,17 +30,13 @@ namespace experimental {
 class MutableObjectProvider {
  public:
   typedef std::function<std::shared_ptr<MutableObjectReaderInterface>(
-      const NodeID &node_id)>
+      const NodeID &node_id, rpc::ClientCallManager &client_call_manager)>
       RayletFactory;
 
   MutableObjectProvider(std::shared_ptr<plasma::PlasmaClientInterface> plasma,
                         RayletFactory factory);
 
   ~MutableObjectProvider();
-
-  std::unique_ptr<rpc::ClientCallManager> &client_call_manager() {
-    return client_call_manager_;
-  }
 
   /// Registers a reader channel for `object_id` on this node.
   /// \param[in] object_id The ID of the object.
@@ -143,7 +139,8 @@ class MutableObjectProvider {
 
   // Listens for local changes to `object_id` and sends the changes to remote nodes via
   // the network.
-  void PollWriterClosure(const ObjectID &object_id,
+  void PollWriterClosure(instrumented_io_context &io_service,
+                         const ObjectID &object_id,
                          std::shared_ptr<MutableObjectReaderInterface> reader);
 
   // Kicks off `io_service_`.
@@ -165,15 +162,14 @@ class MutableObjectProvider {
 
   // Creates a function for each object. This function waits for changes on the object and
   // then sends those changes to a remote node via RPC.
-  std::function<std::shared_ptr<MutableObjectReaderInterface>(const NodeID &node_id)>
+  std::function<std::shared_ptr<MutableObjectReaderInterface>(
+      const NodeID &node_id, rpc::ClientCallManager &client_call_manager)>
       raylet_client_factory_;
   // Context in which the application looks for local changes to mutable objects and sends
   // the changes to remote nodes via the network.
-  instrumented_io_context io_service_;
-  // Manages RPCs for inter-node communication of mutable objects.
-  boost::asio::io_service::work io_work_;
+  std::vector<std::unique_ptr<instrumented_io_context>> io_services_;
   // Manages outgoing RPCs that send mutable object changes to remote nodes.
-  std::unique_ptr<rpc::ClientCallManager> client_call_manager_;
+  std::vector<std::unique_ptr<rpc::ClientCallManager>> client_call_managers_;
   // Thread that waits for local mutable object changes and then sends the changes to
   // remote nodes via the network.
   std::vector<std::unique_ptr<std::thread>> io_threads_;

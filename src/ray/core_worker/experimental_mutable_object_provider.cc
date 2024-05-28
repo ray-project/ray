@@ -24,18 +24,18 @@ namespace experimental {
 
 MutableObjectProvider::MutableObjectProvider(
     std::shared_ptr<plasma::PlasmaClientInterface> plasma, RayletFactory factory)
-    : plasma_(plasma),
-      raylet_client_factory_(factory),
-      io_work_(io_service_),
-      client_call_manager_(std::make_unique<rpc::ClientCallManager>(io_service_)),
-      io_thread_([this]() { RunIOService(); }) {}
+    : plasma_(plasma), raylet_client_factory_(factory) {}
 
 MutableObjectProvider::~MutableObjectProvider() {
-  io_service_.stop();
+  for (std::unique_ptr<instrumented_io_context> &io_service : io_services_) {
+    io_service->stop();
+  }
   RAY_CHECK(object_manager_.SetErrorAll().code() == StatusCode::OK);
 
-  RAY_CHECK(io_thread_.joinable());
-  io_thread_.join();
+  for (std::unique_ptr<std::thread> &io_thread : io_threads_) {
+    RAY_CHECK(io_thread->joinable());
+    io_thread->join();
+  }
 }
 
 void MutableObjectProvider::RegisterWriterChannel(const ObjectID &object_id,
@@ -51,8 +51,13 @@ void MutableObjectProvider::RegisterWriterChannel(const ObjectID &object_id,
   if (node_id) {
     // Start a thread that repeatedly listens for values on this object and then sends
     // them via RPC to the remote reader.
+
+    io_services_.push_back(std::make_unique<instrumented_io_context>());
+    instrumented_io_context &io_service = *io_services_.back();
+    client_call_managers_.push_back(
+        std::make_unique<rpc::ClientCallManager>(io_services));
     std::shared_ptr<MutableObjectReaderInterface> reader =
-        raylet_client_factory_(*node_id);
+        raylet_client_factory_(*node_id, *client_call_managers_.back());
     RAY_CHECK(reader);
     // TODO(jhumphri): Extend this to support multiple channels. Currently, we must have
     // one thread per channel because the thread blocks on the channel semaphore.
@@ -60,7 +65,10 @@ void MutableObjectProvider::RegisterWriterChannel(const ObjectID &object_id,
     f.open("/tmp/blah", std::ofstream::app);
     f << "RegisterWriterChannel tid is " << GetTid() << std::endl;
 
-    io_threads_.push_back(std::make_unique<std::thread>(RunIOService, object_id, reader));
+    io_service.post(
+        [this, object_id, reader]() { PollWriterClosure(io_service, object_id, reader); },
+        "experimental::MutableObjectProvider.PollWriter");
+    io_threads_.push_back(std::make_unique<std::thread>(RunIOService));
   }
 }
 
@@ -163,7 +171,9 @@ Status MutableObjectProvider::SetError(const ObjectID &object_id) {
 }
 
 void MutableObjectProvider::PollWriterClosure(
-    const ObjectID &object_id, std::shared_ptr<MutableObjectReaderInterface> reader) {
+    instrumented_io_context &io_service,
+    const ObjectID &object_id,
+    std::shared_ptr<MutableObjectReaderInterface> reader) {
   std::shared_ptr<RayObject> object;
   Status status = object_manager_.ReadAcquire(object_id, object);
   // Check if the thread returned from ReadAcquire() because the process is exiting, not
@@ -191,7 +201,7 @@ void MutableObjectProvider::PollWriterClosure(
         RAY_CHECK_OK(object_manager_.ReadRelease(object_id));
         f << "Callback, got past ReadRelease" << std::endl;
 
-        io_service_.post(
+        io_service.post(
             [this, object_id, reader]() { PollWriterClosure(object_id, reader); },
             "experimental::MutableObjectProvider.PollWriter");
       });
