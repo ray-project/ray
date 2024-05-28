@@ -223,6 +223,11 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
     return mutable_object_provider_;
   }
 
+  /// Get the local drain request.
+  optional<rpc::DrainRayletRequest> GetLocalDrainRequest() const {
+    return cluster_resource_scheduler_->GetLocalResourceManager().GetLocalDrainRequest();
+  }
+
  private:
   void ReleaseWorker(const WorkerID &worker_id) {
     leased_workers_.erase(worker_id);
