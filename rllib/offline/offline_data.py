@@ -58,6 +58,7 @@ class OfflineData:
             logger.error(e)
         # Avoids reinstantiating the batch iterator each time we sample.
         self.batch_iterator = None
+        self.locality_hints = None
 
     def sample(
         self,

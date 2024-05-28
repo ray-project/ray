@@ -733,6 +733,7 @@ class Algorithm(Trainable, AlgorithmBase):
             # Need to add back method_type in case Algorithm is restored from checkpoint
             method_config["type"] = method_type
 
+        # TODO (sven): Probably obsolete b/c the learner group is already None.
         self.learner_group = None
         if self.config.enable_rl_module_and_learner:
             local_worker = self.workers.local_worker()
@@ -798,6 +799,14 @@ class Algorithm(Trainable, AlgorithmBase):
             )
             local_worker.set_weights(weights)
             self.workers.sync_weights(inference_only=True)
+
+            if self.offline_data and self.learner_group.is_remote:
+                learner_node_ids = self.learner_group.foreach_learner(
+                    lambda l: ray.get_runtime_context().get_node_id()
+                )
+                self.offline_data.locality_hints = [
+                    node_id.get() for node_id in learner_node_ids
+                ]
 
         # Run `on_algorithm_init` callback after initialization is done.
         self.callbacks.on_algorithm_init(algorithm=self, metrics_logger=self.metrics)
