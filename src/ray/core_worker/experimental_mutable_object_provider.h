@@ -176,7 +176,7 @@ class MutableObjectProvider {
   std::unique_ptr<rpc::ClientCallManager> client_call_manager_;
   // Thread that waits for local mutable object changes and then sends the changes to
   // remote nodes via the network.
-  std::thread io_thread_;
+  std::vector<std::unique_ptr<std::thread>> io_threads_;
 };
 
 }  // namespace experimental

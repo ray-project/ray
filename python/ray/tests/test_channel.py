@@ -209,9 +209,9 @@ def test_resize_channel_on_different_nodes(ray_start_cluster):
     cluster.add_node(num_cpus=0)
     ray.init(address=cluster.address)
     # This node is for the Reader actors.
-    cluster.add_node(num_cpus=1)
+    cluster.add_node(num_cpus=10)
 
-    @ray.remote(num_cpus=1)
+    @ray.remote(num_cpus=10)
     class Actor:
         def __init__(self):
             pass

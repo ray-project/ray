@@ -441,7 +441,6 @@ class Channel(ChannelInterface):
         )
         print("write() 3\n")
 
-
     def begin_read(self) -> Any:
         self.ensure_registered_as_reader()
         print("reader begin read " + str(self._reader_ref) + "\n")

@@ -56,9 +56,11 @@ void MutableObjectProvider::RegisterWriterChannel(const ObjectID &object_id,
     RAY_CHECK(reader);
     // TODO(jhumphri): Extend this to support multiple channels. Currently, we must have
     // one thread per channel because the thread blocks on the channel semaphore.
-    io_service_.post(
-        [this, object_id, reader]() { PollWriterClosure(object_id, reader); },
-        "experimental::MutableObjectProvider.PollWriter");
+    std::ofstream f;
+    f.open("/tmp/blah", std::ofstream::app);
+    f << "RegisterWriterChannel tid is " << GetTid() << std::endl;
+
+    io_threads_.push_back(std::make_unique<std::thread>(RunIOService, object_id, reader));
   }
 }
 
@@ -182,8 +184,16 @@ void MutableObjectProvider::PollWriterClosure(
       object->GetData()->Data(),
       [this, object_id, reader](const Status &status,
                                 const rpc::PushMutableObjectReply &reply) {
+        std::ofstream f;
+        f.open("/tmp/blah", std::ofstream::app);
+        f << "Callback invoked :), object id " << object_id << std::endl;
+
         RAY_CHECK_OK(object_manager_.ReadRelease(object_id));
-        PollWriterClosure(object_id, reader);
+        f << "Callback, got past ReadRelease" << std::endl;
+
+        io_service_.post(
+            [this, object_id, reader]() { PollWriterClosure(object_id, reader); },
+            "experimental::MutableObjectProvider.PollWriter");
       });
 }
 
@@ -199,7 +209,9 @@ void MutableObjectProvider::RunIOService() {
 #endif
 
   SetThreadName("worker.channel_io");
-  io_service_.run();
+  while (true) {
+    io_service_.run();
+  }
   RAY_LOG(INFO) << "Core worker channel io service stopped.";
 }
 

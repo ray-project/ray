@@ -3645,6 +3645,7 @@ cdef class CoreWorker:
             int64_t c_num_readers = num_readers
 
         metadata = string_to_buffer(serialized_object.metadata)
+        print("experimental_channel_put_serialized :)\n")
         with nogil:
             check_status(CCoreWorkerProcess.GetCoreWorker()
                          .ExperimentalChannelWriteAcquire(
