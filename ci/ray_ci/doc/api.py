@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from typing import Optional
 
 
+SPHINX_CURRENTMODULE_HEADER = ".. currentmodule::"
 SPHINX_AUTOSUMMARY_HEADER = ".. autosummary::"
 SPHINX_AUTOCLASS_HEADER = ".. autoclass::"
 
