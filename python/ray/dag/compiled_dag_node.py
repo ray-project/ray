@@ -278,8 +278,7 @@ class DAGInputAdapter:
         return self._dag_input_channel
 
 
-@DeveloperAPI
-class ExecutableTaskInput:
+class _ExecutableTaskInput:
     """Represents an input to an ExecutableTask.
 
     Args:
@@ -297,7 +296,7 @@ class ExecutableTaskInput:
         self.input_variant = input_variant
         self.channel_idx = channel_idx
 
-    def resolve(self, channel_results):
+    def resolve(self, channel_results: Any):
         """
         Resolve the input value from the channel results.
 
@@ -340,7 +339,7 @@ class ExecutableTask:
         self.output_type_hint: "ChannelOutputType" = task.dag_node.type_hint
 
         self.input_channels: List[ChannelInterface] = []
-        self.task_inputs: List[ExecutableTaskInput] = []
+        self.task_inputs: List[_ExecutableTaskInput] = []
 
         # Reverse map for input_channels: maps an input channel to
         # its index in input_channels.
@@ -363,9 +362,9 @@ class ExecutableTask:
                     channel_idx = len(self.input_channels) - 1
                     input_channel_to_idx[channel] = channel_idx
 
-                task_input = ExecutableTaskInput(arg, channel_idx)
+                task_input = _ExecutableTaskInput(arg, channel_idx)
             else:
-                task_input = ExecutableTaskInput(arg, None)
+                task_input = _ExecutableTaskInput(arg, None)
             self.task_inputs.append(task_input)
 
 
