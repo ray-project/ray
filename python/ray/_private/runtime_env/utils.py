@@ -89,6 +89,10 @@ async def check_output_cmd(
         #     https://docs.python.org/3/library/asyncio-subprocess.html#asyncio.asyncio.subprocess.Process.stderr
         #   * Avoid mixing multiple outputs of concurrent cmds.
         stdout, _ = await proc.communicate()
+    except asyncio.exceptions.CancelledError as e:
+        # since Python 3.9, when cancelled, the inner process needs to throw as it is
+        # for asyncio to timeout properly https://bugs.python.org/issue40607
+        raise e
     except BaseException as e:
         raise RuntimeError(f"Run cmd[{cmd_index}] got exception.") from e
     else:

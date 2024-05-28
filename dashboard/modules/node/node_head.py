@@ -43,7 +43,7 @@ routes = dashboard_optional_utils.DashboardHeadRouteTable
 
 def gcs_node_info_to_dict(message):
     return dashboard_utils.message_to_dict(
-        message, {"nodeId"}, including_default_value_fields=True
+        message, {"nodeId"}, always_print_fields_with_no_presence=True
     )
 
 
@@ -80,7 +80,7 @@ def node_stats_to_dict(message):
         result = dashboard_utils.message_to_dict(message, decode_keys)
         result["coreWorkersStats"] = [
             dashboard_utils.message_to_dict(
-                m, decode_keys, including_default_value_fields=True
+                m, decode_keys, always_print_fields_with_no_presence=True
             )
             for m in core_workers_stats
         ]
@@ -142,7 +142,9 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
             A dict of information about the nodes in the cluster.
         """
         request = gcs_service_pb2.GetAllNodeInfoRequest()
-        reply = await self._gcs_node_info_stub.GetAllNodeInfo(request, timeout=2)
+        reply = await self._gcs_node_info_stub.GetAllNodeInfo(
+            request, timeout=node_consts.GCS_RPC_TIMEOUT_SECONDS
+        )
         if reply.status.code == 0:
             result = {}
             for node_info in reply.node_info_list:
@@ -182,7 +184,7 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
                             node_id.encode(),
                             overwrite=True,
                             namespace=ray_constants.KV_NAMESPACE_JOB,
-                            timeout=2,
+                            timeout=node_consts.GCS_RPC_TIMEOUT_SECONDS,
                         )
                     node_id_to_ip[node_id] = ip
                     node_id_to_hostname[node_id] = hostname
@@ -201,7 +203,9 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
                             f"{node_id}"
                         )
                         agent_port = await self._gcs_aio_client.internal_kv_get(
-                            key.encode(), namespace=ray_constants.KV_NAMESPACE_DASHBOARD
+                            key.encode(),
+                            namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
+                            timeout=node_consts.GCS_RPC_TIMEOUT_SECONDS,
                         )
                         if agent_port:
                             agents[node_id] = json.loads(agent_port)

@@ -36,7 +36,7 @@ def get_dataloaders(batch_size):
         )
 
     # Create data loaders
-    train_dataloader = DataLoader(training_data, batch_size=batch_size)
+    train_dataloader = DataLoader(training_data, batch_size=batch_size, shuffle=True)
     test_dataloader = DataLoader(test_data, batch_size=batch_size)
 
     return train_dataloader, test_dataloader
@@ -90,6 +90,10 @@ def train_func_per_worker(config: Dict):
 
     # Model training loop
     for epoch in range(epochs):
+        if ray.train.get_context().get_world_size() > 1:
+            # Required for the distributed sampler to shuffle properly across epochs.
+            train_dataloader.sampler.set_epoch(epoch)
+
         model.train()
         for X, y in tqdm(train_dataloader, desc=f"Train Epoch {epoch}"):
             pred = model(X)

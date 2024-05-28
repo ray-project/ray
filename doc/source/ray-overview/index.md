@@ -25,7 +25,6 @@ For distributed systems engineers, Ray automatically handles key processes:
 
 These are some common ML workloads that individuals, organizations, and companies leverage Ray to build their AI applications:
 * [Batch inference on CPUs and GPUs](project:#ref-use-cases-batch-infer)
-* [Parallel training](project:#ref-use-cases-mmt)
 * [Model serving](project:#ref-use-cases-model-serving)
 * [Distributed training of large models](project:#ref-use-cases-distributed-training)
 * [Parallel hyperparameter tuning experiments](project:#ref-use-cases-hyperparameter-tuning)

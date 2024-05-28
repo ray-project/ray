@@ -161,7 +161,6 @@ class DashboardHead:
             self.http_port,
             self.http_port_retries,
             self.gcs_address,
-            self.gcs_client,
             self.session_name,
             self.metrics,
         )
@@ -367,8 +366,11 @@ class DashboardHead:
             DataOrganizer.purge(),
             DataOrganizer.organize(),
         ]
-        await asyncio.gather(*concurrent_tasks, *(m.run(self.server) for m in modules))
-        await self.server.wait_for_termination()
+        for m in modules:
+            concurrent_tasks.append(m.run(self.server))
+        if self.server:
+            concurrent_tasks.append(self.server.wait_for_termination())
+        await asyncio.gather(*concurrent_tasks)
 
         if self.http_server:
             await self.http_server.cleanup()

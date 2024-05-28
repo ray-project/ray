@@ -13,9 +13,9 @@ import ray.cluster_utils
 from ray._private.test_utils import (
     SignalActor,
     client_test_enabled,
-    get_error_message,
     run_string_as_driver,
 )
+from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 logger = logging.getLogger(__name__)
 
@@ -46,6 +46,47 @@ assert ray.get(f.remote()) == 1
     run_string_as_driver(script, dict(os.environ, **env))
 
 
+def test_release_cpu_resources(shutdown_only):
+    ray.init(num_cpus=1)
+
+    @ray.remote(num_cpus=1)
+    def child():
+        return 3
+
+    @ray.remote(num_cpus=1)
+    def parent():
+        # Parent should release the CPU resource
+        # to run child.
+        return ray.get(child.remote())
+
+    assert ray.get(parent.remote()) == 3
+
+    # Make sure CPU resource inside PG can also be released properly.
+    pg = ray.util.placement_group(bundles=[{"CPU": 1}])
+    assert (
+        ray.get(
+            parent.options(
+                scheduling_strategy=PlacementGroupSchedulingStrategy(
+                    placement_group=pg, placement_group_capture_child_tasks=True
+                )
+            ).remote()
+        )
+        == 3
+    )
+    assert (
+        ray.get(
+            parent.options(
+                scheduling_strategy=PlacementGroupSchedulingStrategy(
+                    placement_group=pg,
+                    placement_group_bundle_index=0,
+                    placement_group_capture_child_tasks=True,
+                )
+            ).remote()
+        )
+        == 3
+    )
+
+
 # https://github.com/ray-project/ray/issues/16025
 def test_release_resources_race(shutdown_only):
     # This test fails with the flag set to false.
@@ -67,6 +108,35 @@ def test_release_resources_race(shutdown_only):
     pids = set(ray.get([consume.remote(refs) for _ in range(1000)]))
     # Should not have started multiple workers.
     assert len(pids) <= 2, pids
+
+
+def test_not_release_resource(shutdown_only):
+    # Test to make sure we don't release CPU
+    # resource if the object is already fetched.
+    ray.init(num_cpus=1)
+
+    @ray.remote
+    def task1():
+        return [1] * (1024 * 1024)
+
+    o1 = task1.remote()
+
+    @ray.remote
+    def task2(*args, **kwargs):
+        # ray.get here should not release
+        # CPU resource since the object is already
+        # available in args[0]
+        assert args[0] == ray.get(kwargs["o"][0])
+        return os.getpid()
+
+    @ray.remote
+    def task3(*args):
+        return os.getpid()
+
+    o2 = task2.remote(o1, o=[o1])
+    # This should run after task2 finishes
+    o3 = task3.remote(o1)
+    assert len(set(ray.get([o2, o3]))) == 1
 
 
 # https://github.com/ray-project/ray/issues/22504
@@ -1061,16 +1131,8 @@ def test_failed_task(ray_start_shared_local_modes, error_pubsub):
     def throw_exception_fct3(x):
         raise Exception("Test function 3 intentionally failed.")
 
-    p = error_pubsub
-
     throw_exception_fct1.remote()
     throw_exception_fct1.remote()
-
-    if ray._private.worker.global_worker.mode != ray._private.worker.LOCAL_MODE:
-        msgs = get_error_message(p, 2, ray._private.ray_constants.TASK_PUSH_ERROR)
-        assert len(msgs) == 2
-        for msg in msgs:
-            assert "Test function 1 intentionally failed." in msg["error_message"]
 
     x = throw_exception_fct2.remote()
     try:

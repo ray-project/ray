@@ -71,7 +71,10 @@ void GcsResourceManager::HandleGetDrainingNodes(
     }
     const auto &node_resources = node_resources_entry.second.GetLocalView();
     if (node_resources.is_draining) {
-      *reply->add_node_ids() = node_resources_entry.first.Binary();
+      auto draining_node = reply->add_draining_nodes();
+      draining_node->set_node_id(node_resources_entry.first.Binary());
+      draining_node->set_draining_deadline_timestamp_ms(
+          node_resources.draining_deadline_timestamp_ms);
     }
   }
   GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());

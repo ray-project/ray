@@ -149,6 +149,20 @@ void GcsTaskManager::GcsTaskManagerStorage::UpdateExistingTaskAttempt(
   // Update the task event.
   existing_task.MergeFrom(task_events);
 
+  // Truncate the profile events if needed.
+  auto max_num_profile_events_per_task =
+      RayConfig::instance().task_events_max_num_profile_events_per_task();
+  if (existing_task.profile_events().events_size() > max_num_profile_events_per_task) {
+    auto to_drop =
+        existing_task.profile_events().events_size() - max_num_profile_events_per_task;
+    existing_task.mutable_profile_events()->mutable_events()->DeleteSubrange(0, to_drop);
+
+    // Update the tracking per job
+    auto job_id = JobID::FromBinary(existing_task.job_id());
+    job_task_summary_[job_id].RecordProfileEventsDropped(to_drop);
+    stats_counter_.Increment(kTotalNumProfileTaskEventsDropped, to_drop);
+  }
+
   // Move the task events around different gc priority list.
   auto target_list_index = gc_policy_->GetTaskListPriority(existing_task);
   auto cur_list_index = loc->GetCurrentListIndex();

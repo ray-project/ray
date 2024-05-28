@@ -64,6 +64,15 @@ Text
 
    read_text
 
+Avro
+----
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   read_avro
+
 Images
 ------
 
@@ -168,6 +177,15 @@ Databricks
 
    read_databricks_tables
 
+Lance
+-----
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   read_lance
+
 Dask
 ----
 
@@ -256,7 +274,6 @@ Datasource API
    read_datasource
    Datasource
    ReadTask
-   datasource.Reader
    datasource.FilenameProvider
 
 Datasink API
@@ -268,8 +285,9 @@ Datasink API
 
    Dataset.write_datasink
    Datasink
-   RowBasedFileDatasink
-   BlockBasedFileDatasink
+   datasource.RowBasedFileDatasink
+   datasource.BlockBasedFileDatasink
+   datasource.FileBasedDatasource
 
 Partitioning API
 ----------------
@@ -299,16 +317,4 @@ MetadataProvider API
    datasource.DefaultParquetMetadataProvider
    datasource.FastFileMetadataProvider
 
-
-.. _block_write_path_provider:
-
-BlockWritePathProvider API
---------------------------
-
-.. autosummary::
-   :nosignatures:
-   :toctree: doc/
-
-   datasource.BlockWritePathProvider
-   datasource.DefaultBlockWritePathProvider
    

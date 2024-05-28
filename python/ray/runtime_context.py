@@ -3,7 +3,7 @@ from typing import Any, Dict, List, Optional
 
 import ray._private.worker
 from ray._private.client_mode_hook import client_mode_hook
-from ray._private.utils import pasre_pg_formatted_resources_to_original
+from ray._private.utils import parse_pg_formatted_resources_to_original
 from ray._raylet import TaskID
 from ray.runtime_env import RuntimeEnv
 from ray.util.annotations import Deprecated, PublicAPI
@@ -251,7 +251,7 @@ class RuntimeContext(object):
         """
         # only worker mode has actor_id
         if self.worker.mode != ray._private.worker.WORKER_MODE:
-            logger.warning(
+            logger.debug(
                 "This method is only available when the process is a "
                 f"worker. Current mode: {self.worker.mode}"
             )
@@ -277,6 +277,7 @@ class RuntimeContext(object):
                 "This method is only available when the process is a "
                 f"worker. Current mode: {self.worker.mode}"
             )
+            return None
         actor_id = self.worker.actor_id
         return self.worker.actor_name if not actor_id.is_nil() else None
 
@@ -355,7 +356,8 @@ class RuntimeContext(object):
             res: sum(amt for _, amt in mapping)
             for res, mapping in resource_id_map.items()
         }
-        return pasre_pg_formatted_resources_to_original(resource_map)
+        result = parse_pg_formatted_resources_to_original(resource_map)
+        return result
 
     def get_runtime_env_string(self):
         """Get the runtime env string used for the current driver or worker.
@@ -400,24 +402,16 @@ class RuntimeContext(object):
         self.worker.check_connected()
         return self.worker.gcs_client.address
 
-    def _get_actor_call_stats(self):
-        """Get the current worker's task counters.
-
-        Returns:
-            A dictionary keyed by the function name. The values are
-            dictionaries with form ``{"pending": 0, "running": 1,
-            "finished": 2}``.
-        """
-        worker = self.worker
-        worker.check_connected()
-        return worker.core_worker.get_actor_call_stats()
-
+    @Deprecated(message="Use get_accelerator_ids() instead", warning=True)
     def get_resource_ids(self) -> Dict[str, List[str]]:
+        return self.get_accelerator_ids()
+
+    def get_accelerator_ids(self) -> Dict[str, List[str]]:
         """
         Get the current worker's visible accelerator ids.
 
         Returns:
-            A dictionary keyed by the resource name. The values are list
+            A dictionary keyed by the accelerator resource name. The values are a list
             of ids `{'GPU': ['0', '1'], 'neuron_cores': ['0', '1'],
             'TPU': ['0', '1']}`.
         """
@@ -431,7 +425,7 @@ class RuntimeContext(object):
                 accelerator_resource_name,
                 f"^{accelerator_resource_name}_group_[0-9A-Za-z]+$",
             )
-            ids_dict[accelerator_resource_name] = accelerator_ids
+            ids_dict[accelerator_resource_name] = [str(id) for id in accelerator_ids]
         return ids_dict
 
 

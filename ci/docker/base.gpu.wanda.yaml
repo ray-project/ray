@@ -1,9 +1,9 @@
-name: "oss-ci-base_gpu"
+name: "oss-ci-base_gpu-py$PYTHON"
 froms: ["nvidia/cuda:11.8.0-cudnn8-devel-ubuntu20.04"]
 dockerfile: ci/docker/base.gpu.Dockerfile
 srcs:
   - .bazelrc
-  - .bazeliskrc
+  - .bazelversion
   - ci/ci.sh
   - ci/env/install-dependencies.sh
   - ci/env/install-llvm-binaries.sh
@@ -23,5 +23,6 @@ srcs:
   - python/requirements/ml/core-requirements.txt
 build_args:
   - REMOTE_CACHE_URL=$BUILDKITE_BAZEL_CACHE_URL
+  - PYTHON
 tags:
-  - cr.ray.io/rayproject/oss-ci-base_gpu
+  - cr.ray.io/rayproject/oss-ci-base_gpu-py$PYTHON

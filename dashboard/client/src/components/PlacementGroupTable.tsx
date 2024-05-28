@@ -9,11 +9,12 @@ import {
   TextField,
   TextFieldProps,
   Tooltip,
-} from "@material-ui/core";
-import Autocomplete from "@material-ui/lab/Autocomplete";
-import Pagination from "@material-ui/lab/Pagination";
+} from "@mui/material";
+import Autocomplete from "@mui/material/Autocomplete";
+import Pagination from "@mui/material/Pagination";
 import React, { useState } from "react";
 import rowStyles from "../common/RowStyles";
+import { sliceToPage } from "../common/util";
 import { Bundle, PlacementGroup } from "../type/placementGroup";
 import { useFilter } from "../util/hook";
 import StateCounter from "./StatesCounter";
@@ -42,10 +43,11 @@ const PlacementGroupTable = ({
   const { changeFilter, filterFunc } = useFilter();
   const [pageSize, setPageSize] = useState(10);
   const placementGroupList = placementGroups.filter(filterFunc);
-  const list = placementGroupList.slice(
-    (pageNo - 1) * pageSize,
-    pageNo * pageSize,
-  );
+  const {
+    items: list,
+    constrainedPage,
+    maxPage,
+  } = sliceToPage(placementGroupList, pageNo, pageSize);
   const classes = rowStyles();
 
   const columns = [
@@ -106,8 +108,8 @@ const PlacementGroupTable = ({
           )}
         />
         <TextField
-          style={{ margin: 8, width: 120 }}
           label="Page Size"
+          sx={{ margin: 1, width: 120 }}
           size="small"
           defaultValue={10}
           InputProps={{
@@ -123,9 +125,9 @@ const PlacementGroupTable = ({
       <div style={{ display: "flex", alignItems: "center" }}>
         <div>
           <Pagination
-            page={pageNo}
+            page={constrainedPage}
             onChange={(e, num) => setPageNo(num)}
-            count={Math.ceil(placementGroupList.length / pageSize)}
+            count={maxPage}
           />
         </div>
         <div>
@@ -165,7 +167,6 @@ const PlacementGroupTable = ({
                       className={classes.idCol}
                       title={placement_group_id}
                       arrow
-                      interactive
                     >
                       <div>{placement_group_id}</div>
                     </Tooltip>
@@ -180,7 +181,6 @@ const PlacementGroupTable = ({
                       className={classes.OverflowCol}
                       title={<BundleResourceRequirements bundles={bundles} />}
                       arrow
-                      interactive
                     >
                       <BundleResourceRequirements bundles={bundles} />
                     </Tooltip>

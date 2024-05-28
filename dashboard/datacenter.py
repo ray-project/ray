@@ -4,19 +4,12 @@ import ray.dashboard.consts as dashboard_consts
 
 from ray.dashboard.utils import (
     Dict,
-    Signal,
-    async_loop_forever,
     MutableNotificationDict,
+    async_loop_forever,
+    compose_state_message,
 )
 
 logger = logging.getLogger(__name__)
-
-
-class GlobalSignals:
-    node_info_fetched = Signal(dashboard_consts.SIGNAL_NODE_INFO_FETCHED)
-    node_summary_fetched = Signal(dashboard_consts.SIGNAL_NODE_SUMMARY_FETCHED)
-    job_info_fetched = Signal(dashboard_consts.SIGNAL_JOB_INFO_FETCHED)
-    worker_info_fetched = Signal(dashboard_consts.SIGNAL_WORKER_INFO_FETCHED)
 
 
 class DataSource:
@@ -113,8 +106,6 @@ class DataOrganizer:
             )
             worker["jobId"] = pid_to_job_id.get(pid, dashboard_consts.DEFAULT_JOB_ID)
 
-            await GlobalSignals.worker_info_fetched.send(node_id, worker)
-
             workers.append(worker)
         return workers
 
@@ -147,17 +138,17 @@ class DataOrganizer:
 
         # Merge GcsNodeInfo to node physical stats
         node_info["raylet"].update(node)
+        node_info["raylet"]["stateMessage"] = compose_state_message(
+            node.get("deathInfo", {})
+        )
 
         if not get_summary:
             # Merge actors to node physical stats
-            node_info["actors"] = DataSource.node_actors.get(node_id, {})
+            node_info["actors"] = await DataOrganizer._get_all_actors(
+                DataSource.node_actors.get(node_id, {})
+            )
             # Update workers to node physical stats
             node_info["workers"] = DataSource.node_workers.get(node_id, [])
-
-        if get_summary:
-            await GlobalSignals.node_summary_fetched.send(node_info)
-        else:
-            await GlobalSignals.node_info_fetched.send(node_info)
 
         return node_info
 
@@ -189,9 +180,13 @@ class DataOrganizer:
 
     @classmethod
     async def get_all_actors(cls):
+        return await cls._get_all_actors(DataSource.actors)
+
+    @staticmethod
+    async def _get_all_actors(actors):
         result = {}
-        for index, (actor_id, actor) in enumerate(DataSource.actors.items()):
-            result[actor_id] = await cls._get_actor(actor)
+        for index, (actor_id, actor) in enumerate(actors.items()):
+            result[actor_id] = await DataOrganizer._get_actor(actor)
             # There can be thousands of actors including dead ones. Processing
             # them all can take many seconds, which blocks all other requests
             # to the dashboard. The ideal solution might be to implement
@@ -238,4 +233,5 @@ class DataOrganizer:
 
         actor["gpus"] = actor_process_gpu_stats
         actor["processStats"] = actor_process_stats
+        actor["mem"] = node_physical_stats.get("mem", [])
         return actor

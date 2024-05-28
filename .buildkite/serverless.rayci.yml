@@ -7,8 +7,8 @@ steps:
 
   - wait: ~
     depends_on:
-    - serverlessbuild
-    - forge
+      - serverlessbuild
+      - forge
 
   # tests
   - label: ":serverless: serverless: python tests"
@@ -17,7 +17,7 @@ steps:
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... serverless 
         --parallelism-per-worker 3
-        --except-tags manual,kuberay_operator,spark_plugin_tests
+        --except-tags manual,spark_plugin_tests
 
   - label: ":serverless: serverless: spark tests"
     tags: python

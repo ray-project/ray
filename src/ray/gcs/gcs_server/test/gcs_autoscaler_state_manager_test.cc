@@ -150,11 +150,13 @@ class GcsAutoscalerStateManagerTest : public ::testing::Test {
 
   bool DrainNodeSync(const NodeID &node_id,
                      const rpc::autoscaler::DrainNodeReason &reason,
-                     const std::string &reason_message) {
+                     const std::string &reason_message,
+                     int64_t deadline_timestamp_ms) {
     rpc::autoscaler::DrainNodeRequest request;
     request.set_node_id(node_id.Binary());
     request.set_reason(reason);
     request.set_reason_message(reason_message);
+    request.set_deadline_timestamp_ms(deadline_timestamp_ms);
     rpc::autoscaler::DrainNodeReply reply;
     auto send_reply_callback =
         [](ray::Status status, std::function<void()> f1, std::function<void()> f2) {};
@@ -167,14 +169,16 @@ class GcsAutoscalerStateManagerTest : public ::testing::Test {
       const absl::flat_hash_map<std::string, double> &available_resources,
       const absl::flat_hash_map<std::string, double> &total_resources,
       int64_t idle_ms = 0,
-      bool is_draining = false) {
+      bool is_draining = false,
+      int64_t draining_deadline_timestamp_ms = -1) {
     rpc::ResourcesData resources_data;
     Mocker::FillResourcesData(resources_data,
                               node_id,
                               available_resources,
                               total_resources,
                               idle_ms,
-                              is_draining);
+                              is_draining,
+                              draining_deadline_timestamp_ms);
     gcs_autoscaler_state_manager_->UpdateResourceLoadAndUsage(resources_data);
   }
 
@@ -702,13 +706,15 @@ TEST_F(GcsAutoscalerStateManagerTest, TestDrainNonAliveNode) {
   ASSERT_TRUE(
       DrainNodeSync(NodeID::FromBinary(node->node_id()),
                     rpc::autoscaler::DrainNodeReason::DRAIN_NODE_REASON_PREEMPTION,
-                    "preemption"));
+                    "preemption",
+                    std::numeric_limits<int64_t>::max()));
 
   // Drain a non-exist node.
   ASSERT_TRUE(
       DrainNodeSync(NodeID::FromRandom(),
                     rpc::autoscaler::DrainNodeReason::DRAIN_NODE_REASON_PREEMPTION,
-                    "preemption"));
+                    "preemption",
+                    std::numeric_limits<int64_t>::max()));
 }
 
 TEST_F(GcsAutoscalerStateManagerTest, TestDrainingStatus) {
@@ -726,11 +732,13 @@ TEST_F(GcsAutoscalerStateManagerTest, TestDrainingStatus) {
   }
 
   // Report draining info.
-  UpdateFromResourceViewSync(NodeID::FromBinary(node->node_id()),
-                             {/* available */ {"CPU", 2}, {"GPU", 1}},
-                             /* total*/ {{"CPU", 2}, {"GPU", 1}},
-                             /* idle_duration_ms */ 10,
-                             /* is_draining */ true);
+  UpdateFromResourceViewSync(
+      NodeID::FromBinary(node->node_id()),
+      {/* available */ {"CPU", 2}, {"GPU", 1}},
+      /* total*/ {{"CPU", 2}, {"GPU", 1}},
+      /* idle_duration_ms */ 10,
+      /* is_draining */ true,
+      /* draining_deadline_timestamp_ms */ std::numeric_limits<int64_t>::max());
   {
     const auto &state = GetClusterResourceStateSync();
     ASSERT_EQ(state.node_states(0).status(), rpc::autoscaler::NodeStatus::DRAINING);

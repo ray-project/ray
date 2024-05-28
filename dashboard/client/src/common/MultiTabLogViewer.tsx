@@ -1,15 +1,10 @@
-import {
-  Box,
-  createStyles,
-  IconButton,
-  makeStyles,
-  Tab,
-  Tabs,
-  Typography,
-} from "@material-ui/core";
-import React, { useState } from "react";
+import { Box, IconButton, Tab, Tabs, Typography } from "@mui/material";
+import createStyles from "@mui/styles/createStyles";
+import makeStyles from "@mui/styles/makeStyles";
+import React, { useEffect, useState } from "react";
 import { RiExternalLinkLine, RiSortAsc, RiSortDesc } from "react-icons/ri";
 import { Link } from "react-router-dom";
+import { useLocalStorage } from "usehooks-ts";
 import { useStateApiLogs } from "../pages/log/hooks";
 import { LogViewer } from "../pages/log/LogViewer";
 import { HideableBlock } from "./CollapsibleSection";
@@ -30,16 +25,42 @@ export type MultiTabLogViewerTabDetails = {
 export type MultiTabLogViewerProps = {
   tabs: MultiTabLogViewerTabDetails[];
   otherLogsLink?: string;
+  /**
+   * If set, this multi-tab log viewer will remember the last selected tab and start on that tab
+   * the next time this component is rendered.
+   *
+   * Different string values to provide different contexts for this memory. For example, if you
+   * want all multi-tab log viewers in the actor detail page to share one memory, they should have
+   * the same string value here.
+   */
+  contextKey?: string;
 } & ClassNameProps;
 
 export const MultiTabLogViewer = ({
   tabs,
   otherLogsLink,
+  contextKey,
   className,
 }: MultiTabLogViewerProps) => {
   const classes = useStyles();
-  const [value, setValue] = useState(tabs[0]?.title);
+
+  // DO NOT use `cachedTab` or `setCachedTab` when `contextKey` is undefined!
+  const [cachedTab, setCachedTab] = useLocalStorage(
+    `MultiTabLogViewer-tabMemory-${contextKey}`,
+    null,
+  );
+
+  const [value, setValue] = useState(
+    contextKey && cachedTab ? cachedTab : tabs[0]?.title,
+  );
   const [expanded, setExpanded] = useState(false);
+
+  useEffect(() => {
+    // If current tab value is not valid, reset to first tab.
+    if (!tabs.some((tab) => tab.title === value)) {
+      setValue(tabs[0]?.title);
+    }
+  }, [tabs, value]);
 
   const currentTab = tabs.find((tab) => tab.title === value);
 
@@ -66,6 +87,9 @@ export const MultiTabLogViewer = ({
               className={classes.tabs}
               value={value}
               onChange={(_, newValue) => {
+                if (contextKey) {
+                  setCachedTab(newValue);
+                }
                 setValue(newValue);
               }}
               indicatorColor="primary"
@@ -81,7 +105,7 @@ export const MultiTabLogViewer = ({
                     </Box>
                   }
                   onClick={(event) => {
-                    // Prevent the tab from changing
+                    // Prevent the tab from changing by setting value to the current value
                     setValue(value);
                   }}
                   component={Link}
@@ -117,6 +141,7 @@ export const MultiTabLogViewer = ({
           onClick={() => {
             setExpanded(!expanded);
           }}
+          size="large"
         >
           {expanded ? <RiSortAsc /> : <RiSortDesc />}
         </IconButton>
@@ -234,9 +259,7 @@ const ApiLogViewer = ({
       path={path}
       downloadUrl={downloadUrl !== null ? downloadUrl : undefined}
       height={height}
-      onRefreshClick={() => {
-        refresh();
-      }}
+      onRefreshClick={refresh}
     />
   ) : (
     <Typography color="error">Failed to load</Typography>

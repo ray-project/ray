@@ -46,6 +46,7 @@ class Executor:
 
     def __init__(self, options: ExecutionOptions):
         """Create the executor."""
+        options.validate()
         self._options = options
 
     def execute(

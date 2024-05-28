@@ -82,6 +82,8 @@ class CoreWorkerClientInterface : public pubsub::SubscriberClientInterface {
     return empty_addr_;
   }
 
+  virtual bool IsChannelIdleAfterRPCs() const { return false; }
+
   /// Push an actor task directly from worker to worker.
   ///
   /// \param[in] request The request message.
@@ -156,6 +158,10 @@ class CoreWorkerClientInterface : public pubsub::SubscriberClientInterface {
   virtual void RemoteCancelTask(const RemoteCancelTaskRequest &request,
                                 const ClientCallback<RemoteCancelTaskReply> &callback) {}
 
+  virtual void RegisterMutableObjectReader(
+      const RegisterMutableObjectReaderRequest &request,
+      const ClientCallback<RegisterMutableObjectReaderReply> &callback) {}
+
   virtual void GetCoreWorkerStats(
       const GetCoreWorkerStatsRequest &request,
       const ClientCallback<GetCoreWorkerStatsReply> &callback) {}
@@ -213,6 +219,10 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
   };
 
   const rpc::Address &Addr() const override { return addr_; }
+
+  bool IsChannelIdleAfterRPCs() const override {
+    return grpc_client_->IsChannelIdleAfterRPCs();
+  }
 
   VOID_RPC_CLIENT_METHOD(CoreWorkerService,
                          DirectActorCallArgWaitComplete,
@@ -276,6 +286,12 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
 
   VOID_RPC_CLIENT_METHOD(CoreWorkerService,
                          ReportGeneratorItemReturns,
+                         grpc_client_,
+                         /*method_timeout_ms*/ -1,
+                         override)
+
+  VOID_RPC_CLIENT_METHOD(CoreWorkerService,
+                         RegisterMutableObjectReader,
                          grpc_client_,
                          /*method_timeout_ms*/ -1,
                          override)

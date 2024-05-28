@@ -29,11 +29,6 @@ RAY_CONFIG(bool, event_stats, true)
 /// Ray metrics agent.
 RAY_CONFIG(bool, event_stats_metrics, false)
 
-/// Whether to enable Ray legacy scheduler warnings. These are replaced by
-/// autoscaler messages after https://github.com/ray-project/ray/pull/18724.
-/// TODO(ekl) remove this after Ray 1.8
-RAY_CONFIG(bool, legacy_scheduler_warnings, false)
-
 /// Whether to enable cluster authentication.
 RAY_CONFIG(bool, enable_cluster_auth, true)
 
@@ -110,11 +105,6 @@ RAY_CONFIG(std::string, worker_killing_policy, "group_by_owner")
 
 /// If the raylet fails to get agent info, we will retry after this interval.
 RAY_CONFIG(uint64_t, raylet_get_agent_info_interval_ms, 1)
-
-/// For a raylet, if the last resource report was sent more than this many
-/// report periods ago, then a warning will be logged that the report
-/// handler is drifting.
-RAY_CONFIG(uint64_t, num_resource_report_periods_warning, 5)
 
 /// Whether to report placement or regular resource usage for an actor.
 /// Reporting placement may cause the autoscaler to overestimate the resources
@@ -418,7 +408,7 @@ RAY_CONFIG(uint32_t, object_store_full_delay_ms, 10)
 RAY_CONFIG(double, high_plasma_storage_usage, 0.7)
 
 /// The amount of time between automatic local Python GC triggers.
-RAY_CONFIG(uint64_t, local_gc_interval_s, 10 * 60)
+RAY_CONFIG(uint64_t, local_gc_interval_s, 90 * 60)
 
 /// The min amount of time between local GCs (whether auto or mem pressure triggered).
 RAY_CONFIG(uint64_t, local_gc_min_interval_s, 10)
@@ -437,9 +427,7 @@ RAY_CONFIG(uint32_t, task_oom_retry_delay_base_ms, 1000)
 /// Duration to wait between retrying to kill a task.
 RAY_CONFIG(uint32_t, cancellation_retry_ms, 2000)
 
-/// Whether to start a background thread to import Python dependencies eagerly.
-/// When set to false, Python dependencies will still be imported, only when
-/// they are needed.
+/// DEPRECATED. No longer used anywhere.
 RAY_CONFIG(bool, start_python_importer_thread, true)
 
 /// Determines if forking in Ray actors / tasks are supported.
@@ -578,6 +566,10 @@ RAY_CONFIG(uint32_t, agent_register_timeout_ms, 100 * 1000)
 RAY_CONFIG(uint32_t, agent_register_timeout_ms, 30 * 1000)
 #endif
 
+/// If true, agent checks the health of parent by reading pipe.
+/// If false, it checks the parent pid using psutil.
+RAY_CONFIG(bool, enable_pipe_based_agent_to_parent_health_check, true)
+
 /// If the agent manager fails to communicate with the dashboard agent or the runtime env
 /// agent, we will retry after this interval.
 RAY_CONFIG(uint32_t, agent_manager_retry_interval_ms, 1000)
@@ -614,7 +606,7 @@ RAY_CONFIG(uint64_t, metrics_report_interval_ms, 10000)
 
 /// Enable the task timeline. If this is enabled, certain events such as task
 /// execution are profiled and sent to the GCS.
-/// This requires RAY_task_events_report_interval_ms > 0, so that events will
+/// This requires RAY_task_events_report_interval_ms=0, so that events will
 /// be sent to GCS.
 RAY_CONFIG(bool, enable_timeline, true)
 
@@ -698,8 +690,14 @@ RAY_CONFIG(float, max_task_args_memory_fraction, 0.7)
 /// The maximum number of objects to publish for each publish calls.
 RAY_CONFIG(int, publish_batch_size, 5000)
 
-/// Maximum size in bytes of buffered messages per entity, in Ray publisher.
-RAY_CONFIG(int, publisher_entity_buffer_max_bytes, 10 << 20)
+/// Maximum size in bytes of buffered messages per pubsub channel.  Large
+/// applications (1k+ nodes, 100k+ tasks or actors) may see memory pressure in
+/// the GCS due to high system-level pubsub traffic. Reducing this config value
+/// can help reduce memory pressure, at the cost of dropping some published
+/// messages (e.g., worker logs printed to driver stdout). See
+/// src/ray/pubsub/publisher.cc for the current pubsub channels that are
+/// subject to this cap.
+RAY_CONFIG(int, publisher_entity_buffer_max_bytes, 1 << 30)
 
 /// The maximum command batch size.
 RAY_CONFIG(int64_t, max_command_batch_size, 2000)
@@ -741,7 +739,12 @@ RAY_CONFIG(std::string, predefined_unit_instance_resources, "GPU")
 /// "neuron_cores", "TPUs" and "FPGAs".
 /// Default custom_unit_instance_resources is "neuron_cores,TPU".
 /// When set it to "neuron_cores,TPU,FPGA", we will also treat FPGA as unit_instance.
-RAY_CONFIG(std::string, custom_unit_instance_resources, "neuron_cores,TPU,NPU")
+RAY_CONFIG(std::string, custom_unit_instance_resources, "neuron_cores,TPU,NPU,HPU")
+
+/// The name of the system-created concurrency group for actors. This group is
+/// created with 1 thread, and is created lazily. The intended usage is for
+/// Ray-internal auxiliary tasks (e.g., accelerated dag workers).
+RAY_CONFIG(std::string, system_concurrency_group_name, "_ray_system")
 
 // Maximum size of the batches when broadcasting resources to raylet.
 RAY_CONFIG(uint64_t, resource_broadcast_batch_size, 512)
@@ -780,6 +783,8 @@ RAY_CONFIG(int64_t, grpc_client_keepalive_time_ms, 300000)
 
 /// grpc keepalive timeout for client.
 RAY_CONFIG(int64_t, grpc_client_keepalive_timeout_ms, 120000)
+
+RAY_CONFIG(int64_t, grpc_client_idle_timeout_ms, 1800000)
 
 /// grpc streaming buffer size
 /// Set it to 512kb
@@ -857,9 +862,6 @@ RAY_CONFIG(int64_t,
 RAY_CONFIG(bool, worker_core_dump_exclude_plasma_store, true)
 RAY_CONFIG(bool, raylet_core_dump_exclude_plasma_store, true)
 
-/// Whether to kill idle workers of a terminated job.
-RAY_CONFIG(bool, kill_idle_workers_of_terminated_job, true)
-
 // Instruct the Python default worker to preload the specified imports.
 // This is specified as a comma-separated list.
 // If left empty, no such attempt will be made.
@@ -879,6 +881,13 @@ RAY_CONFIG(int64_t, raylet_liveness_self_check_interval_ms, 5000)
 // See https://github.com/ray-project/ray/pull/33976 for more
 // info.
 RAY_CONFIG(bool, kill_child_processes_on_worker_exit, true)
+
+// Make Raylet and CoreWorker to become Linux subreaper, and let Raylet to kill
+// the child processes of the worker when the worker exits. This is useful for
+// the case where the worker crashed and had no chance to clean up its child processes.
+// Only works on Linux>=3.4. On other platforms, this flag is ignored.
+// See https://github.com/ray-project/ray/pull/42992 for more info.
+RAY_CONFIG(bool, kill_child_processes_on_worker_exit_with_raylet_subreaper, false)
 
 // If autoscaler v2 is enabled.
 RAY_CONFIG(bool, enable_autoscaler_v2, false)

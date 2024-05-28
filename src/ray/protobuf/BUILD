@@ -7,10 +7,10 @@ load("@rules_proto_grpc//python:defs.bzl", "python_grpc_compile")
 proto_library(
     name = "common_proto",
     srcs = ["common.proto"],
-    deps = [
-      ":runtime_env_common_proto",
-    ],
     visibility = ["//java:__subpackages__"],
+    deps = [
+        ":runtime_env_common_proto",
+    ],
 )
 
 cc_proto_library(
@@ -44,7 +44,7 @@ python_grpc_compile(
 )
 
 cc_proto_library(
-    name ="instance_manager_cc_proto",
+    name = "instance_manager_cc_proto",
     deps = [":instance_manager_proto"],
 )
 
@@ -115,9 +115,9 @@ proto_library(
     name = "node_manager_proto",
     srcs = ["node_manager.proto"],
     deps = [
-      ":common_proto",
-      ":gcs_proto",
-      ":autoscaler_proto",
+        ":autoscaler_proto",
+        ":common_proto",
+        ":gcs_proto",
     ],
 )
 
@@ -136,7 +136,7 @@ proto_library(
     srcs = ["reporter.proto"],
     deps = [
         ":common_proto",
-        "@io_opencensus_proto//opencensus/proto/metrics/v1:metrics_proto"
+        "@io_opencensus_proto//opencensus/proto/metrics/v1:metrics_proto",
     ],
 )
 
@@ -309,8 +309,8 @@ proto_library(
     name = "runtime_env_agent_proto",
     srcs = ["runtime_env_agent.proto"],
     deps = [
-        ":common_proto",
         ":agent_manager_proto",
+        ":common_proto",
         ":runtime_env_common_proto",
     ],
 )

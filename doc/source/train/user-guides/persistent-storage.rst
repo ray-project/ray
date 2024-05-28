@@ -115,6 +115,8 @@ unless you customize this with ``storage_path`` and ``name`` in :class:`~ray.tra
 In this example, all experiment results can found locally at ``/tmp/custom/storage/path/experiment_name`` for further processing.
 
 
+.. _multinode-local-storage-warning:
+
 Using local storage for a multi-node cluster
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -335,8 +337,11 @@ In the example above, we saved some artifacts within the training loop to the wo
 If you were training a stable diffusion model, you could save
 some sample generated images every so often as a training artifact.
 
-By default, the worker's current working directory is set to the local version of the "trial directory."
-For example, ``~/ray_results/experiment_name/TorchTrainer_46367_00000_0_...`` in the example above.
+By default, Ray Train changes the current working directory of each worker to be inside the run's
+:ref:`local staging directory <train-local-staging-dir>`.
+This way, all distributed training workers share the same absolute path as the working directory.
+See :ref:`below <train-working-directory>` for how to disable this default behavior,
+which is useful if you want your training workers to keep their original working directories.
 
 If :class:`RunConfig(SyncConfig(sync_artifacts=True)) <ray.train.SyncConfig>`, then
 all artifacts saved in this directory will be persisted to storage.
@@ -374,25 +379,113 @@ Note that this behavior is off by default.
             ...
 
 
+.. _train-storage-advanced:
+
 Advanced configuration
 ----------------------
 
-Setting the intermediate local directory
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.. _train-local-staging-dir:
 
-When a ``storage_path`` is specified, training outputs are saved to an
-*intermediate local directory*, then persisted (copied/uploaded) to the ``storage_path``.
-By default, this intermediate local directory is a sub-directory of ``~/ray_results``.
+Setting the local staging directory
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Customize this intermediate local directory with the ``RAY_AIR_LOCAL_CACHE_DIR`` environment variable:
+.. warning::
+
+    Prior to 2.10, the ``RAY_AIR_LOCAL_CACHE_DIR`` environment variable and ``RunConfig(local_dir)``
+    were ways to configure the local staging directory to be outside of the home directory (``~/ray_results``).
+
+    **These configurations are no longer used to configure the local staging directory.
+    Please instead use** ``RunConfig(storage_path)`` **to configure where your
+    run's outputs go.**
+
+
+Apart from files such as checkpoints written directly to the ``storage_path``,
+Ray Train also writes some logfiles and metadata files to an intermediate
+*local staging directory* before they get persisted (copied/uploaded) to the ``storage_path``.
+The current working directory of each worker is set within this local staging directory.
+
+By default, the local staging directory is a sub-directory of the Ray session
+directory (e.g., ``/tmp/ray/session_latest``), which is also where other temporary Ray files are dumped.
+
+Customize the location of the staging directory by :ref:`setting the location of the
+temporary Ray session directory <temp-dir-log-files>`.
+
+Here's an example of what the local staging directory looks like:
+
+.. code-block:: text
+
+    /tmp/ray/session_latest/artifacts/<ray-train-job-timestamp>/
+    └── experiment_name
+        ├── driver_artifacts    <- These are all uploaded to storage periodically
+        │   ├── Experiment state snapshot files needed for resuming training
+        │   └── Metrics logfiles
+        └── working_dirs        <- These are uploaded to storage if `SyncConfig(sync_artifacts=True)`
+            └── Current working directory of training workers, which contains worker artifacts
+
+.. warning::
+
+    You should not need to look into the local staging directory.
+    The ``storage_path`` should be the only path that you need to interact with.
+
+    The structure of the local staging directory is subject to change
+    in future versions of Ray Train -- do not rely on these local staging files in your application.
+
+
+.. _train-working-directory:
+
+Keep the original current working directory
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+To disable the default behavior of Ray Train changing the current working directory,
+set the ``RAY_CHDIR_TO_TRIAL_DIR=0`` environment variable.
+
+This is useful if you want your training workers to access relative paths from the
+directory you launched the training script from.
+
+.. tip::
+
+    When running in a distributed cluster, you will need to make sure that all workers
+    have a mirrored working directory to access the same relative paths.
+
+    One way to achieve this is setting the
+    :ref:`working directory in the Ray runtime environment <workflow-local-files>`.
 
 .. testcode::
-    :skipif: True
 
     import os
-    os.environ["RAY_AIR_LOCAL_CACHE_DIR"] = "/tmp/custom/"
 
-    ...
+    import ray
+    import ray.train
+    from ray.train.torch import TorchTrainer
+
+    os.environ["RAY_CHDIR_TO_TRIAL_DIR"] = "0"
+
+    # Write some file in the current working directory
+    with open("./data.txt", "w") as f:
+        f.write("some data")
+
+    # Set the working directory in the Ray runtime environment
+    ray.init(runtime_env={"working_dir": "."})
+
+    def train_fn_per_worker(config):
+        # Check that each worker can access the working directory
+        # NOTE: The working directory is copied to each worker and is read only.
+        assert os.path.exists("./data.txt"), os.getcwd()
+
+        # To use artifact syncing with `SyncConfig(sync_artifacts=True)`,
+        # write artifacts here, instead of the current working directory:
+        ray.train.get_context().get_trial_dir()
+
+    trainer = TorchTrainer(
+        train_fn_per_worker,
+        scaling_config=ray.train.ScalingConfig(num_workers=2),
+        run_config=ray.train.RunConfig(
+            # storage_path=...,
+            sync_config=ray.train.SyncConfig(sync_artifacts=True),
+        ),
+    )
+    trainer.fit()
+
 
 .. _train-ray-storage:
 
@@ -405,5 +498,5 @@ environment variable.
 For instance, if you set ``RAY_STORAGE="s3://my_bucket/train_results"``, your
 results will automatically persisted there.
 
-If you manually set a :attr:`RunConfig.storage_path <ray.train.RunConfig.storage_path>`, it
-will take precedence over this environment variable.
+If you manually set a :attr:`RunConfig.storage_path <ray.train.RunConfig.storage_path>`,
+it will take precedence over this environment variable.

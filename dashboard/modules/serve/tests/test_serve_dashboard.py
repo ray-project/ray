@@ -447,13 +447,12 @@ def test_get_serve_instance_details(ray_start_stop, f_deployment_options, url):
                     len(deployment.replicas)
                     == deployment.deployment_config.num_replicas
                 )
+                assert len(deployment.replicas) == deployment.target_num_replicas
 
             for replica in deployment.replicas:
+                assert replica.replica_id
                 assert replica.state == ReplicaState.RUNNING
-                assert (
-                    deployment.name in replica.replica_id
-                    and deployment.name in replica.actor_name
-                )
+                assert deployment.name in replica.actor_name
                 assert replica.actor_id and replica.node_id and replica.node_ip
                 assert replica.start_time_s > app_details[app].last_deployed_time_s
                 file_path = "/tmp/ray/session_latest/logs" + replica.log_file_path
@@ -787,7 +786,8 @@ def test_put_with_logging_config(ray_start_stop):
 
     # Make sure deployment & controller both log in json format.
     resp = requests.post("http://localhost:8000/app").json()
-    expected_log_regex = [f'"replica": "{resp["replica"]}", ']
+    replica_id = resp["replica"].split("#")[-1]
+    expected_log_regex = [f'"replica": "{replica_id}", ']
     check_log_file(resp["log_file"], expected_log_regex)
     expected_log_regex = ['.*"component_name": "controller".*']
     check_log_file(resp["controller_log_file"], expected_log_regex)

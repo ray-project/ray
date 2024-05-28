@@ -28,7 +28,7 @@ install_bazel() {
       # Only reinstall Bazel if we need to upgrade to a different version.
       python="$(command -v python3 || command -v python || echo python)"
       current_version="$(bazel --version | grep -o "[0-9]\+.[0-9]\+.[0-9]\+")"
-      new_version="$(grep 'USE_BAZEL_VERSION=' "${WORKSPACE_DIR}/.bazeliskrc" | grep -o "[0-9]\+.[0-9]\+.[0-9]\+")"
+      new_version="$(cat "${WORKSPACE_DIR}/.bazelversion")"
       if [[ "$current_version" == "$new_version" ]]; then
         echo "Bazel of the same version already exists, skipping the install"
         export BAZEL_CONFIG_ONLY=1
@@ -79,7 +79,7 @@ install_miniconda() {
 
   if [ ! -x "${conda}" ] || [ "${MINIMAL_INSTALL-}" = 1 ]; then  # If no conda is found, install it
     local miniconda_dir  # Keep directories user-independent, to help with Bazel caching
-    local miniconda_version="Miniconda3-py38_23.1.0-1"
+    local miniconda_version="Miniconda3-py39_24.1.2-0"
     local miniconda_platform=""
     local exe_suffix=".sh"
 
@@ -508,9 +508,13 @@ install_pip_packages() {
 }
 
 install_thirdparty_packages() {
+  if [[ "${OSTYPE}" = darwin* ]]; then
+    # Currently do not work on macOS
+    return
+  fi
   mkdir -p "${WORKSPACE_DIR}/python/ray/thirdparty_files"
   RAY_THIRDPARTY_FILES="$(realpath "${WORKSPACE_DIR}/python/ray/thirdparty_files")"
-  CC=gcc python -m pip install psutil setproctitle==1.2.2 colorama --target="${RAY_THIRDPARTY_FILES}"
+  CC=gcc python -m pip install psutil==5.9.6 setproctitle==1.2.2 colorama==0.4.6 --target="${RAY_THIRDPARTY_FILES}"
 }
 
 install_dependencies() {

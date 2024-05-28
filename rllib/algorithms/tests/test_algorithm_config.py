@@ -10,8 +10,8 @@ from ray.rllib.algorithms.ppo.tf.ppo_tf_learner import PPOTfLearner
 from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import PPOTorchRLModule
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec, RLModule
 from ray.rllib.core.rl_module.marl_module import (
-    MultiAgentRLModuleSpec,
     MultiAgentRLModule,
+    MultiAgentRLModuleSpec,
 )
 from ray.rllib.utils.test_utils import check
 
@@ -96,26 +96,26 @@ class TestAlgorithmConfig(unittest.TestCase):
         """Tests the proper auto-computation of the `rollout_fragment_length`."""
         config = (
             AlgorithmConfig()
-            .rollouts(
-                num_rollout_workers=4,
-                num_envs_per_worker=3,
+            .env_runners(
+                num_env_runners=4,
+                num_envs_per_env_runner=3,
                 rollout_fragment_length="auto",
             )
             .training(train_batch_size=2456)
         )
-        # 2456 / 3 * 4 -> 204.666 -> 204 or 205 (depending on worker index).
-        # Actual train batch size: 2454 (off by only 2)
+        # 2456 / (3 * 4) -> 204.666 -> 204 or 205 (depending on worker index).
+        # Actual train batch size: 2457 (off by only 1).
         self.assertTrue(config.get_rollout_fragment_length(worker_index=0) == 205)
         self.assertTrue(config.get_rollout_fragment_length(worker_index=1) == 205)
         self.assertTrue(config.get_rollout_fragment_length(worker_index=2) == 205)
-        self.assertTrue(config.get_rollout_fragment_length(worker_index=3) == 204)
+        self.assertTrue(config.get_rollout_fragment_length(worker_index=3) == 205)
         self.assertTrue(config.get_rollout_fragment_length(worker_index=4) == 204)
 
         config = (
             AlgorithmConfig()
-            .rollouts(
-                num_rollout_workers=3,
-                num_envs_per_worker=2,
+            .env_runners(
+                num_env_runners=3,
+                num_envs_per_env_runner=2,
                 rollout_fragment_length="auto",
             )
             .training(train_batch_size=4000)
@@ -129,8 +129,8 @@ class TestAlgorithmConfig(unittest.TestCase):
 
         config = (
             AlgorithmConfig()
-            .rollouts(
-                num_rollout_workers=12,
+            .env_runners(
+                num_env_runners=12,
                 rollout_fragment_length="auto",
             )
             .training(train_batch_size=1342)
@@ -171,10 +171,10 @@ class TestAlgorithmConfig(unittest.TestCase):
     def test_rl_module_api(self):
         config = (
             PPOConfig()
-            .experimental(_enable_new_api_stack=True)
+            .api_stack(enable_rl_module_and_learner=True)
             .environment("CartPole-v1")
             .framework("torch")
-            .rollouts(enable_connectors=True)
+            .env_runners(enable_connectors=True)
         )
 
         self.assertEqual(config.rl_module_spec.module_class, PPOTorchRLModule)
@@ -185,11 +185,11 @@ class TestAlgorithmConfig(unittest.TestCase):
         config = config.rl_module(rl_module_spec=SingleAgentRLModuleSpec(A))
         self.assertEqual(config.rl_module_spec.module_class, A)
 
-    def test_learner_hyperparameters_per_module(self):
+    def test_config_per_module(self):
         """Tests, whether per-module config overrides (multi-agent) work as expected."""
 
-        # Compile PPO HPs from a config object.
-        hps = (
+        # Compile individual agents' PPO configs from a config object.
+        config = (
             PPOConfig()
             .training(kl_coeff=0.5)
             .multi_agent(
@@ -200,40 +200,40 @@ class TestAlgorithmConfig(unittest.TestCase):
                     "module_2": PPOConfig.overrides(grad_clip=100.0),
                 },
             )
-            .get_learner_hyperparameters()
         )
 
-        # Check default HPs.
-        check(hps.learning_rate, 0.00005)
-        check(hps.grad_clip, None)
-        check(hps.grad_clip_by, "global_norm")
-        check(hps.kl_coeff, 0.5)
+        # Check default config.
+        check(config.lr, 0.00005)
+        check(config.grad_clip, None)
+        check(config.grad_clip_by, "global_norm")
+        check(config.kl_coeff, 0.5)
 
         # `module_1` overrides.
-        hps_1 = hps.get_hps_for_module("module_1")
-        check(hps_1.learning_rate, 0.01)
-        check(hps_1.grad_clip, None)
-        check(hps_1.grad_clip_by, "global_norm")
-        check(hps_1.kl_coeff, 0.1)
+        config_1 = config.get_config_for_module("module_1")
+        check(config_1.lr, 0.01)
+        check(config_1.grad_clip, None)
+        check(config_1.grad_clip_by, "global_norm")
+        check(config_1.kl_coeff, 0.1)
 
         # `module_2` overrides.
-        hps_2 = hps.get_hps_for_module("module_2")
-        check(hps_2.learning_rate, 0.00005)
-        check(hps_2.grad_clip, 100.0)
-        check(hps_2.grad_clip_by, "global_norm")
-        check(hps_2.kl_coeff, 0.5)
+        config_2 = config.get_config_for_module("module_2")
+        check(config_2.lr, 0.00005)
+        check(config_2.grad_clip, 100.0)
+        check(config_2.grad_clip_by, "global_norm")
+        check(config_2.kl_coeff, 0.5)
 
-        # No `module_3` overrides (b/c module_3 uses the top-level HP object directly).
-        self.assertTrue("module_3" not in hps._per_module_overrides)
-        hps_3 = hps.get_hps_for_module("module_3")
-        self.assertTrue(hps_3 is hps)
+        # No `module_3` overrides (b/c module_3 uses the top-level config
+        # object directly).
+        self.assertTrue("module_3" not in config._per_module_overrides)
+        config_3 = config.get_config_for_module("module_3")
+        self.assertTrue(config_3 is config)
 
     def test_learner_api(self):
         config = (
             PPOConfig()
-            .experimental(_enable_new_api_stack=True)
+            .api_stack(enable_rl_module_and_learner=True)
             .environment("CartPole-v1")
-            .rollouts(enable_connectors=True)
+            .env_runners(enable_connectors=True)
             .framework("tf2")
         )
 
@@ -308,13 +308,13 @@ class TestAlgorithmConfig(unittest.TestCase):
                     module_class=expected_module_class,
                     observation_space=env.observation_space,
                     action_space=env.action_space,
-                    model_config_dict=AlgorithmConfig().model,
+                    model_config_dict=AlgorithmConfig().model_config,
                 ),
                 "p2": SingleAgentRLModuleSpec(
                     module_class=expected_module_class,
                     observation_space=env.observation_space,
                     action_space=env.action_space,
-                    model_config_dict=AlgorithmConfig().model,
+                    model_config_dict=AlgorithmConfig().model_config,
                 ),
             },
         )
@@ -360,7 +360,7 @@ class TestAlgorithmConfig(unittest.TestCase):
         ########################################
         # This is the simplest case where we have to construct the marl module based on
         # the default specs only.
-        config = SingleAgentAlgoConfig().experimental(_enable_new_api_stack=True)
+        config = SingleAgentAlgoConfig().api_stack(enable_rl_module_and_learner=True)
 
         spec, expected = self._get_expected_marl_spec(config, DiscreteBCTorchModule)
         self._assertEqualMARLSpecs(spec, expected)
@@ -376,7 +376,7 @@ class TestAlgorithmConfig(unittest.TestCase):
         # algorithm to assign a specific type of RLModule class to certain module_ids.
         config = (
             SingleAgentAlgoConfig()
-            .experimental(_enable_new_api_stack=True)
+            .api_stack(enable_rl_module_and_learner=True)
             .rl_module(
                 rl_module_spec=MultiAgentRLModuleSpec(
                     module_specs={
@@ -395,7 +395,7 @@ class TestAlgorithmConfig(unittest.TestCase):
         # RLModule class to ALL module_ids.
         config = (
             SingleAgentAlgoConfig()
-            .experimental(_enable_new_api_stack=True)
+            .api_stack(enable_rl_module_and_learner=True)
             .rl_module(
                 rl_module_spec=SingleAgentRLModuleSpec(module_class=CustomRLModule1),
             )
@@ -414,7 +414,7 @@ class TestAlgorithmConfig(unittest.TestCase):
         # RLModule class to ALL module_ids.
         config = (
             SingleAgentAlgoConfig()
-            .experimental(_enable_new_api_stack=True)
+            .api_stack(enable_rl_module_and_learner=True)
             .rl_module(
                 rl_module_spec=MultiAgentRLModuleSpec(
                     module_specs=SingleAgentRLModuleSpec(module_class=CustomRLModule1)
@@ -437,7 +437,7 @@ class TestAlgorithmConfig(unittest.TestCase):
         # in the multi-agent scenario.
         config = (
             SingleAgentAlgoConfig()
-            .experimental(_enable_new_api_stack=True)
+            .api_stack(enable_rl_module_and_learner=True)
             .rl_module(
                 rl_module_spec=MultiAgentRLModuleSpec(
                     marl_module_class=CustomMARLModule1,
@@ -474,8 +474,8 @@ class TestAlgorithmConfig(unittest.TestCase):
         # This is the case where we ask the algorithm to use its default
         # MultiAgentRLModuleSpec, but the MultiAgentRLModuleSpec has not defined its
         # SingleAgentRLmoduleSpecs.
-        config = MultiAgentAlgoConfigWithNoSingleAgentSpec().experimental(
-            _enable_new_api_stack=True
+        config = MultiAgentAlgoConfigWithNoSingleAgentSpec().api_stack(
+            enable_rl_module_and_learner=True
         )
 
         self.assertRaisesRegex(
@@ -488,7 +488,7 @@ class TestAlgorithmConfig(unittest.TestCase):
         # This is the case where we ask the algorithm to use its default
         # MultiAgentRLModuleSpec, and the MultiAgentRLModuleSpec has defined its
         # SingleAgentRLmoduleSpecs.
-        config = MultiAgentAlgoConfig().experimental(_enable_new_api_stack=True)
+        config = MultiAgentAlgoConfig().api_stack(enable_rl_module_and_learner=True)
 
         spec, expected = self._get_expected_marl_spec(
             config, DiscreteBCTorchModule, expected_marl_module_class=CustomMARLModule1

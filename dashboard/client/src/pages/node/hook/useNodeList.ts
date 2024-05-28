@@ -44,20 +44,23 @@ export const useNodeList = () => {
   const nodeList = data?.summary ?? [];
   const nodeLogicalResources = data?.nodeLogicalResources ?? {};
 
-  const nodeListWithAdditionalInfo = nodeList
-    .map((e) => ({
-      ...e,
-      state: e.raylet.state,
-      logicalResources: nodeLogicalResources[e.raylet.nodeId],
-    }))
-    .sort(sorterFunc);
+  const nodeListWithAdditionalInfo = nodeList.map((e) => ({
+    ...e,
+    state: e.raylet.state,
+    logicalResources: nodeLogicalResources[e.raylet.nodeId],
+  }));
 
-  const sortedList = _.sortBy(nodeListWithAdditionalInfo, [
-    (obj) => !obj.raylet.isHeadNode,
-    // sort by alive first, then alphabetically for other states
-    (obj) => (obj.raylet.state === "ALIVE" ? "0" : obj.raylet.state),
-    (obj) => obj.raylet.nodeId,
-  ]);
+  const sortedList = _.sortBy(nodeListWithAdditionalInfo, (node) => {
+    // After sorting by user specified field, stable sort by
+    // 1) Alive nodes first then alphabetically for other states
+    // 2) Head node
+    // 3) Alphabetical by node id
+    const nodeStateOrder =
+      node.raylet.state === "ALIVE" ? "0" : node.raylet.state;
+    const isHeadNodeOrder = node.raylet.isHeadNode ? "0" : "1";
+    const nodeIdOrder = node.raylet.nodeId;
+    return [nodeStateOrder, isHeadNodeOrder, nodeIdOrder];
+  }).sort(sorterFunc);
 
   return {
     nodeList: sortedList.filter((node) =>

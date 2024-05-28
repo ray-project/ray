@@ -67,6 +67,9 @@ message ActorHandle {
 
   // The max number of pending actor calls.
   int32 max_pending_calls = 13;
+
+  // Whether task events will be reported from this actor.
+  bool enable_task_events = 14;
 }
 
 message PushTaskRequest {
@@ -223,11 +226,14 @@ message ObjectLocationUpdate {
 }
 
 message GetObjectLocationsOwnerRequest {
-  WorkerObjectLocationsSubMessage object_location_request = 1;
+  bytes intended_worker_id = 1;
+  repeated bytes object_ids = 2;
 }
 
 message GetObjectLocationsOwnerReply {
-  WorkerObjectLocationsPubMessage object_location_info = 1;
+  // List of object location information, one for each object ID in the request,
+  // using the already defined WorkerObjectLocationsPubMessage.
+  repeated WorkerObjectLocationsPubMessage object_location_infos = 1;
 }
 
 message KillActorRequest {
@@ -419,6 +425,19 @@ message ReportGeneratorItemReturnsReply {
   int64 total_num_object_consumed = 1;
 }
 
+message RegisterMutableObjectReaderRequest {
+  // The object ID of the mutable object on the remote node (where the object is written).
+  bytes writer_object_id = 1;
+  // The number of readers of the mutable object on this local node.
+  int64 num_readers = 2;
+  // The object ID of the corresponding mutable object on this local node.
+  bytes reader_object_id = 3;
+}
+
+message RegisterMutableObjectReaderReply {
+  // Empty for now.
+}
+
 service CoreWorkerService {
   // Notify core worker GCS has restarted.
   rpc RayletNotifyGCSRestart(RayletNotifyGCSRestartRequest)
@@ -455,7 +474,7 @@ service CoreWorkerService {
   rpc KillActor(KillActorRequest) returns (KillActorReply);
   // Request that a worker cancels a task.
   rpc CancelTask(CancelTaskRequest) returns (CancelTaskReply);
-  // Request for a worker to issue a cancelation.
+  // Request for a worker to issue a cancellation.
   rpc RemoteCancelTask(RemoteCancelTaskRequest) returns (RemoteCancelTaskReply);
   // Get metrics from core workers.
   rpc GetCoreWorkerStats(GetCoreWorkerStatsRequest) returns (GetCoreWorkerStatsReply);
@@ -479,4 +498,6 @@ service CoreWorkerService {
   rpc AssignObjectOwner(AssignObjectOwnerRequest) returns (AssignObjectOwnerReply);
   // Get the number of pending tasks.
   rpc NumPendingTasks(NumPendingTasksRequest) returns (NumPendingTasksReply);
+  rpc RegisterMutableObjectReader(RegisterMutableObjectReaderRequest)
+      returns (RegisterMutableObjectReaderReply);
 }

@@ -20,16 +20,19 @@ num_gpus = 1
 config = (
     DreamerV3Config()
     .resources(
-        num_learner_workers=0 if num_gpus == 1 else num_gpus,
-        num_gpus_per_learner_worker=1 if num_gpus else 0,
         # For each (parallelized) env, we should provide a CPU. Lower this number
         # if you don't have enough CPUs.
-        num_cpus_for_local_worker=8 * (num_gpus or 1),
+        num_cpus_for_main_process=8
+        * (num_gpus or 1),
     )
-    .rollouts(
+    .learners(
+        num_learners=0 if num_gpus == 1 else num_gpus,
+        num_gpus_per_learner=1 if num_gpus else 0,
+    )
+    .env_runners(
         # If we use >1 GPU and increase the batch size accordingly, we should also
         # increase the number of envs per worker.
-        num_envs_per_worker=8 * (num_gpus or 1),
+        num_envs_per_env_runner=8 * (num_gpus or 1),
         remote_worker_envs=True,
     )
     .environment(

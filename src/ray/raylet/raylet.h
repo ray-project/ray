@@ -16,12 +16,10 @@
 
 #include <boost/asio.hpp>
 #include <boost/asio/error.hpp>
-#include <list>
 
 // clang-format off
 #include "ray/raylet/node_manager.h"
 #include "ray/object_manager/object_manager.h"
-#include "ray/common/scheduling/resource_set.h"
 #include "ray/common/asio/instrumented_io_context.h"
 // clang-format on
 
@@ -58,7 +56,8 @@ class Raylet {
          const ObjectManagerConfig &object_manager_config,
          std::shared_ptr<gcs::GcsClient> gcs_client,
          int metrics_export_port,
-         bool is_head_node);
+         bool is_head_node,
+         std::function<void(const rpc::NodeDeathInfo &)> shutdown_raylet_gracefully);
 
   /// Start this raylet.
   void Start();
@@ -66,10 +65,20 @@ class Raylet {
   /// Stop this raylet.
   void Stop();
 
+  /// Unregister this raylet from the GCS.
+  ///
+  /// \param node_death_info The death information regarding why to unregister self.
+  /// \param unregister_done_callback The callback to call when the unregistration is
+  /// done.
+  void UnregisterSelf(const rpc::NodeDeathInfo &node_death_info,
+                      std::function<void()> unregister_done_callback);
+
   /// Destroy the NodeServer.
   ~Raylet();
 
   NodeID GetNodeId() const { return self_node_id_; }
+
+  NodeManager &node_manager() { return node_manager_; }
 
  private:
   /// Register GCS client.
@@ -81,9 +90,6 @@ class Raylet {
   void HandleAccept(const boost::system::error_code &error);
 
   friend class TestObjectManagerIntegration;
-
-  // Main event loop.
-  instrumented_io_context &main_service_;
 
   /// ID of this node.
   NodeID self_node_id_;

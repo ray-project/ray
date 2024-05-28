@@ -1,5 +1,6 @@
 import functools
 
+import pytest
 from pytest import fixture
 
 import ray
@@ -13,6 +14,11 @@ def enable_tqdm_ray(request):
     context.use_ray_tqdm = request.param
     yield request.param
     context.use_ray_tqdm = original_use_ray_tqdm
+
+
+def test_set_progress_bars_is_deprecated():
+    with pytest.warns(DeprecationWarning):
+        ray.data.set_progress_bars(True)
 
 
 def test_progress_bar(enable_tqdm_ray):

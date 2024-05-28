@@ -91,7 +91,7 @@ def deploy_args_to_deployment_info(
 
     return DeploymentInfo(
         actor_name=DeploymentID(
-            deployment_name, app_name
+            name=deployment_name, app_name=app_name
         ).to_replica_actor_class_name(),
         version=version,
         deployment_config=deployment_config,
@@ -121,4 +121,4 @@ def get_app_code_version(app_config: ServeApplicationSchema) -> str:
         },
         sort_keys=True,
     ).encode("utf-8")
-    return hashlib.md5(encoded).hexdigest()
+    return hashlib.sha1(encoded).hexdigest()

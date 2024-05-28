@@ -80,7 +80,7 @@ class InputDataBuffer(PhysicalOperator):
         self._num_output_bundles = len(self._input_data)
         block_metadata = []
         for bundle in self._input_data:
-            block_metadata.extend([m for (_, m) in bundle.blocks])
+            block_metadata.extend(bundle.metadata)
         self._stats = {
             "input": block_metadata,
         }

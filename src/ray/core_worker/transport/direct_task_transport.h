@@ -220,7 +220,7 @@ class CoreWorkerDirectTaskSubmitter {
 
   /// Push a task to a specific worker.
   void PushNormalTask(const rpc::Address &addr,
-                      rpc::CoreWorkerClientInterface &client,
+                      std::shared_ptr<rpc::CoreWorkerClientInterface> client,
                       const SchedulingKey &task_queue_key,
                       const TaskSpecification &task_spec,
                       const google::protobuf::RepeatedPtrField<rpc::ResourceMapEntry>

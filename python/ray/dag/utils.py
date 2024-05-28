@@ -7,6 +7,7 @@ from ray.dag import (
     FunctionNode,
     ClassNode,
     ClassMethodNode,
+    MultiOutputNode,
 )
 
 
@@ -23,6 +24,8 @@ class _DAGNodeNameGenerator(object):
         # InputNode should be unique.
         if isinstance(node, InputNode):
             return "INPUT_NODE"
+        if isinstance(node, MultiOutputNode):
+            return "MultiOutputNode"
         # InputAttributeNode suffixes should match the user-defined key.
         elif isinstance(node, InputAttributeNode):
             return f"INPUT_ATTRIBUTE_NODE_{node._key}"

@@ -29,29 +29,6 @@ suppress_xtrace() {
   { return "${status}"; } 2> /dev/null
 }
 
-# If provided the names of one or more environment variables, returns 0 if any of them is triggered.
-# Usage: should_run_job [VAR_NAME]...
-should_run_job() {
-  local skip=0
-  if [ -n "${1-}" ]; then  # were any triggers provided? (if not, then the job will always run)
-    local envvar active_triggers=()
-    for envvar in "$@"; do
-      if [ "${!envvar}" = 1 ]; then
-        # success! we found at least one of the given triggers is occurring
-        active_triggers+=("${envvar}=${!envvar}")
-      fi
-    done
-    if [ 0 -eq "${#active_triggers[@]}" ]; then
-      echo "Job is not triggered by any of $1; skipping job."
-      sleep 15  # make sure output is flushed
-      skip=1
-    else
-      echo "Job is triggered by: ${active_triggers[*]}"
-    fi
-  fi
-  return "${skip}"
-}
-
 # Idempotent environment loading
 reload_env() {
   # Try to only modify CI-specific environment variables here (TRAVIS_... or GITHUB_...),
@@ -112,7 +89,7 @@ compile_pip_dependencies() {
   python -c "import torch" 2>/dev/null && HAS_TORCH=1
   pip install --no-cache-dir numpy torch
 
-  pip-compile --resolver=backtracking -q \
+  pip-compile --verbose --resolver=backtracking \
      --pip-args --no-deps --strip-extras --no-header -o \
     "${WORKSPACE_DIR}/python/$TARGET" \
     "${WORKSPACE_DIR}/python/requirements.txt" \
@@ -144,12 +121,6 @@ compile_pip_dependencies() {
   # pip install will complain about irresolvable constraints.
   sed -i -E 's/==([\.0-9]+)\+[^\b]*cpu/==\1/g' "${WORKSPACE_DIR}/python/$TARGET"
 
-  # Add python_version < 3.11 to scikit-image, scikit-optimize, scipy, networkx
-  # as they need more recent versions in python 3.11.
-  # These will be automatically resolved. Remove as
-  # soon as we resolve to versions of scikit-image that are built for py311.
-  sed -i -E 's/((scikit-image|scikit-optimize|scipy|networkx)==[\.0-9]+\b)/\1 ; python_version < "3.11"/g' "${WORKSPACE_DIR}/python/$TARGET"
-
   cat "${WORKSPACE_DIR}/python/$TARGET"
 
   if [ "$HAS_TORCH" -eq 0 ]; then
@@ -164,7 +135,6 @@ test_core() {
   case "${OSTYPE}" in
     msys)
       args+=(
-        -//:core_worker_test
         -//src/ray/util/tests:event_test
         -//:gcs_server_rpc_test
         -//src/ray/common/test:ray_syncer_test # TODO (iycheng): it's flaky on windows. Add it back once we figure out the cause
@@ -175,35 +145,6 @@ test_core() {
   esac
   # shellcheck disable=SC2046
   bazel test --config=ci --build_tests_only $(./ci/run/bazel_export_options) -- "${args[@]}"
-}
-
-prepare_docker() {
-    rm "${WORKSPACE_DIR}"/python/dist/* ||:
-    pushd "${WORKSPACE_DIR}/python"
-    pip install -e . --verbose
-    python setup.py bdist_wheel
-    tmp_dir="/tmp/prepare_docker_$RANDOM"
-    mkdir -p $tmp_dir
-    cp "${WORKSPACE_DIR}"/python/dist/*.whl $tmp_dir
-    wheel=$(ls "${WORKSPACE_DIR}"/python/dist/)
-    base_image=$(python -c "import sys; print(f'rayproject/ray-deps:nightly-py{sys.version_info[0]}{sys.version_info[1]}-cpu')")
-    echo "
-    FROM $base_image
-
-    ENV LC_ALL=C.UTF-8
-    ENV LANG=C.UTF-8
-    COPY ./*.whl /
-    EXPOSE 8000
-    EXPOSE 10001
-    RUN pip install /${wheel}[serve]
-    RUN (sudo apt update || true) && sudo apt install curl -y
-    " > $tmp_dir/Dockerfile
-
-    pushd $tmp_dir
-    docker build . -t ray_ci:v1
-    popd
-
-    popd
 }
 
 # For running Serve tests on Windows.
@@ -262,6 +203,7 @@ test_python() {
       -python/ray/tests:test_tracing  # tracing not enabled on windows
       -python/ray/tests:kuberay/test_autoscaling_e2e # irrelevant on windows
       -python/ray/tests:vsphere/test_vsphere_node_provider # irrelevant on windows
+      -python/ray/tests:vsphere/test_vsphere_sdk_provider # irrelevant on windows
       -python/ray/tests/xgboost/... # Requires ML dependencies, should not be run on Windows
       -python/ray/tests/lightgbm/... # Requires ML dependencies, should not be run on Windows
       -python/ray/tests/horovod/... # Requires ML dependencies, should not be run on Windows
@@ -337,10 +279,12 @@ test_cpp() {
     --test_arg=--ray_redis_password="1234"
   bazel test --test_output=all //cpp:test_python_call_cpp
 
-  # run the cpp example
-  rm -rf ray-template
-  ray cpp --generate-bazel-project-template-to ray-template
-  pushd ray-template && bash run.sh
+  # run the cpp example, currently does not work on mac
+  if [[ "${OSTYPE}" != darwin* ]]; then
+    rm -rf ray-template
+    ray cpp --generate-bazel-project-template-to ray-template
+    pushd ray-template && bash run.sh
+  fi
 }
 
 test_wheels() {
@@ -396,7 +340,7 @@ build_sphinx_docs() {
     if [ "${OSTYPE}" = msys ]; then
       echo "WARNING: Documentation not built on Windows due to currently-unresolved issues"
     else
-      FAST=True make html
+      make html
       pip install datasets==2.0.0
     fi
   )
@@ -408,7 +352,7 @@ check_sphinx_links() {
     if [ "${OSTYPE}" = msys ]; then
       echo "WARNING: Documentation not built on Windows due to currently-unresolved issues"
     else
-      FAST=True make linkcheck
+      make linkcheck
     fi
   )
 }
@@ -575,47 +519,6 @@ build_wheels_and_jars() {
   esac
 }
 
-_check_job_triggers() {
-  local job_names
-  job_names="$1"
-
-  local variable_definitions
-  if command -v python3; then
-    # shellcheck disable=SC2031
-    variable_definitions=($(python3 "${ROOT_DIR}"/pipeline/determine_tests_to_run.py))
-  else
-    # shellcheck disable=SC2031
-    variable_definitions=($(python "${ROOT_DIR}"/pipeline/determine_tests_to_run.py))
-  fi
-  if [ 0 -lt "${#variable_definitions[@]}" ]; then
-    local expression restore_shell_state=""
-    if [ -o xtrace ]; then set +x; restore_shell_state="set -x;"; fi  # Disable set -x (noisy here)
-    {
-      expression="$(printf "%q " "${variable_definitions[@]}")"
-      printf "%s\n" "${expression}" >> ~/.bashrc
-    }
-    eval "${restore_shell_state}" "${expression}"  # Restore set -x, then evaluate expression
-  fi
-
-  # shellcheck disable=SC2086
-  if ! (set +x && should_run_job ${job_names//,/ }); then
-    if [ "${GITHUB_ACTIONS-}" = true ]; then
-      # If this job is to be skipped, emit 'exit' into .bashrc to quickly exit all following steps.
-      # This isn't needed on Travis (since everything runs in one shell), but is on GitHub Actions.
-      cat <<EOF1 >> ~/.bashrc
-      cat <<EOF2 1>&2
-Exiting shell as no triggers were active for this job:
-  ${job_names//,/}
-The active triggers during job initialization were the following:
-  ${variable_definitions[*]}
-EOF2
-      exit 0
-EOF1
-    fi
-    exit 0
-  fi
-}
-
 configure_system() {
   git config --global advice.detachedHead false
   git config --global core.askpass ""
@@ -623,7 +526,7 @@ configure_system() {
   git config --global credential.modalprompt false
 
   # Requests library need root certificates.
-  if [ "${OSTYPE}" = msys ]; then
+  if [[ "${OSTYPE}" == "msys" ]]; then
     certutil -generateSSTFromWU roots.sst && certutil -addstore -f root roots.sst && rm roots.sst
   fi
 }
@@ -640,11 +543,6 @@ configure_system() {
 # Usage: init [JOB_NAMES]
 # - JOB_NAMES (optional): Comma-separated list of job names to trigger on.
 init() {
-  # TODO(jjyao): fix it for windows
-  if [ "${OSTYPE}" != msys ]; then
-    _check_job_triggers "${1-}"
-  fi
-
   configure_system
 
   "${ROOT_DIR}/env/install-dependencies.sh"

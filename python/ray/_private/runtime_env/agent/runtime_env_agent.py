@@ -275,11 +275,11 @@ class RuntimeEnvAgent:
             else:
                 delete_runtime_env()
 
-    def get_or_create_logger(self, job_id: bytes):
+    def get_or_create_logger(self, job_id: bytes, log_files: List[str]):
         job_id = job_id.decode()
         if job_id not in self._per_job_logger_cache:
             params = self._logging_params.copy()
-            params["filename"] = f"runtime_env_setup-{job_id}.log"
+            params["filename"] = [f"runtime_env_setup-{job_id}.log", *log_files]
             params["logger_name"] = f"runtime_env_{job_id}"
             params["propagate"] = False
             per_job_logger = setup_component_logger(**params)
@@ -301,8 +301,10 @@ class RuntimeEnvAgent:
             allocated_resource: dict = json.loads(
                 serialized_allocated_resource_instances or "{}"
             )
+            runtime_env_config = RuntimeEnvConfig.from_proto(request.runtime_env_config)
+            log_files = runtime_env_config.get("log_files", [])
             # Use a separate logger for each job.
-            per_job_logger = self.get_or_create_logger(request.job_id)
+            per_job_logger = self.get_or_create_logger(request.job_id, log_files)
             # TODO(chenk008): Add log about allocated_resource to
             # avoid lint error. That will be moved to cgroup plugin.
             per_job_logger.debug(f"Worker has resource :" f"{allocated_resource}")
@@ -320,16 +322,35 @@ class RuntimeEnvAgent:
                         "fields in the runtime_env will raise an exception."
                     )
 
-                """Run setup for each plugin unless it has already been cached."""
-            for (
-                plugin_setup_context
-            ) in self._plugin_manager.sorted_plugin_setup_contexts():
-                plugin = plugin_setup_context.class_instance
-                uri_cache = plugin_setup_context.uri_cache
-                await create_for_plugin_if_needed(
-                    runtime_env, plugin, uri_cache, context, per_job_logger
-                )
+            # Creates each runtime env URI by their priority. `working_dir` is special
+            # because it needs to be created before other plugins. All other plugins are
+            # created in the priority order (smaller priority value -> earlier to
+            # create), with a special environment variable being set to the working dir.
+            # ${RAY_RUNTIME_ENV_CREATE_WORKING_DIR}
 
+            # First create working dir...
+            working_dir_ctx = self._plugin_manager.plugins[WorkingDirPlugin.name]
+            await create_for_plugin_if_needed(
+                runtime_env,
+                working_dir_ctx.class_instance,
+                working_dir_ctx.uri_cache,
+                context,
+                per_job_logger,
+            )
+
+            # Then within the working dir, create the other plugins.
+            working_dir_uri_or_none = runtime_env.working_dir_uri()
+            with self._working_dir_plugin.with_working_dir_env(working_dir_uri_or_none):
+                """Run setup for each plugin unless it has already been cached."""
+                for (
+                    plugin_setup_context
+                ) in self._plugin_manager.sorted_plugin_setup_contexts():
+                    plugin = plugin_setup_context.class_instance
+                    if plugin.name != WorkingDirPlugin.name:
+                        uri_cache = plugin_setup_context.uri_cache
+                        await create_for_plugin_if_needed(
+                            runtime_env, plugin, uri_cache, context, per_job_logger
+                        )
             return context
 
         async def _create_runtime_env_with_retry(
@@ -380,12 +401,14 @@ class RuntimeEnvAgent:
                     )
                     if isinstance(e, asyncio.TimeoutError):
                         hint = (
-                            f"Failed due to timeout; check runtime_env setup logs"
-                            " and consider increasing `setup_timeout_seconds` beyond "
-                            f"the default of {DEFAULT_RUNTIME_ENV_TIMEOUT_SECONDS}."
+                            f"Failed to install runtime_env within the "
+                            f"timeout of {setup_timeout_seconds} seconds. Consider "
+                            "increasing the timeout in the runtime_env config. "
                             "For example: \n"
                             '    runtime_env={"config": {"setup_timeout_seconds":'
                             " 1800}, ...}\n"
+                            "If not provided, the default timeout is "
+                            f"{DEFAULT_RUNTIME_ENV_TIMEOUT_SECONDS} seconds. "
                         )
                         error_message = hint + error_message
                     await asyncio.sleep(

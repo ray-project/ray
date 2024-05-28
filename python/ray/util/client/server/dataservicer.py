@@ -17,7 +17,6 @@ from ray.util.client.common import (
     _propagate_error_in_context,
     OrderedResponseCache,
 )
-from ray.util.client import CURRENT_PROTOCOL_VERSION
 from ray.util.debug import log_once
 from ray._private.client_mode_hook import disable_client_hook
 
@@ -412,5 +411,4 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
             ),
             ray_version=ray.__version__,
             ray_commit=ray.__commit__,
-            protocol_version=CURRENT_PROTOCOL_VERSION,
         )

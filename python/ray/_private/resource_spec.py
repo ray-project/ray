@@ -218,6 +218,10 @@ class ResourceSpec(
                     resources[
                         f"{ray_constants.RESOURCE_CONSTRAINT_PREFIX}{accelerator_type}"
                     ] = 1
+
+                    from ray._private.usage import usage_lib
+
+                    usage_lib.record_hardware_usage(accelerator_type)
                 additional_resources = (
                     accelerator_manager.get_current_node_additional_resources()
                 )

@@ -11,6 +11,7 @@ https://arxiv.org/pdf/2010.02193.pdf
 D. Hafner's (author) original code repo (for JAX):
 https://github.com/danijar/dreamerv3
 """
+
 import unittest
 
 import gymnasium as gym
@@ -18,7 +19,7 @@ import numpy as np
 
 import ray
 from ray.rllib.algorithms.dreamerv3 import dreamerv3
-from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
+from ray.rllib.core import DEFAULT_MODULE_ID
 from ray.rllib.utils.numpy import one_hot
 from ray.rllib.utils.test_utils import framework_iterator
 from ray import tune
@@ -49,19 +50,12 @@ class TestDreamerV3(unittest.TestCase):
                 symlog_obs=True,
                 use_float16=False,
             )
-            .resources(
-                num_learner_workers=2,  # Try with 2 Learners.
-                num_cpus_per_learner_worker=1,
-                num_gpus_per_learner_worker=0,
+            .learners(
+                num_learners=2,  # Try with 2 Learners.
+                num_cpus_per_learner=1,
+                num_gpus_per_learner=0,
             )
         )
-
-        # TODO (sven): Add a `get_model_config` utility to AlgorithmConfig
-        #  that - for now - merges the user provided model_dict (which only
-        #  contains settings that only affect the model, e.g. model_size)
-        #  with the AlgorithmConfig-wide settings that are relevant for the model
-        #  (e.g. `batch_size_B`).
-        # config.get_model_config()
 
         num_iterations = 2
 
@@ -196,7 +190,6 @@ class TestDreamerV3(unittest.TestCase):
             # of parameters to RLlib's implementation.
             for model_size in ["XS", "S", "M", "L", "XL"]:
                 config.model_size = model_size
-                config.training(model={"model_size": model_size})
 
                 # Atari and CartPole spaces.
                 for obs_space, num_actions, env_name in [
@@ -212,7 +205,7 @@ class TestDreamerV3(unittest.TestCase):
                     # Create our RLModule to compute actions with.
                     policy_dict, _ = config.get_multi_agent_setup()
                     module_spec = config.get_marl_module_spec(policy_dict=policy_dict)
-                    rl_module = module_spec.build()[DEFAULT_POLICY_ID]
+                    rl_module = module_spec.build()[DEFAULT_MODULE_ID]
 
                     # Count the generated RLModule's parameters and compare to the
                     # paper's reported numbers ([1] and [3]).

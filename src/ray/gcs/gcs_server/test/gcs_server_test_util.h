@@ -120,7 +120,20 @@ struct GcsServerMocker {
     }
 
     void GetResourceLoad(
-        const ray::rpc::ClientCallback<ray::rpc::GetResourceLoadReply> &) override {}
+        const ray::rpc::ClientCallback<rpc::GetResourceLoadReply> &) override {}
+
+    void RegisterMutableObjectReader(
+        const ObjectID &object_id,
+        int64_t num_readers,
+        const ObjectID &local_reader_object_id,
+        const rpc::ClientCallback<rpc::RegisterMutableObjectReply> &callback) override {}
+
+    void PushMutableObject(
+        const ObjectID &object_id,
+        uint64_t data_size,
+        uint64_t metadata_size,
+        void *data,
+        const rpc::ClientCallback<rpc::PushMutableObjectReply> &callback) override {}
 
     // Trigger reply to RequestWorkerLease.
     bool GrantWorkerLease(const std::string &address,
@@ -236,8 +249,7 @@ struct GcsServerMocker {
     }
 
     // Trigger reply to CommitBundleResources.
-    bool GrantCommitBundleResources(bool success = true,
-                                    const Status &status = Status::OK()) {
+    bool GrantCommitBundleResources(const Status &status = Status::OK()) {
       rpc::CommitBundleResourcesReply reply;
       if (commit_callbacks.size() == 0) {
         return false;
@@ -288,6 +300,7 @@ struct GcsServerMocker {
     void DrainRaylet(
         const rpc::autoscaler::DrainNodeReason &reason,
         const std::string &reason_message,
+        int64_t deadline_timestamp_ms,
         const rpc::ClientCallback<rpc::DrainRayletReply> &callback) override {
       rpc::DrainRayletReply reply;
       reply.set_is_accepted(true);
@@ -383,8 +396,6 @@ struct GcsServerMocker {
                         const gcs::StatusCallback &callback) override {
       return Status::NotImplemented("");
     }
-
-    Status DrainSelf() override { return Status::NotImplemented(""); }
 
     const NodeID &GetSelfId() const override {
       static NodeID node_id;

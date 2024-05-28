@@ -1,9 +1,8 @@
-from typing import Type, Union
+from typing import Type, TYPE_CHECKING, Union
+
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.bc.bc_catalog import BCCatalog
 from ray.rllib.algorithms.marwil.marwil import MARWIL, MARWILConfig
-from ray.rllib.core.learner import Learner
-from ray.rllib.core.learner.learner_group_config import ModuleSpec
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.execution.rollout_ops import synchronous_parallel_sample
 from ray.rllib.utils.annotations import override
@@ -14,7 +13,10 @@ from ray.rllib.utils.metrics import (
     SAMPLE_TIMER,
     SYNCH_WORKER_WEIGHTS_TIMER,
 )
-from ray.rllib.utils.typing import ResultDict
+from ray.rllib.utils.typing import RLModuleSpec, ResultDict
+
+if TYPE_CHECKING:
+    from ray.rllib.core.learner import Learner
 
 
 class BCConfig(MARWILConfig):
@@ -71,12 +73,12 @@ class BCConfig(MARWILConfig):
         # not important for behavioral cloning.
         self.postprocess_inputs = False
         # Set RLModule as default.
-        self.experimental(_enable_new_api_stack=True)
+        self.api_stack(enable_rl_module_and_learner=True)
         # __sphinx_doc_end__
         # fmt: on
 
     @override(AlgorithmConfig)
-    def get_default_rl_module_spec(self) -> ModuleSpec:
+    def get_default_rl_module_spec(self) -> RLModuleSpec:
         if self.framework_str == "torch":
             from ray.rllib.algorithms.bc.torch.bc_torch_rl_module import BCTorchRLModule
 
@@ -98,7 +100,7 @@ class BCConfig(MARWILConfig):
             )
 
     @override(AlgorithmConfig)
-    def get_default_learner_class(self) -> Union[Type[Learner], str]:
+    def get_default_learner_class(self) -> Union[Type["Learner"], str]:
         if self.framework_str == "torch":
             from ray.rllib.algorithms.bc.torch.bc_torch_learner import BCTorchLearner
 
@@ -135,7 +137,7 @@ class BC(MARWIL):
 
     @override(MARWIL)
     def training_step(self) -> ResultDict:
-        if not self.config._enable_new_api_stack:
+        if not self.config.enable_rl_module_and_learner:
             # Using ModelV2.
             return super().training_step()
         else:
@@ -169,9 +171,7 @@ class BC(MARWIL):
                 self._counters[NUM_ENV_STEPS_SAMPLED] += train_batch.env_steps()
 
             # Updating the policy.
-            is_module_trainable = self.workers.local_worker().is_policy_to_train
-            self.learner_group.set_is_module_trainable(is_module_trainable)
-            train_results = self.learner_group.update(train_batch)
+            train_results = self.learner_group.update_from_batch(batch=train_batch)
 
             # Synchronize weights.
             # As the results contain for each policy the loss and in addition the

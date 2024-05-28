@@ -49,6 +49,10 @@ if __name__ == "__main__":
 
         temp_dir = _get_default_ray_tmp_dir()
 
+    # Multiple Ray nodes might be launched in the same machine,
+    # so set `exist_ok` to True
+    os.makedirs(temp_dir, exist_ok=True)
+
     ray_cli_cmd = "ray"
     lock_file = temp_dir + ".lock"
 
@@ -58,7 +62,16 @@ if __name__ == "__main__":
     # same temp directory, adding a shared lock representing current ray node is
     # using the temp directory.
     fcntl.flock(lock_fd, fcntl.LOCK_SH)
-    process = subprocess.Popen([ray_cli_cmd, "start", *arg_list], text=True)
+    process = subprocess.Popen(
+        # 'ray start ...' command uses python that is set by
+        # Shebang #! ..., the Shebang line is hardcoded in ray script,
+        # it can't be changed to other python executable path.
+        # to enforce using current python executable,
+        # turn the subprocess command to
+        # '`sys.executable` `which ray` start ...'
+        [sys.executable, shutil.which(ray_cli_cmd), "start", *arg_list],
+        text=True,
+    )
 
     def try_clean_temp_dir_at_exit():
         try:

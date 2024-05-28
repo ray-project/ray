@@ -1,5 +1,5 @@
-import os
 import tempfile
+from pathlib import Path
 from typing import TYPE_CHECKING, Optional
 
 import lightgbm
@@ -23,12 +23,17 @@ class LightGBMCheckpoint(FrameworkCheckpoint):
         booster: lightgbm.Booster,
         *,
         preprocessor: Optional["Preprocessor"] = None,
+        path: Optional[str] = None,
     ) -> "LightGBMCheckpoint":
         """Create a :py:class:`~ray.train.Checkpoint` that stores a LightGBM model.
 
         Args:
             booster: The LightGBM model to store in the checkpoint.
             preprocessor: A fitted preprocessor to be applied before inference.
+            path: The path to the directory where the checkpoint file will be saved.
+                This should start as an empty directory, since the *entire*
+                directory will be treated as the checkpoint when reported.
+                By default, a temporary directory will be created.
 
         Returns:
             An :py:class:`LightGBMCheckpoint` containing the specified ``Estimator``.
@@ -44,10 +49,14 @@ class LightGBMCheckpoint(FrameworkCheckpoint):
             >>> model = lightgbm.LGBMClassifier().fit(train_X, train_y)
             >>> checkpoint = LightGBMCheckpoint.from_model(model.booster_)
         """
-        tempdir = tempfile.mkdtemp()
-        booster.save_model(os.path.join(tempdir, cls.MODEL_FILENAME))
+        checkpoint_path = Path(path or tempfile.mkdtemp())
 
-        checkpoint = cls.from_directory(tempdir)
+        if not checkpoint_path.is_dir():
+            raise ValueError(f"`path` must be a directory, but got: {checkpoint_path}")
+
+        booster.save_model(checkpoint_path.joinpath(cls.MODEL_FILENAME).as_posix())
+
+        checkpoint = cls.from_directory(checkpoint_path.as_posix())
         if preprocessor:
             checkpoint.set_preprocessor(preprocessor)
 
@@ -57,5 +66,5 @@ class LightGBMCheckpoint(FrameworkCheckpoint):
         """Retrieve the LightGBM model stored in this checkpoint."""
         with self.as_directory() as checkpoint_path:
             return lightgbm.Booster(
-                model_file=os.path.join(checkpoint_path, self.MODEL_FILENAME)
+                model_file=Path(checkpoint_path, self.MODEL_FILENAME).as_posix()
             )

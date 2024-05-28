@@ -8,6 +8,7 @@ Tune Hyperparameter Optimization Framework Examples
     HyperOpt Example <hyperopt_example>
     Bayesopt Example <bayesopt_example>
     BOHB Example <bohb_example>
+    Nevergrad Example <nevergrad_example>
     Optuna Example <optuna_example>
 
 
@@ -50,6 +51,14 @@ on each of our integrations:
         .. button-ref:: bohb_example
 
             How To Use Tune With TuneBOHB
+
+    .. grid-item-card::
+        :img-top: ../images/nevergrad.png
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
+
+        .. button-ref:: nevergrad_example
+
+            How To Use Tune With Nevergrad
 
     .. grid-item-card::
         :img-top: ../images/optuna.png

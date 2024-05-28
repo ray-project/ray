@@ -1,17 +1,14 @@
+import sys
 from collections import Counter
 
 import pytest
-import sys
 
 import ray
 from ray.air.execution import FixedResourceManager, PlacementGroupResourceManager
+from ray.train.tests.util import mock_storage_context
 from ray.tune import PlacementGroupFactory, register_trainable
 from ray.tune.execution.tune_controller import TuneController
 from ray.tune.experiment import Trial
-
-
-from ray.train.tests.util import mock_storage_context
-
 
 STORAGE = mock_storage_context()
 

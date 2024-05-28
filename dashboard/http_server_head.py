@@ -10,11 +10,11 @@ from math import floor
 
 from packaging.version import Version
 
+import ray
 import ray.dashboard.optional_utils as dashboard_optional_utils
 import ray.dashboard.utils as dashboard_utils
 from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
 from ray._private.utils import get_or_create_event_loop
-from ray._raylet import GcsClient
 from ray.dashboard.dashboard_metrics import DashboardPrometheusMetrics
 
 # All third-party dependencies that are not included in the minimal Ray
@@ -47,7 +47,7 @@ def setup_static_dir():
         )
 
     static_dir = os.path.join(build_dir, "static")
-    routes.static("/static", static_dir, follow_symlinks=True)
+    routes.static("/static", static_dir)
     return build_dir
 
 
@@ -59,7 +59,6 @@ class HttpServerDashboardHead:
         http_port: int,
         http_port_retries: int,
         gcs_address: str,
-        gcs_client: GcsClient,
         session_name: str,
         metrics: DashboardPrometheusMetrics,
     ):
@@ -67,7 +66,6 @@ class HttpServerDashboardHead:
         self.http_host = http_host
         self.http_port = http_port
         self.http_port_retries = http_port_retries
-        self.gcs_client = gcs_client
         self.head_node_ip = gcs_address.split(":")[0]
         self.metrics = metrics
         self._session_name = session_name
@@ -109,11 +107,13 @@ class HttpServerDashboardHead:
                 "This error message is harmless and can be ignored. "
                 f"Error: {e}"
             )
-        return aiohttp.web.FileResponse(
+        resp = aiohttp.web.FileResponse(
             os.path.join(
                 os.path.dirname(os.path.abspath(__file__)), "client/build/index.html"
             )
         )
+        resp.headers["Cache-Control"] = "no-cache"
+        return resp
 
     @routes.get("/favicon.ico")
     async def get_favicon(self, req) -> aiohttp.web.FileResponse:
@@ -177,6 +177,7 @@ class HttpServerDashboardHead:
                 self.metrics.metrics_request_duration.labels(
                     endpoint=handler.__name__,
                     http_status=status_tag,
+                    Version=ray.__version__,
                     SessionName=self._session_name,
                     Component="dashboard",
                 ).observe(resp_time)
@@ -184,11 +185,20 @@ class HttpServerDashboardHead:
                     method=request.method,
                     endpoint=handler.__name__,
                     http_status=status_tag,
+                    Version=ray.__version__,
                     SessionName=self._session_name,
                     Component="dashboard",
                 ).inc()
             except Exception as e:
                 logger.exception(f"Error emitting api metrics: {e}")
+
+    @aiohttp.web.middleware
+    async def cache_control_static_middleware(self, request, handler):
+        if request.path.startswith("/static"):
+            response = await handler(request)
+            response.headers["Cache-Control"] = "max-age=31536000"
+            return response
+        return await handler(request)
 
     async def run(self, modules):
         # Bind http routes of each module.
@@ -203,6 +213,7 @@ class HttpServerDashboardHead:
                 self.metrics_middleware,
                 self.path_clean_middleware,
                 self.browsers_no_post_put_middleware,
+                self.cache_control_static_middleware,
             ],
         )
         app.add_routes(routes=routes.bound_routes())

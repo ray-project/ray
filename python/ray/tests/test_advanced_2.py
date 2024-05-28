@@ -24,8 +24,10 @@ def test_gpu_ids(shutdown_only):
     def get_gpu_ids(num_gpus_per_worker):
         gpu_ids = ray.get_gpu_ids()
         assert len(gpu_ids) == num_gpus_per_worker
-        neuron_core_ids = ray.get_runtime_context().get_resource_ids()["neuron_cores"]
-        gpu_ids_from_runtime_context = ray.get_runtime_context().get_resource_ids()[
+        neuron_core_ids = ray.get_runtime_context().get_accelerator_ids()[
+            "neuron_cores"
+        ]
+        gpu_ids_from_runtime_context = ray.get_runtime_context().get_accelerator_ids()[
             "GPU"
         ]
         assert len(gpu_ids) == len(gpu_ids_from_runtime_context)
@@ -107,6 +109,18 @@ def test_gpu_ids(shutdown_only):
 
     a1 = Actor1.remote()
     ray.get(a1.test.remote())
+
+
+def test_gpu_ids_cuda_visible_devices_preset(monkeypatch, shutdown_only):
+    with monkeypatch.context() as m:
+        m.setenv("CUDA_VISIBLE_DEVICES", "uuid1,uuid2")
+        ray.init(num_gpus=1)
+
+        @ray.remote(num_gpus=1)
+        def get_gpu_ids():
+            return ray.get_gpu_ids()
+
+        assert ray.get(get_gpu_ids.remote()) == ["uuid1"]
 
 
 def test_zero_cpus(shutdown_only):
@@ -499,7 +513,9 @@ def test_neuron_core_ids(shutdown_only):
     ray.init(num_cpus=num_nc, resources={"neuron_cores": num_nc})
 
     def get_neuron_core_ids(neuron_cores_per_worker):
-        neuron_core_ids = ray.get_runtime_context().get_resource_ids()["neuron_cores"]
+        neuron_core_ids = ray.get_runtime_context().get_accelerator_ids()[
+            "neuron_cores"
+        ]
         gpu_ids = ray.get_gpu_ids()
         assert len(neuron_core_ids) == neuron_cores_per_worker
         assert len(gpu_ids) == 0
@@ -540,7 +556,7 @@ def test_neuron_core_ids(shutdown_only):
     @ray.remote
     class Actor0:
         def __init__(self):
-            neuron_core_ids = ray.get_runtime_context().get_resource_ids()[
+            neuron_core_ids = ray.get_runtime_context().get_accelerator_ids()[
                 "neuron_cores"
             ]
             assert len(neuron_core_ids) == 0
@@ -551,7 +567,7 @@ def test_neuron_core_ids(shutdown_only):
             self.x = 0
 
         def test(self):
-            neuron_core_ids = ray.get_runtime_context().get_resource_ids()[
+            neuron_core_ids = ray.get_runtime_context().get_accelerator_ids()[
                 "neuron_cores"
             ]
             assert len(neuron_core_ids) == 0
@@ -563,7 +579,7 @@ def test_neuron_core_ids(shutdown_only):
     @ray.remote(resources={"neuron_cores": 1})
     class Actor1:
         def __init__(self):
-            neuron_core_ids = ray.get_runtime_context().get_resource_ids()[
+            neuron_core_ids = ray.get_runtime_context().get_accelerator_ids()[
                 "neuron_cores"
             ]
             assert len(neuron_core_ids) == 1
@@ -574,7 +590,7 @@ def test_neuron_core_ids(shutdown_only):
             self.x = 1
 
         def test(self):
-            neuron_core_ids = ray.get_runtime_context().get_resource_ids()[
+            neuron_core_ids = ray.get_runtime_context().get_accelerator_ids()[
                 "neuron_cores"
             ]
             assert len(neuron_core_ids) == 1
@@ -586,7 +602,7 @@ def test_neuron_core_ids(shutdown_only):
     @ray.remote(resources={"neuron_cores": 2}, accelerator_type=accelerator_type)
     class Actor2:
         def __init__(self):
-            neuron_core_ids = ray.get_runtime_context().get_resource_ids()[
+            neuron_core_ids = ray.get_runtime_context().get_accelerator_ids()[
                 "neuron_cores"
             ]
             assert len(neuron_core_ids) == 2
@@ -597,7 +613,7 @@ def test_neuron_core_ids(shutdown_only):
             self.x = 2
 
         def test(self):
-            neuron_core_ids = ray.get_runtime_context().get_resource_ids()[
+            neuron_core_ids = ray.get_runtime_context().get_accelerator_ids()[
                 "neuron_cores"
             ]
             assert len(neuron_core_ids) == 2
@@ -626,7 +642,7 @@ def test_neuron_core_with_placement_group(shutdown_only):
             pass
 
         def ready(self):
-            neuron_core_ids = ray.get_runtime_context().get_resource_ids()[
+            neuron_core_ids = ray.get_runtime_context().get_accelerator_ids()[
                 "neuron_cores"
             ]
             assert len(neuron_core_ids) == neuron_cores
@@ -662,7 +678,7 @@ def test_gpu_and_neuron_cores(shutdown_only):
         )
         for gpu_id in gpu_ids:
             assert gpu_id in range(num_gpus)
-        gpu_ids_from_runtime_context = ray.get_runtime_context().get_resource_ids()[
+        gpu_ids_from_runtime_context = ray.get_runtime_context().get_accelerator_ids()[
             "GPU"
         ]
         for gpu_id in gpu_ids_from_runtime_context:
@@ -670,7 +686,9 @@ def test_gpu_and_neuron_cores(shutdown_only):
         return len(gpu_ids)
 
     def get_neuron_core_ids(neuron_cores_per_worker):
-        neuron_core_ids = ray.get_runtime_context().get_resource_ids()["neuron_cores"]
+        neuron_core_ids = ray.get_runtime_context().get_accelerator_ids()[
+            "neuron_cores"
+        ]
         assert len(neuron_core_ids) == neuron_cores_per_worker
         cores = os.environ.get("NEURON_RT_VISIBLE_CORES")
         if cores is not None:

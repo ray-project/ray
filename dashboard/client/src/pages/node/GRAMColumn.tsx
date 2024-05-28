@@ -1,9 +1,8 @@
-import { Box, Tooltip, Typography } from "@material-ui/core";
+import { Box, Tooltip, Typography } from "@mui/material";
 import React from "react";
 import { RightPaddedTypography } from "../../common/CustomTypography";
 import PercentageBar from "../../components/PercentageBar";
-import { NodeDetail } from "../../type/node";
-import { Worker } from "../../type/worker";
+import { GPUStats, NodeDetail } from "../../type/node";
 
 const GRAM_COL_WIDTH = 120;
 
@@ -32,16 +31,16 @@ export const NodeGRAM = ({ node }: { node: NodeDetail }) => {
 };
 
 export const WorkerGRAM = ({
-  worker,
-  node,
+  workerPID,
+  gpus,
 }: {
-  worker: Worker;
-  node: NodeDetail;
+  workerPID: number | null;
+  gpus?: GPUStats[];
 }) => {
-  const workerGRAMEntries = (node.gpus ?? [])
+  const workerGRAMEntries = (gpus ?? [])
     .map((gpu, i) => {
       const process = gpu.processes?.find(
-        (process) => process.pid === worker.pid,
+        (process) => workerPID && process.pid === workerPID,
       );
       if (!process) {
         return undefined;
@@ -66,6 +65,26 @@ export const WorkerGRAM = ({
   );
 };
 
+export const getSumGRAMUsage = (
+  workerPID: number | null,
+  gpus?: GPUStats[],
+) => {
+  // Get sum of all GRAM usage values for this worker PID. This is an
+  // aggregate of WorkerGRAM and follows the same logic.
+  const workerGRAMEntries = (gpus ?? [])
+    .map((gpu, i) => {
+      const process = gpu.processes?.find(
+        (process) => workerPID && process.pid === workerPID,
+      );
+      if (!process) {
+        return 0;
+      }
+      return process.gpuMemoryUsage;
+    })
+    .filter((entry) => entry !== undefined);
+  return workerGRAMEntries.reduce((a, b) => a + b, 0);
+};
+
 const getMiBRatioNoPercent = (used: number, total: number) =>
   `${used}MiB/${total}MiB`;
 
@@ -86,7 +105,7 @@ const GRAMEntry: React.FC<GRAMEntryProps> = ({
   return (
     <Box display="flex" flexWrap="nowrap" style={{ minWidth: GRAM_COL_WIDTH }}>
       <Tooltip title={gpuName}>
-        <Box display="flex" flexWrap="nowrap">
+        <Box display="flex" flexWrap="nowrap" flexGrow={1}>
           <RightPaddedTypography variant="body1">
             [{slot}]:{" "}
           </RightPaddedTypography>
