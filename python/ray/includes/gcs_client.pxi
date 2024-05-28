@@ -338,7 +338,7 @@ cdef class MyGcsClient:
             for b in list_of_bytes:
                 proto = gcs_pb2.JobTableData()
                 proto.ParseFromString(b)
-                job_table_data[proto.job_id()] = proto
+                job_table_data[proto.job_id] = proto
             return job_table_data
         fut, cb = make_future_and_callback(postprocess=postprocess)
         cdef PyDefaultCallback cy_callback = PyDefaultCallback(cb)
