@@ -15,11 +15,6 @@ args = parser.parse_args()
 config = (
     DQNConfig()
     .environment(env="CartPole-v1")
-    .framework(framework="torch")
-    .api_stack(
-        enable_rl_module_and_learner=True,
-        enable_env_runner_and_connector_v2=True,
-    )
     .rl_module(
         # Settings identical to old stack.
         model_config_dict={
@@ -63,7 +58,7 @@ config = (
 )
 
 stop = {
-    f"{EVALUATION_RESULTS}/{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": 450.0,
+    f"{EVALUATION_RESULTS}/{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": 500.0,
     NUM_ENV_STEPS_SAMPLED_LIFETIME: 100000,
 }
 
