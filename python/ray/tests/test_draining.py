@@ -143,7 +143,11 @@ def test_preemption(ray_start_cluster):
     assert worker_node["DeathReasonMessage"] == "preemption"
 
 
-def test_preemption_after_draining_deadline(monkeypatch, ray_start_cluster):
+@pytest.mark.parametrize(
+    "graceful",
+    [True, False],
+)
+def test_preemption_after_draining_deadline(monkeypatch, ray_start_cluster, graceful):
     monkeypatch.setenv("RAY_health_check_failure_threshold", "3")
     monkeypatch.setenv("RAY_health_check_timeout_ms", "100")
     monkeypatch.setenv("RAY_health_check_period_ms", "1000")
@@ -182,9 +186,8 @@ def test_preemption_after_draining_deadline(monkeypatch, ray_start_cluster):
     )
     assert is_accepted
 
-    # Simulate node provider forcefully terminates the worker node
-    # after the draining deadline.
-    cluster.remove_node(worker_node, False)
+    # Simulate autoscaler terminates the worker node after the draining deadline.
+    cluster.remove_node(worker_node, graceful)
 
     wait_for_condition(
         lambda: {node["NodeID"] for node in ray.nodes() if (node["Alive"])}
@@ -384,7 +387,11 @@ def test_scheduling_tasks_and_actors_during_draining(ray_start_cluster):
     ray.get(obj, timeout=2) == head_node_id
 
 
-def test_draining_reason(ray_start_cluster):
+@pytest.mark.parametrize(
+    "graceful",
+    [False, True],
+)
+def test_draining_reason(ray_start_cluster, graceful):
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=1, resources={"node1": 1})
     ray.init(
@@ -414,8 +421,8 @@ def test_draining_reason(ray_start_cluster):
     )
     assert is_accepted
 
-    # Simulate node provider forcefully terminates the worker node
-    cluster.remove_node(node2, False)
+    # Simulate autoscaler terminates the worker node after the draining deadline.
+    cluster.remove_node(node2, graceful)
     try:
         ray.get(actor.ping.remote())
         raise
