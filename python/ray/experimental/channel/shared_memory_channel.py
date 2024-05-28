@@ -4,6 +4,7 @@ from typing import Any, List, Optional, Union
 
 import ray
 from ray.experimental.channel.common import ChannelInterface, ChannelOutputType
+from ray.experimental.channel.local_channel import LocalChannel
 from ray.util.annotations import PublicAPI
 
 # Logger for this module. It should be configured at the entry point
@@ -106,6 +107,11 @@ class SharedMemoryType(ChannelOutputType):
             A ChannelInterface that can be used to pass data
                 of this type.
         """
+        # TODO: Create MultiChannel if there are some readers belong to the same actor
+        # as the writer
+        for reader in readers:
+            if writer == reader:
+                return LocalChannel(readers)
         return Channel(writer, readers)
 
 
