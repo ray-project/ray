@@ -15,11 +15,11 @@ args = parser.parse_args()
 
 
 def _make_env_to_module_connector(env):
-    return FrameStackingEnvToModule(num_frames=args.num_frames)
+    return FrameStackingEnvToModule(num_frames=4)
 
 
 def _make_learner_connector(input_observation_space, input_action_space):
-    return FrameStackingLearner(num_frames=args.num_frames)
+    return FrameStackingLearner(num_frames=4)
 
 
 # Create a custom Atari setup (w/o the usual RLlib-hard-coded framestacking in it).
@@ -27,8 +27,8 @@ def _make_learner_connector(input_observation_space, input_action_space):
 def _env_creator(cfg):
     return wrap_atari_for_new_api_stack(
         gym.make(args.env, **cfg),
-        # Perform through ConnectorV2 API.
-        framestack=None if args.num_frames > 0 else args.num_frames,
+        # Perform frame-stacking through ConnectorV2 API.
+        framestack=None,
     )
 
 
