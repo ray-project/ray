@@ -248,7 +248,7 @@ def _get_ray_resources_from_group_spec(
 
     num_cpus = _get_num_cpus(ray_start_params, k8s_resource_limits, group_name)
     num_gpus = _get_num_gpus(ray_start_params, k8s_resource_limits, group_name)
-    num_tpus = _get_num_tpus(k8s_resource_limits, group_name)
+    num_tpus = _get_num_tpus(k8s_resource_limits)
     custom_resource_dict = _get_custom_resources(ray_start_params, group_name)
     memory = _get_memory(ray_start_params, k8s_resource_limits)
 
@@ -363,7 +363,6 @@ def _get_num_gpus(
 
 def _get_num_tpus(
     k8s_resource_limits: Dict[str, Any],
-    group_name: str,
 ) -> Optional[int]:
     """Auto-detect requested TPU Pod resources from k8s_resource_limits."""
 

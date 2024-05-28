@@ -402,7 +402,7 @@ def test_get_num_tpus(ray_cr_in: Dict[str, Any], expected_num_tpus: int):
             "resources"
         ]["limits"]
 
-        num_tpus = _get_num_tpus(k8s_resource_limits, worker_group["groupName"])
+        num_tpus = _get_num_tpus(k8s_resource_limits)
 
         if worker_group["groupName"] == "tpu-group":
             assert num_tpus == expected_num_tpus
