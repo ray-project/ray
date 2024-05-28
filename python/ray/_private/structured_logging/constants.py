@@ -46,6 +46,7 @@ class LogKey(str, Enum):
     LINENO = "lineno"
     EXC_TEXT = "exc_text"
 
+
 LOG_MODE_DICT = {
     "TEXT": lambda log_level: {
         "version": 1,
@@ -74,4 +75,3 @@ LOG_MODE_DICT = {
         },
     },
 }
-
