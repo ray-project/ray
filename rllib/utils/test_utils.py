@@ -1391,7 +1391,7 @@ def run_rllib_example_script_experiment(
         # Set the framework.
         config.framework(args.framework)
 
-        # Add an env specifier?
+        # Add an env specifier (only if not already set in config)?
         if args.env is not None:
             config.environment(args.env)
 
