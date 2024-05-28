@@ -24,7 +24,7 @@ config = (
         # Settings identical to old stack.
         model_config_dict={
             "fcnet_hiddens": [256],
-            "fcnet_activation": "relu",
+            "fcnet_activation": "tanh",
             "epsilon": [(0, 1.0), (10000, 0.02)],
             "fcnet_bias_initializer": "zeros_",
             "post_fcnet_bias_initializer": "zeros_",
@@ -40,6 +40,7 @@ config = (
             "alpha": 0.6,
             "beta": 0.4,
         },
+        n_step=3,
         double_q=True,
         num_atoms=1,
         noisy=False,
