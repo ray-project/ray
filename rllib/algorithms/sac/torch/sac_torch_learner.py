@@ -15,17 +15,15 @@ from ray.rllib.algorithms.sac.sac_learner import (
     QF_TWIN_LOSS_KEY,
     QF_TWIN_PREDS,
     TD_ERROR_MEAN_KEY,
-    TD_ERROR_KEY,
     SACLearner,
 )
-from ray.rllib.core import DEFAULT_MODULE_ID
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.learner.learner import (
     POLICY_LOSS_KEY,
 )
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
-from ray.rllib.utils.metrics import ALL_MODULES
+from ray.rllib.utils.metrics import ALL_MODULES, TD_ERROR_KEY
 from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.typing import ModuleID, ParamDict, TensorType
 
@@ -221,8 +219,6 @@ class SACTorchLearner(DQNRainbowTorchLearner, SACLearner):
         # Note further, we use here the Huber loss instead of the mean squared error
         # as it improves training performance.
         critic_loss = torch.mean(
-            # TODO (simon): Introduce priority weights when episode buffer is ready.
-            # batch[PRIO_WEIGHTS] *
             batch["weights"]
             * torch.nn.HuberLoss(reduction="none", delta=1.0)(
                 q_selected, q_selected_target
@@ -303,6 +299,7 @@ class SACTorchLearner(DQNRainbowTorchLearner, SACLearner):
     def compute_gradients(
         self, loss_per_module: Dict[str, TensorType], **kwargs
     ) -> ParamDict:
+        # Set all grads to `None`.
         for optim in self._optimizer_parameters:
             optim.zero_grad(set_to_none=True)
 
@@ -317,7 +314,7 @@ class SACTorchLearner(DQNRainbowTorchLearner, SACLearner):
             for component in (
                 ["qf", "policy", "alpha"] + ["qf_twin"] if config.twin_q else []
             ):
-                self.metrics.peek(DEFAULT_MODULE_ID, component + "_loss").backward(
+                self.metrics.peek(module_id, component + "_loss").backward(
                     retain_graph=True
                 )
                 grads.update(
