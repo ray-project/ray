@@ -36,6 +36,7 @@ from ray.rllib.policy.policy import Policy, PolicySpec
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils import deep_update, merge_dicts
 from ray.rllib.utils.annotations import (
+    OldAPIStack,
     OverrideToImplementCustomLogic_CallToSuperRecommended,
 )
 from ray.rllib.utils.deprecation import (
@@ -74,25 +75,6 @@ from ray.tune.tune import _Config
 
 Space = gym.Space
 
-"""TODO(jungong, sven): in "offline_data" we can potentially unify all input types
-under input and input_config keys. E.g.
-input: sample
-input_config {
-env: CartPole-v1
-}
-or:
-input: json_reader
-input_config {
-path: /tmp/
-}
-or:
-input: dataset
-input_config {
-format: parquet
-path: /tmp/
-}
-"""
-
 
 if TYPE_CHECKING:
     from ray.rllib.algorithms.algorithm import Algorithm
@@ -103,15 +85,6 @@ if TYPE_CHECKING:
     from ray.rllib.evaluation.episode import Episode as OldEpisode
 
 logger = logging.getLogger(__name__)
-
-
-def _check_rl_module_spec(module_spec: RLModuleSpec) -> None:
-    if not isinstance(module_spec, (SingleAgentRLModuleSpec, MultiAgentRLModuleSpec)):
-        raise ValueError(
-            "rl_module_spec must be an instance of "
-            "SingleAgentRLModuleSpec or MultiAgentRLModuleSpec."
-            f"Got {type(module_spec)} instead."
-        )
 
 
 class AlgorithmConfig(_Config):
@@ -144,6 +117,53 @@ class AlgorithmConfig(_Config):
         tune.Tuner("PPO", param_space=config.to_dict())
     """
 
+    DEPRECATED_KEYS = {
+        "monitor": None,
+        "evaluation_num_episodes": None,
+        "evaluation_num_workers": "evaluation_num_env_runners",
+        "metrics_smoothing_episodes": None,
+        "timesteps_per_iteration": None,
+        "min_iter_time_s": None,
+        "num_envs_per_worker": "num_envs_per_env_runner",
+        "collect_metrics_timeout": None,
+        "buffer_size": None,
+        "prioritized_replay": None,
+        "learning_starts": None,
+        "replay_batch_size": None,
+        "replay_mode": None,
+        "prioritized_replay_alpha": None,
+        "prioritized_replay_beta": None,
+        "prioritized_replay_eps": None,
+        "min_time_s_per_reporting": None,
+        "min_train_timesteps_per_reporting": None,
+        "min_sample_timesteps_per_reporting": None,
+        "input_evaluation": None,
+        "_enable_new_api_stack": None,
+        "callbacks": "callbacks_class",
+        "create_env_on_driver": "create_env_on_local_worker",
+        "custom_eval_function": "custom_evaluation_function",
+        "framework": "framework_str",
+        "num_cpus_for_driver": "num_cpus_for_main_process",
+        "num_cpus_for_local_worker": "num_cpus_for_main_process",
+        "num_workers": "num_env_runners",
+        "num_rollout_workers": "num_env_runners",
+        "num_cpus_per_worker": "num_cpus_per_env_runner",
+        "num_gpus_per_worker": "num_gpus_per_env_runner",
+        "custom_resources_per_worker": "custom_resources_per_env_runner",
+        "num_learner_workers": "num_learners",
+        "num_cpus_per_learner_worker": "num_cpus_per_learner",
+        "num_gpus_per_learner_worker": "num_gpus_per_learner",
+        "ignore_worker_failures": "ignore_env_runner_failures",
+        "recreate_failed_workers": "recreate_failed_env_runners",
+        "max_num_worker_restarts": "max_num_env_runner_restarts",
+        "delay_between_worker_restarts_s": "delay_between_env_runner_restarts_s",
+        "num_consecutive_worker_failures_tolerance": (
+            "num_consecutive_env_runner_failures_tolerance"
+        ),
+        "worker_health_probe_timeout_s": "env_runner_health_probe_timeout_s",
+        "worker_restore_timeout_s": "env_runner_restore_timeout_s",
+    }
+
     @staticmethod
     def DEFAULT_AGENT_TO_MODULE_MAPPING_FN(agent_id, episode):
         # The default agent ID to module ID mapping function to use in the multi-agent
@@ -151,7 +171,7 @@ class AlgorithmConfig(_Config):
         # Map any agent ID to "default_policy".
         return DEFAULT_MODULE_ID
 
-    # TODO (sven): Deprecate in new API stack.
+    @OldAPIStack
     @staticmethod
     def DEFAULT_POLICY_MAPPING_FN(aid, episode, worker, **kwargs):
         # The default policy mapping function to use if None provided.
@@ -164,9 +184,9 @@ class AlgorithmConfig(_Config):
 
         .. testcode::
 
-            from ray.rllib.algorithms.ppo.ppo import PPOConfig
+            from ray.rllib.algorithms.ppo import PPOConfig
             # pass a RLlib config dict
-            ppo_config = PPOConfig.from_dict({})
+            ppo_config = PPOConfig.from_dict({"lr": 0.001})
             ppo = ppo_config.build(env="Pendulum-v1")
 
         Args:
@@ -408,6 +428,7 @@ class AlgorithmConfig(_Config):
         self.exploration_config = {}
 
         # `self.multi_agent()`
+        self._enable_multi_agent = "auto"
         # Module ID specific config overrides.
         self.algorithm_config_overrides_per_module = {}
         # Cached, actual AlgorithmConfig objects derived from
@@ -423,10 +444,10 @@ class AlgorithmConfig(_Config):
         # Soon to be Deprecated.
         self.policies = {DEFAULT_POLICY_ID: PolicySpec()}
         self.policy_map_capacity = 100
-        self.policy_mapping_fn = self.DEFAULT_POLICY_MAPPING_FN
         self.policies_to_train = None
         self.policy_states_are_swappable = False
         self.observation_fn = None
+        self._policy_mapping_fn = "auto"
 
         # `self.offline_data()`
         self.input_ = "sampler"
@@ -601,48 +622,24 @@ class AlgorithmConfig(_Config):
                     policies_dict[policy_id] = policy_spec
             config["policies"] = policies_dict
 
-        # Switch out deprecated vs new config keys.
-        config["callbacks"] = config.pop("callbacks_class", DefaultCallbacks)
-        config["create_env_on_driver"] = config.pop("create_env_on_local_worker", 1)
-        config["custom_eval_function"] = config.pop("custom_evaluation_function", None)
-        config["framework"] = config.pop("framework_str", None)
-        config["num_cpus_for_driver"] = config.pop(
-            "num_cpus_for_local_worker", config.pop("num_cpus_for_main_process", 1)
-        )
-        config["num_workers"] = config.pop(
-            "num_env_runners", config.pop("num_rollout_workers", 0)
-        )
-        config["num_cpus_per_worker"] = config.pop("num_cpus_per_env_runner", 1)
-        config["num_gpus_per_worker"] = config.pop("num_gpus_per_env_runner", 0)
-        config["num_learner_workers"] = config.pop("num_learners", 0)
-        config["num_cpus_per_learner_worker"] = config.pop("num_cpus_per_learner", 1)
-        config["num_gpus_per_learner_worker"] = config.pop("num_gpus_per_learner", 0)
+        # Handle deprecated settings gracefully.
+        for deprecated_key, deprecation_rules in self.DEPRECATED_KEYS.items():
+            # Make sure a config dict always has the old, deprecated keys set.
+            if deprecated_key not in config:
+                if isinstance(deprecation_rules, str) and deprecation_rules in config:
+                    config[deprecated_key] = config[deprecation_rules]
+                continue
 
-        # Simplify: Remove all deprecated keys that have as value `DEPRECATED_VALUE`.
-        # These would be useless in the returned dict anyways.
-        for dep_k in [
-            "monitor",
-            "evaluation_num_episodes",
-            "metrics_smoothing_episodes",
-            "timesteps_per_iteration",
-            "min_iter_time_s",
-            "collect_metrics_timeout",
-            "buffer_size",
-            "prioritized_replay",
-            "learning_starts",
-            "replay_batch_size",
-            "replay_mode",
-            "prioritized_replay_alpha",
-            "prioritized_replay_beta",
-            "prioritized_replay_eps",
-            "min_time_s_per_reporting",
-            "min_train_timesteps_per_reporting",
-            "min_sample_timesteps_per_reporting",
-            "input_evaluation",
-            "_enable_new_api_stack",
-        ]:
-            if config.get(dep_k) == DEPRECATED_VALUE:
-                config.pop(dep_k, None)
+            # Simplify: Remove all deprecated keys that have as value
+            # `DEPRECATED_VALUE`. These would be useless in the returned dict either
+            # way.
+            if deprecation_rules is None:
+                if config[deprecated_key] == DEPRECATED_VALUE:
+                    del config[deprecated_key]
+
+            # Set both deprecated AND new config keys.
+            elif isinstance(deprecation_rules, str):
+                config[deprecation_rules] = config[deprecated_key]
 
         return config
 
@@ -2481,7 +2478,8 @@ class AlgorithmConfig(_Config):
     def multi_agent(
         self,
         *,
-        policies=NotProvided,
+        enable_multi_agent: Optional[Union[bool, str]] = NotProvided,
+        policies: Optional[Dict] = NotProvided,
         algorithm_config_overrides_per_module: Optional[
             Dict[ModuleID, PartialAlgorithmConfigDict]
         ] = NotProvided,
@@ -2508,6 +2506,17 @@ class AlgorithmConfig(_Config):
         of IDs is properly converted into a dict mapping these IDs to PolicySpecs.
 
         Args:
+            enable_multi_agent: Whether multi-agent mode should be manually enabled
+                (True) or disabled (False). If the user does not touch this setting
+                or sets it manually to "auto", RLlib will try to automatically infer
+                whether the configured algo is in multi- or single-agent mode.
+                There are some situations, in which such an auto-check will falsely
+                infer single-agent mode, for example if your `MultiAgentEnv` is
+                registered through `tune.register_env` (meaning RLlib does not see,
+                which exact class you are using as env) AND you only use the
+                `DEFAULT_MODULE_ID` in your RLModule (meaning RLlib does not see any
+                indication of a multi-agent setup). In such cases, you should simply set
+                this flag to True manually.
             policies: Map of type MultiAgentPolicyConfigDict from policy ids to either
                 4-tuples of (policy_cls, obs_space, act_space, config) or PolicySpecs.
                 These tuples or PolicySpecs define the class of the policy, the
@@ -2563,6 +2572,14 @@ class AlgorithmConfig(_Config):
         Returns:
             This updated AlgorithmConfig object.
         """
+        if enable_multi_agent != NotProvided:
+            if enable_multi_agent not in ["auto", True, False]:
+                raise ValueError(
+                    "`enable_multi_agent` must be one of [True, False, 'auto'], "
+                    f"but is {enable_multi_agent}!"
+                )
+            self._enable_multi_agent = enable_multi_agent
+
         if policies is not NotProvided:
             # Make sure our Policy IDs are ok (this should work whether `policies`
             # is a dict or just any Sequence).
@@ -2612,7 +2629,7 @@ class AlgorithmConfig(_Config):
             # yaml files.
             if isinstance(policy_mapping_fn, dict):
                 policy_mapping_fn = from_config(policy_mapping_fn)
-            self.policy_mapping_fn = policy_mapping_fn
+            self._policy_mapping_fn = policy_mapping_fn
 
         if observation_fn is not NotProvided:
             self.observation_fn = observation_fn
@@ -2672,7 +2689,12 @@ class AlgorithmConfig(_Config):
             True, if a) >1 policies defined OR b) 1 policy defined, but its ID is NOT
             DEFAULT_POLICY_ID.
         """
-        return len(self.policies) > 1 or DEFAULT_POLICY_ID not in self.policies
+        # User manually provided multi-agent or single-agent mode.
+        if self._enable_multi_agent != "auto":
+            return self._enable_multi_agent
+        # Try to infer multi-agent/single-agent mode automatically.
+        else:
+            return len(self.policies) > 1 or DEFAULT_POLICY_ID not in self.policies
 
     def reporting(
         self,
@@ -3133,6 +3155,19 @@ class AlgorithmConfig(_Config):
             return self.train_batch_size_per_learner * (self.num_learners or 1)
         else:
             return self.train_batch_size
+
+    @property
+    def policy_mapping_fn(self):
+        if self._policy_mapping_fn != "auto":
+            return self._policy_mapping_fn
+        elif self.enable_env_runner_and_connector_v2:
+            return self.DEFAULT_AGENT_TO_MODULE_MAPPING_FN
+        else:
+            return self.DEFAULT_POLICY_MAPPING_FN
+
+    @policy_mapping_fn.setter
+    def policy_mapping_fn(self, value):
+        self._policy_mapping_fn = value
 
     # TODO: Make rollout_fragment_length as read-only property and replace the current
     #  self.rollout_fragment_length a private variable.
@@ -4378,7 +4413,9 @@ class AlgorithmConfig(_Config):
     @staticmethod
     def _serialize_dict(config):
         # Serialize classes to classpaths:
-        config["callbacks"] = serialize_type(config["callbacks"])
+        config["callbacks_class"] = config["callbacks"] = serialize_type(
+            config["callbacks_class"]
+        )
         config["sample_collector"] = serialize_type(config["sample_collector"])
         if isinstance(config["env"], type):
             config["env"] = serialize_type(config["env"])
@@ -4403,7 +4440,9 @@ class AlgorithmConfig(_Config):
             if isinstance(ma_config.get("policies"), (set, tuple)):
                 ma_config["policies"] = list(ma_config["policies"])
             # Do NOT serialize functions/lambdas.
-            if ma_config.get("policy_mapping_fn"):
+            if ma_config.get("policy_mapping_fn") and (
+                ma_config["policy_mapping_fn"] != "auto"
+            ):
                 ma_config["policy_mapping_fn"] = NOT_SERIALIZABLE
             if ma_config.get("policies_to_train"):
                 ma_config["policies_to_train"] = NOT_SERIALIZABLE
@@ -4413,86 +4452,22 @@ class AlgorithmConfig(_Config):
         if isinstance(config.get("policies"), (set, tuple)):
             config["policies"] = list(config["policies"])
         # Do NOT serialize functions/lambdas.
-        if config.get("policy_mapping_fn"):
-            config["policy_mapping_fn"] = NOT_SERIALIZABLE
+        if config.get("_policy_mapping_fn") and config["_policy_mapping_fn"] != "auto":
+            config["_policy_mapping_fn"] = NOT_SERIALIZABLE
         if config.get("policies_to_train"):
             config["policies_to_train"] = NOT_SERIALIZABLE
 
         return config
 
-    @staticmethod
-    def _translate_special_keys(key: str, warn_deprecated: bool = True) -> str:
+    @classmethod
+    def _translate_special_keys(cls, key: str, warn_deprecated: bool = True) -> str:
         # Handle special key (str) -> `AlgorithmConfig.[some_property]` cases.
-        if key == "callbacks":
-            key = "callbacks_class"
-        elif key == "create_env_on_driver":
-            key = "create_env_on_local_worker"
-        elif key == "custom_eval_function":
-            key = "custom_evaluation_function"
-        elif key == "framework":
-            key = "framework_str"
-        elif key == "input":
-            key = "input_"
-        elif key == "lambda":
-            key = "lambda_"
-        elif key == "num_cpus_for_driver":
-            key = "num_cpus_for_main_process"
-        elif key == "num_workers":
-            key = "num_env_runners"
-
-        # Deprecated keys.
-        if warn_deprecated:
-            if key == "collect_metrics_timeout":
-                deprecation_warning(
-                    old="collect_metrics_timeout",
-                    new="metrics_episode_collection_timeout_s",
-                    error=True,
-                )
-            elif key == "metrics_smoothing_episodes":
-                deprecation_warning(
-                    old="config.metrics_smoothing_episodes",
-                    new="config.metrics_num_episodes_for_smoothing",
-                    error=True,
-                )
-            elif key == "min_iter_time_s":
-                deprecation_warning(
-                    old="config.min_iter_time_s",
-                    new="config.min_time_s_per_iteration",
-                    error=True,
-                )
-            elif key == "min_time_s_per_reporting":
-                deprecation_warning(
-                    old="config.min_time_s_per_reporting",
-                    new="config.min_time_s_per_iteration",
-                    error=True,
-                )
-            elif key == "min_sample_timesteps_per_reporting":
-                deprecation_warning(
-                    old="config.min_sample_timesteps_per_reporting",
-                    new="config.min_sample_timesteps_per_iteration",
-                    error=True,
-                )
-            elif key == "min_train_timesteps_per_reporting":
-                deprecation_warning(
-                    old="config.min_train_timesteps_per_reporting",
-                    new="config.min_train_timesteps_per_iteration",
-                    error=True,
-                )
-            elif key == "timesteps_per_iteration":
-                deprecation_warning(
-                    old="config.timesteps_per_iteration",
-                    new="`config.min_sample_timesteps_per_iteration` OR "
-                    "`config.min_train_timesteps_per_iteration`",
-                    error=True,
-                )
-            elif key == "evaluation_num_episodes":
-                deprecation_warning(
-                    old="config.evaluation_num_episodes",
-                    new="`config.evaluation_duration` and "
-                    "`config.evaluation_duration_unit=episodes`",
-                    error=True,
-                )
-
+        if key in cls.DEPRECATED_KEYS:
+            if isinstance(cls.DEPRECATED_KEYS[key], str):
+                key = cls.DEPRECATED_KEYS[key]
+            # Deprecated keys not replaced with anything (setting invalid).
+            elif cls.DEPRECATED_KEYS[key] is None and warn_deprecated:
+                deprecation_warning(old=f"AlgorithmConfig.{key}", error=True)
         return key
 
     def _check_if_correct_nn_framework_installed(self, _tf1, _tf, _torch):
@@ -4855,3 +4830,12 @@ class TorchCompileWhatToCompile(str, Enum):
     # Only compile the forward methods (and therein the forward_train method) of the
     # RLModule.
     FORWARD_TRAIN = "forward_train"
+
+
+def _check_rl_module_spec(module_spec: RLModuleSpec) -> None:
+    if not isinstance(module_spec, (SingleAgentRLModuleSpec, MultiAgentRLModuleSpec)):
+        raise ValueError(
+            "rl_module_spec must be an instance of "
+            "SingleAgentRLModuleSpec or MultiAgentRLModuleSpec."
+            f"Got {type(module_spec)} instead."
+        )
