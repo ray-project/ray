@@ -2742,7 +2742,7 @@
 # --------------------------
 # PPO
 # --------------------------
-- name: rllib_learning_tests_ppo_torch
+- name: rllib_learning_tests_pong_ppo_torch
   group: RLlib tests
   working_dir: rllib_tests
 
@@ -2761,7 +2761,7 @@
 
   run:
     timeout: 1800
-    script: python ../../rllib/tuned_examples/pong_ppo.py --enable-new-api-stack --num-gpus=4 --num-env-runners=95 --as-test
+    script: python rllib_tests/learning_tests/tuned_examples/ppo/atari_ppo.py --enable-new-api-stack --env ALE/Pong-v5 --num-gpus=4 --num-env-runners=95 --as-test
 
   alert: default
 
