@@ -463,6 +463,25 @@ py_test(
     args = ["--dir=tuned_examples/sac"]
 )
 
+# TODO (simon): These tests are not learning, yet.
+# py_test(
+#     name = "learning_tests_multi_agent_pendulum_sac",
+#     main = "tuned_examples/sac/multi_agent_pendulum_sac.py",
+#     tags = ["team:rllib", "exclusive", "learning_tests", "torch_only", "learning_tests_pendulum", "learning_tests_continuous"],
+#     size = "large",
+#     srcs = ["tuned_examples/sac/multi_agent_pendulum_sac.py"],
+#     args = ["--enable-new-api-stack", "--num-agents=2"]
+# )
+
+# py_test(
+#     name = "learning_tests_multi_agent_pendulum_sac_multi_gpu",
+#     main = "tuned_examples/sac/multi_agent_pendulum_sac.py",
+#     tags = ["team:rllib", "exclusive", "learning_tests", "torch_only", "learning_tests_pendulum", "learning_tests_continuous", "multi_gpu"],
+#     size = "large",
+#     srcs = ["tuned_examples/sac/multi_agent_pendulum_sac.py"],
+#     args = ["--enable-new-api-stack", "--num-agents=2", "--num-gpus=2"]
+# )
+
 # --------------------------------------------------------------------
 # Algorithms (Compilation, Losses, simple functionality tests)
 # rllib/algorithms/
@@ -2138,15 +2157,6 @@ py_test(
     srcs = ["examples/checkpoints/onnx_torch.py"],
 )
 
-#@OldAPIStack
-py_test(
-    name = "examples/checkpoints/restore_1_of_n_agents_from_checkpoint",
-    tags = ["team:rllib", "exclusive", "examples"],
-    size = "medium",
-    srcs = ["examples/checkpoints/restore_1_of_n_agents_from_checkpoint.py"],
-    args = ["--pre-training-iters=1", "--stop-iters=1", "--num-cpus=4"]
-)
-
 # subdirectory: connectors/
 # ....................................
 # Framestacking examples only run in smoke-test mode (a few iters only).
@@ -2731,6 +2741,15 @@ py_test(
 #    srcs = ["examples/multi_agent/pettingzoo_shared_value_function.py"],
 #    args = ["--enable-new-api-stack", "--num-agents=2", "--as-test", "--framework=torch", "--stop-reward=-100.0", "--num-cpus=4"],
 # )
+
+py_test(
+    name = "examples/checkpoints/restore_1_of_n_agents_from_checkpoint",
+    main = "examples/checkpoints/restore_1_of_n_agents_from_checkpoint.py",
+    tags = ["team:rllib", "exclusive", "examples", "examples_use_all_core", "no_main"],
+    size = "large",
+    srcs = ["examples/checkpoints/restore_1_of_n_agents_from_checkpoint.py"],
+    args = ["--enable-new-api-stack", "--num-agents=2", "--framework=torch", "--checkpoint-freq=20", "--checkpoint-at-end", "--num-cpus=4", "--algo=PPO"]
+)
 
 py_test(
     name = "examples/multi_agent/rock_paper_scissors_heuristic_vs_learned",
