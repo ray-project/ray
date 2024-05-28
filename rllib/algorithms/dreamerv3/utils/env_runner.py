@@ -326,7 +326,7 @@ class DreamerV3EnvRunner(EnvRunner):
                         self._states[i] = {k: s[i] for k, s in initial_states.items()}
                 to_module = {
                     Columns.STATE_IN: tree.map_structure(
-                        lambda s: tf.convert_to_tensor(s), states
+                        lambda s: tf.convert_to_tensor(s), batch(self._states)
                     ),
                     Columns.OBS: tf.convert_to_tensor(obs),
                     "is_first": tf.convert_to_tensor(is_first),
