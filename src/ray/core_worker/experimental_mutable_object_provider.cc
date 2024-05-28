@@ -100,11 +100,8 @@ void MutableObjectProvider::HandlePushMutableObject(
   {
     const ObjectID writer_object_id = ObjectID::FromBinary(request.writer_object_id());
     absl::MutexLock guard(&remote_writer_object_to_local_reader_lock_);
-    RAY_LOG(WARNING) << "HandlePushMutableObject A";
     auto it = remote_writer_object_to_local_reader_.find(writer_object_id);
-    RAY_LOG(WARNING) << "HandlePushMutableObject B";
     RAY_CHECK(it != remote_writer_object_to_local_reader_.end());
-    RAY_LOG(WARNING) << "HandlePushMutableObject C";
     info = it->second;
   }
   size_t data_size = request.data_size();
