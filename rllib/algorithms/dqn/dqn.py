@@ -16,7 +16,6 @@ import numpy as np
 
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
-from ray.rllib.algorithms.dqn.dqn_rainbow_learner import TD_ERROR_KEY
 from ray.rllib.algorithms.dqn.dqn_tf_policy import DQNTFPolicy
 from ray.rllib.algorithms.dqn.dqn_torch_policy import DQNTorchPolicy
 from ray.rllib.core.learner import Learner
@@ -64,6 +63,7 @@ from ray.rllib.utils.metrics import (
     REPLAY_BUFFER_UPDATE_PRIOS_TIMER,
     SAMPLE_TIMER,
     SYNCH_WORKER_WEIGHTS_TIMER,
+    TD_ERROR_KEY,
     TIMERS,
 )
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE
@@ -317,7 +317,7 @@ class DQNConfig(AlgorithmConfig):
             training_intensity: The intensity with which to update the model (vs
                 collecting samples from the env).
                 If None, uses "natural" values of:
-                `train_batch_size` / (`rollout_fragment_length` x `num_workers` x
+                `train_batch_size` / (`rollout_fragment_length` x `num_env_runners` x
                 `num_envs_per_env_runner`).
                 If not None, will make sure that the ratio between timesteps inserted
                 into and sampled from the buffer matches the given values.
@@ -325,7 +325,7 @@ class DQNConfig(AlgorithmConfig):
                 training_intensity=1000.0
                 train_batch_size=250
                 rollout_fragment_length=1
-                num_workers=1 (or 0)
+                num_env_runners=1 (or 0)
                 num_envs_per_env_runner=1
                 -> natural value = 250 / 1 = 250.0
                 -> will make sure that replay+train op will be executed 4x asoften as
@@ -662,7 +662,7 @@ class DQN(Algorithm):
                         num_items=self.config.train_batch_size,
                         n_step=self.config.n_step,
                         gamma=self.config.gamma,
-                        beta=self.config.replay_buffer_config["beta"],
+                        beta=self.config.replay_buffer_config.get("beta"),
                     )
 
                 # Perform an update on the buffer-sampled train batch.
@@ -700,6 +700,7 @@ class DQN(Algorithm):
                         },
                         reduce="sum",
                     )
+
                     # TODO (sven): Uncomment this once agent steps are available in the
                     #  Learner stats.
                     # self.metrics.log_dict(self.metrics.peek(

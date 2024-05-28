@@ -52,19 +52,19 @@ class TestEagerSupportPolicyGradient(unittest.TestCase):
         check_support(
             "DQN",
             {
-                "num_workers": 0,
+                "num_env_runners": 0,
                 "num_steps_sampled_before_learning_starts": 0,
             },
         )
 
     def test_ppo(self):
-        check_support("PPO", {"num_workers": 0})
+        check_support("PPO", {"num_env_runners": 0})
 
     def test_appo(self):
-        check_support("APPO", {"num_workers": 1, "num_gpus": 0})
+        check_support("APPO", {"num_env_runners": 1, "num_gpus": 0})
 
     def test_impala(self):
-        check_support("IMPALA", {"num_workers": 1, "num_gpus": 0}, test_eager=True)
+        check_support("IMPALA", {"num_env_runners": 1, "num_gpus": 0}, test_eager=True)
 
 
 class TestEagerSupportOffPolicy(unittest.TestCase):
@@ -78,7 +78,7 @@ class TestEagerSupportOffPolicy(unittest.TestCase):
         check_support(
             "DQN",
             {
-                "num_workers": 0,
+                "num_env_runners": 0,
                 "num_steps_sampled_before_learning_starts": 0,
             },
         )
@@ -87,7 +87,7 @@ class TestEagerSupportOffPolicy(unittest.TestCase):
         check_support(
             "SAC",
             {
-                "num_workers": 0,
+                "num_env_runners": 0,
                 "num_steps_sampled_before_learning_starts": 0,
             },
         )

@@ -86,7 +86,7 @@ class LearnerGroup:
 
         Args:
             config: The AlgorithmConfig object to use to configure this LearnerGroup.
-                Call the `resources(num_learner_workers=...)` method on your config to
+                Call the `learners(num_learners=...)` method on your config to
                 specify the number of learner workers to use.
                 Call the same method with arguments `num_cpus_per_learner` and/or
                 `num_gpus_per_learner` to configure the compute used by each
@@ -210,7 +210,7 @@ class LearnerGroup:
 
     @property
     def is_remote(self) -> bool:
-        return self.config.num_learner_workers > 0
+        return self.config.num_learners > 0
 
     @property
     def is_local(self) -> bool:
@@ -366,7 +366,7 @@ class LearnerGroup:
             if async_update:
                 raise ValueError(
                     "Cannot call `update_from_batch(update_async=True)` when running in"
-                    " local mode! Try setting `config.num_learner_workers > 0`."
+                    " local mode! Try setting `config.num_learners > 0`."
                 )
 
             results = [
@@ -938,7 +938,7 @@ class LearnerGroup:
         """Load the checkpoints of the modules being trained by this LearnerGroup.
 
            This method only needs to be called if the LearnerGroup is training
-           distributed learners (e.g num_learner_workers > 0).
+           distributed learners (e.g num_learners > 0).
 
         Args:
             marl_module_ckpt_dir: The path to the checkpoint for the

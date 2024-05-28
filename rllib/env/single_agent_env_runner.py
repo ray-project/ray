@@ -334,6 +334,10 @@ class SingleAgentEnvRunner(EnvRunner):
                         truncated=truncateds[env_index],
                         extra_model_outputs=extra_model_output,
                     )
+                    # Make the `on_episode_step` and `on_episode_end` callbacks (before
+                    # finalizing the episode object).
+                    self._make_on_episode_callback("on_episode_step", env_index)
+
                     # We have to perform an extra env-to-module pass here, just in case
                     # the user's connector pipeline performs (permanent) transforms
                     # on each observation (including this final one here). Without such
@@ -347,9 +351,7 @@ class SingleAgentEnvRunner(EnvRunner):
                             rl_module=self.module,
                             shared_data=self._shared_data,
                         )
-                    # Make the `on_episode_step` and `on_episode_end` callbacks (before
-                    # finalizing the episode object).
-                    self._make_on_episode_callback("on_episode_step", env_index)
+
                     self._make_on_episode_callback("on_episode_end", env_index)
 
                     # Then finalize (numpy'ize) the episode.
@@ -524,6 +526,25 @@ class SingleAgentEnvRunner(EnvRunner):
                     self._make_on_episode_callback(
                         "on_episode_step", env_index, episodes
                     )
+
+                    # We have to perform an extra env-to-module pass here, just in case
+                    # the user's connector pipeline performs (permanent) transforms
+                    # on each observation (including this final one here). Without such
+                    # a call and in case the structure of the observations change
+                    # sufficiently, the following `finalize()` call on the episode will
+                    # fail.
+                    if self.module is not None:
+                        self._env_to_module(
+                            episodes=[episodes[env_index]],
+                            explore=explore,
+                            rl_module=self.module,
+                            shared_data=_shared_data,
+                        )
+
+                    # Make the `on_episode_end` callback (before finalizing the episode,
+                    # but after(!) the last env-to-module connector call has been made.
+                    # -> All obs (even the terminal one) should have been processed now
+                    # (by the connector, if applicable).
                     self._make_on_episode_callback(
                         "on_episode_end", env_index, episodes
                     )
