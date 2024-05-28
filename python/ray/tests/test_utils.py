@@ -5,8 +5,10 @@ Unit/Integration Testing for python/_private/utils.py
 This currently expects to work for minimal installs.
 """
 
+import asyncio
 import pytest
 import logging
+import ray
 from ray._private.utils import (
     get_or_create_event_loop,
     parse_pg_formatted_resources_to_original,
@@ -15,6 +17,7 @@ from ray._private.utils import (
 )
 from unittest.mock import patch, mock_open
 import sys
+import time
 
 logger = logging.getLogger(__name__)
 
@@ -106,6 +109,30 @@ def test_get_current_node_cpu_model_name():
         "builtins.open", mock_open(read_data="processor: 0\nmodel name: Intel Xeon")
     ):
         assert get_current_node_cpu_model_name() == "Intel Xeon"
+
+
+@pytest.mark.asyncio
+async def test_list_named_actors_with_normal_task(shutdown_only):
+    # The following parameters are all designed to increase the 
+    # probability of reproducing the situation where 
+    # `list_named_actors`` gets stuck.
+    TEST_RANGE = 10
+    NORMAL_TASK_PER_ITEM = 100
+    LIST_NAMED_ACTORS_PER_ITEM = 10
+    for _ in range(TEST_RANGE):
+        time.sleep(1)
+        @ray.remote
+        def test():
+            return True
+        res = []
+        for i in range(NORMAL_TASK_PER_ITEM):
+            res.append(test.remote())
+        async def run():
+            for i in range(LIST_NAMED_ACTORS_PER_ITEM):
+                await asyncio.sleep(0)
+                ray.util.list_named_actors(True)
+        res.append(run())
+        await asyncio.gather(*res)
 
 
 if __name__ == "__main__":
