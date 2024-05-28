@@ -271,7 +271,9 @@ class PandasBlockAccessor(TableBlockAccessor):
     def to_arrow(self) -> "pyarrow.Table":
         import pyarrow
 
-        return pyarrow.table(self._table)
+        # Set `preserve_index=False` so that Arrow doesn't add a '__index_level_0__'
+        # column to the resulting table.
+        return pyarrow.Table.from_pandas(self._table, preserve_index=False)
 
     @staticmethod
     def numpy_to_block(
@@ -512,9 +514,7 @@ class PandasBlockAccessor(TableBlockAccessor):
             ret = pd.concat(blocks, ignore_index=True)
             columns, ascending = sort_key.to_pandas_sort_args()
             ret = ret.sort_values(by=columns, ascending=ascending)
-        return ret, PandasBlockAccessor(ret).get_metadata(
-            None, exec_stats=stats.build()
-        )
+        return ret, PandasBlockAccessor(ret).get_metadata(exec_stats=stats.build())
 
     @staticmethod
     def aggregate_combined_blocks(
@@ -626,9 +626,37 @@ class PandasBlockAccessor(TableBlockAccessor):
                 break
 
         ret = builder.build()
-        return ret, PandasBlockAccessor(ret).get_metadata(
-            None, exec_stats=stats.build()
-        )
+        return ret, PandasBlockAccessor(ret).get_metadata(exec_stats=stats.build())
 
     def block_type(self) -> BlockType:
         return BlockType.PANDAS
+
+
+def _estimate_dataframe_size(df: "pandas.DataFrame") -> int:
+    """Estimate the size of a pandas DataFrame.
+
+    This function is necessary because `DataFrame.memory_usage` doesn't count values in
+    columns with `dtype=object`.
+
+    The runtime complexity is linear in the number of values, so don't use this in
+    performance-critical code.
+
+    Args:
+        df: The DataFrame to estimate the size of.
+
+    Returns:
+        The estimated size of the DataFrame in bytes.
+    """
+    size = 0
+    for column in df.columns:
+        if df[column].dtype == object:
+            for item in df[column]:
+                if isinstance(item, str):
+                    size += len(item)
+                elif isinstance(item, np.ndarray):
+                    size += item.nbytes
+                else:
+                    size += 8  # pandas assumes object values are 8 bytes.
+        else:
+            size += df[column].nbytes
+    return size
