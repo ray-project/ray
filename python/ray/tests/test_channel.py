@@ -141,6 +141,40 @@ def test_put_different_meta(ray_start_regular):
     _test(np.random.rand(10))
 
 
+def test_multiple_channels_different_nodes(ray_start_cluster):
+    cluster = ray_start_cluster
+    # This node is for the driver.
+    cluster.add_node(num_cpus=0)
+    ray.init(address=cluster.address)
+    # This node is for the Reader actors.
+    cluster.add_node(num_cpus=1)
+
+    @ray.remote(num_cpus=1)
+    class Actor:
+        def __init__(self):
+            pass
+
+        def read(self, channel, val):
+            read_val = channel.begin_read()
+            if isinstance(val, np.ndarray):
+                assert np.array_equal(read_val, val)
+            else:
+                assert read_val == val
+            channel.end_read()
+
+    a = Actor.remote()
+    chan_a = ray_channel.Channel(None, [a], 1000)
+    chan_b = ray_channel.Channel(None, [a], 1000)
+    channels = [chan_a, chan_b]
+
+    val = np.random.rand(5)
+    for i in range(10):
+        for channel in channels:
+            channel.write(val)
+        for channel in channels:
+            ray.get(a.read.remote(channel, val))
+
+
 @pytest.mark.skipif(
     sys.platform != "linux" and sys.platform != "darwin",
     reason="Requires Linux or Mac.",
@@ -209,9 +243,9 @@ def test_resize_channel_on_different_nodes(ray_start_cluster):
     cluster.add_node(num_cpus=0)
     ray.init(address=cluster.address)
     # This node is for the Reader actors.
-    cluster.add_node(num_cpus=10)
+    cluster.add_node(num_cpus=1)
 
-    @ray.remote(num_cpus=10)
+    @ray.remote(num_cpus=1)
     class Actor:
         def __init__(self):
             pass
