@@ -191,7 +191,7 @@ class TPUAcceleratorManager(AcceleratorManager):
                 TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR
             ] = TPU_CHIPS_PER_HOST_BOUNDS_2_CHIP_CONFIG
             os.environ[TPU_HOST_BOUNDS_ENV_VAR] = TPU_SINGLE_HOST_BOUNDS
-        elif num_visible_tpu_chips == 4:
+        elif num_visible_tpu_chips == 4 or num_visible_tpu_chips == 8:
             os.environ[TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR] = None
             os.environ[TPU_HOST_BOUNDS_ENV_VAR] = None
 
