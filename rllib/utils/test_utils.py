@@ -1392,7 +1392,7 @@ def run_rllib_example_script_experiment(
         config.framework(args.framework)
 
         # Add an env specifier (only if not already set in config)?
-        if args.env is not None:
+        if args.env is not None and config.env is None:
             config.environment(args.env)
 
         # Enable the new API stack?
