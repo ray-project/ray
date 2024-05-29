@@ -32,7 +32,7 @@ class Module:
         if module in self._visited:
             return
         self._visited.add(module.__hash__)
-        aliases = self._get_alies()
+        aliases = self._get_aliases()
 
         if not self._is_valid_child(module):
             return
@@ -64,8 +64,16 @@ class Module:
 
         return
 
-    def _fullname(self, module: ModuleType, aliases: Dict[str, str] = {}) -> str:
-        return f"{aliases.get(module.__name__, module.__name__)}.{module.__qualname__}"
+    def _fullname(self, attribute: ModuleType, aliases: Dict[str, str]) -> str:
+        module = attribute.__module__
+        name = attribute.__qualname__
+        fullname = f"{module}.{name}"
+        if fullname in aliases:
+            return aliases[fullname]
+        if module in aliases:
+            return f"{aliases[module]}.{name}"
+
+        return fullname
 
     def _is_valid_child(self, module: ModuleType) -> bool:
         """
@@ -83,16 +91,19 @@ class Module:
     def _get_annotation_type(self, module: ModuleType) -> AnnotationType:
         return AnnotationType(module._annotated_type.value)
 
-    def _get_alies(self) -> Dict[str, str]:
+    def _get_aliases(self) -> Dict[str, str]:
         """
         In the __init__ file of the root module, it might define aliases for the module.
         If an alias exists, we should use the alias instead of the module name.
         """
         aliases = {}
-        for child in dir(self.__module__):
-            attribute = getattr(self.__module__, child)
-            fullname = self._fullname(attribute)
-            alias = f"{self.__module__.__name}.{attribute.__qualname__}"
+        for child in dir(self._module):
+            attribute = getattr(self._module, child)
+            if not inspect.isclass(attribute) and not inspect.isfunction(attribute):
+                # only classes and functions can be aliased
+                continue
+            fullname = f"{attribute.__module__}.{attribute.__qualname__}"
+            alias = f"{self._module.__name__}.{attribute.__qualname__}"
             aliases[fullname] = alias
 
         return aliases
