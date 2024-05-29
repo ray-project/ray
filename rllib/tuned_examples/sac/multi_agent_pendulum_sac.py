@@ -25,12 +25,12 @@ register_env(
 config = (
     SACConfig()
     .environment(env="multi_agent_pendulum")
-    .env_runners(num_env_runners=2)
+    .env_runners(num_env_runners=0)
     .training(
         initial_alpha=1.001,
         lr=3e-4,
         target_entropy="auto",
-        n_step=1,
+        n_step=1,#[1, 3],
         tau=0.005,
         train_batch_size_per_learner=256,
         target_network_update_freq=1,
@@ -38,13 +38,13 @@ config = (
             "type": "MultiAgentEpisodeReplayBuffer",
             "capacity": 100000,
         },
-        num_steps_sampled_before_learning_starts=1024,
+        num_steps_sampled_before_learning_starts=256 * args.num_agents,
     )
     .rl_module(
         model_config_dict={
             "fcnet_hiddens": [256, 256],
-            "fcnet_activation": "tanh",
-            "fcnet_weights_initializer": nn.init.xavier_uniform_,
+            "fcnet_activation": "relu",
+            # "fcnet_weights_initializer": nn.init.xavier_uniform_,
             # "post_fcnet_hiddens": [],
             # "post_fcnet_activation": None,
             # "post_fcnet_weights_initializer": nn.init.orthogonal_,

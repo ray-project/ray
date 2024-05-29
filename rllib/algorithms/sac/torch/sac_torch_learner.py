@@ -299,33 +299,22 @@ class SACTorchLearner(DQNRainbowTorchLearner, SACLearner):
     def compute_gradients(
         self, loss_per_module: Dict[str, TensorType], **kwargs
     ) -> ParamDict:
-        # Set all grads to `None`.
-        for optim in self._optimizer_parameters:
-            optim.zero_grad(set_to_none=True)
-
         grads = {}
-
         for module_id in set(loss_per_module.keys()) - {ALL_MODULES}:
-            config = self.config.get_config_for_module(module_id)
-
             for optim_name, optim in self.get_optimizers_for_module(module_id):
+                # Set all grads to `None`.
+                optim.zero_grad(set_to_none=True)
 
-            # Calculate gradients for each loss by its optimizer.
-            # TODO (sven): Maybe we rename to `actor`, `critic`. We then also
-            #  need to either add to or change in the `Learner` constants.
-            for component in (
-                ["policy", "qf"] + (["qf_twin"] if config.twin_q else []) + ["alpha"]
-            ):
-                self.metrics.peek(module_id, component + "_loss").backward(
+                # Calculate gradients for each loss by its optimizer.
+                self.metrics.peek(module_id, optim_name + "_loss").backward(
                     retain_graph=True
                 )
                 grads.update(
                     {
                         pid: p.grad
                         for pid, p in self.filter_param_dict_for_optimizer(
-                            self._params, self.get_optimizer(module_id, component)
+                            self._params, optim
                         ).items()
                     }
                 )
-
         return grads

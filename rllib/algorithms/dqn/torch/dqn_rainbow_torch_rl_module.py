@@ -17,8 +17,8 @@ from ray.rllib.core.columns import Columns
 from ray.rllib.core.models.base import Encoder, ENCODER_OUT, Model
 from ray.rllib.core.rl_module.torch.torch_rl_module import TorchRLModule
 from ray.rllib.core.rl_module.rl_module import RLModule
-from ray.rllib.core.rl_module.rl_module_with_target_networks_interface import (
-    RLModuleWithTargetNetworksInterface,
+from ray.rllib.core.rl_module.torch.torch_rl_module_with_target_networks_interface import (  # noqa
+    TorchRLModuleWithTargetNetworksInterface,
 )
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
@@ -27,7 +27,11 @@ from ray.rllib.utils.typing import NetworkType, TensorType, TensorStructType
 torch, nn = try_import_torch()
 
 
-class DQNRainbowTorchRLModule(TorchRLModule, DQNRainbowRLModule):
+class DQNRainbowTorchRLModule(
+    TorchRLModule,
+    DQNRainbowRLModule,
+    TorchRLModuleWithTargetNetworksInterface,
+):
     framework: str = "torch"
 
     @override(DQNRainbowRLModule)
@@ -53,6 +57,19 @@ class DQNRainbowTorchRLModule(TorchRLModule, DQNRainbowRLModule):
 
             # Set the expected and unexpected keys for the inference-only module.
             self._set_inference_only_state_dict_keys()
+
+    @override(TorchRLModuleWithTargetNetworksInterface)
+    def get_target_network_pairs(self) -> List[Tuple[NetworkType, NetworkType]]:
+        """Returns target Q and Q network(s) to update the target network(s)."""
+        return [(self.target_encoder, self.encoder), (self.af_target, self.af)] + (
+            # If we have a dueling architecture we need to update the value stream
+            # target, too.
+            [
+                (self.vf_target, self.vf),
+            ]
+            if self.uses_dueling
+            else []
+        )
 
     # TODO (simon): Refactor to parent method.
     @override(TorchRLModule)
@@ -294,19 +311,6 @@ class DQNRainbowTorchRLModule(TorchRLModule, DQNRainbowRLModule):
         output["probs"] = prob_per_action_per_atom
 
         return output
-
-    @override(RLModuleWithTargetNetworksInterface)
-    def get_target_network_pairs(self) -> List[Tuple[NetworkType, NetworkType]]:
-        """Returns target Q and Q network(s) to update the target network(s)."""
-        return [(self.target_encoder, self.encoder), (self.af_target, self.af)] + (
-            # If we have a dueling architecture we need to update the value stream
-            # target, too.
-            [
-                (self.vf_target, self.vf),
-            ]
-            if self.uses_dueling
-            else []
-        )
 
     # TODO (simon): Test, if providing the function with a `return_probs`
     # improves performance significantly.

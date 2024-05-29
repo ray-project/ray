@@ -1,4 +1,4 @@
-from typing import Mapping
+from typing import Dict
 
 from ray.rllib.algorithms.dqn.dqn import DQNConfig
 from ray.rllib.algorithms.dqn.dqn_rainbow_learner import (
@@ -42,7 +42,7 @@ class DQNRainbowTorchLearner(DQNRainbowLearner, TorchLearner):
         module_id: ModuleID,
         config: DQNConfig,
         batch: NestedDict,
-        fwd_out: Mapping[str, TensorType]
+        fwd_out: Dict[str, TensorType]
     ) -> TensorType:
 
         q_curr = fwd_out[QF_PREDS]
@@ -253,25 +253,6 @@ class DQNRainbowTorchLearner(DQNRainbowLearner, TorchLearner):
             )
 
         return total_loss
-
-    @override(DQNRainbowLearner)
-    def _update_module_target_networks(
-        self, module_id: ModuleID, config: DQNConfig
-    ) -> None:
-        module = self.module[module_id]
-
-        # Note, we have pairs of encoder and head networks.
-        target_current_network_pairs = module.get_target_network_pairs()
-        for target_network, current_network in target_current_network_pairs:
-            # Get the current parameters from the Q network.
-            current_state_dict = current_network.state_dict()
-            # Use here Polyak averaging.
-            new_state_dict = {
-                k: config.tau * current_state_dict[k] + (1 - config.tau) * v
-                for k, v in target_network.state_dict().items()
-            }
-            # Apply the new parameters to the target Q network.
-            target_network.load_state_dict(new_state_dict)
 
     def _reset_noise(self) -> None:
         # Reset the noise for all noisy modules, if necessary.
