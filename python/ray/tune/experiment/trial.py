@@ -53,7 +53,6 @@ from ray.tune.result import (
 from ray.tune.trainable.metadata import _TrainingRunMetadata
 from ray.tune.utils import date_str, flatten_dict
 from ray.tune.utils.serialization import TuneFunctionDecoder, TuneFunctionEncoder
-from ray.util import log_once
 from ray.util.annotations import Deprecated, DeveloperAPI
 
 DEBUG_PRINT_INTERVAL = 5
@@ -852,19 +851,18 @@ class Trial:
         if result.get(DONE):
             return True
 
-        for criterion, stop_value in self.stopping_criterion.items():
-            if isinstance(criterion, dict):
+        for criteria, stop_value in self.stopping_criterion.items():
+            if criteria not in result:
+                raise TuneError(
+                    "Stopping criteria {} not provided in result dict. Keys "
+                    "are {}.".format(criteria, list(result.keys()))
+                )
+            elif isinstance(criteria, dict):
                 raise ValueError(
                     "Stopping criteria is now flattened by default. "
                     "Use forward slashes to nest values `key1/key2/key3`."
                 )
-            elif criterion not in result:
-                if log_once("tune_trial_stop_criterion_not_found"):
-                    logger.warning(
-                        f"Stopping criterion {criterion} not found in result dict. "
-                        f"Available keys are {list(result.keys())}."
-                    )
-            elif result[criterion] >= stop_value:
+            elif result[criteria] >= stop_value:
                 return True
         return False
 
