@@ -478,7 +478,7 @@ class LearnerGroup:
                 results = tree.flatten_up_to(
                     [[None] * len(r) for r in results], results
                 )
-            self._metrics_logger_old_and_hybrid_stack.log_n_dicts(results)
+            self._metrics_logger_old_and_hybrid_stack.merge_and_log_n_dicts(results)
             results = self._metrics_logger_old_and_hybrid_stack.reduce(
                 # We are returning to a client (Algorithm) that does NOT make any
                 # use of MetricsLogger (or Stats) -> Convert all values to non-Stats
@@ -577,7 +577,7 @@ class LearnerGroup:
         # the existing behavior of returning an already reduced dict (as if we had a
         # reduce_fn).
         if not self.config.enable_env_runner_and_connector_v2:
-            self._metrics_logger_old_and_hybrid_stack.log_n_dicts(results)
+            self._metrics_logger_old_and_hybrid_stack.merge_and_log_n_dicts(results)
             results = self._metrics_logger_old_and_hybrid_stack.reduce(
                 return_stats_obj=False
             )
