@@ -35,7 +35,13 @@ routes = dashboard_optional_utils.DashboardHeadRouteTable
 # Please reference the aiohttp docs here:
 # https://docs.aiohttp.org/en/stable/web_reference.html#aiohttp.web.UrlDispatcher.add_static
 ENV_VAR_FOLLOW_SYMLINKS = "RAY_DASHBOARD_BUILD_FOLLOW_SYMLINKS"
-FOLLOW_SYMLINKS_ENABLED = os.environ.get(ENV_VAR_FOLLOW_SYMLINKS, "0") == "1"
+FOLLOW_SYMLINKS_ENABLED = os.environ.get(ENV_VAR_FOLLOW_SYMLINKS) == "1"
+if FOLLOW_SYMLINKS_ENABLED:
+    logger.warning(
+        "Enabling RAY_DASHBOARD_BUILD_FOLLOW_SYMLINKS is not recommended as it "
+        "allows symlinks to directories outside the dashboard build folder. "
+        "You may accidentally expose files on your system outside of these directories."
+    )
 
 
 def setup_static_dir():
