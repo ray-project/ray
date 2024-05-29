@@ -107,12 +107,7 @@ class SharedMemoryType(ChannelOutputType):
             A ChannelInterface that can be used to pass data
                 of this type.
         """
-        # TODO: Create MultiChannel if there are some readers belong to the same actor
-        # as the writer
-        for reader in readers:
-            if writer == reader:
-                return LocalChannel(readers)
-        return Channel(writer, readers)
+        return MultiChannel(writer, readers)
 
 
 @PublicAPI(stability="alpha")
@@ -352,3 +347,75 @@ class Channel(ChannelInterface):
         if self.is_local_node(self._reader_node_id):
             self.ensure_registered_as_reader()
         self._worker.core_worker.experimental_channel_set_error(self._reader_ref)
+
+
+@PublicAPI(stability="alpha")
+class MultiChannel(ChannelInterface):
+    def __init__(
+        self,
+        writer: Optional[ray.actor.ActorHandle],
+        readers: List[Optional[ray.actor.ActorHandle]],
+        local_channel: Optional[LocalChannel] = None,
+        remote_channel: Optional[Channel] = None,
+    ):
+        self._writer = writer
+        self._readers = readers
+        self._local_channel = local_channel
+        self._remote_channel = remote_channel
+
+        remote_readers = []
+        for reader in self._readers:
+            if self._writer != reader:
+                remote_readers.append(reader)
+        # There are some local readers which are the same Ray actor as the writer.
+        # Create a local channel for the writer and the local readers.
+        if not self._local_channel and len(remote_readers) != len(self._readers):
+            self._local_channel = LocalChannel(self._writer)
+        # There are some remote readers which are not the same Ray actor as the writer.
+        # Create a shared memory channel for the writer and the remote readers.
+        if not self._remote_channel and len(remote_readers) != 0:
+            self._remote_channel = Channel(self._writer, remote_readers)
+        assert hasattr(self, "_local_channel") or hasattr(self, "_remote_channel")
+
+    def ensure_registered_as_writer(self) -> None:
+        if self._remote_channel:
+            self._remote_channel.ensure_registered_as_writer()
+
+    def ensure_registered_as_reader(self) -> None:
+        if self._remote_channel:
+            self._remote_channel.ensure_registered_as_reader()
+
+    def __reduce__(self):
+        return MultiChannel, (
+            self._writer,
+            self._readers,
+            self._local_channel,
+            self._remote_channel,
+        )
+
+    def write(self, value: Any):
+        if self._local_channel:
+            self._local_channel.write(value)
+        if self._remote_channel:
+            self._remote_channel.write(value)
+
+    def use_local_channel(self):
+        current_actor_id = ray.get_runtime_context().get_actor_id()
+        if not current_actor_id or not self._writer:
+            # We are calling from the driver, or the writer is the driver.
+            return False
+        return current_actor_id == self._writer._actor_id.hex()
+
+    def begin_read(self) -> Any:
+        if self.use_local_channel():
+            return self._local_channel.begin_read()
+        else:
+            return self._remote_channel.begin_read()
+
+    def end_read(self):
+        if not self.use_local_channel():
+            self._remote_channel.end_read()
+
+    def close(self) -> None:
+        if not self.use_local_channel():
+            self._remote_channel.close()

@@ -1,5 +1,6 @@
+from typing import Any
+
 import ray
-from typing import Any, List, Optional
 from ray.experimental.channel.common import ChannelInterface
 from ray.util.annotations import PublicAPI
 
@@ -8,9 +9,12 @@ from ray.util.annotations import PublicAPI
 class LocalChannel(ChannelInterface):
     def __init__(
         self,
-        readers: List[Optional[ray.actor.ActorHandle]],
+        actor_handle: ray.actor.ActorHandle,
     ):
-        self._readers = readers
+        # TODO (kevin85421): Currently, if we don't pass `actor_handle` to
+        # `LocalChannel`, the actor will die due to the reference count of
+        # `actor_handle` is 0. We should fix this issue in the future.
+        self._actor_handle = actor_handle
 
     def ensure_registered_as_writer(self) -> None:
         pass
@@ -19,9 +23,7 @@ class LocalChannel(ChannelInterface):
         pass
 
     def __reduce__(self):
-        return LocalChannel, (
-            self._readers,
-        )
+        return LocalChannel, (self._actor_handle,)
 
     def write(self, value: Any):
         self.data = value
