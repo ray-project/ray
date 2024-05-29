@@ -109,13 +109,12 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   void SetNodeDraining(const NodeID &node_id,
                        std::shared_ptr<rpc::autoscaler::DrainNodeRequest> request);
 
-  /// Remove from alive nodes.
+  /// Remove a node from alive nodes. The node's death information will also be set.
   ///
   /// \param node_id The ID of the node to be removed.
-  /// \param is_intended False if this is triggered by `node_failure_detector_`, else
-  /// True.
+  /// \param node_death_info The death info of the node to set.
   std::shared_ptr<rpc::GcsNodeInfo> RemoveNode(const NodeID &node_id,
-                                               bool is_intended = false);
+                                               const rpc::NodeDeathInfo &node_death_info);
 
   /// Get alive node by ID.
   ///
