@@ -456,7 +456,9 @@ class PPO(Algorithm):
                 return {}
 
             # Reduce EnvRunner metrics over the n EnvRunners.
-            self.metrics.log_n_dicts(env_runner_results, key=ENV_RUNNER_RESULTS)
+            self.metrics.merge_and_log_n_dicts(
+                env_runner_results, key=ENV_RUNNER_RESULTS
+            )
             # Log lifetime counts for env- and agent steps.
             self.metrics.log_dict(
                 {
@@ -483,7 +485,7 @@ class PPO(Algorithm):
                 ),
                 num_iters=self.config.num_sgd_iter,
             )
-            self.metrics.log_n_dicts(learner_results, key=LEARNER_RESULTS)
+            self.metrics.merge_and_log_n_dicts(learner_results, key=LEARNER_RESULTS)
             self.metrics.log_dict(
                 {
                     NUM_ENV_STEPS_TRAINED_LIFETIME: self.metrics.peek(
@@ -546,7 +548,7 @@ class PPO(Algorithm):
                 sampled_kl_values=kl_dict,
                 timestep=self.metrics.peek(NUM_ENV_STEPS_SAMPLED_LIFETIME),
             )
-            self.metrics.log_n_dicts(additional_results, key=LEARNER_RESULTS)
+            self.metrics.merge_and_log_n_dicts(additional_results, key=LEARNER_RESULTS)
 
         return self.metrics.reduce()
 
