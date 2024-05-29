@@ -93,6 +93,7 @@ from ray.rllib.utils.metrics import (
     ALL_MODULES,
     ENV_RUNNER_RESULTS,
     ENV_RUNNER_SAMPLING_TIMER,
+    EPISODE_LEN_MEAN,
     EPISODE_RETURN_MAX,
     EPISODE_RETURN_MEAN,
     EPISODE_RETURN_MIN,
@@ -487,6 +488,10 @@ class Algorithm(Trainable, AlgorithmBase):
                 NUM_AGENT_STEPS_SAMPLED_LIFETIME: {DEFAULT_AGENT_ID: 0},
                 NUM_ENV_STEPS_TRAINED_LIFETIME: 0,
                 NUM_AGENT_STEPS_TRAINED_LIFETIME: {DEFAULT_AGENT_ID: 0},
+                (ENV_RUNNER_RESULTS, EPISODE_RETURN_MAX): np.nan,
+                (ENV_RUNNER_RESULTS, EPISODE_RETURN_MEAN): np.nan,
+                (ENV_RUNNER_RESULTS, EPISODE_RETURN_MIN): np.nan,
+                (ENV_RUNNER_RESULTS, EPISODE_LEN_MEAN): np.nan,
             },
             reduce="sum",
         )
@@ -542,7 +547,7 @@ class Algorithm(Trainable, AlgorithmBase):
         # (although their values may be nan), so that Tune doesn't complain
         # when we use these as stopping criteria.
         self.evaluation_metrics = {
-            "evaluation": {
+            EVALUATION_RESULTS: {
                 ENV_RUNNER_RESULTS: {
                     EPISODE_RETURN_MAX: np.nan,
                     EPISODE_RETURN_MIN: np.nan,
