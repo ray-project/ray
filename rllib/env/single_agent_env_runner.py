@@ -4,6 +4,7 @@ import tree
 
 from collections import defaultdict
 from functools import partial
+import numpy as np
 from typing import DefaultDict, Dict, List, Optional
 
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
@@ -618,6 +619,13 @@ class SingleAgentEnvRunner(EnvRunner):
             clear_on_reduce=True,
         )
 
+        # If no episodes at all, log NaN stats.
+        if (
+            len(self._done_episodes_for_metrics) == 0
+            and self.metrics.peek(EPISODE_LEN_MEAN, default=-1) == -1
+        ):
+            self._log_episode_metrics(np.nan, np.nan, np.nan)
+
         # Now that we have logged everything, clear cache of done episodes.
         self._done_episodes_for_metrics.clear()
 
@@ -802,7 +810,7 @@ class SingleAgentEnvRunner(EnvRunner):
 
     def _log_episode_metrics(self, length, ret, sec):
         # Log general episode metrics.
-        # To mimick the old API stack behavior, we'll use `window` here for
+        # To mimic the old API stack behavior, we'll use `window` here for
         # these particular stats (instead of the default EMA).
         win = self.config.metrics_num_episodes_for_smoothing
         self.metrics.log_value(EPISODE_LEN_MEAN, length, window=win)

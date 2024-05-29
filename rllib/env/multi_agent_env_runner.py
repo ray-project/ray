@@ -3,6 +3,7 @@ import logging
 
 from collections import defaultdict
 from functools import partial
+import numpy as np
 from typing import DefaultDict, Dict, List, Optional
 
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
@@ -623,11 +624,12 @@ class MultiAgentEnvRunner(EnvRunner):
                 module_episode_returns,
             )
 
-        # TODO (simon): This results in hundreds of warnings in the logs
-        # b/c reducing over NaNs is not supported.
         # # If no episodes at all, log NaN stats.
-        # if len(self._done_episodes_for_metrics) == 0:
-        #     self._log_episode_metrics(np.nan, np.nan, np.nan)
+        if (
+            len(self._done_episodes_for_metrics) == 0
+            and self.metrics.peek(EPISODE_LEN_MEAN, default=-1) == -1
+        ):
+            self._log_episode_metrics(np.nan, np.nan, np.nan)
 
         # Log num episodes counter for this iteration.
         self.metrics.log_value(
