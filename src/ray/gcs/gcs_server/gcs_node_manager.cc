@@ -382,7 +382,6 @@ void GcsNodeManager::OnNodeFailure(const NodeID &node_id,
       RAY_CHECK_OK(gcs_publisher_->PublishNodeInfo(node_id, *node_info_delta, nullptr));
     };
     RAY_CHECK_OK(gcs_table_storage_->NodeTable().Put(node_id, *node, on_done));
-
   } else if (node_table_updated_callback != nullptr) {
     node_table_updated_callback(Status::OK());
   }

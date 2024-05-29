@@ -112,7 +112,9 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   /// Remove a node from alive nodes. The node's death information will also be set.
   ///
   /// \param node_id The ID of the node to be removed.
-  /// \param node_death_info The death info of the node to set.
+  /// \param node_death_info The node death info to set.
+  /// \return The removed node, with death info set. If the node is not found, return
+  /// nullptr.
   std::shared_ptr<rpc::GcsNodeInfo> RemoveNode(const NodeID &node_id,
                                                const rpc::NodeDeathInfo &node_death_info);
 
