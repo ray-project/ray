@@ -1,6 +1,8 @@
+import uuid
 from typing import Any
 
 import ray
+from ray.experimental.channel import ChannelContext
 from ray.experimental.channel.common import ChannelInterface
 from ray.util.annotations import PublicAPI
 
@@ -15,6 +17,7 @@ class LocalChannel(ChannelInterface):
         # `LocalChannel`, the actor will die due to the reference count of
         # `actor_handle` is 0. We should fix this issue in the future.
         self._actor_handle = actor_handle
+        self.channel_id = str(uuid.uuid4())
 
     def ensure_registered_as_writer(self) -> None:
         pass
@@ -26,13 +29,19 @@ class LocalChannel(ChannelInterface):
         return LocalChannel, (self._actor_handle,)
 
     def write(self, value: Any):
-        self.data = value
+        # Because both the reader and writer are in the same worker process,
+        # we can directly store the data in the context instead of storing
+        # it in the channel object. This reduces the serialization overhead of `value`.
+        ctx = ChannelContext.get_current().serialization_context
+        ctx.set_data(self.channel_id, value)
 
     def begin_read(self) -> Any:
-        return self.data
+        ctx = ChannelContext.get_current().serialization_context
+        return ctx.get_data(self.channel_id)
 
     def end_read(self):
         pass
 
     def close(self) -> None:
-        pass
+        ctx = ChannelContext.get_current().serialization_context
+        ctx.reset_data(self.channel_id)
