@@ -203,7 +203,7 @@ class ResourceManager:
         """Return the downstream fraction of the given operator."""
         return self._downstream_fraction[op]
 
-    def get_downstream_object_store_memory(self, op: PhysicalOperator) -> int:
+    def get_downstream_object_store_memory(self, op: PhysicalOperator) -> float:
         """Return the downstream object store memory usage of the given operator."""
         return self._downstream_object_store_memory[op]
 
@@ -348,7 +348,7 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         # the pending task outputs, and/or op's internal output buffers (the latter can
         # happen when `preserve_order=True`).
         # Then we'll have no budget to pull blocks from the op.
-        self._reserved_for_op_outputs: Dict[PhysicalOperator, int] = {}
+        self._reserved_for_op_outputs: Dict[PhysicalOperator, float] = {}
         # Total shared resources.
         self._total_shared = ExecutionResources.zero()
         # Resource budgets for each operator, excluding `_reserved_for_op_outputs`.
@@ -479,7 +479,7 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
                 return True
         return False
 
-    def _get_op_outputs_usage_with_downstream(self, op: PhysicalOperator) -> int:
+    def _get_op_outputs_usage_with_downstream(self, op: PhysicalOperator) -> float:
         """Get the outputs memory usage of the given operator, including the downstream
         ineligible operators.
         """
