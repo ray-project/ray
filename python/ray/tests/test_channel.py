@@ -141,6 +141,11 @@ def test_put_different_meta(ray_start_regular):
     _test(np.random.rand(10))
 
 
+"""
+Tests that multiple channels can be used at the same time between two nodes.
+"""
+
+
 def test_multiple_channels_different_nodes(ray_start_cluster):
     cluster = ray_start_cluster
     # This node is for the driver.

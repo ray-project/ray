@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_MAX_BUFFER_SIZE = int(100 * 1e6)  # 100 mB
 # The min buffer size must be large enough to at least fit an instance of the
-# ResizeChannel class along with any metadata.
+# _ResizeChannel class along with any metadata.
 MIN_BUFFER_SIZE = int(1000)  # 1000 bytes
 
 
@@ -83,8 +83,15 @@ def _create_channel_ref(
     return object_ref
 
 
-class ResizeChannel:
-    def __init__(self, reader_ref):
+class _ResizeChannel:
+    """
+    When a channel must be resized, the channel backing store must be resized on both
+    the writer and the reader nodes. The writer first resizes its own backing store. The
+    writer then uses an instance of this class as a sentinel value to tell the reader to
+    resize its own backing store. The class instance is sent through the channel.
+    """
+
+    def __init__(self, reader_ref: "ray.ObjectRef"):
         self._reader_ref = reader_ref
 
 
@@ -230,7 +237,7 @@ class Channel(ChannelInterface):
                         raise NotImplementedError(
                             "All readers must be on the same node for now."
                         )
-                self.create_reader_ref(readers, typ.buffer_size_bytes)
+                self._create_reader_ref(readers, typ.buffer_size_bytes)
 
             is_creator = True
         else:
@@ -264,7 +271,11 @@ class Channel(ChannelInterface):
             self.ensure_registered_as_writer()
             assert self._reader_ref is not None
 
-    def create_reader_ref(self, readers, buffer_size_bytes):
+    def _create_reader_ref(
+        self, readers: List[Optional["ray.actor.ActorHandle"]], buffer_size_bytes: int
+    ):
+        # TODO(jhumphri): Free the current reader ref once the reference to it is
+        # destroyed below.
         if self.is_remote():
             fn = readers[0].__ray_call__
             self._reader_ref = ray.get(
@@ -272,6 +283,10 @@ class Channel(ChannelInterface):
             )
         else:
             self._reader_ref = self._writer_ref
+
+        # We need to register the new writer_ref.
+        self._writer_registered = False
+        self.ensure_registered_as_writer()
 
     @staticmethod
     def is_local_node(node_id):
@@ -351,7 +366,7 @@ class Channel(ChannelInterface):
             self._reader_ref,
         )
 
-    def resize_channel_if_needed(self, serialized_value):
+    def _resize_channel_if_needed(self, serialized_value: str):
         # serialized_value.total_bytes *only* includes the size of the data. It does not
         # include the size of the metadata, so we must account for the size of the
         # metadata explicitly.
@@ -359,20 +374,16 @@ class Channel(ChannelInterface):
         if size > self._typ.buffer_size_bytes:
             # Now make the channel backing store larger.
             self._typ.buffer_size_bytes = size
-            # TODO(jhumphri): I assume the current writer ref object is automatically
-            # freed when the reference to it is destroyed in the line below?
+            # TODO(jhumphri): Free the current writer ref once the reference to it is
+            # destroyed below.
             prev_writer_ref = self._writer_ref
             self._writer_ref = _create_channel_ref(self, self._typ.buffer_size_bytes)
 
-            self.create_reader_ref(self._readers, self._typ.buffer_size_bytes)
-
-            # We need to register the new writer_ref.
-            self._writer_registered = False
-            self.ensure_registered_as_writer()
+            self._create_reader_ref(self._readers, self._typ.buffer_size_bytes)
 
             # Write a special message to the channel so that the readers know to
             # stop using the current reader_ref.
-            special_message = ResizeChannel(self._reader_ref)
+            special_message = _ResizeChannel(self._reader_ref)
             special_message_serialized = (
                 self._worker.get_serialization_context().serialize(special_message)
             )
@@ -402,7 +413,7 @@ class Channel(ChannelInterface):
         else:
             serialized_value = value
 
-        self.resize_channel_if_needed(serialized_value)
+        self._resize_channel_if_needed(serialized_value)
 
         self._worker.core_worker.experimental_channel_put_serialized(
             serialized_value,
@@ -414,7 +425,7 @@ class Channel(ChannelInterface):
         self.ensure_registered_as_reader()
         ret = ray.get(self._reader_ref)
 
-        if isinstance(ret, ResizeChannel):
+        if isinstance(ret, _ResizeChannel):
             # The writer says we need to update the channel backing store (due to a
             # resize).
             self._worker.core_worker.experimental_channel_read_release(
