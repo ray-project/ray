@@ -63,13 +63,11 @@ class ResourceManager:
         ctx = DataContext.get_current()
 
         if ctx.op_resource_reservation_enabled:
-            should_enable = True
-            for op in topology:
-                # We'll enable memory reservation if all operators have
-                # implemented accurate memory accounting.
-                if not op.implements_accurate_memory_accounting():
-                    should_enable = False
-                    break
+            # We'll enable memory reservation if all operators have
+            # implemented accurate memory accounting.
+            should_enable = all(
+                op.implements_accurate_memory_accounting() for op in topology
+            )
             if should_enable:
                 self._op_resource_allocator = ReservationOpResourceAllocator(
                     self, ctx.op_resource_reservation_ratio
@@ -126,9 +124,9 @@ class ResourceManager:
             f = (1.0 + num_ops_so_far) / max(1.0, num_ops_total - 1.0)
             num_ops_so_far += 1
             self._downstream_fraction[op] = min(1.0, f)
-            self._downstream_object_store_memory[
-                op
-            ] = self._global_usage.object_store_memory
+            self._downstream_object_store_memory[op] = (
+                self._global_usage.object_store_memory
+            )
 
             # Update operator's object store usage, which is used by
             # DatasetStats and updated on the Ray Data dashboard.
@@ -249,7 +247,7 @@ class OpResourceAllocator(ABC):
 class ReservationOpResourceAllocator(OpResourceAllocator):
     """An OpResourceAllocator implementation that reserves resources for each operator.
 
-    This class reserves memory and CPU resources for eligible operators, and consider
+    This class reserves memory and CPU resources for eligible operators, and considers
     runtime resource usages to limit the resources that each operator can use.
 
     It works in the following way:
@@ -368,8 +366,6 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
 
     def _is_op_eligible(self, op: PhysicalOperator) -> bool:
         """Whether the op is eligible for memory reservation."""
-        # Only consider operators that have enabled throttling
-        # and hasn't completed.
         return not op.throttling_disabled() and not op.completed()
 
     def _get_eligible_ops(self) -> List[PhysicalOperator]:
