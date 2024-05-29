@@ -19,7 +19,7 @@ GcsClient. It it natively async and has the same semantics as the C++ GcsClient.
 - [x] InternalKV timeout_ms argument (https://github.com/ray-project/ray/pull/45444)
 - [x] InternalKV multi-get (https://github.com/ray-project/ray/pull/45444)
 - [x] InternalKV().Del() return num_deleted (https://github.com/ray-project/ray/pull/45451)
-- [ ] GcsClient ctor standalone from Ray CoreWorker
+- [x] GcsClient ctor standalone from Ray CoreWorker
 (here is when we can merge this PR)
 - [ ] Nodes().CheckAlive (https://github.com/ray-project/ray/pull/45451)
 - [ ] RuntimeEnvGcsService::PinRuntimeEnvURI
@@ -152,7 +152,7 @@ cdef class MyGcsClient:
             CRayStatus status
         with nogil:
             status = self.inner.get().InternalKV().MultiGet(ns, c_keys, timeout_ms, values)
-        
+
         check_status(status)
 
         result = {}
@@ -194,7 +194,7 @@ cdef class MyGcsClient:
             status = self.inner.get().InternalKV().Del(ns, key, del_by_prefix, timeout_ms, num_deleted)
         check_status(status)
         return num_deleted
-    
+
     def internal_kv_keys(self, c_string prefix, namespace=None, timeout=None) -> List[bytes]:
         cdef:
             c_string ns = namespace or b""
@@ -207,7 +207,7 @@ cdef class MyGcsClient:
 
         result = [key for key in keys]
         return result
-    
+
     def internal_kv_exists(self, c_string key, namespace=None, timeout=None) -> bool:
         cdef:
             c_string ns = namespace or b""
@@ -272,7 +272,7 @@ cdef class MyGcsClient:
         with nogil:
             check_status(self.inner.get().InternalKV().AsyncInternalKVDel(ns, key, del_by_prefix, timeout_ms, cy_callback))
         return fut
-    
+
     def async_internal_kv_keys(self, c_string prefix, namespace=None, timeout=None) -> Future[List[bytes]]:
         cdef:
             c_string ns = namespace or b""
@@ -331,7 +331,7 @@ cdef class MyGcsClient:
         with nogil:
             check_status(self.inner.get().Jobs().AsyncGetNextJobID(cy_callback))
         return fut
-        
+
     def async_get_all_job_info(self, timeout: Optional[float] = None) -> Future[Dict[str, gcs_pb2.JobTableData]]:
         cdef int64_t timeout_ms = round(1000 * timeout) if timeout else -1
         def postprocess(binary):
@@ -347,7 +347,7 @@ cdef class MyGcsClient:
         with nogil:
             check_status(self.inner.get().Jobs().AsyncGetAll(timeout_ms, cy_callback))
         return fut
-    
+
 # Ideally we want to pass CRayStatus around. However it's not easy to wrap a
 # `ray::Status` to a `PythonObject*` so we marshall it to a 3-tuple like this. It can be
 # unmarshalled to CRayStatus with `to_c_ray_status`.
@@ -364,7 +364,7 @@ cdef CRayStatus to_c_ray_status(tup: StatusParts):
         return CRayStatus.OK()
     s = CRayStatus(status_code, msg, rpc_code)
     return s
-     
+
 
 def check_status_parts(parts: StatusParts):
     check_status(to_c_ray_status(parts))
@@ -385,7 +385,7 @@ cdef make_future_and_callback(postprocess = None):
     - `callback` sends the result to the event loop thread and fulfill `fut`.
     - `run_postprocess` awaits `fut`, invokes `postprocess` and fulfill `fut2`.
     - `fut2` is what we return to the user.
-    
+
     Params:
         `postprocess` is a sync function that returns transformed value, may raise.
     """
@@ -409,6 +409,3 @@ cdef make_future_and_callback(postprocess = None):
             return postprocess(result)
 
     return run_postprocess(fut, postprocess), callback
-
-
-
