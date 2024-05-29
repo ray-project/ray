@@ -159,6 +159,12 @@ def docker_cluster(head_node, worker_node):
 
 
 def run_in_container(cmds: List[List[str]], container_id: str):
+    """Run a list of commands in the specified container.
+
+    Checks that each docker command executed without error.
+    Returns the output from each command as a list.
+    """
+
     outputs = []
     for cmd in cmds:
         docker_cmd = ["docker", "exec", container_id] + cmd
