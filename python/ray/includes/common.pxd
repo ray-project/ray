@@ -366,7 +366,7 @@ cdef extern from "ray/core_worker/common.h" nogil:
 
     cdef cppclass CObjectLocation "ray::core::ObjectLocation":
         const CNodeID &GetPrimaryNodeID() const
-        const uint64_t GetObjectSize() const
+        const int64_t GetObjectSize() const
         const c_vector[CNodeID] &GetNodeIDs() const
         c_bool IsSpilled() const
         const c_string &GetSpilledURL() const
@@ -508,6 +508,10 @@ cdef extern from "src/ray/protobuf/gcs.pb.h" nogil:
         c_string ray_namespace() const
         const c_string &SerializeAsString()
 
+    cdef cppclass CNodeDeathInfo "ray::rpc::NodeDeathInfo":
+        int reason() const
+        c_string reason_message() const
+
     cdef cppclass CGcsNodeInfo "ray::rpc::GcsNodeInfo":
         c_string node_id() const
         c_string node_name() const
@@ -520,6 +524,7 @@ cdef extern from "src/ray/protobuf/gcs.pb.h" nogil:
         c_string raylet_socket_name() const
         int metrics_export_port() const
         int runtime_env_agent_port() const
+        CNodeDeathInfo death_info() const
         void ParseFromString(const c_string &serialized)
 
     cdef enum CGcsNodeState "ray::rpc::GcsNodeInfo_GcsNodeState":

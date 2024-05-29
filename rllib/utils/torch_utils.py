@@ -4,12 +4,11 @@ import warnings
 from typing import Dict, List, Optional, TYPE_CHECKING, Union
 
 import gymnasium as gym
-import numpy as np
-import tree  # pip install dm_tree
 from gymnasium.spaces import Discrete, MultiDiscrete
+import numpy as np
 from packaging import version
+import tree  # pip install dm_tree
 
-import ray
 from ray.rllib.models.repeated_values import RepeatedValues
 from ray.rllib.utils.annotations import Deprecated, PublicAPI, DeveloperAPI
 from ray.rllib.utils.framework import try_import_torch
@@ -440,50 +439,6 @@ def flatten_inputs_to_1d_tensor(
         merged = torch.reshape(merged, [B, T, -1])
 
     return merged
-
-
-@PublicAPI
-def get_device(config):
-    """Returns a torch device edepending on a config and current worker index."""
-
-    # Figure out the number of GPUs to use on the local side (index=0) or on
-    # the remote workers (index > 0).
-    worker_idx = config.get("worker_index", 0)
-    if (
-        not config["_fake_gpus"]
-        and ray._private.worker._mode() == ray._private.worker.LOCAL_MODE
-    ):
-        num_gpus = 0
-    elif worker_idx == 0:
-        num_gpus = config["num_gpus"]
-    else:
-        num_gpus = config["num_gpus_per_worker"]
-    # All GPU IDs, if any.
-    gpu_ids = list(range(torch.cuda.device_count()))
-
-    # Place on one or more CPU(s) when either:
-    # - Fake GPU mode.
-    # - num_gpus=0 (either set by user or we are in local_mode=True).
-    # - No GPUs available.
-    if config["_fake_gpus"] or num_gpus == 0 or not gpu_ids:
-        return torch.device("cpu")
-    # Place on one or more actual GPU(s), when:
-    # - num_gpus > 0 (set by user) AND
-    # - local_mode=False AND
-    # - actual GPUs available AND
-    # - non-fake GPU mode.
-    else:
-        # We are a remote worker (WORKER_MODE=1):
-        # GPUs should be assigned to us by ray.
-        if ray._private.worker._mode() == ray._private.worker.WORKER_MODE:
-            gpu_ids = ray.get_gpu_ids()
-
-        if len(gpu_ids) < num_gpus:
-            raise ValueError(
-                "TorchPolicy was not able to find enough GPU IDs! Found "
-                f"{gpu_ids}, but num_gpus={num_gpus}."
-            )
-        return torch.device("cuda")
 
 
 @PublicAPI

@@ -16,43 +16,58 @@ from ray.tests.conftest_docker import run_in_container, NESTED_IMAGE_NAME
 
 
 @pytest.mark.skipif(sys.platform != "linux", reason="Only works on Linux.")
-def test_put_get(podman_docker_cluster):
+@pytest.mark.parametrize("use_image_uri_api", [True, False])
+def test_put_get(podman_docker_cluster, use_image_uri_api):
     """Test ray.put and ray.get."""
 
     container_id = podman_docker_cluster
     cmd = ["python", "tests/test_put_get.py", "--image", NESTED_IMAGE_NAME]
+    if use_image_uri_api:
+        cmd.append("--use-image-uri-api")
     run_in_container([cmd], container_id)
 
 
 @pytest.mark.skipif(sys.platform != "linux", reason="Only works on Linux.")
-def test_shared_memory(podman_docker_cluster):
+@pytest.mark.parametrize("use_image_uri_api", [True, False])
+def test_shared_memory(podman_docker_cluster, use_image_uri_api):
     """Test shared memory."""
 
     container_id = podman_docker_cluster
     cmd = ["python", "tests/test_shared_memory.py", "--image", NESTED_IMAGE_NAME]
+    if use_image_uri_api:
+        cmd.append("--use-image-uri-api")
     run_in_container([cmd], container_id)
 
 
 @pytest.mark.skipif(sys.platform != "linux", reason="Only works on Linux.")
-def test_log_file_exists(podman_docker_cluster):
+@pytest.mark.parametrize("use_image_uri_api", [True, False])
+def test_log_file_exists(podman_docker_cluster, use_image_uri_api):
     """Verify worker log file exists"""
 
     container_id = podman_docker_cluster
     cmd = ["python", "tests/test_log_file_exists.py", "--image", NESTED_IMAGE_NAME]
+    if use_image_uri_api:
+        cmd.append("--use-image-uri-api")
     run_in_container([cmd], container_id)
 
 
 @pytest.mark.skipif(sys.platform != "linux", reason="Only works on Linux.")
-def test_ray_env_vars(podman_docker_cluster):
+@pytest.mark.parametrize("use_image_uri_api", [True, False])
+def test_ray_env_vars(podman_docker_cluster, use_image_uri_api):
     """Test ray.put and ray.get."""
 
     container_id = podman_docker_cluster
     cmd = ["python", "tests/test_ray_env_vars.py", "--image", NESTED_IMAGE_NAME]
+    if use_image_uri_api:
+        cmd.append("--use-image-uri-api")
     run_in_container([cmd], container_id)
 
 
 @pytest.mark.skipif(sys.platform != "linux", reason="Only works on Linux.")
-def test_worker_exit_intended_system_exit_and_user_error(podman_docker_cluster):
+@pytest.mark.parametrize("use_image_uri_api", [True, False])
+def test_worker_exit_intended_system_exit_and_user_error(
+    podman_docker_cluster, use_image_uri_api
+):
     """
     INTENDED_SYSTEM_EXIT
     - (not tested, hard to test) Unused resource removed
@@ -69,25 +84,33 @@ def test_worker_exit_intended_system_exit_and_user_error(podman_docker_cluster):
         "--image",
         NESTED_IMAGE_NAME,
     ]
+    if use_image_uri_api:
+        cmd.append("--use-image-uri-api")
     run_in_container([cmd], container_id)
 
 
 @pytest.mark.skipif(sys.platform != "linux", reason="Only works on Linux.")
-def test_serve_basic(podman_docker_cluster):
+@pytest.mark.parametrize("use_image_uri_api", [True, False])
+def test_serve_basic(podman_docker_cluster, use_image_uri_api):
     """Test Serve deployment."""
 
     container_id = podman_docker_cluster
     cmd = ["python", "tests/test_serve_basic.py", "--image", NESTED_IMAGE_NAME]
+    if use_image_uri_api:
+        cmd.append("--use-image-uri-api")
     run_in_container([cmd], container_id)
 
 
 @pytest.mark.skipif(sys.platform != "linux", reason="Only works on Linux.")
 @pytest.mark.skip
-def test_serve_telemetry(podman_docker_cluster):
+@pytest.mark.parametrize("use_image_uri_api", [True, False])
+def test_serve_telemetry(podman_docker_cluster, use_image_uri_api):
     """Test Serve deployment telemetry."""
 
     container_id = podman_docker_cluster
     cmd = ["python", "tests/test_serve_telemetry.py", "--image", NESTED_IMAGE_NAME]
+    if use_image_uri_api:
+        cmd.append("--use-image-uri-api")
     run_in_container([cmd], container_id)
 
 

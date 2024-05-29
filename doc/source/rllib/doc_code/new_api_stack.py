@@ -4,7 +4,8 @@ from ray.rllib.algorithms.ppo import PPOConfig
 
 
 config = (
-    PPOConfig().environment("CartPole-v1")
+    PPOConfig()
+    .environment("CartPole-v1")
     # Switch both the new API stack flags to True (both False by default).
     # This enables the use of
     # a) RLModule (replaces ModelV2) and Learner (replaces Policy)
@@ -14,14 +15,16 @@ config = (
         enable_rl_module_and_learner=True,
         enable_env_runner_and_connector_v2=True,
     )
+    .resources(
+        num_cpus_for_main_process=1,
+    )
     # We are using a simple 1-CPU setup here for learning. However, as the new stack
     # supports arbitrary scaling on the learner axis, feel free to set
-    # `num_learner_workers` to the number of available GPUs for multi-GPU training (and
-    # `num_gpus_per_learner_worker=1`).
-    .resources(
-        num_learner_workers=0,  # <- in most cases, set this value to the number of GPUs
-        num_gpus_per_learner_worker=0,  # <- set this to 1, if you have at least 1 GPU
-        num_cpus_for_local_worker=1,
+    # `num_learners` to the number of available GPUs for multi-GPU training (and
+    # `num_gpus_per_learner=1`).
+    .learners(
+        num_learners=0,  # <- in most cases, set this value to the number of GPUs
+        num_gpus_per_learner=0,  # <- set this to 1, if you have at least 1 GPU
     )
     # When using RLlib's default models (RLModules) AND the new EnvRunners, you should
     # set this flag in your model config. Having to set this, will no longer be required
@@ -46,7 +49,8 @@ from ray.rllib.examples.envs.classes.multi_agent import MultiAgentCartPole  # no
 # A typical multi-agent setup (otherwise using the exact same parameters as before)
 # looks like this.
 config = (
-    PPOConfig().environment(MultiAgentCartPole, env_config={"num_agents": 2})
+    PPOConfig()
+    .environment(MultiAgentCartPole, env_config={"num_agents": 2})
     # Switch both the new API stack flags to True (both False by default).
     # This enables the use of
     # a) RLModule (replaces ModelV2) and Learner (replaces Policy)
@@ -56,14 +60,16 @@ config = (
         enable_rl_module_and_learner=True,
         enable_env_runner_and_connector_v2=True,
     )
+    .resources(
+        num_cpus_for_main_process=1,
+    )
     # We are using a simple 1-CPU setup here for learning. However, as the new stack
     # supports arbitrary scaling on the learner axis, feel free to set
-    # `num_learner_workers` to the number of available GPUs for multi-GPU training (and
-    # `num_gpus_per_learner_worker=1`).
-    .resources(
-        num_learner_workers=0,  # <- in most cases, set this value to the number of GPUs
-        num_gpus_per_learner_worker=0,  # <- set this to 1, if you have at least 1 GPU
-        num_cpus_for_local_worker=1,
+    # `num_learners` to the number of available GPUs for multi-GPU training (and
+    # `num_gpus_per_learner=1`).
+    .learners(
+        num_learners=0,  # <- in most cases, set this value to the number of GPUs
+        num_gpus_per_learner=0,  # <- set this to 1, if you have at least 1 GPU
     )
     # When using RLlib's default models (RLModules) AND the new EnvRunners, you should
     # set this flag in your model config. Having to set this, will no longer be required
@@ -92,7 +98,8 @@ from ray.rllib.algorithms.sac import SACConfig  # noqa
 
 
 config = (
-    SACConfig().environment("Pendulum-v1")
+    SACConfig()
+    .environment("Pendulum-v1")
     # Switch both the new API stack flags to True (both False by default).
     # This enables the use of
     # a) RLModule (replaces ModelV2) and Learner (replaces Policy)
@@ -102,14 +109,16 @@ config = (
         enable_rl_module_and_learner=True,
         enable_env_runner_and_connector_v2=True,
     )
+    .resources(
+        num_cpus_for_main_process=1,
+    )
     # We are using a simple 1-CPU setup here for learning. However, as the new stack
     # supports arbitrary scaling on the learner axis, feel free to set
-    # `num_learner_workers` to the number of available GPUs for multi-GPU training (and
-    # `num_gpus_per_learner_worker=1`).
-    .resources(
-        num_learner_workers=0,  # <- in most cases, set this value to the number of GPUs
-        num_gpus_per_learner_worker=0,  # <- set this to 1, if you have at least 1 GPU
-        num_cpus_for_local_worker=1,
+    # `num_learners` to the number of available GPUs for multi-GPU training (and
+    # `num_gpus_per_learner=1`).
+    .learners(
+        num_learners=0,  # <- in most cases, set this value to the number of GPUs
+        num_gpus_per_learner=0,  # <- set this to 1, if you have at least 1 GPU
     )
     # When using RLlib's default models (RLModules) AND the new EnvRunners, you should
     # set this flag in your model config. Having to set this, will no longer be required

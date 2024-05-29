@@ -92,6 +92,14 @@ class FakeGrpcHandle:
     def options(self, *args, **kwargs):
         return self
 
+    @property
+    def deployment_name(self) -> str:
+        return self.deployment_id.name
+
+    @property
+    def app_name(self) -> str:
+        return self.deployment_id.app_name
+
 
 class FakeProxyRouter(ProxyRouter):
     def __init__(self, *args, **kwargs):
@@ -183,6 +191,14 @@ class FakeHTTPHandle:
 
     def options(self, *args, **kwargs):
         return self
+
+    @property
+    def deployment_name(self) -> str:
+        return self.deployment_id.name
+
+    @property
+    def app_name(self) -> str:
+        return self.deployment_id.app_name
 
 
 class FakeHttpReceive:
