@@ -139,7 +139,7 @@ class MultiAgentEnvRunner(EnvRunner):
         assert not (num_timesteps is not None and num_episodes is not None)
 
         # If no execution details are provided, use the config to try to infer the
-        # desired timesteps/episodes to sample and exploration behavior.
+        # desired timesteps/episodes to sample and the exploration behavior.
         if explore is None:
             explore = self.config.explore
         if num_timesteps is None and num_episodes is None:
@@ -901,6 +901,7 @@ class MultiAgentEnvRunner(EnvRunner):
                 EPISODE_RETURN_MIN: ret,
             },
             reduce="min",
+            window=self.config.metrics_num_episodes_for_smoothing,
         )
         self.metrics.log_dict(
             {
@@ -908,4 +909,5 @@ class MultiAgentEnvRunner(EnvRunner):
                 EPISODE_RETURN_MAX: ret,
             },
             reduce="max",
+            window=self.config.metrics_num_episodes_for_smoothing,
         )

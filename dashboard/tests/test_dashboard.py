@@ -1318,12 +1318,16 @@ async def test_dashboard_exports_metric_on_event_loop_lag(
     addr = ray_context["raylet_ip_address"]
     prom_addresses = [f"{addr}:{dashboard_consts.DASHBOARD_METRIC_PORT}"]
 
-    metrics_samples: Dict[str, List[Sample]] = fetch_prometheus_metrics(prom_addresses)
-    print(metrics_samples)
+    def check_lag_metrics():
+        metrics_samples: Dict[str, List[Sample]] = fetch_prometheus_metrics(
+            prom_addresses
+        )
+        lag_metric_samples = metrics_samples["ray_dashboard_event_loop_lag_seconds"]
+        assert len(lag_metric_samples) > 0
+        assert any(sample.value > 1 for sample in lag_metric_samples)
+        return True
 
-    lag_metric_samples = metrics_samples["ray_dashboard_event_loop_lag_seconds"]
-    assert len(lag_metric_samples) > 0
-    assert any(sample.value > 1 for sample in lag_metric_samples)
+    wait_for_condition(check_lag_metrics)
 
 
 if __name__ == "__main__":

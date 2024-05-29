@@ -370,8 +370,7 @@ class MapOperator(OneToOneOperator, ABC):
         assert self._started
         bundle = self._output_queue.get_next()
         self._metrics.on_output_dequeued(bundle)
-        for _, meta in bundle.blocks:
-            self._output_metadata.append(meta)
+        self._output_metadata.extend(bundle.metadata)
         return bundle
 
     @abstractmethod
@@ -426,7 +425,7 @@ def _map_task(
     map_transformer.set_target_max_block_size(ctx.target_max_block_size)
     for b_out in map_transformer.apply_transform(iter(blocks), ctx):
         # TODO(Clark): Add input file propagation from input blocks.
-        m_out = BlockAccessor.for_block(b_out).get_metadata([], None)
+        m_out = BlockAccessor.for_block(b_out).get_metadata()
         m_out.exec_stats = stats.build()
         m_out.exec_stats.udf_time_s = map_transformer.udf_time()
         m_out.exec_stats.task_idx = ctx.task_idx
