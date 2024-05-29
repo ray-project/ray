@@ -85,5 +85,8 @@ class InputDataBuffer(PhysicalOperator):
             "input": block_metadata,
         }
 
+    def throttling_disabled(self) -> bool:
+        return True
+
     def implements_accurate_memory_accounting(self) -> bool:
         return True
