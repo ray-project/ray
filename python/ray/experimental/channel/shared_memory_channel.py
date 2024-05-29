@@ -187,7 +187,6 @@ class Channel(ChannelInterface):
         Returns:
             Channel: A wrapper around ray.ObjectRef.
         """
-        is_creator = False
         assert len(readers) > 0
 
         if typ is None:
@@ -202,6 +201,16 @@ class Channel(ChannelInterface):
 
         if typ.buffer_size_bytes < MIN_BUFFER_SIZE:
             raise ValueError("typ.buffer_size_bytes must be at least MIN_BUFFER_SIZE")
+
+        self._writer = writer
+        self._readers = readers
+        self._typ = typ
+
+        self._worker = ray._private.worker.global_worker
+        self._worker.check_connected()
+
+        self._writer_registered = False
+        self._reader_registered = False
 
         if _writer_ref is None:
             # We are the writer. Check that the passed handle matches the
@@ -239,7 +248,7 @@ class Channel(ChannelInterface):
                         )
                 self._create_reader_ref(readers, typ.buffer_size_bytes)
 
-            is_creator = True
+            assert self._reader_ref is not None
         else:
             assert (
                 _writer_node_id is not None
@@ -254,22 +263,9 @@ class Channel(ChannelInterface):
             self._reader_node_id = _reader_node_id
             self._reader_ref = _reader_ref
 
-        self._writer = writer
-        self._readers = readers
-        self._typ = typ
         self._num_readers = len(self._readers)
         if self.is_remote():
             self._num_readers = 1
-
-        self._worker = ray._private.worker.global_worker
-        self._worker.check_connected()
-
-        self._writer_registered = False
-        self._reader_registered = False
-
-        if is_creator:
-            self.ensure_registered_as_writer()
-            assert self._reader_ref is not None
 
     def _create_reader_ref(
         self, readers: List[Optional["ray.actor.ActorHandle"]], buffer_size_bytes: int
