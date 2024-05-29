@@ -1,5 +1,4 @@
 import os
-import sys
 import logging
 from typing import Optional, List, Tuple
 
@@ -59,10 +58,7 @@ class AMDGPUAcceleratorManager(AcceleratorManager):
 
         try:
             pyamdsmi.smi_initialize()
-            try:
-                num_gpus = pyamdsmi.smi_get_device_count()
-            except Exception:
-                pass
+            num_gpus = pyamdsmi.smi_get_device_count()
         except Exception:
             pass
         finally:
@@ -76,13 +72,10 @@ class AMDGPUAcceleratorManager(AcceleratorManager):
     @staticmethod
     def get_current_node_accelerator_type() -> Optional[str]:
         try:
-            if sys.platform.startswith("linux"):
-                device_ids = AMDGPUAcceleratorManager._get_amd_device_ids()
-                if device_ids is None:
-                    return None
-                return AMDGPUAcceleratorManager._gpu_name_to_accelerator_type(
-                    device_ids[0]
-                )
+            device_ids = AMDGPUAcceleratorManager._get_amd_device_ids()
+            if device_ids is None:
+                return None
+            return AMDGPUAcceleratorManager._gpu_name_to_accelerator_type(device_ids[0])
         except Exception:
             return None
 
