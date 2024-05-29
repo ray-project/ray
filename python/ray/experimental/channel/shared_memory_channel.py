@@ -230,13 +230,7 @@ class Channel(ChannelInterface):
                         raise NotImplementedError(
                             "All readers must be on the same node for now."
                         )
-                if self.is_remote():
-                    fn = readers[0].__ray_call__
-                    self._reader_ref = ray.get(
-                        fn.remote(_create_channel_ref, typ.buffer_size_bytes)
-                    )
-                else:
-                    self._reader_ref = self._writer_ref
+                self.create_reader_ref(readers, typ.buffer_size_bytes)
 
             is_creator = True
         else:
@@ -269,6 +263,15 @@ class Channel(ChannelInterface):
         if is_creator:
             self.ensure_registered_as_writer()
             assert self._reader_ref is not None
+
+    def create_reader_ref(self, readers, buffer_size_bytes):
+        if self.is_remote():
+            fn = readers[0].__ray_call__
+            self._reader_ref = ray.get(
+                fn.remote(_create_channel_ref, buffer_size_bytes)
+            )
+        else:
+            self._reader_ref = self._writer_ref
 
     @staticmethod
     def is_local_node(node_id):
@@ -361,17 +364,7 @@ class Channel(ChannelInterface):
             prev_writer_ref = self._writer_ref
             self._writer_ref = _create_channel_ref(self, self._typ.buffer_size_bytes)
 
-            if len(self._readers) > 0 and self.is_remote():
-                # We need to allocate the reader_ref on the reader node if the reader(s)
-                # are on a different node than the writer.
-                # If they are on the same node, this is not necessary because the
-                # writer_ref allocated above is already accessible to the reader.
-                fn = self._readers[0].__ray_call__
-                self._reader_ref = ray.get(
-                    fn.remote(_create_channel_ref, self._typ.buffer_size_bytes)
-                )
-            else:
-                self._reader_ref = self._writer_ref
+            self.create_reader_ref(self._readers, self._typ.buffer_size_bytes)
 
             # We need to register the new writer_ref.
             self._writer_registered = False
