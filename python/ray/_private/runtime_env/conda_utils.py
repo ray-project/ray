@@ -176,6 +176,14 @@ def get_conda_env_list() -> list:
 def get_conda_info_json() -> dict:
     """
     Get `conda info --json` output.
+
+    Returns dict of conda info. See [1] for more details. We mostly care about these
+    keys:
+
+    - `conda_prefix`: str The path to the conda installation.
+    - `envs`: List[str] absolute paths to conda environments.
+
+    [1] https://github.com/conda/conda/blob/main/conda/cli/main_info.py
     """
     conda_path = get_conda_bin_executable("conda")
     try:
