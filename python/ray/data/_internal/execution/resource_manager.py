@@ -124,9 +124,9 @@ class ResourceManager:
             f = (1.0 + num_ops_so_far) / max(1.0, num_ops_total - 1.0)
             num_ops_so_far += 1
             self._downstream_fraction[op] = min(1.0, f)
-            self._downstream_object_store_memory[
-                op
-            ] = self._global_usage.object_store_memory
+            self._downstream_object_store_memory[op] = (
+                self._global_usage.object_store_memory
+            )
 
             # Update operator's object store usage, which is used by
             # DatasetStats and updated on the Ray Data dashboard.
@@ -527,7 +527,7 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
           - "cur_map->limit1->limit2->downstream_map" will return [downstream_map].
         """
         for next_op in op.output_dependencies:
-            if self._is_op_eligible(op):
+            if self._is_op_eligible(next_op):
                 yield next_op
             else:
                 yield from self._get_downstream_eligible_ops(next_op)
