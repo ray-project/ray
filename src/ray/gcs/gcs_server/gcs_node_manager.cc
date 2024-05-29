@@ -322,7 +322,7 @@ std::shared_ptr<rpc::GcsNodeInfo> GcsNodeManager::RemoveNode(
           << " and node name: " << removed_node->node_name()
           << " has been marked dead because the detector"
           << " has missed too many heartbeats from it. This can happen when a "
-             "\t(1) raylet crashes unexpectedly (OOM, preempted node, etc.) \n"
+             "\t(1) raylet crashes unexpectedly (OOM, etc.) \n"
           << "\t(2) raylet has lagging heartbeats due to slow network or busy workload.";
       RAY_EVENT(ERROR, EL_RAY_NODE_REMOVED)
               .WithField("node_id", node_id.Hex())
