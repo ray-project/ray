@@ -14,6 +14,7 @@
 
 #include "ray/gcs/store_client/redis_store_client.h"
 
+#include <boost/optional/optional_io.hpp>
 #include <chrono>
 
 #include "ray/common/test_util.h"

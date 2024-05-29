@@ -22,7 +22,7 @@ pong-appo:
         use_kl_loss: false
         rollout_fragment_length: 50
         train_batch_size: 750
-        num_workers: 32
+        num_env_runners: 32
         broadcast_interval: 1
         max_sample_requests_in_flight_per_worker: 1
         num_multi_gpu_tower_stacks: 1

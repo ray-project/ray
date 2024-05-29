@@ -376,7 +376,7 @@ py_test(
 py_test(
     name = "learning_tests_cartpole_ppo",
     main = "tuned_examples/ppo/cartpole_ppo.py",
-    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "no_tf_static_graph"],
+    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "torch_only"],
     size = "large",
     srcs = ["tuned_examples/ppo/cartpole_ppo.py"],
     args = ["--as-test", "--enable-new-api-stack"]
@@ -462,6 +462,25 @@ py_test(
     data = ["tuned_examples/sac/cartpole-sac.yaml"],
     args = ["--dir=tuned_examples/sac"]
 )
+
+# TODO (simon): These tests are not learning, yet.
+# py_test(
+#     name = "learning_tests_multi_agent_pendulum_sac",
+#     main = "tuned_examples/sac/multi_agent_pendulum_sac.py",
+#     tags = ["team:rllib", "exclusive", "learning_tests", "torch_only", "learning_tests_pendulum", "learning_tests_continuous"],
+#     size = "large",
+#     srcs = ["tuned_examples/sac/multi_agent_pendulum_sac.py"],
+#     args = ["--enable-new-api-stack", "--num-agents=2"]
+# )
+
+# py_test(
+#     name = "learning_tests_multi_agent_pendulum_sac_multi_gpu",
+#     main = "tuned_examples/sac/multi_agent_pendulum_sac.py",
+#     tags = ["team:rllib", "exclusive", "learning_tests", "torch_only", "learning_tests_pendulum", "learning_tests_continuous", "multi_gpu"],
+#     size = "large",
+#     srcs = ["tuned_examples/sac/multi_agent_pendulum_sac.py"],
+#     args = ["--enable-new-api-stack", "--num-agents=2", "--num-gpus=2"]
+# )
 
 # --------------------------------------------------------------------
 # Algorithms (Compilation, Losses, simple functionality tests)
@@ -2138,15 +2157,6 @@ py_test(
     srcs = ["examples/checkpoints/onnx_torch.py"],
 )
 
-#@OldAPIStack
-py_test(
-    name = "examples/checkpoints/restore_1_of_n_agents_from_checkpoint",
-    tags = ["team:rllib", "exclusive", "examples"],
-    size = "medium",
-    srcs = ["examples/checkpoints/restore_1_of_n_agents_from_checkpoint.py"],
-    args = ["--pre-training-iters=1", "--stop-iters=1", "--num-cpus=4"]
-)
-
 # subdirectory: connectors/
 # ....................................
 # Framestacking examples only run in smoke-test mode (a few iters only).
@@ -2443,14 +2453,21 @@ py_test(
 # subdirectory: gpus/
 # ....................................
 
-#@OldAPIStack
 py_test(
-    name = "examples/gpus/fractional_gpus",
-    main = "examples/gpus/fractional_gpus.py",
-    tags = ["team:rllib", "exclusive", "examples"],
+    name = "examples/gpus/fractional_0.5_gpus_per_learner",
+    main = "examples/gpus/fractional_gpus_per_learner.py",
+    tags = ["team:rllib", "exclusive", "examples", "multi_gpu"],
     size = "medium",
-    srcs = ["examples/gpus/fractional_gpus.py"],
-    args = ["--as-test", "--stop-reward=40.0", "--num-gpus=0", "--num-workers=0"]
+    srcs = ["examples/gpus/fractional_gpus_per_learner.py"],
+    args = ["--enable-new-api-stack", "--as-test", "--stop-reward=40.0", "--num-learners=1", "--num-gpus-per-learner=0.5"]
+)
+py_test(
+    name = "examples/gpus/fractional_0.2_gpus_per_learner",
+    main = "examples/gpus/fractional_gpus_per_learner.py",
+    tags = ["team:rllib", "exclusive", "examples", "gpu"],
+    size = "medium",
+    srcs = ["examples/gpus/fractional_gpus_per_learner.py"],
+    args = ["--enable-new-api-stack", "--as-test", "--stop-reward=40.0", "--num-learners=1", "--num-gpus-per-learner=0.2"]
 )
 
 # subdirectory: hierarchical/
@@ -2724,6 +2741,15 @@ py_test(
 #    srcs = ["examples/multi_agent/pettingzoo_shared_value_function.py"],
 #    args = ["--enable-new-api-stack", "--num-agents=2", "--as-test", "--framework=torch", "--stop-reward=-100.0", "--num-cpus=4"],
 # )
+
+py_test(
+    name = "examples/checkpoints/restore_1_of_n_agents_from_checkpoint",
+    main = "examples/checkpoints/restore_1_of_n_agents_from_checkpoint.py",
+    tags = ["team:rllib", "exclusive", "examples", "examples_use_all_core", "no_main"],
+    size = "large",
+    srcs = ["examples/checkpoints/restore_1_of_n_agents_from_checkpoint.py"],
+    args = ["--enable-new-api-stack", "--num-agents=2", "--framework=torch", "--checkpoint-freq=20", "--checkpoint-at-end", "--num-cpus=4", "--algo=PPO"]
+)
 
 py_test(
     name = "examples/multi_agent/rock_paper_scissors_heuristic_vs_learned",

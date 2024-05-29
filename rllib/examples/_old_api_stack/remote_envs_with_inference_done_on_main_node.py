@@ -106,7 +106,7 @@ class PPORemoteInference(PPO):
             bundles=[
                 {
                     # Single CPU for the local worker. This CPU hosts the
-                    # main model in this example (num_workers=0).
+                    # main model in this example (num_env_runners=0).
                     "CPU": 1,
                     # Possibly add n GPUs to this.
                     "GPU": cf.num_gpus,
