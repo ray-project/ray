@@ -507,6 +507,9 @@ class NodeState(StateSchema):
     #: ALIVE: The node is alive.
     #: DEAD: The node is dead.
     state: TypeNodeStatus = state_column(filterable=True)
+    #: The death info of the node.
+    #: When `state` is ALIVE, this field is None.
+    death_info: Optional[dict] = state_column(filterable=False)
     #: The name of the node if it is given by the name argument.
     node_name: str = state_column(filterable=True)
     #: The total resources of the node.
