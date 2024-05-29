@@ -42,7 +42,7 @@ For detailed benchmarks, checkout [this google doc](https://docs.google.com/spre
 
 ## Exploration
 
-In RLlib, you can now set the configuration so that the compiled module is used during sampling of an RL agent training process. By default, the rollout workers run on CPU, therefore it is recommended to use the `ipex` or `onnxrt` backend. Having said that, you can still choose to run the sampling part on GPUs as well by setting `num_gpus_per_worker` in which case other backends can be used as well.
+In RLlib, you can now set the configuration so that the compiled module is used during sampling of an RL agent training process. By default, the rollout workers run on CPU, therefore it is recommended to use the `ipex` or `onnxrt` backend. Having said that, you can still choose to run the sampling part on GPUs as well by setting `num_gpus_per_env_runner` in which case other backends can be used as well.
 
 
 ```

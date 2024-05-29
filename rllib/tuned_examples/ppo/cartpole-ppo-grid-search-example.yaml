@@ -7,7 +7,7 @@ cartpole-ppo-grid-search-example:
     config:
         # Works for both torch and tf.
         framework: torch
-        num_workers: 2
+        num_env_runners: 2
         num_sgd_iter:
             grid_search: [1, 4]
         sgd_minibatch_size:

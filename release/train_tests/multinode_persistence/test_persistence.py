@@ -203,8 +203,6 @@ def test_trainer(root_path_storage_filesystem_label, tmp_path, monkeypatch):
        are all correct. See `ray.train.test_new_persistence` for the expected filetree.
     6. Tests a new run with `resume_from_checkpoint`.
     """
-    monkeypatch.setenv("RAY_AIR_LOCAL_CACHE_DIR", str(tmp_path / "ray_results"))
-
     ray.init(runtime_env={"working_dir": "."}, ignore_reinit_error=True)
 
     root_path, storage_filesystem, label = root_path_storage_filesystem_label
@@ -328,8 +326,6 @@ def test_trainer(root_path_storage_filesystem_label, tmp_path, monkeypatch):
 def test_no_storage_error(tmp_path, monkeypatch):
     """Tests that an error is raised if you do multi-node checkpointing
     w/ no persistent storage configured."""
-    monkeypatch.setenv("RAY_AIR_LOCAL_CACHE_DIR", str(tmp_path / "ray_results"))
-
     ray.init(runtime_env={"working_dir": "."}, ignore_reinit_error=True)
 
     trainer = TorchTrainer(
@@ -353,8 +349,6 @@ def test_no_storage_error(tmp_path, monkeypatch):
 def test_no_storage_no_checkpoints(tmp_path, monkeypatch):
     """Tests that it's ok to run multi-node with no persistent storage
     if you never report checkpoints."""
-    monkeypatch.setenv("RAY_AIR_LOCAL_CACHE_DIR", str(tmp_path / "ray_results"))
-
     ray.init(runtime_env={"working_dir": "."}, ignore_reinit_error=True)
 
     trainer = TorchTrainer(

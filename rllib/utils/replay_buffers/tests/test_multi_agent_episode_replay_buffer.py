@@ -5,6 +5,7 @@ from ray.rllib.env.multi_agent_episode import MultiAgentEpisode
 from ray.rllib.utils.replay_buffers.multi_agent_episode_replay_buffer import (
     MultiAgentEpisodeReplayBuffer,
 )
+from ray.rllib.utils.test_utils import check
 
 
 class TestMultiAgentEpisodeReplayBuffer(unittest.TestCase):
@@ -150,59 +151,58 @@ class TestMultiAgentEpisodeReplayBuffer(unittest.TestCase):
         for i in range(1000):
             sample = buffer.sample(batch_size_B=16, n_step=1)
             self.assertTrue(buffer.get_sampled_timesteps() == 16 * (i + 1))
-            self.assertTrue("module_1" in sample)
-            self.assertTrue("module_2" in sample)
-            for module_id in sample:
-                self.assertTrue(buffer.get_sampled_timesteps(module_id) == 16 * (i + 1))
+            module_ids = {eps.module_id for eps in sample}
+            self.assertTrue("module_1" in module_ids)
+            self.assertTrue("module_2" in module_ids)
+            for eps in sample:
+                # For both modules, we should have 16 x (i + 1) timesteps sampled.
+                # Note, this must be the same here as the number of timesteps sampled
+                # altogether, b/c we sample both modules.
+                self.assertTrue(
+                    buffer.get_sampled_timesteps("module_1") == 16 * (i + 1)
+                )
+                self.assertTrue(
+                    buffer.get_sampled_timesteps("module_2") == 16 * (i + 1)
+                )
                 (
                     obs,
-                    actions,
-                    rewards,
+                    action,
+                    reward,
                     next_obs,
                     is_terminated,
                     is_truncated,
-                    weights,
-                    n_steps,
+                    weight,
+                    n_step,
                 ) = (
-                    sample[module_id]["obs"],
-                    sample[module_id]["actions"],
-                    sample[module_id]["rewards"],
-                    sample[module_id]["new_obs"],
-                    sample[module_id]["terminateds"],
-                    sample[module_id]["truncateds"],
-                    sample[module_id]["weights"],
-                    sample[module_id]["n_step"],
+                    eps.get_observations(0),
+                    eps.get_actions(-1),
+                    eps.get_rewards(-1),
+                    eps.get_observations(-1),
+                    eps.is_terminated,
+                    eps.is_truncated,
+                    eps.get_extra_model_outputs("weights", -1),
+                    eps.get_extra_model_outputs("n_step", -1),
                 )
 
                 # Make sure terminated and truncated are never both True.
-                assert not np.any(np.logical_and(is_truncated, is_terminated))
-
-                # All fields have same shape.
-                assert (
-                    obs.shape[:2]
-                    == rewards.shape
-                    == actions.shape
-                    == next_obs.shape
-                    == is_truncated.shape
-                    == is_terminated.shape
-                )
+                assert not (is_truncated and is_terminated)
 
                 # Note, floating point numbers cannot be compared directly.
                 tolerance = 1e-8
                 # Assert that actions correspond to the observations.
-                self.assertTrue(np.all(actions - obs < tolerance))
+                check(obs, action, atol=tolerance)
                 # Assert that next observations are correctly one step after
                 # observations.
-                self.assertTrue(np.all(next_obs - obs - 1 < tolerance))
+                check(next_obs, obs + 1, atol=tolerance)
                 # Assert that the reward comes from the next observation.
-                self.assertTrue(np.all(rewards * 10 - next_obs < tolerance))
+                check(reward * 10, next_obs, atol=tolerance)
 
                 # Furthermore, assert that the importance sampling weights are
                 # one for `beta=0.0`.
-                self.assertTrue(np.all(weights - 1.0 < tolerance))
+                check(weight, 1.0, atol=tolerance)
 
                 # Assert that all n-steps are 1.0 as passed into `sample`.
-                self.assertTrue(np.all(n_steps - 1.0 < tolerance))
+                check(n_step, 1.0, atol=tolerance)
 
     def test_buffer_synchronized_sample_logic(self):
         """Samples synchronized from the multi-agent buffer."""

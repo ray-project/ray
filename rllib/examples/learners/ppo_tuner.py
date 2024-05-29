@@ -5,15 +5,15 @@ from ray import air, tune
 from ray.air.constants import TRAINING_ITERATION
 from ray.rllib.algorithms.ppo import PPOConfig
 
-RESOURCE_CONFIG = {
-    "remote-cpu": {"num_learner_workers": 1},
-    "remote-gpu": {"num_learner_workers": 1, "num_gpus_per_learner_worker": 1},
+LEARNER_CONFIG = {
+    "remote-cpu": {"num_learners": 1},
+    "remote-gpu": {"num_learners": 1, "num_gpus_per_learner": 1},
     "multi-gpu-ddp": {
-        "num_learner_workers": 2,
-        "num_gpus_per_learner_worker": 1,
+        "num_learners": 2,
+        "num_gpus_per_learner": 1,
     },
     "local-cpu": {},
-    "local-gpu": {"num_gpus_per_learner_worker": 1},
+    "local-gpu": {"num_gpus_per_learner": 1},
 }
 
 
@@ -44,10 +44,10 @@ if __name__ == "__main__":
         PPOConfig()
         .framework(args.framework)
         .environment("CartPole-v1")
-        .resources(**RESOURCE_CONFIG[args.config])
+        .learners(**LEARNER_CONFIG[args.config])
     )
 
-    print("Testing with resource config: ", RESOURCE_CONFIG[args.config])
+    print("Testing with learner config: ", LEARNER_CONFIG[args.config])
     print("Testing with framework: ", args.framework)
     print("-" * 80)
     tuner = tune.Tuner(

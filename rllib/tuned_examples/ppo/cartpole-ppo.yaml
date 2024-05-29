@@ -1,3 +1,4 @@
+# @OldAPIStack
 cartpole-ppo:
     env: CartPole-v1
     run: PPO
@@ -9,7 +10,7 @@ cartpole-ppo:
         framework: torch
         gamma: 0.99
         lr: 0.0003
-        num_workers: 1
+        num_env_runners: 1
         num_sgd_iter: 6
         vf_loss_coeff: 0.01
         model:
