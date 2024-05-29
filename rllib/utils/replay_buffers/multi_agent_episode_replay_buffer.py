@@ -131,7 +131,7 @@ class MultiAgentEpisodeReplayBuffer(EpisodeReplayBuffer):
         """
         episodes: List["MultiAgentEpisode"] = force_list(episodes)
 
-        new_episode_ids: List[str] = {eps.id_ for eps in episodes}
+        new_episode_ids: Set[str] = {eps.id_ for eps in episodes}
         total_env_timesteps = sum([eps.env_steps() for eps in episodes])
         self._num_timesteps += total_env_timesteps
         self._num_timesteps_added += total_env_timesteps
@@ -455,7 +455,7 @@ class MultiAgentEpisodeReplayBuffer(EpisodeReplayBuffer):
         self,
         batch_size_B: Optional[int],
         batch_length_T: Optional[int],
-        n_step: Optional[Union[int, Tuple]],
+        n_step: Optional[Union[int, Tuple[int, int]]],
         gamma: float,
         include_infos: bool,
         include_extra_model_outputs: bool,
@@ -465,7 +465,7 @@ class MultiAgentEpisodeReplayBuffer(EpisodeReplayBuffer):
 
         actual_n_step = n_step or 1
         # Sample the n-step if necessary.
-        random_n_step = isinstance(n_step, tuple)
+        random_n_step = isinstance(n_step, (tuple, list))
 
         sampled_episodes = []
         # TODO (simon): Ensure that the module has data and if not, skip it.
@@ -828,49 +828,44 @@ class MultiAgentEpisodeReplayBuffer(EpisodeReplayBuffer):
             # Only add if the agent has stepped in the episode (chunk).
             if agent_steps > 0:
                 # Receive the corresponding module ID.
-                # TODO (sven, simon): Is there always a mapping? What if not?
-                # Is then module_id == agent_id?
-                module_id = ma_episode._agent_to_module_mapping[agent_id]
+                module_id = ma_episode.module_for(agent_id)
                 self._num_module_timesteps[module_id] += agent_steps
                 self._num_module_timesteps_added[module_id] += agent_steps
                 # Also add to the module episode counter.
                 self._num_module_episodes[module_id] += 1
 
     def _add_new_module_indices(
-        self, ma_episode: MultiAgentEpisode, episode_idx: int, exists: bool = True
+        self,
+        ma_episode: MultiAgentEpisode,
+        episode_idx: int,
+        ma_episode_exists: bool = True,
     ) -> None:
         """Adds the module indices for new episode chunks.
 
         Args:
-            multi_agent_episode: The multi-agent episode to add the module indices for.
+            ma_episode: The multi-agent episode to add the module indices for.
             episode_idx: The index of the episode in the `self.episodes`.
+            ma_episode_exists: Whether `ma_episode` is already in this buffer (with a
+                predecessor chunk to which we'll concatenate `ma_episode` later).
         """
+        existing_ma_episode = None
+        if ma_episode_exists:
+            existing_ma_episode = self.episodes[
+                self.episode_id_to_index[ma_episode.id_] - self._num_episodes_evicted
+            ]
 
         for agent_id in ma_episode.agent_ids:
+            existing_sa_eps_len = 0
+
             # Get the corresponding module id.
-            module_id = ma_episode._agent_to_module_mapping[agent_id]
+            module_id = ma_episode.module_for(agent_id)
             # Get the module episode.
             module_eps = ma_episode.agent_episodes[agent_id]
-            # Check if the module episode is already in the buffer.
-            if exists:
-                old_ma_episode = self.episodes[
-                    self.episode_id_to_index[ma_episode.id_]
-                    - self._num_episodes_evicted
-                ]
-                # Is the agent episode already in the buffer?
-                sa_episode_in_buffer = agent_id in old_ma_episode.agent_episodes
-            else:
-                # This agent episode is new. The agent might have just entered
-                # the environment.
-                sa_episode_in_buffer = False
-            if sa_episode_in_buffer:
-                existing_eps_len = len(
-                    self.episodes[
-                        episode_idx - self._num_episodes_evicted
-                    ].agent_episodes[agent_id]
-                )
-            else:
-                existing_eps_len = 0
+
+            # Is the agent episode already in the buffer's existing `ma_episode`?
+            if ma_episode_exists and agent_id in existing_ma_episode.agent_episodes:
+                existing_sa_eps_len = len(existing_ma_episode.agent_episodes[agent_id])
+
             # Add new module indices.
             self._module_to_indices[module_id].extend(
                 [
@@ -878,7 +873,7 @@ class MultiAgentEpisodeReplayBuffer(EpisodeReplayBuffer):
                         # Keep the MAE index for sampling
                         episode_idx,
                         agent_id,
-                        existing_eps_len + i,
+                        existing_sa_eps_len + i,
                     )
                     for i in range(len(module_eps))
                 ]
