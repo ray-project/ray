@@ -126,9 +126,9 @@ class ResourceManager:
             f = (1.0 + num_ops_so_far) / max(1.0, num_ops_total - 1.0)
             num_ops_so_far += 1
             self._downstream_fraction[op] = min(1.0, f)
-            self._downstream_object_store_memory[op] = (
-                self._global_usage.object_store_memory
-            )
+            self._downstream_object_store_memory[
+                op
+            ] = self._global_usage.object_store_memory
 
             # Update operator's object store usage, which is used by
             # DatasetStats and updated on the Ray Data dashboard.
@@ -255,15 +255,16 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
     It works in the following way:
     1. An operator is eligible for resource reservation, if it has enabled throttling
        and hasn't completed. Ineligible operators are not throttled, but
-       their usage will be accounted for their upstream eligible operators. E.g., for such
-       a dataset "map1->limit->map2->streaming_split", we'll treat "map1->limit" as
+       their usage will be accounted for their upstream eligible operators. E.g., for
+       such a dataset "map1->limit->map2->streaming_split", we'll treat "map1->limit" as
        a group and "map2->streaming_split" as another group.
     2. For each eligible operator, we reserve `reservation_ratio * global_resources /
-        num_eligible_ops` resources, half of which is reserved only for the operator outputs,
-        excluding pending task outputs.
+        num_eligible_ops` resources, half of which is reserved only for the operator
+        outputs, excluding pending task outputs.
     3. Non-reserved resources are shared among all operators.
-    4. In each scheduling iteration, each eligible operator will get "remaining of their own
-       reserved resources" + "remaining of shared resources / num_eligible_ops" resources.
+    4. In each scheduling iteration, each eligible operator will get "remaining of their
+       own reserved resources" + "remaining of shared resources / num_eligible_ops"
+       resources.
 
     The `reservation_ratio` is set to 50% by default. Users can tune this value to
     adjust how aggressive or conservative the resource allocation is. A higher value
