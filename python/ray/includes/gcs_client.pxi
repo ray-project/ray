@@ -117,7 +117,9 @@ cdef class MyGcsClient:
     @property
     def address(self) -> str:
         cdef c_pair[c_string, int] pair = self.inner.get().GetGcsServerAddress()
-        return f"{pair.first}:{pair.second}"
+        host = pair.first.decode("utf-8")
+        port = pair.second
+        return f"{host}:{port}"
 
     @property
     def cluster_id(self) -> ray.ClusterID:
