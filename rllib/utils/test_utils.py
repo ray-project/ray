@@ -1377,7 +1377,7 @@ def run_rllib_example_script_experiment(
     ray.init(num_cpus=args.num_cpus or None, local_mode=args.local_mode)
 
     # Define one or more stopping criteria.
-    if not stop:
+    if stop is None:
         stop = {
             f"{ENV_RUNNER_RESULTS}/episode_return_mean": args.stop_reward,
             f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}": args.stop_timesteps,
@@ -1392,7 +1392,7 @@ def run_rllib_example_script_experiment(
         config.framework(args.framework)
 
         # Add an env specifier?
-        if args.env is not None:
+        if args.env is not None and config.env is None:
             config.environment(args.env)
 
         # Enable the new API stack?
