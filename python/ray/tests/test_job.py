@@ -7,7 +7,7 @@ import re
 import json
 
 from subprocess import Popen, PIPE, STDOUT, list2cmdline
-from typing import List, Literal
+from typing import List
 from pathlib import Path
 import pytest
 
@@ -18,7 +18,6 @@ from ray._private.test_utils import (
     wait_for_condition,
     format_web_url,
     wait_for_pid_to_exit,
-    _pid_alive,
 )
 from ray.job_config import JobConfig
 from ray.job_submission import JobSubmissionClient
@@ -345,6 +344,20 @@ def test_task_spec_root_detached_actor_id(shutdown_only):
     ray.get(detached_actor.check.remote())
 
 
+@ray.remote(num_cpus=0)
+class PidActor:
+    def __init__(self):
+        self.pids = set()
+        self.pids.add(os.getpid())
+
+    def add_pid(self, pid):
+        self.pids.add(pid)
+
+    def get_pids(self):
+        print(f"pids: {self.pids}")
+        return self.pids
+
+
 def test_no_process_leak_after_job_finishes(ray_start_cluster):
     """Test to make sure when a job finishes,
     all the worker processes belonging to it exit.
@@ -352,18 +365,6 @@ def test_no_process_leak_after_job_finishes(ray_start_cluster):
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=8)
     ray.init(address=cluster.address)
-
-    @ray.remote(num_cpus=0)
-    class PidActor:
-        def __init__(self):
-            self.pids = set()
-            self.pids.add(os.getpid())
-
-        def add_pid(self, pid):
-            self.pids.add(pid)
-
-        def get_pids(self):
-            return self.pids
 
     @ray.remote
     def child(pid_actor):
@@ -392,103 +393,98 @@ def test_no_process_leak_after_job_finishes(ray_start_cluster):
 
 
 @pytest.mark.parametrize("grandchild", ["task", "actor"])
-@pytest.mark.parametrize("child", ["task", "actor"])
-def test_no_process_leak_after_detached_actor_finishes(
-    ray_start_cluster, child, grandchild
-):
+def test_no_process_leak_after_detached_actor_finishes(ray_start_cluster, grandchild):
     """Test to make sure when a detached actor finishes,
     all the worker processes descended from it exit.
 
     Detached actor Spawner spawns stuff, and then gets killed. This is transitive and
     applies to all descendants. So Spawner spawns actor/task which spawns actor/task.
 
-    Spawned actors register their actor handles to Spawner to avoid actor GC. Spawned
-    tasks are long lived but fire-and-forget.
+    When a worker dies, all children workers are recursively killed already. However
+    when there is a worker A (actor) -> worker B (task) -> worker C (actor/task), and
+    task B finishes, the worker B is released as idle. Then when A finishes, worker B
+    is no longer killed and C leaks. To test this, we spawn a short lived task (B) who
+    spawns a long lived actor/task (C).
+
+    In the code:
+
+    DetachedActor -> short_lived_task -> long_lived_task/LongLivedActor
     """
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=8)
     ray.init(address=cluster.address)
 
+    pid_actor = PidActor.remote()
+
     @ray.remote(num_cpus=0)
-    def child_task(spawner, grandchild: Literal["task"] | Literal["actor"] | None):
+    def long_lived_task():
         """
-        Registers pid to spawner, and optionally spawns a child task/actor. Then sleeps.
+        Registers pid, and then sleeps.
         """
         print(f"init {os.getpid()}")
-        ray.get(spawner.add_pid.remote(os.getpid()))
-        if grandchild == "task":
-            child_task.remote(spawner, None)
-        elif grandchild == "actor":
-            a = ChildActor.remote(spawner, None)
-            spawner.add_handle.remote(a)
+        ray.get(pid_actor.add_pid.remote(os.getpid()))
         while True:
             time.sleep(10000)
 
     @ray.remote(num_cpus=0)
-    class ChildActor:
+    class LongLivedActor:
         """
-        Registers pid and actor_handle to spawner, and optionally spawns a child
-        task/actor. Then sleeps.
+        Registers pid, and then sleeps.
         """
 
-        def __init__(
-            self, spawner, grandchild: Literal["task"] | Literal["actor"] | None
-        ):
+        def __init__(self):
             print(f"init {os.getpid()}")
-            self.spawner = spawner
-            ray.get(self.spawner.add_pid.remote(os.getpid()))
-
-            if grandchild == "task":
-                child_task.remote(self.spawner, None)
-            elif grandchild == "actor":
-                a = ChildActor.remote(self.spawner, None)
-                self.spawner.add_handle.remote(a)
+            ray.get(pid_actor.add_pid.remote(os.getpid()))
 
     @ray.remote(num_cpus=0)
-    class Spawner:
+    def short_lived_task(detached_actor, grandchild):
+        """
+        Spawns long lived actor/task and exit.
+        """
+        print(f"init {os.getpid()}")
+        ray.get(pid_actor.add_pid.remote(os.getpid()))
+        if grandchild == "task":
+            long_lived_task.remote()
+        else:
+            a = LongLivedActor.remote()
+            detached_actor.add_handle.remote(a)
+
+        time.sleep(1)
+        print(f"short_lived_task {os.getpid()} exiting")
+
+    @ray.remote(num_cpus=0, lifetime="detached")
+    class DetachedActor:
         def __init__(self):
-            self.pids = set()
+            ray.get(pid_actor.add_pid.remote(os.getpid()))
             self.actor_handles = []
-            self.add_pid(os.getpid())
 
-        def spawn(self, child, grandchild):
-            print(f"spawning {child} {grandchild}")
-            self_handle = ray.get_runtime_context().current_actor
-            if child == "task":
-                child_task.remote(self_handle, grandchild)
-            else:
-                a = ChildActor.remote(self_handle, grandchild)
-                self.add_handle(a)
-
-        def get_pids(self):
-            return self.pids
-
-        def add_pid(self, pid):
-            self.pids.add(pid)
+        def spawn(self, self_handle, grandchild):
+            print(f"spawning short_lived_task to spawn {grandchild=}")
+            ray.get(short_lived_task.remote(self_handle, grandchild))
 
         def add_handle(self, handle):
             # to avoid actor being GC'd
             self.actor_handles.append(handle)
 
-    spawner = Spawner.options(
-        name="detached_spawner", namespace="ns", lifetime="detached"
+    detached_actor = DetachedActor.options(
+        name="my_detached_actor", namespace="ns"
     ).remote()
-    spawner.spawn.remote(child, grandchild)
-    # 3 pids: spawner, short_lived, long_lived
-    wait_for_condition(lambda: len(ray.get(spawner.get_pids.remote())) == 3)
+    ray.get(detached_actor.spawn.remote(detached_actor, grandchild))
+    # pids: pid_actor, detached_actor, child, grandchild
+    wait_for_condition(lambda: len(ray.get(pid_actor.get_pids.remote())) == 4)
 
-    pids = ray.get(spawner.get_pids.remote())
+    pids = ray.get(pid_actor.get_pids.remote())
 
     ray.shutdown()
-    # Job finishes at this point, but the detached actor is still running
-    for pid in pids:
-        assert _pid_alive(pid)
+    # Job 1 finishes. pid_actor and short_lived_task should die, detached_actor and
+    # grandchild should live on.
 
     # Job 2. Kill the actor
     ray.init(address=cluster.address)
-    spawner_in_job2 = ray.get_actor("detached_spawner", namespace="ns")
-    ray.kill(spawner_in_job2)
+    detached_actor_in_job2 = ray.get_actor("my_detached_actor", namespace="ns")
+    ray.kill(detached_actor_in_job2)
 
+    # All should die.
     for pid in pids:
         wait_for_pid_to_exit(pid)
 

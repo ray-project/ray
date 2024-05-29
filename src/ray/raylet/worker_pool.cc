@@ -733,6 +733,8 @@ void WorkerPool::HandleJobFinished(const JobID &job_id) {
   finished_jobs_.insert(job_id);
 }
 
+void WorkerPool::OnDetachedActorDied(const ActorID &actor_id) {}
+
 boost::optional<const rpc::JobConfig &> WorkerPool::GetJobConfig(
     const JobID &job_id) const {
   auto iter = all_jobs_.find(job_id);
@@ -1050,6 +1052,20 @@ void WorkerPool::PushWorker(const std::shared_ptr<WorkerInterface> &worker) {
 }
 
 void WorkerPool::TryKillingIdleWorkers() {
+  std::function<bool(WorkerInterface &, int64_t)> should_kill;
+  for (auto it = idle_of_all_languages_.begin(); it != idle_of_all_languages_.end();) {
+    const auto &[idle_worker, last_time_used_ms] = *it;
+    if (idle_worker->IsDead()) {
+      it = idle_of_all_languages_.erase(it);
+    } else if (should_kill(*idle_worker, last_time_used_ms)) {
+      RAY_LOG(DEBUG) << "Killing idle worker " << idle_worker->WorkerId();
+      KillIdleWorker(idle_worker, last_time_used_ms);
+      it = idle_of_all_languages_.erase(it);
+    } else {
+      it++;
+    }
+  }
+
   int64_t now = get_time_();
 
   // Filter out all idle workers that are already dead and/or associated with

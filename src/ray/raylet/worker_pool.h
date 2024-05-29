@@ -258,6 +258,10 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// \return void
   void OnWorkerStarted(const std::shared_ptr<WorkerInterface> &worker);
 
+  /// To be invoked when a detached actor died. Kills all workers whose root detached
+  /// actor == this actor_id.
+  void OnDetachedActorDied(const ActorID &actor_id);
+
   /// Register a new driver.
   ///
   /// \param[in] worker The driver to be registered.

@@ -660,11 +660,20 @@ void NodeManager::HandleJobFinished(const JobID &job_id, const JobTableData &job
 void NodeManager::HandleActorUpdate(const ActorID &actor_id,
                                     const rpc::ActorTableData &actor_data) {
   // If the actor is detached and dead, kill all its transitive children.
+  // Running workers are in the leased_workers_, while idle workers are in the
+  // worker_pool_.
   if (actor_data.is_detached() && actor_data.state() == rpc::ActorTableData::DEAD) {
     RAY_LOG(INFO) << "The detached actor " << actor_id << " is dead. Killing all its "
                   << "transitive children workers.";
     for (const auto &pair : leased_workers_) {
       auto &worker = pair.second;
+      RAY_LOG(ERROR) << "leased worker " << worker->WorkerId()
+                     << " root detached actor id: " << worker->GetRootDetachedActorId()
+                     << " job id: " << worker->GetAssignedJobId()
+                     << " task id: " << worker->GetAssignedTaskId() << " task or actor "
+                     << worker->GetTaskOrActorIdAsDebugString() << " owner addr "
+                     << worker->GetOwnerAddress().DebugString();
+
       if (worker->GetRootDetachedActorId() == actor_id) {
         RAY_LOG(INFO) << "The leased worker " << worker->WorkerId()
                       << " is killed because the root detached actor " << actor_id
