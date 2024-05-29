@@ -223,18 +223,6 @@ absl::optional<std::shared_ptr<rpc::GcsNodeInfo>> GcsNodeManager::GetAliveNode(
   return iter->second;
 }
 
-void GcsNodeManager::SetDeathInfo(const NodeID &node_id,
-                                  const rpc::NodeDeathInfo &death_info) {
-  auto maybe_node = GetAliveNode(node_id);
-  if (!maybe_node.has_value()) {
-    return;
-  }
-
-  auto node = std::move(maybe_node.value());
-  auto node_death_info = node->mutable_death_info();
-  node_death_info->CopyFrom(death_info);
-}
-
 rpc::NodeDeathInfo GcsNodeManager::InferDeathInfo(const NodeID &node_id) {
   auto iter = draining_nodes_.find(node_id);
   rpc::NodeDeathInfo death_info;

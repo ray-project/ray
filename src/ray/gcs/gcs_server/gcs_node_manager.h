@@ -177,12 +177,6 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   /// \param node The node which is dead.
   void AddDeadNodeToCache(std::shared_ptr<rpc::GcsNodeInfo> node);
 
-  /// Set the death info of the node.
-  ///
-  /// \param node_id The ID of the node.
-  /// \param death_info The death info of the node.
-  void SetDeathInfo(const NodeID &node_id, const rpc::NodeDeathInfo &death_info);
-
   /// Infer death cause of the node based on existing draining requests.
   ///
   /// \param node_id The ID of the node. The node must not be removed
