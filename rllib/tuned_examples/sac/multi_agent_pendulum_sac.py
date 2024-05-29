@@ -53,7 +53,6 @@ config = (
     )
     .reporting(
         metrics_num_episodes_for_smoothing=5,
-        min_sample_timesteps_per_iteration=1000,
     )
 )
 

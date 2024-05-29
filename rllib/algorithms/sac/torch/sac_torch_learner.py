@@ -308,11 +308,13 @@ class SACTorchLearner(DQNRainbowTorchLearner, SACLearner):
         for module_id in set(loss_per_module.keys()) - {ALL_MODULES}:
             config = self.config.get_config_for_module(module_id)
 
+            for optim_name, optim in self.get_optimizers_for_module(module_id):
+
             # Calculate gradients for each loss by its optimizer.
             # TODO (sven): Maybe we rename to `actor`, `critic`. We then also
             #  need to either add to or change in the `Learner` constants.
             for component in (
-                ["qf", "policy", "alpha"] + ["qf_twin"] if config.twin_q else []
+                ["policy", "qf"] + (["qf_twin"] if config.twin_q else []) + ["alpha"]
             ):
                 self.metrics.peek(module_id, component + "_loss").backward(
                     retain_graph=True
