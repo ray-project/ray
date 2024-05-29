@@ -348,10 +348,6 @@ void GcsNodeManager::OnNodeFailure(const NodeID &node_id,
   if (maybe_node.has_value()) {
     rpc::NodeDeathInfo death_info = InferDeathInfo(node_id);
     auto node = RemoveNode(node_id, death_info);
-    if (!node) {
-      return;
-    }
-
     node->set_state(rpc::GcsNodeInfo::DEAD);
     node->set_end_time_ms(current_sys_time_ms());
 
