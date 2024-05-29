@@ -43,7 +43,7 @@ def do_allocate_channel(
 
     Args:
         readers: The actor handles of the readers.
-        buffer_size_bytes: The maximum size of messages in the channel.
+        typ: The output type hint for the channel.
 
     Returns:
         The allocated channel.

@@ -16,6 +16,8 @@ from ray._private.utils import (
     get_or_create_event_loop,
 )
 
+from ray.experimental.channel.shared_memory_channel import MultiChannel
+
 
 logger = logging.getLogger(__name__)
 
@@ -528,6 +530,66 @@ def test_asyncio_exceptions(ray_start_regular_shared, max_queue_size):
     loop.run_until_complete(main())
     # Note: must teardown before starting a new Ray session, otherwise you'll get
     # a segfault from the dangling monitor thread upon the new Ray init.
+    compiled_dag.teardown()
+
+
+def test_multi_channel_one_actor(ray_start_regular):
+    a = Actor.remote(0)
+    with InputNode() as inp:
+        dag = a.inc.bind(inp)
+        dag = a.inc.bind(dag)
+        dag = a.inc.bind(dag)
+
+    compiled_dag = dag.experimental_compile()
+    assert len(compiled_dag.actor_to_tasks) == 1
+
+    num_local_channels = 0
+    num_remote_channels = 0
+    for tasks in compiled_dag.actor_to_tasks.values():
+        assert len(tasks) == 3
+        for task in tasks:
+            assert isinstance(task.output_channel, MultiChannel)
+            if task.output_channel._local_channel:
+                num_local_channels += 1
+            if task.output_channel._remote_channel:
+                num_remote_channels += 1
+    assert num_local_channels == 2
+    assert num_remote_channels == 1
+    output_channel = compiled_dag.execute(1)
+    result = output_channel.begin_read()
+    assert result == 4
+    output_channel.end_read()
+    compiled_dag.teardown()
+
+
+def test_multi_channel_two_actors(ray_start_regular):
+    a = Actor.remote(0)
+    b = Actor.remote(100)
+    with InputNode() as inp:
+        dag = a.inc.bind(inp)
+        dag = b.inc.bind(dag)
+        dag = a.inc.bind(dag)
+
+    compiled_dag = dag.experimental_compile()
+    assert len(compiled_dag.actor_to_tasks) == 2
+
+    a_tasks = compiled_dag.actor_to_tasks[a]
+    assert len(a_tasks) == 2
+    for task in a_tasks:
+        assert isinstance(task.output_channel, MultiChannel)
+        assert not task.output_channel._local_channel
+        assert task.output_channel._remote_channel
+
+    b_tasks = compiled_dag.actor_to_tasks[b]
+    assert len(b_tasks) == 1
+    assert isinstance(b_tasks[0].output_channel, MultiChannel)
+    assert not b_tasks[0].output_channel._local_channel
+    assert b_tasks[0].output_channel._remote_channel
+
+    output_channel = compiled_dag.execute(1)
+    result = output_channel.begin_read()
+    assert result == 102
+    output_channel.end_read()
     compiled_dag.teardown()
 
 
