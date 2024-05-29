@@ -421,6 +421,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// \return Void.
   void HandleJobFinished(const JobID &job_id, const JobTableData &job_data);
 
+  void HandleActorUpdate(const ActorID &actor_id, const rpc::ActorTableData &actor_data);
+
   /// Process client message of NotifyDirectCallTaskBlocked
   ///
   /// \param message_data A pointer to the message data.

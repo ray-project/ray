@@ -551,6 +551,9 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   std::shared_ptr<rpc::ActorTableData> GenActorDataOnlyWithStates(
       const rpc::ActorTableData &actor) {
     auto actor_delta = std::make_shared<rpc::ActorTableData>();
+    // TODO: this is not a delta
+    actor_delta->set_is_detached(actor.is_detached());
+
     actor_delta->set_state(actor.state());
     actor_delta->mutable_death_cause()->CopyFrom(actor.death_cause());
     actor_delta->mutable_address()->CopyFrom(actor.address());

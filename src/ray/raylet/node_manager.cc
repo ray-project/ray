@@ -493,6 +493,14 @@ ray::Status NodeManager::RegisterGcs() {
   RAY_RETURN_NOT_OK(
       gcs_client_->Jobs().AsyncSubscribeAll(job_subscribe_handler, nullptr));
 
+  RAY_RETURN_NOT_OK(gcs_client_->Actors().AsyncSubscribeAll(
+      [this](const ActorID &actor_id, const rpc::ActorTableData &actor_data) {
+        // RAY_LOG(ERROR) << "Received actor update for actor " << actor_id << " data "
+        //                << actor_data.DebugString();
+        HandleActorUpdate(actor_id, actor_data);
+      },
+      nullptr));
+
   periodical_runner_.RunFnPeriodically(
       [this] {
         DumpDebugState();
@@ -647,6 +655,35 @@ void NodeManager::HandleJobFinished(const JobID &job_id, const JobTableData &job
     }
   }
   worker_pool_.HandleJobFinished(job_id);
+}
+
+void NodeManager::HandleActorUpdate(const ActorID &actor_id,
+                                    const rpc::ActorTableData &actor_data) {
+  // If the actor is detached and dead, kill all its transitive children.
+  if (actor_data.is_detached() && actor_data.state() == rpc::ActorTableData::DEAD) {
+    RAY_LOG(INFO) << "The detached actor " << actor_id << " is dead. Killing all its "
+                  << "transitive children workers.";
+    for (const auto &pair : leased_workers_) {
+      auto &worker = pair.second;
+      if (worker->GetRootDetachedActorId() == actor_id) {
+        RAY_LOG(INFO) << "The leased worker " << worker->WorkerId()
+                      << " is killed because the root detached actor " << actor_id
+                      << " is dead.";
+        rpc::ExitRequest request;
+        request.set_force_exit(true);
+        worker->rpc_client()->Exit(
+            request, [this, worker](const ray::Status &status, const rpc::ExitReply &r) {
+              if (!status.ok()) {
+                RAY_LOG(WARNING)
+                    << "Failed to send exit request to worker " << worker->WorkerId()
+                    << ": " << status.ToString() << ". Killing it using SIGKILL instead.";
+                // Just kill-9 as a last resort.
+                KillWorker(worker, /* force */ true);
+              }
+            });
+      }
+    }
+  }
 }
 
 void NodeManager::DoLocalGC(bool triggered_by_global_gc) {
