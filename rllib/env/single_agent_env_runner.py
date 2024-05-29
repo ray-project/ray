@@ -4,7 +4,6 @@ import tree
 
 from collections import defaultdict
 from functools import partial
-import numpy as np
 from typing import DefaultDict, Dict, List, Optional
 
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
@@ -618,13 +617,6 @@ class SingleAgentEnvRunner(EnvRunner):
             # Reset internal data on `reduce()` call below (not a lifetime count).
             clear_on_reduce=True,
         )
-
-        # If no episodes at all, log NaN stats.
-        if (
-            len(self._done_episodes_for_metrics) == 0
-            and self.metrics.peek(EPISODE_LEN_MEAN, default=-1) == -1
-        ):
-            self._log_episode_metrics(np.nan, np.nan, np.nan)
 
         # Now that we have logged everything, clear cache of done episodes.
         self._done_episodes_for_metrics.clear()
