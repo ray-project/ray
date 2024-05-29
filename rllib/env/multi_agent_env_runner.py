@@ -551,7 +551,7 @@ class MultiAgentEnvRunner(EnvRunner):
                 # but after(!) the last env-to-module connector call has been made.
                 # -> All obs (even the terminal one) should have been processed now (by
                 # the connector, if applicable).
-                self._make_on_episode_callback("on_episode_end")
+                self._make_on_episode_callback("on_episode_end", _episode)
 
                 # Finish the episode.
                 done_episodes_to_return.append(
