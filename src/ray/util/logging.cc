@@ -567,4 +567,13 @@ RayLog::~RayLog() {
   }
 }
 
+RayLog &RayLog::WithField(const std::string &key, const std::string &value) {
+  if (log_format_json_) {
+    context_osstream_ << ",\"" << key << "\":\"" << json_escape_string(value) << "\"";
+  } else {
+    context_osstream_ << " " << key << "=" << value;
+  }
+  return *this;
+}
+
 }  // namespace ray

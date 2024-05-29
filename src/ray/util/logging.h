@@ -114,8 +114,6 @@ enum class RayLogLevel {
 
 #define RAY_LOG_ENABLED(level) ray::RayLog::IsLevelEnabled(ray::RayLogLevel::level)
 
-#define RAY_LOG_FIELD(key, value) ::ray::MakeRayLogField(key, value)
-
 #define RAY_LOG(level)                                      \
   if (ray::RayLog::IsLevelEnabled(ray::RayLogLevel::level)) \
   RAY_LOG_INTERNAL(ray::RayLogLevel::level)
@@ -226,19 +224,6 @@ enum class RayLogLevel {
 /// The second argument: log content.
 using FatalLogCallback = std::function<void(const std::string &, const std::string &)>;
 
-template <typename T>
-struct RayLogField {
-  RayLogField(const std::string &key, const T &value) : key(key), value(value) {}
-
-  const std::string &key;
-  const T &value;
-};
-
-template <typename T>
-RayLogField<T> MakeRayLogField(const std::string &key, const T &value) {
-  return RayLogField<T>(key, value);
-}
-
 class RayLog {
  public:
   RayLog(const char *file_name, int line_number, RayLogLevel severity);
@@ -315,15 +300,7 @@ class RayLog {
     return *this;
   }
 
-  template <typename T>
-  RayLog &operator<<(const RayLogField<T> &f) {
-    if (log_format_json_) {
-      context_osstream_ << ",\"" << f.key << "\":\"" << f.value << "\"";
-    } else {
-      context_osstream_ << " " << f.key << "=" << f.value;
-    }
-    return *this;
-  }
+  RayLog &WithField(const std::string &key, const std::string &value);
 
  private:
   FRIEND_TEST(PrintLogTest, TestRayLogEveryNOrDebug);
@@ -340,7 +317,7 @@ class RayLog {
   bool is_fatal_ = false;
   /// String stream of the log message
   std::ostringstream msg_osstream_;
-  /// String stream of the log contexts: a list of key-value pairs.
+  /// String stream of the log context: a list of key-value pairs.
   std::ostringstream context_osstream_;
   /// String stream of exposed fatal log content.
   std::ostringstream expose_fatal_osstream_;
@@ -363,7 +340,7 @@ class RayLog {
   static bool is_failure_signal_handler_installed_;
   /// Whether emit json logs.
   static bool log_format_json_;
-  // Log format content.
+  // Log format pattern.
   static std::string log_format_pattern_;
   // Log rotation file size limitation.
   static long log_rotation_max_size_;
