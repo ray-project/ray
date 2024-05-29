@@ -30,14 +30,16 @@ READ_FILE_RETRY_ON_ERRORS = ["AWS Error NETWORK_CONNECTION", "AWS Error ACCESS_D
 READ_FILE_MAX_ATTEMPTS = 10
 READ_FILE_RETRY_MAX_BACKOFF_SECONDS = 32
 
-logger = DatasetLogger(__name__)
+import time
+import logging
+logger = logging.getLogger(__name__)
 
 # Defensively compute the size of the block as the max size reported by the
 # datasource and the actual read task size. This is to guard against issues
 # with bad metadata reporting.
 def cleaned_metadata(read_task: ReadTask):
     block_meta = read_task.get_metadata()
-    task_size = len(cloudpickle.dumps(read_task))
+    task_size = 0
     if block_meta.size_bytes is None or task_size > block_meta.size_bytes:
         if task_size > TASK_SIZE_WARN_THRESHOLD_BYTES:
             print(
@@ -68,7 +70,6 @@ def plan_read_op(op: Read) -> PhysicalOperator:
         logger.get_logger.info(f"Getting read tasks took: {end-start} seconds")
         _warn_on_high_parallelism(parallelism, len(read_tasks))
 
-
         # Follow up on the comment below
         start = time.time()
         bundle = [
@@ -89,7 +90,7 @@ def plan_read_op(op: Read) -> PhysicalOperator:
             for read_task in read_tasks
         ]
         end = time.time()
-        logger.get_logger.info(f"Generating reference bundle took: {end-start} seconds")
+        logger.info(f"Generating reference bundle took: {end-start} seconds")
         return bundle
 
     
