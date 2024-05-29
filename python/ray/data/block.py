@@ -331,7 +331,9 @@ class BlockAccessor:
         raise NotImplementedError
 
     def get_metadata(
-        self, input_files: List[str], exec_stats: Optional[BlockExecStats]
+        self,
+        input_files: Optional[List[str]] = None,
+        exec_stats: Optional[BlockExecStats] = None,
     ) -> BlockMetadata:
         """Create a metadata object from this block."""
         return BlockMetadata(

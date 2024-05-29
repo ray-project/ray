@@ -1,4 +1,5 @@
 text: Below are tutorials for exploring Ray Serve capabilities and learning how to integrate different modeling frameworks.
+groupby: related_technology
 examples:
   - title: Serve ML Models
     skill_level: beginner
@@ -7,12 +8,14 @@ examples:
     use_cases:
       - computer vision
     link: tutorials/serve-ml-models
+    related_technology: ml applications
   - title: Serve a Stable Diffusion Model
     skill_level: beginner
     use_cases:
       - computer vision
       - generative ai
     link: tutorials/stable-diffusion
+    related_technology: ml applications
   - title: Serve a Large Language Model
     skill_level: beginner
     use_cases:
@@ -26,22 +29,26 @@ examples:
     use_cases:
       - natural language processing
     link: tutorials/text-classification
+    related_technology: ml applications
   - title: Serve an Object Detection Model
     skill_level: beginner
     use_cases:
       - computer vision
     link: tutorials/object-detection
+    related_technology: ml applications
   - title: Serve an Inference Model on AWS NeuronCores Using FastAPI
     skill_level: intermediate
     use_cases:
       - natural language processing
     link: tutorials/aws-neuron-core-inference
+    related_technology: ai accelerators
   - title: Serve an Inference with Stable Diffusion Model on AWS NeuronCores Using FastAPI
     skill_level: intermediate
     use_cases:
       - computer vision
       - generative ai
     link: tutorials/aws-neuron-core-inference-stable-diffusion
+    related_technology: ai accelerators
   - title: Serve a model on Intel Gaudi Accelerator
     skill_level: intermediate
     frameworks:
@@ -50,6 +57,7 @@ examples:
       - generative ai
       - large language models
     link: tutorials/intel-gaudi-inference
+    related_technology: ai accelerators
   - title: Scale a Gradio App with Ray Serve
     skill_level: intermediate
     use_cases:
@@ -57,6 +65,7 @@ examples:
       - large language models
       - natural language processing
     link: tutorials/gradio-integration
+    related_technology: integrations
   - title: Serve a Text Generator with Request Batching
     skill_level: intermediate
     use_cases:
@@ -64,6 +73,7 @@ examples:
       - large language models
       - natural language processing
     link: tutorials/batch
+    related_technology: integrations
   - title: Serve a Chatbot with Request and Response Streaming
     skill_level: intermediate
     use_cases:
@@ -71,13 +81,15 @@ examples:
       - large language models
       - natural language processing
     link: tutorials/streaming
+    related_technology: ml applications
   - title: Serving models with Triton Server in Ray Serve
     skill_level: intermediate
     use_cases:
       - computer vision
       - generative ai
     link: tutorials/triton-server-integration
-
+    related_technology: integrations
   - title: Serve a Java App
     skill_level: advanced
     link: tutorials/java
+    related_technology: integrations
