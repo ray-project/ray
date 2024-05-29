@@ -33,8 +33,8 @@ class SACTorchRLModule(TorchRLModule, SACRLModule):
         # parameter names to be removed or renamed when syncing from the state dict
         # when synching.
         if not self.inference_only:
-            # We do not want to train the target networks. Instead, we snyc
-            # them with the actual (trained) ones.
+            # We do not want to train the target networks. Instead, we sync them
+            # with the actual (trained) ones.
             self.qf_target_encoder.requires_grad_(False)
             self.qf_target_encoder.load_state_dict(self.qf_encoder.state_dict())
             self.qf_target.requires_grad_(False)
