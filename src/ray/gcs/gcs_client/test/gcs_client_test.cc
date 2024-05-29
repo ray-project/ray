@@ -472,6 +472,36 @@ TEST_P(GcsClientTest, TestCheckAlive) {
   }
 }
 
+TEST_P(GcsClientTest, TestGcsClientCheckAlive) {
+  auto node_info1 = Mocker::GenNodeInfo();
+  node_info1->set_node_manager_address("172.1.2.3");
+  node_info1->set_node_manager_port(31292);
+
+  auto node_info2 = Mocker::GenNodeInfo();
+  node_info2->set_node_manager_address("172.1.2.4");
+  node_info2->set_node_manager_port(31293);
+
+  std::vector<std::string> raylet_addresses = {"172.1.2.3:31292", "172.1.2.4:31293"};
+  {
+    std::vector<bool> nodes_alive;
+    RAY_CHECK_OK(gcs_client_->Nodes().CheckAlive(
+        raylet_addresses, /*timeout_ms=*/1000, nodes_alive));
+    ASSERT_EQ(nodes_alive.size(), 2);
+    ASSERT_FALSE(nodes_alive[0]);
+    ASSERT_FALSE(nodes_alive[1]);
+  }
+
+  ASSERT_TRUE(RegisterNode(*node_info1));
+  {
+    std::vector<bool> nodes_alive;
+    RAY_CHECK_OK(gcs_client_->Nodes().CheckAlive(
+        raylet_addresses, /*timeout_ms=*/1000, nodes_alive));
+    ASSERT_EQ(nodes_alive.size(), 2);
+    ASSERT_TRUE(nodes_alive[0]);
+    ASSERT_FALSE(nodes_alive[1]);
+  }
+}
+
 TEST_P(GcsClientTest, TestJobInfo) {
   // Create job table data.
   JobID add_job_id = JobID::FromInt(1);

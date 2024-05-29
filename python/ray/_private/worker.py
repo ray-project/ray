@@ -2045,39 +2045,25 @@ def print_worker_logs(data: Dict[str, str], print_file: Any):
         pid = data.get("pid")
         lines = data.get("lines", [])
 
-    if data.get("ip") == data.get("localhost"):
-        for line in lines:
-            if RAY_TQDM_MAGIC in line:
-                process_tqdm(line)
+    ip = data.get("ip")
+    ip_prefix = "" if ip == data.get("localhost") else f", ip={ip}"
+    for line in lines:
+        if RAY_TQDM_MAGIC in line:
+            process_tqdm(line)
+        else:
+            hide_tqdm()
+            # If RAY_COLOR_PREFIX=0, do not wrap with any color codes
+            if os.getenv("RAY_COLOR_PREFIX") == "0":
+                color_pre = ""
+                color_post = ""
             else:
-                hide_tqdm()
-                print(
-                    "{}({}{}){} {}".format(
-                        color_for(data, line),
-                        prefix_for(data),
-                        pid,
-                        colorama.Style.RESET_ALL,
-                        message_for(data, line),
-                    ),
-                    file=print_file,
-                )
-    else:
-        for line in lines:
-            if RAY_TQDM_MAGIC in line:
-                process_tqdm(line)
-            else:
-                hide_tqdm()
-                print(
-                    "{}({}{}, ip={}){} {}".format(
-                        color_for(data, line),
-                        prefix_for(data),
-                        pid,
-                        data.get("ip"),
-                        colorama.Style.RESET_ALL,
-                        message_for(data, line),
-                    ),
-                    file=print_file,
-                )
+                color_pre = color_for(data, line)
+                color_post = colorama.Style.RESET_ALL
+            print(
+                f"{color_pre}({prefix_for(data)}{pid}{ip_prefix}){color_post} "
+                f"{message_for(data, line)}",
+                file=print_file,
+            )
     # Restore once at end of batch to avoid excess hiding/unhiding of tqdm.
     restore_tqdm()
 
