@@ -122,10 +122,7 @@ def from_blocks(blocks: List[Block]):
         A :class:`~ray.data.Dataset` holding the blocks.
     """
     block_refs = [ray.put(block) for block in blocks]
-    metadata = [
-        BlockAccessor.for_block(block).get_metadata(input_files=None, exec_stats=None)
-        for block in blocks
-    ]
+    metadata = [BlockAccessor.for_block(block).get_metadata() for block in blocks]
     from_blocks_op = FromBlocks(block_refs, metadata)
     logical_plan = LogicalPlan(from_blocks_op)
     return MaterializedDataset(
@@ -207,9 +204,7 @@ def from_items(
         block = builder.build()
         blocks.append(ray.put(block))
         metadata.append(
-            BlockAccessor.for_block(block).get_metadata(
-                input_files=None, exec_stats=stats.build()
-            )
+            BlockAccessor.for_block(block).get_metadata(exec_stats=stats.build())
         )
 
     from_items_op = FromItems(blocks, metadata)
