@@ -40,7 +40,7 @@ if FOLLOW_SYMLINKS_ENABLED:
     logger.warning(
         "Enabling RAY_DASHBOARD_BUILD_FOLLOW_SYMLINKS is not recommended as it "
         "allows symlinks to directories outside the dashboard build folder. "
-        "You may accidentally expose files on your system outside of these directories."
+        "You may accidentally expose files on your system outside of the build directory."
     )
 
 
