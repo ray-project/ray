@@ -187,7 +187,7 @@ class Session : public std::enable_shared_from_this<Session> {
     if (http::to_status_class(res_.result()) == http::status_class::successful) {
       Succeeded(std::move(res_).body());
     } else {
-      Failed(ray::Status::IOError(absl::StrCat("HTTP results in non-ok status code ",
+      Failed(ray::Status::IOError(absl::StrCat("HTTP request returns non-ok status code ",
                                                res_.result_int(),
                                                ", body",
                                                std::move(res_).body())));
