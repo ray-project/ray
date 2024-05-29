@@ -367,7 +367,10 @@ def debug(address):
     required=False,
     type=int,
     help="The amount of memory (in bytes) to start the object store with. "
-    "By default, this is 30% of available system memory capped by the shm size.",
+    "By default, this is 30% (ray_constants.DEFAULT_OBJECT_STORE_MEMORY_PROPORTION) "
+    "of available system memory capped by "
+    "the shm size and 200G (ray_constants.DEFAULT_OBJECT_STORE_MAX_MEMORY_BYTES) "
+    "but can be set higher.",
 )
 @click.option(
     "--redis-max-memory",

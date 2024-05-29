@@ -1303,7 +1303,11 @@ def init(
         labels: [Experimental] The key-value labels of the node.
         object_store_memory: The amount of memory (in bytes) to start the
             object store with.
-            By default, this is 30% of available system memory capped by the shm size.
+            By default, this is 30%
+            (ray_constants.DEFAULT_OBJECT_STORE_MEMORY_PROPORTION)
+            of available system memory capped by
+            the shm size and 200G (ray_constants.DEFAULT_OBJECT_STORE_MAX_MEMORY_BYTES)
+            but can be set higher.
         local_mode: Deprecated: consider using the Ray Debugger instead.
         ignore_reinit_error: If true, Ray suppresses errors from calling
             ray.init() a second time. Ray won't be restarted.
