@@ -44,23 +44,23 @@ config = (
             "full_action_space": False,
             # Already done by MaxAndSkip wrapper: "action repeat" == 4.
             "frameskip": 1,
-        }
-    )
-    .learners(
-        num_learners=0 if args.num_gpus == 1 else args.num_gpus,
-        num_gpus_per_learner=1 if args.num_gpus else 0,
+        },
     )
     .env_runners(
         num_env_runners=(args.num_env_runners or 0),
         # If we use >1 GPU and increase the batch size accordingly, we should also
         # increase the number of envs per worker.
         num_envs_per_env_runner=(args.num_gpus or 1),
-        remote_worker_envs=True,
+        remote_worker_envs=(args.num_gpus > 1),
+    )
+    .learners(
+        num_learners=0 if args.num_gpus == 1 else args.num_gpus,
+        num_gpus_per_learner=1 if args.num_gpus else 0,
     )
     .reporting(
         metrics_num_episodes_for_smoothing=(args.num_gpus or 1),
-        report_images_and_videos=False,
-        report_dream_data=False,
+        report_images_and_videos=True,
+        report_dream_data=True,
         report_individual_batch_item_stats=False,
     )
     # See Appendix A.
@@ -75,4 +75,4 @@ config = (
 if __name__ == "__main__":
     from ray.rllib.utils.test_utils import run_rllib_example_script_experiment
 
-    run_rllib_example_script_experiment(config, args, keep_config=True)
+    run_rllib_example_script_experiment(config, args, stop={}, keep_config=True)
