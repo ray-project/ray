@@ -42,15 +42,6 @@ class ResourceManager:
     # when `ReservationOpResourceAllocator` is not enabled.
     DEFAULT_OBJECT_STORE_MEMORY_LIMIT_FRACTION_WO_RESOURCE_RESERVATION = 0.25
 
-    # Memory accounting is accurate only for these operators.
-    # We'll enable memory reservation if a dataset only contains these operators.
-    _ACCURRATE_MEMORY_ACCOUNTING_OPS = (
-        InputDataBuffer,
-        MapOperator,
-        LimitOperator,
-        OutputSplitter,
-    )
-
     def __init__(self, topology: "Topology", options: ExecutionOptions):
         self._topology = topology
         self._options = options
@@ -77,7 +68,9 @@ class ResourceManager:
         if ctx.op_resource_reservation_enabled:
             should_enable = True
             for op in topology:
-                if not isinstance(op, ResourceManager._ACCURRATE_MEMORY_ACCOUNTING_OPS):
+                # We'll enable memory reservation if all operators have
+                # implemented accurate memory accounting.
+                if not op.implements_accurate_memory_accounting():
                     should_enable = False
                     break
             if should_enable:
@@ -136,9 +129,9 @@ class ResourceManager:
             f = (1.0 + num_ops_so_far) / max(1.0, num_ops_total - 1.0)
             num_ops_so_far += 1
             self._downstream_fraction[op] = min(1.0, f)
-            self._downstream_object_store_memory[
-                op
-            ] = self._global_usage.object_store_memory
+            self._downstream_object_store_memory[op] = (
+                self._global_usage.object_store_memory
+            )
 
             # Update operator's object store usage, which is used by
             # DatasetStats and updated on the Ray Data dashboard.
