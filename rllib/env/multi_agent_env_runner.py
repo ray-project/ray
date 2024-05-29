@@ -3,7 +3,6 @@ import logging
 
 from collections import defaultdict
 from functools import partial
-import numpy as np
 from typing import DefaultDict, Dict, List, Optional
 
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
@@ -140,7 +139,7 @@ class MultiAgentEnvRunner(EnvRunner):
         assert not (num_timesteps is not None and num_episodes is not None)
 
         # If no execution details are provided, use the config to try to infer the
-        # desired timesteps/episodes to sample and exploration behavior.
+        # desired timesteps/episodes to sample and the exploration behavior.
         if explore is None:
             explore = self.config.explore
         if num_timesteps is None and num_episodes is None:
@@ -611,8 +610,9 @@ class MultiAgentEnvRunner(EnvRunner):
                     episode_return += return_eps2
                     episode_duration_s += eps2.get_duration_s()
                     for sa_eps in eps2.agent_episodes.values():
-                        agent_episode_returns[str(sa_eps.agent_id)] += return_eps2
-                        module_episode_returns[sa_eps.module_id] += return_eps2
+                        return_sa = sa_eps.get_return()
+                        agent_episode_returns[str(sa_eps.agent_id)] += return_sa
+                        module_episode_returns[sa_eps.module_id] += return_sa
                 del self._ongoing_episodes_for_metrics[eps.id_]
 
             self._log_episode_metrics(
@@ -623,9 +623,11 @@ class MultiAgentEnvRunner(EnvRunner):
                 module_episode_returns,
             )
 
-        # If no episodes at all, log NaN stats.
-        if len(self._done_episodes_for_metrics) == 0:
-            self._log_episode_metrics(np.nan, np.nan, np.nan)
+        # TODO (simon): This results in hundreds of warnings in the logs
+        # b/c reducing over NaNs is not supported.
+        # # If no episodes at all, log NaN stats.
+        # if len(self._done_episodes_for_metrics) == 0:
+        #     self._log_episode_metrics(np.nan, np.nan, np.nan)
 
         # Log num episodes counter for this iteration.
         self.metrics.log_value(
@@ -899,6 +901,7 @@ class MultiAgentEnvRunner(EnvRunner):
                 EPISODE_RETURN_MIN: ret,
             },
             reduce="min",
+            window=self.config.metrics_num_episodes_for_smoothing,
         )
         self.metrics.log_dict(
             {
@@ -906,4 +909,5 @@ class MultiAgentEnvRunner(EnvRunner):
                 EPISODE_RETURN_MAX: ret,
             },
             reduce="max",
+            window=self.config.metrics_num_episodes_for_smoothing,
         )

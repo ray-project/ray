@@ -818,7 +818,7 @@ class SingleAgentEnvRunner(EnvRunner):
         )
 
         # For some metrics, log min/max as well.
-        self.metrics.log_value(EPISODE_LEN_MIN, length, reduce="min")
-        self.metrics.log_value(EPISODE_RETURN_MIN, ret, reduce="min")
-        self.metrics.log_value(EPISODE_LEN_MAX, length, reduce="max")
-        self.metrics.log_value(EPISODE_RETURN_MAX, ret, reduce="max")
+        self.metrics.log_value(EPISODE_LEN_MIN, length, reduce="min", window=win)
+        self.metrics.log_value(EPISODE_RETURN_MIN, ret, reduce="min", window=win)
+        self.metrics.log_value(EPISODE_LEN_MAX, length, reduce="max", window=win)
+        self.metrics.log_value(EPISODE_RETURN_MAX, ret, reduce="max", window=win)

@@ -15,16 +15,11 @@ args = parser.parse_args()
 config = (
     DQNConfig()
     .environment(env="CartPole-v1")
-    .framework(framework="torch")
-    .api_stack(
-        enable_rl_module_and_learner=True,
-        enable_env_runner_and_connector_v2=True,
-    )
     .rl_module(
         # Settings identical to old stack.
         model_config_dict={
             "fcnet_hiddens": [256],
-            "fcnet_activation": "relu",
+            "fcnet_activation": "tanh",
             "epsilon": [(0, 1.0), (10000, 0.02)],
             "fcnet_bias_initializer": "zeros_",
             "post_fcnet_bias_initializer": "zeros_",
@@ -40,6 +35,7 @@ config = (
             "alpha": 0.6,
             "beta": 0.4,
         },
+        n_step=3,
         double_q=True,
         num_atoms=1,
         noisy=False,
@@ -62,7 +58,7 @@ config = (
 )
 
 stop = {
-    f"{EVALUATION_RESULTS}/{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": 450.0,
+    f"{EVALUATION_RESULTS}/{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": 500.0,
     NUM_ENV_STEPS_SAMPLED_LIFETIME: 100000,
 }
 
