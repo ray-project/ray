@@ -204,9 +204,8 @@ def _bundles_to_block_list(bundles: Iterator[RefBundle]) -> BlockList:
     for ref_bundle in bundles:
         if not ref_bundle.owns_blocks:
             owns_blocks = False
-        for block, meta in ref_bundle.blocks:
-            blocks.append(block)
-            metadata.append(meta)
+        blocks.extend(ref_bundle.block_refs)
+        metadata.extend(ref_bundle.metadata)
     return BlockList(blocks, metadata, owned_by_consumer=owns_blocks)
 
 

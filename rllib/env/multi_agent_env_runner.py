@@ -901,6 +901,7 @@ class MultiAgentEnvRunner(EnvRunner):
                 EPISODE_RETURN_MIN: ret,
             },
             reduce="min",
+            window=self.config.metrics_num_episodes_for_smoothing,
         )
         self.metrics.log_dict(
             {
@@ -908,4 +909,5 @@ class MultiAgentEnvRunner(EnvRunner):
                 EPISODE_RETURN_MAX: ret,
             },
             reduce="max",
+            window=self.config.metrics_num_episodes_for_smoothing,
         )
