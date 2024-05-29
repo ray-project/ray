@@ -116,6 +116,7 @@ async def test_list_named_actors_with_normal_task(shutdown_only):
     # The following parameters are all designed to increase the
     # probability of reproducing the situation where
     # `list_named_actors` gets hang.
+    # https://github.com/ray-project/ray/issues/45581 for more details.
     TEST_RANGE = 10
     NORMAL_TASK_PER_ITEM = 100
     LIST_NAMED_ACTORS_PER_ITEM = 10
