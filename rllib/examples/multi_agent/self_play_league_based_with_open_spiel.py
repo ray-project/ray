@@ -62,12 +62,7 @@ from open_spiel.python.rl_environment import Environment  # noqa: E402
 
 
 parser = add_rllib_example_script_args(default_timesteps=2000000)
-parser.add_argument(
-    "--env",
-    type=str,
-    default="markov_soccer",
-    choices=["markov_soccer", "connect_four"],
-)
+parser.set_defaults(env="markov_soccer")
 parser.add_argument(
     "--win-rate-threshold",
     type=float,
@@ -179,13 +174,15 @@ if __name__ == "__main__":
             )
         )
         .env_runners(
-            num_env_runners=args.num_env_runners,
+            num_env_runners=(args.num_env_runners or 2),
             num_envs_per_env_runner=1 if args.enable_new_api_stack else 5,
         )
+        .learners(
+            num_learners=args.num_gpus,
+            num_gpus_per_learner=1 if args.num_gpus else 0,
+        )
         .resources(
-            num_learner_workers=args.num_gpus,
-            num_gpus_per_learner_worker=1 if args.num_gpus else 0,
-            num_cpus_for_local_worker=1,
+            num_cpus_for_main_process=1,
         )
         .training(
             num_sgd_iter=20,

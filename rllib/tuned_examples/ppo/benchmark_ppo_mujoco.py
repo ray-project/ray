@@ -95,11 +95,11 @@ config = (
         num_env_runners=32,
         rollout_fragment_length=512,
     )
-    .resources(
+    .learners(
         # Let's start with a small number of learner workers and
         # add later a tune grid search for these resources.
-        num_learner_workers=1,
-        num_gpus_per_learner_worker=1,
+        num_learners=1,
+        num_gpus_per_learner=1,
     )
     # TODO (simon): Adjust to new model_config_dict.
     .training(

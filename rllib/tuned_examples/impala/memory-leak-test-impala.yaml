@@ -1,3 +1,4 @@
+# @OldAPIStack
 memory-leak-test-impala:
     stop:
         timesteps_total: 150000
@@ -12,6 +13,6 @@ memory-leak-test-impala:
             config:
                 static_samples: true
         num_gpus: 0
-        num_workers: 3
+        num_env_runners: 3
         num_aggregation_workers: 1
         num_envs_per_env_runner: 5

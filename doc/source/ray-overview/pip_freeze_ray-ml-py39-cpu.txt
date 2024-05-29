@@ -84,7 +84,7 @@ colorlog==6.7.0
 comet-ml==3.31.9
 comm==0.2.0
 commonmark==0.9.1
-conda @ file:///home/conda/feedstock_root/build_artifacts/conda_1714990897816/work
+conda @ file:///home/conda/feedstock_root/build_artifacts/conda_1715631935758/work
 conda-content-trust @ file:///croot/conda-content-trust_1714483159009/work
 conda-libmamba-solver @ file:///croot/conda-libmamba-solver_1706733287605/work/src
 conda-package-handling @ file:///croot/conda-package-handling_1714483155348/work
@@ -97,8 +97,9 @@ coolname==2.2.0
 crc32c==2.3
 crcmod==1.7
 cryptography==38.0.1
+cupy-cuda11x==13.1.0
 cycler==0.12.1
-Cython==0.29.32
+Cython==0.29.37
 dask==2022.10.1
 databricks-cli==0.18.0
 datasets==2.14.0
@@ -129,9 +130,10 @@ executing==2.0.1
 fairscale==0.4.6
 Farama-Notifications==0.0.4
 fastapi==0.109.2
-fastapi-cli==0.0.3
+fastapi-cli==0.0.4
 fasteners==0.19
 fastjsonschema==2.19.0
+fastrlock==0.8.2
 filelock==3.13.1
 Flask==2.1.3
 Flask-Cors==4.0.0
@@ -139,6 +141,7 @@ flatbuffers==23.5.26
 flax==0.7.2
 fonttools==4.45.1
 fqdn==1.5.1
+frozendict @ file:///croot/frozendict_1713194832637/work
 frozenlist==1.4.0
 fs==2.4.16
 fsspec==2023.5.0
@@ -234,7 +237,7 @@ lightgbm==3.3.5
 lightning-utilities==0.11.2
 linear-operator==0.4.0
 linkify-it-py==2.0.3
-lit==18.1.4
+lit==18.1.6
 llvmlite==0.41.1
 locket==1.0.0
 lxml==4.9.4
@@ -379,12 +382,12 @@ PyYAML==6.0.1
 pyzmq==24.0.1
 qpd==0.4.4
 querystring-parser==1.2.4
-ray @ file:///home/ray/ray-3.0.0.dev0-cp39-cp39-manylinux2014_x86_64.whl#sha256=4ec065ad9e820ca5d54da17235e80e6bb37e5ee501ee7972597f0e3b0aee36a9
+ray @ file:///home/ray/ray-3.0.0.dev0-cp39-cp39-manylinux2014_x86_64.whl#sha256=237379118ceb8d811894c5ffc96a492b87751c7457295c86d2ca462c4fb9fc4e
 recsim==0.2.4
 redis==3.5.3
 referencing==0.35.1
 regex==2023.10.3
-requests @ file:///croot/requests_1707355572290/work
+requests==2.31.0
 requests-oauthlib==1.3.1
 requests-toolbelt==1.0.0
 responses==0.13.4
@@ -444,7 +447,7 @@ tensorflow-probability==0.23.0
 tensorstore==0.1.45
 termcolor==2.3.0
 terminado==0.18.0
-textual==0.59.0
+textual==0.62.0
 tf-slim==1.1.0
 tf2onnx==1.15.1
 threadpoolctl==3.1.0
@@ -480,7 +483,7 @@ types-python-dateutil==2.8.19.14
 typing_extensions==4.8.0
 tzdata==2024.1
 uc-micro-py==1.0.3
-ujson==5.9.0
+ujson==5.10.0
 uri-template==1.3.0
 uritemplate==3.0.1
 urllib3==1.26.18

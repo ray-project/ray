@@ -199,6 +199,7 @@
 - name: chaos_torch_batch_inference_16_gpu_300gb_raw
   group: data-tests
   working_dir: nightly_tests
+  stable: false
 
   frequency: nightly
   team: data
@@ -3517,8 +3518,9 @@
   stable: false
 
   cluster:
-    byod: {}
-    cluster_compute: experimental/compute_gpu_2_gce.yaml
+    byod:
+      type: gpu
+    cluster_compute: experimental/compute_gpu_2_aws.yaml
 
   run:
     timeout: 1800

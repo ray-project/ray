@@ -42,7 +42,6 @@
 /ci/lint/format.sh @richardliaw @ericl @edoakes
 
 # Docker image and build scripts.
-/ci/build/build-docker-images.py @ray-project/ray-core @ray-project/ray-ci
 /ci/docker @ray-project/ray-ci
 /ci/ray_ci @ray-project/ray-ci
 
@@ -80,19 +79,19 @@
 /doc/source/workflows/ @ericl @iycheng @stephanie-wang @suquark @maxpumperla @ray-project/ray-docs
 
 # RLlib.
-/rllib/ @sven1977 @avnishn @arturniederfahrenhorst @maxpumperla @kouroshhakha @simonsays1980
-/doc/source/rllib/ @sven1977 @avnishn @arturniederfahrenhorst @maxpumperla @kouroshhakha @simonsays1980 @ray-project/ray-docs
+/rllib/ @sven1977 @arturniederfahrenhorst @simonsays1980
+/doc/source/rllib/ @sven1977 @arturniederfahrenhorst @maxpumperla @simonsays1980 @ray-project/ray-docs
 
 # Cluster (docs)
 /doc/source/cluster/ @architkulkarni @maxpumperla @pcmoritz @kevin85421 @ray-project/ray-docs
 
 # Tune
-/python/ray/tune/ @matthewdeng @justinvyu @woshiyyya
-/doc/source/tune/ @matthewdeng @justinvyu @woshiyyya @ray-project/ray-docs
+/python/ray/tune/ @hongpeng-guo @justinvyu @matthewdeng @raulchen @woshiyyya
+/doc/source/tune/ @hongpeng-guo @justinvyu @matthewdeng @raulchen @woshiyyya @ray-project/ray-docs
 
 # Train
-/python/ray/train/ @matthewdeng @justinvyu @woshiyyya
-/doc/source/train/ @matthewdeng @justinvyu @woshiyyya @ray-project/ray-docs
+/python/ray/train/ @hongpeng-guo @justinvyu @matthewdeng @raulchen @woshiyyya
+/doc/source/train/ @hongpeng-guo @justinvyu @matthewdeng @raulchen @woshiyyya @ray-project/ray-docs
 
 # Serve (docs)
 /doc/source/serve/ @edoakes @shrekris-anyscale @zcin @GeneDer @akshay-anyscale @ray-project/ray-docs

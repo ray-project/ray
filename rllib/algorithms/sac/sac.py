@@ -1,5 +1,5 @@
 import logging
-from typing import Any, Dict, Optional, Type, Union
+from typing import Any, Dict, Optional, Tuple, Type, Union
 
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
 from ray.rllib.algorithms.dqn.dqn import DQN
@@ -86,6 +86,7 @@ class SACConfig(AlgorithmConfig):
         self.target_network_update_freq = 0
 
         # .env_runners()
+        # Set to `self.n_step`, if 'auto'.
         self.rollout_fragment_length = "auto"
         self.compress_observations = False
         self.exploration_config = {
@@ -127,7 +128,7 @@ class SACConfig(AlgorithmConfig):
         tau: Optional[float] = NotProvided,
         initial_alpha: Optional[float] = NotProvided,
         target_entropy: Optional[Union[str, float]] = NotProvided,
-        n_step: Optional[int] = NotProvided,
+        n_step: Optional[Union[int, Tuple[int, int]]] = NotProvided,
         store_buffer_in_checkpoints: Optional[bool] = NotProvided,
         replay_buffer_config: Optional[Dict[str, Any]] = NotProvided,
         training_intensity: Optional[float] = NotProvided,
@@ -169,9 +170,10 @@ class SACConfig(AlgorithmConfig):
                 automatically.
             n_step: N-step target updates. If >1, sars' tuples in trajectories will be
                 postprocessed to become sa[discounted sum of R][s t+n] tuples. An
-                integer will be interpreted as a fixed n-step value. In case of a tuple
-                the n-step value will be drawn for each sample in the train batch from
-                a uniform distribution over the  interval defined by the 'n-step'-tuple.
+                integer will be interpreted as a fixed n-step value. If a tuple of 2
+                ints is provided here, the n-step value will be drawn for each sample(!)
+                in the train batch from a uniform distribution over the closed interval
+                defined by `[n_step[0], n_step[1]]`.
             store_buffer_in_checkpoints: Set this to True, if you want the contents of
                 your buffer(s) to be stored in any saved checkpoints as well.
                 Warnings will be created if:
@@ -216,7 +218,7 @@ class SACConfig(AlgorithmConfig):
             training_intensity: The intensity with which to update the model (vs
                 collecting samples from the env).
                 If None, uses "natural" values of:
-                `train_batch_size` / (`rollout_fragment_length` x `num_workers` x
+                `train_batch_size` / (`rollout_fragment_length` x `num_env_runners` x
                 `num_envs_per_env_runner`).
                 If not None, will make sure that the ratio between timesteps inserted
                 into and sampled from th buffer matches the given values.
@@ -224,7 +226,7 @@ class SACConfig(AlgorithmConfig):
                 training_intensity=1000.0
                 train_batch_size=250
                 rollout_fragment_length=1
-                num_workers=1 (or 0)
+                num_env_runners=1 (or 0)
                 num_envs_per_env_runner=1
                 -> natural value = 250 / 1 = 250.0
                 -> will make sure that replay+train op will be executed 4x asoften as
@@ -352,6 +354,7 @@ class SACConfig(AlgorithmConfig):
         ] not in [
             "EpisodeReplayBuffer",
             "PrioritizedEpisodeReplayBuffer",
+            "MultiAgentEpisodeReplayBuffer",
         ]:
             raise ValueError(
                 "When using the new `EnvRunner API` the replay buffer must be of type "
@@ -361,7 +364,11 @@ class SACConfig(AlgorithmConfig):
     @override(AlgorithmConfig)
     def get_rollout_fragment_length(self, worker_index: int = 0) -> int:
         if self.rollout_fragment_length == "auto":
-            return self.n_step[1] if isinstance(self.n_step, tuple) else self.n_step
+            return (
+                self.n_step[1]
+                if isinstance(self.n_step, (tuple, list))
+                else self.n_step
+            )
         else:
             return self.rollout_fragment_length
 
