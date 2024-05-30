@@ -201,8 +201,8 @@ class Channel(ChannelInterface):
 
         if typ.buffer_size_bytes < MIN_BUFFER_SIZE:
             raise ValueError(
-                "typ.buffer_size_bytes must be at least MIN_BUFFER_SIZE (%d bytes)"
-                % MIN_BUFFER_SIZE
+                "typ.buffer_size_bytes must be at least MIN_BUFFER_SIZE "
+                f"({MIN_BUFFER_SIZE} bytes)"
             )
 
         self._writer = writer
