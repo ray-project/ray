@@ -296,7 +296,9 @@ ray.get(f.remote())
             submission_job = jobs[3]
             # Skip the first letter in commands, since on macos it can be
             # either python or Python
-            assert list2cmdline(commands)[1:] in submission_job["Entrypoint"]
+            # Skip the last letter to work around
+            # https://github.com/dvarrazzo/py-setproctitle/issues/118
+            assert list2cmdline(commands)[1:-1] in submission_job["Entrypoint"]
             return True
 
         wait_for_condition(verify)
