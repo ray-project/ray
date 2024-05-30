@@ -63,7 +63,7 @@ def plan_read_op(op: Read) -> PhysicalOperator:
         start = time.time()
         read_tasks = op._datasource_or_legacy_reader.get_read_tasks(parallelism)
         end = time.time()
-        logger.get_logger.info(f"Getting read tasks took: {end-start} seconds")
+        logger.info(f"Getting read tasks took: {end-start} seconds")
         _warn_on_high_parallelism(parallelism, len(read_tasks))
 
         # Follow up on the comment below
