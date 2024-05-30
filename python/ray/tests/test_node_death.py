@@ -4,7 +4,7 @@ import pytest
 import ray
 
 from ray._private.test_utils import wait_for_condition
-from ray.core.generated import gcs_pb2
+from ray.core.generated import common_pb2
 
 
 def test_normal_termination(ray_start_cluster):
@@ -20,7 +20,7 @@ def test_normal_termination(ray_start_cluster):
         node for node in ray.nodes() if node["NodeID"] == worker_node_id
     ][0]
     assert not worker_node_info["Alive"]
-    assert worker_node_info["DeathReason"] == gcs_pb2.NodeDeathInfo.Reason.Value(
+    assert worker_node_info["DeathReason"] == common_pb2.NodeDeathInfo.Reason.Value(
         "EXPECTED_TERMINATION"
     )
     assert worker_node_info["DeathReasonMessage"] == "received SIGTERM"
@@ -55,7 +55,7 @@ def test_abnormal_termination(monkeypatch, ray_start_cluster):
     )
 
     worker_node = [node for node in ray.nodes() if node["NodeID"] == worker_node_id][0]
-    assert worker_node["DeathReason"] == gcs_pb2.NodeDeathInfo.Reason.Value(
+    assert worker_node["DeathReason"] == common_pb2.NodeDeathInfo.Reason.Value(
         "UNEXPECTED_TERMINATION"
     )
     assert (
