@@ -517,13 +517,17 @@ RayLog::RayLog(const char *file_name, int line_number, RayLogLevel severity)
                                               strerror(errno));
   }
   if (is_enabled_) {
-    if (!component_name_.empty()) {
-      msg_osstream_ << "(" << component_name_ << ") ";
-    }
     if (log_format_json_) {
+      if (!component_name_.empty()) {
+        context_osstream_ << ",\"" << kLogKeyComponent << "\":\"" << component_name_
+                          << "\"";
+      }
       context_osstream_ << ",\"" << kLogKeyFilename << "\":\"" << ConstBasename(file_name)
                         << "\",\"" << kLogKeyLineno << "\":" << line_number;
     } else {
+      if (!component_name_.empty()) {
+        msg_osstream_ << "(" << component_name_ << ") ";
+      }
       msg_osstream_ << ConstBasename(file_name) << ":" << line_number << ": ";
     }
   }

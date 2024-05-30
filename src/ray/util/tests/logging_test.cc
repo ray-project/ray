@@ -16,23 +16,21 @@
 
 #include <chrono>
 #include <cstdlib>
+#include <fstream>
 #include <iostream>
 
 #include "absl/strings/str_format.h"
+#include "absl/strings/str_split.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
+#include "nlohmann/json.hpp"
 #include "ray/util/filesystem.h"
+#include "ray/util/util.h"
 
 using namespace testing;
+using json = nlohmann::json;
 
 namespace ray {
-
-int64_t current_time_ms() {
-  std::chrono::milliseconds ms_since_epoch =
-      std::chrono::duration_cast<std::chrono::milliseconds>(
-          std::chrono::steady_clock::now().time_since_epoch());
-  return ms_since_epoch.count();
-}
 
 // This is not really test.
 // This file just print some information using the logging macro.
@@ -195,41 +193,6 @@ TEST(PrintLogTest, LogTestWithInit) {
   RayLog::ShutDownRayLog();
 }
 
-// This test will output large amount of logs to stderr, should be disabled in travis.
-TEST(LogPerfTest, PerfTest) {
-  RayLog::StartRayLog(
-      "/fake/path/to/appdire/LogPerfTest", RayLogLevel::ERROR, ray::GetUserTempDir());
-  int rounds = 10;
-
-  int64_t start_time = current_time_ms();
-  for (int i = 0; i < rounds; ++i) {
-    RAY_LOG(DEBUG) << "This is the "
-                   << "RAY_DEBUG message";
-  }
-  int64_t elapsed = current_time_ms() - start_time;
-  std::cout << "Testing DEBUG log for " << rounds << " rounds takes " << elapsed << " ms."
-            << std::endl;
-
-  start_time = current_time_ms();
-  for (int i = 0; i < rounds; ++i) {
-    RAY_LOG(ERROR) << "This is the "
-                   << "RAY_ERROR message";
-  }
-  elapsed = current_time_ms() - start_time;
-  std::cout << "Testing RAY_ERROR log for " << rounds << " rounds takes " << elapsed
-            << " ms." << std::endl;
-
-  start_time = current_time_ms();
-  for (int i = 0; i < rounds; ++i) {
-    RAY_CHECK(i >= 0) << "This is a RAY_CHECK "
-                      << "message but it won't show up";
-  }
-  elapsed = current_time_ms() - start_time;
-  std::cout << "Testing RAY_CHECK(true) for " << rounds << " rounds takes " << elapsed
-            << " ms." << std::endl;
-  RayLog::ShutDownRayLog();
-}
-
 TEST(PrintLogTest, TestCheckOp) {
   int i = 1;
   RAY_CHECK_EQ(i, 1);
@@ -306,6 +269,45 @@ TEST(PrintLogTest, TestTerminateHandler) {
 TEST(PrintLogTest, TestFailureSignalHandler) {
   ray::RayLog::InstallFailureSignalHandler(nullptr);
   ASSERT_DEATH(abort(), ".*SIGABRT received.*");
+}
+
+class LogTest : public ::testing::Test {
+ protected:
+  std::filesystem::path log_dir_;
+  LogTest() {
+    log_dir_ = std::filesystem::temp_directory_path() / GenerateUUIDV4();
+    std::filesystem::create_directories(log_dir_);
+  }
+
+  ~LogTest() { std::filesystem::remove_all(log_dir_); }
+
+  std::vector<std::string> ReadLogFile() {
+    std::filesystem::path log_file;
+    for (const auto &entry : std::filesystem::directory_iterator(log_dir_)) {
+      log_file = entry.path();
+      break;
+    }
+
+    std::ifstream fstream(log_file.c_str());
+    std::stringstream sstream;
+    sstream << fstream.rdbuf();
+    return absl::StrSplit(sstream.str(), '\n', absl::SkipEmpty());
+  }
+};
+
+TEST_F(LogTest, TestJSONLogging) {
+  setenv("RAY_BACKEND_LOG_FORMAT", "JSON", true);
+  RayLog::StartRayLog("", RayLogLevel::INFO, log_dir_.string());
+  RAY_LOG(DEBUG) << "this is not logged";
+  RAY_LOG(INFO) << "this is info logged";
+  RAY_LOG(WARNING) << "this needs\nescape\"";
+  RAY_LOG(INFO).WithField("key1", "value1").WithField("key2", "value2")
+      << "contextual log";
+  auto log_lines = ReadLogFile();
+  ASSERT_EQ(3, log_lines.size());
+  json log1 = json::parse(log_lines[0]);
+  ASSERT_EQ(log1[kLogKeyMessage], "this is info logged");
+  RayLog::ShutDownRayLog();
 }
 
 }  // namespace ray

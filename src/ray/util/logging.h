@@ -95,6 +95,7 @@ constexpr char kLogKeyWorkerID[] = "worker_id";
 constexpr char kLogKeyNodeID[] = "node_id";
 constexpr char kLogKeyActorID[] = "actor_id";
 constexpr char kLogKeyTaskID[] = "task_id";
+constexpr char kLogKeyComponent[] = "component";
 
 class StackTrace {
   /// This dumps the current stack trace information.
