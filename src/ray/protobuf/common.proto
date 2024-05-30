@@ -364,7 +364,7 @@ message ActorDiedErrorContext {
   // Whether the actor had never started running before it died, i.e. it was cancelled
   // before scheduling had completed.
   bool never_started = 10;
-  // The node death info in case it is the cause of actor death.
+  // The node death info, if node death is the cause of actor death.
   optional NodeDeathInfo node_death_info = 11;
 }
 

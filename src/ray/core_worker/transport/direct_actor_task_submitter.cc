@@ -377,7 +377,7 @@ void CoreWorkerDirectActorTaskSubmitter::CheckTimeoutTasks() {
       while (deque_itr != deque.end() && (*deque_itr)->deadline_ms < now) {
         // Populate the info of whether the actor is preempted. If so we hard fail the
         // task.
-        // (*deque_itr)->actor_preempted = client_queue.preempted;
+        (*deque_itr)->actor_preempted = client_queue.preempted;
         timeout_tasks.push_back(*deque_itr);
         deque_itr = deque.erase(deque_itr);
       }
