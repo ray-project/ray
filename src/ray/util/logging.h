@@ -59,6 +59,8 @@
 #include <string>
 #include <vector>
 
+#include "nlohmann/json.hpp"
+
 #if defined(_WIN32)
 #ifndef _WINDOWS_
 #ifndef WIN32_LEAN_AND_MEAN  // Sorry for the inconvenience. Please include any related
@@ -85,17 +87,17 @@ enum { ERROR = 0 };
 #endif
 
 namespace ray {
-constexpr char kLogKeyAsctime[] = "asctime";
-constexpr char kLogKeyLevelname[] = "levelname";
-constexpr char kLogKeyMessage[] = "message";
-constexpr char kLogKeyFilename[] = "filename";
-constexpr char kLogKeyLineno[] = "lineno";
-constexpr char kLogKeyComponent[] = "component";
-constexpr char kLogKeyJobID[] = "job_id";
-constexpr char kLogKeyWorkerID[] = "worker_id";
-constexpr char kLogKeyNodeID[] = "node_id";
-constexpr char kLogKeyActorID[] = "actor_id";
-constexpr char kLogKeyTaskID[] = "task_id";
+constexpr std::string_view kLogKeyAsctime = "asctime";
+constexpr std::string_view kLogKeyLevelname = "levelname";
+constexpr std::string_view kLogKeyMessage = "message";
+constexpr std::string_view kLogKeyFilename = "filename";
+constexpr std::string_view kLogKeyLineno = "lineno";
+constexpr std::string_view kLogKeyComponent = "component";
+constexpr std::string_view kLogKeyJobID = "job_id";
+constexpr std::string_view kLogKeyWorkerID = "worker_id";
+constexpr std::string_view kLogKeyNodeID = "node_id";
+constexpr std::string_view kLogKeyActorID = "actor_id";
+constexpr std::string_view kLogKeyTaskID = "task_id";
 
 class StackTrace {
   /// This dumps the current stack trace information.
@@ -301,7 +303,22 @@ class RayLog {
     return *this;
   }
 
-  RayLog &WithField(const std::string &key, const std::string &value);
+  template <typename T>
+  RayLog &WithField(std::string_view key, const T &value) {
+    std::stringstream ss;
+    ss << value;
+    return WithField<std::string>(key, ss.str());
+  }
+
+  template <>
+  RayLog &WithField(std::string_view key, const std::string &value) {
+    if (log_format_json_) {
+      context_osstream_ << ",\"" << key << "\":" << nlohmann::json(value).dump();
+    } else {
+      context_osstream_ << " " << key << "=" << value;
+    }
+    return *this;
+  }
 
  private:
   FRIEND_TEST(PrintLogTest, TestRayLogEveryNOrDebug);
