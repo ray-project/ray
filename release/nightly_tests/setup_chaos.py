@@ -103,7 +103,7 @@ def get_chaos_killer(args):
     elif chaos_type == "KillWorker":
         return WorkerKillerActor, task_filter(args.task_names)
     elif chaos_type == "TerminateEC2Instance":
-        raise EC2InstanceTerminator, task_node_filter(args.task_names)
+        return EC2InstanceTerminator, task_node_filter(args.task_names)
     else:
         raise ValueError(f"Chaos type {chaos_type} not supported.")
 
