@@ -205,10 +205,10 @@ void WorkerPool::PopWorkerCallbackInternal(const TaskSpecification &task_spec,
                                            PopWorkerStatus status) {
   RAY_CHECK(callback);
   auto used = false;
-  if (worker && finished_jobs_.contains(task_spec.JobId()) &&
-      task_spec.RootDetachedActorId().IsNil()) {
-    // When a job finishes, node manager will kill leased workers one time
-    // and worker pool will kill idle workers periodically.
+  if (worker && IsJobOrRootDetachedActorFinished(task_spec.JobId(),
+                                                 task_spec.RootDetachedActorId())) {
+    // When a job or root detached actor finishes, node manager will kill leased workers
+    // one time and worker pool will kill idle workers periodically.
     // The current worker is already removed from the idle workers
     // but hasn't been added to the leased workers since the callback is not called yet.
     // We shouldn't add this worker to the leased workers since killing leased workers
@@ -733,7 +733,9 @@ void WorkerPool::HandleJobFinished(const JobID &job_id) {
   finished_jobs_.insert(job_id);
 }
 
-void WorkerPool::OnDetachedActorDied(const ActorID &actor_id) {}
+void WorkerPool::OnDetachedActorDied(const ActorID &actor_id) {
+  finished_detached_actors_.insert(actor_id);
+}
 
 boost::optional<const rpc::JobConfig &> WorkerPool::GetJobConfig(
     const JobID &job_id) const {
@@ -1000,18 +1002,27 @@ void WorkerPool::InvokePopWorkerCallbackForProcess(
     // when runtime env is failed to be created, they are all
     // invoking the callback immediately.
     RAY_CHECK(status != PopWorkerStatus::RuntimeEnvCreationFailed);
-    if (worker && finished_jobs_.contains(it->second.task_spec.JobId()) &&
-        it->second.task_spec.RootDetachedActorId().IsNil()) {
-      // If the job has finished, we should fail the PopWorker callback
-      // and add the worker back to the idle workers so it can be killed later.
-      // This doesn't apply to detached actor and its descendants
-      // since they can outlive the job.
+
+    if (worker &&
+        IsJobOrRootDetachedActorFinished(it->second.task_spec.JobId(),
+                                         it->second.task_spec.RootDetachedActorId())) {
+      // If the job or root detached actor has finished, we should fail the PopWorker
+      // callback and add the worker back to the idle workers so it can be killed later.
       RAY_CHECK(status == PopWorkerStatus::OK);
       callback(nullptr, PopWorkerStatus::JobFinished, "");
     } else {
       *worker_used = callback(worker, status, /*runtime_env_setup_error_message*/ "");
     }
     starting_workers_to_tasks.erase(it);
+  }
+}
+
+bool WorkerPool::IsJobOrRootDetachedActorFinished(JobID job_id,
+                                                  ActorID root_detached_actor_id) const {
+  if (root_detached_actor_id.IsNil()) {
+    return finished_jobs_.contains(job_id);
+  } else {
+    return finished_detached_actors_.contains(root_detached_actor_id);
   }
 }
 
@@ -1052,20 +1063,6 @@ void WorkerPool::PushWorker(const std::shared_ptr<WorkerInterface> &worker) {
 }
 
 void WorkerPool::TryKillingIdleWorkers() {
-  std::function<bool(WorkerInterface &, int64_t)> should_kill;
-  for (auto it = idle_of_all_languages_.begin(); it != idle_of_all_languages_.end();) {
-    const auto &[idle_worker, last_time_used_ms] = *it;
-    if (idle_worker->IsDead()) {
-      it = idle_of_all_languages_.erase(it);
-    } else if (should_kill(*idle_worker, last_time_used_ms)) {
-      RAY_LOG(DEBUG) << "Killing idle worker " << idle_worker->WorkerId();
-      KillIdleWorker(idle_worker, last_time_used_ms);
-      it = idle_of_all_languages_.erase(it);
-    } else {
-      it++;
-    }
-  }
-
   int64_t now = get_time_();
 
   // Filter out all idle workers that are already dead and/or associated with
@@ -1078,8 +1075,8 @@ void WorkerPool::TryKillingIdleWorkers() {
       continue;
     }
 
-    const auto &job_id = idle_worker->GetAssignedJobId();
-    if (finished_jobs_.count(job_id) > 0) {
+    if (IsJobOrRootDetachedActorFinished(idle_worker->GetAssignedJobId(),
+                                         idle_worker->GetRootDetachedActorId())) {
       // The job has finished, so we should kill the worker immediately.
       KillIdleWorker(idle_worker, it->second);
       it = idle_of_all_languages_.erase(it);
@@ -1138,9 +1135,13 @@ void WorkerPool::KillIdleWorker(std::shared_ptr<WorkerInterface> idle_worker,
   RAY_CHECK(rpc_client);
   rpc::ExitRequest request;
   const auto &job_id = idle_worker->GetAssignedJobId();
-  if (finished_jobs_.contains(job_id) && idle_worker->GetRootDetachedActorId().IsNil()) {
-    RAY_LOG(INFO) << "Force exiting worker whose job has exited "
-                  << idle_worker->WorkerId();
+  ActorID root_detached_actor_id = idle_worker->GetRootDetachedActorId();
+  if (IsJobOrRootDetachedActorFinished(job_id, root_detached_actor_id)) {
+    RAY_LOG(INFO) << "Force exiting worker whose "
+                  << (root_detached_actor_id.IsNil()
+                          ? ("job " + job_id.Hex())
+                          : ("root detached actor " + root_detached_actor_id.Hex()))
+                  << " has finished. Worker ID: " << idle_worker->WorkerId();
     request.set_force_exit(true);
   }
   rpc_client->Exit(
