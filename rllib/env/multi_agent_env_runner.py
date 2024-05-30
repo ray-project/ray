@@ -623,12 +623,6 @@ class MultiAgentEnvRunner(EnvRunner):
                 module_episode_returns,
             )
 
-        # TODO (simon): This results in hundreds of warnings in the logs
-        # b/c reducing over NaNs is not supported.
-        # # If no episodes at all, log NaN stats.
-        # if len(self._done_episodes_for_metrics) == 0:
-        #     self._log_episode_metrics(np.nan, np.nan, np.nan)
-
         # Log num episodes counter for this iteration.
         self.metrics.log_value(
             NUM_EPISODES,
