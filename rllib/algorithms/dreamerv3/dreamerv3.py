@@ -543,7 +543,7 @@ class DreamerV3(Algorithm):
                     _uses_new_env_runners=True,
                     _return_metrics=True,
                 )
-                self.metrics.log_n_dicts(env_runner_results, key=ENV_RUNNER_RESULTS)
+                self.metrics.merge_and_log_n_dicts(env_runner_results, key=ENV_RUNNER_RESULTS)
                 # Add ongoing and finished episodes into buffer. The buffer will
                 # automatically take care of properly concatenating (by episode IDs)
                 # the different chunks of the same episodes, even if they come in via
@@ -569,7 +569,7 @@ class DreamerV3(Algorithm):
                         _uses_new_env_runners=True,
                         _return_metrics=True,
                     )
-                    self.metrics.log_n_dicts(
+                    self.metrics.merge_and_log_n_dicts(
                         _env_runner_results, key=ENV_RUNNER_RESULTS
                     )
                     self.replay_buffer.add(episodes=_episodes)
@@ -642,7 +642,7 @@ class DreamerV3(Algorithm):
                         )
                     },
                 )
-                self.metrics.log_n_dicts(learner_results, key=LEARNER_RESULTS)
+                self.metrics.merge_and_log_n_dicts(learner_results, key=LEARNER_RESULTS)
                 self.metrics.log_value(
                     NUM_ENV_STEPS_TRAINED_LIFETIME, replayed_steps, reduce="sum"
                 )
