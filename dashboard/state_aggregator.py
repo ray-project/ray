@@ -11,6 +11,7 @@ from ray._private.ray_constants import env_integer
 from ray._private.profiling import chrome_tracing_dump
 
 import ray.dashboard.memory_utils as memory_utils
+from ray.dashboard.utils import compose_state_message
 
 from ray.util.state.common import (
     protobuf_message_to_dict,
@@ -323,6 +324,7 @@ class StateAPIManager:
             data["node_ip"] = data["node_manager_address"]
             data["start_time_ms"] = int(data["start_time_ms"])
             data["end_time_ms"] = int(data["end_time_ms"])
+            data["state_message"] = compose_state_message(data.get("death_info", {}))
 
             result.append(data)
 
