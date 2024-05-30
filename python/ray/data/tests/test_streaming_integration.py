@@ -43,8 +43,8 @@ def make_map_transformer(block_fn):
 def ref_bundles_to_list(bundles: List[RefBundle]) -> List[List[Any]]:
     output = []
     for bundle in bundles:
-        for block, _ in bundle.blocks:
-            output.append(list(ray.get(block)["id"]))
+        for block_ref in bundle.block_refs:
+            output.append(list(ray.get(block_ref)["id"]))
     return output
 
 
@@ -144,8 +144,8 @@ def test_output_split_e2e(ray_start_10_cpus_shared):
     def get_outputs(out: List[RefBundle]):
         outputs = []
         for bundle in out:
-            for block, _ in bundle.blocks:
-                ids: pd.Series = ray.get(block)["id"]
+            for block_ref in bundle.block_refs:
+                ids: pd.Series = ray.get(block_ref)["id"]
                 outputs.extend(ids.values)
         return outputs
 

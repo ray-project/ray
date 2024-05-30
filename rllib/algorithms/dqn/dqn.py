@@ -11,12 +11,11 @@ https://docs.ray.io/en/master/rllib-algorithms.html#deep-q-networks-dqn-rainbow-
 
 from collections import defaultdict
 import logging
-from typing import Any, Callable, Dict, List, Optional, Type, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple, Type, Union
 import numpy as np
 
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
-from ray.rllib.algorithms.dqn.dqn_rainbow_learner import TD_ERROR_KEY
 from ray.rllib.algorithms.dqn.dqn_tf_policy import DQNTFPolicy
 from ray.rllib.algorithms.dqn.dqn_torch_policy import DQNTorchPolicy
 from ray.rllib.core.learner import Learner
@@ -64,6 +63,7 @@ from ray.rllib.utils.metrics import (
     REPLAY_BUFFER_UPDATE_PRIOS_TIMER,
     SAMPLE_TIMER,
     SYNCH_WORKER_WEIGHTS_TIMER,
+    TD_ERROR_KEY,
     TIMERS,
 )
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE
@@ -127,7 +127,7 @@ class DQNConfig(AlgorithmConfig):
         # Overrides of AlgorithmConfig defaults
         # `env_runners()`
         # Set to `self.n_step`, if 'auto'.
-        self.rollout_fragment_length = "auto"
+        self.rollout_fragment_length: Union[int, str] = "auto"
         self.exploration_config = {
             "type": "EpsilonGreedy",
             "initial_epsilon": 1.0,
@@ -235,7 +235,7 @@ class DQNConfig(AlgorithmConfig):
         dueling: Optional[bool] = NotProvided,
         hiddens: Optional[int] = NotProvided,
         double_q: Optional[bool] = NotProvided,
-        n_step: Optional[int] = NotProvided,
+        n_step: Optional[Union[int, Tuple[int, int]]] = NotProvided,
         before_learn_on_batch: Callable[
             [Type[MultiAgentBatch], List[Type[Policy]], Type[int]],
             Type[MultiAgentBatch],
@@ -311,7 +311,12 @@ class DQNConfig(AlgorithmConfig):
             hiddens: Dense-layer setup for each the advantage branch and the value
                 branch
             double_q: Whether to use double DQN.
-            n_step: N-step for Q-learning.
+            n_step: N-step target updates. If >1, sars' tuples in trajectories will be
+                postprocessed to become sa[discounted sum of R][s t+n] tuples. An
+                integer will be interpreted as a fixed n-step value. If a tuple of 2
+                ints is provided here, the n-step value will be drawn for each sample(!)
+                in the train batch from a uniform distribution over the closed interval
+                defined by `[n_step[0], n_step[1]]`.
             before_learn_on_batch: Callback to run before learning on a multi-agent
                 batch of experiences.
             training_intensity: The intensity with which to update the model (vs
@@ -477,7 +482,11 @@ class DQNConfig(AlgorithmConfig):
     @override(AlgorithmConfig)
     def get_rollout_fragment_length(self, worker_index: int = 0) -> int:
         if self.rollout_fragment_length == "auto":
-            return self.n_step
+            return (
+                self.n_step[1]
+                if isinstance(self.n_step, (tuple, list))
+                else self.n_step
+            )
         else:
             return self.rollout_fragment_length
 
@@ -616,7 +625,9 @@ class DQN(Algorithm):
             # Add the sampled experiences to the replay buffer.
             self.local_replay_buffer.add(episodes)
             # Reduce EnvRunner metrics over the n EnvRunners.
-            self.metrics.log_n_dicts(env_runner_results, key=ENV_RUNNER_RESULTS)
+            self.metrics.merge_and_log_n_dicts(
+                env_runner_results, key=ENV_RUNNER_RESULTS
+            )
 
         self.metrics.log_value(
             NUM_ENV_STEPS_SAMPLED_LIFETIME,
@@ -662,7 +673,7 @@ class DQN(Algorithm):
                         num_items=self.config.train_batch_size,
                         n_step=self.config.n_step,
                         gamma=self.config.gamma,
-                        beta=self.config.replay_buffer_config["beta"],
+                        beta=self.config.replay_buffer_config.get("beta"),
                     )
 
                 # Perform an update on the buffer-sampled train batch.
@@ -683,7 +694,9 @@ class DQN(Algorithm):
                         mid: {TD_ERROR_KEY: np.concatenate(s, axis=0)}
                         for mid, s in td_errors.items()
                     }
-                    self.metrics.log_n_dicts(learner_results, key=LEARNER_RESULTS)
+                    self.metrics.merge_and_log_n_dicts(
+                        learner_results, key=LEARNER_RESULTS
+                    )
                     self.metrics.log_value(
                         NUM_ENV_STEPS_TRAINED_LIFETIME,
                         self.metrics.peek(
@@ -700,6 +713,7 @@ class DQN(Algorithm):
                         },
                         reduce="sum",
                     )
+
                     # TODO (sven): Uncomment this once agent steps are available in the
                     #  Learner stats.
                     # self.metrics.log_dict(self.metrics.peek(
@@ -721,7 +735,9 @@ class DQN(Algorithm):
                         timestep=current_ts,
                     )
                     # log the additional results as well.
-                    self.metrics.log_n_dicts(additional_results, key=LEARNER_RESULTS)
+                    self.metrics.merge_and_log_n_dicts(
+                        additional_results, key=LEARNER_RESULTS
+                    )
 
             # Update weights and global_vars - after learning on the local worker -
             # on all remote workers.

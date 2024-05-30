@@ -559,7 +559,7 @@ class ArrowBlockAccessor(TableBlockAccessor):
             blocks = TableBlockAccessor.normalize_block_types(blocks, "arrow")
             concat_and_sort = get_concat_and_sort_transform(DataContext.get_current())
             ret = concat_and_sort(blocks, sort_key)
-        return ret, ArrowBlockAccessor(ret).get_metadata(None, exec_stats=stats.build())
+        return ret, ArrowBlockAccessor(ret).get_metadata(exec_stats=stats.build())
 
     @staticmethod
     def aggregate_combined_blocks(
@@ -672,7 +672,7 @@ class ArrowBlockAccessor(TableBlockAccessor):
                 break
 
         ret = builder.build()
-        return ret, ArrowBlockAccessor(ret).get_metadata(None, exec_stats=stats.build())
+        return ret, ArrowBlockAccessor(ret).get_metadata(exec_stats=stats.build())
 
     def block_type(self) -> BlockType:
         return BlockType.ARROW

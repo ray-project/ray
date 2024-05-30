@@ -3518,8 +3518,9 @@
   stable: false
 
   cluster:
-    byod: {}
-    cluster_compute: experimental/compute_gpu_2_gce.yaml
+    byod:
+      type: gpu
+    cluster_compute: experimental/compute_gpu_2_aws.yaml
 
   run:
     timeout: 1800

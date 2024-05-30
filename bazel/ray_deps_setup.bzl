@@ -64,7 +64,7 @@ def auto_http_archive(
         ]
         urls.insert(0 if prefer_url_over_mirrors else len(urls), canonical_url)
     else:
-        print("No implicit mirrors used because urls were explicitly provided")
+        print("No implicit mirrors used for %s because urls were explicitly provided" % name)
 
     if strip_prefix == True:
         prefix_without_v = url_filename_parts[0]
@@ -112,7 +112,7 @@ def ray_deps_setup():
         patches = [
             "@com_github_ray_project_ray//thirdparty/patches:redis-quiet.patch",
         ],
-        workspace_file_content = 'workspace(name = "com_github_antirez_redis")'
+        workspace_file_content = 'workspace(name = "com_github_antirez_redis")',
     )
 
     auto_http_archive(
@@ -175,8 +175,9 @@ def ray_deps_setup():
     )
 
     auto_http_archive(
-        url = "https://github.com/google/googletest/archive/refs/tags/v1.13.0.tar.gz",
-        sha256 = "ad7fdba11ea011c1d925b3289cf4af2c66a352e18d4c7264392fead75e919363",
+        name = "com_google_googletest",
+        url = "https://github.com/google/googletest/archive/refs/tags/v1.14.0.tar.gz",
+        sha256 = "8ad598c73ad796e0d8280b082cebd82a630d73e73cd3c70057938a6501bba5d7",
     )
 
     auto_http_archive(
@@ -188,8 +189,8 @@ def ray_deps_setup():
     auto_http_archive(
         name = "cython",
         build_file = True,
-        url = "https://github.com/cython/cython/archive/c48361d0a0969206e227ec016f654c9d941c2b69.tar.gz",
-        sha256 = "37c466fea398da9785bc37fe16f1455d2645d21a72e402103991d9e2fa1c6ff3",
+        url = "https://github.com/cython/cython/archive/refs/tags/0.29.37.tar.gz",
+        sha256 = "824eb14045d85c5af677536134199dd6709db8fb0835452fd2d54bc3c8df8887",
     )
 
     auto_http_archive(
@@ -342,17 +343,6 @@ def ray_deps_setup():
         sha256 = "8e00c38829d6785a2dfb951bb87c6974fa07dfe488aa5b25deec4b8bc0f6a3ab",
     )
 
-    # The following should be removed after this commit
-    # (https://github.com/bazelbuild/bazel/commit/676a0c8dea0e7782e47a386396e386a51566087f) released.
-    http_archive(
-        name = "platforms",
-        urls = [
-            "https://mirror.bazel.build/github.com/bazelbuild/platforms/releases/download/0.0.5/platforms-0.0.5.tar.gz",
-            "https://github.com/bazelbuild/platforms/releases/download/0.0.5/platforms-0.0.5.tar.gz",
-        ],
-        sha256 = "379113459b0feaf6bfbb584a91874c065078aa673222846ac765f86661c27407",
-    )
-
     # Hedron's Compile Commands Extractor for Bazel
     # https://github.com/hedronvision/bazel-compile-commands-extractor
     http_archive(
@@ -366,11 +356,10 @@ def ray_deps_setup():
         sha256 = "7fbbbc05c112c44e9b406612e6a7a7f4789a6918d7aacefef4c35c105286930c",
     )
 
-
     http_archive(
         name = "jemalloc",
         urls = ["https://github.com/jemalloc/jemalloc/releases/download/5.3.0/jemalloc-5.3.0.tar.bz2"],
-         build_file = "@com_github_ray_project_ray//bazel:BUILD.jemalloc",
+        build_file = "@com_github_ray_project_ray//bazel:BUILD.jemalloc",
         sha256 = "2db82d1e7119df3e71b7640219b6dfe84789bc0537983c3b7ac4f7189aecfeaa",
         strip_prefix = "jemalloc-5.3.0",
-     )
+    )
