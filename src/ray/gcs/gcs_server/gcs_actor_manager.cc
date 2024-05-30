@@ -209,7 +209,7 @@ const ray::rpc::ActorDeathCause GcsActorManager::GenNodeDiedCause(
   auto actor_died_error_ctx = death_cause.mutable_actor_died_error_context();
   AddActorInfo(actor, actor_died_error_ctx);
   actor_died_error_ctx->set_error_message(
-      absl::StrCat("The actor is dead because its node has died. Node Id: ",
+      absl::StrCat("The actor died because its node has died. Node Id: ",
                    NodeID::FromBinary(node->node_id()).Hex()));
 
   // TODO(vitsai): Publish this information as well

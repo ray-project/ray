@@ -412,11 +412,12 @@ def test_draining_reason(ray_start_cluster, graceful):
     actor = Actor.options(num_cpus=0, resources={"node2": 1}).remote()
     ray.get(actor.ping.remote())
 
+    drain_reason_message = "testing node preemption."
     # Preemption is always accepted.
     is_accepted, _ = gcs_client.drain_node(
         node2_id,
         autoscaler_pb2.DrainNodeReason.Value("DRAIN_NODE_REASON_PREEMPTION"),
-        "preemption",
+        drain_reason_message,
         1,
     )
     assert is_accepted
@@ -428,6 +429,15 @@ def test_draining_reason(ray_start_cluster, graceful):
         raise
     except ray.exceptions.RayActorError as e:
         assert e.preempted
+        assert isinstance(e, ray.exceptions.ActorDiedError)
+        if graceful:
+            assert drain_reason_message in str(e)
+        else:
+            assert (
+                "The actor died because its node was being drained and was unreachable."
+                in str(e)
+            )
+            assert "the node was inferred to be dead due to draining." in str(e)
 
 
 if __name__ == "__main__":

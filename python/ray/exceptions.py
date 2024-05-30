@@ -390,7 +390,9 @@ class ActorDiedError(RayActorError):
                 == NodeDeathInfo.AUTOSCALER_DRAIN_PREEMPTED
             ):
                 preempted = True
-                error_msg_lines.append("\t" + cause.node_death_info.reason_message)
+                error_msg_lines.append(
+                    "\tnode preemption message: " + cause.node_death_info.reason_message
+                )
             error_msg = "\n".join(error_msg_lines)
             actor_id = ActorID(cause.actor_id).hex()
         super().__init__(actor_id, error_msg, actor_init_failed, preempted)
