@@ -29,7 +29,11 @@ steps:
       - ./ci/lint/lint.sh {{matrix}}
     matrix:
       - api_annotations
-      - api_discrepancy
+      - api_discrepancy ray /ray/doc/source/ray-core/api/index.rst
+      - api_discrepancy ray.data ray.data.grouped_data /ray/doc/source/data/api/api.rst
+      - api_discrepancy ray.serve /ray/doc/source/serve/api/index.md
+      - api_discrepancy ray.train /ray/doc/source/train/api/api.rst
+      - api_discrepancy ray.tune /ray/doc/source/tune/api/api.rst
 
   - label: ":lint-roller: lint: linkcheck"
     instance_type: medium

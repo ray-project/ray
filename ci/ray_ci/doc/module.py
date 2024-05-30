@@ -15,6 +15,8 @@ class Module:
     def __init__(self, module: str):
         self._module = importlib.import_module(module)
         self._visited = set()
+        self._alias_visited = set()
+        self._aliases = {}
         self._apis = []
 
     def walk(self) -> None:
@@ -29,10 +31,10 @@ class Module:
         Depth-first search through the module and its children to find annotated classes
         and functions.
         """
-        if module in self._visited:
+        if module.__hash__ in self._visited:
             return
         self._visited.add(module.__hash__)
-        aliases = self._get_aliases()
+        aliases = self.get_aliases()
 
         if not self._is_valid_child(module):
             return
@@ -91,19 +93,41 @@ class Module:
     def _get_annotation_type(self, module: ModuleType) -> AnnotationType:
         return AnnotationType(module._annotated_type.value)
 
-    def _get_aliases(self) -> Dict[str, str]:
+    def get_aliases(self) -> Dict[str, str]:
         """
         In the __init__ file of the root module, it might define aliases for the module.
         If an alias exists, we should use the alias instead of the module name.
         """
-        aliases = {}
-        for child in dir(self._module):
-            attribute = getattr(self._module, child)
+        if self._aliases:
+            return self._aliases
+        self._get_aliases(self._module)
+        return self._aliases
+
+    def _get_aliases(self, module: ModuleType) -> None:
+        if module.__hash__ in self._alias_visited:
+            return
+        self._alias_visited.add(module.__hash__)
+        if not self._is_valid_child(module):
+            return
+
+        for child in dir(module):
+            attribute = getattr(module, child)
+            if inspect.ismodule(attribute):
+                self._get_aliases(attribute)
+
+        if not hasattr(module, "__all__"):
+            return
+
+        for child in module.__all__:
+            if not hasattr(module, child):
+                continue
+            attribute = getattr(module, child)
+            if inspect.ismodule(attribute):
+                self._get_aliases(attribute)
             if not inspect.isclass(attribute) and not inspect.isfunction(attribute):
                 # only classes and functions can be aliased
                 continue
             fullname = f"{attribute.__module__}.{attribute.__qualname__}"
-            alias = f"{self._module.__name__}.{attribute.__qualname__}"
-            aliases[fullname] = alias
-
-        return aliases
+            alias = f"{module.__name__}.{attribute.__qualname__}"
+            if fullname != alias:
+                self._aliases[fullname] = alias

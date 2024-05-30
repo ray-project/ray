@@ -50,6 +50,7 @@ class Autodoc:
         if self._autodoc_rsts:
             return self._autodoc_rsts
 
+        self._autodoc_rsts.append(self._head_rst_file)
         dir = os.path.dirname(self._head_rst_file)
         with open(self._head_rst_file, "r") as f:
             for line in f:
@@ -75,13 +76,14 @@ class Autodoc:
             myclass.myfunc_01
             myclass.myfunc_02
         """
+        if not os.path.exists(rst_file):
+            return []
+
         apis = []
         current_module = None
         current_line = "start"  # dummy non-empty value
         with open(rst_file, "r") as f:
             while current_line:
-                current_line = current_line.strip()
-
                 if current_line.startswith(SPHINX_CURRENTMODULE_HEADER):
                     current_module = current_line[
                         len(SPHINX_CURRENTMODULE_HEADER) :
