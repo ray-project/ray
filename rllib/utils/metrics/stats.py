@@ -613,8 +613,20 @@ class Stats:
                     reduce_in = reduce_in.float()
                 reduced = reduce_meth(reduce_in)
             elif tf and tf.is_tensor(values[0]):
-                reduce_meth = getattr(tf, "reduce_" + self._reduce_method)
-                reduced = reduce_meth(values)
+                #TODO: TEST
+                assert len(values) == 1
+                #assert len(values[0].shape) == 0, (values, self._window, self._reduce_method, self._ema_coeff)
+                if len(values[0].shape) == 0:
+                    reduced = values[0]
+                else:
+                    reduce_meth = getattr(tf, "reduce_" + self._reduce_method)
+                    reduced = reduce_meth(values)
+
+                #reduce_meth = getattr(tf, "reduce_" + self._reduce_method)
+                #reduced = reduce_meth(values)
+
+                #END: TEST
+
             else:
                 reduce_meth = getattr(np, "nan" + self._reduce_method)
                 reduced = reduce_meth(values)
