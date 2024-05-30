@@ -423,6 +423,11 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
 
   void HandleActorUpdate(const ActorID &actor_id, const rpc::ActorTableData &actor_data);
 
+  /// Kills leased workers if `predicate(worker) == true`. Leased workers are scanned
+  /// exactly once.
+  void KillLeasedWorkersByPredicate(
+      std::function<bool(const WorkerInterface &)> predicate);
+
   /// Process client message of NotifyDirectCallTaskBlocked
   ///
   /// \param message_data A pointer to the message data.
