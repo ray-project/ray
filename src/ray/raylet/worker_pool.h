@@ -223,7 +223,8 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// \return Void
   void HandleJobStarted(const JobID &job_id, const rpc::JobConfig &job_config);
 
-  /// Handles the event that a job is finished.
+  /// Handles the event that a job is finished. Kills all idle workers for this job with
+  /// no root detached actors.
   ///
   /// \param job_id ID of the finished job.
   /// \return Void.
@@ -455,6 +456,12 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   const std::vector<std::string> &LookupWorkerDynamicOptions(StartupToken token) const;
 
   void KillIdleWorker(std::shared_ptr<WorkerInterface> worker, int64_t last_time_used_ms);
+
+  /// Kills any idle workers with `should_kill(worker, last_time_used_ms) == true`.
+  /// `should_kill` is guaranteed to be called exactly once for each idle worker and in
+  /// FIFO order. Returns the number of workers killed.
+  size_t KillIdleWorkersByPredicate(
+      std::function<bool(const WorkerInterface &, int64_t)> should_kill);
 
   /// Gloabl startup token variable. Incremented once assigned
   /// to a worker process and is added to
