@@ -18,9 +18,9 @@ def parse_script_args():
     parser.add_argument("--kill-workers", action="store_true", default=False)
 
     parser.add_argument(
-        '--chaos',
+        "--chaos",
         type=str,
-        default='',
+        default="",
         help=(
             "Chaos to inject into the test environment. "
             "Options: KillRaylet, KillWorker, TerminateEC2Instance."
@@ -90,13 +90,14 @@ def task_node_filter(task_names):
 
     return _task_node_filter
 
+
 def get_chaos_killer(args):
     if args.chaos != "":
         chaos_type = args.chaos
     elif args.kill_workers:
         chaos_type = "KillWorker"
     else:
-        chaos_type = "KillRaylet" # default
+        chaos_type = "KillRaylet"  # default
 
     if chaos_type == "KillRaylet":
         return RayletKiller, task_node_filter(args.task_names)
@@ -106,6 +107,7 @@ def get_chaos_killer(args):
         return EC2InstanceTerminator, task_node_filter(args.task_names)
     else:
         raise ValueError(f"Chaos type {chaos_type} not supported.")
+
 
 def main():
     """Start the chaos testing.
