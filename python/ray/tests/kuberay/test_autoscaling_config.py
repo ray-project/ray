@@ -13,6 +13,7 @@ from ray.autoscaler._private.kuberay.autoscaling_config import (
     AutoscalingConfigProducer,
     _round_up_k8s_quantity,
     _get_num_tpus,
+    _get_custom_resources,
 )
 
 AUTOSCALING_CONFIG_MODULE_PATH = "ray.autoscaler._private.kuberay.autoscaling_config"
@@ -210,7 +211,22 @@ def _get_ray_cr_with_autoscaler_options() -> dict:
 
 def _get_ray_cr_with_tpu_custom_resource() -> dict:
     cr = get_basic_ray_cr()
-    cr["spec"]["workerGroupSpecs"][2]["rayStartParams"]["TPU"] = 4
+    cr["spec"]["workerGroupSpecs"][2]["rayStartParams"][
+        "resources"
+    ] = '"{"TPU": 4, "Custom2": 5, "Custom3": 1}"'
+    # remove google.com/tpu k8s resource Pod limit
+    del cr["spec"]["workerGroupSpecs"][2]["template"]["spec"]["containers"][0][
+        "resources"
+    ]["limits"]["google.com/tpu"]
+
+    return cr
+
+
+def _get_ray_cr_with_tpu_k8s_resource_limit_and_custom_resource() -> dict:
+    cr = get_basic_ray_cr()
+    cr["spec"]["workerGroupSpecs"][2]["rayStartParams"][
+        "resources"
+    ] = '"{"TPU": 4, "Custom2": 5, "Custom3": 1}"'
 
     return cr
 
@@ -298,6 +314,22 @@ TEST_DATA = (
             None,
             None,
             id="tpu-custom-resource",
+        ),
+        pytest.param(
+            get_basic_ray_cr(),
+            _get_basic_autoscaling_config(),
+            None,
+            None,
+            None,
+            id="tpu-k8s-resource-limit",
+        ),
+        pytest.param(
+            _get_ray_cr_with_tpu_k8s_resource_limit_and_custom_resource(),
+            _get_basic_autoscaling_config(),
+            None,
+            None,
+            None,
+            id="tpu-k8s-resource-limit-and-custom-resource",
         ),
     ]
 )
@@ -404,7 +436,12 @@ TPU_TEST_DATA = (
     pytest.param(
         _get_ray_cr_with_tpu_custom_resource(),
         4,
-        id="tpu-custom-resource-ray-start-params",
+        id="tpu-custom-resource",
+    ),
+    pytest.param(
+        _get_ray_cr_with_tpu_k8s_resource_limit_and_custom_resource(),
+        4,
+        id="tpu--k8s-resource-limits-and-custom-resource",
     ),
     pytest.param(
         _get_ray_cr_with_no_tpus(),
@@ -418,14 +455,15 @@ TPU_TEST_DATA = (
 def test_get_num_tpus(ray_cr_in: Dict[str, Any], expected_num_tpus: int):
     """Verify that _get_num_tpus correctly returns the number of requested TPUs."""
     for worker_group in ray_cr_in["spec"]["workerGroupSpecs"]:
-        ray_start_params = worker_group["template"]["spec"]["containers"][0][
-            "resources"
-        ]["limits"]
+        ray_start_params = worker_group["rayStartParams"]
+        custom_resources = _get_custom_resources(
+            ray_start_params, worker_group["groupName"]
+        )
         k8s_resource_limits = worker_group["template"]["spec"]["containers"][0][
             "resources"
         ]["limits"]
 
-        num_tpus = _get_num_tpus(ray_start_params, k8s_resource_limits)
+        num_tpus = _get_num_tpus(custom_resources, k8s_resource_limits)
 
         if worker_group["groupName"] == "tpu-group":
             assert num_tpus == expected_num_tpus
