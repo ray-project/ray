@@ -226,7 +226,7 @@ py_test(
 py_test(
     name = "learning_tests_cartpole_crashing_appo_old_api_stack",
     main = "tests/run_regression_tests.py",
-    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "crashing_cartpole", "no_tf_static_graph"],
+    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "crashing_cartpole", "torch_only"],
     size = "large",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/appo/cartpole-crashing-recreate-workers-appo.py"],
@@ -248,7 +248,7 @@ py_test(
 py_test(
     name = "learning_tests_multi_agent_cartpole_crashing_appo_old_api_stack",
     main = "tests/run_regression_tests.py",
-    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "crashing_cartpole"],
+    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "crashing_cartpole", "torch_only"],
     size = "large",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/appo/multi-agent-cartpole-crashing-recreate-workers-appo.py"],
@@ -259,7 +259,7 @@ py_test(
 py_test(
     name = "learning_tests_multi_agent_cartpole_crashing_and_stalling_appo_old_api_stack",
     main = "tests/run_regression_tests.py",
-    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "crashing_cartpole"],
+    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "crashing_cartpole", "torch_only"],
     size = "large",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/appo/multi-agent-cartpole-crashing-and-stalling-recreate-workers-appo.py"],
@@ -2402,42 +2402,12 @@ py_test(
 
 # @OldAPIStack
 py_test(
-    name = "examples/evaluation/evaluation_parallel_to_training_13_episodes_tf_old_api_stack",
-    main = "examples/evaluation/evaluation_parallel_to_training.py",
-    tags = ["team:rllib", "exclusive", "examples"],
-    size = "medium",
-    srcs = ["examples/evaluation/evaluation_parallel_to_training.py"],
-    args = ["--as-test", "--framework=tf", "--stop-reward=50.0", "--num-cpus=6", "--evaluation-duration=13"]
-)
-
-# @OldAPIStack
-py_test(
-    name = "examples/evaluation/evaluation_parallel_to_training_duration_auto_tf_old_api_stack",
-    main = "examples/evaluation/evaluation_parallel_to_training.py",
-    tags = ["team:rllib", "exclusive", "examples"],
-    size = "medium",
-    srcs = ["examples/evaluation/evaluation_parallel_to_training.py"],
-    args = ["--as-test", "--stop-reward=50.0", "--framework=tf", "--num-cpus=6", "--evaluation-duration=auto"]
-)
-
-# @OldAPIStack
-py_test(
     name = "examples/evaluation/evaluation_parallel_to_training_duration_auto_torch_old_api_stack",
     main = "examples/evaluation/evaluation_parallel_to_training.py",
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
     srcs = ["examples/evaluation/evaluation_parallel_to_training.py"],
     args = ["--as-test", "--stop-reward=50.0", "--num-cpus=6", "--evaluation-duration=auto"]
-)
-
-# @OldAPIStack
-py_test(
-    name = "examples/evaluation/evaluation_parallel_to_training_duration_auto_tf2_old_api_stack",
-    main = "examples/evaluation/evaluation_parallel_to_training.py",
-    tags = ["team:rllib", "exclusive", "examples"],
-    size = "medium",
-    srcs = ["examples/evaluation/evaluation_parallel_to_training.py"],
-    args = ["--as-test", "--framework=tf2", "--stop-reward=30.0", "--num-cpus=6", "--evaluation-num-env-runners=3", "--evaluation-duration=auto"]
 )
 
 # @OldAPIStack
