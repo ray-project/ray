@@ -93,8 +93,11 @@ assert ray.get(lib.task.remote()) == {}
         with open(v2_driver, "w") as f:
             f.write(driver_template.format(address, 2))
 
-        subprocess.check_call([sys.executable, v1_driver])
-        subprocess.check_call([sys.executable, v2_driver])
+        env = os.environ.copy()
+        # Make sure `lib` can be loaded
+        env.pop("PYTHONSAFEPATH", None)
+        subprocess.check_call([sys.executable, v1_driver], env=env)
+        subprocess.check_call([sys.executable, v2_driver], env=env)
 
 
 def test_job_observability(ray_start_regular):
@@ -210,11 +213,11 @@ print("result:", get_entrypoint_name())
         fp.seek(0)
         path = Path(fp.name)
         outputs = execute_driver(["python", str(path), "--flag"])
-        assert line_exists(outputs, f"result: python {path} --flag")
+        assert line_exists(outputs, f".*[pP]ython {path} --flag")
 
     # Test python shell
     outputs = execute_driver(["python", "-i"], input=get_entrypoint)
-    assert line_exists(outputs, ".*result: \(interactive_shell\) python -i.*")
+    assert line_exists(outputs, ".*result: \(interactive_shell\) .*[pP]ython -i.*")
 
     # Test IPython shell
     outputs = execute_driver(["ipython"], input=get_entrypoint)
@@ -258,7 +261,10 @@ ray.get(f.remote())
         # The first job is the test job.
 
         driver_job = jobs[1]
-        assert driver_job["Entrypoint"] == list2cmdline(commands)
+        # On macos, the entrypoint may contain the full path to the system
+        # python, (which can be Python) so make sure the relevant part of the
+        # command is found
+        assert list2cmdline(commands)[1:] in driver_job["Entrypoint"]
 
         # Make sure the Dashboard endpoint works
         r = client._do_request(
@@ -271,7 +277,7 @@ ray.get(f.remote())
         jobs_info_json.sort(key=lambda j: j["job_id"])
         info_json = jobs_info_json[1]
         info = JobDetails(**info_json)
-        assert info.entrypoint == list2cmdline(commands)
+        assert list2cmdline(commands)[1:] in info.entrypoint
 
         """
         Test job submission
@@ -288,7 +294,9 @@ ray.get(f.remote())
             # The first job is the test job.
 
             submission_job = jobs[3]
-            assert submission_job["Entrypoint"] == list2cmdline(commands)
+            # Skip the first letter in commands, since on macos it can be
+            # either python or Python
+            assert list2cmdline(commands)[1:] in submission_job["Entrypoint"]
             return True
 
         wait_for_condition(verify)
