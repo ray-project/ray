@@ -113,8 +113,7 @@ void GcsNodeManager::HandleUnregisterNode(rpc::UnregisterNodeRequest request,
                                           rpc::SendReplyCallback send_reply_callback) {
   NodeID node_id = NodeID::FromBinary(request.node_id());
   RAY_LOG(DEBUG) << "HandleUnregisterNode() for node id = " << node_id;
-  SetDeathInfo(node_id, request.node_death_info());
-  auto node = RemoveNode(node_id, /* is_intended = */ true);
+  auto node = RemoveNode(node_id, request.node_death_info());
   if (!node) {
     RAY_LOG(INFO) << "Node " << node_id << " is already removed";
     return;
@@ -224,26 +223,9 @@ absl::optional<std::shared_ptr<rpc::GcsNodeInfo>> GcsNodeManager::GetAliveNode(
   return iter->second;
 }
 
-void GcsNodeManager::SetDeathInfo(const NodeID &node_id,
-                                  const rpc::NodeDeathInfo &death_info) {
-  auto maybe_node = GetAliveNode(node_id);
-  if (!maybe_node.has_value()) {
-    return;
-  }
-
-  auto node = std::move(maybe_node.value());
-  auto node_death_info = node->mutable_death_info();
-  node_death_info->CopyFrom(death_info);
-}
-
 rpc::NodeDeathInfo GcsNodeManager::InferDeathInfo(const NodeID &node_id) {
-  auto maybe_node = GetAliveNode(node_id);
-  RAY_CHECK(maybe_node.has_value())
-      << "InferDeathInfo() should be called before node is removed";
-  auto node = maybe_node.value();
   auto iter = draining_nodes_.find(node_id);
   rpc::NodeDeathInfo death_info;
-
   bool expect_force_termination;
   if (iter == draining_nodes_.end()) {
     expect_force_termination = false;
@@ -288,7 +270,11 @@ void GcsNodeManager::SetNodeDraining(
     const NodeID &node_id,
     std::shared_ptr<rpc::autoscaler::DrainNodeRequest> drain_request) {
   auto maybe_node = GetAliveNode(node_id);
-  RAY_CHECK(maybe_node.has_value());
+  if (!maybe_node.has_value()) {
+    RAY_LOG(INFO) << "Skip setting node " << node_id << " to be draining, "
+                  << "which is already removed";
+    return;
+  }
   auto iter = draining_nodes_.find(node_id);
   if (iter == draining_nodes_.end()) {
     draining_nodes_.emplace(node_id, drain_request);
@@ -303,16 +289,20 @@ void GcsNodeManager::SetNodeDraining(
 }
 
 std::shared_ptr<rpc::GcsNodeInfo> GcsNodeManager::RemoveNode(
-    const ray::NodeID &node_id, bool is_intended /*= false*/) {
+    const ray::NodeID &node_id, const rpc::NodeDeathInfo &node_death_info) {
   std::shared_ptr<rpc::GcsNodeInfo> removed_node;
   auto iter = alive_nodes_.find(node_id);
   if (iter != alive_nodes_.end()) {
     removed_node = std::move(iter->second);
-    auto death_info = removed_node->death_info();
+
+    // Set node death info.
+    auto death_info = removed_node->mutable_death_info();
+    death_info->CopyFrom(node_death_info);
+
     RAY_LOG(INFO) << "Removing node, node id = " << node_id
                   << ", node name = " << removed_node->node_name() << ", death reason = "
-                  << rpc::NodeDeathInfo_Reason_Name(death_info.reason())
-                  << ", death message = " << death_info.reason_message();
+                  << rpc::NodeDeathInfo_Reason_Name(death_info->reason())
+                  << ", death message = " << death_info->reason_message();
     // Record stats that there's a new removed node.
     stats::NodeFailureTotal.Record(1);
     // Remove from alive nodes.
@@ -320,7 +310,7 @@ std::shared_ptr<rpc::GcsNodeInfo> GcsNodeManager::RemoveNode(
     node_map_.left.erase(node_id);
     // Remove from draining nodes if present.
     draining_nodes_.erase(node_id);
-    if (!is_intended) {
+    if (death_info->reason() == rpc::NodeDeathInfo::UNEXPECTED_TERMINATION) {
       // Broadcast a warning to all of the drivers indicating that the node
       // has been marked as dead.
       // TODO(rkn): Define this constant somewhere else.
@@ -332,7 +322,7 @@ std::shared_ptr<rpc::GcsNodeInfo> GcsNodeManager::RemoveNode(
           << " and node name: " << removed_node->node_name()
           << " has been marked dead because the detector"
           << " has missed too many heartbeats from it. This can happen when a "
-             "\t(1) raylet crashes unexpectedly (OOM, preempted node, etc.) \n"
+             "\t(1) raylet crashes unexpectedly (OOM, etc.) \n"
           << "\t(2) raylet has lagging heartbeats due to slow network or busy workload.";
       RAY_EVENT(ERROR, EL_RAY_NODE_REMOVED)
               .WithField("node_id", node_id.Hex())
@@ -354,11 +344,10 @@ std::shared_ptr<rpc::GcsNodeInfo> GcsNodeManager::RemoveNode(
 
 void GcsNodeManager::OnNodeFailure(const NodeID &node_id,
                                    const StatusCallback &node_table_updated_callback) {
-  rpc::NodeDeathInfo death_info = InferDeathInfo(node_id);
-  SetDeathInfo(node_id, death_info);
-  bool is_expected_termination =
-      (death_info.reason() == rpc::NodeDeathInfo::AUTOSCALER_DRAIN_PREEMPTED);
-  if (auto node = RemoveNode(node_id, is_expected_termination)) {
+  auto maybe_node = GetAliveNode(node_id);
+  if (maybe_node.has_value()) {
+    rpc::NodeDeathInfo death_info = InferDeathInfo(node_id);
+    auto node = RemoveNode(node_id, death_info);
     node->set_state(rpc::GcsNodeInfo::DEAD);
     node->set_end_time_ms(current_sys_time_ms());
 

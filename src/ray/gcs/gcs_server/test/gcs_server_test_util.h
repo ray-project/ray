@@ -200,6 +200,19 @@ struct GcsServerMocker {
       }
     }
 
+    bool ReplyDrainRaylet() {
+      if (drain_raylet_callbacks.size() == 0) {
+        return false;
+      } else {
+        rpc::DrainRayletReply reply;
+        reply.set_is_accepted(true);
+        auto callback = drain_raylet_callbacks.front();
+        callback(Status::OK(), reply);
+        drain_raylet_callbacks.pop_front();
+        return true;
+      }
+    }
+
     /// ResourceReserveInterface
     void PrepareBundleResources(
         const std::vector<std::shared_ptr<const BundleSpecification>> &bundle_specs,
@@ -304,7 +317,7 @@ struct GcsServerMocker {
         const rpc::ClientCallback<rpc::DrainRayletReply> &callback) override {
       rpc::DrainRayletReply reply;
       reply.set_is_accepted(true);
-      callback(Status::OK(), reply);
+      drain_raylet_callbacks.push_back(callback);
     };
 
     void NotifyGCSRestart(
@@ -319,6 +332,7 @@ struct GcsServerMocker {
     int num_release_unused_workers = 0;
     int num_get_task_failure_causes = 0;
     NodeID node_id = NodeID::FromRandom();
+    std::list<rpc::ClientCallback<rpc::DrainRayletReply>> drain_raylet_callbacks = {};
     std::list<rpc::ClientCallback<rpc::RequestWorkerLeaseReply>> callbacks = {};
     std::list<rpc::ClientCallback<rpc::CancelWorkerLeaseReply>> cancel_callbacks = {};
     std::list<rpc::ClientCallback<rpc::ReleaseUnusedWorkersReply>> release_callbacks = {};
