@@ -186,6 +186,23 @@ TEST(PrintLogTest, TestRayLogEveryMs) {
   EXPECT_LT(occurrences, 15);
 }
 
+TEST(PrintLogTest, TestTextLogging) {
+  setenv("RAY_BACKEND_LOG_FORMAT", "TEXT", true);
+  RayLog::StartRayLog("/tmp/gcs", RayLogLevel::INFO, "");
+  CaptureStdout();
+  RAY_LOG(INFO).WithField("key1", "value1").WithField("key2", "value2")
+      << "contextual log";
+
+  std::vector<std::string> log_lines =
+      absl::StrSplit(GetCapturedStdout(), '\n', absl::SkipEmpty());
+  ASSERT_EQ(1, log_lines.size());
+  ASSERT_NE(log_lines[0].find("contextual log key1=value1 key2=value2"),
+            std::string::npos);
+
+  RayLog::ShutDownRayLog();
+  unsetenv("RAY_BACKEND_LOG_FORMAT");
+}
+
 TEST(PrintLogTest, TestJSONLogging) {
   setenv("RAY_BACKEND_LOG_FORMAT", "JSON", true);
   RayLog::StartRayLog("/tmp/raylet", RayLogLevel::INFO, "");
@@ -212,7 +229,9 @@ TEST(PrintLogTest, TestJSONLogging) {
   ASSERT_EQ(log3[kLogKeyComponent], "raylet");
   ASSERT_EQ(log3["key1"], "value1");
   ASSERT_EQ(log3["key2"], "value\n2");
+
   RayLog::ShutDownRayLog();
+  unsetenv("RAY_BACKEND_LOG_FORMAT");
 }
 
 #endif /* GTEST_HAS_STREAM_REDIRECTION */
