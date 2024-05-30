@@ -5,7 +5,7 @@ import ray
 
 from ray._private.test_utils import (
     get_and_run_resource_killer,
-    NodeKillerActor,
+    RayletKiller,
     WorkerKillerActor,
     EC2InstanceTerminator,
 )
@@ -99,7 +99,7 @@ def get_chaos_killer(args):
         chaos_type = "KillRaylet" # default
 
     if chaos_type == "KillRaylet":
-        return NodeKillerActor, task_node_filter(args.task_names)
+        return RayletKiller, task_node_filter(args.task_names)
     elif chaos_type == "KillWorker":
         return WorkerKillerActor, task_filter(args.task_names)
     elif chaos_type == "TerminateEC2Instance":

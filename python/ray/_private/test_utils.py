@@ -1493,7 +1493,7 @@ class ResourceKillerActor:
         return self.killed
 
 
-class NodeActorBase(ResourceKillerActor):
+class NodeKillerBase(ResourceKillerActor):
     async def _find_resource_to_kill(self):
         node_to_kill_ip = None
         node_to_kill_port = None
@@ -1529,7 +1529,7 @@ class NodeActorBase(ResourceKillerActor):
 
 
 @ray.remote(num_cpus=0)
-class NodeKillerActor(NodeActorBase):
+class RayletKiller(NodeKillerBase):
     def _kill_resource(self, node_id, node_to_kill_ip, node_to_kill_port):
         if node_to_kill_port is not None:
             try:
@@ -1559,7 +1559,7 @@ class NodeKillerActor(NodeActorBase):
 
 
 @ray.remote(num_cpus=0)
-class EC2InstanceTerminator(NodeActorBase):
+class EC2InstanceTerminator(NodeKillerBase):
     def _kill_resource(self, node_id, node_to_kill_ip, _):
         if node_to_kill_ip is not None:
             try:
