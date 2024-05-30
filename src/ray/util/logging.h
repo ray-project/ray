@@ -87,6 +87,7 @@ enum { ERROR = 0 };
 #endif
 
 namespace ray {
+/// Sync with ray._private.structured_logging.constants.LogKey
 constexpr std::string_view kLogKeyAsctime = "asctime";
 constexpr std::string_view kLogKeyLevelname = "levelname";
 constexpr std::string_view kLogKeyMessage = "message";
@@ -303,6 +304,9 @@ class RayLog {
     return *this;
   }
 
+  /// Add log context to the log.
+  /// Caller should make sure key is not duplicated
+  /// and doesn't conflict with system keys like levelname.
   template <typename T>
   RayLog &WithField(std::string_view key, const T &value) {
     std::stringstream ss;
