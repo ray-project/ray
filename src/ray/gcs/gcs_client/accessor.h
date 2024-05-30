@@ -193,6 +193,15 @@ class ActorInfoAccessor {
   /// \return Whether the specified actor is unsubscribed.
   virtual bool IsActorUnsubscribed(const ActorID &actor_id);
 
+  /// Subscribe to all update operations of all actors.
+  ///
+  /// \param subscribe Callback that will be called each time when an actor is updated.
+  /// \param done Callback that will be called when subscription is complete.
+  /// \return Status
+  virtual Status AsyncSubscribeAll(
+      const SubscribeCallback<ActorID, rpc::ActorTableData> &subscribe,
+      const StatusCallback &done);
+
  private:
   // Mutex to protect the resubscribe_operations_ field and fetch_data_operations_ field.
   absl::Mutex mutex_;
@@ -204,6 +213,8 @@ class ActorInfoAccessor {
   /// Save the fetch data operation of actors.
   absl::flat_hash_map<ActorID, FetchDataOperation> fetch_data_operations_
       ABSL_GUARDED_BY(mutex_);
+
+  SubscribeOperation subscribe_all_operation_ ABSL_GUARDED_BY(mutex_);
 
   GcsClient *client_impl_;
 };
