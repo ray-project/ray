@@ -21,7 +21,7 @@ GcsClient. It it natively async and has the same semantics as the C++ GcsClient.
 - [x] InternalKV().Del() return num_deleted (https://github.com/ray-project/ray/pull/45451)
 - [x] GcsClient ctor standalone from Ray CoreWorker
 (here is when we can merge this PR)
-- [ ] Nodes().CheckAlive (https://github.com/ray-project/ray/pull/45451)
+- [x] Nodes().CheckAlive (https://github.com/ray-project/ray/pull/45451)
 - [ ] RuntimeEnvGcsService::PinRuntimeEnvURI
 - [ ] GetAllNodeInfo
 - [ ] GetAllResourceUsage
