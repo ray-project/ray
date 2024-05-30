@@ -74,6 +74,7 @@ cc_test(
     size = "small",
     srcs = ["logging_test.cc"],
     args = [
+        "--gtest_filter=PrintLogTest*",
         # Disable so we can test terminate handler.
         "--gtest_catch_exceptions=0",
     ],

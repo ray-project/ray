@@ -90,12 +90,12 @@ constexpr char kLogKeyLevelname[] = "levelname";
 constexpr char kLogKeyMessage[] = "message";
 constexpr char kLogKeyFilename[] = "filename";
 constexpr char kLogKeyLineno[] = "lineno";
+constexpr char kLogKeyComponent[] = "component";
 constexpr char kLogKeyJobID[] = "job_id";
 constexpr char kLogKeyWorkerID[] = "worker_id";
 constexpr char kLogKeyNodeID[] = "node_id";
 constexpr char kLogKeyActorID[] = "actor_id";
 constexpr char kLogKeyTaskID[] = "task_id";
-constexpr char kLogKeyComponent[] = "component";
 
 class StackTrace {
   /// This dumps the current stack trace information.

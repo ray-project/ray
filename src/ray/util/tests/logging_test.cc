@@ -59,7 +59,9 @@ TEST(PrintLogTest, LogTestWithoutInit) {
 
 #if GTEST_HAS_STREAM_REDIRECTION
 using testing::internal::CaptureStderr;
+using testing::internal::CaptureStdout;
 using testing::internal::GetCapturedStderr;
+using testing::internal::GetCapturedStdout;
 
 namespace {
 void VerifyOnlyNthOccurenceLogged(bool fallback_to_debug) {
@@ -184,12 +186,76 @@ TEST(PrintLogTest, TestRayLogEveryMs) {
   EXPECT_LT(occurrences, 15);
 }
 
+TEST(PrintLogTest, TestJSONLogging) {
+  setenv("RAY_BACKEND_LOG_FORMAT", "JSON", true);
+  RayLog::StartRayLog("/tmp/raylet", RayLogLevel::INFO, "");
+  CaptureStdout();
+  RAY_LOG(DEBUG) << "this is not logged";
+  RAY_LOG(INFO) << "this is info logged";
+  RAY_LOG(WARNING) << "this needs\nescape\"";
+  RAY_LOG(INFO).WithField("key1", "value1").WithField("key2", "value\n2")
+      << "contextual log";
+
+  std::vector<std::string> log_lines =
+      absl::StrSplit(GetCapturedStdout(), '\n', absl::SkipEmpty());
+  ASSERT_EQ(3, log_lines.size());
+  json log1 = json::parse(log_lines[0]);
+  json log2 = json::parse(log_lines[1]);
+  json log3 = json::parse(log_lines[2]);
+  ASSERT_EQ(log1[kLogKeyMessage], "this is info logged");
+  ASSERT_EQ(log2[kLogKeyMessage], "this needs\nescape\"");
+  ASSERT_EQ(log3[kLogKeyMessage], "contextual log");
+  ASSERT_TRUE(log3.contains(kLogKeyAsctime));
+  ASSERT_TRUE(log3.contains(kLogKeyFilename));
+  ASSERT_TRUE(log3.contains(kLogKeyLineno));
+  ASSERT_EQ(log3[kLogKeyLevelname], "I");
+  ASSERT_EQ(log3[kLogKeyComponent], "raylet");
+  ASSERT_EQ(log3["key1"], "value1");
+  ASSERT_EQ(log3["key2"], "value\n2");
+  RayLog::ShutDownRayLog();
+}
+
 #endif /* GTEST_HAS_STREAM_REDIRECTION */
 
 TEST(PrintLogTest, LogTestWithInit) {
   // Test empty app name.
   RayLog::StartRayLog("", RayLogLevel::DEBUG, ray::GetUserTempDir());
   PrintLog();
+  RayLog::ShutDownRayLog();
+}
+
+// This test will output large amount of logs to stderr, should be disabled in travis.
+TEST(LogPerfTest, PerfTest) {
+  RayLog::StartRayLog(
+      "/fake/path/to/appdire/LogPerfTest", RayLogLevel::ERROR, ray::GetUserTempDir());
+  int rounds = 10;
+
+  int64_t start_time = current_time_ms();
+  for (int i = 0; i < rounds; ++i) {
+    RAY_LOG(DEBUG) << "This is the "
+                   << "RAY_DEBUG message";
+  }
+  int64_t elapsed = current_time_ms() - start_time;
+  std::cout << "Testing DEBUG log for " << rounds << " rounds takes " << elapsed << " ms."
+            << std::endl;
+
+  start_time = current_time_ms();
+  for (int i = 0; i < rounds; ++i) {
+    RAY_LOG(ERROR) << "This is the "
+                   << "RAY_ERROR message";
+  }
+  elapsed = current_time_ms() - start_time;
+  std::cout << "Testing RAY_ERROR log for " << rounds << " rounds takes " << elapsed
+            << " ms." << std::endl;
+
+  start_time = current_time_ms();
+  for (int i = 0; i < rounds; ++i) {
+    RAY_CHECK(i >= 0) << "This is a RAY_CHECK "
+                      << "message but it won't show up";
+  }
+  elapsed = current_time_ms() - start_time;
+  std::cout << "Testing RAY_CHECK(true) for " << rounds << " rounds takes " << elapsed
+            << " ms." << std::endl;
   RayLog::ShutDownRayLog();
 }
 
@@ -269,45 +335,6 @@ TEST(PrintLogTest, TestTerminateHandler) {
 TEST(PrintLogTest, TestFailureSignalHandler) {
   ray::RayLog::InstallFailureSignalHandler(nullptr);
   ASSERT_DEATH(abort(), ".*SIGABRT received.*");
-}
-
-class LogTest : public ::testing::Test {
- protected:
-  std::filesystem::path log_dir_;
-  LogTest() {
-    log_dir_ = std::filesystem::temp_directory_path() / GenerateUUIDV4();
-    std::filesystem::create_directories(log_dir_);
-  }
-
-  ~LogTest() { std::filesystem::remove_all(log_dir_); }
-
-  std::vector<std::string> ReadLogFile() {
-    std::filesystem::path log_file;
-    for (const auto &entry : std::filesystem::directory_iterator(log_dir_)) {
-      log_file = entry.path();
-      break;
-    }
-
-    std::ifstream fstream(log_file.c_str());
-    std::stringstream sstream;
-    sstream << fstream.rdbuf();
-    return absl::StrSplit(sstream.str(), '\n', absl::SkipEmpty());
-  }
-};
-
-TEST_F(LogTest, TestJSONLogging) {
-  setenv("RAY_BACKEND_LOG_FORMAT", "JSON", true);
-  RayLog::StartRayLog("", RayLogLevel::INFO, log_dir_.string());
-  RAY_LOG(DEBUG) << "this is not logged";
-  RAY_LOG(INFO) << "this is info logged";
-  RAY_LOG(WARNING) << "this needs\nescape\"";
-  RAY_LOG(INFO).WithField("key1", "value1").WithField("key2", "value2")
-      << "contextual log";
-  auto log_lines = ReadLogFile();
-  ASSERT_EQ(3, log_lines.size());
-  json log1 = json::parse(log_lines[0]);
-  ASSERT_EQ(log1[kLogKeyMessage], "this is info logged");
-  RayLog::ShutDownRayLog();
 }
 
 }  // namespace ray
