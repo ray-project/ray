@@ -355,8 +355,8 @@ ServerBidiReactor *RaySyncerService::StartSync(grpc::CallbackServerContext *cont
         syncer_.sync_reactors_.erase(node_id);
         syncer_.node_state_->RemoveNode(node_id);
       });
-  RAY_LOG(INFO) << "Get connection from "
-                << NodeID::FromBinary(reactor->GetRemoteNodeID());
+  RAY_LOG(INFO).WithField(kLogKeyNodeID, NodeID::FromBinary(reactor->GetRemoteNodeID()))
+      << "Get connection";
   syncer_.Connect(reactor);
   return reactor;
 }
