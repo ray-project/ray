@@ -42,10 +42,7 @@ def test_normal_termination(ray_start_cluster):
         assert not e.preempted
         assert isinstance(e, ray.exceptions.ActorDiedError)
         assert "The actor died because its node has died." in str(e)
-        assert (
-            "the actor's node was terminated expectedly: "
-            "received SIGTERM" in str(e)
-        )
+        assert "the actor's node was terminated expectedly: received SIGTERM" in str(e)
 
 
 def test_abnormal_termination(monkeypatch, ray_start_cluster):
