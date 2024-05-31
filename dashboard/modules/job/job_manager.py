@@ -14,11 +14,8 @@ from ray.dashboard.consts import (
     DEFAULT_JOB_START_TIMEOUT_SECONDS,
 )
 from ray.dashboard.modules.job.common import (
-    JOB_ACTOR_NAME_TEMPLATE,
-    SUPERVISOR_ACTOR_RAY_NAMESPACE,
     JobInfo,
     JobInfoStorageClient,
-    _get_supervisor_actor_for_job,
 )
 from ray.dashboard.modules.job.job_log_storage_client import JobLogStorageClient
 from ray.dashboard.modules.job.job_supervisor import JobSupervisor
@@ -64,7 +61,7 @@ class JobManager:
         self._log_client = JobLogStorageClient()
         self._logs_dir = logs_dir
 
-        self._supervisor_actor_cls = ray.remote(JobSupervisor)
+        self._job_supervisors: Dict[str, JobSupervisor] = {}
 
     async def _get_head_node_scheduling_strategy(
         self,
@@ -164,8 +161,6 @@ class JobManager:
         if submission_id is None:
             submission_id = generate_job_id()
 
-        supervisor: Optional[ActorHandle] = None
-
         try:
             startup_timeout_s = _get_job_startup_timeout_s()
 
@@ -173,20 +168,10 @@ class JobManager:
                 f"Submitting job {submission_id} with entrypoint `{entrypoint}` (startup timeout set at {startup_timeout_s}s)"
             )
 
-            # NOTE: JobSupervisor is *always* scheduled onto the head-node
-            head_node_scheduling_strategy = (
-                await self._get_head_node_scheduling_strategy()
-            )
+            if submission_id in self._job_supervisors:
+                raise ValueError(f"Job with submission id {submission_id} already exists")
 
-            supervisor_actor_name = JOB_ACTOR_NAME_TEMPLATE.format(job_id=submission_id)
-
-            supervisor = self._supervisor_actor_cls.options(
-                lifetime="detached",
-                name=supervisor_actor_name,
-                num_cpus=0,
-                scheduling_strategy=head_node_scheduling_strategy,
-                namespace=SUPERVISOR_ACTOR_RAY_NAMESPACE,
-            ).remote(
+            supervisor = JobSupervisor(
                 job_id=submission_id,
                 entrypoint=entrypoint,
                 gcs_address=self._gcs_address,
@@ -194,10 +179,12 @@ class JobManager:
                 startup_timeout_s=startup_timeout_s,
             )
 
+            self._job_supervisors[submission_id] = supervisor
+
             # Job execution process is async, however we await on the
             # `launch` method here to propagate right away any failures
             # raised during job's launching sequence
-            await supervisor.launch.remote(
+            await supervisor.launch(
                 runtime_env=runtime_env,
                 metadata=metadata,
                 entrypoint_num_cpus=entrypoint_num_cpus,
@@ -213,32 +200,22 @@ class JobManager:
                 exc_info=e,
             )
 
-            if supervisor is not None:
-                ray.kill(supervisor, no_restart=True)
-
-            if isinstance(
-                e, ValueError
-            ) and f"The name {supervisor_actor_name} (namespace={SUPERVISOR_ACTOR_RAY_NAMESPACE}) is already taken" in str(
-                e
-            ):
-                raise ValueError(
-                    f"Job with submission id {submission_id} already exists"
-                )
-
             raise e
 
         return submission_id
 
-    def stop_job(self, job_id) -> bool:
+    async def stop_job(self, job_id) -> bool:
         """Request a job to exit, fire and forget.
 
-        Returns whether or not the job was running.
+        Returns boolean flag signaling whether `stop` method was invoked on the supervisor.
+
+        In case of supervisor not being found, job could be presumed dead.
         """
-        job_supervisor_actor = _get_supervisor_actor_for_job(job_id)
-        if job_supervisor_actor is not None:
+        supervisor = self._job_supervisors.get(job_id)
+        if supervisor is not None:
             # Actor is still alive, signal it to stop the driver, fire and
             # forget
-            job_supervisor_actor.stop.remote()
+            await supervisor.stop()
             return True
         else:
             return False
