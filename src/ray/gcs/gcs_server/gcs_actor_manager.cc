@@ -228,7 +228,7 @@ const ray::rpc::ActorDeathCause GcsActorManager::GenNodeDiedCause(
     // Control should not reach here, but in case it happens in unexpected scenarios,
     // log it and provide a generic message to the user.
     RAY_LOG(ERROR) << "Actor death is not expected to be caused by "
-                   << node_death_info->reason();
+                   << rpc::NodeDeathInfo_Reason_Name(node_death_info->reason());
     oss << "\tthe actor's node was terminated: ";
   }
   oss << node_death_info->reason_message();
