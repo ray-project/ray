@@ -278,7 +278,7 @@ def smi_initialize():
     if _driver_initialized():
         ret_init = rocm_lib.rsmi_init(0)
         if ret_init != 0:
-            logging.error(f'ROCm SMI init returned value {ret_init}')
+            logging.debug("ROCm SMI init returned value: %s", ret_init)
             raise RuntimeError('ROCm SMI initialization failed')
     else:
         raise RuntimeError('ROCm driver initilization failed')
@@ -300,7 +300,7 @@ def rsmi_ret_ok(my_ret):
     if my_ret != rsmi_status_t.RSMI_STATUS_SUCCESS:
         err_str = c_char_p()
         rocm_lib.rsmi_status_string(my_ret, byref(err_str))
-        logging.error(err_str.value.decode())
+        logging.debug("ROCm RSMI error: %s", err_str.value.decode())
         return False
     return True
 
