@@ -27,7 +27,7 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
-SUPPORTED_PYTHONS = [(3, 8), (3, 9), (3, 10), (3, 11), (3, 12)]
+SUPPORTED_PYTHONS = [(3, 9), (3, 10), (3, 11), (3, 12)]
 # When the bazel version is updated, make sure to update it
 # in WORKSPACE file as well.
 
@@ -516,7 +516,7 @@ def build(build_python, build_java, build_cpp):
     # that certain flags will not be passed along such as --user or sudo.
     # TODO(rkn): Fix this.
     if not os.getenv("SKIP_THIRDPARTY_INSTALL"):
-        pip_packages = ["psutil", "setproctitle>=1.2.2,<1.4", "colorama"]
+        pip_packages = ["psutil", "setproctitle==1.2.2", "colorama"]
         subprocess.check_call(
             [
                 sys.executable,

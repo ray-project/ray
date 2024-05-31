@@ -802,7 +802,7 @@ class SingleAgentEnvRunner(EnvRunner):
 
     def _log_episode_metrics(self, length, ret, sec):
         # Log general episode metrics.
-        # To mimick the old API stack behavior, we'll use `window` here for
+        # To mimic the old API stack behavior, we'll use `window` here for
         # these particular stats (instead of the default EMA).
         win = self.config.metrics_num_episodes_for_smoothing
         self.metrics.log_value(EPISODE_LEN_MEAN, length, window=win)
@@ -818,7 +818,7 @@ class SingleAgentEnvRunner(EnvRunner):
         )
 
         # For some metrics, log min/max as well.
-        self.metrics.log_value(EPISODE_LEN_MIN, length, reduce="min")
-        self.metrics.log_value(EPISODE_RETURN_MIN, ret, reduce="min")
-        self.metrics.log_value(EPISODE_LEN_MAX, length, reduce="max")
-        self.metrics.log_value(EPISODE_RETURN_MAX, ret, reduce="max")
+        self.metrics.log_value(EPISODE_LEN_MIN, length, reduce="min", window=win)
+        self.metrics.log_value(EPISODE_RETURN_MIN, ret, reduce="min", window=win)
+        self.metrics.log_value(EPISODE_LEN_MAX, length, reduce="max", window=win)
+        self.metrics.log_value(EPISODE_RETURN_MAX, ret, reduce="max", window=win)

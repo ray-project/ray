@@ -93,7 +93,7 @@ def _test_equal_split_balanced(block_sizes, num_splits):
     for block_size in block_sizes:
         block = pd.DataFrame({"id": list(range(total_rows, total_rows + block_size))})
         blocks.append(ray.put(block))
-        metadata.append(BlockAccessor.for_block(block).get_metadata(None, None))
+        metadata.append(BlockAccessor.for_block(block).get_metadata())
         blk = (blocks[-1], metadata[-1])
         ref_bundles.append(RefBundle((blk,), owns_blocks=True))
         total_rows += block_size
@@ -501,9 +501,7 @@ def _create_meta(num_rows):
 
 def _create_block_and_metadata(data: Any) -> Tuple[ObjectRef[Block], BlockMetadata]:
     block = pd.DataFrame({"id": data})
-    metadata = BlockAccessor.for_block(block).get_metadata(
-        input_files=[], exec_stats=None
-    )
+    metadata = BlockAccessor.for_block(block).get_metadata()
     return (ray.put(block), metadata)
 
 
@@ -667,7 +665,7 @@ def equalize_helper(input_block_lists: List[List[List[Any]]]):
     result_block_lists = []
     for bundle in result:
         block_list = []
-        for block_ref, _ in bundle.blocks:
+        for block_ref in bundle.block_refs:
             block = ray.get(block_ref)
             block_accessor = BlockAccessor.for_block(block)
             block_list.append(list(block_accessor.to_default()["id"]))

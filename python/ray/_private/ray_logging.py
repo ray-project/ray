@@ -284,11 +284,16 @@ class LogDeduplicator:
                 continue
             dedup_key = _canonicalise_log_line(line)
 
+            if dedup_key == "":
+                # Don't dedup messages that are empty after canonicalization.
+                # Because that's all the information users want to see.
+                output[0]["lines"].append(line)
+                continue
+
             if dedup_key in self.recent:
                 sources = self.recent[dedup_key].sources
                 sources.add(source)
-                # We deduplicate the warnings/errorm essages from
-                # raylet by default.
+                # We deduplicate the warnings/error messages from raylet by default.
                 if len(sources) > 1 or batch["pid"] == "raylet":
                     state = self.recent[dedup_key]
                     self.recent[dedup_key] = DedupState(
