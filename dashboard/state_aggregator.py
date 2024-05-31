@@ -324,7 +324,10 @@ class StateAPIManager:
             data["node_ip"] = data["node_manager_address"]
             data["start_time_ms"] = int(data["start_time_ms"])
             data["end_time_ms"] = int(data["end_time_ms"])
-            data["state_message"] = compose_state_message(data.get("death_info", {}))
+            death_info = data.get("death_info", {})
+            data["state_message"] = compose_state_message(
+                death_info.get("reason", None), death_info.get("reason_message", None)
+            )
 
             result.append(data)
 
