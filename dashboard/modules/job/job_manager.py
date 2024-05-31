@@ -5,8 +5,6 @@ import random
 import string
 from typing import Any, Dict, Iterator, Optional, Union
 
-import ray
-import ray._private.ray_constants as ray_constants
 from ray._private.gcs_utils import GcsAioClient
 from ray.actor import ActorHandle
 from ray.dashboard.consts import (
@@ -20,9 +18,6 @@ from ray.dashboard.modules.job.common import (
 from ray.dashboard.modules.job.job_log_storage_client import JobLogStorageClient
 from ray.dashboard.modules.job.job_supervisor import JobSupervisor
 from ray.job_submission import JobStatus
-from ray.util.scheduling_strategies import (
-    NodeAffinitySchedulingStrategy,
-)
 
 logger = logging.getLogger(__name__)
 
@@ -42,10 +37,13 @@ def generate_job_id() -> str:
 
 
 class JobManager:
-    """Provide python APIs for job submission and management.
+    """Job Manager is a component managing full lifecycle of Ray jobs
+    from creation to completion providing avenues for monitoring & observability.
 
-    It does not provide persistence, all info will be lost if the cluster
-    goes down.
+    NOTE: Job Manager is a stateful component: for every running Ray job it holds
+          corresponding `JobSupervisor` that provides for
+            - Monitoring & updating job's status in GCS
+            - Managing of job's lifecycle
     """
 
     # Time that we will sleep while tailing logs if no new log line is
@@ -62,27 +60,6 @@ class JobManager:
         self._logs_dir = logs_dir
 
         self._job_supervisors: Dict[str, JobSupervisor] = {}
-
-    async def _get_head_node_scheduling_strategy(
-        self,
-    ) -> Optional[NodeAffinitySchedulingStrategy]:
-        head_node_id_bytes = await self._gcs_aio_client.internal_kv_get(
-            "head_node_id".encode(),
-            namespace=ray_constants.KV_NAMESPACE_JOB,
-            timeout=30,
-        )
-
-        if head_node_id_bytes is None:
-            logger.error(
-                "Head node ID not found in GCS. Using Ray's default actor "
-                "scheduling strategy for the job driver instead of running "
-                "it on the head node."
-            )
-            return None
-
-        head_node_id = head_node_id_bytes.decode()
-
-        return NodeAffinitySchedulingStrategy(node_id=head_node_id, soft=False)
 
     async def submit_job(
         self,
@@ -103,7 +80,7 @@ class JobManager:
         Ray Job execution workflow looks like following:
 
         JobManager
-            |--> JobSupervisor (Actor on Head-node)
+            |--> JobSupervisor
                     |--> JobExecutor (Actor on Head/Worker-node)
                             |--> (subprocess) Job's driver entrypoint
 
@@ -232,9 +209,6 @@ class JobManager:
 
         await self._job_info_client.delete_info(job_id)
         return True
-
-    def job_info_client(self) -> JobInfoStorageClient:
-        return self._job_info_client
 
     async def get_job_status(self, job_id: str) -> Optional[JobStatus]:
         """Get latest status of a job."""
