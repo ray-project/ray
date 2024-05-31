@@ -577,5 +577,5 @@ See `Writing Custom Single Agent RL Modules`_ for more details on how to impleme
                 def _forward_inference(self, batch):
                     ...
 
-                def forward_exploration(self, batch):
+                def _forward_exploration(self, batch):
                     ...
