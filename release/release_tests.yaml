@@ -2762,7 +2762,7 @@
 
   run:
     timeout: 43200  # 12h
-    script: python learning_tests/tuned_examples/dreamerv3/atari_100k.py --env ALE/Pong-v5 --num-gpus=1 --stop-reward 15.0 --as-test
+    script: python learning_tests/tuned_examples/dreamerv3/atari_100k.py --env ALE/Pong-v5 --num-gpus=1 --stop-reward 15.0 --as-release-test
 
   alert: default
 
@@ -2797,7 +2797,7 @@
 
   run:
     timeout: 600
-    script: python learning_tests/tuned_examples/ppo/atari_ppo.py --enable-new-api-stack --env ALE/Pong-v5 --num-gpus=4 --num-env-runners=95 --as-test
+    script: python learning_tests/tuned_examples/ppo/atari_ppo.py --enable-new-api-stack --env ALE/Pong-v5 --num-gpus=4 --num-env-runners=95 --as-release-test
 
   alert: default
 
