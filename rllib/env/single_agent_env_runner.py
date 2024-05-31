@@ -224,11 +224,12 @@ class SingleAgentEnvRunner(EnvRunner):
 
         # Have to reset the env (on all vector sub_envs).
         if force_reset or self._needs_initial_reset:
-            # Create n new episodes and make the `on_episode_created` callbacks.
+            # Create n new episodes.
+            # TODO (sven): Add callback `on_episode_created` as soon as
+            # `gymnasium-v1.0.0a2` PR is coming.
             self._episodes = []
             for env_index in range(self.num_envs):
                 self._episodes.append(self._new_episode())
-                self._make_on_episode_callback("on_episode_created", env_index)
             self._shared_data = {}
 
             # Erase all cached ongoing episodes (these will never be completed and
@@ -440,7 +441,8 @@ class SingleAgentEnvRunner(EnvRunner):
         episodes = []
         for env_index in range(self.num_envs):
             episodes.append(self._new_episode())
-            self._make_on_episode_callback("on_episode_created", env_index, episodes)
+            # TODO (sven): Add callback `on_episode_created` as soon as
+            # `gymnasium-v1.0.0a2` PR is coming.
         _shared_data = {}
 
         # Reset the environment.
