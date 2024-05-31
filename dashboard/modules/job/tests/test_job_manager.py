@@ -991,7 +991,7 @@ class TestTailLogs:
 
     async def test_unknown_job(self, job_manager):
         with pytest.raises(RuntimeError, match="Job 'unknown' does not exist."):
-            async for _ in job_manager.tail_job_logs("unknown"):
+            async for _ in job_manager._tail_logs("unknown"):
                 pass
 
     async def test_successful_job(self, job_manager):
@@ -1019,7 +1019,7 @@ class TestTailLogs:
             with open(tmp_file, "w") as f:
                 print("hello", file=f)
 
-            async for lines in job_manager.tail_job_logs(job_id):
+            async for lines in job_manager._tail_logs(job_id):
                 assert all(
                     s == "Waiting..." or "Runtime env" in s
                     for s in lines.strip().split("\n")
@@ -1043,7 +1043,7 @@ class TestTailLogs:
             with open(pid_file, "r") as f:
                 os.kill(int(f.read()), signal.SIGKILL)
 
-            async for lines in job_manager.tail_job_logs(job_id):
+            async for lines in job_manager._tail_logs(job_id):
                 assert all(
                     s == "Waiting..." or "Runtime env" in s
                     for s in lines.strip().split("\n")
@@ -1069,7 +1069,7 @@ class TestTailLogs:
             # Stop the job via the API.
             job_manager.stop_job(job_id)
 
-            async for lines in job_manager.tail_job_logs(job_id):
+            async for lines in job_manager._tail_logs(job_id):
                 assert all(
                     s == "Waiting..." or s == "Terminated" or "Runtime env" in s
                     for s in lines.strip().split("\n")

@@ -46,9 +46,6 @@ class JobManager:
             - Managing of job's lifecycle
     """
 
-    # Time that we will sleep while tailing logs if no new log line is
-    # available.
-    LOG_TAIL_SLEEP_S = 1
     WAIT_FOR_ACTOR_DEATH_TIMEOUT_S = 0.1
 
     def __init__(self, gcs_aio_client: GcsAioClient, logs_dir: str):
@@ -226,21 +223,12 @@ class JobManager:
         """Get all logs produced by a job."""
         return self._log_client.get_logs(job_id)
 
-    async def tail_job_logs(self, job_id: str) -> Iterator[str]:
-        """Return an iterator following the logs of a job."""
-        if await self.get_job_status(job_id) is None:
-            raise RuntimeError(f"Job '{job_id}' does not exist.")
-
+    async def _tail_logs(self, job_id: str) -> Iterator[str]:
         for lines in self._log_client.tail_logs(job_id):
-            if lines is None:
-                # Return if the job has exited and there are no new log lines.
-                status = await self.get_job_status(job_id)
-                if status.is_terminal():
-                    return
-
-                await asyncio.sleep(self.LOG_TAIL_SLEEP_S)
-            else:
+            if lines is not None:
                 yield "".join(lines)
+            else:
+                return
 
 
 def _get_job_startup_timeout_s() -> float:
