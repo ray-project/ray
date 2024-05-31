@@ -86,7 +86,7 @@ VF_LOSS_KEY = "vf_loss"
 ENTROPY_KEY = "entropy"
 
 # Additional update keys
-LEARNER_RESULTS_CURR_LR_KEY = "curr_lr"
+LR_KEY = "learning_rate"
 
 
 @dataclass
@@ -1401,14 +1401,20 @@ class Learner:
                 )
                 self._set_optimizer_lr(optimizer, lr=new_lr)
 
-                # Make sure our returned results differentiate by optimizer name
-                # (if not the default name).
-                stats_name = LEARNER_RESULTS_CURR_LR_KEY
-                if optimizer_name != DEFAULT_OPTIMIZER:
-                    stats_name += "_" + optimizer_name
-                self.metrics.log_value(
-                    key=(module_id, stats_name), value=new_lr, window=1
+        # Log all current learning rates of all our optimizers (registered under the
+        # different ModuleIDs).
+        self.metrics.log_dict(
+            {
+                # Cut out the module ID from the beginning since it's already part of
+                # the key sequence: (ModuleID, "[optim name]_lr").
+                (mid, f"{full_name[len(mid) + 1:]}_{LR_KEY}"): convert_to_numpy(
+                    self._get_optimizer_lr(self._named_optimizers[full_name])
                 )
+                for mid, full_names in self._module_optimizers.items()
+                for full_name in full_names
+            },
+            window=1,
+        )
 
     def _set_slicing_by_batch_id(
         self, batch: MultiAgentBatch, *, value: bool
