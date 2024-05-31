@@ -299,44 +299,78 @@ class Stats:
         Thereby, the newly incoming values of `others` are treated equally with respect
         to each other as well as with respect to the internal values of self.
 
-        Use this method to merge another Stats into this one that resulted from a
-        parallel run and metrics logging of `self` and n `others` (for example, n
-        Learner workers all returning a loss value).
+        Use this method to merge other `Stats` objects, which resulted from some
+        parallelly executed components, into this one. For example: n Learner workers
+        all returning a loss value in the form of `{"total_loss": [some value]}`.
 
-        The following examples demonstrate the parallel merging logic:
+        The following examples demonstrate the parallel merging logic for different
+        reduce- and window settings:
 
         .. testcode::
-
             from ray.rllib.utils.metrics.stats import Stats
             from ray.rllib.utils.test_utils import check
 
-            # Parallel-merge two mean stats (win=3).
+            # Parallel-merge two (reduce=mean) stats with window=3.
             stats = Stats(reduce="mean", window=3)
             stats1 = Stats(reduce="mean", window=3)
+            stats1.push(0)
             stats1.push(1)
             stats1.push(2)
             stats1.push(3)
             stats2 = Stats(reduce="mean", window=3)
-            stats1.push(4)
-            stats1.push(5)
-            stats1.push(6)
+            stats2.push(4000)
+            stats2.push(4)
+            stats2.push(5)
+            stats2.push(6)
             stats.merge_in_parallel(stats1, stats2)
-            check(stats.values, [3.5, 3.5, 3.5])
+            # Fill new merged-values list:
+            # - Start with index -1, moving to the start.
+            # - Thereby always reducing across the different Stats objects' at the
+            #   current index.
+            # - The resulting reduced value (across Stats at current index) is then
+            #   repeated AND
+            #   added to the new merged-values list n times (where n is the number of
+            #   Stats, across
+            #   which we merge).
+            # - The merged-values list is reversed.
+            # Here:
+            # index -1: [3, 6] -> [4.5, 4.5]
+            # index -2: [2, 5] -> [4.5, 4.5, 3.5, 3.5]
+            # STOP after merged list contains >= 3 items (window size)
+            # reverse: [3.5, 3.5, 4.5, 4.5]
+            check(stats.values, [3.5, 3.5, 4.5, 4.5])
+            check(stats.peek(), (3.5 + 4.5 + 4.5) / 3)  # mean last 3 items (window)
 
-            # Parallel-merge two max stats (win=3).
+            # Parallel-merge two (reduce=max) stats with window=3.
             stats = Stats(reduce="max", window=3)
             stats1 = Stats(reduce="max", window=3)
             stats1.push(1)
             stats1.push(2)
             stats1.push(3)
             stats2 = Stats(reduce="max", window=3)
-            stats1.push(4)
-            stats1.push(5)
-            stats1.push(6)
+            stats2.push(4)
+            stats2.push(5)
+            stats2.push(6)
             stats.merge_in_parallel(stats1, stats2)
-            check(stats.values, [6])
+            # Same here: Fill new merged-values list:
+            # - Start with index -1, moving to the start.
+            # - Thereby always reducing across the different Stats objects' at the
+            #   current index.
+            # - The resulting reduced value (across Stats at current index) is then
+            #   repeated AND
+            #   added to the new merged-values list n times (where n is the number of
+            #   Stats, across
+            #   which we merge).
+            # - The merged-values list is reversed.
+            # Here:
+            # index -1: [3, 6] -> [6, 6]
+            # index -2: [2, 5] -> [6, 6, 5, 5]
+            # STOP after merged list contains >= 3 items (window size)
+            # reverse: [5, 5, 6, 6]
+            check(stats.values, [5, 5, 6, 6])
+            check(stats.peek(), 6)  # max is 6
 
-            # Parallel-merge two min stats (win=4).
+            # Parallel-merge two (reduce=min) stats with window=4.
             stats = Stats(reduce="min", window=4)
             stats1 = Stats(reduce="min", window=4)
             stats1.push(1)
@@ -344,34 +378,55 @@ class Stats:
             stats1.push(1)
             stats1.push(4)
             stats2 = Stats(reduce="min", window=4)
-            stats1.push(5)
-            stats1.push(0.5)
-            stats1.push(7)
-            stats1.push(8)
+            stats2.push(5)
+            stats2.push(0.5)
+            stats2.push(7)
+            stats2.push(8)
             stats.merge_in_parallel(stats1, stats2)
-            check(stats.values, [0.5])
+            # Same procedure:
+            # index -1: [4, 8] -> [4, 4]
+            # index -2: [1, 7] -> [4, 4, 1, 1]
+            # STOP after merged list contains >= 4 items (window size)
+            # reverse: [1, 1, 4, 4]
+            check(stats.values, [1, 1, 4, 4])
+            check(stats.peek(), 1)  # min is 1
 
-            # Parallel-merge two sum stats (no window).
+            # Parallel-merge two (reduce=sum) stats with no window.
+            # Note that when reduce="sum", we do NOT reduce across the indices of the
+            # parallel
             stats = Stats(reduce="sum")
             stats1 = Stats(reduce="sum")
             stats1.push(1)
             stats1.push(2)
+            stats1.push(0)
             stats1.push(3)
             stats2 = Stats(reduce="sum")
-            stats1.push(4)
-            stats1.push(5)
-            stats1.push(6)
+            stats2.push(4)
+            stats2.push(5)
+            stats2.push(6)
+            # index -1: [3, 6] -> [3, 6] (no reduction, leave values as-is)
+            # index -2: [0, 5] -> [3, 6, 0, 5]
+            # index -3: [2, 4] -> [3, 6, 0, 5, 2, 4]
+            # index -4: [1] -> [3, 6, 0, 5, 2, 4, 1]
+            # STOP after merged list contains >= 4 items (window size)
+            # reverse: [1, 4, 2, 5, 0, 6, 3]
             stats.merge_in_parallel(stats1, stats2)
-            check(stats.values, [21])
+            check(stats.values, [1, 4, 2, 5, 0, 6, 3])
+            check(stats.peek(), 21)
 
-            # Parallel-merge two "concat" stats (reduce=None; no win).
+            # Parallel-merge two "concat" (reduce=None) stats with no window.
+            # Note that when reduce=None, we do NOT reduce across the indices of the
+            # parallel
             stats = Stats(reduce=None, window=float("inf"), clear_on_reduce=True)
             stats1 = Stats(reduce=None, window=float("inf"), clear_on_reduce=True)
             stats1.push(1)
             stats2 = Stats(reduce=None, window=float("inf"), clear_on_reduce=True)
-            stats1.push(2)
+            stats2.push(2)
+            # index -1: [1, 2] -> [1, 2] (no reduction, leave values as-is)
+            # reverse: [2, 1]
             stats.merge_in_parallel(stats1, stats2)
-            check(stats.values, [1, 2])
+            check(stats.values, [2, 1])
+            check(stats.peek(), [2, 1])
 
         Args:
             others: One or more other Stats objects that need to be parallely merged
@@ -383,21 +438,39 @@ class Stats:
         assert all(self._window == o._window for o in others)
         assert all(self._ema_coeff == o._ema_coeff for o in others)
 
-        # Extend `self`'s values by all `others`' values.
-        for o in others:
-            self.values.extend(o.values)
+        win = self._window or float("inf")
 
-        # Reduce over the entire values (no matter the window size!) first.
-        store_win = self._window
-        self._window = None
-        reduced_value, new_values = self._reduced_values()
-        self._window = store_win
-        # x-fold the reduced_value over the actual window size and use the resulting
-        # list as new self.values.
-        if self._reduce_method == "mean":
-            self.values = [reduced_value] * self._window
-        else:
-            self.values = new_values
+        # Take turns stepping through `self` and `*others` values, thereby moving
+        # backwards from last index to beginning and will up the resulting values list.
+        # Stop as soon as we reach the window size.
+        new_values = []
+        tmp_values = []
+        # Loop from index=-1 backward to index=start until our new_values list has
+        # at least a len of `win`.
+        for i in range(1, max(map(len, [self, *others])) + 1):
+            # Per index, loop through all involved stats, including `self` and add
+            # to `tmp_values`.
+            for stats in [self, *others]:
+                if len(stats) < i:
+                    continue
+                tmp_values.append(stats.values[-i])
+
+            # Now reduce across `tmp_values` based on the reduce-settings of this Stats.
+            # TODO (sven) : explain why all this
+            if self._ema_coeff is not None:
+                new_values.extend([np.nanmean(tmp_values)] * len(tmp_values))
+            elif self._reduce_method in [None, "sum"]:
+                new_values.extend(tmp_values)
+            else:
+                new_values.extend(
+                    [self._reduced_values(values=tmp_values, window=float("inf"))[0]]
+                    * len(tmp_values)
+                )
+            tmp_values.clear()
+            if len(new_values) >= win:
+                break
+
+        self.values = list(reversed(new_values))
 
     def numpy(self, value: Any = None) -> "Stats":
         """Converts all of self's internal values to numpy (if a tensor)."""
@@ -491,39 +564,47 @@ class Stats:
             clear_on_reduce=other._clear_on_reduce,
         )
 
-    def _reduced_values(self) -> Tuple[Any, Any]:
-        """Runs a non-commited reduction procedure on the internal values list.
+    def _reduced_values(self, values=None, window=None) -> Tuple[Any, Any]:
+        """Runs a non-commited reduction procedure on given values (or `self.values`).
+
+        Note that this method does NOT alter any state of `self` or the possibly
+        provided list of `values`. It only returns new values as they should be
+        adopted after a possible, actual reduction step.
+
+        Args:
+            values: The list of values to reduce. If not None, use `self.values`
+            window: A possible override window setting to use (instead of
+                `self._window`). Use float('inf') here for an infinite window size.
 
         Returns:
             A tuple containing 1) the reduced value and 2) the new internal values list
             to be used.
         """
+        values = values if values is not None else self.values
+        window = window if window is not None else self._window
+
+        # Apply the window (if provided and not inf).
+        values = (
+            values if window is None or window == float("inf") else values[-window:]
+        )
+
         # No reduction method. Return list as-is OR reduce list to len=window.
         if self._reduce_method is None:
-            # No window -> return all internal values.
-            if self._window is None or self._window == float("inf"):
-                return self.values, self.values
-            # Window -> return shortened internal values list.
-            else:
-                return self.values[-self._window :], self.values[-self._window :]
+            return values, values
 
         # Special case: Internal values list is empty -> return NaN.
-        elif len(self.values) == 0:
+        elif len(values) == 0:
             return float("nan"), []
-        # Do EMA (always a "mean" reduction).
-        elif self._ema_coeff is not None:
+
+        # Do EMA (always a "mean" reduction; possibly using a window).
+        if self._ema_coeff is not None:
             # Perform EMA reduction over all values in internal values list.
-            mean_value = self.values[0]
-            for v in self.values[1:]:
+            mean_value = values[0]
+            for v in values[1:]:
                 mean_value = self._ema_coeff * v + (1.0 - self._ema_coeff) * mean_value
-            return mean_value, [mean_value]
+            return mean_value, values
         # Do non-EMA reduction (possibly using a window).
         else:
-            values = (
-                self.values
-                if self._window is None or self._window == float("inf")
-                else self.values[-self._window :]
-            )
             # Use the numpy/torch "nan"-prefix to ignore NaN's in our value lists.
             if torch and torch.is_tensor(values[0]):
                 reduce_meth = getattr(torch, "nan" + self._reduce_method)
@@ -548,16 +629,13 @@ class Stats:
 
             # For window=None|inf (infinite window) and reduce != mean, we don't have to
             # keep any values, except the last (reduced) one.
-            if (
-                self._window is None or self._window == float("inf")
-            ) and self._reduce_method != "mean":
+            if window in [None, float("inf")] and self._reduce_method != "mean":
                 # TODO (sven): What if out values are torch tensors? In this case, we
                 #  would have to do reduction using `torch` above (not numpy) and only
                 #  then return the python primitive AND put the reduced new torch
                 #  tensor in `new_values`.
-                new_values = [reduced]
+                return reduced, [reduced]
             # In all other cases, keep the values that were also used for the reduce
             # operation.
             else:
-                new_values = values
-            return reduced, new_values
+                return reduced, values
