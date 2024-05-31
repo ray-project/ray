@@ -203,17 +203,12 @@ void RayLog::InitLogFormat() {
   log_format_json_ = false;
   log_format_pattern_ = kLogFormatTextPattern;
 
-  const char *var_value = std::getenv("RAY_BACKEND_LOG_FORMAT");
+  const char *var_value = std::getenv("RAY_BACKEND_LOG_JSON");
   if (var_value != nullptr) {
     std::string data = var_value;
-    std::transform(data.begin(), data.end(), data.begin(), ::tolower);
-    if (data == "json") {
+    if (data == "1") {
       log_format_json_ = true;
       log_format_pattern_ = kLogFormatJsonPattern;
-    } else if (data == "text") {
-      // Default
-    } else {
-      RAY_LOG(WARNING) << "Unrecognized setting of RAY_BACKEND_LOG_FORMAT=" << var_value;
     }
   }
 }
@@ -421,11 +416,10 @@ RayLog::RayLog(const char *file_name, int line_number, RayLogLevel severity)
   if (is_enabled_) {
     if (log_format_json_) {
       if (!component_name_.empty()) {
-        context_osstream_ << ",\"" << kLogKeyComponent << "\":\"" << component_name_
-                          << "\"";
+        WithField(kLogKeyComponent, component_name_);
       }
-      context_osstream_ << ",\"" << kLogKeyFilename << "\":\"" << ConstBasename(file_name)
-                        << "\",\"" << kLogKeyLineno << "\":" << line_number;
+      WithField(kLogKeyFilename, ConstBasename(file_name));
+      WithField(kLogKeyLineno, line_number);
     } else {
       if (!component_name_.empty()) {
         msg_osstream_ << "(" << component_name_ << ") ";

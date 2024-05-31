@@ -260,8 +260,8 @@ void GcsActorManager::HandleRegisterActor(rpc::RegisterActorRequest request,
       ActorID::FromBinary(request.task_spec().actor_creation_task_spec().actor_id());
 
   RAY_LOG(INFO)
-          .WithField(kLogKeyJobID, actor_id.JobId().Hex())
-          .WithField(kLogKeyActorID, actor_id.Hex())
+          .WithField(kLogKeyJobID, actor_id.JobId())
+          .WithField(kLogKeyActorID, actor_id)
       << "Registering actor";
   Status status =
       RegisterActor(request,

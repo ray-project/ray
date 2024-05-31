@@ -309,24 +309,38 @@ class RayLog {
   /// and doesn't conflict with system keys like levelname.
   template <typename T>
   RayLog &WithField(std::string_view key, const T &value) {
-    std::stringstream ss;
-    ss << value;
-    return WithField<std::string>(key, ss.str());
-  }
-
-  template <>
-  RayLog &WithField(std::string_view key, const std::string &value) {
     if (log_format_json_) {
-      context_osstream_ << ",\"" << key << "\":" << nlohmann::json(value).dump();
+      return WithFieldJsonFormat<T>(key, value);
     } else {
-      context_osstream_ << " " << key << "=" << value;
+      return WithFieldTextFormat<T>(key, value);
     }
-    return *this;
   }
 
  private:
-  FRIEND_TEST(PrintLogTest, TestRayLogEveryNOrDebug);
-  FRIEND_TEST(PrintLogTest, TestRayLogEveryN);
+  template <typename T>
+  RayLog &WithFieldTextFormat(std::string_view key, const T &value) {
+    context_osstream_ << " " << key << "=" << value;
+    return *this;
+  }
+
+  template <typename T>
+  RayLog &WithFieldJsonFormat(std::string_view key, const T &value) {
+    std::stringstream ss;
+    ss << value;
+    return WithFieldJsonFormat<std::string>(key, ss.str());
+  }
+
+  template <>
+  RayLog &WithFieldJsonFormat(std::string_view key, const std::string &value) {
+    context_osstream_ << ",\"" << key << "\":" << nlohmann::json(value).dump();
+    return *this;
+  }
+
+  template <>
+  RayLog &WithFieldJsonFormat(std::string_view key, const int &value) {
+    context_osstream_ << ",\"" << key << "\":" << value;
+    return *this;
+  }
 
   static void InitSeverityThreshold(RayLogLevel severity_threshold);
   static void InitLogFormat();
@@ -370,6 +384,9 @@ class RayLog {
   static long log_rotation_file_num_;
   // Ray default logger name.
   static std::string logger_name_;
+
+  FRIEND_TEST(PrintLogTest, TestRayLogEveryNOrDebug);
+  FRIEND_TEST(PrintLogTest, TestRayLogEveryN);
 
  protected:
   virtual std::ostream &Stream() { return msg_osstream_; }

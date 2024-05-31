@@ -187,7 +187,7 @@ TEST(PrintLogTest, TestRayLogEveryMs) {
 }
 
 TEST(PrintLogTest, TestTextLogging) {
-  setenv("RAY_BACKEND_LOG_FORMAT", "TEXT", true);
+  setenv("RAY_BACKEND_LOG_JSON", "0", true);
   RayLog::StartRayLog("/tmp/gcs", RayLogLevel::INFO, "");
   CaptureStdout();
   RAY_LOG(INFO).WithField("key1", "value1").WithField("key2", "value2")
@@ -200,11 +200,11 @@ TEST(PrintLogTest, TestTextLogging) {
             std::string::npos);
 
   RayLog::ShutDownRayLog();
-  unsetenv("RAY_BACKEND_LOG_FORMAT");
+  unsetenv("RAY_BACKEND_LOG_JSON");
 }
 
 TEST(PrintLogTest, TestJSONLogging) {
-  setenv("RAY_BACKEND_LOG_FORMAT", "JSON", true);
+  setenv("RAY_BACKEND_LOG_JSON", "1", true);
   RayLog::StartRayLog("/tmp/raylet", RayLogLevel::INFO, "");
   CaptureStdout();
   RAY_LOG(DEBUG) << "this is not logged";
@@ -219,19 +219,19 @@ TEST(PrintLogTest, TestJSONLogging) {
   json log1 = json::parse(log_lines[0]);
   json log2 = json::parse(log_lines[1]);
   json log3 = json::parse(log_lines[2]);
-  ASSERT_EQ(log1[kLogKeyMessage], "this is info logged");
-  ASSERT_EQ(log2[kLogKeyMessage], "this needs\nescape\"");
-  ASSERT_EQ(log3[kLogKeyMessage], "contextual log");
+  ASSERT_EQ(log1[std::string(kLogKeyMessage)], "this is info logged");
+  ASSERT_EQ(log2[std::string(kLogKeyMessage)], "this needs\nescape\"");
+  ASSERT_EQ(log3[std::string(kLogKeyMessage)], "contextual log");
   ASSERT_TRUE(log3.contains(kLogKeyAsctime));
   ASSERT_TRUE(log3.contains(kLogKeyFilename));
   ASSERT_TRUE(log3.contains(kLogKeyLineno));
-  ASSERT_EQ(log3[kLogKeyLevelname], "I");
-  ASSERT_EQ(log3[kLogKeyComponent], "raylet");
+  ASSERT_EQ(log3[std::string(kLogKeyLevelname)], "I");
+  ASSERT_EQ(log3[std::string(kLogKeyComponent)], "raylet");
   ASSERT_EQ(log3["key1"], "value1");
   ASSERT_EQ(log3["key2"], "value\n2");
 
   RayLog::ShutDownRayLog();
-  unsetenv("RAY_BACKEND_LOG_FORMAT");
+  unsetenv("RAY_BACKEND_LOG_JSON");
 }
 
 #endif /* GTEST_HAS_STREAM_REDIRECTION */
