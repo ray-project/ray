@@ -120,7 +120,6 @@ class Worker:
         tensor_patcher = mock.patch("torch.Tensor.device", torch.device("cuda"))
         tensor_patcher.start()
         tensor_patcher = mock.patch("torch.Tensor.is_cuda", True)
-        tensor_patcher = mock.patch("torch.Tensor.device", torch.device("cuda"))
         tensor_patcher.start()
 
         ctx = ray_channel.ChannelContext.get_current()
