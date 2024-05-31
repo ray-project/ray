@@ -14,6 +14,16 @@ def test_normal_termination(ray_start_cluster):
     worker_node = cluster.add_node(resources={"worker": 1})
     cluster.wait_for_nodes()
     worker_node_id = worker_node.node_id
+
+    @ray.remote
+    class Actor:
+        def ping(self):
+            pass
+
+    actor = Actor.options(num_cpus=0, resources={"worker": 1}).remote()
+    ray.get(actor.ping.remote())
+
+    # normal node termination
     cluster.remove_node(worker_node)
 
     worker_node_info = [
@@ -24,6 +34,14 @@ def test_normal_termination(ray_start_cluster):
         "EXPECTED_TERMINATION"
     )
     assert worker_node_info["DeathReasonMessage"] == "received SIGTERM"
+
+    try:
+        ray.get(actor.ping.remote())
+        raise
+    except ray.exceptions.RayActorError as e:
+        assert not e.preempted
+        assert isinstance(e, ray.exceptions.ActorDiedError)
+        assert "The actor died because its node has died." in str(e)
 
 
 def test_abnormal_termination(monkeypatch, ray_start_cluster):
@@ -46,6 +64,14 @@ def test_abnormal_termination(monkeypatch, ray_start_cluster):
         == {head_node_id, worker_node_id}
     )
 
+    @ray.remote
+    class Actor:
+        def ping(self):
+            pass
+
+    actor = Actor.options(num_cpus=0, resources={"worker": 1}).remote()
+    ray.get(actor.ping.remote())
+
     # Simulate the worker node crashes.
     cluster.remove_node(worker_node, False)
 
@@ -62,6 +88,14 @@ def test_abnormal_termination(monkeypatch, ray_start_cluster):
         worker_node["DeathReasonMessage"]
         == "health check failed due to missing too many heartbeats"
     )
+
+    try:
+        ray.get(actor.ping.remote())
+        raise
+    except ray.exceptions.RayActorError as e:
+        assert not e.preempted
+        assert isinstance(e, ray.exceptions.ActorDiedError)
+        assert "The actor died because its node has died." in str(e)
 
 
 if __name__ == "__main__":
