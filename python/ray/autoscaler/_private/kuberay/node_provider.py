@@ -102,7 +102,7 @@ def multihost_replica_id(pod: Dict[str, Any]) -> string:
 
 
 def replica_index_label(pod: Dict[str, Any]) -> Optional[str]:
-    """Returns the replicaIndex label for a Pod in a TPU worker group.
+    """Returns the replicaIndex label for a Pod in a multi-host TPU worker group.
     The replicaIndex label is set by the GKE TPU Ray webhook and is of
     the form {$WORKER_GROUP_NAME-$REPLICA_INDEX} where $REPLICA_INDEX
     is an integer from 0 to Replicas-1.
