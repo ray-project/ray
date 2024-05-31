@@ -283,6 +283,35 @@ TEST(PrintLogTest, TestStackTrace) {
   EXPECT_TRUE(ret2.find("TestFunctionLevel2") != std::string::npos) << ret2;
 }
 
+TEST(PrintLogTest, ValidateLogRotationAndFileSize) {
+  std::string app_name = "gcs_server";
+  std::string log_dir = "/tmp/test_log";
+  long log_rotation_max_size_ = 1024;
+  long log_rotation_file_num_ = 3;
+  setenv("RAY_ROTATION_MAX_BYTES", "1024", 1);
+  setenv("RAY_ROTATION_BACKUP_COUNT", "3", 1);
+  if (!std::filesystem::exists(log_dir)) {
+    std::filesystem::create_directories(log_dir);
+  }
+  RayLog::StartRayLog(app_name, RayLogLevel::INFO, log_dir);
+  for (int i = 0; i < log_rotation_max_size_ * log_rotation_file_num_; ++i) {
+    RAY_LOG(INFO) << "Log entry " << i;
+  }
+  int file_count = 0;
+  for (const auto &entry : std::filesystem::directory_iterator(log_dir)) {
+    if (entry.path().filename().string().find(app_name) != std::string::npos) {
+      file_count++;
+    }
+  }
+  ASSERT_EQ(file_count, log_rotation_file_num_ + 1);
+  RayLog::ShutDownRayLog();
+  for (const auto &entry : std::filesystem::directory_iterator(log_dir)) {
+    if (entry.path().filename().string().find(app_name) != std::string::npos) {
+      std::filesystem::remove(entry.path());
+    }
+  }
+}
+
 int TerminateHandlerLevel0() {
   RAY_LOG(INFO) << "TerminateHandlerLevel0";
   auto terminate_handler = std::get_terminate();
