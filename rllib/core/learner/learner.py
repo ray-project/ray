@@ -1283,6 +1283,95 @@ class Learner:
             raise ValueError("`num_iters` must be >= 1")
 
         # Call the learner connector.
+        from ray.data._internal.iterator.stream_split_iterator import StreamSplitDataIterator
+        if episodes and not isinstance(episodes, list) and isinstance(episodes, StreamSplitDataIterator):
+            def _collate_fn(episodes):
+                if self._learner_connector:
+                    batch = self._learner_connector(
+                        rl_module=self.module,
+                        data={},
+                        episodes=episodes["episodes"].tolist(),
+                        shared_data={},
+                    )
+                    batch = MultiAgentBatch(
+                        {
+                            module_id: SampleBatch(module_data)
+                            for module_id, module_data in batch.items()
+                        },
+                        env_steps=sum(len(e) for e in episodes),
+                    )
+                
+
+                return batch
+            
+            print(f"Train batch size: {self.config.train_batch_size}")
+            for batch in episodes.iter_batches(
+                batch_size=self.config.train_batch_size,
+                local_shuffle_buffer_size=10 * self.config.train_batch_size,
+                prefetch_batches=1,
+                #_collate_fn=_collate_fn,
+            ):
+                if self._learner_connector:
+                    batch = self._learner_connector(
+                        rl_module=self.module,
+                        data={},
+                        episodes=episodes["episodes"].tolist(),
+                        shared_data={},
+                    )
+                    batch = MultiAgentBatch(
+                        {
+                            module_id: SampleBatch(module_data)
+                            for module_id, module_data in batch.items()
+                        },
+                        env_steps=sum(len(e) for e in episodes),
+                    )
+
+                for module_id in list(batch.policy_batches.keys()):
+                    if not self.should_module_be_updated(module_id, batch):
+                        del batch.policy_batches[module_id]
+                
+                self._log_steps_trained_metrics(episodes["episodes"], batch)
+                batch = self._convert_batch_type(batch)
+                batch = self._set_slicing_by_batch_id(batch, value=True)
+                # Make the actual in-graph/traced `_update` call. This should return
+                # all tensor values (no numpy).
+                nested_tensor_minibatch = NestedDict(batch.policy_batches)
+                fwd_out, loss_per_module, tensor_metrics = self._update(
+                    nested_tensor_minibatch
+                )
+
+                # Convert logged tensor metrics (logged during tensor-mode of MetricsLogger)
+                # to actual (numpy) values.
+                self.metrics.tensors_to_numpy(tensor_metrics)
+
+                # Log all individual RLModules' loss terms and its registered optimizers'
+                # current learning rates.
+                for mid, loss in convert_to_numpy(loss_per_module).items():
+                    self.metrics.log_value(
+                        key=(mid, self.TOTAL_LOSS_KEY),
+                        value=loss,
+                        window=1,
+                    )
+
+            self._set_slicing_by_batch_id(batch, value=False)
+
+            # Log all current learning rates of all our optimizers (registered under the
+            # different ModuleIDs).
+            self.metrics.log_dict(
+                {
+                    (mid, f"{full_name[len(mid) + 1 :]}_lr"): convert_to_numpy(
+                        self._get_optimizer_lr(self._named_optimizers[full_name])
+                    )
+                    for mid, full_names in self._module_optimizers.items()
+                    for full_name in full_names
+                },
+                window=1,
+            )
+
+            # Reduce results across all minibatch update steps.
+            return self.metrics.reduce()
+
+
         if self._learner_connector is not None and episodes is not None:
             # Call the learner connector pipeline.
             batch = self._learner_connector(

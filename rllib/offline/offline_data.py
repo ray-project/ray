@@ -89,13 +89,13 @@ class OfflineData:
             if num_shards > 1:
                 return self.data.map_batches(
                     functools.partial(self._map_to_episodes, self.is_multi_agent)
-                ).streaming_split(n=num_shards, equal=True)
+                ).streaming_split(n=num_shards, equal=False, locality_hints=self.locality_hints)
             # Otherwise, we return a simple batch `DataIterator`.
             else:
                 return self.batch_iterator
         else:
             # Return a single batch from the iterator.
-            return next(iter(self.batch_iterator))["episodes"]
+            return next(iter(self.batch_iterator))["episodes"].tolist()
 
     @staticmethod
     def _map_to_episodes(
