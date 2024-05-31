@@ -1,22 +1,18 @@
 import logging
-from typing import TYPE_CHECKING, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING, List, Optional
 
 import ray
 from ray.experimental.channel import ChannelContext, ChannelOutputType
+from ray.experimental.channel.shared_memory_channel import SharedMemoryType
 from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
     import torch
 
+    from ray.experimental.channel.shared_memory_channel import Channel
     from ray.experimental.channel.torch_tensor_nccl_channel import TorchTensorAllocator
 
 logger = logging.getLogger(__name__)
-
-# 100KB to store metadata and/or exceptions.
-# NOTE(swang): This will consume memory but it should not affect performance
-# because we only copy the actual data stored, not the maximum size of the
-# shared meomry buffer.
-TENSOR_METADATA_SIZE_BYTES = 100_000
 
 
 def _get_default_torch_device() -> "torch.device":
@@ -39,10 +35,9 @@ class TorchTensorType(ChannelOutputType):
 
     def __init__(
         self,
-        shape: Union[int, Tuple[int], str] = AUTO,
-        dtype: "torch.dtype" = AUTO,
+        static_shape: bool = False,
+        static_non_tensor_data: bool = False,
         transport: Optional[str] = AUTO,
-        direct_return: Optional[bool] = False,
     ):
         """
         A type hint that can be used to annotate DAG nodes that return a
@@ -55,6 +50,7 @@ class TorchTensorType(ChannelOutputType):
         using ray.util.serialization.deregister_serializer(torch.Tensor).
 
         Args:
+        # TODO(swang)
             shape: The expected shape of the torch.Tensor. "auto" (default)
                 means that the shape will be dynamically inferred. For tensors
                 passed via host memory (default), the shape is a hint for the
@@ -77,14 +73,8 @@ class TorchTensorType(ChannelOutputType):
         """
         super().__init__()
 
-        if isinstance(shape, str):
-            shape = shape.lower()
-        if isinstance(dtype, str):
-            dtype = dtype.lower()
-
-        self.shape = shape
-        self.dtype = dtype
-        self.direct_return = direct_return
+        self._static_shape = static_shape
+        self._static_non_tensor_data = static_non_tensor_data
 
         if transport not in [self.AUTO, self.NCCL]:
             raise ValueError(
@@ -94,15 +84,19 @@ class TorchTensorType(ChannelOutputType):
 
         self._nccl_group_id: Optional[str] = None
 
-        if self.direct_return and self.transport == self.AUTO:
+        if self.static_non_tensor_data and self.transport == self.AUTO:
             logger.info(
                 "TorchTensorType(direct_return=True) has no effect when "
                 "`transport` is TorchTensorType.AUTO (default)."
             )
 
     @property
-    def is_direct_return(self) -> bool:
-        return self.direct_return
+    def static_shape(self):
+        return self._static_shape
+
+    @property
+    def static_non_tensor_data(self):
+        return self._static_non_tensor_data
 
     def register_custom_serializer(self) -> None:
         super().register_custom_serializer()
@@ -130,52 +124,43 @@ class TorchTensorType(ChannelOutputType):
         self,
         writer: Optional["ray.actor.ActorHandle"],
         readers: List[Optional["ray.actor.ActorHandle"]],
+        _non_tensor_data_typ: Optional[SharedMemoryType] = None,
+        _tensor_metadata_channel: Optional["Channel"] = None,
         _torch_tensor_allocator: Optional["TorchTensorAllocator"] = None,
     ) -> type:
         if self.requires_nccl():
             from ray.experimental.channel.torch_tensor_nccl_channel import (
                 TorchTensorNcclChannel,
+                _TorchTensorNcclChannel,
+            )
+
+            tensor_data_channel = _TorchTensorNcclChannel(
+                writer,
+                readers,
+                self._nccl_group_id,
+                self._static_shape,
+                _meta_channel=_tensor_metadata_channel,
+                _torch_tensor_allocator=_torch_tensor_allocator,
+            )
+
+            if _non_tensor_data_typ is None:
+                _non_tensor_data_typ = SharedMemoryType()
+            non_tensor_data_channel = _non_tensor_data_typ.create_channel(
+                writer, readers
             )
 
             return TorchTensorNcclChannel(
-                writer, readers, self, _torch_tensor_allocator=_torch_tensor_allocator
+                writer,
+                readers,
+                tensor_data_channel,
+                non_tensor_data_channel,
             )
 
-        # Transfer via host memory using a shared-memory channel.
-        import torch
-
-        from ray.experimental.channel.shared_memory_channel import Channel
-
-        TORCH_DTYPE_ITEMSIZE_MAP = {
-            # INT types
-            torch.int: 4,
-            torch.uint8: 1,
-            torch.int8: 1,
-            torch.int32: 4,
-            torch.int64: 8,
-            torch.long: 8,
-            # FLOAT types
-            torch.half: 2,
-            torch.float: 4,
-            torch.float16: 2,
-            torch.bfloat16: 2,
-            torch.float32: 4,
-            torch.float64: 8,
-            torch.double: 8,
-        }
-
-        shape = self.shape
-        if isinstance(shape, int):
-            shape = (shape,)
-
-        num_elements = 1
-        for dim in shape:
-            num_elements *= dim
-        element_size_bytes = TORCH_DTYPE_ITEMSIZE_MAP[self.dtype]
-        buffer_size_bytes = int(num_elements * element_size_bytes)
-        buffer_size_bytes += TENSOR_METADATA_SIZE_BYTES
-
-        return Channel(writer, readers, buffer_size_bytes)
+        # Data does not require NCCL. Transfer via host memory using a
+        # shared-memory channel.
+        # TODO(swang): Allow the initial max buffer size to be overridden.
+        typ = SharedMemoryType()
+        return typ.create_channel(writer, readers)
 
     def requires_nccl(self) -> bool:
         return self.transport == self.NCCL
