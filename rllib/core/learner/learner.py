@@ -1386,6 +1386,8 @@ class Learner:
                 `NUM_ENV_STEPS_SAMPLED_LIFETIME`.
                 # TODO (sven): Make this a more formal structure with its own type.
         """
+        timesteps = timesteps or {}
+
         # Only update this optimizer's lr, if a scheduler has been registered
         # along with it.
         for module_id, optimizer_names in self._module_optimizers.items():
@@ -1395,7 +1397,7 @@ class Learner:
                 if lr_schedule is None:
                     continue
                 new_lr = lr_schedule.update(
-                    timestep=timesteps[NUM_ENV_STEPS_SAMPLED_LIFETIME]
+                    timestep=timesteps.get(NUM_ENV_STEPS_SAMPLED_LIFETIME, 0)
                 )
                 self._set_optimizer_lr(optimizer, lr=new_lr)
 
