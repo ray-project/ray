@@ -406,16 +406,16 @@ class ActorDiedError(RayActorError):
     @staticmethod
     def _error_msg_from_node_death_info(node_death_info: NodeDeathInfo) -> str:
         if node_death_info.reason == NodeDeathInfo.EXPECTED_TERMINATION:
-            prefix = f"\tthe actor's node was terminated intentionally: "
+            prefix = "\tthe actor's node was terminated intentionally: "
         elif node_death_info.reason == NodeDeathInfo.UNEXPECTED_TERMINATION:
-            prefix = f"\tthe actor's node was terminated unexpectedly: "
+            prefix = "\tthe actor's node was terminated unexpectedly: "
         elif node_death_info.reason == NodeDeathInfo.AUTOSCALER_DRAIN_PREEMPTED:
-            prefix = f"\tthe actor's node was preempted: "
+            prefix = "\tthe actor's node was preempted: "
         elif node_death_info.reason == NodeDeathInfo.AUTOSCALER_DRAIN_IDLE:
-            prefix = f"\tthe actor's node was drained due to idle: "
+            prefix = "\tthe actor's node was drained due to idle: "
         else:
             # Should not reach here: added in case new enum is added in future.
-            prefix = f"\tthe actor's node was terminated: "
+            prefix = "\tthe actor's node was terminated: "
         return prefix + node_death_info.reason_message
 
 
