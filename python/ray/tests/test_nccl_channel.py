@@ -148,7 +148,9 @@ class Worker:
 
     def receive(self):
         t = self.chan.begin_read()
-        return (t[0], t.shape, t.dtype)
+        data = (t[0].clone(), t.shape, t.dtype)
+        self.chan.end_read()
+        return data
 
 
 @pytest.mark.parametrize(
@@ -167,7 +169,8 @@ def test_p2p(ray_start_cluster):
     Test simple sender -> receiver pattern. Check that receiver receives
     correct results.
     """
-    barrier = Barrier.options(name="barrier1").remote()  # noqa
+    # Barrier name should be barrier-{sender rank}-{receiver rank}.
+    barrier = Barrier.options(name="barrier-0-1").remote()  # noqa
 
     sender = Worker.remote()
     receiver = Worker.remote()
