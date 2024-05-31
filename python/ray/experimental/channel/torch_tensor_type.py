@@ -124,7 +124,7 @@ class TorchTensorType(ChannelOutputType):
         self,
         writer: Optional["ray.actor.ActorHandle"],
         readers: List[Optional["ray.actor.ActorHandle"]],
-        _non_tensor_data_typ: Optional[SharedMemoryType] = None,
+        _non_tensor_data_channel: Optional["Channel"] = None,
         _tensor_metadata_channel: Optional["Channel"] = None,
         _torch_tensor_allocator: Optional["TorchTensorAllocator"] = None,
     ) -> type:
@@ -143,17 +143,16 @@ class TorchTensorType(ChannelOutputType):
                 _torch_tensor_allocator=_torch_tensor_allocator,
             )
 
-            if _non_tensor_data_typ is None:
-                _non_tensor_data_typ = SharedMemoryType()
-            non_tensor_data_channel = _non_tensor_data_typ.create_channel(
-                writer, readers
-            )
+            if _non_tensor_data_channel is None:
+                _non_tensor_data_channel = SharedMemoryType().create_channel(
+                    writer, readers
+                )
 
             return TorchTensorNcclChannel(
                 writer,
                 readers,
                 tensor_data_channel,
-                non_tensor_data_channel,
+                _non_tensor_data_channel,
             )
 
         # Data does not require NCCL. Transfer via host memory using a

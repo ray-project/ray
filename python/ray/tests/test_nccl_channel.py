@@ -11,7 +11,7 @@ import pytest
 
 import ray
 import ray.cluster_utils
-import ray.experimental.channel as ray_channel
+import ray.experimental.channel as channel
 from ray.experimental.channel.torch_tensor_type import TorchTensorType
 from ray.experimental.channel.torch_tensor_nccl_channel import (
     _init_nccl_group,
@@ -67,7 +67,7 @@ class MockCudaStream:
         self.cuda_stream = 0
 
 
-class MockNcclGroup(ray_channel.nccl_group._NcclGroup):
+class MockNcclGroup(channel.nccl_group._NcclGroup):
     """
     Mock the internal _NcclGroup to use a barrier actor instead of a NCCL group
     for communication.
@@ -95,10 +95,22 @@ class MockNcclGroup(ray_channel.nccl_group._NcclGroup):
         self.num_ops[barrier_key] += 1
 
 
+class TracedChannel(channel.shared_memory_channel.Channel):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        self.ops = []
+
+    def write(self, *args, **kwargs):
+        self.ops.append((args, kwargs))
+        return super().write(*args, **kwargs)
+
+
 @ray.remote(num_cpus=0, num_gpus=1)
 class Worker:
     def __init__(self):
-        self.chan = None
+        self.tensor_chan = None
+        self.traced_channels = {}
 
     def start_mock(self):
         """
@@ -123,34 +135,60 @@ class Worker:
         tensor_patcher = mock.patch("torch.Tensor.device", torch.device("cuda"))
         tensor_patcher.start()
 
-        ctx = ray_channel.ChannelContext.get_current()
+        ctx = channel.ChannelContext.get_current()
         ctx.set_torch_device(torch.device("cuda"))
 
-    def set_nccl_channel(self, typ, chan):
+    def set_nccl_channel(self, typ, tensor_chan):
         typ.register_custom_serializer()
-        self.chan = chan
+        self.tensor_chan = tensor_chan
 
-    def create_nccl_channel(self, typ: TorchTensorType, readers):
+    def create_nccl_channel(
+        self,
+        typ: TorchTensorType,
+        readers,
+        tensor_metadata_channel_key=None,
+        non_tensor_data_channel_key=None,
+    ):
         typ.register_custom_serializer()
-        self.chan = typ.create_channel(
+
+        tensor_metadata_channel = None
+        if tensor_metadata_channel_key is not None:
+            tensor_metadata_channel = self.traced_channels[tensor_metadata_channel_key]
+        non_tensor_data_channel = None
+        if non_tensor_data_channel_key is not None:
+            non_tensor_data_channel = self.traced_channels[non_tensor_data_channel_key]
+
+        self.tensor_chan = typ.create_channel(
             ray.get_runtime_context().current_actor,
             readers,
-            _torch_tensor_allocator=lambda shape, dtype: torch.zeros(
-                shape, dtype=dtype
+            _tensor_metadata_channel=tensor_metadata_channel,
+            _non_tensor_data_channel=non_tensor_data_channel,
+            _torch_tensor_allocator=lambda meta: torch.zeros(
+                meta.shape, dtype=meta.dtype
             ),
         )
 
-        return self.chan
+        return self.tensor_chan
 
     def produce(self, val, shape, dtype):
         t = torch.ones(shape, dtype=dtype) * val
-        self.chan.write(t)
+        self.tensor_chan.write(t)
 
     def receive(self):
-        t = self.chan.begin_read()
+        t = self.tensor_chan.begin_read()
         data = (t[0].clone(), t.shape, t.dtype)
-        self.chan.end_read()
+        self.tensor_chan.end_read()
         return data
+
+    def create_traced_channel(self, key, readers):
+        self.traced_channels[key] = TracedChannel(
+            ray.get_runtime_context().current_actor, readers
+        )
+
+    def get_num_channel_ops(self, key):
+        ops = self.traced_channels[key].ops
+        self.traced_channels[key].ops = []
+        return len(ops)
 
 
 @pytest.mark.parametrize(
@@ -201,6 +239,15 @@ def test_p2p(ray_start_cluster):
         refs.append(receiver.receive.remote())
     assert ray.get(refs) == [(i, shape, dtype) for i in range(3)]
 
+    shapes = [(10,), (20,), (30,)]
+    dtypes = [torch.float, torch.float16, torch.int]
+
+    refs = []
+    for i in range(3):
+        sender.produce.remote(i, shapes[i], dtypes[i])
+        refs.append(receiver.receive.remote())
+    assert ray.get(refs) == [(i, shapes[i], dtypes[i]) for i in range(3)]
+
 
 @pytest.mark.parametrize(
     "ray_start_cluster",
@@ -241,17 +288,96 @@ def test_multiple_receivers(ray_start_cluster):
     ]
     ray.get(receiver_ready)
 
-    shape = (10,)
-    dtype = torch.float16
+    shapes = [(10,), (20,), (30,)]
+    dtypes = [torch.float, torch.float16, torch.int]
 
     all_refs = []
-    for i in range(2):
-        sender.produce.remote(i, shape, dtype)
+    for i in range(3):
+        sender.produce.remote(i, shapes[i], dtypes[i])
         all_refs.append([receiver.receive.remote() for receiver in receivers])
     # Check that all receivers received the correct value.
     for i, refs in enumerate(all_refs):
         for val in ray.get(refs):
-            assert val == (i, shape, dtype)
+            assert val == (i, shapes[i], dtypes[i])
+
+
+@pytest.mark.parametrize(
+    "ray_start_cluster",
+    [
+        {
+            "num_cpus": 2,
+            "num_gpus": 2,
+            "num_nodes": 1,
+        }
+    ],
+    indirect=True,
+)
+def test_static_shape(ray_start_cluster):
+    """
+    Test that when static_shape=True is passed, we only send metadata for the
+    first operation. Afterwards, we reuse the same shape and dtype for future
+    tensors. Sending a tensor of the wrong shape or dtype throws an error.
+    """
+    # Barrier name should be barrier-{sender rank}-{receiver rank}.
+    barrier = Barrier.options(name="barrier-0-1").remote()  # noqa
+
+    sender = Worker.remote()
+    receiver = Worker.remote()
+
+    ray.get(
+        [
+            sender.start_mock.remote(),
+            receiver.start_mock.remote(),
+        ]
+    )
+
+    nccl_id = _init_nccl_group([sender, receiver])
+
+    chan_typ = TorchTensorType(
+        transport="nccl",
+        static_shape=True,
+    )
+    chan_typ.set_nccl_group_id(nccl_id)
+    sender.create_traced_channel.remote("tensor_metadata", [receiver])
+    sender.create_traced_channel.remote("non_tensor_data", [receiver])
+    chan_ref = sender.create_nccl_channel.remote(
+        chan_typ,
+        [receiver],
+        "tensor_metadata",
+        "non_tensor_data",
+    )
+    receiver_ready = receiver.set_nccl_channel.remote(chan_typ, chan_ref)
+    ray.get([chan_ref, receiver_ready])
+
+    shape = (10,)
+    dtype = torch.float16
+
+    refs = []
+    for i in range(3):
+        sender.produce.remote(i, shape, dtype)
+        refs.append(receiver.receive.remote())
+    assert ray.get(refs) == [(i, shape, dtype) for i in range(3)]
+
+    # When static_shape=True, we should only send one metadata op. After the
+    # first metadata is sent, we reuse it for all future sends.
+    num_tensor_metadata_ops = ray.get(
+        sender.get_num_channel_ops.remote("tensor_metadata")
+    )
+    assert num_tensor_metadata_ops == 1
+    num_non_tensor_data_ops = ray.get(
+        sender.get_num_channel_ops.remote("non_tensor_data")
+    )
+    assert num_non_tensor_data_ops == 3
+
+    # Attempting to write tensors of the wrong shape or dtype will error.
+    with pytest.raises(ValueError):
+        ray.get(sender.produce.remote(4, (20,), dtype))
+    with pytest.raises(ValueError):
+        ray.get(sender.produce.remote(4, shape, torch.float32))
+
+    # The channel is still usable for valid tensors after errors occur.
+    sender.produce.remote(4, shape, dtype)
+    ray.get(receiver.receive.remote()) == (4, shape, dtype)
 
 
 if __name__ == "__main__":
