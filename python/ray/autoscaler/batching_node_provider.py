@@ -44,9 +44,8 @@ class NodeData:
     Attributes:
         kind: Whether the node is the head or a worker.
         type: The user-defined type of the node.
-        multihost_replica: An identifier for nodes belonging to a replica of a multi-host worker group.
-            * This value is set as a label by a webhook when NumOfHosts > 1 in a worker group
-            * This var is empty for pods belonging to single-host worker groups 
+        replica_index: An identifier for nodes in a replica of a TPU worker group.
+            This value is set as a Pod label by a GKE webhook when TPUs are requested
         ip: Cluster-internal ip of the node. ip can be None if the ip
             has not yet been assigned.
         status: The status of the node. You must adhere to the following semantics
