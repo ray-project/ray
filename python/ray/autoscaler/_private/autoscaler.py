@@ -126,8 +126,9 @@ class NonTerminatedNodes:
         self.worker_ids: List[NodeID] = []
         # The head node (node kind "head")
         self.head_id: Optional[NodeID] = None
-        # Map of multi-host replica IDs to nodes in each replica
-        self.multi_host_replicas_to_workers = defaultdict(list)
+        # Map of replica IDs to worker nodes in each replica.
+        # A replica ID refers to the index of a multi-host PodSlice created by KubeRay.
+        self.replicas_to_nodes = defaultdict(list)
 
         for node in self.all_node_ids:
             tags = provider.node_tags(node)
@@ -276,6 +277,9 @@ class StandardAutoscaler:
         # Tracks nodes scheduled for termination
         self.nodes_to_terminate: List[NodeID] = []
 
+        # Tracks replicas scheduled for termination
+        self.replicas_to_delete = set()
+
         # Disable NodeUpdater threads if true.
         # Should be set to true in situations where another component, such as
         # a Kubernetes operator, is responsible for Ray setup on nodes.
@@ -414,9 +418,6 @@ class StandardAutoscaler:
 
         # This will accumulate the nodes we need to terminate.
         self.nodes_to_terminate = []
-
-        # This will accumulate the multi-host replicas we need to terminate.
-        self.multi_host_replicas_to_delete = []
 
         # Update running nodes gauge
         num_workers = len(self.non_terminated_nodes.worker_ids)
