@@ -120,6 +120,9 @@ class BatchingNodeProvider(NodeProvider):
 
         self.scale_request = ScaleRequest()
 
+        # Initialize map of replica indices to nodes in that replica
+        self.replicas_to_nodes = defaultdict(list)
+
     def get_node_data(self) -> Dict[NodeID, NodeData]:
         """Queries cluster manager for node info. Returns a mapping from node id to
         NodeData.
@@ -164,8 +167,6 @@ class BatchingNodeProvider(NodeProvider):
             workers_to_delete=set(),  # No workers to delete yet
         )
         all_nodes = list(self.node_data_dict.keys())
-        # Initialize multi-host replica to workers map
-        self.multi_host_replicas_to_workers = defaultdict(list)
         for node_id in all_nodes:
             replica_index = self.node_data_dict[node_id].replica_index
             # Only add node to map if it belongs to a TPU podslice
