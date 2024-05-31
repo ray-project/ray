@@ -596,9 +596,9 @@ class MetricsLogger:
 
     def tensors_to_numpy(self, tensor_metrics):
         """Converts all previously logged and returned tensors back to numpy values."""
-        for key, value in tensor_metrics.items():
+        for key, values in tensor_metrics.items():
             assert self._key_in_stats(key)
-            self._get_key(key).numpy(value)
+            self._get_key(key).set_to_numpy_values(values)
 
     @property
     def tensor_mode(self):

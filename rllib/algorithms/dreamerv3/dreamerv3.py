@@ -543,7 +543,9 @@ class DreamerV3(Algorithm):
                     _uses_new_env_runners=True,
                     _return_metrics=True,
                 )
-                self.metrics.merge_and_log_n_dicts(env_runner_results, key=ENV_RUNNER_RESULTS)
+                self.metrics.merge_and_log_n_dicts(
+                    env_runner_results, key=ENV_RUNNER_RESULTS
+                )
                 # Add ongoing and finished episodes into buffer. The buffer will
                 # automatically take care of properly concatenating (by episode IDs)
                 # the different chunks of the same episodes, even if they come in via
@@ -667,7 +669,7 @@ class DreamerV3(Algorithm):
             do_report=(
                 self.config.report_images_and_videos
                 and self.training_iteration % 100 == 0
-            )
+            ),
         )
 
         # Log videos showing some of the dreamed trajectories and compare them with the
@@ -686,9 +688,8 @@ class DreamerV3(Algorithm):
                 self.config.symlog_obs,
             ),
             do_report=(
-                self.config.report_dream_data
-                and self.training_iteration % 100 == 0
-            )
+                self.config.report_dream_data and self.training_iteration % 100 == 0
+            ),
         )
 
         # Update weights - after learning on the LearnerGroup - on all EnvRunner
