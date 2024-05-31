@@ -36,6 +36,7 @@
 #include "absl/debugging/stacktrace.h"
 #include "absl/debugging/symbolize.h"
 #include "absl/strings/str_format.h"
+#include "nlohmann/json.hpp"
 #include "ray/util/event_label.h"
 #include "ray/util/filesystem.h"
 #include "ray/util/util.h"
@@ -464,6 +465,19 @@ RayLog::~RayLog() {
   if (severity_ == RayLogLevel::FATAL) {
     std::_Exit(EXIT_FAILURE);
   }
+}
+
+template <>
+RayLog &RayLog::WithFieldJsonFormat<std::string>(std::string_view key,
+                                                 const std::string &value) {
+  context_osstream_ << ",\"" << key << "\":" << nlohmann::json(value).dump();
+  return *this;
+}
+
+template <>
+RayLog &RayLog::WithFieldJsonFormat<int>(std::string_view key, const int &value) {
+  context_osstream_ << ",\"" << key << "\":" << value;
+  return *this;
 }
 
 }  // namespace ray

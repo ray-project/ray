@@ -59,8 +59,6 @@
 #include <string>
 #include <vector>
 
-#include "nlohmann/json.hpp"
-
 #if defined(_WIN32)
 #ifndef _WINDOWS_
 #ifndef WIN32_LEAN_AND_MEAN  // Sorry for the inconvenience. Please include any related
@@ -327,7 +325,16 @@ class RayLog {
   }
 
   template <typename T>
-  RayLog &WithFieldJsonFormat(std::string_view key, const T &value);
+  RayLog &WithFieldJsonFormat(std::string_view key, const T &value) {
+    std::stringstream ss;
+    ss << value;
+    return WithFieldJsonFormat<std::string>(key, ss.str());
+  }
+  template <>
+  RayLog &WithFieldJsonFormat<std::string>(std::string_view key,
+                                           const std::string &value);
+  template <>
+  RayLog &WithFieldJsonFormat<int>(std::string_view key, const int &value);
 
   static void InitSeverityThreshold(RayLogLevel severity_threshold);
   static void InitLogFormat();
@@ -375,26 +382,6 @@ class RayLog {
  protected:
   virtual std::ostream &Stream() { return msg_osstream_; }
 };
-
-template <typename T>
-inline RayLog &RayLog::WithFieldJsonFormat(std::string_view key, const T &value) {
-  std::stringstream ss;
-  ss << value;
-  return WithFieldJsonFormat<std::string>(key, ss.str());
-}
-
-template <>
-inline RayLog &RayLog::WithFieldJsonFormat<std::string>(std::string_view key,
-                                                        const std::string &value) {
-  context_osstream_ << ",\"" << key << "\":" << nlohmann::json(value).dump();
-  return *this;
-}
-
-template <>
-inline RayLog &RayLog::WithFieldJsonFormat<int>(std::string_view key, const int &value) {
-  context_osstream_ << ",\"" << key << "\":" << value;
-  return *this;
-}
 
 // This class make RAY_CHECK compilation pass to change the << operator to void.
 class Voidify {
