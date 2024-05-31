@@ -138,11 +138,11 @@ RLlib implements the following abstract framework specific base classes:
 
 The minimum requirement is for sub-classes of :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` is to implement the following methods:
 
-- :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.forward_train`: Forward pass for training.
+- :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule._forward_train`: Forward pass for training.
 
-- :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.forward_inference`: Forward pass for inference.
+- :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule._forward_inference`: Forward pass for inference.
 
-- :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.forward_exploration`: Forward pass for exploration.
+- :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule._forward_exploration`: Forward pass for exploration.
 
 For your custom :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.forward_exploration` and :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.forward_inference`
 methods, you must return a dictionary that either contains the key "actions" and/or the key "action_dist_inputs".
@@ -183,13 +183,13 @@ Commonly used distribution implementations can be found under ``ray.rllib.models
             class MyRLModule(TorchRLModule):
                 ...
 
-                def forward_inference(self, batch):
+                def _forward_inference(self, batch):
                     ...
                     return {
                         "actions": ...  # actions will be used as-is
                     }
 
-                def forward_exploration(self, batch):
+                def _forward_exploration(self, batch):
                     ...
                     return {
                         "actions": ...  # actions will be used as-is (no sampling step!)
@@ -208,7 +208,7 @@ Commonly used distribution implementations can be found under ``ray.rllib.models
             class MyRLModule(TorchRLModule):
                 ...
 
-                def forward_inference(self, batch):
+                def _forward_inference(self, batch):
                     ...
                     return {
                         # RLlib will:
@@ -218,7 +218,7 @@ Commonly used distribution implementations can be found under ``ray.rllib.models
                         "action_dist_inputs": ...
                     }
 
-                def forward_exploration(self, batch):
+                def _forward_exploration(self, batch):
                     ...
                     return {
                         # RLlib will:
@@ -574,7 +574,7 @@ See `Writing Custom Single Agent RL Modules`_ for more details on how to impleme
                     # specify an action distribution class here
                     ...
 
-                def forward_inference(self, batch):
+                def _forward_inference(self, batch):
                     ...
 
                 def forward_exploration(self, batch):
