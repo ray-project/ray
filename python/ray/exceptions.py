@@ -384,17 +384,12 @@ class ActorDiedError(RayActorError):
                 error_msg_lines.append(
                     "The actor never ran - it was cancelled before it started running."
                 )
-            if cause.node_death_info:
-                if (
-                    cause.node_death_info.reason
-                    == NodeDeathInfo.AUTOSCALER_DRAIN_PREEMPTED
-                ):
-                    preempted = True
-                error_msg_lines.append(
-                    ActorDiedError._error_msg_from_node_death_info(
-                        cause.node_death_info
-                    )
-                )
+            if (
+                cause.node_death_info
+                and cause.node_death_info.reason
+                == NodeDeathInfo.AUTOSCALER_DRAIN_PREEMPTED
+            ):
+                preempted = True
             error_msg = "\n".join(error_msg_lines)
             actor_id = ActorID(cause.actor_id).hex()
         super().__init__(actor_id, error_msg, actor_init_failed, preempted)
@@ -402,21 +397,6 @@ class ActorDiedError(RayActorError):
     @staticmethod
     def from_task_error(task_error: RayTaskError):
         return ActorDiedError(task_error)
-
-    @staticmethod
-    def _error_msg_from_node_death_info(node_death_info: NodeDeathInfo) -> str:
-        if node_death_info.reason == NodeDeathInfo.EXPECTED_TERMINATION:
-            prefix = "\tthe actor's node was terminated intentionally: "
-        elif node_death_info.reason == NodeDeathInfo.UNEXPECTED_TERMINATION:
-            prefix = "\tthe actor's node was terminated unexpectedly: "
-        elif node_death_info.reason == NodeDeathInfo.AUTOSCALER_DRAIN_PREEMPTED:
-            prefix = "\tthe actor's node was preempted: "
-        elif node_death_info.reason == NodeDeathInfo.AUTOSCALER_DRAIN_IDLE:
-            prefix = "\tthe actor's node was drained due to idle: "
-        else:
-            # Should not reach here: added in case new enum is added in future.
-            prefix = "\tthe actor's node was terminated: "
-        return prefix + node_death_info.reason_message
 
 
 @DeveloperAPI

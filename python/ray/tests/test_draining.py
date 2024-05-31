@@ -435,11 +435,8 @@ def test_draining_reason(ray_start_cluster, graceful):
             assert "the actor's node was preempted: " + drain_reason_message in str(e)
         else:
             assert (
-                "The actor died because its node was being drained and was unreachable."
-                in str(e)
-            )
-            assert (
-                "the actor's node was preempted: "
+                "The actor died because its node was being drained and was unavailable."
+                "\n\tthe actor's node was preempted: "
                 "the node was inferred to be dead due to draining." in str(e)
             )
 

@@ -208,11 +208,31 @@ const ray::rpc::ActorDeathCause GcsActorManager::GenNodeDiedCause(
 
   auto actor_died_error_ctx = death_cause.mutable_actor_died_error_context();
   AddActorInfo(actor, actor_died_error_ctx);
-  actor_died_error_ctx->set_error_message(
-      absl::StrCat("The actor died because its node has died. Node Id: ",
-                   NodeID::FromBinary(node->node_id()).Hex()));
   auto node_death_info = actor_died_error_ctx->mutable_node_death_info();
   node_death_info->CopyFrom(node->death_info());
+
+  std::string error_message = "The actor died because its node has died. Node Id: " +
+                              NodeID::FromBinary(node->node_id()).Hex() + "\n";
+  switch (node_death_info->reason()) {
+  case rpc::NodeDeathInfo::EXPECTED_TERMINATION:
+    error_message.append("\tthe actor's node was terminated expectedly: ");
+    break;
+  case rpc::NodeDeathInfo::UNEXPECTED_TERMINATION:
+    error_message.append("\tthe actor's node was terminated unexpectedly: ");
+    break;
+  case rpc::NodeDeathInfo::AUTOSCALER_DRAIN_PREEMPTED:
+    error_message.append("\tthe actor's node was preempted: ");
+    break;
+  default:
+    // Control should not reach here, but in case it happens in unexpected scenarios,
+    // log it and provide a generic message to the user.
+    RAY_LOG(ERROR) << "Actor death is not expected to be caused by "
+                   << node_death_info->reason();
+    error_message.append("\tthe actor's node was terminated: ");
+  }
+  error_message.append(node_death_info->reason_message());
+  actor_died_error_ctx->set_error_message(error_message);
+
   return death_cause;
 }
 
