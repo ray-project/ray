@@ -427,18 +427,11 @@ def test_draining_reason(ray_start_cluster, graceful):
     try:
         ray.get(actor.ping.remote())
         raise
-    except ray.exceptions.RayActorError as e:
+    except ray.exceptions.ActorDiedError as e:
         assert e.preempted
-        assert isinstance(e, ray.exceptions.ActorDiedError)
         if graceful:
             assert "The actor died because its node has died." in str(e)
             assert "the actor's node was preempted: " + drain_reason_message in str(e)
-        else:
-            assert (
-                "The actor died because its node was being drained and was unavailable."
-                "\n\tthe actor's node was preempted: "
-                "the node was inferred to be dead due to draining." in str(e)
-            )
 
 
 if __name__ == "__main__":

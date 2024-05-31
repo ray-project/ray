@@ -352,14 +352,8 @@ void CoreWorkerDirectActorTaskSubmitter::FailTaskWithError(
     actor_died_error_context->set_actor_id(task.task_spec.ActorId().Binary());
     auto node_death_info = actor_died_error_context->mutable_node_death_info();
     node_death_info->set_reason(rpc::NodeDeathInfo::AUTOSCALER_DRAIN_PREEMPTED);
-    const std::string reason_message =
-        "the node was inferred to be dead due to draining.";
-    node_death_info->set_reason_message(reason_message);
-    actor_died_error_context->set_error_message(
-        "The actor died because its node was being drained and was unavailable.\n"
-        "\tthe actor's node was preempted: " +
-        reason_message);
-
+    node_death_info->set_reason_message(
+        "the node was inferred to be dead due to draining.");
     error_info.set_error_type(rpc::ErrorType::ACTOR_DIED);
     error_info.set_error_message("Actor died by preemption.");
   }

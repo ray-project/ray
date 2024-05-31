@@ -38,9 +38,8 @@ def test_normal_termination(ray_start_cluster):
     try:
         ray.get(actor.ping.remote())
         raise
-    except ray.exceptions.RayActorError as e:
+    except ray.exceptions.ActorDiedError as e:
         assert not e.preempted
-        assert isinstance(e, ray.exceptions.ActorDiedError)
         assert "The actor died because its node has died." in str(e)
         assert "the actor's node was terminated expectedly: received SIGTERM" in str(e)
 
@@ -93,9 +92,8 @@ def test_abnormal_termination(monkeypatch, ray_start_cluster):
     try:
         ray.get(actor.ping.remote())
         raise
-    except ray.exceptions.RayActorError as e:
+    except ray.exceptions.ActorDiedError as e:
         assert not e.preempted
-        assert isinstance(e, ray.exceptions.ActorDiedError)
         assert "The actor died because its node has died." in str(e)
         assert (
             "the actor's node was terminated unexpectedly: "
