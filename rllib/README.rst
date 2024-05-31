@@ -173,7 +173,7 @@ Quick First Experiment
     # we can expect to reach an optimal episode reward of 0.0.
     for i in range(1):
         results = algo.train()
-        print(f"Iter: {i}; avg. reward={results['episode_reward_mean']}")
+        print(f"Iter: {i}; avg. return={results['env_runners/episode_return_mean']}")
 
 .. testoutput::
     :options: +MOCK
@@ -231,7 +231,7 @@ The most **popular deep-learning frameworks**: `PyTorch <https://github.com/ray-
 (tf1.x/2.x static-graph/eager/traced) <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_tf_policy.py>`_.
 
 **Highly distributed learning**: Our RLlib algorithms (such as our "PPO" or "IMPALA")
-allow you to set the ``num_workers`` config parameter, such that your workloads can run
+allow you to set the ``num_env_runners`` config parameter, such that your workloads can run
 on 100s of CPUs/nodes thus parallelizing and speeding up learning.
 
 **Vectorized (batched) and remote (parallel) environments**: RLlib auto-vectorizes

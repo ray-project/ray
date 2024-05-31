@@ -54,7 +54,7 @@ class _MockWorker:
 
 class _MockWorkerSet(EnvRunnerGroup):
     def __init__(self, num_mock_workers):
-        super().__init__(local_worker=False, _setup=False)
+        super().__init__(local_env_runner=False, _setup=False)
         self.add_workers(num_workers=num_mock_workers, validate=False)
 
     def _make_worker(self, *args, **kwargs):

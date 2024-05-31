@@ -181,7 +181,6 @@ Torch utilities
    ~convert_to_torch_tensor
    ~explained_variance
    ~flatten_inputs_to_1d_tensor
-   ~get_device
    ~global_norm
    ~huber_loss
    ~l2_loss
