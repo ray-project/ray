@@ -437,15 +437,15 @@ class SingleAgentEnvRunner(EnvRunner):
 
         done_episodes_to_return: List[SingleAgentEpisode] = []
 
-        # Reset the environment.
-        # TODO (simon): Check, if we need here the seed from the config.
-        obs, infos = self.env.reset()
         episodes = []
         for env_index in range(self.num_envs):
             episodes.append(self._new_episode())
             self._make_on_episode_callback("on_episode_created", env_index, episodes)
         _shared_data = {}
 
+        # Reset the environment.
+        # TODO (simon): Check, if we need here the seed from the config.
+        obs, infos = self.env.reset()
         for env_index in range(self.num_envs):
             episodes[env_index].add_env_reset(
                 observation=obs[env_index],
