@@ -36,6 +36,7 @@
 #include "absl/debugging/stacktrace.h"
 #include "absl/debugging/symbolize.h"
 #include "absl/strings/str_format.h"
+#include "nlohmann/json.hpp"
 #include "ray/util/event_label.h"
 #include "ray/util/filesystem.h"
 #include "ray/util/util.h"
@@ -46,12 +47,19 @@
 
 namespace ray {
 
-RayLogLevel RayLog::severity_threshold_ = RayLogLevel::INFO;
-std::string RayLog::app_name_ = "";
-std::string RayLog::log_dir_ = "";
 // Format pattern is 2020-08-21 17:00:00,000 I 100 1001 msg.
 // %L is loglevel, %P is process id, %t for thread id.
-std::string RayLog::log_format_pattern_ = "[%Y-%m-%d %H:%M:%S,%e %L %P %t] %v";
+constexpr char kLogFormatTextPattern[] = "[%Y-%m-%d %H:%M:%S,%e %L %P %t] %v";
+constexpr char kLogFormatJsonPattern[] =
+    "{\"asctime\":\"%Y-%m-%d %H:%M:%S,%e\",\"levelname\":\"%L\"%v}";
+
+RayLogLevel RayLog::severity_threshold_ = RayLogLevel::INFO;
+std::string RayLog::app_name_ = "";
+std::string RayLog::component_name_ = "";
+std::string RayLog::log_dir_ = "";
+bool RayLog::log_format_json_ = false;
+std::string RayLog::log_format_pattern_ = kLogFormatTextPattern;
+
 std::string RayLog::logger_name_ = "ray_log_sink";
 long RayLog::log_rotation_max_size_ = 1 << 29;
 long RayLog::log_rotation_file_num_ = 10;
@@ -141,51 +149,8 @@ class DefaultStdErrLogger final {
   std::shared_ptr<spdlog::logger> default_stderr_logger_;
 };
 
-class SpdLogMessage final {
- public:
-  explicit SpdLogMessage(const char *file,
-                         int line,
-                         int loglevel,
-                         std::shared_ptr<std::ostringstream> expose_osstream)
-      : loglevel_(loglevel), expose_osstream_(expose_osstream) {
-    stream() << ConstBasename(file) << ":" << line << ": ";
-  }
-
-  inline void Flush() {
-    auto logger = spdlog::get(RayLog::GetLoggerName());
-    if (!logger) {
-      logger = DefaultStdErrLogger::Instance().GetDefaultLogger();
-    }
-
-    if (loglevel_ == static_cast<int>(spdlog::level::critical)) {
-      stream() << "\n*** StackTrace Information ***\n" << ray::StackTrace();
-    }
-    if (expose_osstream_) {
-      *expose_osstream_ << "\n*** StackTrace Information ***\n" << ray::StackTrace();
-    }
-    // NOTE(lingxuan.zlx): See more fmt by visiting https://github.com/fmtlib/fmt.
-    logger->log(
-        static_cast<spdlog::level::level_enum>(loglevel_), /*fmt*/ "{}", str_.str());
-    logger->flush();
-  }
-
-  ~SpdLogMessage() { Flush(); }
-  inline std::ostream &stream() { return str_; }
-
- private:
-  SpdLogMessage(const SpdLogMessage &) = delete;
-  SpdLogMessage &operator=(const SpdLogMessage &) = delete;
-
- private:
-  std::ostringstream str_;
-  int loglevel_;
-  std::shared_ptr<std::ostringstream> expose_osstream_;
-};
-
-typedef ray::SpdLogMessage LoggingProvider;
-
 // Spdlog's severity map.
-static int GetMappedSeverity(RayLogLevel severity) {
+static spdlog::level::level_enum GetMappedSeverity(RayLogLevel severity) {
   switch (severity) {
   case RayLogLevel::TRACE:
     return spdlog::level::trace;
@@ -208,9 +173,7 @@ static int GetMappedSeverity(RayLogLevel severity) {
 
 std::vector<FatalLogCallback> RayLog::fatal_log_callbacks_;
 
-void RayLog::StartRayLog(const std::string &app_name,
-                         RayLogLevel severity_threshold,
-                         const std::string &log_dir) {
+void RayLog::InitSeverityThreshold(RayLogLevel severity_threshold) {
   const char *var_value = std::getenv("RAY_BACKEND_LOG_LEVEL");
   if (var_value != nullptr) {
     std::string data = var_value;
@@ -234,12 +197,35 @@ void RayLog::StartRayLog(const std::string &app_name,
                   << " to " << static_cast<int>(severity_threshold);
   }
   severity_threshold_ = severity_threshold;
+}
+
+void RayLog::InitLogFormat() {
+  // Default is plain text
+  log_format_json_ = false;
+  log_format_pattern_ = kLogFormatTextPattern;
+
+  const char *var_value = std::getenv("RAY_BACKEND_LOG_JSON");
+  if (var_value != nullptr) {
+    std::string data = var_value;
+    if (data == "1") {
+      log_format_json_ = true;
+      log_format_pattern_ = kLogFormatJsonPattern;
+    }
+  }
+}
+
+void RayLog::StartRayLog(const std::string &app_name,
+                         RayLogLevel severity_threshold,
+                         const std::string &log_dir) {
+  InitSeverityThreshold(severity_threshold);
+  InitLogFormat();
+
   app_name_ = app_name;
   log_dir_ = log_dir;
 
   // All the logging sinks to add.
   std::vector<spdlog::sink_ptr> sinks;
-  auto level = static_cast<spdlog::level::level_enum>(severity_threshold_);
+  auto level = GetMappedSeverity(severity_threshold_);
   std::string app_name_without_path = app_name;
   if (app_name.empty()) {
     app_name_without_path = "DefaultApp";
@@ -274,8 +260,6 @@ void RayLog::StartRayLog(const std::string &app_name,
         log_rotation_file_num_ = file_num;
       }
     }
-    spdlog::set_pattern(log_format_pattern_);
-    spdlog::set_level(static_cast<spdlog::level::level_enum>(severity_threshold_));
     // Sink all log stuff to default file logger we defined here. We may need
     // multiple sinks for different files or loglevel.
     auto file_logger = spdlog::get(RayLog::GetLoggerName());
@@ -288,14 +272,11 @@ void RayLog::StartRayLog(const std::string &app_name,
         JoinPaths(log_dir_, app_name_without_path + "_" + std::to_string(pid) + ".log"),
         log_rotation_max_size_,
         log_rotation_file_num_);
+    file_sink->set_level(level);
     sinks.push_back(file_sink);
   } else {
-    // Format pattern is 2020-08-21 17:00:00,000 I 100 1001 msg.
-    // %L is loglevel, %P is process id, %t for thread id.
-    log_format_pattern_ =
-        "[%Y-%m-%d %H:%M:%S,%e %L %P %t] (" + app_name_without_path + ") %v";
+    component_name_ = app_name_without_path;
     auto console_sink = std::make_shared<spdlog::sinks::stdout_color_sink_mt>();
-    console_sink->set_pattern(log_format_pattern_);
     console_sink->set_level(level);
     sinks.push_back(console_sink);
   }
@@ -303,7 +284,6 @@ void RayLog::StartRayLog(const std::string &app_name,
   // In all cases, log errors to the console log so they are in driver logs.
   // https://github.com/ray-project/ray/issues/12893
   auto err_sink = std::make_shared<spdlog::sinks::stderr_color_sink_mt>();
-  err_sink->set_pattern(log_format_pattern_);
   err_sink->set_level(spdlog::level::err);
   sinks.push_back(err_sink);
 
@@ -311,9 +291,8 @@ void RayLog::StartRayLog(const std::string &app_name,
   auto logger = std::make_shared<spdlog::logger>(
       RayLog::GetLoggerName(), sinks.begin(), sinks.end());
   logger->set_level(level);
+  // Set the pattern of all sinks.
   logger->set_pattern(log_format_pattern_);
-  spdlog::set_level(static_cast<spdlog::level::level_enum>(severity_threshold_));
-  spdlog::set_pattern(log_format_pattern_);
   spdlog::set_default_logger(logger);
 
   initialized_ = true;
@@ -418,58 +397,87 @@ void RayLog::AddFatalLogCallbacks(
 }
 
 RayLog::RayLog(const char *file_name, int line_number, RayLogLevel severity)
-    : logging_provider_(nullptr),
-      is_enabled_(severity >= severity_threshold_),
+    : is_enabled_(severity >= severity_threshold_),
       severity_(severity),
       is_fatal_(severity == RayLogLevel::FATAL) {
   if (is_fatal_) {
-    expose_osstream_ = std::make_shared<std::ostringstream>();
-
 #ifdef _WIN32
     int pid = _getpid();
 #else
     pid_t pid = getpid();
 #endif
-    *expose_osstream_ << absl::StrFormat("%s:%d (PID: %d, TID: %s, errno: %d (%s)):",
-                                         file_name,
-                                         line_number,
-                                         pid,
-                                         std::to_string(GetTid()),
-                                         errno,
-                                         strerror(errno));
+    expose_fatal_osstream_ << absl::StrFormat("%s:%d (PID: %d, TID: %s, errno: %d (%s)):",
+                                              file_name,
+                                              line_number,
+                                              pid,
+                                              std::to_string(GetTid()),
+                                              errno,
+                                              strerror(errno));
   }
   if (is_enabled_) {
-    logging_provider_ = new LoggingProvider(
-        file_name, line_number, GetMappedSeverity(severity), expose_osstream_);
+    if (log_format_json_) {
+      if (!component_name_.empty()) {
+        WithField(kLogKeyComponent, component_name_);
+      }
+      WithField(kLogKeyFilename, ConstBasename(file_name));
+      WithField(kLogKeyLineno, line_number);
+    } else {
+      if (!component_name_.empty()) {
+        msg_osstream_ << "(" << component_name_ << ") ";
+      }
+      msg_osstream_ << ConstBasename(file_name) << ":" << line_number << ": ";
+    }
   }
-}
-
-std::ostream &RayLog::Stream() {
-  auto logging_provider = reinterpret_cast<LoggingProvider *>(logging_provider_);
-  // Before calling this function, user should check IsEnabled.
-  // When IsEnabled == false, logging_provider_ will be empty.
-  return logging_provider->stream();
 }
 
 bool RayLog::IsEnabled() const { return is_enabled_; }
 
 bool RayLog::IsFatal() const { return is_fatal_; }
 
-std::ostream &RayLog::ExposeStream() { return *expose_osstream_; }
-
 RayLog::~RayLog() {
-  if (logging_provider_ != nullptr) {
-    delete reinterpret_cast<LoggingProvider *>(logging_provider_);
-    logging_provider_ = nullptr;
-  }
-  if (expose_osstream_ != nullptr) {
+  if (IsFatal()) {
+    msg_osstream_ << "\n*** StackTrace Information ***\n" << ray::StackTrace();
+    expose_fatal_osstream_ << "\n*** StackTrace Information ***\n" << ray::StackTrace();
     for (const auto &callback : fatal_log_callbacks_) {
-      callback(EL_RAY_FATAL_CHECK_FAILED, expose_osstream_->str());
+      callback(EL_RAY_FATAL_CHECK_FAILED, expose_fatal_osstream_.str());
     }
   }
+
+  auto logger = spdlog::get(RayLog::GetLoggerName());
+  if (!logger) {
+    logger = DefaultStdErrLogger::Instance().GetDefaultLogger();
+  }
+  // NOTE(lingxuan.zlx): See more fmt by visiting https://github.com/fmtlib/fmt.
+  if (log_format_json_) {
+    logger->log(GetMappedSeverity(severity_),
+                /*fmt*/ ",\"{}\":{}{}",
+                kLogKeyMessage,
+                nlohmann::json(msg_osstream_.str()).dump(),
+                context_osstream_.str());
+  } else {
+    logger->log(GetMappedSeverity(severity_),
+                /*fmt*/ "{}{}",
+                msg_osstream_.str(),
+                context_osstream_.str());
+  }
+  logger->flush();
+
   if (severity_ == RayLogLevel::FATAL) {
     std::_Exit(EXIT_FAILURE);
   }
+}
+
+template <>
+RayLog &RayLog::WithFieldJsonFormat<std::string>(std::string_view key,
+                                                 const std::string &value) {
+  context_osstream_ << ",\"" << key << "\":" << nlohmann::json(value).dump();
+  return *this;
+}
+
+template <>
+RayLog &RayLog::WithFieldJsonFormat<int>(std::string_view key, const int &value) {
+  context_osstream_ << ",\"" << key << "\":" << value;
+  return *this;
 }
 
 }  // namespace ray
