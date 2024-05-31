@@ -629,6 +629,11 @@ class DQN(Algorithm):
                 env_runner_results, key=ENV_RUNNER_RESULTS
             )
 
+        self.metrics.log_dict(
+            self.metrics.peek(ENV_RUNNER_RESULTS, NUM_AGENT_STEPS_SAMPLED, default={}),
+            key=NUM_AGENT_STEPS_SAMPLED_LIFETIME,
+            reduce="sum",
+        )
         self.metrics.log_value(
             NUM_ENV_STEPS_SAMPLED_LIFETIME,
             self.metrics.peek(ENV_RUNNER_RESULTS, NUM_ENV_STEPS_SAMPLED, default=0),
@@ -637,11 +642,6 @@ class DQN(Algorithm):
         self.metrics.log_value(
             NUM_EPISODES_LIFETIME,
             self.metrics.peek(ENV_RUNNER_RESULTS, NUM_EPISODES, default=0),
-            reduce="sum",
-        )
-        self.metrics.log_dict(
-            self.metrics.peek(ENV_RUNNER_RESULTS, NUM_AGENT_STEPS_SAMPLED, default={}),
-            key=NUM_AGENT_STEPS_SAMPLED_LIFETIME,
             reduce="sum",
         )
         self.metrics.log_dict(
@@ -680,6 +680,14 @@ class DQN(Algorithm):
                 with self.metrics.log_time((TIMERS, LEARNER_UPDATE_TIMER)):
                     learner_results = self.learner_group.update_from_episodes(
                         episodes=episodes,
+                        timesteps={
+                            NUM_ENV_STEPS_SAMPLED_LIFETIME: (
+                                self.metrics.peek(NUM_ENV_STEPS_SAMPLED_LIFETIME)
+                            ),
+                            NUM_AGENT_STEPS_SAMPLED_LIFETIME: (
+                                self.metrics.peek(NUM_AGENT_STEPS_SAMPLED_LIFETIME)
+                            ),
+                        },
                     )
                     # Isolate TD-errors from result dicts (we should not log these to
                     # disk or WandB, they might be very large).
@@ -730,6 +738,7 @@ class DQN(Algorithm):
                 # Update the target networks, if necessary.
                 with self.metrics.log_time((TIMERS, LEARNER_ADDITIONAL_UPDATE_TIMER)):
                     modules_to_update = set(learner_results[0].keys()) - {ALL_MODULES}
+                    # TODO (sven): Move to Learner._after_gradient_based_update().
                     additional_results = self.learner_group.additional_update(
                         module_ids_to_update=modules_to_update,
                         timestep=current_ts,

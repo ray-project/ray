@@ -472,18 +472,19 @@ class Stats:
 
         self.values = list(reversed(new_values))
 
-    def numpy(self, value: Any = None) -> "Stats":
-        """Converts all of self's internal values to numpy (if a tensor)."""
-        if value is not None:
-            if self._reduce_method is None:
-                assert isinstance(value, list) and len(self.values) >= len(value)
-                self.values = convert_to_numpy(value)
-            else:
-                assert len(self.values) > 0
-                self.values = [convert_to_numpy(value)]
+    def set_to_numpy_values(self, values) -> None:
+        """Converts `self.values` from tensors to actual numpy values.
+
+        Args:
+            values: The (numpy) values to set `self.values` to.
+        """
+        numpy_values = convert_to_numpy(values)
+        if self._reduce_method is None:
+            assert isinstance(values, list) and len(self.values) >= len(values)
+            self.values = numpy_values
         else:
-            self.values = convert_to_numpy(self.values)
-        return self
+            assert len(self.values) > 0
+            self.values = [numpy_values]
 
     def __len__(self) -> int:
         """Returns the length of the internal values list."""
@@ -613,8 +614,21 @@ class Stats:
                     reduce_in = reduce_in.float()
                 reduced = reduce_meth(reduce_in)
             elif tf and tf.is_tensor(values[0]):
-                reduce_meth = getattr(tf, "reduce_" + self._reduce_method)
-                reduced = reduce_meth(values)
+                # TODO (sven): Currently, tensor metrics only work with window=1.
+                #  We might want o enforce it more formally, b/c it's probably not a
+                #  good idea to have MetricsLogger or Stats tinker with the actual
+                #  computation graph that users are trying to build in their loss
+                #  functions.
+                assert len(values) == 1
+                # TODO (sven) If the shape is (), do NOT even use the reduce method.
+                #  Using `tf.reduce_mean()` here actually lead to a completely broken
+                #  DreamerV3 (for a still unknown exact reason).
+                if len(values[0].shape) == 0:
+                    reduced = values[0]
+                else:
+                    reduce_meth = getattr(tf, "reduce_" + self._reduce_method)
+                    reduced = reduce_meth(values)
+
             else:
                 reduce_meth = getattr(np, "nan" + self._reduce_method)
                 reduced = reduce_meth(values)

@@ -110,7 +110,8 @@ class TorchRLModule(nn.Module, RLModule):
 
     @override(RLModule)
     def set_state(self, state_dict: Mapping[str, Any]) -> None:
-        self.load_state_dict(convert_to_torch_tensor(state_dict))
+        state_dict = convert_to_torch_tensor(state_dict)
+        self.load_state_dict(state_dict)
 
     def _module_state_file_name(self) -> pathlib.Path:
         return pathlib.Path("module_state.pt")
