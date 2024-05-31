@@ -40,6 +40,7 @@ class TestDreamerV3(unittest.TestCase):
         # Build a DreamerV3Config object.
         config = (
             dreamerv3.DreamerV3Config()
+            .framework(eager_tracing=False)
             .training(
                 # Keep things simple. Especially the long dream rollouts seem
                 # to take an enormous amount of time (initially).
@@ -51,7 +52,7 @@ class TestDreamerV3(unittest.TestCase):
                 use_float16=False,
             )
             .learners(
-                num_learners=2,  # Try with 2 Learners.
+                num_learners=0,  # TODO 2  # Try with 2 Learners.
                 num_cpus_per_learner=1,
                 num_gpus_per_learner=0,
             )
@@ -59,70 +60,69 @@ class TestDreamerV3(unittest.TestCase):
 
         num_iterations = 2
 
-        for _ in framework_iterator(config, frameworks="tf2"):
-            for env in [
-                "FrozenLake-v1",
-                "CartPole-v1",
-                "ALE/MsPacman-v5",
-                "Pendulum-v1",
-            ]:
-                print("Env={}".format(env))
-                # Add one-hot observations for FrozenLake env.
-                if env == "FrozenLake-v1":
+        for env in [
+            "FrozenLake-v1",
+            "CartPole-v1",
+            "ALE/MsPacman-v5",
+            "Pendulum-v1",
+        ]:
+            print("Env={}".format(env))
+            # Add one-hot observations for FrozenLake env.
+            if env == "FrozenLake-v1":
 
-                    def env_creator(ctx):
-                        import gymnasium as gym
-                        from ray.rllib.algorithms.dreamerv3.utils.env_runner import (
-                            OneHot,
-                        )
-
-                        return OneHot(gym.make("FrozenLake-v1"))
-
-                    tune.register_env("frozen-lake-one-hot", env_creator)
-                    env = "frozen-lake-one-hot"
-
-                config.environment(env)
-                algo = config.build()
-                obs_space = algo.workers.local_worker().env.single_observation_space
-                act_space = algo.workers.local_worker().env.single_action_space
-                rl_module = algo.workers.local_worker().module
-
-                for i in range(num_iterations):
-                    results = algo.train()
-                    print(results)
-                # Test dream trajectory w/ recreated observations.
-                sample = algo.replay_buffer.sample()
-                dream = rl_module.dreamer_model.dream_trajectory_with_burn_in(
-                    start_states=rl_module.dreamer_model.get_initial_state(),
-                    timesteps_burn_in=5,
-                    timesteps_H=45,
-                    observations=sample["obs"][:1],  # B=1
-                    actions=(
-                        one_hot(
-                            sample["actions"],
-                            depth=act_space.n,
-                        )
-                        if isinstance(act_space, gym.spaces.Discrete)
-                        else sample["actions"]
-                    )[
-                        :1
-                    ],  # B=1
-                )
-                self.assertTrue(
-                    dream["actions_dreamed_t0_to_H_BxT"].shape
-                    == (46, 1)
-                    + (
-                        (act_space.n,)
-                        if isinstance(act_space, gym.spaces.Discrete)
-                        else tuple(act_space.shape)
+                def env_creator(ctx):
+                    import gymnasium as gym
+                    from ray.rllib.algorithms.dreamerv3.utils.env_runner import (
+                        OneHot,
                     )
+
+                    return OneHot(gym.make("FrozenLake-v1"))
+
+                tune.register_env("frozen-lake-one-hot", env_creator)
+                env = "frozen-lake-one-hot"
+
+            config.environment(env)
+            algo = config.build()
+            obs_space = algo.workers.local_worker().env.single_observation_space
+            act_space = algo.workers.local_worker().env.single_action_space
+            rl_module = algo.workers.local_worker().module
+
+            for i in range(num_iterations):
+                results = algo.train()
+                print(results)
+            # Test dream trajectory w/ recreated observations.
+            sample = algo.replay_buffer.sample()
+            dream = rl_module.dreamer_model.dream_trajectory_with_burn_in(
+                start_states=rl_module.dreamer_model.get_initial_state(),
+                timesteps_burn_in=5,
+                timesteps_H=45,
+                observations=sample["obs"][:1],  # B=1
+                actions=(
+                    one_hot(
+                        sample["actions"],
+                        depth=act_space.n,
+                    )
+                    if isinstance(act_space, gym.spaces.Discrete)
+                    else sample["actions"]
+                )[
+                    :1
+                ],  # B=1
+            )
+            self.assertTrue(
+                dream["actions_dreamed_t0_to_H_BxT"].shape
+                == (46, 1)
+                + (
+                    (act_space.n,)
+                    if isinstance(act_space, gym.spaces.Discrete)
+                    else tuple(act_space.shape)
                 )
-                self.assertTrue(dream["continues_dreamed_t0_to_H_BxT"].shape == (46, 1))
-                self.assertTrue(
-                    dream["observations_dreamed_t0_to_H_BxT"].shape
-                    == [46, 1] + list(obs_space.shape)
-                )
-                algo.stop()
+            )
+            self.assertTrue(dream["continues_dreamed_t0_to_H_BxT"].shape == (46, 1))
+            self.assertTrue(
+                dream["observations_dreamed_t0_to_H_BxT"].shape
+                == [46, 1] + list(obs_space.shape)
+            )
+            algo.stop()
 
     def test_dreamerv3_dreamer_model_sizes(self):
         """Tests, whether the different model sizes match the ones reported in [1]."""

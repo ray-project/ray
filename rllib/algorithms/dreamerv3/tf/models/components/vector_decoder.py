@@ -3,8 +3,6 @@
 D. Hafner, J. Pasukonis, J. Ba, T. Lillicrap
 https://arxiv.org/pdf/2301.04104v1.pdf
 """
-from typing import Optional
-
 import gymnasium as gym
 
 from ray.rllib.algorithms.dreamerv3.tf.models.components.mlp import MLP
@@ -28,7 +26,7 @@ class VectorDecoder(tf.keras.Model):
     def __init__(
         self,
         *,
-        model_size: Optional[str] = "XS",
+        model_size: str = "XS",
         observation_space: gym.Space,
     ):
         """Initializes a VectorDecoder instance.
