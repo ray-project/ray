@@ -215,7 +215,8 @@ void RaySyncer::Connect(const std::string &node_id,
       io_context_.get_executor(), std::packaged_task<void()>([=]() {
         auto stub = ray::rpc::syncer::RaySyncer::NewStub(channel);
         auto reactor = new RayClientBidiReactor(
-            /* remote_node_id */ node_id,
+            /* remote_node_id */
+            node_id,
             /* local_node_id */ GetLocalNodeID(),
             /* io_context */ io_context_,
             /* message_processor */ [this](auto msg) { BroadcastRaySyncMessage(msg); },
@@ -245,8 +246,8 @@ void RaySyncer::Connect(const std::string &node_id,
 void RaySyncer::Connect(RaySyncerBidiReactor *reactor) {
   boost::asio::dispatch(
       io_context_.get_executor(), std::packaged_task<void()>([this, reactor]() {
-        RAY_CHECK(sync_reactors_.find(reactor->GetRemoteNodeID()) ==
-                  sync_reactors_.end());
+        RAY_CHECK(sync_reactors_.find(reactor->GetRemoteNodeID()) == sync_reactors_.end())
+            << reactor->GetRemoteNodeID();
         sync_reactors_[reactor->GetRemoteNodeID()] = reactor;
         // Send the view for new connections.
         for (const auto &[_, messages] : node_state_->GetClusterView()) {
@@ -355,9 +356,8 @@ ServerBidiReactor *RaySyncerService::StartSync(grpc::CallbackServerContext *cont
         syncer_.sync_reactors_.erase(node_id);
         syncer_.node_state_->RemoveNode(node_id);
       });
-  RAY_LOG(DEBUG) << "Get connection from "
-                 << NodeID::FromBinary(reactor->GetRemoteNodeID()) << " to "
-                 << NodeID::FromBinary(syncer_.GetLocalNodeID());
+  RAY_LOG(INFO) << "Get connection from "
+                << NodeID::FromBinary(reactor->GetRemoteNodeID());
   syncer_.Connect(reactor);
   return reactor;
 }
