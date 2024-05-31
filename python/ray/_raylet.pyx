@@ -4446,8 +4446,9 @@ cdef class CoreWorker:
         cdef:
             pair[c_vector[pair[c_string, c_string]], CRayStatus] result_pair
 
-        result_pair = CCoreWorkerProcess.GetCoreWorker().ListNamedActors(
-            all_namespaces)
+        with nogil:
+            result_pair = CCoreWorkerProcess.GetCoreWorker().ListNamedActors(
+                all_namespaces)
         check_status(result_pair.second)
         return [
             (namespace.decode("utf-8"),
