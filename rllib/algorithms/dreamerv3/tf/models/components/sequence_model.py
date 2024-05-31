@@ -138,8 +138,7 @@ class SequenceModel(tf.keras.Model):
         )
         # Pass through pre-GRU layer.
         out = self.pre_gru_layer(out)
-        out = tf.reshape(out, [-1, 1, out.shape[1]])
-        # Pass through GRU (expand axis=1 as a time-axis; our GRU unit is batch-major).
-        h_next = self.gru_unit(out, initial_state=h)
+        # Pass through (batch-major) GRU (expand axis=1 as the time axis).
+        h_next = self.gru_unit(tf.expand_dims(out, axis=1), initial_state=h)
         # Return the GRU's output (the next h-state).
         return h_next

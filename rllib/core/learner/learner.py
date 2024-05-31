@@ -86,7 +86,7 @@ VF_LOSS_KEY = "vf_loss"
 ENTROPY_KEY = "entropy"
 
 # Additional update keys
-LEARNER_RESULTS_CURR_LR_KEY = "curr_lr"
+LR_KEY = "learning_rate"
 
 
 @dataclass
@@ -1047,7 +1047,8 @@ class Learner:
         self,
         batch: MultiAgentBatch,
         *,
-        timesteps=None,  # TODO
+        # TODO (sven): Make this a more formal structure with its own type.
+        timesteps: Optional[Dict[str, Any]] = None,
         # TODO (sven): Deprecate these in favor of config attributes for only those
         #  algos that actually need (and know how) to do minibatching.
         minibatch_size: Optional[int] = None,
@@ -1063,6 +1064,9 @@ class Learner:
 
         Args:
             batch: A batch of training data to update from.
+            timesteps: Timesteps dict, which must have the key
+                `NUM_ENV_STEPS_SAMPLED_LIFETIME`.
+                # TODO (sven): Make this a more formal structure with its own type.
             minibatch_size: The size of the minibatch to use for each update.
             num_iters: The number of complete passes over all the sub-batches
                 in the input multi-agent batch.
@@ -1095,7 +1099,8 @@ class Learner:
         self,
         episodes: List[EpisodeType],
         *,
-        timesteps=None,  # TODO
+        # TODO (sven): Make this a more formal structure with its own type.
+        timesteps: Optional[Dict[str, Any]] = None,
         # TODO (sven): Deprecate these in favor of config attributes for only those
         #  algos that actually need (and know how) to do minibatching.
         minibatch_size: Optional[int] = None,
@@ -1112,6 +1117,9 @@ class Learner:
 
         Args:
             episodes: An list of episode objects to update from.
+            timesteps: Timesteps dict, which must have the key
+                `NUM_ENV_STEPS_SAMPLED_LIFETIME`.
+                # TODO (sven): Make this a more formal structure with its own type.
             minibatch_size: The size of the minibatch to use for each update.
             num_iters: The number of complete passes over all the sub-batches
                 in the input multi-agent batch.
@@ -1244,7 +1252,8 @@ class Learner:
         #  as well for simplicity.
         batch: Optional[MultiAgentBatch] = None,
         episodes: Optional[List[EpisodeType]] = None,
-        timesteps=None,
+        # TODO (sven): Make this a more formal structure with its own type.
+        timesteps: Optional[Dict[str, Any]] = None,
         # TODO (sven): Deprecate these in favor of config attributes for only those
         #  algos that actually need (and know how) to do minibatching.
         minibatch_size: Optional[int] = None,
@@ -1282,6 +1291,7 @@ class Learner:
                 f"Found IDs: {unknown_module_ids}"
             )
 
+        # TODO: Move this into LearnerConnector pipeline?
         # Filter out those RLModules from the final train batch that should not be
         # updated.
         for module_id in list(batch.policy_batches.keys()):
@@ -1356,14 +1366,28 @@ class Learner:
 
         self._set_slicing_by_batch_id(batch, value=False)
 
-        self._after_update(timesteps)
+        # Call `_after_gradient_based_update` to allow for non-gradient based
+        # cleanups-, logging-, and update logic to happen.
+        self._after_gradient_based_update(timesteps)
 
         # Reduce results across all minibatch update steps.
         return self.metrics.reduce()
 
-    # TODO (sven): Document and design this new approach in order to replace
-    #  `additional_update()`.
-    def _after_update(self, timesteps):
+    @OverrideToImplementCustomLogic_CallToSuperRecommended
+    def _after_gradient_based_update(self, timesteps: Dict[str, Any]) -> None:
+        """Called after gradient-based updates are completed.
+
+        Should be overridden to implement custom cleanup-, logging-, or non-gradient-
+        based Learner/RLModule update logic after(!) gradient-based updates have been
+        completed.
+
+        Args:
+            timesteps: Timesteps dict, which must have the key
+                `NUM_ENV_STEPS_SAMPLED_LIFETIME`.
+                # TODO (sven): Make this a more formal structure with its own type.
+        """
+        timesteps = timesteps or {}
+
         # Only update this optimizer's lr, if a scheduler has been registered
         # along with it.
         for module_id, optimizer_names in self._module_optimizers.items():
@@ -1373,18 +1397,24 @@ class Learner:
                 if lr_schedule is None:
                     continue
                 new_lr = lr_schedule.update(
-                    timestep=timesteps[NUM_ENV_STEPS_SAMPLED_LIFETIME]
+                    timestep=timesteps.get(NUM_ENV_STEPS_SAMPLED_LIFETIME, 0)
                 )
                 self._set_optimizer_lr(optimizer, lr=new_lr)
 
-                # Make sure our returned results differentiate by optimizer name
-                # (if not the default name).
-                stats_name = LEARNER_RESULTS_CURR_LR_KEY
-                if optimizer_name != DEFAULT_OPTIMIZER:
-                    stats_name += "_" + optimizer_name
-                self.metrics.log_value(
-                    key=(module_id, stats_name), value=new_lr, window=1
+        # Log all current learning rates of all our optimizers (registered under the
+        # different ModuleIDs).
+        self.metrics.log_dict(
+            {
+                # Cut out the module ID from the beginning since it's already part of
+                # the key sequence: (ModuleID, "[optim name]_lr").
+                (mid, f"{full_name[len(mid) + 1:]}_{LR_KEY}"): convert_to_numpy(
+                    self._get_optimizer_lr(self._named_optimizers[full_name])
                 )
+                for mid, full_names in self._module_optimizers.items()
+                for full_name in full_names
+            },
+            window=1,
+        )
 
     def _set_slicing_by_batch_id(
         self, batch: MultiAgentBatch, *, value: bool
@@ -1438,7 +1468,6 @@ class Learner:
 
         Args:
             path: The path to the directory to save the state to.
-
         """
         pass
 
@@ -1447,7 +1476,6 @@ class Learner:
 
         Args:
             path: The path to the directory to load the state from.
-
         """
         pass
 
@@ -1473,7 +1501,6 @@ class Learner:
 
         Args:
             path: The path to the directory to save the state to.
-
         """
         self._check_is_built()
         path = pathlib.Path(path)

@@ -40,13 +40,18 @@ def reconstruct_obs_from_h_and_z(
     # a new trajectory.
     # Use mean() of the Gaussian, no sample! -> No need to construct dist object here.
     device = next(iter(dreamer_model.world_model.decoder.parameters())).device
-    reconstructed_obs_distr_means_TxB = dreamer_model.world_model.decoder(
-        # Fold time rank.
-        h=torch.from_numpy(h_t0_to_H).reshape((T * B, -1)).to(device),
-        z=torch.from_numpy(z_t0_to_H).reshape(
-            (T * B,) + z_t0_to_H.shape[2:]
-        ).to(device),
-    ).detach().cpu().numpy()
+    reconstructed_obs_distr_means_TxB = (
+        dreamer_model.world_model.decoder(
+            # Fold time rank.
+            h=torch.from_numpy(h_t0_to_H).reshape((T * B, -1)).to(device),
+            z=torch.from_numpy(z_t0_to_H)
+            .reshape((T * B,) + z_t0_to_H.shape[2:])
+            .to(device),
+        )
+        .detach()
+        .cpu()
+        .numpy()
+    )
     # Unfold time rank again.
     reconstructed_obs_T_B = np.reshape(
         reconstructed_obs_distr_means_TxB, (T, B) + obs_dims_shape
@@ -160,7 +165,9 @@ def report_predicted_vs_sampled_obs(
     )[-1]
     metrics.delete(fwd_output_key, key_error=False)
 
-    final_result_key = f"WORLD_MODEL_sampled_vs_predicted_posterior_b0x{batch_length_T}_videos"
+    final_result_key = (
+        f"WORLD_MODEL_sampled_vs_predicted_posterior_b0x{batch_length_T}_videos"
+    )
     if not do_report:
         metrics.delete(final_result_key, key_error=False)
         return
@@ -243,10 +250,10 @@ def report_dreamed_eval_trajectory_vs_samples(
     _report_obs(
         metrics=metrics,
         # WandB videos need to be 5D (B, L, c, h, w) -> transpose/swap H and B axes.
-        computed_float_obs_B_T_dims=np.swapaxes(
-            dreamed_obs_H_B, 0, 1
-        )[0:1],  # for now: only B=1
-        sampled_obs_B_T_dims=sample[Columns.OBS][0:1, t0 : tH],
+        computed_float_obs_B_T_dims=np.swapaxes(dreamed_obs_H_B, 0, 1)[
+            0:1
+        ],  # for now: only B=1
+        sampled_obs_B_T_dims=sample[Columns.OBS][0:1, t0:tH],
         metrics_key=final_result_key_obs,
         symlog_obs=symlog_obs,
     )
@@ -255,7 +262,7 @@ def report_dreamed_eval_trajectory_vs_samples(
     _report_rewards(
         metrics=metrics,
         computed_rewards=dream_data["rewards_dreamed_t0_to_H_Bx1"][0],
-        sampled_rewards=sample[Columns.REWARDS][:, t0 : tH],
+        sampled_rewards=sample[Columns.REWARDS][:, t0:tH],
         metrics_key=final_result_key_rew,
     )
 
@@ -263,7 +270,7 @@ def report_dreamed_eval_trajectory_vs_samples(
     _report_continues(
         metrics=metrics,
         computed_continues=dream_data["continues_dreamed_t0_to_H_Bx1"][0],
-        sampled_continues=(1.0 - sample["is_terminated"])[:, t0 : tH],
+        sampled_continues=(1.0 - sample["is_terminated"])[:, t0:tH],
         metrics_key=final_result_key_cont,
     )
 
@@ -308,7 +315,6 @@ def _report_obs(
             video sequence.
         symlog_obs: Whether to inverse-symlog the computed observations or not. Set this
             to True for environments, in which we should symlog the observations.
-            
     """
     # Videos: Create summary, comparing computed images with actual sampled ones.
     # 4=[B, T, w, h] grayscale image; 5=[B, T, w, h, C] RGB image.

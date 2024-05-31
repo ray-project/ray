@@ -220,7 +220,7 @@ class LearnerGroup:
         self,
         batch: MultiAgentBatch,
         *,
-        timesteps=None,
+        timesteps: Optional[Dict[str, Any]] = None,
         async_update: bool = False,
         # TODO (sven): Deprecate the following args. They should be extracted from
         #  self.config of those specific algorithms that actually require these
@@ -277,7 +277,7 @@ class LearnerGroup:
         self,
         episodes: List[EpisodeType],
         *,
-        timesteps=None,
+        timesteps: Optional[Dict[str, Any]] = None,
         async_update: bool = False,
         # TODO (sven): Deprecate the following args. They should be extracted from
         #  self.config of those specific algorithms that actually require these
@@ -336,7 +336,7 @@ class LearnerGroup:
         *,
         batch: Optional[MultiAgentBatch] = None,
         episodes: Optional[List[EpisodeType]] = None,
-        timesteps=None,
+        timesteps: Optional[Dict[str, Any]] = None,
         async_update: bool = False,
         minibatch_size: Optional[int] = None,
         num_iters: int = 1,

@@ -555,7 +555,9 @@ class DreamerV3(Algorithm):
                     _uses_new_env_runners=True,
                     _return_metrics=True,
                 )
-                self.metrics.log_n_dicts(env_runner_results, key=ENV_RUNNER_RESULTS)
+                self.metrics.merge_and_log_n_dicts(
+                    env_runner_results, key=ENV_RUNNER_RESULTS
+                )
                 # Add ongoing and finished episodes into buffer. The buffer will
                 # automatically take care of properly concatenating (by episode IDs)
                 # the different chunks of the same episodes, even if they come in via
@@ -581,7 +583,7 @@ class DreamerV3(Algorithm):
                         _uses_new_env_runners=True,
                         _return_metrics=True,
                     )
-                    self.metrics.log_n_dicts(
+                    self.metrics.merge_and_log_n_dicts(
                         _env_runner_results, key=ENV_RUNNER_RESULTS
                     )
                     self.replay_buffer.add(episodes=_episodes)
@@ -654,7 +656,7 @@ class DreamerV3(Algorithm):
                         )
                     },
                 )
-                self.metrics.log_n_dicts(learner_results, key=LEARNER_RESULTS)
+                self.metrics.merge_and_log_n_dicts(learner_results, key=LEARNER_RESULTS)
                 self.metrics.log_value(
                     NUM_ENV_STEPS_TRAINED_LIFETIME, replayed_steps, reduce="sum"
                 )
@@ -679,7 +681,7 @@ class DreamerV3(Algorithm):
             do_report=(
                 self.config.report_images_and_videos
                 and self.training_iteration % 100 == 0
-            )
+            ),
         )
 
         # Log videos showing some of the dreamed trajectories and compare them with the
@@ -698,9 +700,8 @@ class DreamerV3(Algorithm):
                 self.config.symlog_obs,
             ),
             do_report=(
-                self.config.report_dream_data
-                and self.training_iteration % 100 == 0
-            )
+                self.config.report_dream_data and self.training_iteration % 100 == 0
+            ),
         )
 
         # Update weights - after learning on the LearnerGroup - on all EnvRunner
@@ -718,15 +719,14 @@ class DreamerV3(Algorithm):
         # TODO (sven): Remove this comment here: Probably only ever useful for tf2.
         # Try trick from https://medium.com/dive-into-ml-ai/dealing-with-memory-leak-
         # issue-in-keras-model-training-e703907a6501
-        # if self.config.gc_frequency_train_steps and (
+        #if self.config.gc_frequency_train_steps and (
         #    self.training_iteration % self.config.gc_frequency_train_steps == 0
-        # ):
+        #):
         #    with self.metrics.log_time((TIMERS, GARBAGE_COLLECTION_TIMER)):
         #        gc.collect()
 
         # Add train results and the actual training ratio to stats. The latter should
         # be close to the configured `training_ratio`.
-        # results.update(train_results)
         self.metrics.log_value("actual_training_ratio", self.training_ratio, window=1)
 
         # Return all results.
