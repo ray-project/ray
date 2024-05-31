@@ -317,6 +317,9 @@ class RayLog {
   }
 
  private:
+  FRIEND_TEST(PrintLogTest, TestRayLogEveryNOrDebug);
+  FRIEND_TEST(PrintLogTest, TestRayLogEveryN);
+
   template <typename T>
   RayLog &WithFieldTextFormat(std::string_view key, const T &value) {
     context_osstream_ << " " << key << "=" << value;
@@ -324,23 +327,7 @@ class RayLog {
   }
 
   template <typename T>
-  RayLog &WithFieldJsonFormat(std::string_view key, const T &value) {
-    std::stringstream ss;
-    ss << value;
-    return WithFieldJsonFormat<std::string>(key, ss.str());
-  }
-
-  template <>
-  RayLog &WithFieldJsonFormat(std::string_view key, const std::string &value) {
-    context_osstream_ << ",\"" << key << "\":" << nlohmann::json(value).dump();
-    return *this;
-  }
-
-  template <>
-  RayLog &WithFieldJsonFormat(std::string_view key, const int &value) {
-    context_osstream_ << ",\"" << key << "\":" << value;
-    return *this;
-  }
+  RayLog &WithFieldJsonFormat(std::string_view key, const T &value);
 
   static void InitSeverityThreshold(RayLogLevel severity_threshold);
   static void InitLogFormat();
@@ -385,12 +372,29 @@ class RayLog {
   // Ray default logger name.
   static std::string logger_name_;
 
-  FRIEND_TEST(PrintLogTest, TestRayLogEveryNOrDebug);
-  FRIEND_TEST(PrintLogTest, TestRayLogEveryN);
-
  protected:
   virtual std::ostream &Stream() { return msg_osstream_; }
 };
+
+template <typename T>
+inline RayLog &RayLog::WithFieldJsonFormat(std::string_view key, const T &value) {
+  std::stringstream ss;
+  ss << value;
+  return WithFieldJsonFormat<std::string>(key, ss.str());
+}
+
+template <>
+inline RayLog &RayLog::WithFieldJsonFormat<std::string>(std::string_view key,
+                                                        const std::string &value) {
+  context_osstream_ << ",\"" << key << "\":" << nlohmann::json(value).dump();
+  return *this;
+}
+
+template <>
+inline RayLog &RayLog::WithFieldJsonFormat<int>(std::string_view key, const int &value) {
+  context_osstream_ << ",\"" << key << "\":" << value;
+  return *this;
+}
 
 // This class make RAY_CHECK compilation pass to change the << operator to void.
 class Voidify {
