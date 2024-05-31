@@ -28,6 +28,7 @@ steps:
       - forge
 
   - label: ":tapioca: build: jar"
+    key: java_wheels
     tags:
       - java
       - oss
