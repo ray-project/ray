@@ -432,13 +432,16 @@ def test_draining_reason(ray_start_cluster, graceful):
         assert isinstance(e, ray.exceptions.ActorDiedError)
         if graceful:
             assert "The actor died because its node has died." in str(e)
-            assert drain_reason_message in str(e)
+            assert "the actor's node was preempted: " + drain_reason_message in str(e)
         else:
             assert (
                 "The actor died because its node was being drained and was unreachable."
                 in str(e)
             )
-            assert "the node was inferred to be dead due to draining." in str(e)
+            assert (
+                "the actor's node was preempted: "
+                "the node was inferred to be dead due to draining." in str(e)
+            )
 
 
 if __name__ == "__main__":
