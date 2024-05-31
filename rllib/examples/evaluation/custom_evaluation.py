@@ -132,12 +132,14 @@ def custom_eval_function(
         print(f"Training iteration {algorithm.iteration} -> evaluation round {i}")
         # Sample episodes from the EnvRunners AND have them return only the thus
         # collected metrics.
-        metrics_all_env_runners = eval_workers.foreach_worker(
+        episodes_all_env_runners, metrics_all_env_runners = eval_workers.foreach_worker(
             # Return only the metrics, NOT the sampled episodes (we don't need them
             # anymore).
-            func=lambda worker: (worker.sample(), worker.get_metrics())[1],
+            func=lambda worker: (worker.sample(), worker.get_metrics()),
             local_worker=False,
         )
+        env_steps = sum(eps.env_steps() for eps in episodes_all_env_runners)
+        agent_steps = sum(eps.agent_steps() for eps in episodes_all_env_runners)
         env_runner_metrics.extend(metrics_all_env_runners)
 
     # You can compute metrics from the episodes manually, or use the Algorithm's
@@ -153,7 +155,7 @@ def custom_eval_function(
     # dicts, but this would be much harder as you might not know, which metrics
     # to sum up, which ones to average over, etc..
 
-    return eval_results
+    return eval_results, env_steps, agent_steps
 
 
 if __name__ == "__main__":

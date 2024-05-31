@@ -1006,7 +1006,14 @@ class Algorithm(Trainable, AlgorithmBase):
 
         # We will use a user provided evaluation function.
         if self.config.custom_evaluation_function:
-            eval_results = self._evaluate_with_custom_eval_function()
+            if self.config.enable_env_runner_and_connector_v2:
+                (
+                    eval_results,
+                    env_steps,
+                    agent_steps,
+                ) = self._evaluate_with_custom_eval_function()
+            else:
+                eval_results = self.config.custom_evaluation_function()
         # There is no eval EnvRunnerGroup -> Run on local EnvRunner.
         elif self.evaluation_workers is None:
             (
@@ -1108,15 +1115,22 @@ class Algorithm(Trainable, AlgorithmBase):
             f"Evaluating current state of {self} using the custom eval function "
             f"{self.config.custom_evaluation_function}"
         )
-        eval_results = self.config.custom_evaluation_function(
-            self, self.evaluation_workers
-        )
+        (
+            eval_results,
+            env_steps,
+            agent_steps,
+        ) = self.config.custom_evaluation_function(self, self.evaluation_workers)
         if not eval_results or not isinstance(eval_results, dict):
             raise ValueError(
                 "Custom eval function must return "
                 f"dict of metrics! Got {eval_results}."
             )
-        return eval_results
+        if not env_steps or not agent_steps:
+            raise ValueError(
+                "Custom eval function must return "
+                f"`env_steps` and `agent_steps`! Got {env_steps}, {agent_steps}."
+            )
+        return eval_results, env_steps, agent_steps
 
     def _evaluate_on_local_env_runner(self, env_runner):
         if hasattr(env_runner, "input_reader") and env_runner.input_reader is None:
