@@ -109,7 +109,7 @@ def replica_index_label(pod: Dict[str, Any]) -> Optional[str]:
     """
     labels = pod["metadata"]["labels"]
     if REPLICA_INDEX_KEY in labels:
-        labels[REPLICA_INDEX_KEY]
+        return labels[REPLICA_INDEX_KEY]
     return None
 
 
