@@ -188,6 +188,7 @@ class RayTaskError(RayError):
 
         try:
             dual_cls = self.make_dual_exception_type()
+            return dual_cls(self.cause)
         except TypeError as e:
             logger.warning(
                 f"User exception type {type(self.cause)} in RayTaskError can't"
@@ -196,8 +197,6 @@ class RayTaskError(RayError):
                 f" access the user exception. Failure in subclassing: {e}"
             )
             return self
-
-        return dual_cls(self.cause)
 
     def __str__(self):
         """Format a RayTaskError as a string."""
