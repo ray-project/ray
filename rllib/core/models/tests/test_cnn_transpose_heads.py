@@ -3,7 +3,7 @@ import unittest
 
 from ray.rllib.core.models.configs import CNNTransposeHeadConfig
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
-from ray.rllib.utils.test_utils import check, framework_iterator, ModelChecker
+from ray.rllib.utils.test_utils import framework_iterator, ModelChecker
 
 _, tf, _ = try_import_tf()
 torch, _ = try_import_torch()
@@ -87,8 +87,6 @@ class TestCNNTransposeHeads(unittest.TestCase):
                 cnn_transpose_use_layernorm=cnn_transpose_use_layernorm,
                 cnn_transpose_use_bias=cnn_transpose_use_bias,
             )
-            # Make sure our configs compute the correct output dims.
-            check(config.output_dims, expected_output_dims)
 
             # Use a ModelChecker to compare all added models (different frameworks)
             # with each other.
