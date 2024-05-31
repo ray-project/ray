@@ -215,8 +215,7 @@ void RaySyncer::Connect(const std::string &node_id,
       io_context_.get_executor(), std::packaged_task<void()>([=]() {
         auto stub = ray::rpc::syncer::RaySyncer::NewStub(channel);
         auto reactor = new RayClientBidiReactor(
-            /* remote_node_id */
-            node_id,
+            /* remote_node_id */ node_id,
             /* local_node_id */ GetLocalNodeID(),
             /* io_context */ io_context_,
             /* message_processor */ [this](auto msg) { BroadcastRaySyncMessage(msg); },
