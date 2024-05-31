@@ -647,11 +647,12 @@ class StandardAutoscaler:
             self.prom_metrics.stopped_nodes.inc()
             # Clean up multi-host replicas to delete
             tags = self.provider.node_tags(node)
-            if TAG_RAY_MULTIHOST_REPLICA in tags:
-                multi_host_replica_id = tags[TAG_RAY_MULTIHOST_REPLICA]
-                self.multi_host_replicas_to_workers[multi_host_replica_id].remove(node)
-                if len(self.multi_host_replicas_to_workers[multi_host_replica_id]) == 0:
-                    self.multi_host_replicas_to_delete.remove(multi_host_replica_id)
+            if TAG_RAY_REPLICA_INDEX in tags:
+                assert self.replicas_to_nodes
+                replica_id = tags[TAG_RAY_REPLICA_INDEX]
+                self.replicas_to_nodes[replica_id].remove(node)
+                if len(self.replicas_to_nodes[replica_id]) == 0:
+                    self.replicas_to_delete.remove(replica_id)
 
         # Update internal node lists
         self.non_terminated_nodes.remove_terminating_nodes(self.nodes_to_terminate)
