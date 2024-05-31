@@ -330,11 +330,6 @@ class RayLog {
     ss << value;
     return WithFieldJsonFormat<std::string>(key, ss.str());
   }
-  template <>
-  RayLog &WithFieldJsonFormat<std::string>(std::string_view key,
-                                           const std::string &value);
-  template <>
-  RayLog &WithFieldJsonFormat<int>(std::string_view key, const int &value);
 
   static void InitSeverityThreshold(RayLogLevel severity_threshold);
   static void InitLogFormat();
@@ -382,6 +377,12 @@ class RayLog {
  protected:
   virtual std::ostream &Stream() { return msg_osstream_; }
 };
+
+template <>
+RayLog &RayLog::WithFieldJsonFormat<std::string>(std::string_view key,
+                                                 const std::string &value);
+template <>
+RayLog &RayLog::WithFieldJsonFormat<int>(std::string_view key, const int &value);
 
 // This class make RAY_CHECK compilation pass to change the << operator to void.
 class Voidify {
