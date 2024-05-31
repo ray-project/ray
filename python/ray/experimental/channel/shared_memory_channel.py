@@ -389,13 +389,19 @@ class MultiChannel(ChannelInterface):
         self,
         writer: Optional[ray.actor.ActorHandle],
         readers: List[Optional[ray.actor.ActorHandle]],
-        local_channel: Optional[LocalChannel] = None,
-        remote_channel: Optional[Channel] = None,
+        _local_channel: Optional[LocalChannel] = None,
+        _remote_channel: Optional[Channel] = None,
     ):
+        """
+        Can be used to send data to different readers via different channels.
+        For example, if the reader is in the same worker process as the writer,
+        the data can be sent via LocalChannel. If the reader is in a different
+        worker process, the data can be sent via shared memory channel.
+        """
         self._writer = writer
         self._readers = readers
-        self._local_channel = local_channel
-        self._remote_channel = remote_channel
+        self._local_channel = _local_channel
+        self._remote_channel = _remote_channel
 
         remote_readers = []
         for reader in self._readers:
@@ -412,10 +418,14 @@ class MultiChannel(ChannelInterface):
         assert hasattr(self, "_local_channel") or hasattr(self, "_remote_channel")
 
     def ensure_registered_as_writer(self) -> None:
+        if self._local_channel:
+            self._local_channel.ensure_registered_as_writer()
         if self._remote_channel:
             self._remote_channel.ensure_registered_as_writer()
 
     def ensure_registered_as_reader(self) -> None:
+        if self._local_channel:
+            self._local_channel.ensure_registered_as_reader()
         if self._remote_channel:
             self._remote_channel.ensure_registered_as_reader()
 
@@ -447,9 +457,13 @@ class MultiChannel(ChannelInterface):
             return self._remote_channel.begin_read()
 
     def end_read(self):
-        if not self.use_local_channel():
+        if self.use_local_channel():
+            self._local_channel.end_read()
+        else:
             self._remote_channel.end_read()
 
     def close(self) -> None:
-        if not self.use_local_channel():
+        if self._local_channel:
+            self._local_channel.close()
+        if self._remote_channel:
             self._remote_channel.close()
