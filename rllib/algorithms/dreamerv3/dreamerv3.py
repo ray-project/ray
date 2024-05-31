@@ -558,7 +558,7 @@ class DreamerV3(Algorithm):
                 self.metrics.merge_and_log_n_dicts(
                     env_runner_results, key=ENV_RUNNER_RESULTS
                 )
-                # Add ongoing and finished episodes into buffer. The buffer will
+                # Add episodes (ongoing and terminated) to the buffer. The buffer will
                 # automatically take care of properly concatenating (by episode IDs)
                 # the different chunks of the same episodes, even if they come in via
                 # separate `add()` calls.

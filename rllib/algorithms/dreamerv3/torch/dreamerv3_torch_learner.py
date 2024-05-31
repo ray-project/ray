@@ -31,7 +31,7 @@ class DreamerV3TorchLearner(DreamerV3Learner, TorchLearner):
     The critic EMA-copy update step can be found in the `DreamerV3Learner` base class,
     as it is framework independent.
 
-    We define 3 local TensorFlow optimizers for the sub components "world_model",
+    We define 3 local PyTorch optimizers for the sub components "world_model",
     "actor", and "critic". Each of these optimizers might use a different learning rate,
     epsilon parameter, and gradient clipping thresholds and procedures.
     """
