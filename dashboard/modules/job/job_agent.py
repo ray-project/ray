@@ -35,9 +35,7 @@ class JobManagerAgent(dashboard_utils.DashboardAgentModule):
         super().__init__(dashboard_agent)
 
         self._job_manager = None
-
         self._job_info_client = None
-        self._job_log_client = None
 
     @routes.post("/api/job_agent/jobs/")
     @optional_utils.init_ray_and_catch_exceptions()
@@ -52,7 +50,7 @@ class JobManagerAgent(dashboard_utils.DashboardAgentModule):
         request_submission_id = submit_request.submission_id or submit_request.job_id
         try:
             ray._private.usage.usage_lib.record_library_usage("job_submission")
-            submission_id = await self.get_job_manager().submit_job(
+            submission_id = await self._get_job_manager().submit_job(
                 entrypoint=submit_request.entrypoint,
                 submission_id=request_submission_id,
                 runtime_env=submit_request.runtime_env,
@@ -102,7 +100,7 @@ class JobManagerAgent(dashboard_utils.DashboardAgentModule):
             )
 
         try:
-            stopped = self.get_job_manager().stop_job(job.submission_id)
+            stopped = self._get_job_manager().stop_job(job.submission_id)
             resp = JobStopResponse(stopped=stopped)
         except Exception:
             return Response(
@@ -135,7 +133,7 @@ class JobManagerAgent(dashboard_utils.DashboardAgentModule):
             )
 
         try:
-            deleted = await self.get_job_manager().delete_job(job.submission_id)
+            deleted = await self._get_job_manager().delete_job(job.submission_id)
             resp = JobDeleteResponse(deleted=deleted)
         except Exception:
             return Response(
@@ -147,13 +145,19 @@ class JobManagerAgent(dashboard_utils.DashboardAgentModule):
             text=json.dumps(dataclasses.asdict(resp)), content_type="application/json"
         )
 
-    def get_job_manager(self):
+    def _get_job_manager(self):
         if not self._job_manager:
             self._job_manager = JobManager(
                 self._dashboard_agent.gcs_aio_client, self._dashboard_agent.log_dir
             )
 
         return self._job_manager
+
+    def _get_job_info_client(self):
+        if not self._job_info_client:
+            self._job_info_client = JobInfoStorageClient(self._dashboard_agent.gcs_aio_client)
+
+        return self._job_info_client
 
     async def run(self, server):
         pass
