@@ -2,11 +2,17 @@
 
 set -ex
 
-curl -sfL https://github.com/bazelbuild/bazelisk/releases/download/v1.20.0/bazelisk-windows-amd64.exe -o /c/bazelisk.exe
+echo "PATH=$PATH"
 
-echo "PATH is $PATH"
-echo $PATH
-which bazel
+# Delete the existing bazel and download bazelisk
+rm -f /c/bazel
+mkdir -p /c/bazel
+curl -sfL https://github.com/bazelbuild/bazelisk/releases/download/v1.20.0/bazelisk-windows-amd64.exe -o /c/bazel/bazelisk.exe
+chmod +x /c/bazel/bazelisk.exe
+cp /c/bazel/bazelisk.exe /usr/bin/bazel
+
+command -v bazel
+command -v bazelisk
 
 conda init 
 # newer requests version is needed for python 3.9+
