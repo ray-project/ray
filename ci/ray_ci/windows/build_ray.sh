@@ -2,7 +2,7 @@
 
 set -ex
 
-export BAZEL_PATH=/c/bazelisk.exe
+# export BAZEL_PATH=/c/bazel/bazelisk.exe
 
 git config --global core.symlinks true
 git config --global core.autocrlf false
