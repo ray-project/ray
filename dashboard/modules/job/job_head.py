@@ -142,7 +142,7 @@ class JobAgentClient:
 class JobHead(dashboard_utils.DashboardHeadModule):
     """Runs on the head node of a Ray cluster and handles Ray Jobs APIs.
 
-    NOTE(architkulkarni): Please keep this class in sync with the OpenAPI spec at
+    NOTE: Please keep this class in sync with the OpenAPI spec at
     `doc/source/cluster/running-applications/job-submission/openapi.yml`.
     We currently do not automatically check that the OpenAPI
     spec is in sync with the implementation. If any changes are made to the
@@ -171,53 +171,10 @@ class JobHead(dashboard_utils.DashboardHeadModule):
         # longer available (the corresponding agent process is dead)
         self._agents = dict()
 
-    async def choose_agent(self) -> Optional[JobAgentClient]:
-        """
-        Try to disperse as much as possible to select one of
-        the `CANDIDATE_AGENT_NUMBER` agents to solve requests.
-        the agents will not pop from `self._agents` unless
-        it's dead. Saved in `self._agents` is the agent that was
-        used before.
-        Strategy:
-            1. if the number of `self._agents` has reached
-               `CANDIDATE_AGENT_NUMBER`, randomly select one agent from
-               `self._agents`.
-            2. if not, randomly select one agent from all available agents,
-               it is possible that the selected one already exists in
-               `self._agents`.
-        """
-        # the number of agents which has an available HTTP port.
-        while True:
-            raw_agent_infos = await DataOrganizer.get_all_agent_infos()
-            agent_infos = {
-                key: value
-                for key, value in raw_agent_infos.items()
-                if value.get("httpPort", -1) > 0
-            }
-            if len(agent_infos) > 0:
-                break
-            await asyncio.sleep(dashboard_consts.TRY_TO_GET_AGENT_INFO_INTERVAL_SECONDS)
-        # delete dead agents.
-        for dead_node in set(self._agents) - set(agent_infos):
-            client = self._agents.pop(dead_node)
-            await client.close()
-
-        if len(self._agents) >= dashboard_consts.CANDIDATE_AGENT_NUMBER:
-            node_id = sample(list(set(self._agents)), 1)[0]
-            return self._agents[node_id]
-        else:
-            # Randomly select one from among all agents, it is possible that
-            # the selected one already exists in `self._agents`
-            node_id = sample(sorted(agent_infos), 1)[0]
-            agent_info = agent_infos[node_id]
-
-            if node_id not in self._agents:
-                node_ip = agent_info["ipAddress"]
-                http_port = agent_info["httpPort"]
-                agent_http_address = f"http://{node_ip}:{http_port}"
-                self._agents[node_id] = JobAgentClient(agent_http_address)
-
-            return self._agents[node_id]
+    @staticmethod
+    async def _get_head_node_agent():
+        agent_info = await DataOrganizer.get_head_node_agent()
+        return JobAgentClient(f"http://{agent_info.ip_address}:{agent_info.http_port}")
 
     @routes.get("/api/version")
     async def get_version(self, req: Request) -> Response:
@@ -292,7 +249,7 @@ class JobHead(dashboard_utils.DashboardHeadModule):
 
         try:
             job_agent_client = await asyncio.wait_for(
-                self.choose_agent(),
+                self._get_head_node_agent(),
                 timeout=dashboard_consts.WAIT_AVAILABLE_AGENT_TIMEOUT,
             )
             resp = await job_agent_client.submit_job_internal(submit_request)
@@ -339,7 +296,7 @@ class JobHead(dashboard_utils.DashboardHeadModule):
 
         try:
             job_agent_client = await asyncio.wait_for(
-                self.choose_agent(),
+                self._get_head_node_agent(),
                 timeout=dashboard_consts.WAIT_AVAILABLE_AGENT_TIMEOUT,
             )
             resp = await job_agent_client.stop_job_internal(job.submission_id)
@@ -374,7 +331,7 @@ class JobHead(dashboard_utils.DashboardHeadModule):
 
         try:
             job_agent_client = await asyncio.wait_for(
-                self.choose_agent(),
+                self._get_head_node_agent(),
                 timeout=dashboard_consts.WAIT_AVAILABLE_AGENT_TIMEOUT,
             )
             resp = await job_agent_client.delete_job_internal(job.submission_id)
