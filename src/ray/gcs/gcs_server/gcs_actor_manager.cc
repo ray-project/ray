@@ -259,8 +259,10 @@ void GcsActorManager::HandleRegisterActor(rpc::RegisterActorRequest request,
   auto actor_id =
       ActorID::FromBinary(request.task_spec().actor_creation_task_spec().actor_id());
 
-  RAY_LOG(INFO) << "Registering actor, job id = " << actor_id.JobId()
-                << ", actor id = " << actor_id;
+  RAY_LOG(INFO)
+          .WithField(kLogKeyJobID, actor_id.JobId())
+          .WithField(kLogKeyActorID, actor_id)
+      << "Registering actor";
   Status status =
       RegisterActor(request,
                     [reply, send_reply_callback, actor_id](

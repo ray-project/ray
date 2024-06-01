@@ -456,7 +456,9 @@ class PPO(Algorithm):
                 return {}
 
             # Reduce EnvRunner metrics over the n EnvRunners.
-            self.metrics.log_n_dicts(env_runner_results, key=ENV_RUNNER_RESULTS)
+            self.metrics.merge_and_log_n_dicts(
+                env_runner_results, key=ENV_RUNNER_RESULTS
+            )
             # Log lifetime counts for env- and agent steps.
             self.metrics.log_dict(
                 {
@@ -477,13 +479,18 @@ class PPO(Algorithm):
         with self.metrics.log_time((TIMERS, LEARNER_UPDATE_TIMER)):
             learner_results = self.learner_group.update_from_episodes(
                 episodes=episodes,
+                timesteps={
+                    NUM_ENV_STEPS_SAMPLED_LIFETIME: (
+                        self.metrics.peek(NUM_ENV_STEPS_SAMPLED_LIFETIME)
+                    ),
+                },
                 minibatch_size=(
                     self.config.mini_batch_size_per_learner
                     or self.config.sgd_minibatch_size
                 ),
                 num_iters=self.config.num_sgd_iter,
             )
-            self.metrics.log_n_dicts(learner_results, key=LEARNER_RESULTS)
+            self.metrics.merge_and_log_n_dicts(learner_results, key=LEARNER_RESULTS)
             self.metrics.log_dict(
                 {
                     NUM_ENV_STEPS_TRAINED_LIFETIME: self.metrics.peek(
@@ -513,7 +520,6 @@ class PPO(Algorithm):
                     # Sync weights from learner_group to all rollout workers.
                     from_worker_or_learner_group=self.learner_group,
                     policies=modules_to_update,
-                    global_vars=None,
                     inference_only=True,
                 )
             else:
@@ -540,13 +546,14 @@ class PPO(Algorithm):
                         )
                     kl_dict[mid] = kl
 
-            # triggers a special update method on RLOptimizer to update the KL values.
+            # TODO (sven): Move to Learner._after_gradient_based_update().
+            # Triggers a special update method on RLOptimizer to update the KL values.
             additional_results = self.learner_group.additional_update(
                 module_ids_to_update=modules_to_update,
                 sampled_kl_values=kl_dict,
                 timestep=self.metrics.peek(NUM_ENV_STEPS_SAMPLED_LIFETIME),
             )
-            self.metrics.log_n_dicts(additional_results, key=LEARNER_RESULTS)
+            self.metrics.merge_and_log_n_dicts(additional_results, key=LEARNER_RESULTS)
 
         return self.metrics.reduce()
 
