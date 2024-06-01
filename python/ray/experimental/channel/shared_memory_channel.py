@@ -1,6 +1,6 @@
 import io
 import logging
-from typing import Any, List, Optional, Union
+from typing import Any, List, Optional, Tuple, Union
 
 import ray
 from ray._raylet import SerializedObject
@@ -337,10 +337,19 @@ class Channel(ChannelInterface):
             self._num_readers,
         )
 
-    def begin_read(self) -> Any:
+    def begin_read(self, deserialize=True) -> Any:
         self.ensure_registered_as_reader()
-        val = ray.get(self._reader_ref)
-        return val
+        if deserialize:
+            return ray.get(self._reader_ref)
+
+        # Return raw data that can be deserialized using
+        # ray._private.worker.global_worker.
+        data_metadata_pairs: List[
+            Tuple[ray._raylet.Buffer, bytes]
+        ] = self._worker.core_worker.get_objects(
+            [self._reader_ref], self._worker.current_task_id, timeout_ms=-1
+        )
+        return (data_metadata_pairs, [self._reader_ref])
 
     def end_read(self):
         self.ensure_registered_as_reader()

@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, List, Union
+from typing import TYPE_CHECKING, List, Set, Tuple, Union
 
 if TYPE_CHECKING:
     import numpy as np
@@ -8,15 +8,29 @@ if TYPE_CHECKING:
 class _SerializationContext:
     def __init__(self):
         self.use_external_transport: bool = False
-        self.tensors: List["torch.Tensor"] = []
+        # If use_external_transport is True, then these are
+        # the tensors that should be sent or received
+        # out-of-band, through the external transport.
+        self._out_of_band_tensors: List["torch.Tensor"] = []
+        # During serialization, tensors sent out-of-band are replaced with
+        # integer placeholders. This tracks the set of placeholders seen.
+        self._deserialized_tensor_placeholders: Set[int] = set()
 
     def set_use_external_transport(self, use_external_transport: bool) -> None:
         self.use_external_transport = use_external_transport
 
-    def reset_tensors(self, tensors: List["torch.Tensor"]) -> List["torch.Tensor"]:
-        prev_tensors = self.tensors
-        self.tensors = tensors
-        return prev_tensors
+    def reset_out_of_band_tensors(
+        self, tensors: List["torch.Tensor"]
+    ) -> Tuple[List["torch.Tensor"], Set[int]]:
+        """
+        Return and reset the out-of-band tensors and all tensor placeholders
+        that were deserialized since the last call to reset.
+        """
+        prev_tensors = self._out_of_band_tensors
+        deserialized_tensor_placeholders = self._deserialized_tensor_placeholders
+        self._out_of_band_tensors = tensors
+        self._deserialized_tensor_placeholders = set()
+        return prev_tensors, deserialized_tensor_placeholders
 
     def serialize_tensor(self, tensor: "torch.Tensor") -> Union[int, "np.ndarray"]:
         from ray.experimental.channel import ChannelContext
@@ -27,9 +41,9 @@ class _SerializationContext:
             # our device.  Add the actual tensor to a buffer. The buffer of
             # tensors should later be popped by the caller and sent via
             # external transport.
-            self.tensors.append(tensor)
+            self._out_of_band_tensors.append(tensor)
             # Return a placeholder.
-            return len(self.tensors) - 1
+            return len(self._out_of_band_tensors) - 1
 
         return self.serialize_to_numpy(tensor)
 
@@ -48,7 +62,10 @@ class _SerializationContext:
         # Found a placeholder for a tensor that was serialized via NCCL.
         # Replace it with the corresponding deserialized tensor.
         if isinstance(val, int):
-            return self.tensors[val]
+            placeholder = val
+            self._deserialized_tensor_placeholders.add(placeholder)
+            assert placeholder < len(self._out_of_band_tensors)
+            return self._out_of_band_tensors[placeholder]
 
         return self.deserialize_from_numpy(val)
 

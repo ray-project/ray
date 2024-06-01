@@ -837,11 +837,14 @@ class Worker:
                 )
 
         timeout_ms = int(timeout * 1000) if timeout is not None else -1
-        data_metadata_pairs = self.core_worker.get_objects(
+        data_metadata_pairs: List[
+            Tuple[ray._raylet.Buffer, bytes]
+        ] = self.core_worker.get_objects(
             object_refs,
             self.current_task_id,
             timeout_ms,
         )
+
         debugger_breakpoint = b""
         for data, metadata in data_metadata_pairs:
             if metadata:

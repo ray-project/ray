@@ -170,7 +170,7 @@ class Worker:
 
         return self.tensor_chan
 
-    def produce(self, val, shape, dtype):
+    def send(self, val, shape, dtype):
         t = torch.ones(shape, dtype=dtype) * val
         self.tensor_chan.write(t)
 
@@ -179,6 +179,16 @@ class Worker:
         data = (t[0].clone(), t.shape, t.dtype)
         self.tensor_chan.end_read()
         return data
+
+    def send_dict(self, tensor_dict):
+        self.tensor_chan.write(tensor_dict)
+
+    def receive_dict(self):
+        tensor_dict = self.tensor_chan.begin_read()
+        vals = []
+        for key, t in tensor_dict.items():
+            vals.append((key, t[0].clone(), t.shape, t.dtype))
+        return vals
 
     def create_traced_channel(self, key, readers):
         self.traced_channels[key] = TracedChannel(
@@ -235,7 +245,7 @@ def test_p2p(ray_start_cluster):
 
     refs = []
     for i in range(3):
-        sender.produce.remote(i, shape, dtype)
+        sender.send.remote(i, shape, dtype)
         refs.append(receiver.receive.remote())
     assert ray.get(refs) == [(i, shape, dtype) for i in range(3)]
 
@@ -244,7 +254,7 @@ def test_p2p(ray_start_cluster):
 
     refs = []
     for i in range(3):
-        sender.produce.remote(i, shapes[i], dtypes[i])
+        sender.send.remote(i, shapes[i], dtypes[i])
         refs.append(receiver.receive.remote())
     assert ray.get(refs) == [(i, shapes[i], dtypes[i]) for i in range(3)]
 
@@ -293,7 +303,7 @@ def test_multiple_receivers(ray_start_cluster):
 
     all_refs = []
     for i in range(3):
-        sender.produce.remote(i, shapes[i], dtypes[i])
+        sender.send.remote(i, shapes[i], dtypes[i])
         all_refs.append([receiver.receive.remote() for receiver in receivers])
     # Check that all receivers received the correct value.
     for i, refs in enumerate(all_refs):
@@ -354,7 +364,7 @@ def test_static_shape(ray_start_cluster):
 
     refs = []
     for i in range(3):
-        sender.produce.remote(i, shape, dtype)
+        sender.send.remote(i, shape, dtype)
         refs.append(receiver.receive.remote())
     assert ray.get(refs) == [(i, shape, dtype) for i in range(3)]
 
@@ -371,13 +381,122 @@ def test_static_shape(ray_start_cluster):
 
     # Attempting to write tensors of the wrong shape or dtype will error.
     with pytest.raises(ValueError):
-        ray.get(sender.produce.remote(4, (20,), dtype))
+        ray.get(sender.send.remote(4, (20,), dtype))
     with pytest.raises(ValueError):
-        ray.get(sender.produce.remote(4, shape, torch.float32))
+        ray.get(sender.send.remote(4, shape, torch.float32))
 
     # The channel is still usable for valid tensors after errors occur.
-    sender.produce.remote(4, shape, dtype)
+    sender.send.remote(4, shape, dtype)
     ray.get(receiver.receive.remote()) == (4, shape, dtype)
+
+
+@pytest.mark.parametrize(
+    "ray_start_cluster",
+    [
+        {
+            "num_cpus": 2,
+            "num_gpus": 2,
+            "num_nodes": 1,
+        }
+    ],
+    indirect=True,
+)
+def test_static_non_tensor_data(ray_start_cluster):
+    """
+    Test that when static_shape=True is passed, we only send metadata for the
+    first operation. Afterwards, we reuse the same shape and dtype for future
+    tensors. Sending a tensor of the wrong shape or dtype throws an error.
+    """
+    # Barrier name should be barrier-{sender rank}-{receiver rank}.
+    barrier = Barrier.options(name="barrier-0-1").remote()  # noqa
+
+    sender = Worker.remote()
+    receiver = Worker.remote()
+
+    ray.get(
+        [
+            sender.start_mock.remote(),
+            receiver.start_mock.remote(),
+        ]
+    )
+
+    nccl_id = _init_nccl_group([sender, receiver])
+
+    chan_typ = TorchTensorType(
+        transport="nccl",
+        static_non_tensor_data=True,
+    )
+    chan_typ.set_nccl_group_id(nccl_id)
+    sender.create_traced_channel.remote("tensor_metadata", [receiver])
+    sender.create_traced_channel.remote("non_tensor_data", [receiver])
+    chan_ref = sender.create_nccl_channel.remote(
+        chan_typ,
+        [receiver],
+        "tensor_metadata",
+        "non_tensor_data",
+    )
+    receiver_ready = receiver.set_nccl_channel.remote(chan_typ, chan_ref)
+    ray.get([chan_ref, receiver_ready])
+
+    key = "my_tensor"
+    shape = 10
+    dtype = torch.float16
+
+    # Sending tensors of different shapes is okay as long as the non-tensor
+    # data stays the same.
+    refs = []
+    values = []
+    for i in range(1, 4):
+        t = torch.ones(i * shape, dtype=dtype) * i
+        val = {
+            key: t,
+        }
+        sender.send_dict.remote(val)
+
+        values.append([(key, t[0], t.shape, t.dtype)])
+        refs.append(receiver.receive_dict.remote())
+    assert ray.get(refs) == values
+
+    # When static_non_tensor_data=True, we should only send one non-tensor data
+    # op. After the first data is sent, we reuse it for all future sends.
+    num_tensor_metadata_ops = ray.get(
+        sender.get_num_channel_ops.remote("tensor_metadata")
+    )
+    assert num_tensor_metadata_ops == 3
+    num_non_tensor_data_ops = ray.get(
+        sender.get_num_channel_ops.remote("non_tensor_data")
+    )
+    assert num_non_tensor_data_ops == 1
+
+    # Attempting to write a different number of tensors will error.
+    with pytest.raises(ValueError):
+        ray.get(sender.send_dict.remote({}))
+    with pytest.raises(ValueError):
+        ray.get(
+            sender.send_dict.remote(
+                {
+                    "first": torch.zeros(10),
+                    "second": torch.zeros(10),
+                }
+            )
+        )
+
+    # NOTE(swang): Sending values with different non-tensor data, e.g., a list
+    # of tensors vs a dictionary of tensors, should throw an error.
+    # Unfortunately ray.cloudpickle serialization is not deterministic.
+    # Therefore, we cannot detect this case without throwing many false
+    # positives.
+    # with pytest.raises(ValueError):
+    #     sender.send.remote(4, shape, torch.float32)
+
+    # The channel is still usable for valid tensors after errors occur.
+    val = {
+        key: torch.ones(shape, dtype=dtype),
+    }
+    sender.send_dict.remote(val)
+    assert ray.get(receiver.receive_dict.remote()) == [
+        (key, val[key][0], val[key].shape, val[key].dtype)
+    ]
 
 
 if __name__ == "__main__":

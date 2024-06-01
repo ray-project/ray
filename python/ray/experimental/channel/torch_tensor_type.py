@@ -35,9 +35,9 @@ class TorchTensorType(ChannelOutputType):
 
     def __init__(
         self,
+        transport: Optional[str] = AUTO,
         static_shape: bool = False,
         static_non_tensor_data: bool = False,
-        transport: Optional[str] = AUTO,
     ):
         """
         A type hint that can be used to annotate DAG nodes that return a
@@ -46,30 +46,32 @@ class TorchTensorType(ChannelOutputType):
         NOTE: Use of this type in the DAG will register a custom serializer for
         torch.Tensor that moves the tensor to the correct device on the
         receiver. If you are using ray.cloudpickle to serialize objects and you
-        do not want this behavior, you should deregister the custom serializer
-        using ray.util.serialization.deregister_serializer(torch.Tensor).
+        do not want this behavior, deregister the custom serializer using
+        ray.util.serialization.deregister_serializer(torch.Tensor).
 
         Args:
-        # TODO(swang)
-            shape: The expected shape of the torch.Tensor. "auto" (default)
-                means that the shape will be dynamically inferred. For tensors
-                passed via host memory (default), the shape is a hint for the
-                maximum size of the tensor. If a DAG node's returned serialized
-                tensor exceeds this size, the task will error. For tensors
-                passed via NCCL, the returned tensor must *match* the given
-                shape; if it does not match, the task will error. Specifying
-                the shape and dtype ahead of time will eliminate the
-                performance overhead from an additional metadata transfer.
-            dtype: The expected dtype of the torch.Tensor. Similar to the
-                shape, this may be statically or dynamically declared.
             transport: "auto" (default) means that tensors will be passed via
                 host memory, using numpy as the serialization format. Pass
                 TorchTensorType.NCCL or "nccl" to use NCCL instead, avoiding
                 the host memory copy.
-            direct_return: Whether the tensor is sent directly or inside of
-                other data. If a non-default `transport` is used, this allows
-                the sender and receiver to eliminate performance overhead from
-                an additional data transfer.
+            static_shape: A hint indicating whether the shape(s) and dtype(s)
+                of tensor(s) contained in this value always remain the same
+                across different executions of the DAG.
+            static_non_tensor_data: A hint indicating whether the non-tensor
+                data contained in this value always remains the same across
+                different executions of the DAG. For example, if the value
+                always has the form `{"my_tensor": torch.Tensor(...)}`, then
+                this can be set to True, even if the size of the contained
+                tensor changes.
+
+        NOTE: Setting static_shape=True and/or static_non_tensor_data=True can
+        improve performance if a non-default transport is used. However, if
+        either flag is set, then the user must ensure that the condition is
+        met. Also, for values containing multiple tensors, the user must ensure
+        that the (ray.cloudpickle) serialization order of the value is
+        deterministic. Otherwise, reads may return different values from those
+        written. For example, if returning a dictionary with multiple tensors,
+        use Python 3.6+ and ensure that the insertion order is the same.
         """
         super().__init__()
 
@@ -83,12 +85,6 @@ class TorchTensorType(ChannelOutputType):
         self.transport = transport
 
         self._nccl_group_id: Optional[str] = None
-
-        if self.static_non_tensor_data and self.transport == self.AUTO:
-            logger.info(
-                "TorchTensorType(direct_return=True) has no effect when "
-                "`transport` is TorchTensorType.AUTO (default)."
-            )
 
     @property
     def static_shape(self):
@@ -153,6 +149,7 @@ class TorchTensorType(ChannelOutputType):
                 readers,
                 tensor_data_channel,
                 _non_tensor_data_channel,
+                self.static_non_tensor_data,
             )
 
         # Data does not require NCCL. Transfer via host memory using a
