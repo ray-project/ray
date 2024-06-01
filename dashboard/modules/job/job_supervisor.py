@@ -102,13 +102,11 @@ class JobSupervisor:
         self,
         *,
         job_id: str,
-        entrypoint: str,
         gcs_address: str,
         logs_dir: str,
         startup_timeout_s: float,
     ):
         self._job_id = job_id
-        self._entrypoint = entrypoint
 
         self._job_info_client = JobInfoStorageClient(GcsAioClient(address=gcs_address))
 
@@ -170,12 +168,13 @@ class JobSupervisor:
     async def launch(
         self,
         *,
-        runtime_env: Optional[Dict[str, Any]] = None,
-        metadata: Optional[Dict[str, str]] = None,
+        entrypoint: str,
         entrypoint_num_cpus: Optional[Union[int, float]] = None,
         entrypoint_num_gpus: Optional[Union[int, float]] = None,
         entrypoint_memory: Optional[int] = None,
         entrypoint_resources: Optional[Dict[str, float]] = None,
+        runtime_env: Optional[Dict[str, Any]] = None,
+        metadata: Optional[Dict[str, str]] = None,
         _start_signal_actor: Optional[ActorHandle] = None,
     ):
         """Launches execution of the Ray Job
@@ -207,7 +206,7 @@ class JobSupervisor:
         self._logger.info(f"({self._job_id}) Starting job")
 
         job_info = JobInfo(
-            entrypoint=self._entrypoint,
+            entrypoint=entrypoint,
             status=JobStatus.PENDING,
             start_time=int(time.time() * 1000),
             metadata=metadata,
@@ -239,12 +238,13 @@ class JobSupervisor:
         # NOTE: This task is not shielded b/c it's never being awaited on
         self._executing_task = self._loop.create_task(
             self._execute(
-                runtime_env=runtime_env,
-                metadata=metadata,
+                entrypoint=entrypoint,
                 entrypoint_num_cpus=entrypoint_num_cpus,
                 entrypoint_num_gpus=entrypoint_num_gpus,
                 entrypoint_memory=entrypoint_memory,
                 entrypoint_resources=entrypoint_resources,
+                runtime_env=runtime_env,
+                metadata=metadata,
                 _start_signal_actor=_start_signal_actor,
             )
         )
@@ -257,12 +257,13 @@ class JobSupervisor:
     async def _execute(
         self,
         *,
-        runtime_env: Optional[Dict[str, Any]] = None,
-        metadata: Optional[Dict[str, str]] = None,
+        entrypoint: str,
         entrypoint_num_cpus: Optional[Union[int, float]] = None,
         entrypoint_num_gpus: Optional[Union[int, float]] = None,
         entrypoint_memory: Optional[int] = None,
         entrypoint_resources: Optional[Dict[str, float]] = None,
+        runtime_env: Optional[Dict[str, Any]] = None,
+        metadata: Optional[Dict[str, str]] = None,
         _start_signal_actor: Optional[ActorHandle] = None,
     ) -> JobStatus:
         message: Optional[str] = None
@@ -275,12 +276,13 @@ class JobSupervisor:
             self._logger.info(f"({self._job_id}) Creating executor actor for job")
 
             executor = await self._create_executor_actor(
-                runtime_env=runtime_env,
-                metadata=metadata,
+                entrypoint=entrypoint,
                 entrypoint_num_cpus=entrypoint_num_cpus,
                 entrypoint_num_gpus=entrypoint_num_gpus,
                 entrypoint_memory=entrypoint_memory,
                 entrypoint_resources=entrypoint_resources,
+                runtime_env=runtime_env,
+                metadata=metadata,
             )
 
             # NOTE: This is only used in testing
@@ -371,12 +373,13 @@ class JobSupervisor:
     async def _create_executor_actor(
         self,
         *,
-        runtime_env: Optional[Dict[str, Any]],
-        metadata: Optional[Dict[str, str]],
+        entrypoint: str,
         entrypoint_num_cpus: Optional[Union[int, float]],
         entrypoint_num_gpus: Optional[Union[int, float]],
         entrypoint_memory: Optional[int],
         entrypoint_resources: Optional[Dict[str, float]],
+        runtime_env: Optional[Dict[str, Any]],
+        metadata: Optional[Dict[str, str]],
     ) -> ActorHandle:
         resources_specified = any(
             [
@@ -406,7 +409,7 @@ class JobSupervisor:
             namespace=SUPERVISOR_ACTOR_RAY_NAMESPACE,
         ).remote(
             job_id=self._job_id,
-            entrypoint=self._entrypoint,
+            entrypoint=entrypoint,
             user_metadata=metadata or {},
             entrypoint_resources_specified=resources_specified,
         )

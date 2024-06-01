@@ -149,7 +149,6 @@ class JobManager:
 
             supervisor = JobSupervisor(
                 job_id=submission_id,
-                entrypoint=entrypoint,
                 gcs_address=self._gcs_address,
                 logs_dir=self._logs_dir,
                 startup_timeout_s=startup_timeout_s,
@@ -161,12 +160,13 @@ class JobManager:
             # `launch` method here to propagate right away any failures
             # raised during job's launching sequence
             await supervisor.launch(
-                runtime_env=runtime_env,
-                metadata=metadata,
+                entrypoint=entrypoint,
                 entrypoint_num_cpus=entrypoint_num_cpus,
                 entrypoint_num_gpus=entrypoint_num_gpus,
                 entrypoint_memory=entrypoint_memory,
                 entrypoint_resources=entrypoint_resources,
+                runtime_env=runtime_env,
+                metadata=metadata,
                 _start_signal_actor=_start_signal_actor,
             )
 
