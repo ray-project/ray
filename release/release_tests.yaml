@@ -2754,7 +2754,7 @@
   cluster:
     byod:
       type: gpu
-      post_build_script: byod_rllib_test.sh
+      # post_build_script: byod_rllib_test.sh
       # Only DreamerV3 still uses tf on the new API stack. But requires tf==2.11.1 to run.
       pip:
         - tensorflow==2.11.1
