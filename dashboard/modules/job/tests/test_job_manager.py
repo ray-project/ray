@@ -565,7 +565,7 @@ class TestShellScriptExecution:
 
             assert "Exception: Script failed with exception !" in data.message
 
-            return _get_supervisor_actor_for_job(job_id) is None
+            return _get_executor_actor_for_job(job_id) is None
 
         await async_wait_for_condition_async_predicate(cleaned_up)
 
