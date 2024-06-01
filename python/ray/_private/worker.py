@@ -50,6 +50,8 @@ import ray._private.services as services
 import ray._private.state
 import ray._private.storage as storage
 
+from ray._private.structured_logging.logging_config import LoggingConfig
+
 # Ray modules
 import ray.actor
 import ray.cloudpickle as pickle  # noqa
@@ -1228,6 +1230,7 @@ def init(
     configure_logging: bool = True,
     logging_level: int = ray_constants.LOGGER_LEVEL,
     logging_format: Optional[str] = None,
+    logging_config: Optional[LoggingConfig] = None,
     log_to_driver: bool = True,
     namespace: Optional[str] = None,
     runtime_env: Optional[Union[Dict[str, Any], "RuntimeEnv"]] = None,  # noqa: F821
@@ -1328,6 +1331,8 @@ def init(
             timestamp, filename, line number, and message. See the source file
             ray_constants.py for details. Ignored unless "configure_logging"
             is true.
+        logging_config: Logging configuration will be applied to both the driver
+            process and all worker processes belonging to the same job.
         log_to_driver: If true, the output from all of the worker
             processes on all nodes will be directed to the driver.
         namespace: A namespace is a logical grouping of jobs and named actors.
@@ -1380,10 +1385,16 @@ def init(
         Exception: An exception is raised if an inappropriate combination of
             arguments is passed in.
     """
+    # Configure the "ray" logger for the driver process.
     if configure_logging:
         setup_logger(logging_level, logging_format or ray_constants.LOGGER_FORMAT)
     else:
         logging.getLogger("ray").handlers.clear()
+
+    # Configure the logging settings for the driver process.
+    if logging_config:
+        dict_config = logging_config.get_dict_config()
+        logging.config.dictConfig(dict_config)
 
     # Parse the hidden options:
     _enable_object_reconstruction: bool = kwargs.pop(
@@ -1556,6 +1567,11 @@ def init(
         if runtime_env:
             # Set runtime_env in job_config if passed in as part of ray.init()
             job_config.set_runtime_env(runtime_env)
+
+    # Pass the logging_config to job_config to configure loggers of all worker
+    # processes belonging to the job.
+    if logging_config:
+        job_config.set_logging_config(logging_config)
 
     redis_address, gcs_address = None, None
     bootstrap_address = services.canonicalize_bootstrap_address(address, _temp_dir)

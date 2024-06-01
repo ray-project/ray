@@ -2,65 +2,11 @@ import uuid
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
 import ray.cloudpickle as pickle
-from ray._private.structured_logging.constants import LOG_MODE_DICT
+from ray._private.structured_logging.logging_config import LoggingConfig
 from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
     from ray.runtime_env import RuntimeEnv
-
-
-@PublicAPI(stability="alpha")
-class LoggingConfig:
-    def __init__(self, dict_config: Union[dict, str] = "TEXT", log_level: str = "INFO"):
-        """
-        The class is used to store the Python logging configuration. It will be passed
-        to all Ray tasks and actors that belong to this job.
-
-        Examples:
-            .. testcode::
-
-                import ray
-                import logging
-                from ray.job_config import LoggingConfig
-
-                ray.init(
-                    job_config=ray.job_config.JobConfig(py_logging_config=LoggingConfig("TEXT"))
-                )
-
-                @ray.remote
-                def f():
-                    logger = logging.getLogger()
-                    logger.info("This is a Ray task")
-
-                obj_ref = f.remote()
-                ray.get(obj_ref)
-
-        Args:
-            dict_config: dict_config can be a string or a dictionary. If it is a
-                string, it should be one of the keys in LOG_MODE_DICT, which has
-                the corresponding predefined logging configuration. If it is a
-                dictionary, it should be a valid logging configuration dictionary
-                that can be passed to the function `logging.config.dictConfig`.
-            log_level: The log level for the logging configuration. It only takes
-                effect when dict_config is a string.
-        """
-        if isinstance(dict_config, str):
-            if dict_config not in LOG_MODE_DICT:
-                raise ValueError(
-                    f"Invalid encoding type: {dict_config}. "
-                    f"Valid encoding types are: {list(LOG_MODE_DICT.keys())}"
-                )
-        self.dict_config = dict_config
-        self.log_level = log_level
-
-    def get_dict_config(self) -> dict:
-        """Get the logging configuration based on the encoding type.
-        Returns:
-            dict: The logging configuration.
-        """
-        if isinstance(self.dict_config, str):
-            return LOG_MODE_DICT[self.dict_config](self.log_level)
-        return self.dict_config
 
 
 @PublicAPI
@@ -106,7 +52,6 @@ class JobConfig:
         ray_namespace: Optional[str] = None,
         default_actor_lifetime: str = "non_detached",
         _py_driver_sys_path: Optional[List[str]] = None,
-        py_logging_config: Optional[LoggingConfig] = None,
     ):
         #: The jvm options for java workers of the job.
         self.jvm_options = jvm_options or []
@@ -128,7 +73,7 @@ class JobConfig:
         # A list of directories that specify the search path for python workers.
         self._py_driver_sys_path = _py_driver_sys_path or []
         # Python logging configurations that will be passed to Ray tasks/actors.
-        self.py_logging_config = py_logging_config
+        self.logging_config = None
 
     def set_metadata(self, key: str, value: str) -> None:
         """Add key-value pair to the metadata dictionary.
@@ -173,6 +118,20 @@ class JobConfig:
         if validate:
             self.runtime_env = self._validate_runtime_env()
         self._cached_pb = None
+
+    def set_logging_config(
+        self,
+        logging_config: Optional[LoggingConfig] = None,
+    ):
+        """Set the logging configuration for the job.
+
+        The logging configuration will be applied to the root loggers of
+        all Ray task and actor processes that belong to this job.
+
+        Args:
+            logging_config: The logging configuration to set.
+        """
+        self.logging_config = logging_config
 
     def set_ray_namespace(self, ray_namespace: str) -> None:
         """Set Ray :ref:`namespace <namespaces-guide>`.
@@ -247,8 +206,8 @@ class JobConfig:
 
             if self._default_actor_lifetime is not None:
                 pb.default_actor_lifetime = self._default_actor_lifetime
-            if self.py_logging_config is not None:
-                pb.serialized_py_logging_config = pickle.dumps(self.py_logging_config)
+            if self.logging_config:
+                pb.serialized_logging_config = pickle.dumps(self.logging_config)
             self._cached_pb = pb
 
         return self._cached_pb

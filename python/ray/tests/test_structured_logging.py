@@ -158,7 +158,7 @@ class TestLoggingConfig:
 
     def test_invalid_dict_config(self):
         with pytest.raises(ValueError):
-            LoggingConfig(dict_config="INVALID").get_dict_config()
+            LoggingConfig(encoding="INVALID").get_dict_config()
 
 
 class TestTextModeE2E:
@@ -166,10 +166,9 @@ class TestTextModeE2E:
         script = """
 import ray
 import logging
-from ray.job_config import LoggingConfig
 
 ray.init(
-    job_config=ray.job_config.JobConfig(py_logging_config=LoggingConfig("TEXT"))
+    logging_config=ray.LoggingConfig("TEXT")
 )
 
 @ray.remote
@@ -197,10 +196,9 @@ ray.get(obj_ref)
         script = """
 import ray
 import logging
-from ray.job_config import LoggingConfig
 
 ray.init(
-    job_config=ray.job_config.JobConfig(py_logging_config=LoggingConfig("TEXT"))
+    logging_config=ray.LoggingConfig("TEXT")
 )
 
 @ray.remote

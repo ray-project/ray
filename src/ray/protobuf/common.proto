@@ -395,7 +395,7 @@ message JobConfig {
   // these paths to load modules.
   repeated string py_driver_sys_path = 8;
   // Python logging configurations that will be passed to Ray tasks/actors.
-  bytes serialized_py_logging_config = 9;
+  bytes serialized_logging_config = 9;
 }
 
 message StreamingGeneratorReturnIdInfo {

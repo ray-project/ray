@@ -191,20 +191,13 @@ def test_config_metadata(shutdown_only):
     assert dict(from_worker.metadata) == job_config.metadata
 
 
-class TestPyLoggingConfig:
-    def test_serialized_log_config_dict(self):
-        py_logging_config = LoggingConfig({"abc": "xyz"})
-        serialized_py_logging_config = pickle.dumps(py_logging_config)
-        job_config = JobConfig(py_logging_config=py_logging_config)
-        pb = job_config._get_proto_job_config()
-        assert pb.serialized_py_logging_config == serialized_py_logging_config
-
-    def test_log_config_str(self):
-        py_logging_config = LoggingConfig("TEXT")
-        serialized_py_logging_config = pickle.dumps(py_logging_config)
-        job_config = JobConfig(py_logging_config=py_logging_config)
-        pb = job_config._get_proto_job_config()
-        assert pb.serialized_py_logging_config == serialized_py_logging_config
+def test_logging_config_serialization():
+    logging_config = LoggingConfig("TEXT")
+    serialized_logging_config = pickle.dumps(logging_config)
+    job_config = JobConfig()
+    job_config.set_logging_config(logging_config)
+    pb = job_config._get_proto_job_config()
+    assert pb.serialized_logging_config == serialized_logging_config
 
 
 def test_get_entrypoint():
