@@ -248,6 +248,7 @@ class JobManager:
                 gcs_address=gcs_aio_client.address,
                 logs_dir=logs_dir,
                 startup_timeout_s=_get_job_startup_timeout_s(),
+                recovering=True,
             )
 
         return JobManager(gcs_aio_client, logs_dir, _recovered_supervisors=supervisors)
