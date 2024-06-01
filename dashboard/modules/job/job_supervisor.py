@@ -105,6 +105,7 @@ class JobSupervisor:
         gcs_address: str,
         logs_dir: str,
         startup_timeout_s: float,
+        recovering: bool = False,
     ):
         self._job_id = job_id
 
@@ -131,6 +132,11 @@ class JobSupervisor:
         self.event_logger: Optional[
             EventLoggerAdapter
         ] = self._create_job_events_logger(logs_dir)
+
+        # NOTE: In case job supervisor is being recovered we're starting
+        #       monitoring loop immediately
+        if recovering:
+            self._start_monitoring_loop()
 
     async def _check_job_driver_running(self) -> bool:
         """Checks whether the job executor is currently running"""
@@ -227,9 +233,7 @@ class JobSupervisor:
             )
 
         # Start monitoring loop
-        self._monitoring_task: asyncio.Task = self._loop.create_task(
-            self._monitor_job_internal()
-        )
+        self._start_monitoring_loop()
 
         # Job driver (entrypoint) is executed in a synchronous fashion,
         # therefore is performed as a background operation updating Ray Job's
@@ -369,6 +373,11 @@ class JobSupervisor:
                     )
 
             return status
+
+    def _start_monitoring_loop(self):
+        self._monitoring_task: asyncio.Task = self._loop.create_task(
+            self._monitor_job_internal()
+        )
 
     async def _create_executor_actor(
         self,
