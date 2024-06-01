@@ -873,7 +873,12 @@ class MultiAgentEpisode:
                     )
 
                 # Concatenate the env- to agent-timestep mappings.
-                self.env_t_to_agent_t[agent_id].extend(other.env_t_to_agent_t[agent_id])
+                j = self.env_t
+                for i, val in enumerate(other.env_t_to_agent_t[agent_id][1:]):
+                    if val == self.SKIP_ENV_TS_TAG:
+                        self.env_t_to_agent_t[agent_id].append(self.SKIP_ENV_TS_TAG)
+                    else:
+                        self.env_t_to_agent_t[agent_id].append(i + 1 + j)
 
             # Otherwise, the agent is only in `self` and not done. All data is stored
             # already -> skip
@@ -1883,7 +1888,7 @@ class MultiAgentEpisode:
         `env.step()` call.
 
         Returns:
-            A set of AgentIDs that are suposed to send actions to the next `env.step()`
+            A set of AgentIDs that are supposed to send actions to the next `env.step()`
             call.
         """
         return {
