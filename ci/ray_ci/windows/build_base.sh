@@ -5,11 +5,7 @@ set -ex
 echo "PATH=$PATH"
 
 # Delete the existing bazel and download bazelisk
-rm -rf /c/bazel
-mkdir -p /c/bazel
-curl -sfL https://github.com/bazelbuild/bazelisk/releases/download/v1.20.0/bazelisk-windows-amd64.exe -o /c/bazel/bazelisk.exe
-chmod +x /c/bazel/bazelisk.exe
-cp /c/bazel/bazelisk.exe /usr/bin/bazel
+powershell ci/ray_ci/windows/install_bazelisk.ps1
 
 command -v bazel
 command -v bazelisk
