@@ -35,7 +35,6 @@ from ray.dashboard.modules.job.common import (
     SUPERVISOR_ACTOR_RAY_NAMESPACE,
     JobInfoStorageClient,
     JobInfo,
-    _get_supervisor_actor_for_job,
 )
 from ray.dashboard.modules.job.job_log_storage_client import JobLogStorageClient
 from ray.exceptions import RuntimeEnvSetupError, ActorUnschedulableError, ActorDiedError
@@ -634,20 +633,6 @@ class JobSupervisor:
 
             self._logger.info(
                 f"({self._job_id}) Exiting job supervisor's monitoring loop"
-            )
-
-            # Kill the actor defensively to avoid leaking actors in unexpected error cases
-            self._take_poison_pill()
-
-    def _take_poison_pill(self):
-        job_supervisor_handle = _get_supervisor_actor_for_job(self._job_id)
-        if job_supervisor_handle is not None:
-            self._logger.info(f"({self._job_id}) Shutting down job supervisor actor")
-
-            ray.kill(job_supervisor_handle, no_restart=True)
-        else:
-            self._logger.info(
-                f"({self._job_id}) Job Supervisor actor not found, assuming it already shutdown"
             )
 
     def _get_job_started_at(self, job_info: Optional[JobInfo]) -> float:
