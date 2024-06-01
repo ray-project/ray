@@ -138,6 +138,7 @@ class DashboardHead:
         self.gcs_error_subscriber = None
         self.gcs_log_subscriber = None
         self.ip = node_ip_address
+
         DataOrganizer.head_node_ip = self.ip
 
         if self.minimal:

@@ -1,5 +1,8 @@
 import asyncio
 import logging
+from dataclasses import dataclass
+from typing import Any
+
 import ray.dashboard.consts as dashboard_consts
 
 from ray.dashboard.utils import (
@@ -10,6 +13,14 @@ from ray.dashboard.utils import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class AgentInfo:
+    ip_address: str
+    grpc_port: int
+    http_port: int
+    http_address: str
 
 
 class DataSource:
@@ -41,6 +52,7 @@ class DataSource:
 
 
 class DataOrganizer:
+
     head_node_ip = None
 
     @staticmethod
@@ -170,13 +182,15 @@ class DataOrganizer:
     @classmethod
     async def get_all_agent_infos(cls):
         agent_infos = dict()
+
         for node_id, (http_port, grpc_port) in DataSource.agents.items():
-            agent_infos[node_id] = dict(
-                ipAddress=DataSource.node_id_to_ip[node_id],
-                httpPort=int(http_port or -1),
-                grpcPort=int(grpc_port or -1),
-                httpAddress=f"{DataSource.node_id_to_ip[node_id]}:{http_port}",
+            agent_infos[node_id] = AgentInfo(
+                ip_address=DataSource.node_id_to_ip[node_id],
+                grpc_port=int(grpc_port or -1),
+                http_port=int(http_port or -1),
+                http_address=f"{DataSource.node_id_to_ip[node_id]}:{http_port}",
             )
+
         return agent_infos
 
     @classmethod
