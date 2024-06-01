@@ -5,7 +5,7 @@ set -ex
 echo "PATH=$PATH"
 
 # Delete the existing bazel and download bazelisk
-rm -f /c/bazel
+rm -rf /c/bazel
 mkdir -p /c/bazel
 curl -sfL https://github.com/bazelbuild/bazelisk/releases/download/v1.20.0/bazelisk-windows-amd64.exe -o /c/bazel/bazelisk.exe
 chmod +x /c/bazel/bazelisk.exe
