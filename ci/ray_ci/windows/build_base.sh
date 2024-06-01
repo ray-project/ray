@@ -7,9 +7,6 @@ echo "PATH=$PATH"
 # Delete the existing bazel and download bazelisk
 powershell ci/ray_ci/windows/install_bazelisk.ps1
 
-command -v bazel
-command -v bazelisk
-
 conda init 
 # newer requests version is needed for python 3.9+
 conda install -q -y python="${PYTHON}" requests=2.31.0
