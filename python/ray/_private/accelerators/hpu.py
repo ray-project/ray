@@ -26,6 +26,8 @@ HPU_PACKAGE_AVAILABLE = is_package_present("habana_frameworks")
 class HPUAcceleratorManager(AcceleratorManager):
     """Intel Habana(HPU) accelerators."""
 
+    _is_user_specified_resource = False
+
     @staticmethod
     def get_resource_name() -> str:
         return "HPU"
@@ -63,6 +65,11 @@ class HPUAcceleratorManager(AcceleratorManager):
                 logging.info("HPU devices not available")
                 return 0
         else:
+            if HPUAcceleratorManager._is_user_specified_resource:
+                logger.debug(
+                    "Intel Habana support requires the 'habana_frameworks' package,"
+                    "which is not installed."
+                )
             return 0
 
     @staticmethod

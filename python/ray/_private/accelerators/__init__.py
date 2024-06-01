@@ -33,6 +33,7 @@ def get_all_accelerator_resource_names() -> Set[str]:
 
 def get_accelerator_manager_for_resource(
     resource_name: str,
+    is_user_specified_resource: bool = False,
 ) -> Optional[AcceleratorManager]:
     """Get the corresponding accelerator manager for the given
     accelerator resource name
@@ -40,9 +41,18 @@ def get_accelerator_manager_for_resource(
     E.g., TPUAcceleratorManager is returned if resource name is "TPU"
     """
     try:
-        return get_accelerator_manager_for_resource._resource_name_to_accelerator_manager.get(  # noqa: E501
+        accelerator_manager = get_accelerator_manager_for_resource._resource_name_to_accelerator_manager.get(  # noqa: E501
             resource_name, None
         )
+        if is_user_specified_resource:
+            # GPU handling
+            if resource_name == "GPU":
+                AMDGPUAcceleratorManager.set_user_specified_resource(True)
+                IntelGPUAcceleratorManager.set_user_specified_resource(True)
+                NvidiaGPUAcceleratorManager.set_user_specified_resource(True)
+            else:
+                accelerator_manager.set_user_specified_resource(True)
+        return accelerator_manager
     except AttributeError:
         # Lazy initialization.
         resource_name_to_accelerator_manager = {

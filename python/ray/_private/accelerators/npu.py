@@ -16,6 +16,8 @@ NOSET_ASCEND_RT_VISIBLE_DEVICES_ENV_VAR = (
 class NPUAcceleratorManager(AcceleratorManager):
     """Ascend NPU accelerators."""
 
+    _is_user_specified_resource = False
+
     @staticmethod
     def get_resource_name() -> str:
         return "NPU"
@@ -63,7 +65,8 @@ class NPUAcceleratorManager(AcceleratorManager):
             npu_files = glob.glob("/dev/davinci?")
             return len(npu_files)
         except Exception as e:
-            logger.debug("Failed to detect number of NPUs: %s", e)
+            if NPUAcceleratorManager._is_user_specified_resource:
+                logger.debug("Failed to detect number of NPUs: %s", e)
         return 0
 
     @staticmethod

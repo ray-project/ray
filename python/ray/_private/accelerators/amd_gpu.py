@@ -27,6 +27,8 @@ amd_product_dict = {
 class AMDGPUAcceleratorManager(AcceleratorManager):
     """AMD GPU accelerators."""
 
+    _is_user_specified_resource = False
+
     @staticmethod
     def get_resource_name() -> str:
         return "GPU"
@@ -67,8 +69,14 @@ class AMDGPUAcceleratorManager(AcceleratorManager):
                     )
                     - 1
                 )
-            except Exception:
-                pass
+            except Exception as e:
+                if AMDGPUAcceleratorManager._is_user_specified_resource:
+                    logger.debug(
+                        "AMD ran into the following error"
+                        f"while getting number of GPUs: {e},"
+                        "you can ignore this message if you are"
+                        "not using AMD GPUs."
+                    )
         return num_gpus
 
     @staticmethod
