@@ -64,7 +64,6 @@ async def test_get_scheduling_strategy(
 
     job_supervisor = JobSupervisor(
         job_id="job_id",
-        entrypoint="/bin/bash echo 'Hi'",
         gcs_address=gcs_address,
         logs_dir="/tmp/logs",
         startup_timeout_s=1,
