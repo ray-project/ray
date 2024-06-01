@@ -2,9 +2,7 @@
 
 set -ex
 
-echo "PATH=$PATH"
-
-# Delete the existing bazel and download bazelisk
+# Delete the existing bazel and replace it with bazelisk.
 powershell ci/ray_ci/windows/install_bazelisk.ps1
 
 conda init 
