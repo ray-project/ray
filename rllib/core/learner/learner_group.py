@@ -220,6 +220,7 @@ class LearnerGroup:
         self,
         batch: MultiAgentBatch,
         *,
+        timesteps: Optional[Dict[str, Any]] = None,
         async_update: bool = False,
         # TODO (sven): Deprecate the following args. They should be extracted from
         #  self.config of those specific algorithms that actually require these
@@ -266,7 +267,7 @@ class LearnerGroup:
             )
         return self._update(
             batch=batch,
-            episodes=None,
+            timesteps=timesteps,
             async_update=async_update,
             minibatch_size=minibatch_size,
             num_iters=num_iters,
@@ -276,6 +277,7 @@ class LearnerGroup:
         self,
         episodes: List[EpisodeType],
         *,
+        timesteps: Optional[Dict[str, Any]] = None,
         async_update: bool = False,
         # TODO (sven): Deprecate the following args. They should be extracted from
         #  self.config of those specific algorithms that actually require these
@@ -322,8 +324,8 @@ class LearnerGroup:
             )
 
         return self._update(
-            batch=None,
             episodes=episodes,
+            timesteps=timesteps,
             async_update=async_update,
             minibatch_size=minibatch_size,
             num_iters=num_iters,
@@ -334,6 +336,7 @@ class LearnerGroup:
         *,
         batch: Optional[MultiAgentBatch] = None,
         episodes: Optional[List[EpisodeType]] = None,
+        timesteps: Optional[Dict[str, Any]] = None,
         async_update: bool = False,
         minibatch_size: Optional[int] = None,
         num_iters: int = 1,
@@ -342,22 +345,25 @@ class LearnerGroup:
         # Define function to be called on all Learner actors (or the local learner).
         def _learner_update(
             learner: Learner,
-            batch_shard=None,
-            episodes_shard=None,
-            min_total_mini_batches=0,
+            _batch_shard=None,
+            _episodes_shard=None,
+            _timesteps=None,
+            _min_total_mini_batches=0,
         ):
-            if batch_shard is not None:
+            if _batch_shard is not None:
                 return learner.update_from_batch(
-                    batch=batch_shard,
+                    batch=_batch_shard,
+                    timesteps=_timesteps,
                     minibatch_size=minibatch_size,
                     num_iters=num_iters,
                 )
             else:
                 return learner.update_from_episodes(
-                    episodes=episodes_shard,
+                    episodes=_episodes_shard,
+                    timesteps=_timesteps,
                     minibatch_size=minibatch_size,
                     num_iters=num_iters,
-                    min_total_mini_batches=min_total_mini_batches,
+                    min_total_mini_batches=_min_total_mini_batches,
                 )
 
         # Local Learner worker: Don't shard batch/episodes, just run data as-is through
@@ -372,8 +378,9 @@ class LearnerGroup:
             results = [
                 _learner_update(
                     learner=self._learner,
-                    batch_shard=batch,
-                    episodes_shard=episodes,
+                    _batch_shard=batch,
+                    _episodes_shard=episodes,
+                    _timesteps=timesteps,
                 )
             ]
         # One or more remote Learners: Shard batch/episodes into equal pieces (roughly
@@ -387,7 +394,9 @@ class LearnerGroup:
             #  "lockstep"), the `ShardBatchIterator` should not be used.
             if episodes is None:
                 partials = [
-                    partial(_learner_update, batch_shard=batch_shard)
+                    partial(
+                        _learner_update, _batch_shard=batch_shard, _timesteps=timesteps
+                    )
                     for batch_shard in ShardBatchIterator(batch, len(self._workers))
                 ]
             # Single- or MultiAgentEpisodes: Shard into equal pieces (only roughly equal
@@ -424,8 +433,9 @@ class LearnerGroup:
                 partials = [
                     partial(
                         _learner_update,
-                        episodes_shard=eps_shard,
-                        min_total_mini_batches=min_total_mini_batches,
+                        _episodes_shard=eps_shard,
+                        _timesteps=timesteps,
+                        _min_total_mini_batches=min_total_mini_batches,
                     )
                     for eps_shard in eps_shards
                 ]

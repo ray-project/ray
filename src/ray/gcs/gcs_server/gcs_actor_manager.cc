@@ -205,17 +205,35 @@ const ray::rpc::ActorDeathCause GcsActorManager::GenNodeDiedCause(
     const std::string ip_address,
     std::shared_ptr<rpc::GcsNodeInfo> node) {
   ray::rpc::ActorDeathCause death_cause;
+
   auto actor_died_error_ctx = death_cause.mutable_actor_died_error_context();
   AddActorInfo(actor, actor_died_error_ctx);
-  actor_died_error_ctx->set_error_message(
-      absl::StrCat("The actor is dead because its node has died. Node Id: ",
-                   NodeID::FromBinary(node->node_id()).Hex()));
+  auto node_death_info = actor_died_error_ctx->mutable_node_death_info();
+  node_death_info->CopyFrom(node->death_info());
 
-  // TODO(vitsai): Publish this information as well
-  if (auto death_info = node->death_info();
-      death_info.reason() == rpc::NodeDeathInfo::AUTOSCALER_DRAIN_PREEMPTED) {
-    actor_died_error_ctx->set_preempted(true);
+  std::ostringstream oss;
+  oss << "The actor died because its node has died. Node Id: "
+      << NodeID::FromBinary(node->node_id()).Hex() << "\n";
+  switch (node_death_info->reason()) {
+  case rpc::NodeDeathInfo::EXPECTED_TERMINATION:
+    oss << "\tthe actor's node was terminated expectedly: ";
+    break;
+  case rpc::NodeDeathInfo::UNEXPECTED_TERMINATION:
+    oss << "\tthe actor's node was terminated unexpectedly: ";
+    break;
+  case rpc::NodeDeathInfo::AUTOSCALER_DRAIN_PREEMPTED:
+    oss << "\tthe actor's node was preempted: ";
+    break;
+  default:
+    // Control should not reach here, but in case it happens in unexpected scenarios,
+    // log it and provide a generic message to the user.
+    RAY_LOG(ERROR) << "Actor death is not expected to be caused by "
+                   << rpc::NodeDeathInfo_Reason_Name(node_death_info->reason());
+    oss << "\tthe actor's node was terminated: ";
   }
+  oss << node_death_info->reason_message();
+  actor_died_error_ctx->set_error_message(oss.str());
+
   return death_cause;
 }
 
@@ -259,8 +277,10 @@ void GcsActorManager::HandleRegisterActor(rpc::RegisterActorRequest request,
   auto actor_id =
       ActorID::FromBinary(request.task_spec().actor_creation_task_spec().actor_id());
 
-  RAY_LOG(INFO) << "Registering actor, job id = " << actor_id.JobId()
-                << ", actor id = " << actor_id;
+  RAY_LOG(INFO)
+          .WithField(kLogKeyJobID, actor_id.JobId())
+          .WithField(kLogKeyActorID, actor_id)
+      << "Registering actor";
   Status status =
       RegisterActor(request,
                     [reply, send_reply_callback, actor_id](
