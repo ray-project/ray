@@ -1,4 +1,3 @@
-import asyncio
 import logging
 import os
 import random
@@ -48,7 +47,13 @@ class JobManager:
 
     WAIT_FOR_ACTOR_DEATH_TIMEOUT_S = 0.1
 
-    def __init__(self, gcs_aio_client: GcsAioClient, logs_dir: str):
+    def __init__(
+        self,
+        gcs_aio_client: GcsAioClient,
+        logs_dir: str,
+        *,
+        _recovered_supervisors: Dict[str, JobSupervisor] = None
+    ):
         self._gcs_aio_client = gcs_aio_client
         self._job_info_client = JobInfoStorageClient(gcs_aio_client)
         self._gcs_address = gcs_aio_client.address
@@ -56,9 +61,7 @@ class JobManager:
         self._log_client = JobLogStorageClient()
         self._logs_dir = logs_dir
 
-        self._job_supervisors: Dict[str, JobSupervisor] = {}
-
-        # TODO add job supervisors recovery on restart
+        self._job_supervisors: Dict[str, JobSupervisor] = _recovered_supervisors or {}
 
     async def submit_job(
         self,
@@ -147,14 +150,14 @@ class JobManager:
             if submission_id in self._job_supervisors:
                 raise ValueError(f"Job with submission id {submission_id} already exists")
 
-            supervisor = JobSupervisor(
-                job_id=submission_id,
-                gcs_address=self._gcs_address,
-                logs_dir=self._logs_dir,
-                startup_timeout_s=startup_timeout_s,
+            self._job_supervisors[submission_id] = supervisor = (
+                JobSupervisor(
+                    job_id=submission_id,
+                    gcs_address=self._gcs_address,
+                    logs_dir=self._logs_dir,
+                    startup_timeout_s=startup_timeout_s,
+                )
             )
-
-            self._job_supervisors[submission_id] = supervisor
 
             # Job execution process is async, however we await on the
             # `launch` method here to propagate right away any failures
@@ -231,6 +234,34 @@ class JobManager:
                 yield "".join(lines)
             else:
                 return
+
+    @classmethod
+    async def create(cls, gcs_aio_client: GcsAioClient, logs_dir: str):
+        job_info_client = JobInfoStorageClient(gcs_aio_client)
+
+        active_job_infos = await _fetch_active_job_infos(job_info_client)
+        supervisors = {}
+
+        for job_id, job_info in active_job_infos.items():
+            supervisors[job_id] = JobSupervisor(
+                job_id=job_id,
+                gcs_address=gcs_aio_client.address,
+                logs_dir=logs_dir,
+                startup_timeout_s=_get_job_startup_timeout_s(),
+            )
+
+        return JobManager(gcs_aio_client, logs_dir, _recovered_supervisors=supervisors)
+
+
+async def _fetch_active_job_infos(job_info_client: JobInfoStorageClient) -> dict[str, JobInfo]:
+    active_job_infos: Dict[str, JobInfo] = {}
+
+    all_jobs = await job_info_client.get_all_jobs()
+    for job_id, job_info in all_jobs.items():
+        if not job_info.status.is_terminal():
+            active_job_infos[job_id] = job_info
+
+    return active_job_infos
 
 
 def _get_job_startup_timeout_s() -> float:
