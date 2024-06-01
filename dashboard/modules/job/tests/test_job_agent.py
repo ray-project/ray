@@ -28,8 +28,7 @@ from ray._private.test_utils import (
 from ray.dashboard.modules.job.common import (
     JobSubmitRequest,
     validate_request_type,
-    JOB_ACTOR_NAME_TEMPLATE,
-    SUPERVISOR_ACTOR_RAY_NAMESPACE,
+    SUPERVISOR_ACTOR_RAY_NAMESPACE, JOB_EXECUTOR_ACTOR_NAME_TEMPLATE,
 )
 from ray.dashboard.tests.conftest import *  # noqa
 from ray.runtime_env.runtime_env import RuntimeEnv, RuntimeEnvConfig
@@ -51,7 +50,7 @@ DRIVER_SCRIPT_DIR = os.path.join(os.path.dirname(__file__), "subprocess_driver_s
 EVENT_LOOP = get_or_create_event_loop()
 
 
-def get_node_id_for_supervisor_actor_for_job(
+def _get_executor_actor_node_id(
     address: str, job_submission_id: str
 ) -> str:
     actors = list_actors(
@@ -59,8 +58,9 @@ def get_node_id_for_supervisor_actor_for_job(
         filters=[("ray_namespace", "=", SUPERVISOR_ACTOR_RAY_NAMESPACE)],
     )
     for actor in actors:
-        if actor.name == JOB_ACTOR_NAME_TEMPLATE.format(job_id=job_submission_id):
+        if actor.name == JOB_EXECUTOR_ACTOR_NAME_TEMPLATE.format(job_id=job_submission_id):
             return actor.node_id
+
     raise ValueError(f"actor not found for job_submission_id {job_submission_id}")
 
 
@@ -486,7 +486,7 @@ async def test_job_log_in_multiple_node(
                 continue
             result_log = f"hello index-{index}"
             # Try to get the node id which supervisor actor running in.
-            node_id = get_node_id_for_supervisor_actor_for_job(cluster.address, job_id)
+            node_id = _get_executor_actor_node_id(cluster.address, job_id)
             for node_info in summary:
                 if node_info["raylet"]["nodeId"] == node_id:
                     break

@@ -19,10 +19,6 @@ from ray.util.annotations import PublicAPI
 # they're exposed in the snapshot API.
 JOB_ID_METADATA_KEY = "job_submission_id"
 JOB_NAME_METADATA_KEY = "job_name"
-# TODO rename to be JS actor
-JOB_ACTOR_NAME_TEMPLATE = (
-    f"{ray_constants.RAY_INTERNAL_NAMESPACE_PREFIX}job_actor_" + "{job_id}"
-)
 JOB_EXECUTOR_ACTOR_NAME_TEMPLATE = (
     f"{ray_constants.RAY_INTERNAL_NAMESPACE_PREFIX}job_executor_actor_" + "{job_id}"
 )
@@ -472,18 +468,6 @@ class JobDeleteResponse:
 @dataclass
 class JobLogsResponse:
     logs: str
-
-
-def _get_supervisor_actor_for_job(job_id: str) -> Optional[ActorHandle]:
-    """Fetches JobSupervisor actor for job identified by Ray Job (submission) id"""
-    try:
-        return ray.get_actor(
-            JOB_ACTOR_NAME_TEMPLATE.format(job_id=job_id),
-            namespace=SUPERVISOR_ACTOR_RAY_NAMESPACE,
-        )
-    except ValueError as ve:  # Ray returns ValueError for nonexistent actor.
-        logger.warning(f"Job supervisor for job {job_id} not found: {str(ve)}")
-        return None
 
 
 def _get_executor_actor_for_job(job_id: str) -> Optional[ActorHandle]:

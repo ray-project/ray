@@ -26,7 +26,6 @@ from ray._private.test_utils import (
 from ray.dashboard.modules.job.common import (
     JOB_ID_METADATA_KEY,
     JOB_NAME_METADATA_KEY,
-    _get_supervisor_actor_for_job,
     _get_executor_actor_for_job,
 )
 from ray.dashboard.modules.job.job_supervisor import JobExecutor, JobSupervisor
