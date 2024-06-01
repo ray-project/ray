@@ -1689,7 +1689,7 @@ def get_and_run_resource_killer(
             node_id=head_node_id, soft=False
         ),
         namespace=namespace,
-        name="ChaosInjector",
+        name="ResourceKiller",
         lifetime=lifetime,
     ).remote(
         head_node_id,
@@ -1697,9 +1697,9 @@ def get_and_run_resource_killer(
         max_to_kill=max_to_kill,
         kill_filter_fn=kill_filter_fn,
     )
-    print("Waiting for ChaosInjector to be ready...")
+    print("Waiting for ResourceKiller to be ready...")
     ray.get(resource_killer.ready.remote())
-    print("ChaosInjectoris ready now.")
+    print("ResourceKiller is ready now.")
     if not no_start:
         time.sleep(kill_delay_s)
         resource_killer.run.remote()
