@@ -58,6 +58,8 @@ class JobManager:
 
         self._job_supervisors: Dict[str, JobSupervisor] = {}
 
+        # TODO add job supervisors recovery on restart
+
     async def submit_job(
         self,
         *,
