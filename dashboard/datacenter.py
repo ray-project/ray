@@ -180,7 +180,15 @@ class DataOrganizer:
         ]
 
     @classmethod
-    async def get_all_agent_infos(cls):
+    async def get_head_node_agent(cls) -> AgentInfo:
+        agent_infos = await cls.get_all_agent_infos()
+
+        for node_id, info in agent_infos:
+            if info.ip_address == cls.head_node_ip:
+                return info
+
+    @classmethod
+    async def get_all_agent_infos(cls) -> Dict[Any, AgentInfo]:
         agent_infos = dict()
 
         for node_id, (http_port, grpc_port) in DataSource.agents.items():
