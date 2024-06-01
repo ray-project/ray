@@ -138,8 +138,9 @@ class DataOrganizer:
 
         # Merge GcsNodeInfo to node physical stats
         node_info["raylet"].update(node)
+        death_info = node.get("deathInfo", {})
         node_info["raylet"]["stateMessage"] = compose_state_message(
-            node.get("deathInfo", {})
+            death_info.get("reason", None), death_info.get("reasonMessage", None)
         )
 
         if not get_summary:
