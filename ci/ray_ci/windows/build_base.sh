@@ -2,6 +2,11 @@
 
 set -ex
 
+curl -sfL https://github.com/bazelbuild/bazelisk/releases/download/v1.20.0/bazelisk-windows-amd64.exe -o bazel.exe
+
+echo "PATH is $PATH"
+echo $PATH
+
 conda init 
 # newer requests version is needed for python 3.9+
 conda install -q -y python="${PYTHON}" requests=2.31.0
