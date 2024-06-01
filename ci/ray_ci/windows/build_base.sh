@@ -2,10 +2,11 @@
 
 set -ex
 
-curl -sfL https://github.com/bazelbuild/bazelisk/releases/download/v1.20.0/bazelisk-windows-amd64.exe -o bazelisk.exe
+curl -sfL https://github.com/bazelbuild/bazelisk/releases/download/v1.20.0/bazelisk-windows-amd64.exe -o /c/bazelisk.exe
 
 echo "PATH is $PATH"
 echo $PATH
+which bazel
 
 conda init 
 # newer requests version is needed for python 3.9+

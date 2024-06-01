@@ -2,6 +2,8 @@
 
 set -ex
 
+export BAZEL_PATH=/c/bazelisk.exe
+
 git config --global core.symlinks true
 git config --global core.autocrlf false
 mkdir -p /c/rayci
@@ -28,4 +30,4 @@ pip install -v -e python
 pip wheel -e python -w .whl
 
 # Clean up caches to speed up docker build
-bazel clean --expunge
+"$BAZEL_PATH" clean --expunge
