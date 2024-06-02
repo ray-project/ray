@@ -698,6 +698,17 @@ def test_reporter_worker_cpu_percent():
 
     class ReporterAgentDummy(object):
         _workers = {}
+        _attrs = [
+            "pid",
+            "create_time",
+            "cpu_percent",
+            "cpu_times",
+            "cmdline",
+            "memory_info",
+            "memory_full_info",
+        ]
+        if sys.platform != "win32":
+            _attrs.append("num_fds")
 
         def _get_raylet_proc(self):
             return raylet_dummy_proc_f()
@@ -793,7 +804,7 @@ def test_get_task_traceback_running_task(shutdown_only):
     params = {
         "task_id": task.task_id().hex(),
         "attempt_number": 0,
-        "node_id": ray.get_runtime_context().node_id.hex(),
+        "node_id": ray.get_runtime_context().get_node_id(),
     }
 
     def verify():
@@ -840,7 +851,7 @@ def test_get_memory_profile_running_task(shutdown_only):
     params = {
         "task_id": task.task_id().hex(),
         "attempt_number": 0,
-        "node_id": ray.get_runtime_context().node_id.hex(),
+        "node_id": ray.get_runtime_context().get_node_id(),
         "duration": 5,
     }
 
