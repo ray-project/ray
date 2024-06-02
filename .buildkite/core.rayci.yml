@@ -35,6 +35,7 @@ steps:
       - "3.9"
       - "3.10"
       - "3.11"
+      - "3.12"
     env:
       PYTHON_VERSION: "{{matrix}}"
       EXTRA_DEPENDENCY: core
@@ -243,6 +244,7 @@ steps:
       - "3.9"
       - "3.10"
       - "3.11"
+      - "3.12"
 
   # cpp tests
   - label: ":ray: core: cpp tests"
