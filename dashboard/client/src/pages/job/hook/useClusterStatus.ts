@@ -3,7 +3,7 @@ import { API_REFRESH_INTERVAL_MS } from "../../../common/constants";
 import { getRayStatus } from "../../../service/status";
 
 export const useRayStatus = () => {
-  const { data: cluster_status } = useSWR(
+  const { data: clusterStatus } = useSWR(
     "useClusterStatus",
     async () => {
       try {
@@ -19,6 +19,6 @@ export const useRayStatus = () => {
   );
 
   return {
-    cluster_status,
+    clusterStatus,
   };
 };
