@@ -4477,7 +4477,7 @@
 # Core Chaos tests
 ##################
 
-- name: chaos_many_tasks_no_object_store
+- name: chaos_many_tasks_kill_raylet
   group: core-nightly-test
   working_dir: nightly_tests
 
@@ -4502,7 +4502,27 @@
       cluster:
         cluster_compute: chaos_test/compute_template_gce.yaml
 
-- name: chaos_many_actors
+- name: chaos_many_tasks_terminate_instance
+  group: core-nightly-test
+  working_dir: nightly_tests
+
+  frequency: nightly
+  team: core
+  cluster:
+    byod: {}
+    cluster_compute: chaos_test/compute_template.yaml
+
+  run:
+    timeout: 3600
+    wait_for_nodes:
+      num_nodes: 10
+    prepare: python setup_chaos.py --no-start --chaos TerminateEC2Instance
+    script: python chaos_test/test_chaos_basic.py --workload=tasks
+
+  variations:
+    - __suffix__: aws
+
+- name: chaos_many_actors_kill_raylet
   group: core-nightly-test
   working_dir: nightly_tests
 
@@ -4527,6 +4547,25 @@
       cluster:
         cluster_compute: chaos_test/compute_template_gce.yaml
 
+- name: chaos_many_actors_terminate_instance
+  group: core-nightly-test
+  working_dir: nightly_tests
+
+  frequency: nightly
+  team: core
+  cluster:
+    byod: {}
+    cluster_compute: chaos_test/compute_template.yaml
+
+  run:
+    timeout: 4200
+    wait_for_nodes:
+      num_nodes: 10
+    prepare: python setup_chaos.py --no-start --chaos TerminateEC2Instance
+    script: python chaos_test/test_chaos_basic.py --workload=actors
+
+  variations:
+    - __suffix__: aws
 
 - name: chaos_dask_on_ray_large_scale_test_no_spilling
   group: data-tests
@@ -4607,7 +4646,7 @@
 
   run:
     timeout: 7200
-    prepare: ' python setup_chaos.py --kill-interval 1200 --max-to-kill 3'
+    prepare: 'python setup_chaos.py --kill-interval 1200 --max-to-kill 3'
     script: RAY_DATA_PUSH_BASED_SHUFFLE=1 python dataset/sort.py --num-partitions=1000 --partition-size=1e9
     wait_for_nodes:
       num_nodes: 20
