@@ -116,6 +116,9 @@ def random_work():
         np.random.rand(5 * 1024 * 1024)  # 40 MB
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32", reason="setproctitle does not change psutil.cmdline"
+)
 def test_node_physical_stats(enable_test_module, shutdown_only):
     addresses = ray.init(include_dashboard=True, num_cpus=6)
 
