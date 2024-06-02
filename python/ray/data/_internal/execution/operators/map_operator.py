@@ -402,6 +402,9 @@ class MapOperator(OneToOneOperator, ABC):
     def incremental_resource_usage(self) -> ExecutionResources:
         raise NotImplementedError
 
+    def implements_accurate_memory_accounting(self) -> bool:
+        return True
+
 
 def _map_task(
     map_transformer: MapTransformer,

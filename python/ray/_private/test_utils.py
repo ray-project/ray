@@ -1493,8 +1493,7 @@ class ResourceKillerActor:
         return self.killed
 
 
-@ray.remote(num_cpus=0)
-class NodeKillerActor(ResourceKillerActor):
+class NodeKillerBase(ResourceKillerActor):
     async def _find_resource_to_kill(self):
         node_to_kill_ip = None
         node_to_kill_port = None
@@ -1521,6 +1520,16 @@ class NodeKillerActor(ResourceKillerActor):
 
         return node_id, node_to_kill_ip, node_to_kill_port
 
+    def _get_alive_nodes(self, nodes):
+        alive_nodes = 0
+        for node in nodes:
+            if node["Alive"]:
+                alive_nodes += 1
+        return alive_nodes
+
+
+@ray.remote(num_cpus=0)
+class RayletKiller(NodeKillerBase):
     def _kill_resource(self, node_id, node_to_kill_ip, node_to_kill_port):
         if node_to_kill_port is not None:
             try:
@@ -1531,6 +1540,33 @@ class NodeKillerActor(ResourceKillerActor):
                 f"Killed node {node_id} at address: "
                 f"{node_to_kill_ip}, port: {node_to_kill_port}"
             )
+            self.killed.add(node_id)
+
+    def _kill_raylet(self, ip, port, graceful=False):
+        import grpc
+        from grpc._channel import _InactiveRpcError
+        from ray.core.generated import node_manager_pb2_grpc
+
+        raylet_address = f"{ip}:{port}"
+        channel = grpc.insecure_channel(raylet_address)
+        stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)
+        try:
+            stub.ShutdownRaylet(
+                node_manager_pb2.ShutdownRayletRequest(graceful=graceful)
+            )
+        except _InactiveRpcError:
+            assert not graceful
+
+
+@ray.remote(num_cpus=0)
+class EC2InstanceTerminator(NodeKillerBase):
+    def _kill_resource(self, node_id, node_to_kill_ip, _):
+        if node_to_kill_ip is not None:
+            try:
+                self._terminate_ec2_instance(node_to_kill_ip)
+            except Exception:
+                pass
+            logging.info(f"Terminated instance, {node_id=}, address={node_to_kill_ip}")
             self.killed.add(node_id)
 
     def _terminate_ec2_instance(self, ip):
@@ -1551,28 +1587,6 @@ class NodeKillerActor(ResourceKillerActor):
         )
         print(f"STDOUT:\n{result.stdout}\n")
         print(f"STDERR:\n{result.stderr}\n")
-
-    def _kill_raylet(self, ip, port, graceful=False):
-        import grpc
-        from grpc._channel import _InactiveRpcError
-        from ray.core.generated import node_manager_pb2_grpc
-
-        raylet_address = f"{ip}:{port}"
-        channel = grpc.insecure_channel(raylet_address)
-        stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)
-        try:
-            stub.ShutdownRaylet(
-                node_manager_pb2.ShutdownRayletRequest(graceful=graceful)
-            )
-        except _InactiveRpcError:
-            assert not graceful
-
-    def _get_alive_nodes(self, nodes):
-        alive_nodes = 0
-        for node in nodes:
-            if node["Alive"]:
-                alive_nodes += 1
-        return alive_nodes
 
 
 @ray.remote(num_cpus=0)
@@ -1667,7 +1681,6 @@ def get_and_run_resource_killer(
     kill_filter_fn=None,
 ):
     assert ray.is_initialized(), "The API is only available when Ray is initialized."
-    name = resource_killer_cls.__ray_actor_class__.__name__
 
     head_node_id = ray.get_runtime_context().get_node_id()
     # Schedule the actor on the current node.
@@ -1676,7 +1689,7 @@ def get_and_run_resource_killer(
             node_id=head_node_id, soft=False
         ),
         namespace=namespace,
-        name=name,
+        name="ResourceKiller",
         lifetime=lifetime,
     ).remote(
         head_node_id,
@@ -1684,9 +1697,9 @@ def get_and_run_resource_killer(
         max_to_kill=max_to_kill,
         kill_filter_fn=kill_filter_fn,
     )
-    print(f"Waiting for {name} to be ready...")
+    print("Waiting for ResourceKiller to be ready...")
     ray.get(resource_killer.ready.remote())
-    print(f"{name} is ready now.")
+    print("ResourceKiller is ready now.")
     if not no_start:
         time.sleep(kill_delay_s)
         resource_killer.run.remote()
