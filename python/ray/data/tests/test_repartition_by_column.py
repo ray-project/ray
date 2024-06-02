@@ -2,10 +2,7 @@ import numpy as np
 import pyarrow as pa
 import pytest
 
-from ray.data._internal.planner.repartition_by_column import (
-    merge_tables,
-    split_single_block,
-)
+from ray.data._internal.planner.repartition_by_column import split_single_block
 
 """Unit tests for the repartition_by_column module.
 

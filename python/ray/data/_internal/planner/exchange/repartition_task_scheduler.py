@@ -1,8 +1,8 @@
+import logging
 import time
 from typing import Any, Dict, List, Optional, Tuple, TypeVar
 
 import ray
-from ray.data._internal.dataset_logger import DatasetLogger
 from ray.data._internal.execution.interfaces import RefBundle, TaskContext
 from ray.data._internal.planner.exchange.interfaces import ExchangeTaskScheduler
 from ray.data._internal.planner.exchange.repartition_task_spec import (
@@ -12,7 +12,7 @@ from ray.data._internal.repartition_by_column import repartition_runner
 from ray.data._internal.stats import StatsDict
 from ray.data.block import BlockMetadata
 
-logger = DatasetLogger(__name__)
+logger = logging.getLogger(__name__)
 
 
 KeyType = TypeVar("KeyType")
@@ -37,7 +37,7 @@ class RepartitionByColumnTaskScheduler(ExchangeTaskScheduler):
 
         input_owned_by_consumer = all(rb.owns_blocks for rb in refs)
 
-        logger.get_logger().info(f"number of RefBundles = {len(refs)}")
+        logger.info(f"number of RefBundles = {len(refs)}")
 
         if map_ray_remote_args is None:
             map_ray_remote_args = {}
@@ -57,9 +57,7 @@ class RepartitionByColumnTaskScheduler(ExchangeTaskScheduler):
         total_number_of_rows_input = sum(
             [m.num_rows for ref_bundle in refs for _, m in ref_bundle.blocks]
         )
-        logger.get_logger().info(
-            f"total number of rows input = {total_number_of_rows_input}"
-        )
+        logger.info(f"total number of rows input = {total_number_of_rows_input}")
 
         tstart = time.perf_counter()
         result_refs = list(
@@ -70,7 +68,7 @@ class RepartitionByColumnTaskScheduler(ExchangeTaskScheduler):
             )
         )
         tend = time.perf_counter()
-        logger.get_logger().info(
+        logger.info(
             f"Finished repartitioning {len(result_refs)=}, ({(tend-tstart):.2f}s)"
         )
 
@@ -86,7 +84,7 @@ class RepartitionByColumnTaskScheduler(ExchangeTaskScheduler):
         sub_progress_bar_dict = ctx.sub_progress_bar_dict
         bar_name = RepartitionByColumnTaskSpec.SPLIT_SUB_PROGRESS_BAR_NAME
         assert bar_name in sub_progress_bar_dict, sub_progress_bar_dict
-        map_bar = sub_progress_bar_dict[bar_name]
+        # map_bar = sub_progress_bar_dict[bar_name]
 
         # all_metadata = map_bar.fetch_until_complete(all_metadata)
         all_metadata = ray.get(all_metadata)
@@ -94,7 +92,7 @@ class RepartitionByColumnTaskScheduler(ExchangeTaskScheduler):
             m for metadata in all_metadata for m in metadata
         ]
         time_mid = time.perf_counter()
-        logger.get_logger().info(
+        logger.info(
             f"repartition time (up to all_metadata)= {(time_mid - time_start):.4}s"
         )
 
@@ -112,12 +110,12 @@ class RepartitionByColumnTaskScheduler(ExchangeTaskScheduler):
             #     len(all_blocks) == len(all_metadata) == len(all_keys)
         ), f"{len(all_blocks)=}, {len(all_metadata)=}, {len(all_keys)=}"
 
-        logger.get_logger().info(f"number of output blocks = {len(all_blocks)}")
-        # # logger.get_logger().info(f"number of keys = {len(all_keys)}")
+        logger.info(f"number of output blocks = {len(all_blocks)}")
+        # # logger.info(f"number of keys = {len(all_keys)}")
         # total_number_of_rows = sum(
         #     [stat.num_rows for stat in all_metadata if stat.num_rows is not None]
         # )
-        # logger.get_logger().info(f"total number of rows = {total_number_of_rows}")
+        # logger.info(f"total number of rows = {total_number_of_rows}")
 
         # TODO: add progress bar
         # TODO: use reduce_bar.fetch_until_complete etc
@@ -126,6 +124,6 @@ class RepartitionByColumnTaskScheduler(ExchangeTaskScheduler):
         stats = {"repartition": all_metadata}
 
         time_end = time.perf_counter()
-        logger.get_logger().info(f"repartition time = {(time_end - time_start):.4}s")
+        logger.info(f"repartition time = {(time_end - time_start):.4}s")
 
         return (all_blocks, stats)
