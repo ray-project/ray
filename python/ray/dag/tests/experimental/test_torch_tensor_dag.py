@@ -79,9 +79,7 @@ def test_torch_tensor_p2p(ray_start_regular):
     # Test torch.Tensor sent between actors.
     with InputNode() as inp:
         dag = sender.send.bind(shape, dtype, inp)
-        # TODO(swang): Test that we are using the minimum number of
-        # channels/messages when direct_return=True.
-        dag = dag.with_type_hint(TorchTensorType(shape, dtype, direct_return=True))
+        dag = dag.with_type_hint(TorchTensorType())
         dag = receiver.recv.bind(dag)
 
     compiled_dag = dag.experimental_compile()
@@ -97,9 +95,7 @@ def test_torch_tensor_p2p(ray_start_regular):
     # Passing tensors of a similar or smaller shape is okay.
     with InputNode() as inp:
         dag = sender.send.bind(shape, dtype, inp)
-        # TODO(swang): Test that we are using the minimum number of
-        # channels/messages when direct_return=True.
-        dag = dag.with_type_hint(TorchTensorType((20,), dtype, direct_return=True))
+        dag = dag.with_type_hint(TorchTensorType())
         dag = receiver.recv.bind(dag)
     compiled_dag = dag.experimental_compile()
     for i in range(3):
@@ -113,9 +109,7 @@ def test_torch_tensor_p2p(ray_start_regular):
     # Passing a much larger tensor will error.
     with InputNode() as inp:
         dag = sender.send.bind(1_000_000, dtype, inp)
-        # TODO(swang): Test that we are using the minimum number of
-        # channels/messages when direct_return=True.
-        dag = dag.with_type_hint(TorchTensorType(shape, dtype, direct_return=True))
+        dag = dag.with_type_hint(TorchTensorType())
         dag = receiver.recv.bind(dag)
     compiled_dag = dag.experimental_compile()
     output_channel = compiled_dag.execute(1)
@@ -128,11 +122,7 @@ def test_torch_tensor_p2p(ray_start_regular):
     with InputNode() as inp:
         dag = sender.send_dict_with_tuple_args.bind(inp)
         dag = dag.with_type_hint(
-            TorchTensorType(
-                shape=shape,
-                dtype=dtype,
-                direct_return=True,
-            )
+            TorchTensorType()
         )
         dag = receiver.recv_dict.bind(dag)
 
@@ -160,10 +150,8 @@ def test_torch_tensor_as_dag_input(ray_start_regular):
 
     # Test torch.Tensor as input.
     with InputNode() as inp:
-        # TODO(swang): Test that we are using the minimum number of
-        # channels/messages when direct_return=True.
         torch_inp = inp.with_type_hint(
-            TorchTensorType(shape, dtype, direct_return=True)
+            TorchTensorType()
         )
         dag = receiver.recv.bind(torch_inp)
 
@@ -212,7 +200,7 @@ def test_torch_tensor_nccl(ray_start_regular):
         # TODO(swang): Test that we are using the minimum number of
         # channels/messages when direct_return=True.
         dag = dag.with_type_hint(
-            TorchTensorType(shape, dtype, transport="nccl", direct_return=True)
+            TorchTensorType(transport="nccl", direct_return=True)
         )
         dag = receiver.recv.bind(dag)
 

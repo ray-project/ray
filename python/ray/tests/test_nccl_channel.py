@@ -385,6 +385,19 @@ def test_static_shape(ray_start_cluster):
     with pytest.raises(ValueError):
         ray.get(sender.send.remote(4, shape, torch.float32))
 
+    # Attempting to write a different number of tensors will error.
+    with pytest.raises(ValueError):
+        ray.get(sender.send_dict.remote({}))
+    with pytest.raises(ValueError):
+        ray.get(
+            sender.send_dict.remote(
+                {
+                    "first": torch.zeros(10),
+                    "second": torch.zeros(10),
+                }
+            )
+        )
+
     # The channel is still usable for valid tensors after errors occur.
     sender.send.remote(4, shape, dtype)
     ray.get(receiver.receive.remote()) == (4, shape, dtype)
@@ -497,6 +510,100 @@ def test_static_non_tensor_data(ray_start_cluster):
     assert ray.get(receiver.receive_dict.remote()) == [
         (key, val[key][0], val[key].shape, val[key].dtype)
     ]
+
+
+@pytest.mark.parametrize(
+    "ray_start_cluster",
+    [
+        {
+            "num_cpus": 2,
+            "num_gpus": 2,
+            "num_nodes": 1,
+        }
+    ],
+    indirect=True,
+)
+def test_static_shape_and_non_tensor_data(ray_start_cluster):
+    """
+    Test that when static_shape=True and static_non_tensor_data=True are
+    passed, we only send metadata and data for the first operation.
+    """
+    # Barrier name should be barrier-{sender rank}-{receiver rank}.
+    barrier = Barrier.options(name="barrier-0-1").remote()  # noqa
+
+    sender = Worker.remote()
+    receiver = Worker.remote()
+
+    ray.get(
+        [
+            sender.start_mock.remote(),
+            receiver.start_mock.remote(),
+        ]
+    )
+
+    nccl_id = _init_nccl_group([sender, receiver])
+
+    chan_typ = TorchTensorType(
+        transport="nccl",
+        static_shape=True,
+        static_non_tensor_data=True,
+    )
+    chan_typ.set_nccl_group_id(nccl_id)
+    sender.create_traced_channel.remote("tensor_metadata", [receiver])
+    sender.create_traced_channel.remote("non_tensor_data", [receiver])
+    chan_ref = sender.create_nccl_channel.remote(
+        chan_typ,
+        [receiver],
+        "tensor_metadata",
+        "non_tensor_data",
+    )
+    receiver_ready = receiver.set_nccl_channel.remote(chan_typ, chan_ref)
+    ray.get([chan_ref, receiver_ready])
+
+    shape = (10,)
+    dtype = torch.float16
+
+    refs = []
+    for i in range(3):
+        sender.send.remote(i, shape, dtype)
+        refs.append(receiver.receive.remote())
+    assert ray.get(refs) == [(i, shape, dtype) for i in range(3)]
+
+    # When static_shape=True, we should only send one metadata op. After the
+    # first metadata is sent, we reuse it for all future sends.
+    num_tensor_metadata_ops = ray.get(
+        sender.get_num_channel_ops.remote("tensor_metadata")
+    )
+    assert num_tensor_metadata_ops == 1
+    # When static_non_tensor_data=True, we should only send one non-tensor data
+    # op. After the first data is sent, we reuse it for all future sends.
+    num_non_tensor_data_ops = ray.get(
+        sender.get_num_channel_ops.remote("non_tensor_data")
+    )
+    assert num_non_tensor_data_ops == 1
+
+    # Attempting to write tensors of the wrong shape or dtype will error.
+    with pytest.raises(ValueError):
+        ray.get(sender.send.remote(4, (20,), dtype))
+    with pytest.raises(ValueError):
+        ray.get(sender.send.remote(4, shape, torch.float32))
+
+    # Attempting to write a different number of tensors will error.
+    with pytest.raises(ValueError):
+        ray.get(sender.send_dict.remote({}))
+    with pytest.raises(ValueError):
+        ray.get(
+            sender.send_dict.remote(
+                {
+                    "first": torch.zeros(10),
+                    "second": torch.zeros(10),
+                }
+            )
+        )
+
+    # The channel is still usable for valid tensors after errors occur.
+    sender.send.remote(4, shape, dtype)
+    ray.get(receiver.receive.remote()) == (4, shape, dtype)
 
 
 if __name__ == "__main__":
