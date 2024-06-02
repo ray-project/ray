@@ -673,7 +673,9 @@ cdef increase_recursion_limit():
         int new_limit = current_limit * 2
         cdef extern from *:
             """
-#if PY_VERSION_HEX >= 0x30B00A4
+#if PY_VERSION_HEX >= 0x30C0000
+    #define CURRENT_DEPTH(x) ((x)->py_recursion_limit - (x)->py_recursion_remaining)
+#elif PY_VERSION_HEX >= 0x30B00A4
     #define CURRENT_DEPTH(x)  ((x)->recursion_limit - (x)->recursion_remaining)
 #else
     #define CURRENT_DEPTH(x)  ((x)->recursion_depth)
