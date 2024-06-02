@@ -186,6 +186,8 @@ TEST(PrintLogTest, TestRayLogEveryMs) {
   EXPECT_LT(occurrences, 15);
 }
 
+#if defined(__APPLE__) || defined(__linux__)
+
 TEST(PrintLogTest, TestTextLogging) {
   setenv("RAY_BACKEND_LOG_JSON", "0", true);
   RayLog::StartRayLog("/tmp/gcs", RayLogLevel::INFO, "");
@@ -233,6 +235,8 @@ TEST(PrintLogTest, TestJSONLogging) {
   RayLog::ShutDownRayLog();
   unsetenv("RAY_BACKEND_LOG_JSON");
 }
+
+#endif // defined(__APPLE__) || defined(__linux__)
 
 #endif /* GTEST_HAS_STREAM_REDIRECTION */
 
