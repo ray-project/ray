@@ -596,9 +596,9 @@ class MetricsLogger:
 
     def tensors_to_numpy(self, tensor_metrics):
         """Converts all previously logged and returned tensors back to numpy values."""
-        for key, value in tensor_metrics.items():
+        for key, values in tensor_metrics.items():
             assert self._key_in_stats(key)
-            self._get_key(key).numpy(value)
+            self._get_key(key).set_to_numpy_values(values)
 
     @property
     def tensor_mode(self):
@@ -726,6 +726,19 @@ class MetricsLogger:
                 ema_coeff=ema_coeff,
                 clear_on_reduce=clear_on_reduce,
             )
+
+    def delete(self, *key: Tuple[str], key_error: bool = True) -> None:
+        """Deletes th egiven `key` from this metrics logger's stats.
+
+        Args:
+            key: The key or key sequence (for nested location within self.stats),
+                to delete from this MetricsLogger's stats.
+            key_error: Whether to throw a KeyError if `key` cannot be found in `self`.
+
+        Raises:
+            KeyError: If `key` cannot be found in `self` AND `key_error` is True.
+        """
+        self._del_key(key, key_error)
 
     def reduce(
         self,
@@ -893,6 +906,19 @@ class MetricsLogger:
             if key not in _dict:
                 _dict[key] = {}
             _dict = _dict[key]
+
+    def _del_key(self, flat_key, key_error=False):
+        flat_key = force_tuple(tree.flatten(flat_key))
+        _dict = self.stats
+        try:
+            for i, key in enumerate(flat_key):
+                if i == len(flat_key) - 1:
+                    del _dict[key]
+                    return
+                _dict = _dict[key]
+        except KeyError as e:
+            if key_error:
+                raise e
 
     @Deprecated(new="MetricsLogger.merge_and_log_n_dicts()", error=True)
     def log_n_dicts(self, *args, **kwargs):
