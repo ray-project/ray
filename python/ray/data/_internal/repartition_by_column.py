@@ -1,16 +1,16 @@
 import asyncio
 import itertools
+import logging
 import time
 from collections import deque
 from math import ceil
 from typing import Any, Deque, Iterator, List, Tuple, TypeVar, Union
 
 import ray
-from ray.data._internal.dataset_logger import DatasetLogger
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data.block import Block, BlockAccessor, BlockExecStats
 
-logger = DatasetLogger(__name__)
+logger = logging.getLogger(__name__)
 
 KeyType = TypeVar("KeyType")
 
@@ -193,10 +193,8 @@ class Actor:
             await self.merge_right_blocks()
 
         self.output_queue.put_nowait("done")
-        tend = time.perf_counter()
-        # logger.get_logger().info(
-        #     f"{self.name}-merge-blocks: time = {(tend-tstart):0.3f}s"
-        # )
+        # tend = time.perf_counter()
+        # logger.info(f"{self.name}-merge-blocks: time = {(tend-tstart):0.3f}s")
 
     async def send_to_left(self):
         """Send the left item to the left actor."""
@@ -204,9 +202,7 @@ class Actor:
 
     async def merge_right_blocks(self):
         await self.right_actor_ready.wait()
-        logger.get_logger().info(
-            f"{self.name}-merge_right_blocks: Get value from right actor"
-        )
+        logger.info(f"{self.name}-merge_right_blocks: Get value from right actor")
 
         # current actor's right is left of the right actor's left
         right_key, right_blk = await self.right_actor.send_to_left.remote()
@@ -298,9 +294,7 @@ def repartition_runner(
         num_actors = 1
 
     num_blocks_per_actor = ceil(len(blocks) / num_actors)
-    logger.get_logger().info(
-        f"{ref_id}: {len(blocks)=}, {num_actors=}, {num_blocks_per_actor=}"
-    )
+    logger.info(f"{ref_id}: {len(blocks)=}, {num_actors=}, {num_blocks_per_actor=}")
 
     actors = [Actor.remote(i, num_actors, keys) for i in range(num_actors)]
 
@@ -320,6 +314,7 @@ def repartition_runner(
     yield from retreive_results(actors)
     time_consume_end = time.perf_counter()
 
-    logger.get_logger().info(
-        f"retreive results from actors: taken {(time_consume_end - time_consume_start):.3f}s"
+    logger.info(
+        "retreive results from actors: taken "
+        f"{(time_consume_end - time_consume_start):.3f}s"
     )

@@ -1,7 +1,7 @@
+import logging
 from functools import partial
 from typing import Any, Dict, List, Optional, Tuple, Union
 
-from ray.data._internal.dataset_logger import DatasetLogger
 from ray.data._internal.execution.interfaces import (
     AllToAllTransformFn,
     RefBundle,
@@ -15,7 +15,7 @@ from ray.data._internal.planner.exchange.repartition_task_spec import (
 )
 from ray.data._internal.stats import StatsDict
 
-logger = DatasetLogger(__name__)
+logger = logging.getLogger(__name__)
 
 
 def generate_repartition_by_column_fn(
