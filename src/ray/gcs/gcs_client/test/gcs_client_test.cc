@@ -1034,6 +1034,43 @@ TEST_P(GcsClientTest, TestRegisterHeadNode) {
   }
 }
 
+TEST_P(GcsClientTest, TestInternalKVDelByPrefix) {
+  // Test Del can del by prefix
+  bool added;
+  RAY_CHECK_OK(gcs_client_->InternalKV().Put("test_ns",
+                                             "test_key1",
+                                             "test_value1",
+                                             /*overwrite=*/false,
+                                             /*timeout_ms=*/-1,
+                                             added));
+  ASSERT_TRUE(added);
+  RAY_CHECK_OK(gcs_client_->InternalKV().Put("test_ns",
+                                             "test_key2",
+                                             "test_value2",
+                                             /*overwrite=*/false,
+                                             /*timeout_ms=*/-1,
+                                             added));
+  ASSERT_TRUE(added);
+  RAY_CHECK_OK(gcs_client_->InternalKV().Put("test_ns",
+                                             "other_key",
+                                             "test_value3",
+                                             /*overwrite=*/false,
+                                             /*timeout_ms=*/-1,
+                                             added));
+  ASSERT_TRUE(added);
+
+  int num_deleted;
+  RAY_CHECK_OK(gcs_client_->InternalKV().Del(
+      "test_ns", "test_key", /*del_by_prefix=*/true, /*timeout_ms=*/-1, num_deleted));
+  ASSERT_EQ(num_deleted, 2);
+
+  // ... and the other key should still be there
+  std::string value;
+  RAY_CHECK_OK(
+      gcs_client_->InternalKV().Get("test_ns", "other_key", /*timeout_ms=*/-1, value));
+  ASSERT_EQ(value, "test_value3");
+}
+
 // TODO(sang): Add tests after adding asyncAdd
 
 }  // namespace ray
