@@ -180,7 +180,7 @@ export const JobDetailChartsPage = () => {
           alignItems="stretch"
           className={classes.autoscalerSection}
         >
-          <NodeCountCard className={classes.nodeCountCard} />
+          <NodeCountCard className={classes.nodeCountCard} job={job} />
           <Section flex="1 1 500px">
             <NodeStatusCard clusterStatus={clusterStatus} />
           </Section>

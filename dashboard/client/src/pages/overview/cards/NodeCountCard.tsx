@@ -4,6 +4,7 @@ import makeStyles from "@mui/styles/makeStyles";
 import classNames from "classnames";
 import React, { useContext } from "react";
 import { GlobalContext } from "../../../App";
+import { UnifiedJob } from "../../../type/job";
 import { GrafanaNotRunningAlert } from "../../metrics";
 import { LinkWithArrow, OverviewCard } from "./OverviewCard";
 
@@ -35,9 +36,10 @@ const useStyles = makeStyles((theme) =>
 
 type NodeCountCardProps = {
   className?: string;
+  job?: UnifiedJob;
 };
 
-export const NodeCountCard = ({ className }: NodeCountCardProps) => {
+export const NodeCountCard = ({ className, job }: NodeCountCardProps) => {
   const classes = useStyles();
 
   const {
@@ -51,7 +53,9 @@ export const NodeCountCard = ({ className }: NodeCountCardProps) => {
   const grafanaDefaultDashboardUid =
     dashboardUids?.default ?? "rayDefaultDashboard";
   const path = `/d-solo/${grafanaDefaultDashboardUid}/default-dashboard?orgId=1&theme=light&panelId=24&var-datasource=${dashboardDatasource}`;
-  const timeRangeParams = "&from=now-30m&to=now";
+  const timeRangeParams = `&from=${job ? job.start_time : "now-30m"}&to=${
+    job ? job.end_time || "now" : "now-30m"
+  }`;
 
   if (!metricsContextLoaded || grafanaHost === "DISABLED") {
     return null;
