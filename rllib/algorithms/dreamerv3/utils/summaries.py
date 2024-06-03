@@ -217,9 +217,7 @@ def report_dreamed_eval_trajectory_vs_samples(
             the report/videos.
     """
     dream_data = metrics.peek(
-        LEARNER_RESULTS,
-        DEFAULT_MODULE_ID,
-        "dream_data",
+        (LEARNER_RESULTS, DEFAULT_MODULE_ID, "dream_data"),
         default={},
     )
     metrics.delete(LEARNER_RESULTS, DEFAULT_MODULE_ID, "dream_data", key_error=False)
