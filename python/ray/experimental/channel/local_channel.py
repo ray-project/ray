@@ -8,20 +8,20 @@ from ray.util.annotations import PublicAPI
 
 
 @PublicAPI(stability="alpha")
-class LocalChannel(ChannelInterface):
+class IntraProcessChannel(ChannelInterface):
     def __init__(
         self,
         actor_handle: ray.actor.ActorHandle,
     ):
         """
-        LocalChannel is a channel for communication between two tasks in the same
+        IntraProcessChannel is a channel for communication between two tasks in the same
         worker process. It writes data directly to the worker's serialization context
         and reads data from the serialization context to avoid the serialization
         overhead and the need for reading/writing from shared memory.
         """
 
         # TODO (kevin85421): Currently, if we don't pass `actor_handle` to
-        # `LocalChannel`, the actor will die due to the reference count of
+        # `IntraProcessChannel`, the actor will die due to the reference count of
         # `actor_handle` is 0. We should fix this issue in the future.
         self._actor_handle = actor_handle
         self.channel_id = str(uuid.uuid4())
@@ -33,7 +33,7 @@ class LocalChannel(ChannelInterface):
         pass
 
     def __reduce__(self):
-        return LocalChannel, (self._actor_handle,)
+        return IntraProcessChannel, (self._actor_handle,)
 
     def write(self, value: Any):
         # Because both the reader and writer are in the same worker process,

@@ -138,7 +138,7 @@ def _exec_task(self, task: "ExecutableTask", idx: int) -> bool:
         True if we are done executing all tasks of this actor, False otherwise.
     """
     # TODO: for cases where output is passed as input to a task on
-    # the same actor, introduce a "LocalChannel" to avoid the overhead
+    # the same actor, introduce a "IntraProcessChannel" to avoid the overhead
     # of serialization/deserialization and synchronization.
     method = getattr(self, task.method_name)
     input_reader = self._input_readers[idx]

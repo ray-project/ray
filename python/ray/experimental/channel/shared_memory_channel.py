@@ -5,7 +5,7 @@ from typing import Any, List, Optional, Union
 import ray
 from ray._raylet import SerializedObject
 from ray.experimental.channel.common import ChannelInterface, ChannelOutputType
-from ray.experimental.channel.local_channel import LocalChannel
+from ray.experimental.channel.local_channel import IntraProcessChannel
 from ray.experimental.channel.torch_tensor_type import TorchTensorType
 from ray.util.annotations import PublicAPI
 
@@ -389,13 +389,13 @@ class MultiChannel(ChannelInterface):
         self,
         writer: Optional[ray.actor.ActorHandle],
         readers: List[Optional[ray.actor.ActorHandle]],
-        _local_channel: Optional[LocalChannel] = None,
+        _local_channel: Optional[IntraProcessChannel] = None,
         _remote_channel: Optional[Channel] = None,
     ):
         """
         Can be used to send data to different readers via different channels.
         For example, if the reader is in the same worker process as the writer,
-        the data can be sent via LocalChannel. If the reader is in a different
+        the data can be sent via IntraProcessChannel. If the reader is in a different
         worker process, the data can be sent via shared memory channel.
         """
         self._writer = writer
@@ -407,10 +407,10 @@ class MultiChannel(ChannelInterface):
         for reader in self._readers:
             if self._writer != reader:
                 remote_readers.append(reader)
-        # There are some local readers which are the same Ray actor as the writer.
+        # There are some local readers which are the same worker process as the writer.
         # Create a local channel for the writer and the local readers.
         if not self._local_channel and len(remote_readers) != len(self._readers):
-            self._local_channel = LocalChannel(self._writer)
+            self._local_channel = IntraProcessChannel(self._writer)
         # There are some remote readers which are not the same Ray actor as the writer.
         # Create a shared memory channel for the writer and the remote readers.
         if not self._remote_channel and len(remote_readers) != 0:
