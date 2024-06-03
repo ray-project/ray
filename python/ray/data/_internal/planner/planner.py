@@ -1,6 +1,7 @@
-from typing import Dict
+from typing import Callable, ClassVar, Dict, Generic, List, Tuple, Type, TypeVar
 
 from ray.data._internal.execution.interfaces import PhysicalOperator
+from ray.data._internal.execution.operators.limit_operator import LimitOperator
 from ray.data._internal.execution.operators.union_operator import UnionOperator
 from ray.data._internal.execution.operators.zip_operator import ZipOperator
 from ray.data._internal.logical.interfaces import (
@@ -19,10 +20,61 @@ from ray.data._internal.logical.operators.write_operator import Write
 from ray.data._internal.planner.plan_all_to_all_op import plan_all_to_all_op
 from ray.data._internal.planner.plan_from_op import plan_from_op
 from ray.data._internal.planner.plan_input_data_op import plan_input_data_op
-from ray.data._internal.planner.plan_limit_op import plan_limit_op
 from ray.data._internal.planner.plan_read_op import plan_read_op
 from ray.data._internal.planner.plan_udf_map_op import plan_udf_map_op
 from ray.data._internal.planner.plan_write_op import plan_write_op
+
+LogicalOperatorType = TypeVar("LogicalOperatorType", bound=LogicalOperator)
+
+CallbackFn = Callable[[LogicalOperatorType, List[PhysicalOperator]], PhysicalOperator]
+
+
+class PlanLogicalOpFn(Generic[LogicalOperatorType]):
+    def __init__(
+        self, logical_op_type: Type[LogicalOperatorType], callback: CallbackFn
+    ):
+        self._logical_op_type = logical_op_type
+        self._callback = callback
+
+    def should_handle(self, logical_op: LogicalOperator):
+        return isinstance(logical_op, self._logical_op_type)
+
+    def __call__(
+        self, logical_op: LogicalOperator, physical_children: List[PhysicalOperator]
+    ) -> PhysicalOperator:
+        return self._callback(logical_op, physical_children)
+
+
+PLAN_LOGICAL_OP_FNS: List[PlanLogicalOpFn] = []
+
+
+def init_plan_logical_op_fns():
+    PLAN_LOGICAL_OP_FNS.append(PlanLogicalOpFn(Read, plan_read_op))
+    PLAN_LOGICAL_OP_FNS.append(PlanLogicalOpFn(InputData, plan_input_data_op))
+    PLAN_LOGICAL_OP_FNS.append(PlanLogicalOpFn(Write, plan_write_op))
+    PLAN_LOGICAL_OP_FNS.append(PlanLogicalOpFn(AbstractFrom, plan_from_op))
+    PLAN_LOGICAL_OP_FNS.append(PlanLogicalOpFn(AbstractUDFMap, plan_udf_map_op))
+    PLAN_LOGICAL_OP_FNS.append(PlanLogicalOpFn(AbstractAllToAll, plan_all_to_all_op))
+
+    def plan_zip_op(_, physical_children):
+        assert len(physical_children) == 2
+        return ZipOperator(physical_children[0], physical_children[1])
+
+    PLAN_LOGICAL_OP_FNS.append(PlanLogicalOpFn(Zip, plan_zip_op))
+
+    def plan_union_op(_, physical_children):
+        assert len(physical_children) >= 2
+        return UnionOperator(*physical_children)
+
+    PLAN_LOGICAL_OP_FNS.append(PlanLogicalOpFn(Union, plan_union_op))
+
+    def plan_limit_op(logical_op, physical_children):
+        return LimitOperator(logical_op._limit, physical_children[0])
+
+    PLAN_LOGICAL_OP_FNS.append(PlanLogicalOpFn(Limit, plan_limit_op))
+
+
+init_plan_logical_op_fns()
 
 
 class Planner:
@@ -46,36 +98,16 @@ class Planner:
         for child in logical_op.input_dependencies:
             physical_children.append(self._plan(child))
 
-        if isinstance(logical_op, Read):
-            assert not physical_children
-            physical_op = plan_read_op(logical_op)
-        elif isinstance(logical_op, InputData):
-            assert not physical_children
-            physical_op = plan_input_data_op(logical_op)
-        elif isinstance(logical_op, Write):
-            assert len(physical_children) == 1
-            physical_op = plan_write_op(logical_op, physical_children[0])
-        elif isinstance(logical_op, AbstractFrom):
-            assert not physical_children
-            physical_op = plan_from_op(logical_op)
-        elif isinstance(logical_op, AbstractUDFMap):
-            assert len(physical_children) == 1
-            physical_op = plan_udf_map_op(logical_op, physical_children[0])
-        elif isinstance(logical_op, AbstractAllToAll):
-            assert len(physical_children) == 1
-            physical_op = plan_all_to_all_op(logical_op, physical_children[0])
-        elif isinstance(logical_op, Zip):
-            assert len(physical_children) == 2
-            physical_op = ZipOperator(physical_children[0], physical_children[1])
-        elif isinstance(logical_op, Union):
-            assert len(physical_children) >= 2
-            physical_op = UnionOperator(*physical_children)
-        elif isinstance(logical_op, Limit):
-            assert len(physical_children) == 1
-            physical_op = plan_limit_op(logical_op, physical_children[0])
-        else:
+        physical_op = None
+        for plan_fn in PLAN_LOGICAL_OP_FNS:
+            if plan_fn.should_handle(logical_op):
+                physical_op = plan_fn(logical_op, physical_children)
+                break
+
+        if physical_op is None:
             raise ValueError(
                 f"Found unknown logical operator during planning: {logical_op}"
             )
+
         self._physical_op_to_logical_op[physical_op] = logical_op
         return physical_op
