@@ -1,17 +1,18 @@
 """Example showing how to restore an Algorithm from a checkpoint and resume training.
 
-Use the setup shown in this script if your experiments tend to crash after some time
+Use the setup shown in this script if your experiments tend to crash after some time,
 and you would therefore like to make your setup more robust and fault-tolerant.
 
 This example:
 - runs a single- or multi-agent CartPole experiment (for multi-agent, we use different
 learning rates) thereby checkpointing the state of the Algorithm every n iterations.
-- stops the experiment due to an expected crash in the environment after a certain
-number of iterations.
-- restores the entire algorithm from the latest checkpoint and checks, whether the
-state of the restored algo exactly match the state of the crashed one.
-- continues training with the restored algorithm until the desired episode return
-is reached.
+- stops the experiment due to an expected crash in the algorithm's main process after
+a certain number of iterations.
+- just for testing purposes, restores the entire algorithm from the latest checkpoint
+and checks, whether the state of the restored algo exactly match the state of the
+crashed one.
+- then continues training with the restored algorithm until the desired final episode
+return is reached.
 
 
 How to run this script
@@ -34,11 +35,55 @@ For logging to your WandB account, use:
 
 Results to expect
 -----------------
-"""
-from pathlib import Path
-import re
+First, you should see the initial tune.Tuner do it's thing:
 
-from ray import air, tune
+Trial status: 1 RUNNING
+Current time: 2024-06-03 12:03:39. Total running time: 30s
+Logical resource usage: 3.0/12 CPUs, 0/0 GPUs
+╭────────────────────────────────────────────────────────────────────────
+│ Trial name                    status       iter     total time (s)
+├────────────────────────────────────────────────────────────────────────
+│ PPO_CartPole-v1_7b1eb_00000   RUNNING         6             15.362
+╰────────────────────────────────────────────────────────────────────────
+───────────────────────────────────────────────────────────────────────╮
+..._sampled_lifetime     ..._trained_lifetime     ...episodes_lifetime │
+───────────────────────────────────────────────────────────────────────┤
+               24000                    24000                      340 │
+───────────────────────────────────────────────────────────────────────╯
+...
+
+then, you should see the experiment crashing as soon as the `--stop-reward-crash`
+has been reached:
+
+```RuntimeError: Intended crash after reaching trigger return.```
+
+At some point, the experiment should resume exactly where it left off (using
+the checkpoint and restored Tuner):
+
+Trial status: 1 RUNNING
+Current time: 2024-06-03 12:05:00. Total running time: 1min 0s
+Logical resource usage: 3.0/12 CPUs, 0/0 GPUs
+╭────────────────────────────────────────────────────────────────────────
+│ Trial name                    status       iter     total time (s)
+├────────────────────────────────────────────────────────────────────────
+│ PPO_CartPole-v1_7b1eb_00000   RUNNING        27            66.1451
+╰────────────────────────────────────────────────────────────────────────
+───────────────────────────────────────────────────────────────────────╮
+..._sampled_lifetime     ..._trained_lifetime     ...episodes_lifetime │
+───────────────────────────────────────────────────────────────────────┤
+              108000                   108000                      531 │
+───────────────────────────────────────────────────────────────────────╯
+
+And if you are using the `--as-test` option, you should see a finel message:
+
+```
+`env_runners/episode_return_mean` of 500.0 reached! ok
+```
+"""
+import re
+import time
+
+from ray import train, tune
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.examples.envs.classes.multi_agent import MultiAgentCartPole
@@ -64,6 +109,8 @@ parser.add_argument(
     default=200.0,
     help="Mean episode return after which the Algorithm should crash.",
 )
+# By default, set `args.checkpoint_freq` to 1 and `args.checkpoint_at_end` to True.
+parser.set_defaults(checkpoint_freq=1, checkpoint_at_end=True)
 
 
 class CrashAfterNIters(DefaultCallbacks):
@@ -111,10 +158,7 @@ if __name__ == "__main__":
     )
 
     # Tune config.
-    # Force-set `args.checkpoint_freq` to 1 and `args.checkpoint_at_end` to True.
-    args.checkpoint_freq = 1
-    args.checkpoint_at_end = True
-    # Need WandB callbacks?
+    # Need a WandB callback?
     tune_callbacks = []
     if args.wandb_key:
         project = args.wandb_project or (
@@ -155,59 +199,69 @@ if __name__ == "__main__":
     tuner = tune.Tuner(
         trainable=config.algo_class,
         param_space=config,
-        run_config=air.RunConfig(
+        run_config=train.RunConfig(
             callbacks=tune_callbacks,
-            checkpoint_config=air.CheckpointConfig(
+            checkpoint_config=train.CheckpointConfig(
                 checkpoint_frequency=args.checkpoint_freq,
                 checkpoint_at_end=args.checkpoint_at_end,
             ),
             stop=stop,
         ),
     )
-    results = tuner.fit()
-    experiment_name = Path(results.experiment_path).name
+    tuner_results = tuner.fit()
 
-    # Extract the latest checkpoint from the results and confirm it's the right one.
+    # Perform a very quick test to make sure our algo (upon restoration) did not lose
+    # its ability to perform well in the env.
+    # - Extract the best checkpoint.
     metric = f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}"
-    best_result = results.get_best_result(metric=metric, mode="max")
+    best_result = tuner_results.get_best_result(metric=metric, mode="max")
     assert (
         best_result.metrics[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN]
         >= args.stop_reward_crash
     )
-
-    # Perform a very quick test to make sure our algo (upon restoration) did not lose
-    # its ability to perform well in the env.
-    # Change our config, such that the restored algo will have an env on the local
+    # - Change our config, such that the restored algo will have an env on the local
     # EnvRunner (to perform evaluation) and won't crash anymore (remove the crashing
     # callback).
     config.callbacks(None)
-
+    # Rebuild the algorithm (just for testing purposes).
     test_algo = config.build()
-    # Load state from checkpoint.
+    # Load algo's state from best checkpoint.
     test_algo.restore(best_result.checkpoint)
     # Perform some checks on the restored state.
     assert test_algo.training_iteration > 0
     # Evaluate on the restored algorithm.
-    eval_results = test_algo.evaluate()
+    test_eval_results = test_algo.evaluate()
     assert (
-        eval_results[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN] >= args.stop_reward_crash
+        test_eval_results[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN]
+        >= args.stop_reward_crash
     )
     # Train one iteration to make sure, the performance does not collapse (e.g. due
     # to the optimizer weights not having been restored properly).
-    results = test_algo.train()
-    assert results[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN] >= args.stop_reward_crash
+    test_results = test_algo.train()
+    assert (
+        test_results[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN] >= args.stop_reward_crash
+    )
+    # Stop the test algorithm again.
     test_algo.stop()
 
-    # Create a new Tuner from the existing checkpoint and resume the experiment
-    # exactly where we left off. Note that even the WandB logging will be continued
-    # without creating a new WandB run name.
-    new_tuner = tune.Tuner.restore(
-        path=str(Path(best_result.checkpoint.path).parent.parent),
+    # Create a new Tuner from the existing experiment path (which contains the tuner's
+    # own checkpoint file). Note that even the WandB logging will be continued without
+    # creating a new WandB run name.
+    restored_tuner = tune.Tuner.restore(
+        path=tuner_results.experiment_path,
         trainable=config.algo_class,
         param_space=config,
+        # Important to set this to True b/c the previous trial had failed (due to our
+        # `CrashAfterNIters` callback).
         resume_errored=True,
     )
-    results = new_tuner.fit()
+    # Continue the experiment exactly where we left off.
+    tuner_results = restored_tuner.fit()
+
+    # Not sure, whether this is really necessary, but we have observed the WandB
+    # logger sometimes not logging some of the last iterations. This sleep here might
+    # give it enough time to do so.
+    time.sleep(20)
 
     if args.as_test:
-        check_learning_achieved(results, args.stop_reward, metric=metric)
+        check_learning_achieved(tuner_results, args.stop_reward, metric=metric)

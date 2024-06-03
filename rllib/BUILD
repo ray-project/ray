@@ -2138,6 +2138,15 @@ py_test(
     args = ["--enable-new-api-stack", "--as-test"]
 )
 
+py_test(
+    name = "examples/checkpoints/continue_training_from_checkpoint_multi_agent",
+    main = "examples/checkpoints/continue_training_from_checkpoint.py",
+    tags = ["team:rllib", "exclusive", "examples"],
+    size = "large",
+    srcs = ["examples/checkpoints/continue_training_from_checkpoint.py"],
+    args = ["--enable-new-api-stack", "--as-test", "--num-agents=2", "--stop-reward-crash=400.0", "--stop-reward=900.0"]
+)
+
 #@OldAPIStack
 py_test(
     name = "examples/checkpoints/continue_training_from_checkpoint_old_api_stack",
