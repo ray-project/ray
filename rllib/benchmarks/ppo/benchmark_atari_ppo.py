@@ -89,7 +89,10 @@ if __name__ == "__main__":
         f"--checkpoint-at-end={args.checkpoint_at_end}",
     ]
 
-    for env, setup in benchmark_envs.items():
+    envs = args.env.split(",") if args.env else benchmark_envs.keys()
+
+    for env_name in envs:
+        setup = benchmark_envs[env_name]
         commands = base_commands.copy()
-        commands.extend(["--env", env])
+        commands.extend(["--env", env_name])
         subprocess.run(commands)
