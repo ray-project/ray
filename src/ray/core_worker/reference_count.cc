@@ -385,7 +385,7 @@ void ReferenceCounter::AddLocalReference(const ObjectID &object_id,
   }
   bool was_in_use = it->second.RefCount() > 0;
   it->second.local_ref_count++;
-  RAY_LOG(DEBUG) << "Add local reference " << object_id;
+  RAY_LOG(DEBUG) << "Add local reference " << object_id << " call site: " << call_site;
   PRINT_REF_COUNT(it);
   if (!was_in_use && it->second.RefCount() > 0) {
     SetNestedRefInUseRecursive(it);

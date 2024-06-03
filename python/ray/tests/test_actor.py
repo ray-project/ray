@@ -1391,17 +1391,20 @@ def test_actor_equal(ray_start_regular_shared):
 def test_out_of_band_actor_handle_ref_counting(ray_start_regular_shared):
     """
     Actors can get handles to themselves or to named actors outside of the
-    normal ref counting protocol, which tracks when actor handles are passed
-    through task arguments and return values. Check that this does not crash
-    the ref counting protocol.
+    normal ref counting protocol, which only tracks when actor handles are
+    passed through task arguments and return values. Check that this pattern
+    does not crash the ref counting protocol.
     """
+
     @ray.remote
     class Actor:
         def read_self_handle(self, self_handle):
             # This actor has a reference to itself through the arg self_handle.
 
             # Get and delete another reference to ourselves. This should not
-            # interfere with the distributed ref counting protocol.
+            # crash the distributed ref counting protocol.
+            # TODO(swang): Commenting these lines out currently causes the
+            # actor handle to leak.
             other_self_handle = ray.get_runtime_context().current_actor
             del other_self_handle
 
@@ -1411,7 +1414,8 @@ def test_out_of_band_actor_handle_ref_counting(ray_start_regular_shared):
     a = Actor.remote()
     pid = ray.get(a.getpid.remote())
 
-    ray.get(a.read_self_handle.remote(a))
+    for _ in range(3):
+        ray.get(a.read_self_handle.remote(a))
 
     a = None
     wait_for_pid_to_exit(pid)
