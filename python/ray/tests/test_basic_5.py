@@ -163,10 +163,11 @@ ray.init()
 def sys_path():
     return sys.path
 
-assert r'{str(tmp_path / "package")}' in ray.get(sys_path.remote())
+remote_sys_path = ray.get(sys_path.remote())
+assert r'{str(tmp_path / "package")}' in remote_sys_path, remote_sys_path
 """
     )
-    subprocess.check_call(["python", str(module1_file)])
+    subprocess.check_call([sys.executable, str(module1_file)])
 
     # If the driver script is run via `python -m`,
     # the script directory is not included in sys.path.
@@ -181,11 +182,12 @@ ray.init()
 def sys_path():
     return sys.path
 
-assert r'{str(tmp_path / "package")}' not in ray.get(sys_path.remote())
+remote_sys_path = ray.get(sys_path.remote())
+assert r'{str(tmp_path / "package")}' not in remote_sys_path, remote_sys_path
 """
     )
     monkeypatch.chdir(str(tmp_path))
-    subprocess.check_call(["python", "-m", "package.module2"])
+    subprocess.check_call([sys.executable, "-m", "package.module2"])
 
 
 def test_worker_kv_calls(monkeypatch, shutdown_only):
