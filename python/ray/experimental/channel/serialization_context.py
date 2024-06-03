@@ -10,7 +10,9 @@ class _SerializationContext:
         self.torch_device: Optional["torch.device"] = None
         self.use_external_transport: bool = False
         self.tensors: List["torch.Tensor"] = []
-        self.data: Optional[Dict[str, Any]] = {}
+        # Buffer for transferring data between tasks in the same worker process.
+        # The key is the channel ID, and the value is the data.
+        self.intra_process_channel_buffers: Optional[Dict[str, Any]] = {}
 
     def set_use_external_transport(self, use_external_transport: bool) -> None:
         self.use_external_transport = use_external_transport
@@ -19,13 +21,15 @@ class _SerializationContext:
         self.torch_device = torch_device
 
     def set_data(self, channel_id: str, value: Any) -> None:
-        self.data[channel_id] = value
+        assert channel_id not in self.intra_process_channel_buffers
+        self.intra_process_channel_buffers[channel_id] = value
 
     def get_data(self, channel_id: str) -> Any:
-        return self.data.get(channel_id, None)
+        assert channel_id in self.intra_process_channel_buffers
+        return self.intra_process_channel_buffers[channel_id]
 
     def reset_data(self, channel_id: str) -> Any:
-        self.data.pop(channel_id, None)
+        self.intra_process_channel_buffers.pop(channel_id, None)
 
     def reset_tensors(self, tensors: List["torch.Tensor"]) -> List["torch.Tensor"]:
         prev_tensors = self.tensors
