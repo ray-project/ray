@@ -365,8 +365,7 @@ class Channel(ChannelInterface):
 
     def begin_read(self) -> Any:
         self.ensure_registered_as_reader()
-        val = ray.get(self._reader_ref)
-        return val
+        return ray.get(self._reader_ref)
 
     def end_read(self):
         self.ensure_registered_as_reader()

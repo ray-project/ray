@@ -6,6 +6,7 @@ import torch
 import mock
 import asyncio
 from collections import defaultdict
+from typing import List, Tuple
 
 import pytest
 
@@ -131,7 +132,9 @@ class Worker:
         typ.register_custom_serializer()
         self.chan = chan
 
-    def create_nccl_channel(self, typ: TorchTensorType, readers):
+    def create_nccl_channel(
+        self, typ: TorchTensorType, readers: List[ray.actor.ActorHandle]
+    ):
         typ.register_custom_serializer()
         self.chan = typ.create_channel(
             ray.get_runtime_context().current_actor,
@@ -143,7 +146,7 @@ class Worker:
 
         return self.chan
 
-    def produce(self, val, shape, dtype):
+    def produce(self, val: int, shape: Tuple[int], dtype: torch.dtype):
         t = torch.ones(shape, dtype=dtype) * val
         self.chan.write(t)
 
