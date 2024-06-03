@@ -832,6 +832,8 @@ class MultiAgentEpisodeReplayBuffer(EpisodeReplayBuffer):
                 self._num_module_timesteps[module_id] += agent_steps
                 self._num_module_timesteps_added[module_id] += agent_steps
                 if ma_episode.agent_episodes[agent_id].is_done:
+                    # TODO (simon): Check, if we do not count the same episode
+                    # multiple times.
                     # Also add to the module episode counter.
                     self._num_module_episodes[module_id] += 1
 

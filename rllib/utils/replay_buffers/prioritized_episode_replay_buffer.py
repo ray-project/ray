@@ -242,6 +242,7 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
                     self._max_idx -= 1 if self._max_idx == idx_triple[2] else 0
                     self._sum_segment[idx_triple[2]] = 0.0
                     self._min_segment[idx_triple[2]] = float("inf")
+                    self._tree_idx_to_sample_idx.pop(idx_triple[2])
                 # Otherwise update the index in the index mapping.
                 else:
                     new_indices.append(idx_triple)
@@ -377,9 +378,7 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
 
         # Sample the n-step if necessary.
         actual_n_step = n_step or 1
-        random_n_step = False
-        if isinstance(n_step, tuple):
-            random_n_step = True
+        random_n_step = isinstance(n_step, tuple)
 
         # Keep track of the indices that were sampled last for updating the
         # weights later (see `ray.rllib.utils.replay_buffer.utils.

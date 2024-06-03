@@ -178,15 +178,12 @@ class MultiAgentPrioritizedEpisodeReplayBuffer(
                             if self._module_to_max_idx[module_id] == idx_quadlet[3]
                             else 0
                         )
-                        sample_idx = self._module_to_tree_idx_to_sample_idx[module_id][
-                            idx_quadlet[3]
-                        ]
                         self._module_to_sum_segment[module_id][idx_quadlet[3]] = 0.0
                         self._module_to_min_segment[module_id][idx_quadlet[3]] = float(
                             "inf"
                         )
                         self._module_to_tree_idx_to_sample_idx[module_id].pop(
-                            sample_idx
+                            idx_quadlet[3]
                         )
                     else:
                         new_module_indices.append(idx_quadlet)
@@ -259,7 +256,7 @@ class MultiAgentPrioritizedEpisodeReplayBuffer(
             module_eps = ma_episode.agent_episodes[agent_id]
             # Check if the module episode is already in the buffer.
             if exists:
-                old_ma_episode = self.episodes[ma_episode_idx]
+                old_ma_episode = self.episodes[ma_episode_idx - self._num_episodes_evicted]
                 # Is the agent episode already in the buffer?
                 # Note, at this point we have not yet concatenated the new
                 # multi-agent episode.
@@ -481,7 +478,7 @@ class MultiAgentPrioritizedEpisodeReplayBuffer(
                 # This will be an agent timestep (not env timestep).
                 # TODO (simon, sven): Maybe deprecate sa_episode_idx (_) in the index
                 #   quads. Is there any need for it?
-                ma_episode_idx, agent_id, sa_episode_ts, = (
+                ma_episode_idx, agent_id, sa_episode_ts = (
                     index_quadlet[0] - self._num_episodes_evicted,
                     index_quadlet[1],
                     index_quadlet[2],

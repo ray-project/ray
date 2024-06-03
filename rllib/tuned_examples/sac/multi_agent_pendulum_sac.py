@@ -40,7 +40,7 @@ config = (
         enable_env_runner_and_connector_v2=True,
     )
     .env_runners(
-        rollout_fragment_length=1,
+        rollout_fragment_length="auto",
         num_env_runners=0,
         num_envs_per_env_runner=1,
     )
@@ -51,12 +51,12 @@ config = (
         n_step=1,
         tau=0.005,
         train_batch_size_per_learner=256,
-        target_network_update_freq=1,
+        target_network_update_freq=250,
         replay_buffer_config={
             "type": "MultiAgentPrioritizedEpisodeReplayBuffer",
             "capacity": 100000,
-            "alpha": 0.6,
-            "beta": 0.4,
+            "alpha": 1.0,
+            "beta": 0.0,
         },
         num_steps_sampled_before_learning_starts=1024,
     )
