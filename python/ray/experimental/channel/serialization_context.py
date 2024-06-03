@@ -12,7 +12,7 @@ class _SerializationContext:
         self.tensors: List["torch.Tensor"] = []
         # Buffer for transferring data between tasks in the same worker process.
         # The key is the channel ID, and the value is the data.
-        self.intra_process_channel_buffers: Optional[Dict[str, Any]] = {}
+        self.intra_process_channel_buffers: Dict[str, Any] = {}
 
     def set_use_external_transport(self, use_external_transport: bool) -> None:
         self.use_external_transport = use_external_transport

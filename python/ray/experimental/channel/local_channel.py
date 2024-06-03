@@ -24,6 +24,8 @@ class IntraProcessChannel(ChannelInterface):
         # `IntraProcessChannel`, the actor will die due to the reference count of
         # `actor_handle` is 0. We should fix this issue in the future.
         self._actor_handle = actor_handle
+        # Generate a unique ID for the channel. The writer and reader will use
+        # this ID to store and retrieve data from the serialization context.
         self.channel_id = str(uuid.uuid4())
 
     def ensure_registered_as_writer(self) -> None:

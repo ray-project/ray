@@ -453,8 +453,7 @@ class MultiChannel(ChannelInterface):
     def begin_read(self) -> Any:
         if self.use_local_channel():
             return self._local_channel.begin_read()
-        else:
-            return self._remote_channel.begin_read()
+        return self._remote_channel.begin_read()
 
     def end_read(self):
         if self.use_local_channel():
