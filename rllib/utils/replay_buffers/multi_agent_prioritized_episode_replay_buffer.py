@@ -256,7 +256,9 @@ class MultiAgentPrioritizedEpisodeReplayBuffer(
             module_eps = ma_episode.agent_episodes[agent_id]
             # Check if the module episode is already in the buffer.
             if exists:
-                old_ma_episode = self.episodes[ma_episode_idx - self._num_episodes_evicted]
+                old_ma_episode = self.episodes[
+                    ma_episode_idx - self._num_episodes_evicted
+                ]
                 # Is the agent episode already in the buffer?
                 # Note, at this point we have not yet concatenated the new
                 # multi-agent episode.
