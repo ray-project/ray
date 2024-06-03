@@ -542,7 +542,7 @@ class Algorithm(Trainable, AlgorithmBase):
         # (although their values may be nan), so that Tune doesn't complain
         # when we use these as stopping criteria.
         self.evaluation_metrics = {
-            "evaluation": {
+            EVALUATION_RESULTS: {
                 ENV_RUNNER_RESULTS: {
                     EPISODE_RETURN_MAX: np.nan,
                     EPISODE_RETURN_MIN: np.nan,

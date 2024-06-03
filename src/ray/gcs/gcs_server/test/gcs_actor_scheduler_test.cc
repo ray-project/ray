@@ -334,7 +334,8 @@ TEST_F(GcsActorSchedulerTest, TestNodeFailedWhenLeasing) {
 
   // Remove the node and cancel the scheduling on this node, the scheduling should be
   // interrupted.
-  gcs_node_manager_->RemoveNode(node_id);
+  rpc::NodeDeathInfo death_info;
+  gcs_node_manager_->RemoveNode(node_id, death_info);
   ASSERT_EQ(0, gcs_node_manager_->GetAllAliveNodes().size());
   auto actor_ids = gcs_actor_scheduler_->CancelOnNode(node_id);
   ASSERT_EQ(1, actor_ids.size());
@@ -422,7 +423,8 @@ TEST_F(GcsActorSchedulerTest, TestNodeFailedWhenCreating) {
 
   // Remove the node and cancel the scheduling on this node, the scheduling should be
   // interrupted.
-  gcs_node_manager_->RemoveNode(node_id);
+  rpc::NodeDeathInfo death_info;
+  gcs_node_manager_->RemoveNode(node_id, death_info);
   ASSERT_EQ(0, gcs_node_manager_->GetAllAliveNodes().size());
   auto actor_ids = gcs_actor_scheduler_->CancelOnNode(node_id);
   ASSERT_EQ(1, actor_ids.size());
@@ -934,7 +936,8 @@ TEST_F(GcsActorSchedulerTest, TestNodeFailedWhenLeasingByGcs) {
 
   // Remove the node and cancel the scheduling on this node, the scheduling should be
   // interrupted.
-  gcs_node_manager_->RemoveNode(node_id);
+  rpc::NodeDeathInfo death_info;
+  gcs_node_manager_->RemoveNode(node_id, death_info);
   ASSERT_EQ(0, gcs_node_manager_->GetAllAliveNodes().size());
   auto actor_ids = gcs_actor_scheduler_->CancelOnNode(node_id);
   ASSERT_EQ(1, actor_ids.size());
@@ -1028,7 +1031,8 @@ TEST_F(GcsActorSchedulerTest, TestNodeFailedWhenCreatingByGcs) {
 
   // Remove the node and cancel the scheduling on this node, the scheduling should be
   // interrupted.
-  gcs_node_manager_->RemoveNode(node_id);
+  rpc::NodeDeathInfo death_info;
+  gcs_node_manager_->RemoveNode(node_id, death_info);
   ASSERT_EQ(0, gcs_node_manager_->GetAllAliveNodes().size());
   auto actor_ids = gcs_actor_scheduler_->CancelOnNode(node_id);
   ASSERT_EQ(1, actor_ids.size());
