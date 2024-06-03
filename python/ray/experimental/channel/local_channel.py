@@ -9,17 +9,19 @@ from ray.util.annotations import PublicAPI
 
 @PublicAPI(stability="alpha")
 class IntraProcessChannel(ChannelInterface):
+    """
+    IntraProcessChannel is a channel for communication between two tasks in the same
+    worker process. It writes data directly to the worker's serialization context
+    and reads data from the serialization context to avoid the serialization
+    overhead and the need for reading/writing from shared memory.
+
+    Args:
+        actor_handle: The actor handle of the worker process.
+    """
     def __init__(
         self,
         actor_handle: ray.actor.ActorHandle,
     ):
-        """
-        IntraProcessChannel is a channel for communication between two tasks in the same
-        worker process. It writes data directly to the worker's serialization context
-        and reads data from the serialization context to avoid the serialization
-        overhead and the need for reading/writing from shared memory.
-        """
-
         # TODO (kevin85421): Currently, if we don't pass `actor_handle` to
         # `IntraProcessChannel`, the actor will die due to the reference count of
         # `actor_handle` is 0. We should fix this issue in the future.
