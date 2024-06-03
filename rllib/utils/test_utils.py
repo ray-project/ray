@@ -135,6 +135,46 @@ def add_rllib_example_script_args(
         "experiment is then the sum over all individual agents' rewards.",
     )
 
+    # Evaluation options.
+    parser.add_argument(
+        "--evaluation-num-env-runners",
+        type=int,
+        default=0,
+        help="The number of evaluation (remote) EnvRunners to use for the experiment.",
+    )
+    parser.add_argument(
+        "--evaluation-interval",
+        type=int,
+        default=0,
+        help="Every how many iterations to run one round of evaluation. "
+        "Use 0 (default) to disable evaluation."
+    )
+    parser.add_argument(
+        "--evaluation-duration",
+        type=int,
+        default=10,
+        help="The number of evaluation units to run each evaluation round. "
+        "Use `--evaluation-duration-unit` to set this either to 'episodes' "
+        "or 'timesteps'."
+    )
+    parser.add_argument(
+        "--evaluation-duration-unit",
+        type=str,
+        default="episodes",
+        choices=["episodes", "timesteps"],
+        help="The evaluation duration unit to count by. One of 'episodes' or "
+        "'timesteps'. This unit will be run `--evaluation-duration` times in each "
+        "evaluation round."
+    )
+    parser.add_argument(
+        "--evaluation-parallel-to-training",
+        action="store_true",
+        help="Whether to run evaluation parallel to training. This might help speed up "
+        "your overall iteration time. Be aware that when using this option, your "
+        "reported evaluation results are referring to one iteration before the current "
+        "one."
+    )
+
     # tune.Tuner options.
     parser.add_argument(
         "--no-tune",
@@ -1432,6 +1472,16 @@ def run_rllib_example_script_experiment(
             config.resources(
                 num_gpus=args.num_gpus,
                 num_cpus_for_main_process=1,
+            )
+
+        # Evaluation setup.
+        if args.evaluation_interval > 0:
+            config.evaluation(
+                evaluation_num_env_runners=args.evaluation_num_env_runners,
+                evaluation_interval=args.evaluation_interval,
+                evaluation_duration=args.evaluation_duration,
+                evaluation_duration_unit=args.evaluation_duration_unit,
+                evaluation_parallel_to_training=args.evaluation_parallel_to_training,
             )
 
     # Run the experiment w/o Tune (directly operate on the RLlib Algorithm object).
