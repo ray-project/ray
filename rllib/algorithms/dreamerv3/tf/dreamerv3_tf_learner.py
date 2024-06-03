@@ -158,7 +158,7 @@ class DreamerV3TfLearner(DreamerV3Learner, TfLearner):
                     # Take individual loss term from the registered metrics for
                     # the main module.
                     self.metrics.peek(
-                        DEFAULT_MODULE_ID, component.upper() + "_L_total"
+                        (DEFAULT_MODULE_ID, component.upper() + "_L_total")
                     ),
                     self.filter_param_dict_for_optimizer(
                         self._params, self.get_optimizer(optimizer_name=component)
