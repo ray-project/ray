@@ -186,6 +186,7 @@ def test_validate_resource_request_quantity(test_config):
         ["1"],
         ["1", "2"],
         ["1", "2", "3", "4"],
+        ["1", "2", "3", "4", "5", "6", "7", "8"],
     ],
 )
 def test_set_tpu_visible_ids_and_bounds(tpu_chips):
@@ -205,13 +206,15 @@ def test_set_tpu_visible_ids_and_bounds(tpu_chips):
             )
             assert os.environ[tpu.TPU_HOST_BOUNDS_ENV_VAR] == tpu.TPU_SINGLE_HOST_BOUNDS
             assert os.environ[tpu.TPU_VISIBLE_CHIPS_ENV_VAR] == ",".join(tpu_chips)
-        else:  # len(tpu_chips) == 4
+        elif len(tpu_chips) == 4:
             # Check that nothing is set, let the ML framework use the defaults.
             assert os.environ.get(tpu.TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR, None) is None
             assert os.environ.get(tpu.TPU_SINGLE_HOST_BOUNDS, None) is None
             assert os.environ.get(tpu.TPU_VISIBLE_CHIPS_ENV_VAR, None) is None
-
-
+        else:  # len(tpu_chips) == 8
+            assert os.environ.get(tpu.TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR, None) is None
+            assert os.environ.get(tpu.TPU_SINGLE_HOST_BOUNDS, None) is None
+            assert os.environ.get(tpu.TPU_VISIBLE_CHIPS_ENV_VAR, None) is None
 @pytest.mark.parametrize(
     "test_config",
     [
