@@ -690,6 +690,7 @@ class DreamerV3(Algorithm):
             do_report=(
                 self.config.report_dream_data and self.training_iteration % 100 == 0
             ),
+            framework=self.config.framework_str,
         )
 
         # Update weights - after learning on the LearnerGroup - on all EnvRunner
