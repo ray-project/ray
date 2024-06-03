@@ -35,24 +35,24 @@ For logging to your WandB account, use:
 Results to expect
 -----------------
 """
+from pathlib import Path
+import re
 
 from ray import air, tune
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
-from ray.rllib.core import DEFAULT_MODULE_ID
 from ray.rllib.examples.envs.classes.multi_agent import MultiAgentCartPole
 from ray.rllib.policy.policy import PolicySpec
 from ray.rllib.utils.metrics import (
     ENV_RUNNER_RESULTS,
     EPISODE_RETURN_MEAN,
-    LEARNER_RESULTS,
 )
 from ray.rllib.utils.test_utils import (
     add_rllib_example_script_args,
-    check,
-    run_rllib_example_script_experiment,
+    check_learning_achieved,
 )
 from ray.tune.registry import get_trainable_cls, register_env
+from ray.air.integrations.wandb import WandbLoggerCallback
 
 
 parser = add_rllib_example_script_args(
@@ -67,23 +67,21 @@ parser.add_argument(
 
 
 class CrashAfterNIters(DefaultCallbacks):
-    """Callback that makes the algo crash after a certain mean return is reached."""
+    """Callback that makes the algo crash after a certain avg. return is reached."""
+
     def __init__(self):
         super().__init__()
         # We have to delay crashing by one iteration just so the checkpoint still
-        # gets created by Tune after(!) we have reached the trigger mean-return.
+        # gets created by Tune after(!) we have reached the trigger avg. return.
         self._should_crash = False
 
     def on_train_result(self, *, algorithm, metrics_logger, result, **kwargs):
         # We had already reached the mean-return to crash, the last checkpoint written
-        # (the one from the previous iteration) should yield that exact mean return.
+        # (the one from the previous iteration) should yield that exact avg. return.
         if self._should_crash:
             raise RuntimeError("Intended crash after reaching trigger return.")
         # Reached crashing criterion, crash on next iteration.
-        elif (
-            result[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN]
-            >= args.stop_reward_crash
-        ):
+        elif result[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN] >= args.stop_reward_crash:
             print(
                 "Reached trigger return of "
                 f"{result[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN]}"
@@ -98,47 +96,80 @@ if __name__ == "__main__":
         "ma_cart", lambda cfg: MultiAgentCartPole({"num_agents": args.num_agents})
     )
 
-    # Force-set `args.checkpoint_freq` to 1 and `args.checkpoint_at_end` to True.
-    args.checkpoint_freq = 1
-    args.checkpoint_at_end = True
-
     # Simple generic config.
     config = (
         get_trainable_cls(args.algo)
         .get_default_config()
+        .api_stack(
+            enable_rl_module_and_learner=args.enable_new_api_stack,
+            enable_env_runner_and_connector_v2=args.enable_new_api_stack,
+        )
         .environment("CartPole-v1" if args.num_agents == 0 else "ma_cart")
+        .env_runners(create_env_on_local_worker=True)
+        .training(lr=0.0001)
         .callbacks(CrashAfterNIters)
     )
+
+    # Tune config.
+    # Force-set `args.checkpoint_freq` to 1 and `args.checkpoint_at_end` to True.
+    args.checkpoint_freq = 1
+    args.checkpoint_at_end = True
+    # Need WandB callbacks?
+    tune_callbacks = []
+    if args.wandb_key:
+        project = args.wandb_project or (
+            args.algo.lower() + "-" + re.sub("\\W+", "-", str(config.env).lower())
+        )
+        tune_callbacks.append(
+            WandbLoggerCallback(
+                api_key=args.wandb_key,
+                project=args.wandb_project,
+                upload_checkpoints=False,
+                **({"name": args.wandb_run_name} if args.wandb_run_name else {}),
+            )
+        )
 
     # Setup multi-agent, if required.
     if args.num_agents > 0:
         config.multi_agent(
             policies={
-                f"p{aid}": PolicySpec(config=AlgorithmConfig.overrides(
-                    lr=5e-5 * (aid + 1),  # agent 1 has double the learning rate as 0.
-                ))
+                f"p{aid}": PolicySpec(
+                    config=AlgorithmConfig.overrides(
+                        lr=5e-5
+                        * (aid + 1),  # agent 1 has double the learning rate as 0.
+                    )
+                )
                 for aid in range(args.num_agents)
             },
             policy_mapping_fn=lambda aid, *a, **kw: f"p{aid}",
         )
+
+    # Define some stopping criterion. Note that this criterion is an avg episode return
+    # to be reached. The stop criterion does not consider the built-in crash we are
+    # triggering through our callback.
+    stop = {
+        f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": args.stop_reward,
+    }
 
     # Run tune for some iterations and generate checkpoints.
     tuner = tune.Tuner(
         trainable=config.algo_class,
         param_space=config,
         run_config=air.RunConfig(
+            callbacks=tune_callbacks,
             checkpoint_config=air.CheckpointConfig(
                 checkpoint_frequency=args.checkpoint_freq,
                 checkpoint_at_end=args.checkpoint_at_end,
             ),
+            stop=stop,
         ),
     )
-    # Run the Tuner (until our Algo crashes once it reaches --stop-reward-crash).
     results = tuner.fit()
+    experiment_name = Path(results.experiment_path).name
 
     # Extract the latest checkpoint from the results and confirm it's the right one.
     metric = f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}"
-    best_result = results.get_best_result(metric=metric, mode="max", scope="all")
+    best_result = results.get_best_result(metric=metric, mode="max")
     assert (
         best_result.metrics[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN]
         >= args.stop_reward_crash
@@ -149,88 +180,34 @@ if __name__ == "__main__":
     # Change our config, such that the restored algo will have an env on the local
     # EnvRunner (to perform evaluation) and won't crash anymore (remove the crashing
     # callback).
-    config.env_runners(create_env_on_local_worker=True)
     config.callbacks(None)
 
     test_algo = config.build()
-    # We evaluate once on the randomly initialized algo and expect a bad performance.
-    eval_results = test_algo.evaluate()
-    assert eval_results[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN] <= 30.0
     # Load state from checkpoint.
     test_algo.restore(best_result.checkpoint)
-    # Evaluate once more on the restored algorithm.
+    # Perform some checks on the restored state.
+    assert test_algo.training_iteration > 0
+    # Evaluate on the restored algorithm.
     eval_results = test_algo.evaluate()
     assert (
-        eval_results[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN]
-        >= args.stop_reward_crash - 10.0  # 10 = allow some buffer
+        eval_results[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN] >= args.stop_reward_crash
     )
+    # Train one iteration to make sure, the performance does not collapse (e.g. due
+    # to the optimizer weights not having been restored properly).
+    results = test_algo.train()
+    assert results[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN] >= args.stop_reward_crash
     test_algo.stop()
 
-    # Note that you might want to change a lot of other settings at this point here.
-    # Not all settings are changeable between iterations (before a restore), such as
-    # NN architecture settings, the algorithm's type, (probably) the environment,
-    # your connector types, etc...
-
-    # Here is a non-complete list of setting that should be able to change between
-    # experiments (before restoring your algo from a checkpoint):
-    config.env_runners(num_env_runners=2)
-    config.learners(num_learners=2)
-    config.training(
-        lr=0.0001,
-        train_batch_size=5000,
+    # Create a new Tuner from the existing checkpoint and resume the experiment
+    # exactly where we left off. Note that even the WandB logging will be continued
+    # without creating a new WandB run name.
+    new_tuner = tune.Tuner.restore(
+        path=str(Path(best_result.checkpoint.path).parent.parent),
+        trainable=config.algo_class,
+        param_space=config,
+        resume_errored=True,
     )
-    #TODO continue
+    results = new_tuner.fit()
 
-
-    # Get the best of the 3 trials by using some metric.
-    # NOTE: Choosing the min `episodes_this_iter` automatically picks the trial
-    # with the best performance (over the entire run (scope="all")):
-    # The fewer episodes, the longer each episode lasted, the more reward we
-    # got each episode.
-    # Setting scope to "last", "last-5-avg", or "last-10-avg" will only compare
-    # (using `mode=min|max`) the average values of the last 1, 5, or 10
-    # iterations with each other, respectively.
-    # Setting scope to "avg" will compare (using `mode`=min|max) the average
-    # values over the entire run.
-    metric = f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}"
-    # notice here `scope` is `all`, meaning for each trial,
-    # all results (not just the last one) will be examined.
-    best_result = results.get_best_result(metric=metric, mode="max", scope="all")
-    value_best_metric = best_result.metrics_dataframe[metric].min()
-    best_return_best = best_result.metrics_dataframe[
-        f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}"
-    ].max()
-    print(
-        f"Best trial was the one with lr={best_result.metrics['config']['lr']}. "
-        f"Reached lowest episode count ({value_best_metric}) in a single iteration and "
-        f"an average return of {best_return_best}."
-    )
-
-    # Confirm, we picked the right trial.
-
-    assert (
-        value_best_metric
-        == results.get_dataframe(filter_metric=metric, filter_mode="min")[metric].min()
-    )
-
-    # Get the best checkpoints from the trial, based on different metrics.
-    # Checkpoint with the lowest policy loss value:
-    if args.enable_new_api_stack:
-        policy_loss_key = f"{LEARNER_RESULTS}/{DEFAULT_MODULE_ID}/policy_loss"
-    else:
-        policy_loss_key = "info/learner/default_policy/learner_stats/policy_loss"
-    best_result = results.get_best_result(metric=policy_loss_key, mode="min")
-    ckpt = best_result.checkpoint
-    lowest_policy_loss = best_result.metrics_dataframe[policy_loss_key].min()
-    print(f"Checkpoint w/ lowest policy loss ({lowest_policy_loss}): {ckpt}")
-
-    # Checkpoint with the highest value-function loss:
-    if args.enable_new_api_stack:
-        vf_loss_key = f"{LEARNER_RESULTS}/{DEFAULT_MODULE_ID}/vf_loss"
-    else:
-        vf_loss_key = "info/learner/default_policy/learner_stats/vf_loss"
-    best_result = results.get_best_result(metric=vf_loss_key, mode="max")
-    ckpt = best_result.checkpoint
-    highest_value_fn_loss = best_result.metrics_dataframe[vf_loss_key].max()
-    print(f"Checkpoint w/ highest value function loss: {ckpt}")
-    print(f"Highest value function loss: {highest_value_fn_loss}")
+    if args.as_test:
+        check_learning_achieved(results, args.stop_reward, metric=metric)

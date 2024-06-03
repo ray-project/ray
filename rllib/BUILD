@@ -2120,15 +2120,6 @@ py_test(
 # subdirectory: checkpoints/
 # ....................................
 
-#@OldAPIStack
-py_test(
-    name = "examples/checkpoints/cartpole_dqn_export",
-    main = "examples/checkpoints/cartpole_dqn_export.py",
-    tags = ["team:rllib", "exclusive", "examples"],
-    size = "small",
-    srcs = ["examples/checkpoints/cartpole_dqn_export.py"],
-)
-
 py_test(
     name = "examples/checkpoints/checkpoint_by_custom_criteria",
     main = "examples/checkpoints/checkpoint_by_custom_criteria.py",
@@ -2136,6 +2127,24 @@ py_test(
     size = "large",
     srcs = ["examples/checkpoints/checkpoint_by_custom_criteria.py"],
     args = ["--enable-new-api-stack", "--stop-reward=150.0", "--num-cpus=8"]
+)
+
+py_test(
+    name = "examples/checkpoints/continue_training_from_checkpoint",
+    main = "examples/checkpoints/continue_training_from_checkpoint.py",
+    tags = ["team:rllib", "exclusive", "examples"],
+    size = "large",
+    srcs = ["examples/checkpoints/continue_training_from_checkpoint.py"],
+    args = ["--enable-new-api-stack"]
+)
+
+#@OldAPIStack
+py_test(
+    name = "examples/checkpoints/cartpole_dqn_export",
+    main = "examples/checkpoints/cartpole_dqn_export.py",
+    tags = ["team:rllib", "exclusive", "examples"],
+    size = "small",
+    srcs = ["examples/checkpoints/cartpole_dqn_export.py"],
 )
 
 #@OldAPIStack
