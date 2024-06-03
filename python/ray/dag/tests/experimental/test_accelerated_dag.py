@@ -535,6 +535,21 @@ def test_asyncio_exceptions(ray_start_regular_shared, max_queue_size):
 
 class TestMultiChannel:
     def test_multi_channel_one_actor(self, ray_start_regular_shared):
+        """
+        In this test, there are three 'inc' tasks on the same Ray actor, chained
+        together. Therefore, the DAG will look like this:
+
+        Driver -> a.inc -> a.inc -> a.inc -> Driver
+
+        All communication between the driver and the actor will be done through remote
+        channels, i.e., shared memory channels. All communication between the actor
+        tasks will be conducted through local channels, i.e., IntraProcessChannel in
+        this case.
+
+        To elaborate, all output channels of the actor DAG nodes will be MultiChannel,
+        and the first two will have a local channel, while the last one will have a
+        remote channel.
+        """
         a = Actor.remote(0)
         with InputNode() as inp:
             dag = a.inc.bind(inp)
@@ -563,6 +578,17 @@ class TestMultiChannel:
         compiled_dag.teardown()
 
     def test_multi_channel_two_actors(self, ray_start_regular_shared):
+        """
+        In this test, there are three 'inc' tasks on the two Ray actors, chained
+        together. Therefore, the DAG will look like this:
+
+        Driver -> a.inc -> b.inc -> a.inc -> Driver
+
+        All communication between the driver and actors will be done through remote
+        channels. Also, all communication between the actor tasks will be conducted
+        through remote channels, i.e., shared memory channel in this case because no
+        consecutive tasks are on the same actor.
+        """
         a = Actor.remote(0)
         b = Actor.remote(100)
         with InputNode() as inp:
