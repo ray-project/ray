@@ -2596,7 +2596,6 @@ def maybe_initialize_job_config():
             except Exception as e:
                 backtrace = \
                     "".join(traceback.format_exception(type(e), e, e.__traceback__))
-                print(backtrace)
                 core_worker.drain_and_exit_worker("user", backtrace)
         job_config_initialized = True
 
