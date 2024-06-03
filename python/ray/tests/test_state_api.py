@@ -2154,19 +2154,23 @@ def test_list_get_nodes(ray_start_cluster):
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=1, node_name="head_node")
     ray.init(address=cluster.address)
-    cluster.add_node(num_cpus=1, node_name="worker_node")
+    worker_node = cluster.add_node(num_cpus=1, node_name="worker_node")
+
+    cluster.remove_node(worker_node)
 
     def verify():
         nodes = list_nodes(detail=True)
         for node in nodes:
-            assert node["state"] == "ALIVE"
             assert is_hex(node["node_id"])
-            assert (
-                node["is_head_node"]
-                if node["node_name"] == "head_node"
-                else not node["is_head_node"]
-            )
             assert node["labels"] == {"ray.io/node_id": node["node_id"]}
+            if node["node_name"] == "head_node":
+                assert node["is_head_node"]
+                assert node["state"] == "ALIVE"
+                assert node["state_message"] is None
+            else:
+                assert not node["is_head_node"]
+                assert node["state"] == "DEAD"
+                assert node["state_message"] == "Expected termination: received SIGTERM"
 
         # Check with legacy API
         check_nodes = ray.nodes()

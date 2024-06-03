@@ -24,6 +24,7 @@ def synchronous_parallel_sample(
     max_env_steps: Optional[int] = None,
     concat: bool = True,
     sample_timeout_s: Optional[float] = 60.0,
+    random_actions: bool = False,
     _uses_new_env_runners: bool = False,
     _return_metrics: bool = False,
 ) -> Union[List[SampleBatchType], SampleBatchType, List[EpisodeType], EpisodeType]:
@@ -81,6 +82,8 @@ def synchronous_parallel_sample(
     sample_batches_or_episodes = []
     all_stats_dicts = []
 
+    random_action_kwargs = {} if not random_actions else {"random_actions": True}
+
     # Stop collecting batches as soon as one criterium is met.
     while (max_agent_or_env_steps is None and agent_or_env_steps == 0) or (
         max_agent_or_env_steps is not None
@@ -89,16 +92,16 @@ def synchronous_parallel_sample(
         # No remote workers in the set -> Use local worker for collecting
         # samples.
         if worker_set.num_remote_workers() <= 0:
-            sampled_data = [worker_set.local_worker().sample()]
+            sampled_data = [worker_set.local_worker().sample(**random_action_kwargs)]
             if _return_metrics:
                 stats_dicts = [worker_set.local_worker().get_metrics()]
         # Loop over remote workers' `sample()` method in parallel.
         else:
             sampled_data = worker_set.foreach_worker(
                 (
-                    (lambda w: w.sample())
+                    (lambda w: w.sample(**random_action_kwargs))
                     if not _return_metrics
-                    else (lambda w: (w.sample(), w.get_metrics()))
+                    else (lambda w: (w.sample(**random_action_kwargs), w.get_metrics()))
                 ),
                 local_worker=False,
                 timeout_seconds=sample_timeout_s,
