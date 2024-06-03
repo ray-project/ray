@@ -1335,8 +1335,8 @@ def init(
             timestamp, filename, line number, and message. See the source file
             ray_constants.py for details. Ignored unless "configure_logging"
             is true.
-        logging_config: Logging configuration will be applied to both the driver
-            process and all worker processes belonging to the same job.
+        logging_config: [Experimental] Logging configuration will be applied to both
+            the driver process and all worker processes belonging to the current job.
         log_to_driver: If true, the output from all of the worker
             processes on all nodes will be directed to the driver.
         namespace: A namespace is a logical grouping of jobs and named actors.
