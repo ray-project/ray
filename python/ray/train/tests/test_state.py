@@ -44,6 +44,7 @@ RUN_INFO_JSON_SAMPLE = """{
     "id": "ad5256bc64c04c83833a8b006f531799",
     "job_id": "0000000001",
     "controller_actor_id": "3abd1972a19148d78acc78dd9414736e",
+    "start_time": 1717448423.0,
     "workers": [
         {
         "actor_id": "3d86c25634a71832dac32c8802000000",
@@ -110,6 +111,7 @@ def _get_run_info_sample(run_id=None, run_name=None) -> TrainRunInfo:
         controller_actor_id="3abd1972a19148d78acc78dd9414736e",
         workers=[worker_info_0, worker_info_1],
         datasets=[dataset_info],
+        start_time=1717448423.0,
     )
     return run_info
 

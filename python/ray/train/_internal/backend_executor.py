@@ -1,5 +1,6 @@
 import logging
 import os
+import time
 from collections import defaultdict
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Optional, Tuple, Type, TypeVar
@@ -547,6 +548,7 @@ class BackendExecutor:
                 controller_actor_id=core_context.get_actor_id(),
                 datasets=datasets,
                 worker_group=self.worker_group,
+                start_time=time.time(),
             )
 
         # Run the training function asynchronously in its own thread.
