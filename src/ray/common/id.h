@@ -318,7 +318,12 @@ class ObjectID : public BaseID<ObjectID> {
   /// \return The computed object ID.
   static ObjectID ForActorHandle(const ActorID &actor_id);
 
+  /// Whether this ObjectID represents an actor handle. This is the ObjectID
+  /// returned by the actor's creation task.
   static bool IsActorID(const ObjectID &object_id);
+  /// Return the ID of the actor that produces this object. For the actor
+  /// creation task and for tasks executed by the actor, this will return a
+  /// non-nil ActorID.
   static ActorID ToActorID(const ObjectID &object_id);
 
   MSGPACK_DEFINE(id_);

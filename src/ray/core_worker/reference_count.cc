@@ -939,11 +939,16 @@ void ReferenceCounter::PopAndClearLocalBorrowers(
     // borrowed IDs. This is because we artificially increment each borrowed ID to
     // keep it pinned during task execution. However, this should not count towards
     // the final ref count / existence of local ref returned to the task's caller.
-    RAY_CHECK(GetAndClearLocalBorrowersInternal(borrowed_id,
-                                                /*for_ref_removed=*/false,
-                                                /*deduct_local_ref=*/true,
-                                                &borrowed_refs))
-        << borrowed_id;
+    bool ref_found = GetAndClearLocalBorrowersInternal(borrowed_id,
+                                                       /*for_ref_removed=*/false,
+                                                       /*deduct_local_ref=*/true,
+                                                       &borrowed_refs);
+    if (!ref_found) {
+      RAY_CHECK(ObjectID::IsActorID(borrowed_id))
+          << "ObjectRef " << borrowed_id
+          << " passed to task through arguments is no longer in scope at end of task. "
+             "This indicates a bug in the reference counting protocol.";
+    }
   }
   ReferenceTableToProto(borrowed_refs, proto);
 
