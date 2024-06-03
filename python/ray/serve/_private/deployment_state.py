@@ -1258,7 +1258,7 @@ class DeploymentState:
                 "Tracks whether this deployment replica is healthy. 1 means "
                 "healthy, 0 means unhealthy."
             ),
-            tag_keys=("deployment", "replica", "application"),
+            tag_keys=("deployment", "replica", "application", "submission_id"),
         )
 
         # Whether the multiplexed model ids have been updated since the last
@@ -2089,12 +2089,14 @@ class DeploymentState:
         replica.stop(graceful=graceful_stop)
         self._replicas.add(ReplicaState.STOPPING, replica)
         self._deployment_scheduler.on_replica_stopping(replica.replica_id)
+        submission_id = os.getenv("BYTED_SUBMISSION_ID", "")
         self.health_check_gauge.set(
             0,
             tags={
                 "deployment": self.deployment_name,
                 "replica": replica.replica_id.unique_id,
                 "application": self.app_name,
+				"submission_id": submission_id,
             },
         )
 
@@ -2104,7 +2106,7 @@ class DeploymentState:
         with state container from previous update() cycle to see if any state
         transition happened.
         """
-
+        submission_id = os.getenv("BYTED_SUBMISSION_ID", "")
         for replica in self._replicas.pop(
             states=[ReplicaState.RUNNING, ReplicaState.PENDING_MIGRATION]
         ):
@@ -2116,6 +2118,7 @@ class DeploymentState:
                         "deployment": self.deployment_name,
                         "replica": replica.replica_id.unique_id,
                         "application": self.app_name,
+						"submission_id": submission_id,
                     },
                 )
             else:
@@ -2128,6 +2131,7 @@ class DeploymentState:
                         "deployment": self.deployment_name,
                         "replica": replica.replica_id.unique_id,
                         "application": self.app_name,
+						"submission_id": submission_id,
                     },
                 )
                 self._stop_replica(

@@ -96,6 +96,7 @@ message RegisterActorToMetircAgentRequest {
     uint32 pid = 1;
     string actor_id = 2;
     string submission_id = 3;
+    repeated uint32 gpu_ids = 4;
 }
 
 message RegisterActorToMetircAgentReply {

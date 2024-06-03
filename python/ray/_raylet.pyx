@@ -2245,8 +2245,8 @@ cdef execute_task_with_cancellation_handler(
             )
             stub = reporter_pb2_grpc.ReporterServiceStub(channel)
             reply = stub.RegisterActor(reporter_pb2.RegisterActorToMetircAgentRequest(
-                pid=os.getpid(), actor_id=core_worker.get_actor_id().hex(),
-                submission_id=os.getenv("BYTED_SUBMISSION_ID")))
+                pid=os.getpid(), actor_id=core_worker.get_actor_id().hex(), submission_id=os.getenv("BYTED_SUBMISSION_ID", ""),
+                gpu_ids=ray.get_gpu_ids()))
         except Exception as err:
             exception_str = (
                 "Error occurred while register actor to metric agent: {}".format(err))
