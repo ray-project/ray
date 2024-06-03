@@ -14,9 +14,10 @@ from ray._private.ray_constants import (
 import ray._private.runtime_env.agent.runtime_env_consts as runtime_env_consts
 from ray._private.ray_logging import setup_component_logger
 from ray._private.runtime_env.conda import CondaPlugin
-from ray._private.runtime_env.container import ContainerManager
 from ray._private.runtime_env.context import RuntimeEnvContext
+from ray._private.runtime_env.default_impl import get_image_uri_plugin
 from ray._private.runtime_env.java_jars import JavaJarsPlugin
+from ray._private.runtime_env.image_uri import ContainerPlugin
 from ray._private.runtime_env.pip import PipPlugin
 from ray._private.gcs_utils import GcsAioClient
 from ray._private.runtime_env.plugin import (
@@ -200,11 +201,12 @@ class RuntimeEnvAgent:
         self._working_dir_plugin = WorkingDirPlugin(
             self._runtime_env_dir, self._gcs_aio_client
         )
+        self._container_plugin = ContainerPlugin(temp_dir)
         # TODO(jonathan-anyscale): change the plugin to ProfilerPlugin
         # and unify with nsight and other profilers.
         self._nsight_plugin = NsightPlugin(self._runtime_env_dir)
-        self._container_manager = ContainerManager(temp_dir)
         self._mpi_plugin = MPIPlugin()
+        self._image_uri_plugin = get_image_uri_plugin(temp_dir)
 
         # TODO(architkulkarni): "base plugins" and third-party plugins should all go
         # through the same code path.  We should never need to refer to
@@ -215,8 +217,10 @@ class RuntimeEnvAgent:
             self._conda_plugin,
             self._py_modules_plugin,
             self._java_jars_plugin,
+            self._container_plugin,
             self._nsight_plugin,
             self._mpi_plugin,
+            self._image_uri_plugin,
         ]
         self._plugin_manager = RuntimeEnvPluginManager()
         for plugin in self._base_plugins:
@@ -244,7 +248,7 @@ class RuntimeEnvAgent:
             "Listening to address %s, port %d", address, runtime_env_agent_port
         )
 
-    def uris_parser(self, runtime_env):
+    def uris_parser(self, runtime_env: RuntimeEnv):
         result = list()
         for name, plugin_setup_context in self._plugin_manager.plugins.items():
             plugin = plugin_setup_context.class_instance
@@ -309,9 +313,6 @@ class RuntimeEnvAgent:
             # avoid lint error. That will be moved to cgroup plugin.
             per_job_logger.debug(f"Worker has resource :" f"{allocated_resource}")
             context = RuntimeEnvContext(env_vars=runtime_env.env_vars())
-            await self._container_manager.setup(
-                runtime_env, context, logger=per_job_logger
-            )
 
             # Warn about unrecognized fields in the runtime env.
             for name, _ in runtime_env.plugins():

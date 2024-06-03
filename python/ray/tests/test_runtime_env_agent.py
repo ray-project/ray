@@ -13,7 +13,7 @@ from ray._private.test_utils import (
     init_error_pubsub,
     wait_for_condition,
 )
-from ray.core.generated import gcs_pb2
+from ray.core.generated import common_pb2
 from ray.runtime_env import RuntimeEnv
 import psutil
 
@@ -160,7 +160,7 @@ def test_raylet_and_agent_share_fate(shutdown_only):
         node for node in ray.nodes() if node["NodeID"] == worker_node_id
     ][0]
     assert not worker_node_info["Alive"]
-    assert worker_node_info["DeathReason"] == gcs_pb2.NodeDeathInfo.Reason.Value(
+    assert worker_node_info["DeathReason"] == common_pb2.NodeDeathInfo.Reason.Value(
         "UNEXPECTED_TERMINATION"
     )
     assert (

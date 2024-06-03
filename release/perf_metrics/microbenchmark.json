@@ -1,283 +1,283 @@
 {
     "1_1_actor_calls_async": [
-        9062.792852859755,
-        201.88082345014254
+        8766.429278436297,
+        120.86055337969302
     ],
     "1_1_actor_calls_concurrent": [
-        5479.71996068499,
-        360.8246009353858
+        5466.2521928780425,
+        294.4643111642266
     ],
     "1_1_actor_calls_sync": [
-        2096.4576697416196,
-        54.90895331226573
+        2005.483489295091,
+        51.49539414234871
     ],
     "1_1_async_actor_calls_async": [
-        3314.3892417930037,
-        132.65271504449134
+        3485.371511081248,
+        113.58116489466117
     ],
     "1_1_async_actor_calls_sync": [
-        1325.7852093012016,
-        28.80251158731383
+        1347.8868250169457,
+        17.79541434936412
     ],
     "1_1_async_actor_calls_with_args_async": [
-        2343.1487246339175,
-        64.07964858250249
+        2512.820463128068,
+        155.31965794076362
     ],
     "1_n_actor_calls_async": [
-        8606.08018065877,
-        464.65178014068323
+        8490.352729000244,
+        181.05358592855262
     ],
     "1_n_async_actor_calls_async": [
-        7460.166048300169,
-        81.1534935797334
+        7295.2280994398525,
+        83.24487540906311
     ],
     "client__1_1_actor_calls_async": [
-        907.189714069745,
-        30.09285092604243
+        987.583992857757,
+        8.55231528044142
     ],
     "client__1_1_actor_calls_concurrent": [
-        862.2264504688716,
-        15.31700423704598
+        993.4252979888793,
+        14.709916004253799
     ],
     "client__1_1_actor_calls_sync": [
-        465.4585783069056,
-        10.3283151207103
+        527.6097359140301,
+        6.229717007741613
     ],
     "client__get_calls": [
-        1158.7613618440014,
-        15.2470079224923
+        1122.3334401198258,
+        48.51501029209967
     ],
     "client__put_calls": [
-        789.0311690962432,
-        11.582638068164687
+        799.7415900241213,
+        12.025635667289933
     ],
     "client__put_gigabytes": [
-        0.13155858254345548,
-        0.0006237409662319517
+        0.13117998295265082,
+        0.000998012447116976
     ],
     "client__tasks_and_get_batch": [
-        0.9229179501706766,
-        0.016042442038446857
+        0.8066078636677214,
+        0.011930458414569594
     ],
     "client__tasks_and_put_batch": [
-        11657.997816451738,
-        122.84381416507865
+        11191.448976686781,
+        93.86657449650411
     ],
     "multi_client_put_calls_Plasma_Store": [
-        12873.027401685875,
-        206.74322585504657
+        11889.62967857741,
+        119.20037762191876
     ],
     "multi_client_put_gigabytes": [
-        35.8680482168819,
-        1.6837276555923617
+        38.09272404390616,
+        2.3201711068853097
     ],
     "multi_client_tasks_async": [
-        21743.557366389494,
-        766.3008688107913
+        22255.262702895383,
+        1184.2604056922066
     ],
     "n_n_actor_calls_async": [
-        27688.27595653398,
-        786.3443469102006
+        27321.88100222539,
+        416.48715073593917
     ],
     "n_n_actor_calls_with_arg_async": [
-        2713.504279822532,
-        69.57915774978693
+        2672.287170984248,
+        23.619720775433688
     ],
     "n_n_async_actor_calls_async": [
-        23092.83239112525,
-        497.909562630626
+        23164.85974320361,
+        970.0857104946699
     ],
     "perf_metrics": [
         {
             "perf_metric_name": "single_client_get_calls_Plasma_Store",
             "perf_metric_type": "THROUGHPUT",
-            "perf_metric_value": 10269.932297010477
+            "perf_metric_value": 10500.67448465853
         },
         {
             "perf_metric_name": "single_client_put_calls_Plasma_Store",
             "perf_metric_type": "THROUGHPUT",
-            "perf_metric_value": 5196.004383289357
+            "perf_metric_value": 5286.037415485109
         },
         {
             "perf_metric_name": "multi_client_put_calls_Plasma_Store",
             "perf_metric_type": "THROUGHPUT",
-            "perf_metric_value": 12873.027401685875
+            "perf_metric_value": 11889.62967857741
         },
         {
             "perf_metric_name": "single_client_put_gigabytes",
             "perf_metric_type": "THROUGHPUT",
-            "perf_metric_value": 20.09665460590859
+            "perf_metric_value": 20.46923471565212
         },
         {
             "perf_metric_name": "single_client_tasks_and_get_batch",
             "perf_metric_type": "THROUGHPUT",
-            "perf_metric_value": 8.144156516407913
+            "perf_metric_value": 7.730134993824188
         },
         {
             "perf_metric_name": "multi_client_put_gigabytes",
             "perf_metric_type": "THROUGHPUT",
-            "perf_metric_value": 35.8680482168819
+            "perf_metric_value": 38.09272404390616
         },
         {
             "perf_metric_name": "single_client_get_object_containing_10k_refs",
             "perf_metric_type": "THROUGHPUT",
-            "perf_metric_value": 13.25584597642898
+            "perf_metric_value": 13.30751068234607
         },
         {
             "perf_metric_name": "single_client_wait_1k_refs",
             "perf_metric_type": "THROUGHPUT",
-            "perf_metric_value": 5.012190250895254
+            "perf_metric_value": 5.160164268505817
         },
         {
             "perf_metric_name": "single_client_tasks_sync",
             "perf_metric_type": "THROUGHPUT",
-            "perf_metric_value": 971.317197225919
+            "perf_metric_value": 974.4612781847234
         },
         {
             "perf_metric_name": "single_client_tasks_async",
             "perf_metric_type": "THROUGHPUT",
-            "perf_metric_value": 8194.32696391844
+            "perf_metric_value": 7378.7495889110505
         },
         {
             "perf_metric_name": "multi_client_tasks_async",
             "perf_metric_type": "THROUGHPUT",
-            "perf_metric_value": 21743.557366389494
+            "perf_metric_value": 22255.262702895383
         },
         {
             "perf_metric_name": "1_1_actor_calls_sync",
             "perf_metric_type": "THROUGHPUT",
-            "perf_metric_value": 2096.4576697416196
+            "perf_metric_value": 2005.483489295091
         },
         {
             "perf_metric_name": "1_1_actor_calls_async",
             "perf_metric_type": "THROUGHPUT",
-            "perf_metric_value": 9062.792852859755
+            "perf_metric_value": 8766.429278436297
         },
         {
             "perf_metric_name": "1_1_actor_calls_concurrent",
             "perf_metric_type": "THROUGHPUT",
-            "perf_metric_value": 5479.71996068499
+            "perf_metric_value": 5466.2521928780425
         },
         {
             "perf_metric_name": "1_n_actor_calls_async",
             "perf_metric_type": "THROUGHPUT",
-            "perf_metric_value": 8606.08018065877
+            "perf_metric_value": 8490.352729000244
         },
         {
             "perf_metric_name": "n_n_actor_calls_async",
             "perf_metric_type": "THROUGHPUT",
-            "perf_metric_value": 27688.27595653398
+            "perf_metric_value": 27321.88100222539
         },
         {
             "perf_metric_name": "n_n_actor_calls_with_arg_async",
             "perf_metric_type": "THROUGHPUT",
-            "perf_metric_value": 2713.504279822532
+            "perf_metric_value": 2672.287170984248
         },
         {
             "perf_metric_name": "1_1_async_actor_calls_sync",
             "perf_metric_type": "THROUGHPUT",
-            "perf_metric_value": 1325.7852093012016
+            "perf_metric_value": 1347.8868250169457
         },
         {
             "perf_metric_name": "1_1_async_actor_calls_async",
             "perf_metric_type": "THROUGHPUT",
-            "perf_metric_value": 3314.3892417930037
+            "perf_metric_value": 3485.371511081248
         },
         {
             "perf_metric_name": "1_1_async_actor_calls_with_args_async",
             "perf_metric_type": "THROUGHPUT",
-            "perf_metric_value": 2343.1487246339175
+            "perf_metric_value": 2512.820463128068
         },
         {
             "perf_metric_name": "1_n_async_actor_calls_async",
             "perf_metric_type": "THROUGHPUT",
-            "perf_metric_value": 7460.166048300169
+            "perf_metric_value": 7295.2280994398525
         },
         {
             "perf_metric_name": "n_n_async_actor_calls_async",
             "perf_metric_type": "THROUGHPUT",
-            "perf_metric_value": 23092.83239112525
+            "perf_metric_value": 23164.85974320361
         },
         {
             "perf_metric_name": "placement_group_create/removal",
             "perf_metric_type": "THROUGHPUT",
-            "perf_metric_value": 838.5131869401664
+            "perf_metric_value": 788.0742341227435
         },
         {
             "perf_metric_name": "client__get_calls",
             "perf_metric_type": "THROUGHPUT",
-            "perf_metric_value": 1158.7613618440014
+            "perf_metric_value": 1122.3334401198258
         },
         {
             "perf_metric_name": "client__put_calls",
             "perf_metric_type": "THROUGHPUT",
-            "perf_metric_value": 789.0311690962432
+            "perf_metric_value": 799.7415900241213
         },
         {
             "perf_metric_name": "client__put_gigabytes",
             "perf_metric_type": "THROUGHPUT",
-            "perf_metric_value": 0.13155858254345548
+            "perf_metric_value": 0.13117998295265082
         },
         {
             "perf_metric_name": "client__tasks_and_put_batch",
             "perf_metric_type": "THROUGHPUT",
-            "perf_metric_value": 11657.997816451738
+            "perf_metric_value": 11191.448976686781
         },
         {
             "perf_metric_name": "client__1_1_actor_calls_sync",
             "perf_metric_type": "THROUGHPUT",
-            "perf_metric_value": 465.4585783069056
+            "perf_metric_value": 527.6097359140301
         },
         {
             "perf_metric_name": "client__1_1_actor_calls_async",
             "perf_metric_type": "THROUGHPUT",
-            "perf_metric_value": 907.189714069745
+            "perf_metric_value": 987.583992857757
         },
         {
             "perf_metric_name": "client__1_1_actor_calls_concurrent",
             "perf_metric_type": "THROUGHPUT",
-            "perf_metric_value": 862.2264504688716
+            "perf_metric_value": 993.4252979888793
         },
         {
             "perf_metric_name": "client__tasks_and_get_batch",
             "perf_metric_type": "THROUGHPUT",
-            "perf_metric_value": 0.9229179501706766
+            "perf_metric_value": 0.8066078636677214
         }
     ],
     "placement_group_create/removal": [
-        838.5131869401664,
-        8.669141107798977
+        788.0742341227435,
+        10.00903890631821
     ],
     "single_client_get_calls_Plasma_Store": [
-        10269.932297010477,
-        323.15008192139106
+        10500.67448465853,
+        360.1079441884577
     ],
     "single_client_get_object_containing_10k_refs": [
-        13.25584597642898,
-        0.06849427287247552
+        13.30751068234607,
+        0.2608539457674152
     ],
     "single_client_put_calls_Plasma_Store": [
-        5196.004383289357,
-        39.378140465481884
+        5286.037415485109,
+        74.24170737659924
     ],
     "single_client_put_gigabytes": [
-        20.09665460590859,
-        4.950859874261046
+        20.46923471565212,
+        6.428223549120574
     ],
     "single_client_tasks_and_get_batch": [
-        8.144156516407913,
-        0.26484235965448855
+        7.730134993824188,
+        0.15527622087112827
     ],
     "single_client_tasks_async": [
-        8194.32696391844,
-        355.25438679131315
+        7378.7495889110505,
+        772.618435291432
     ],
     "single_client_tasks_sync": [
-        971.317197225919,
-        32.73250539384329
+        974.4612781847234,
+        19.26648673285388
     ],
     "single_client_wait_1k_refs": [
-        5.012190250895254,
-        0.17129235302778886
+        5.160164268505817,
+        0.11776044271280343
     ]
 }

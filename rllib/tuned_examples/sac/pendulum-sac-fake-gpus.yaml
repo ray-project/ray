@@ -1,3 +1,4 @@
+# @OldAPIStack
 pendulum-sac-fake-gpus:
       env: Pendulum-v1
       run: SAC
@@ -24,7 +25,7 @@ pendulum-sac-fake-gpus:
           replay_buffer_config:
             type: MultiAgentPrioritizedReplayBuffer
           num_steps_sampled_before_learning_starts: 256
-          num_workers: 0
+          num_env_runners: 0
           metrics_num_episodes_for_smoothing: 5
 
           # 1x batch size (despite 2 GPUs).

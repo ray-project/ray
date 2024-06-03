@@ -1251,7 +1251,7 @@ class AlgorithmConfig(_Config):
                 For example, an Algorithm with 2 EnvRunners and 1 Learner (with
                 1 GPU) will request a placement group with the bundles:
                 [{"cpu": 1}, {"gpu": 1, "cpu": 1}, {"cpu": 1}, {"cpu": 1}], where the
-                first bundle is for the local (main Algorithm) process, the secon one
+                first bundle is for the local (main Algorithm) process, the second one
                 for the 1 Learner worker and the last 2 bundles are for the two
                 EnvRunners. These bundles can now be "placed" on the same or different
                 nodes depending on the value of `placement_strategy`:
@@ -1439,8 +1439,8 @@ class AlgorithmConfig(_Config):
 
     def api_stack(
         self,
-        enable_rl_module_and_learner: Optional[str] = NotProvided,
-        enable_env_runner_and_connector_v2: Optional[str] = NotProvided,
+        enable_rl_module_and_learner: Optional[bool] = NotProvided,
+        enable_env_runner_and_connector_v2: Optional[bool] = NotProvided,
     ) -> "AlgorithmConfig":
         """Sets the config's API stack settings.
 

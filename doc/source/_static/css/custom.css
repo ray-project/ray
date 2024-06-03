@@ -394,16 +394,3 @@ table.autosummary tr > td:first-child > p > a > code > span {
 .table.example-table th:first-child {
   width: 30%;
 }
-
-.bd-header-announcement {
-  color: var(--pst-color-light);
-}
-
-.bd-header-announcement::after {
-  background-color: var(--ray-blue);
-}
-
-.bd-header-announcement a {
-  color: var(--pst-color-light);
-  text-decoration: underline;
-}

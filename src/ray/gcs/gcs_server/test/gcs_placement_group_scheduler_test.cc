@@ -125,7 +125,8 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
   }
 
   void RemoveNode(const std::shared_ptr<rpc::GcsNodeInfo> &node) {
-    gcs_node_manager_->RemoveNode(NodeID::FromBinary(node->node_id()));
+    rpc::NodeDeathInfo death_info;
+    gcs_node_manager_->RemoveNode(NodeID::FromBinary(node->node_id()), death_info);
     gcs_resource_manager_->OnNodeDead(NodeID::FromBinary(node->node_id()));
   }
 

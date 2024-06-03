@@ -284,7 +284,7 @@ NodeManager::NodeManager(
           RayConfig::instance().min_memory_free_bytes(),
           RayConfig::instance().memory_monitor_refresh_ms(),
           CreateMemoryUsageRefreshCallback())) {
-  RAY_LOG(INFO) << "Initializing NodeManager with ID " << self_node_id_;
+  RAY_LOG(INFO).WithField(kLogKeyNodeID, self_node_id_) << "Initializing NodeManager";
   cluster_resource_scheduler_ = std::make_shared<ClusterResourceScheduler>(
       io_service,
       scheduling::NodeID(self_node_id_.Binary()),
@@ -1974,11 +1974,8 @@ void NodeManager::HandleDrainRaylet(rpc::DrainRayletRequest request,
     const bool is_idle =
         cluster_resource_scheduler_->GetLocalResourceManager().IsLocalNodeIdle();
     if (is_idle) {
-      rpc::NodeDeathInfo node_death_info;
-      node_death_info.set_reason(rpc::NodeDeathInfo::AUTOSCALER_DRAIN_IDLE);
-      node_death_info.set_reason_message(request.reason_message());
       cluster_resource_scheduler_->GetLocalResourceManager().SetLocalNodeDraining(
-          request.deadline_timestamp_ms(), node_death_info);
+          request);
       reply->set_is_accepted(true);
     } else {
       reply->set_is_accepted(false);
@@ -1989,11 +1986,7 @@ void NodeManager::HandleDrainRaylet(rpc::DrainRayletRequest request,
     // Non-rejectable draining request.
     RAY_CHECK_EQ(request.reason(),
                  rpc::autoscaler::DrainNodeReason::DRAIN_NODE_REASON_PREEMPTION);
-    rpc::NodeDeathInfo node_death_info;
-    node_death_info.set_reason(rpc::NodeDeathInfo::AUTOSCALER_DRAIN_PREEMPTED);
-    node_death_info.set_reason_message(request.reason_message());
-    cluster_resource_scheduler_->GetLocalResourceManager().SetLocalNodeDraining(
-        request.deadline_timestamp_ms(), node_death_info);
+    cluster_resource_scheduler_->GetLocalResourceManager().SetLocalNodeDraining(request);
     reply->set_is_accepted(true);
   }
 

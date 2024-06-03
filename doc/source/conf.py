@@ -265,7 +265,7 @@ html_theme = "pydata_sphinx_theme"
 # documentation.
 html_theme_options = {
     "use_edit_page_button": True,
-    "announcement": """Ray Summit unites the community. Submit a <b><a target="_blank" href="https://raysummit.anyscale.com/flow/anyscale/raysummit2024/landing/page/eventsite?utm_source=cfpraydocs_gl=1*949o36*_ga*Mzk2ODgxMTUwLjE3MTM4OTE0NzM.*_ga_T6EXHYG44V*MTcxNDA3ODUzNC43LjAuMTcxNDA3ODUzNC42MC4wLjEyMDk3NzQ2MjE">session proposal</a></b> to share your experience.""",
+    "announcement": None,
     "logo": {
         "svg": render_svg_logo("_static/img/ray_logo.svg"),
     },

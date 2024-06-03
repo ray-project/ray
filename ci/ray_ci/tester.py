@@ -1,4 +1,3 @@
-import itertools
 import os
 import sys
 from typing import List, Set, Tuple, Optional
@@ -393,30 +392,18 @@ def _get_test_targets(
     if get_high_impact_tests:
         # run high impact test cases, so we include only high impact tests in the list
         # of targets provided by users
-        high_impact_tests = _get_high_impact_test_targets(
-            team, operating_system, container
-        )
+        prefix = f"{operating_system}:"
+        # TODO(can): we should also move the logic of _get_new_tests into the
+        # gen_microcheck_tests function; this is currently blocked by the fact that
+        # we need a container to run _get_new_tests
+        high_impact_tests = Test.gen_microcheck_tests(
+            prefix=prefix,
+            bazel_workspace_dir=bazel_workspace_dir,
+            team=team,
+        ).union(_get_new_tests(prefix, container))
         final_targets = high_impact_tests.intersection(final_targets)
 
     return list(final_targets)
-
-
-def _get_high_impact_test_targets(
-    team: str, operating_system: str, container: TesterContainer
-) -> Set[str]:
-    """
-    Get all test targets that are high impact
-    """
-    os_prefix = f"{operating_system}:"
-    step_id_to_tests = Test.gen_high_impact_tests(prefix=os_prefix)
-    high_impact_tests = {
-        test.get_name().lstrip(os_prefix)
-        for test in itertools.chain.from_iterable(step_id_to_tests.values())
-        if test.get_oncall() == team
-    }
-    new_tests = _get_new_tests(os_prefix, container)
-
-    return high_impact_tests.union(new_tests)
 
 
 def _get_new_tests(prefix: str, container: TesterContainer) -> Set[str]:

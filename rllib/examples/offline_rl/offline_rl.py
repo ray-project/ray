@@ -31,6 +31,7 @@ from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.metrics import (
     ENV_RUNNER_RESULTS,
     EPISODE_RETURN_MEAN,
+    EVALUATION_RESULTS,
 )
 
 torch, _ = try_import_torch()
@@ -111,7 +112,7 @@ if __name__ == "__main__":
     learnt = False
     for i in range(num_iterations):
         print(f"Iter {i}")
-        eval_results = cql_algorithm.train().get("evaluation")
+        eval_results = cql_algorithm.train().get(EVALUATION_RESULTS)
         if eval_results:
             print(
                 "... R={}".format(eval_results[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN])
