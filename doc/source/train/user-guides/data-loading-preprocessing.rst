@@ -13,6 +13,11 @@ Key advantages include:
 
 For more details about Ray Data, including comparisons to alternatives, see :ref:`Ray Data Overview <data_overview>`.
 
+.. note::
+
+    In addition to Ray Data, you can continue using the data utilities provided by Machine Learning frameworks, such as PyTorch Dataset, 
+    Hugging Face Dataset, and Lightning Data Module. Ray Train also integrates seamlessly with these tools.
+
 In this guide, we will cover how to incorporate Ray Data into your Ray Train script, and different ways to customize your data ingestion pipeline.
 
 .. TODO: Replace this image with a better one.
@@ -275,28 +280,6 @@ At a high level, you can compare these concepts as follows:
      - n/a
      - :meth:`ray.data.Dataset.iter_torch_batches`
 
-Why using Ray Data?
-~~~~~~~~~~~~~~~~~~~
-
-The framework's data utilities work well with small datasets requiring light preprocessing. 
-However, they can become performance bottlenecks when handling large-scale datasets with complex preprocessing logic. 
-Ray Data is designed to address these challenges, providing efficient large-scale data ingestion. 
-
-Specifically, you can benefit from the following features of Ray Data:
-
-**Streaming execution**:
-
-- The preprocessing pipeline will be executed lazily and stream the data batches into training workers.
-- Training can start immediately without significant up-front preprocessing time.
-
-**Automatic data sharding**: 
-
-- The dataset will be automatically sharded across all training workers. 
-
-**Leverage additional resources for preprocessing**
-
-- Ray Data can utilize all resources in the Ray cluster for preprocessing, not just those on your training nodes. 
-
 For more details, see the following sections for each framework:
 
 .. tab-set::
@@ -305,14 +288,14 @@ For more details, see the following sections for each framework:
 
         **Option 1 (with Ray Data):** 
 
-        1. Convert your PyTorch Dataset to a Ray Dataset and 
+        1. Convert your PyTorch Dataset to a Ray Dataset. 
         2. Pass the Ray Dataset into the TorchTrainer via  ``datasets`` argument.
-        3. Inside your ``train_loop_per_worker``, access the sharded dataset via :meth:`ray.train.get_dataset_shard`.
+        3. Inside your ``train_loop_per_worker``, you can access the dataset via :meth:`ray.train.get_dataset_shard`.
         4. Create a dataset iterable via :meth:`ray.data.DataIterator.iter_torch_batches`.
 
         For more details, see the :ref:`Migrating from PyTorch Datasets and DataLoaders <migrate_pytorch>`.
 
-        **Option 2 (with PyTorch DataLoader):** 
+        **Option 2 (without Ray Data):** 
 
         1. Instantiate the Torch Dataset and DataLoader directly in the ``train_loop_per_worker``.
         2. Use the :meth:`ray.train.torch.prepare_data_loader` utility to set up the DataLoader for distributed training.
@@ -330,8 +313,9 @@ For more details, see the following sections for each framework:
         3. Inside your ``train_loop_per_worker``, access the sharded dataset via :meth:`ray.train.get_dataset_shard`.
         4. Create a iterable dataset via :meth:`ray.data.DataIterator.iter_torch_batches`. 
         5. Pass the iterable dataset into ``transformers.Trainer`` during initialization.
+        6. Wrap your transformers trainer with the :meth:`ray.train.huggingface.transformers.prepare_trainer` utility, so that it supports Ray Iterable Dataset.
 
-        **Option 2 (with HuggingFace Dataset):** 
+        **Option 2 (without Ray Data):** 
 
         1. Instantiate the Hugging Face Dataset directly in the ``train_loop_per_worker``.
         2. Pass the Hugging Face Dataset into ``transformers.Trainer`` during initialization.
