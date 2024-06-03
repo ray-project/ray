@@ -105,21 +105,27 @@ class Worker:
         """
         Patch methods that require CUDA.
         """
+        # Mock cupy dependencies.
+        nccl_mock = mock.MagicMock()
+        nccl_mock.nccl.get_unique_id.return_value = 0
+        cp_patcher = mock.patch.dict(
+            "sys.modules",
+            {
+                "cupy.cuda": nccl_mock,
+                "cupy": mock.MagicMock(),
+                "ray.util.collective.collective_group": mock.MagicMock(),
+            },
+        )
+        cp_patcher.start()
+
+        # Mock send/recv ops to use an actor instead of NCCL.
+        ray.experimental.channel.torch_tensor_nccl_channel._NcclGroup = MockNcclGroup
+
+        # PyTorch mocks.
         stream_patcher = mock.patch(
             "torch.cuda.current_stream", new_callable=lambda: MockCudaStream
         )
         stream_patcher.start()
-
-        cp_stream_patcher = mock.patch("cupy.cuda.ExternalStream")
-        cp_stream_patcher.start()
-
-        comm_patcher = mock.patch(
-            "ray.util.collective.collective_group.nccl_util.NcclCommunicator"
-        )
-        comm_patcher.start()
-
-        ray.experimental.channel.torch_tensor_nccl_channel._NcclGroup = MockNcclGroup
-
         tensor_patcher = mock.patch("torch.Tensor.device", torch.device("cuda"))
         tensor_patcher.start()
         tensor_patcher = mock.patch("torch.Tensor.is_cuda", True)
