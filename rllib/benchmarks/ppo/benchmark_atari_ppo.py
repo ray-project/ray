@@ -1,3 +1,4 @@
+""""""
 import subprocess
 
 from ray.rllib.utils.test_utils import add_rllib_example_script_args
@@ -75,24 +76,30 @@ benchmark_envs = {
 if __name__ == "__main__":
     args = parser.parse_args()
 
+    # Compile the base command running the actual `tuned_example` script.
     base_commands = [
         "python",
         "../../tuned_examples/ppo/atari_ppo.py",
         "--enable-new-api-stack",
-        f"--num-env-runners={args.num_env_runners}",
+        f"--num-env-runners={args.num_env_runners}" if args.num_env_runners else "",
         f"--num-gpus={args.num_gpus}",
         f"--wandb-key={args.wandb_key}" if args.wandb_key else "",
         f"--wandb-project={args.wandb_project}" if args.wandb_project else "",
         f"--wandb-run-name={args.wandb_run_name}" if args.wandb_run_name else "",
         f"--stop-timesteps={args.stop_timesteps}",
         f"--checkpoint-freq={args.checkpoint_freq}",
-        f"--checkpoint-at-end={args.checkpoint_at_end}",
+        f"--checkpoint-at-end" if args.checkpoint_at_end else "",
     ]
 
-    envs = args.env.split(",") if args.env else benchmark_envs.keys()
-
-    for env_name in envs:
-        setup = benchmark_envs[env_name]
-        commands = base_commands.copy()
-        commands.extend(["--env", env_name])
+    # Loop through all envs (given on command line or found in `benchmark_envs` and
+    # run the `tuned_example` script for each of them.
+    for env_name in args.env.split(",") if args.env else benchmark_envs.keys():
+        # Remove missing commands.
+        commands = []
+        for c in base_commands:
+            if c != "":
+                commands.append(c)
+        commands.append(f"--env={env_name}")
+        commands.append(f"--wandb-run-name={env_name}")
+        print(f"Running {env_name} through command line=`{commands}`")
         subprocess.run(commands)
