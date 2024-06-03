@@ -1,4 +1,22 @@
-""""""
+"""Script to execute RLlib's official PPO Atari benchmarks.
+
+How to run this script
+----------------------
+`python [script-name].py --enable-new-api-stack --stop-timesteps 12000000
+--num-gpus=4 --num-env-runners=95`
+
+In order to only run individual or lists of envs, you can provide a list of env-strings
+under the `--env` arg, such as `--env ALE/Pong-v5,ALE/Breakout-v5`.
+
+For logging to your WandB account, use:
+`--wandb-key=[your WandB API key] --wandb-project=[some project name]
+--wandb-run-name=[optional: WandB run name (within the defined project)]`
+
+
+Results to expect
+-----------------
+TODO (sven): Link to RLlib's to-be-created benchmark page.
+"""
 import subprocess
 
 from ray.rllib.utils.test_utils import add_rllib_example_script_args
@@ -88,7 +106,7 @@ if __name__ == "__main__":
         f"--wandb-run-name={args.wandb_run_name}" if args.wandb_run_name else "",
         f"--stop-timesteps={args.stop_timesteps}",
         f"--checkpoint-freq={args.checkpoint_freq}",
-        f"--checkpoint-at-end" if args.checkpoint_at_end else "",
+        "--checkpoint-at-end" if args.checkpoint_at_end else "",
     ]
 
     # Loop through all envs (given on command line or found in `benchmark_envs` and

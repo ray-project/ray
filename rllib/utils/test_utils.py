@@ -147,7 +147,7 @@ def add_rllib_example_script_args(
         type=int,
         default=0,
         help="Every how many iterations to run one round of evaluation. "
-        "Use 0 (default) to disable evaluation."
+        "Use 0 (default) to disable evaluation.",
     )
     parser.add_argument(
         "--evaluation-duration",
@@ -155,7 +155,7 @@ def add_rllib_example_script_args(
         default=10,
         help="The number of evaluation units to run each evaluation round. "
         "Use `--evaluation-duration-unit` to set this either to 'episodes' "
-        "or 'timesteps'."
+        "or 'timesteps'.",
     )
     parser.add_argument(
         "--evaluation-duration-unit",
@@ -164,7 +164,7 @@ def add_rllib_example_script_args(
         choices=["episodes", "timesteps"],
         help="The evaluation duration unit to count by. One of 'episodes' or "
         "'timesteps'. This unit will be run `--evaluation-duration` times in each "
-        "evaluation round."
+        "evaluation round.",
     )
     parser.add_argument(
         "--evaluation-parallel-to-training",
@@ -172,7 +172,7 @@ def add_rllib_example_script_args(
         help="Whether to run evaluation parallel to training. This might help speed up "
         "your overall iteration time. Be aware that when using this option, your "
         "reported evaluation results are referring to one iteration before the current "
-        "one."
+        "one.",
     )
 
     # tune.Tuner options.
