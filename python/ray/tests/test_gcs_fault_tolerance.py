@@ -35,6 +35,17 @@ def increase(x):
     return x + 1
 
 
+def cluster_kill_gcs_wait(cluster):
+    head_node = cluster.head_node
+    gcs_server_process = head_node.all_processes["gcs_server"][0].process
+    gcs_server_pid = gcs_server_process.pid
+    # Kill gcs server.
+    cluster.head_node.kill_gcs_server()
+    # Wait to prevent the gcs server process becoming zombie.
+    gcs_server_process.wait()
+    wait_for_pid_to_exit(gcs_server_pid, 300)
+
+
 @pytest.mark.parametrize(
     "ray_start_regular_with_external_redis",
     [
@@ -133,14 +144,7 @@ def test_autoscaler_init(
     assert len(nodes) == 2
     assert nodes[0]["alive"] and nodes[1]["alive"]
 
-    head_node = cluster.head_node
-    gcs_server_process = head_node.all_processes["gcs_server"][0].process
-    gcs_server_pid = gcs_server_process.pid
-    # Kill gcs server.
-    cluster.head_node.kill_gcs_server()
-    # Wait to prevent the gcs server process becoming zombie.
-    gcs_server_process.wait()
-    wait_for_pid_to_exit(gcs_server_pid, 300)
+    cluster_kill_gcs_wait(cluster)
 
     # Restart gcs server process.
     cluster.head_node.start_gcs_server()
@@ -188,14 +192,7 @@ def test_node_failure_detector_when_gcs_server_restart(
             to_be_removed_node = node
     assert to_be_removed_node is not None
 
-    head_node = cluster.head_node
-    gcs_server_process = head_node.all_processes["gcs_server"][0].process
-    gcs_server_pid = gcs_server_process.pid
-    # Kill gcs server.
-    cluster.head_node.kill_gcs_server()
-    # Wait to prevent the gcs server process becoming zombie.
-    gcs_server_process.wait()
-    wait_for_pid_to_exit(gcs_server_pid, 1000)
+    cluster_kill_gcs_wait(cluster)
 
     raylet_process = worker.all_processes["raylet"][0].process
     raylet_pid = raylet_process.pid
@@ -1095,6 +1092,74 @@ def test_job_finished_after_head_node_restart(
         return job_info.is_dead
 
     wait_for_condition(_check_job_is_dead, submission_id=submission_id, timeout=10)
+
+
+@pytest.mark.parametrize(
+    "ray_start_cluster_head_with_external_redis",
+    [
+        {
+            **generate_system_config_map(
+                gcs_failover_worker_reconnect_timeout=20,
+                gcs_rpc_server_reconnect_timeout_s=3600,
+                gcs_server_request_timeout_seconds=10,
+            ),
+            "namespace": "actor",
+        }
+    ],
+    indirect=True,
+)
+def test_gcs_server_restart_keeps_detached_actors_children_actors(
+    ray_start_cluster_head_with_external_redis,
+):
+    cluster = ray_start_cluster_head_with_external_redis
+
+    @ray.remote
+    class A:
+        def __init__(self):
+            self.children = []
+
+        def getpid(self):
+            return os.getpid()
+
+        def spawn(self, name, namespace):
+            child = A.options(name=name, namespace=namespace).remote()
+            self.children.append(child)
+            return child
+
+    a = A.options(lifetime="detached", name="parent", namespace="ns").remote()
+    child = ray.get(a.spawn.remote("child", "ns"))
+
+    a_pid = ray.get(a.getpid.remote())
+    child_pid = ray.get(child.getpid.remote())
+
+    ray.shutdown()
+    ray.init(address=cluster.address)
+
+    # Previous job died. Both actors should still be alive.
+    a2 = ray.get_actor("parent", namespace="ns")
+    child2 = ray.get_actor("child", namespace="ns")
+
+    assert ray.get(a2.getpid.remote()) == a_pid
+    assert ray.get(child2.getpid.remote()) == child_pid
+
+    cluster_kill_gcs_wait(cluster)
+    cluster.head_node.start_gcs_server()
+    print("GCS restarted")
+    # Shutdown the local core worker to make sure we fetch named actors from GCS.
+    ray.shutdown()
+    ray.init(address=cluster.address)
+
+    a3 = ray.get_actor("parent", namespace="ns")
+    child3 = ray.get_actor("child", namespace="ns")
+
+    assert ray.get(a3.getpid.remote()) == a_pid
+    assert ray.get(child3.getpid.remote()) == child_pid
+
+    # Killing parent should kill child
+    ray.kill(a3, no_restart=True)
+    wait_for_pid_to_exit(child_pid)
+    with pytest.raises(ray.exceptions.RayActorError):
+        ray.get(child3.getpid.remote())
 
 
 if __name__ == "__main__":

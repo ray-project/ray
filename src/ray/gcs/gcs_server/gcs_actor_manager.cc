@@ -1383,19 +1383,16 @@ void GcsActorManager::SchedulePendingActors() {
 }
 
 void GcsActorManager::Initialize(const GcsInitData &gcs_init_data) {
-  const auto &jobs = gcs_init_data.Jobs();
   const auto &actor_task_specs = gcs_init_data.ActorTaskSpecs();
   absl::flat_hash_map<NodeID, std::vector<WorkerID>> node_to_workers;
+
   std::vector<ActorID> dead_actors;
   for (const auto &[actor_id, actor_table_data] : gcs_init_data.Actors()) {
-    auto job_iter = jobs.find(actor_id.JobId());
-    auto is_job_dead = (job_iter == jobs.end() || job_iter->second.is_dead());
-    // We only load actors which are supposed to be alive:
-    //   - Actors which are not dead.
-    //   - Non-deatched actors whoes owner is alive.
-    //   - Detached actors which lives even when their original owner is dead.
-    if (actor_table_data.state() != ray::rpc::ActorTableData::DEAD &&
-        (!is_job_dead || actor_table_data.is_detached())) {
+    // We load all actors but the DEAD ones.
+    // Note: it's attempting to also don't load actors whose Jobs are dead, but it's
+    // not sound since the actor may be owned by a detached actor and can outlive the
+    // job. See https://github.com/ray-project/ray/issues/45596
+    if (actor_table_data.state() != ray::rpc::ActorTableData::DEAD) {
       const auto &iter = actor_task_specs.find(actor_id);
       RAY_CHECK(iter != actor_task_specs.end());
       auto actor = std::make_shared<GcsActor>(
