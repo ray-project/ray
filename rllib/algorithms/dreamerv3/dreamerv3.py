@@ -582,13 +582,13 @@ class DreamerV3(Algorithm):
                 self.metrics.log_dict(
                     {
                         NUM_AGENT_STEPS_SAMPLED_LIFETIME: self.metrics.peek(
-                            ENV_RUNNER_RESULTS, NUM_AGENT_STEPS_SAMPLED
+                            (ENV_RUNNER_RESULTS, NUM_AGENT_STEPS_SAMPLED)
                         ),
                         NUM_ENV_STEPS_SAMPLED_LIFETIME: self.metrics.peek(
-                            ENV_RUNNER_RESULTS, NUM_ENV_STEPS_SAMPLED
+                            (ENV_RUNNER_RESULTS, NUM_ENV_STEPS_SAMPLED)
                         ),
                         NUM_EPISODES_LIFETIME: self.metrics.peek(
-                            ENV_RUNNER_RESULTS, NUM_EPISODES
+                            (ENV_RUNNER_RESULTS, NUM_EPISODES)
                         ),
                     },
                     reduce="sum",
