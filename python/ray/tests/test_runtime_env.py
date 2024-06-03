@@ -282,11 +282,11 @@ def test_container_option_serialize(runtime_env_class):
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Flaky on Windows.")
 @pytest.mark.parametrize("runtime_env_class", [dict, RuntimeEnv])
-def test_no_spurious_worker_startup(shutdown_only, runtime_env_class):
+def test_no_spurious_worker_startup(shutdown_only, runtime_env_class, monkeypatch):
     """Test that no extra workers start up during a long env installation."""
 
     # Causes agent to sleep for 15 seconds to simulate creating a runtime env.
-    os.environ["RAY_RUNTIME_ENV_SLEEP_FOR_TESTING_S"] = "15"
+    monkeypatch.setenv("RAY_RUNTIME_ENV_SLEEP_FOR_TESTING_S", "15")
     ray.init(num_cpus=1)
 
     @ray.remote
@@ -343,10 +343,9 @@ def test_no_spurious_worker_startup(shutdown_only, runtime_env_class):
 
 
 @pytest.fixture
-def runtime_env_local_dev_env_var():
-    os.environ["RAY_RUNTIME_ENV_LOCAL_DEV_MODE"] = "1"
+def runtime_env_local_dev_env_var(monkeypatch):
+    monkeypatch.setenv("RAY_RUNTIME_ENV_LOCAL_DEV_MODE", "1")
     yield
-    del os.environ["RAY_RUNTIME_ENV_LOCAL_DEV_MODE"]
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="very slow on Windows.")
@@ -558,11 +557,10 @@ class TestURICache:
 
 
 @pytest.fixture
-def enable_dev_mode(local_env_var_enabled):
+def enable_dev_mode(local_env_var_enabled, monkeypatch):
     enabled = "1" if local_env_var_enabled else "0"
-    os.environ["RAY_RUNTIME_ENV_LOG_TO_DRIVER_ENABLED"] = enabled
+    monkeypatch.setenv("RAY_RUNTIME_ENV_LOG_TO_DRIVER_ENABLED", enabled)
     yield
-    del os.environ["RAY_RUNTIME_ENV_LOG_TO_DRIVER_ENABLED"]
 
 
 @pytest.mark.skipif(
