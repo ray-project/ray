@@ -2135,10 +2135,19 @@ py_test(
     tags = ["team:rllib", "exclusive", "examples"],
     size = "large",
     srcs = ["examples/checkpoints/continue_training_from_checkpoint.py"],
-    args = ["--enable-new-api-stack"]
+    args = ["--enable-new-api-stack", "--as-test"]
 )
 
 #@OldAPIStack
+py_test(
+    name = "examples/checkpoints/continue_training_from_checkpoint_old_api_stack",
+    main = "examples/checkpoints/continue_training_from_checkpoint.py",
+    tags = ["team:rllib", "exclusive", "examples"],
+    size = "large",
+    srcs = ["examples/checkpoints/continue_training_from_checkpoint.py"],
+    args = ["--as-test"]
+)
+
 py_test(
     name = "examples/checkpoints/cartpole_dqn_export",
     main = "examples/checkpoints/cartpole_dqn_export.py",
