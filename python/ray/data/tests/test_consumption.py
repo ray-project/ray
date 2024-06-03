@@ -679,6 +679,27 @@ def test_convert_types(ray_start_regular_shared):
     assert arrow_ds.map(lambda x: {"a": (x["id"],)}).take() == [{"a": [0]}]
 
 
+@pytest.mark.parametrize(
+    "input_blocks",
+    [
+        [pd.DataFrame({"column": ["spam"]}), pd.DataFrame({"column": ["ham", "eggs"]})],
+        [
+            pa.Table.from_pydict({"column": ["spam"]}),
+            pa.Table.from_pydict({"column": ["ham", "eggs"]}),
+        ],
+    ],
+)
+def test_from_blocks(input_blocks, ray_start_regular_shared):
+    ds = ray.data.from_blocks(input_blocks)
+
+    output_blocks = [ray.get(block_ref) for block_ref in ds.get_internal_block_refs()]
+    assert len(input_blocks) == len(output_blocks)
+    assert all(
+        input_block.equals(output_block)
+        for input_block, output_block in zip(input_blocks, output_blocks)
+    )
+
+
 def test_from_items(ray_start_regular_shared):
     ds = ray.data.from_items(["hello", "world"])
     assert extract_values("item", ds.take()) == ["hello", "world"]
@@ -781,7 +802,7 @@ def test_iter_batches_basic(ray_start_regular_shared):
     df3 = pd.DataFrame({"one": [7, 8, 9], "two": [8, 9, 10]})
     df4 = pd.DataFrame({"one": [10, 11, 12], "two": [11, 12, 13]})
     dfs = [df1, df2, df3, df4]
-    ds = ray.data.from_pandas(dfs)
+    ds = ray.data.from_blocks(dfs)
 
     # Default.
     for batch, df in zip(ds.iter_batches(batch_size=None, batch_format="pandas"), dfs):
@@ -1179,7 +1200,7 @@ def test_iter_batches_grid(ray_start_regular_shared):
                 )
                 running_size += block_size
             num_rows = running_size
-            ds = ray.data.from_pandas(dfs)
+            ds = ray.data.from_blocks(dfs)
             for batch_size in np.random.randint(
                 1, num_rows + 1, size=batch_size_samples
             ):
