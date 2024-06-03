@@ -14,7 +14,10 @@ export const useNodeList = () => {
   >([]);
   const [page, setPage] = useState({ pageSize: 10, pageNo: 1 });
   const { sorterFunc, setOrderDesc, setSortKey, sorterKey } = useSorter("");
-  const changeFilter = (key: "hostname" | "ip" | "state" | "nodeId", val: string) => {
+  const changeFilter = (
+    key: "hostname" | "ip" | "state" | "nodeId",
+    val: string,
+  ) => {
     const f = filter.find((e) => e.key === key);
     if (f) {
       f.val = val;
@@ -65,13 +68,13 @@ export const useNodeList = () => {
   const filteredList = sortedList.filter((node) => {
     const nodeId = node.raylet.nodeId;
     return filter.every((f) => {
-      if (f.key === "nodeId"){
+      if (f.key === "nodeId") {
         return nodeId && nodeId.includes(f.val);
       } else {
         return node[f.key] && node[f.key].includes(f.val);
-      } 
+      }
     });
-  })
+  });
   return {
     nodeList: filteredList,
     msg,
