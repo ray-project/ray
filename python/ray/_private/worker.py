@@ -1575,7 +1575,7 @@ def init(
     # Pass the logging_config to job_config to configure loggers of all worker
     # processes belonging to the job.
     if logging_config:
-        job_config.set_logging_config(logging_config)
+        job_config.set_py_logging_config(logging_config)
 
     redis_address, gcs_address = None, None
     bootstrap_address = services.canonicalize_bootstrap_address(address, _temp_dir)

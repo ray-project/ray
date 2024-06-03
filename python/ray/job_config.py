@@ -73,7 +73,7 @@ class JobConfig:
         # A list of directories that specify the search path for python workers.
         self._py_driver_sys_path = _py_driver_sys_path or []
         # Python logging configurations that will be passed to Ray tasks/actors.
-        self.logging_config = None
+        self.py_logging_config = None
 
     def set_metadata(self, key: str, value: str) -> None:
         """Add key-value pair to the metadata dictionary.
@@ -119,7 +119,7 @@ class JobConfig:
             self.runtime_env = self._validate_runtime_env()
         self._cached_pb = None
 
-    def set_logging_config(
+    def set_py_logging_config(
         self,
         logging_config: Optional[LoggingConfig] = None,
     ):
@@ -131,7 +131,7 @@ class JobConfig:
         Args:
             logging_config: The logging configuration to set.
         """
-        self.logging_config = logging_config
+        self.py_logging_config = logging_config
 
     def set_ray_namespace(self, ray_namespace: str) -> None:
         """Set Ray :ref:`namespace <namespaces-guide>`.
@@ -206,8 +206,8 @@ class JobConfig:
 
             if self._default_actor_lifetime is not None:
                 pb.default_actor_lifetime = self._default_actor_lifetime
-            if self.logging_config:
-                pb.serialized_logging_config = pickle.dumps(self.logging_config)
+            if self.py_logging_config:
+                pb.serialized_py_logging_config = pickle.dumps(self.py_logging_config)
             self._cached_pb = pb
 
         return self._cached_pb
