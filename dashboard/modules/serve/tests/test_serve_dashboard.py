@@ -441,6 +441,7 @@ def test_get_serve_instance_details(ray_start_stop, f_deployment_options, url):
         assert app_details[app].last_deployed_time_s > 0
         assert app_details[app].route_prefix == expected_values[app]["route_prefix"]
         assert app_details[app].docs_path == expected_values[app]["docs_path"]
+        assert app_details[app].source == expected_values[app]["source"]
 
         # CHECK: all deployments are present
         assert (
