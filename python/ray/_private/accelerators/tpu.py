@@ -33,6 +33,7 @@ TPU_VERSIONS_WITH_MULTIPLE_CORES_PER_CHIP = {"v2", "v3", "v4"}
 NOSET_TPU_VISIBLE_CHIPS_ENV_VAR = "RAY_EXPERIMENTAL_NOSET_TPU_VISIBLE_CHIPS"
 
 # TPU VMs come with 4 chips per host and 2 tensorcores per chip.
+# TPU v5e is a special case which has 8 chips per host.
 # For more details: https://cloud.google.com/tpu/docs/system-architecture-tpu-vm
 TPU_NUM_CHIPS_PER_HOST = 4
 TPU_NUM_CHIPS_PER_HOST_V5E = 8
@@ -176,7 +177,10 @@ class TPUAcceleratorManager(AcceleratorManager):
             return
 
         num_visible_tpu_chips = len(visible_tpu_chips)
-        if num_visible_tpu_chips == TPU_NUM_CHIPS_PER_HOST or num_visible_tpu_chips == TPU_NUM_CHIPS_PER_HOST_V5E:
+        if (
+            num_visible_tpu_chips == TPU_NUM_CHIPS_PER_HOST
+            or num_visible_tpu_chips == TPU_NUM_CHIPS_PER_HOST_V5E
+        ):
             # Let the ML framework use the defaults
             return
         os.environ[
