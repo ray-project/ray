@@ -358,4 +358,92 @@ class Voidify {
   void operator&(RayLogBase &) {}
 };
 
+// SFINAE traits for ContainerLog.
+// If we move to C++20, we can use concepts instead.
+namespace sfinae {
+
+template <typename, typename = void>
+static constexpr bool has_begin_end = false;
+template <typename T>
+static constexpr bool has_begin_end<
+    T,
+    std::void_t<decltype(std::declval<T>().begin()), decltype(std::declval<T>().end())>> =
+    true;
+
+template <typename, typename = void>
+static constexpr bool has_operator_left_shift = false;
+template <typename T>
+static constexpr bool has_operator_left_shift<
+    T,
+    std::void_t<decltype(std::declval<std::ostream &>() << std::declval<T>())>> = true;
+
+template <typename, typename = void>
+static constexpr bool has_first_second = false;
+template <typename T>
+static constexpr bool has_first_second<
+    T,
+    std::void_t<decltype(std::declval<T>().first), decltype(std::declval<T>().second)>> =
+    true;
+
+template <typename T>
+struct always_false : std::false_type {};
+
+}  // namespace sfinae
+
+// Wrapper class to print container in log.
+// Usage: RAY_LOG(DEBUG) << ContainerLog(container);
+// Prints {element1, element2, ...}
+// Note: since maps are containers of pairs, they will be printed as {{key1, value1},
+// {key2, value2}, ...}
+//
+// Supports:
+// - Anything with operator<< (e.g. ActorID),
+// - std::pair,
+// - Anything with begin() and end() (e.g. std::vector, std::set, std::mapG).
+// - ... and nested versions of the above, e.g. std::vector<std::pair<int, ActorID>>.
+//
+// How to add support for a new type:
+// 1. Find what fields you want to print, write a sfinae trait for it.
+// 2. Add a new if constexpr block in the operator<< function.
+template <typename Container>
+class ContainerLog {
+ public:
+  explicit ContainerLog(const Container &container) : container_(container) {}
+
+  friend std::ostream &operator<<(std::ostream &os, const ContainerLog &log) {
+    // if constexpr (container itself has operator<<) {
+    if constexpr (sfinae::has_operator_left_shift<Container>) {
+      return os << log.container_;
+    }
+    // if constexpr (container is std::pair) {
+    else if constexpr (sfinae::has_first_second<Container>) {
+      return os << "{" << log.container_.first << ", "
+                << ContainerLog<typename Container::second_type>(log.container_.second)
+                << "}";
+    }
+    // if constexpr (container has begin() and end()) {
+    else if constexpr (sfinae::has_begin_end<Container>) {
+      os << "{";
+      auto it = log.container_.begin();
+      if (it != log.container_.end()) {
+        os << ContainerLog<typename Container::value_type>(*it);
+        ++it;
+      }
+      for (; it != log.container_.end(); ++it) {
+        os << ", " << ContainerLog<typename Container::value_type>(*it);
+      }
+      os << "}";
+      return os;
+    } else {
+      // static assert can't print.
+      static_assert(sfinae::always_false<Container>::value,
+                    "ContainerLog only supports objects with operator<<, std::pair, "
+                    "and containers with begin() and end().");
+    }
+  }
+
+  //  private:
+  const Container &container_;
+};
+
 }  // namespace ray

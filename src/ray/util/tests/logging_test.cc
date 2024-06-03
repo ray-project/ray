@@ -17,10 +17,15 @@
 #include <chrono>
 #include <cstdlib>
 #include <iostream>
+#include <list>
+#include <unordered_map>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/strings/str_format.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
+#include "ray/common/id.h"
 #include "ray/util/filesystem.h"
 
 using namespace testing;
@@ -253,6 +258,73 @@ TEST(PrintLogTest, TestCheckOp) {
   int j = 0;
   RAY_CHECK_NE(i, j);
   ASSERT_DEATH(RAY_CHECK_EQ(i, j), "1 vs 0");
+}
+
+template <typename T>
+std::string ToString(const T &value) {
+  std::ostringstream oss;
+  oss << value;
+  return oss.str();
+}
+
+// Abuse RAY_LOG(FATAL) to test the formatted string.
+TEST(PrintLogTest, TestPrintContainer) {
+  static_assert(sfinae::has_operator_left_shift<ObjectID>, "ObjectID is printable");
+  static_assert(sfinae::has_operator_left_shift<int64_t>, "int64_t is printable");
+  static_assert(sfinae::has_operator_left_shift<std::string>, "std::string is printable");
+  static_assert(sfinae::has_begin_end<std::vector<int>>, "std::vector<int> is iterable");
+  static_assert(sfinae::has_begin_end<std::list<int>>, "std::list<int> is iterable");
+  static_assert(sfinae::has_begin_end<absl::flat_hash_map<int, std::string>>,
+                "absl::flat_hash_map<int, std::string> is iterable");
+  static_assert(sfinae::has_first_second<std::pair<int, std::string>>,
+                "std::pair<int, std::string> is iterable");
+
+  std::ostringstream oss;
+
+  // Basic std containers.
+  std::vector<int> v = {1, 2, 3};
+  EXPECT_EQ(ToString(ContainerLog(v)), "{1, 2, 3}");
+
+  std::list<int> l = {1, 2, 3};
+  EXPECT_EQ(ToString(ContainerLog(l)), "{1, 2, 3}");
+
+  // Abseil maps and sets. They are unordered.
+  absl::flat_hash_map<int, std::string> m = {{1, "one"}, {2, "two"}, {3, "three"}};
+  EXPECT_THAT(
+      ToString(ContainerLog(m)),
+      AllOf(HasSubstr("{1, one}"), HasSubstr("{2, two}"), HasSubstr("{3, three}")));
+
+  absl::flat_hash_set<int> absl_set = {2, 3, 5, 7, 11};
+  EXPECT_THAT(ToString(ContainerLog(absl_set)),
+              AllOf(HasSubstr("2"),
+                    HasSubstr("3"),
+                    HasSubstr("5"),
+                    HasSubstr("7"),
+                    HasSubstr("11")));
+
+  // Ray IDs. ObjectIDs are in Hex.
+
+  std::vector<ObjectID> object_ids = {
+      ObjectID::FromRandom(),
+      ObjectID::FromRandom(),
+  };
+  EXPECT_EQ(ToString(ContainerLog(object_ids)),
+            "{" + object_ids[0].Hex() + ", " + object_ids[1].Hex() + "}");
+
+  // Pairs.
+  std::pair<NodeID, ObjectID> pair = {NodeID::FromRandom(), ObjectID::FromRandom()};
+  EXPECT_EQ(ToString(ContainerLog(pair)),
+            "{" + pair.first.Hex() + ", " + pair.second.Hex() + "}");
+
+  // Nested containers.
+  // sorted_destroyed_actor_list_ in gcs_actor_manager.h
+  std::list<std::pair<ActorID, int64_t>> sorted_destroyed_actor_list_ = {
+      {ActorID::FromHex("01010101010101010101010101010101"), 1},
+      {ActorID::FromHex("02020202020202020202020202020202"), 2}};
+  EXPECT_EQ(ToString(ContainerLog(sorted_destroyed_actor_list_)),
+            "{{01010101010101010101010101010101, 1}, "
+            "{02020202020202020202020202020202, 2}}");
+  // Q: do we need to support std::shared_ptr and friends?
 }
 
 #ifndef _WIN32

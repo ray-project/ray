@@ -85,6 +85,7 @@ cc_test(
     ],
     deps = [
         "//src/ray/util",
+        "//src/ray/common:id",
         "@boost//:asio",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_googletest//:gtest_main",
