@@ -2,6 +2,7 @@ import sys
 import os
 import threading
 from time import sleep
+import signal
 
 import pytest
 
@@ -1160,6 +1161,118 @@ def test_gcs_server_restart_keeps_detached_actors_children_actors(
     wait_for_pid_to_exit(child_pid)
     with pytest.raises(ray.exceptions.RayActorError):
         ray.get(child3.getpid.remote())
+
+
+@pytest.mark.parametrize(
+    "ray_start_cluster_head_with_external_redis",
+    [
+        {
+            **generate_system_config_map(
+                gcs_failover_worker_reconnect_timeout=20,
+                gcs_rpc_server_reconnect_timeout_s=3600,
+                gcs_server_request_timeout_seconds=10,
+            ),
+            "namespace": "actor",
+        }
+    ],
+    indirect=True,
+)
+@pytest.mark.parametrize(
+    "case",
+    [
+        {"kill_job": False, "kill_actor": False, "expect_alive": "all"},
+        {"kill_job": True, "kill_actor": False, "expect_alive": "AB"},
+        {"kill_job": True, "kill_actor": True, "expect_alive": "none"},
+    ],
+)
+def test_gcs_server_restart_destroys_out_of_scope_actors(
+    ray_start_cluster_head_with_external_redis, case
+):
+    """
+    If an actor goes out of scope *when GCS is down*, when GCS restarts, the actor
+    should be destroyed by GCS in its restarting.
+
+    Set up: in a job,
+    - create a regular actor
+    - create a detached actor A, which creates a child actor B
+
+    Situations:
+
+    Case 0: nobody died
+        all should be alive
+
+    Case 1: before GCS is down, job died
+        regular actor should be dead, A and B should still be alive
+
+    Case 2: before GCS is down, job died; during GCS is down, A died
+        all should be dead
+    """
+
+    cluster = ray_start_cluster_head_with_external_redis
+
+    @ray.remote
+    class A:
+        def __init__(self):
+            self.children = []
+
+        def getpid(self):
+            return os.getpid()
+
+        def spawn(self, name, namespace):
+            child = A.options(name=name, namespace=namespace).remote()
+            self.children.append(child)
+            return child
+
+    regular = A.options(name="regular", namespace="ns").remote()
+    detached = A.options(lifetime="detached", name="parent", namespace="ns").remote()
+    child = ray.get(detached.spawn.remote("child", "ns"))
+
+    regular_pid = ray.get(regular.getpid.remote())
+    detached_pid = ray.get(detached.getpid.remote())
+    child_pid = ray.get(child.getpid.remote())
+
+    print(f"regular actor ID: {regular._actor_id}, pid: {regular_pid}")
+    print(f"detached actor ID: {detached._actor_id}, pid: {detached_pid}")
+    print(f"child actor ID: {child._actor_id}, pid: {child_pid}")
+
+    if case["kill_job"]:
+        # kill the job and restart.
+        ray.shutdown()
+        ray.init(address=cluster.address)
+
+    cluster_kill_gcs_wait(cluster)
+
+    # When GCS is down...
+    if case["kill_actor"]:
+        os.kill(detached_pid, signal.SIGKILL)
+
+    cluster.head_node.start_gcs_server()
+    print("GCS restarted")
+
+    if case["expect_alive"] == "all":
+        regular2 = ray.get_actor("regular", namespace="ns")
+        detached2 = ray.get_actor("parent", namespace="ns")
+        child2 = ray.get_actor("child", namespace="ns")
+
+        assert ray.get(regular2.getpid.remote()) == regular_pid
+        assert ray.get(detached2.getpid.remote()) == detached_pid
+        assert ray.get(child2.getpid.remote()) == child_pid
+    elif case["expect_alive"] == "AB":
+        with pytest.raises(ValueError):
+            ray.get_actor("regular", namespace="ns")
+        detached2 = ray.get_actor("parent", namespace="ns")
+        child2 = ray.get_actor("child", namespace="ns")
+        assert ray.get(detached2.getpid.remote()) == detached_pid
+        assert ray.get(child2.getpid.remote()) == child_pid
+    elif case["expect_alive"] == "none":
+        with pytest.raises(ValueError):
+            ray.get_actor("regular", namespace="ns")
+        with pytest.raises(ValueError):
+            ray.get_actor("parent", namespace="ns")
+        with pytest.raises(ValueError):
+            ray.get_actor("child", namespace="ns")
+    else:
+        raise ValueError(f"Unknown case: {case}")
 
 
 if __name__ == "__main__":

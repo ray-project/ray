@@ -623,11 +623,11 @@ Status GcsActorManager::RegisterActor(const ray::rpc::RegisterActorRequest &requ
   auto worker_id = WorkerID::FromBinary(owner_address.worker_id());
   RAY_CHECK(unresolved_actors_[node_id][worker_id].emplace(actor->GetActorID()).second);
 
-  if (!actor->IsDetached()) {
-    // This actor is owned. Send a long polling request to the actor's
-    // owner to determine when the actor should be removed.
-    PollOwnerForActorOutOfScope(actor);
-  } else {
+  // Send a long polling request to the actor's owner (or itself if detached) to determine
+  // when the actor should be removed.
+  PollOwnerForActorOutOfScope(actor);
+
+  if (actor->IsDetached()) {
     // If it's a detached actor, we need to register the runtime env it used to GC.
     runtime_env_manager_.AddURIReference(actor->GetActorID().Hex(),
                                          request.task_spec().runtime_env_info());
@@ -808,15 +808,28 @@ std::vector<std::pair<std::string, std::string>> GcsActorManager::ListNamedActor
 void GcsActorManager::PollOwnerForActorOutOfScope(
     const std::shared_ptr<GcsActor> &actor) {
   const auto &actor_id = actor->GetActorID();
-  const auto &owner_node_id = actor->GetOwnerNodeID();
-  const auto &owner_id = actor->GetOwnerID();
+  ray::NodeID owner_node_id;
+  ray::WorkerID owner_id;
+  rpc::Address owner_address;
+  if (actor->IsDetached()) {
+    owner_node_id = actor->GetNodeID();
+    owner_id = actor->GetWorkerID();
+    owner_address = actor->GetAddress();
+  } else {
+    owner_node_id = actor->GetOwnerNodeID();
+    owner_id = actor->GetOwnerID();
+    owner_address = actor->GetOwnerAddress();
+  }
   auto &workers = owners_[owner_node_id];
   auto it = workers.find(owner_id);
   if (it == workers.end()) {
-    RAY_LOG(DEBUG) << "Adding owner " << owner_id << " of actor " << actor_id
-                   << ", job id = " << actor_id.JobId();
+    RAY_LOG(DEBUG)
+            .WithField(kLogKeyJobID, actor_id.JobId())
+            .WithField(kLogKeyActorID, actor_id)
+            .WithField(kLogKeyWorkerID, owner_id)
+        << "Adding owner of actor.";
     std::shared_ptr<rpc::CoreWorkerClientInterface> client =
-        worker_client_factory_(actor->GetOwnerAddress());
+        worker_client_factory_(owner_address);
     it = workers.emplace(owner_id, Owner(std::move(client))).first;
   }
   it->second.children_actor_ids.insert(actor_id);
@@ -829,13 +842,17 @@ void GcsActorManager::PollOwnerForActorOutOfScope(
       [this, owner_node_id, owner_id, actor_id](
           Status status, const rpc::WaitForActorOutOfScopeReply &reply) {
         if (!status.ok()) {
-          RAY_LOG(INFO) << "Worker " << owner_id
-                        << " failed, destroying actor child, job id = "
-                        << actor_id.JobId();
+          RAY_LOG(INFO)
+                  .WithField(kLogKeyJobID, actor_id.JobId())
+                  .WithField(kLogKeyActorID, actor_id)
+                  .WithField(kLogKeyWorkerID, owner_id)
+              << "Owner worker failed, destroying actor, worker status = " << status;
         } else {
-          RAY_LOG(INFO) << "Actor " << actor_id
-                        << " is out of scope, destroying actor, job id = "
-                        << actor_id.JobId();
+          RAY_LOG(INFO)
+                  .WithField(kLogKeyJobID, actor_id.JobId())
+                  .WithField(kLogKeyActorID, actor_id)
+                  .WithField(kLogKeyWorkerID, owner_id)
+              << "Owner worker is out of scope, destroying actor";
         }
 
         auto node_it = owners_.find(owner_node_id);
@@ -1383,20 +1400,54 @@ void GcsActorManager::SchedulePendingActors() {
 }
 
 void GcsActorManager::Initialize(const GcsInitData &gcs_init_data) {
+  const auto &jobs = gcs_init_data.Jobs();
+  const auto &actors = gcs_init_data.Actors();
   const auto &actor_task_specs = gcs_init_data.ActorTaskSpecs();
   absl::flat_hash_map<NodeID, std::vector<WorkerID>> node_to_workers;
 
+  // We only load actors which are not supposed to be dead. The actor should be dead if
+  // 1. state() == DEAD
+  // 2. root owner is job, and job is dead
+  // 3. root owner is another detached actor, and that actor is dead
+  auto should_load_actor = [&jobs, &actors, &actor_task_specs](
+                               ActorID actor_id,
+                               const rpc::ActorTableData &actor_table_data) -> bool {
+    if (actor_table_data.state() == rpc::ActorTableData::DEAD) {
+      return false;
+    }
+    const auto &actor_task_spec = actor_task_specs.at(actor_id);
+    ActorID root_detached_actor_id =
+        TaskSpecification(actor_task_spec).RootDetachedActorId();
+    if (root_detached_actor_id.IsNil()) {
+      // owner is job, NOT detached actor, should die with job
+      auto job_iter = jobs.find(actor_id.JobId());
+      if (job_iter == jobs.end()) {
+        return false;
+      }
+      return !job_iter->second.is_dead();
+    } else if (actor_id == root_detached_actor_id) {
+      // owner is itself, just live
+      return true;
+    } else {
+      // owner is another detached actor, should die with the owner actor
+      auto owner_actor_iter = actors.find(root_detached_actor_id);
+      if (owner_actor_iter == actors.end()) {
+        return false;
+      }
+      // In theory we can do recursive call to detect if the owner actor is dead, but
+      // it can only be dead if state() == dead, so we short cut.
+      return owner_actor_iter->second.state() != rpc::ActorTableData::DEAD;
+    }
+  };
+
   std::vector<ActorID> dead_actors;
   for (const auto &[actor_id, actor_table_data] : gcs_init_data.Actors()) {
-    // We load all actors but the DEAD ones.
-    // Note: it's attempting to also don't load actors whose Jobs are dead, but it's
-    // not sound since the actor may be owned by a detached actor and can outlive the
-    // job. See https://github.com/ray-project/ray/issues/45596
-    if (actor_table_data.state() != ray::rpc::ActorTableData::DEAD) {
-      const auto &iter = actor_task_specs.find(actor_id);
-      RAY_CHECK(iter != actor_task_specs.end());
+    if (should_load_actor(actor_id, actor_table_data)) {
+      // actor_task_specs[actor_id] exists when state() != DEAD
+      const auto &actor_task_spec = actor_task_specs.at(actor_id);
+
       auto actor = std::make_shared<GcsActor>(
-          actor_table_data, iter->second, actor_state_counter_);
+          actor_table_data, actor_task_spec, actor_state_counter_);
       registered_actors_.emplace(actor_id, actor);
       function_manager_.AddJobReference(actor->GetActorID().JobId());
       if (!actor->GetName().empty()) {
@@ -1416,11 +1467,9 @@ void GcsActorManager::Initialize(const GcsInitData &gcs_init_data) {
                                                     actor->GetActorID());
       }
 
-      if (!actor->IsDetached()) {
-        // This actor is owned. Send a long polling request to the actor's
-        // owner to determine when the actor should be removed.
-        PollOwnerForActorOutOfScope(actor);
-      }
+      // Send a long polling request to the actor's owner (or itself if detached) to
+      // determine when the actor should be removed.
+      PollOwnerForActorOutOfScope(actor);
 
       if (!actor->GetWorkerID().IsNil()) {
         RAY_CHECK(!actor->GetNodeID().IsNil());
@@ -1435,6 +1484,16 @@ void GcsActorManager::Initialize(const GcsInitData &gcs_init_data) {
     }
   }
   if (!dead_actors.empty()) {
+    for (const auto &actor_id : dead_actors) {
+      auto *actor = GetActor(actor_id);
+      RAY_CHECK(actor != nullptr);
+      RAY_LOG(INFO) << "Destroying actor " << actor_id
+                    << " because it should be dead when GCS restarts.";
+      if (actor->GetState() != rpc::ActorTableData::DEAD) {
+        // destroy the actor
+        DestroyActor(actor_id, GenActorOutOfScopeCause(actor));
+      }
+    }
     RAY_CHECK_OK(
         gcs_table_storage_->ActorTaskSpecTable().BatchDelete(dead_actors, nullptr));
   }
