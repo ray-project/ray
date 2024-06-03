@@ -112,7 +112,9 @@ class Worker:
         cp_stream_patcher = mock.patch("cupy.cuda.ExternalStream")
         cp_stream_patcher.start()
 
-        comm_patcher = mock.patch("cupy.cuda.nccl.NcclCommunicator")
+        comm_patcher = mock.patch(
+            "ray.util.collective.collective_group.nccl_util.NcclCommunicator"
+        )
         comm_patcher.start()
 
         ray.experimental.channel.torch_tensor_nccl_channel._NcclGroup = MockNcclGroup
