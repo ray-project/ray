@@ -1397,7 +1397,7 @@ def init(
 
     # Configure the logging settings for the driver process.
     if logging_config:
-        dict_config = logging_config.get_dict_config()
+        dict_config = logging_config._get_dict_config()
         logging.config.dictConfig(dict_config)
 
     # Parse the hidden options:

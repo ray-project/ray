@@ -1,10 +1,11 @@
-from typing import Optional
-
 from ray._private.structured_logging.constants import LOG_MODE_DICT
 from ray.util.annotations import PublicAPI
 
+from dataclasses import dataclass
+
 
 @PublicAPI(stability="alpha")
+@dataclass
 class LoggingConfig:
     """
     Logging configuration for a Ray job. These configurations are used to set up the
@@ -39,16 +40,17 @@ class LoggingConfig:
             it to 'DEBUG' to receive more detailed debug logs.
     """  # noqa: E501
 
-    def __init__(self, *, encoding: Optional[str] = "TEXT", log_level: str = "INFO"):
-        if encoding not in LOG_MODE_DICT:
+    encoding: str = "TEXT"
+    log_level: str = "INFO"
+
+    def __post_init__(self):
+        if self.encoding not in LOG_MODE_DICT:
             raise ValueError(
-                f"Invalid encoding type: {encoding}. "
+                f"Invalid encoding type: {self.encoding}. "
                 f"Valid encoding types are: {list(LOG_MODE_DICT.keys())}"
             )
-        self.encoding = encoding
-        self.log_level = log_level
 
-    def get_dict_config(self) -> dict:
+    def _get_dict_config(self) -> dict:
         """Get the logging configuration based on the encoding type.
         Returns:
             dict: The logging configuration.

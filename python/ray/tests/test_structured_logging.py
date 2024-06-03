@@ -152,13 +152,13 @@ class TestLoggingConfig:
     def test_log_level(self):
         log_level = "DEBUG"
         logging_config = LoggingConfig(log_level=log_level)
-        dict_config = logging_config.get_dict_config()
+        dict_config = logging_config._get_dict_config()
         assert dict_config["handlers"]["console"]["level"] == log_level
         assert dict_config["root"]["level"] == log_level
 
     def test_invalid_dict_config(self):
         with pytest.raises(ValueError):
-            LoggingConfig(encoding="INVALID").get_dict_config()
+            LoggingConfig(encoding="INVALID")._get_dict_config()
 
 
 class TestTextModeE2E:
@@ -173,7 +173,7 @@ ray.init(
 
 @ray.remote
 def f():
-    logger = logging.getLogger()
+    logger = logging.getLogger(__name__)
     logger.info("This is a Ray task")
 
 obj_ref = f.remote()
@@ -207,7 +207,7 @@ class actor:
         pass
 
     def print_message(self):
-        logger = logging.getLogger()
+        logger = logging.getLogger(__name__)
         logger.info("This is a Ray actor")
 
 actor_instance = actor.remote()
