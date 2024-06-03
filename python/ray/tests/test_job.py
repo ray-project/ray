@@ -192,7 +192,7 @@ def test_config_metadata(shutdown_only):
 
 
 def test_logging_config_serialization():
-    logging_config = LoggingConfig("TEXT")
+    logging_config = LoggingConfig(encoding="TEXT")
     serialized_logging_config = pickle.dumps(logging_config)
     job_config = JobConfig()
     job_config.set_logging_config(logging_config)

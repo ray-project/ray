@@ -168,7 +168,7 @@ import ray
 import logging
 
 ray.init(
-    logging_config=ray.LoggingConfig("TEXT")
+    logging_config=ray.LoggingConfig(encoding="TEXT")
 )
 
 @ray.remote
@@ -198,7 +198,7 @@ import ray
 import logging
 
 ray.init(
-    logging_config=ray.LoggingConfig("TEXT")
+    logging_config=ray.LoggingConfig(encoding="TEXT")
 )
 
 @ray.remote
