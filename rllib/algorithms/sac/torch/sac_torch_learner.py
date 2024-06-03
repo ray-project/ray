@@ -314,7 +314,7 @@ class SACTorchLearner(DQNRainbowTorchLearner, SACLearner):
             for component in (
                 ["qf", "policy", "alpha"] + ["qf_twin"] if config.twin_q else []
             ):
-                self.metrics.peek(module_id, component + "_loss").backward(
+                self.metrics.peek((module_id, component + "_loss")).backward(
                     retain_graph=True
                 )
                 grads.update(
