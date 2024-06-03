@@ -1388,6 +1388,35 @@ def test_actor_equal(ray_start_regular_shared):
     assert origin == remote
 
 
+def test_out_of_band_actor_handle_ref_counting(ray_start_regular_shared):
+    """
+    Actors can get handles to themselves or to named actors outside of the
+    normal ref counting protocol, which tracks when actor handles are passed
+    through task arguments and return values. Check that this does not crash
+    the ref counting protocol.
+    """
+    @ray.remote
+    class Actor:
+        def read_self_handle(self, self_handle):
+            # This actor has a reference to itself through the arg self_handle.
+
+            # Get and delete another reference to ourselves. This should not
+            # interfere with the distributed ref counting protocol.
+            other_self_handle = ray.get_runtime_context().current_actor
+            del other_self_handle
+
+        def getpid(self):
+            return os.getpid()
+
+    a = Actor.remote()
+    pid = ray.get(a.getpid.remote())
+
+    ray.get(a.read_self_handle.remote(a))
+
+    a = None
+    wait_for_pid_to_exit(pid)
+
+
 if __name__ == "__main__":
     if os.environ.get("PARALLEL_CI"):
         sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
