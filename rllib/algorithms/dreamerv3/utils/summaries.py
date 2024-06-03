@@ -239,7 +239,7 @@ def report_dreamed_eval_trajectory_vs_samples(
 
     # Obs MSE.
     dreamed_obs_H_B = reconstruct_obs_from_h_and_z(
-        h_t0_to_H=dream_data["h_states_t0_to_H_Bx1"][0],
+        h_t0_to_H=dream_data["h_states_t0_to_H_Bx1"][0],  # [0] b/c reduce=None (list)
         z_t0_to_H=dream_data["z_states_prior_t0_to_H_Bx1"][0],
         dreamer_model=dreamer_model,
         obs_dims_shape=sample[Columns.OBS].shape[2:],
