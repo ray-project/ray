@@ -86,6 +86,7 @@ def register_plan_logical_op_fns():
     register_plan_logical_op_fn(Union, plan_union_op)
 
     def plan_limit_op(logical_op, physical_children):
+        assert len(physical_children) == 1
         return LimitOperator(logical_op._limit, physical_children[0])
 
     register_plan_logical_op_fn(Limit, plan_limit_op)

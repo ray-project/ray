@@ -28,7 +28,7 @@ def plan_all_to_all_op(
     Note this method only converts the given `op`, but not its input dependencies.
     See Planner.plan() for more details.
     """
-    assert len(physical_children) == 0
+    assert len(physical_children) == 1
     input_physical_dag = physical_children[0]
 
     target_max_block_size = None

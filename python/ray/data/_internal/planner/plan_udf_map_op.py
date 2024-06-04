@@ -51,7 +51,7 @@ def plan_udf_map_op(
     Note this method only converts the given `op`, but not its input dependencies.
     See Planner.plan() for more details.
     """
-    assert len(physical_children) == 0
+    assert len(physical_children) == 1
     input_physical_dag = physical_children[0]
 
     compute = get_compute(op._compute)
