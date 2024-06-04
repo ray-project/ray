@@ -139,12 +139,12 @@ class MutableObjectProvider {
 
   // Listens for local changes to `object_id` and sends the changes to remote nodes via
   // the network.
-  void PollWriterClosure(instrumented_io_context &io_service,
+  void PollWriterClosure(instrumented_io_context &io_context,
                          const ObjectID &object_id,
                          std::shared_ptr<MutableObjectReaderInterface> reader);
 
-  // Kicks off `io_service_`.
-  void RunIOService(instrumented_io_context &io_service);
+  // Kicks off `io_context`.
+  void RunIOContext(instrumented_io_context &io_context);
 
   // The plasma store.
   std::shared_ptr<plasma::PlasmaClientInterface> plasma_;
@@ -160,20 +160,23 @@ class MutableObjectProvider {
   std::unordered_map<ObjectID, LocalReaderInfo> remote_writer_object_to_local_reader_
       ABSL_GUARDED_BY(remote_writer_object_to_local_reader_lock_);
 
-  // Creates a function for each object. This function waits for changes on the object and
-  // then sends those changes to a remote node via RPC.
+  // Creates a Raylet client for each mutable object. When the polling thread detects a
+  // write to the mutable object, this client sends the updated mutable object via RPC to
+  // the Raylet on the remote node.
   std::function<std::shared_ptr<MutableObjectReaderInterface>(
       const NodeID &node_id, rpc::ClientCallManager &client_call_manager)>
       raylet_client_factory_;
 
   // Each mutable object that requires inter-node communication has its own thread and
   // event loop. Thus, all of the objects below are vectors, with each vector index
-  // corresponding to a different mutable object. Keeps alive the event loops for RPCs for
-  // inter-node communication of mutable objects.
-  std::vector<std::unique_ptr<boost::asio::io_service::work>> io_works_;
+  // corresponding to a different mutable object.
+  // Keeps alive the event loops for RPCs for inter-node communication of mutable objects.
+  std::vector<std::unique_ptr<
+      boost::asio::executor_work_guard<boost::asio::io_context::executor_type>>>
+      io_works_;
   // Contexts in which the application looks for local changes to mutable objects and
   // sends the changes to remote nodes via the network.
-  std::vector<std::unique_ptr<instrumented_io_context>> io_services_;
+  std::vector<std::unique_ptr<instrumented_io_context>> io_contexts_;
   // Manage outgoing RPCs that send mutable object changes to remote nodes.
   std::vector<std::unique_ptr<rpc::ClientCallManager>> client_call_managers_;
   // Threads that wait for local mutable object changes (one thread per mutable object)

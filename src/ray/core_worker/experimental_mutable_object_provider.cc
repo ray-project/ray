@@ -25,8 +25,8 @@ MutableObjectProvider::MutableObjectProvider(
     : plasma_(plasma), raylet_client_factory_(factory) {}
 
 MutableObjectProvider::~MutableObjectProvider() {
-  for (std::unique_ptr<instrumented_io_context> &io_service : io_services_) {
-    io_service->stop();
+  for (std::unique_ptr<instrumented_io_context> &io_context : io_contexts_) {
+    io_context->stop();
   }
   RAY_CHECK(object_manager_.SetErrorAll().code() == StatusCode::OK);
 
@@ -49,24 +49,26 @@ void MutableObjectProvider::RegisterWriterChannel(const ObjectID &object_id,
   if (node_id) {
     // Start a thread that repeatedly listens for values on this object and then sends
     // them via RPC to the remote reader.
-
-    io_services_.push_back(std::make_unique<instrumented_io_context>());
-    instrumented_io_context &io_service = *io_services_.back();
-    io_works_.push_back(std::make_unique<boost::asio::io_service::work>(io_service));
-    client_call_managers_.push_back(std::make_unique<rpc::ClientCallManager>(io_service));
+    io_contexts_.push_back(std::make_unique<instrumented_io_context>());
+    instrumented_io_context &io_context = *io_contexts_.back();
+    io_works_.push_back(
+        std::make_unique<
+            boost::asio::executor_work_guard<boost::asio::io_context::executor_type>>(
+            io_context.get_executor()));
+    client_call_managers_.push_back(std::make_unique<rpc::ClientCallManager>(io_context));
     std::shared_ptr<MutableObjectReaderInterface> reader =
         raylet_client_factory_(*node_id, *client_call_managers_.back());
     RAY_CHECK(reader);
     // TODO(jhumphri): Extend this to support multiple channels. Currently, we must have
     // one thread per channel because the thread blocks on the channel semaphore.
 
-    io_service.post(
-        [this, &io_service, object_id, reader]() {
-          PollWriterClosure(io_service, object_id, reader);
+    io_context.post(
+        [this, &io_context, object_id, reader]() {
+          PollWriterClosure(io_context, object_id, reader);
         },
         "experimental::MutableObjectProvider.PollWriter");
     io_threads_.push_back(std::make_unique<std::thread>(
-        &MutableObjectProvider::RunIOService, this, std::ref(io_service)));
+        &MutableObjectProvider::RunIOContext, this, std::ref(io_context)));
   }
 }
 
@@ -162,7 +164,7 @@ Status MutableObjectProvider::SetError(const ObjectID &object_id) {
 }
 
 void MutableObjectProvider::PollWriterClosure(
-    instrumented_io_context &io_service,
+    instrumented_io_context &io_context,
     const ObjectID &object_id,
     std::shared_ptr<MutableObjectReaderInterface> reader) {
   std::shared_ptr<RayObject> object;
@@ -183,19 +185,19 @@ void MutableObjectProvider::PollWriterClosure(
       object->GetData()->Size(),
       object->GetMetadata()->Size(),
       object->GetData()->Data(),
-      [this, &io_service, object_id, reader](const Status &status,
+      [this, &io_context, object_id, reader](const Status &status,
                                              const rpc::PushMutableObjectReply &reply) {
         RAY_CHECK_OK(object_manager_.ReadRelease(object_id));
 
-        io_service.post(
-            [this, &io_service, object_id, reader]() {
-              PollWriterClosure(io_service, object_id, reader);
+        io_context.post(
+            [this, &io_context, object_id, reader]() {
+              PollWriterClosure(io_context, object_id, reader);
             },
             "experimental::MutableObjectProvider.PollWriter");
       });
 }
 
-void MutableObjectProvider::RunIOService(instrumented_io_context &io_service) {
+void MutableObjectProvider::RunIOContext(instrumented_io_context &io_context) {
   // TODO(jhumphri): Decompose this.
 #ifndef _WIN32
   // Block SIGINT and SIGTERM so they will be handled by the main thread.
@@ -207,7 +209,7 @@ void MutableObjectProvider::RunIOService(instrumented_io_context &io_service) {
 #endif
 
   SetThreadName("worker.channel_io");
-  io_service.run();
+  io_context.run();
   RAY_LOG(INFO) << "Core worker channel io service stopped.";
 }
 
