@@ -187,16 +187,16 @@ def test_validate_resource_request_quantity(test_config):
 @pytest.mark.parametrize(
     "test_case",
     [
-        ("v4-1", ["1"]),
-        ("v4-2", ["1", "2"]),
-        ("v5p-4", ["1", "2", "3", "4"]),
-        ("v5litepod-8", ["1", "2", "3", "4", "5", "6", "7", "8"]),
+        (4, ["0"]),
+        (4, ["0", "1" ]),
+        (4, ["0", "1", "2", "3"]),
+        (8, ["0", "1", "2", "3", "4", "5", "6", "7"]),
     ],
 )
-@patch("os.getenv")
-def test_set_tpu_visible_ids_and_bounds(mock_os, test_case):
-    tpu_pod_type, tpu_chips = test_case
-    mock_os.return_value = tpu_pod_type
+@patch("glob.glob")
+def test_set_tpu_visible_ids_and_bounds(mock_glob, test_case):
+    num_devices, tpu_chips = test_case
+    mock_glob.return_value = ["/dev/accel" + str(x) for x in range(num_devices)]
     with patch.dict("os.environ", {}, clear=True):
         TPUAcceleratorManager.set_current_process_visible_accelerator_ids(tpu_chips)
         if len(tpu_chips) == 1:

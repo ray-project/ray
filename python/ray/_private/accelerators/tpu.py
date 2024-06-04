@@ -183,8 +183,11 @@ class TPUAcceleratorManager(AcceleratorManager):
             return
 
         num_visible_tpu_chips = len(visible_tpu_chips)
-        if num_visible_tpu_chips == TPUAcceleratorManager.get_num_tpu_visible_chips_per_host():
+        num_accelerators = TPUAcceleratorManager.get_current_node_num_accelerators()
+        if num_visible_tpu_chips == num_accelerators:
             # Let the ML framework use the defaults
+            os.environ.pop(TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR, None)
+            os.environ.pop(TPU_HOST_BOUNDS_ENV_VAR, None)
             return
         os.environ[
             TPUAcceleratorManager.get_visible_accelerator_ids_env_var()
@@ -199,9 +202,6 @@ class TPUAcceleratorManager(AcceleratorManager):
                 TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR
             ] = TPU_CHIPS_PER_HOST_BOUNDS_2_CHIP_CONFIG
             os.environ[TPU_HOST_BOUNDS_ENV_VAR] = TPU_SINGLE_HOST_BOUNDS
-        elif num_visible_tpu_chips == 4 or num_visible_tpu_chips == 8:
-            os.environ.pop(TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR, None)
-            os.environ.pop(TPU_HOST_BOUNDS_ENV_VAR, None)
 
     @staticmethod
     def _get_current_node_tpu_pod_type() -> Optional[str]:
