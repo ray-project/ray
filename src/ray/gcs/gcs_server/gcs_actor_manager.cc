@@ -260,6 +260,13 @@ GcsActorManager::GcsActorManager(
       new CounterMap<std::pair<rpc::ActorTableData::ActorState, std::string>>());
   actor_state_counter_->SetOnChangeCallback(
       [this](const std::pair<rpc::ActorTableData::ActorState, std::string> key) mutable {
+        if (key.first ==
+            rpc::ActorTableData::ActorState::ActorTableData_ActorState_ALIVE) {
+          // If the actor is ALIVE, we rely on core worker to report the stats
+          // since it knows the state an live actor is in (e.g. RUNNING_TASK,
+          // RUNNING_IN_RAY_GET)
+          return;
+        }
         int64_t num_actors = actor_state_counter_->Get(key);
         ray::stats::STATS_actors.Record(
             num_actors,
@@ -1467,18 +1474,18 @@ void GcsActorManager::Initialize(const GcsInitData &gcs_init_data) {
   }
 }
 
-const absl::flat_hash_map<NodeID, absl::flat_hash_map<WorkerID, ActorID>>
-    &GcsActorManager::GetCreatedActors() const {
+const absl::flat_hash_map<NodeID, absl::flat_hash_map<WorkerID, ActorID>> &
+GcsActorManager::GetCreatedActors() const {
   return created_actors_;
 }
 
-const absl::flat_hash_map<ActorID, std::shared_ptr<GcsActor>>
-    &GcsActorManager::GetRegisteredActors() const {
+const absl::flat_hash_map<ActorID, std::shared_ptr<GcsActor>> &
+GcsActorManager::GetRegisteredActors() const {
   return registered_actors_;
 }
 
-const absl::flat_hash_map<ActorID, std::vector<RegisterActorCallback>>
-    &GcsActorManager::GetActorRegisterCallbacks() const {
+const absl::flat_hash_map<ActorID, std::vector<RegisterActorCallback>> &
+GcsActorManager::GetActorRegisterCallbacks() const {
   return actor_to_register_callbacks_;
 }
 
