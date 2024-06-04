@@ -224,8 +224,8 @@ class SingleAgentEnvRunner(EnvRunner):
 
             # Reset the environment.
             # TODO (simon): Check, if we need here the seed from the config.
-            obs, infos = self.env.reset()
-            obs = unbatch(obs)
+            observations, infos = self.env.reset()
+            observations = unbatch(observations)
 
             # Call `on_episode_start()` callbacks.
             for env_index in range(self.num_envs):
@@ -235,10 +235,10 @@ class SingleAgentEnvRunner(EnvRunner):
             # call to `self._sample_timesteps()`.
             self._needs_initial_reset = False
 
-            # Set initial obs and infos in the episodes.
+            # Set initial observations and infos in the episodes.
             for env_index in range(self.num_envs):
                 self._episodes[env_index].add_env_reset(
-                    observation=obs[env_index],
+                    observation=observations[env_index],
                     infos=infos[env_index],
                 )
             self._was_terminated = [False for _ in range(self.num_envs)]
@@ -291,16 +291,16 @@ class SingleAgentEnvRunner(EnvRunner):
             actions = to_env.pop(Columns.ACTIONS)
             actions_for_env = to_env.pop(Columns.ACTIONS_FOR_ENV, actions)
             # Step the environment.
-            obs, rewards, terminateds, truncateds, infos = self.env.step(
+            observations, rewards, terminateds, truncateds, infos = self.env.step(
                 actions_for_env
             )
-            obs, actions = unbatch(obs), unbatch(actions)
+            observations, actions = unbatch(observations), unbatch(actions)
 
             ts += self.num_envs
 
             for env_index in range(self.num_envs):
-                # Episode was done in previous timestep -> We now have the reset obs
-                # and infos.
+                # Episode was done in previous timestep -> We now have the reset
+                # observations and infos.
                 if self._was_terminated[env_index] or self._was_truncated[env_index]:
                     # Make the `on_episode_end` callback (before finalizing the episode
                     # object).
@@ -314,7 +314,7 @@ class SingleAgentEnvRunner(EnvRunner):
                     self._new_episode(env_index)
                     # Add the reset data to the new episode.
                     self._episodes[env_index].add_env_reset(
-                        obs[env_index],
+                        observations[env_index],
                         infos[env_index],
                     )
                     # Make the `on_episode_start` callback (after having the reset
@@ -328,7 +328,7 @@ class SingleAgentEnvRunner(EnvRunner):
                     extra_model_output = {k: v[env_index] for k, v in to_env.items()}
 
                     self._episodes[env_index].add_env_step(
-                        obs[env_index],
+                        observations[env_index],
                         actions[env_index],
                         rewards[env_index],
                         infos=infos[env_index],
@@ -350,7 +350,9 @@ class SingleAgentEnvRunner(EnvRunner):
         for eps in self._episodes:
             eps.validate()
             # - Just done episodes are not returned yet, they need to be finalized in
-            # the next step (after subsequent sub-env's reset obs/info are available).
+            # the next step (after subsequent sub-env's reset observations/info are
+            # available AND after the env-to-module connector has been run on the
+            # terminal observations).
             # - Just started Episodes do not have to be returned. There is no data
             # in them anyway.
             if eps.is_done or eps.t == 0:
@@ -393,7 +395,7 @@ class SingleAgentEnvRunner(EnvRunner):
 
         # Reset the environment.
         # TODO (simon): Check, if we need here the seed from the config.
-        obs, infos = self.env.reset()
+        observations, infos = self.env.reset()
         episodes = [None for _ in range(self.num_envs)]
         for env_index in range(self.num_envs):
             self._new_episode(env_index, episodes)
@@ -404,7 +406,7 @@ class SingleAgentEnvRunner(EnvRunner):
 
         for env_index in range(self.num_envs):
             episodes[env_index].add_env_reset(
-                observation=obs[env_index],
+                observation=observations[env_index],
                 infos=infos[env_index],
             )
             self._make_on_episode_callback("on_episode_start", env_index, episodes)
@@ -456,18 +458,18 @@ class SingleAgentEnvRunner(EnvRunner):
             actions = to_env.pop(Columns.ACTIONS)
             actions_for_env = to_env.pop(Columns.ACTIONS_FOR_ENV, actions)
             # Step the environment.
-            obs, rewards, terminateds, truncateds, infos = self.env.step(
+            observations, rewards, terminateds, truncateds, infos = self.env.step(
                 actions_for_env
             )
-            obs, actions = unbatch(obs), unbatch(actions)
+            observations, actions = unbatch(observations), unbatch(actions)
             ts += self.num_envs
 
             for env_index in range(self.num_envs):
-                # Episode was done in previous timestep -> We now have the reset obs
-                # and infos.
+                # Episode was done in previous timestep -> We now have the reset
+                # observations and infos.
                 if _was_terminated[env_index] or _was_truncated[env_index]:
                     episodes[env_index].add_env_reset(
-                        obs[env_index],
+                        observations[env_index],
                         infos[env_index],
                     )
                     # Make the `on_episode_start` callback.
@@ -479,7 +481,7 @@ class SingleAgentEnvRunner(EnvRunner):
                     extra_model_output = {k: v[env_index] for k, v in to_env.items()}
 
                     episodes[env_index].add_env_step(
-                        obs[env_index],
+                        observations[env_index],
                         actions[env_index],
                         rewards[env_index],
                         infos=infos[env_index],
