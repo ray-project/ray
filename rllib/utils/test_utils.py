@@ -1381,6 +1381,8 @@ def run_rllib_example_script_experiment(
         parser = add_rllib_example_script_args()
         args = parser.parse_args()
 
+    tune_callbacks = tune_callbacks or []
+
     # If run --as-release-test, --as-test must also be set.
     if args.as_release_test:
         args.as_test = True
@@ -1469,8 +1471,6 @@ def run_rllib_example_script_experiment(
         project = args.wandb_project or (
             args.algo.lower() + "-" + re.sub("\\W+", "-", str(config.env).lower())
         )
-        if tune_callbacks is None:
-            tune_callbacks = []
         tune_callbacks.append(
             WandbLoggerCallback(
                 api_key=args.wandb_key,
@@ -1497,8 +1497,6 @@ def run_rllib_example_script_experiment(
 
         from ray.tune.experimental.output import TrainReporter
 
-        if tune_callbacks is None:
-            tune_callbacks = []
         tune_callbacks.append(
             TrainReporter(
                 verbosity=args.verbose,
@@ -1517,8 +1515,9 @@ def run_rllib_example_script_experiment(
         param_space=config,
         run_config=air.RunConfig(
             stop=stop,
-            # verbose=args.verbose,
-            callbacks=tune_callbacks,
+            verbose=args.verbose,
+            # Pass None (not empty list) to trigger construction of default callbacks.
+            callbacks=tune_callbacks or None,
             checkpoint_config=air.CheckpointConfig(
                 checkpoint_frequency=args.checkpoint_freq,
                 checkpoint_at_end=args.checkpoint_at_end,
