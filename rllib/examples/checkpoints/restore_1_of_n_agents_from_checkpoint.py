@@ -48,7 +48,11 @@ import os
 from ray.air.constants import TRAINING_ITERATION
 from ray.rllib.core.rl_module.marl_module import MultiAgentRLModuleSpec
 from ray.rllib.examples.envs.classes.multi_agent import MultiAgentPendulum
-from ray.rllib.utils.metrics import ENV_RUNNER_RESULTS, NUM_ENV_STEPS_SAMPLED_LIFETIME
+from ray.rllib.utils.metrics import (
+    ENV_RUNNER_RESULTS,
+    EPISODE_RETURN_MEAN,
+    NUM_ENV_STEPS_SAMPLED_LIFETIME,
+)
 from ray.rllib.utils.test_utils import (
     add_rllib_example_script_args,
     run_rllib_example_script_experiment,
@@ -142,9 +146,7 @@ if __name__ == "__main__":
     )
     # Define stopping criteria.
     stop = {
-        # TODO (simon): Change to -800 once the metrics are fixed. Currently
-        # the combined return is not correctly computed.
-        f"{ENV_RUNNER_RESULTS}/episode_return_mean": -400,
+        f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": -800,
         f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}": 20000,
         TRAINING_ITERATION: 30,
     }
