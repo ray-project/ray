@@ -258,7 +258,6 @@ class SingleAgentEnvRunner(EnvRunner):
             # TODO (simon): Check, if we need here the seed from the config.
             obs, infos = self.env.reset()
             obs = unbatch(obs)
-            infos = self._convert_info_to_list(infos)
             self._cached_to_module = None
 
             # Call `on_episode_start()` callbacks.
@@ -328,7 +327,6 @@ class SingleAgentEnvRunner(EnvRunner):
                 actions_for_env
             )
             obs, actions = unbatch(obs), unbatch(actions)
-            infos = self._convert_info_to_list(infos)
 
             ts += self.num_envs
 
@@ -460,7 +458,6 @@ class SingleAgentEnvRunner(EnvRunner):
         # Reset the environment.
         # TODO (simon): Check, if we need here the seed from the config.
         obs, infos = self.env.reset()
-        infos = self._convert_info_to_list(infos)
         episodes = []
         for env_index in range(self.num_envs):
             episodes.append(self._new_episode())
@@ -525,7 +522,6 @@ class SingleAgentEnvRunner(EnvRunner):
                 actions_for_env
             )
             obs, actions = unbatch(obs), unbatch(actions)
-            infos = self._convert_info_to_list(infos)
             ts += self.num_envs
 
             for env_index in range(self.num_envs):
@@ -765,16 +761,13 @@ class SingleAgentEnvRunner(EnvRunner):
             )
         gym.register("rllib-single-agent-env-v0", entry_point=entry_point)
 
-        # Note that `infos` will be returned as vectors as well. Since the `gym.wrapper.
-        # VectorListInfo` wrapper currently does not work (throws an error on
-        # construction), we'll do this relatively simple conversion here in the
-        # EnvRunner on our own.
-        async_ = self.config.remote_worker_envs
-        self.env: gym.Wrapper = gym.make_vec(
-            "rllib-single-agent-env-v0",
-            num_envs=self.config.num_envs_per_env_runner,
-            vectorization_mode="async" if async_ else "sync",
-            vector_kwargs={"context": "fork"} if async_ else {},
+        # Wrap into `VectorListInfo`` wrapper to get infos as lists.
+        self.env: gym.Wrapper = gym.wrappers.VectorListInfo(
+            gym.vector.make(
+                "rllib-single-agent-env-v0",
+                num_envs=self.config.num_envs_per_env_runner,
+                asynchronous=self.config.remote_worker_envs,
+            )
         )
         self.num_envs: int = self.env.num_envs
         assert self.num_envs == self.config.num_envs_per_env_runner
@@ -819,24 +812,6 @@ class SingleAgentEnvRunner(EnvRunner):
             return convert_to_torch_tensor(struct)
         else:
             return tree.map_structure(tf.convert_to_tensor, struct)
-
-    def _convert_info_to_list(self, infos: Dict[str, Any]) -> List[Dict[str, Any]]:
-        # NOTE: This method has been copied from gymnasium.wrappers.vector_list_info.py!
-        # We needed to implement our own converter, b/c the gymnasium one crashes upon
-        # construction with:
-        # `AttributeError: 'AsyncVectorEnv' object has no attribute 'get_wrapper_attr'`
-        list_info = [{} for _ in range(self.num_envs)]
-        for k in infos:
-            # Skip those entries starting with an underscore. Those are the boolean
-            # flags indicating, whether the actual key (the one w/o the "_") actually
-            # has an entry in the vectorized infos.
-            if k.startswith("_"):
-                continue
-            # Convert the vectorized infos into a list of dicts.
-            for i, has_info in enumerate(infos[f"_{k}"]):
-                if has_info:
-                    list_info[i][k] = infos[k][i]
-        return list_info
 
     def _increase_sampled_metrics(self, num_steps):
         # Per sample cycle stats.

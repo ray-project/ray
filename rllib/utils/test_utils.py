@@ -1429,12 +1429,10 @@ def run_rllib_example_script_experiment(
                     1 if torch and torch.cuda.is_available() and args.num_gpus > 0 else 0
                 ),
             )
+            config.resources(num_gpus=0)
         # Old stack.
         else:
-            config.resources(
-                num_gpus=args.num_gpus,
-                num_cpus_for_main_process=1,
-            )
+            config.resources(num_gpus=args.num_gpus)
 
     # Run the experiment w/o Tune (directly operate on the RLlib Algorithm object).
     if args.no_tune:
