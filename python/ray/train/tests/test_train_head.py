@@ -10,6 +10,10 @@ from ray.train import RunConfig, ScalingConfig
 from ray.train.torch import TorchTrainer
 
 
+@pytest.mark.skipif(
+    os.environ.get("RAY_MINIMAL") == "1",
+    reason="This test is not supposed to work for minimal installation.",
+)
 def test_get_train_runs(monkeypatch, shutdown_only):
     monkeypatch.setenv("RAY_TRAIN_ENABLE_STATE_TRACKING", "1")
     try:
