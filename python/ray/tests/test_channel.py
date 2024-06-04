@@ -10,6 +10,7 @@ import pytest
 import ray
 import ray.cluster_utils
 import ray.experimental.channel as ray_channel
+from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 logger = logging.getLogger(__name__)
 
@@ -35,17 +36,18 @@ def test_put_local_get(ray_start_regular):
 )
 @pytest.mark.parametrize("remote", [True, False])
 def test_driver_as_reader(ray_start_cluster, remote):
-    print("remote: " + str(remote) + "\n")
     cluster = ray_start_cluster
     if remote:
-        # This node is for the driver.
-        cluster.add_node(num_cpus=0)
+        # This node is for the driver. num_cpus is 1 because the DriverHelperActor needs
+        # a place to run.
+        cluster.add_node(num_cpus=1)
         ray.init(address=cluster.address)
         # This node is for the writer actor.
         cluster.add_node(num_cpus=1)
     else:
-        # This node is for both the driver and the writer actor.
-        cluster.add_node(num_cpus=1)
+        # This node is for both the driver (including the DriverHelperActor) and the
+        # writer actor.
+        cluster.add_node(num_cpus=2)
         ray.init(address=cluster.address)
 
     @ray.remote(num_cpus=1)
@@ -80,11 +82,11 @@ def test_driver_as_reader(ray_start_cluster, remote):
         def get_channel(self):
             return self._driver_channel
 
-        def read(self):
-            assert self._channel.begin_read() == b"x"
-            self._channel.end_read()
-
-    driver_actor = DriverHelperActor.remote()
+    driver_actor = DriverHelperActor.options(
+        scheduling_strategy=NodeAffinitySchedulingStrategy(
+            ray.get_runtime_context().get_node_id(), soft=False
+        )
+    ).remote()
     a = Actor.remote()
     ray.get(a.setup.remote(driver_actor))
     chan = ray.get(driver_actor.get_channel.remote())
