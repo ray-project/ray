@@ -238,8 +238,8 @@ def test_torch_tensor_nccl_disallows_driver(ray_start_regular):
     with pytest.raises(
         ValueError,
         match=(
-            r"DAG inputs cannot be transferred via NCCL because the driver "
-            "cannot participate in the NCCL group"
+            r"Outputs cannot be transferred via NCCL because the driver cannot "
+            "participate in the NCCL group"
         ),
     ):
         compiled_dag = dag.experimental_compile()
@@ -260,7 +260,7 @@ def test_torch_tensor_nccl_static_shape(ray_start_regular):
     receiver = actor_cls.remote()
 
     with InputNode() as inp:
-        dag = sender.send.bind(inp)
+        dag = sender.send.bind(inp.shape, inp.dtype, inp[0])
         dag = dag.with_type_hint(TorchTensorType(transport="nccl", static_shape=True))
         dag = receiver.recv.bind(dag)
 
