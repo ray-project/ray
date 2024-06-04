@@ -1482,8 +1482,9 @@ def run_rllib_example_script_experiment(
 
     # Auto-configure a CLIReporter (to log the results to the console).
     # Use better ProgressReporter for multi-agent cases: List individual policy rewards.
-    progress_reporter = None
     if args.num_agents > 0:
+        from ray.rllib.algorithms.algorithm import Algorithm
+
         progress_metrics = Algorithm._progress_metrics.copy()
         progress_metrics.update(
             {
@@ -1493,7 +1494,17 @@ def run_rllib_example_script_experiment(
                 for pid in config.policies
             }
         )
-        progress_reporter = CLIReporter(metric_columns=progress_metrics)
+
+        from ray.tune.experimental.output import TrainReporter
+
+        if tune_callbacks is None:
+            tune_callbacks = []
+        tune_callbacks.append(
+            TrainReporter(
+                verbosity=args.verbose,
+                progress_metrics=progress_metrics,
+            )
+        )
 
     # Force Tuner to use old progress output as the new one silently ignores our custom
     # `CLIReporter`.
@@ -1506,13 +1517,12 @@ def run_rllib_example_script_experiment(
         param_space=config,
         run_config=air.RunConfig(
             stop=stop,
-            verbose=args.verbose,
+            # verbose=args.verbose,
             callbacks=tune_callbacks,
             checkpoint_config=air.CheckpointConfig(
                 checkpoint_frequency=args.checkpoint_freq,
                 checkpoint_at_end=args.checkpoint_at_end,
             ),
-            progress_reporter=progress_reporter,
         ),
         tune_config=tune.TuneConfig(num_samples=args.num_samples),
     ).fit()

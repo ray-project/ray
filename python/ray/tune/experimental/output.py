@@ -899,7 +899,7 @@ class TuneReporterBase(ProgressReporter):
         if not self._inferred_metric:
             # try inferring again.
             self._inferred_metric = _infer_user_metrics(
-                trials, mappings=self._progress_metrics
+                trials, col_mapping=self._progress_metrics
             )
 
         # all_metrics = list(DEFAULT_COLUMNS.keys()) + self._inferred_metric
