@@ -27,7 +27,7 @@ def register_plan_logical_op_fn(
     PLAN_LOGICAL_OP_FNS.append((logical_op_type, plan_fn))
 
 
-def register_plan_logical_op_fns():
+def _register_default_plan_logical_op_fns():
     from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
     from ray.data._internal.execution.operators.limit_operator import LimitOperator
     from ray.data._internal.execution.operators.union_operator import UnionOperator
@@ -92,7 +92,7 @@ def register_plan_logical_op_fns():
     register_plan_logical_op_fn(Limit, plan_limit_op)
 
 
-register_plan_logical_op_fns()
+_register_default_plan_logical_op_fns()
 
 
 class Planner:
