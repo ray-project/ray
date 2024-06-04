@@ -68,6 +68,8 @@ def test_driver_as_reader(ray_start_cluster, remote):
     class DriverHelperActor:
         def set_channel(self, channel):
             self._channel = channel
+            # TODO(jhumphri): If the channel backing store is resized,
+            # self._driver_channel needs to have its writer ref and reader ref updated.
             self._driver_channel = ray_channel.Channel(
                 ray.get_runtime_context().current_actor,
                 [None],
