@@ -151,11 +151,12 @@ def add_rllib_example_script_args(
     )
     parser.add_argument(
         "--evaluation-duration",
-        type=int,
+        type=lambda v: v if v == "auto" else int(v),
         default=10,
         help="The number of evaluation units to run each evaluation round. "
-        "Use `--evaluation-duration-unit` to set this either to 'episodes' "
-        "or 'timesteps'.",
+        "Use `--evaluation-duration-unit` to count either in 'episodes' "
+        "or 'timesteps'. If 'auto', will run as many as possible during train pass ("
+        "`--evaluation-parallel-to-training` must be set then).",
     )
     parser.add_argument(
         "--evaluation-duration-unit",
@@ -164,7 +165,8 @@ def add_rllib_example_script_args(
         choices=["episodes", "timesteps"],
         help="The evaluation duration unit to count by. One of 'episodes' or "
         "'timesteps'. This unit will be run `--evaluation-duration` times in each "
-        "evaluation round.",
+        "evaluation round. If `--evaluation-duration=auto`, this setting does not "
+        "matter.",
     )
     parser.add_argument(
         "--evaluation-parallel-to-training",
