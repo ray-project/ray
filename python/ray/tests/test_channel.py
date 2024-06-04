@@ -33,6 +33,32 @@ def test_put_local_get(ray_start_regular):
     sys.platform != "linux" and sys.platform != "darwin",
     reason="Requires Linux or Mac.",
 )
+def test_driver_as_reader(ray_start_regular):
+    @ray.remote
+    class Actor:
+        def __init__(self):
+            # The driver is the reader.
+            self._channel = ray_channel.Channel(
+                ray.get_runtime_context().current_actor, [None], 1000
+            )
+
+        def get_channel(self):
+            return self._channel
+
+        def write(self):
+            self._channel.write(b"x")
+
+    a = Actor.remote()
+    chan = ray.get(a.get_channel.remote())
+
+    assert chan.begin_read() == b"x"
+    chan.end_read()
+
+
+@pytest.mark.skipif(
+    sys.platform != "linux" and sys.platform != "darwin",
+    reason="Requires Linux or Mac.",
+)
 def test_set_error_before_read(ray_start_regular):
     @ray.remote
     class Actor:
