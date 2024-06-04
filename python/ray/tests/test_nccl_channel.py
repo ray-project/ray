@@ -9,9 +9,12 @@ import pytest
 
 import ray
 import ray.cluster_utils
+from ray.experimental.channel import ChannelContext
+from ray.experimental.channel.shared_memory_channel import Channel
 from ray.experimental.channel.conftest import (
     Barrier,
     start_nccl_mock,
+    TracedChannel,
 )
 from ray.experimental.channel.torch_tensor_type import TorchTensorType
 from ray.experimental.channel.torch_tensor_nccl_channel import (
@@ -31,27 +34,7 @@ class Worker:
         """
         Patch methods that require CUDA.
         """
-        stream_patcher = mock.patch(
-            "torch.cuda.current_stream", new_callable=lambda: MockCudaStream
-        )
-        stream_patcher.start()
-
-        cp_stream_patcher = mock.patch("cupy.cuda.ExternalStream")
-        cp_stream_patcher.start()
-
-        comm_patcher = mock.patch("cupy.cuda.nccl.NcclCommunicator")
-        comm_patcher.start()
-
-        ray.experimental.channel.torch_tensor_nccl_channel._NcclGroup = MockNcclGroup
-
-        tensor_patcher = mock.patch("torch.Tensor.device", torch.device("cuda"))
-        tensor_patcher.start()
-        tensor_patcher = mock.patch("torch.Tensor.is_cuda", True)
-        tensor_patcher = mock.patch("torch.Tensor.device", torch.device("cuda"))
-        tensor_patcher.start()
-
-        ctx = channel.ChannelContext.get_current()
-        ctx.set_torch_device(torch.device("cuda"))
+        start_nccl_mock()
 
     def set_nccl_channel(self, typ, tensor_chan):
         typ.register_custom_serializer()
