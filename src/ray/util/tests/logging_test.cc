@@ -186,10 +186,8 @@ TEST(PrintLogTest, TestRayLogEveryMs) {
   EXPECT_LT(occurrences, 15);
 }
 
-#if defined(__APPLE__) || defined(__linux__)
-
 TEST(PrintLogTest, TestTextLogging) {
-  setenv("RAY_BACKEND_LOG_JSON", "0", true);
+  setEnv("RAY_BACKEND_LOG_JSON", "0");
   RayLog::StartRayLog("/tmp/gcs", RayLogLevel::INFO, "");
   CaptureStdout();
   RAY_LOG(INFO).WithField("key1", "value1").WithField("key2", "value2")
@@ -202,11 +200,11 @@ TEST(PrintLogTest, TestTextLogging) {
             std::string::npos);
 
   RayLog::ShutDownRayLog();
-  unsetenv("RAY_BACKEND_LOG_JSON");
+  unsetEnv("RAY_BACKEND_LOG_JSON");
 }
 
 TEST(PrintLogTest, TestJSONLogging) {
-  setenv("RAY_BACKEND_LOG_JSON", "1", true);
+  setEnv("RAY_BACKEND_LOG_JSON", "1");
   RayLog::StartRayLog("/tmp/raylet", RayLogLevel::INFO, "");
   CaptureStdout();
   RAY_LOG(DEBUG) << "this is not logged";
@@ -233,10 +231,8 @@ TEST(PrintLogTest, TestJSONLogging) {
   ASSERT_EQ(log3["key2"], "value\n2");
 
   RayLog::ShutDownRayLog();
-  unsetenv("RAY_BACKEND_LOG_JSON");
+  unsetEnv("RAY_BACKEND_LOG_JSON");
 }
-
-#endif // defined(__APPLE__) || defined(__linux__)
 
 #endif /* GTEST_HAS_STREAM_REDIRECTION */
 
