@@ -1,5 +1,6 @@
 import json
 import os
+import time
 
 import pytest
 
@@ -171,6 +172,7 @@ def test_state_manager(ray_start_gpu_cluster):
         controller_actor_id="3abd1972a19148d78acc78dd9414736e",
         datasets={},
         worker_group=worker_group,
+        start_time=time.time(),
     )
 
     # Register 100 runs with 10 TrainRunStateManagers
@@ -189,6 +191,7 @@ def test_state_manager(ray_start_gpu_cluster):
                     "eval": ray.data.from_items(list(range(4))),
                 },
                 worker_group=worker_group,
+                start_time=time.time(),
             )
 
     runs = ray.get(state_actor.get_all_train_runs.remote())
