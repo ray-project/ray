@@ -34,17 +34,11 @@ class TorchTensorWorker:
     def send(self, shape, dtype, value: int):
         return torch.ones(shape, dtype=dtype, device=self.device) * value
 
-    def send_dict_with_tuple_args(self, args):
-        shape, dtype, value = args
+    def send_dict(self, shape, dtype, value):
         return {
             i: torch.ones(shape, dtype=dtype, device=self.device) * i
             for i in range(value)
         }
-
-    def send_with_tuple_args(self, args):
-        # Hack because InputNode can currently only contain one arg.
-        shape, dtype, value = args
-        return torch.ones(shape, dtype=dtype, device=self.device) * value
 
     def recv(self, tensor):
         # Check that tensor got loaded to the correct device.
@@ -78,13 +72,13 @@ def test_torch_tensor_p2p(ray_start_regular):
 
     # Test torch.Tensor sent between actors.
     with InputNode() as inp:
-        dag = sender.send.bind(shape, dtype, inp)
+        dag = sender.send.bind(inp.shape, inp.dtype, inp[0])
         dag = dag.with_type_hint(TorchTensorType())
         dag = receiver.recv.bind(dag)
 
     compiled_dag = dag.experimental_compile()
     for i in range(3):
-        output_channel = compiled_dag.execute(i)
+        output_channel = compiled_dag.execute(i, shape=shape, dtype=dtype)
         # TODO(swang): Replace with fake ObjectRef.
         result = output_channel.begin_read()
         assert result == (i, shape, dtype)
@@ -92,43 +86,17 @@ def test_torch_tensor_p2p(ray_start_regular):
 
     compiled_dag.teardown()
 
-    # Passing tensors of a similar or smaller shape is okay.
-    with InputNode() as inp:
-        dag = sender.send.bind(shape, dtype, inp)
-        dag = dag.with_type_hint(TorchTensorType())
-        dag = receiver.recv.bind(dag)
-    compiled_dag = dag.experimental_compile()
-    for i in range(3):
-        output_channel = compiled_dag.execute(i)
-        # TODO(swang): Replace with fake ObjectRef.
-        result = output_channel.begin_read()
-        assert result == (i, shape, dtype)
-        output_channel.end_read()
-    compiled_dag.teardown()
-
-    # Passing a much larger tensor will error.
-    with InputNode() as inp:
-        dag = sender.send.bind(1_000_000, dtype, inp)
-        dag = dag.with_type_hint(TorchTensorType())
-        dag = receiver.recv.bind(dag)
-    compiled_dag = dag.experimental_compile()
-    output_channel = compiled_dag.execute(1)
-    with pytest.raises(ValueError):
-        result = output_channel.begin_read()
-    compiled_dag.teardown()
-
-    # Passing a torch.tensor inside of other data is okay even if
-    # direct_return=True, if `transport` is not set.
-    with InputNode() as inp:
-        dag = sender.send_dict_with_tuple_args.bind(inp)
-        dag = dag.with_type_hint(TorchTensorType())
-        dag = receiver.recv_dict.bind(dag)
-
-    compiled_dag = dag.experimental_compile()
-
-    output_channel = compiled_dag.execute((shape, dtype, 1))
-    output_channel.begin_read()
+    # Passing tensors of different sizes is okay.
+    output_channel = compiled_dag.execute(i, shape=(20, ), dtype=dtype)
+    result = output_channel.begin_read()
+    assert result == (i, (20, ), dtype)
     output_channel.end_read()
+
+    output_channel = compiled_dag.execute(i, shape=(5, ), dtype=dtype)
+    result = output_channel.begin_read()
+    assert result == (i, (5, ), dtype)
+    output_channel.end_read()
+
     compiled_dag.teardown()
 
 
@@ -159,17 +127,16 @@ def test_torch_tensor_as_dag_input(ray_start_regular):
         assert result == (i, shape, dtype)
         output_channel.end_read()
 
-    # Passing tensors of a similar or smaller shape is okay.
-    for i in range(3):
-        output_channel = compiled_dag.execute(torch.ones((20,), dtype=dtype) * i)
-        # TODO(swang): Replace with fake ObjectRef.
-        result = output_channel.begin_read()
-        assert result == (i, (20,), dtype)
-        output_channel.end_read()
+    # Passing tensors of different sizes is okay.
+    output_channel = compiled_dag.execute(torch.ones((20,), dtype=dtype) * i)
+    result = output_channel.begin_read()
+    assert result == (i, (20, ), dtype)
+    output_channel.end_read()
 
-    # Passing a much larger tensor will error.
-    with pytest.raises(ValueError):
-        output_channel = compiled_dag.execute(torch.ones((1_000_000,), dtype=dtype) * i)
+    output_channel = compiled_dag.execute(torch.ones((5,), dtype=dtype) * i)
+    result = output_channel.begin_read()
+    assert result == (i, (5, ), dtype)
+    output_channel.end_read()
 
     compiled_dag.teardown()
 
@@ -191,18 +158,18 @@ def test_torch_tensor_nccl(ray_start_regular):
     shape = (10,)
     dtype = torch.float16
 
+    # Test normal execution.
     with InputNode() as inp:
-        dag = sender.send.bind(shape, dtype, inp)
-        # TODO(swang): Test that we are using the minimum number of
-        # channels/messages when direct_return=True.
-        dag = dag.with_type_hint(TorchTensorType(transport="nccl", direct_return=True))
+        dag = sender.send.bind(inp.shape, inp.dtype, inp[0])
+        dag = dag.with_type_hint(TorchTensorType(transport="nccl"))
         dag = receiver.recv.bind(dag)
 
-    # Test normal execution.
     compiled_dag = dag.experimental_compile()
 
+    # Test that we can pass different shapes and data.
     for i in range(3):
-        output_channel = compiled_dag.execute(i)
+        shape = (10 * (i + 1), )
+        output_channel = compiled_dag.execute(i, shape=shape, dtype=dtype)
         # TODO(swang): Replace with fake ObjectRef.
         result = output_channel.begin_read()
         assert result == (i, shape, dtype)
@@ -210,9 +177,51 @@ def test_torch_tensor_nccl(ray_start_regular):
 
     compiled_dag.teardown()
 
+    # Test that actors can be reused for a new DAG.
+    with InputNode() as inp:
+        dag = sender.send.bind(inp.shape, inp.dtype, inp[0])
+        dag = dag.with_type_hint(TorchTensorType(transport="nccl"))
+        dag = receiver.recv.bind(dag)
+
+    compiled_dag = dag.experimental_compile()
+
+    # Test that we can pass different shapes and data.
+    for i in range(3):
+        shape = (10 * (i + 1), )
+        output_channel = compiled_dag.execute(i, shape=shape, dtype=dtype)
+        # TODO(swang): Replace with fake ObjectRef.
+        result = output_channel.begin_read()
+        assert result == (i, shape, dtype)
+        output_channel.end_read()
+
+    compiled_dag.teardown()
+
+
+@pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
+def test_torch_tensor_nccl_disallows_driver(ray_start_regular):
+    """
+    Check that the driver cannot participate in the NCCL group, i.e. DAG input
+    and output nodes cannot have a TorchTensorType(transport="nccl")
+    annotation.
+    """
+    if not USE_GPU:
+        pytest.skip("NCCL tests require GPUs")
+
+    assert (
+        sum(node["Resources"].get("GPU", 0) for node in ray.nodes()) > 1
+    ), "This test requires at least 2 GPUs"
+
+    actor_cls = TorchTensorWorker.options(num_cpus=0, num_gpus=1)
+
+    sender = actor_cls.remote()
+    receiver = actor_cls.remote()
+
+    shape = (10,)
+    dtype = torch.float16
+
     # Test that InputNode cannot cannot participate in the NCCL group.
     with InputNode() as inp:
-        torch_inp = inp.with_type_hint(TorchTensorType(shape, dtype, transport="nccl"))
+        torch_inp = inp.with_type_hint(TorchTensorType(transport="nccl"))
         dag = receiver.recv.bind(torch_inp)
     with pytest.raises(
         ValueError,
@@ -223,29 +232,23 @@ def test_torch_tensor_nccl(ray_start_regular):
     ):
         compiled_dag = dag.experimental_compile()
 
-    # Test that actors can be reused for a valid DAG.
+    # Test that OutputNode cannot cannot participate in the NCCL group.
     with InputNode() as inp:
         dag = sender.send.bind(shape, dtype, inp)
-        dag = dag.with_type_hint(TorchTensorType(shape, dtype, transport="nccl"))
-        dag = receiver.recv.bind(dag)
+        dag = dag.with_type_hint(TorchTensorType(transport="nccl"))
 
-    compiled_dag = dag.experimental_compile()
-    for i in range(3):
-        output_channel = compiled_dag.execute(i)
-        # TODO(swang): Replace with fake ObjectRef.
-        result = output_channel.begin_read()
-        assert result == (i, shape, dtype)
-        output_channel.end_read()
-    compiled_dag.teardown()
-
-    # TODO(swang): Check that actors are still alive. Currently this fails due
-    # to a ref counting assertion error.
-    # ray.get(sender.ping.remote())
-    # ray.get(receiver.ping.remote())
+    with pytest.raises(
+        ValueError,
+        match=(
+            r"DAG inputs cannot be transferred "
+            "via NCCL because the driver cannot participate in the NCCL group"
+        ),
+    ):
+        compiled_dag = dag.experimental_compile()
 
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
-def test_torch_tensor_nccl_dynamic(ray_start_regular):
+def test_torch_tensor_nccl_static_shape(ray_start_regular):
     if not USE_GPU:
         pytest.skip("NCCL tests require GPUs")
 
@@ -259,19 +262,16 @@ def test_torch_tensor_nccl_dynamic(ray_start_regular):
     receiver = actor_cls.remote()
 
     with InputNode() as inp:
-        dag = sender.send_with_tuple_args.bind(inp)
-        # TODO(swang): Test that we are using the minimum number of
-        # channels/messages when direct_return=True.
-        dag = dag.with_type_hint(TorchTensorType(transport="nccl", direct_return=True))
+        dag = sender.send.bind(inp)
+        dag = dag.with_type_hint(TorchTensorType(transport="nccl", static_shape=True))
         dag = receiver.recv.bind(dag)
 
     compiled_dag = dag.experimental_compile()
+
+    # Test that the DAG works as long as we send the same shape.
+    shape = (10, )
     for i in range(3):
-        i += 1
-        shape = (i * 10,)
-        dtype = torch.float16
-        args = (shape, dtype, i)
-        output_channel = compiled_dag.execute(args)
+        output_channel = compiled_dag.execute(i, shape=shape, dtype=dtype)
         # TODO(swang): Replace with fake ObjectRef.
         result = output_channel.begin_read()
         assert result == (i, shape, dtype)
@@ -281,53 +281,7 @@ def test_torch_tensor_nccl_dynamic(ray_start_regular):
 
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
-def test_torch_tensor_nccl_wrong_shape(ray_start_regular):
-    if not USE_GPU:
-        pytest.skip("NCCL tests require GPUs")
-
-    assert (
-        sum(node["Resources"].get("GPU", 0) for node in ray.nodes()) > 1
-    ), "This test requires at least 2 GPUs"
-
-    actor_cls = TorchTensorWorker.options(num_cpus=0, num_gpus=1)
-
-    sender = actor_cls.remote()
-    receiver = actor_cls.remote()
-
-    shape = (10,)
-    dtype = torch.float16
-
-    # Passing tensors of the wrong shape will error.
-    with InputNode() as inp:
-        dag = sender.send.bind(shape, dtype, inp)
-        dag = dag.with_type_hint(
-            TorchTensorType(
-                (20,),
-                dtype,
-                transport="nccl",
-            )
-        )
-        dag = receiver.recv.bind(dag)
-
-    compiled_dag = dag.experimental_compile()
-
-    output_channel = compiled_dag.execute(1)
-    with pytest.raises(OSError):
-        output_channel.begin_read()
-
-    compiled_dag.teardown()
-
-    # TODO(swang): This currently requires time.sleep to avoid some issue with
-    # following tests.
-    time.sleep(3)
-
-
-@pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
-def test_torch_tensor_nccl_nested(ray_start_regular):
-    """
-    Test nested torch.Tensor passed via NCCL. Its shape and dtype is statically
-    declared.
-    """
+def test_torch_tensor_nccl_static_non_tensor_data(ray_start_regular):
     if not USE_GPU:
         pytest.skip("NCCL tests require GPUs")
 
@@ -340,22 +294,20 @@ def test_torch_tensor_nccl_nested(ray_start_regular):
     sender = actor_cls.remote()
     receiver = actor_cls.remote()
 
-    shape = (10,)
-    dtype = torch.float16
-
     with InputNode() as inp:
-        dag = sender.send_dict_with_tuple_args.bind(inp)
+        dag = sender.send_dict.bind(inp.shape, inp.dtype, inp.value)
         dag = dag.with_type_hint(
-            TorchTensorType(shape=shape, dtype=dtype, transport="nccl")
+            TorchTensorType(transport="nccl",
+                static_non_tensor_data=True)
         )
         dag = receiver.recv_dict.bind(dag)
 
     compiled_dag = dag.experimental_compile()
 
     for i in range(3):
-        args = (shape, dtype, 1)
-
-        output_channel = compiled_dag.execute(args)
+        shape = (10 * (i + 1),)
+        dtype = torch.float16
+        output_channel = compiled_dag.execute(shape, dtype, 1)
         # TODO(swang): Replace with fake ObjectRef.
         result = output_channel.begin_read()
         expected_result = {0: (0, shape, dtype)}
@@ -366,11 +318,7 @@ def test_torch_tensor_nccl_nested(ray_start_regular):
 
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
-def test_torch_tensor_nccl_nested_dynamic(ray_start_regular):
-    """
-    Test nested torch.Tensor passed via NCCL. Its shape and dtype is
-    dynamically declared, and there may be multiple tensors.
-    """
+def test_torch_tensor_nccl_static_shape_and_non_tensor_data(ray_start_regular):
     if not USE_GPU:
         pytest.skip("NCCL tests require GPUs")
 
@@ -384,69 +332,28 @@ def test_torch_tensor_nccl_nested_dynamic(ray_start_regular):
     receiver = actor_cls.remote()
 
     with InputNode() as inp:
-        dag = sender.send_dict_with_tuple_args.bind(inp)
-        dag = dag.with_type_hint(TorchTensorType(transport="nccl"))
-        dag = receiver.recv_dict.bind(dag)
+        dag = sender.send.bind(inp.shape, inp.dtype, inp.value)
+        dag = dag.with_type_hint(
+            TorchTensorType(transport="nccl",
+                static_shape=True,
+                static_non_tensor_data=True,)
+        )
+        dag = receiver.recv.bind(dag)
 
     compiled_dag = dag.experimental_compile()
 
+    shape = (10, )
+    dtype = torch.float16
+
     for i in range(3):
-        i += 1
-
-        shape = (10 * i,)
-        dtype = torch.float16
-        args = (shape, dtype, i)
-
-        output_channel = compiled_dag.execute(args)
+        output_channel = compiled_dag.execute(shape, dtype, i)
         # TODO(swang): Replace with fake ObjectRef.
         result = output_channel.begin_read()
-        expected_result = {j: (j, shape, dtype) for j in range(i)}
-        assert result == expected_result
+        assert result == (i, shape, dtype)
         output_channel.end_read()
 
     compiled_dag.teardown()
 
-
-@pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
-def test_torch_tensor_nccl_direct_return_error(ray_start_regular):
-    if not USE_GPU:
-        pytest.skip("NCCL tests require GPUs")
-
-    assert (
-        sum(node["Resources"].get("GPU", 0) for node in ray.nodes()) > 1
-    ), "This test requires at least 2 GPUs"
-
-    actor_cls = TorchTensorWorker.options(num_cpus=0, num_gpus=1)
-
-    sender = actor_cls.remote()
-    receiver = actor_cls.remote()
-
-    shape = (10,)
-    dtype = torch.float16
-
-    # Passing a non-tensor value when direct_return=True and tranport="nccl"
-    # fails.
-    with InputNode() as inp:
-        dag = sender.send_dict_with_tuple_args.bind(inp)
-        dag = dag.with_type_hint(
-            TorchTensorType(
-                transport=TorchTensorType.NCCL,
-                direct_return=True,
-            )
-        )
-        dag = receiver.recv_dict.bind(dag)
-
-    compiled_dag = dag.experimental_compile()
-
-    output_channel = compiled_dag.execute((shape, dtype, 1))
-    with pytest.raises(OSError):
-        output_channel.begin_read()
-
-    compiled_dag.teardown()
-
-    # TODO(swang): This currently requires time.sleep to avoid some issue with
-    # following tests.
-    time.sleep(3)
 
 
 if __name__ == "__main__":
