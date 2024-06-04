@@ -5,7 +5,6 @@ import pathlib
 import re
 from typing import (
     TYPE_CHECKING,
-    Any,
     Callable,
     Iterator,
     List,
@@ -25,8 +24,6 @@ from ray.util.annotations import DeveloperAPI
 
 if TYPE_CHECKING:
     import pyarrow
-
-    from ray.data.datasource.parquet_datasource import _ParquetFileFragmentMetaData
 
 
 logger = logging.getLogger(__name__)
