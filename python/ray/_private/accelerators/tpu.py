@@ -155,11 +155,12 @@ class TPUAcceleratorManager(AcceleratorManager):
             return (True, None)
 
     @staticmethod
-    def get_num_tpu_visible_chips_per_host(accelerator_type: str) -> int:
-      if accelerator_type == "TPU-V5LITEPOD":
-        return 8
+    def get_num_tpu_visible_chips_per_host() -> int:
+        tpu_pod_type = TPUAcceleratorManager._get_current_node_tpu_pod_type()
+        if tpu_pod_type == "v5litepod-8":
+            return 8
 
-      return TPU_NUM_CHIPS_PER_HOST_DEFAULT
+        return TPU_NUM_CHIPS_PER_HOST_DEFAULT
 
     @staticmethod
     def set_current_process_visible_accelerator_ids(
@@ -182,8 +183,7 @@ class TPUAcceleratorManager(AcceleratorManager):
             return
 
         num_visible_tpu_chips = len(visible_tpu_chips)
-        accelerator_type = TPUAcceleratorManager.get_current_node_accelerator_type()
-        if num_visible_tpu_chips == TPUAcceleratorManager.get_num_tpu_visible_chips_per_host(accelerator_type):
+        if num_visible_tpu_chips == TPUAcceleratorManager.get_num_tpu_visible_chips_per_host():
             # Let the ML framework use the defaults
             return
         os.environ[

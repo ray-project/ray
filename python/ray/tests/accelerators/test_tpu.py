@@ -195,8 +195,8 @@ def test_validate_resource_request_quantity(test_config):
 )
 @patch("os.getenv")
 def test_set_tpu_visible_ids_and_bounds(mock_os, test_case):
-    accelerator_type, tpu_chips = test_case
-    mock_os.return_value = accelerator_type
+    tpu_pod_type, tpu_chips = test_case
+    mock_os.return_value = tpu_pod_type
     with patch.dict("os.environ", {}, clear=True):
         TPUAcceleratorManager.set_current_process_visible_accelerator_ids(tpu_chips)
         if len(tpu_chips) == 1:
