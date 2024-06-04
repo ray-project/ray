@@ -315,6 +315,7 @@ py_test_module_list(
 py_test_module_list(
   files = [
     "test_channel.py",
+    "test_nccl_channel.py",
   ],
   size = "medium",
   tags = ["exclusive", "accelerated_dag", "no_windows", "team:core"],
