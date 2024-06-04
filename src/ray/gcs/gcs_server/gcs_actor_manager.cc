@@ -623,14 +623,11 @@ Status GcsActorManager::RegisterActor(const ray::rpc::RegisterActorRequest &requ
   auto worker_id = WorkerID::FromBinary(owner_address.worker_id());
   RAY_CHECK(unresolved_actors_[node_id][worker_id].emplace(actor->GetActorID()).second);
 
-  // Send a long polling request to the actor's owner to determine when the actor should
-  // be removed. No polling for detached actors here since they are not scheduled to
-  // workers yet, their polling will be set in OnActorCreationSuccess.
   if (!actor->IsDetached()) {
+    // This actor is owned. Send a long polling request to the actor's
+    // owner to determine when the actor should be removed.
     PollOwnerForActorOutOfScope(actor);
-  }
-
-  if (actor->IsDetached()) {
+  } else {
     // If it's a detached actor, we need to register the runtime env it used to GC.
     runtime_env_manager_.AddURIReference(actor->GetActorID().Hex(),
                                          request.task_spec().runtime_env_info());
@@ -643,7 +640,8 @@ Status GcsActorManager::RegisterActor(const ray::rpc::RegisterActorRequest &requ
             actor->GetActorID(),
             *actor->GetMutableActorTableData(),
             [this, actor](const Status &status) {
-              // The backend storage is supposed to be reliable, so the status must be ok.
+              // The backend storage is supposed to be reliable, so the status must be
+              // ok.
               RAY_CHECK_OK(status);
               // If a creator dies before this callback is called, the actor could have
               // been already destroyed. It is okay not to invoke a callback because we
@@ -651,8 +649,8 @@ Status GcsActorManager::RegisterActor(const ray::rpc::RegisterActorRequest &requ
               auto registered_actor_it = registered_actors_.find(actor->GetActorID());
               if (registered_actor_it == registered_actors_.end()) {
                 // NOTE(sang): This logic assumes that the ordering of backend call is
-                // guaranteed. It is currently true because we use a single TCP socket to
-                // call the default Redis backend. If ordering is not guaranteed, we
+                // guaranteed. It is currently true because we use a single TCP socket
+                // to call the default Redis backend. If ordering is not guaranteed, we
                 // should overwrite the actor state to DEAD to avoid race condition.
                 return;
               }
@@ -811,31 +809,15 @@ std::vector<std::pair<std::string, std::string>> GcsActorManager::ListNamedActor
 void GcsActorManager::PollOwnerForActorOutOfScope(
     const std::shared_ptr<GcsActor> &actor) {
   const auto &actor_id = actor->GetActorID();
-  ray::NodeID owner_node_id;
-  ray::WorkerID owner_id;
-  rpc::Address owner_address;
-  if (actor->IsDetached()) {
-    owner_node_id = actor->GetNodeID();
-    owner_id = actor->GetWorkerID();
-    owner_address = actor->GetAddress();
-  } else {
-    owner_node_id = actor->GetOwnerNodeID();
-    owner_id = actor->GetOwnerID();
-    owner_address = actor->GetOwnerAddress();
-  }
-  RAY_CHECK(!owner_id.IsNil());
-  RAY_CHECK(!owner_address.ip_address().empty());
-
+  const auto &owner_node_id = actor->GetOwnerNodeID();
+  const auto &owner_id = actor->GetOwnerID();
   auto &workers = owners_[owner_node_id];
   auto it = workers.find(owner_id);
   if (it == workers.end()) {
-    RAY_LOG(DEBUG)
-            .WithField(kLogKeyJobID, actor_id.JobId())
-            .WithField(kLogKeyActorID, actor_id)
-            .WithField(kLogKeyWorkerID, owner_id)
-        << "Adding owner of actor.";
+    RAY_LOG(DEBUG) << "Adding owner " << owner_id << " of actor " << actor_id
+                   << ", job id = " << actor_id.JobId();
     std::shared_ptr<rpc::CoreWorkerClientInterface> client =
-        worker_client_factory_(owner_address);
+        worker_client_factory_(actor->GetOwnerAddress());
     it = workers.emplace(owner_id, Owner(std::move(client))).first;
   }
   it->second.children_actor_ids.insert(actor_id);
@@ -848,17 +830,13 @@ void GcsActorManager::PollOwnerForActorOutOfScope(
       [this, owner_node_id, owner_id, actor_id](
           Status status, const rpc::WaitForActorOutOfScopeReply &reply) {
         if (!status.ok()) {
-          RAY_LOG(INFO)
-                  .WithField(kLogKeyJobID, actor_id.JobId())
-                  .WithField(kLogKeyActorID, actor_id)
-                  .WithField(kLogKeyWorkerID, owner_id)
-              << "Owner worker failed, destroying actor, worker status = " << status;
+          RAY_LOG(INFO) << "Worker " << owner_id
+                        << " failed, destroying actor child, job id = "
+                        << actor_id.JobId();
         } else {
-          RAY_LOG(INFO)
-                  .WithField(kLogKeyJobID, actor_id.JobId())
-                  .WithField(kLogKeyActorID, actor_id)
-                  .WithField(kLogKeyWorkerID, owner_id)
-              << "Owner worker is out of scope, destroying actor";
+          RAY_LOG(INFO) << "Actor " << actor_id
+                        << " is out of scope, destroying actor, job id = "
+                        << actor_id.JobId();
         }
 
         auto node_it = owners_.find(owner_node_id);
@@ -1368,11 +1346,6 @@ void GcsActorManager::OnActorCreationSuccess(const std::shared_ptr<GcsActor> &ac
   }
   actor->UpdateState(rpc::ActorTableData::ALIVE);
 
-  // Non detached actors' polling are already done in RegisterActor.
-  if (actor->IsDetached()) {
-    PollOwnerForActorOutOfScope(actor);
-  }
-
   // We should register the entry to the in-memory index before flushing them to
   // GCS because otherwise, there could be timing problems due to asynchronous Put.
   auto worker_id = actor->GetWorkerID();
@@ -1478,10 +1451,9 @@ void GcsActorManager::Initialize(const GcsInitData &gcs_init_data) {
                                                     actor->GetActorID());
       }
 
-      // Send a long polling request to the actor's owner (or itself if detached) to
-      // determine when the actor should be removed.
-      if (actor_table_data.state() == ray::rpc::ActorTableData::ALIVE ||
-          !actor->IsDetached()) {
+      if (!actor->IsDetached()) {
+        // This actor is owned. Send a long polling request to the actor's
+        // owner to determine when the actor should be removed.
         PollOwnerForActorOutOfScope(actor);
       }
 
