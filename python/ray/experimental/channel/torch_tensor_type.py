@@ -67,11 +67,20 @@ class TorchTensorType(ChannelOutputType):
         NOTE: Setting static_shape=True and/or static_non_tensor_data=True can
         improve performance if a non-default transport is used. However, if
         either flag is set, then the user must ensure that the condition is
-        met. Also, for values containing multiple tensors, the user must ensure
-        that the (ray.cloudpickle) serialization order of the value is
-        deterministic. Otherwise, reads may return different values from those
-        written. For example, if returning a dictionary with multiple tensors,
-        use Python 3.6+ and ensure that the insertion order is the same.
+        met. Also, for values containing multiple tensors, the
+        user must ensure that the (ray.cloudpickle) serialization order of the
+        value is deterministic. Otherwise, reads may return different values
+        from those written. For example, if returning a dictionary with
+        multiple tensors, use Python 3.6+ and ensure that the insertion order
+        is the same.
+
+        If using this type as an accelerated DAG annotation, an exception will
+        be thrown in the following cases, and the DAG will be torn down. To
+        continue execution, a new DAG must be created:
+        1. If static_shape=True, and the found tensors don't match the
+           previous shape or dtype(s).
+        2. If static_non_tensor_data=True, and a different number of tensors is
+           found.
         """
         super().__init__()
 
