@@ -1,32 +1,32 @@
 {
-    "_dashboard_memory_usage_mb": 146.026496,
+    "_dashboard_memory_usage_mb": 137.633792,
     "_dashboard_test_success": true,
-    "_peak_memory": 2.17,
-    "_peak_process_memory": "PID\tMEM\tCOMMAND\n178\t0.95GiB\t/home/ray/anaconda3/lib/python3.9/site-packages/ray/core/src/ray/gcs/gcs_server --log_dir=/tmp/ray/s\n960\t0.39GiB\tpython distributed/test_many_pgs.py\n293\t0.13GiB\t/home/ray/anaconda3/bin/python /home/ray/anaconda3/lib/python3.9/site-packages/ray/dashboard/dashboa\n453\t0.07GiB\t/home/ray/anaconda3/bin/python -u /home/ray/anaconda3/lib/python3.9/site-packages/ray/_private/runti\n775\t0.07GiB\tray::JobSupervisor\n613\t0.07GiB\t/home/ray/anaconda3/bin/python /home/ray/anaconda3/bin/jupyter-lab --allow-root --ip=127.0.0.1 --no-\n451\t0.07GiB\t/home/ray/anaconda3/bin/python -u /home/ray/anaconda3/lib/python3.9/site-packages/ray/dashboard/agen\n1021\t0.06GiB\tray::MemoryMonitorActor.run\n1112\t0.05GiB\tray::DashboardTester.run\n391\t0.04GiB\t/home/ray/anaconda3/lib/python3.9/site-packages/ray/core/src/ray/raylet/raylet --raylet_socket_name=",
+    "_peak_memory": 2.25,
+    "_peak_process_memory": "PID\tMEM\tCOMMAND\n1224\t9.73GiB\t/app/product/go/infra/anyscaled/anyscaled_/anyscaled startv2 --control_plane_url=https://console.any\n3624\t0.96GiB\t/home/ray/anaconda3/lib/python3.9/site-packages/ray/core/src/ray/gcs/gcs_server --log_dir=/tmp/ray/s\n4824\t0.42GiB\tpython distributed/test_many_pgs.py\n2809\t0.38GiB\t/usr/bin/vector --watch-config --log-format json --config-yaml /etc/vector/vector.yaml\n3749\t0.15GiB\t/home/ray/anaconda3/bin/python /home/ray/anaconda3/lib/python3.9/site-packages/ray/dashboard/dashboa\n2607\t0.07GiB\t/usr/bin/python3 /app/infra/dataplane/webterminal/webterminal_sidecar_image.binary.runfiles/product/\n4609\t0.07GiB\tray::JobSupervisor\n3914\t0.07GiB\t/home/ray/anaconda3/bin/python -u /home/ray/anaconda3/lib/python3.9/site-packages/ray/_private/runti\n4093\t0.07GiB\t/home/ray/anaconda3/bin/python /home/ray/anaconda3/bin/jupyter-lab --allow-root --ip=127.0.0.1 --no-\n3912\t0.07GiB\t/home/ray/anaconda3/bin/python -u /home/ray/anaconda3/lib/python3.9/site-packages/ray/dashboard/agen",
     "num_pgs": 1000,
     "perf_metrics": [
         {
             "perf_metric_name": "pgs_per_second",
             "perf_metric_type": "THROUGHPUT",
-            "perf_metric_value": 23.42930283459158
+            "perf_metric_value": 23.5616061289441
         },
         {
             "perf_metric_name": "dashboard_p50_latency_ms",
             "perf_metric_type": "LATENCY",
-            "perf_metric_value": 3.367
+            "perf_metric_value": 3.492
         },
         {
             "perf_metric_name": "dashboard_p95_latency_ms",
             "perf_metric_type": "LATENCY",
-            "perf_metric_value": 12.824
+            "perf_metric_value": 12.796
         },
         {
             "perf_metric_name": "dashboard_p99_latency_ms",
             "perf_metric_type": "LATENCY",
-            "perf_metric_value": 898.617
+            "perf_metric_value": 204.615
         }
     ],
-    "pgs_per_second": 23.42930283459158,
+    "pgs_per_second": 23.5616061289441,
     "success": "1",
-    "time": 42.681594371795654
+    "time": 42.44192838668823
 }
