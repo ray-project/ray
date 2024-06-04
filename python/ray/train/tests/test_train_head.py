@@ -1,7 +1,9 @@
 import os
 import requests
+import sys
 import time
 
+import pytest
 import ray
 from ray.train.torch import TorchTrainer
 from ray.train import RunConfig, ScalingConfig
@@ -39,3 +41,11 @@ def test_get_train_runs(shutdown_only):
 
     finally:
         del os.environ["RAY_TRAIN_ENABLE_STATE_TRACKING"]
+
+
+if __name__ == "__main__":
+    if os.environ.get("PARALLEL_CI"):
+        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+    else:
+        sys.exit(pytest.main(["-sv", __file__]))
+
