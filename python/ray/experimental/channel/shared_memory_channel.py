@@ -154,6 +154,7 @@ class Channel(ChannelInterface):
         _reader_node_id: Optional["ray.NodeID"] = None,
         _writer_ref: Optional["ray.ObjectRef"] = None,
         _reader_ref: Optional["ray.ObjectRef"] = None,
+        _driver_actor: Optional[ray.actor.ActorHandle] = None,
     ):
         """
         Create a channel that can be read and written by co-located Ray processes.
@@ -205,12 +206,29 @@ class Channel(ChannelInterface):
             )
             self._writer_ref = _create_channel_ref(self, typ.buffer_size_bytes)
 
-            if readers[0] is None:
-                # Reader is the driver. We assume that the reader and the writer are on
-                # the same node.
+            # If readers[0] is None, then the reader is the driver. The driver itself
+            # may also also be the writer, or an actor could be the writer.
+            # In the former case, there is no need to create an additional reader ref as
+            # we can just reuse the writer ref.
+            # In the latter case, we need to create a reader ref for the driver only if
+            # it is on a different node than the writer actor. In order to create the
+            # reader ref, we need to execute _create_channel_ref on the driver node, but
+            # there is no way to invoke a remote function on the driver itself. Thus, we
+            # create an actor on the same node as the driver (passed to this __init__
+            # function as _driver_actor), which we will in turn use to execute the
+            # remote function.
+            if readers[0] is None and writer is None:
+                # The driver itself is the writer, so there is no need to create an
+                # additional reader ref. We can just reuse the writer ref.
                 self._reader_node_id = self._writer_node_id
                 self._reader_ref = self._writer_ref
             else:
+                if readers[0] is None:
+                    # The driver is the reader. Thus, use the _driver_actor as described
+                    # above.
+                    assert _driver_actor is not None
+                    readers[0] = _driver_actor
+
                 # Reader and writer are on different nodes.
                 self._reader_node_id = _get_reader_node_id(self, readers[0])
                 for reader in readers:
@@ -244,6 +262,7 @@ class Channel(ChannelInterface):
 
         self._writer = writer
         self._readers = readers
+        self._driver_actor = _driver_actor
         self._typ = typ
         self._num_readers = len(self._readers)
         if self.is_remote():
@@ -313,6 +332,7 @@ class Channel(ChannelInterface):
         reader_node_id,
         writer_ref: "ray.ObjectRef",
         reader_ref: "ray.ObjectRef",
+        driver_actor: Optional[ray.actor.ActorHandle],
     ) -> "Channel":
         chan = Channel(
             writer,
@@ -322,6 +342,7 @@ class Channel(ChannelInterface):
             _reader_node_id=reader_node_id,
             _writer_ref=writer_ref,
             _reader_ref=reader_ref,
+            _driver_actor=driver_actor,
         )
         return chan
 
@@ -335,6 +356,7 @@ class Channel(ChannelInterface):
             self._reader_node_id,
             self._writer_ref,
             self._reader_ref,
+            self._driver_actor,
         )
 
     def write(self, value: Any):

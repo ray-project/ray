@@ -33,24 +33,63 @@ def test_put_local_get(ray_start_regular):
     sys.platform != "linux" and sys.platform != "darwin",
     reason="Requires Linux or Mac.",
 )
-def test_driver_as_reader(ray_start_regular):
-    @ray.remote
-    class Actor:
-        def __init__(self):
-            # The driver is the reader.
-            self._channel = ray_channel.Channel(
-                ray.get_runtime_context().current_actor, [None], 1000
-            )
+@pytest.mark.parametrize("remote", [True, False])
+def test_driver_as_reader(ray_start_cluster, remote):
+    print("remote: " + str(remote) + "\n")
+    cluster = ray_start_cluster
+    if remote:
+        # This node is for the driver.
+        cluster.add_node(num_cpus=0)
+        ray.init(address=cluster.address)
+        # This node is for the writer actor.
+        cluster.add_node(num_cpus=1)
+    else:
+        # This node is for both the driver and the writer actor.
+        cluster.add_node(num_cpus=1)
+        ray.init(address=cluster.address)
 
-        def get_channel(self):
-            return self._channel
+    @ray.remote(num_cpus=1)
+    class Actor:
+        def setup(self, driver_actor):
+            self._channel = ray_channel.Channel(
+                ray.get_runtime_context().current_actor,
+                [None],
+                1000,
+                _driver_actor=driver_actor,
+            )
+            ray.get(driver_actor.set_channel.remote(self._channel))
 
         def write(self):
             self._channel.write(b"x")
 
-    a = Actor.remote()
-    chan = ray.get(a.get_channel.remote())
+    @ray.remote
+    class DriverHelperActor:
+        def set_channel(self, channel):
+            self._channel = channel
+            self._driver_channel = ray_channel.Channel(
+                ray.get_runtime_context().current_actor,
+                [None],
+                self._channel._typ,
+                ray.get_runtime_context().get_node_id(),
+                ray.get_runtime_context().get_node_id(),
+                self._channel._writer_ref,
+                self._channel._reader_ref,
+                None,
+            )
 
+        def get_channel(self):
+            return self._driver_channel
+
+        def read(self):
+            assert self._channel.begin_read() == b"x"
+            self._channel.end_read()
+
+    driver_actor = DriverHelperActor.remote()
+    a = Actor.remote()
+    ray.get(a.setup.remote(driver_actor))
+    chan = ray.get(driver_actor.get_channel.remote())
+
+    ray.get(a.write.remote())
     assert chan.begin_read() == b"x"
     chan.end_read()
 
