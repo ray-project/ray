@@ -630,7 +630,8 @@ class ProgressReporter(Callback):
         start_time: Optional[float] = None,
         **kwargs,
     ):
-        self._start_time = start_time
+        if start_time is not None:
+            self._start_time = start_time
 
     def _start_block(self, indicator: Any):
         if self._in_block != indicator:
