@@ -4,7 +4,7 @@ import pytest
 import ray
 import time
 from ray._raylet import GcsClient
-from ray.core.generated import autoscaler_pb2, gcs_pb2
+from ray.core.generated import autoscaler_pb2, common_pb2
 from ray._private.test_utils import wait_for_condition
 from ray.util.scheduling_strategies import (
     NodeAffinitySchedulingStrategy,
@@ -69,7 +69,7 @@ def test_idle_termination(ray_start_cluster):
     )
 
     worker_node = [node for node in ray.nodes() if node["NodeID"] == worker_node_id][0]
-    assert worker_node["DeathReason"] == gcs_pb2.NodeDeathInfo.Reason.Value(
+    assert worker_node["DeathReason"] == common_pb2.NodeDeathInfo.Reason.Value(
         "AUTOSCALER_DRAIN_IDLE"
     )
     assert worker_node["DeathReasonMessage"] == "idle for long enough"
@@ -137,7 +137,7 @@ def test_preemption(ray_start_cluster):
     )
 
     worker_node = [node for node in ray.nodes() if node["NodeID"] == worker_node_id][0]
-    assert worker_node["DeathReason"] == gcs_pb2.NodeDeathInfo.Reason.Value(
+    assert worker_node["DeathReason"] == common_pb2.NodeDeathInfo.Reason.Value(
         "AUTOSCALER_DRAIN_PREEMPTED"
     )
     assert worker_node["DeathReasonMessage"] == "preemption"
@@ -195,7 +195,7 @@ def test_preemption_after_draining_deadline(monkeypatch, ray_start_cluster, grac
     )
 
     worker_node = [node for node in ray.nodes() if node["NodeID"] == worker_node_id][0]
-    assert worker_node["DeathReason"] == gcs_pb2.NodeDeathInfo.Reason.Value(
+    assert worker_node["DeathReason"] == common_pb2.NodeDeathInfo.Reason.Value(
         "AUTOSCALER_DRAIN_PREEMPTED"
     )
     assert worker_node["DeathReasonMessage"] == "preemption"
@@ -251,7 +251,7 @@ def test_node_death_before_draining_deadline(monkeypatch, ray_start_cluster):
     # Since worker node failure is detected to be before the draining deadline,
     # this is considered as an unexpected termination.
     worker_node = [node for node in ray.nodes() if node["NodeID"] == worker_node_id][0]
-    assert worker_node["DeathReason"] == gcs_pb2.NodeDeathInfo.Reason.Value(
+    assert worker_node["DeathReason"] == common_pb2.NodeDeathInfo.Reason.Value(
         "UNEXPECTED_TERMINATION"
     )
     assert (
@@ -412,11 +412,12 @@ def test_draining_reason(ray_start_cluster, graceful):
     actor = Actor.options(num_cpus=0, resources={"node2": 1}).remote()
     ray.get(actor.ping.remote())
 
+    drain_reason_message = "testing node preemption."
     # Preemption is always accepted.
     is_accepted, _ = gcs_client.drain_node(
         node2_id,
         autoscaler_pb2.DrainNodeReason.Value("DRAIN_NODE_REASON_PREEMPTION"),
-        "preemption",
+        drain_reason_message,
         1,
     )
     assert is_accepted
@@ -426,8 +427,11 @@ def test_draining_reason(ray_start_cluster, graceful):
     try:
         ray.get(actor.ping.remote())
         raise
-    except ray.exceptions.RayActorError as e:
+    except ray.exceptions.ActorDiedError as e:
         assert e.preempted
+        if graceful:
+            assert "The actor died because its node has died." in str(e)
+            assert "the actor's node was preempted: " + drain_reason_message in str(e)
 
 
 if __name__ == "__main__":

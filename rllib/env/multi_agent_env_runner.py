@@ -139,7 +139,7 @@ class MultiAgentEnvRunner(EnvRunner):
         assert not (num_timesteps is not None and num_episodes is not None)
 
         # If no execution details are provided, use the config to try to infer the
-        # desired timesteps/episodes to sample and exploration behavior.
+        # desired timesteps/episodes to sample and the exploration behavior.
         if explore is None:
             explore = self.config.explore
         if num_timesteps is None and num_episodes is None:
@@ -551,7 +551,7 @@ class MultiAgentEnvRunner(EnvRunner):
                 # but after(!) the last env-to-module connector call has been made.
                 # -> All obs (even the terminal one) should have been processed now (by
                 # the connector, if applicable).
-                self._make_on_episode_callback("on_episode_end")
+                self._make_on_episode_callback("on_episode_end", _episode)
 
                 # Finish the episode.
                 done_episodes_to_return.append(
@@ -622,12 +622,6 @@ class MultiAgentEnvRunner(EnvRunner):
                 agent_episode_returns,
                 module_episode_returns,
             )
-
-        # TODO (simon): This results in hundreds of warnings in the logs
-        # b/c reducing over NaNs is not supported.
-        # # If no episodes at all, log NaN stats.
-        # if len(self._done_episodes_for_metrics) == 0:
-        #     self._log_episode_metrics(np.nan, np.nan, np.nan)
 
         # Log num episodes counter for this iteration.
         self.metrics.log_value(

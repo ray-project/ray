@@ -372,6 +372,8 @@ cryptography==38.0.1
     #   python-jose
     #   sshpubkeys
     #   trustme
+cupy-cuda11x==13.1.0 ; sys_platform != "darwin"
+    # via -r /ray/ci/../python/requirements/ml/dl-cpu-requirements.txt
 cycler==0.12.1
     # via matplotlib
 cython==0.29.37
@@ -496,6 +498,8 @@ fasteners==0.19
     #   gsutil
 fastjsonschema==2.19.0
     # via nbformat
+fastrlock==0.8.2
+    # via cupy-cuda11x
 feather-format==0.4.1
     # via -r /ray/ci/../python/requirements/test-requirements.txt
 ffmpy==0.3.1
@@ -765,8 +769,9 @@ humanfriendly==10.0
     #   coloredlogs
 hyperopt==0.2.7
     # via -r /ray/ci/../python/requirements/ml/tune-requirements.txt
-idna==3.6
+idna==3.7
     # via
+    #   -r /ray/ci/../python/requirements/security-requirements.txt
     #   anyio
     #   httpx
     #   jsonschema
@@ -1239,6 +1244,7 @@ numpy==1.24.4
     #   cmdstanpy
     #   configspace
     #   contourpy
+    #   cupy-cuda11x
     #   dask
     #   datasets
     #   deepspeed

@@ -3,107 +3,22 @@ import logging
 import os
 import sys
 import torch
-import mock
-import asyncio
-from collections import defaultdict
+from typing import List, Tuple
 
 import pytest
 
 import ray
 import ray.cluster_utils
-import ray.experimental.channel as channel
+from ray.experimental.channel.conftest import (
+    Barrier,
+    start_nccl_mock,
+)
 from ray.experimental.channel.torch_tensor_type import TorchTensorType
 from ray.experimental.channel.torch_tensor_nccl_channel import (
     _init_nccl_group,
 )
 
 logger = logging.getLogger(__name__)
-
-
-@ray.remote(num_cpus=0)
-class Barrier:
-    """
-    Barrier that blocks the given number of actors until all actors have
-    reached the barrier. This is used to mock out blocking NCCL ops.
-    """
-
-    def __init__(self, num_actors=2):
-        self.num_actors = num_actors
-        self.condition = asyncio.Condition()
-        # Buffer for the data that is "sent" between the actors, each entry is
-        # one p2p op.
-        self.data = {}
-        # Buffer for the number of actors seen, each entry is one p2p op.
-        self.num_actors_seen = defaultdict(int)
-
-    async def wait(self, idx: int, data=None):
-        """
-        Wait at barrier until all actors have sent `idx`. One actor should
-        provide `data`, and this value will be returned by this method for all
-        other actors.
-        """
-        async with self.condition:
-            if data is not None:
-                assert idx not in self.data, (self.data, self.num_actors_seen)
-                self.data[idx] = data
-            self.num_actors_seen[idx] += 1
-
-            if self.num_actors_seen[idx] == self.num_actors:
-                # Wake up all tasks waiting on this condition.
-                self.condition.notify_all()
-            else:
-                await self.condition.wait_for(
-                    lambda: self.num_actors_seen[idx] == self.num_actors
-                )
-
-            if data is None:
-                data = self.data[idx]
-
-        return data
-
-
-class MockCudaStream:
-    def __init__(self):
-        self.cuda_stream = 0
-
-
-class MockNcclGroup(channel.nccl_group._NcclGroup):
-    """
-    Mock the internal _NcclGroup to use a barrier actor instead of a NCCL group
-    for communication.
-    """
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        # We use the op index to synchronize the sender and receiver at the
-        # barrier.
-        self.num_ops = defaultdict(int)
-
-    def send(self, tensor: torch.Tensor, peer_rank: int):
-        # "Send" the tensor to the barrier actor.
-        barrier_key = f"barrier-{self.get_self_rank()}-{peer_rank}"
-        barrier = ray.get_actor(name=barrier_key)
-        ray.get(barrier.wait.remote(self.num_ops[barrier_key], tensor))
-        self.num_ops[barrier_key] += 1
-
-    def recv(self, buf: torch.Tensor, peer_rank: int):
-        # "Receive" the tensor from the barrier actor.
-        barrier_key = f"barrier-{peer_rank}-{self.get_self_rank()}"
-        barrier = ray.get_actor(name=barrier_key)
-        received_tensor = ray.get(barrier.wait.remote(self.num_ops[barrier_key]))
-        buf[:] = received_tensor[:]
-        self.num_ops[barrier_key] += 1
-
-
-class TracedChannel(channel.shared_memory_channel.Channel):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-
-        self.ops = []
-
-    def write(self, *args, **kwargs):
-        self.ops.append((args, kwargs))
-        return super().write(*args, **kwargs)
 
 
 @ray.remote(num_cpus=0, num_gpus=1)

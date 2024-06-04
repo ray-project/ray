@@ -1,6 +1,7 @@
 from collections.abc import Iterable
 from enum import Enum
 import re
+from collections import defaultdict
 import sphinx
 from typing import List, Dict, Union, Callable, Any, Optional, Tuple
 import copy
@@ -403,6 +404,10 @@ class ExampleEnum(Enum):
         """Return the formatted name for the class."""
         raise NotImplementedError
 
+    @classmethod
+    def key(cls: type) -> str:
+        raise NotImplementedError
+
 
 class Contributor(ExampleEnum):
     RAY_TEAM = "Maintained by the Ray Team"
@@ -418,6 +423,10 @@ class Contributor(ExampleEnum):
     def formatted_name(cls):
         return "All Examples"
 
+    @classmethod
+    def key(cls: type) -> str:
+        return "contributor"
+
 
 class UseCase(ExampleEnum):
     """Use case type for example metadata."""
@@ -431,6 +440,10 @@ class UseCase(ExampleEnum):
     def formatted_name(cls):
         return "Use Case"
 
+    @classmethod
+    def key(cls: type) -> str:
+        return "use_case"
+
 
 class SkillLevel(ExampleEnum):
     """Skill level type for example metadata."""
@@ -442,6 +455,10 @@ class SkillLevel(ExampleEnum):
     @classmethod
     def formatted_name(cls):
         return "Skill Level"
+
+    @classmethod
+    def key(cls: type) -> str:
+        return "skill_level"
 
 
 class Framework(ExampleEnum):
@@ -462,6 +479,24 @@ class Framework(ExampleEnum):
     def formatted_name(cls):
         return "Framework"
 
+    @classmethod
+    def key(cls: type) -> str:
+        return "framework"
+
+
+class RelatedTechnology(ExampleEnum):
+    ML_APPLICATIONS = "ML Applications"
+    INTEGRATIONS = "Integrations"
+    AI_ACCELERATORS = "AI Accelerators"
+
+    @classmethod
+    def formatted_name(cls):
+        return "Related Technology"
+
+    @classmethod
+    def key(cls: type) -> str:
+        return "related_technology"
+
 
 class Library(ExampleEnum):
     """Library type for example metadata."""
@@ -473,6 +508,10 @@ class Library(ExampleEnum):
     @classmethod
     def formatted_name(cls):
         return "Library"
+
+    @classmethod
+    def key(cls: type) -> str:
+        return "library"
 
     @classmethod
     def from_path(cls, path: Union[pathlib.Path, str]) -> "Library":
@@ -534,6 +573,9 @@ class Example:
         else:
             self.contributor = Contributor.RAY_TEAM
 
+        related_technology = config.get("related_technology", "").strip()
+        if related_technology:
+            self.related_technology = RelatedTechnology(related_technology)
         self.skill_level = SkillLevel(config.get("skill_level"))
         self.title = config.get("title")
 
@@ -590,6 +632,17 @@ class ExampleConfig:
         self.columns_to_show = self.parse_columns_to_show(
             config.get("columns_to_show", [])
         )
+        groupby = config.get("groupby", "skill_level")
+        for cls in ExampleEnum.__subclasses__():
+            if cls.key() == groupby:
+                self.groupby = cls
+                break
+        else:
+            valid_classes = [cls.key() for cls in ExampleEnum.__subclasses__()]
+            raise ValueError(
+                f"Unable to find class to group example entries by {groupby}. "
+                f"Valid choices are {valid_classes}.",
+            )
 
     def parse_columns_to_show(self, columns: str) -> Dict[str, type]:
         """Parse the columns to show in the library example page for the config.
@@ -675,17 +728,23 @@ def setup_context(app, pagename, templatename, context, doctree):
         if config is None:
             config = (pathlib.Path(app.confdir) / pagename).parent / "examples.yml"
 
-        # Separate the examples into different skill levels
-        examples = {
-            SkillLevel.BEGINNER: [],
-            SkillLevel.INTERMEDIATE: [],
-            SkillLevel.ADVANCED: [],
-        }
         # Keep track of whether any of the examples have frameworks metadata; the
         # column will not be shown if no frameworks metadata exists on any example.
+
+        # Group the examples by the ExampleConfig.groupby value:
+        examples = defaultdict(list)
         example_config = ExampleConfig(config, app.srcdir)
         for example in example_config:
-            examples[example.skill_level].append(example)
+            try:
+                group = getattr(example, example_config.groupby.key())
+            except AttributeError as e:
+                raise AttributeError(
+                    f"Example {example.link} has no {example_config.groupby.key()} "
+                    "key, but needs one because the examples for library "
+                    f"{example_config.library.value} are configured to be grouped "
+                    f"by {example_config.groupby.key()}."
+                ) from e
+            examples[group].append(example)
 
         # Construct a table of examples
         soup = bs4.BeautifulSoup()
@@ -700,12 +759,12 @@ def setup_context(app, pagename, templatename, context, doctree):
         soup.append(page_text)
 
         container = soup.new_tag("div", attrs={"class": "example-index"})
-        for level, examples in examples.items():
+        for group, examples in examples.items():
             if not examples:
                 continue
 
             header = soup.new_tag("h2", attrs={"class": "example-header"})
-            header.append(level.value)
+            header.append(group.value)
             container.append(header)
 
             table = soup.new_tag("table", attrs={"class": ["table", "example-table"]})

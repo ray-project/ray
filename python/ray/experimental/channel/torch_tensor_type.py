@@ -12,6 +12,7 @@ if TYPE_CHECKING:
     from ray.experimental.channel.shared_memory_channel import Channel
     from ray.experimental.channel.torch_tensor_nccl_channel import TorchTensorAllocator
 
+
 logger = logging.getLogger(__name__)
 
 

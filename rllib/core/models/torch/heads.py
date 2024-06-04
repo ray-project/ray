@@ -218,7 +218,7 @@ class TorchCNNTransposeHead(TorchModel):
         if initial_dense_weights_initializer:
             initial_dense_weights_initializer(
                 self.initial_dense.weight,
-                **config.initial_dense_initializer_config or {},
+                **config.initial_dense_weights_initializer_config or {},
             )
         # Initialized dense layer bais, if necessary.
         if initial_dense_bias_initializer:
