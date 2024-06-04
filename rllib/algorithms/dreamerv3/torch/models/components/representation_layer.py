@@ -10,7 +10,7 @@ https://arxiv.org/pdf/2010.02193.pdf
 from typing import Optional
 
 from ray.rllib.algorithms.dreamerv3.torch.models.components import (
-    dreamerv3_normal_initializer
+    dreamerv3_normal_initializer,
 )
 from ray.rllib.algorithms.dreamerv3.utils import (
     get_num_z_categoricals,

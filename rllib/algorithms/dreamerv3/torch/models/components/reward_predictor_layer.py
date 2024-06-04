@@ -66,8 +66,8 @@ class RewardPredictorLayer(nn.Module):
         )
         nn.init.zeros_(self.reward_buckets_layer.weight)
         nn.init.zeros_(self.reward_buckets_layer.bias)
-        #self.reward_buckets_layer.weight.data.fill_(0.0)
-        #self.reward_buckets_layer.bias.data.fill_(0.0)
+        # self.reward_buckets_layer.weight.data.fill_(0.0)
+        # self.reward_buckets_layer.bias.data.fill_(0.0)
 
     def forward(self, inputs, return_logits=False):
         """Computes the expected reward using N equal sized buckets of possible values.

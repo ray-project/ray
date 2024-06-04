@@ -8,7 +8,6 @@ D. Hafner, T. Lillicrap, M. Norouzi, J. Ba
 https://arxiv.org/pdf/2010.02193.pdf
 """
 
-#import gc
 import logging
 from typing import Any, Dict, Optional, Union
 
@@ -35,7 +34,6 @@ from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.numpy import one_hot
 from ray.rllib.utils.metrics import (
     ENV_RUNNER_RESULTS,
-    #GARBAGE_COLLECTION_TIMER,
     LEARN_ON_BATCH_TIMER,
     LEARNER_RESULTS,
     NUM_AGENT_STEPS_SAMPLED,
@@ -716,15 +714,6 @@ class DreamerV3(Algorithm):
                     from_worker_or_learner_group=self.learner_group,
                     inference_only=True,
                 )
-
-        # TODO (sven): Remove this comment here: Probably only ever useful for tf2.
-        # Try trick from https://medium.com/dive-into-ml-ai/dealing-with-memory-leak-
-        # issue-in-keras-model-training-e703907a6501
-        #if self.config.gc_frequency_train_steps and (
-        #    self.training_iteration % self.config.gc_frequency_train_steps == 0
-        #):
-        #    with self.metrics.log_time((TIMERS, GARBAGE_COLLECTION_TIMER)):
-        #        gc.collect()
 
         # Add train results and the actual training ratio to stats. The latter should
         # be close to the configured `training_ratio`.
