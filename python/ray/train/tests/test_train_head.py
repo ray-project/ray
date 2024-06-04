@@ -27,9 +27,7 @@ def test_get_train_runs(monkeypatch, shutdown_only):
 
     trainer = TorchTrainer(
         train_func,
-        run_config=RunConfig(
-            name="my_train_run", storage_path="/tmp/cluster_storage"
-        ),
+        run_config=RunConfig(name="my_train_run", storage_path="/tmp/cluster_storage"),
         scaling_config=ScalingConfig(num_workers=4, use_gpu=False),
         datasets=datasets,
     )
