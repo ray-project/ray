@@ -32,11 +32,9 @@ TPU_VERSIONS_WITH_MULTIPLE_CORES_PER_CHIP = {"v2", "v3", "v4"}
 
 NOSET_TPU_VISIBLE_CHIPS_ENV_VAR = "RAY_EXPERIMENTAL_NOSET_TPU_VISIBLE_CHIPS"
 
-# TPU VMs come with 4 chips per host and 2 tensorcores per chip.
-# TPU v5e is a special case which has 8 chips per host.
+# By default TPU VMs come with 4 chips per host and 2 tensorcores per chip.
 # For more details: https://cloud.google.com/tpu/docs/system-architecture-tpu-vm
-TPU_NUM_CHIPS_PER_HOST = 4
-TPU_NUM_CHIPS_PER_HOST_V5E = 8
+TPU_NUM_CHIPS_PER_HOST_DEFAULT = 4
 TPU_CORES_PER_CHIP = 2
 
 # The following defines environment variables that allow
@@ -157,6 +155,13 @@ class TPUAcceleratorManager(AcceleratorManager):
             return (True, None)
 
     @staticmethod
+    def get_num_tpu_visible_chips_per_host(accelerator_type: str) -> int:
+      if accelerator_type == "TPU-V5LITEPOD":
+        return 8
+
+      return TPU_NUM_CHIPS_PER_HOST_DEFAULT
+
+    @staticmethod
     def set_current_process_visible_accelerator_ids(
         visible_tpu_chips: List[str],
     ) -> None:
@@ -177,10 +182,8 @@ class TPUAcceleratorManager(AcceleratorManager):
             return
 
         num_visible_tpu_chips = len(visible_tpu_chips)
-        if (
-            num_visible_tpu_chips == TPU_NUM_CHIPS_PER_HOST
-            or num_visible_tpu_chips == TPU_NUM_CHIPS_PER_HOST_V5E
-        ):
+        accelerator_type = TPUAcceleratorManager.get_current_node_accelerator_type()
+        if num_visible_tpu_chips == TPUAcceleratorManager.get_num_tpu_visible_chips_per_host(accelerator_type):
             # Let the ML framework use the defaults
             return
         os.environ[

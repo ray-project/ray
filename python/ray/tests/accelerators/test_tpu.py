@@ -46,6 +46,8 @@ def test_autodetect_num_tpus_without_devices(mock_list, mock_glob):
         ("gce", "v3-128", "TPU-V3"),
         ("gce", "v4-8", "TPU-V4"),
         ("gce", "v4-2048", "TPU-V4"),
+        ("gce", "v5p-8", "TPU-V5P"),
+        ("gce", "v5litepod-8", "TPU-V5LITEPOD"),
         ("gke", "v2-8", "TPU-V2"),
         ("gke", "v2-32", "TPU-V2"),
         ("gke", "v3-8", "TPU-V3"),
@@ -53,7 +55,7 @@ def test_autodetect_num_tpus_without_devices(mock_list, mock_glob):
         ("gke", "v4-8", "TPU-V4"),
         ("gke", "v4-2048", "TPU-V4"),
         ("gke", "v5p-8", "TPU-V5P"),
-        ("gke", "v5e-8", "TPU-V5E"),
+        ("gke", "v5litepod-8", "TPU-V5LITEPOD"),
     ],
 )
 @patch("requests.get")
@@ -183,15 +185,18 @@ def test_validate_resource_request_quantity(test_config):
 
 
 @pytest.mark.parametrize(
-    "tpu_chips",
+    "test_case",
     [
-        ["1"],
-        ["1", "2"],
-        ["1", "2", "3", "4"],
-        ["1", "2", "3", "4", "5", "6", "7", "8"],
+        ("v4-1", ["1"]),
+        ("v4-2", ["1", "2"]),
+        ("v5p-4", ["1", "2", "3", "4"]),
+        ("v5litepod-8", ["1", "2", "3", "4", "5", "6", "7", "8"]),
     ],
 )
-def test_set_tpu_visible_ids_and_bounds(tpu_chips):
+@patch("os.getenv")
+def test_set_tpu_visible_ids_and_bounds(mock_os, test_case):
+    accelerator_type, tpu_chips = test_case
+    mock_os.return_value = accelerator_type
     with patch.dict("os.environ", {}, clear=True):
         TPUAcceleratorManager.set_current_process_visible_accelerator_ids(tpu_chips)
         if len(tpu_chips) == 1:
