@@ -240,8 +240,8 @@ def test_torch_tensor_nccl_disallows_driver(ray_start_regular):
     with pytest.raises(
         ValueError,
         match=(
-            r"DAG inputs cannot be transferred "
-            "via NCCL because the driver cannot participate in the NCCL group"
+            r"DAG inputs cannot be transferred via NCCL because the driver "
+            "cannot participate in the NCCL group"
         ),
     ):
         compiled_dag = dag.experimental_compile()
@@ -270,6 +270,7 @@ def test_torch_tensor_nccl_static_shape(ray_start_regular):
 
     # Test that the DAG works as long as we send the same shape.
     shape = (10, )
+    dtype = torch.float16
     for i in range(3):
         output_channel = compiled_dag.execute(i, shape=shape, dtype=dtype)
         # TODO(swang): Replace with fake ObjectRef.
