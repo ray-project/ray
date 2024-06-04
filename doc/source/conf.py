@@ -1,4 +1,4 @@
-from typing import Dict, Any
+from typing import Set, Dict, Any
 from datetime import datetime
 from importlib import import_module
 import os
@@ -6,9 +6,12 @@ import sys
 from jinja2.filters import FILTERS
 import sphinx
 from sphinx.ext import autodoc
+from sphinx.util.inspect import safe_getattr
 from docutils import nodes
 import pathlib
 import logging
+
+DEFAULT_API_GROUP = "others"
 
 logger = logging.getLogger(__name__)
 
@@ -375,7 +378,40 @@ def filter_out_undoc_class_members(member_name, class_name, module_name):
         return ""
 
 
+def get_api_groups(method_names, class_name, module_name):
+    api_groups = set()
+    cls = getattr(import_module(module_name), class_name)
+    for method_name in method_names:
+        method = getattr(cls, method_name)
+        api_groups.add(safe_getattr(method, "_annotated_api_group", DEFAULT_API_GROUP))
+
+    return sorted(api_groups)
+
+
+def select_api_group(method_names, class_name, module_name, api_group):
+    cls = getattr(import_module(module_name), class_name)
+    return [
+        method_name
+        for method_name in method_names
+        if _is_public_api(getattr(cls, method_name))
+        and _is_api_group(getattr(cls, method_name), api_group)
+    ]
+
+
+def _is_public_api(obj):
+    api_type = safe_getattr(obj, "_annotated_type", None)
+    if not api_type:
+        return False
+    return api_type.value == "PublicAPI"
+
+
+def _is_api_group(obj, group):
+    return safe_getattr(obj, "_annotated_api_group", DEFAULT_API_GROUP) == group
+
+
 FILTERS["filter_out_undoc_class_members"] = filter_out_undoc_class_members
+FILTERS["get_api_groups"] = get_api_groups
+FILTERS["select_api_group"] = select_api_group
 
 
 def add_custom_assets(
