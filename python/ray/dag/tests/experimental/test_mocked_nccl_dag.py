@@ -142,6 +142,10 @@ def test_p2p(ray_start_cluster):
     indirect=True,
 )
 def test_p2p_static_shape(ray_start_cluster):
+    """
+    Test simple sender -> receiver pattern with static_shape=True (tensors
+    should have the same shape and dtype across different DAG executions).
+    """
     # Barrier name should be barrier-{sender rank}-{receiver rank}.
     # Create a barrier in both directions because we don't know which rank will
     # get assigned to sender and receiver.
@@ -187,6 +191,10 @@ def test_p2p_static_shape(ray_start_cluster):
     indirect=True,
 )
 def test_p2p_static_shape_error(ray_start_cluster):
+    """
+    Test that when static_shape=True, an error is thrown when a tensor with a
+    different shape or dtype is found.
+    """
     # Barrier name should be barrier-{sender rank}-{receiver rank}.
     # Create a barrier in both directions because we don't know which rank will
     # get assigned to sender and receiver.
@@ -242,6 +250,10 @@ def test_p2p_static_shape_error(ray_start_cluster):
     indirect=True,
 )
 def test_p2p_static_non_tensor_data(ray_start_cluster):
+    """
+    Test simple sender -> receiver pattern with static_non_tensor_data=True
+    (non-tensor data remains fixed across DAG executions).
+    """
     # Barrier name should be barrier-{sender rank}-{receiver rank}.
     # Create a barrier in both directions because we don't know which rank will
     # get assigned to sender and receiver.
@@ -298,6 +310,10 @@ def test_p2p_static_non_tensor_data(ray_start_cluster):
     indirect=True,
 )
 def test_p2p_static_non_tensor_data_error(ray_start_cluster):
+    """
+    Test that when static_non_tensor_data=True, an error is thrown when a
+    different number of tensors is found.
+    """
     # Barrier name should be barrier-{sender rank}-{receiver rank}.
     # Create a barrier in both directions because we don't know which rank will
     # get assigned to sender and receiver.
