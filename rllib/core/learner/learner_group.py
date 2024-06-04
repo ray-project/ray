@@ -84,10 +84,10 @@ class LearnerGroup:
 
         Args:
             config: The AlgorithmConfig object to use to configure this LearnerGroup.
-                Call the `resources(num_learner_workers=...)` method on your config to
+                Call the `learners(num_learners=...)` method on your config to
                 specify the number of learner workers to use.
-                Call the same method with arguments `num_cpus_per_learner_worker` and/or
-                `num_gpus_per_learner_worker` to configure the compute used by each
+                Call the same method with arguments `num_cpus_per_learner` and/or
+                `num_gpus_per_learner` to configure the compute used by each
                 Learner worker in this LearnerGroup.
                 Call the `training(learner_class=...)` method on your config to specify,
                 which exact Learner class to use.
@@ -122,25 +122,25 @@ class LearnerGroup:
         else:
             backend_config = _get_backend_config(learner_class)
 
-            # TODO (sven): Cannot set both `num_cpus_per_learner_worker`>1 and
-            #  `num_gpus_per_learner_worker`>0! Users must set one or the other due
+            # TODO (sven): Cannot set both `num_cpus_per_learner`>1 and
+            #  `num_gpus_per_learner`>0! Users must set one or the other due
             #  to issues with placement group fragmentation. See
             #  https://github.com/ray-project/ray/issues/35409 for more details.
-            num_cpus_per_worker = (
-                self.config.num_cpus_per_learner_worker
-                if not self.config.num_gpus_per_learner_worker
+            num_cpus_per_learner = (
+                self.config.num_cpus_per_learner
+                if not self.config.num_gpus_per_learner
                 else 0
             )
-            num_gpus_per_worker = self.config.num_gpus_per_learner_worker
-            resources_per_worker = {
-                "CPU": num_cpus_per_worker,
-                "GPU": num_gpus_per_worker,
+            num_gpus_per_learner = self.config.num_gpus_per_learner
+            resources_per_learner = {
+                "CPU": num_cpus_per_learner,
+                "GPU": num_gpus_per_learner,
             }
 
             backend_executor = BackendExecutor(
                 backend_config=backend_config,
-                num_workers=self.config.num_learner_workers,
-                resources_per_worker=resources_per_worker,
+                num_workers=self.config.num_learners,
+                resources_per_worker=resources_per_learner,
                 max_retries=0,
             )
             backend_executor.start(
@@ -196,7 +196,7 @@ class LearnerGroup:
 
     @property
     def is_remote(self) -> bool:
-        return self.config.num_learner_workers > 0
+        return self.config.num_learners > 0
 
     @property
     def is_local(self) -> bool:
@@ -206,6 +206,7 @@ class LearnerGroup:
         self,
         batch: MultiAgentBatch,
         *,
+        timesteps: Optional[Dict[str, Any]] = None,
         async_update: bool = False,
         return_state: bool = False,
         # TODO (sven): Deprecate the following args. They should be extracted from the
@@ -261,7 +262,7 @@ class LearnerGroup:
             )
         return self._update(
             batch=batch,
-            episodes=None,
+            timesteps=timesteps,
             async_update=async_update,
             return_state=return_state,
             minibatch_size=minibatch_size,
@@ -273,6 +274,7 @@ class LearnerGroup:
         self,
         episodes: List[EpisodeType],
         *,
+        timesteps: Optional[Dict[str, Any]] = None,
         async_update: bool = False,
         return_state: bool = False,
         # TODO (sven): Deprecate the following args. They should be extracted from the
@@ -328,8 +330,8 @@ class LearnerGroup:
             )
 
         return self._update(
-            batch=None,
             episodes=episodes,
+            timesteps=timesteps,
             async_update=async_update,
             return_state=return_state,
             minibatch_size=minibatch_size,
@@ -342,6 +344,7 @@ class LearnerGroup:
         *,
         batch: Optional[MultiAgentBatch] = None,
         episodes: Optional[List[EpisodeType]] = None,
+        timesteps: Optional[Dict[str, Any]] = None,
         async_update: bool = False,
         return_state: bool = False,
         minibatch_size: Optional[int] = None,
@@ -351,16 +354,18 @@ class LearnerGroup:
 
         # Define function to be called on all Learner actors (or the local learner).
         def _learner_update(
-            _learner,
+            _learner: Learner,
             _batch_shard=None,
             _episodes_shard=None,
             _return_state=False,
+            _timesteps=None,
             _min_total_mini_batches=0,
             **_kwargs,
         ):
             if _batch_shard is not None:
                 result = _learner.update_from_batch(
                     batch=_batch_shard,
+                    timesteps=_timesteps,
                     minibatch_size=minibatch_size,
                     num_iters=num_iters,
                     **_kwargs,
@@ -368,6 +373,7 @@ class LearnerGroup:
             else:
                 result = _learner.update_from_episodes(
                     episodes=_episodes_shard,
+                    timesteps=_timesteps,
                     minibatch_size=minibatch_size,
                     num_iters=num_iters,
                     min_total_mini_batches=_min_total_mini_batches,
@@ -386,7 +392,7 @@ class LearnerGroup:
             if async_update:
                 raise ValueError(
                     "Cannot call `update_from_batch(async_update=True)` when running in"
-                    " local mode! Try setting `config.num_learner_workers > 0`."
+                    " local mode! Try setting `config.num_learners > 0`."
                 )
 
             results = [
@@ -394,6 +400,7 @@ class LearnerGroup:
                     _learner=self._learner,
                     _batch_shard=batch,
                     _episodes_shard=episodes,
+                    _timesteps=timesteps,
                     _return_state=return_state,
                     **kwargs,
                 )
@@ -415,6 +422,7 @@ class LearnerGroup:
                         _learner_update,
                         _batch_shard=batch_shard,
                         _return_state=(return_state and i == 0),
+                        _timesteps=timesteps,
                         **kwargs,
                     )
                     for i, batch_shard in enumerate(
@@ -426,12 +434,11 @@ class LearnerGroup:
                     partial(
                         _learner_update,
                         _episodes_shard=episodes_shard,
+                        _timesteps=timesteps,
                         _return_state=(return_state and i == 0),
                         **kwargs,
                     )
-                    for i, episodes_shard in enumerate(
-                        ShardObjectRefIterator(episodes, len(self._workers))
-                    )
+                    for i, episodes_shard in enumerate(ShardObjectRefIterator(episodes, len(self._workers)))
                 ]
             # Single- or MultiAgentEpisodes: Shard into equal pieces (only roughly equal
             # in case of multi-agent).
@@ -468,6 +475,7 @@ class LearnerGroup:
                     partial(
                         _learner_update,
                         _episodes_shard=eps_shard,
+                        _timesteps=timesteps,
                         _return_state=(return_state and i == 0),
                         _min_total_mini_batches=min_total_mini_batches,
                         **kwargs,
@@ -551,7 +559,7 @@ class LearnerGroup:
                 results = tree.flatten_up_to(
                     [[None] * len(r) for r in results], results
                 )
-            self._metrics_logger_old_and_hybrid_stack.log_n_dicts(results)
+            self._metrics_logger_old_and_hybrid_stack.merge_and_log_n_dicts(results)
             results = self._metrics_logger_old_and_hybrid_stack.reduce(
                 # We are returning to a client (Algorithm) that does NOT make any
                 # use of MetricsLogger (or Stats) -> Convert all values to non-Stats
@@ -654,7 +662,7 @@ class LearnerGroup:
         # the existing behavior of returning an already reduced dict (as if we had a
         # reduce_fn).
         if not self.config.enable_env_runner_and_connector_v2:
-            self._metrics_logger_old_and_hybrid_stack.log_n_dicts(results)
+            self._metrics_logger_old_and_hybrid_stack.merge_and_log_n_dicts(results)
             results = self._metrics_logger_old_and_hybrid_stack.reduce(
                 return_stats_obj=False
             )
@@ -1015,7 +1023,7 @@ class LearnerGroup:
         """Load the checkpoints of the modules being trained by this LearnerGroup.
 
            This method only needs to be called if the LearnerGroup is training
-           distributed learners (e.g num_learner_workers > 0).
+           distributed learners (e.g num_learners > 0).
 
         Args:
             marl_module_ckpt_dir: The path to the checkpoint for the

@@ -4,7 +4,7 @@ import os
 import subprocess
 import shlex
 import sys
-from typing import Any, Dict, List, Optional
+from typing import Dict, List, Optional
 
 from ray.util.annotations import DeveloperAPI
 from ray.core.generated.common_pb2 import Language
@@ -24,7 +24,7 @@ class RuntimeEnvContext:
         env_vars: Dict[str, str] = None,
         py_executable: Optional[str] = None,
         resources_dir: Optional[str] = None,
-        container: Dict[str, Any] = None,
+        override_worker_entrypoint: Optional[str] = None,
         java_jars: List[str] = None,
     ):
         self.command_prefix = command_prefix or []
@@ -35,7 +35,7 @@ class RuntimeEnvContext:
         # the legacy Ray client codepath to pass the resources dir to the shim
         # process. We should remove it once Ray client uses the agent.
         self.resources_dir: str = resources_dir
-        self.container = container or {}
+        self.override_worker_entrypoint: Optional[str] = override_worker_entrypoint
         self.java_jars = java_jars or []
 
     def serialize(self) -> str:
@@ -72,13 +72,13 @@ class RuntimeEnvContext:
         # However, the path to default_worker.py inside the container
         # can be different. We need the user to specify the path to
         # default_worker.py inside the container.
-        default_worker_path = self.container.get("worker_path")
-        if self.container and default_worker_path:
+        # default_worker_path = self.container.get("worker_path")
+        if self.override_worker_entrypoint:
             logger.debug(
-                f"Changing the default worker path from {passthrough_args[0]} to "
-                f"{default_worker_path}."
+                f"Changing the worker entrypoint from {passthrough_args[0]} to "
+                f"{self.override_worker_entrypoint}."
             )
-            passthrough_args[0] = default_worker_path
+            passthrough_args[0] = self.override_worker_entrypoint
 
         if sys.platform == "win32":
 

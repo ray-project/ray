@@ -30,15 +30,21 @@ class Actor:
         self.fail_after = fail_after
         self.sys_exit = sys_exit
 
-    def inc(self, x):
-        self.i += x
-        if self.fail_after and self.i > self.fail_after:
+        self.count = 0
+
+    def _fail_if_needed(self):
+        if self.fail_after and self.count > self.fail_after:
             # Randomize the failures to better cover multi actor scenarios.
             if random.random() > 0.5:
                 if self.sys_exit:
                     os._exit(1)
                 else:
-                    raise ValueError("injected fault")
+                    raise RuntimeError("injected fault")
+
+    def inc(self, x):
+        self.i += x
+        self.count += 1
+        self._fail_if_needed()
         return self.i
 
     def double_and_inc(self, x):
@@ -47,6 +53,8 @@ class Actor:
         return self.i
 
     def echo(self, x):
+        self.count += 1
+        self._fail_if_needed()
         return x
 
     def append_to(self, lst):
@@ -61,6 +69,27 @@ class Actor:
     def sleep(self, x):
         time.sleep(x)
         return x
+
+
+@ray.remote
+class Collector:
+    def __init__(self):
+        self.results = []
+
+    def collect(self, x):
+        self.results.append(x)
+        return self.results
+
+    def collect_two(self, x, y):
+        self.results.append(x)
+        self.results.append(y)
+        return self.results
+
+    def collect_three(self, x, y, z):
+        self.results.append(x)
+        self.results.append(y)
+        self.results.append(z)
+        return self.results
 
 
 def test_basic(ray_start_regular):
@@ -167,6 +196,129 @@ def test_regular_args(ray_start_regular):
     compiled_dag.teardown()
 
 
+def test_multi_args_basic(ray_start_regular):
+    a1 = Actor.remote(0)
+    a2 = Actor.remote(0)
+    c = Collector.remote()
+    with InputNode() as i:
+        branch1 = a1.inc.bind(i[0])
+        branch2 = a2.inc.bind(i[1])
+        dag = c.collect_two.bind(branch2, branch1)
+
+    compiled_dag = dag.experimental_compile()
+
+    output_channel = compiled_dag.execute(2, 3)
+    result = output_channel.begin_read()
+    assert result == [3, 2]
+    output_channel.end_read()
+
+    compiled_dag.teardown()
+
+
+def test_multi_args_single_actor(ray_start_regular):
+    c = Collector.remote()
+    with InputNode() as i:
+        dag = c.collect_two.bind(i[1], i[0])
+
+    compiled_dag = dag.experimental_compile()
+
+    for i in range(3):
+        output_channel = compiled_dag.execute(2, 3)
+        result = output_channel.begin_read()
+        assert result == [3, 2] * (i + 1)
+        output_channel.end_read()
+
+    compiled_dag.teardown()
+
+
+def test_multi_args_branch(ray_start_regular):
+    a = Actor.remote(0)
+    c = Collector.remote()
+    with InputNode() as i:
+        branch = a.inc.bind(i[0])
+        dag = c.collect_two.bind(branch, i[1])
+
+    compiled_dag = dag.experimental_compile()
+
+    output_channel = compiled_dag.execute(2, 3)
+    result = output_channel.begin_read()
+    assert result == [2, 3]
+    output_channel.end_read()
+
+    compiled_dag.teardown()
+
+
+def test_kwargs_basic(ray_start_regular):
+    a1 = Actor.remote(0)
+    a2 = Actor.remote(0)
+    c = Collector.remote()
+    with InputNode() as i:
+        branch1 = a1.inc.bind(i.x)
+        branch2 = a2.inc.bind(i.y)
+        dag = c.collect_two.bind(branch2, branch1)
+
+    compiled_dag = dag.experimental_compile()
+
+    output_channel = compiled_dag.execute(x=2, y=3)
+    result = output_channel.begin_read()
+    assert result == [3, 2]
+    output_channel.end_read()
+
+    compiled_dag.teardown()
+
+
+def test_kwargs_single_actor(ray_start_regular):
+    c = Collector.remote()
+    with InputNode() as i:
+        dag = c.collect_two.bind(i.y, i.x)
+
+    compiled_dag = dag.experimental_compile()
+
+    for i in range(3):
+        output_channel = compiled_dag.execute(x=2, y=3)
+        result = output_channel.begin_read()
+        assert result == [3, 2] * (i + 1)
+        output_channel.end_read()
+
+    compiled_dag.teardown()
+
+
+def test_kwargs_branch(ray_start_regular):
+    a = Actor.remote(0)
+    c = Collector.remote()
+    with InputNode() as i:
+        branch = a.inc.bind(i.x)
+        dag = c.collect_two.bind(i.y, branch)
+
+    compiled_dag = dag.experimental_compile()
+
+    output_channel = compiled_dag.execute(x=2, y=3)
+    result = output_channel.begin_read()
+    assert result == [3, 2]
+    output_channel.end_read()
+
+    compiled_dag.teardown()
+
+
+def test_multi_args_and_kwargs(ray_start_regular):
+    a1 = Actor.remote(0)
+    a2 = Actor.remote(0)
+    c = Collector.remote()
+    with InputNode() as i:
+        branch1 = a1.inc.bind(i[0])
+        branch2 = a2.inc.bind(i.y)
+        dag = c.collect_three.bind(branch2, i.z, branch1)
+
+    compiled_dag = dag.experimental_compile()
+
+    output_channel = compiled_dag.execute(2, y=3, z=4)
+    result = output_channel.begin_read()
+    assert result == [3, 4, 2]
+    output_channel.end_read()
+
+    compiled_dag.teardown()
+
+
 @pytest.mark.parametrize("num_actors", [1, 4])
 def test_scatter_gather_dag(ray_start_regular, num_actors):
     actors = [Actor.remote(0) for _ in range(num_actors)]
@@ -244,17 +396,6 @@ def test_dag_errors(ray_start_regular):
     ):
         dag.experimental_compile()
 
-    with InputNode() as inp:
-        dag = a.inc.bind(inp)
-        dag2 = a.inc.bind(inp)
-        dag3 = a.inc_two.bind(dag, dag2)
-    with pytest.raises(
-        NotImplementedError,
-        match=r"Compiled DAGs currently do not support binding the same input "
-        "on the same actor multiple times.*",
-    ):
-        dag3.experimental_compile()
-
     @ray.remote
     def f(x):
         return x
@@ -267,23 +408,53 @@ def test_dag_errors(ray_start_regular):
     ):
         dag.experimental_compile()
 
-    with InputNode() as inp:
-        dag = a.inc_two.bind(inp[0], inp[1])
-    with pytest.raises(
-        NotImplementedError,
-        match="Compiled DAGs currently do not support kwargs or multiple args "
-        "for InputNode",
-    ):
-        dag.experimental_compile()
 
-    with InputNode() as inp:
-        dag = a.inc_two.bind(inp.x, inp.y)
-    with pytest.raises(
-        NotImplementedError,
-        match="Compiled DAGs currently do not support kwargs or multiple args "
-        "for InputNode",
-    ):
-        dag.experimental_compile()
+def test_dag_fault_tolerance_chain(ray_start_regular_shared):
+    actors = [
+        Actor.remote(0, fail_after=100 if i == 0 else None, sys_exit=False)
+        for i in range(4)
+    ]
+    with InputNode() as i:
+        dag = i
+        for a in actors:
+            dag = a.echo.bind(dag)
+
+    compiled_dag = dag.experimental_compile()
+
+    for i in range(99):
+        output_channels = compiled_dag.execute(i)
+        # TODO(swang): Replace with fake ObjectRef.
+        results = output_channels.begin_read()
+        assert results == i
+        output_channels.end_read()
+
+    with pytest.raises(RuntimeError):
+        for i in range(99):
+            output_channels = compiled_dag.execute(i)
+            output_channels.begin_read()
+            output_channels.end_read()
+
+    compiled_dag.teardown()
+
+    # All actors are still alive.
+    ray.get([actor.sleep.remote(0) for actor in actors])
+
+    # Remaining actors can be reused.
+    actors.pop(0)
+    with InputNode() as i:
+        dag = i
+        for a in actors:
+            dag = a.echo.bind(dag)
+
+    compiled_dag = dag.experimental_compile()
+    for i in range(100):
+        output_channels = compiled_dag.execute(i)
+        # TODO(swang): Replace with fake ObjectRef.
+        results = output_channels.begin_read()
+        assert results == i
+        output_channels.end_read()
+
+    compiled_dag.teardown()
 
 
 def test_dag_fault_tolerance(ray_start_regular_shared):
@@ -304,7 +475,7 @@ def test_dag_fault_tolerance(ray_start_regular_shared):
         assert results == [i + 1] * 4
         output_channels.end_read()
 
-    with pytest.raises(ValueError):
+    with pytest.raises(RuntimeError):
         for i in range(99):
             output_channels = compiled_dag.execute(1)
             output_channels.begin_read()
@@ -313,7 +484,7 @@ def test_dag_fault_tolerance(ray_start_regular_shared):
     compiled_dag.teardown()
 
     # All actors are still alive.
-    ray.get([actor.echo.remote("hello") for actor in actors])
+    ray.get([actor.sleep.remote(0) for actor in actors])
 
     # Remaining actors can be reused.
     actors.pop(0)
@@ -456,7 +627,7 @@ def test_asyncio_exceptions(ray_start_regular_shared, max_queue_size):
             async with output_channel as result:
                 if isinstance(result, Exception):
                     exc = result
-        assert isinstance(exc, ValueError), exc
+        assert isinstance(exc, RuntimeError), exc
 
         # Using begin_read() / end_read().
         exc = None
@@ -467,7 +638,7 @@ def test_asyncio_exceptions(ray_start_regular_shared, max_queue_size):
             except Exception as e:
                 exc = e
             output_channel.end_read()
-        assert isinstance(exc, ValueError), exc
+        assert isinstance(exc, RuntimeError), exc
 
     loop.run_until_complete(main())
     # Note: must teardown before starting a new Ray session, otherwise you'll get

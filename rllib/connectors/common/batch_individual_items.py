@@ -28,15 +28,17 @@ class BatchIndividualItems(ConnectorV2):
 
         # Convert lists of individual items into properly batched data.
         for column, column_data in data.copy().items():
+            # Multi-agent case: This connector piece should only be used after(!)
+            # the AgentToModuleMapping connector has already been applied, leading
+            # to a batch structure of:
+            # [module_id] -> [col0] -> [list of items]
             if is_marl_module and column in rl_module:
                 # Case, in which a column has already been properly batched before this
                 # connector piece is called.
                 if not is_multi_agent:
                     continue
-                # Multi-agent case: This connector piece should only be used after(!)
-                # the AgentToModuleMapping connector has already been applied, leading
-                # to a batch structure of:
-                # [module_id] -> [col0] -> [list of items]
+                # If MA Off-Policy and independent sampling we need to overcome
+                # this check.
                 module_data = column_data
                 for col, col_data in module_data.copy().items():
                     if isinstance(col_data, list) and col != Columns.INFOS:

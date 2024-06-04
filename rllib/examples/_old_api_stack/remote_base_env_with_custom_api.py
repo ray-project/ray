@@ -12,8 +12,14 @@ import os
 
 import ray
 from ray import air, tune
+from ray.air.constants import TRAINING_ITERATION
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.env.apis.task_settable_env import TaskSettableEnv
+from ray.rllib.utils.metrics import (
+    ENV_RUNNER_RESULTS,
+    EPISODE_RETURN_MEAN,
+    NUM_ENV_STEPS_SAMPLED_LIFETIME,
+)
 from ray.rllib.utils.test_utils import check_learning_achieved
 from ray.tune.registry import get_trainable_cls
 
@@ -91,7 +97,7 @@ class TaskSettingCallback(DefaultCallbacks):
 
     def on_train_result(self, *, algorithm, result: dict, **kwargs) -> None:
         """Curriculum learning as seen in Ray docs"""
-        if result["episode_reward_mean"] > 0.0:
+        if result[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN] > 0.0:
             phase = 0
         else:
             phase = 1
@@ -131,9 +137,9 @@ if __name__ == "__main__":
     )
 
     stop = {
-        "training_iteration": args.stop_iters,
-        "num_env_steps_sampled_lifetime": args.stop_timesteps,
-        "env_runner_results/episode_return_mean": args.stop_reward,
+        TRAINING_ITERATION: args.stop_iters,
+        NUM_ENV_STEPS_SAMPLED_LIFETIME: args.stop_timesteps,
+        f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": args.stop_reward,
     }
 
     results = tune.Tuner(

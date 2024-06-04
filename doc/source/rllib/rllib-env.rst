@@ -324,8 +324,8 @@ Metrics are reported for each policy separately, for example:
 
     Result for PPO_multi_cartpole_0:
       episode_len_mean: 34.025862068965516
-      episode_reward_max: 159.0
-      episode_reward_mean: 86.06896551724138
+      episode_return_max: 159.0
+      episode_return_mean: 86.06896551724138
       info:
         policy_0:
           cur_lr: 4.999999873689376e-05

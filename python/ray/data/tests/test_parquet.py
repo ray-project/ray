@@ -222,10 +222,6 @@ def test_parquet_read_meta_provider(ray_start_regular_shared, fs, data_path):
 
     # Expect precomputed row counts and block sizes to be missing.
     assert ds._meta_count() is None
-    assert (
-        ds._plan._snapshot_blocks is None
-        or ds._plan._snapshot_blocks.size_bytes() == -1
-    )
 
     # Expect to lazily compute all metadata correctly.
     check_num_computed(ds, 0)
@@ -879,7 +875,7 @@ def test_parquet_write(ray_start_regular_shared, fs, data_path, endpoint_url):
     df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
     df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
     df = pd.concat([df1, df2])
-    ds = ray.data.from_pandas([df1, df2])
+    ds = ray.data.from_blocks([df1, df2])
     path = os.path.join(data_path, "test_parquet_dir")
     if fs is None:
         os.mkdir(path)
@@ -932,7 +928,7 @@ def test_parquet_write_create_dir(
     df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
     df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
     df = pd.concat([df1, df2])
-    ds = ray.data.from_pandas([df1, df2])
+    ds = ray.data.from_blocks([df1, df2])
     path = os.path.join(data_path, "test_parquet_dir")
     # Set the uuid to a known value so that we can easily get the parquet file names.
     data_key = "data"

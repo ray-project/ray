@@ -23,6 +23,13 @@ from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.metrics import (
+    EPISODE_DURATION_SEC_MEAN,
+    EPISODE_LEN_MAX,
+    EPISODE_LEN_MEAN,
+    EPISODE_LEN_MIN,
+    EPISODE_RETURN_MAX,
+    EPISODE_RETURN_MEAN,
+    EPISODE_RETURN_MIN,
     NUM_AGENT_STEPS_SAMPLED,
     NUM_AGENT_STEPS_SAMPLED_LIFETIME,
     NUM_ENV_STEPS_SAMPLED,
@@ -347,6 +354,10 @@ class SingleAgentEnvRunner(EnvRunner):
                         truncated=truncateds[env_index],
                         extra_model_outputs=extra_model_output,
                     )
+                    # Make the `on_episode_step` and `on_episode_end` callbacks (before
+                    # finalizing the episode object).
+                    self._make_on_episode_callback("on_episode_step", env_index)
+
                     # We have to perform an extra env-to-module pass here, just in case
                     # the user's connector pipeline performs (permanent) transforms
                     # on each observation (including this final one here). Without such
@@ -360,9 +371,7 @@ class SingleAgentEnvRunner(EnvRunner):
                             rl_module=self.module,
                             shared_data=self._shared_data,
                         )
-                    # Make the `on_episode_step` and `on_episode_end` callbacks (before
-                    # finalizing the episode object).
-                    self._make_on_episode_callback("on_episode_step", env_index)
+
                     self._make_on_episode_callback("on_episode_end", env_index)
 
                     # Then finalize (numpy'ize) the episode.
@@ -539,6 +548,25 @@ class SingleAgentEnvRunner(EnvRunner):
                     self._make_on_episode_callback(
                         "on_episode_step", env_index, episodes
                     )
+
+                    # We have to perform an extra env-to-module pass here, just in case
+                    # the user's connector pipeline performs (permanent) transforms
+                    # on each observation (including this final one here). Without such
+                    # a call and in case the structure of the observations change
+                    # sufficiently, the following `finalize()` call on the episode will
+                    # fail.
+                    if self.module is not None:
+                        self._env_to_module(
+                            episodes=[episodes[env_index]],
+                            explore=explore,
+                            rl_module=self.module,
+                            shared_data=_shared_data,
+                        )
+
+                    # Make the `on_episode_end` callback (before finalizing the episode,
+                    # but after(!) the last env-to-module connector call has been made.
+                    # -> All obs (even the terminal one) should have been processed now
+                    # (by the connector, if applicable).
                     self._make_on_episode_callback(
                         "on_episode_end", env_index, episodes
                     )
@@ -602,13 +630,6 @@ class SingleAgentEnvRunner(EnvRunner):
             self._log_episode_metrics(
                 episode_length, episode_return, episode_duration_s
             )
-
-        # If no episodes at all, log NaN stats.
-        if (
-            len(self._done_episodes_for_metrics) == 0
-            and self.metrics.peek("episode_return_mean", default=np.nan) is np.nan
-        ):
-            self._log_episode_metrics(np.nan, np.nan, np.nan)
 
         # Log num episodes counter for this iteration.
         self.metrics.log_value(
@@ -850,12 +871,12 @@ class SingleAgentEnvRunner(EnvRunner):
 
     def _log_episode_metrics(self, length, ret, sec):
         # Log general episode metrics.
-        # To mimick the old API stack behavior, we'll use `window` here for
+        # To mimic the old API stack behavior, we'll use `window` here for
         # these particular stats (instead of the default EMA).
         win = self.config.metrics_num_episodes_for_smoothing
-        self.metrics.log_value("episode_len_mean", length, window=win)
-        self.metrics.log_value("episode_return_mean", ret, window=win)
-        self.metrics.log_value("episode_duration_sec_mean", sec, window=win)
+        self.metrics.log_value(EPISODE_LEN_MEAN, length, window=win)
+        self.metrics.log_value(EPISODE_RETURN_MEAN, ret, window=win)
+        self.metrics.log_value(EPISODE_DURATION_SEC_MEAN, sec, window=win)
         # Per-agent returns.
         self.metrics.log_value(
             ("agent_episode_returns_mean", DEFAULT_AGENT_ID), ret, window=win
@@ -866,10 +887,10 @@ class SingleAgentEnvRunner(EnvRunner):
         )
 
         # For some metrics, log min/max as well.
-        self.metrics.log_value("episode_len_min", length, reduce="min")
-        self.metrics.log_value("episode_return_min", ret, reduce="min")
-        self.metrics.log_value("episode_len_max", length, reduce="max")
-        self.metrics.log_value("episode_return_max", ret, reduce="max")
+        self.metrics.log_value(EPISODE_LEN_MIN, length, reduce="min", window=win)
+        self.metrics.log_value(EPISODE_RETURN_MIN, ret, reduce="min", window=win)
+        self.metrics.log_value(EPISODE_LEN_MAX, length, reduce="max", window=win)
+        self.metrics.log_value(EPISODE_RETURN_MAX, ret, reduce="max", window=win)
 
     @Deprecated(new="get_state(components='rl_module')", error=False)
     def get_weights(self, modules=None):

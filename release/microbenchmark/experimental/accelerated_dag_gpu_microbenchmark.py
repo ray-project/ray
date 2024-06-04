@@ -1,7 +1,7 @@
 # coding: utf-8
 import logging
 import torch
-import pickle
+import ray.cloudpickle as pickle
 import io
 import cupy
 import numpy as np
@@ -11,13 +11,10 @@ import ray
 from ray.air._internal import torch_utils
 import ray.cluster_utils
 from ray.dag import InputNode
-from ray.tests.conftest import *  # noqa
 from ray.util.collective.collective_group import nccl_util
 
 from ray.experimental.channel.torch_tensor_type import TorchTensorType
 from ray._private.ray_microbenchmark_helpers import timeit
-
-# from ray.experimental.torch_serializer import TorchTensor
 
 
 logger = logging.getLogger(__name__)
@@ -104,14 +101,20 @@ class NcclWorker:
         return timeit("exec_nccl_gpu", _run)
 
 
-def exec_ray_dag(label, sender, receiver, use_nccl=False, use_adag=True):
+def exec_ray_dag(
+    label, sender, receiver, use_nccl=False, use_adag=True, dynamic_shape=False
+):
     # Test torch.Tensor sent between actors.
     with InputNode() as inp:
         dag = sender.send.bind(SHAPE, DTYPE, inp)
 
         if use_adag:
             dag = dag.with_type_hint(
-                TorchTensorType(SHAPE, DTYPE, transport="nccl" if use_nccl else None)
+                TorchTensorType(
+                    "auto" if dynamic_shape else SHAPE,
+                    "auto" if dynamic_shape else DTYPE,
+                    transport="nccl" if use_nccl else None,
+                )
             )
 
         dag = receiver.recv.bind(dag)
@@ -154,7 +157,8 @@ def exec_ray_dag_ipc(label, sender, receiver, use_nccl=False):
         dag = sender.send.bind(SHAPE, DTYPE, inp)
         dag = receiver.recv.bind(
             dag,
-            SHAPE[0] * DTYPE.itemsize,
+            # torch.float16 has item size of 2 bytes.
+            SHAPE[0] * 2,
             SHAPE,
             nccl_util.TORCH_NUMPY_DTYPE_MAP[DTYPE],
         )
@@ -292,11 +296,17 @@ def exec_ray_dag_gpu_cpu_gpu():
     return exec_ray_dag("exec_ray_dag_gpu_cpu_gpu", sender, receiver)
 
 
-def exec_ray_dag_gpu_nccl():
+def exec_ray_dag_gpu_nccl(dynamic_shape: bool = False):
     time.sleep(1)
     sender = TorchTensorWorker.options(num_gpus=1).remote()
     receiver = TorchTensorWorker.options(num_gpus=1).remote()
-    return exec_ray_dag("exec_ray_dag_gpu_nccl", sender, receiver, use_nccl=True)
+    return exec_ray_dag(
+        "exec_ray_dag_gpu_nccl" + ("_dynamic" if dynamic_shape else ""),
+        sender,
+        receiver,
+        use_nccl=True,
+        dynamic_shape=dynamic_shape,
+    )
 
 
 def exec_ray_core_gpu():
@@ -333,8 +343,8 @@ def main():
     results += exec_ray_dag_cpu()
     results += exec_ray_core_gpu()
     results += exec_ray_dag_gpu_cpu_gpu()
-    results += exec_ray_dag_gpu_nccl()
-    results += exec_ray_dag_gpu_ipc_gpu()
+    results += exec_ray_dag_gpu_nccl(dynamic_shape=True)
+    results += exec_ray_dag_gpu_nccl(dynamic_shape=False)
 
 
 if __name__ == "__main__":

@@ -1,4 +1,3 @@
-import math
 import uuid
 from typing import Any, Dict, Iterable, Iterator, List, Optional, Tuple, Union
 
@@ -8,7 +7,6 @@ from ray.data._internal.memory_tracing import trace_allocation
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.stats import DatasetStats, _get_or_create_stats_actor
-from ray.data._internal.util import _split_list
 from ray.data.block import (
     Block,
     BlockAccessor,
@@ -161,129 +159,6 @@ class LazyBlockList(BlockList):
     def _check_if_cleared(self):
         pass  # LazyBlockList can always be re-computed.
 
-    # Note: does not force execution prior to splitting.
-    def split(self, split_size: int) -> List["LazyBlockList"]:
-        num_splits = math.ceil(len(self._tasks) / split_size)
-        tasks = _split_list(self._tasks, num_splits)
-        block_partition_refs = _split_list(self._block_partition_refs, num_splits)
-        block_partition_meta_refs = _split_list(
-            self._block_partition_meta_refs, num_splits
-        )
-        cached_metadata = _split_list(self._cached_metadata, num_splits)
-        output = []
-        for t, b, m, c in zip(
-            tasks, block_partition_refs, block_partition_meta_refs, cached_metadata
-        ):
-            output.append(
-                LazyBlockList(
-                    t,
-                    b,
-                    m,
-                    c,
-                    owned_by_consumer=self._owned_by_consumer,
-                )
-            )
-        return output
-
-    # Note: does not force execution prior to splitting.
-    def split_by_bytes(self, bytes_per_split: int) -> List["BlockList"]:
-        output = []
-        cur_tasks, cur_blocks, cur_blocks_meta, cur_cached_meta = [], [], [], []
-        cur_size = 0
-        for t, b, bm, c in zip(
-            self._tasks,
-            self._block_partition_refs,
-            self._block_partition_meta_refs,
-            self._cached_metadata,
-        ):
-            m = t.get_metadata()
-            if m.size_bytes is None:
-                raise RuntimeError(
-                    "Block has unknown size, cannot use split_by_bytes()"
-                )
-            size = m.size_bytes
-            if cur_blocks and cur_size + size > bytes_per_split:
-                output.append(
-                    LazyBlockList(
-                        cur_tasks,
-                        cur_blocks,
-                        cur_blocks_meta,
-                        cur_cached_meta,
-                        owned_by_consumer=self._owned_by_consumer,
-                    ),
-                )
-                cur_tasks, cur_blocks, cur_blocks_meta, cur_cached_meta = [], [], [], []
-                cur_size = 0
-            cur_tasks.append(t)
-            cur_blocks.append(b)
-            cur_blocks_meta.append(bm)
-            cur_cached_meta.append(c)
-            cur_size += size
-        if cur_blocks:
-            output.append(
-                LazyBlockList(
-                    cur_tasks,
-                    cur_blocks,
-                    cur_blocks_meta,
-                    cur_cached_meta,
-                    owned_by_consumer=self._owned_by_consumer,
-                )
-            )
-        return output
-
-    def truncate_by_rows(self, limit: int) -> "LazyBlockList":
-        """Truncate the block list to the minimum number of blocks that contains at
-        least limit rows.
-
-        If the number of rows is not available, it will be treated as a 0-row block and
-        will be included in the truncated output.
-        """
-        self._check_if_cleared()
-        out_tasks, out_blocks, out_blocks_meta, out_cached_meta = [], [], [], []
-        out_num_rows = 0
-        for t, b, bm, c in zip(
-            self._tasks,
-            self._block_partition_refs,
-            self._block_partition_meta_refs,
-            self._cached_metadata,
-        ):
-            m = t.get_metadata()
-            num_rows = m.num_rows
-            if num_rows is None:
-                num_rows = 0
-            out_tasks.append(t)
-            out_blocks.append(b)
-            out_blocks_meta.append(bm)
-            out_cached_meta.append(c)
-            out_num_rows += num_rows
-            if out_num_rows >= limit:
-                break
-        return LazyBlockList(
-            out_tasks,
-            out_blocks,
-            out_blocks_meta,
-            out_cached_meta,
-            owned_by_consumer=self._owned_by_consumer,
-        )
-
-    # Note: does not force execution prior to division.
-    def divide(self, part_idx: int) -> ("LazyBlockList", "LazyBlockList"):
-        left = LazyBlockList(
-            self._tasks[:part_idx],
-            self._block_partition_refs[:part_idx],
-            self._block_partition_meta_refs[:part_idx],
-            self._cached_metadata[:part_idx],
-            owned_by_consumer=self._owned_by_consumer,
-        )
-        right = LazyBlockList(
-            self._tasks[part_idx:],
-            self._block_partition_refs[part_idx:],
-            self._block_partition_meta_refs[part_idx:],
-            self._cached_metadata[part_idx:],
-            owned_by_consumer=self._owned_by_consumer,
-        )
-        return left, right
-
     def get_blocks(self) -> List[ObjectRef[Block]]:
         """Bulk version of iter_blocks().
 
@@ -339,15 +214,6 @@ class LazyBlockList(BlockList):
         blocks, metadata = self._get_blocks_with_metadata()
         return BlockList(blocks, metadata, owned_by_consumer=self._owned_by_consumer)
 
-    def compute_first_block(self):
-        """Kick off computation for the first block in the list.
-
-        This is useful if looking to support rapid lightweight interaction with a small
-        amount of the dataset.
-        """
-        if self._tasks:
-            self._get_or_compute(0)
-
     def ensure_metadata_for_first_block(self) -> Optional[BlockMetadata]:
         """Ensure that the metadata is fetched and set for the first block.
 
@@ -378,29 +244,6 @@ class LazyBlockList(BlockList):
             metadata = ray.get(blocks_ref[-1])
             self._cached_metadata[0] = metadata
         return metadata
-
-    def iter_blocks(self) -> Iterator[ObjectRef[Block]]:
-        """Iterate over the blocks of this block list.
-
-        This blocks on the execution of the tasks generating block outputs.
-        The length of this iterator is not known until execution.
-        """
-        self._check_if_cleared()
-        outer = self
-
-        class Iter:
-            def __init__(self):
-                self._base_iter = outer.iter_blocks_with_metadata()
-
-            def __iter__(self):
-                return self
-
-            def __next__(self):
-                ref, meta = next(self._base_iter)
-                assert isinstance(ref, ray.ObjectRef), (ref, meta)
-                return ref
-
-        return Iter()
 
     def iter_blocks_with_metadata(
         self,
@@ -450,42 +293,6 @@ class LazyBlockList(BlockList):
                 return self._buffer.pop(0)
 
         return Iter()
-
-    def randomize_block_order(self, seed: Optional[int] = None) -> "LazyBlockList":
-        """Randomizes the order of the blocks.
-
-        Args:
-            seed: Fix the random seed to use, otherwise one will be chosen
-                based on system randomness.
-        """
-        import random
-
-        if seed is not None:
-            random.seed(seed)
-
-        zipped = list(
-            zip(
-                self._tasks,
-                self._block_partition_refs,
-                self._block_partition_meta_refs,
-                self._cached_metadata,
-            )
-        )
-
-        random.shuffle(zipped)
-        tasks, block_partition_refs, block_partition_meta_refs, cached_metadata = map(
-            list, zip(*zipped)
-        )
-
-        return LazyBlockList(
-            tasks,
-            block_partition_refs=block_partition_refs,
-            block_partition_meta_refs=block_partition_meta_refs,
-            cached_metadata=cached_metadata,
-            ray_remote_args=self._remote_args.copy(),
-            owned_by_consumer=self._owned_by_consumer,
-            stats_uuid=self._stats_uuid,
-        )
 
     def _iter_block_partition_refs(
         self,
@@ -587,30 +394,6 @@ class LazyBlockList(BlockList):
         blocks from each task.
         """
         return [meta for meta_list in metadata for meta in meta_list]
-
-
-def _execute_read_task_nosplit(
-    i: int,
-    task: ReadTask,
-    context: DataContext,
-    stats_uuid: str,
-    stats_actor: ray.actor.ActorHandle,
-) -> Tuple[Block, BlockMetadata]:
-    DataContext._set_current(context)
-    stats = BlockExecStats.builder()
-
-    # Execute the task. Expect only one block returned when dynamic block splitting is
-    # not enabled.
-    blocks = list(task())
-    assert len(blocks) == 1
-    block = blocks[0]
-
-    metadata = task.get_metadata()
-    metadata = BlockAccessor.for_block(block).get_metadata(
-        input_files=metadata.input_files, exec_stats=stats.build()
-    )
-    stats_actor.record_task.remote(stats_uuid, i, [metadata])
-    return block, metadata
 
 
 def _execute_read_task_split(
