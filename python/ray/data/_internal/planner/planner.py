@@ -28,6 +28,7 @@ def register_plan_logical_op_fn(
 
 
 def register_plan_logical_op_fns():
+    from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
     from ray.data._internal.execution.operators.limit_operator import LimitOperator
     from ray.data._internal.execution.operators.union_operator import UnionOperator
     from ray.data._internal.execution.operators.zip_operator import ZipOperator
@@ -42,15 +43,32 @@ def register_plan_logical_op_fns():
     from ray.data._internal.logical.operators.read_operator import Read
     from ray.data._internal.logical.operators.write_operator import Write
     from ray.data._internal.planner.plan_all_to_all_op import plan_all_to_all_op
-    from ray.data._internal.planner.plan_from_op import plan_from_op
-    from ray.data._internal.planner.plan_input_data_op import plan_input_data_op
     from ray.data._internal.planner.plan_read_op import plan_read_op
     from ray.data._internal.planner.plan_udf_map_op import plan_udf_map_op
     from ray.data._internal.planner.plan_write_op import plan_write_op
 
     register_plan_logical_op_fn(Read, plan_read_op)
+
+    def plan_input_data_op(
+        logical_op: InputData, physical_children: List[PhysicalOperator]
+    ) -> PhysicalOperator:
+        """Get the corresponding DAG of physical operators for InputData."""
+        assert len(physical_children) == 0
+
+        return InputDataBuffer(
+            input_data=logical_op.input_data,
+            input_data_factory=logical_op.input_data_factory,
+        )
+
     register_plan_logical_op_fn(InputData, plan_input_data_op)
     register_plan_logical_op_fn(Write, plan_write_op)
+
+    def plan_from_op(
+        op: AbstractFrom, physical_children: List[PhysicalOperator]
+    ) -> PhysicalOperator:
+        assert len(physical_children) == 0
+        return InputDataBuffer(op.input_data)
+
     register_plan_logical_op_fn(AbstractFrom, plan_from_op)
     register_plan_logical_op_fn(AbstractUDFMap, plan_udf_map_op)
     register_plan_logical_op_fn(AbstractAllToAll, plan_all_to_all_op)
