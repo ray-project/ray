@@ -903,7 +903,6 @@ class TuneReporterBase(ProgressReporter):
                 trials, col_mapping=self._progress_metrics
             )
 
-        # all_metrics = list(DEFAULT_COLUMNS.keys()) + self._inferred_metric
         all_metrics = DEFAULT_COLUMNS.copy()
         all_metrics.update(self._inferred_metric)
 

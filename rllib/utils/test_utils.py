@@ -1504,10 +1504,6 @@ def run_rllib_example_script_experiment(
             )
         )
 
-    # Force Tuner to use old progress output as the new one silently ignores our custom
-    # `CLIReporter`.
-    # os.environ["RAY_AIR_NEW_OUTPUT"] = "0"
-
     # Run the actual experiment (using Tune).
     start_time = time.time()
     results = tune.Tuner(
