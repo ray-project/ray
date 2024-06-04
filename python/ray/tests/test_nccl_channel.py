@@ -70,9 +70,6 @@ class Worker:
             readers,
             _tensor_metadata_channel=tensor_metadata_channel,
             _non_tensor_data_channel=non_tensor_data_channel,
-            _torch_tensor_allocator=lambda meta: torch.zeros(
-                meta.shape, dtype=meta.dtype
-            ),
         )
 
         return self.tensor_chan

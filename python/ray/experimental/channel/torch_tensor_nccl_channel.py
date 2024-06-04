@@ -3,7 +3,7 @@ import logging
 import uuid
 from dataclasses import dataclass
 from types import ModuleType
-from typing import TYPE_CHECKING, Any, Callable, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Any, List, Optional, Tuple, Union
 
 import ray
 import ray.util.serialization
@@ -40,11 +40,6 @@ class _TorchTensorMetadata:
 
     shape: Union[int, Tuple[int]]
     dtype: "torch.dtype"
-
-
-# Signature for a torch.Tensor allocator is:
-# (shape: Tuple[int], dtype: torch.dtype) -> torch.Tensor.
-TorchTensorAllocator = Callable[[_TorchTensorMetadata], "torch.Tensor"]
 
 
 @DeveloperAPI
@@ -283,6 +278,9 @@ class TorchTensorNcclChannel(ChannelInterface):
 
 
 def _torch_zeros_allocator(meta: _TorchTensorMetadata):
+    """
+    Allocate a zeros tensor buffer matching the given metadata.
+    """
     import torch
 
     ctx = ChannelContext.get_current()
@@ -298,7 +296,6 @@ class _TorchTensorNcclChannel(ChannelInterface):
         nccl_group_id: str,
         static_shape: bool = False,
         _meta_channel: Optional["Channel"] = None,
-        _torch_tensor_allocator: Optional[TorchTensorAllocator] = None,
     ):
         """
         A helper channel for TorchTensorNcclChannel that is used to transfer
@@ -315,9 +312,6 @@ class _TorchTensorNcclChannel(ChannelInterface):
                 i.e. shape and dtype. If not provided, and if the typ does not
                 specify a static shape and dtype, then a metadata channel based
                 on shared memory will be created.
-            _torch_tensor_allocator: An optional allocator function for
-                allocating torch.Tensor buffers on receivers. By default,
-                torch.zeros will be used.
         """
         import torch
 
@@ -329,9 +323,6 @@ class _TorchTensorNcclChannel(ChannelInterface):
         self._reader_ranks: Optional[List[int]] = None
         self._writer_registered: bool = False
         self._reader_registered: bool = False
-        self._torch_tensor_allocator = _torch_tensor_allocator
-        if self._torch_tensor_allocator is None:
-            self._torch_tensor_allocator = _torch_zeros_allocator
 
         ctx = ChannelContext.get_current()
         assert isinstance(
@@ -402,7 +393,6 @@ class _TorchTensorNcclChannel(ChannelInterface):
                 self._nccl_group_id,
                 self._static_shape,
                 self._meta_channel,
-                self._torch_tensor_allocator,
             ),
         )
 
@@ -536,7 +526,7 @@ class _TorchTensorNcclChannel(ChannelInterface):
 
         bufs: List["torch.Tensor"] = []
         for meta in meta_list:
-            buf = self._torch_tensor_allocator(meta)
+            buf = _torch_zeros_allocator(meta)
             self._nccl_group.recv(buf, self._writer_rank)
             bufs.append(buf)
         # TODO: Sync CUDA stream after receiving all tensors, instead of after

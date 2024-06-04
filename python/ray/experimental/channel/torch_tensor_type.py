@@ -10,7 +10,6 @@ if TYPE_CHECKING:
     import torch
 
     from ray.experimental.channel.shared_memory_channel import Channel
-    from ray.experimental.channel.torch_tensor_nccl_channel import TorchTensorAllocator
 
 
 logger = logging.getLogger(__name__)
@@ -123,7 +122,6 @@ class TorchTensorType(ChannelOutputType):
         readers: List[Optional["ray.actor.ActorHandle"]],
         _non_tensor_data_channel: Optional["Channel"] = None,
         _tensor_metadata_channel: Optional["Channel"] = None,
-        _torch_tensor_allocator: Optional["TorchTensorAllocator"] = None,
     ) -> type:
         if self.requires_nccl():
             from ray.experimental.channel.torch_tensor_nccl_channel import (
@@ -137,7 +135,6 @@ class TorchTensorType(ChannelOutputType):
                 self._nccl_group_id,
                 self._static_shape,
                 _meta_channel=_tensor_metadata_channel,
-                _torch_tensor_allocator=_torch_tensor_allocator,
             )
 
             if _non_tensor_data_channel is None:
