@@ -2740,6 +2740,42 @@
 # ----------------------------------------------------------
 
 # --------------------------
+# DreamerV3
+# --------------------------
+# TODO (sven): Move algo and this test to pytorch
+- name: rllib_learning_tests_pong_dreamerv3_tf2
+  group: RLlib tests
+  working_dir: rllib_tests
+
+  stable: true
+
+  frequency: weekly
+  team: rllib
+  cluster:
+    byod:
+      type: gpu
+      post_build_script: byod_rllib_test.sh
+      runtime_env:
+        - RLLIB_TEST_NO_JAX_IMPORT=1
+        - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
+    cluster_compute: 1gpu_4cpus.yaml
+
+  run:
+    timeout: 43200  # 12h
+    script: python learning_tests/tuned_examples/dreamerv3/atari_100k.py --framework=tf2 --env=ALE/Pong-v5 --num-gpus=1 --stop-reward=15.0 --as-release-test
+
+  alert: default
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_compute: 1gpu_4cpus_gce.yaml
+
+
+# --------------------------
 # PPO
 # --------------------------
 - name: rllib_learning_tests_pong_ppo_torch
@@ -2760,8 +2796,8 @@
     cluster_compute: 8gpus_96cpus.yaml
 
   run:
-    timeout: 1800
-    script: python learning_tests/tuned_examples/ppo/atari_ppo.py --enable-new-api-stack --env ALE/Pong-v5 --num-gpus=4 --num-env-runners=95 --as-test
+    timeout: 600
+    script: python learning_tests/tuned_examples/ppo/atari_ppo.py --enable-new-api-stack --env ALE/Pong-v5 --num-gpus=4 --num-env-runners=95 --as-release-test
 
   alert: default
 
