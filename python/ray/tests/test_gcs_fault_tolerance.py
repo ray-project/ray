@@ -1102,6 +1102,7 @@ def test_job_finished_after_head_node_restart(
         {"kill_job": True, "kill_actor": True, "expect_alive": "none"},
     ],
 )
+@pytest.mark.skipif(not enable_external_redis(), reason="Only valid in redis env")
 def test_gcs_server_restart_destroys_out_of_scope_actors(
     external_redis, ray_start_cluster, case
 ):
