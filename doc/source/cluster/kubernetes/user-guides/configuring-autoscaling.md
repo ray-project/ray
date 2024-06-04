@@ -55,7 +55,7 @@ Then, the KubeRay operator deletes the Pods in the `workersToDelete` field.
 ### Step 1: Create a Kubernetes cluster with Kind
 
 ```bash
-kind create cluster --image=kindest/node:v1.23.0
+kind create cluster --image=kindest/node:v1.26.0
 ```
 
 ### Step 2: Install the KubeRay operator
@@ -65,8 +65,7 @@ Follow [this document](kuberay-operator-deploy) to install the latest stable Kub
 ### Step 3: Create a RayCluster custom resource with autoscaling enabled
 
 ```bash
-curl -LO https://raw.githubusercontent.com/ray-project/kuberay/release-1.1.0/ray-operator/config/samples/ray-cluster.autoscaler.yaml
-kubectl apply -f ray-cluster.autoscaler.yaml
+kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/v1.1.1/ray-operator/config/samples/ray-cluster.autoscaler.yaml
 ```
 
 ### Step 4: Verify the Kubernetes cluster status
@@ -89,7 +88,7 @@ kubectl get configmaps
 ```
 
 The RayCluster has one head Pod and zero worker Pods. The head Pod has two containers: a Ray head container and a Ray Autoscaler sidecar container.
-Additionally, the [ray-cluster.autoscaler.yaml](https://github.com/ray-project/kuberay/blob/release-1.1.0/ray-operator/config/samples/ray-cluster.autoscaler.yaml) includes a ConfigMap named `ray-example` that houses two Python scripts: `detached_actor.py` and `terminate_detached_actor`.py.
+Additionally, the [ray-cluster.autoscaler.yaml](https://github.com/ray-project/kuberay/blob/v1.1.1/ray-operator/config/samples/ray-cluster.autoscaler.yaml) includes a ConfigMap named `ray-example` that houses two Python scripts: `detached_actor.py` and `terminate_detached_actor`.py.
 
 * `detached_actor.py` is a Python script that creates a detached actor which requires 1 CPU.
   ```py
@@ -249,7 +248,7 @@ kubectl logs $HEAD_POD -c autoscaler | tail -n 20
 
 ```bash
 # Delete RayCluster and ConfigMap
-kubectl delete -f ray-cluster.autoscaler.yaml
+kubectl delete -f https://raw.githubusercontent.com/ray-project/kuberay/v1.1.1/ray-operator/config/samples/ray-cluster.autoscaler.yaml
 
 # Uninstall the KubeRay operator
 helm uninstall kuberay-operator
@@ -258,7 +257,7 @@ helm uninstall kuberay-operator
 (kuberay-autoscaling-config)=
 ## KubeRay Autoscaling Configurations
 
-The [ray-cluster.autoscaler.yaml](https://github.com/ray-project/kuberay/blob/release-1.1.0/ray-operator/config/samples/ray-cluster.autoscaler.yaml) used in the quickstart example contains detailed comments about the configuration options.
+The [ray-cluster.autoscaler.yaml](https://github.com/ray-project/kuberay/blob/v1.1.1/ray-operator/config/samples/ray-cluster.autoscaler.yaml) used in the quickstart example contains detailed comments about the configuration options.
 ***It's recommended to read this section in conjunction with the YAML file.***
 
 ### 1. Enabling autoscaling
@@ -322,7 +321,7 @@ for container environment variables.
 The Ray Autoscaler reads the `rayStartParams` field or the Ray container's resource limits in the RayCluster custom resource specification to determine the Ray Pod's resource requirements.
 The information regarding the number of CPUs is essential for the Ray Autoscaler to scale the cluster.
 Therefore, without this information, the Ray Autoscaler would report an error and fail to start.
-Take [ray-cluster.autoscaler.yaml](https://github.com/ray-project/kuberay/blob/release-1.1.0/ray-operator/config/samples/ray-cluster.autoscaler.yaml) as an example below:
+Take [ray-cluster.autoscaler.yaml](https://github.com/ray-project/kuberay/blob/v1.1.1/ray-operator/config/samples/ray-cluster.autoscaler.yaml) as an example below:
 
 * If users set `num-cpus` in `rayStartParams`, Ray Autoscaler would work regardless of the resource limits on the container.
 * If users don't set `rayStartParams`, the Ray container must have a specified CPU resource limit.
@@ -369,7 +368,7 @@ workerGroupSpecs:
 See [(Advanced) Understanding the Ray Autoscaler in the Context of Kubernetes](ray-k8s-autoscaler-comparison) for more details about the relationship between the Ray Autoscaler and Kubernetes autoscalers.
 
 (kuberay-autoscaler-v2)=
-### Autosclaer V2 with KubeRay
+### Autoscaler V2 with KubeRay
 
 #### Prerequisites
 * Ray 2.10.0 or nightly Ray version

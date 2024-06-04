@@ -26,6 +26,16 @@ py_binary(
 )
 
 py_binary(
+    name = "determine_microcheck_step_ids",
+    srcs = ["determine_microcheck_step_ids.py"],
+    exec_compatible_with = ["//:hermetic_python"],
+    deps = [
+        ci_require("click"),
+        "//ci/ray_ci:ray_ci_lib",
+    ],
+)
+
+py_binary(
     name = "test_db_bot",
     srcs = ["test_db_bot.py"],
     exec_compatible_with = ["//:hermetic_python"],
