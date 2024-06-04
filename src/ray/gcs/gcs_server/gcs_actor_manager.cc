@@ -623,9 +623,12 @@ Status GcsActorManager::RegisterActor(const ray::rpc::RegisterActorRequest &requ
   auto worker_id = WorkerID::FromBinary(owner_address.worker_id());
   RAY_CHECK(unresolved_actors_[node_id][worker_id].emplace(actor->GetActorID()).second);
 
-  // Send a long polling request to the actor's owner (or itself if detached) to determine
-  // when the actor should be removed.
-  PollOwnerForActorOutOfScope(actor);
+  // Send a long polling request to the actor's owner to determine when the actor should
+  // be removed. No polling for detached actors here since they are not scheduled to
+  // workers yet, their polling will be set in OnActorCreationSuccess.
+  if (!actor->IsDetached()) {
+    PollOwnerForActorOutOfScope(actor);
+  }
 
   if (actor->IsDetached()) {
     // If it's a detached actor, we need to register the runtime env it used to GC.
@@ -820,6 +823,9 @@ void GcsActorManager::PollOwnerForActorOutOfScope(
     owner_id = actor->GetOwnerID();
     owner_address = actor->GetOwnerAddress();
   }
+  RAY_CHECK(!owner_id.IsNil());
+  RAY_CHECK(!owner_address.ip_address().empty());
+
   auto &workers = owners_[owner_node_id];
   auto it = workers.find(owner_id);
   if (it == workers.end()) {
@@ -1362,6 +1368,11 @@ void GcsActorManager::OnActorCreationSuccess(const std::shared_ptr<GcsActor> &ac
   }
   actor->UpdateState(rpc::ActorTableData::ALIVE);
 
+  // Non detached actors' polling are already done in RegisterActor.
+  if (actor->IsDetached()) {
+    PollOwnerForActorOutOfScope(actor);
+  }
+
   // We should register the entry to the in-memory index before flushing them to
   // GCS because otherwise, there could be timing problems due to asynchronous Put.
   auto worker_id = actor->GetWorkerID();
@@ -1469,7 +1480,10 @@ void GcsActorManager::Initialize(const GcsInitData &gcs_init_data) {
 
       // Send a long polling request to the actor's owner (or itself if detached) to
       // determine when the actor should be removed.
-      PollOwnerForActorOutOfScope(actor);
+      if (actor_table_data.state() == ray::rpc::ActorTableData::ALIVE ||
+          !actor->IsDetached()) {
+        PollOwnerForActorOutOfScope(actor);
+      }
 
       if (!actor->GetWorkerID().IsNil()) {
         RAY_CHECK(!actor->GetNodeID().IsNil());
