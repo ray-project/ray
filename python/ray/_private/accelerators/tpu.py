@@ -34,7 +34,6 @@ NOSET_TPU_VISIBLE_CHIPS_ENV_VAR = "RAY_EXPERIMENTAL_NOSET_TPU_VISIBLE_CHIPS"
 
 # By default TPU VMs come with 4 chips per host and 2 tensorcores per chip.
 # For more details: https://cloud.google.com/tpu/docs/system-architecture-tpu-vm
-TPU_NUM_CHIPS_PER_HOST_DEFAULT = 4
 TPU_CORES_PER_CHIP = 2
 
 # The following defines environment variables that allow
