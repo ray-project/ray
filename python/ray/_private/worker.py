@@ -72,7 +72,9 @@ from ray._private.ray_logging import (
 )
 from ray._private.runtime_env.constants import RAY_JOB_CONFIG_JSON_ENV_VAR
 from ray._private.runtime_env.py_modules import upload_py_modules_if_needed
-from ray._private.runtime_env.working_dir import upload_working_dir_if_needed
+from ray._private.runtime_env.working_dir import (
+    upload_working_dir_if_needed_and_return_original_path,
+)
 from ray._private.runtime_env.setup_hook import (
     upload_worker_process_setup_hook_if_needed,
 )
@@ -469,6 +471,7 @@ class Worker:
         # Cache the job id from initialize_job_config() to optimize lookups.
         # This is on the critical path of ray.get()/put() calls.
         self._cached_job_id = None
+        self._hack_original_working_dir = None
 
     @property
     def connected(self):
@@ -1847,6 +1850,7 @@ def shutdown(_exiting_interpreter: bool = False):
     # should simply set "global_worker" to equal "None" or something like that.
     global_worker.set_mode(None)
     global_worker.set_cached_job_id(None)
+    global_worker._hack_original_working_dir = None
 
 
 atexit.register(shutdown, True)
@@ -2305,7 +2309,10 @@ def connect(
         runtime_env = upload_py_modules_if_needed(
             runtime_env, scratch_dir, logger=logger
         )
-        runtime_env = upload_working_dir_if_needed(
+        (
+            runtime_env,
+            working_dir,
+        ) = upload_working_dir_if_needed_and_return_original_path(
             runtime_env, scratch_dir, logger=logger
         )
         runtime_env = upload_worker_process_setup_hook_if_needed(
@@ -2315,6 +2322,8 @@ def connect(
         # Remove excludes, it isn't relevant after the upload step.
         runtime_env.pop("excludes", None)
         job_config.set_runtime_env(runtime_env)
+        if working_dir is not None:
+            worker._hack_original_working_dir = working_dir
 
     if mode == SCRIPT_MODE:
         # Add the directory containing the script that is running to the Python
