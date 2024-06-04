@@ -13,10 +13,9 @@ etils==1.3.0
 # and to `install-dependencies.sh`!
 
 --extra-index-url https://download.pytorch.org/whl/cpu  # for CPU versions of torch, torchvision
---find-links https://data.pyg.org/whl/torch-1.13.0+cpu.html  # for CPU versions of torch-scatter, torch-sparse, torch-cluster, torch-spline-conv
 --find-links https://data.pyg.org/whl/torch-2.0.1+cpu.html  # for CPU versions of torch-scatter, torch-sparse, torch-cluster, torch-spline-conv
 
-torch==2.0.1
+torch==2.3.0
 torchmetrics==0.10.3
 torchtext==0.15.2
 torchvision==0.15.2
