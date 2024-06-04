@@ -193,26 +193,32 @@ def _get_trials_with_error(trials: List[Trial]) -> List[Trial]:
     return [t for t in trials if t.error_file]
 
 
-def _infer_user_metrics(trials: List[Trial], limit: int = 4) -> List[str]:
+def _infer_user_metrics(
+    trials: List[Trial], limit: int = 5, col_mapping: Optional[Dict[str, str]] = None
+) -> List[str]:
     """Try to infer the metrics to print out.
 
     By default, only the first 4 meaningful metrics in `last_result` will be
     inferred as user implied metrics.
     """
+    col_mapping = col_mapping or {}
     # Using OrderedDict for OrderedSet.
     result = collections.OrderedDict()
     for t in trials:
         if not t.last_result:
             continue
-        for metric, value in t.last_result.items():
-            if metric not in DEFAULT_COLUMNS:
-                if metric not in AUTO_RESULT_KEYS:
-                    if type(value) in VALID_SUMMARY_TYPES:
-                        result[metric] = ""  # not important
+        for flat_metric, value in flatten_dict(t.last_result).items():
+            if (
+                flat_metric not in DEFAULT_COLUMNS
+                and flat_metric not in AUTO_RESULT_KEYS
+                and type(value) in VALID_SUMMARY_TYPES
+                and (not col_mapping or flat_metric in col_mapping)
+            ):
+                result[flat_metric] = col_mapping.get(flat_metric, flat_metric)
 
             if len(result) >= limit:
-                return list(result.keys())
-    return list(result.keys())
+                return result
+    return result
 
 
 def _current_best_trial(
@@ -366,7 +372,7 @@ def _get_trial_table_data_per_status(
 def _get_trial_table_data(
     trials: List[Trial],
     param_keys: List[str],
-    metric_keys: List[str],
+    metric_keys: Union[List[str], Dict[str, str]],
     all_rows: bool = False,
     wrap_headers: bool = False,
 ) -> _TrialTableData:
@@ -390,18 +396,21 @@ def _get_trial_table_data(
     trials_by_state = _get_trials_by_state(trials)
 
     # get the right metric to show.
-    metric_keys = [
-        k
-        for k in metric_keys
+    if not isinstance(metric_keys, dict):
+        metric_keys = {k: k for k in metric_keys}
+    metric_keys = {
+        k: v
+        for k, v in metric_keys.items()
         if any(
             unflattened_lookup(k, t.last_result, default=None) is not None
             for t in trials
         )
-    ]
+    }
 
     # get header from metric keys
     formatted_metric_columns = [
-        _max_len(k, max_len=max_column_length, wrap=wrap_headers) for k in metric_keys
+        _max_len(v, max_len=max_column_length, wrap=wrap_headers)
+        for v in metric_keys.values()
     ]
 
     formatted_param_columns = [
@@ -511,6 +520,10 @@ def _get_dict_as_table_data(
             # (e.g. if `config` is in include, include config always).
             if include and key not in include and k not in include:
                 continue
+
+            # `include` is a dict (mapping actual keys to to-be-displayed-keys).
+            if isinstance(include, dict):
+                k = include[k]
 
             if key in upper_keys:
                 upper.append([k, v])
@@ -885,9 +898,13 @@ class TuneReporterBase(ProgressReporter):
         # Now populating the trial table data.
         if not self._inferred_metric:
             # try inferring again.
-            self._inferred_metric = _infer_user_metrics(trials)
+            self._inferred_metric = _infer_user_metrics(
+                trials, mappings=self._progress_metrics
+            )
 
-        all_metrics = list(DEFAULT_COLUMNS.keys()) + self._inferred_metric
+        # all_metrics = list(DEFAULT_COLUMNS.keys()) + self._inferred_metric
+        all_metrics = DEFAULT_COLUMNS.copy()
+        all_metrics.update(self._inferred_metric)
 
         trial_table_data = _get_trial_table_data(
             trials,

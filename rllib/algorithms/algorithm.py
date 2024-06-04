@@ -31,12 +31,11 @@ from typing import (
 import tree  # pip install dm_tree
 
 import ray
-from ray.air.constants import TRAINING_ITERATION
 from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
 from ray.actor import ActorHandle
+from ray.air.constants import TRAINING_ITERATION
 from ray.train import Checkpoint
 import ray.cloudpickle as pickle
-from ray.air.constants import TRAINING_ITERATION
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.registry import ALGORITHMS_CLASS_TO_NAME as ALL_ALGORITHMS
 from ray.rllib.connectors.agent.obs_preproc import ObsPreprocessorConnector
@@ -274,15 +273,19 @@ class Algorithm(Trainable, AlgorithmBase):
     # List of keys that are always fully overridden if present in any dict or sub-dict
     _override_all_key_list = ["off_policy_estimation_methods", "policies"]
 
+    from collections import OrderedDict
+
     _progress_metrics = {
-        TRAINING_ITERATION: "iter",
+        TRAINING_ITERATION: "training iter.",
         TIME_TOTAL_S: "total time (s)",
-        f"{ENV_RUNNER_RESULTS}/episode_return_mean": "R",
-        f"{EVALUATION_RESULTS}/{ENV_RUNNER_RESULTS}/episode_return_mean": "R (eval)",
-        f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}": "env steps sampled",
-        f"{NUM_ENV_STEPS_TRAINED_LIFETIME}": "env steps trained",
-        f"{NUM_EPISODES_LIFETIME}": "episodes",
-        f"{ENV_RUNNER_RESULTS}/episode_len_mean": "episode len mean",
+        f"{ENV_RUNNER_RESULTS}/episode_return_mean": "mean episode return",
+        f"{EVALUATION_RESULTS}/{ENV_RUNNER_RESULTS}/episode_return_mean": (
+            "mean episode return (eval)"
+        ),
+        f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}": "env ts (sampled)",
+        f"{NUM_ENV_STEPS_TRAINED_LIFETIME}": "env ts (trained)",
+        f"{NUM_EPISODES_LIFETIME}": "episodes (sampled)",
+        f"{ENV_RUNNER_RESULTS}/episode_len_mean": "mean episode len",
     }
 
     @staticmethod

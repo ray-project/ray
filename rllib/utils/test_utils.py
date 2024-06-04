@@ -1484,29 +1484,20 @@ def run_rllib_example_script_experiment(
     # Use better ProgressReporter for multi-agent cases: List individual policy rewards.
     progress_reporter = None
     if args.num_agents > 0:
-        progress_reporter = CLIReporter(
-            metric_columns={
-                **{
-                    TRAINING_ITERATION: "iter",
-                    TIME_TOTAL_S: "total time (s)",
-                    NUM_ENV_STEPS_SAMPLED_LIFETIME: "env ts (sampled)",
-                    f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": "R (combined)",
-                },
-                **{
-                    (
-                        f"{ENV_RUNNER_RESULTS}/module_episode_returns_mean/{pid}"
-                    ): f"R ({pid})"
-                    for pid in config.policies
-                },
-                **{
-                    f"{NUM_EPISODES_LIFETIME}": "episodes",
-                },
-            },
+        progress_metrics = Algorithm._progress_metrics.copy()
+        progress_metrics.update(
+            {
+                f"{ENV_RUNNER_RESULTS}/module_episode_returns_mean/{pid}": (
+                    f"return {pid}"
+                )
+                for pid in config.policies
+            }
         )
+        progress_reporter = CLIReporter(metric_columns=progress_metrics)
 
     # Force Tuner to use old progress output as the new one silently ignores our custom
     # `CLIReporter`.
-    os.environ["RAY_AIR_NEW_OUTPUT"] = "0"
+    # os.environ["RAY_AIR_NEW_OUTPUT"] = "0"
 
     # Run the actual experiment (using Tune).
     start_time = time.time()
