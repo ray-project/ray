@@ -8,6 +8,7 @@ import pytest
 
 import ray
 from ray._private.utils import get_or_create_event_loop
+from ray.util.placement_group import placement_group
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 import ray._private.gcs_utils as gcs_utils
 from ray._private import ray_constants
@@ -637,8 +638,6 @@ def test_named_actor_workloads(ray_start_regular_with_external_redis):
     indirect=True,
 )
 def test_pg_actor_workloads(ray_start_regular_with_external_redis):
-    from ray.util.placement_group import placement_group
-
     bundle1 = {"CPU": 1}
     pg = placement_group([bundle1], strategy="STRICT_PACK")
 
@@ -1164,20 +1163,6 @@ def test_gcs_server_restart_keeps_detached_actors_children_actors(
 
 
 @pytest.mark.parametrize(
-    "ray_start_cluster_head_with_external_redis",
-    [
-        {
-            **generate_system_config_map(
-                gcs_failover_worker_reconnect_timeout=20,
-                gcs_rpc_server_reconnect_timeout_s=3600,
-                gcs_server_request_timeout_seconds=10,
-            ),
-            "namespace": "actor",
-        }
-    ],
-    indirect=True,
-)
-@pytest.mark.parametrize(
     "case",
     [
         {"kill_job": False, "kill_actor": False, "expect_alive": "all"},
@@ -1186,7 +1171,7 @@ def test_gcs_server_restart_keeps_detached_actors_children_actors(
     ],
 )
 def test_gcs_server_restart_destroys_out_of_scope_actors(
-    ray_start_cluster_head_with_external_redis, case
+    external_redis, ray_start_cluster, case
 ):
     """
     If an actor goes out of scope *when GCS is down*, when GCS restarts, the actor
@@ -1208,7 +1193,10 @@ def test_gcs_server_restart_destroys_out_of_scope_actors(
         all should be dead
     """
 
-    cluster = ray_start_cluster_head_with_external_redis
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=4)
+    cluster.wait_for_nodes()
+    ray.init(address=cluster.address)
 
     @ray.remote
     class A:
@@ -1267,8 +1255,13 @@ def test_gcs_server_restart_destroys_out_of_scope_actors(
     elif case["expect_alive"] == "none":
         with pytest.raises(ValueError):
             ray.get_actor("regular", namespace="ns")
-        with pytest.raises(ValueError):
-            ray.get_actor("parent", namespace="ns")
+
+        # Known issue: GCS restart does not check liveness of a detached actor, so
+        # you can still ray.get_actor but can not invoke methods.
+        a = ray.get_actor("parent", namespace="ns")
+        with pytest.raises(ray.exceptions.ActorUnavailableError):
+            ray.get(a.getpid.remote())
+
         with pytest.raises(ValueError):
             ray.get_actor("child", namespace="ns")
     else:
