@@ -53,12 +53,12 @@ LOG_MODE_DICT = {
         "disable_existing_loggers": False,
         "formatters": {
             "text": {
-                "()": "ray._private.structured_logging.formatters.TextFormatter",
+                "()": "ray._private.ray_logging.formatters.TextFormatter",
             },
         },
         "filters": {
             "core_context": {
-                "()": "ray._private.structured_logging.filters.CoreContextFilter",
+                "()": "ray._private.ray_logging.filters.CoreContextFilter",
             },
         },
         "handlers": {

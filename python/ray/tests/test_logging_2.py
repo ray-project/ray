@@ -6,8 +6,8 @@ import logging
 import sys
 import json
 
-from ray._private.structured_logging.filters import CoreContextFilter
-from ray._private.structured_logging.formatters import JSONFormatter, TextFormatter
+from ray._private.ray_logging.filters import CoreContextFilter
+from ray._private.ray_logging.formatters import JSONFormatter, TextFormatter
 from ray.job_config import LoggingConfig
 from ray._private.test_utils import run_string_as_driver
 

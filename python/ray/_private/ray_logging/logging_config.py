@@ -1,4 +1,4 @@
-from ray._private.structured_logging.constants import LOG_MODE_DICT
+from ray._private.ray_logging.constants import LOG_MODE_DICT
 from ray.util.annotations import PublicAPI
 
 from dataclasses import dataclass

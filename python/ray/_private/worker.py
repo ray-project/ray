@@ -50,7 +50,7 @@ import ray._private.services as services
 import ray._private.state
 import ray._private.storage as storage
 
-from ray._private.structured_logging.logging_config import LoggingConfig
+from ray._private.ray_logging.logging_config import LoggingConfig
 
 # Ray modules
 import ray.actor
