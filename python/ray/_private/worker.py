@@ -2725,14 +2725,14 @@ blocking_wait_inside_async_warned = False
 @PublicAPI
 @client_mode_hook
 def wait(
-    ray_waitables: List[Union["ObjectRef[R]", "ObjectRefGenerator[R]"]],
+    ray_waitables: List[Union[ObjectRef, ObjectRefGenerator]],
     *,
     num_returns: int = 1,
     timeout: Optional[float] = None,
     fetch_local: bool = True,
 ) -> Tuple[
-    List[Union["ObjectRef[R]", "ObjectRefGenerator[R]"]],
-    List[Union["ObjectRef[R]", "ObjectRefGenerator[R]"]],
+    List[Union[ObjectRef, ObjectRefGenerator]],
+    List[Union[ObjectRef, ObjectRefGenerator]],
 ]:
     """Return a list of IDs that are ready and a list of IDs that are not.
 
@@ -2741,8 +2741,8 @@ def wait(
     is not set, the function simply waits until that number of objects is ready
     and returns that exact number of object refs.
 
-    `ray_waitables` is a list of :class:`~ObjectRef` and
-    :class:`~ObjectRefGenerator`.
+    `ray_waitables` is a list of :class:`~ray.ObjectRef` and
+    :class:`~ray.ObjectRefGenerator`.
 
     The method returns two lists, ready and unready `ray_waitables`.
 
@@ -2890,7 +2890,7 @@ def get_actor(name: str, namespace: Optional[str] = None) -> "ray.actor.ActorHan
         ActorHandle to the actor.
 
     Raises:
-        ValueError if the named actor does not exist.
+        ValueError: if the named actor does not exist.
     """
     if not name:
         raise ValueError("Please supply a non-empty value to get_actor")
