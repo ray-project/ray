@@ -155,14 +155,6 @@ class TPUAcceleratorManager(AcceleratorManager):
             return (True, None)
 
     @staticmethod
-    def get_num_tpu_visible_chips_per_host() -> int:
-        tpu_pod_type = TPUAcceleratorManager._get_current_node_tpu_pod_type()
-        if tpu_pod_type == "v5litepod-8":
-            return 8
-
-        return TPU_NUM_CHIPS_PER_HOST_DEFAULT
-
-    @staticmethod
     def set_current_process_visible_accelerator_ids(
         visible_tpu_chips: List[str],
     ) -> None:
