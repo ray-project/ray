@@ -34,13 +34,13 @@ from typing import List, Optional
 from starlette.requests import Request
 
 from ray import serve
-from serve_test_utils import (
+from release.serve_tests.workloads.serve_test_utils import (
     aggregate_all_metrics,
     run_wrk_on_all_nodes,
     save_test_results,
     is_smoke_test,
 )
-from serve_test_cluster_utils import (
+from release.serve_tests.workloads.serve_test_cluster_utils import (
     setup_local_single_node_cluster,
     setup_anyscale_cluster,
     NUM_CPU_PER_NODE,

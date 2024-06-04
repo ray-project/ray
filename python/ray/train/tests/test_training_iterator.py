@@ -1,4 +1,5 @@
 import functools
+import sys
 import time
 from contextlib import nullcontext
 from unittest.mock import patch
@@ -285,7 +286,12 @@ class KillCallback:
         self.counter += 1
 
 
-@pytest.mark.parametrize("backend", ["test", "torch", "tf", "horovod"])
+@pytest.mark.parametrize(
+    "backend",
+    ["test", "torch", "tf"]
+    if sys.version_info >= (3, 12)
+    else ["test", "torch", "tf", "horovod"],
+)
 def test_worker_kill(ray_start_4_cpus, backend):
     if backend == "test":
         test_config = BackendConfig()

@@ -3,7 +3,7 @@
 """Client and server classes corresponding to protobuf-defined services."""
 import grpc
 
-import user_defined_protos_pb2 as user__defined__protos__pb2
+import doc.source.serve.doc_code.grpc_proxy.user_defined_protos_pb2 as user__defined__protos__pb2  # noqa: E501
 
 
 class UserDefinedServiceStub(object):

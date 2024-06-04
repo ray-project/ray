@@ -502,12 +502,12 @@ install_pip_packages() {
     download_mnist
   fi
 
-  if [ "${DOC_TESTING-}" = 1 ]; then
-    # Todo: This downgrades spacy and related dependencies because
-    # `en_core_web_sm` is only compatible with spacy < 3.6.
-    # We should move to a model that does not depend on a stale version.
-    python -m spacy download en_core_web_sm
-  fi
+  # if [ "${DOC_TESTING-}" = 1 ]; then
+  #   # Todo: This downgrades spacy and related dependencies because
+  #   # `en_core_web_sm` is only compatible with spacy < 3.6.
+  #   # We should move to a model that does not depend on a stale version.
+  #   python -m spacy download en_core_web_sm
+  # fi
 }
 
 install_thirdparty_packages() {

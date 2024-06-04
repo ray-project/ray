@@ -1,5 +1,8 @@
 # isort: skip_file
-from lightning_exp_tracking_model_dl import DummyModel, dataloader
+from ray.train.examples.experiment_tracking.lightning_exp_tracking_model_dl import (
+    DummyModel,
+    dataloader,
+)
 
 # __lightning_experiment_tracking_comet_start__
 import os

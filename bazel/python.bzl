@@ -55,9 +55,11 @@ def py_test_run_all_subdirectory(include, exclude, extra_srcs, **kwargs):
         basename = paths.split_extension(file)[0]
         if basename == file:
             basename = basename + "_test"
+        if file not in extra_srcs:
+            extra_srcs = extra_srcs + [file]
         native.py_test(
             name = basename,
-            srcs = extra_srcs + [file],
+            srcs = extra_srcs,
             **kwargs
         )
 

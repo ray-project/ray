@@ -75,7 +75,7 @@ print(resp.text)
 # __request_end__
 assert resp.text == "brown bear, bruin, Ursus arctos"
 
-from translator_example import app as translator_app  # noqa
+from doc.source.serve.doc_code.translator_example import app as translator_app  # noqa
 
 serve.run(
     ModifiedImageClassifier.bind(downloader.bind()),

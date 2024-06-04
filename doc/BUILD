@@ -134,7 +134,13 @@ py_test_run_all_subdirectory(
         "source/serve/doc_code/http_guide/websockets_example.py",
         "source/serve/doc_code/vllm_example.py",
     ],
-    extra_srcs = [],
+    extra_srcs = [
+        "source/serve/doc_code/faker.py",
+        "source/serve/doc_code/translator_example.py",
+        "source/serve/doc_code/test_service_pb2_grpc.py",
+        "source/serve/doc_code/grpc_proxy/user_defined_protos_pb2.py",
+        "source/serve/doc_code/grpc_proxy/user_defined_protos_pb2_grpc.py",
+    ],
     tags = ["exclusive", "team:serve"],
 )
 

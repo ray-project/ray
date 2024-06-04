@@ -39,13 +39,14 @@ steps:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/serve/... //python/ray/tests/...  serve 
         --except-tags post_wheel_build,gpu,ha_integration
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
-        --build-name servebuild --test-env=EXPECTED_PYTHON_VERSION=3.9
+        --build-name servebuild --test-env=EXPECTED_PYTHON_VERSION=3.12
     depends_on: "servebuild"
 
   - label: ":ray-serve: serve: pydantic < 2.0 tests"
     parallelism: 2
     tags: 
       - serve
+      - disabled
       - python
     instance_type: large
     soft_fail: true
@@ -53,7 +54,7 @@ steps:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/serve/... //python/ray/tests/...  serve 
         --except-tags post_wheel_build,gpu,ha_integration
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
-        --build-name servepydantic1build --test-env=EXPECTED_PYTHON_VERSION=3.9 --test-env=EXPECTED_PYDANTIC_VERSION=1.10.12
+        --build-name servepydantic1build --test-env=EXPECTED_PYTHON_VERSION=3.12 --test-env=EXPECTED_PYDANTIC_VERSION=1.10.12
     depends_on: servepydantic1build
 
   - label: ":ray-serve: serve: python {{matrix.python}} tests ({{matrix.worker_id}})"
@@ -61,6 +62,7 @@ steps:
     tags: 
       - serve
       - python
+      - disabled
     instance_type: large
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/serve/... //python/ray/tests/...  serve

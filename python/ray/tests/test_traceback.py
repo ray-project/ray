@@ -52,6 +52,8 @@ def scrub_traceback(ex):
     ex = re.sub(
         "=[\s\S]*Checking Serializability of[\s\S]*=", "INSPECT_SERIALIZABILITY", ex
     )
+    # Clean up underscore in stack trace, which is new in python 3.12
+    ex = re.sub("^\s+~*\^+~*\n", "", ex, flags=re.MULTILINE)
     return ex
 
 
@@ -409,4 +411,4 @@ if __name__ == "__main__":
     if os.environ.get("PARALLEL_CI"):
         sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
     else:
-        sys.exit(pytest.main(["-sv", __file__]))
+        sys.exit(pytest.main(["-vv", __file__]))

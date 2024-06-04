@@ -17,7 +17,9 @@ CONFIG = {"lr": 1e-3, "batch_size": 64, "epochs": 20}
 
 def prepare_mnist():
     # Pre-download the data onto each node.
-    from benchmark_util import schedule_remote_fn_on_all_nodes
+    from release.air_tests.air_benchmarks.workloads.benchmark_util import (
+        schedule_remote_fn_on_all_nodes,
+    )
 
     print("Preparing Torch benchmark: Downloading MNIST")
 
@@ -37,7 +39,7 @@ def get_trainer(
     config: Optional[Dict] = None,
 ):
     """Get the trainer to be used across train and tune to ensure consistency."""
-    from torch_benchmark import train_func
+    from release.air_tests.air_benchmarks.workloads.torch_benchmark import train_func
 
     def train_loop(config):
         train_func(use_ray=True, config=config)

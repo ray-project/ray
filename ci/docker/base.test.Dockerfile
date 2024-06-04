@@ -3,7 +3,7 @@
 FROM ubuntu:focal
 
 ARG BUILDKITE_BAZEL_CACHE_URL
-ARG PYTHON=3.9
+ARG PYTHON=3.12
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV TZ=America/Los_Angeles

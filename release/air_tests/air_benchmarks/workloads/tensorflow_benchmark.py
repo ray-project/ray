@@ -161,7 +161,7 @@ def train_tf_vanilla(
 ) -> Tuple[float, float, float]:
     # This function is kicked off by the main() function and subsequently kicks
     # off tasks that run train_tf_vanilla_worker() on the worker nodes.
-    from benchmark_util import (
+    from release.air_tests.air_benchmarks.workloads.benchmark_util import (
         upload_file_to_all_nodes,
         create_actors_with_options,
         run_commands_on_actors,
@@ -253,7 +253,10 @@ def run(
     # Note: smoke_test is ignored as we just adjust the batch size.
     # The parameter is passed by the release test pipeline.
     import ray
-    from benchmark_util import upload_file_to_all_nodes, run_command_on_all_nodes
+    from release.air_tests.air_benchmarks.workloads.benchmark_util import (
+        upload_file_to_all_nodes,
+        run_command_on_all_nodes,
+    )
 
     config = CONFIG.copy()
     config["epochs"] = num_epochs
