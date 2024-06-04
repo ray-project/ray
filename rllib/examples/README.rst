@@ -2,15 +2,15 @@ Examples
 ========
 
 This page contains an index of all the python scripts in the `examples/ folder <https://github.com/ray-project/ray/blob/master/rllib/examples>`
-of RLlib demonstrating the different use cases and features of the library.
+of RLlib, demonstrating the different use cases and features of the library.
 
 .. note::
 
     RLlib is currently in a transition state from "old API stack" to "new API stack".
     Some of the examples here haven't been translated yet to the new stack and are tagged
-    with the following comment line on top: `# @OldAPIStack`. We are in the
-    process of moving all example scripts over to the "new API stack" and expect to complete
-    this effort in the near future.
+    with the following comment line on top: ``# @OldAPIStack``. The moving of all example
+    scripts over to the "new API stack" is work in progress and expected to be completed
+    by the end of 2024.
 
 .. note::
 
@@ -27,7 +27,7 @@ structured into several sub-directories, the contents of all of which are descri
 How to run an example script
 ++++++++++++++++++++++++++++
 
-Most of the example scripts are self-executable, meaning you can just cd into the respective
+Most of the example scripts are self-executable, meaning you can just ``cd`` into the respective
 directory and type:
 
 .. code-block:: bash
@@ -36,9 +36,10 @@ directory and type:
     $ python multi_agent_pendulum.py --enable-new-api-stack --num-agents=2
 
 
-Use the `--help` command line arg to have each script print out its specific command line options.
-However, most of the scripts share a common subset of generally applicable command line args, for example
-`--num-env-runners`, `--no-tune`, or `--wandb-key`.
+Use the `--help` command line argument to have each script print out its supported command line options.
+
+Most of the scripts share a common subset of generally applicable command line arguments,
+for example `--num-env-runners`, `--no-tune`, or `--wandb-key`.
 
 
 All sub-folders
@@ -131,10 +132,8 @@ RLModules
 .. include:: rl_modules/README.rst
 
 
-
 Tuned Examples
 ++++++++++++++
-
 
 
 - `Tuned examples <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples>`__:
