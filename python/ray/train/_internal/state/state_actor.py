@@ -45,7 +45,7 @@ def get_or_create_state_actor() -> ActorHandle:
         ).remote()
 
     # Ensure the state actor is ready
-    ray.get(state_actor.__ray_ready__.remote())
+    assert ray.get(state_actor.__ray_ready__.remote())
     return state_actor
 
 
