@@ -306,7 +306,7 @@ def test_torch_tensor_nccl_static_non_tensor_data(ray_start_regular):
     for i in range(3):
         shape = (10 * (i + 1),)
         dtype = torch.float16
-        output_channel = compiled_dag.execute(shape, dtype, 1)
+        output_channel = compiled_dag.execute(value=1, shape=shape, dtype=dtype)
         # TODO(swang): Replace with fake ObjectRef.
         result = output_channel.begin_read()
         expected_result = {0: (0, shape, dtype)}
@@ -345,7 +345,7 @@ def test_torch_tensor_nccl_static_shape_and_non_tensor_data(ray_start_regular):
     dtype = torch.float16
 
     for i in range(3):
-        output_channel = compiled_dag.execute(shape, dtype, i)
+        output_channel = compiled_dag.execute(value=i, shape=shape, dtype=dtype)
         # TODO(swang): Replace with fake ObjectRef.
         result = output_channel.begin_read()
         assert result == (i, shape, dtype)
