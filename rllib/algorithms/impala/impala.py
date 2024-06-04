@@ -211,7 +211,6 @@ class ImpalaConfig(AlgorithmConfig):
         timeout_s_aggregator_manager: Optional[float] = NotProvided,
         broadcast_interval: Optional[int] = NotProvided,
         num_aggregation_workers: Optional[int] = NotProvided,
-        num_gpu_loader_threads: Optional[int] = NotProvided,
         grad_clip: Optional[float] = NotProvided,
         opt_type: Optional[str] = NotProvided,
         lr_schedule: Optional[List[List[Union[int, float]]]] = NotProvided,
@@ -353,8 +352,6 @@ class ImpalaConfig(AlgorithmConfig):
             self.timeout_s_sampler_manager = timeout_s_sampler_manager
         if timeout_s_aggregator_manager is not NotProvided:
             self.timeout_s_aggregator_manager = timeout_s_aggregator_manager
-        if num_gpu_loader_threads is not NotProvided:
-            self.num_gpu_loader_threads = num_gpu_loader_threads
         if grad_clip is not NotProvided:
             self.grad_clip = grad_clip
         if opt_type is not NotProvided:
@@ -1038,7 +1035,6 @@ class Impala(Algorithm):
         if self.config.enable_rl_module_and_learner:
             train_results = self._learn_on_processed_samples()
             module_ids_to_update = set(train_results.keys()) - {ALL_MODULES}
-            # TODO (sven): Move to Learner._after_gradient_based_update().
             additional_results = self.learner_group.additional_update(
                 module_ids_to_update=module_ids_to_update,
                 timestep=self._counters[
