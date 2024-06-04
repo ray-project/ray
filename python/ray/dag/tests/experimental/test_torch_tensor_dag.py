@@ -121,9 +121,7 @@ def test_torch_tensor_p2p(ray_start_regular):
     # direct_return=True, if `transport` is not set.
     with InputNode() as inp:
         dag = sender.send_dict_with_tuple_args.bind(inp)
-        dag = dag.with_type_hint(
-            TorchTensorType()
-        )
+        dag = dag.with_type_hint(TorchTensorType())
         dag = receiver.recv_dict.bind(dag)
 
     compiled_dag = dag.experimental_compile()
@@ -150,9 +148,7 @@ def test_torch_tensor_as_dag_input(ray_start_regular):
 
     # Test torch.Tensor as input.
     with InputNode() as inp:
-        torch_inp = inp.with_type_hint(
-            TorchTensorType()
-        )
+        torch_inp = inp.with_type_hint(TorchTensorType())
         dag = receiver.recv.bind(torch_inp)
 
     compiled_dag = dag.experimental_compile()
@@ -199,9 +195,7 @@ def test_torch_tensor_nccl(ray_start_regular):
         dag = sender.send.bind(shape, dtype, inp)
         # TODO(swang): Test that we are using the minimum number of
         # channels/messages when direct_return=True.
-        dag = dag.with_type_hint(
-            TorchTensorType(transport="nccl", direct_return=True)
-        )
+        dag = dag.with_type_hint(TorchTensorType(transport="nccl", direct_return=True))
         dag = receiver.recv.bind(dag)
 
     # Test normal execution.

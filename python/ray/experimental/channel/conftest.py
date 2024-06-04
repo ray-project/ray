@@ -122,6 +122,7 @@ class TracedChannel(ray_channel.shared_memory_channel.Channel):
     """
     Patched Channel that records all write ops for testing.
     """
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 

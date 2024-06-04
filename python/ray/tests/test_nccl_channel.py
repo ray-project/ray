@@ -3,14 +3,12 @@ import logging
 import os
 import sys
 import torch
-from typing import List, Tuple
+from typing import List, Dict
 
 import pytest
 
 import ray
 import ray.cluster_utils
-from ray.experimental.channel import ChannelContext
-from ray.experimental.channel.shared_memory_channel import Channel
 from ray.experimental.channel.conftest import (
     Barrier,
     start_nccl_mock,
@@ -28,7 +26,8 @@ logger = logging.getLogger(__name__)
 class Worker:
     def __init__(self):
         self.tensor_chan = None
-        self.traced_channels = {}
+        # Key -> a patched channel that we can use to record write ops.
+        self.traced_channels: Dict[str, TracedChannel] = {}
 
     def start_mock(self):
         """
@@ -40,10 +39,20 @@ class Worker:
         typ.register_custom_serializer()
         self.tensor_chan = tensor_chan
 
+    def create_traced_channel(self, key, readers):
+        self.traced_channels[key] = TracedChannel(
+            ray.get_runtime_context().current_actor, readers
+        )
+
+    def get_num_channel_ops(self, key):
+        ops = self.traced_channels[key].ops
+        self.traced_channels[key].ops = []
+        return len(ops)
+
     def create_nccl_channel(
         self,
         typ: TorchTensorType,
-        readers,
+        readers: List[ray.actor.ActorHandle],
         tensor_metadata_channel_key=None,
         non_tensor_data_channel_key=None,
     ):
@@ -87,16 +96,6 @@ class Worker:
         for key, t in tensor_dict.items():
             vals.append((key, t[0].clone(), t.shape, t.dtype))
         return vals
-
-    def create_traced_channel(self, key, readers):
-        self.traced_channels[key] = TracedChannel(
-            ray.get_runtime_context().current_actor, readers
-        )
-
-    def get_num_channel_ops(self, key):
-        ops = self.traced_channels[key].ops
-        self.traced_channels[key].ops = []
-        return len(ops)
 
 
 @pytest.mark.parametrize(
