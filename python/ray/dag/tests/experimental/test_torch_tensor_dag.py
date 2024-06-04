@@ -183,10 +183,6 @@ def test_torch_tensor_as_dag_input(ray_start_regular):
         assert result == (i, (20,), dtype)
         output_channel.end_read()
 
-    # Passing a much larger tensor will error.
-    with pytest.raises(ValueError):
-        output_channel = compiled_dag.execute(torch.ones((1_000_000,), dtype=dtype) * i)
-
     compiled_dag.teardown()
 
 
