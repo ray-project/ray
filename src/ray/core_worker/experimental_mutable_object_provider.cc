@@ -25,8 +25,9 @@ MutableObjectProvider::MutableObjectProvider(
     : plasma_(plasma), raylet_client_factory_(factory) {}
 
 MutableObjectProvider::~MutableObjectProvider() {
-  for (std::unique_ptr<instrumented_io_context> &io_context : io_contexts_) {
-    io_context->stop();
+  for (std::unique_ptr<boost::asio::executor_work_guard<
+           boost::asio::io_context::executor_type>> &io_work : io_works_) {
+    io_work->reset();
   }
   RAY_CHECK(object_manager_.SetErrorAll().code() == StatusCode::OK);
 
