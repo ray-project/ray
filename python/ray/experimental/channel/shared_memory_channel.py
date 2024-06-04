@@ -402,6 +402,11 @@ class MultiChannel(ChannelInterface):
         self._readers = readers
         self._local_channel = _local_channel
         self._remote_channel = _remote_channel
+        self._channels = []
+        if self._local_channel:
+            self._channels.append(self._local_channel)
+        if self._remote_channel:
+            self._channels.append(self._remote_channel)
 
         remote_readers = []
         for reader in self._readers:
@@ -410,24 +415,24 @@ class MultiChannel(ChannelInterface):
         # There are some local readers which are the same worker process as the writer.
         # Create a local channel for the writer and the local readers.
         if not self._local_channel and len(remote_readers) != len(self._readers):
-            self._local_channel = IntraProcessChannel(self._writer)
+            local_channel = IntraProcessChannel(self._writer)
+            self._local_channel = local_channel
+            self._channels.append(local_channel)
         # There are some remote readers which are not the same Ray actor as the writer.
         # Create a shared memory channel for the writer and the remote readers.
         if not self._remote_channel and len(remote_readers) != 0:
-            self._remote_channel = Channel(self._writer, remote_readers)
+            remote_channel = Channel(self._writer, remote_readers)
+            self._remote_channel = remote_channel
+            self._channels.append(remote_channel)
         assert hasattr(self, "_local_channel") or hasattr(self, "_remote_channel")
 
     def ensure_registered_as_writer(self) -> None:
-        if self._local_channel:
-            self._local_channel.ensure_registered_as_writer()
-        if self._remote_channel:
-            self._remote_channel.ensure_registered_as_writer()
+        for channel in self._channels:
+            channel.ensure_registered_as_writer()
 
     def ensure_registered_as_reader(self) -> None:
-        if self._local_channel:
-            self._local_channel.ensure_registered_as_reader()
-        if self._remote_channel:
-            self._remote_channel.ensure_registered_as_reader()
+        for channel in self._channels:
+            channel.ensure_registered_as_reader()
 
     def __reduce__(self):
         return MultiChannel, (
@@ -438,10 +443,8 @@ class MultiChannel(ChannelInterface):
         )
 
     def write(self, value: Any):
-        if self._local_channel:
-            self._local_channel.write(value)
-        if self._remote_channel:
-            self._remote_channel.write(value)
+        for channel in self._channels:
+            channel.write(value)
 
     def use_local_channel(self):
         current_actor_id = ray.get_runtime_context().get_actor_id()
@@ -462,7 +465,5 @@ class MultiChannel(ChannelInterface):
             self._remote_channel.end_read()
 
     def close(self) -> None:
-        if self._local_channel:
-            self._local_channel.close()
-        if self._remote_channel:
-            self._remote_channel.close()
+        for channel in self._channels:
+            channel.close()
