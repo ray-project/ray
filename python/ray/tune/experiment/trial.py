@@ -861,7 +861,7 @@ class Trial:
             elif criterion not in result:
                 if log_once("tune_trial_stop_criterion_not_found"):
                     logger.warning(
-                        f"Stopping criterion {criterion} not found in result dict. "
+                        f"Stopping criterion '{criterion}' not found in result dict! "
                         f"Available keys are {list(result.keys())}."
                     )
             elif result[criterion] >= stop_value:
