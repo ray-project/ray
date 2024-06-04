@@ -8,6 +8,7 @@ from ray.experimental.channel.common import ChannelInterface, ChannelOutputType
 from ray.experimental.channel.local_channel import IntraProcessChannel
 from ray.experimental.channel.torch_tensor_type import TorchTensorType
 from ray.util.annotations import PublicAPI
+import uuid
 
 # Logger for this module. It should be configured at the entry point
 # into the program using Ray. Ray provides a default configuration at
@@ -128,7 +129,7 @@ class SharedMemoryType(ChannelOutputType):
                     gpu_data_typ=self._contains_type,
                     cpu_data_typ=cpu_data_typ,
                 )
-
+        print("Create MultiChannel")
         return MultiChannel(writer, readers)
 
     def set_nccl_group_id(self, group_id: str) -> None:
@@ -155,6 +156,7 @@ class Channel(ChannelInterface):
         _reader_node_id: Optional["ray.NodeID"] = None,
         _writer_ref: Optional["ray.ObjectRef"] = None,
         _reader_ref: Optional["ray.ObjectRef"] = None,
+        _channel_id: Optional[str] = None,
     ):
         """
         Create a channel that can be read and written by co-located Ray processes.
@@ -173,6 +175,10 @@ class Channel(ChannelInterface):
         Returns:
             Channel: A wrapper around ray.ObjectRef.
         """
+        self.channel_id = _channel_id
+        if not self.channel_id:
+            self.channel_id = uuid.uuid4().hex
+
         is_creator = False
         assert len(readers) > 0
 
@@ -314,6 +320,7 @@ class Channel(ChannelInterface):
         reader_node_id,
         writer_ref: "ray.ObjectRef",
         reader_ref: "ray.ObjectRef",
+        channel_id: str,
     ) -> "Channel":
         chan = Channel(
             writer,
@@ -323,6 +330,7 @@ class Channel(ChannelInterface):
             _reader_node_id=reader_node_id,
             _writer_ref=writer_ref,
             _reader_ref=reader_ref,
+            _channel_id=channel_id,
         )
         return chan
 
@@ -336,6 +344,7 @@ class Channel(ChannelInterface):
             self._reader_node_id,
             self._writer_ref,
             self._reader_ref,
+            self.channel_id,
         )
 
     def write(self, value: Any):
@@ -389,8 +398,11 @@ class MultiChannel(ChannelInterface):
         self,
         writer: Optional[ray.actor.ActorHandle],
         readers: List[Optional[ray.actor.ActorHandle]],
+        _channel_id: Optional[str] = None,
         _local_channel: Optional[IntraProcessChannel] = None,
         _remote_channel: Optional[Channel] = None,
+        _channels: List[Channel] = [],
+        _deserialize: bool = False,
     ):
         """
         Can be used to send data to different readers via different channels.
@@ -402,11 +414,23 @@ class MultiChannel(ChannelInterface):
         self._readers = readers
         self._local_channel = _local_channel
         self._remote_channel = _remote_channel
-        self._channels = []
+        self._channels = _channels
+        self._channel_id = _channel_id
+        if not self._channel_id:
+            self._channel_id = uuid.uuid4().hex
+
+        local_channel_id = None
         if self._local_channel:
-            self._channels.append(self._local_channel)
+            local_channel_id = self._local_channel.channel_id
+        remote_channel_id = None
         if self._remote_channel:
-            self._channels.append(self._remote_channel)
+            remote_channel_id = self._remote_channel.channel_id
+        print("deserialize", _deserialize, "channel_id:", self._channel_id,
+              "local_channel", local_channel_id,
+              "remote_channel", remote_channel_id,
+              "channels:", [ch.channel_id for ch in self._channels])
+        if len(self._channels) != 0:
+            return
 
         remote_readers = []
         for reader in self._readers:
@@ -416,12 +440,14 @@ class MultiChannel(ChannelInterface):
         # Create a local channel for the writer and the local readers.
         if not self._local_channel and len(remote_readers) != len(self._readers):
             local_channel = IntraProcessChannel(self._writer)
+            print("Create local channel:", local_channel.channel_id)
             self._local_channel = local_channel
             self._channels.append(local_channel)
         # There are some remote readers which are not the same Ray actor as the writer.
         # Create a shared memory channel for the writer and the remote readers.
         if not self._remote_channel and len(remote_readers) != 0:
             remote_channel = Channel(self._writer, remote_readers)
+            print("Create remote channel:", remote_channel.channel_id)
             self._remote_channel = remote_channel
             self._channels.append(remote_channel)
         assert hasattr(self, "_local_channel") or hasattr(self, "_remote_channel")
@@ -438,8 +464,11 @@ class MultiChannel(ChannelInterface):
         return MultiChannel, (
             self._writer,
             self._readers,
+            self._channel_id,
             self._local_channel,
             self._remote_channel,
+            self._channels,
+            True,
         )
 
     def write(self, value: Any):

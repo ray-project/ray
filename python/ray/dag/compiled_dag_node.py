@@ -48,6 +48,7 @@ def do_allocate_channel(
     Returns:
         The allocated channel.
     """
+    print("do_allocate_channel")
     self_actor = None
     try:
         self_actor = ray.get_runtime_context().current_actor
@@ -543,6 +544,7 @@ class CompiledDAG:
                 type_hint.set_nccl_group_id(self._nccl_group_id)
 
             if isinstance(task.dag_node, ClassMethodNode):
+                print("ClassMethodNode")
                 readers = [self.idx_to_task[idx] for idx in task.downstream_node_idxs]
                 assert len(readers) == 1
 
@@ -582,6 +584,7 @@ class CompiledDAG:
                 self.actor_refs.add(actor_handle)
                 self.actor_to_tasks[actor_handle].append(task)
             elif isinstance(task.dag_node, InputNode):
+                print("InputNode")
                 readers = [self.idx_to_task[idx] for idx in task.downstream_node_idxs]
                 reader_handles = []
                 reader_handles_set = set()
