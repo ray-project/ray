@@ -1428,7 +1428,7 @@ void GcsActorManager::Initialize(const GcsInitData &gcs_init_data) {
   for (const auto &[actor_id, actor_table_data] : gcs_init_data.Actors()) {
     if (should_load_actor(actor_id, actor_table_data)) {
       // actor_task_specs[actor_id] exists when state() != DEAD
-      const auto &actor_task_spec = actor_task_specs.at(actor_id);
+      const auto &actor_task_spec = map_find_or_die(actor_task_specs, actor_id);
 
       auto actor = std::make_shared<GcsActor>(
           actor_table_data, actor_task_spec, actor_state_counter_);
@@ -1473,8 +1473,8 @@ void GcsActorManager::Initialize(const GcsInitData &gcs_init_data) {
     for (const auto &actor_id : dead_actors) {
       auto *actor = GetActor(actor_id);
       RAY_CHECK(actor != nullptr);
-      RAY_LOG(INFO) << "Destroying actor " << actor_id
-                    << " because it should be dead when GCS restarts.";
+      RAY_LOG(INFO).WithField(kLogKeyActorID, actor_id)
+          << "Destroying actor because it should be dead when GCS restarts.";
       if (actor->GetState() != rpc::ActorTableData::DEAD) {
         // destroy the actor
         DestroyActor(actor_id, GenActorOutOfScopeCause(actor));
