@@ -21,7 +21,7 @@ class TrainHead(dashboard_utils.DashboardHeadModule):
     @routes.get("/api/train/runs")
     @dashboard_optional_utils.init_ray_and_catch_exceptions()
     @DeveloperAPI
-    async def get_train_workers(self, req: Request) -> Response:
+    async def get_train_runs(self, req: Request) -> Response:
         from ray.dashboard.modules.train.schema import TrainRunsResponse
 
         stats_actor = await self.get_train_stats_actor()
@@ -58,10 +58,8 @@ class TrainHead(dashboard_utils.DashboardHeadModule):
         pass
 
     async def get_train_stats_actor(self):
-        """Gets the ServeController to the this cluster's Serve app.
-
-        return: If Serve is running on this Ray cluster, returns a client to
-            the Serve controller. If Serve is not running, returns None.
+        """
+        Gets the train stats actor and caches it as an instance variable.
         """
         try:
             from ray.train._internal.state.state_actor import get_state_actor

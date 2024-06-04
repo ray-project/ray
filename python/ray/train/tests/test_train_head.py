@@ -1,16 +1,17 @@
 import os
-import requests
 import sys
 import time
 
 import pytest
+import requests
+
 import ray
-from ray.train.torch import TorchTrainer
 from ray.train import RunConfig, ScalingConfig
+from ray.train.torch import TorchTrainer
 
 
-def test_get_train_runs(shutdown_only):
-    os.environ["RAY_TRAIN_ENABLE_STATE_TRACKING"] = "1"
+def test_get_train_runs(monkeypatch, shutdown_only):
+    monkeypatch.setenv("RAY_TRAIN_ENABLE_STATE_TRACKING", "1")
     try:
         ray.init(num_cpus=8)
 
@@ -48,4 +49,3 @@ if __name__ == "__main__":
         sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
     else:
         sys.exit(pytest.main(["-sv", __file__]))
-
