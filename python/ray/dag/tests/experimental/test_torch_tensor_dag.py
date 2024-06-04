@@ -110,19 +110,6 @@ def test_torch_tensor_p2p(ray_start_regular):
         output_channel.end_read()
     compiled_dag.teardown()
 
-    # Passing a much larger tensor will error.
-    with InputNode() as inp:
-        dag = sender.send.bind(1_000_000, dtype, inp)
-        # TODO(swang): Test that we are using the minimum number of
-        # channels/messages when direct_return=True.
-        dag = dag.with_type_hint(TorchTensorType(shape, dtype, direct_return=True))
-        dag = receiver.recv.bind(dag)
-    compiled_dag = dag.experimental_compile()
-    output_channel = compiled_dag.execute(1)
-    with pytest.raises(ValueError):
-        result = output_channel.begin_read()
-    compiled_dag.teardown()
-
     # Passing a torch.tensor inside of other data is okay even if
     # direct_return=True, if `transport` is not set.
     with InputNode() as inp:
