@@ -29,12 +29,6 @@ if [[ "$RAYCI_IS_GPU_BUILD" == "true" ]]; then
   pip install -Ur ./python/requirements/ml/dl-gpu-requirements.txt
 fi
 
-if [[ "$RAYCI_LIGHTNING_2" == "true" ]]; then
-  pip uninstall -y pytorch-lightning
-  # todo move to requirements-test.txt
-  pip install lightning==2.1.2 pytorch-lightning==2.1.2
-fi
-
 # Remove installed ray.
 pip uninstall -y ray
 

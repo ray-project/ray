@@ -1,3 +1,5 @@
+import sys
+
 import mars
 import mars.dataframe as md
 import pyarrow as pa
@@ -15,6 +17,9 @@ def ray_start_regular(request):  # pragma: no cover
         ray.shutdown()
 
 
+@pytest.mark.skipif(
+    sys.version_info >= (3, 12), reason="pymars is not yet supported for python 3.12+"
+)
 def test_mars(ray_start_regular):
     import pandas as pd
 
@@ -48,6 +53,9 @@ def test_mars(ray_start_regular):
     cluster.stop()
 
 
+@pytest.mark.skipif(
+    sys.version_info >= (3, 12), reason="pymars is not yet supported for python 3.12+"
+)
 def test_from_mars_e2e(ray_start_regular):
     import pandas as pd
 

@@ -95,19 +95,19 @@ compile_pip_dependencies() {
     "${WORKSPACE_DIR}/python/requirements.txt" \
     "${WORKSPACE_DIR}/python/requirements/lint-requirements.txt" \
     "${WORKSPACE_DIR}/python/requirements/test-requirements.txt" \
-    "${WORKSPACE_DIR}/python/requirements/anyscale-requirements.txt" \
+    "${WORKSPACE_DIR}/python/requirements/ml/dl-cpu-requirements.txt" \
     "${WORKSPACE_DIR}/python/requirements/docker/ray-docker-requirements.txt" \
     "${WORKSPACE_DIR}/python/requirements/ml/core-requirements.txt" \
     "${WORKSPACE_DIR}/python/requirements/ml/data-requirements.txt" \
     "${WORKSPACE_DIR}/python/requirements/ml/data-test-requirements.txt" \
-    "${WORKSPACE_DIR}/python/requirements/ml/dl-cpu-requirements.txt" \
-    "${WORKSPACE_DIR}/python/requirements/ml/rllib-requirements.txt" \
-    "${WORKSPACE_DIR}/python/requirements/ml/rllib-test-requirements.txt" \
     "${WORKSPACE_DIR}/python/requirements/ml/train-requirements.txt" \
     "${WORKSPACE_DIR}/python/requirements/ml/train-test-requirements.txt" \
     "${WORKSPACE_DIR}/python/requirements/ml/tune-requirements.txt" \
     "${WORKSPACE_DIR}/python/requirements/ml/tune-test-requirements.txt" \
-    "${WORKSPACE_DIR}/python/requirements/security-requirements.txt"
+    "${WORKSPACE_DIR}/python/requirements/ml/rllib-requirements.txt" \
+    "${WORKSPACE_DIR}/python/requirements/ml/rllib-test-requirements.txt" \
+    "${WORKSPACE_DIR}/python/requirements/security-requirements.txt" \
+    "${WORKSPACE_DIR}/python/requirements/anyscale-requirements.txt"
 
   # Remove some pins from upstream dependencies:
   # ray, xgboost-ray, lightgbm-ray, tune-sklearn

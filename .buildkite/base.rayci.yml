@@ -44,6 +44,7 @@ steps:
     wanda: ci/docker/base.ml.wanda.yaml
     matrix:
       - "3.10"
+      - "3.11"
     env:
       PYTHON: "{{matrix}}"
     depends_on: oss-ci-base_test-multipy

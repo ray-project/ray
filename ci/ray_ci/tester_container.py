@@ -110,6 +110,7 @@ class TesterContainer(Container):
             for i in range(len(chunks))
         ]
         exits = [run.wait() for run in runs]
+        TesterContainer.print_test_result(team, bazel_log_dir_container)
         self._persist_test_results(team, bazel_log_dir_container, is_bisect_run)
         self._cleanup_bazel_log_mount(bazel_log_dir_container)
 
@@ -152,6 +153,11 @@ class TesterContainer(Container):
                 bazel_log_dir,
             ]
         )
+
+    @classmethod
+    def print_test_result(cls, team: str, bazel_log_dir: str) -> None:
+        for test, result in cls.get_test_and_results(team, bazel_log_dir):
+            logger.info(f"Test {test.get_name()} run status is {result.status}")
 
     @classmethod
     def upload_test_results(cls, team: str, bazel_log_dir: str) -> None:

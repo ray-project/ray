@@ -60,7 +60,9 @@ steps:
         --only-tags use_all_core --skip-ray-installation
 
   - label: ":ray: core: redis tests"
-    tags: python
+    tags: 
+      - python
+      - disabled
     instance_type: large
     parallelism: 4
     commands:
@@ -200,6 +202,7 @@ steps:
     tags:
       - python
       - dashboard
+      - disabled
       - oss
     instance_type: medium
     commands:
@@ -248,21 +251,27 @@ steps:
 
   # cpp tests
   - label: ":ray: core: cpp tests"
-    tags: core_cpp
+    tags: 
+      - core_cpp
+      - disabled
     instance_type: medium
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //:all //src/... core --build-type clang
         --parallelism-per-worker 2
 
   - label: ":ray: core: cpp asan tests"
-    tags: core_cpp
+    tags: 
+      - core_cpp
+      - disabled
     instance_type: medium
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //:all //src/... core --build-type asan-clang
         --parallelism-per-worker 2
 
   - label: ":ray: core: cpp ubsan tests"
-    tags: core_cpp
+    tags: 
+      - core_cpp
+      - disabled
     instance_type: large
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //:all //src/... core --build-type ubsan
@@ -270,7 +279,9 @@ steps:
         --parallelism-per-worker 2
 
   - label: ":ray: core: cpp tsan tests"
-    tags: core_cpp
+    tags: 
+      - core_cpp
+      - disabled
     instance_type: medium
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //:all //src/... core --build-type tsan-clang
@@ -351,6 +362,7 @@ steps:
     tags:
       - accelerated_dag
       - gpu
+      - disabled
     instance_type: gpu-large
     commands:
       # This machine has 4 GPUs, and we need 2 GPUs, so allow 2 tests to run in

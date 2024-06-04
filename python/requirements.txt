@@ -24,7 +24,8 @@ grpcio == 1.54.2; sys_platform == "darwin"
 grpcio >= 1.54.2; sys_platform != "darwin"
 numpy>=1.20
 
-pyarrow >= 6.0.1
+pyarrow >= 6.0.1; python_version < "3.12"
+pyarrow >= 14.0.0; python_version >= "3.12"
 
 # ray[all]
 smart_open
@@ -47,8 +48,10 @@ uvicorn
 scikit-image==0.21.0
 prometheus_client>=0.7.1
 pandas
+aiohttp>=3.7,<3.9; python_version < "3.12"
+aiohttp>=3.9; python_version >= "3.12"
 tensorboardX
-aiohttp>=3.7,<3.9
+aiohttp
 starlette
 typer
 fsspec
