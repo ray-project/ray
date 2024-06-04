@@ -84,8 +84,6 @@ def test_torch_tensor_p2p(ray_start_regular):
         assert result == (i, shape, dtype)
         output_channel.end_read()
 
-    compiled_dag.teardown()
-
     # Passing tensors of different sizes is okay.
     output_channel = compiled_dag.execute(i, shape=(20, ), dtype=dtype)
     result = output_channel.begin_read()
