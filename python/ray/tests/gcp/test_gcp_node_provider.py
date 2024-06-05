@@ -233,7 +233,10 @@ def test_tpu_resource_returns_tpu_command_runner(test_case):
         ({"acceleratorType": "v3-8"}, "TPU-v3-8-head"),
         ({"acceleratorConfig": {"type": "V4", "topology": "2x2x2"}}, "TPU-v4-16-head"),
         ({"acceleratorConfig": {"type": "V4", "topology": "4x4x4"}}, "TPU-v4-128-head"),
-        ({"acceleratorConfig": {"type": "V5LITE_POD", "topology": "2x4"}}, "TPU-v5litepod-8-head"),
+        (
+            {"acceleratorConfig": {"type": "V5LITE_POD", "topology": "2x4"}},
+            "TPU-v5litepod-8-head"
+        ),
     ],
 )
 def test_tpu_node_fillout(test_case):

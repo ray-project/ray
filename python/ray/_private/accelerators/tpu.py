@@ -170,7 +170,9 @@ class TPUAcceleratorManager(AcceleratorManager):
             return
 
         num_visible_tpu_chips = len(visible_tpu_chips)
-        num_accelerators_on_node = TPUAcceleratorManager.get_current_node_num_accelerators()
+        num_accelerators_on_node = (
+            TPUAcceleratorManager.get_current_node_num_accelerators()
+        )
         if num_visible_tpu_chips == num_accelerators_on_node:
             # Let the ML framework use the defaults
             os.environ.pop(TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR, None)

@@ -167,7 +167,9 @@ def _is_single_host_tpu(node: dict) -> bool:
         accelerator_type = node["acceleratorType"]
     else:
         accelerator_type = tpu_accelerator_config_to_type(node["acceleratorConfig"])
-    return _get_num_tpu_chips(node) == _get_num_tpu_visible_chips_per_host(accelerator_type)
+    return _get_num_tpu_chips(node) == _get_num_tpu_visible_chips_per_host(
+        accelerator_type
+    )
 
 
 def get_node_type(node: dict) -> GCPNodeType:
