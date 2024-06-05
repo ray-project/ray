@@ -1,5 +1,8 @@
 package io.ray.serve.deployment;
 
+import io.ray.api.ObjectRef;
+import io.ray.api.Ray;
+import io.ray.api.function.PyFunction;
 import io.ray.serve.BaseServeTest;
 import io.ray.serve.api.Serve;
 import io.ray.serve.generated.DeploymentLanguage;
@@ -47,15 +50,30 @@ public class CrossLanguageDeploymentTest extends BaseServeTest {
   @Test
   public void createPyClassTest() {
     Application deployment =
+      Serve.deployment()
+        .setLanguage(DeploymentLanguage.PYTHON)
+        .setName("createPyClassTest")
+        .setDeploymentDef(PYTHON_MODULE + ".Counter")
+        .setNumReplicas(1)
+        .bind("28");
+
+    DeploymentHandle handle = Serve.run(deployment).get();
+    Assert.assertEquals(handle.method("increase").remote("6").result(), "34");
+  }
+
+  @Test
+  public void createPyClassWithObjectRefTest() {
+    Application deployment =
         Serve.deployment()
             .setLanguage(DeploymentLanguage.PYTHON)
-            .setName("createPyClassTest")
+            .setName("createPyClassWithObjectRefTest")
             .setDeploymentDef(PYTHON_MODULE + ".Counter")
             .setNumReplicas(1)
             .bind("28");
 
     DeploymentHandle handle = Serve.run(deployment).get();
-    Assert.assertEquals(handle.method("increase").remote("6").result(), "34");
+    ObjectRef<Integer> numRef = Ray.put(10);
+    Assert.assertEquals(handle.method("increase").remote(numRef).result(), "38");
   }
 
   @Test
