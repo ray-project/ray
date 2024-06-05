@@ -27,8 +27,6 @@ steps:
           - "3.10"
           - "3.11"
         cuda:
-          - "11.5.2"
-          - "11.6.2"
           - "11.7.1"
           - "11.8.0"
           - "12.1.1"
@@ -78,8 +76,7 @@ steps:
     instance_type: medium-arm64
     commands:
       - bazel run //ci/ray_ci:build_in_docker -- docker --python-version {{matrix}}
-        --platform cu11.5.2 --platform cu11.6.2 --platform cu11.7.1
-        --platform cu11.8.0 --platform cu12.1.1 --platform cpu
+        --platform cu11.7.1 --platform cu11.8.0 --platform cu12.1.1 --platform cpu
         --image-type ray
         --architecture aarch64
         --upload

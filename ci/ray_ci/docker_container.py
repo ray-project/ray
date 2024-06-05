@@ -9,8 +9,6 @@ from ci.ray_ci.builder_container import DEFAULT_ARCHITECTURE, DEFAULT_PYTHON_VER
 
 PLATFORMS_RAY = [
     "cpu",
-    "cu11.5.2",
-    "cu11.6.2",
     "cu11.7.1",
     "cu11.8.0",
     "cu12.1.1",
