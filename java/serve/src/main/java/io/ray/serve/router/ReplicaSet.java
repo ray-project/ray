@@ -12,12 +12,10 @@ import io.ray.serve.exception.RayServeException;
 import io.ray.serve.generated.ActorNameList;
 import io.ray.serve.replica.RayServeWrappedReplica;
 import io.ray.serve.util.CollectionUtil;
-
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Stream;
-
 import org.apache.commons.lang3.RandomUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -106,14 +104,13 @@ public class ReplicaSet { // TODO ReplicaScheduler
         handles.get(randomIndex); // TODO controll concurrency using maxConcurrentQueries
     LOGGER.debug("Assigned query {} to replica {}.", query.getMetadata().getRequestId(), replica);
     if (replica instanceof PyActorHandle) {
-      Object[] args = Stream.concat(
-          Stream.of(query.getMetadata().toByteArray()),
-          Arrays.stream((Object[]) query.getArgs()))
-        .toArray();
+      Object[] args =
+          Stream.concat(
+                  Stream.of(query.getMetadata().toByteArray()),
+                  Arrays.stream((Object[]) query.getArgs()))
+              .toArray();
       return ((PyActorHandle) replica)
-          .task(
-            PyActorMethod.of("handle_request_from_java"),
-            args)
+          .task(PyActorMethod.of("handle_request_from_java"), args)
           .remote();
     } else {
       return ((ActorHandle<RayServeWrappedReplica>) replica)
