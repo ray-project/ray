@@ -2585,6 +2585,20 @@ def maybe_initialize_job_config():
         print(job_id_magic_token, end="")
         print(job_id_magic_token, file=sys.stderr, end="")
 
+        # Configure worker process's Python logging.
+        log_config_dict = {}
+        serialized_py_logging_config = \
+            core_worker.get_job_config().serialized_py_logging_config
+        if serialized_py_logging_config:
+            logging_config = pickle.loads(serialized_py_logging_config)
+            log_config_dict = logging_config._get_dict_config()
+        if log_config_dict:
+            try:
+                logging.config.dictConfig(log_config_dict)
+            except Exception as e:
+                backtrace = \
+                    "".join(traceback.format_exception(type(e), e, e.__traceback__))
+                core_worker.drain_and_exit_worker("user", backtrace)
         job_config_initialized = True
 
 
@@ -3391,7 +3405,7 @@ cdef class CoreWorker:
 
         if exit_type == "user":
             c_exit_type = WORKER_EXIT_TYPE_USER_ERROR
-        if exit_type == "system":
+        elif exit_type == "system":
             c_exit_type = WORKER_EXIT_TYPE_SYSTEM_ERROR
         elif exit_type == "intentional_system_exit":
             c_exit_type = WORKER_EXIT_TYPE_INTENTIONAL_SYSTEM_ERROR
