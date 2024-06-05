@@ -27,7 +27,6 @@ from ray.data.datasource.file_meta_provider import (
     _get_file_infos_parallel,
     _get_file_infos_serial,
 )
-from ray.data.datasource.parquet_datasource import _ParquetFileFragmentMetaData
 from ray.data.datasource.path_util import (
     _resolve_paths_and_filesystem,
     _unwrap_protocol,
@@ -105,8 +104,7 @@ def test_default_parquet_metadata_provider(fs, data_path):
 
     meta_provider = ParquetMetadataProvider()
     pq_ds = pq.ParquetDataset(paths, filesystem=fs, use_legacy_dataset=False)
-    file_metas = meta_provider.prefetch_file_metadata(pq_ds.fragments)
-    fragment_file_metas = [_ParquetFileFragmentMetaData(m) for m in file_metas]
+    fragment_file_metas = meta_provider.prefetch_file_metadata(pq_ds.fragments)
 
     meta = meta_provider(
         [p.path for p in pq_ds.fragments],
@@ -114,7 +112,9 @@ def test_default_parquet_metadata_provider(fs, data_path):
         num_fragments=len(pq_ds.fragments),
         prefetched_metadata=fragment_file_metas,
     )
-    expected_meta_size_bytes = _get_parquet_file_meta_size_bytes(file_metas)
+    expected_meta_size_bytes = _get_parquet_file_meta_size_bytes(
+        [f.metadata for f in pq_ds.fragments]
+    )
     assert meta.size_bytes == expected_meta_size_bytes
     assert meta.num_rows == 6
     assert len(paths) == 2
