@@ -1,9 +1,12 @@
 from dataclasses import dataclass
-from typing import Optional, Tuple, Union
+from typing import Optional, Tuple, Type, Union
 
 from ray.train import RunConfig as RunConfigV1
 from ray.train import ScalingConfig as ScalingConfigV1
+
 from ray.train.v2.scaling_policy import FixedScalingPolicy, ScalingPolicy
+from ray.train.v2.worker_group.worker_group import WorkerGroup
+
 
 _UNSUPPORTED_STR = "UNSUPPORTED"
 
@@ -11,7 +14,10 @@ _UNSUPPORTED_STR = "UNSUPPORTED"
 @dataclass
 class ScalingConfig(ScalingConfigV1):
     num_workers: Union[int, Tuple[int, int]]
-    scaling_policy_cls: ScalingPolicy = FixedScalingPolicy
+    scaling_policy_cls: Type[ScalingPolicy] = FixedScalingPolicy
+    worker_group_cls: Type[WorkerGroup] = WorkerGroup  # TODO
+    health_check_interval_s: float = 1.0
+
     trainer_resources: Optional[dict] = _UNSUPPORTED_STR
 
     @property
