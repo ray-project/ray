@@ -265,7 +265,7 @@ html_theme = "pydata_sphinx_theme"
 # documentation.
 html_theme_options = {
     "use_edit_page_button": True,
-    "announcement": None,
+    "announcement": """<b><a target="_blank" href="https://raysummit.anyscale.com/flow/anyscale/raysummit2024/landing/page/eventsite?utm_source=vLLMdocs6_4">Register Now</a></b> for Ray Summit 2024! Get your early bird pass by June 27 to save $100.""",
     "logo": {
         "svg": render_svg_logo("_static/img/ray_logo.svg"),
     },
