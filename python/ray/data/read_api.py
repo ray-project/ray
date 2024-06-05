@@ -769,7 +769,7 @@ def read_parquet(
         files.
     """
     if meta_provider is None:
-        meta_provider = get_parquet_metadata_provider()
+        meta_provider = get_parquet_metadata_provider(override_num_blocks)
     arrow_parquet_args = _resolve_parquet_args(
         tensor_column_schema,
         **arrow_parquet_args,
