@@ -87,6 +87,8 @@ class TorchTensorType(ChannelOutputType):
         self._static_shape = static_shape
         self._static_non_tensor_data = static_non_tensor_data
 
+        if transport is None:
+            transport = self.AUTO
         if transport not in [self.AUTO, self.NCCL]:
             raise ValueError(
                 "`transport` must be TorchTensorType.AUTO or TorchTensorType.NCCL"

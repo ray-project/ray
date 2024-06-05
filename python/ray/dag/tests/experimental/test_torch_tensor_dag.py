@@ -3,7 +3,6 @@ import logging
 import os
 import sys
 import torch
-import time
 
 import pytest
 
@@ -85,14 +84,14 @@ def test_torch_tensor_p2p(ray_start_regular):
         output_channel.end_read()
 
     # Passing tensors of different sizes is okay.
-    output_channel = compiled_dag.execute(i, shape=(20, ), dtype=dtype)
+    output_channel = compiled_dag.execute(i, shape=(20,), dtype=dtype)
     result = output_channel.begin_read()
-    assert result == (i, (20, ), dtype)
+    assert result == (i, (20,), dtype)
     output_channel.end_read()
 
-    output_channel = compiled_dag.execute(i, shape=(5, ), dtype=dtype)
+    output_channel = compiled_dag.execute(i, shape=(5,), dtype=dtype)
     result = output_channel.begin_read()
-    assert result == (i, (5, ), dtype)
+    assert result == (i, (5,), dtype)
     output_channel.end_read()
 
     compiled_dag.teardown()
@@ -128,12 +127,12 @@ def test_torch_tensor_as_dag_input(ray_start_regular):
     # Passing tensors of different sizes is okay.
     output_channel = compiled_dag.execute(torch.ones((20,), dtype=dtype) * i)
     result = output_channel.begin_read()
-    assert result == (i, (20, ), dtype)
+    assert result == (i, (20,), dtype)
     output_channel.end_read()
 
     output_channel = compiled_dag.execute(torch.ones((5,), dtype=dtype) * i)
     result = output_channel.begin_read()
-    assert result == (i, (5, ), dtype)
+    assert result == (i, (5,), dtype)
     output_channel.end_read()
 
     compiled_dag.teardown()
@@ -166,7 +165,7 @@ def test_torch_tensor_nccl(ray_start_regular):
 
     # Test that we can pass different shapes and data.
     for i in range(3):
-        shape = (10 * (i + 1), )
+        shape = (10 * (i + 1),)
         output_channel = compiled_dag.execute(i, shape=shape, dtype=dtype)
         # TODO(swang): Replace with fake ObjectRef.
         result = output_channel.begin_read()
@@ -185,7 +184,7 @@ def test_torch_tensor_nccl(ray_start_regular):
 
     # Test that we can pass different shapes and data.
     for i in range(3):
-        shape = (10 * (i + 1), )
+        shape = (10 * (i + 1),)
         output_channel = compiled_dag.execute(i, shape=shape, dtype=dtype)
         # TODO(swang): Replace with fake ObjectRef.
         result = output_channel.begin_read()
@@ -242,7 +241,7 @@ def test_torch_tensor_nccl_disallows_driver(ray_start_regular):
             "participate in the NCCL group"
         ),
     ):
-        compiled_dag = dag.experimental_compile()
+        dag.experimental_compile()
 
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
@@ -267,7 +266,7 @@ def test_torch_tensor_nccl_static_shape(ray_start_regular):
     compiled_dag = dag.experimental_compile()
 
     # Test that the DAG works as long as we send the same shape.
-    shape = (10, )
+    shape = (10,)
     dtype = torch.float16
     for i in range(3):
         output_channel = compiled_dag.execute(i, shape=shape, dtype=dtype)
@@ -296,8 +295,7 @@ def test_torch_tensor_nccl_static_non_tensor_data(ray_start_regular):
     with InputNode() as inp:
         dag = sender.send_dict.bind(inp.shape, inp.dtype, inp.value)
         dag = dag.with_type_hint(
-            TorchTensorType(transport="nccl",
-                static_non_tensor_data=True)
+            TorchTensorType(transport="nccl", static_non_tensor_data=True)
         )
         dag = receiver.recv_dict.bind(dag)
 
@@ -333,15 +331,17 @@ def test_torch_tensor_nccl_static_shape_and_non_tensor_data(ray_start_regular):
     with InputNode() as inp:
         dag = sender.send.bind(inp.shape, inp.dtype, inp.value)
         dag = dag.with_type_hint(
-            TorchTensorType(transport="nccl",
+            TorchTensorType(
+                transport="nccl",
                 static_shape=True,
-                static_non_tensor_data=True,)
+                static_non_tensor_data=True,
+            )
         )
         dag = receiver.recv.bind(dag)
 
     compiled_dag = dag.experimental_compile()
 
-    shape = (10, )
+    shape = (10,)
     dtype = torch.float16
 
     for i in range(3):
@@ -352,7 +352,6 @@ def test_torch_tensor_nccl_static_shape_and_non_tensor_data(ray_start_regular):
         output_channel.end_read()
 
     compiled_dag.teardown()
-
 
 
 if __name__ == "__main__":

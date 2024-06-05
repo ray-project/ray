@@ -598,7 +598,10 @@ class CompiledDAG:
         # the NCCL group on the participating actors.
         nccl_actors = list(nccl_actors)
         if None in nccl_actors:
-            raise ValueError("Outputs cannot be transferred via NCCL because the driver cannot participate in the NCCL group")
+            raise ValueError(
+                "Outputs cannot be transferred via NCCL because the driver "
+                "cannot participate in the NCCL group"
+            )
         if nccl_actors and self._nccl_group_id is None:
             self._nccl_group_id = _init_nccl_group(nccl_actors)
 
