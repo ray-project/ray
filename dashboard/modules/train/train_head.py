@@ -22,7 +22,18 @@ class TrainHead(dashboard_utils.DashboardHeadModule):
     @dashboard_optional_utils.init_ray_and_catch_exceptions()
     @DeveloperAPI
     async def get_train_runs(self, req: Request) -> Response:
-        from ray.dashboard.modules.train.api.schema import TrainRunsResponse
+        try:
+            from ray.train._internal.state.schema import (
+                TrainRunsResponse,
+            )
+        except ImportError:
+            logger.exception(
+                "Train is not installed. Please run `pip install ray[train]` when setting up Ray on your cluster."
+            )
+            return Response(
+                status=500,
+                text="Train is not installed. Please run `pip install ray[train]` when setting up Ray on your cluster.",
+            )
 
         stats_actor = await self.get_train_stats_actor()
 
@@ -68,7 +79,7 @@ class TrainHead(dashboard_utils.DashboardHeadModule):
                 self._train_stats_actor = get_state_actor()
 
             return self._train_stats_actor
-        except ModuleNotFoundError:
+        except ImportError:
             logger.exception(
-                "Train is not installed. Please run `pip install ray[train]`."
+                "Train is not installed. Please run `pip install ray[train]` when setting up Ray on your cluster."
             )

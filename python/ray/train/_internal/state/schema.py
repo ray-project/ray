@@ -45,3 +45,7 @@ class TrainRunInfo(BaseModel):
     datasets: List[TrainDatasetInfo] = Field(
         description="A List of dataset info for this Train run."
     )
+
+@DeveloperAPI
+class TrainRunsResponse(BaseModel):
+    train_runs: List[TrainRunInfo]
