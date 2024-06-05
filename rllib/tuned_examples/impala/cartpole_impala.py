@@ -22,7 +22,7 @@ config = (
         train_batch_size_per_learner=500,
         grad_clip=40.0,
         grad_clip_by="global_norm",
-        lr=0.0005 * (args.num_gpus**0.5),
+        lr=0.0005 * ((args.num_gpus or 1) ** 0.5),
         vf_loss_coeff=0.05,
         entropy_coeff=0.0,
     )
@@ -36,7 +36,7 @@ config = (
 
 stop = {
     f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": 450.0,
-    #NUM_ENV_STEPS_SAMPLED_LIFETIME: 2000000,
+    NUM_ENV_STEPS_SAMPLED_LIFETIME: 2000000,
 }
 
 

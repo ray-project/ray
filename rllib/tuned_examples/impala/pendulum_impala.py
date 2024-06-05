@@ -19,16 +19,17 @@ config = (
     .env_runners(num_envs_per_env_runner=5)
     .environment("Pendulum-v1")
     .training(
-        train_batch_size_per_learner=1024,
+        train_batch_size_per_learner=256,
         grad_clip=40.0,
         grad_clip_by="global_norm",
-        lr=0.0003 * (args.num_gpus ** 0.5),
+        lr=0.0003 * ((args.num_gpus or 1) ** 0.5),
         vf_loss_coeff=0.05,
         entropy_coeff=[[0, 0.1], [2000000, 0.0]],
     )
     .rl_module(
         model_config_dict={
-            # "vf_share_layers": True,
+            "vf_share_layers": True,
+            "fcnet_hiddens": [512, 512],
             "uses_new_env_runners": True,
         },
     )

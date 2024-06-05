@@ -3152,8 +3152,8 @@ class Algorithm(Trainable, AlgorithmBase):
             if self.config.get("framework") == "tf2" and not tf.executing_eagerly():
                 tf1.enable_eager_execution()
 
-            results = {}
-            training_step_results = {}
+            results = None
+            training_step_results = None
             # Create a step context ...
             with TrainIterCtx(algo=self) as train_iter_ctx:
                 # .. so we can query it whether we should stop the iteration loop (e.g.
