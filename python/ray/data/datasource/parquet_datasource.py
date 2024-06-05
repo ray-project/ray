@@ -546,7 +546,6 @@ def _read_fragments(
     assert len(fragments) > 0
 
     import pyarrow as pa
-    from pyarrow.dataset import _get_partition_keys
 
     logger.debug(f"Reading {len(fragments)} parquet fragments")
     use_threads = to_batches_kwargs.pop("use_threads", False)
