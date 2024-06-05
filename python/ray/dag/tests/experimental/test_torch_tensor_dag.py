@@ -227,7 +227,7 @@ def test_torch_tensor_nccl_disallows_driver(ray_start_regular):
             "via NCCL because the driver cannot participate in the NCCL group"
         ),
     ):
-        compiled_dag = dag.experimental_compile()
+        dag.experimental_compile()
 
     # Test that OutputNode cannot cannot participate in the NCCL group.
     with InputNode() as inp:
