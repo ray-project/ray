@@ -1337,7 +1337,7 @@ def init(
             "configure_logging" is true.
         logging_config: [Experimental] Logging configuration will be applied to the
             root loggers for both the driver process and all worker processes belonging
-            to the current job. See :class:`~LoggingConfig` for details.
+            to the current job. See :class:`~ray.LoggingConfig` for details.
         log_to_driver: If true, the output from all of the worker
             processes on all nodes will be directed to the driver.
         namespace: A namespace is a logical grouping of jobs and named actors.
