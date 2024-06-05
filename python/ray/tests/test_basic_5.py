@@ -192,7 +192,7 @@ assert r'{str(package_folder)}' not in remote_sys_path, remote_sys_path
 """
     )
     monkeypatch.chdir(str(tmp_path))
-    subprocess.check_call([sys.executable, "-m", "package.module2"])
+    subprocess.check_call([sys.executable, "-m", "package.module2"], env=env)
 
 
 def test_worker_kv_calls(monkeypatch, shutdown_only):
