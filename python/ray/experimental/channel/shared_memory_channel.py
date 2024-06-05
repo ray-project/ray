@@ -1,11 +1,10 @@
 import io
 import logging
-from typing import Any, List, Optional, Union
+from typing import Any, List, Optional, Tuple, Union
 
 import ray
 from ray._raylet import SerializedObject
 from ray.experimental.channel.common import ChannelInterface, ChannelOutputType
-from ray.experimental.channel.torch_tensor_type import TorchTensorType
 from ray.util.annotations import PublicAPI
 
 # Logger for this module. It should be configured at the entry point
@@ -81,7 +80,7 @@ def _create_channel_ref(
 
 
 class SharedMemoryType(ChannelOutputType):
-    def __init__(self, buffer_size_bytes: int):
+    def __init__(self, buffer_size_bytes: int = None):
         """
         Args:
             buffer_size_bytes: The number of bytes to allocate for the object data and
@@ -89,6 +88,8 @@ class SharedMemoryType(ChannelOutputType):
                 metadata less than or equal to this value.
         """
         super().__init__()
+        if buffer_size_bytes is None:
+            buffer_size_bytes = DEFAULT_MAX_BUFFER_SIZE
         self.buffer_size_bytes = buffer_size_bytes
 
     def create_channel(
@@ -108,34 +109,7 @@ class SharedMemoryType(ChannelOutputType):
             A ChannelInterface that can be used to pass data
                 of this type.
         """
-        if self._contains_type is not None:
-            assert isinstance(
-                self._contains_type, TorchTensorType
-            ), "_contains_type must be of type TorchTensorType"
-
-            from ray.experimental.channel.torch_tensor_nccl_channel import (
-                NestedTorchTensorNcclChannel,
-            )
-
-            if self._contains_type.requires_nccl():
-                cpu_data_typ = SharedMemoryType(
-                    buffer_size_bytes=self.buffer_size_bytes
-                )
-                return NestedTorchTensorNcclChannel(
-                    writer,
-                    readers,
-                    gpu_data_typ=self._contains_type,
-                    cpu_data_typ=cpu_data_typ,
-                )
-
         return Channel(writer, readers)
-
-    def set_nccl_group_id(self, group_id: str) -> None:
-        assert self.requires_nccl()
-
-        # Shared memory channels don't need NCCL but they can
-        # contain objects that use NCCL.
-        self._contains_type.set_nccl_group_id(group_id)
 
 
 @PublicAPI(stability="alpha")
@@ -363,9 +337,19 @@ class Channel(ChannelInterface):
             self._num_readers,
         )
 
-    def begin_read(self) -> Any:
+    def begin_read(self, deserialize=True) -> Any:
         self.ensure_registered_as_reader()
-        return ray.get(self._reader_ref)
+        if deserialize:
+            return ray.get(self._reader_ref)
+
+        # Return raw data that can be deserialized using
+        # ray._private.worker.global_worker.
+        data_metadata_pairs: List[
+            Tuple[ray._raylet.Buffer, bytes]
+        ] = self._worker.core_worker.get_objects(
+            [self._reader_ref], self._worker.current_task_id, timeout_ms=-1
+        )
+        return (data_metadata_pairs, [self._reader_ref])
 
     def end_read(self):
         self.ensure_registered_as_reader()

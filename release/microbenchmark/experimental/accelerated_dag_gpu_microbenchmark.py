@@ -102,7 +102,13 @@ class NcclWorker:
 
 
 def exec_ray_dag(
-    label, sender, receiver, use_nccl=False, use_adag=True, dynamic_shape=False
+    label,
+    sender,
+    receiver,
+    use_nccl=False,
+    use_adag=True,
+    static_shape=False,
+    static_non_tensor_data=False,
 ):
     # Test torch.Tensor sent between actors.
     with InputNode() as inp:
@@ -111,8 +117,8 @@ def exec_ray_dag(
         if use_adag:
             dag = dag.with_type_hint(
                 TorchTensorType(
-                    "auto" if dynamic_shape else SHAPE,
-                    "auto" if dynamic_shape else DTYPE,
+                    static_shape=static_shape,
+                    static_non_tensor_data=static_non_tensor_data,
                     transport="nccl" if use_nccl else None,
                 )
             )
@@ -296,16 +302,21 @@ def exec_ray_dag_gpu_cpu_gpu():
     return exec_ray_dag("exec_ray_dag_gpu_cpu_gpu", sender, receiver)
 
 
-def exec_ray_dag_gpu_nccl(dynamic_shape: bool = False):
+def exec_ray_dag_gpu_nccl(
+    static_shape: bool = False, static_non_tensor_data: bool = False
+):
     time.sleep(1)
     sender = TorchTensorWorker.options(num_gpus=1).remote()
     receiver = TorchTensorWorker.options(num_gpus=1).remote()
     return exec_ray_dag(
-        "exec_ray_dag_gpu_nccl" + ("_dynamic" if dynamic_shape else ""),
+        "exec_ray_dag_gpu_nccl"
+        + ("_static_shape" if static_shape else "")
+        + ("_static_non_tensor_data" if static_non_tensor_data else ""),
         sender,
         receiver,
         use_nccl=True,
-        dynamic_shape=dynamic_shape,
+        static_shape=static_shape,
+        static_non_tensor_data=static_non_tensor_data,
     )
 
 
@@ -343,8 +354,10 @@ def main():
     results += exec_ray_dag_cpu()
     results += exec_ray_core_gpu()
     results += exec_ray_dag_gpu_cpu_gpu()
-    results += exec_ray_dag_gpu_nccl(dynamic_shape=True)
-    results += exec_ray_dag_gpu_nccl(dynamic_shape=False)
+    results += exec_ray_dag_gpu_nccl(static_shape=True, static_non_tensor_data=False)
+    results += exec_ray_dag_gpu_nccl(static_shape=False, static_non_tensor_data=False)
+    results += exec_ray_dag_gpu_nccl(static_shape=True, static_non_tensor_data=True)
+    results += exec_ray_dag_gpu_nccl(static_shape=False, static_non_tensor_data=True)
 
 
 if __name__ == "__main__":

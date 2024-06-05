@@ -113,6 +113,26 @@ def start_nccl_mock():
     tensor_patcher.start()
     tensor_patcher = mock.patch("torch.Tensor.is_cuda", True)
     tensor_patcher.start()
+    tensor_allocator_patcher = mock.patch(
+        "ray.experimental.channel.torch_tensor_nccl_channel._torch_zeros_allocator",
+        lambda meta: torch.zeros(meta.shape, dtype=meta.dtype),
+    )
+    tensor_allocator_patcher.start()
 
     ctx = ray_channel.ChannelContext.get_current()
     ctx.set_torch_device(torch.device("cuda"))
+
+
+class TracedChannel(ray_channel.shared_memory_channel.Channel):
+    """
+    Patched Channel that records all write ops for testing.
+    """
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        self.ops = []
+
+    def write(self, *args, **kwargs):
+        self.ops.append((args, kwargs))
+        return super().write(*args, **kwargs)
