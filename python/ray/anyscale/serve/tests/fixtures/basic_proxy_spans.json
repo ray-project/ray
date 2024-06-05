@@ -1,0 +1,47 @@
+[
+   {
+      "name":"proxy_route_to_replica",
+      "kind":"SpanKind.SERVER",
+      "status":{
+         "status_code":"OK"
+      },
+      "attributes":{
+         "request_id":"",
+         "deployment":"BasicModel",
+         "app":"default",
+         "call_method":"__call__",
+         "route":"/",
+         "multiplexed_model_id":"",
+         "is_streaming":true,
+         "is_http_request":true,
+         "is_grpc_request":false
+      },
+      "events":[
+         
+      ],
+      "links":[
+         
+      ]
+   },
+   {
+      "name":"proxy_http_request",
+      "kind":"SpanKind.SERVER",
+      "status":{
+         "status_code":"OK"
+      },
+      "attributes":{
+         "request_id":"",
+         "deployment":"BasicModel",
+         "app":"default",
+         "request_type":"http",
+         "request_method":"POST",
+         "request_route_path":"/"
+      },
+      "events":[
+         
+      ],
+      "links":[
+         
+      ]
+   }
+]
