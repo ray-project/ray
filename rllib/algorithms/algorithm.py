@@ -174,7 +174,7 @@ except ImportError:
             """Selects the right resource bundles for learner workers based off of cf.
 
             Args:
-                cf: The algorithm config.
+                cf: The AlgorithmConfig instance to extract bundle-information from.
 
             Returns:
                 A list of resource bundles for the learner workers.
@@ -187,7 +187,7 @@ except ImportError:
                 elif cf.num_cpus_per_learner:
                     learner_bundles = [
                         {
-                            "CPU": cf.num_cpus_per_learner * cf.num_learners,
+                            "CPU": cf.num_learners * cf.num_cpus_per_learner,
                         }
                     ]
             else:
