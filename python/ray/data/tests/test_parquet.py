@@ -20,11 +20,11 @@ from ray.data.datasource import (
 from ray.data.datasource.parquet_bulk_datasource import ParquetBulkDatasource
 from ray.data.datasource.parquet_datasource import (
     NUM_CPUS_FOR_META_FETCH_TASK,
-    PARALLELIZE_META_FETCH_THRESHOLD,
     ParquetDatasource,
     _deserialize_fragments_with_retry,
     _SerializedFragment,
 )
+from ray.data.datasource.parquet_meta_provider import PARALLELIZE_META_FETCH_THRESHOLD
 from ray.data.datasource.path_util import _unwrap_protocol
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.mock_http_server import *  # noqa

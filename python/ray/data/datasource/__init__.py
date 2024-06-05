@@ -27,10 +27,8 @@ from ray.data.datasource.file_datasink import (
 from ray.data.datasource.file_meta_provider import (
     BaseFileMetadataProvider,
     DefaultFileMetadataProvider,
-    DefaultParquetMetadataProvider,
     FastFileMetadataProvider,
     FileMetadataProvider,
-    ParquetMetadataProvider,
 )
 from ray.data.datasource.filename_provider import FilenameProvider
 from ray.data.datasource.image_datasink import _ImageDatasink
@@ -45,6 +43,10 @@ from ray.data.datasource.numpy_datasource import NumpyDatasource
 from ray.data.datasource.parquet_bulk_datasource import ParquetBulkDatasource
 from ray.data.datasource.parquet_datasink import _ParquetDatasink
 from ray.data.datasource.parquet_datasource import ParquetDatasource
+from ray.data.datasource.parquet_meta_provider import (
+    DefaultParquetMetadataProvider,
+    ParquetMetadataProvider,
+)
 from ray.data.datasource.partitioning import (
     Partitioning,
     PartitionStyle,
