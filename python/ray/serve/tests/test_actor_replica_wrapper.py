@@ -116,6 +116,7 @@ async def test_send_request(setup_fake_replica, is_streaming: bool):
         kwargs={"is_streaming": is_streaming},
         metadata=RequestMetadata(
             request_id="abc",
+            internal_request_id="def",
             endpoint="123",
             is_streaming=is_streaming,
         ),
@@ -149,6 +150,7 @@ async def test_send_request_with_rejection(
         kwargs={"is_streaming": is_streaming},
         metadata=RequestMetadata(
             request_id="abc",
+            internal_request_id="def",
             endpoint="123",
             is_streaming=is_streaming,
         ),
@@ -188,6 +190,7 @@ async def test_send_request_with_rejection_cancellation(setup_fake_replica):
         },
         metadata=RequestMetadata(
             request_id="abc",
+            internal_request_id="def",
             endpoint="123",
         ),
     )
