@@ -83,3 +83,4 @@ class TrainHead(dashboard_utils.DashboardHeadModule):
             logger.exception(
                 "Train is not installed. Please run `pip install ray[train]` when setting up Ray on your cluster."
             )
+        return None
