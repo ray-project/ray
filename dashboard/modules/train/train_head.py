@@ -22,7 +22,7 @@ class TrainHead(dashboard_utils.DashboardHeadModule):
     @dashboard_optional_utils.init_ray_and_catch_exceptions()
     @DeveloperAPI
     async def get_train_runs(self, req: Request) -> Response:
-        from ray.dashboard.modules.train.schema import TrainRunsResponse
+        from ray.dashboard.modules.train.api.schema import TrainRunsResponse
 
         stats_actor = await self.get_train_stats_actor()
 
