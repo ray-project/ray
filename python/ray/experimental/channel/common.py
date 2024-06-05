@@ -3,7 +3,7 @@ import concurrent
 import copy
 import threading
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 import ray
 from ray.experimental.channel.nccl_group import _NcclGroup
@@ -13,6 +13,9 @@ from ray.util.annotations import DeveloperAPI, PublicAPI
 # The context singleton on this process.
 _default_context: "Optional[ChannelContext]" = None
 _context_lock = threading.Lock()
+
+if TYPE_CHECKING:
+    import torch
 
 
 @PublicAPI(stability="alpha")
@@ -104,6 +107,7 @@ class ChannelOutputType:
 @dataclass
 class ChannelContext:
     serialization_context = _SerializationContext()
+    _torch_device: Optional["torch.device"] = None
 
     def __init__(self):
         # Used for the torch.Tensor NCCL transport.
@@ -124,6 +128,26 @@ class ChannelContext:
                 _default_context = ChannelContext()
 
             return _default_context
+
+    @property
+    def torch_device(self) -> "torch.device":
+        if self._torch_device is None:
+
+            if not ray.get_gpu_ids():
+                import torch
+
+                # torch_utils defaults to returning GPU 0 if no GPU IDs were assigned
+                # by Ray. We instead want the default to be CPU.
+                self._torch_device = torch.device("cpu")
+
+            from ray.air._internal import torch_utils
+
+            self._torch_device = torch_utils.get_devices()[0]
+
+        return self._torch_device
+
+    def set_torch_device(self, device: "torch.device"):
+        self._torch_device = device
 
 
 @PublicAPI(stability="alpha")
