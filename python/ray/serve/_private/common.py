@@ -677,6 +677,7 @@ class DeploymentHandleSource(str, Enum):
 @dataclass
 class RequestMetadata:
     request_id: str
+    internal_request_id: str
     endpoint: str
     call_method: str = "__call__"
 

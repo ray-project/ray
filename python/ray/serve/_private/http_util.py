@@ -218,12 +218,12 @@ class ASGIReceiveProxy:
     def __init__(
         self,
         scope: Scope,
-        request_id: str,
+        internal_request_id: str,
         receive_asgi_messages: Callable[[str], Awaitable[bytes]],
     ):
         self._type = scope["type"]  # Either 'http' or 'websocket'.
         self._queue = asyncio.Queue()
-        self._request_id = request_id
+        self._internal_request_id = internal_request_id
         self._receive_asgi_messages = receive_asgi_messages
         self._disconnect_message = None
 
@@ -255,7 +255,9 @@ class ASGIReceiveProxy:
         """
         while True:
             try:
-                pickled_messages = await self._receive_asgi_messages(self._request_id)
+                pickled_messages = await self._receive_asgi_messages(
+                    self._internal_request_id
+                )
                 for message in pickle.loads(pickled_messages):
                     self._queue.put_nowait(message)
 

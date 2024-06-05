@@ -341,6 +341,7 @@ class ReplicaActor:
             ray.serve.context._RequestContext(
                 request_metadata.route,
                 request_metadata.request_id,
+                request_metadata.internal_request_id,
                 self._deployment_id.app_name,
                 request_metadata.multiplexed_model_id,
                 request_metadata.grpc_context,
@@ -552,8 +553,9 @@ class ReplicaActor:
 
         proto = RequestMetadataProto.FromString(proto_request_metadata)
         request_metadata: RequestMetadata = RequestMetadata(
-            proto.request_id,
-            proto.endpoint,
+            request_id=proto.request_id,
+            internal_request_id=proto.internal_request_id,
+            endpoint=proto.endpoint,
             call_method=proto.call_method,
             multiplexed_model_id=proto.multiplexed_model_id,
             route=proto.route,
@@ -963,7 +965,7 @@ class UserCallableWrapper:
         scope = pickle.loads(request.pickled_asgi_scope)
         receive = ASGIReceiveProxy(
             scope,
-            request_metadata.request_id,
+            request_metadata.internal_request_id,
             request.receive_asgi_messages,
         )
         receive_task = self._user_code_event_loop.create_task(
