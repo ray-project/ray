@@ -12,10 +12,7 @@ from ray.util.annotations import DeveloperAPI
 if TYPE_CHECKING:
     import pyarrow
 
-    from ray.data.datasource.parquet_datasource import (
-        _ParquetFileFragmentMetaData,
-        _SerializedFragment,
-    )
+    from ray.data.datasource.parquet_datasource import _SerializedFragment
 
 
 FRAGMENTS_PER_META_FETCH = 6
