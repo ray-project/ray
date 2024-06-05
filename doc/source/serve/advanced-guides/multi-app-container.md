@@ -44,6 +44,9 @@ RUN sudo apt-get update && sudo apt-get install curl -y
 
 # Download the source code for the Whisper application into `whisper_example.py`.
 RUN curl -O https://raw.githubusercontent.com/ray-project/ray/master/doc/source/serve/doc_code/whisper_example.py
+
+# Add /home/ray path to PYTHONPATH avoid import module error
+ENV PYTHONPATH "${PYTHONPATH}:/home/ray"
 ```
 :::
 :::{tab-item} resnet.Dockerfile
@@ -57,39 +60,42 @@ RUN sudo apt-get update && sudo apt-get install curl -y
 
 # Download the source code for the ResNet application into `resnet50_example.py`.
 RUN curl -O https://raw.githubusercontent.com/ray-project/ray/master/doc/source/serve/doc_code/resnet50_example.py
+
+# Add /home/ray path to PYTHONPATH avoid import module error
+ENV PYTHONPATH "${PYTHONPATH}:/home/ray"
 ```
 :::
 ::::
 
-Then, build the corresponding Docker images and push it to your choice of Docker registry. This tutorial uses `alice/whisper_image:latest` and `alice/resnet_image:latest` as placeholder names for the images, but make sure to swap out `alice` for a repo name of your choice.
+Then, build the corresponding container images and push it to your choice of container registry. This tutorial uses `alice/whisper_image:latest` and `alice/resnet_image:latest` as placeholder names for the images, but make sure to swap out `alice` for a repo name of your choice.
 
 ::::{tab-set}
 :::{tab-item} Whisper
 ```bash
-# Build the Docker image from the Dockerfile
+# Build the container image from the Dockerfile using podman
 export IMG1=alice/whisper_image:latest
-docker build -t $IMG1 -f whisper.Dockerfile .
-# Push to a Docker registry. This step is unnecessary if you are deploying Serve locally.
-docker push $IMG1
+podman build -t $IMG1 -f whisper.Dockerfile .
+# Push to a registry. This step is unnecessary if you are deploying Serve locally.
+podman push $IMG1
 ```
 :::
 :::{tab-item} Resnet
 ```bash
-# Build the Docker image from the Dockerfile
+# Build the container image from the Dockerfile using podman
 export IMG2=alice/resnet_image:latest
-docker build -t $IMG2 -f resnet.Dockerfile .
-# Push to a Docker registry. This step is unnecessary if you are deploying Serve locally.
-docker push $IMG2
+podman build -t $IMG2 -f resnet.Dockerfile .
+# Push to a registry. This step is unnecessary if you are deploying Serve locally.
+podman push $IMG2
 ```
 :::
 ::::
 
-Finally, you can specify the Docker image within which you want to run each application in the `container` field of an application's runtime environment specification. The `container` field has three fields:
+Finally, you can specify the container image within which you want to run each application in the `container` field of an application's runtime environment specification. The `container` field has three fields:
 - `image`: (Required) The image to run your application in.
 - `worker_path`: The absolute path to `default_worker.py` inside the container.
 - `run_options`: Additional options to pass to the `podman run` command used to start a Serve deployment replica in a container. See [podman run documentation](https://docs.podman.io/en/latest/markdown/podman-run.1.html) for a list of all options. If you are familiar with `docker run`, most options work the same way.
 
-The following Serve config runs the `whisper` app with the image `IMG1`, and the `resnet` app with the image `IMG2`. Concretely, all deployment replicas in the applications start and run in containers with the respective images.
+The following Serve config runs the `whisper` app with the image `IMG1`, and the `resnet` app with the image `IMG2`. `podman images` command can be used to list the names of the images. Concretely, all deployment replicas in the applications start and run in containers with the respective images.
 
 ```yaml
 applications:

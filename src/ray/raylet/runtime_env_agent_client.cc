@@ -45,12 +45,17 @@ namespace {
 // Will call callback exactly once with pair{non-ok, any} or pair{ok, reply body}.
 //
 // Hard coded behavior:
+// - method is POST.
+// - version is HTTP/1.1.
 // - content type is "application/octet-stream".
-// - connection has no timeout (i.e. waits forever. This is because runtime env agent can
+// - connection has infinite timeout (This is because runtime env agent can
 // work for a long time.)
-// - on_resolve and on_connect failures return NotFound. This allows retry on the
-// server not (yet) started up.
-// - on_read and on_write failures return IOError.
+//
+// Error handling: (return means invoking the fail_callback with the error)
+// - on_resolve and on_connect failures return NotFound.
+// - on_write and on_read failures return Disconnected.
+// - if the HTTP response is received and well-formed, but the status code is not OK,
+//  return IOError.
 //
 // Spirit from
 // https://www.boost.org/doc/libs/develop/libs/beast/example/http/client/async/http_client_async.cpp
@@ -63,6 +68,7 @@ class Session : public std::enable_shared_from_this<Session> {
   static std::shared_ptr<Session> Create(net::io_context &ioc,
                                          std::string_view host,
                                          std::string_view port,
+                                         http::verb method,
                                          std::string_view target,
                                          std::string body,
                                          std::function<void(std::string)> succ_callback,
@@ -72,6 +78,7 @@ class Session : public std::enable_shared_from_this<Session> {
     return std::shared_ptr<Session>(new Session(ioc,
                                                 host,
                                                 port,
+                                                method,
                                                 target,
                                                 std::move(body),
                                                 std::move(succ_callback),
@@ -96,6 +103,7 @@ class Session : public std::enable_shared_from_this<Session> {
   explicit Session(net::io_context &ioc,
                    std::string_view host,
                    std::string_view port,
+                   http::verb method,
                    std::string_view target,
                    std::string body,
                    std::function<void(std::string)> succ_callback,
@@ -104,18 +112,19 @@ class Session : public std::enable_shared_from_this<Session> {
         stream_(ioc),
         host_(std::string(host)),
         port_(std::string(port)),
+        method_(method),
         succ_callback_(std::move(succ_callback)),
         fail_callback_(std::move(fail_callback)) {
     stream_.expires_never();
-    req_.method(http::verb::post);
+    req_.method(method_);
     req_.target(target);
     req_.body() = std::move(body);
+    req_.version(11);  // HTTP/1.1
     req_.set(http::field::host, host);
     req_.set(http::field::user_agent, BOOST_BEAST_VERSION_STRING);
     req_.set(http::field::content_type, "application/octet-stream");
-    // aiohttp has a bug that, if you don't set this value, it returns 400.
-    // https://github.com/aio-libs/aiohttp/issues/7208
-    req_.content_length(req_.body().size());
+    // Sets Content-Length header.
+    req_.prepare_payload();
   }
 
   void Failed(ray::Status status) {
@@ -134,6 +143,7 @@ class Session : public std::enable_shared_from_this<Session> {
       return;
     }
 
+    stream_.expires_never();
     // Make the connection on the IP address we get from a lookup
     stream_.async_connect(
         results, beast::bind_front_handler(&Session::on_connect, shared_from_this()));
@@ -145,19 +155,20 @@ class Session : public std::enable_shared_from_this<Session> {
       return;
     }
 
+    stream_.expires_never();
     // Send the HTTP request to the remote host
     http::async_write(
         stream_, req_, beast::bind_front_handler(&Session::on_write, shared_from_this()));
   }
 
   void on_write(beast::error_code ec, std::size_t bytes_transferred) {
-    boost::ignore_unused(bytes_transferred);
-
     if (ec) {
-      Failed(ray::Status::IOError("on_write " + ec.message()));
+      Failed(ray::Status::Disconnected("on_write " + ec.message() +
+                                       ", bytes_transferred " +
+                                       std::to_string(bytes_transferred)));
       return;
     }
-
+    stream_.expires_never();
     // Receive the HTTP response
     http::async_read(stream_,
                      buffer_,
@@ -166,16 +177,17 @@ class Session : public std::enable_shared_from_this<Session> {
   }
 
   void on_read(beast::error_code ec, std::size_t bytes_transferred) {
-    boost::ignore_unused(bytes_transferred);
-
     if (ec) {
-      Failed(ray::Status::IOError("on_read " + ec.message()));
+      Failed(ray::Status::Disconnected("on_read " + ec.message() +
+                                       ", bytes_transferred " +
+                                       std::to_string(bytes_transferred)));
       return;
     }
+
     if (http::to_status_class(res_.result()) == http::status_class::successful) {
       Succeeded(std::move(res_).body());
     } else {
-      Failed(ray::Status::IOError(absl::StrCat("POST result non-ok status code ",
+      Failed(ray::Status::IOError(absl::StrCat("HTTP request returns non-ok status code ",
                                                res_.result_int(),
                                                ", body",
                                                std::move(res_).body())));
@@ -193,6 +205,7 @@ class Session : public std::enable_shared_from_this<Session> {
   beast::tcp_stream stream_;
   std::string host_;
   std::string port_;
+  http::verb method_;
   std::function<void(std::string)> succ_callback_;
   std::function<void(ray::Status)> fail_callback_;
   beast::flat_buffer buffer_;  // (Must persist between reads)
@@ -293,12 +306,13 @@ class HttpRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
     delay_executor_([]() { QuickExit(); }, /*ms*/ 10000);
   }
 
-  /// @brief Invokes `try_invoke_once`. If it fails with a ray::Status::NotFound error,
-  /// retries every after `agent_manager_retry_interval_ms` up until `deadline` passed.
-  /// After which, fail_callback is called with the NotFound error from `try_invoke_once`.
+  /// @brief Invokes `try_invoke_once`. If it fails with a network error, retries every
+  /// after `agent_manager_retry_interval_ms` up until `deadline` passed. After which,
+  /// fail_callback is called with the NotFound error from `try_invoke_once`.
   ///
-  /// Note that retry only happens on network errors. Application errors returned by the
-  /// server are not retried.
+  /// Note that retry only happens on network errors, i.e. NotFound and Disconnected, on
+  /// which cases we did not receive a well-formed HTTP response. Application errors
+  /// returned by the server are not retried.
   ///
   /// If the retries took so long and exceeded deadline, Raylet exits immediately. Note
   /// the check happens after `try_invoke_once` returns. This means if you have a
@@ -316,14 +330,13 @@ class HttpRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
                                          FailCallback fail_callback,
                                          int64_t deadline_ms) {
     try_invoke_once(succ_callback, [=](ray::Status status) {
-      if (!status.IsNotFound()) {
+      if ((!status.IsNotFound()) && (!status.IsDisconnected())) {
         // Non retryable errors, invoke fail_callback
         fail_callback(status);
       } else if (current_time_ms() > deadline_ms) {
-        RAY_LOG(ERROR) << "Runtime Env Agent timed out as NotFound in "
-                       << agent_register_timeout_ms_ << "ms. Status: " << status
-                       << ", address: " << this->address_ << ", port: " << this->port_str_
-                       << ", Suiciding...";
+        RAY_LOG(ERROR) << "Runtime Env Agent timed out in " << agent_register_timeout_ms_
+                       << "ms. Status: " << status << ", address: " << this->address_
+                       << ", port: " << this->port_str_ << ", existing immediately...";
         ExitImmediately();
       } else {
         RAY_LOG(INFO) << "Runtime Env Agent network error: " << status
@@ -415,6 +428,7 @@ class HttpRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
         io_context_,
         address_,
         port_str_,
+        http::verb::post,
         HTTP_PATH_GET_OR_CREATE_RUNTIME_ENV,
         std::move(payload),
         /*succ_callback=*/
@@ -481,6 +495,7 @@ class HttpRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
         io_context_,
         address_,
         port_str_,
+        http::verb::post,
         HTTP_PATH_DELETE_RUNTIME_ENV_IF_POSSIBLE,
         std::move(payload),
         /*succ_callback=*/

@@ -31,11 +31,8 @@ from ray.data.datasource._default_metadata_providers import (
     get_generic_metadata_provider,
 )
 from ray.data.datasource.datasource import ReadTask
-from ray.data.datasource.file_meta_provider import (
-    DefaultParquetMetadataProvider,
-    ParquetMetadataProvider,
-    _handle_read_os_error,
-)
+from ray.data.datasource.file_meta_provider import _handle_read_os_error
+from ray.data.datasource.parquet_meta_provider import ParquetMetadataProvider
 from ray.data.datasource.partitioning import PathPartitionFilter
 from ray.data.datasource.path_util import (
     _has_file_extension,
@@ -50,21 +47,9 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-FRAGMENTS_PER_META_FETCH = 6
-PARALLELIZE_META_FETCH_THRESHOLD = 24
-
 # The `num_cpus` for each metadata prefetching task.
 # Default to 0.5 instead of 1 because it is cheaper than normal read task.
 NUM_CPUS_FOR_META_FETCH_TASK = 0.5
-
-# The application-level exceptions to retry for metadata prefetching task.
-# Default to retry on access denied and read timeout errors because AWS S3 would throw
-# these transient errors when load is too high.
-RETRY_EXCEPTIONS_FOR_META_FETCH_TASK = ["AWS Error ACCESS_DENIED", "Timeout"]
-# Maximum number of retries for metadata prefetching task due to transient errors.
-RETRY_MAX_ATTEMPTS_FOR_META_FETCH_TASK = 32
-# Maximum retry back-off interval in seconds for failed metadata prefetching task.
-RETRY_MAX_BACKOFF_S_FOR_META_FETCH_TASK = 64
 
 # The number of rows to read per batch. This is sized to generate 10MiB batches
 # for rows about 1KiB in size.
@@ -127,37 +112,6 @@ def _deserialize_fragments(
     return [p.deserialize() for p in serialized_fragments]
 
 
-class _ParquetFileFragmentMetaData:
-    """Class to store metadata of a Parquet file fragment. This includes
-    all attributes from `pyarrow.parquet.FileMetaData` except for `schema`,
-    which is stored in `self.schema_pickled` as a pickled object from
-    `cloudpickle.loads()`, used in deduplicating schemas across multiple fragments."""
-
-    def __init__(self, fragment_metadata: "pyarrow.parquet.FileMetaData"):
-        self.created_by = fragment_metadata.created_by
-        self.format_version = fragment_metadata.format_version
-        self.num_columns = fragment_metadata.num_columns
-        self.num_row_groups = fragment_metadata.num_row_groups
-        self.num_rows = fragment_metadata.num_rows
-        self.serialized_size = fragment_metadata.serialized_size
-        # This is a pickled schema object, to be set later with
-        # `self.set_schema_pickled()`. To get the underlying schema, use
-        # `cloudpickle.loads(self.schema_pickled)`.
-        self.schema_pickled = None
-
-        # Calculate the total byte size of the file fragment using the original
-        # object, as it is not possible to access row groups from this class.
-        self.total_byte_size = 0
-        for row_group_idx in range(fragment_metadata.num_row_groups):
-            row_group_metadata = fragment_metadata.row_group(row_group_idx)
-            self.total_byte_size += row_group_metadata.total_byte_size
-
-    def set_schema_pickled(self, schema_pickled: bytes):
-        """Note: to get the underlying schema, use
-        `cloudpickle.loads(self.schema_pickled)`."""
-        self.schema_pickled = schema_pickled
-
-
 def _check_for_legacy_tensor_type(schema):
     """Check for the legacy tensor extension type and raise an error if found.
 
@@ -186,7 +140,7 @@ def _check_for_legacy_tensor_type(schema):
 class ParquetDatasource(Datasource):
     """Parquet datasource, for reading and writing Parquet files.
 
-    The primary difference from ParquetBaseDatasource is that this uses
+    The primary difference from ParquetBulkDatasource is that this uses
     PyArrow's `ParquetDataset` abstraction for dataset reads, and thus offers
     automatic Arrow dataset schema inference and row count collection at the
     cost of some potential performance and/or compatibility penalties.
@@ -202,7 +156,7 @@ class ParquetDatasource(Datasource):
         _block_udf: Optional[Callable[[Block], Block]] = None,
         filesystem: Optional["pyarrow.fs.FileSystem"] = None,
         schema: Optional[Union[type, "pyarrow.lib.Schema"]] = None,
-        meta_provider: ParquetMetadataProvider = DefaultParquetMetadataProvider(),
+        meta_provider: ParquetMetadataProvider = ParquetMetadataProvider(),
         partition_filter: PathPartitionFilter = None,
         shuffle: Union[Literal["files"], None] = None,
         include_paths: bool = False,
@@ -314,13 +268,12 @@ class ParquetDatasource(Datasource):
                     "scheduling_strategy"
                 ] = DataContext.get_current().scheduling_strategy
 
-            raw_metadata = (
+            self._metadata = (
                 meta_provider.prefetch_file_metadata(
                     pq_ds.fragments, **prefetch_remote_args
                 )
                 or []
             )
-            self._metadata = self._dedupe_metadata(raw_metadata)
         except OSError as e:
             _handle_read_os_error(e, paths)
 
@@ -343,34 +296,6 @@ class ParquetDatasource(Datasource):
         self._include_paths = include_paths
         if shuffle == "files":
             self._file_metadata_shuffler = np.random.default_rng()
-
-    def _dedupe_metadata(
-        self,
-        raw_metadatas: List["pyarrow.parquet.FileMetaData"],
-    ) -> List[_ParquetFileFragmentMetaData]:
-        """For datasets with a large number of columns, the FileMetaData
-        (in particular the schema) can be very large. We can reduce the
-        memory usage by only keeping unique schema objects across all
-        file fragments. This method deduplicates the schemas and returns
-        a list of `_ParquetFileFragmentMetaData` objects."""
-        schema_to_id = {}  # schema_id -> serialized_schema
-        id_to_schema = {}  # serialized_schema -> schema_id
-        stripped_metadatas = []
-        for fragment_metadata in raw_metadatas:
-            stripped_md = _ParquetFileFragmentMetaData(fragment_metadata)
-
-            schema_ser = cloudpickle.dumps(fragment_metadata.schema.to_arrow_schema())
-            if schema_ser not in schema_to_id:
-                schema_id = len(schema_to_id)
-                schema_to_id[schema_ser] = schema_id
-                id_to_schema[schema_id] = schema_ser
-                stripped_md.set_schema_pickled(schema_ser)
-            else:
-                schema_id = schema_to_id.get(schema_ser)
-                existing_schema_ser = id_to_schema[schema_id]
-                stripped_md.set_schema_pickled(existing_schema_ser)
-            stripped_metadatas.append(stripped_md)
-        return stripped_metadatas
 
     def estimate_inmemory_data_size(self) -> Optional[int]:
         total_size = 0
@@ -527,8 +452,8 @@ class ParquetDatasource(Datasource):
 
     def get_name(self):
         """Return a human-readable name for this datasource.
+
         This will be used as the names of the read tasks.
-        Note: overrides the base `ParquetBaseDatasource` method.
         """
         return "Parquet"
 
@@ -558,13 +483,11 @@ def _read_fragments(
     assert len(fragments) > 0
 
     import pyarrow as pa
-    from pyarrow.dataset import _get_partition_keys
 
     logger.debug(f"Reading {len(fragments)} parquet fragments")
     use_threads = to_batches_kwargs.pop("use_threads", False)
     batch_size = to_batches_kwargs.pop("batch_size", default_read_batch_size_rows)
     for fragment in fragments:
-        part = _get_partition_keys(fragment.partition_expression)
         batches = fragment.to_batches(
             use_threads=use_threads,
             columns=columns,
@@ -574,15 +497,6 @@ def _read_fragments(
         )
         for batch in batches:
             table = pa.Table.from_batches([batch], schema=schema)
-            if part:
-                for col, value in part.items():
-                    if columns and col not in columns:
-                        continue
-                    table = table.set_column(
-                        table.schema.get_field_index(col),
-                        col,
-                        pa.array([value] * len(table)),
-                    )
             if include_paths:
                 table = table.append_column("path", [[fragment.path]] * len(table))
             # If the table is empty, drop it.
@@ -606,65 +520,6 @@ def _deserialize_fragments_with_retry(fragments):
         description="deserialize fragments",
         max_attempts=FILE_READING_RETRY,
     )
-
-
-def _fetch_metadata_serialization_wrapper(
-    fragments: List[_SerializedFragment],
-    retry_match: Optional[List[str]],
-    retry_max_attempts: int,
-    retry_max_interval: int,
-) -> List["pyarrow.parquet.FileMetaData"]:
-    deserialized_fragments = _deserialize_fragments_with_retry(fragments)
-    try:
-        metadata = call_with_retry(
-            lambda: _fetch_metadata(deserialized_fragments),
-            description="fetch metdata",
-            match=retry_match,
-            max_attempts=retry_max_attempts,
-            max_backoff_s=retry_max_interval,
-        )
-    except OSError as e:
-        raise RuntimeError(
-            f"Exceeded maximum number of attempts ({retry_max_attempts}) to retry "
-            "metadata fetching task. Metadata fetching tasks can fail due to transient "
-            "errors like rate limiting.\n"
-            "\n"
-            "To increase the maximum number of attempts, configure "
-            "`RETRY_MAX_ATTEMPTS_FOR_META_FETCH_TASK`. For example:\n"
-            "```\n"
-            "ray.data.datasource.parquet_datasource.RETRY_MAX_ATTEMPTS_FOR_META_FETCH_TASK = 64\n"  # noqa: E501
-            "```\n"
-            "To increase the maximum retry backoff interval, configure "
-            "`RETRY_MAX_BACKOFF_S_FOR_META_FETCH_TASK`. For example:\n"
-            "```\n"
-            "ray.data.datasource.parquet_datasource.RETRY_MAX_BACKOFF_S_FOR_META_FETCH_TASK = 128\n"  # noqa: E501
-            "```\n"
-            "If the error continues to occur, you can also try decresasing the "
-            "concurency of metadata fetching tasks by setting "
-            "`NUM_CPUS_FOR_META_FETCH_TASK` to a larger value. For example:\n"
-            "```\n"
-            "ray.data.datasource.parquet_datasource.NUM_CPUS_FOR_META_FETCH_TASK = 4.\n"  # noqa: E501
-            "```\n"
-            "To change which exceptions to retry on, set "
-            "`RETRY_EXCEPTIONS_FOR_META_FETCH_TASK` to a list of error messages. For "
-            "example:\n"
-            "```\n"
-            'ray.data.datasource.parquet_datasource.RETRY_EXCEPTIONS_FOR_META_FETCH_TASK = ["AWS Error ACCESS_DENIED", "Timeout"]\n'  # noqa: E501
-            "```"
-        ) from e
-    return metadata
-
-
-def _fetch_metadata(
-    fragments: List["pyarrow.dataset.ParquetFileFragment"],
-) -> List["pyarrow.parquet.FileMetaData"]:
-    fragment_metadata = []
-    for f in fragments:
-        try:
-            fragment_metadata.append(f.metadata)
-        except AttributeError:
-            break
-    return fragment_metadata
 
 
 def _sample_fragment(

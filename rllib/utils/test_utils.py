@@ -6,6 +6,7 @@ from gymnasium.spaces import Box, Discrete, MultiDiscrete, MultiBinary
 from gymnasium.spaces import Dict as GymDict
 from gymnasium.spaces import Tuple as GymTuple
 import inspect
+import json
 import logging
 import numpy as np
 import os
@@ -134,6 +135,48 @@ def add_rllib_example_script_args(
         "experiment is then the sum over all individual agents' rewards.",
     )
 
+    # Evaluation options.
+    parser.add_argument(
+        "--evaluation-num-env-runners",
+        type=int,
+        default=0,
+        help="The number of evaluation (remote) EnvRunners to use for the experiment.",
+    )
+    parser.add_argument(
+        "--evaluation-interval",
+        type=int,
+        default=0,
+        help="Every how many iterations to run one round of evaluation. "
+        "Use 0 (default) to disable evaluation.",
+    )
+    parser.add_argument(
+        "--evaluation-duration",
+        type=lambda v: v if v == "auto" else int(v),
+        default=10,
+        help="The number of evaluation units to run each evaluation round. "
+        "Use `--evaluation-duration-unit` to count either in 'episodes' "
+        "or 'timesteps'. If 'auto', will run as many as possible during train pass ("
+        "`--evaluation-parallel-to-training` must be set then).",
+    )
+    parser.add_argument(
+        "--evaluation-duration-unit",
+        type=str,
+        default="episodes",
+        choices=["episodes", "timesteps"],
+        help="The evaluation duration unit to count by. One of 'episodes' or "
+        "'timesteps'. This unit will be run `--evaluation-duration` times in each "
+        "evaluation round. If `--evaluation-duration=auto`, this setting does not "
+        "matter.",
+    )
+    parser.add_argument(
+        "--evaluation-parallel-to-training",
+        action="store_true",
+        help="Whether to run evaluation parallel to training. This might help speed up "
+        "your overall iteration time. Be aware that when using this option, your "
+        "reported evaluation results are referring to one iteration before the current "
+        "one.",
+    )
+
     # tune.Tuner options.
     parser.add_argument(
         "--no-tune",
@@ -219,6 +262,14 @@ def add_rllib_example_script_args(
         help="Whether this script should be run as a test. If set, --stop-reward must "
         "be achieved within --stop-timesteps AND --stop-iters, otherwise this "
         "script will throw an exception at the end.",
+    )
+    parser.add_argument(
+        "--as-release-test",
+        action="store_true",
+        help="Whether this script should be run as a release test. If set, "
+        "all that applies to the --as-test option is true, plus, a short JSON summary "
+        "will be written into a results file whose location is given by the ENV "
+        "variable `TEST_OUTPUT_JSON`.",
     )
 
     # Learner scaling options.
@@ -630,8 +681,8 @@ def check_learning_achieved(
     Raises:
         ValueError: If `min_reward` not reached.
     """
-    # Get maximum reward of all trials
-    # (check if at least one trial achieved some learning)
+    # Get maximum value of `metrics` over all trials
+    # (check if at least one trial achieved some learning, not just the final one).
     recorded_values = []
     for _, row in tune_results.get_dataframe().iterrows():
         if evaluation or (
@@ -1373,11 +1424,15 @@ def run_rllib_example_script_experiment(
         parser = add_rllib_example_script_args()
         args = parser.parse_args()
 
+    # If run --as-release-test, --as-test must also be set.
+    if args.as_release_test:
+        args.as_test = True
+
     # Initialize Ray.
     ray.init(num_cpus=args.num_cpus or None, local_mode=args.local_mode)
 
     # Define one or more stopping criteria.
-    if not stop:
+    if stop is None:
         stop = {
             f"{ENV_RUNNER_RESULTS}/episode_return_mean": args.stop_reward,
             f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}": args.stop_timesteps,
@@ -1391,8 +1446,8 @@ def run_rllib_example_script_experiment(
         # Set the framework.
         config.framework(args.framework)
 
-        # Add an env specifier?
-        if args.env is not None:
+        # Add an env specifier (only if not already set in config)?
+        if args.env is not None and config.env is None:
             config.environment(args.env)
 
         # Enable the new API stack?
@@ -1421,8 +1476,19 @@ def run_rllib_example_script_experiment(
                 num_cpus_for_main_process=1,
             )
 
+        # Evaluation setup.
+        if args.evaluation_interval > 0:
+            config.evaluation(
+                evaluation_num_env_runners=args.evaluation_num_env_runners,
+                evaluation_interval=args.evaluation_interval,
+                evaluation_duration=args.evaluation_duration,
+                evaluation_duration_unit=args.evaluation_duration_unit,
+                evaluation_parallel_to_training=args.evaluation_parallel_to_training,
+            )
+
     # Run the experiment w/o Tune (directly operate on the RLlib Algorithm object).
     if args.no_tune:
+        assert not args.as_test and not args.as_release_test
         algo = config.build()
         for _ in range(stop.get(TRAINING_ITERATION, args.stop_iters)):
             results = algo.train()
@@ -1443,7 +1509,9 @@ def run_rllib_example_script_experiment(
                         break
                 if val is not None and not np.isnan(val) and val >= threshold:
                     print(f"Stop criterium ({key}={threshold}) fulfilled!")
+                    ray.shutdown()
                     return results
+
         ray.shutdown()
         return results
 
@@ -1490,6 +1558,7 @@ def run_rllib_example_script_experiment(
     os.environ["RAY_AIR_NEW_OUTPUT"] = "0"
 
     # Run the actual experiment (using Tune).
+    start_time = time.time()
     results = tune.Tuner(
         trainable or config.algo_class,
         param_space=config,
@@ -1505,30 +1574,61 @@ def run_rllib_example_script_experiment(
         ),
         tune_config=tune.TuneConfig(num_samples=args.num_samples),
     ).fit()
+    time_taken = time.time() - start_time
+
+    ray.shutdown()
 
     # If run as a test, check whether we reached the specified success criteria.
+    test_passed = False
     if args.as_test:
         # Success metric not provided, try extracting it from `stop`.
         if success_metric is None:
             for try_it in [
-                f"{EVALUATION_RESULTS}/{ENV_RUNNER_RESULTS}/episode_return_mean",
-                f"{ENV_RUNNER_RESULTS}/episode_return_mean",
+                f"{EVALUATION_RESULTS}/{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}",
+                f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}",
             ]:
                 if try_it in stop:
                     success_metric = {try_it: stop[try_it]}
                     break
             if success_metric is None:
                 success_metric = {
-                    f"{ENV_RUNNER_RESULTS}/episode_return_mean": args.stop_reward,
+                    f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": args.stop_reward,
                 }
         # TODO (sven): Make this work for more than one metric (AND-logic?).
-        metric = next(iter(success_metric.keys()))
-        check_learning_achieved(
-            tune_results=results,
-            metric=metric,
-            min_value=success_metric[metric],
+        # Get maximum value of `metric` over all trials
+        # (check if at least one trial achieved some learning, not just the final one).
+        success_metric_key, success_metric_value = next(iter(success_metric.items()))
+        best_value = max(
+            row[success_metric_key] for _, row in results.get_dataframe().iterrows()
         )
-    ray.shutdown()
+        if best_value >= success_metric_value:
+            test_passed = True
+            print(f"`{success_metric_key}` of {success_metric_value} reached! ok")
+
+        if args.as_release_test:
+            trial = results._experiment_analysis.trials[0]
+            stats = trial.last_result
+            stats.pop("config", None)
+            json_summary = {
+                "time_taken": float(time_taken),
+                "trial_states": [trial.status],
+                "last_update": float(time.time()),
+                "stats": stats,
+                "passed": [test_passed],
+                "not_passed": [not test_passed],
+                "failures": {str(trial): 1} if not test_passed else {},
+            }
+            with open(
+                os.environ.get("TEST_OUTPUT_JSON", "/tmp/learning_test.json"),
+                "wt",
+            ) as f:
+                json.dump(json_summary, f)
+
+        if not test_passed:
+            raise ValueError(
+                f"`{success_metric_key}` of {success_metric_value} not reached!"
+            )
+
     return results
 
 
