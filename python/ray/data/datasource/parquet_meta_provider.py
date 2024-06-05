@@ -87,7 +87,7 @@ class ParquetMetadataProvider(FileMetadataProvider):
         self,
         fragments: List["pyarrow.dataset.ParquetFileFragment"],
         **ray_remote_args,
-    ) -> List["pyarrow.parquet.FileMetaData"]:
+    ) -> Optional[List["pyarrow.parquet.FileMetaData"]]:
         """Pre-fetches file metadata for all Parquet file fragments in a single batch.
 
         Subsets of the metadata returned will be provided as input to subsequent calls
@@ -98,7 +98,7 @@ class ParquetMetadataProvider(FileMetadataProvider):
             fragments: The Parquet file fragments to fetch metadata for.
 
         Returns:
-            Metadata resolved for each input file fragment. Metadata
+            Metadata resolved for each input file fragment, or `None`. Metadata
             must be returned in the same order as all input file fragments, such
             that `metadata[i]` always contains the metadata for `fragments[i]`.
         """
