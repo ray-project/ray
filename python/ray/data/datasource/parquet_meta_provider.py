@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, Any, List, Optional, Union
+from typing import TYPE_CHECKING, List, Optional, Union
 
 from ray.data._internal.util import call_with_retry
 from ray.data.block import BlockMetadata
