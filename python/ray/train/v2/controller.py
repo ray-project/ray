@@ -26,25 +26,33 @@ class TrainController:
         self._worker_group.run_train_fn(self._train_fn)
 
     def _handle_scaling(self, decision: ScalingDecision):
-        pass
+        if decision.action == ScalingDecision.RESIZE:
+            self.relaunch_training(
+                num_workers=decision.num_workers,
+                resources_per_worker=self._scaling_config.resources_per_worker,
+            )
 
     def _handle_failures(self, worker_group_status: WorkerGroupStatus):
         pass
 
     def _finished(self, worker_group_status: WorkerGroupStatus):
-        return worker_group_status.finished and not worker_group_status.errors
+        return not worker_group_status.errors and worker_group_status.finished
 
-    def _poll_workers(self):
+    def _poll_workers(self) -> WorkerGroupStatus:
         poll_start = time.monotonic()
-        self._worker_group.poll(timeout=self._scaling_config.health_check_interval_s)
+        status = self._worker_group.poll(
+            timeout=self._scaling_config.health_check_interval_s
+        )
         poll_duration = time.monotonic() - poll_start
 
         if poll_duration < self._scaling_config.health_check_interval_s:
             time.sleep(self._scaling_config.health_check_interval_s - poll_duration)
 
+        return status
+
     def run(self):
         while True:
-            worker_group_status: WorkerGroupStatus = self._poll_workers()
+            worker_group_status = self._poll_workers()
 
             self._handle_failures(worker_group_status)
 

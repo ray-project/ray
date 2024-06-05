@@ -1,12 +1,26 @@
 import abc
-from typing import TYPE_CHECKING
+from dataclasses import dataclass
+from typing import Optional, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from ray.train.v2.api.config import ScalingConfig
 
 
+@dataclass
 class ScalingDecision:
-    pass
+    action: str
+    num_workers: Optional[int] = None
+
+    RESIZE = "RESIZE"
+    NOOP = "NOOP"
+
+    @classmethod
+    def noop(cls):
+        return cls(action=cls.NOOP)
+
+    @classmethod
+    def resize(cls, num_workers: int):
+        return cls(action=cls.RESIZE, num_workers=num_workers)
 
 
 class ScalingPolicy(abc.ABC):
@@ -14,7 +28,7 @@ class ScalingPolicy(abc.ABC):
         self.scaling_config = scaling_config
 
     @classmethod
-    def supports_elasticity(self) -> bool:
+    def supports_elasticity(cls) -> bool:
         raise NotImplementedError
 
     def make_decision(self, worker_group_status) -> ScalingDecision:
