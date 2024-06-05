@@ -1,13 +1,9 @@
 from dataclasses import dataclass
 from typing import Optional, Tuple, Union
 
-from ray.train import (
-    ScalingConfig as ScalingConfigV1,
-    RunConfig as RunConfigV1,
-)
-
-from ray.train.v2.scaling_policy import ScalingPolicy, FixedScalingPolicy
-
+from ray.train import RunConfig as RunConfigV1
+from ray.train import ScalingConfig as ScalingConfigV1
+from ray.train.v2.scaling_policy import FixedScalingPolicy, ScalingPolicy
 
 _UNSUPPORTED_STR = "UNSUPPORTED"
 
