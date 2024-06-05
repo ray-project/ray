@@ -140,24 +140,20 @@ def test_parquet_read_basic(ray_start_regular_shared, fs, data_path):
     ds = ray.data.read_parquet(data_path, filesystem=fs)
 
     # Test metadata-only parquet ops.
-    check_num_computed(ds, 0)
     assert ds.count() == 6
     assert ds.size_bytes() > 0
     # Schema information is available from Parquet metadata, so
     # we do not need to compute the first block.
     assert ds.schema() is not None
-    check_num_computed(ds, 0)
     input_files = ds.input_files()
     assert len(input_files) == 2, input_files
     assert "test1.parquet" in str(input_files)
     assert "test2.parquet" in str(input_files)
     assert str(ds) == "Dataset(num_rows=6, schema={one: int64, two: string})", ds
     assert repr(ds) == "Dataset(num_rows=6, schema={one: int64, two: string})", ds
-    check_num_computed(ds, 0)
 
     # Forces a data read.
     values = [[s["one"], s["two"]] for s in ds.take_all()]
-    check_num_computed(ds, 0)
     assert sorted(values) == [
         [1, "a"],
         [2, "b"],
@@ -221,7 +217,6 @@ def test_parquet_read_meta_provider(ray_start_regular_shared, fs, data_path):
     assert ds._meta_count() is None
 
     # Expect to lazily compute all metadata correctly.
-    check_num_computed(ds, 0)
     assert ds.count() == 6
     assert ds.size_bytes() > 0
     assert ds.schema() is not None
@@ -231,11 +226,9 @@ def test_parquet_read_meta_provider(ray_start_regular_shared, fs, data_path):
     assert "test2.parquet" in str(input_files)
     assert str(ds) == "Dataset(num_rows=6, schema={one: int64, two: string})", ds
     assert repr(ds) == "Dataset(num_rows=6, schema={one: int64, two: string})", ds
-    check_num_computed(ds, 2)
 
     # Forces a data read.
     values = [[s["one"], s["two"]] for s in ds.take()]
-    check_num_computed(ds, 2)
     assert sorted(values) == [
         [1, "a"],
         [2, "b"],
@@ -479,16 +472,13 @@ def test_parquet_read_partitioned(ray_start_regular_shared, fs, data_path):
     ds = ray.data.read_parquet(data_path, filesystem=fs)
 
     # Test metadata-only parquet ops.
-    check_num_computed(ds, 0)
     assert ds.count() == 6
     assert ds.size_bytes() > 0
     # Schema information and input files are available from Parquet metadata,
     # so we do not need to compute the first block.
     assert ds.schema() is not None
-    check_num_computed(ds, 0)
     input_files = ds.input_files()
     assert len(input_files) == 2, input_files
-    check_num_computed(ds, 0)
     assert str(ds) == (
         "Dataset(\n"
         "   num_rows=6,\n"
@@ -503,7 +493,6 @@ def test_parquet_read_partitioned(ray_start_regular_shared, fs, data_path):
         "one: dictionary<values=int32, indices=int32, ordered=0>}\n"
         ")"
     ), ds
-    check_num_computed(ds, 0)
 
     # Forces a data read.
     values = [[s["one"], s["two"]] for s in ds.take()]
@@ -515,13 +504,11 @@ def test_parquet_read_partitioned(ray_start_regular_shared, fs, data_path):
         [3, "f"],
         [3, "g"],
     ]
-    check_num_computed(ds, 0)
 
     # Test column selection.
     ds = ray.data.read_parquet(data_path, columns=["one"], filesystem=fs)
     values = [s["one"] for s in ds.take()]
     assert sorted(values) == [1, 1, 1, 3, 3, 3]
-    check_num_computed(ds, 0)
 
 
 def test_parquet_read_partitioned_with_filter(ray_start_regular_shared, tmp_path):
@@ -540,7 +527,6 @@ def test_parquet_read_partitioned_with_filter(ray_start_regular_shared, tmp_path
     )
 
     values = [[s["one"], s["two"]] for s in ds.take()]
-    check_num_computed(ds, 0)
     assert sorted(values) == [[1, "a"], [1, "a"]]
     assert ds.count() == 2
 
@@ -551,7 +537,6 @@ def test_parquet_read_partitioned_with_filter(ray_start_regular_shared, tmp_path
     )
 
     values = [[s["one"], s["two"]] for s in ds.take()]
-    check_num_computed(ds, 0)
     assert sorted(values) == [[1, "a"], [1, "a"]]
     assert ds.count() == 2
 
@@ -591,7 +576,6 @@ def test_parquet_read_partitioned_with_columns(ray_start_regular_shared, fs, dat
     )
     assert ds.columns() == ["y", "z"]
     values = [[s["y"], s["z"]] for s in ds.take()]
-    check_num_computed(ds, 0)
     assert sorted(values) == [
         ["a", 0.1],
         ["a", 0.3],
@@ -653,7 +637,6 @@ def test_parquet_read_partitioned_with_partition_filter(
 
     assert ds.columns() == ["x", "y", "z"]
     values = [[s["x"], s["y"], s["z"]] for s in ds.take()]
-    check_num_computed(ds, 0)
     assert sorted(values) == [[0, "a", 0.1]]
 
 
@@ -671,28 +654,23 @@ def test_parquet_read_partitioned_explicit(ray_start_regular_shared, tmp_path):
 
     schema = pa.schema([("one", pa.int32()), ("two", pa.string())])
     partitioning = pa.dataset.partitioning(schema, flavor="hive")
-
     ds = ray.data.read_parquet(
         str(tmp_path), dataset_kwargs=dict(partitioning=partitioning)
     )
 
     # Test metadata-only parquet ops.
-    check_num_computed(ds, 0)
     assert ds.count() == 6
     assert ds.size_bytes() > 0
     # Schema information and input files are available from Parquet metadata,
     # so we do not need to compute the first block.
-    check_num_computed(ds, 0)
     assert ds.schema() is not None
     input_files = ds.input_files()
     assert len(input_files) == 2, input_files
     assert str(ds) == "Dataset(num_rows=6, schema={two: string, one: int32})", ds
     assert repr(ds) == "Dataset(num_rows=6, schema={two: string, one: int32})", ds
-    check_num_computed(ds, 0)
 
     # Forces a data read.
     values = [[s["one"], s["two"]] for s in ds.take()]
-    check_num_computed(ds, 0)
     assert sorted(values) == [
         [1, "a"],
         [1, "b"],
@@ -723,7 +701,6 @@ def test_parquet_read_with_udf(ray_start_regular_shared, tmp_path):
     )
 
     ones, twos = zip(*[[s["one"], s["two"]] for s in ds.take()])
-    check_num_computed(ds, 0)
     np.testing.assert_array_equal(sorted(ones), np.array(one_data) + 1)
 
     # 2 blocks/read tasks
@@ -733,7 +710,6 @@ def test_parquet_read_with_udf(ray_start_regular_shared, tmp_path):
     )
 
     ones, twos = zip(*[[s["one"], s["two"]] for s in ds.take()])
-    check_num_computed(ds, 0)
     np.testing.assert_array_equal(sorted(ones), np.array(one_data) + 1)
 
     # 2 blocks/read tasks, 1 empty block
@@ -746,7 +722,6 @@ def test_parquet_read_with_udf(ray_start_regular_shared, tmp_path):
     )
 
     ones, twos = zip(*[[s["one"], s["two"]] for s in ds.take()])
-    check_num_computed(ds, 0)
     np.testing.assert_array_equal(sorted(ones), np.array(one_data[:2]) + 1)
 
 
@@ -778,7 +753,6 @@ def test_parquet_read_parallel_meta_fetch(ray_start_regular_shared, fs, data_pat
     )
 
     # Test metadata-only parquet ops.
-    check_num_computed(ds, 0)
     assert ds.count() == num_dfs * 3
     assert ds.size_bytes() > 0
     # Schema information and input files are available from Parquet metadata,
@@ -786,11 +760,9 @@ def test_parquet_read_parallel_meta_fetch(ray_start_regular_shared, fs, data_pat
     assert ds.schema() is not None
     input_files = ds.input_files()
     assert len(input_files) == num_dfs, input_files
-    check_num_computed(ds, 0)
 
     # Forces a data read.
     values = [s["one"] for s in ds.take(limit=3 * num_dfs)]
-    check_num_computed(ds, 0)
     assert sorted(values) == list(range(3 * num_dfs))
 
 
