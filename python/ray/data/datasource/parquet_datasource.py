@@ -543,13 +543,11 @@ def _read_fragments(
     assert len(fragments) > 0
 
     import pyarrow as pa
-    from pyarrow.dataset import _get_partition_keys
 
     logger.debug(f"Reading {len(fragments)} parquet fragments")
     use_threads = to_batches_kwargs.pop("use_threads", False)
     batch_size = to_batches_kwargs.pop("batch_size", default_read_batch_size_rows)
     for fragment in fragments:
-        part = _get_partition_keys(fragment.partition_expression)
         batches = fragment.to_batches(
             use_threads=use_threads,
             columns=columns,
@@ -559,15 +557,6 @@ def _read_fragments(
         )
         for batch in batches:
             table = pa.Table.from_batches([batch], schema=schema)
-            if part:
-                for col, value in part.items():
-                    if columns and col not in columns:
-                        continue
-                    table = table.set_column(
-                        table.schema.get_field_index(col),
-                        col,
-                        pa.array([value] * len(table)),
-                    )
             if include_paths:
                 table = table.append_column("path", [[fragment.path]] * len(table))
             # If the table is empty, drop it.
