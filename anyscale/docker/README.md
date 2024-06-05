@@ -1,4 +1,4 @@
-# How runtime container images work?
+# How runtime container images work? (go/byod-runtime)
 
 runtime container images are built in a way that is different from OSS upstream,
 because we do not want to give users release artifacts that can be downloaded
