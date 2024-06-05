@@ -1,4 +1,5 @@
 import logging
+from dataclasses import dataclass
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -84,6 +85,12 @@ PARQUET_ENCODING_RATIO_ESTIMATE_MAX_NUM_SAMPLES = 10
 # The number of rows to read from each file for sampling. Try to keep it low to avoid
 # reading too much data into memory.
 PARQUET_ENCODING_RATIO_ESTIMATE_NUM_ROWS = 1024
+
+
+@dataclass(frozen=True)
+class _SampleInfo:
+    actual_bytes_per_row: Optional[int]
+    estimated_bytes_per_row: Optional[int]
 
 
 # TODO(ekl) this is a workaround for a pyarrow serialization bug, where serializing a
@@ -291,11 +298,16 @@ class ParquetDatasource(Datasource):
         self._to_batches_kwargs = to_batch_kwargs
         self._columns = columns
         self._schema = schema
-        self._encoding_ratio = self._estimate_files_encoding_ratio()
         self._file_metadata_shuffler = None
         self._include_paths = include_paths
         if shuffle == "files":
             self._file_metadata_shuffler = np.random.default_rng()
+
+        sample_infos = self._sample_fragments()
+        self._encoding_ratio = _estimate_files_encoding_ratio(sample_infos)
+        self._default_read_batch_size_rows = _estimate_default_read_batch_size_rows(
+            sample_infos
+        )
 
     def estimate_inmemory_data_size(self) -> Optional[int]:
         total_size = 0
@@ -353,27 +365,17 @@ class ParquetDatasource(Datasource):
             if meta.size_bytes is not None:
                 meta.size_bytes = int(meta.size_bytes * self._encoding_ratio)
 
-            if meta.num_rows and meta.size_bytes:
-                # Make sure the batches read are small enough to enable yielding of
-                # output blocks incrementally during the read.
-                row_size = meta.size_bytes / meta.num_rows
-                # Make sure the row batch size is small enough that block splitting
-                # is still effective.
-                max_parquet_reader_row_batch_size_bytes = (
-                    DataContext.get_current().target_max_block_size // 10
-                )
-                default_read_batch_size_rows = max(
-                    1,
-                    min(
-                        PARQUET_READER_ROW_BATCH_SIZE,
-                        max_parquet_reader_row_batch_size_bytes // row_size,
-                    ),
-                )
-            else:
-                default_read_batch_size_rows = PARQUET_READER_ROW_BATCH_SIZE
-            block_udf, to_batches_kwargs, columns, schema, include_paths = (
+            (
+                block_udf,
+                to_batches_kwargs,
+                default_read_batch_size_rows,
+                columns,
+                schema,
+                include_paths,
+            ) = (
                 self._block_udf,
                 self._to_batches_kwargs,
+                self._default_read_batch_size_rows,
                 self._columns,
                 self._schema,
                 self._include_paths,
@@ -395,14 +397,7 @@ class ParquetDatasource(Datasource):
 
         return read_tasks
 
-    def _estimate_files_encoding_ratio(self) -> float:
-        """Return an estimate of the Parquet files encoding ratio.
-
-        To avoid OOMs, it is safer to return an over-estimate than an underestimate.
-        """
-        if not DataContext.get_current().decoding_size_estimation:
-            return PARQUET_ENCODING_RATIO_ESTIMATE_DEFAULT
-
+    def _sample_fragments(self) -> List[_SampleInfo]:
         # Sample a few rows from Parquet files to estimate the encoding ratio.
         # Launch tasks to sample multiple files remotely in parallel.
         # Evenly distributed to sample N rows in i-th row group in i-th file.
@@ -444,11 +439,10 @@ class ParquetDatasource(Datasource):
                 )
             )
         sample_bar = ProgressBar("Parquet Files Sample", len(futures))
-        sample_ratios = sample_bar.fetch_until_complete(futures)
+        sample_infos = sample_bar.fetch_until_complete(futures)
         sample_bar.close()
-        ratio = np.mean(sample_ratios)
-        logger.debug(f"Estimated Parquet encoding ratio from sampling is {ratio}.")
-        return max(ratio, PARQUET_ENCODING_RATIO_ESTIMATE_LOWER_BOUND)
+
+        return sample_infos
 
     def get_name(self):
         """Return a human-readable name for this datasource.
@@ -527,9 +521,8 @@ def _sample_fragment(
     columns,
     schema,
     file_fragment: _SerializedFragment,
-) -> float:
+) -> _SampleInfo:
     # Sample the first rows batch from file fragment `serialized_fragment`.
-    # Return the encoding ratio calculated from the sampled rows.
     fragment = _deserialize_fragments_with_retry([file_fragment])[0]
 
     # Only sample the first row group.
@@ -546,24 +539,69 @@ def _sample_fragment(
         batch_size=batch_size,
         **to_batches_kwargs,
     )
-    # Use first batch in-memory size as ratio estimation.
+    # Use first batch in-memory size for estimation.
     try:
         batch = next(batches)
     except StopIteration:
-        ratio = PARQUET_ENCODING_RATIO_ESTIMATE_LOWER_BOUND
+        sample_data = _SampleInfo(
+            actual_bytes_per_row=None, estimated_bytes_per_row=None
+        )
     else:
         if batch.num_rows > 0:
-            in_memory_size = batch.nbytes / batch.num_rows
             metadata = fragment.metadata
             total_size = 0
             for idx in range(metadata.num_row_groups):
                 total_size += metadata.row_group(idx).total_byte_size
-            file_size = total_size / metadata.num_rows
-            ratio = in_memory_size / file_size
+            sample_data = _SampleInfo(
+                actual_bytes_per_row=batch.nbytes / batch.num_rows,
+                estimated_bytes_per_row=total_size / metadata.num_rows,
+            )
         else:
-            ratio = PARQUET_ENCODING_RATIO_ESTIMATE_LOWER_BOUND
-    logger.debug(
-        f"Estimated Parquet encoding ratio is {ratio} for fragment {fragment} "
-        f"with batch size {batch_size}."
-    )
-    return ratio
+            sample_data = _SampleInfo(
+                actual_bytes_per_row=None, estimated_bytes_per_row=None
+            )
+    return sample_data
+
+
+def _estimate_files_encoding_ratio(sample_infos: List[_SampleInfo]) -> float:
+    """Return an estimate of the Parquet files encoding ratio.
+
+    To avoid OOMs, it is safer to return an over-estimate than an underestimate.
+    """
+    if not DataContext.get_current().decoding_size_estimation:
+        return PARQUET_ENCODING_RATIO_ESTIMATE_DEFAULT
+
+    def compute_encoding_ratio(sample_info: _SampleInfo) -> float:
+        if (
+            sample_info.actual_bytes_per_row is None
+            or sample_info.estimated_bytes_per_row is None
+        ):
+            return PARQUET_ENCODING_RATIO_ESTIMATE_LOWER_BOUND
+        else:
+            return (
+                sample_info.actual_bytes_per_row / sample_info.estimated_bytes_per_row
+            )
+
+    ratio = np.mean(list(map(compute_encoding_ratio, sample_infos)))
+    logger.debug(f"Estimated Parquet encoding ratio from sampling is {ratio}.")
+    return max(ratio, PARQUET_ENCODING_RATIO_ESTIMATE_LOWER_BOUND)
+
+
+def _estimate_default_read_batch_size_rows(sample_infos: List[_SampleInfo]) -> int:
+    def compute_batch_size_rows(sample_info: _SampleInfo) -> int:
+        if sample_info.actual_bytes_per_row is None:
+            return PARQUET_READER_ROW_BATCH_SIZE
+        else:
+            max_parquet_reader_row_batch_size_bytes = (
+                DataContext.get_current().target_max_block_size // 10
+            )
+            return max(
+                1,
+                min(
+                    PARQUET_READER_ROW_BATCH_SIZE,
+                    max_parquet_reader_row_batch_size_bytes
+                    // sample_info.actual_bytes_per_row,
+                ),
+            )
+
+    return np.mean(list(map(compute_batch_size_rows, sample_infos)))
