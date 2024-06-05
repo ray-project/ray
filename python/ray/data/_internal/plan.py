@@ -125,7 +125,7 @@ class ExecutionPlan:
         plan_max_depth = 0
         dataset_blocks = None
         if (
-            self._snapshot_blocks is None
+            self._snapshot_bundle is None
             or self._snapshot_operator != self._logical_plan.dag
         ):
 
