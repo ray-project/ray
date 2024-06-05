@@ -13,7 +13,7 @@ from google.oauth2 import service_account
 from google.oauth2.credentials import Credentials as OAuthCredentials
 from googleapiclient import discovery, errors
 
-from ray._private.accelerators import TPUAcceleratorManager, tpu
+from ray._private.accelerators import TPUAcceleratorManager
 from ray.autoscaler._private.gcp.node import MAX_POLLS, POLL_INTERVAL, GCPNodeType
 from ray.autoscaler._private.util import check_legacy_fields
 
@@ -114,7 +114,7 @@ def _validate_tpu_config(node: dict):
         generation_pattern = re.compile(r"^V\d+[a-zA-Z]*$")
         topology_pattern = re.compile(r"^\d+x\d+(x\d+)?$")
 
-        if generation is not "V5LITE_POD" and not generation_pattern.match(generation):
+        if generation != "V5LITE_POD" and not generation_pattern.match(generation):
             raise ValueError(f"type should match V(generation). Got {generation}.")
         if generation == "V2" or generation == "V3":
             raise ValueError(
@@ -134,8 +134,8 @@ def _get_num_tpu_visible_chips_per_host(accelerator_type: str) -> int:
 
 
 def _get_tpu_cores_per_chip(accelerator_type: str) -> int:
-    # acceleratorType  is in the form v{generateion}-{cores}
-    acceleratorType = accelerator_type.split("-")[0]
+    # accelerator_type  is in the form v{generateion}-{cores}
+    accelerator_type = accelerator_type.split("-")[0]
 
     # V5Litepods have 1 core per chip
     if accelerator_type == "v5litepod":
