@@ -13,8 +13,9 @@ class ScalingPolicy(abc.ABC):
     def __init__(self, scaling_config: ScalingConfig):
         self.scaling_config = scaling_config
 
+    @classmethod
     def supports_elasticity(self) -> bool:
-        ...
+        raise NotImplementedError
 
     def make_decision(self, worker_group_status) -> ScalingDecision:
-        ...
+        raise NotImplementedError

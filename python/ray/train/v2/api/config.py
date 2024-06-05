@@ -38,18 +38,22 @@ class ScalingConfig(ScalingConfigV1):
                 "ScalingConfig(trainer_resources) is not supported."
             )
 
-        fixed_num_workers = isinstance(self.num_workers, int)
-        elastic_num_workers = (
+        is_fixed = isinstance(self.num_workers, int)
+        is_elastic = (
             isinstance(self.num_workers, tuple)
             and len(self.num_workers) == 2
             and all(isinstance(x, int) for x in self.num_workers)
         )
-        if not fixed_num_workers and not elastic_num_workers:
+        if not (is_fixed or is_elastic):
             raise ValueError(
                 "ScalingConfig(num_workers) must be an int or a tuple of two ints."
             )
 
-        # if scaling_policy.supports_elasticity
+        if self.scaling_policy_cls.supports_elasticity() and is_elastic:
+            raise RuntimeError(
+                f"{self.scaling_policy_cls} does not support "
+                "`num_workers=(min_workers, max_workers)`"
+            )
 
 
 class RunConfig(RunConfigV1):
