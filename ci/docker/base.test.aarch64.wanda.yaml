@@ -3,7 +3,7 @@ froms: ["ubuntu:focal"]
 dockerfile: ci/docker/base.test.Dockerfile
 srcs:
   - ci/env/install-bazel.sh
-  - .bazeliskrc
+  - .bazelversion
 build_args:
   - BUILDKITE_BAZEL_CACHE_URL
 tags:

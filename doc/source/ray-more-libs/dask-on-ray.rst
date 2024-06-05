@@ -224,8 +224,7 @@ The following Ray-specific callbacks are provided:
    6. :code:`ray_finish(result)`: Run after all Ray tasks have finished
       executing and the final result has been returned.
 
-See the docstring for
-:meth:`RayDaskCallback.__init__() <ray.util.dask.callbacks.RayDaskCallback>.__init__`
+See the docstring for :class:`~ray.util.dask.RayDaskCallback`
 for further details about these callbacks, their arguments, and their return
 values.
 
@@ -271,3 +270,18 @@ execution time exceeds some user-defined threshold:
   *submitted*, not executed.
 
 This callback API is currently unstable and subject to change.
+
+API
+---
+
+.. autosummary::
+    :nosignatures:
+    :toctree: doc/
+
+    ~ray.util.dask.RayDaskCallback
+    ~ray.util.dask.callbacks.RayDaskCallback._ray_presubmit
+    ~ray.util.dask.callbacks.RayDaskCallback._ray_postsubmit
+    ~ray.util.dask.callbacks.RayDaskCallback._ray_pretask
+    ~ray.util.dask.callbacks.RayDaskCallback._ray_posttask
+    ~ray.util.dask.callbacks.RayDaskCallback._ray_postsubmit_all
+    ~ray.util.dask.callbacks.RayDaskCallback._ray_finish

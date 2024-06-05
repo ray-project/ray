@@ -16,23 +16,21 @@
 
 #include <chrono>
 #include <cstdlib>
+#include <fstream>
 #include <iostream>
 
 #include "absl/strings/str_format.h"
+#include "absl/strings/str_split.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
+#include "nlohmann/json.hpp"
 #include "ray/util/filesystem.h"
+#include "ray/util/util.h"
 
 using namespace testing;
+using json = nlohmann::json;
 
 namespace ray {
-
-int64_t current_time_ms() {
-  std::chrono::milliseconds ms_since_epoch =
-      std::chrono::duration_cast<std::chrono::milliseconds>(
-          std::chrono::steady_clock::now().time_since_epoch());
-  return ms_since_epoch.count();
-}
 
 // This is not really test.
 // This file just print some information using the logging macro.
@@ -61,7 +59,9 @@ TEST(PrintLogTest, LogTestWithoutInit) {
 
 #if GTEST_HAS_STREAM_REDIRECTION
 using testing::internal::CaptureStderr;
+using testing::internal::CaptureStdout;
 using testing::internal::GetCapturedStderr;
+using testing::internal::GetCapturedStdout;
 
 namespace {
 void VerifyOnlyNthOccurenceLogged(bool fallback_to_debug) {
@@ -184,6 +184,54 @@ TEST(PrintLogTest, TestRayLogEveryMs) {
   EXPECT_LT(occurrences, num_iterations);
   EXPECT_GT(occurrences, 5);
   EXPECT_LT(occurrences, 15);
+}
+
+TEST(PrintLogTest, TestTextLogging) {
+  setEnv("RAY_BACKEND_LOG_JSON", "0");
+  RayLog::StartRayLog("/tmp/gcs", RayLogLevel::INFO, "");
+  CaptureStdout();
+  RAY_LOG(INFO).WithField("key1", "value1").WithField("key2", "value2")
+      << "contextual log";
+
+  std::vector<std::string> log_lines =
+      absl::StrSplit(GetCapturedStdout(), '\n', absl::SkipEmpty());
+  ASSERT_EQ(1, log_lines.size());
+  ASSERT_NE(log_lines[0].find("contextual log key1=value1 key2=value2"),
+            std::string::npos);
+
+  RayLog::ShutDownRayLog();
+  unsetEnv("RAY_BACKEND_LOG_JSON");
+}
+
+TEST(PrintLogTest, TestJSONLogging) {
+  setEnv("RAY_BACKEND_LOG_JSON", "1");
+  RayLog::StartRayLog("/tmp/raylet", RayLogLevel::INFO, "");
+  CaptureStdout();
+  RAY_LOG(DEBUG) << "this is not logged";
+  RAY_LOG(INFO) << "this is info logged";
+  RAY_LOG(WARNING) << "this needs\nescape\"";
+  RAY_LOG(INFO).WithField("key1", "value1").WithField("key2", "value\n2")
+      << "contextual log";
+
+  std::vector<std::string> log_lines =
+      absl::StrSplit(GetCapturedStdout(), '\n', absl::SkipEmpty());
+  ASSERT_EQ(3, log_lines.size());
+  json log1 = json::parse(log_lines[0]);
+  json log2 = json::parse(log_lines[1]);
+  json log3 = json::parse(log_lines[2]);
+  ASSERT_EQ(log1[std::string(kLogKeyMessage)], "this is info logged");
+  ASSERT_EQ(log2[std::string(kLogKeyMessage)], "this needs\nescape\"");
+  ASSERT_EQ(log3[std::string(kLogKeyMessage)], "contextual log");
+  ASSERT_TRUE(log3.contains(kLogKeyAsctime));
+  ASSERT_TRUE(log3.contains(kLogKeyFilename));
+  ASSERT_TRUE(log3.contains(kLogKeyLineno));
+  ASSERT_EQ(log3[std::string(kLogKeyLevelname)], "I");
+  ASSERT_EQ(log3[std::string(kLogKeyComponent)], "raylet");
+  ASSERT_EQ(log3["key1"], "value1");
+  ASSERT_EQ(log3["key2"], "value\n2");
+
+  RayLog::ShutDownRayLog();
+  unsetEnv("RAY_BACKEND_LOG_JSON");
 }
 
 #endif /* GTEST_HAS_STREAM_REDIRECTION */

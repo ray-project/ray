@@ -1,11 +1,11 @@
 from typing import List, Optional
 
-from ray.data.datasource import (
+from ray.data.datasource.file_meta_provider import (
     DefaultFileMetadataProvider,
-    DefaultParquetMetadataProvider,
     FastFileMetadataProvider,
 )
 from ray.data.datasource.image_datasource import _ImageFileMetadataProvider
+from ray.data.datasource.parquet_meta_provider import ParquetMetadataProvider
 
 
 def get_generic_metadata_provider(file_extensions: Optional[List[str]]):
@@ -15,7 +15,7 @@ def get_generic_metadata_provider(file_extensions: Optional[List[str]]):
 
 def get_parquet_metadata_provider():
     # Used by `read_parquet`
-    return DefaultParquetMetadataProvider()
+    return ParquetMetadataProvider()
 
 
 def get_parquet_bulk_metadata_provider():
