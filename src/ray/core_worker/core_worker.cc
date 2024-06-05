@@ -4137,6 +4137,8 @@ void CoreWorker::HandleKillActor(rpc::KillActorRequest request,
     return;
   }
 
+  task_counter_.UnbecomeActor();
+
   const auto &kill_actor_reason =
       gcs::GenErrorMessageFromDeathCause(request.death_cause());
 

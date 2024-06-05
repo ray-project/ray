@@ -126,6 +126,11 @@ class TaskCounter {
     actor_name_ = actor_name;
   }
 
+  void UnbecomeActor() {
+    absl::MutexLock l(&mu_);
+    actor_name_ = "";
+  }
+
   void SetJobId(const JobID &job_id) {
     absl::MutexLock l(&mu_);
     job_id_ = job_id.Hex();
