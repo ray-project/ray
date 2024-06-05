@@ -2,6 +2,8 @@ from abc import ABC, abstractmethod
 from typing import Set
 
 from ray._private.ray_logging import default_impl
+from ray._private.ray_logging.formatters import TextFormatter
+from ray._private.ray_logging.filters import CoreContextFilter
 from ray.util.annotations import PublicAPI
 
 from dataclasses import dataclass
@@ -25,12 +27,18 @@ class DefaultDictConfigProvider(DictConfigProvider):
                 "disable_existing_loggers": False,
                 "formatters": {
                     "text": {
-                        "()": "ray._private.ray_logging.formatters.TextFormatter",
+                        "()": (
+                            f"{TextFormatter.__module__}."
+                            f"{TextFormatter.__qualname__}"
+                        ),
                     },
                 },
                 "filters": {
                     "core_context": {
-                        "()": "ray._private.ray_logging.filters.CoreContextFilter",
+                        "()": (
+                            f"{CoreContextFilter.__module__}."
+                            f"{CoreContextFilter.__qualname__}"
+                        ),
                     },
                 },
                 "handlers": {
