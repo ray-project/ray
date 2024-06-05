@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, Any, List, Optional, Union
+from typing import TYPE_CHECKING, List, Optional, Union
 
 from ray.data._internal.util import call_with_retry
 from ray.data.block import BlockMetadata
@@ -32,16 +32,7 @@ RETRY_MAX_BACKOFF_S_FOR_META_FETCH_TASK = 64
 
 @DeveloperAPI
 class ParquetMetadataProvider(FileMetadataProvider):
-    """Abstract callable that provides block metadata for Arrow Parquet file fragments.
-
-    All file fragments should belong to a single dataset block.
-
-    Supports optional pre-fetching of ordered metadata for all file fragments in
-    a single batch to help optimize metadata resolution.
-
-    Current subclasses:
-        - :class:`~ray.data.datasource.file_meta_provider.DefaultParquetMetadataProvider`
-    """  # noqa: E501
+    """Provides block metadata for Arrow Parquet file fragments."""
 
     def _get_block_metadata(
         self,
@@ -49,7 +40,7 @@ class ParquetMetadataProvider(FileMetadataProvider):
         schema: Optional[Union[type, "pyarrow.lib.Schema"]],
         *,
         num_fragments: int,
-        prefetched_metadata: Optional[List[Any]],
+        prefetched_metadata: Optional[List["_ParquetFileFragmentMetaData"]],
     ) -> BlockMetadata:
         """Resolves and returns block metadata for files of a single dataset block.
 
@@ -66,49 +57,6 @@ class ParquetMetadataProvider(FileMetadataProvider):
         Returns:
             BlockMetadata aggregated across the given file paths.
         """
-        raise NotImplementedError
-
-    def prefetch_file_metadata(
-        self,
-        fragments: List["pyarrow.dataset.ParquetFileFragment"],
-        **ray_remote_args,
-    ) -> Optional[List[Any]]:
-        """Pre-fetches file metadata for all Parquet file fragments in a single batch.
-
-        Subsets of the metadata returned will be provided as input to subsequent calls
-        to ``_get_block_metadata`` together with their corresponding Parquet file
-        fragments.
-
-        Implementations that don't support pre-fetching file metadata shouldn't
-        override this method.
-
-        Args:
-            fragments: The Parquet file fragments to fetch metadata for.
-
-        Returns:
-            Metadata resolved for each input file fragment, or `None`. Metadata
-            must be returned in the same order as all input file fragments, such
-            that `metadata[i]` always contains the metadata for `fragments[i]`.
-        """
-        return None
-
-
-@DeveloperAPI
-class DefaultParquetMetadataProvider(ParquetMetadataProvider):
-    """The default file metadata provider for ParquetDatasource.
-
-    Aggregates total block bytes and number of rows using the Parquet file metadata
-    associated with a list of Arrow Parquet dataset file fragments.
-    """
-
-    def _get_block_metadata(
-        self,
-        paths: List[str],
-        schema: Optional[Union[type, "pyarrow.lib.Schema"]],
-        *,
-        num_fragments: int,
-        prefetched_metadata: Optional[List["_ParquetFileFragmentMetaData"]],
-    ) -> BlockMetadata:
         if (
             prefetched_metadata is not None
             and len(prefetched_metadata) == num_fragments
@@ -140,6 +88,20 @@ class DefaultParquetMetadataProvider(ParquetMetadataProvider):
         fragments: List["pyarrow.dataset.ParquetFileFragment"],
         **ray_remote_args,
     ) -> Optional[List["pyarrow.parquet.FileMetaData"]]:
+        """Pre-fetches file metadata for all Parquet file fragments in a single batch.
+
+        Subsets of the metadata returned will be provided as input to subsequent calls
+        to ``_get_block_metadata`` together with their corresponding Parquet file
+        fragments.
+
+        Args:
+            fragments: The Parquet file fragments to fetch metadata for.
+
+        Returns:
+            Metadata resolved for each input file fragment, or `None`. Metadata
+            must be returned in the same order as all input file fragments, such
+            that `metadata[i]` always contains the metadata for `fragments[i]`.
+        """
         from ray.data.datasource.parquet_datasource import _SerializedFragment
 
         if len(fragments) > PARALLELIZE_META_FETCH_THRESHOLD:
