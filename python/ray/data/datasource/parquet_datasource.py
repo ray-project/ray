@@ -320,6 +320,7 @@ class ParquetDatasource(Datasource):
         # method in order to leverage pyarrow's ParquetDataset abstraction,
         # which simplifies partitioning logic. We still use
         # FileBasedDatasource's write side, however.
+        ctx = DataContext.get_current()
         pq_metadata = self._metadata
         if len(pq_metadata) < len(self._pq_fragments):
             # Pad `pq_metadata` to be same length of `self._pq_fragments`.
@@ -390,6 +391,7 @@ class ParquetDatasource(Datasource):
                         schema,
                         f,
                         include_paths,
+                        ctx,
                     ),
                     meta,
                 )
@@ -464,9 +466,12 @@ def _read_fragments(
     schema,
     serialized_fragments: List[_SerializedFragment],
     include_paths: bool,
+    ctx,
 ) -> Iterator["pyarrow.Table"]:
     # This import is necessary to load the tensor extension type.
     from ray.data.extensions.tensor_extension import ArrowTensorType  # noqa
+
+    DataContext._set_current(ctx)
 
     # Deserialize after loading the filesystem class.
     fragments: List[
