@@ -367,6 +367,13 @@ Deployment log file:
 (ServeReplica:default_Model pid=84006) INFO 2023-07-20 13:47:54,218 default_Model default_Model#yptKoo 123-234 / default replica.py:691 - __CALL__ OK 0.2ms
 ```
 
+:::{note}
+Ray Serve expects unique request id to be able to track the request across the system.
+If the request id is not set, Ray Serve will generate an unique request id for each
+request. If the client re-uses a request id, Ray Serve won't be able to distinguish
+between the requests and will continue to use the same request id for logging. 
+:::
+
 (serve-logging-loki)=
 ### Filtering logs with Loki
 

@@ -1,8 +1,12 @@
+import asyncio
 import uuid
+from typing import Any, Dict, Optional, Tuple
 
+import aiohttp
 import pytest
 import requests
 import starlette
+from aiohttp import ClientSession, TCPConnector
 from fastapi import FastAPI
 
 import ray
@@ -103,6 +107,63 @@ def test_set_request_id_headers_with_two_attributes(serve_instance):
     assert resp.status_code == 200
     assert "x-request-id" in resp.headers
     assert resp.text == resp.headers["x-request-id"]
+
+
+def test_reuse_request_id(serve_instance):
+    """Test client re-uses request id.
+
+    When multiple requests are submitted with the same request id at around the same
+    time, the proxy should continue to track the correct request objects, setting
+    the correct request id in the serve context, and return the original x-request-id
+    request header as the response header.
+
+    For more details, see https://github.com/ray-project/ray/issues/45723.
+    """
+
+    app = FastAPI()
+
+    @serve.deployment(num_replicas=3)
+    @serve.ingress(app)
+    class MyFastAPIDeployment:
+        @app.post("/hello")
+        def root(self, user_input: Dict[str, str]) -> Dict[str, str]:
+            request_id = ray.serve.context._serve_request_context.get().request_id
+            return {
+                "app_name": user_input["app_name"],
+                "serve_context_request_id": request_id,
+            }
+
+    serve.run(MyFastAPIDeployment.bind())
+
+    async def send_request(
+        session: ClientSession, body: Dict[str, Any], request_id: Optional[str]
+    ) -> Tuple[str, str]:
+        headers = {"x-request-id": request_id}
+        url = "http://localhost:8000/hello"
+
+        async with session.post(url=url, headers=headers, json=body) as response:
+            result = await response.json()
+            # Ensure the request object is tracked correctly.
+            assert result["app_name"] == body["app_name"]
+            # Ensure the request id from the serve context is set correctly.
+            assert result["serve_context_request_id"] == request_id
+            # Ensure the request id from the response header is returned correctly.
+            assert response.headers["x-request-id"] == request_id
+
+    async def main():
+        """Sending 20 requests in parallel all with the same request id, but with
+        different request body.
+        """
+        bodies = [{"app_name": f"an_{uuid.uuid4()}"} for _ in range(20)]
+        connector = TCPConnector(ssl=False)
+        async with aiohttp.ClientSession(connector=connector) as session:
+            request_id = f"rid_{uuid.uuid4()}"
+            tasks = [
+                send_request(session, body, request_id=request_id) for body in bodies
+            ]
+            await asyncio.gather(*tasks)
+
+    asyncio.run(main())
 
 
 if __name__ == "__main__":
