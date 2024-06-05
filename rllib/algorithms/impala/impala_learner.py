@@ -3,7 +3,7 @@ import copy
 from queue import Empty, Queue
 import threading
 import time
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 import tree  # pip install dm_tree
 
@@ -21,6 +21,7 @@ from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.lambda_defaultdict import LambdaDefaultDict
 from ray.rllib.utils.metrics import (
     ALL_MODULES,
+    NUM_ENV_STEPS_SAMPLED_LIFETIME,
     NUM_ENV_STEPS_TRAINED,
 )
 from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
@@ -100,19 +101,19 @@ class ImpalaLearner(Learner):
         self,
         episodes: List[EpisodeType],
         *,
+        timesteps: Optional[Dict[str, Any]] = None,
         # TODO (sven): Deprecate these in favor of config attributes for only those
         #  algos that actually need (and know how) to do minibatching.
         minibatch_size: Optional[int] = None,
         num_iters: int = 1,
         min_total_mini_batches: int = 0,
         reduce_fn=None,  # Deprecated args.
-        ts,
         **kwargs,
     ) -> ResultDict:
         # TODO (sven): IMPALA does NOT call additional update anymore from its
         #  `training_step()` method. Instead, we'll do this here (to avoid the extra
         #  metrics.reduce() call -> we should only call this once per update round).
-        self._before_update(ts)
+        self._before_update(timesteps)
 
         with self.metrics.log_time((ALL_MODULES, RAY_GET_EPISODES_TIMER)):
             # Resolve batch/episodes being ray object refs (instead of
@@ -157,12 +158,13 @@ class ImpalaLearner(Learner):
     # TODO (sven): IMPALA does NOT call additional update anymore from its
     #  `training_step()` method. Instead, we'll do this here (to avoid the extra
     #  metrics.reduce() call -> we should only call this once per update round).
-    def _before_update(self, ts):
+    def _before_update(self, timesteps: Optional[Dict[str, Any]] = None):
+        timesteps = timesteps or {}
         for module_id in self.module.keys():
             self.additional_update_for_module(
                 module_id=module_id,
                 config=self.config.get_config_for_module(module_id),
-                timestep=ts,
+                timestep=timesteps.get(NUM_ENV_STEPS_SAMPLED_LIFETIME, 0),
             )
 
     @override(Learner)

@@ -594,15 +594,15 @@ class Stats:
         """
         values = values if values is not None else self.values
         window = window if window is not None else self._window
+        inf_window = window in [None, float("inf")]
 
         # Apply the window (if provided and not inf).
-        values = (
-            values if window is None or window == float("inf") else values[-window:]
-        )
+        values = values if inf_window else values[-window:]
 
         # No reduction method. Return list as-is OR reduce list to len=window.
         if self._reduce_method is None:
             return values, values
+
         # Special case: Internal values list is empty -> return NaN.
         elif len(values) == 0:
             if self._reduce_method in ["min", "max", "mean"]:
@@ -616,7 +616,10 @@ class Stats:
             mean_value = values[0]
             for v in values[1:]:
                 mean_value = self._ema_coeff * v + (1.0 - self._ema_coeff) * mean_value
-            return mean_value, values
+            if inf_window:
+                return mean_value, [mean_value]
+            else:
+                return mean_value, values
         # Do non-EMA reduction (possibly using a window).
         else:
             # Use the numpy/torch "nan"-prefix to ignore NaN's in our value lists.
@@ -657,7 +660,7 @@ class Stats:
 
             # For window=None|inf (infinite window) and reduce != mean, we don't have to
             # keep any values, except the last (reduced) one.
-            if window in [None, float("inf")] and self._reduce_method != "mean":
+            if inf_window and self._reduce_method != "mean":
                 # TODO (sven): What if out values are torch tensors? In this case, we
                 #  would have to do reduction using `torch` above (not numpy) and only
                 #  then return the python primitive AND put the reduced new torch

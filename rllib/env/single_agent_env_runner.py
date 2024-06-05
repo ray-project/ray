@@ -5,7 +5,6 @@ import logging
 from typing import Any, Container, DefaultDict, Dict, List, Optional
 
 import gymnasium as gym
-import numpy as np
 import tree  # pip install dm_tree
 
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
@@ -299,7 +298,8 @@ class SingleAgentEnvRunner(EnvRunner):
                 # RLModule forward pass: Explore or not.
                 if explore:
                     env_steps_lifetime = (
-                        self.metrics.peek(NUM_ENV_STEPS_SAMPLED_LIFETIME, default=0) + ts
+                        self.metrics.peek(NUM_ENV_STEPS_SAMPLED_LIFETIME, default=0)
+                        + ts
                     )
                     to_env = self.module.forward_exploration(
                         to_module, t=env_steps_lifetime
@@ -495,7 +495,8 @@ class SingleAgentEnvRunner(EnvRunner):
                 # RLModule forward pass: Explore or not.
                 if explore:
                     env_steps_lifetime = (
-                        self.metrics.peek(NUM_ENV_STEPS_SAMPLED_LIFETIME, default=0) + ts
+                        self.metrics.peek(NUM_ENV_STEPS_SAMPLED_LIFETIME, default=0)
+                        + ts
                     )
                     to_env = self.module.forward_exploration(
                         to_module, t=env_steps_lifetime

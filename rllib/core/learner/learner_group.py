@@ -355,10 +355,11 @@ class LearnerGroup:
         # Define function to be called on all Learner actors (or the local learner).
         def _learner_update(
             _learner: Learner,
+            *,
             _batch_shard=None,
             _episodes_shard=None,
-            _return_state=False,
             _timesteps=None,
+            _return_state=False,
             _min_total_mini_batches=0,
             **_kwargs,
         ):
@@ -438,7 +439,9 @@ class LearnerGroup:
                         _return_state=(return_state and i == 0),
                         **kwargs,
                     )
-                    for i, episodes_shard in enumerate(ShardObjectRefIterator(episodes, len(self._workers)))
+                    for i, episodes_shard in enumerate(
+                        ShardObjectRefIterator(episodes, len(self._workers))
+                    )
                 ]
             # Single- or MultiAgentEpisodes: Shard into equal pieces (only roughly equal
             # in case of multi-agent).
@@ -480,7 +483,7 @@ class LearnerGroup:
                         _min_total_mini_batches=min_total_mini_batches,
                         **kwargs,
                     )
-                    for eps_shard in eps_shards
+                    for i, eps_shard in enumerate(eps_shards)
                 ]
 
             if async_update:

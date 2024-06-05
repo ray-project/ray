@@ -391,6 +391,7 @@ class EnvRunnerGroup:
         env_steps_sampled: Optional[int] = None,
         connector_states: Optional[List[Dict[str, Any]]] = None,
         rl_module_state: Optional[Dict[str, Any]] = None,
+        env_runner_indices_to_update: Optional[List[int]] = None,
     ) -> None:
         """Synchronizes the connectors of this EnvRunnerGroup's EnvRunners.
 
@@ -410,6 +411,9 @@ class EnvRunnerGroup:
             env_steps_sampled: The total number of env steps taken thus far by all
                 workers combined. Used to broadcast this number to all remote workers
                 if `update_worker_filter_stats` is True in `config`.
+            env_runner_indices_to_update: The indices of those EnvRunners to update
+                with the merged state. Use None (default) to update all remote
+                EnvRunners.
         """
         local_worker = self.local_worker()
         from_worker = from_worker or local_worker
@@ -509,6 +513,7 @@ class EnvRunnerGroup:
             # Broadcast updated states back to all workers.
             self.foreach_worker(
                 _update,
+                remote_worker_ids=env_runner_indices_to_update,
                 local_worker=config.update_worker_filter_stats,
                 timeout_seconds=0.0,  # This is a state update -> Fire-and-forget.
             )
@@ -846,7 +851,8 @@ class EnvRunnerGroup:
             func: The function to call for each worker (as only arg).
             local_worker: Whether apply `func` on local worker too. Default is True.
             healthy_only: Apply `func` on known-to-be healthy workers only.
-            remote_worker_ids: Apply `func` on a selected set of remote workers.
+            remote_worker_ids: Apply `func` on a selected set of remote workers. Use
+                None (default) for all remote EnvRunners.
             timeout_seconds: Time to wait (in seconds) for results. Set this to 0.0 for
                 fire-and-forget. Set this to None (default) to wait infinitely (i.e. for
                 synchronous execution).
