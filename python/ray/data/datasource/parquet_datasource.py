@@ -32,10 +32,7 @@ from ray.data.datasource._default_metadata_providers import (
 )
 from ray.data.datasource.datasource import ReadTask
 from ray.data.datasource.file_meta_provider import _handle_read_os_error
-from ray.data.datasource.parquet_meta_provider import (
-    DefaultParquetMetadataProvider,
-    ParquetMetadataProvider,
-)
+from ray.data.datasource.parquet_meta_provider import ParquetMetadataProvider
 from ray.data.datasource.partitioning import PathPartitionFilter
 from ray.data.datasource.path_util import (
     _has_file_extension,
@@ -190,7 +187,7 @@ class ParquetDatasource(Datasource):
         _block_udf: Optional[Callable[[Block], Block]] = None,
         filesystem: Optional["pyarrow.fs.FileSystem"] = None,
         schema: Optional[Union[type, "pyarrow.lib.Schema"]] = None,
-        meta_provider: ParquetMetadataProvider = DefaultParquetMetadataProvider(),
+        meta_provider: ParquetMetadataProvider = ParquetMetadataProvider(),
         partition_filter: PathPartitionFilter = None,
         shuffle: Union[Literal["files"], None] = None,
         include_paths: bool = False,
