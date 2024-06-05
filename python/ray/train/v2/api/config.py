@@ -3,10 +3,8 @@ from typing import Optional, Tuple, Type, Union
 
 from ray.train import RunConfig as RunConfigV1
 from ray.train import ScalingConfig as ScalingConfigV1
-
 from ray.train.v2.scaling_policy import FixedScalingPolicy, ScalingPolicy
 from ray.train.v2.worker_group.worker_group import WorkerGroup
-
 
 _UNSUPPORTED_STR = "UNSUPPORTED"
 
