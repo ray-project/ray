@@ -347,12 +347,13 @@ void CoreWorkerDirectActorTaskSubmitter::FailTaskWithError(
     // Special error for preempted actor. The task "timed out" because the actor may
     // not have sent a notification to the gcs; regardless we already know it's
     // preempted and it's dead.
-    rpc::ActorDeathCause &actor_death_cause = *error_info.mutable_actor_died_error();
-    actor_death_cause.mutable_actor_died_error_context()->set_actor_id(
-        task.task_spec.ActorId().Binary());
-    actor_death_cause.mutable_actor_died_error_context()->set_preempted(
-        task.actor_preempted);
-
+    auto actor_death_cause = error_info.mutable_actor_died_error();
+    auto actor_died_error_context = actor_death_cause->mutable_actor_died_error_context();
+    actor_died_error_context->set_actor_id(task.task_spec.ActorId().Binary());
+    auto node_death_info = actor_died_error_context->mutable_node_death_info();
+    node_death_info->set_reason(rpc::NodeDeathInfo::AUTOSCALER_DRAIN_PREEMPTED);
+    node_death_info->set_reason_message(
+        "the node was inferred to be dead due to draining.");
     error_info.set_error_type(rpc::ErrorType::ACTOR_DIED);
     error_info.set_error_message("Actor died by preemption.");
   }

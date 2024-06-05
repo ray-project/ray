@@ -1,6 +1,6 @@
 import logging
 import ray
-from ray._private.structured_logging.constants import LogKey
+from ray._private.ray_logging.constants import LogKey
 
 
 class CoreContextFilter(logging.Filter):

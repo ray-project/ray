@@ -50,6 +50,8 @@ import ray._private.services as services
 import ray._private.state
 import ray._private.storage as storage
 
+from ray._private.ray_logging.logging_config import LoggingConfig
+
 # Ray modules
 import ray.actor
 import ray.cloudpickle as pickle  # noqa
@@ -1228,6 +1230,7 @@ def init(
     configure_logging: bool = True,
     logging_level: int = ray_constants.LOGGER_LEVEL,
     logging_format: Optional[str] = None,
+    logging_config: Optional[LoggingConfig] = None,
     log_to_driver: bool = True,
     namespace: Optional[str] = None,
     runtime_env: Optional[Union[Dict[str, Any], "RuntimeEnv"]] = None,  # noqa: F821
@@ -1326,12 +1329,15 @@ def init(
         configure_logging: True (default) if configuration of logging is
             allowed here. Otherwise, the user may want to configure it
             separately.
-        logging_level: Logging level, defaults to logging.INFO. Ignored unless
+        logging_level: Logging level for the "ray" logger of the driver process,
+            defaults to logging.INFO. Ignored unless "configure_logging" is true.
+        logging_format: Logging format for the "ray" logger of the driver process,
+            defaults to a string containing a timestamp, filename, line number, and
+            message. See the source file ray_constants.py for details. Ignored unless
             "configure_logging" is true.
-        logging_format: Logging format, defaults to string containing a
-            timestamp, filename, line number, and message. See the source file
-            ray_constants.py for details. Ignored unless "configure_logging"
-            is true.
+        logging_config: [Experimental] Logging configuration will be applied to the
+            root loggers for both the driver process and all worker processes belonging
+            to the current job. See :class:`~LoggingConfig` for details.
         log_to_driver: If true, the output from all of the worker
             processes on all nodes will be directed to the driver.
         namespace: A namespace is a logical grouping of jobs and named actors.
@@ -1384,10 +1390,16 @@ def init(
         Exception: An exception is raised if an inappropriate combination of
             arguments is passed in.
     """
+    # Configure the "ray" logger for the driver process.
     if configure_logging:
         setup_logger(logging_level, logging_format or ray_constants.LOGGER_FORMAT)
     else:
         logging.getLogger("ray").handlers.clear()
+
+    # Configure the logging settings for the driver process.
+    if logging_config:
+        dict_config = logging_config._get_dict_config()
+        logging.config.dictConfig(dict_config)
 
     # Parse the hidden options:
     _enable_object_reconstruction: bool = kwargs.pop(
@@ -1560,6 +1572,11 @@ def init(
         if runtime_env:
             # Set runtime_env in job_config if passed in as part of ray.init()
             job_config.set_runtime_env(runtime_env)
+
+    # Pass the logging_config to job_config to configure loggers of all worker
+    # processes belonging to the job.
+    if logging_config:
+        job_config.set_py_logging_config(logging_config)
 
     redis_address, gcs_address = None, None
     bootstrap_address = services.canonicalize_bootstrap_address(address, _temp_dir)
@@ -2708,14 +2725,14 @@ blocking_wait_inside_async_warned = False
 @PublicAPI
 @client_mode_hook
 def wait(
-    ray_waitables: List[Union["ObjectRef[R]", "ObjectRefGenerator[R]"]],
+    ray_waitables: List[Union[ObjectRef, ObjectRefGenerator]],
     *,
     num_returns: int = 1,
     timeout: Optional[float] = None,
     fetch_local: bool = True,
 ) -> Tuple[
-    List[Union["ObjectRef[R]", "ObjectRefGenerator[R]"]],
-    List[Union["ObjectRef[R]", "ObjectRefGenerator[R]"]],
+    List[Union[ObjectRef, ObjectRefGenerator]],
+    List[Union[ObjectRef, ObjectRefGenerator]],
 ]:
     """Return a list of IDs that are ready and a list of IDs that are not.
 
@@ -2724,8 +2741,8 @@ def wait(
     is not set, the function simply waits until that number of objects is ready
     and returns that exact number of object refs.
 
-    `ray_waitables` is a list of :class:`~ObjectRef` and
-    :class:`~ObjectRefGenerator`.
+    `ray_waitables` is a list of :class:`~ray.ObjectRef` and
+    :class:`~ray.ObjectRefGenerator`.
 
     The method returns two lists, ready and unready `ray_waitables`.
 
@@ -2873,7 +2890,7 @@ def get_actor(name: str, namespace: Optional[str] = None) -> "ray.actor.ActorHan
         ActorHandle to the actor.
 
     Raises:
-        ValueError if the named actor does not exist.
+        ValueError: if the named actor does not exist.
     """
     if not name:
         raise ValueError("Please supply a non-empty value to get_actor")

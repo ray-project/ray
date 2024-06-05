@@ -463,13 +463,13 @@ class PPO(Algorithm):
             self.metrics.log_dict(
                 {
                     NUM_AGENT_STEPS_SAMPLED_LIFETIME: self.metrics.peek(
-                        ENV_RUNNER_RESULTS, NUM_AGENT_STEPS_SAMPLED
+                        (ENV_RUNNER_RESULTS, NUM_AGENT_STEPS_SAMPLED)
                     ),
                     NUM_ENV_STEPS_SAMPLED_LIFETIME: self.metrics.peek(
-                        ENV_RUNNER_RESULTS, NUM_ENV_STEPS_SAMPLED
+                        (ENV_RUNNER_RESULTS, NUM_ENV_STEPS_SAMPLED)
                     ),
                     NUM_EPISODES_LIFETIME: self.metrics.peek(
-                        ENV_RUNNER_RESULTS, NUM_EPISODES
+                        (ENV_RUNNER_RESULTS, NUM_EPISODES)
                     ),
                 },
                 reduce="sum",
@@ -479,6 +479,11 @@ class PPO(Algorithm):
         with self.metrics.log_time((TIMERS, LEARNER_UPDATE_TIMER)):
             learner_results = self.learner_group.update_from_episodes(
                 episodes=episodes,
+                timesteps={
+                    NUM_ENV_STEPS_SAMPLED_LIFETIME: (
+                        self.metrics.peek(NUM_ENV_STEPS_SAMPLED_LIFETIME)
+                    ),
+                },
                 minibatch_size=(
                     self.config.mini_batch_size_per_learner
                     or self.config.sgd_minibatch_size
@@ -489,10 +494,10 @@ class PPO(Algorithm):
             self.metrics.log_dict(
                 {
                     NUM_ENV_STEPS_TRAINED_LIFETIME: self.metrics.peek(
-                        LEARNER_RESULTS, ALL_MODULES, NUM_ENV_STEPS_TRAINED
+                        (LEARNER_RESULTS, ALL_MODULES, NUM_ENV_STEPS_TRAINED)
                     ),
                     # NUM_MODULE_STEPS_TRAINED_LIFETIME: self.metrics.peek(
-                    #    LEARNER_RESULTS, NUM_MODULE_STEPS_TRAINED
+                    #    (LEARNER_RESULTS, NUM_MODULE_STEPS_TRAINED)
                     # ),
                 },
                 reduce="sum",
@@ -515,7 +520,6 @@ class PPO(Algorithm):
                     # Sync weights from learner_group to all rollout workers.
                     from_worker_or_learner_group=self.learner_group,
                     policies=modules_to_update,
-                    global_vars=None,
                     inference_only=True,
                 )
             else:
@@ -527,7 +531,9 @@ class PPO(Algorithm):
             if self.config.use_kl_loss:
                 for mid in modules_to_update:
                     kl = convert_to_numpy(
-                        self.metrics.peek(LEARNER_RESULTS, mid, LEARNER_RESULTS_KL_KEY)
+                        self.metrics.peek(
+                            (LEARNER_RESULTS, mid, LEARNER_RESULTS_KL_KEY)
+                        )
                     )
                     if np.isnan(kl):
                         logger.warning(
@@ -542,7 +548,8 @@ class PPO(Algorithm):
                         )
                     kl_dict[mid] = kl
 
-            # triggers a special update method on RLOptimizer to update the KL values.
+            # TODO (sven): Move to Learner._after_gradient_based_update().
+            # Triggers a special update method on RLOptimizer to update the KL values.
             additional_results = self.learner_group.additional_update(
                 module_ids_to_update=modules_to_update,
                 sampled_kl_values=kl_dict,
