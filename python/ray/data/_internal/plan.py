@@ -814,7 +814,7 @@ class ExecutionPlan:
                     f"each read task output is split into {k} smaller blocks."
                 )
 
-            for read_task in blocks._tasks:
+            for read_task in blocks.get_tasks():
                 apply_output_blocks_handling_to_read_task(read_task, k)
             blocks._estimated_num_blocks = estimated_num_blocks
 
@@ -1293,7 +1293,7 @@ def _rewrite_read_stage(
     # Generate the "GetReadTasks" stage blocks.
     remote_args = in_blocks._remote_args
     blocks, metadata = [], []
-    for read_task in in_blocks._tasks:
+    for read_task in in_blocks.get_tasks():
         blocks.append(ray.put(read_task._read_fn))
         metadata.append(read_task.get_metadata())
     block_list = BlockList(

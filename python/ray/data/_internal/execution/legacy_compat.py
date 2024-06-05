@@ -255,7 +255,11 @@ def _blocks_to_input_buffer(blocks: BlockList, owns_blocks: bool) -> PhysicalOpe
     """
 
     if hasattr(blocks, "_tasks"):
-        read_tasks = blocks._tasks
+        if isinstance(blocks, LazyBlockList):
+            read_tasks = blocks.get_tasks()
+        else:
+            read_tasks = blocks._tasks
+            
         remote_args = blocks._remote_args
         assert all(isinstance(t, ReadTask) for t in read_tasks), read_tasks
 

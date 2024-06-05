@@ -1893,7 +1893,11 @@ class Dataset:
             read_task_names.extend(other_read_names)
 
             for bl in bls:
-                tasks.extend(bl._tasks)
+                if isinstance(bl, LazyBlockList):
+                    tasks.extend(bl.get_tasks())
+                else:
+                    tasks.extend(bl._tasks)
+
                 block_partition_refs.extend(bl._block_partition_refs)
                 block_partition_meta_refs.extend(bl._block_partition_meta_refs)
             blocklist = LazyBlockList(
