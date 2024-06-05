@@ -445,7 +445,6 @@ class ExecutionPlan:
     def execute_to_iterator(
         self,
         allow_clear_input_blocks: bool = True,
-        force_read: bool = False,
     ) -> Tuple[
         Iterator[Tuple[ObjectRef[Block], BlockMetadata]],
         DatasetStats,
@@ -458,7 +457,6 @@ class ExecutionPlan:
         Args:
             allow_clear_input_blocks: Whether we should try to clear the input blocks
                 for each operator.
-            force_read: Whether to force the read operator to fully execute.
 
         Returns:
             Tuple of iterator over output blocks and the executor.
@@ -470,7 +468,7 @@ class ExecutionPlan:
         if self.has_computed_output():
             return (
                 self.execute(
-                    allow_clear_input_blocks, force_read
+                    allow_clear_input_blocks, force_read=False
                 ).iter_blocks_with_metadata(),
                 self._snapshot_stats,
                 None,

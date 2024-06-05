@@ -333,11 +333,12 @@ def test_gen_test_results(mock_gen_test_result) -> None:
     ]
 
 
-@patch("ray_release.test.Test.gen_from_s3")
-def gen_high_impact_tests(mock_gen_from_s3) -> None:
+@patch("ray_release.test.Test.gen_microcheck_test")
+@patch("ray_release.test.Test.gen_from_name")
+def gen_microcheck_step_ids(mock_gen_from_name, mock_gen_microcheck_test) -> None:
     core_test = MockTest(
         {
-            "name": "core_test",
+            "name": "linux://core_test",
             Test.KEY_IS_HIGH_IMPACT: "false",
             "test_results": [
                 _stub_test_result(rayci_step_id="corebuild", commit="123"),
@@ -346,31 +347,31 @@ def gen_high_impact_tests(mock_gen_from_s3) -> None:
     )
     data_test_01 = MockTest(
         {
-            "name": "data_test_01",
+            "name": "linux://data_test_01",
             Test.KEY_IS_HIGH_IMPACT: "true",
             "test_results": [
                 _stub_test_result(rayci_step_id="databuild", commit="123"),
-                _stub_test_result(rayci_step_id="data15build", commit="123"),
-                _stub_test_result(rayci_step_id="data12build", commit="456"),
             ],
         }
     )
     data_test_02 = MockTest(
         {
-            "name": "data_test_02",
+            "name": "linux://data_test_02",
             Test.KEY_IS_HIGH_IMPACT: "true",
             "test_results": [
-                _stub_test_result(rayci_step_id="databuild", commit="789"),
+                _stub_test_result(rayci_step_id="data15build", commit="123"),
+                _stub_test_result(rayci_step_id="databuild", commit="123"),
+                _stub_test_result(rayci_step_id="databuild", commit="456"),
             ],
         }
     )
+    all_tests = [core_test, data_test_01, data_test_02]
+    mock_gen_microcheck_test.return_value = [test.get_target() for test in all_tests]
+    mock_gen_from_name.side_effect = lambda x: [
+        test for test in all_tests if test.get_name() == x
+    ][0]
 
-    mock_gen_from_s3.return_value = [core_test, data_test_01, data_test_02]
-
-    assert Test.gen_high_impact_tests("linux") == {
-        "databuild": [data_test_01, data_test_02],
-        "data15build": [data_test_01],
-    }
+    assert Test.gen_microcheck_step_ids("linux", "") == {"databuild"}
 
 
 def test_get_test_target():
@@ -382,6 +383,96 @@ def test_get_test_target():
     }
     for input, output in input_to_output.items():
         assert Test({"name": input}).get_target() == output
+
+
+@mock.patch.dict(
+    os.environ,
+    {"BUILDKITE_PULL_REQUEST_BASE_BRANCH": "base", "BUILDKITE_COMMIT": "commit"},
+)
+@mock.patch("subprocess.check_call")
+@mock.patch("subprocess.check_output")
+def test_get_changed_files(mock_check_output, mock_check_call) -> None:
+    mock_check_output.return_value = b"file1\nfile2\n"
+    assert Test._get_changed_files("") == {"file1", "file2"}
+
+
+@mock.patch("ray_release.test.Test._get_test_targets_per_file")
+@mock.patch("ray_release.test.Test._get_changed_files")
+def test_get_changed_tests(
+    mock_get_changed_files, mock_get_test_targets_per_file
+) -> None:
+    mock_get_changed_files.return_value = {"test_src", "build_src"}
+    mock_get_test_targets_per_file.side_effect = (
+        lambda x, _: {"//t1", "//t2"} if x == "test_src" else {}
+    )
+
+    assert Test._get_changed_tests("") == {"//t1", "//t2"}
+
+
+@mock.patch.dict(
+    os.environ,
+    {"BUILDKITE_PULL_REQUEST_BASE_BRANCH": "base", "BUILDKITE_COMMIT": "commit"},
+)
+@mock.patch("subprocess.check_call")
+@mock.patch("subprocess.check_output")
+def test_get_human_specified_tests(mock_check_output, mock_check_call) -> None:
+    mock_check_output.return_value = b"hi\n@microcheck //test01 //test02\nthere"
+    assert Test._get_human_specified_tests("") == {"//test01", "//test02"}
+
+
+def test_gen_microcheck_tests() -> None:
+    test_harness = [
+        {
+            "input": [],
+            "changed_tests": set(),
+            "human_tests": set(),
+            "output": set(),
+        },
+        {
+            "input": [
+                _stub_test(
+                    {
+                        "name": "linux://core_good",
+                        "team": "core",
+                        Test.KEY_IS_HIGH_IMPACT: "true",
+                    }
+                ),
+                _stub_test(
+                    {
+                        "name": "linux://serve_good",
+                        "team": "serve",
+                        Test.KEY_IS_HIGH_IMPACT: "true",
+                    }
+                ),
+            ],
+            "changed_tests": {"//core_new"},
+            "human_tests": {"//human_test"},
+            "output": {
+                "//core_good",
+                "//core_new",
+                "//human_test",
+            },
+        },
+    ]
+    for test in test_harness:
+        with mock.patch(
+            "ray_release.test.Test.gen_from_s3",
+            return_value=test["input"],
+        ), mock.patch(
+            "ray_release.test.Test._get_changed_tests",
+            return_value=test["changed_tests"],
+        ), mock.patch(
+            "ray_release.test.Test._get_human_specified_tests",
+            return_value=test["human_tests"],
+        ):
+            assert (
+                Test.gen_microcheck_tests(
+                    prefix="linux",
+                    bazel_workspace_dir="",
+                    team="core",
+                )
+                == test["output"]
+            )
 
 
 if __name__ == "__main__":
