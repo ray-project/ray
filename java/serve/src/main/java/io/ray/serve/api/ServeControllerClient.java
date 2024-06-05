@@ -262,7 +262,7 @@ public class ServeControllerClient {
     LOGGER.info("Deleting app {}", names);
 
     ((PyActorHandle) controller)
-        .task(PyActorMethod.of("delete_apps"), names.toArray())
+        .task(PyActorMethod.of("delete_apps"), (Object) names.toArray())
         .remote()
         .get();
 
