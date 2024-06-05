@@ -40,10 +40,7 @@ interface PyActorCall {
     return new PyActorTaskCaller<>((PyActorHandle)this, pyActorMethod, args);
   }
 
-  default <R> PyActorTaskCaller<R> flatten_task(PyActorMethod<R> pyActorMethod, Object obj0, Object[] obj1) {
-    Object[] args = new Object[1 + obj1.length];
-    args[0] = obj0;
-    System.arraycopy(obj1, 0, args, 1, obj1.length);
+  default <R> PyActorTaskCaller<R> task(PyActorMethod<R> pyActorMethod, Object[] args) {
     return new PyActorTaskCaller<>((PyActorHandle)this, pyActorMethod, args);
   }
 }
