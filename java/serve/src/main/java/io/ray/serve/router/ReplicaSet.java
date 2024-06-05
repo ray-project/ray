@@ -109,10 +109,10 @@ public class ReplicaSet { // TODO ReplicaScheduler
     LOGGER.debug("Assigned query {} to replica {}.", query.getMetadata().getRequestId(), replica);
     if (replica instanceof PyActorHandle) {
       return ((PyActorHandle) replica)
-          .task(
-              PyActorMethod.of("handle_request_from_java"),
-              query.getMetadata().toByteArray(),
-              query.getArgs())
+          .flatten_task(
+            PyActorMethod.of("handle_request_from_java"),
+            query.getMetadata().toByteArray(),
+            (Object [])query.getArgs())
           .remote();
     } else {
       return ((ActorHandle<RayServeWrappedReplica>) replica)
