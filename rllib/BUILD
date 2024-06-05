@@ -2379,7 +2379,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
     srcs = ["examples/evaluation/evaluation_parallel_to_training.py"],
-    args = ["--enable-new-api-stack", "--as-test", "--stop-reward=450.0", "--num-cpus=6", "--evaluation-duration=auto"]
+    args = ["--enable-new-api-stack", "--as-test", "--evaluation-parallel-to-training", "--stop-reward=450.0", "--num-cpus=6", "--evaluation-duration=auto"]
 )
 
 py_test(
@@ -2388,7 +2388,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "examples", "examples_use_all_core"],
     size = "large",
     srcs = ["examples/evaluation/evaluation_parallel_to_training.py"],
-    args = ["--enable-new-api-stack", "--num-agents=2", "--as-test", "--stop-reward=900.0", "--num-cpus=6", "--evaluation-duration=auto", "--evaluation-duration-unit=episodes"]
+    args = ["--enable-new-api-stack", "--num-agents=2", "--as-test", "--evaluation-parallel-to-training", "--stop-reward=900.0", "--num-cpus=6", "--evaluation-duration=auto", "--evaluation-duration-unit=episodes"]
 )
 
 py_test(
@@ -2397,7 +2397,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
     srcs = ["examples/evaluation/evaluation_parallel_to_training.py"],
-    args = ["--enable-new-api-stack", "--as-test", "--stop-reward=450.0", "--num-cpus=6", "--evaluation-num-env-runners=3", "--evaluation-duration=511", "--evaluation-duration-unit=timesteps"]
+    args = ["--enable-new-api-stack", "--as-test", "--evaluation-parallel-to-training", "--stop-reward=450.0", "--num-cpus=6", "--evaluation-num-env-runners=3", "--evaluation-duration=511", "--evaluation-duration-unit=timesteps"]
 )
 
 py_test(
@@ -2406,7 +2406,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
     srcs = ["examples/evaluation/evaluation_parallel_to_training.py"],
-    args = ["--enable-new-api-stack", "--num-agents=2", "--as-test", "--stop-reward=900.0", "--num-cpus=6", "--evaluation-duration=1001", "--evaluation-duration-unit=timesteps"]
+    args = ["--enable-new-api-stack", "--num-agents=2", "--as-test", "--evaluation-parallel-to-training", "--stop-reward=900.0", "--num-cpus=6", "--evaluation-duration=1001", "--evaluation-duration-unit=timesteps"]
 )
 
 py_test(
@@ -2415,7 +2415,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
     srcs = ["examples/evaluation/evaluation_parallel_to_training.py"],
-    args = ["--enable-new-api-stack", "--as-test", "--stop-reward=450.0", "--num-cpus=6", "--evaluation-duration=13", "--evaluation-duration-unit=episodes"]
+    args = ["--enable-new-api-stack", "--as-test", "--evaluation-parallel-to-training", "--stop-reward=450.0", "--num-cpus=6", "--evaluation-duration=13", "--evaluation-duration-unit=episodes"]
 )
 
 py_test(
@@ -2424,7 +2424,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
     srcs = ["examples/evaluation/evaluation_parallel_to_training.py"],
-    args = ["--enable-new-api-stack", "--num-agents=2", "--as-test", "--stop-reward=900.0", "--num-cpus=6", "--evaluation-duration=10", "--evaluation-duration-unit=episodes"]
+    args = ["--enable-new-api-stack", "--num-agents=2", "--as-test", "--evaluation-parallel-to-training", "--stop-reward=900.0", "--num-cpus=6", "--evaluation-duration=10", "--evaluation-duration-unit=episodes"]
 )
 
 # @OldAPIStack
@@ -2434,7 +2434,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
     srcs = ["examples/evaluation/evaluation_parallel_to_training.py"],
-    args = ["--as-test", "--stop-reward=50.0", "--num-cpus=6", "--evaluation-duration=auto"]
+    args = ["--as-test", "--evaluation-parallel-to-training", "--stop-reward=50.0", "--num-cpus=6", "--evaluation-duration=auto"]
 )
 
 # @OldAPIStack
@@ -2444,7 +2444,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
     srcs = ["examples/evaluation/evaluation_parallel_to_training.py"],
-    args = ["--as-test", "--framework=torch", "--stop-reward=30.0", "--num-cpus=6", "--evaluation-num-env-runners=3", "--evaluation-duration=211", "--evaluation-duration-unit=timesteps"]
+    args = ["--as-test", "--evaluation-parallel-to-training", "--framework=torch", "--stop-reward=30.0", "--num-cpus=6", "--evaluation-num-env-runners=3", "--evaluation-duration=211", "--evaluation-duration-unit=timesteps"]
 )
 
 # subdirectory: gpus/
