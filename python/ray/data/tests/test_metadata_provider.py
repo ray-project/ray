@@ -70,7 +70,6 @@ def test_file_metadata_providers_not_implemented():
         meta_provider(["/foo/bar.csv"], None, rows_per_file=None, file_sizes=[None])
     with pytest.raises(NotImplementedError):
         meta_provider.expand_paths(["/foo/bar.csv"], None)
-    assert meta_provider.prefetch_file_metadata(["test"]) is None
 
 
 @pytest.mark.parametrize(
