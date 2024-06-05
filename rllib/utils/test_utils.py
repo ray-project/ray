@@ -1465,6 +1465,7 @@ def run_rllib_example_script_experiment(
         # New stack.
         if config.enable_rl_module_and_learner:
             # Define compute resources used.
+            config.resources(num_gpus=0)
             config.learners(
                 num_learners=args.num_gpus,
                 num_gpus_per_learner=1 if torch.cuda.is_available() else 0,
@@ -1490,9 +1491,13 @@ def run_rllib_example_script_experiment(
     if args.no_tune:
         assert not args.as_test and not args.as_release_test
         algo = config.build()
-        for _ in range(stop.get(TRAINING_ITERATION, args.stop_iters)):
+        for i in range(stop.get(TRAINING_ITERATION, args.stop_iters)):
             results = algo.train()
-            print(f"R={results[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN]}", end="")
+            if ENV_RUNNER_RESULTS in results:
+                print(
+                    f"iter={i} R={results[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN]}",
+                    end="",
+                )
             if EVALUATION_RESULTS in results:
                 Reval = results[EVALUATION_RESULTS][ENV_RUNNER_RESULTS][
                     EPISODE_RETURN_MEAN
