@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 
 @PublicAPI
-class ParquetBaseDatasource(FileBasedDatasource):
+class ParquetBulkDatasource(FileBasedDatasource):
     """Minimal Parquet datasource, for reading and writing Parquet files."""
 
     _FILE_EXTENSIONS = ["parquet"]

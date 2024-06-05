@@ -17,7 +17,7 @@ from ray.data.datasource import (
     DefaultFileMetadataProvider,
     DefaultParquetMetadataProvider,
 )
-from ray.data.datasource.parquet_base_datasource import ParquetBaseDatasource
+from ray.data.datasource.parquet_bulk_datasource import ParquetBulkDatasource
 from ray.data.datasource.parquet_datasource import (
     NUM_CPUS_FOR_META_FETCH_TASK,
     PARALLELIZE_META_FETCH_THRESHOLD,
@@ -1092,7 +1092,7 @@ def test_parquet_datasource_names(ray_start_regular_shared, tmp_path):
     path = os.path.join(tmp_path, "data.parquet")
     df.to_parquet(path)
 
-    assert ParquetBaseDatasource(path).get_name() == "ParquetBulk"
+    assert ParquetBulkDatasource(path).get_name() == "ParquetBulk"
     assert ParquetDatasource(path).get_name() == "Parquet"
 
 

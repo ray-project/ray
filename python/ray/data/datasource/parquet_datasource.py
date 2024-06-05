@@ -186,7 +186,7 @@ def _check_for_legacy_tensor_type(schema):
 class ParquetDatasource(Datasource):
     """Parquet datasource, for reading and writing Parquet files.
 
-    The primary difference from ParquetBaseDatasource is that this uses
+    The primary difference from ParquetBulkDatasource is that this uses
     PyArrow's `ParquetDataset` abstraction for dataset reads, and thus offers
     automatic Arrow dataset schema inference and row count collection at the
     cost of some potential performance and/or compatibility penalties.
@@ -527,8 +527,8 @@ class ParquetDatasource(Datasource):
 
     def get_name(self):
         """Return a human-readable name for this datasource.
+
         This will be used as the names of the read tasks.
-        Note: overrides the base `ParquetBaseDatasource` method.
         """
         return "Parquet"
 
