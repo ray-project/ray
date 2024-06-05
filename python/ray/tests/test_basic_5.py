@@ -167,7 +167,12 @@ remote_sys_path = ray.get(sys_path.remote())
 assert r'{str(package_folder)}' in remote_sys_path, remote_sys_path
 """
     )
-    subprocess.check_call([sys.executable, str(module1_file)])
+
+    # Ray's handling of sys.path does not work with PYTHONSAFEPATH.
+    env = os.environ.copy()
+    if env.get("PYTHONSAFEPATH", "") != "":
+        env["PYTHONSAFEPATH"] = ""  # Set to empty string to disable.
+    subprocess.check_call([sys.executable, str(module1_file)], env=env)
 
     # If the driver script is run via `python -m`,
     # the script directory is not included in sys.path.
