@@ -27,7 +27,6 @@ from ray.data.datasource.file_meta_provider import (
     _get_file_infos_parallel,
     _get_file_infos_serial,
 )
-from ray.data.datasource.parquet_meta_provider import _ParquetFileFragmentMetaData
 from ray.data.datasource.path_util import (
     _resolve_paths_and_filesystem,
     _unwrap_protocol,
