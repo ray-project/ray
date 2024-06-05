@@ -15,7 +15,6 @@ from pytest_lazyfixture import lazy_fixture
 from ray.data.datasource import (
     BaseFileMetadataProvider,
     DefaultFileMetadataProvider,
-    DefaultParquetMetadataProvider,
     FastFileMetadataProvider,
     FileMetadataProvider,
     ParquetMetadataProvider,
@@ -108,7 +107,7 @@ def test_default_parquet_metadata_provider(fs, data_path):
     table = pa.Table.from_pandas(df2)
     pq.write_table(table, paths[1], filesystem=fs)
 
-    meta_provider = DefaultParquetMetadataProvider()
+    meta_provider = ParquetMetadataProvider()
     pq_ds = pq.ParquetDataset(paths, filesystem=fs, use_legacy_dataset=False)
     file_metas = meta_provider.prefetch_file_metadata(pq_ds.fragments)
     fragment_file_metas = [_ParquetFileFragmentMetaData(m) for m in file_metas]

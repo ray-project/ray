@@ -43,10 +43,7 @@ from ray.data.datasource.numpy_datasource import NumpyDatasource
 from ray.data.datasource.parquet_bulk_datasource import ParquetBulkDatasource
 from ray.data.datasource.parquet_datasink import _ParquetDatasink
 from ray.data.datasource.parquet_datasource import ParquetDatasource
-from ray.data.datasource.parquet_meta_provider import (
-    DefaultParquetMetadataProvider,
-    ParquetMetadataProvider,
-)
+from ray.data.datasource.parquet_meta_provider import ParquetMetadataProvider
 from ray.data.datasource.partitioning import (
     Partitioning,
     PartitionStyle,
@@ -83,7 +80,6 @@ __all__ = [
     "SQLDatasource",
     "DefaultBlockWritePathProvider",
     "DefaultFileMetadataProvider",
-    "DefaultParquetMetadataProvider",
     "DummyOutputDatasink",
     "FastFileMetadataProvider",
     "FileBasedDatasource",

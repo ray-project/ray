@@ -13,10 +13,7 @@ from pytest_lazyfixture import lazy_fixture
 import ray
 from ray.data.block import BlockAccessor
 from ray.data.context import DataContext
-from ray.data.datasource import (
-    DefaultFileMetadataProvider,
-    DefaultParquetMetadataProvider,
-)
+from ray.data.datasource import DefaultFileMetadataProvider, ParquetMetadataProvider
 from ray.data.datasource.parquet_bulk_datasource import ParquetBulkDatasource
 from ray.data.datasource.parquet_datasource import (
     NUM_CPUS_FOR_META_FETCH_TASK,
@@ -205,7 +202,7 @@ def test_parquet_read_meta_provider(ray_start_regular_shared, fs, data_path):
     path2 = os.path.join(setup_data_path, "test2.parquet")
     pq.write_table(table, path2, filesystem=fs)
 
-    class TestMetadataProvider(DefaultParquetMetadataProvider):
+    class TestMetadataProvider(ParquetMetadataProvider):
         def prefetch_file_metadata(self, fragments, **ray_remote_args):
             assert ray_remote_args["num_cpus"] == NUM_CPUS_FOR_META_FETCH_TASK
             assert (
