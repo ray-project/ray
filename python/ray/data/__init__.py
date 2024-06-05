@@ -150,3 +150,15 @@ __all__ = [
     "set_progress_bars",
     "Preprocessor",
 ]
+
+# Append Anyscale proprietary APIs and apply patches
+from ray.anyscale.data.api import StreamingAggFn  # noqa: E402, isort:skip
+from ray.anyscale.data.apply_anyscale_patches import (  # noqa: E402, isort:skip
+    apply_anyscale_patches,
+)
+
+__all__ += [
+    "StreamingAggFn",
+]
+
+apply_anyscale_patches()
