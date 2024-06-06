@@ -28,6 +28,8 @@ from ray.experimental.channel.torch_tensor_nccl_channel import (
     _destroy_nccl_group,
 )
 
+from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
+
 MAX_BUFFER_SIZE = int(100 * 1e6)  # 100MB
 
 logger = logging.getLogger(__name__)
@@ -379,6 +381,20 @@ class CompiledDAG:
     information.
     """
 
+    @ray.remote
+    class DriverActor:
+        """
+        This actor exists simply so that the driver can read from channels. When a
+        channel backing store is created or resized, the writer may need to invoke a
+        remote function on the reader node. A remote function cannot be invoked on the
+        driver, so this actor runs on the same node as the driver to run the remote
+        function.
+
+        This actor itself does not read from the channel.
+        """
+
+        pass
+
     def __init__(
         self,
         buffer_size_bytes: Optional[int],
@@ -463,6 +479,14 @@ class CompiledDAG:
         # Uniquely identifies the NCCL communicator that will be used within
         # this DAG, if any.
         self._nccl_group_id: Optional[str] = None
+
+        # Creates the driver actor. See the comments in the CompiledDAG.DriverActor
+        # class above for more details.
+        self._driver_actor = CompiledDAG.DriverActor.options(
+            scheduling_strategy=NodeAffinitySchedulingStrategy(
+                ray.get_runtime_context().get_node_id(), soft=False
+            )
+        ).remote()
 
     def _add_node(self, node: "ray.dag.DAGNode") -> None:
         idx = self.counter
@@ -657,8 +681,8 @@ class CompiledDAG:
                 if isinstance(readers[0].dag_node, MultiOutputNode):
                     # This node is a multi-output node, which means that it will only be
                     # read by the driver, not an actor. Thus, we handle this case by
-                    # setting `reader_handles` to `[None]`.
-                    reader_handles = [None]
+                    # setting `reader_handles` to `[self._driver_actor]`.
+                    reader_handles = [self._driver_actor]
 
                     fn = task.dag_node._get_remote_method("__ray_call__")
 

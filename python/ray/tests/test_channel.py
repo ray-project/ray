@@ -11,26 +11,13 @@ import ray
 import ray.cluster_utils
 import ray.experimental.channel as ray_channel
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
+from ray.dag import CompiledDAG
 
 logger = logging.getLogger(__name__)
 
 
-@ray.remote
-class DriverActor:
-    """
-    This actor exists simply so that the driver can read from channels. When a channel
-    backing store is created or resized, the writer may need to invoke a remote function
-    on the reader node. A remote function cannot be invoked on the driver, so this actor
-    runs on the same node as the driver to run the remote function.
-
-    This actor itself does not read from the channel.
-    """
-
-    pass
-
-
 def get_driver_actor():
-    return DriverActor.options(
+    return CompiledDAG.DriverActor.options(
         scheduling_strategy=NodeAffinitySchedulingStrategy(
             ray.get_runtime_context().get_node_id(), soft=False
         )
@@ -60,8 +47,8 @@ def test_put_local_get(ray_start_regular):
 def test_driver_as_reader(ray_start_cluster, remote):
     cluster = ray_start_cluster
     if remote:
-        # This node is for the driver. num_cpus is 1 because the DriverActor needs a
-        # place to run.
+        # This node is for the driver. num_cpus is 1 because the CompiledDAG.DriverActor
+        # needs a place to run.
         cluster.add_node(num_cpus=1)
         ray.init(address=cluster.address)
         # This node is for the writer actor.
