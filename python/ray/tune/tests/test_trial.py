@@ -117,7 +117,7 @@ def test_trial_logdir_length():
     assert len(trial.storage.trial_dir_name) < 200
 
 
-def test_should_stop(caplog):
+def test_should_stop(caplog, propagate_logs):
     """Test whether `Trial.should_stop()` works as expected given a result dict."""
     trial = Trial(
         "MockTrainable",
@@ -127,40 +127,32 @@ def test_should_stop(caplog):
     )
 
     # Criterion is not reached yet -> don't stop.
-    result = _TrainingResult(
-        checkpoint=None, metrics={"a": 9.999, "b/c": 0.0, "some_other_key": True}
-    )
-    assert not trial.should_stop(result.metrics)
+    result = {"a": 9.999, "b/c": 0.0, "some_other_key": True}
+    assert not trial.should_stop(result)
 
     # Criterion is exactly reached -> stop.
-    result = _TrainingResult(
-        checkpoint=None, metrics={"a": 10.0, "b/c": 0.0, "some_other_key": False}
-    )
-    assert trial.should_stop(result.metrics)
+    result = {"a": 10.0, "b/c": 0.0, "some_other_key": False}
+    assert trial.should_stop(result)
 
     # Criterion is exceeded -> stop.
-    result = _TrainingResult(
-        checkpoint=None, metrics={"a": 10000.0, "b/c": 0.0, "some_other_key": False}
-    )
-    assert trial.should_stop(result.metrics)
+    result = {"a": 10000.0, "b/c": 0.0, "some_other_key": False}
+    assert trial.should_stop(result)
 
-    # Test nested criteria.
-    result = _TrainingResult(
-        checkpoint=None, metrics={"a": 5.0, "b/c": 1000.0, "some_other_key": False}
-    )
-    assert trial.should_stop(result.metrics)
+    # Test nested criterion.
+    result = {"a": 5.0, "b/c": 1000.0, "some_other_key": False}
+    assert trial.should_stop(result)
 
     # Test criterion NOT found in result metrics.
-    result = _TrainingResult(checkpoint=None, metrics={"b/c": 1000.0})
+    result = {"b/c": 1000.0}
     with caplog.at_level(logging.WARNING):
-        trial.should_stop(result.metrics)
+        trial.should_stop(result)
     assert (
         "Stopping criterion 'a' not found in result dict! Available keys are ['b/c']."
     ) in caplog.text
 
     # The warning should, however, only be triggered once.
     with caplog.at_level(logging.WARNING):
-        trial.should_stop(result.metrics)
+        trial.should_stop(result)
     assert "Stopping criterion " not in caplog.text
 
 
