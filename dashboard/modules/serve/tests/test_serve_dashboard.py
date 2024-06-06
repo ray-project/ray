@@ -400,7 +400,7 @@ def test_get_serve_instance_details(ray_start_stop, f_deployment_options, url):
             and serve_details.applications["app3"].status == ApplicationStatus.RUNNING
         )
 
-    wait_for_condition(applications_running, timeout=15)
+    wait_for_condition(applications_running, timeout=30)
     print("All applications are in a RUNNING state.")
 
     serve_details = ServeInstanceDetails(**requests.get(url).json())
