@@ -953,6 +953,15 @@ class Worker:
         import re
 
         for resource, assignment in resource_ids.items():
+            # Note: If bundle index is specified, we should get the GPU ids
+            # from the placement group resource that contain the bundle index!
+            # https://github.com/ray-project/ray/issues/29811
+            if re.match(r"^GPU_group_[0-9]+_[0-9A-Za-z]+$", resource):
+                assigned_ids = set()
+                for resource_id, _ in assignment:
+                    assigned_ids.add(resource_id)
+                break
+
             if resource == resource_name or re.match(resource_regex, resource):
                 for resource_id, _ in assignment:
                     assigned_ids.add(resource_id)
@@ -2087,18 +2096,6 @@ def print_worker_logs(data: Dict[str, str], print_file: Any):
                 process_tqdm(line)
             else:
                 hide_tqdm()
-<<<<<<< HEAD
-                print(
-                    "{}({}{}){} {}".format(
-                        color_for(data, line),
-                        prefix_for(data),
-                        pid,
-                        colorama.Style.RESET_ALL,
-                        message_for(data, line),
-                    ),
-                    file=print_file,
-                )
-=======
                 if ray_constants.DISABLE_COLOR_LOG:
                     print(
                         "({}{}) {}".format(
@@ -2120,26 +2117,12 @@ def print_worker_logs(data: Dict[str, str], print_file: Any):
                         ),
                         file=print_file,
                     )
->>>>>>> eb3ccfbb8b ([#15812136]Support disable log color format.)
     else:
         for line in lines:
             if RAY_TQDM_MAGIC in line:
                 process_tqdm(line)
             else:
                 hide_tqdm()
-<<<<<<< HEAD
-                print(
-                    "{}({}{}, ip={}){} {}".format(
-                        color_for(data, line),
-                        prefix_for(data),
-                        pid,
-                        data.get("ip"),
-                        colorama.Style.RESET_ALL,
-                        message_for(data, line),
-                    ),
-                    file=print_file,
-                )
-=======
                 if ray_constants.DISABLE_COLOR_LOG:
                     print(
                         "({}{}, ip={}) {}".format(
@@ -2163,7 +2146,6 @@ def print_worker_logs(data: Dict[str, str], print_file: Any):
                         ),
                         file=print_file,
                     )
->>>>>>> eb3ccfbb8b ([#15812136]Support disable log color format.)
     # Restore once at end of batch to avoid excess hiding/unhiding of tqdm.
     restore_tqdm()
 
