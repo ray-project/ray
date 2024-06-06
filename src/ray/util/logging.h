@@ -85,7 +85,7 @@ enum { ERROR = 0 };
 #endif
 
 namespace ray {
-/// Sync with ray._private.structured_logging.constants.LogKey
+/// Sync with ray._private.ray_logging.constants.LogKey
 constexpr std::string_view kLogKeyAsctime = "asctime";
 constexpr std::string_view kLogKeyLevelname = "levelname";
 constexpr std::string_view kLogKeyMessage = "message";
