@@ -681,7 +681,7 @@ def test_large_arrow_tensor_array():
     ta = ArrowTensorArray.from_numpy([test_arr] * 4000)
     assert len(ta) == 4000
     for arr in ta:
-        assert arr.as_py().shape == (1000, 550)
+        assert np.asarray(arr).shape == (1000, 550)
 
 
 if __name__ == "__main__":
