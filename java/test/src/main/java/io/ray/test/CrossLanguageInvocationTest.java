@@ -182,7 +182,8 @@ public class CrossLanguageInvocationTest extends BaseTest {
     Assert.assertEquals(res.get(), "2".getBytes());
 
     ObjectRef<String> numRef = Ray.put("2");
-    ObjectRef<byte[]> res2 = actor.task(PyActorMethod.of("increase", byte[].class), numRef).remote();
+    ObjectRef<byte[]> res2 =
+        actor.task(PyActorMethod.of("increase", byte[].class), numRef).remote();
     Assert.assertEquals(res2.get(), "4".getBytes());
   }
 
