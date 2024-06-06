@@ -209,6 +209,7 @@ void LocalTaskManager::DispatchScheduledTasksToWorkers() {
       //    the number of running tasks for this scheduling class to not be much. However,
       //    if no tasks of this scheduling class are running, it will not be skipped.
 
+      size_t fair_share = total_cpu_running_tasks / num_classes_with_cpu;
       if (sched_cls_info.running_tasks.size() > fair_share) {
         RAY_LOG(DEBUG) << "Skipping dispatch for scheduling class " << scheduling_class
                        << ". Running tasks (" << sched_cls_info.running_tasks.size()
