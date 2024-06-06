@@ -964,8 +964,9 @@ class Impala(Algorithm):
                     # each.
                     "CPU": max(
                         cf.num_cpus_for_main_process,
-                        cf.num_cpus_per_learner if cf.num_learners == 0 else 0
-                    ) + cf.num_aggregation_workers,
+                        cf.num_cpus_per_learner if cf.num_learners == 0 else 0,
+                    )
+                    + cf.num_aggregation_workers,
                     "GPU": 0 if cf._fake_gpus else cf.num_gpus,
                 }
             ]

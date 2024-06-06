@@ -36,10 +36,9 @@ class TinyAtariCNN(TorchRLModule):
         """
         # Get the CNN stack config from our RLModuleConfig's (self.config)
         # `model_config_dict` property:
-        if "conv_filters" in self.config.model_config_dict:
-            conv_filters = self.config.model_config_dict["conv_filters"]
+        conv_filters = self.config.model_config_dict.get("conv_filters")
         # Default CNN stack with 3 layers:
-        else:
+        if conv_filters is None:
             conv_filters = [
                 [16, 4, 2, "same"],  # num filters, kernel wxh, stride wxh, padding type
                 [32, 4, 2, "same"],
