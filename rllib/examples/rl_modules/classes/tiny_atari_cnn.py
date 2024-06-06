@@ -20,14 +20,31 @@ class TinyAtariCNN(TorchRLModule):
     Simple reshaping (no flattening or extra linear layers necessary) lead to the
     action logits, which can directly be used inside a distribution or loss.
     """
+
     @override(TorchRLModule)
     def setup(self):
-        # Define the layers that this CNN stack needs.
-        conv_filters = [
-            [16, 4, 2, "same"],  # num filters, kernel wxh, stride wxh, padding type
-            [32, 4, 2, "same"],
-            [256, 11, 1, "valid"],
-        ]
+        """Use this method to create all the model components that you require.
+
+        Feel free to access the following useful properties in this class:
+        - `self.config.model_config_dict`: The config dict for this RLModule class,
+        which should contain flxeible settings, for example: {"hiddens": [256, 256]}.
+        - `self.config.observation|action_space`: The observation and action space that
+        this RLModule is subject to. Note that the observation space might not be the
+        exact space from your env, but that it might have already gone through
+        preprocessing through a connector pipeline (for example, flattening,
+        frame-stacking, mean/std-filtering, etc..).
+        """
+        # Get the CNN stack config from our RLModuleConfig's (self.config)
+        # `model_config_dict` property:
+        if "conv_filters" in self.config.model_config_dict:
+            conv_filters = self.config.model_config_dict["conv_filters"]
+        # Default CNN stack with 3 layers:
+        else:
+            conv_filters = [
+                [16, 4, 2, "same"],  # num filters, kernel wxh, stride wxh, padding type
+                [32, 4, 2, "same"],
+                [256, 11, 1, "valid"],
+            ]
 
         # Build the CNN layers.
         layers = []
@@ -79,9 +96,7 @@ class TinyAtariCNN(TorchRLModule):
         # Compute the basic 1D feature tensor (inputs to policy- and value-heads).
         _, logits = self._compute_features_and_logits(batch)
         # Return logits as ACTION_DIST_INPUTS (categorical distribution).
-        return {
-            Columns.ACTION_DIST_INPUTS: logits
-        }
+        return {Columns.ACTION_DIST_INPUTS: logits}
 
     @override(TorchRLModule)
     def _forward_exploration(self, batch, **kwargs):
@@ -99,6 +114,18 @@ class TinyAtariCNN(TorchRLModule):
             Columns.VF_PREDS: values,
         }
 
+    # TODO (sven): In order for this RLModule to work with PPO, we must define
+    #  our own `_compute_values()` method. This would become more obvious, if we simply
+    #  subclassed the `PPOTorchRLModule` directly here (which we didn't do for
+    #  simplicity and to keep some generality). We might change even get rid of algo-
+    #  specific RLModule subclasses altogether in the future and replace them
+    #  by mere algo-specific APIs (w/o any actual implementations).
+    def _compute_values(self, batch, device):
+        obs = convert_to_torch_tensor(batch[Columns.OBS], device=device)
+        features = self._base_cnn_stack(obs.permute(0, 3, 1, 2))
+        features = torch.squeeze(features, dim=[-1, -2])
+        return self._values(features).squeeze(-1)
+
     def _compute_features_and_logits(self, batch):
         obs = batch[Columns.OBS].permute(0, 3, 1, 2)
         features = self._base_cnn_stack(obs)
@@ -107,13 +134,6 @@ class TinyAtariCNN(TorchRLModule):
             torch.squeeze(features, dim=[-1, -2]),
             torch.squeeze(logits, dim=[-1, -2]),
         )
-
-    def _compute_values(self, batch, device):
-        obs = convert_to_torch_tensor(batch[Columns.OBS], device=device)
-        features = self._base_cnn_stack(obs.permute(0, 3, 1, 2))
-        logits = self._logits(features)
-        features = torch.squeeze(features, dim=[-1, -2])
-        return self._values(features).squeeze(-1)
 
 
 if __name__ == "__main__":

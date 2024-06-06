@@ -3,9 +3,10 @@
 This example:
     - demonstrates how you can subclass the TorchRLModule base class and setup your
     own neural network architecture by overriding `setup()`.
-    - how to override the 3 forward methods: `_forward_inference`, `_forward_exploration`,
-    and `forward_train` to implement your own custom forward logic(s). You will also learn,
-    when each of these 3 methods is called by RLlib or the users of your RLModule.
+    - how to override the 3 forward methods: `_forward_inference()`,
+    `_forward_exploration()`, and `forward_train()` to implement your own custom forward
+    logic(s). You will also learn, when each of these 3 methods is called by RLlib or
+    the users of your RLModule.
     - shows how you then configure an RLlib Algorithm such that it uses your custom
     RLModule (instead of a default RLModule).
 
@@ -35,8 +36,21 @@ For logging to your WandB account, use:
 
 Results to expect
 -----------------
-You should see the following output (at the end of the experiment) in your console:
+You should see the following output (during the experiment) in your console:
 
+Number of trials: 1/1 (1 RUNNING)
++---------------------+----------+----------------+--------+------------------+
+| Trial name          | status   | loc            |   iter |   total time (s) |
+|                     |          |                |        |                  |
+|---------------------+----------+----------------+--------+------------------+
+| PPO_env_82b44_00000 | RUNNING  | 127.0.0.1:9718 |      1 |          98.3585 |
++---------------------+----------+----------------+--------+------------------+
++------------------------+------------------------+------------------------+
+|   num_env_steps_sample |   num_env_steps_traine |   num_episodes_lifetim |
+|             d_lifetime |             d_lifetime |                      e |
+|------------------------+------------------------+------------------------|
+|                   4000 |                   4000 |                      4 |
++------------------------+------------------------+------------------------+
 """
 import gymnasium as gym
 
@@ -60,11 +74,14 @@ if __name__ == "__main__":
         args.enable_new_api_stack
     ), "Must set --enable-new-api-stack when running this script!"
 
-    register_env("env", lambda cfg: wrap_atari_for_new_api_stack(
-        gym.make(args.env, **cfg),
-        dim=42,  # <- need images to be "tiny" for our custom model
-        framestack=4,
-    ))
+    register_env(
+        "env",
+        lambda cfg: wrap_atari_for_new_api_stack(
+            gym.make(args.env, **cfg),
+            dim=42,  # <- need images to be "tiny" for our custom model
+            framestack=4,
+        ),
+    )
 
     base_config = (
         get_trainable_cls(args.algo)
@@ -78,9 +95,21 @@ if __name__ == "__main__":
             ),
         )
         .rl_module(
+            # Plug-in our custom RLModule class.
             rl_module_spec=SingleAgentRLModuleSpec(
                 module_class=TinyAtariCNN,
             ),
+            # Feel free to specify your own `model_config_dict` settings below.
+            # The `model_config_dict` defined here will be available inside your custom
+            # RLModule class through the `self.config.model_config_dict` property.
+            # model_config_dict={
+            #    "conv_filters": [
+            #        # num filters, kernel wxh, stride wxh, padding type
+            #        [16, 4, 2, "same"],
+            #        [32, 4, 2, "same"],
+            #        [64, 4, 2, "same"],
+            #    ],
+            # },
         )
     )
 

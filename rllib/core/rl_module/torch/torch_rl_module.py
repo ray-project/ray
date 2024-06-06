@@ -146,6 +146,7 @@ class TorchRLModule(nn.Module, RLModule):
                 "return the correct TorchDistribution class from it!"
             )
 
+
 class TorchDDPRLModule(RLModule, nn.parallel.DistributedDataParallel):
     def __init__(self, *args, **kwargs) -> None:
         nn.parallel.DistributedDataParallel.__init__(self, *args, **kwargs)
@@ -240,7 +241,7 @@ def compile_wrapper(rl_module: "TorchRLModule", compile_config: TorchCompileConf
         rl_module._forward_train,
         backend=compile_config.torch_dynamo_backend,
         mode=compile_config.torch_dynamo_mode,
-        **compile_config.kwargs
+        **compile_config.kwargs,
     )
 
     rl_module._forward_train = compiled_forward_train
@@ -249,7 +250,7 @@ def compile_wrapper(rl_module: "TorchRLModule", compile_config: TorchCompileConf
         rl_module._forward_inference,
         backend=compile_config.torch_dynamo_backend,
         mode=compile_config.torch_dynamo_mode,
-        **compile_config.kwargs
+        **compile_config.kwargs,
     )
 
     rl_module._forward_inference = compiled_forward_inference
@@ -258,7 +259,7 @@ def compile_wrapper(rl_module: "TorchRLModule", compile_config: TorchCompileConf
         rl_module._forward_exploration,
         backend=compile_config.torch_dynamo_backend,
         mode=compile_config.torch_dynamo_mode,
-        **compile_config.kwargs
+        **compile_config.kwargs,
     )
 
     rl_module._forward_exploration = compiled_forward_exploration
