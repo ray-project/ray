@@ -328,7 +328,7 @@ TEST_F(LocalTaskManagerTest, TestTaskDispatchingOrder) {
   local_task_manager_->ScheduleAndDispatchTasks();
   pool_.TriggerCallbacks();
   auto tasks_to_dispatch_ = local_task_manager_->GetTaskToDispatch();
-  // Only task f in queue now.
+  // Only task f in queue now as g is dispatched.
   ASSERT_EQ(tasks_to_dispatch_.size(), 1);
 }
 

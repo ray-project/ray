@@ -71,21 +71,6 @@ LocalTaskManager::LocalTaskManager(
       sched_cls_cap_interval_ms_(sched_cls_cap_interval_ms),
       sched_cls_cap_max_ms_(RayConfig::instance().worker_cap_max_backoff_delay_ms()) {}
 
-void LocalTaskManager::UpdateCpuRequests(const std::shared_ptr<internal::Work> &work,
-                                         bool add) {
-  const auto &spec = work->task.GetTaskSpecification();
-  // FixedPoint to Double
-  auto cpu_requested =
-      spec.GetRequiredResources().Get(scheduling::ResourceID::CPU()).Double();
-  if (add) {
-    total_cpu_requests_ += cpu_requested;
-  } else {
-    total_cpu_requests_ -= cpu_requested;
-  }
-  RAY_LOG(DEBUG) << (add ? "Added " : "Removed ") << "CPU requests: " << cpu_requested
-                 << ". Total CPU requests now: " << total_cpu_requests_;
-}
-
 void LocalTaskManager::QueueAndScheduleTask(std::shared_ptr<internal::Work> work) {
   // If the local node is draining, the cluster task manager will
   // guarantee that the local node is not selected for scheduling.
@@ -109,7 +94,6 @@ bool LocalTaskManager::WaitForTaskArgsRequests(std::shared_ptr<internal::Work> w
     if (args_ready) {
       RAY_LOG(DEBUG) << "Args already ready, task can be dispatched " << task_id;
       tasks_to_dispatch_[scheduling_key].push_back(work);
-      UpdateCpuRequests(work, true);
     } else {
       RAY_LOG(DEBUG) << "Waiting for args for task: "
                      << task.GetTaskSpecification().TaskId();
@@ -121,7 +105,6 @@ bool LocalTaskManager::WaitForTaskArgsRequests(std::shared_ptr<internal::Work> w
     RAY_LOG(DEBUG) << "No args, task can be dispatched "
                    << task.GetTaskSpecification().TaskId();
     tasks_to_dispatch_[scheduling_key].push_back(work);
-    UpdateCpuRequests(work, true);
   }
   return can_dispatch;
 }
@@ -155,17 +138,54 @@ void LocalTaskManager::DispatchScheduledTasksToWorkers() {
     }
     auto &sched_cls_info = info_by_sched_cls_.at(scheduling_class);
 
-    // Apply fairness only when the total CPU requests exceed the node capacity
+    // Fair scheduling is applied only when the total CPU requests exceed the node's
+    // capacity. This skips scheduling classes whose number of running tasks exceeds the
+    // average number of tasks per scheduling class.
+
+    // The purpose of fair scheduling is to ensure that each scheduling class has an
+    // equal chance of being selected for dispatch. For instance, in a pipeline with both data
+    // producers and consumers, we aim for consumers to have the same chance to be
+    // dispatched as producers. This prevents memory peak caused by dispatching all
+    // producer tasks first. Example: Instead of dispatching [f,f,f], we want to dispatch
+    // [f,f,g], where 'f' and 'g' represent different scheduling classes. Here, we
+    // prioritize dispatching 'g' to maintain fairness.
+
+    // Currently, fair dispatching is implemented only for tasks that require CPU
+    // resources. CPU. For details, see https://github.com/ray-project/ray/pull/44733.
+
+    // Calculate the total CPU requests for all tasks in the tasks_to_dispatch queue.
+    double total_cpu_requests_ = 0.0;
+
+    // Count the number of scheduling classes that require CPU and sum their total CPU
+    // requests.
+    size_t num_classes_with_cpu = 0;
+    for (const auto &entry : tasks_to_dispatch_) {
+      const auto &dispatch_queue = entry.second;
+      for (const auto &work : dispatch_queue) {
+        const auto &task_spec = work->task.GetTaskSpecification();
+        auto cpu_request_ =
+            task_spec.GetRequiredResources().Get(scheduling::ResourceID::CPU()).Double();
+        if (cpu_request_ > 0) {
+          num_classes_with_cpu++;
+          total_cpu_requests_ += dispatch_queue.size() * cpu_request_;
+          break;
+        }
+      }
+    }
     const auto &sched_cls_desc =
         TaskSpecification::GetSchedulingClassDescriptor(scheduling_class);
     double total_cpus =
         cluster_resource_scheduler_->GetLocalResourceManager().GetNumCpus();
+
+    // Compare total CPU requests with the node's total CPU capacity. If the requests
+    // exceed the capacity, check if fair dispatching is needed.
     if (sched_cls_desc.resource_set.Get(scheduling::ResourceID::CPU()).Double() > 0 &&
         total_cpu_requests_ > total_cpus) {
       RAY_LOG(DEBUG)
           << "Applying fairness policy. Total CPU requests in tasks_to_dispatch_ ("
           << total_cpu_requests_ << ") exceed total CPUs available (" << total_cpus
           << ").";
+      // Get the total number of running tasks requires CPU.
       size_t total_cpu_running_tasks = 0;
       for (auto &entry : info_by_sched_cls_) {
         // Only consider CPU requests
@@ -176,23 +196,18 @@ void LocalTaskManager::DispatchScheduledTasksToWorkers() {
         }
       }
 
-      size_t num_classes_with_cpu = 0;
-      for (const auto &entry : tasks_to_dispatch_) {
-        const auto &dispatch_queue = entry.second;
-        for (const auto &work : dispatch_queue) {
-          const auto &task_spec = work->task.GetTaskSpecification();
-          if (task_spec.GetRequiredResources()
-                  .Get(scheduling::ResourceID::CPU())
-                  .Double() > 0) {
-            num_classes_with_cpu++;
-            break;
-          }
-        }
-      }
-
-      size_t fair_share = (num_classes_with_cpu == 0)
-                              ? 0
-                              : total_cpu_running_tasks / num_classes_with_cpu;
+      // 1. We have confirmed that this is a scheduling class that requires CPU resources,
+      //    hence num_classes_with_cpu >= 1 (cannot be 0) as this scheduling class is in
+      //    tasks_to_dispatch_.
+      // 2. We will compute fair_share as the ideal distribution of tasks among all
+      //    scheduling classes in tasks_to_dispatch_. Then, we will check if the number of
+      //    running tasks for this scheduling class exceeds its ideal fair_share.
+      // 3. Note: We should get the num_classes_with_cpu from tasks_to_dispatch_
+      //    instead of the info_by_sched_cls_ although total_cpu_running_tasks gets from
+      //    the task running. First, info_by_sched_cls_ may not be initialized yet for
+      //    some scheduling classes (as we initialize it in the loop). Second, we expect
+      //    the number of running tasks for this scheduling class to not be much. However,
+      //    if no tasks of this scheduling class are running, it will not be skipped.
 
       if (sched_cls_info.running_tasks.size() > fair_share) {
         RAY_LOG(DEBUG) << "Skipping dispatch for scheduling class " << scheduling_class
@@ -246,7 +261,6 @@ void LocalTaskManager::DispatchScheduledTasksToWorkers() {
           // try to spill to a node that can run it.
           bool did_spill = TrySpillback(work, is_infeasible);
           if (did_spill) {
-            UpdateCpuRequests(*work_it, false);
             work_it = dispatch_queue.erase(work_it);
             continue;
           }
@@ -265,7 +279,6 @@ void LocalTaskManager::DispatchScheduledTasksToWorkers() {
           // Insert the task at the head of the waiting queue because we
           // prioritize spilling from the end of the queue.
           // TODO(scv119): where does pulling happen?
-          UpdateCpuRequests(*work_it, false);
           auto it = waiting_task_queue_.insert(waiting_task_queue_.begin(),
                                                std::move(*work_it));
           RAY_CHECK(waiting_tasks_index_.emplace(task_id, it).second);
@@ -302,7 +315,6 @@ void LocalTaskManager::DispatchScheduledTasksToWorkers() {
           task_dependency_manager_.RemoveTaskDependencies(task_id);
         }
         ReleaseTaskArgs(task_id);
-        UpdateCpuRequests(*work_it, false);
         work_it = dispatch_queue.erase(work_it);
         continue;
       }
@@ -328,7 +340,6 @@ void LocalTaskManager::DispatchScheduledTasksToWorkers() {
               internal::UnscheduledWorkCause::WAITING_FOR_RESOURCES_AVAILABLE);
           break;
         }
-        UpdateCpuRequests(*work_it, false);
         work_it = dispatch_queue.erase(work_it);
       } else {
         // Force us to recalculate the next update time the next time a task
@@ -540,7 +551,6 @@ bool LocalTaskManager::PoppedWorkerHandler(
     for (auto work_it = dispatch_queue.begin(); work_it != dispatch_queue.end();
          work_it++) {
       if (*work_it == work) {
-        UpdateCpuRequests(*work_it, false);
         dispatch_queue.erase(work_it);
         erased = true;
         break;
@@ -689,7 +699,6 @@ void LocalTaskManager::TasksUnblocked(const std::vector<TaskID> &ready_ids) {
       RAY_LOG(DEBUG) << "Args ready, task can be dispatched "
                      << task.GetTaskSpecification().TaskId();
       tasks_to_dispatch_[scheduling_key].push_back(work);
-      UpdateCpuRequests(work, true);
       waiting_task_queue_.erase(it->second);
       waiting_tasks_index_.erase(it);
     }
