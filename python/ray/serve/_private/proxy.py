@@ -688,7 +688,6 @@ class gRPCProxy(GenericProxy):
         request_context_info = {
             "route": route_path,
             "request_id": request_id,
-            "internal_request_id": internal_request_id,
             "app_name": app_name,
             "multiplexed_model_id": multiplexed_model_id,
             "grpc_context": proxy_request.ray_serve_grpc_context,
@@ -900,7 +899,7 @@ class HTTPProxy(GenericProxy):
         request_context_info = {
             "route": route_path,
             "app_name": app_name,
-            "internal_request_id": internal_request_id,
+            "_internal_request_id": internal_request_id,
         }
         for key, value in proxy_request.headers:
             if key.decode() == SERVE_MULTIPLEXED_MODEL_ID:

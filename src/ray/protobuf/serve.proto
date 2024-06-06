@@ -158,7 +158,7 @@ message RequestMetadata {
 
   string route = 6;
 
-  string internal_request_id = 8;
+  string internal_request_id = 7;
 }
 
 message RequestWrapper {

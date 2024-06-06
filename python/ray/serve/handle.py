@@ -252,8 +252,8 @@ class _DeploymentHandleBase:
             request_id=_request_context.request_id
             if _request_context.request_id
             else generate_request_id(),
-            internal_request_id=_request_context.internal_request_id
-            if _request_context.internal_request_id
+            internal_request_id=_request_context._internal_request_id
+            if _request_context._internal_request_id
             else generate_request_id(),
             endpoint=self.deployment_name,
             call_method=self.handle_options.method_name,

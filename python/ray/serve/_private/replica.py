@@ -341,7 +341,6 @@ class ReplicaActor:
             ray.serve.context._RequestContext(
                 request_metadata.route,
                 request_metadata.request_id,
-                request_metadata.internal_request_id,
                 self._deployment_id.app_name,
                 request_metadata.multiplexed_model_id,
                 request_metadata.grpc_context,
