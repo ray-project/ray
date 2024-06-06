@@ -6,7 +6,6 @@ from ray.train.v2.api.config import ScalingConfig
 from ray.train.v2.scaling_policy import ScalingDecision
 from ray.train.v2.worker_group.worker_group import WorkerGroup, WorkerGroupStatus
 
-
 logger = logging.getLogger(__file__)
 
 
