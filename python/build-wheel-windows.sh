@@ -5,7 +5,7 @@ set -euxo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)"
 WORKSPACE_DIR="${ROOT_DIR}/.."
 
-PY_VERSIONS=("3.8" "3.9" "3.10" "3.11")
+PY_VERSIONS=("3.9" "3.10" "3.11" "3.12")
 
 bazel_preclean() {
   "${WORKSPACE_DIR}"/ci/run/bazel.py preclean "mnemonic(\"Genrule\", deps(//:*))"
@@ -113,7 +113,7 @@ build_wheel_windows() {
     # Start a subshell to prevent PATH and cd from affecting our shell environment
     (
       if ! is_python_version "${pyversion}"; then
-        conda install -y conda=23.1.0 python="${pyversion}"
+        conda install -y conda=24.1.2 python="${pyversion}"
       fi
       if ! is_python_version "${pyversion}"; then
         echo "Expected pip for Python ${pyversion} but found Python $(get_python_version) with $(pip --version); exiting..." 1>&2

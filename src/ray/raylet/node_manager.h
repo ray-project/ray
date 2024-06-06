@@ -709,7 +709,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
 
   /// Creates a Raylet client. Used by `mutable_object_provider_` when a new writer
   /// channel is registered.
-  std::shared_ptr<raylet::RayletClient> CreateRayletClient(const NodeID &node_id);
+  std::shared_ptr<raylet::RayletClient> CreateRayletClient(
+      const NodeID &node_id, rpc::ClientCallManager &client_call_manager);
 
   /// ID of this node.
   NodeID self_node_id_;

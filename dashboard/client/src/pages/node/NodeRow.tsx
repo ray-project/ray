@@ -279,6 +279,7 @@ export const WorkerRow = ({ node, worker }: WorkerRowProps) => {
       <TableCell>
         <StatusChip type="worker" status="ALIVE" />
       </TableCell>
+      <TableCell align="center">N/A</TableCell>
       <TableCell align="center">
         {coreWorker && (
           <Tooltip title={coreWorker.workerId} arrow>

@@ -224,11 +224,12 @@ class SingleAgentEnvRunner(EnvRunner):
 
         # Have to reset the env (on all vector sub_envs).
         if force_reset or self._needs_initial_reset:
-            # Create n new episodes and make the `on_episode_created` callbacks.
+            # Create n new episodes.
+            # TODO (sven): Add callback `on_episode_created` as soon as
+            # `gymnasium-v1.0.0a2` PR is coming.
             self._episodes = []
             for env_index in range(self.num_envs):
                 self._episodes.append(self._new_episode())
-                self._make_on_episode_callback("on_episode_created", env_index)
             self._shared_data = {}
 
             # Erase all cached ongoing episodes (these will never be completed and
@@ -437,15 +438,16 @@ class SingleAgentEnvRunner(EnvRunner):
 
         done_episodes_to_return: List[SingleAgentEpisode] = []
 
-        # Reset the environment.
-        # TODO (simon): Check, if we need here the seed from the config.
-        obs, infos = self.env.reset()
         episodes = []
         for env_index in range(self.num_envs):
             episodes.append(self._new_episode())
-            self._make_on_episode_callback("on_episode_created", env_index, episodes)
+            # TODO (sven): Add callback `on_episode_created` as soon as
+            # `gymnasium-v1.0.0a2` PR is coming.
         _shared_data = {}
 
+        # Reset the environment.
+        # TODO (simon): Check, if we need here the seed from the config.
+        obs, infos = self.env.reset()
         for env_index in range(self.num_envs):
             episodes[env_index].add_env_reset(
                 observation=obs[env_index],
@@ -802,7 +804,7 @@ class SingleAgentEnvRunner(EnvRunner):
 
     def _log_episode_metrics(self, length, ret, sec):
         # Log general episode metrics.
-        # To mimick the old API stack behavior, we'll use `window` here for
+        # To mimic the old API stack behavior, we'll use `window` here for
         # these particular stats (instead of the default EMA).
         win = self.config.metrics_num_episodes_for_smoothing
         self.metrics.log_value(EPISODE_LEN_MEAN, length, window=win)

@@ -85,7 +85,6 @@ from ray.tune.registry import get_trainable_cls
 parser = add_rllib_example_script_args(
     default_iters=50, default_reward=0.7, default_timesteps=50000
 )
-parser.add_argument("--evaluation-parallel-to-training", action="store_true")
 parser.add_argument("--no-custom-eval", action="store_true")
 parser.add_argument("--corridor-length-training", type=int, default=10)
 parser.add_argument("--corridor-length-eval-worker-1", type=int, default=20)
@@ -149,6 +148,7 @@ def custom_eval_function(
     eval_results = algorithm.metrics.reduce(
         key=(EVALUATION_RESULTS, ENV_RUNNER_RESULTS)
     )
+
     # Alternatively, you could manually reduce over the n returned `env_runner_metrics`
     # dicts, but this would be much harder as you might not know, which metrics
     # to sum up, which ones to average over, etc..

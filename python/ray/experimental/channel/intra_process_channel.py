@@ -18,6 +18,7 @@ class IntraProcessChannel(ChannelInterface):
     Args:
         actor_handle: The actor handle of the worker process.
     """
+
     def __init__(
         self,
         actor_handle: ray.actor.ActorHandle,

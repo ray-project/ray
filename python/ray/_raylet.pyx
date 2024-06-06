@@ -673,7 +673,9 @@ cdef increase_recursion_limit():
         int new_limit = current_limit * 2
         cdef extern from *:
             """
-#if PY_VERSION_HEX >= 0x30B00A4
+#if PY_VERSION_HEX >= 0x30C0000
+    #define CURRENT_DEPTH(x) ((x)->py_recursion_limit - (x)->py_recursion_remaining)
+#elif PY_VERSION_HEX >= 0x30B00A4
     #define CURRENT_DEPTH(x)  ((x)->recursion_limit - (x)->recursion_remaining)
 #else
     #define CURRENT_DEPTH(x)  ((x)->recursion_depth)
@@ -2583,6 +2585,20 @@ def maybe_initialize_job_config():
         print(job_id_magic_token, end="")
         print(job_id_magic_token, file=sys.stderr, end="")
 
+        # Configure worker process's Python logging.
+        log_config_dict = {}
+        serialized_py_logging_config = \
+            core_worker.get_job_config().serialized_py_logging_config
+        if serialized_py_logging_config:
+            logging_config = pickle.loads(serialized_py_logging_config)
+            log_config_dict = logging_config._get_dict_config()
+        if log_config_dict:
+            try:
+                logging.config.dictConfig(log_config_dict)
+            except Exception as e:
+                backtrace = \
+                    "".join(traceback.format_exception(type(e), e, e.__traceback__))
+                core_worker.drain_and_exit_worker("user", backtrace)
         job_config_initialized = True
 
 
@@ -3389,7 +3405,7 @@ cdef class CoreWorker:
 
         if exit_type == "user":
             c_exit_type = WORKER_EXIT_TYPE_USER_ERROR
-        if exit_type == "system":
+        elif exit_type == "system":
             c_exit_type = WORKER_EXIT_TYPE_SYSTEM_ERROR
         elif exit_type == "intentional_system_exit":
             c_exit_type = WORKER_EXIT_TYPE_INTENTIONAL_SYSTEM_ERROR
@@ -4446,8 +4462,9 @@ cdef class CoreWorker:
         cdef:
             pair[c_vector[pair[c_string, c_string]], CRayStatus] result_pair
 
-        result_pair = CCoreWorkerProcess.GetCoreWorker().ListNamedActors(
-            all_namespaces)
+        with nogil:
+            result_pair = CCoreWorkerProcess.GetCoreWorker().ListNamedActors(
+                all_namespaces)
         check_status(result_pair.second)
         return [
             (namespace.decode("utf-8"),
