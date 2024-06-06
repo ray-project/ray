@@ -1627,7 +1627,17 @@ def run_rllib_example_script_experiment(
                 os.environ.get("TEST_OUTPUT_JSON", "/tmp/learning_test.json"),
                 "wt",
             ) as f:
-                json.dump(json_summary, f)
+                try:
+                    json.dump(json_summary, f)
+                # Something went wrong writing json. Try again w/ simplified stats.
+                except Exception:
+                    from ray.rllib.algorithms.algorithm import Algorithm
+
+                    simplified_stats = {
+                        k: stats[k] for k in Algorithm._progress_metrics if k in stats
+                    }
+                    json_summary["stats"] = simplified_stats
+                    json.dump(json_summary, f)
 
         if not test_passed:
             raise ValueError(
