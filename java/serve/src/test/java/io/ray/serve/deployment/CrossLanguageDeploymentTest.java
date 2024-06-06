@@ -89,6 +89,20 @@ public class CrossLanguageDeploymentTest extends BaseServeTest {
   }
 
   @Test
+  public void createPyMethodWithObjectRefTest() {
+    Application deployment =
+      Serve.deployment()
+        .setLanguage(DeploymentLanguage.PYTHON)
+        .setName("createPyMethodWithObjectRefTest")
+        .setDeploymentDef(PYTHON_MODULE + ".echo_server")
+        .setNumReplicas(1)
+        .bind();
+    DeploymentHandle handle = Serve.run(deployment).get();
+    ObjectRef<String> numRef = Ray.put("10");
+    Assert.assertEquals(handle.method("__call__").remote(numRef).result(), "10");
+  }
+
+  @Test
   public void userConfigTest() throws InterruptedException {
     Application deployment =
         Serve.deployment()
