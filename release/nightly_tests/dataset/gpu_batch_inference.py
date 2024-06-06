@@ -42,8 +42,6 @@ def main(args):
 
     print(f"Running GPU batch prediction with data from {data_url}")
 
-    ray.init(log_to_driver=False)
-
     # Largest batch that can fit on a T4.
     BATCH_SIZE = 900
 

@@ -22,8 +22,7 @@ namespace ray {
 namespace core {
 
 Status CoreWorkerDirectTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
-  RAY_LOG(INFO) << "jjyao Submit task " << task_spec.TaskId() << " "
-                << task_spec.MaxRetries();
+  RAY_LOG(DEBUG) << "Submit task " << task_spec.TaskId();
   num_tasks_submitted_++;
 
   resolver_.ResolveDependencies(task_spec, [this, task_spec](Status status) mutable {

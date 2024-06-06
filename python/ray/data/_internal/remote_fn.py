@@ -1,7 +1,6 @@
 from typing import Any
 
 import ray
-import ray.exceptions
 
 CACHED_FUNCTIONS = {}
 
@@ -25,7 +24,6 @@ def cached_remote_fn(fn: Any, **ray_remote_args) -> Any:
             # as needed.
             "scheduling_strategy": "DEFAULT",
             "max_retries": -1,
-            "retry_exceptions": [ray.exceptions.RaySystemError],
         }
         CACHED_FUNCTIONS[fn] = ray.remote(
             **{**default_ray_remote_args, **ray_remote_args}

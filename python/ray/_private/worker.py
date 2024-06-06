@@ -858,7 +858,6 @@ class Worker:
                 if isinstance(value, ray.exceptions.ObjectLostError):
                     global_worker.core_worker.dump_object_store_memory_usage()
                 if isinstance(value, RayTaskError):
-                    logger.error(f"jjyao RayTaskError {object_refs[i]}")
                     raise value.as_instanceof_cause()
                 else:
                     raise value
