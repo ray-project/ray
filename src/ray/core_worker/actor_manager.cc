@@ -77,7 +77,7 @@ std::pair<std::shared_ptr<const ActorHandle>, Status> ActorManager::GetNamedActo
     AddNewActorHandle(std::move(actor_handle),
                       call_site,
                       caller_address,
-                      /*is_detached*/ true);
+                      /*owned*/ false);
   } else {
     // Use a NIL actor ID to signal that the actor wasn't found.
     RAY_LOG(DEBUG) << "Failed to look up actor with name: " << name;
@@ -116,11 +116,11 @@ bool ActorManager::CheckActorHandleExists(const ActorID &actor_id) {
 bool ActorManager::AddNewActorHandle(std::unique_ptr<ActorHandle> actor_handle,
                                      const std::string &call_site,
                                      const rpc::Address &caller_address,
-                                     bool is_detached) {
+                                     bool owned) {
   const auto &actor_id = actor_handle->GetActorID();
   const auto actor_creation_return_id = ObjectID::ForActorHandle(actor_id);
   // Detached actor doesn't need ref counting.
-  if (!is_detached) {
+  if (owned) {
     reference_counter_->AddOwnedObject(actor_creation_return_id,
                                        /*inner_ids=*/{},
                                        caller_address,

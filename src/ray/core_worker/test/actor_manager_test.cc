@@ -204,7 +204,7 @@ class ActorManagerTest : public ::testing::Test {
     actor_manager_->AddNewActorHandle(std::move(actor_handle),
                                       call_site,
                                       caller_address,
-                                      /*is_detached*/ false);
+                                      /*owned*/ true);
     actor_manager_->SubscribeActorState(actor_id);
     return actor_id;
   }
@@ -243,7 +243,7 @@ TEST_F(ActorManagerTest, TestAddAndGetActorHandleEndToEnd) {
 
   // Add an actor handle.
   ASSERT_TRUE(actor_manager_->AddNewActorHandle(
-      std::move(actor_handle), call_site, caller_address, false));
+      std::move(actor_handle), call_site, caller_address, true));
   actor_manager_->SubscribeActorState(actor_id);
 
   // Make sure the subscription request is sent to GCS.
@@ -265,7 +265,7 @@ TEST_F(ActorManagerTest, TestAddAndGetActorHandleEndToEnd) {
                                                       false);
   // Make sure the same actor id adding will return false.
   ASSERT_FALSE(actor_manager_->AddNewActorHandle(
-      std::move(actor_handle2), call_site, caller_address, false));
+      std::move(actor_handle2), call_site, caller_address, true));
   actor_manager_->SubscribeActorState(actor_id);
 
   // Make sure we can get an actor handle correctly.

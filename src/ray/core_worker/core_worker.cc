@@ -2331,7 +2331,7 @@ Status CoreWorker::CreateActor(const RayFunction &function,
   // actor handle must be in scope by the time the GCS sends the
   // WaitForActorOutOfScopeRequest.
   RAY_CHECK(actor_manager_->AddNewActorHandle(
-      std::move(actor_handle), CurrentCallSite(), rpc_address_, is_detached))
+      std::move(actor_handle), CurrentCallSite(), rpc_address_, /*owned=*/!is_detached))
       << "Actor " << actor_id << " already exists";
   *return_actor_id = actor_id;
   TaskSpecification task_spec = builder.Build();
