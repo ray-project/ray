@@ -16,9 +16,6 @@ class _SerializationContext:
     def set_use_external_transport(self, use_external_transport: bool) -> None:
         self.use_external_transport = use_external_transport
 
-    def set_torch_device(self, torch_device: "torch.device") -> None:
-        self.torch_device = torch_device
-
     def set_data(self, channel_id: str, value: Any) -> None:
         assert channel_id not in self.intra_process_channel_buffers
         self.intra_process_channel_buffers[channel_id] = value
