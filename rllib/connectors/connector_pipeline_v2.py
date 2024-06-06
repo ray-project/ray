@@ -218,6 +218,8 @@ class ConnectorPipelineV2(ConnectorV2):
     @override(ConnectorV2)
     def merge_states(self, states: List[Dict[str, Any]]) -> Dict[str, Any]:
         merged_states = {}
+        if not states:
+            return merged_states
         for i, (key, item) in enumerate(states[0].items()):
             state_list = [state[key] for state in states]
             conn = self.connectors[i]
