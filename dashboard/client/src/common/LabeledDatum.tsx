@@ -8,7 +8,7 @@ type LabeledDatumProps = {
   tooltip?: string;
 };
 
-const LabeledDatumBox = styled(Box)(({theme}) => ({
+const LabeledDatumBox = styled(Box)(({ theme }) => ({
   textDecorationLine: "underline",
   textDecorationColor: "#a6c3e3",
   textDecorationThickness: "1px",
