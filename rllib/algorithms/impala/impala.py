@@ -962,7 +962,10 @@ class Impala(Algorithm):
                     # from RolloutWorkers (n rollout workers map to m
                     # aggregation workers, where m < n) and always use 1 CPU
                     # each.
-                    "CPU": cf.num_cpus_for_main_process + cf.num_aggregation_workers,
+                    "CPU": max(
+                        cf.num_cpus_for_main_process,
+                        cf.num_cpus_per_learner if cf.num_learners == 0 else 0
+                    ) + cf.num_aggregation_workers,
                     "GPU": 0 if cf._fake_gpus else cf.num_gpus,
                 }
             ]
@@ -993,11 +996,10 @@ class Impala(Algorithm):
         )
         # TODO (avnishn): Remove this once we have a way to extend placement group
         #  factories.
-        if cf.enable_rl_module_and_learner:
-            # Resources for the Algorithm.
-            learner_bundles = cls._get_learner_bundles(cf)
-
-            bundles += learner_bundles
+        # Only if we have actual (remote) learner workers. In case of a local learner,
+        # the resource has already been taken care of above.
+        if cf.enable_rl_module_and_learner and cf.num_learners > 0:
+            bundles += cls._get_learner_bundles(cf)
 
         # Return PlacementGroupFactory containing all needed resources
         # (already properly defined as device bundles).
