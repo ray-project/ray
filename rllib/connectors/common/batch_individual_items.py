@@ -1,11 +1,11 @@
 from typing import Any, List, Optional
 
 from ray.rllib.connectors.connector_v2 import ConnectorV2
+from ray.rllib.core import DEFAULT_MODULE_ID
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.rl_module.marl_module import MultiAgentRLModule
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.env.multi_agent_episode import MultiAgentEpisode
-from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.spaces.space_utils import batch
 from ray.rllib.utils.typing import EpisodeType
@@ -33,7 +33,10 @@ class BatchIndividualItems(ConnectorV2):
             # to a batch structure of:
             # [module_id] -> [col0] -> [list of items]
             if is_marl_module and column in rl_module:
-                assert is_multi_agent
+                # assert is_multi_agent
+                # TODO (simon, sven): Check, if we need for other cases this check.
+                # If MA Off-Policy and independent sampling we need to overcome
+                # this check.
                 module_data = column_data
                 for col, col_data in module_data.copy().items():
                     if isinstance(col_data, list) and col != Columns.INFOS:
@@ -73,9 +76,9 @@ class BatchIndividualItems(ConnectorV2):
                     )
                 )
                 if is_marl_module:
-                    if DEFAULT_POLICY_ID not in data:
-                        data[DEFAULT_POLICY_ID] = {}
-                    data[DEFAULT_POLICY_ID][column] = data.pop(column)
+                    if DEFAULT_MODULE_ID not in data:
+                        data[DEFAULT_MODULE_ID] = {}
+                    data[DEFAULT_MODULE_ID][column] = data.pop(column)
 
                 # Only record structure for OBS column.
                 if column == Columns.OBS:

@@ -127,13 +127,8 @@ To build Ray on Ubuntu, run the following commands:
 
 .. code-block:: bash
 
-  # Add a PPA containing gcc-9 for older versions of Ubuntu.
-  sudo add-apt-repository -y ppa:ubuntu-toolchain-r/test
   sudo apt-get update
-  sudo apt-get install -y build-essential curl gcc-9 g++-9 pkg-config psmisc unzip
-  sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-9 90 \
-                --slave /usr/bin/g++ g++ /usr/bin/g++-9 \
-                --slave /usr/bin/gcov gcov /usr/bin/gcov-9
+  sudo apt-get install -y build-essential curl clang-12 pkg-config psmisc unzip
 
   # Install Bazelisk.
   ci/env/install-bazel.sh
@@ -323,7 +318,7 @@ Dependencies for the linter (``scripts/format.sh``) can be installed with:
 
 .. code-block:: shell
 
- pip install -r python/requirements/lint-requirements.txt
+ pip install -c python/requirements_compiled.txt -r python/requirements/lint-requirements.txt
 
 Dependencies for running Ray unit tests under ``python/ray/tests`` can be installed with:
 
@@ -343,7 +338,7 @@ the moment, we have configured a ``.pre-commit-config.yaml`` which runs all the 
 opt-in, with any formatting changes made by ``scripts/format.sh`` expected to be caught by
 ``pre-commit`` as well. To start using ``pre-commit``:
 
-.. code-block: shell
+.. code-block:: shell
 
    pip install pre-commit
    pre-commit install
@@ -352,7 +347,7 @@ This will install pre-commit into the current environment, and enable pre-commit
 you commit new code changes with git. To temporarily skip pre-commit checks, use the ``-n`` or
 ``--no-verify`` flag when committing:
 
-.. code-block: shell
+.. code-block:: shell
 
    git commit -n
 

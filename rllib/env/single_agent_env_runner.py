@@ -19,10 +19,20 @@ from ray.rllib.env.utils import _gym_env_creator
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.metrics import (
+    EPISODE_DURATION_SEC_MEAN,
+    EPISODE_LEN_MAX,
+    EPISODE_LEN_MEAN,
+    EPISODE_LEN_MIN,
+    EPISODE_RETURN_MAX,
+    EPISODE_RETURN_MEAN,
+    EPISODE_RETURN_MIN,
     NUM_AGENT_STEPS_SAMPLED,
+    NUM_AGENT_STEPS_SAMPLED_LIFETIME,
     NUM_ENV_STEPS_SAMPLED,
     NUM_ENV_STEPS_SAMPLED_LIFETIME,
     NUM_EPISODES,
+    NUM_MODULE_STEPS_SAMPLED,
+    NUM_MODULE_STEPS_SAMPLED_LIFETIME,
 )
 from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
 from ray.rllib.utils.spaces.space_utils import unbatch
@@ -49,10 +59,15 @@ class SingleAgentEnvRunner(EnvRunner):
         """
         super().__init__(config=config)
 
+        self.worker_index = kwargs.get("worker_index")
+
+        # Create a MetricsLogger object for logging custom stats.
+        self.metrics = MetricsLogger()
+        # Initialize lifetime counts.
+        self.metrics.log_value(NUM_ENV_STEPS_SAMPLED_LIFETIME, 0, reduce="sum")
+
         # Create our callbacks object.
         self._callbacks: DefaultCallbacks = self.config.callbacks_class()
-
-        self.worker_index = kwargs.get("worker_index")
 
         # Create the vectorized gymnasium env.
         self.env: Optional[gym.Wrapper] = None
@@ -95,11 +110,6 @@ class SingleAgentEnvRunner(EnvRunner):
         # Create the two connector pipelines: env-to-module and module-to-env.
         self._module_to_env = self.config.build_module_to_env_connector(self.env)
 
-        # Create a MetricsLogger object for logging custom stats.
-        self.metrics = MetricsLogger()
-        # Initialize lifetime counts.
-        self.metrics.log_value(NUM_ENV_STEPS_SAMPLED_LIFETIME, 0, reduce="sum")
-
         # This should be the default.
         self._needs_initial_reset: bool = True
         self._episodes: List[Optional[SingleAgentEpisode]] = [
@@ -135,7 +145,7 @@ class SingleAgentEnvRunner(EnvRunner):
                 `forward_inference()` method. If None (default), will use the `explore`
                 boolean setting from `self.config` passed into this EnvRunner's
                 constructor. You can change this setting in your config via
-                `config.exploration(explore=True|False)`.
+                `config.env_runners(explore=True|False)`.
             random_actions: If True, actions will be sampled randomly (from the action
                 space of the environment). If False (default), actions or action
                 distribution parameters are computed by the RLModule.
@@ -214,11 +224,12 @@ class SingleAgentEnvRunner(EnvRunner):
 
         # Have to reset the env (on all vector sub_envs).
         if force_reset or self._needs_initial_reset:
-            # Create n new episodes and make the `on_episode_created` callbacks.
+            # Create n new episodes.
+            # TODO (sven): Add callback `on_episode_created` as soon as
+            # `gymnasium-v1.0.0a2` PR is coming.
             self._episodes = []
             for env_index in range(self.num_envs):
                 self._episodes.append(self._new_episode())
-                self._make_on_episode_callback("on_episode_created", env_index)
             self._shared_data = {}
 
             # Erase all cached ongoing episodes (these will never be completed and
@@ -269,9 +280,9 @@ class SingleAgentEnvRunner(EnvRunner):
 
                 # RLModule forward pass: Explore or not.
                 if explore:
-                    env_steps_lifetime = self.metrics.peek(
-                        NUM_ENV_STEPS_SAMPLED_LIFETIME
-                    ) + self.metrics.peek(NUM_ENV_STEPS_SAMPLED, default=0)
+                    env_steps_lifetime = (
+                        self.metrics.peek(NUM_ENV_STEPS_SAMPLED_LIFETIME) + ts
+                    )
                     to_env = self.module.forward_exploration(
                         to_module, t=env_steps_lifetime
                     )
@@ -301,15 +312,6 @@ class SingleAgentEnvRunner(EnvRunner):
             obs, actions = unbatch(obs), unbatch(actions)
 
             ts += self.num_envs
-            # Per sample cycle stats.
-            self.metrics.log_dict(
-                {
-                    NUM_ENV_STEPS_SAMPLED: self.num_envs,
-                    NUM_AGENT_STEPS_SAMPLED: {DEFAULT_AGENT_ID: self.num_envs},
-                },
-                reduce="sum",
-                reset_on_reduce=True,
-            )
 
             for env_index in range(self.num_envs):
                 # TODO (simon): This might be unfortunate if a user needs to set a
@@ -333,6 +335,10 @@ class SingleAgentEnvRunner(EnvRunner):
                         truncated=truncateds[env_index],
                         extra_model_outputs=extra_model_output,
                     )
+                    # Make the `on_episode_step` and `on_episode_end` callbacks (before
+                    # finalizing the episode object).
+                    self._make_on_episode_callback("on_episode_step", env_index)
+
                     # We have to perform an extra env-to-module pass here, just in case
                     # the user's connector pipeline performs (permanent) transforms
                     # on each observation (including this final one here). Without such
@@ -346,9 +352,7 @@ class SingleAgentEnvRunner(EnvRunner):
                             rl_module=self.module,
                             shared_data=self._shared_data,
                         )
-                    # Make the `on_episode_step` and `on_episode_end` callbacks (before
-                    # finalizing the episode object).
-                    self._make_on_episode_callback("on_episode_step", env_index)
+
                     self._make_on_episode_callback("on_episode_end", env_index)
 
                     # Then finalize (numpy'ize) the episode.
@@ -413,6 +417,8 @@ class SingleAgentEnvRunner(EnvRunner):
         # Continue collecting into the cut Episode chunks.
         self._episodes = ongoing_episodes_continuations
 
+        self._increase_sampled_metrics(ts)
+
         # Return collected episode data.
         return done_episodes_to_return + ongoing_episodes_to_return
 
@@ -432,15 +438,16 @@ class SingleAgentEnvRunner(EnvRunner):
 
         done_episodes_to_return: List[SingleAgentEpisode] = []
 
-        # Reset the environment.
-        # TODO (simon): Check, if we need here the seed from the config.
-        obs, infos = self.env.reset()
         episodes = []
         for env_index in range(self.num_envs):
             episodes.append(self._new_episode())
-            self._make_on_episode_callback("on_episode_created", env_index, episodes)
+            # TODO (sven): Add callback `on_episode_created` as soon as
+            # `gymnasium-v1.0.0a2` PR is coming.
         _shared_data = {}
 
+        # Reset the environment.
+        # TODO (simon): Check, if we need here the seed from the config.
+        obs, infos = self.env.reset()
         for env_index in range(self.num_envs):
             episodes[env_index].add_env_reset(
                 observation=obs[env_index],
@@ -469,9 +476,9 @@ class SingleAgentEnvRunner(EnvRunner):
 
                 # RLModule forward pass: Explore or not.
                 if explore:
-                    env_steps_lifetime = self.metrics.peek(
-                        NUM_ENV_STEPS_SAMPLED_LIFETIME
-                    ) + self.metrics.peek(NUM_ENV_STEPS_SAMPLED, default=0)
+                    env_steps_lifetime = (
+                        self.metrics.peek(NUM_ENV_STEPS_SAMPLED_LIFETIME) + ts
+                    )
                     to_env = self.module.forward_exploration(
                         to_module, t=env_steps_lifetime
                     )
@@ -499,6 +506,7 @@ class SingleAgentEnvRunner(EnvRunner):
                 actions_for_env
             )
             obs, actions = unbatch(obs), unbatch(actions)
+            ts += self.num_envs
 
             for env_index in range(self.num_envs):
                 extra_model_output = {k: v[env_index] for k, v in to_env.items()}
@@ -520,6 +528,25 @@ class SingleAgentEnvRunner(EnvRunner):
                     self._make_on_episode_callback(
                         "on_episode_step", env_index, episodes
                     )
+
+                    # We have to perform an extra env-to-module pass here, just in case
+                    # the user's connector pipeline performs (permanent) transforms
+                    # on each observation (including this final one here). Without such
+                    # a call and in case the structure of the observations change
+                    # sufficiently, the following `finalize()` call on the episode will
+                    # fail.
+                    if self.module is not None:
+                        self._env_to_module(
+                            episodes=[episodes[env_index]],
+                            explore=explore,
+                            rl_module=self.module,
+                            shared_data=_shared_data,
+                        )
+
+                    # Make the `on_episode_end` callback (before finalizing the episode,
+                    # but after(!) the last env-to-module connector call has been made.
+                    # -> All obs (even the terminal one) should have been processed now
+                    # (by the connector, if applicable).
                     self._make_on_episode_callback(
                         "on_episode_end", env_index, episodes
                     )
@@ -555,20 +582,13 @@ class SingleAgentEnvRunner(EnvRunner):
                     self._make_on_episode_callback(
                         "on_episode_step", env_index, episodes
                     )
-            ts += self.num_envs
-            self.metrics.log_dict(
-                {
-                    NUM_ENV_STEPS_SAMPLED: self.num_envs,
-                    NUM_AGENT_STEPS_SAMPLED: {DEFAULT_AGENT_ID: self.num_envs},
-                },
-                reduce="sum",
-                reset_on_reduce=True,
-            )
 
         self._done_episodes_for_metrics.extend(done_episodes_to_return)
 
         # Initialized episodes have to be removed as they lack `extra_model_outputs`.
         samples = [episode for episode in done_episodes_to_return if episode.t > 0]
+
+        self._increase_sampled_metrics(ts)
 
         return samples
 
@@ -587,35 +607,8 @@ class SingleAgentEnvRunner(EnvRunner):
                     episode_duration_s += eps2.get_duration_s()
                 del self._ongoing_episodes_for_metrics[eps.id_]
 
-            # Log general episode metrics.
-            self.metrics.log_dict(
-                {
-                    "episode_len_mean": episode_length,
-                    "episode_return_mean": episode_return,
-                    "episode_duration_sec_mean": episode_duration_s,
-                    # Per-agent returns.
-                    "agent_episode_returns_mean": {DEFAULT_AGENT_ID: episode_return},
-                    # Per-RLModule returns.
-                    "module_episode_returns_mean": {DEFAULT_MODULE_ID: episode_return},
-                },
-                # To mimick the old API stack behavior, we'll use `window` here for
-                # these particular stats (instead of the default EMA).
-                window=self.config.metrics_num_episodes_for_smoothing,
-            )
-            # For some metrics, log min/max as well.
-            self.metrics.log_dict(
-                {
-                    "episode_len_min": episode_length,
-                    "episode_return_min": episode_return,
-                },
-                reduce="min",
-            )
-            self.metrics.log_dict(
-                {
-                    "episode_len_max": episode_length,
-                    "episode_return_max": episode_return,
-                },
-                reduce="max",
+            self._log_episode_metrics(
+                episode_length, episode_return, episode_duration_s
             )
 
         # Log num episodes counter for this iteration.
@@ -624,7 +617,7 @@ class SingleAgentEnvRunner(EnvRunner):
             len(self._done_episodes_for_metrics),
             reduce="sum",
             # Reset internal data on `reduce()` call below (not a lifetime count).
-            reset_on_reduce=True,
+            clear_on_reduce=True,
         )
 
         # Now that we have logged everything, clear cache of done episodes.
@@ -704,7 +697,7 @@ class SingleAgentEnvRunner(EnvRunner):
             env_ctx = EnvContext(
                 env_ctx,
                 worker_index=self.worker_index,
-                num_workers=self.config.num_rollout_workers,
+                num_workers=self.config.num_env_runners,
                 remote=self.config.remote_worker_envs,
             )
 
@@ -730,12 +723,12 @@ class SingleAgentEnvRunner(EnvRunner):
         self.env: gym.Wrapper = gym.wrappers.VectorListInfo(
             gym.vector.make(
                 "rllib-single-agent-env-v0",
-                num_envs=self.config.num_envs_per_worker,
+                num_envs=self.config.num_envs_per_env_runner,
                 asynchronous=self.config.remote_worker_envs,
             )
         )
         self.num_envs: int = self.env.num_envs
-        assert self.num_envs == self.config.num_envs_per_worker
+        assert self.num_envs == self.config.num_envs_per_env_runner
 
         # Set the flag to reset all envs upon the next `sample()` call.
         self._needs_initial_reset = True
@@ -743,6 +736,7 @@ class SingleAgentEnvRunner(EnvRunner):
         # Call the `on_environment_created` callback.
         self._callbacks.on_environment_created(
             env_runner=self,
+            metrics_logger=self.metrics,
             env=self.env,
             env_context=env_ctx,
         )
@@ -776,3 +770,57 @@ class SingleAgentEnvRunner(EnvRunner):
             return convert_to_torch_tensor(struct)
         else:
             return tree.map_structure(tf.convert_to_tensor, struct)
+
+    def _increase_sampled_metrics(self, num_steps):
+        # Per sample cycle stats.
+        self.metrics.log_value(
+            NUM_ENV_STEPS_SAMPLED, num_steps, reduce="sum", clear_on_reduce=True
+        )
+        self.metrics.log_value(
+            (NUM_AGENT_STEPS_SAMPLED, DEFAULT_AGENT_ID),
+            num_steps,
+            reduce="sum",
+            clear_on_reduce=True,
+        )
+        self.metrics.log_value(
+            (NUM_MODULE_STEPS_SAMPLED, DEFAULT_MODULE_ID),
+            num_steps,
+            reduce="sum",
+            clear_on_reduce=True,
+        )
+        # Lifetime stats.
+        self.metrics.log_value(NUM_ENV_STEPS_SAMPLED_LIFETIME, num_steps, reduce="sum")
+        self.metrics.log_value(
+            (NUM_AGENT_STEPS_SAMPLED_LIFETIME, DEFAULT_AGENT_ID),
+            num_steps,
+            reduce="sum",
+        )
+        self.metrics.log_value(
+            (NUM_MODULE_STEPS_SAMPLED_LIFETIME, DEFAULT_MODULE_ID),
+            num_steps,
+            reduce="sum",
+        )
+        return num_steps
+
+    def _log_episode_metrics(self, length, ret, sec):
+        # Log general episode metrics.
+        # To mimic the old API stack behavior, we'll use `window` here for
+        # these particular stats (instead of the default EMA).
+        win = self.config.metrics_num_episodes_for_smoothing
+        self.metrics.log_value(EPISODE_LEN_MEAN, length, window=win)
+        self.metrics.log_value(EPISODE_RETURN_MEAN, ret, window=win)
+        self.metrics.log_value(EPISODE_DURATION_SEC_MEAN, sec, window=win)
+        # Per-agent returns.
+        self.metrics.log_value(
+            ("agent_episode_returns_mean", DEFAULT_AGENT_ID), ret, window=win
+        )
+        # Per-RLModule returns.
+        self.metrics.log_value(
+            ("module_episode_returns_mean", DEFAULT_MODULE_ID), ret, window=win
+        )
+
+        # For some metrics, log min/max as well.
+        self.metrics.log_value(EPISODE_LEN_MIN, length, reduce="min", window=win)
+        self.metrics.log_value(EPISODE_RETURN_MIN, ret, reduce="min", window=win)
+        self.metrics.log_value(EPISODE_LEN_MAX, length, reduce="max", window=win)
+        self.metrics.log_value(EPISODE_RETURN_MAX, ret, reduce="max", window=win)

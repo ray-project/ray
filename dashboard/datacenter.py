@@ -4,19 +4,12 @@ import ray.dashboard.consts as dashboard_consts
 
 from ray.dashboard.utils import (
     Dict,
-    Signal,
-    async_loop_forever,
     MutableNotificationDict,
+    async_loop_forever,
+    compose_state_message,
 )
 
 logger = logging.getLogger(__name__)
-
-
-class GlobalSignals:
-    node_info_fetched = Signal(dashboard_consts.SIGNAL_NODE_INFO_FETCHED)
-    node_summary_fetched = Signal(dashboard_consts.SIGNAL_NODE_SUMMARY_FETCHED)
-    job_info_fetched = Signal(dashboard_consts.SIGNAL_JOB_INFO_FETCHED)
-    worker_info_fetched = Signal(dashboard_consts.SIGNAL_WORKER_INFO_FETCHED)
 
 
 class DataSource:
@@ -113,8 +106,6 @@ class DataOrganizer:
             )
             worker["jobId"] = pid_to_job_id.get(pid, dashboard_consts.DEFAULT_JOB_ID)
 
-            await GlobalSignals.worker_info_fetched.send(node_id, worker)
-
             workers.append(worker)
         return workers
 
@@ -147,6 +138,10 @@ class DataOrganizer:
 
         # Merge GcsNodeInfo to node physical stats
         node_info["raylet"].update(node)
+        death_info = node.get("deathInfo", {})
+        node_info["raylet"]["stateMessage"] = compose_state_message(
+            death_info.get("reason", None), death_info.get("reasonMessage", None)
+        )
 
         if not get_summary:
             # Merge actors to node physical stats
@@ -155,11 +150,6 @@ class DataOrganizer:
             )
             # Update workers to node physical stats
             node_info["workers"] = DataSource.node_workers.get(node_id, [])
-
-        if get_summary:
-            await GlobalSignals.node_summary_fetched.send(node_info)
-        else:
-            await GlobalSignals.node_info_fetched.send(node_info)
 
         return node_info
 

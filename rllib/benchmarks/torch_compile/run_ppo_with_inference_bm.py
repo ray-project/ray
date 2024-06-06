@@ -1,6 +1,7 @@
 import argparse
 
 from ray import tune, air
+from ray.air.constants import TRAINING_ITERATION
 from ray.rllib.algorithms.ppo import PPOConfig
 
 # Note:
@@ -50,9 +51,9 @@ def main(pargs):
             grad_clip=100,
             grad_clip_by="global_norm",
         )
-        .rollouts(
-            num_rollout_workers=1 if pargs.smoke_test else 64,
-            num_envs_per_worker=1,
+        .env_runners(
+            num_env_runners=1 if pargs.smoke_test else 64,
+            num_envs_per_env_runner=1,
             batch_mode="truncate_episodes",
             rollout_fragment_length="auto",
             create_env_on_local_worker=True,
@@ -63,16 +64,16 @@ def main(pargs):
             torch_compile_worker_dynamo_backend=pargs.backend,
             torch_compile_worker_dynamo_mode=pargs.mode,
         )
-        .resources(
-            num_learner_workers=1,
-            num_gpus_per_learner_worker=0 if pargs.smoke_test else 1,
+        .learners(
+            num_learners=1,
+            num_gpus_per_learner=0 if pargs.smoke_test else 1,
         )
     )
 
     tuner = tune.Tuner(
         "PPO",
         run_config=air.RunConfig(
-            stop={"training_iteration": 1 if pargs.smoke_test else pargs.num_iters},
+            stop={TRAINING_ITERATION: 1 if pargs.smoke_test else pargs.num_iters},
         ),
         param_space=config,
     )

@@ -1,6 +1,7 @@
 group: build
 steps:
   - label: ":tapioca: build: wheel {{matrix}} (x86_64)"
+    key: linux_wheels
     tags:
       - linux_wheels
       - oss
@@ -11,6 +12,7 @@ steps:
       - "3.9"
       - "3.10"
       - "3.11"
+      - "3.12"
     depends_on:
       - manylinux
       - forge
@@ -27,6 +29,7 @@ steps:
       - forge
 
   - label: ":tapioca: build: jar"
+    key: java_wheels
     tags:
       - java
       - oss
@@ -39,6 +42,7 @@ steps:
     job_env: manylinux
 
   - label: ":tapioca: build: doc"
+    key: doc_build
     instance_type: medium
     commands:
       - FAST=True make -C doc/ html

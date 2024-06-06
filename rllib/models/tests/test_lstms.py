@@ -2,8 +2,8 @@ from gymnasium.spaces import Box, Dict, Discrete, MultiDiscrete, Tuple
 import unittest
 
 import ray
-from ray import air
-from ray import tune
+from ray import air, tune
+from ray.air.constants import TRAINING_ITERATION
 from ray.rllib.algorithms import ppo
 from ray.rllib.examples.envs.classes.random_env import RandomEnv
 from ray.rllib.utils.test_utils import framework_iterator
@@ -54,9 +54,9 @@ class TestLSTMs(unittest.TestCase):
                 train_batch_size=200,
                 sgd_minibatch_size=50,
             )
-            .rollouts(
+            .env_runners(
                 rollout_fragment_length=100,
-                num_rollout_workers=1,
+                num_env_runners=1,
             )
             .experimental(
                 _disable_action_flattening=True,
@@ -67,7 +67,7 @@ class TestLSTMs(unittest.TestCase):
             tune.Tuner(
                 "PPO",
                 param_space=config.to_dict(),
-                run_config=air.RunConfig(stop={"training_iteration": 1}, verbose=1),
+                run_config=air.RunConfig(stop={TRAINING_ITERATION: 1}, verbose=1),
             ).fit()
 
 

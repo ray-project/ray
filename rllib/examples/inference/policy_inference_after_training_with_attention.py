@@ -12,7 +12,13 @@ import os
 
 import ray
 from ray import air, tune
+from ray.air.constants import TRAINING_ITERATION
 from ray.rllib.algorithms.algorithm import Algorithm
+from ray.rllib.utils.metrics import (
+    ENV_RUNNER_RESULTS,
+    EPISODE_RETURN_MEAN,
+    NUM_ENV_STEPS_SAMPLED_LIFETIME,
+)
 from ray.tune.registry import get_trainable_cls
 
 parser = argparse.ArgumentParser()
@@ -78,7 +84,7 @@ if __name__ == "__main__":
         get_trainable_cls(args.run)
         .get_default_config()
         # TODO (Kourosh): Enable when Attentions are supported.
-        .experimental(_enable_new_api_stack=False)
+        .api_stack(enable_rl_module_and_learner=False)
         .environment("FrozenLake-v1")
         # Run with tracing enabled for tf2?
         .framework(args.framework)
@@ -98,9 +104,9 @@ if __name__ == "__main__":
     )
 
     stop = {
-        "training_iteration": args.stop_iters,
-        "num_env_steps_sampled_lifetime": args.stop_timesteps,
-        "env_runner_results/episode_return_mean": args.stop_reward,
+        TRAINING_ITERATION: args.stop_iters,
+        NUM_ENV_STEPS_SAMPLED_LIFETIME: args.stop_timesteps,
+        f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": args.stop_reward,
     }
 
     print("Training policy until desired reward/timesteps/iterations. ...")

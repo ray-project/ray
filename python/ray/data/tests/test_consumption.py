@@ -236,6 +236,56 @@ def test_avoid_placement_group_capture(shutdown_only):
     )
 
 
+def test_ray_remote_args_fn(shutdown_only):
+    ray.init()
+
+    global_idx = 1
+    placement_groups = []
+
+    def _generate_ray_remote_args_with_scheduling_strategy():
+        nonlocal placement_groups
+        pg = ray.util.placement_group([{"CPU": global_idx}])
+        placement_groups.append(pg)
+
+        scheduling_strategy = PlacementGroupSchedulingStrategy(placement_group=pg)
+        return {"scheduling_strategy": scheduling_strategy}
+
+    class ActorClass:
+        def __init__(self):
+            # Each time a new actor is created with ActorClass,
+            # global_idx is incremented, and the number of CPUs in its
+            # placement group should match the saved self._idx value.
+            nonlocal global_idx
+            self._idx = global_idx
+            global_idx += 1
+
+        def __call__(self, batch):
+            pg = ray.util.get_current_placement_group()
+            if global_idx > 0:
+                assert pg.bundle_specs == [{"CPU": self._idx}]
+            else:
+                assert pg is not None
+            return batch
+
+    ray.data.range(10).map_batches(
+        ActorClass,
+        concurrency=3,
+        ray_remote_args_fn=_generate_ray_remote_args_with_scheduling_strategy,
+    ).take_all()
+
+    global_idx = -10
+    with pytest.raises(ValueError):  # cannot use -10 for pg
+        ray.data.range(10).map_batches(
+            ActorClass,
+            concurrency=3,
+            ray_remote_args_fn=_generate_ray_remote_args_with_scheduling_strategy,
+        ).take_all()
+
+    # Be sure to remove placement groups after use.
+    for pg in placement_groups:
+        ray.util.remove_placement_group(pg)
+
+
 def test_dataset_lineage_serialization(shutdown_only):
     ray.init()
     ds = ray.data.range(10)
@@ -629,6 +679,27 @@ def test_convert_types(ray_start_regular_shared):
     assert arrow_ds.map(lambda x: {"a": (x["id"],)}).take() == [{"a": [0]}]
 
 
+@pytest.mark.parametrize(
+    "input_blocks",
+    [
+        [pd.DataFrame({"column": ["spam"]}), pd.DataFrame({"column": ["ham", "eggs"]})],
+        [
+            pa.Table.from_pydict({"column": ["spam"]}),
+            pa.Table.from_pydict({"column": ["ham", "eggs"]}),
+        ],
+    ],
+)
+def test_from_blocks(input_blocks, ray_start_regular_shared):
+    ds = ray.data.from_blocks(input_blocks)
+
+    output_blocks = [ray.get(block_ref) for block_ref in ds.get_internal_block_refs()]
+    assert len(input_blocks) == len(output_blocks)
+    assert all(
+        input_block.equals(output_block)
+        for input_block, output_block in zip(input_blocks, output_blocks)
+    )
+
+
 def test_from_items(ray_start_regular_shared):
     ds = ray.data.from_items(["hello", "world"])
     assert extract_values("item", ds.take()) == ["hello", "world"]
@@ -731,7 +802,7 @@ def test_iter_batches_basic(ray_start_regular_shared):
     df3 = pd.DataFrame({"one": [7, 8, 9], "two": [8, 9, 10]})
     df4 = pd.DataFrame({"one": [10, 11, 12], "two": [11, 12, 13]})
     dfs = [df1, df2, df3, df4]
-    ds = ray.data.from_pandas(dfs)
+    ds = ray.data.from_blocks(dfs)
 
     # Default.
     for batch, df in zip(ds.iter_batches(batch_size=None, batch_format="pandas"), dfs):
@@ -1129,7 +1200,7 @@ def test_iter_batches_grid(ray_start_regular_shared):
                 )
                 running_size += block_size
             num_rows = running_size
-            ds = ray.data.from_pandas(dfs)
+            ds = ray.data.from_blocks(dfs)
             for batch_size in np.random.randint(
                 1, num_rows + 1, size=batch_size_samples
             ):

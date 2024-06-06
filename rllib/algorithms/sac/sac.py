@@ -1,5 +1,5 @@
 import logging
-from typing import Any, Dict, Optional, Type, Union
+from typing import Any, Dict, Optional, Tuple, Type, Union
 
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
 from ray.rllib.algorithms.dqn.dqn import DQN
@@ -29,7 +29,7 @@ class SACConfig(AlgorithmConfig):
 
         config = SACConfig().training(gamma=0.9, lr=0.01, train_batch_size=32)
         config = config.resources(num_gpus=0)
-        config = config.rollouts(num_rollout_workers=1)
+        config = config.env_runners(num_env_runners=1)
 
         # Build a Algorithm object from the config and run 1 training iteration.
         algo = config.build(env="CartPole-v1")
@@ -85,7 +85,10 @@ class SACConfig(AlgorithmConfig):
         self.grad_clip = None
         self.target_network_update_freq = 0
 
-        # .exploration()
+        # .env_runners()
+        # Set to `self.n_step`, if 'auto'.
+        self.rollout_fragment_length = "auto"
+        self.compress_observations = False
         self.exploration_config = {
             # The Exploration class to use. In the simplest case, this is the name
             # (str) of any class present in the `rllib.utils.exploration` package.
@@ -95,10 +98,6 @@ class SACConfig(AlgorithmConfig):
             "type": "StochasticSampling",
             # Add constructor kwargs here (if any).
         }
-
-        # .rollout()
-        self.rollout_fragment_length = "auto"
-        self.compress_observations = False
 
         # .training()
         self.train_batch_size = 256
@@ -129,7 +128,7 @@ class SACConfig(AlgorithmConfig):
         tau: Optional[float] = NotProvided,
         initial_alpha: Optional[float] = NotProvided,
         target_entropy: Optional[Union[str, float]] = NotProvided,
-        n_step: Optional[int] = NotProvided,
+        n_step: Optional[Union[int, Tuple[int, int]]] = NotProvided,
         store_buffer_in_checkpoints: Optional[bool] = NotProvided,
         replay_buffer_config: Optional[Dict[str, Any]] = NotProvided,
         training_intensity: Optional[float] = NotProvided,
@@ -171,9 +170,10 @@ class SACConfig(AlgorithmConfig):
                 automatically.
             n_step: N-step target updates. If >1, sars' tuples in trajectories will be
                 postprocessed to become sa[discounted sum of R][s t+n] tuples. An
-                integer will be interpreted as a fixed n-step value. In case of a tuple
-                the n-step value will be drawn for each sample in the train batch from
-                a uniform distribution over the  interval defined by the 'n-step'-tuple.
+                integer will be interpreted as a fixed n-step value. If a tuple of 2
+                ints is provided here, the n-step value will be drawn for each sample(!)
+                in the train batch from a uniform distribution over the closed interval
+                defined by `[n_step[0], n_step[1]]`.
             store_buffer_in_checkpoints: Set this to True, if you want the contents of
                 your buffer(s) to be stored in any saved checkpoints as well.
                 Warnings will be created if:
@@ -218,16 +218,16 @@ class SACConfig(AlgorithmConfig):
             training_intensity: The intensity with which to update the model (vs
                 collecting samples from the env).
                 If None, uses "natural" values of:
-                `train_batch_size` / (`rollout_fragment_length` x `num_workers` x
-                `num_envs_per_worker`).
+                `train_batch_size` / (`rollout_fragment_length` x `num_env_runners` x
+                `num_envs_per_env_runner`).
                 If not None, will make sure that the ratio between timesteps inserted
                 into and sampled from th buffer matches the given values.
                 Example:
                 training_intensity=1000.0
                 train_batch_size=250
                 rollout_fragment_length=1
-                num_workers=1 (or 0)
-                num_envs_per_worker=1
+                num_env_runners=1 (or 0)
+                num_envs_per_env_runner=1
                 -> natural value = 250 / 1 = 250.0
                 -> will make sure that replay+train op will be executed 4x asoften as
                 rollout+insert op (4 * 250 = 1000).
@@ -349,9 +349,12 @@ class SACConfig(AlgorithmConfig):
         # Validate that we use the corresponding `EpisodeReplayBuffer` when using
         # episodes.
         # TODO (sven, simon): Implement the multi-agent case for replay buffers.
-        if self.uses_new_env_runners and self.replay_buffer_config["type"] not in [
+        if self.enable_env_runner_and_connector_v2 and self.replay_buffer_config[
+            "type"
+        ] not in [
             "EpisodeReplayBuffer",
             "PrioritizedEpisodeReplayBuffer",
+            "MultiAgentEpisodeReplayBuffer",
         ]:
             raise ValueError(
                 "When using the new `EnvRunner API` the replay buffer must be of type "
@@ -361,7 +364,11 @@ class SACConfig(AlgorithmConfig):
     @override(AlgorithmConfig)
     def get_rollout_fragment_length(self, worker_index: int = 0) -> int:
         if self.rollout_fragment_length == "auto":
-            return self.n_step[1] if isinstance(self.n_step, tuple) else self.n_step
+            return (
+                self.n_step[1]
+                if isinstance(self.n_step, (tuple, list))
+                else self.n_step
+            )
         else:
             return self.rollout_fragment_length
 
@@ -447,7 +454,7 @@ class SAC(DQN):
             The results dict from executing the training iteration.
         """
         # New API stack (RLModule, Learner, EnvRunner, ConnectorV2).
-        if self.config.uses_new_env_runners:
+        if self.config.enable_env_runner_and_connector_v2:
             return self._training_step_new_api_stack(with_noise_reset=False)
         # Old and hybrid API stacks (Policy, RolloutWorker, Connector, maybe RLModule,
         # maybe Learner).

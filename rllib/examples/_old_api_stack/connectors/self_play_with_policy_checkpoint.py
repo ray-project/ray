@@ -10,6 +10,7 @@ import tempfile
 
 import ray
 from ray import air, tune
+from ray.air.constants import TRAINING_ITERATION
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.algorithms.sac import SACConfig
 from ray.rllib.env.utils import try_import_pyspiel
@@ -18,6 +19,11 @@ from ray.rllib.examples._old_api_stack.connectors.prepare_checkpoint import (
     create_open_spiel_checkpoint,
 )
 from ray.rllib.policy.policy import Policy
+from ray.rllib.utils.metrics import (
+    ENV_RUNNER_RESULTS,
+    NUM_ENV_STEPS_SAMPLED_LIFETIME,
+    NUM_EPISODES,
+)
 from ray.tune import CLIReporter, register_env
 
 
@@ -46,7 +52,7 @@ class AddPolicyCallback(DefaultCallbacks):
         self._checkpoint_dir = checkpoint_dir
         super().__init__()
 
-    def on_algorithm_init(self, *, algorithm, **kwargs):
+    def on_algorithm_init(self, *, algorithm, metrics_logger, **kwargs):
         policy = Policy.from_checkpoint(
             self._checkpoint_dir, policy_ids=[OPPONENT_POLICY_ID]
         )
@@ -72,9 +78,9 @@ def main(checkpoint_dir):
         .environment("open_spiel_env")
         .framework("torch")
         .callbacks(partial(AddPolicyCallback, checkpoint_dir))
-        .rollouts(
-            num_rollout_workers=1,
-            num_envs_per_worker=5,
+        .env_runners(
+            num_env_runners=1,
+            num_envs_per_env_runner=5,
             # We will be restoring a TF2 policy.
             # So tell the RolloutWorkers to enable TF eager exec as well, even if
             # framework is set to torch.
@@ -98,9 +104,7 @@ def main(checkpoint_dir):
         )
     )
 
-    stop = {
-        "training_iteration": args.train_iteration,
-    }
+    stop = {TRAINING_ITERATION: args.train_iteration}
 
     # Train the "main" policy to play really well using self-play.
     tuner = tune.Tuner(
@@ -115,12 +119,12 @@ def main(checkpoint_dir):
             verbose=2,
             progress_reporter=CLIReporter(
                 metric_columns={
-                    "training_iteration": "iter",
+                    TRAINING_ITERATION: "iter",
                     "time_total_s": "time_total_s",
-                    "num_env_steps_sampled_lifetime": "ts",
-                    "env_runner_results/num_episodes": "train_episodes",
+                    f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}": "ts",
+                    f"{ENV_RUNNER_RESULTS}/{NUM_EPISODES}": "train_episodes",
                     (
-                        "env_runner_results/module_episode_returns_mean/" "main"
+                        f"{ENV_RUNNER_RESULTS}/module_episode_returns_mean/" "main"
                     ): "reward_main",
                 },
                 sort_by_metric=True,

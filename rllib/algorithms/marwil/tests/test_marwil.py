@@ -10,6 +10,11 @@ from ray.rllib.algorithms.marwil.marwil_torch_policy import MARWILTorchPolicy
 from ray.rllib.evaluation.postprocessing import compute_advantages
 from ray.rllib.offline import JsonReader
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
+from ray.rllib.utils.metrics import (
+    ENV_RUNNER_RESULTS,
+    EPISODE_RETURN_MEAN,
+    EVALUATION_RESULTS,
+)
 from ray.rllib.utils.test_utils import (
     check,
     check_compute_single_action,
@@ -46,11 +51,11 @@ class TestMARWIL(unittest.TestCase):
 
         config = (
             marwil.MARWILConfig()
-            .rollouts(num_rollout_workers=2)
+            .env_runners(num_env_runners=2)
             .environment(env="CartPole-v1")
             .evaluation(
                 evaluation_interval=3,
-                evaluation_num_workers=1,
+                evaluation_num_env_runners=1,
                 evaluation_duration=5,
                 evaluation_parallel_to_training=True,
                 evaluation_config=marwil.MARWILConfig.overrides(input_="sampler"),
@@ -72,13 +77,18 @@ class TestMARWIL(unittest.TestCase):
                 check_train_results(results)
                 print(results)
 
-                eval_results = results.get("evaluation")
+                eval_results = results.get(EVALUATION_RESULTS)
                 if eval_results:
                     print(
-                        "iter={} R={} ".format(i, eval_results["episode_reward_mean"])
+                        "iter={} R={} ".format(
+                            i, eval_results[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN]
+                        )
                     )
                     # Learn until some reward is reached on an actual live env.
-                    if eval_results["episode_reward_mean"] > min_reward:
+                    if (
+                        eval_results[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN]
+                        > min_reward
+                    ):
                         print("learnt!")
                         learnt = True
                         break
@@ -109,9 +119,9 @@ class TestMARWIL(unittest.TestCase):
 
         config = (
             marwil.MARWILConfig()
-            .rollouts(num_rollout_workers=1)
+            .env_runners(num_env_runners=1)
             .evaluation(
-                evaluation_num_workers=1,
+                evaluation_num_env_runners=1,
                 evaluation_interval=3,
                 evaluation_duration=5,
                 evaluation_parallel_to_training=True,
@@ -148,7 +158,7 @@ class TestMARWIL(unittest.TestCase):
 
         config = (
             marwil.MARWILConfig()
-            .rollouts(num_rollout_workers=0)
+            .env_runners(num_env_runners=0)
             .offline_data(input_=[data_file])
         )  # Learn from offline data.
 

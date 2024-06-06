@@ -64,7 +64,7 @@ RL Module is a neural network container that implements three public methods: :p
 Enabling RL Modules in the Configuration
 ----------------------------------------
 
-Enable RL Modules via our configuration object: ``AlgorithmConfig.experimental(_enable_new_api_stack=True)``.
+Enable RL Modules via our configuration object: ``AlgorithmConfig.api_stack(enable_rl_module_and_learner=True)``.
 
 .. literalinclude:: doc_code/rlmodule_guide.py
     :language: python

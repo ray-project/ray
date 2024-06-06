@@ -577,6 +577,8 @@ cdef int check_status(const CRayStatus& status) nogil except -1:
         raise ValueError(message)
     elif status.IsObjectUnknownOwner():
         raise ValueError(message)
+    elif status.IsIOError():
+        raise IOError(message)
     elif status.IsRpcError():
         raise RpcError(message, rpc_code=status.rpc_code())
     elif status.IsIntentionalSystemExit():
@@ -671,7 +673,9 @@ cdef increase_recursion_limit():
         int new_limit = current_limit * 2
         cdef extern from *:
             """
-#if PY_VERSION_HEX >= 0x30B00A4
+#if PY_VERSION_HEX >= 0x30C0000
+    #define CURRENT_DEPTH(x) ((x)->py_recursion_limit - (x)->py_recursion_remaining)
+#elif PY_VERSION_HEX >= 0x30B00A4
     #define CURRENT_DEPTH(x)  ((x)->recursion_limit - (x)->recursion_remaining)
 #else
     #define CURRENT_DEPTH(x)  ((x)->recursion_depth)
@@ -695,11 +699,13 @@ cdef CObjectLocationPtrToDict(CObjectLocation* c_object_location):
         - node_ids:
             The hex IDs of the nodes that have a copy of this object.
         - object_size:
-            The size of data + metadata in bytes.
+            The size of data + metadata in bytes. Can be None if it's -1 in the source.
         - did_spill:
             Whether or not this object was spilled.
     """
     object_size = c_object_location.GetObjectSize()
+    if object_size <= 0:
+        object_size = None
     did_spill = c_object_location.GetDidSpill()
 
     node_ids = set()
@@ -2579,6 +2585,20 @@ def maybe_initialize_job_config():
         print(job_id_magic_token, end="")
         print(job_id_magic_token, file=sys.stderr, end="")
 
+        # Configure worker process's Python logging.
+        log_config_dict = {}
+        serialized_py_logging_config = \
+            core_worker.get_job_config().serialized_py_logging_config
+        if serialized_py_logging_config:
+            logging_config = pickle.loads(serialized_py_logging_config)
+            log_config_dict = logging_config._get_dict_config()
+        if log_config_dict:
+            try:
+                logging.config.dictConfig(log_config_dict)
+            except Exception as e:
+                backtrace = \
+                    "".join(traceback.format_exception(type(e), e, e.__traceback__))
+                core_worker.drain_and_exit_worker("user", backtrace)
         job_config_initialized = True
 
 
@@ -2877,7 +2897,7 @@ cdef class GcsClient:
         return result
 
     @_auto_reconnect
-    def get_all_job_info(self, timeout=None):
+    def get_all_job_info(self, timeout=None) -> Dict[bytes, JobTableData]:
         # Ideally we should use json_format.MessageToDict(job_info),
         # but `job_info` is a cpp pb message not a python one.
         # Manually converting each and every protobuf field is out of question,
@@ -3385,7 +3405,7 @@ cdef class CoreWorker:
 
         if exit_type == "user":
             c_exit_type = WORKER_EXIT_TYPE_USER_ERROR
-        if exit_type == "system":
+        elif exit_type == "system":
             c_exit_type = WORKER_EXIT_TYPE_SYSTEM_ERROR
         elif exit_type == "intentional_system_exit":
             c_exit_type = WORKER_EXIT_TYPE_INTENTIONAL_SYSTEM_ERROR
@@ -3477,7 +3497,7 @@ cdef class CoreWorker:
             c_vector[CObjectID] c_object_ids = ObjectRefsToVector(object_refs)
         with nogil:
             op_status = CCoreWorkerProcess.GetCoreWorker().Get(
-                c_object_ids, timeout_ms, &results)
+                c_object_ids, timeout_ms, results)
         check_status(op_status)
 
         return RayObjectsToDataMetadataPairs(results)
@@ -3647,26 +3667,55 @@ cdef class CoreWorker:
     def experimental_channel_set_error(self, ObjectRef object_ref):
         cdef:
             CObjectID c_object_id = object_ref.native()
+            CRayStatus status
 
         with nogil:
-            check_status(CCoreWorkerProcess.GetCoreWorker()
-                         .ExperimentalChannelSetError(c_object_id))
+            status = (CCoreWorkerProcess.GetCoreWorker()
+                      .ExperimentalChannelSetError(c_object_id))
+        return status.ok()
 
-    def experimental_channel_register_writer(self, ObjectRef object_ref):
+    def experimental_channel_register_writer(self,
+                                             ObjectRef writer_ref,
+                                             ObjectRef reader_ref,
+                                             writer_node,
+                                             reader_node,
+                                             ActorID reader,
+                                             int64_t num_readers):
         cdef:
-            CObjectID c_object_id = object_ref.native()
+            CObjectID c_writer_ref = writer_ref.native()
+            CObjectID c_reader_ref = reader_ref.native()
+            CNodeID c_reader_node = CNodeID.FromHex(reader_node)
+            CNodeID *c_reader_node_id = NULL
+            CActorID c_reader_actor = reader.native()
+
+        if num_readers == 0:
+            return
+        if writer_node != reader_node:
+            c_reader_node_id = &c_reader_node
 
         with nogil:
             check_status(CCoreWorkerProcess.GetCoreWorker()
-                         .ExperimentalChannelRegisterWriter(c_object_id))
+                         .ExperimentalRegisterMutableObjectWriter(c_writer_ref,
+                                                                  c_reader_node_id,
+                                                                  ))
+        if writer_node != reader_node:
+            with nogil:
+                check_status(
+                        CCoreWorkerProcess.GetCoreWorker()
+                        .ExperimentalRegisterMutableObjectReaderRemote(c_writer_ref,
+                                                                       c_reader_actor,
+                                                                       num_readers,
+                                                                       c_reader_ref
+                                                                       ))
 
     def experimental_channel_register_reader(self, ObjectRef object_ref):
         cdef:
             CObjectID c_object_id = object_ref.native()
 
         with nogil:
-            check_status(CCoreWorkerProcess.GetCoreWorker()
-                         .ExperimentalChannelRegisterReader(c_object_id))
+            check_status(
+                CCoreWorkerProcess.GetCoreWorker()
+                .ExperimentalRegisterMutableObjectReader(c_object_id))
 
     def experimental_channel_read_release(self, object_refs):
         """
@@ -3798,6 +3847,27 @@ cdef class CoreWorker:
         with nogil:
             check_status(CCoreWorkerProcess.GetCoreWorker().Delete(
                 free_ids, local_only))
+
+    def get_local_object_locations(self, object_refs):
+        cdef:
+            c_vector[optional[CObjectLocation]] results
+            c_vector[CObjectID] lookup_ids = ObjectRefsToVector(object_refs)
+
+        with nogil:
+            check_status(
+                CCoreWorkerProcess.GetCoreWorker().GetLocalObjectLocations(
+                    lookup_ids, &results))
+
+        object_locations = {}
+        for i in range(results.size()):
+            # core_worker will return a nullptr for objects that couldn't be
+            # located
+            if not results[i].has_value():
+                continue
+            else:
+                object_locations[object_refs[i]] = \
+                    CObjectLocationPtrToDict(&results[i].value())
+        return object_locations
 
     def get_object_locations(self, object_refs, int64_t timeout_ms):
         cdef:
@@ -4392,8 +4462,9 @@ cdef class CoreWorker:
         cdef:
             pair[c_vector[pair[c_string, c_string]], CRayStatus] result_pair
 
-        result_pair = CCoreWorkerProcess.GetCoreWorker().ListNamedActors(
-            all_namespaces)
+        with nogil:
+            result_pair = CCoreWorkerProcess.GetCoreWorker().ListNamedActors(
+                all_namespaces)
         check_status(result_pair.second)
         return [
             (namespace.decode("utf-8"),
@@ -4800,6 +4871,11 @@ cdef class CoreWorker:
     def current_actor_max_concurrency(self):
         return (CCoreWorkerProcess.GetCoreWorker().GetWorkerContext()
                 .CurrentActorMaxConcurrency())
+
+    def get_current_root_detached_actor_id(self) -> ActorID:
+        # This is only used in test
+        return ActorID(CCoreWorkerProcess.GetCoreWorker().GetWorkerContext()
+                       .GetRootDetachedActorID().Binary())
 
     def get_queued_future(self, task_id: Optional[TaskID]) -> ConcurrentFuture:
         """Get a asyncio.Future that's queued in the event loop."""

@@ -25,6 +25,7 @@ import {
   TaskMemoryProfilingButton,
 } from "../common/ProfilingLink";
 import rowStyles from "../common/RowStyles";
+import { sliceToPage } from "../common/util";
 import { Task } from "../type/task";
 import { useFilter } from "../util/hook";
 import StateCounter from "./StatesCounter";
@@ -56,7 +57,11 @@ const TaskTable = ({
   const [taskIdFilterValue, setTaskIdFilterValue] = useState(filterToTaskId);
   const [pageSize, setPageSize] = useState(10);
   const taskList = tasks.filter(filterFunc);
-  const list = taskList.slice((pageNo - 1) * pageSize, pageNo * pageSize);
+  const {
+    items: list,
+    constrainedPage,
+    maxPage,
+  } = sliceToPage(taskList, pageNo, pageSize);
   const classes = rowStyles();
 
   const columns = [
@@ -180,9 +185,9 @@ const TaskTable = ({
       <div style={{ display: "flex", alignItems: "center" }}>
         <div>
           <Pagination
-            page={pageNo}
+            page={constrainedPage}
             onChange={(e, num) => setPageNo(num)}
-            count={Math.ceil(taskList.length / pageSize)}
+            count={maxPage}
           />
         </div>
         <div>
