@@ -10,7 +10,17 @@ import textwrap
 import time
 from dataclasses import dataclass
 from enum import IntEnum
-from typing import Any, Collection, Dict, Iterable, List, Optional, Tuple, Union
+from typing import (
+    Any,
+    Collection,
+    Dict,
+    Iterable,
+    List,
+    Optional,
+    OrderedDict,
+    Tuple,
+    Union,
+)
 
 import numpy as np
 import pandas as pd
@@ -194,27 +204,27 @@ def _get_trials_with_error(trials: List[Trial]) -> List[Trial]:
 
 
 def _infer_user_metrics(
-    trials: List[Trial], limit: int = 5, col_mapping: Optional[Dict[str, str]] = None
-) -> List[str]:
+    trials: List[Trial], *, limit: int = 5, col_mapping: Dict[str, str]
+) -> OrderedDict[str, str]:
     """Try to infer the metrics to print out.
 
     By default, only the first 4 meaningful metrics in `last_result` will be
     inferred as user implied metrics.
     """
     col_mapping = col_mapping or {}
-    # Using OrderedDict for OrderedSet.
     result = collections.OrderedDict()
     for t in trials:
         if not t.last_result:
             continue
-        for flat_metric, value in flatten_dict(t.last_result).items():
-            if (
-                flat_metric not in DEFAULT_COLUMNS
-                and flat_metric not in AUTO_RESULT_KEYS
-                and type(value) in VALID_SUMMARY_TYPES
-                and (not col_mapping or flat_metric in col_mapping)
-            ):
-                result[flat_metric] = col_mapping.get(flat_metric, flat_metric)
+        flat_result_dict = flatten_dict(t.last_result)
+        for flat_metric, display_str in col_mapping.items():
+            if flat_metric in flat_result_dict:
+                if (
+                    flat_metric not in DEFAULT_COLUMNS
+                    and flat_metric not in AUTO_RESULT_KEYS
+                    and type(flat_result_dict[flat_metric]) in VALID_SUMMARY_TYPES
+                ):
+                    result[flat_metric] = display_str
 
             if len(result) >= limit:
                 return result
@@ -372,7 +382,7 @@ def _get_trial_table_data_per_status(
 def _get_trial_table_data(
     trials: List[Trial],
     param_keys: List[str],
-    metric_keys: Union[List[str], Dict[str, str]],
+    metric_keys: OrderedDict[str, str],
     all_rows: bool = False,
     wrap_headers: bool = False,
 ) -> _TrialTableData:
@@ -381,9 +391,10 @@ def _get_trial_table_data(
     Args:
         trials: List of trials for which progress is to be shown.
         param_keys: Ordered list of parameters to be displayed in the table.
-        metric_keys: Ordered list of metrics to be displayed in the table.
-            Including both default and user defined.
-            Will only be shown if at least one trial is having the key.
+        metric_keys: Ordered dict mapping actual metrics keys (possibly nested with
+            "/") to the to-be-displayed names in the table. Including both default
+            mappings and user defined ones. Any key will only be shown if at least
+            one trial is having that key in its result dict.
         all_rows: Force to show all rows.
         wrap_headers: If True, header columns can be wrapped with ``\n``.
 
@@ -395,9 +406,7 @@ def _get_trial_table_data(
     max_column_length = 20
     trials_by_state = _get_trials_by_state(trials)
 
-    # get the right metric to show.
-    if not isinstance(metric_keys, dict):
-        metric_keys = {k: k for k in metric_keys}
+    # Get the right metric to show.
     metric_keys = {
         k: v
         for k, v in metric_keys.items()
@@ -407,7 +416,7 @@ def _get_trial_table_data(
         )
     }
 
-    # get header from metric keys
+    # Get header from metric keys.
     formatted_metric_columns = [
         _max_len(v, max_len=max_column_length, wrap=wrap_headers)
         for v in metric_keys.values()
@@ -483,6 +492,7 @@ def _get_dict_as_table_data(
     include: Optional[Collection] = None,
     exclude: Optional[Collection] = None,
     upper_keys: Optional[Collection] = None,
+    col_mapping: Optional[Dict[str, str]] = None,
 ):
     """Get ``data`` dict as table rows.
 
@@ -521,9 +531,10 @@ def _get_dict_as_table_data(
             if include and key not in include and k not in include:
                 continue
 
-            # `include` is a dict (mapping actual keys to to-be-displayed-keys).
-            if isinstance(include, dict):
-                k = include[k]
+            # `col_mapping` is provided -> Try to map to a to-be-displayed column
+            # name.
+            if col_mapping and k in col_mapping:
+                k = col_mapping[k]
 
             if key in upper_keys:
                 upper.append([k, v])
@@ -571,9 +582,14 @@ def _print_dict_as_table(
     include: Optional[Collection[str]] = None,
     exclude: Optional[Collection[str]] = None,
     division: Optional[Collection[str]] = None,
+    col_mapping: Optional[Dict[str, str]] = None,
 ):
     table_data = _get_dict_as_table_data(
-        data=data, include=include, exclude=exclude, upper_keys=division
+        data=data,
+        include=include,
+        exclude=exclude,
+        upper_keys=division,
+        col_mapping=col_mapping,
     )
 
     headers = [header, ""] if header else []
@@ -605,12 +621,17 @@ class ProgressReporter(Callback):
     def __init__(
         self,
         verbosity: AirVerbosity,
-        progress_metrics: Optional[Union[List[str], List[Dict[str, str]]]] = None,
+        progress_metrics: Optional[Union[Collection[str], Dict[str, str]]] = None,
     ):
-        """
+        """Initializes a ProgressReporter instance.
 
         Args:
             verbosity: AirVerbosity level.
+            progress_metrics: An optional list of result dict keys (nested values
+                should use the "/" separator) to include in progress reports or
+                a dict mapping result dict keys (nested values should use the "/"
+                separator) to to-be-displayed strings, e.g.
+                `{"env_runners/episode_return_mean": "episode R (avg)"}`.
         """
         self._verbosity = verbosity
         self._start_time = time.time()
@@ -695,9 +716,13 @@ class ProgressReporter(Callback):
             _print_dict_as_table(
                 result,
                 header=f"{self._addressing_tmpl.format(trial)} result",
-                include=self._progress_metrics,
+                include=list(self._progress_metrics),
                 exclude=BLACKLISTED_KEYS,
                 division=AUTO_RESULT_KEYS,
+                col_mapping=(
+                    self._progress_metrics
+                    if isinstance(self._progress_metrics, dict) else None
+                ),
             )
             self._trial_last_printed_results[trial.trial_id] = this_iter
 

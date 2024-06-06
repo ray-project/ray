@@ -1546,7 +1546,7 @@ def run_rllib_example_script_experiment(
         progress_metrics.update(
             {
                 f"{ENV_RUNNER_RESULTS}/module_episode_returns_mean/{pid}": (
-                    f"return {pid}"
+                    f"eps. R ({pid})"
                 )
                 for pid in config.policies
             }

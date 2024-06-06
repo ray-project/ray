@@ -1,4 +1,4 @@
-from collections import defaultdict
+from collections import defaultdict, OrderedDict
 import concurrent
 import copy
 from datetime import datetime
@@ -33,9 +33,8 @@ import tree  # pip install dm_tree
 import ray
 from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
 from ray.actor import ActorHandle
-from ray.air.constants import TRAINING_ITERATION
-from ray.train import Checkpoint
 import ray.cloudpickle as pickle
+from ray.train import Checkpoint
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.registry import ALGORITHMS_CLASS_TO_NAME as ALL_ALGORITHMS
 from ray.rllib.connectors.agent.obs_preproc import ObsPreprocessorConnector
@@ -160,7 +159,7 @@ from ray.tune.trainable import Trainable
 from ray.util import log_once
 from ray.util.timer import _Timer
 from ray.tune.registry import get_trainable_cls
-from ray.tune.result import TIME_TOTAL_S
+from ray.tune.result import TIME_TOTAL_S, TRAINING_ITERATION
 
 if TYPE_CHECKING:
     from ray.rllib.core.learner.learner_group import LearnerGroup
@@ -273,20 +272,18 @@ class Algorithm(Trainable, AlgorithmBase):
     # List of keys that are always fully overridden if present in any dict or sub-dict
     _override_all_key_list = ["off_policy_estimation_methods", "policies"]
 
-    from collections import OrderedDict
-
-    _progress_metrics = {
-        TRAINING_ITERATION: "training iter.",
+    _progress_metrics = OrderedDict({
+        TRAINING_ITERATION: "training iteration",
         TIME_TOTAL_S: "total time (s)",
-        f"{ENV_RUNNER_RESULTS}/episode_return_mean": "mean episode return",
+        f"{ENV_RUNNER_RESULTS}/episode_return_mean": "episode R (avg)",
         f"{EVALUATION_RESULTS}/{ENV_RUNNER_RESULTS}/episode_return_mean": (
-            "mean episode return (eval)"
+            "episode R (avg) eval"
         ),
-        f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}": "env ts (sampled)",
-        f"{NUM_ENV_STEPS_TRAINED_LIFETIME}": "env ts (trained)",
+        f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}": "num env ts (sampled)",
+        f"{NUM_ENV_STEPS_TRAINED_LIFETIME}": "num env ts (trained)",
         f"{NUM_EPISODES_LIFETIME}": "episodes (sampled)",
-        f"{ENV_RUNNER_RESULTS}/episode_len_mean": "mean episode len",
-    }
+        f"{ENV_RUNNER_RESULTS}/episode_len_mean": "episode len (avg)",
+    })
 
     @staticmethod
     def from_checkpoint(
