@@ -48,3 +48,8 @@ class TrainRunInfo(BaseModel):
     start_time: float = Field(
         description="The UNIX timestamp of the start time of this Train run."
     )
+
+
+@DeveloperAPI
+class TrainRunsResponse(BaseModel):
+    train_runs: List[TrainRunInfo]
