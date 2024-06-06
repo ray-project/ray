@@ -245,10 +245,12 @@ def _get_autoscaling_config_with_options() -> dict:
     config["idle_timeout_minutes"] = 5.0
     return config
 
+
 def _get_autoscaling_config_with_tpu_custom_resource() -> dict:
     config = _get_basic_autoscaling_config()
     config["available_node_types"]["tpu-group"]["resources"]["TPU"] = 4
     return config
+
 
 @pytest.mark.parametrize(
     "input,output",
