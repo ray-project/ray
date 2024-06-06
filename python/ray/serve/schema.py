@@ -226,7 +226,7 @@ class RayActorOptionsSchema(BaseModel):
         default=None,
         description=(
             "Restrict the object store memory used per replica when "
-            "creating objects. Uses a default if null."
+            "creating objects. Must be an int. Uses a default if null."
         ),
         ge=0,
     )
