@@ -800,13 +800,17 @@ class Algorithm(Trainable, AlgorithmBase):
             local_worker.set_weights(weights)
             self.workers.sync_weights(inference_only=True)
 
-            if self.offline_data and self.learner_group.is_remote:
-                learner_node_ids = self.learner_group.foreach_learner(
-                    lambda l: ray.get_runtime_context().get_node_id()
-                )
-                self.offline_data.locality_hints = [
-                    node_id.get() for node_id in learner_node_ids
-                ]
+            if self.offline_data:
+                if self.learner_group.is_remote:
+                    learner_node_ids = self.learner_group.foreach_learner(
+                        lambda l: ray.get_runtime_context().get_node_id()
+                    )
+                    self.offline_data.locality_hints = [
+                        node_id.get() for node_id in learner_node_ids
+                    ]
+                    self.offline_data.learner_handles = self.learner_group._workers
+                else:
+                    self.offline_data.learner_handles = [self.learner_group._learner]
 
         # Run `on_algorithm_init` callback after initialization is done.
         self.callbacks.on_algorithm_init(algorithm=self, metrics_logger=self.metrics)

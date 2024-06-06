@@ -1293,21 +1293,11 @@ class Learner:
             and isinstance(episodes, StreamSplitDataIterator)
         ):
 
-            def _collate_fn(episodes):
-                if self._learner_connector:
-                    batch = self._learner_connector(
-                        rl_module=self.module,
-                        data={},
-                        episodes=episodes["episodes"].tolist(),
-                        shared_data={},
-                    )
-                    batch = MultiAgentBatch(
-                        {
-                            module_id: SampleBatch(module_data)
-                            for module_id, module_data in batch.items()
-                        },
-                        env_steps=sum(len(e) for e in episodes),
-                    )
+            def _collate_fn(batch):
+                batch["batch"] = self._convert_batch_type(batch["batch"])
+                batch["batch"] = self._set_slicing_by_batch_id(
+                    batch["batch"], value=True
+                )
 
                 return batch
 
@@ -1316,30 +1306,9 @@ class Learner:
                 batch_size=self.config.train_batch_size,
                 local_shuffle_buffer_size=10 * self.config.train_batch_size,
                 prefetch_batches=1,
-                # _collate_fn=_collate_fn,
+                _collate_fn=_collate_fn,
             ):
-                if self._learner_connector:
-                    batch = self._learner_connector(
-                        rl_module=self.module,
-                        data={},
-                        episodes=episodes["episodes"].tolist(),
-                        shared_data={},
-                    )
-                    batch = MultiAgentBatch(
-                        {
-                            module_id: SampleBatch(module_data)
-                            for module_id, module_data in batch.items()
-                        },
-                        env_steps=sum(len(e) for e in episodes),
-                    )
-
-                for module_id in list(batch.policy_batches.keys()):
-                    if not self.should_module_be_updated(module_id, batch):
-                        del batch.policy_batches[module_id]
-
-                self._log_steps_trained_metrics(episodes["episodes"], batch)
-                batch = self._convert_batch_type(batch)
-                batch = self._set_slicing_by_batch_id(batch, value=True)
+                self._log_steps_trained_metrics(episodes["episodes"], batch["batch"])
                 # Make the actual in-graph/traced `_update` call. This should return
                 # all tensor values (no numpy).
                 nested_tensor_minibatch = NestedDict(batch.policy_batches)
@@ -1347,12 +1316,12 @@ class Learner:
                     nested_tensor_minibatch
                 )
 
-                # Convert logged tensor metrics (logged during tensor-mode of MetricsLogger)
-                # to actual (numpy) values.
+                # Convert logged tensor metrics (logged during tensor-mode of
+                # MetricsLogger) to actual (numpy) values.
                 self.metrics.tensors_to_numpy(tensor_metrics)
 
-                # Log all individual RLModules' loss terms and its registered optimizers'
-                # current learning rates.
+                # Log all individual RLModules' loss terms and its registered
+                # optimizers urrent learning rates.
                 for mid, loss in convert_to_numpy(loss_per_module).items():
                     self.metrics.log_value(
                         key=(mid, self.TOTAL_LOSS_KEY),

@@ -152,7 +152,7 @@ class BC(MARWIL):
             # we do not step the env.
             with self.metrics.log_time((TIMERS, OFFLINE_SAMPLING_TIMER)):
                 # Sampling from offline data.
-                episodes = self.offline_data.sample(
+                batch = self.offline_data.sample(
                     num_samples=self.config.train_batch_size,
                     num_shards=self.config.num_learners,
                     return_iterator=True if self.config.num_learners > 1 else False,
@@ -160,9 +160,10 @@ class BC(MARWIL):
 
             with self.metrics.log_time((TIMERS, LEARNER_UPDATE_TIMER)):
                 # Updating the policy.
-                learner_results = self.learner_group.update_from_episodes(
-                    episodes=episodes
-                )
+                learner_results = self.learner_group.update_from_batch(batch)
+                # learner_results = self.learner_group.update_from_episodes(
+                #     episodes=episodes
+                # )
 
                 self.metrics.log_n_dicts(learner_results, key=LEARNER_RESULTS)
                 self.metrics.log_value(
