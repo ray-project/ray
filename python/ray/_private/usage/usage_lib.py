@@ -402,13 +402,14 @@ def _generate_cluster_metadata(*, ray_init_cluster: bool):
     Params:
         ray_init_cluster: Whether the cluster is started by ray.init()
     """
-    ray_version, python_version = ray._private.utils.compute_version_info()
+    ray_version, python_version, byted_scm_version = ray._private.utils.compute_version_info()
     # These two metadata is necessary although usage report is not enabled
     # to check version compatibility.
     metadata = {
         "ray_version": ray_version,
         "python_version": python_version,
         "ray_init_cluster": ray_init_cluster,
+        "byted_scm_version": byted_scm_version,
     }
     # Additional metadata is recorded only when usage stats are enabled.
     if usage_stats_enabled():

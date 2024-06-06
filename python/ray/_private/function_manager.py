@@ -317,7 +317,7 @@ class FunctionActorManager:
 
             try:
                 function = pickle.loads(serialized_function)
-            except Exception:
+            except Exception as e:
 
                 # If an exception was thrown when the remote function was
                 # imported, we record the traceback and notify the scheduler
@@ -341,12 +341,13 @@ class FunctionActorManager:
                 # Log the error message. Log at DEBUG level to avoid overly
                 # spamming the log on import failure. The user gets the error
                 # via the RuntimeError message above.
-                logger.debug(
+                logger.error(
                     "Failed to unpickle the remote function "
                     f"'{function_name}' with "
                     f"function ID {function_id.hex()}. "
                     f"Job ID:{job_id}."
                     f"Traceback:\n{traceback_str}. "
+                    f"Exception:{e}"
                 )
             else:
                 # The below line is necessary. Because in the driver process,
@@ -673,8 +674,8 @@ class FunctionActorManager:
         try:
             with self.lock:
                 actor_class = pickle.loads(pickled_class)
-        except Exception:
-            logger.debug("Failed to load actor class %s.", class_name)
+        except Exception as e:
+            logger.error("Failed to load actor class: %s exception: %s", class_name, e)
             # If an exception was thrown when the actor was imported, we record
             # the traceback and notify the scheduler of the failure.
             traceback_str = format_error_message(traceback.format_exc())

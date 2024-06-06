@@ -1512,7 +1512,14 @@ def compute_version_info():
     """
     ray_version = ray.__version__
     python_version = ".".join(map(str, sys.version_info[:3]))
-    return ray_version, python_version
+    byted_scm_version = ""
+    try:
+        import ray.byted_version as byted_version
+        byted_scm_version = byted_version.byted_scm_version
+    except Exception:
+        logger.info(f'No byted_scm_version found.')
+
+    return ray_version, python_version, byted_scm_version
 
 
 def get_directory_size_bytes(path: Union[str, Path] = ".") -> int:
@@ -1559,9 +1566,14 @@ def check_version_info(
     Raises:
         Exception: An exception is raised if there is a version mismatch.
     """
+    byted_scm_version = ""
+    if 'byted_scm_version' in cluster_metadata:
+        byted_scm_version = cluster_metadata['byted_scm_version']
+
     cluster_version_info = (
         cluster_metadata["ray_version"],
         cluster_metadata["python_version"],
+        byted_scm_version,
     )
     my_version_info = compute_version_info()
 
@@ -1579,6 +1591,21 @@ def check_version_info(
             f"Invalid python_version_match_level: {python_version_match_level}, "
             "want: 'minor' or 'patch'"
         )
+
+    version_info = compute_version_info()
+    if version_info != cluster_version_info and raise_on_mismatch:
+        node_ip_address = ray._private.services.get_node_ip_address()
+        error_message = (
+            "Version mismatch: The cluster was started with:\n"
+            "    Ray: " + cluster_version_info[0] + "\n"
+            "    Python: " + cluster_version_info[1] + "\n"
+            "    BytedSCMVersion: " + cluster_version_info[2] + "\n"
+            "This process on node " + node_ip_address + " was started with:" + "\n"
+            "    Ray: " + version_info[0] + "\n"
+            "    Python: " + version_info[1] + "\n"
+            "    BytedSCMVersion: " + version_info[2] + "\n"
+        )
+        raise RuntimeError(error_message)
 
     mismatch_msg = (
         "The cluster was started with:\n"
