@@ -368,10 +368,8 @@ Deployment log file:
 ```
 
 :::{note}
-Ray Serve expects unique request id to be able to track the request across the system.
-If the request id is not set, Ray Serve will generate an unique request id for each
-request. If the client re-uses a request id, Ray Serve will still honor the duplicated
-request id in logs, which may make it difficult to track which request is which.
+The request ID is used to associate logs across the system. Avoid sending
+duplicate request IDs, which may lead to confusion when debugging.
 :::
 
 (serve-logging-loki)=
