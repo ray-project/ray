@@ -4348,7 +4348,7 @@ cdef class CoreWorker:
             c_actor_id)
 
     cdef make_actor_handle(self, ActorHandleSharedPtr c_actor_handle,
-            c_bool weak_ref):
+                           c_bool weak_ref):
         worker = ray._private.worker.global_worker
         worker.check_connected()
         manager = worker.function_actor_manager
@@ -4437,7 +4437,7 @@ cdef class CoreWorker:
         check_status(named_actor_handle_pair.second)
 
         return self.make_actor_handle(named_actor_handle_pair.first,
-                weak_ref=True)
+                                      weak_ref=True)
 
     def get_actor_handle(self, ActorID actor_id):
         cdef:

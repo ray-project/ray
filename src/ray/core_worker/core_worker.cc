@@ -2709,9 +2709,11 @@ ActorID CoreWorker::DeserializeAndRegisterActorHandle(const std::string &seriali
                                                       const ObjectID &outer_object_id,
                                                       bool add_local_ref) {
   std::unique_ptr<ActorHandle> actor_handle(new ActorHandle(serialized));
-  return actor_manager_->RegisterActorHandle(
-      std::move(actor_handle), outer_object_id, CurrentCallSite(), rpc_address_,
-      add_local_ref);
+  return actor_manager_->RegisterActorHandle(std::move(actor_handle),
+                                             outer_object_id,
+                                             CurrentCallSite(),
+                                             rpc_address_,
+                                             add_local_ref);
 }
 
 Status CoreWorker::SerializeActorHandle(const ActorID &actor_id,
