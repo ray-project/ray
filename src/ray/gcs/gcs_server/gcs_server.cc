@@ -247,9 +247,7 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
 
   periodical_runner_.RunFnPeriodically(
       [this] {
-        std::string debug_state = GetDebugState();
-        std::cout << "jjyao " << debug_state << std::endl;
-        RAY_LOG(INFO) << debug_state;
+        RAY_LOG(INFO) << GetDebugState();
         PrintAsioStats();
       },
       /*ms*/ RayConfig::instance().event_stats_print_interval_ms(),

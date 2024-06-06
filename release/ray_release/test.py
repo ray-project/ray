@@ -419,14 +419,9 @@ class Test(dict):
         """
         Returns the runtime environment variables for the BYOD cluster.
         """
-        default = {
-            "RAY_BACKEND_LOG_JSON": "1",
-        }
-        default.update(
-            _convert_env_list_to_dict(self["cluster"]["byod"].get("runtime_env", []))
-        )
-
-        return default
+        if not self.is_byod_cluster():
+            return {}
+        return _convert_env_list_to_dict(self["cluster"]["byod"].get("runtime_env", []))
 
     def get_byod_pips(self) -> List[str]:
         """
