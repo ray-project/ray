@@ -150,9 +150,9 @@ void LocalTaskManager::DispatchScheduledTasksToWorkers() {
     // A scheduling class is skipped from dispatching if its number of running tasks
     // exceeds the fair_share, which is the average number of running tasks among all
     // scheduling classes. For example, consider a scenario where we have 3 CPUs and 2
-    // scheduling classes, `f` and `g`, each with 4 tasks: Status 1: The queue init with
-    // [f, f, f, f, g, g, g, g], and 0 running tasks. Status 2: We dispatch 3 `f` tasks.
-    // Now the queue is [f, g, g, g, g],
+    // scheduling classes, `f` and `g`, each with 4 tasks.
+    // Status 1: The queue init with [f, f, f, f, g, g, g, g], and 0 running tasks.
+    // Status 2: We dispatch 3 `f` tasks. Now the queue is [f, g, g, g, g],
     //           with 3 `f` tasks running.
     // Status 3: Suppose 1 `f` task finishes. When choosing the next task to dispatch,
     //           the queue is [f, g, g, g, g], and there are 2 `f` tasks running.
