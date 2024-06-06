@@ -146,9 +146,30 @@ void LocalTaskManager::DispatchScheduledTasksToWorkers() {
     // equal chance of being selected for dispatch. For instance, in a pipeline with both
     // data producers and consumers, we aim for consumers to have the same chance to be
     // dispatched as producers. This prevents memory peak caused by dispatching all
-    // producer tasks first. Example: Instead of dispatching [f,f,f], we want to dispatch
-    // [f,f,g], where 'f' and 'g' represent different scheduling classes. Here, we
-    // prioritize dispatching 'g' to maintain fairness.
+    // producer tasks first.
+    // A scheduling class is skipped from dispatching if its number of running tasks
+    // exceeds the fair_share, which is the average number of running tasks among all
+    // scheduling classes. For example, consider a scenario where we have 3 CPUs and 2
+    // scheduling classes, `f` and `g`, each with 4 tasks: Status 1: The queue init with
+    // [f, f, f, f, g, g, g, g], and 0 running tasks. Status 2: We dispatch 3 `f` tasks.
+    // Now the queue is [f, g, g, g, g],
+    //           with 3 `f` tasks running.
+    // Status 3: Suppose 1 `f` task finishes. When choosing the next task to dispatch,
+    //           the queue is [f, g, g, g, g], and there are 2 `f` tasks running.
+    //           We calculate fair_share as follows:
+    //           fair_share = number of running tasks / number of scheduling classes
+    //                       = 2 / 2 = 1.
+    //           Since the number of running `f` tasks (2) is greater than the
+    //           fair_share (1), we skip `f` and choose to dispatch `g`.
+    // Note 1: Fair_share is calculated as (total number of running tasks with >0 CPU)
+    //         / (number of scheduling classes in tasks_to_dispatch_).
+    // Note 2: The decision to skip a scheduling class happens when loop through the
+    //         scheduling classes (keys of tasks_to_dispatch_). This means we check for
+    //         fair dispatching when looping through the scheduling classes rather than
+    //         for each individual task, reducing the number of checks required.
+    //         This is why in Status 2 of the example, we dispatch 3 `f` tasks because
+    //         we chose `f` for dispatch,and we continue dispatching all `f`
+    //         tasks until resources are fully utilized.
 
     // Currently, fair dispatching is implemented only for tasks that require CPU
     // resources. CPU. For details, see https://github.com/ray-project/ray/pull/44733.
