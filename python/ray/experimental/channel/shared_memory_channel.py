@@ -1,11 +1,11 @@
 import io
 import logging
-from typing import Any, List, Optional, Union
+from typing import Any, Dict, List, Optional, Union
 
 import ray
 from ray._raylet import SerializedObject
 from ray.experimental.channel.common import ChannelInterface, ChannelOutputType
-from ray.experimental.channel.local_channel import IntraProcessChannel
+from ray.experimental.channel.intra_process_channel import IntraProcessChannel
 from ray.experimental.channel.torch_tensor_type import TorchTensorType
 from ray.util.annotations import PublicAPI
 
@@ -79,6 +79,17 @@ def _create_channel_ref(
         )
         raise
     return object_ref
+
+
+def _get_self_actor() -> Optional["ray.actor.ActorHandle"]:
+    """
+    Get the current actor handle in this worker.
+    If this is called in a driver process, it will return None.
+    """
+    try:
+        return ray.get_runtime_context().current_actor
+    except RuntimeError:
+        return None
 
 
 class SharedMemoryType(ChannelOutputType):
@@ -193,12 +204,7 @@ class Channel(ChannelInterface):
             # actor, so we shouldn't need to include `writer` in the
             # constructor args. Either support Channels being constructed by
             # someone other than the writer or remove it from the args.
-            self_actor = None
-            try:
-                self_actor = ray.get_runtime_context().current_actor
-            except RuntimeError:
-                # This is the driver so there is no current actor handle.
-                pass
+            self_actor = _get_self_actor()
             assert writer == self_actor
 
             self._writer_node_id = (
@@ -385,28 +391,38 @@ class Channel(ChannelInterface):
 
 @PublicAPI(stability="alpha")
 class MultiChannel(ChannelInterface):
+    """
+    Can be used to send data to different readers via different channels.
+    For example, if the reader is in the same worker process as the writer,
+    the data can be sent via IntraProcessChannel. If the reader is in a different
+    worker process, the data can be sent via shared memory channel.
+
+    Args:
+        writer: The actor that may write to the channel. None signifies the driver.
+        readers: The actors that may read from the channel. None signifies
+            the driver.
+    """
+
     def __init__(
         self,
         writer: Optional[ray.actor.ActorHandle],
         readers: List[Optional[ray.actor.ActorHandle]],
-        _local_channel: Optional[IntraProcessChannel] = None,
-        _remote_channel: Optional[Channel] = None,
+        _channel_dict: Optional[Dict[ray.ActorID, ChannelInterface]] = None,
+        _channels: Optional[List[ChannelInterface]] = None,
     ):
-        """
-        Can be used to send data to different readers via different channels.
-        For example, if the reader is in the same worker process as the writer,
-        the data can be sent via IntraProcessChannel. If the reader is in a different
-        worker process, the data can be sent via shared memory channel.
-        """
         self._writer = writer
         self._readers = readers
-        self._local_channel = _local_channel
-        self._remote_channel = _remote_channel
-        self._channels = []
-        if self._local_channel:
-            self._channels.append(self._local_channel)
-        if self._remote_channel:
-            self._channels.append(self._remote_channel)
+        # A dictionary that maps the actor ID to the channel object.
+        self._channel_dict = _channel_dict or {}
+        # A list of channel objects.
+        self._channels = _channels or []
+        # TODO (kevin85421): Currently, the out-of-band actor handle is not well
+        # supported for reference counting. Here, we store the actor handle in
+        # `self._self_actor` to ensure its lifetime is the same as the channel object
+        # as a workaround. We should fix this issue in the future.
+        self._self_actor = _get_self_actor()
+        if self._channels:
+            return
 
         remote_readers = []
         for reader in self._readers:
@@ -414,55 +430,50 @@ class MultiChannel(ChannelInterface):
                 remote_readers.append(reader)
         # There are some local readers which are the same worker process as the writer.
         # Create a local channel for the writer and the local readers.
-        if not self._local_channel and len(remote_readers) != len(self._readers):
+        if len(remote_readers) != len(self._readers):
             local_channel = IntraProcessChannel(self._writer)
-            self._local_channel = local_channel
             self._channels.append(local_channel)
+            actor_id = self._get_actor_id(self._writer)
+            self._channel_dict[actor_id] = local_channel
         # There are some remote readers which are not the same Ray actor as the writer.
         # Create a shared memory channel for the writer and the remote readers.
-        if not self._remote_channel and len(remote_readers) != 0:
+        if len(remote_readers) != 0:
             remote_channel = Channel(self._writer, remote_readers)
-            self._remote_channel = remote_channel
             self._channels.append(remote_channel)
-        assert hasattr(self, "_local_channel") or hasattr(self, "_remote_channel")
+            for reader in remote_readers:
+                actor_id = self._get_actor_id(reader)
+                self._channel_dict[actor_id] = remote_channel
+
+    def _get_actor_id(self, reader: Optional[ray.actor.ActorHandle]) -> str:
+        if reader is None:
+            return ray.ActorID.nil()
+        return reader._actor_id
 
     def ensure_registered_as_writer(self) -> None:
-        for channel in self._channels:
-            channel.ensure_registered_as_writer()
+        pass
 
     def ensure_registered_as_reader(self) -> None:
-        for channel in self._channels:
-            channel.ensure_registered_as_reader()
+        pass
 
     def __reduce__(self):
         return MultiChannel, (
             self._writer,
             self._readers,
-            self._local_channel,
-            self._remote_channel,
+            self._channel_dict,
+            self._channels,
         )
 
     def write(self, value: Any):
         for channel in self._channels:
             channel.write(value)
 
-    def use_local_channel(self):
-        current_actor_id = ray.get_runtime_context().get_actor_id()
-        if not current_actor_id or not self._writer:
-            # We are calling from the driver, or the writer is the driver.
-            return False
-        return current_actor_id == self._writer._actor_id.hex()
-
     def begin_read(self) -> Any:
-        if self.use_local_channel():
-            return self._local_channel.begin_read()
-        return self._remote_channel.begin_read()
+        actor_id = self._get_actor_id(self._self_actor)
+        return self._channel_dict[actor_id].begin_read()
 
     def end_read(self):
-        if self.use_local_channel():
-            self._local_channel.end_read()
-        else:
-            self._remote_channel.end_read()
+        actor_id = self._get_actor_id(self._self_actor)
+        return self._channel_dict[actor_id].end_read()
 
     def close(self) -> None:
         for channel in self._channels:

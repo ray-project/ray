@@ -16,7 +16,8 @@ from ray._private.utils import (
     get_or_create_event_loop,
 )
 
-from ray.experimental.channel.shared_memory_channel import MultiChannel
+from ray.experimental.channel.shared_memory_channel import MultiChannel, Channel
+from ray.experimental.channel.intra_process_channel import IntraProcessChannel
 
 
 logger = logging.getLogger(__name__)
@@ -565,10 +566,12 @@ class TestMultiChannel:
             assert len(tasks) == 3
             for task in tasks:
                 assert isinstance(task.output_channel, MultiChannel)
-                if task.output_channel._local_channel:
-                    num_local_channels += 1
-                if task.output_channel._remote_channel:
-                    num_remote_channels += 1
+                assert len(task.output_channel._channels) == 1
+                for channel in task.output_channel._channels:
+                    if isinstance(channel, IntraProcessChannel):
+                        num_local_channels += 1
+                    if isinstance(channel, Channel):
+                        num_remote_channels += 1
         assert num_local_channels == 2
         assert num_remote_channels == 1
         output_channel = compiled_dag.execute(1)
@@ -603,14 +606,16 @@ class TestMultiChannel:
         assert len(a_tasks) == 2
         for task in a_tasks:
             assert isinstance(task.output_channel, MultiChannel)
-            assert not task.output_channel._local_channel
-            assert task.output_channel._remote_channel
+            assert len(task.output_channel._channels) == 1
+            channel = task.output_channel._channels[0]
+            assert isinstance(channel, Channel)
 
         b_tasks = compiled_dag.actor_to_tasks[b]
         assert len(b_tasks) == 1
         assert isinstance(b_tasks[0].output_channel, MultiChannel)
-        assert not b_tasks[0].output_channel._local_channel
-        assert b_tasks[0].output_channel._remote_channel
+        assert len(b_tasks[0].output_channel._channels) == 1
+        channel = b_tasks[0].output_channel._channels[0]
+        assert isinstance(channel, Channel)
 
         output_channel = compiled_dag.execute(1)
         result = output_channel.begin_read()
