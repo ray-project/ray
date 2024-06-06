@@ -2,7 +2,6 @@ import math
 import uuid
 from typing import Any, Dict, Iterable, Iterator, List, Optional, Tuple, Union
 
-import time
 import ray
 from ray.data._internal.block_list import BlockList
 from ray.data._internal.memory_tracing import trace_allocation
@@ -105,27 +104,8 @@ class LazyBlockList(BlockList):
         # since each read task may produce multiple output blocks after splitting.
         self._estimated_num_blocks = None
 
-        # Maintain a reference to the list of ReadTasks, and lazily retrieve it
-        # from the object store when requested.
-        start = time.time()
-        self._tasks_ref = ray.put(tasks)
-        end = time.time()
-        print(f"Placed ReadTask list into object store, took {end-start} seconds")
-        self._tasks = []
-
     def __repr__(self):
         return f"LazyBlockList(owned_by_consumer={self._owned_by_consumer})"
-
-    def get_tasks(self) -> List[ReadTask]:
-        if len(self._tasks) > 0:
-            return self._tasks
-        
-        start = time.time()
-        self._tasks = ray.get(self._tasks_ref)
-        end = time.time()
-        print(f"Obtaining ReadTasks from object store took {end-start} seconds")
-        return self._tasks
-            
 
     def get_metadata(self, fetch_if_missing: bool = False) -> List[BlockMetadata]:
         """Get the metadata for all blocks."""
@@ -154,7 +134,7 @@ class LazyBlockList(BlockList):
 
     def copy(self) -> "LazyBlockList":
         return LazyBlockList(
-            self.get_tasks().copy(),
+            self._tasks.copy(),
             read_stage_name=self._read_stage_name,
             block_partition_refs=self._block_partition_refs.copy(),
             block_partition_meta_refs=self._block_partition_meta_refs.copy(),

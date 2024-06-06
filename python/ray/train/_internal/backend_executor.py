@@ -4,6 +4,7 @@ from collections import defaultdict
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Optional, Tuple, Type, TypeVar
 
+import time
 import ray
 import ray._private.ray_constants as ray_constants
 from ray._private.ray_constants import env_integer
@@ -458,6 +459,14 @@ class BackendExecutor:
                 training function via ``session.get_checkpoint()``. If this
                 is ``None`` then no checkpoint will be loaded.
         """
+        start = time.time()
+        # We don't need these tasks, as we will be re-creating them upon
+        # call of .streaming_split
+        if data_config and data_config._datasets_to_split is not None: 
+            for key in data_config._datasets_to_split:
+                datasets[key]._plan._in_blocks._tasks = []
+
+
         use_detailed_autofilled_metrics = env_integer(
             ENABLE_DETAILED_AUTOFILLED_METRICS_ENV, 0
         )
@@ -548,6 +557,8 @@ class BackendExecutor:
             session.start()
 
         self.worker_group.execute_async(train_async)
+        end = time.time()
+        print(f"Ray Trainer spent {end - start} seconds initializing training processes")
 
     def get_next_results(self) -> Optional[List[_TrainingResult]]:
         """Fetches the next ``_TrainingResult`` from each worker.
