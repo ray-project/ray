@@ -55,7 +55,8 @@ config = (
         train_batch_size_per_learner=500,
         grad_clip=40.0,
         grad_clip_by="global_norm",
-        vf_loss_coeff=0.1,
+        vf_loss_coeff=0.01,
+        entropy_coeff=0.005,
         # Only update connector states and model weights every n training_step calls.
         broadcast_interval=5,
     )
