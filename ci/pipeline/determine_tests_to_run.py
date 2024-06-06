@@ -8,7 +8,6 @@ import re
 import subprocess
 import sys
 from pprint import pformat
-import traceback
 
 
 # NOTE(simon): do not add type hint here because it's ran using python2 in CI.
@@ -36,41 +35,19 @@ def list_changed_files(commit_range):
 
 
 def is_pull_request():
-    event_type = None
-
-    for key in ["GITHUB_EVENT_NAME", "TRAVIS_EVENT_TYPE"]:
-        event_type = os.getenv(key, event_type)
-
-    if (
-        os.environ.get("BUILDKITE")
-        and os.environ.get("BUILDKITE_PULL_REQUEST", "false") != "false"
-    ):
-        event_type = "pull_request"
-
-    return event_type == "pull_request"
+    return os.environ.get("BUILDKITE_PULL_REQUEST", "false") != "false"
 
 
 def get_commit_range():
-    commit_range = None
-
-    if os.environ.get("TRAVIS"):
-        commit_range = os.environ["TRAVIS_COMMIT_RANGE"]
-    elif os.environ.get("GITHUB_EVENT_PATH"):
-        with open(os.environ["GITHUB_EVENT_PATH"], "rb") as f:
-            event = json.loads(f.read())
-        base = event["pull_request"]["base"]["sha"]
-        commit_range = "{}...{}".format(base, event.get("after", ""))
-    elif os.environ.get("BUILDKITE"):
-        commit_range = "origin/{}...{}".format(
-            os.environ["BUILDKITE_PULL_REQUEST_BASE_BRANCH"],
-            os.environ["BUILDKITE_COMMIT"],
-        )
-
-    assert commit_range is not None
-    return commit_range
+    return "origin/{}...{}".format(
+        os.environ["BUILDKITE_PULL_REQUEST_BASE_BRANCH"],
+        os.environ["BUILDKITE_COMMIT"],
+    )
 
 
 if __name__ == "__main__":
+    assert os.environ.get("BUILDKITE")
+
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--output", type=str, help="json, rayci_tags or envvars", default="envvars"
@@ -115,28 +92,6 @@ if __name__ == "__main__":
         files = list_changed_files(commit_range)
         print(pformat(commit_range), file=sys.stderr)
         print(pformat(files), file=sys.stderr)
-
-        # Dry run py_dep_analysis.py to see which tests we would have run.
-        try:
-            import py_dep_analysis as pda
-
-            graph = pda.build_dep_graph()
-            rllib_tests = pda.list_rllib_tests()
-            print("Total # of RLlib tests: ", len(rllib_tests), file=sys.stderr)
-
-            impacted = {}
-            for test in rllib_tests:
-                for file in files:
-                    if pda.test_depends_on_file(graph, test, file):
-                        impacted[test[0]] = True
-
-            print("RLlib tests impacted: ", len(impacted), file=sys.stderr)
-            for test in impacted.keys():
-                print("    ", test, file=sys.stderr)
-        except Exception:
-            print("Failed to dry run py_dep_analysis.py", file=sys.stderr)
-            traceback.print_exc(file=sys.stderr)
-        # End of dry run.
 
         skip_prefix_list = [
             "doc/",
@@ -353,8 +308,7 @@ if __name__ == "__main__":
                 # These scripts are always run as part of the build process
                 RAY_CI_TOOLS_AFFECTED = 1
             elif (
-                changed_file.endswith("build-docker-images.py")
-                or changed_file == ".buildkite/base.rayci.yml"
+                changed_file == ".buildkite/base.rayci.yml"
                 or changed_file == ".buildkite/build.rayci.yml"
                 or changed_file == ".buildkite/pipeline.arm64.yml"
                 or changed_file == "ci/docker/manylinux.Dockerfile"

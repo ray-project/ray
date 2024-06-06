@@ -24,22 +24,22 @@ class TestGPUs(unittest.TestCase):
         # Expect errors when we run a config w/ num_gpus>0 w/o a GPU
         # and _fake_gpus=False.
         for num_gpus in [0, 0.1, 1, actual_gpus + 4]:
-            # Only allow possible num_gpus_per_worker (so test would not
+            # Only allow possible num_gpus_per_env_runner (so test would not
             # block infinitely due to a down worker).
             per_worker = (
                 [0] if actual_gpus == 0 or actual_gpus < num_gpus else [0, 0.5, 1]
             )
-            for num_gpus_per_worker in per_worker:
+            for num_gpus_per_env_runner in per_worker:
                 for fake_gpus in [False] + ([] if num_gpus == 0 else [True]):
                     config.resources(
                         num_gpus=num_gpus,
-                        num_gpus_per_worker=num_gpus_per_worker,
                         _fake_gpus=fake_gpus,
                     )
+                    config.env_runners(num_gpus_per_env_runner=num_gpus_per_env_runner)
 
                     print(
                         f"\n------------\nnum_gpus={num_gpus} "
-                        f"num_gpus_per_worker={num_gpus_per_worker} "
+                        f"num_gpus_per_env_runner={num_gpus_per_env_runner} "
                         f"_fake_gpus={fake_gpus}"
                     )
 
@@ -49,7 +49,7 @@ class TestGPUs(unittest.TestCase):
                     for _ in framework_iterator(config, frameworks=frameworks):
                         # Expect that Algorithm creation causes a num_gpu error.
                         if (
-                            actual_gpus < num_gpus + 2 * num_gpus_per_worker
+                            actual_gpus < num_gpus + 2 * num_gpus_per_env_runner
                             and not fake_gpus
                         ):
                             # "Direct" RLlib (create Algorithm on the driver).

@@ -1,3 +1,4 @@
+# @OldAPIStack
 # Pendulum SAC can attain -150+ reward in 6-7k
 # Configurations are the similar to original softlearning/sac codebase
 pendulum-sac:
@@ -29,6 +30,6 @@ pendulum-sac:
           actor_learning_rate: 0.0003
           critic_learning_rate: 0.0003
           entropy_learning_rate: 0.0003
-        num_workers: 0
+        num_env_runners: 0
         num_gpus: 0
         metrics_num_episodes_for_smoothing: 5

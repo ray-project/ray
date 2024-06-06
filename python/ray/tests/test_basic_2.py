@@ -728,7 +728,7 @@ if __name__ == "__main__":
         with open(test_driver, "w") as f:
             f.write(code_test.format(repr(ray_start_regular_shared["address"])))
         output = subprocess.check_output([sys.executable, test_driver])
-        assert b"OK" in output
+        assert b"OK" in output, f"Output has no 'OK': {output.decode()}"
 
 
 @pytest.mark.skipif(

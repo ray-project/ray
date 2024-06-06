@@ -38,6 +38,50 @@ Results to expect
 You should see the following output (at the end of the experiment) in your console:
 
 """
+import gymnasium as gym
+
+from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
+from ray.rllib.env.wrappers.atari_wrappers import wrap_atari_for_new_api_stack
+from ray.rllib.examples.rl_modules.classes.tiny_atari_cnn import TinyAtariCNN
+from ray.rllib.utils.test_utils import (
+    add_rllib_example_script_args,
+    run_rllib_example_script_experiment,
+)
+from ray.tune.registry import get_trainable_cls, register_env
+
+parser = add_rllib_example_script_args(default_iters=100, default_timesteps=600000)
 
 
+if __name__ == "__main__":
+    args = parser.parse_args()
 
+    register_env("env", lambda cfg: wrap_atari_for_new_api_stack(
+        #TODO(sven) pull from master to get args.env
+        gym.make("ALE/Pong-v5", **cfg), #args.env
+        dim=42,  # <- need images to be "tiny" for our custom model
+        framestack=4,
+    ))
+
+    base_config = (
+        get_trainable_cls(args.algo)
+        .get_default_config()
+        .api_stack(
+            enable_rl_module_and_learner=True,
+            enable_env_runner_and_connector_v2=True,
+        )
+        .environment(
+            env="env",
+            env_config=dict(
+                frameskip=1,
+                full_action_space=False,
+                repeat_action_probability=0.0,
+            ),
+        )
+        .rl_module(
+            rl_module_spec=SingleAgentRLModuleSpec(
+                module_class=TinyAtariCNN,
+            ),
+        )
+    )
+
+    run_rllib_example_script_experiment(base_config, args)

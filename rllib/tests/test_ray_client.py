@@ -25,7 +25,7 @@ class TestRayClient(unittest.TestCase):
                 "lr": 0.01,
                 # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
                 "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
-                "num_workers": 0,
+                "num_env_runners": 0,
                 "framework": "tf",
             }
             resources = ppo.PPO.default_resource_request(config)

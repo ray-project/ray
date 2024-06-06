@@ -39,7 +39,7 @@ def evaluate_test(algo, env="CartPole-v1", test_episode_rollout=False):
             "TEST_TMPDIR='{}' python {}/train.py --storage-path={} --run={} "
             "--checkpoint-freq=1 ".format(tmp_dir, rllib_dir, tmp_dir, algo)
             + "--config='{"
-            + '"num_workers": 1, "num_gpus": 0{}{}'.format(fw_, extra_config)
+            + '"num_env_runners": 1, "num_gpus": 0{}{}'.format(fw_, extra_config)
             + ', "min_sample_timesteps_per_iteration": 5,'
             '"min_time_s_per_iteration": 0.1, '
             '"model": {"fcnet_hiddens": [10]}'
@@ -111,11 +111,11 @@ def learn_test_plus_evaluate(algo: str, env="CartPole-v1"):
             "--checkpoint-freq=1 --checkpoint-at-end ".format(
                 tmp_dir, rllib_dir, tmp_dir, algo
             )
-            + '--config="{\\"num_gpus\\": 0, \\"num_workers\\": 1'
+            + '--config="{\\"num_gpus\\": 0, \\"num_env_runners\\": 1'
             + eval_
             + fw_
             + '}" '
-            + '--stop="{\\"episode_reward_mean\\": 100.0}"'
+            + '--stop="{\\"env_runners/episode_return_mean\\": 100.0}"'
             + " --env={}".format(env)
         )
 
@@ -309,9 +309,9 @@ class TestCLISmokeTests(unittest.TestCase):
     def test_python_run(self):
         assert os.popen(
             f"python {rllib_dir}/scripts.py train file tuned_examples/ppo/"
-            f"cartpole_ppo_envrunner.py "
-            f"--stop={{'num_env_steps_sampled_lifetime': 50000, "
-            f"'env_runners/episode_return_mean': 200}}"
+            f"cartpole_ppo.py "
+            f"--stop=\"{{'num_env_steps_sampled_lifetime': 50000, "
+            f"'env_runners/episode_return_mean': 200}}\""
         ).read()
 
     def test_all_example_files_exist(self):

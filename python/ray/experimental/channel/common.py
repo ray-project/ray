@@ -1,26 +1,76 @@
 import asyncio
 import concurrent
+import copy
 import threading
 from dataclasses import dataclass
-from typing import Any, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 import ray
 from ray.experimental.channel.nccl_group import _NcclGroup
+from ray.experimental.channel.serialization_context import _SerializationContext
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
 # The context singleton on this process.
 _default_context: "Optional[ChannelContext]" = None
 _context_lock = threading.Lock()
 
+if TYPE_CHECKING:
+    import torch
+
 
 @PublicAPI(stability="alpha")
 class ChannelOutputType:
-    @staticmethod
-    def register_custom_serializer() -> None:
+    def __init__(self):
+        self._contains_type: Optional["ChannelOutputType"] = None
+
+    def register_custom_serializer(self) -> None:
         """
-        Register any custom serializers needed to pass data of this type.
+        Register any custom serializers needed to pass data of this type. This
+        method should be run on the reader(s) and writer of a channel, which
+        are the driver and/or Ray actors.
+
+        NOTE: When custom serializers are registered with Ray, the registered
+        deserializer is shipped with the serialized value and used on the
+        receiving end. Therefore, the deserializer function should *not*
+        capture state that is meant to be worker-local, such as the worker's
+        default device. Instead, these should be extracted from the
+        worker-local _SerializationContext.
         """
-        pass
+        if self._contains_type is not None:
+            self._contains_type.register_custom_serializer()
+
+    @property
+    def is_direct_return(self) -> bool:
+        """
+        Some channels may contain other values that should be sent via a
+        different channel. This returns whether the value is a direct return or
+        if it is "nested" inside a different channel.
+        """
+        return True
+
+    @property
+    def contains_type(self) -> "ChannelOutputType":
+        """
+        Some channel values may contain an object that should be sent through a
+        different channel. For example, a Python object containing a GPU tensor
+        may be sent over two channels, one to serialize the Python data on CPU
+        memory and another to transfer the GPU data over NCCL. This function
+        returns the type of this nested value, if any.
+        """
+        return self._contains_type
+
+    def set_contains_type(self, typ: "ChannelOutputType") -> None:
+        """
+        Mark that values sent on this channel may contain objects that should
+        be sent through a different channel.
+        """
+        from ray.experimental.channel.torch_tensor_type import TorchTensorType
+
+        if typ is not None:
+            assert isinstance(
+                typ, TorchTensorType
+            ), "Contained type must be of type TorchTensorType"
+        self._contains_type = copy.deepcopy(typ)
 
     def create_channel(
         self,
@@ -41,29 +91,27 @@ class ChannelOutputType:
         """
         raise NotImplementedError
 
+    def requires_nccl(self) -> bool:
+        if self._contains_type is not None:
+            if self._contains_type.requires_nccl():
+                return True
 
-def _do_register_custom_serializers(
-    self: Any, channel_output_types: List[type]
-) -> None:
-    """
-    Register custom serializers for the given channel types. This method should
-    be run on the reader(s) and writer of a channel, which are the driver
-    and/or Ray actors.
+        # By default, channels do not require NCCL.
+        return False
 
-    Args:
-        self: This method should be run on the driver or the Ray actor. The Ray
-            actor should be passed as `self`.
-        channel_output_types: The list of channel output types to register.
-    """
-    for typ in channel_output_types:
-        typ.register_custom_serializer(self)
+    def set_nccl_group_id(self, group_id: str) -> None:
+        raise NotImplementedError
 
 
 @DeveloperAPI
 @dataclass
 class ChannelContext:
-    # Used for the torch.Tensor NCCL transport.
-    nccl_group: Optional["_NcclGroup"] = None
+    serialization_context = _SerializationContext()
+    _torch_device: Optional["torch.device"] = None
+
+    def __init__(self):
+        # Used for the torch.Tensor NCCL transport.
+        self.nccl_groups: Dict[str, "_NcclGroup"] = {}
 
     @staticmethod
     def get_current() -> "ChannelContext":
@@ -80,6 +128,26 @@ class ChannelContext:
                 _default_context = ChannelContext()
 
             return _default_context
+
+    @property
+    def torch_device(self) -> "torch.device":
+        if self._torch_device is None:
+
+            if not ray.get_gpu_ids():
+                import torch
+
+                # torch_utils defaults to returning GPU 0 if no GPU IDs were assigned
+                # by Ray. We instead want the default to be CPU.
+                self._torch_device = torch.device("cpu")
+
+            from ray.air._internal import torch_utils
+
+            self._torch_device = torch_utils.get_devices()[0]
+
+        return self._torch_device
+
+    def set_torch_device(self, device: "torch.device"):
+        self._torch_device = device
 
 
 @PublicAPI(stability="alpha")
@@ -149,8 +217,9 @@ class ChannelInterface:
 
     def close(self) -> None:
         """
-        Close this channel. This method must not block. Any existing values in
-        the channel may be lost after the channel is closed.
+        Close this channel. This method must not block and it must be made
+        idempotent. Any existing values in the channel may be lost after the
+        channel is closed.
         """
         raise NotImplementedError
 

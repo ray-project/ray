@@ -265,17 +265,10 @@ class AlgorithmConfig(_Config):
         self.extra_python_environs_for_worker = {}
 
         # `self.resources()`
-        self.num_gpus = 0
-        self.num_cpus_per_worker = 1
-        self.num_gpus_per_worker = 0
-        self._fake_gpus = False
-        self.num_cpus_for_local_worker = 1
-        self.num_learner_workers = 0
-        self.num_gpus_per_learner_worker = 0
-        self.num_cpus_per_learner_worker = 1
-        self.local_gpu_idx = 0
-        self.custom_resources_per_worker = {}
         self.placement_strategy = "PACK"
+        self.num_gpus = 0  # @OldAPIStack
+        self._fake_gpus = False  # @OldAPIStack
+        self.num_cpus_for_main_process = 1
 
         # `self.framework()`
         self.framework_str = "torch"
@@ -338,6 +331,9 @@ class AlgorithmConfig(_Config):
         self.env_runner_cls = None
         self.num_env_runners = 0
         self.num_envs_per_env_runner = 1
+        self.num_cpus_per_env_runner = 1
+        self.num_gpus_per_env_runner = 0
+        self.custom_resources_per_env_runner = {}
         self.validate_env_runners_after_construction = True
         self.sample_timeout_s = 60.0
         self.create_env_on_local_worker = False
@@ -364,6 +360,12 @@ class AlgorithmConfig(_Config):
         self.use_worker_filter_stats = True
         self.enable_connectors = True
         self.sampler_perf_stats_ema_coef = None
+
+        # `self.learners()`
+        self.num_learners = 0
+        self.num_gpus_per_learner = 0
+        self.num_cpus_per_learner = 1
+        self.local_gpu_idx = 0
 
         # `self.training()`
         self.gamma = 0.99
@@ -566,7 +568,7 @@ class AlgorithmConfig(_Config):
 
         Returns:
             A complete AlgorithmConfigDict, usable in backward-compatible Tune/RLlib
-            use cases, e.g. w/ `tune.Tuner().fit()`.
+            use cases.
         """
         config = copy.deepcopy(vars(self))
         config.pop("algo_class")
@@ -604,10 +606,17 @@ class AlgorithmConfig(_Config):
         config["create_env_on_driver"] = config.pop("create_env_on_local_worker", 1)
         config["custom_eval_function"] = config.pop("custom_evaluation_function", None)
         config["framework"] = config.pop("framework_str", None)
-        config["num_cpus_for_driver"] = config.pop("num_cpus_for_local_worker", 1)
+        config["num_cpus_for_driver"] = config.pop(
+            "num_cpus_for_local_worker", config.pop("num_cpus_for_main_process", 1)
+        )
         config["num_workers"] = config.pop(
             "num_env_runners", config.pop("num_rollout_workers", 0)
         )
+        config["num_cpus_per_worker"] = config.pop("num_cpus_per_env_runner", 1)
+        config["num_gpus_per_worker"] = config.pop("num_gpus_per_env_runner", 0)
+        config["num_learner_workers"] = config.pop("num_learners", 0)
+        config["num_cpus_per_learner_worker"] = config.pop("num_cpus_per_learner", 1)
+        config["num_gpus_per_learner_worker"] = config.pop("num_gpus_per_learner", 0)
 
         # Simplify: Remove all deprecated keys that have as value `DEPRECATED_VALUE`.
         # These would be useless in the returned dict anyways.
@@ -1207,21 +1216,27 @@ class AlgorithmConfig(_Config):
     def resources(
         self,
         *,
-        num_gpus: Optional[Union[float, int]] = NotProvided,
-        _fake_gpus: Optional[bool] = NotProvided,
-        num_cpus_per_worker: Optional[Union[float, int]] = NotProvided,
-        num_gpus_per_worker: Optional[Union[float, int]] = NotProvided,
-        num_cpus_for_local_worker: Optional[int] = NotProvided,
-        num_learner_workers: Optional[int] = NotProvided,
-        num_cpus_per_learner_worker: Optional[Union[float, int]] = NotProvided,
-        num_gpus_per_learner_worker: Optional[Union[float, int]] = NotProvided,
-        local_gpu_idx: Optional[int] = NotProvided,
-        custom_resources_per_worker: Optional[dict] = NotProvided,
+        num_cpus_for_main_process: Optional[int] = NotProvided,
+        num_gpus: Optional[Union[float, int]] = NotProvided,  # @OldAPIStack
+        _fake_gpus: Optional[bool] = NotProvided,  # @OldAPIStack
         placement_strategy: Optional[str] = NotProvided,
+        # Deprecated args.
+        num_cpus_per_worker=DEPRECATED_VALUE,  # moved to `env_runners`
+        num_gpus_per_worker=DEPRECATED_VALUE,  # moved to `env_runners`
+        custom_resources_per_worker=DEPRECATED_VALUE,  # moved to `env_runners`
+        num_learner_workers=DEPRECATED_VALUE,  # moved to `learners`
+        num_cpus_per_learner_worker=DEPRECATED_VALUE,  # moved to `learners`
+        num_gpus_per_learner_worker=DEPRECATED_VALUE,  # moved to `learners`
+        local_gpu_idx=DEPRECATED_VALUE,  # moved to `learners`
+        num_cpus_for_local_worker=DEPRECATED_VALUE,
     ) -> "AlgorithmConfig":
         """Specifies resources allocated for an Algorithm and its ray actors/workers.
 
         Args:
+            num_cpus_for_main_process: Number of CPUs to allocate for the main algorithm
+                process that runs `Algorithm.training_step()`.
+                Note: This is only relevant when running RLlib through Tune. Otherwise,
+                `Algorithm.training_step()` runs in the main program (driver).
             num_gpus: Number of GPUs to allocate to the algorithm process.
                 Note that not all algorithms can take advantage of GPUs.
                 Support for multi-GPU is currently only available for
@@ -1230,45 +1245,15 @@ class AlgorithmConfig(_Config):
                 CPU machine. GPU towers will be simulated by graphs located on
                 CPUs in this case. Use `num_gpus` to test for different numbers of
                 fake GPUs.
-            num_cpus_per_worker: Number of CPUs to allocate per worker.
-            num_gpus_per_worker: Number of GPUs to allocate per worker. This can be
-                fractional. This is usually needed only if your env itself requires a
-                GPU (i.e., it is a GPU-intensive video game), or model inference is
-                unusually expensive.
-            num_learner_workers: Number of workers used for training. A value of 0
-                means training will take place on a local worker on head node CPUs or 1
-                GPU (determined by `num_gpus_per_learner_worker`). For multi-gpu
-                training, set number of workers greater than 1 and set
-                `num_gpus_per_learner_worker` accordingly (e.g. 4 GPUs total, and model
-                needs 2 GPUs: `num_learner_workers = 2` and
-                `num_gpus_per_learner_worker = 2`)
-            num_cpus_per_learner_worker: Number of CPUs allocated per Learner worker.
-                Only necessary for custom processing pipeline inside each Learner
-                requiring multiple CPU cores. Ignored if `num_learner_workers = 0`.
-            num_gpus_per_learner_worker: Number of GPUs allocated per worker. If
-                `num_learner_workers = 0`, any value greater than 0 will run the
-                training on a single GPU on the head node, while a value of 0 will run
-                the training on head node CPU cores. If `num_gpus_per_learner_worker` is
-                set to > 0, then `num_cpus_per_learner_worker` should not be changed
-                (from its default value of 1).
-            num_cpus_for_local_worker: Number of CPUs to allocate for the algorithm.
-                Note: this only takes effect when running in Tune. Otherwise,
-                the algorithm runs in the main program (driver).
-            local_gpu_idx: If `num_gpus_per_learner_worker` > 0, and
-                `num_learner_workers` < 2, then this GPU index will be used for
-                training. This is an index into the available
-                CUDA devices. For example if `os.environ["CUDA_VISIBLE_DEVICES"] = "1"`
-                then a `local_gpu_idx` of 0 will use the GPU with ID=1 on the node.
-            custom_resources_per_worker: Any custom Ray resources to allocate per
-                worker.
             placement_strategy: The strategy for the placement group factory returned by
                 `Algorithm.default_resource_request()`. A PlacementGroup defines, which
                 devices (resources) should always be co-located on the same node.
-                For example, an Algorithm with 2 rollout workers, running with
-                num_gpus=1 will request a placement group with the bundles:
-                [{"gpu": 1, "cpu": 1}, {"cpu": 1}, {"cpu": 1}], where the first bundle
-                is for the driver and the other 2 bundles are for the two workers.
-                These bundles can now be "placed" on the same or different
+                For example, an Algorithm with 2 EnvRunners and 1 Learner (with
+                1 GPU) will request a placement group with the bundles:
+                [{"cpu": 1}, {"gpu": 1, "cpu": 1}, {"cpu": 1}, {"cpu": 1}], where the
+                first bundle is for the local (main Algorithm) process, the second one
+                for the 1 Learner worker and the last 2 bundles are for the two
+                EnvRunners. These bundles can now be "placed" on the same or different
                 nodes depending on the value of `placement_strategy`:
                 "PACK": Packs bundles into as few nodes as possible.
                 "SPREAD": Places bundles across distinct nodes as even as possible.
@@ -1279,29 +1264,78 @@ class AlgorithmConfig(_Config):
         Returns:
             This updated AlgorithmConfig object.
         """
+        if num_cpus_per_worker != DEPRECATED_VALUE:
+            deprecation_warning(
+                old="AlgorithmConfig.resources(num_cpus_per_worker)",
+                new="AlgorithmConfig.env_runners(num_cpus_per_env_runner)",
+                error=False,
+            )
+            self.num_cpus_per_env_runner = num_cpus_per_worker
+
+        if num_gpus_per_worker != DEPRECATED_VALUE:
+            deprecation_warning(
+                old="AlgorithmConfig.resources(num_gpus_per_worker)",
+                new="AlgorithmConfig.env_runners(num_gpus_per_env_runner)",
+                error=False,
+            )
+            self.num_gpus_per_env_runner = num_gpus_per_worker
+
+        if custom_resources_per_worker != DEPRECATED_VALUE:
+            deprecation_warning(
+                old="AlgorithmConfig.resources(custom_resources_per_worker)",
+                new="AlgorithmConfig.env_runners(custom_resources_per_env_runner)",
+                error=False,
+            )
+            self.custom_resources_per_env_runner = custom_resources_per_worker
+
+        if num_learner_workers != DEPRECATED_VALUE:
+            deprecation_warning(
+                old="AlgorithmConfig.resources(num_learner_workers)",
+                new="AlgorithmConfig.learners(num_learner)",
+                error=False,
+            )
+            self.num_learners = num_learner_workers
+
+        if num_cpus_per_learner_worker != DEPRECATED_VALUE:
+            deprecation_warning(
+                old="AlgorithmConfig.resources(num_cpus_per_learner_worker)",
+                new="AlgorithmConfig.learners(num_cpus_per_learner)",
+                error=False,
+            )
+            self.num_cpus_per_learner = num_cpus_per_learner_worker
+
+        if num_gpus_per_learner_worker != DEPRECATED_VALUE:
+            deprecation_warning(
+                old="AlgorithmConfig.resources(num_gpus_per_learner_worker)",
+                new="AlgorithmConfig.learners(num_gpus_per_learner)",
+                error=False,
+            )
+            self.num_gpus_per_learner = num_gpus_per_learner_worker
+
+        if local_gpu_idx != DEPRECATED_VALUE:
+            deprecation_warning(
+                old="AlgorithmConfig.resources(local_gpu_idx)",
+                new="AlgorithmConfig.learners(local_gpu_idx)",
+                error=False,
+            )
+            self.local_gpu_idx = local_gpu_idx
+
+        if num_cpus_for_local_worker != DEPRECATED_VALUE:
+            deprecation_warning(
+                old="AlgorithmConfig.resources(num_cpus_for_local_worker)",
+                new="AlgorithmConfig.resources(num_cpus_for_main_process)",
+                error=False,
+            )
+            self.num_cpus_for_main_process = num_cpus_for_local_worker
+
+        if num_cpus_for_main_process is not NotProvided:
+            self.num_cpus_for_main_process = num_cpus_for_main_process
         if num_gpus is not NotProvided:
             self.num_gpus = num_gpus
         if _fake_gpus is not NotProvided:
             self._fake_gpus = _fake_gpus
-        if num_cpus_per_worker is not NotProvided:
-            self.num_cpus_per_worker = num_cpus_per_worker
-        if num_gpus_per_worker is not NotProvided:
-            self.num_gpus_per_worker = num_gpus_per_worker
-        if num_cpus_for_local_worker is not NotProvided:
-            self.num_cpus_for_local_worker = num_cpus_for_local_worker
-        if custom_resources_per_worker is not NotProvided:
-            self.custom_resources_per_worker = custom_resources_per_worker
         if placement_strategy is not NotProvided:
             self.placement_strategy = placement_strategy
-
-        if num_learner_workers is not NotProvided:
-            self.num_learner_workers = num_learner_workers
-        if num_cpus_per_learner_worker is not NotProvided:
-            self.num_cpus_per_learner_worker = num_cpus_per_learner_worker
-        if num_gpus_per_learner_worker is not NotProvided:
-            self.num_gpus_per_learner_worker = num_gpus_per_learner_worker
-        if local_gpu_idx is not NotProvided:
-            self.local_gpu_idx = local_gpu_idx
 
         return self
 
@@ -1405,8 +1439,8 @@ class AlgorithmConfig(_Config):
 
     def api_stack(
         self,
-        enable_rl_module_and_learner: Optional[str] = NotProvided,
-        enable_env_runner_and_connector_v2: Optional[str] = NotProvided,
+        enable_rl_module_and_learner: Optional[bool] = NotProvided,
+        enable_env_runner_and_connector_v2: Optional[bool] = NotProvided,
     ) -> "AlgorithmConfig":
         """Sets the config's API stack settings.
 
@@ -1556,6 +1590,9 @@ class AlgorithmConfig(_Config):
         env_runner_cls: Optional[type] = NotProvided,
         num_env_runners: Optional[int] = NotProvided,
         num_envs_per_env_runner: Optional[int] = NotProvided,
+        num_cpus_per_env_runner: Optional[int] = NotProvided,
+        num_gpus_per_env_runner: Optional[Union[float, int]] = NotProvided,
+        custom_resources_per_env_runner: Optional[dict] = NotProvided,
         validate_env_runners_after_construction: Optional[bool] = NotProvided,
         sample_timeout_s: Optional[float] = NotProvided,
         env_to_module_connector: Optional[
@@ -1608,6 +1645,13 @@ class AlgorithmConfig(_Config):
                 (vector-wise) per EnvRunner. This enables batching when computing
                 actions through RLModule inference, which can improve performance
                 for inference-bottlenecked workloads.
+            num_cpus_per_env_runner: Number of CPUs to allocate per EnvRunner.
+            num_gpus_per_env_runner: Number of GPUs to allocate per EnvRunner. This can
+                be fractional. This is usually needed only if your env itself requires a
+                GPU (i.e., it is a GPU-intensive video game), or model inference is
+                unusually expensive.
+            custom_resources_per_env_runner: Any custom Ray resources to allocate per
+                EnvRunner.
             sample_timeout_s: The timeout in seconds for calling `sample()` on remote
                 EnvRunner workers. Results (episode list) from workers that take longer
                 than this time are discarded. Only used by algorithms that sample
@@ -1770,6 +1814,14 @@ class AlgorithmConfig(_Config):
                     "larger 0!"
                 )
             self.num_envs_per_env_runner = num_envs_per_env_runner
+
+        if num_cpus_per_env_runner is not NotProvided:
+            self.num_cpus_per_env_runner = num_cpus_per_env_runner
+        if num_gpus_per_env_runner is not NotProvided:
+            self.num_gpus_per_env_runner = num_gpus_per_env_runner
+        if custom_resources_per_env_runner is not NotProvided:
+            self.custom_resources_per_env_runner = custom_resources_per_env_runner
+
         if sample_timeout_s is not NotProvided:
             self.sample_timeout_s = sample_timeout_s
         if sample_collector is not NotProvided:
@@ -1901,6 +1953,53 @@ class AlgorithmConfig(_Config):
 
         return self
 
+    def learners(
+        self,
+        *,
+        num_learners: Optional[int] = NotProvided,
+        num_cpus_per_learner: Optional[Union[float, int]] = NotProvided,
+        num_gpus_per_learner: Optional[Union[float, int]] = NotProvided,
+        local_gpu_idx: Optional[int] = NotProvided,
+    ):
+        """Sets LearnerGroup and Learner worker related configurations.
+
+        Args:
+            num_learners: Number of Learner workers used for updating the RLModule.
+                A value of 0 means training will take place on a local Learner on main
+                process CPUs or 1 GPU (determined by `num_gpus_per_learner`).
+                For multi-gpu training, you have to set `num_learners` to > 1 and set
+                `num_gpus_per_learner` accordingly (e.g. 4 GPUs total and model fits on
+                1 GPU: `num_learners=4; num_gpus_per_learner=1` OR 4 GPUs total and
+                model requires 2 GPUs: `num_learners=2; num_gpus_per_learner=2`).
+            num_cpus_per_learner: Number of CPUs allocated per Learner worker.
+                Only necessary for custom processing pipeline inside each Learner
+                requiring multiple CPU cores. Ignored if `num_learners=0`.
+            num_gpus_per_learner: Number of GPUs allocated per Learner worker. If
+                `num_learners=0`, any value greater than 0 will run the
+                training on a single GPU on the main process, while a value of 0 will
+                run the training on main process CPUs. If `num_gpus_per_learner` is
+                > 0, then `num_cpus_per_learner` should not be changed (from its default
+                value of 1).
+            local_gpu_idx: If `num_gpus_per_learner` > 0, and
+                `num_learners` < 2, then this GPU index will be used for
+                training. This is an index into the available
+                CUDA devices. For example if `os.environ["CUDA_VISIBLE_DEVICES"] = "1"`
+                then a `local_gpu_idx` of 0 will use the GPU with ID=1 on the node.
+
+        Returns:
+            This updated AlgorithmConfig object.
+        """
+        if num_learners is not NotProvided:
+            self.num_learners = num_learners
+        if num_cpus_per_learner is not NotProvided:
+            self.num_cpus_per_learner = num_cpus_per_learner
+        if num_gpus_per_learner is not NotProvided:
+            self.num_gpus_per_learner = num_gpus_per_learner
+        if local_gpu_idx is not NotProvided:
+            self.local_gpu_idx = local_gpu_idx
+
+        return self
+
     def training(
         self,
         *,
@@ -1960,13 +2059,13 @@ class AlgorithmConfig(_Config):
             train_batch_size_per_learner: Train batch size per individual Learner
                 worker. This setting only applies to the new API stack. The number
                 of Learner workers can be set via `config.resources(
-                num_learner_workers=...)`. The total effective batch size is then
-                `num_learner_workers` x `train_batch_size_per_learner` and can
+                num_learners=...)`. The total effective batch size is then
+                `num_learners` x `train_batch_size_per_learner` and can
                 be accessed via the property `AlgorithmConfig.total_train_batch_size`.
             train_batch_size: Training batch size, if applicable. When on the new API
                 stack, this setting should no longer be used. Instead, use
                 `train_batch_size_per_learner` (in combination with
-                `num_learner_workers`).
+                `num_learners`).
             model: Arguments passed into the policy model. See models/catalog.py for a
                 full list of the available model options.
                 TODO: Provide ModelConfig objects instead of dicts.
@@ -2333,7 +2432,7 @@ class AlgorithmConfig(_Config):
                 raise ValueError(
                     msg.format(
                         "num_cpus_per_read_task",
-                        "config.resources(num_cpus_per_worker=..)",
+                        "config.env_runners(num_cpus_per_env_runner=..)",
                     )
                 )
             if input_config.get("parallelism") is not None:
@@ -3031,7 +3130,7 @@ class AlgorithmConfig(_Config):
     @property
     def total_train_batch_size(self):
         if self.train_batch_size_per_learner is not None:
-            return self.train_batch_size_per_learner * (self.num_learner_workers or 1)
+            return self.train_batch_size_per_learner * (self.num_learners or 1)
         else:
             return self.train_batch_size
 
@@ -3443,7 +3542,7 @@ class AlgorithmConfig(_Config):
                 )
                 raise ValueError(
                     "Your desired `total_train_batch_size` "
-                    f"({self.total_train_batch_size}={self.num_learner_workers} "
+                    f"({self.total_train_batch_size}={self.num_learners} "
                     f"learners x {self.train_batch_size_per_learner}) "
                     "or a value 10% off of that cannot be achieved with your other "
                     f"settings (num_env_runners={self.num_env_runners}; "
@@ -3914,25 +4013,22 @@ class AlgorithmConfig(_Config):
         # TODO @Avnishn: This is a short-term work around due to
         #  https://github.com/ray-project/ray/issues/35409
         #  Remove this once we are able to specify placement group bundle index in RLlib
-        if (
-            self.num_cpus_per_learner_worker > 1
-            and self.num_gpus_per_learner_worker > 0
-        ):
+        if self.num_cpus_per_learner > 1 and self.num_gpus_per_learner > 0:
             raise ValueError(
-                "Cannot set both `num_cpus_per_learner_worker` > 1 and "
-                " `num_gpus_per_learner_worker` > 0! Either set "
-                "`num_cpus_per_learner_worker` > 1 (and `num_gpus_per_learner_worker`"
-                "=0) OR set `num_gpus_per_learner_worker` > 0 (and leave "
-                "`num_cpus_per_learner_worker` at its default value of 1). "
+                "Cannot set both `num_cpus_per_learner` > 1 and "
+                " `num_gpus_per_learner` > 0! Either set "
+                "`num_cpus_per_learner` > 1 (and `num_gpus_per_learner`"
+                "=0) OR set `num_gpus_per_learner` > 0 (and leave "
+                "`num_cpus_per_learner` at its default value of 1). "
                 "This is due to issues with placement group fragmentation. See "
                 "https://github.com/ray-project/ray/issues/35409 for more details."
             )
 
         # Make sure the resource requirements for learner_group is valid.
-        if self.num_learner_workers == 0 and self.num_gpus_per_worker > 1:
+        if self.num_learners == 0 and self.num_gpus_per_env_runner > 1:
             raise ValueError(
-                "num_gpus_per_worker must be 0 (cpu) or 1 (gpu) when using local mode "
-                "(i.e. num_learner_workers = 0)"
+                "num_gpus_per_env_runner must be 0 (cpu) or 1 (gpu) when using local "
+                "mode (i.e. `num_learners=0`)"
             )
 
     def _validate_multi_agent_settings(self):
@@ -4039,12 +4135,12 @@ class AlgorithmConfig(_Config):
         if self.input_ == "dataset":
             # If we need to read a ray dataset set the parallelism and
             # num_cpus_per_read_task from rollout worker settings
-            self.input_config["num_cpus_per_read_task"] = self.num_cpus_per_worker
+            self.input_config["num_cpus_per_read_task"] = self.num_cpus_per_env_runner
             if self.in_evaluation:
                 # If using dataset for evaluation, the parallelism gets set to
                 # evaluation_num_env_runners for backward compatibility and num_cpus
-                # gets set to num_cpus_per_worker from rollout worker. User only needs
-                # to set evaluation_num_env_runners.
+                # gets set to num_cpus_per_env_runner from rollout worker. User only
+                # needs to set evaluation_num_env_runners.
                 self.input_config["parallelism"] = self.evaluation_num_env_runners or 1
             else:
                 # If using dataset for training, the parallelism and num_cpus gets set
@@ -4340,7 +4436,7 @@ class AlgorithmConfig(_Config):
         elif key == "lambda":
             key = "lambda_"
         elif key == "num_cpus_for_driver":
-            key = "num_cpus_for_local_worker"
+            key = "num_cpus_for_main_process"
         elif key == "num_workers":
             key = "num_env_runners"
 
@@ -4636,6 +4732,105 @@ class AlgorithmConfig(_Config):
             error=False,
         )
         self.validate_env_runners_after_construction = value
+
+    # Cleanups from `resources()`.
+    @property
+    @Deprecated(new="AlgorithmConfig.num_cpus_per_env_runner", error=False)
+    def num_cpus_per_worker(self):
+        return self.num_cpus_per_env_runner
+
+    @num_cpus_per_worker.setter
+    def num_cpus_per_worker(self, value):
+        deprecation_warning(
+            old="AlgorithmConfig.num_cpus_per_worker",
+            new="AlgorithmConfig.num_cpus_per_env_runner",
+            error=False,
+        )
+        self.num_cpus_per_env_runner = value
+
+    @property
+    @Deprecated(new="AlgorithmConfig.num_gpus_per_env_runner", error=False)
+    def num_gpus_per_worker(self):
+        return self.num_gpus_per_env_runner
+
+    @num_gpus_per_worker.setter
+    def num_gpus_per_worker(self, value):
+        deprecation_warning(
+            old="AlgorithmConfig.num_gpus_per_worker",
+            new="AlgorithmConfig.num_gpus_per_env_runner",
+            error=False,
+        )
+        self.num_gpus_per_env_runner = value
+
+    @property
+    @Deprecated(new="AlgorithmConfig.custom_resources_per_env_runner", error=False)
+    def custom_resources_per_worker(self):
+        return self.custom_resources_per_env_runner
+
+    @custom_resources_per_worker.setter
+    def custom_resources_per_worker(self, value):
+        deprecation_warning(
+            old="AlgorithmConfig.custom_resources_per_worker",
+            new="AlgorithmConfig.custom_resources_per_env_runner",
+            error=False,
+        )
+        self.custom_resources_per_env_runner = value
+
+    @property
+    @Deprecated(new="AlgorithmConfig.num_learners", error=False)
+    def num_learner_workers(self):
+        return self.num_learners
+
+    @num_learner_workers.setter
+    def num_learner_workers(self, value):
+        deprecation_warning(
+            old="AlgorithmConfig.num_learner_workers",
+            new="AlgorithmConfig.num_learners",
+            error=False,
+        )
+        self.num_learners = value
+
+    @property
+    @Deprecated(new="AlgorithmConfig.num_cpus_per_learner", error=False)
+    def num_cpus_per_learner_worker(self):
+        return self.num_cpus_per_learner
+
+    @num_cpus_per_learner_worker.setter
+    def num_cpus_per_learner_worker(self, value):
+        deprecation_warning(
+            old="AlgorithmConfig.num_cpus_per_learner_worker",
+            new="AlgorithmConfig.num_cpus_per_learner",
+            error=False,
+        )
+        self.num_cpus_per_learner = value
+
+    @property
+    @Deprecated(new="AlgorithmConfig.num_gpus_per_learner", error=False)
+    def num_gpus_per_learner_worker(self):
+        return self.num_gpus_per_learner
+
+    @num_gpus_per_learner_worker.setter
+    def num_gpus_per_learner_worker(self, value):
+        deprecation_warning(
+            old="AlgorithmConfig.num_gpus_per_learner_worker",
+            new="AlgorithmConfig.num_gpus_per_learner",
+            error=False,
+        )
+        self.num_gpus_per_learner = value
+
+    @property
+    @Deprecated(new="AlgorithmConfig.num_cpus_for_local_worker", error=False)
+    def num_cpus_for_local_worker(self):
+        return self.num_cpus_for_main_process
+
+    @num_cpus_for_local_worker.setter
+    def num_cpus_for_local_worker(self, value):
+        deprecation_warning(
+            old="AlgorithmConfig.num_cpus_for_local_worker",
+            new="AlgorithmConfig.num_cpus_for_main_process",
+            error=False,
+        )
+        self.num_cpus_for_main_process = value
 
 
 class TorchCompileWhatToCompile(str, Enum):

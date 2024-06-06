@@ -71,15 +71,16 @@ class TestPlacementGroups(unittest.TestCase):
     def test_default_resource_request(self):
         config = (
             PPOConfig()
+            .resources(placement_strategy="SPREAD")
             .env_runners(
                 num_env_runners=2,
+                num_cpus_per_env_runner=2,
             )
             .training(
                 model={"fcnet_hiddens": [10]}, lr=tune.grid_search([0.1, 0.01, 0.001])
             )
             .environment("CartPole-v1")
             .framework("torch")
-            .resources(placement_strategy="SPREAD", num_cpus_per_worker=2)
         )
         # 3 Trials: Can only run 1 at a time (num_cpus=6; needed: 5).
 

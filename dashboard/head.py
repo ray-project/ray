@@ -161,7 +161,6 @@ class DashboardHead:
             self.http_port,
             self.http_port_retries,
             self.gcs_address,
-            self.gcs_client,
             self.session_name,
             self.metrics,
         )

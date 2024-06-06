@@ -1,3 +1,4 @@
+# @OldAPIStack
 humanoid-ppo:
     env: Humanoid-v1
     run: PPO
@@ -15,7 +16,7 @@ humanoid-ppo:
         model:
             free_log_std: true
         use_gae: false
-        num_workers: 64
+        num_env_runners: 64
         num_gpus: 4
         batch_mode: complete_episodes
         observation_filter: MeanStdFilter

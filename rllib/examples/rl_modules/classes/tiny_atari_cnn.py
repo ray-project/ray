@@ -23,9 +23,9 @@ class TinyAtariCNN(TorchRLModule):
     def setup(self):
         # Define the layers that this CNN stack needs.
         conv_filters = [
-            [16, 4, 2],  # num filters, kernel wxh, stride wxh
-            [32, 4, 2],
-            [256, 11, 1, "valid"],  # , ... , [padding type]
+            [16, 4, 2, "same"],  # num filters, kernel wxh, stride wxh, padding type
+            [32, 4, 2, "same"],
+            [256, 11, 1, "valid"],
         ]
 
         # Build the CNN layers.
@@ -35,13 +35,7 @@ class TinyAtariCNN(TorchRLModule):
         width, height, in_depth = self.config.observation_space.shape
         in_size = [width, height]
         for filter_specs in conv_filters:
-            # Padding information not provided -> Use "same" as default.
-            if len(filter_specs) == 3:
-                out_depth, kernel_size, strides = filter_specs
-                padding = "same"
-            # Padding information provided.
-            else:
-                out_depth, kernel_size, strides, padding = filter_specs
+            out_depth, kernel_size, strides, padding = filter_specs
 
             # Pad like in tensorflow's SAME/VALID mode.
             if padding == "same":
@@ -118,7 +112,6 @@ if __name__ == "__main__":
         action_space=gym.spaces.Discrete(4),
     )
     my_net = TinyAtariCNN(rl_module_config)
-
 
     B = 10
     w = 42

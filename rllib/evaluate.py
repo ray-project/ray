@@ -242,7 +242,9 @@ def run(
     if not config.get(
         "evaluation_num_workers", config.get("evaluation_num_env_runners")
     ):
-        config["evaluation_num_env_runners"] = config.get("num_workers", 0)
+        config["evaluation_num_env_runners"] = config.get(
+            "num_env_runners", config.get("num_workers")
+        )
     if not config.get("evaluation_duration"):
         config["evaluation_duration"] = 1
 
