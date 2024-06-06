@@ -119,13 +119,9 @@ class LazyBlockList(BlockList):
     def get_tasks(self) -> List[ReadTask]:
         if len(self._tasks) > 0:
             return self._tasks
-        
-        start = time.time()
-        self._tasks = ray.get(self._tasks_ref)
-        end = time.time()
-        print(f"Obtaining ReadTasks from object store took {end-start} seconds")
-        return self._tasks
-            
+        else:
+            self._tasks = ray.get(self._tasks_ref)
+            return self._tasks
 
     def get_metadata(self, fetch_if_missing: bool = False) -> List[BlockMetadata]:
         """Get the metadata for all blocks."""
@@ -135,7 +131,7 @@ class LazyBlockList(BlockList):
         elif not fetch_if_missing:
             metadata = [
                 m if m is not None else [t.get_metadata()]
-                for m, t in zip(self._cached_metadata, self._tasks)
+                for m, t in zip(self._cached_metadata, self.get_tasks())
             ]
             metadata = self._flatten_metadata(metadata)
         else:
@@ -183,8 +179,8 @@ class LazyBlockList(BlockList):
 
     # Note: does not force execution prior to splitting.
     def split(self, split_size: int) -> List["LazyBlockList"]:
-        num_splits = math.ceil(len(self._tasks) / split_size)
-        tasks = _split_list(self._tasks, num_splits)
+        num_splits = math.ceil(len(self.get_tasks()) / split_size)
+        tasks = _split_list(self.get_tasks(), num_splits)
         block_partition_refs = _split_list(self._block_partition_refs, num_splits)
         block_partition_meta_refs = _split_list(
             self._block_partition_meta_refs, num_splits
@@ -211,7 +207,7 @@ class LazyBlockList(BlockList):
         cur_tasks, cur_blocks, cur_blocks_meta, cur_cached_meta = [], [], [], []
         cur_size = 0
         for t, b, bm, c in zip(
-            self._tasks,
+            self.get_tasks(),
             self._block_partition_refs,
             self._block_partition_meta_refs,
             self._cached_metadata,
@@ -262,7 +258,7 @@ class LazyBlockList(BlockList):
         out_tasks, out_blocks, out_blocks_meta, out_cached_meta = [], [], [], []
         out_num_rows = 0
         for t, b, bm, c in zip(
-            self._tasks,
+            self.get_tasks(),
             self._block_partition_refs,
             self._block_partition_meta_refs,
             self._cached_metadata,
@@ -289,14 +285,14 @@ class LazyBlockList(BlockList):
     # Note: does not force execution prior to division.
     def divide(self, part_idx: int) -> ("LazyBlockList", "LazyBlockList"):
         left = LazyBlockList(
-            self._tasks[:part_idx],
+            self.get_tasks()[:part_idx],
             self._block_partition_refs[:part_idx],
             self._block_partition_meta_refs[:part_idx],
             self._cached_metadata[:part_idx],
             owned_by_consumer=self._owned_by_consumer,
         )
         right = LazyBlockList(
-            self._tasks[part_idx:],
+            self.get_tasks()[part_idx:],
             self._block_partition_refs[part_idx:],
             self._block_partition_meta_refs[part_idx:],
             self._cached_metadata[part_idx:],
@@ -365,7 +361,7 @@ class LazyBlockList(BlockList):
         This is useful if looking to support rapid lightweight interaction with a small
         amount of the dataset.
         """
-        if self._tasks:
+        if self.get_tasks():
             self._get_or_compute(0)
 
     def ensure_metadata_for_first_block(self) -> Optional[BlockMetadata]:
@@ -377,9 +373,9 @@ class LazyBlockList(BlockList):
         Returns:
             None if the block list is empty, the metadata for the first block otherwise.
         """
-        if not self._tasks:
+        if not self.get_tasks():
             return None
-        metadata = self._tasks[0].get_metadata()
+        metadata = self.get_tasks()[0].get_metadata()
         if metadata.schema is not None:
             # If pre-read schema is not null, we consider it to be "good enough" and use
             # it.
@@ -485,7 +481,7 @@ class LazyBlockList(BlockList):
 
         zipped = list(
             zip(
-                self._tasks,
+                self.get_tasks(),
                 self._block_partition_refs,
                 self._block_partition_meta_refs,
                 self._cached_metadata,
@@ -530,7 +526,7 @@ class LazyBlockList(BlockList):
 
             def __next__(self):
                 self._pos += 1
-                if self._pos < len(outer._tasks):
+                if self._pos < len(outer.get_tasks()):
                     return outer._get_or_compute(self._pos)
                 raise StopIteration
 
@@ -540,7 +536,7 @@ class LazyBlockList(BlockList):
         self,
         i: int,
     ) -> Tuple[ObjectRef[MaybeBlockPartition], Union[None, ObjectRef[BlockMetadata]]]:
-        assert i < len(self._tasks), i
+        assert i < len(self.get_tasks()), i
         # Check if we need to compute more block_partition_refs.
         if not self._block_partition_refs[i]:
             # Exponentially increase the number computed per batch.
@@ -577,7 +573,7 @@ class LazyBlockList(BlockList):
             # the stats will be lost.
             ray.get(stats_actor.record_start.remote(self._stats_uuid))
             self._execution_started = True
-        task = self._tasks[task_idx]
+        task = self.get_tasks()[task_idx]
         return (
             cached_remote_fn(_execute_read_task_split)
             .options(num_returns="dynamic", **self._remote_args)
