@@ -1,17 +1,24 @@
+import logging
 from typing import List, Optional
 
 from ray._private.ray_constants import env_bool
-from ray.data.datasource import ImageDatasource
 from ray.data.datasource.file_meta_provider import (
     DefaultFileMetadataProvider,
     FastFileMetadataProvider,
 )
-from ray.data.datasource.image_datasource import _ImageFileMetadataProvider
+from ray.data.datasource.image_datasource import (
+    ImageDatasource,
+    _ImageFileMetadataProvider,
+)
 from ray.data.datasource.parquet_meta_provider import ParquetMetadataProvider
 
 ANYSCALE_METADATA_PROVIDER_ENABLED = env_bool(
     "ANYSCALE_METADATA_PROVIDER_ENABLED", True
 )
+
+PARQUET_METADATA_FETCHING_ENABLED = env_bool("PARQUET_METADATA_FETCHING_ENABLED", False)
+
+logger = logging.getLogger(__name__)
 
 
 def get_generic_metadata_provider(file_extensions: Optional[List[str]]):
@@ -26,7 +33,20 @@ def get_generic_metadata_provider(file_extensions: Optional[List[str]]):
 
 def get_parquet_metadata_provider(override_num_blocks: Optional[int] = None):
     # Used by `read_parquet`
-    return ParquetMetadataProvider()
+    from ray.anyscale.data import AnyscaleParquetMetadataProvider
+
+    if override_num_blocks is not None:
+        logger.warning(
+            "You configured `override_num_blocks`. To produce the requested number of "
+            "blocks, Ray Data fetches metadata for all Parquet files. This might be "
+            "slow."
+        )
+        return ParquetMetadataProvider()
+    elif PARQUET_METADATA_FETCHING_ENABLED:
+        return ParquetMetadataProvider()
+    else:
+        # `AnyscaleParquetMetadataProvider` doesn't perform metadata fetching.
+        return AnyscaleParquetMetadataProvider()
 
 
 def get_parquet_bulk_metadata_provider():
