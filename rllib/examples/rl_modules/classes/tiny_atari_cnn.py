@@ -64,13 +64,10 @@ class TinyAtariCNN(TorchRLModule):
                 out_size = valid_padding(in_size, kernel_size, strides)
 
             layer = nn.Conv2d(in_depth, out_depth, kernel_size, strides, bias=True)
-            # Initialize CNN layer kernel.
+            # Initialize CNN layer kernel and bias.
             nn.init.xavier_uniform_(layer.weight)
-            # Initialize CNN layer bias.
             nn.init.zeros_(layer.bias)
-
             layers.append(layer)
-
             # Activation.
             layers.append(nn.ReLU())
 
@@ -81,10 +78,13 @@ class TinyAtariCNN(TorchRLModule):
 
         # Add the final CNN 1x1 layer with num_filters == num_actions to be reshaped to
         # yield the logits (no flattening, no additional linear layers required).
+        _final_conv = nn.Conv2d(in_depth, self.config.action_space.n, 1, 1, bias=True)
+        nn.init.xavier_uniform_(_final_conv.weight)
+        nn.init.zeros_(_final_conv.bias)
         self._logits = nn.Sequential(
-            nn.ZeroPad2d(same_padding(in_size, 1, 1)[0]),
-            nn.Conv2d(in_depth, self.config.action_space.n, 1, 1, bias=True),
+            nn.ZeroPad2d(same_padding(in_size, 1, 1)[0]), _final_conv
         )
+
         self._values = nn.Linear(in_depth, 1)
         # Mimick old API stack behavior of initializing the value function with `normc`
         # std=0.01.
