@@ -143,8 +143,8 @@ void LocalTaskManager::DispatchScheduledTasksToWorkers() {
     // average number of tasks per scheduling class.
 
     // The purpose of fair scheduling is to ensure that each scheduling class has an
-    // equal chance of being selected for dispatch. For instance, in a pipeline with both data
-    // producers and consumers, we aim for consumers to have the same chance to be
+    // equal chance of being selected for dispatch. For instance, in a pipeline with both
+    // data producers and consumers, we aim for consumers to have the same chance to be
     // dispatched as producers. This prevents memory peak caused by dispatching all
     // producer tasks first. Example: Instead of dispatching [f,f,f], we want to dispatch
     // [f,f,g], where 'f' and 'g' represent different scheduling classes. Here, we
