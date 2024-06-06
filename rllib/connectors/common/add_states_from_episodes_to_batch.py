@@ -310,7 +310,7 @@ class AddStatesFromEpisodesToBatch(ConnectorV2):
                 )
                 self.add_n_batch_items(
                     batch=data,
-                    column="loss_mask",
+                    column=Columns.LOSS_MASK,
                     items_to_add=mask,
                     num_items=len(mask),
                     single_agent_episode=sa_episode,

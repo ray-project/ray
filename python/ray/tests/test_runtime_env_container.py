@@ -121,6 +121,19 @@ EXPECTED_ERROR = (
 
 
 class TestContainerRuntimeEnvWithOtherRuntimeEnv:
+    def test_container_with_config(self):
+        @ray.remote(
+            runtime_env={
+                "container": {
+                    "image": NESTED_IMAGE_NAME,
+                    "worker_path": "/some/path/to/default_worker.py",
+                },
+                "config": {"setup_timeout_seconds": 10},
+            }
+        )
+        def f():
+            return ray.put((1, 10))
+
     def test_container_with_env_vars(self):
         with pytest.raises(ValueError, match=EXPECTED_ERROR):
 
