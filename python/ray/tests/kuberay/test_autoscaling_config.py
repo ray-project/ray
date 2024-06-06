@@ -50,6 +50,7 @@ def get_basic_ray_cr() -> dict:
         "cloud.google.com/gke-tpu-accelerator"
     ] = "tpu-v4-podslice"
     tpu_group["maxReplicas"] = 4
+    tpu_group["numOfHosts"] = 2
     config["spec"]["workerGroupSpecs"].append(tpu_group)
     return config
 

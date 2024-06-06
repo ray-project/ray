@@ -273,8 +273,8 @@ def _get_ray_resources_from_group_spec(
         Sets the Ray resource TPU-{...}-head to ensure the Ray autoscaler
         has sufficient resources to make scaling decisions.
         TPU worker groups treat each TPU podslice as a replica, with `NumOfHosts`
-        specifying the number of workers per slice. Therefore, we can use the
-        `replicas` of each TPU worker group as the number of TPU heads.
+        specifying the number of workers per slice. Each replica of a TPU worker
+        group has one TPU head.
 
         For example, a v4-16 worker group with 2 replicas should have the following
         resource labels on worker 0 of each replica:
