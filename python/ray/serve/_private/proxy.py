@@ -27,6 +27,7 @@ from ray.serve._private.common import (
     DeploymentID,
     EndpointInfo,
     NodeId,
+    RequestMetadata,
     RequestProtocol,
 )
 from ray.serve._private.constants import (
@@ -688,6 +689,7 @@ class gRPCProxy(GenericProxy):
         request_context_info = {
             "route": route_path,
             "request_id": request_id,
+            "_internal_request_id": internal_request_id,
             "app_name": app_name,
             "multiplexed_model_id": multiplexed_model_id,
             "grpc_context": proxy_request.ray_serve_grpc_context,
@@ -837,10 +839,12 @@ class HTTPProxy(GenericProxy):
             message=message,
         )
 
-    async def receive_asgi_messages(self, request_id: str) -> ResponseGenerator:
-        queue = self.asgi_receive_queues.get(request_id, None)
+    async def receive_asgi_messages(
+        self, request_metadata: RequestMetadata
+    ) -> ResponseGenerator:
+        queue = self.asgi_receive_queues.get(request_metadata.internal_request_id, None)
         if queue is None:
-            raise KeyError(f"Request ID {request_id} not found.")
+            raise KeyError(f"Request ID {request_metadata.request_id} not found.")
 
         await queue.wait_for_message()
         return queue.get_messages_nowait()
@@ -1444,17 +1448,17 @@ class ProxyActor:
         """
         logger.debug("Received health check.", extra={"log_to_stderr": False})
 
-    async def receive_asgi_messages(self, internal_request_id: str) -> bytes:
-        """Get ASGI messages for the provided `internal_request_id`.
+    async def receive_asgi_messages(self, request_metadata: RequestMetadata) -> bytes:
+        """Get ASGI messages for the provided `request_metadata`.
 
-        After the proxy has stopped receiving messages for this `internal_request_id`,
+        After the proxy has stopped receiving messages for this `request_metadata`,
         this will always return immediately.
 
         Raises `KeyError` if this request ID is not found. This will happen when the
         request is no longer being handled (e.g., the user disconnects).
         """
         return pickle.dumps(
-            await self.http_proxy.receive_asgi_messages(internal_request_id)
+            await self.http_proxy.receive_asgi_messages(request_metadata)
         )
 
     def _save_cpu_profile_data(self) -> str:

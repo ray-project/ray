@@ -653,15 +653,6 @@ class gRPCRequest:
     grpc_user_request: bytes
 
 
-@dataclass
-class StreamingHTTPRequest:
-    """Sent from the HTTP proxy to replicas on the streaming codepath."""
-
-    pickled_asgi_scope: bytes
-    # Takes request_id, returns a pickled list of ASGI messages.
-    receive_asgi_messages: Callable[[str], Awaitable[bytes]]
-
-
 class RequestProtocol(str, Enum):
     UNDEFINED = "UNDEFINED"
     HTTP = "HTTP"
@@ -711,6 +702,15 @@ class RequestMetadata:
     @property
     def is_grpc_request(self) -> bool:
         return self._request_protocol == RequestProtocol.GRPC
+
+
+@dataclass
+class StreamingHTTPRequest:
+    """Sent from the HTTP proxy to replicas on the streaming codepath."""
+
+    pickled_asgi_scope: bytes
+    # Takes request metadata, returns a pickled list of ASGI messages.
+    receive_asgi_messages: Callable[[RequestMetadata], Awaitable[bytes]]
 
 
 class TargetCapacityDirection(str, Enum):
