@@ -8,12 +8,15 @@ import {
   TableRow,
   TextField,
   TextFieldProps,
-  Tooltip,
 } from "@mui/material";
 import Autocomplete from "@mui/material/Autocomplete";
 import Pagination from "@mui/material/Pagination";
 import React, { useState } from "react";
-import rowStyles from "../common/RowStyles";
+import {
+  IdColTooltip,
+  OverflowColTooltip,
+  TableContainerDiv,
+} from "../common/RowStyles";
 import { sliceToPage } from "../common/util";
 import { Bundle, PlacementGroup } from "../type/placementGroup";
 import { useFilter } from "../util/hook";
@@ -48,8 +51,6 @@ const PlacementGroupTable = ({
     constrainedPage,
     maxPage,
   } = sliceToPage(placementGroupList, pageNo, pageSize);
-  const classes = rowStyles();
-
   const columns = [
     { label: "ID" },
     { label: "Name" },
@@ -134,7 +135,7 @@ const PlacementGroupTable = ({
           <StateCounter type="placementGroup" list={placementGroupList} />
         </div>
       </div>
-      <div className={classes.tableContainer}>
+      <TableContainerDiv>
         <Table>
           <TableHead>
             <TableRow>
@@ -163,13 +164,12 @@ const PlacementGroupTable = ({
               }) => (
                 <TableRow key={placement_group_id}>
                   <TableCell align="center">
-                    <Tooltip
-                      className={classes.idCol}
+                    <IdColTooltip
                       title={placement_group_id}
                       arrow
                     >
                       <div>{placement_group_id}</div>
-                    </Tooltip>
+                    </IdColTooltip>
                   </TableCell>
                   <TableCell align="center">{name ? name : "-"}</TableCell>
                   <TableCell align="center">{creator_job_id}</TableCell>
@@ -177,13 +177,12 @@ const PlacementGroupTable = ({
                     <StatusChip type="placementGroup" status={state} />
                   </TableCell>
                   <TableCell align="center">
-                    <Tooltip
-                      className={classes.OverflowCol}
+                    <OverflowColTooltip
                       title={<BundleResourceRequirements bundles={bundles} />}
                       arrow
                     >
                       <BundleResourceRequirements bundles={bundles} />
-                    </Tooltip>
+                    </OverflowColTooltip>
                   </TableCell>
                   <TableCell align="center">
                     {stats ? stats.scheduling_state : "-"}
@@ -193,7 +192,7 @@ const PlacementGroupTable = ({
             )}
           </TableBody>
         </Table>
-      </div>
+      </TableContainerDiv>
     </div>
   );
 };

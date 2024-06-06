@@ -1,5 +1,5 @@
 import { Checkbox, FormControlLabel, LinearProgress } from "@mui/material";
-import makeStyles from "@mui/styles/makeStyles";
+import { styled } from "@mui/material/styles";
 import React, { useEffect, useState } from "react";
 import { UnifiedJob } from "../../type/job";
 import {
@@ -9,13 +9,12 @@ import {
 import { useJobProgress, useJobProgressByLineage } from "./hook/useJobProgress";
 import { TaskProgressBar } from "./TaskProgressBar";
 
-const useStyles = makeStyles((theme) => ({
-  advancedProgressBar: {
-    marginTop: theme.spacing(0.5),
-  },
-  hideFinishedCheckbox: {
-    marginRight: 0,
-  },
+const StyledAdvancedProgressBar = styled(AdvancedProgressBar)(({theme}) => ({
+  marginTop: theme.spacing(0.5),
+}));
+
+const HideFinishedCheckbox = styled(FormControlLabel)(({theme}) => ({
+  marginRight: 0,
 }));
 
 type JobProgressBarProps = {
@@ -28,7 +27,6 @@ export const JobProgressBar = ({
   job,
   ...advancedProgressBarProps
 }: JobProgressBarProps) => {
-  const classes = useStyles();
 
   // Controls the first time we fetch the advanced progress bar data
   const [advancedProgressBarRendered, setAdvancedProgressBarRendered] =
@@ -97,7 +95,7 @@ export const JobProgressBar = ({
           setAdvancedProgressBarExpanded(!advancedProgressBarExpanded)
         }
         controls={
-          <FormControlLabel
+          <HideFinishedCheckbox
             control={
               <Checkbox
                 color="primary"
@@ -108,13 +106,11 @@ export const JobProgressBar = ({
               />
             }
             label="Hide finished"
-            className={classes.hideFinishedCheckbox}
           />
         }
       />
       {advancedProgressBarExpanded && (
-        <AdvancedProgressBar
-          className={classes.advancedProgressBar}
+        <StyledAdvancedProgressBar
           progressGroups={progressGroups}
           {...advancedProgressBarProps}
         />

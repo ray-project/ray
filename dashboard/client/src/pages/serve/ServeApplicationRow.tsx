@@ -1,6 +1,5 @@
 import { IconButton, Link, TableCell, TableRow } from "@mui/material";
-import createStyles from "@mui/styles/createStyles";
-import makeStyles from "@mui/styles/makeStyles";
+import { styled } from "@mui/material/styles";
 import React, { useState } from "react";
 import { RiArrowDownSLine, RiArrowRightSLine } from "react-icons/ri";
 import { Link as RouterLink } from "react-router-dom";
@@ -18,18 +17,23 @@ export type ServeApplicationRowsProps = {
   application: ServeApplication;
   startExpanded?: boolean;
 };
-const useStyles = makeStyles((theme) =>
-  createStyles({
-    applicationName: {
-      fontWeight: 500,
-    },
-    expandCollapseIcon: {
-      color: theme.palette.text.secondary,
-      fontSize: "1.5em",
-      verticalAlign: "middle",
-    },
-  }),
-);
+
+const AppNameTableCell = styled(TableCell)(({theme}) => ({ 
+  fontWeight: 500,
+}));
+
+const SRiArrowRightSLine = styled(RiArrowRightSLine)(({theme}) => ({ 
+  color: theme.palette.text.secondary,
+  fontSize: "1.5em",
+  verticalAlign: "middle",
+}));
+
+const SRiArrowDownSLine = styled(RiArrowDownSLine)(({theme}) => ({ 
+  color: theme.palette.text.secondary,
+  fontSize: "1.5em",
+  verticalAlign: "middle",
+}));
+
 export const ServeApplicationRows = ({
   application,
   startExpanded = true,
@@ -48,8 +52,6 @@ export const ServeApplicationRows = ({
 
   const deploymentsList = Object.values(deployments);
 
-  const classes = useStyles();
-
   const onExpandButtonClick = () => {
     setExpanded(!isExpanded);
   };
@@ -61,20 +63,20 @@ export const ServeApplicationRows = ({
         <TableCell>
           <IconButton size="small" onClick={onExpandButtonClick}>
             {!isExpanded ? (
-              <RiArrowRightSLine className={classes.expandCollapseIcon} />
+              <SRiArrowRightSLine />
             ) : (
-              <RiArrowDownSLine className={classes.expandCollapseIcon} />
+              <SRiArrowDownSLine />
             )}
           </IconButton>
         </TableCell>
-        <TableCell align="center" className={classes.applicationName}>
+        <AppNameTableCell align="center">
           <Link
             component={RouterLink}
             to={`applications/${name ? encodeURIComponent(name) : "-"}`}
           >
             {name ? name : "-"}
           </Link>
-        </TableCell>
+        </AppNameTableCell>
         <TableCell align="center">
           <StatusChip type="serveApplication" status={status} />
         </TableCell>

@@ -1,5 +1,5 @@
 import { Grid, Switch, Tab, TableContainer, Tabs } from "@mui/material";
-import makeStyles from "@mui/styles/makeStyles";
+import { styled } from "@mui/material/styles";
 import React from "react";
 import { Link } from "react-router-dom";
 import { formatDateFromTimeMs } from "../../common/formatUtils";
@@ -13,25 +13,31 @@ import { memoryConverter } from "../../util/converter";
 import { MainNavPageInfo } from "../layout/mainNavContext";
 import { useNodeDetail } from "./hook/useNodeDetail";
 
-const useStyle = makeStyles((theme) => ({
-  root: {
-    padding: theme.spacing(2),
-  },
-  paper: {
-    padding: theme.spacing(2),
-    marginTop: theme.spacing(2),
-    marginBottom: theme.spacing(2),
-  },
-  label: {
-    fontWeight: "bold",
-  },
-  tab: {
-    marginBottom: theme.spacing(2),
-  },
+const RootDiv = styled("div")(({theme}) => ({
+  padding: theme.spacing(2),
+}));
+
+const PaperDiv = styled("div")(({theme}) => ({
+  padding: theme.spacing(2),
+  marginTop: theme.spacing(2),
+  marginBottom: theme.spacing(2),
+}));
+
+const PaperTableContainer = styled(TableContainer)(({theme}) => ({
+  padding: theme.spacing(2),
+  marginTop: theme.spacing(2),
+  marginBottom: theme.spacing(2),
+}));
+
+const LabelDiv = styled("div")(({theme}) => ({
+  fontWeight: "bold",
+}));
+
+const StyledTabs = styled(Tabs)(({theme}) => ({
+  marginBottom: theme.spacing(2),
 }));
 
 const NodeDetailPage = () => {
-  const classes = useStyle();
   const {
     params,
     selectedTab,
@@ -45,7 +51,7 @@ const NodeDetailPage = () => {
   } = useNodeDetail();
 
   return (
-    <div className={classes.root}>
+    <RootDiv>
       <MainNavPageInfo
         pageInfo={{
           title: `Node: ${params.id}`,
@@ -72,11 +78,7 @@ const NodeDetailPage = () => {
         Request Status: {msg}
       </TitleCard>
       <TitleCard title="Node Detail">
-        <Tabs
-          value={selectedTab}
-          onChange={handleChange}
-          className={classes.tab}
-        >
+        <StyledTabs value={selectedTab} onChange={handleChange}>
           <Tab value="info" label="Info" />
           <Tab value="raylet" label="Raylet" />
           <Tab
@@ -89,29 +91,29 @@ const NodeDetailPage = () => {
               Object.values(nodeDetail?.actors || {}).length || 0
             })`}
           />
-        </Tabs>
+        </StyledTabs>
         {nodeDetail && selectedTab === "info" && (
-          <div className={classes.paper}>
-            <Grid container>
+          <PaperDiv>
+            <Grid container spacing={2}>
               <Grid item xs>
-                <div className={classes.label}>Hostname</div>{" "}
+                <LabelDiv>Hostname</LabelDiv>{" "}
                 {nodeDetail.hostname}
               </Grid>
               <Grid item xs>
-                <div className={classes.label}>IP</div> {nodeDetail.ip}
+                <LabelDiv>IP</LabelDiv> {nodeDetail.ip}
               </Grid>
             </Grid>
             <Grid container>
               <Grid item xs>
                 {nodeDetail.cpus && (
                   <React.Fragment>
-                    <div className={classes.label}>CPU (Logic/Physic)</div>{" "}
+                    <LabelDiv>CPU (Logic/Physic)</LabelDiv>{" "}
                     {nodeDetail.cpus[0]}/ {nodeDetail.cpus[1]}
                   </React.Fragment>
                 )}
               </Grid>
               <Grid item xs>
-                <div className={classes.label}>Load (1/5/15min)</div>{" "}
+                <LabelDiv>Load (1/5/15min)</LabelDiv>{" "}
                 {nodeDetail?.loadAvg[0] &&
                   nodeDetail.loadAvg[0]
                     .map((e) => Number(e).toFixed(2))
@@ -120,30 +122,30 @@ const NodeDetailPage = () => {
             </Grid>
             <Grid container>
               <Grid item xs>
-                <div className={classes.label}>Load per CPU (1/5/15min)</div>{" "}
+                <LabelDiv>Load per CPU (1/5/15min)</LabelDiv>{" "}
                 {nodeDetail?.loadAvg[1] &&
                   nodeDetail.loadAvg[1]
                     .map((e) => Number(e).toFixed(2))
                     .join("/")}
               </Grid>
               <Grid item xs>
-                <div className={classes.label}>Boot Time</div>{" "}
+                <LabelDiv>Boot Time</LabelDiv>{" "}
                 {formatDateFromTimeMs(nodeDetail.bootTime * 1000)}
               </Grid>
             </Grid>
             <Grid container>
               <Grid item xs>
-                <div className={classes.label}>Sent Tps</div>{" "}
+                <LabelDiv>Sent Tps</LabelDiv>{" "}
                 {memoryConverter(nodeDetail?.networkSpeed[0])}/s
               </Grid>
               <Grid item xs>
-                <div className={classes.label}>Recieved Tps</div>{" "}
+                <LabelDiv>Recieved Tps</LabelDiv>{" "}
                 {memoryConverter(nodeDetail?.networkSpeed[1])}/s
               </Grid>
             </Grid>
             <Grid container>
               <Grid item xs>
-                <div className={classes.label}>Memory</div>{" "}
+                <LabelDiv>Memory</LabelDiv>{" "}
                 {nodeDetail?.mem && (
                   <PercentageBar
                     num={Number(nodeDetail?.mem[0] - nodeDetail?.mem[1])}
@@ -155,7 +157,7 @@ const NodeDetailPage = () => {
                 )}
               </Grid>
               <Grid item xs>
-                <div className={classes.label}>CPU</div>{" "}
+                <LabelDiv>CPU</LabelDiv>{" "}
                 <PercentageBar num={Number(nodeDetail.cpu)} total={100}>
                   {nodeDetail.cpu}%
                 </PercentageBar>
@@ -165,7 +167,7 @@ const NodeDetailPage = () => {
               {nodeDetail?.disk &&
                 Object.entries(nodeDetail?.disk).map(([path, obj]) => (
                   <Grid item xs={6} key={path}>
-                    <div className={classes.label}>Disk ({path})</div>{" "}
+                    <LabelDiv>Disk ({path})</LabelDiv>{" "}
                     {obj && (
                       <PercentageBar num={Number(obj.used)} total={obj.total}>
                         {memoryConverter(obj.used)}/{memoryConverter(obj.total)}
@@ -177,7 +179,7 @@ const NodeDetailPage = () => {
             </Grid>
             <Grid container>
               <Grid item xs>
-                <div className={classes.label}>Logs</div>{" "}
+                <LabelDiv>Logs</LabelDiv>{" "}
                 <Link
                   to={`/logs/?nodeId=${encodeURIComponent(
                     nodeDetail.raylet.nodeId,
@@ -187,14 +189,14 @@ const NodeDetailPage = () => {
                 </Link>
               </Grid>
             </Grid>
-          </div>
+          </PaperDiv>
         )}
         {raylet && Object.keys(raylet).length > 0 && selectedTab === "raylet" && (
           <React.Fragment>
-            <div className={classes.paper}>
-              <Grid container>
+            <PaperDiv>
+              <Grid container spacing={2}>
                 <Grid item xs>
-                  <div className={classes.label}>Command</div>
+                  <LabelDiv>Command</LabelDiv>
                   <br />
                   <div style={{ height: 200, overflow: "auto" }}>
                     {nodeDetail?.cmdline.join(" ")}
@@ -203,43 +205,43 @@ const NodeDetailPage = () => {
               </Grid>
               <Grid container>
                 <Grid item xs>
-                  <div className={classes.label}>Pid</div> {raylet?.pid}
+                  <LabelDiv>Pid</LabelDiv> {raylet?.pid}
                 </Grid>
                 <Grid item xs>
-                  <div className={classes.label}>Workers Num</div>{" "}
+                  <LabelDiv>Workers Num</LabelDiv>{" "}
                   {raylet?.numWorkers}
                 </Grid>
                 <Grid item xs>
-                  <div className={classes.label}>Node Manager Port</div>{" "}
+                  <LabelDiv>Node Manager Port</LabelDiv>{" "}
                   {raylet?.nodeManagerPort}
                 </Grid>
               </Grid>
-            </div>
+            </PaperDiv>
           </React.Fragment>
         )}
         {nodeDetail?.workers && selectedTab === "worker" && (
           <React.Fragment>
-            <TableContainer className={classes.paper}>
+            <PaperTableContainer>
               <RayletWorkerTable
                 workers={nodeDetail?.workers}
                 actorMap={nodeDetail?.actors}
               />
-            </TableContainer>
+            </PaperTableContainer>
           </React.Fragment>
         )}
         {nodeDetail?.actors && selectedTab === "actor" && (
           <React.Fragment>
-            <TableContainer className={classes.paper}>
+            <PaperTableContainer>
               <ActorTable
                 actors={nodeDetail.actors}
                 workers={nodeDetail?.workers}
                 detailPathPrefix="/actors"
               />
-            </TableContainer>
+            </PaperTableContainer>
           </React.Fragment>
         )}
       </TitleCard>
-    </div>
+    </RootDiv>
   );
 };
 

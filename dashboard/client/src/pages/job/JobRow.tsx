@@ -1,5 +1,5 @@
 import { Link, TableCell, TableRow, Tooltip } from "@mui/material";
-import makeStyles from "@mui/styles/makeStyles";
+import { styled } from "@mui/material/styles";
 import React from "react";
 import { Link as RouterLink } from "react-router-dom";
 import { CodeDialogButtonWithPreview } from "../../common/CodeDialogButton";
@@ -15,19 +15,18 @@ import { UnifiedJob } from "../../type/job";
 import { useJobProgress } from "./hook/useJobProgress";
 import { MiniTaskProgressBar } from "./TaskProgressBar";
 
-const useStyles = makeStyles((theme) => ({
-  overflowCell: {
-    display: "block",
-    margin: "auto",
-    maxWidth: 360,
-    textOverflow: "ellipsis",
-    overflow: "hidden",
-    whiteSpace: "nowrap",
-  },
-  statusMessage: {
-    maxWidth: 250,
-    display: "inline-flex",
-  },
+const OverflowCell = styled(Tooltip)(({theme}) => ({
+  display: "block",
+  margin: "auto",
+  maxWidth: 360,
+  textOverflow: "ellipsis",
+  overflow: "hidden",
+  whiteSpace: "nowrap",
+}));
+
+const StatusMessage = styled(CodeDialogButtonWithPreview)(({theme}) => ({
+  maxWidth: 250,
+  display: "inline-flex",
 }));
 
 type JobRowProps = {
@@ -46,7 +45,6 @@ export const JobRow = ({ job }: JobRowProps) => {
     entrypoint,
   } = job;
   const { progress, error, driverExists } = useJobProgress(job_id ?? undefined);
-  const classes = useStyles();
 
   const progressBar = (() => {
     if (!driverExists) {
@@ -82,17 +80,16 @@ export const JobRow = ({ job }: JobRowProps) => {
       </TableCell>
       <TableCell align="center">{submission_id ?? "-"}</TableCell>
       <TableCell align="center">
-        <Tooltip className={classes.overflowCell} title={entrypoint} arrow>
+        <OverflowCell title={entrypoint} arrow>
           <div>{entrypoint}</div>
-        </Tooltip>
+        </OverflowCell>
       </TableCell>
       <TableCell align="center">
         <JobStatusWithIcon job={job} />
       </TableCell>
       <TableCell align="center">
         {message ? (
-          <CodeDialogButtonWithPreview
-            className={classes.statusMessage}
+          <StatusMessage
             title="Status message"
             code={message}
           />

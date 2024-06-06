@@ -1,23 +1,17 @@
 import { Card, Link, Typography } from "@mui/material";
-import createStyles from "@mui/styles/createStyles";
-import makeStyles from "@mui/styles/makeStyles";
-import classNames from "classnames";
+import { styled } from "@mui/material/styles"
 import yaml from "js-yaml";
 import React, { useState } from "react";
 import DialogWithTitle from "../DialogWithTitle";
 import { ClassNameProps } from "../props";
 
-const useStyles = makeStyles((theme) =>
-  createStyles({
-    configText: {
-      whiteSpace: "pre",
-      fontFamily: "SFMono-Regular,Consolas,Liberation Mono,Menlo,monospace",
-      padding: theme.spacing(2),
-      overflow: "scroll",
-      maxHeight: 600,
-    },
-  }),
-);
+const ConfigTextTypography = styled(Typography)(({theme}) => ({
+  whiteSpace: "pre",
+  fontFamily: "SFMono-Regular,Consolas,Liberation Mono,Menlo,monospace",
+  padding: theme.spacing(2),
+  overflow: "scroll",
+  maxHeight: 600,
+}));
 
 export type CodeDialogButtonProps = {
   /**
@@ -42,7 +36,6 @@ export const CodeDialogButton = ({
   buttonText = "View",
   code,
 }: CodeDialogButtonProps) => {
-  const classes = useStyles();
 
   const [showConfigDialog, setShowConfigDialog] = useState(false);
 
@@ -63,9 +56,9 @@ export const CodeDialogButton = ({
           }}
         >
           <Card variant="outlined">
-            <Typography className={classes.configText}>
+            <ConfigTextTypography>
               {typeof code === "string" ? code : yaml.dump(code, { indent: 2 })}
-            </Typography>
+            </ConfigTextTypography>
           </Card>
         </DialogWithTitle>
       )}
@@ -73,23 +66,20 @@ export const CodeDialogButton = ({
   );
 };
 
-const useCodeDialogButtonWithPreviewStyles = makeStyles((theme) =>
-  createStyles({
-    root: {
-      display: "flex",
-      flexWrap: "nowrap",
-      flexDirection: "row",
-      gap: theme.spacing(1),
-    },
-    previewText: {
-      display: "block",
-      whiteSpace: "nowrap",
-      overflow: "hidden",
-      textOverflow: "ellipsis",
-      flex: 1,
-    },
-  }),
-);
+const RootDiv = styled("div")(({theme}) => ({
+  display: "flex",
+  flexWrap: "nowrap",
+  flexDirection: "row",
+  gap: theme.spacing(1),
+}));
+
+const PreviewTextSpan = styled("span")(({theme}) => ({
+  display: "block",
+  whiteSpace: "nowrap",
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+  flex: 1,
+}));
 
 type CodeDialogButtonWithPreviewProps = CodeDialogButtonProps & ClassNameProps;
 /**
@@ -101,8 +91,6 @@ export const CodeDialogButtonWithPreview = ({
   className,
   ...props
 }: CodeDialogButtonWithPreviewProps) => {
-  const classes = useCodeDialogButtonWithPreviewStyles();
-
   const codeText =
     typeof code === "string"
       ? code
@@ -111,13 +99,13 @@ export const CodeDialogButtonWithPreview = ({
   const buttonTextToPass = buttonText ?? "Expand";
 
   return (
-    <div className={classNames(classes.root, className)}>
-      <span className={classes.previewText}>{codeText}</span>
+    <RootDiv className={className}>
+      <PreviewTextSpan>{codeText}</PreviewTextSpan>
       <CodeDialogButton
         code={codeText}
         buttonText={buttonTextToPass}
         {...props}
       />
-    </div>
+    </RootDiv>
   );
 };

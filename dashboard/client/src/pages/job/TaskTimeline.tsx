@@ -1,25 +1,15 @@
 import { Button, Link, Typography } from "@mui/material";
-import createStyles from "@mui/styles/createStyles";
-import makeStyles from "@mui/styles/makeStyles";
+import { styled } from "@mui/material/styles";
 import React from "react";
 import { RiDownload2Line } from "react-icons/ri";
 import { ClassNameProps } from "../../common/props";
 import { downloadTaskTimelineHref } from "../../service/task";
-
-const useStyle = makeStyles((theme) =>
-  createStyles({
-    button: {
-      marginTop: theme.spacing(2),
-    },
-  }),
-);
 
 type TaskTimelineProps = {
   jobId: string;
 };
 
 export const TaskTimeline = ({ jobId }: TaskTimelineProps) => {
-  const classes = useStyle();
 
   return (
     <div>
@@ -36,7 +26,7 @@ export const TaskTimeline = ({ jobId }: TaskTimelineProps) => {
         <Link href="chrome://tracing">chrome://tracing</Link>. You can use the
         tool by visiting chrome://tracing using your address bar.
       </Typography>
-      <TimelineDownloadButton className={classes.button} jobId={jobId} />
+      <StyledTimelineDownloadButton jobId={jobId} />
     </div>
   );
 };
@@ -60,3 +50,7 @@ const TimelineDownloadButton = ({
     </Button>
   );
 };
+
+const StyledTimelineDownloadButton = styled(TimelineDownloadButton)(({theme}) => ({
+  marginTop: theme.spacing(2),
+}));

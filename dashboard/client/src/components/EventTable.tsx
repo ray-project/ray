@@ -11,7 +11,7 @@ import {
 } from "@mui/material";
 import Autocomplete from "@mui/material/Autocomplete";
 import Pagination from "@mui/material/Pagination";
-import makeStyles from "@mui/styles/makeStyles";
+import { styled } from "@mui/material/styles"
 import dayjs from "dayjs";
 import React, { useContext, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
@@ -27,38 +27,41 @@ type EventTableProps = {
   job_id?: string;
 };
 
-const useStyles = makeStyles((theme) => ({
-  table: {
-    marginTop: theme.spacing(4),
-    padding: theme.spacing(2),
-  },
-  pageMeta: {
-    padding: theme.spacing(2),
-    marginTop: theme.spacing(2),
-  },
-  filterContainer: {
-    display: "flex",
-    alignItems: "center",
-  },
-  search: {
-    margin: theme.spacing(1),
-    display: "inline-block",
-    fontSize: 12,
-  },
-  infokv: {
-    margin: theme.spacing(1),
-  },
-  li: {
-    color: theme.palette.text.secondary,
-    fontSize: 12,
-  },
-  code: {
-    wordBreak: "break-all",
-    whiteSpace: "pre-line",
-    margin: 12,
-    fontSize: 14,
-    color: theme.palette.text.primary,
-  },
+const PageMetaDiv = styled("div")(({theme}) => ({
+  padding: theme.spacing(2),
+  marginTop: theme.spacing(2),
+}));
+
+const FilterContainerDiv = styled("div")(({theme}) => ({
+  display: "flex",
+  alignItems: "center",
+}));
+
+const SearchAutocomplete = styled(Autocomplete)(({theme}) => ({
+  margin: theme.spacing(1),
+  display: "inline-block",
+  fontSize: 12,
+}));
+
+const SearchTextField = styled(TextField)(({theme}) => ({
+  margin: theme.spacing(1),
+  display: "inline-block",
+  fontSize: 12,
+}));
+
+const SearchButton = styled(Button)(({theme}) => ({
+  margin: theme.spacing(1),
+  display: "inline-block",
+  fontSize: 12,
+}));
+
+const InfoKVGrid = styled(Grid)(({theme}) => ({
+  margin: theme.spacing(1),
+}));
+
+const LiArticle = styled("article")(({theme}) => ({
+  color: theme.palette.text.secondary,
+  fontSize: 12,
 }));
 
 const useEventTable = (props: EventTableProps) => {
@@ -148,7 +151,6 @@ const useEventTable = (props: EventTableProps) => {
 };
 
 const EventTable = (props: EventTableProps) => {
-  const classes = useStyles();
   const {
     events,
     changeFilter,
@@ -169,9 +171,8 @@ const EventTable = (props: EventTableProps) => {
 
   return (
     <div style={{ position: "relative" }}>
-      <div className={classes.filterContainer}>
-        <Autocomplete
-          className={classes.search}
+      <FilterContainerDiv>
+        <SearchAutocomplete
           style={{ width: 200 }}
           options={labelOptions}
           onInputChange={(_: any, value: string) => {
@@ -181,8 +182,7 @@ const EventTable = (props: EventTableProps) => {
             <TextField {...params} label="Label" />
           )}
         />
-        <Autocomplete
-          className={classes.search}
+        <SearchAutocomplete
           style={{ width: 200 }}
           options={hostOptions}
           onInputChange={(_: any, value: string) => {
@@ -192,8 +192,7 @@ const EventTable = (props: EventTableProps) => {
             <TextField {...params} label="Host" />
           )}
         />
-        <Autocomplete
-          className={classes.search}
+        <SearchAutocomplete
           style={{ width: 100 }}
           options={sourceOptions}
           onInputChange={(_: any, value: string) => {
@@ -203,8 +202,7 @@ const EventTable = (props: EventTableProps) => {
             <TextField {...params} label="Source" />
           )}
         />
-        <Autocomplete
-          className={classes.search}
+        <SearchAutocomplete
           style={{ width: 140 }}
           options={severityOptions}
           onInputChange={(_: any, value: string) => {
@@ -214,8 +212,7 @@ const EventTable = (props: EventTableProps) => {
             <TextField {...params} label="Severity" />
           )}
         />
-        <TextField
-          className={classes.search}
+        <SearchTextField
           label="Msg"
           InputProps={{
             onChange: ({ target: { value } }) => {
@@ -242,15 +239,14 @@ const EventTable = (props: EventTableProps) => {
             ),
           }}
         />
-        <Button
-          className={classes.search}
+        <SearchButton
           size="small"
           variant="contained"
           onClick={() => reverseEvents()}
         >
           Reverse
-        </Button>
-      </div>
+        </SearchButton>
+      </FilterContainerDiv>
       <div>
         <Pagination
           count={pagination.total}
@@ -260,7 +256,7 @@ const EventTable = (props: EventTableProps) => {
           }}
         />
       </div>
-      <div className={classes.pageMeta}>
+      <PageMetaDiv>
         {!events.length
           ? "No Events Yet."
           : events.map(
@@ -289,7 +285,7 @@ const EventTable = (props: EventTableProps) => {
                 const hostname = sourceHostname || hostName;
                 const realPid = pid || sourcePid;
                 return (
-                  <article className={classes.li} key={eventId}>
+                  <LiArticle key={eventId}>
                     <Grid container spacing={4}>
                       <Grid item>
                         <StatusChip status={severity} type={severity} />
@@ -310,13 +306,13 @@ const EventTable = (props: EventTableProps) => {
                       )}
                     </Grid>
                     <Grid container>
-                      <Grid item className={classes.infokv}>
+                      <InfoKVGrid item >
                         severity: {severity}
-                      </Grid>
-                      <Grid item className={classes.infokv}>
+                      </InfoKVGrid>
+                      <InfoKVGrid item >
                         source: {sourceType}
-                      </Grid>
-                      <Grid item className={classes.infokv}>
+                      </InfoKVGrid>
+                      <InfoKVGrid item >
                         hostname:{" "}
                         {nodeMap[hostname] ? (
                           <Link to={`/node/${nodeMap[hostname]}`}>
@@ -325,37 +321,37 @@ const EventTable = (props: EventTableProps) => {
                         ) : (
                           hostname
                         )}
-                      </Grid>
-                      <Grid item className={classes.infokv}>
+                      </InfoKVGrid>
+                      <InfoKVGrid item >
                         pid: {realPid}
-                      </Grid>
+                      </InfoKVGrid>
                       {jobId && (
-                        <Grid item className={classes.infokv}>
+                        <InfoKVGrid item >
                           jobId: <Link to={`/job/${jobId}`}>{jobId}</Link>
-                        </Grid>
+                        </InfoKVGrid>
                       )}
                       {jobName && (
-                        <Grid item className={classes.infokv}>
+                        <InfoKVGrid item >
                           jobId: {jobName}
-                        </Grid>
+                        </InfoKVGrid>
                       )}
                       {eventId && (
-                        <Grid item className={classes.infokv}>
+                        <InfoKVGrid item >
                           eventId: {eventId}
-                        </Grid>
+                        </InfoKVGrid>
                       )}
                       {nodeId && (
-                        <Grid item className={classes.infokv}>
+                        <InfoKVGrid item >
                           nodeId: {nodeId}
-                        </Grid>
+                        </InfoKVGrid>
                       )}
                     </Grid>
                     <LogVirtualView content={message} language="prolog" />
-                  </article>
+                  </LiArticle>
                 );
               },
             )}
-      </div>
+      </PageMetaDiv>
       <div>
         <Pagination
           count={pagination.total}

@@ -1,13 +1,5 @@
-import {
-  Box,
-  Button,
-  InputAdornment,
-  MenuItem,
-  Paper,
-  TextField,
-} from "@mui/material";
-import createStyles from "@mui/styles/createStyles";
-import makeStyles from "@mui/styles/makeStyles";
+import { Box, Button, InputAdornment, MenuItem, Paper, TextField } from "@mui/material";
+import { styled } from "@mui/material/styles";
 import React, { useContext, useEffect, useState } from "react";
 import { BiRefresh, BiTime } from "react-icons/bi";
 import { RiExternalLinkLine } from "react-icons/ri";
@@ -23,47 +15,43 @@ import {
   TimeRangeOptions,
 } from "../metrics";
 
-const useStyles = makeStyles((theme) =>
-  createStyles({
-    metricsRoot: { margin: theme.spacing(1) },
-    grafanaEmbedsContainer: {
-      display: "flex",
-      flexDirection: "row",
-      flexWrap: "wrap",
-      gap: theme.spacing(3),
-      marginTop: theme.spacing(2),
-    },
-    chart: {
-      width: "100%",
+const GrafanaEmbedsContainerDiv = styled("div")(({theme}) => ({
+  display: "flex",
+  flexDirection: "row",
+  flexWrap: "wrap",
+  gap: theme.spacing(3),
+  marginTop: theme.spacing(2),
+}));
+
+const ChartPaper = styled(Paper)(({theme}) => ({
+  width: "100%",
       height: 400,
       overflow: "hidden",
       [theme.breakpoints.up("md")]: {
         // Calculate max width based on 1/3 of the total width minus padding between cards
         width: `calc((100% - ${theme.spacing(3)} * 2) / 3)`,
       },
-    },
-    grafanaEmbed: {
-      width: "100%",
-      height: "100%",
-    },
-    topBar: {
-      width: "100%",
-      display: "flex",
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "flex-end",
-      padding: theme.spacing(1),
-      zIndex: 1,
-      height: 36,
-    },
-    timeRangeButton: {
-      marginLeft: theme.spacing(2),
-    },
-    alert: {
-      marginTop: 30,
-    },
-  }),
-);
+}));
+
+const GrafanaEmbedIFrame = styled("iframe")(({theme}) => ({
+  width: "100%",
+  height: "100%",
+}));
+
+const TopBarBox = styled(Box)(({theme}) => ({
+  width: "100%",
+  display: "flex",
+  flexDirection: "row",
+  alignItems: "center",
+  justifyContent: "flex-end",
+  padding: theme.spacing(1),
+  zIndex: 1,
+  height: 36,
+}));
+
+const TimeRangeTextField = styled(TextField)(({theme}) => ({
+  marginLeft: theme.spacing(2),
+}));
 
 // NOTE: please keep the titles here in sync with dashboard/modules/metrics/dashboards/serve_dashboard_panels.py
 export const APPS_METRICS_CONFIG: MetricConfig[] = [
@@ -117,7 +105,6 @@ export const ServeMetricsSection = ({
   className,
   metricsConfig,
 }: ServeMetricsSectionProps) => {
-  const classes = useStyles();
   const { grafanaHost, prometheusHealth, dashboardUids, dashboardDatasource } =
     useContext(GlobalContext);
   const grafanaServeDashboardUid = dashboardUids?.serve ?? "rayServeDashboard";
@@ -148,7 +135,7 @@ export const ServeMetricsSection = ({
   return grafanaHost === undefined || !prometheusHealth ? null : (
     <CollapsibleSection className={className} title="Metrics" startExpanded>
       <div>
-        <Box className={classes.topBar}>
+        <TopBarBox>
           <Button
             href={`${grafanaHost}/d/${grafanaServeDashboardUid}?var-datasource=${dashboardDatasource}`}
             target="_blank"
@@ -157,8 +144,7 @@ export const ServeMetricsSection = ({
           >
             View in Grafana
           </Button>
-          <TextField
-            className={classes.timeRangeButton}
+          <TimeRangeTextField
             select
             size="small"
             sx={{ width: 80 }}
@@ -180,10 +166,9 @@ export const ServeMetricsSection = ({
                 {value}
               </MenuItem>
             ))}
-          </TextField>
+          </TimeRangeTextField>
           <HelpInfo>Auto-refresh interval</HelpInfo>
-          <TextField
-            className={classes.timeRangeButton}
+          <TimeRangeTextField
             select
             size="small"
             style={{ width: 140 }}
@@ -205,32 +190,30 @@ export const ServeMetricsSection = ({
                 {value}
               </MenuItem>
             ))}
-          </TextField>
+          </TimeRangeTextField>
           <HelpInfo>Time range picker</HelpInfo>
-        </Box>
-        <div className={classes.grafanaEmbedsContainer}>
+        </TopBarBox>
+        <GrafanaEmbedsContainerDiv>
           {metricsConfig.map(({ title, pathParams }) => {
             const path =
               `/d-solo/${grafanaServeDashboardUid}?${pathParams}` +
               `${refreshParams}${timeRangeParams}&var-datasource=${dashboardDatasource}`;
             return (
-              <Paper
+              <ChartPaper
                 key={pathParams}
-                className={classes.chart}
                 variant="outlined"
                 elevation={0}
               >
-                <iframe
+                <GrafanaEmbedIFrame
                   key={title}
                   title={title}
-                  className={classes.grafanaEmbed}
                   src={`${grafanaHost}${path}`}
                   frameBorder="0"
                 />
-              </Paper>
+              </ChartPaper>
             );
           })}
-        </div>
+        </GrafanaEmbedsContainerDiv>
       </div>
     </CollapsibleSection>
   );

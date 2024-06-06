@@ -12,8 +12,7 @@ import {
   TextFieldProps,
   Typography,
 } from "@mui/material";
-import createStyles from "@mui/styles/createStyles";
-import makeStyles from "@mui/styles/makeStyles";
+import { styled } from "@mui/material/styles";
 import React, { ReactElement } from "react";
 import { Outlet, useParams } from "react-router-dom";
 import { CodeDialogButton } from "../../common/CodeDialogButton";
@@ -30,22 +29,17 @@ import { useServeDeploymentDetails } from "./hook/useServeApplications";
 import { ServeReplicaRow } from "./ServeDeploymentRow";
 import { ServeEntityLogViewer } from "./ServeEntityLogViewer";
 
-const useStyles = makeStyles((theme) =>
-  createStyles({
-    root: {
-      padding: theme.spacing(3),
-    },
-    table: {
-      tableLayout: "fixed",
-    },
-    helpInfo: {
-      marginLeft: theme.spacing(1),
-    },
-    logSection: {
-      marginTop: theme.spacing(4),
-    },
-  }),
-);
+const RootDiv = styled("div")(({theme}) => ({ 
+  padding: theme.spacing(3),
+}));
+
+const StyledHelpInfo = styled(HelpInfo)(({theme}) => ({ 
+  marginTop: theme.spacing(2),
+}));
+
+const LogCollapsibleSection = styled(CollapsibleSection)(({theme}) => ({ 
+  marginTop: theme.spacing(4),
+}));
 
 const columns: { label: string; helpInfo?: ReactElement; width?: string }[] = [
   { label: "Replica ID" },
@@ -56,7 +50,6 @@ const columns: { label: string; helpInfo?: ReactElement; width?: string }[] = [
 ];
 
 export const ServeDeploymentDetailPage = () => {
-  const classes = useStyles();
   const { applicationName, deploymentName } = useParams();
 
   const {
@@ -91,7 +84,7 @@ export const ServeDeploymentDetailPage = () => {
   } = sliceToPage(filteredReplicas, page.pageNo, page.pageSize);
 
   return (
-    <div className={classes.root}>
+    <RootDiv>
       <MetadataSection
         metadataList={[
           {
@@ -219,9 +212,9 @@ export const ServeDeploymentDetailPage = () => {
                     >
                       {label}
                       {helpInfo && (
-                        <HelpInfo className={classes.helpInfo}>
+                        <StyledHelpInfo>
                           {helpInfo}
-                        </HelpInfo>
+                        </StyledHelpInfo>
                       )}
                     </Box>
                   </TableCell>
@@ -240,14 +233,13 @@ export const ServeDeploymentDetailPage = () => {
           </Table>
         </TableContainer>
       </CollapsibleSection>
-      <CollapsibleSection
+      <LogCollapsibleSection
         title="Logs"
         startExpanded
-        className={classes.logSection}
       >
         <ServeEntityLogViewer deployments={[deployment]} />
-      </CollapsibleSection>
-    </div>
+      </LogCollapsibleSection>
+    </RootDiv>
   );
 };
 

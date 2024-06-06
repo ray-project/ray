@@ -1,50 +1,40 @@
 import { Paper, Typography } from "@mui/material";
-import createStyles from "@mui/styles/createStyles";
-import makeStyles from "@mui/styles/makeStyles";
-import classNames from "classnames";
+import { styled } from "@mui/material/styles";
 import React, { PropsWithChildren } from "react";
 import { RiArrowRightLine } from "react-icons/ri";
 import { Link } from "react-router-dom";
 
-const useStyles = makeStyles((theme) =>
-  createStyles({
-    root: {
-      height: 400,
-      overflow: "hidden",
-    },
-  }),
-);
+const OverviewCardRoot = styled(Paper)(({theme}) => ({ 
+  height: 400,
+  overflow: "hidden",
+}));
 
 type OverviewCardProps = PropsWithChildren<{
   className?: string;
 }>;
 
 export const OverviewCard = ({ children, className }: OverviewCardProps) => {
-  const classes = useStyles();
   return (
-    <Paper className={classNames(classes.root, className)} variant="outlined">
+    <OverviewCardRoot className={className} variant="outlined">
       {children}
-    </Paper>
+    </OverviewCardRoot>
   );
 };
 
-const useLinkWithArrowStyles = makeStyles((theme) =>
-  createStyles({
-    root: {
-      color: "#036DCF",
-      textDecoration: "none",
-      display: "flex",
-      flexDirection: "row",
-      flexWrap: "nowrap",
-      alignItems: "center",
-    },
-    icon: {
-      marginLeft: theme.spacing(0.5),
-      width: 24,
-      height: 24,
-    },
-  }),
-);
+const LinkWithArrowRoot = styled(Link)(({theme}) => ({ 
+  color: "#036DCF",
+  textDecoration: "none",
+  display: "flex",
+  flexDirection: "row",
+  flexWrap: "nowrap",
+  alignItems: "center",
+}));
+
+const LinkWithArrowIcon = styled(RiArrowRightLine)(({theme}) => ({ 
+  marginLeft: theme.spacing(0.5),
+  width: 24,
+  height: 24,
+}));
 
 type LinkWithArrowProps = {
   text: string;
@@ -52,11 +42,10 @@ type LinkWithArrowProps = {
 };
 
 export const LinkWithArrow = ({ text, to }: LinkWithArrowProps) => {
-  const classes = useLinkWithArrowStyles();
   return (
-    <Link className={classes.root} to={to}>
+    <LinkWithArrowRoot to={to}>
       <Typography variant="h4">{text}</Typography>
-      <RiArrowRightLine className={classes.icon} />
-    </Link>
+      <LinkWithArrowIcon />
+    </LinkWithArrowRoot>
   );
 };

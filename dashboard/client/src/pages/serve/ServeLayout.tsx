@@ -1,26 +1,19 @@
-import createStyles from "@mui/styles/createStyles";
-import makeStyles from "@mui/styles/makeStyles";
+import { styled } from "@mui/material/styles";
 import React from "react";
 import { RiInformationLine, RiTableLine } from "react-icons/ri";
 import { Outlet } from "react-router-dom";
 import { MainNavPageInfo } from "../layout/mainNavContext";
 import { SideTabLayout, SideTabRouteLink } from "../layout/SideTabLayout";
 
-const useStyles = makeStyles((theme) =>
-  createStyles({
-    root: {
-      width: "100%",
-      minHeight: 800,
-      background: "white",
-    },
-  }),
-);
+const RootDiv = styled("div")(({theme}) => ({
+  width: "100%",
+  minHeight: 800,
+  background: "white",
+}));
 
 export const ServeLayout = () => {
-  const classes = useStyles();
-
   return (
-    <div className={classes.root}>
+    <RootDiv>
       <MainNavPageInfo
         pageInfo={{
           id: "serve",
@@ -29,7 +22,7 @@ export const ServeLayout = () => {
         }}
       />
       <Outlet />
-    </div>
+    </RootDiv>
   );
 };
 

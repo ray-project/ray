@@ -6,18 +6,21 @@ import {
   Switch,
   TextField,
 } from "@mui/material";
-import createStyles from "@mui/styles/createStyles";
-import makeStyles from "@mui/styles/makeStyles";
+import { styled } from "@mui/material/styles"
 import React, { memo, useState } from "react";
 import LogVirtualView from "../../components/LogView/LogVirtualView";
 
-const useStyles = makeStyles((theme) =>
-  createStyles({
-    search: {
-      margin: theme.spacing(1),
-    },
-  }),
-);
+const SearchTextField = styled(TextField)(({theme}) => ({
+  margin: theme.spacing(1),
+}));
+
+const SearchDiv = styled("div")(({theme}) => ({
+  margin: theme.spacing(1),
+}));
+
+const SearchButton = styled(Button)(({theme}) => ({
+  margin: theme.spacing(1),
+}));
 
 const useLogViewer = () => {
   const [search, setSearch] =
@@ -60,8 +63,6 @@ export const LogViewer = memo(
     onRefreshClick,
     height = 600,
   }: LogViewerProps) => {
-    const classes = useStyles();
-
     const { search, setSearch, startTime, setStart, endTime, setEnd } =
       useLogViewer();
 
@@ -70,8 +71,7 @@ export const LogViewer = memo(
         {log !== "Loading..." && (
           <div>
             <div>
-              <TextField
-                className={classes.search}
+              <SearchTextField
                 label="Keyword"
                 InputProps={{
                   onChange: ({ target: { value } }) => {
@@ -85,12 +85,11 @@ export const LogViewer = memo(
                   ),
                 }}
               />
-              <TextField
+              <SearchTextField
                 id="datetime-local"
                 label="Start Time"
                 type="datetime-local"
                 value={startTime}
-                className={classes.search}
                 onChange={(val) => {
                   setStart(val.target.value);
                 }}
@@ -98,11 +97,10 @@ export const LogViewer = memo(
                   shrink: true,
                 }}
               />
-              <TextField
+              <SearchTextField
                 label="End Time"
                 type="datetime-local"
                 value={endTime}
-                className={classes.search}
                 onChange={(val) => {
                   setEnd(val.target.value);
                 }}
@@ -110,23 +108,21 @@ export const LogViewer = memo(
                   shrink: true,
                 }}
               />
-              <div className={classes.search}>
+              <SearchDiv>
                 Reverse:{" "}
                 <Switch
                   checked={search?.revert}
                   onChange={(e, v) => setSearch({ ...search, revert: v })}
                 />
                 {onRefreshClick && (
-                  <Button
-                    className={classes.search}
+                  <SearchButton
                     variant="contained"
                     onClick={onRefreshClick}
                   >
                     Refresh
-                  </Button>
+                  </SearchButton>
                 )}
-                <Button
-                  className={classes.search}
+                <SearchButton
                   variant="contained"
                   onClick={() => {
                     setStart("");
@@ -134,7 +130,7 @@ export const LogViewer = memo(
                   }}
                 >
                   Reset Time
-                </Button>
+                </SearchButton>
                 {downloadUrl && path && (
                   <Button
                     variant="contained"
@@ -145,7 +141,7 @@ export const LogViewer = memo(
                     Download log file
                   </Button>
                 )}
-              </div>
+              </SearchDiv>
             </div>
             <LogVirtualView
               height={height}

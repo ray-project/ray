@@ -1,8 +1,7 @@
-import React from "react";
+import React, { ReactNode } from "react";
 import Logo from "../../logo.svg";
 
-const fn = () => {
-  return (
+const fn: ReactNode = (
     <div style={{ height: "100vh", width: "100vw" }}>
       <div
         style={{
@@ -18,6 +17,5 @@ const fn = () => {
       </div>
     </div>
   );
-};
 
 export default fn;

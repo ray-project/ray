@@ -1,26 +1,19 @@
-import createStyles from "@mui/styles/createStyles";
-import makeStyles from "@mui/styles/makeStyles";
+import { styled } from "@mui/material/styles";
 import _ from "lodash";
 import React from "react";
 import { ServeStatusIcon } from "../../../common/ServeStatus";
 import { ListItemCard } from "../../../components/ListItemCard";
 import { useServeDeployments } from "../../serve/hook/useServeApplications";
 
-const useStyles = makeStyles((theme) =>
-  createStyles({
-    icon: {
-      marginRight: theme.spacing(1),
-    },
-  }),
-);
+const StyledServeStatusIcon = styled(ServeStatusIcon)(({theme}) => ({ 
+  marginRight: theme.spacing(1),
+}));
 
 type RecentServeCardProps = {
   className?: string;
 };
 
 export const RecentServeCard = ({ className }: RecentServeCardProps) => {
-  const classes = useStyles();
-
   const { serveDeployments: deployments } = useServeDeployments();
 
   const sortedDeployments = _.orderBy(
@@ -44,11 +37,7 @@ export const RecentServeCard = ({ className }: RecentServeCardProps) => {
           : undefined,
       className: className,
       icon: (
-        <ServeStatusIcon
-          className={classes.icon}
-          deployment={deployment}
-          small
-        />
+        <StyledServeStatusIcon deployment={deployment} small />
       ),
     };
   });

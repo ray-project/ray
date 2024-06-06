@@ -1,37 +1,35 @@
 import { Typography } from "@mui/material";
-import createStyles from "@mui/styles/createStyles";
-import makeStyles from "@mui/styles/makeStyles";
-import classNames from "classnames";
+import { styled } from "@mui/material/styles";
 import React, { useContext } from "react";
 import { GlobalContext } from "../../../App";
 import { GrafanaNotRunningAlert } from "../../metrics";
 import { LinkWithArrow, OverviewCard } from "./OverviewCard";
 
-const useStyles = makeStyles((theme) =>
-  createStyles({
-    root: {
-      display: "flex",
-      flexDirection: "column",
-      flexWrap: "nowrap",
-    },
-    graph: {
-      flex: 1,
-    },
-    noGraph: {
-      flex: 1,
-      padding: theme.spacing(2, 3),
-    },
-    alert: {
-      marginTop: theme.spacing(2),
-    },
-    links: {
-      display: "flex",
-      flexDirection: "row",
-      flexWrap: "nowrap",
-      margin: theme.spacing(1, 3, 2),
-    },
-  }),
-);
+const RootOverviewCard = styled(OverviewCard)(({theme}) => ({ 
+  display: "flex",
+  flexDirection: "column",
+  flexWrap: "nowrap",
+}));
+
+const NoGraphDiv = styled("div")(({theme}) => ({ 
+  flex: 1,
+  padding: theme.spacing(2, 3),
+}));
+
+const GraphIFrame = styled("iframe")(({theme}) => ({ 
+  flex: 1,
+}));
+
+const StyledGrafanaNotRunningAlert = styled(GrafanaNotRunningAlert)(({theme}) => ({ 
+  marginTop: theme.spacing(2),
+}));
+
+const LinksDiv = styled("div")(({theme}) => ({ 
+  display: "flex",
+  flexDirection: "row",
+  flexWrap: "nowrap",
+  margin: theme.spacing(1, 3, 2),
+}));
 
 type ClusterUtilizationCardProps = {
   className?: string;
@@ -40,8 +38,6 @@ type ClusterUtilizationCardProps = {
 export const ClusterUtilizationCard = ({
   className,
 }: ClusterUtilizationCardProps) => {
-  const classes = useStyles();
-
   const {
     metricsContextLoaded,
     grafanaHost,
@@ -60,27 +56,26 @@ export const ClusterUtilizationCard = ({
   }
 
   return (
-    <OverviewCard className={classNames(classes.root, className)}>
+    <RootOverviewCard className={className}>
       {/* TODO (aguo): Switch this to overall utilization graph */}
       {/* TODO (aguo): Handle grafana not running */}
       {grafanaHost === undefined || !prometheusHealth ? (
-        <div className={classes.noGraph}>
+        <NoGraphDiv>
           <Typography variant="h3">Cluster utilization</Typography>
-          <GrafanaNotRunningAlert className={classes.alert} severity="info" />
-        </div>
+          <StyledGrafanaNotRunningAlert severity="info" />
+        </NoGraphDiv>
       ) : (
         <React.Fragment>
-          <iframe
+          <GraphIFrame
             title="Cluster Utilization"
-            className={classes.graph}
             src={`${grafanaHost}${path}&refresh${timeRangeParams}&var-SessionName=${sessionName}`}
             frameBorder="0"
           />
-          <div className={classes.links}>
+          <LinksDiv>
             <LinkWithArrow text="View all metrics" to="/metrics" />
-          </div>
+          </LinksDiv>
         </React.Fragment>
       )}
-    </OverviewCard>
+    </RootOverviewCard>
   );
 };

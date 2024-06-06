@@ -9,8 +9,7 @@ import {
   Typography,
 } from "@mui/material";
 import { grey } from "@mui/material/colors";
-import createStyles from "@mui/styles/createStyles";
-import makeStyles from "@mui/styles/makeStyles";
+import { styled } from "@mui/material/styles"
 import React, { useMemo, useState } from "react";
 import { RiDownload2Line } from "react-icons/ri";
 import { Outlet, Link as RouterLink, useSearchParams } from "react-router-dom";
@@ -22,23 +21,12 @@ import { getStateApiDownloadLogUrl, listStateApiLogs } from "../../service/log";
 import { getNodeList } from "../../service/node";
 import { MainNavPageInfo } from "../layout/mainNavContext";
 
-const useStyles = makeStyles((theme) => ({
-  root: {
-    padding: theme.spacing(2),
-    width: "100%",
-  },
-  table: {
-    marginTop: theme.spacing(4),
-    padding: theme.spacing(2),
-  },
-  pageMeta: {
-    padding: theme.spacing(2),
-    marginTop: theme.spacing(2),
-  },
+const RootDiv = styled("div")(({theme}) => ({
+  padding: theme.spacing(2),
+  width: "100%",
 }));
 
 export const StateApiLogsListPage = () => {
-  const classes = useStyles();
   const [searchParams] = useSearchParams();
   const nodeId = searchParams.get("nodeId");
   const folder = searchParams.get("folder");
@@ -58,7 +46,7 @@ export const StateApiLogsListPage = () => {
       : `/logs/`;
 
   return (
-    <div className={classes.root}>
+    <RootDiv>
       <TitleCard title="Logs Viewer">
         <Paper elevation={0}>
           {!nodeId && <p>Select a node to view logs</p>}
@@ -104,7 +92,7 @@ export const StateApiLogsListPage = () => {
           )}
         </Paper>
       </TitleCard>
-    </div>
+    </RootDiv>
   );
 };
 
@@ -138,14 +126,10 @@ export const StateApiLogsNodesList = () => {
   );
 };
 
-const useStateApiLogsFilesListStyles = makeStyles((theme) =>
-  createStyles({
-    iconButton: {
-      verticalAlign: "baseline",
-      color: grey[700],
-    },
-  }),
-);
+const StyledIconButton = styled(IconButton)(({theme}) => ({
+  verticalAlign: "baseline",
+  color: grey[700],
+})) as typeof IconButton;
 
 type StateApiLogsFilesListProps = {
   nodeId: string;
@@ -158,8 +142,6 @@ export const StateApiLogsFilesList = ({
   folder,
   fileName,
 }: StateApiLogsFilesListProps) => {
-  const classes = useStateApiLogsFilesListStyles();
-
   // We want to do a partial search for file name.
   const fileNameGlob = fileName ? `*${fileName}*` : undefined;
   const glob = fileNameGlob
@@ -242,15 +224,14 @@ export const StateApiLogsFilesList = ({
                 </Link>
                 {downloadUrl && (
                   <Box paddingLeft={0.5}>
-                    <IconButton
+                    <StyledIconButton
                       component="a"
                       href={downloadUrl}
                       download={fileName}
                       size="small"
-                      className={classes.iconButton}
                     >
                       <RiDownload2Line size={16} />
-                    </IconButton>
+                    </StyledIconButton>
                   </Box>
                 )}
               </ListItem>
@@ -263,7 +244,6 @@ export const StateApiLogsFilesList = ({
 };
 
 export const StateApiLogViewerPage = () => {
-  const classes = useStyles();
   const [searchParams] = useSearchParams();
   const nodeId = searchParams.get("nodeId");
   const fileName = searchParams.get("fileName");
@@ -279,7 +259,7 @@ export const StateApiLogViewerPage = () => {
       : `/logs/?nodeId=${nodeId}`;
 
   return (
-    <div className={classes.root}>
+    <RootDiv>
       <TitleCard title="Logs Viewer">
         <Paper elevation={0}>
           {!nodeId && <p>Select a node to view logs</p>}
@@ -315,7 +295,7 @@ export const StateApiLogViewerPage = () => {
           )}
         </Paper>
       </TitleCard>
-    </div>
+    </RootDiv>
   );
 };
 

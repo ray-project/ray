@@ -1,6 +1,5 @@
 import { Alert, Typography } from "@mui/material";
-import createStyles from "@mui/styles/createStyles";
-import makeStyles from "@mui/styles/makeStyles";
+import { styled } from "@mui/material/styles";
 import React from "react";
 import { Outlet } from "react-router-dom";
 import Loading from "../../components/Loading";
@@ -11,23 +10,20 @@ import {
   ServeMetricsSection,
 } from "./ServeMetricsSection";
 import { ServeSystemDetails } from "./ServeSystemDetails";
-const useStyles = makeStyles((theme) =>
-  createStyles({
-    root: {
-      padding: theme.spacing(3),
-    },
-    serveInstanceWarning: {
-      marginBottom: theme.spacing(2),
-    },
-    section: {
-      marginTop: theme.spacing(4),
-    },
-  }),
-);
+
+const RootDiv = styled("div")(({theme}) => ({
+  padding: theme.spacing(3),
+}));
+
+const ServeInstanceWarningAlert = styled(Alert)(({theme}) => ({
+  marginBottom: theme.spacing(2),
+}));
+
+const StyledServeMetricsSection = styled(ServeMetricsSection)(({theme}) => ({
+  marginTop: theme.spacing(4),
+}));
 
 export const ServeSystemDetailPage = () => {
-  const classes = useStyles();
-
   const { serveDetails, proxies, proxiesPage, setProxiesPage, error } =
     useServeDeployments();
 
@@ -40,7 +36,7 @@ export const ServeSystemDetailPage = () => {
   }
 
   return (
-    <div className={classes.root}>
+    <RootDiv>
       <MainNavPageInfo
         pageInfo={{
           title: "System",
@@ -49,9 +45,9 @@ export const ServeSystemDetailPage = () => {
         }}
       />
       {serveDetails.http_options === undefined ? (
-        <Alert className={classes.serveInstanceWarning} severity="warning">
+        <ServeInstanceWarningAlert severity="warning">
           Serve not started. Please deploy a serve application first.
-        </Alert>
+        </ServeInstanceWarningAlert>
       ) : (
         <ServeSystemDetails
           serveDetails={serveDetails}
@@ -60,11 +56,8 @@ export const ServeSystemDetailPage = () => {
           setPage={setProxiesPage}
         />
       )}
-      <ServeMetricsSection
-        className={classes.section}
-        metricsConfig={SERVE_SYSTEM_METRICS_CONFIG}
-      />
-    </div>
+      <StyledServeMetricsSection metricsConfig={SERVE_SYSTEM_METRICS_CONFIG} />
+    </RootDiv>
   );
 };
 

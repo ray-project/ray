@@ -1,7 +1,5 @@
 import { Box, Typography } from "@mui/material";
-import createStyles from "@mui/styles/createStyles";
-import makeStyles from "@mui/styles/makeStyles";
-import classNames from "classnames";
+import { styled } from "@mui/material/styles";
 import React, {
   forwardRef,
   PropsWithChildren,
@@ -11,24 +9,27 @@ import React, {
 import { RiArrowDownSLine, RiArrowRightSLine } from "react-icons/ri";
 import { ClassNameProps } from "./props";
 
-const useStyles = makeStyles((theme) =>
-  createStyles({
-    title: {
-      display: "flex",
-      flexDirection: "row",
-      flexWrap: "nowrap",
-      alignItems: "center",
-      fontWeight: 500,
-      cursor: "pointer",
-      marginRight: theme.spacing(1),
-    },
-    icon: {
-      marginRight: theme.spacing(1),
-      width: 24,
-      height: 24,
-    },
-  }),
-);
+const TitleTypography = styled(Typography)(({theme}) => ({
+  display: "flex",
+  flexDirection: "row",
+  flexWrap: "nowrap",
+  alignItems: "center",
+  fontWeight: 500,
+  cursor: "pointer",
+  marginRight: theme.spacing(1),
+}));
+
+const SRiArrowDownSLine = styled(RiArrowDownSLine)(({theme}) => ({
+  marginRight: theme.spacing(1),
+  width: 24,
+  height: 24,
+}));
+
+const SRiArrowRightSLine = styled(RiArrowRightSLine)(({theme}) => ({
+  marginRight: theme.spacing(1),
+  width: 24,
+  height: 24,
+}));
 
 type CollapsibleSectionProps = PropsWithChildren<
   {
@@ -69,7 +70,6 @@ export const CollapsibleSection = forwardRef<
     },
     ref,
   ) => {
-    const classes = useStyles();
     const [internalExpanded, setInternalExpanded] = useState(startExpanded);
     const finalExpanded = expanded !== undefined ? expanded : internalExpanded;
 
@@ -81,18 +81,17 @@ export const CollapsibleSection = forwardRef<
     return (
       <div ref={ref} className={className}>
         <Box display="flex" flexDirection="row" alignItems="center">
-          <Typography
-            className={classes.title}
+          <TitleTypography
             variant="h4"
             onClick={handleExpandClick}
           >
             {finalExpanded ? (
-              <RiArrowDownSLine className={classes.icon} />
+              <SRiArrowDownSLine />
             ) : (
-              <RiArrowRightSLine className={classes.icon} />
+              <SRiArrowRightSLine />
             )}
             {title}
-          </Typography>
+          </TitleTypography>
           {icon}
         </Box>
         <HideableBlock visible={finalExpanded} keepRendered={keepRendered}>
@@ -103,16 +102,10 @@ export const CollapsibleSection = forwardRef<
   },
 );
 
-const useHideableBlockStyles = makeStyles((theme) =>
-  createStyles({
-    body: {
-      marginTop: theme.spacing(1),
-    },
-    bodyHidden: {
-      display: "none",
-    },
-  }),
-);
+const HideableBlockDiv = styled("div")<{visible?:boolean}>(({theme, visible}) => ({
+  marginTop: theme.spacing(1),
+  display: visible ? "block" : "none",
+}));
 
 type HideableBlockProps = PropsWithChildren<
   {
@@ -135,7 +128,6 @@ export const HideableBlock = ({
   keepRendered,
   children,
 }: HideableBlockProps) => {
-  const classes = useHideableBlockStyles();
 
   // visible represents whether the component is viewable in the browser.
   // Rendered represents whether the DOM elements exist in the DOM tree.
@@ -152,12 +144,8 @@ export const HideableBlock = ({
   // Optimization to keep the component rendered (but not visible) when hidden
   // to avoid re-rendering when component is shown again.
   return visible || (keepRendered && rendered) ? (
-    <div
-      className={classNames(classes.body, {
-        [classes.bodyHidden]: !visible,
-      })}
-    >
+    <HideableBlockDiv visible={visible}>
       {children}
-    </div>
+    </HideableBlockDiv>
   ) : null;
 };

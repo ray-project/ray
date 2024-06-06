@@ -9,8 +9,7 @@ import {
   TableRow,
   Typography,
 } from "@mui/material";
-import createStyles from "@mui/styles/createStyles";
-import makeStyles from "@mui/styles/makeStyles";
+import { styled } from "@mui/material/styles";
 import _ from "lodash";
 import React, { ReactElement } from "react";
 import { sliceToPage } from "../../common/util";
@@ -29,17 +28,13 @@ import { LinkWithArrow } from "../overview/cards/OverviewCard";
 import { convertActorStateForServeController } from "./ServeSystemActorDetailPage";
 import { ServeControllerRow, ServeProxyRow } from "./ServeSystemDetailRows";
 
-const useStyles = makeStyles((theme) =>
-  createStyles({
-    table: {},
-    title: {
-      marginBottom: theme.spacing(2),
-    },
-    helpInfo: {
-      marginLeft: theme.spacing(1),
-    },
-  }),
-);
+const TitleTypography = styled(Typography)(({theme}) => ({
+  marginBottom: theme.spacing(2),
+}));
+
+const StyledHelpInfo = styled(HelpInfo)(({theme}) => ({
+  marginLeft: theme.spacing(1),
+}));
 
 export type ServeDetails = Pick<
   ServeApplicationsRsp,
@@ -67,7 +62,6 @@ export const ServeSystemDetails = ({
   page,
   setPage,
 }: ServeSystemDetailsProps) => {
-  const classes = useStyles();
 
   const {
     items: list,
@@ -77,9 +71,9 @@ export const ServeSystemDetails = ({
 
   return (
     <div>
-      <Typography variant="h3" className={classes.title}>
+      <TitleTypography variant="h3">
         System
-      </Typography>
+      </TitleTypography>
       {serveDetails.http_options && (
         <MetadataSection
           metadataList={[
@@ -121,7 +115,7 @@ export const ServeSystemDetails = ({
             onChange={(e, pageNo) => setPage("pageNo", pageNo)}
           />
         </div>
-        <Table className={classes.table}>
+        <Table>
           <TableHead>
             <TableRow>
               {columns.map(({ label, helpInfo, width }) => (
@@ -137,9 +131,9 @@ export const ServeSystemDetails = ({
                   >
                     {label}
                     {helpInfo && (
-                      <HelpInfo className={classes.helpInfo}>
+                      <StyledHelpInfo>
                         {helpInfo}
-                      </HelpInfo>
+                      </StyledHelpInfo>
                     )}
                   </Box>
                 </TableCell>

@@ -1,7 +1,5 @@
 import { IconButton, Tooltip, Typography } from "@mui/material";
-import createStyles from "@mui/styles/createStyles";
-import makeStyles from "@mui/styles/makeStyles";
-import classNames from "classnames";
+import { styled } from "@mui/material/styles"
 import React, { useContext } from "react";
 import { RiBookMarkLine, RiFeedbackLine } from "react-icons/ri/";
 import { Link, Outlet } from "react-router-dom";
@@ -12,16 +10,12 @@ import { MainNavContext, useMainNavState } from "./mainNavContext";
 export const MAIN_NAV_HEIGHT = 56;
 export const BREADCRUMBS_HEIGHT = 36;
 
-const useStyles = makeStyles((theme) =>
-  createStyles({
-    nav: {
-      position: "fixed",
-      width: "100%",
-      backgroundColor: "white",
-      zIndex: 1000,
-    },
-  }),
-);
+const StyledNav = styled("nav")(({theme}) => ({
+  position: "fixed",
+  width: "100%",
+  backgroundColor: "white",
+  zIndex: 1000,
+}));
 
 /**
  * This is the main navigation stack of the entire application.
@@ -39,93 +33,71 @@ const useStyles = makeStyles((theme) =>
  * navigation stack, render the <MainNavPageInfo /> component at the top of the route.
  */
 export const MainNavLayout = () => {
-  const classes = useStyles();
   const mainNavContextState = useMainNavState();
 
   return (
     <MainNavContext.Provider value={mainNavContextState}>
-      <nav className={classes.nav}>
+      <StyledNav>
         <MainNavBar />
         <MainNavBreadcrumbs />
-      </nav>
+      </StyledNav>
       <Main />
     </MainNavContext.Provider>
   );
 };
 
-const useMainStyles = makeStyles((theme) =>
-  createStyles({
-    root: {
-      paddingTop: MAIN_NAV_HEIGHT,
-    },
-    withTallNav: {
-      // When breadcrumbs are also shown
-      paddingTop: MAIN_NAV_HEIGHT + BREADCRUMBS_HEIGHT + 2, // +2 for border
-    },
-  }),
-);
+const RootMain = styled("main")<{tallNav?:boolean}>(({theme, tallNav}) => ({
+  paddingTop: tallNav ? MAIN_NAV_HEIGHT + BREADCRUMBS_HEIGHT + 2 : MAIN_NAV_HEIGHT,
+}));
 
 const Main = () => {
-  const classes = useMainStyles();
   const { mainNavPageHierarchy } = useContext(MainNavContext);
 
   const tallNav = mainNavPageHierarchy.length > 1;
 
   return (
-    <main
-      className={classNames(classes.root, { [classes.withTallNav]: tallNav })}
-    >
+    <RootMain tallNav={tallNav}>
       <Outlet />
-    </main>
+    </RootMain>
   );
 };
 
-const useMainNavBarStyles = makeStyles((theme) =>
-  createStyles({
-    root: {
-      display: "flex",
-      flexDirection: "row",
-      flexWrap: "nowrap",
-      height: 56,
-      backgroundColor: "white",
-      alignItems: "center",
-      boxShadow: "0px 1px 0px #D2DCE6",
-    },
-    logo: {
-      display: "flex",
-      justifyContent: "center",
-      marginLeft: theme.spacing(2),
-      marginRight: theme.spacing(3),
-    },
-    navItem: {
-      marginRight: theme.spacing(6),
-      fontSize: "1rem",
-      fontWeight: 500,
-      color: "black",
-      textDecoration: "none",
-    },
-    navItemHighlighted: {
-      color: "#036DCF",
-    },
-    flexSpacer: {
-      flexGrow: 1,
-    },
-    actionItemsContainer: {
-      marginRight: theme.spacing(2),
-    },
-    backToOld: {
-      marginRight: theme.spacing(1.5),
-      textDecoration: "none",
-    },
-    backToOldText: {
-      letterSpacing: 0.25,
-      fontWeight: 500,
-    },
-    actionItem: {
-      color: "#5F6469",
-    },
-  }),
-);
+const RootDiv = styled("div")(({theme})=>({
+  display: "flex",
+  flexDirection: "row",
+  flexWrap: "nowrap",
+  height: 56,
+  backgroundColor: "white",
+  alignItems: "center",
+  boxShadow: "0px 1px 0px #D2DCE6",
+}));
+
+const LogoLink = styled(Link)(({theme}) => ({
+  display: "flex",
+  justifyContent: "center",
+  marginLeft: theme.spacing(2),
+  marginRight: theme.spacing(3),
+}));
+
+const NavItemLink = styled(Link)(({theme}) => ({
+  marginRight: theme.spacing(6),
+  fontSize: "1rem",
+  fontWeight: 500,
+  color: "black",
+  textDecoration: "none",
+}));
+
+const FlexSpacerDiv = styled("div")(({theme}) => ({
+  flexGrow: 1,
+}));
+
+const ActionItemsContainerDiv = styled("div")(({theme}) => ({
+  marginRight: theme.spacing(2),
+}));
+
+const ActionItemIconButton = styled(IconButton)(({theme}) => ({
+  color: "#5F6469",
+})) as typeof IconButton;
 
 const NAV_ITEMS = [
   {
@@ -166,7 +138,6 @@ const NAV_ITEMS = [
 ];
 
 const MainNavBar = () => {
-  const classes = useMainNavBarStyles();
   const { mainNavPageHierarchy } = useContext(MainNavContext);
   const rootRouteId = mainNavPageHierarchy[0]?.id;
   const { metricsContextLoaded, grafanaHost } = useContext(GlobalContext);
@@ -177,84 +148,74 @@ const MainNavBar = () => {
   }
 
   return (
-    <div className={classes.root}>
-      <Link className={classes.logo} to="/">
+    <RootDiv>
+      <LogoLink to="/">
         <img width={28} src={Logo} alt="Ray" />
-      </Link>
+      </LogoLink>
       {navItems.map(({ title, path, id }) => (
         <Typography key={id}>
-          <Link
-            className={classNames(classes.navItem, {
-              [classes.navItemHighlighted]: rootRouteId === id,
-            })}
+          <NavItemLink
+            sx={[rootRouteId === id && {color: "#036DCF"}]}
             to={path}
           >
             {title}
-          </Link>
+          </NavItemLink>
         </Typography>
       ))}
-      <div className={classes.flexSpacer}></div>
-      <div className={classes.actionItemsContainer}>
+      <FlexSpacerDiv />
+      <ActionItemsContainerDiv>
         <Tooltip title="Docs">
-          <IconButton
-            className={classes.actionItem}
+          <ActionItemIconButton
             href="https://docs.ray.io/en/latest/ray-core/ray-dashboard.html"
             target="_blank"
             rel="noopener noreferrer"
             size="large"
           >
             <RiBookMarkLine />
-          </IconButton>
+          </ActionItemIconButton>
         </Tooltip>
         <Tooltip title="Leave feedback">
-          <IconButton
-            className={classes.actionItem}
+          <ActionItemIconButton
             href="https://github.com/ray-project/ray/issues/new?assignees=&labels=bug%2Ctriage%2Cdashboard&template=bug-report.yml&title=%5BDashboard%5D+%3CTitle%3E"
             target="_blank"
             rel="noopener noreferrer"
             size="large"
           >
             <RiFeedbackLine />
-          </IconButton>
+          </ActionItemIconButton>
         </Tooltip>
-      </div>
-    </div>
+      </ActionItemsContainerDiv>
+    </RootDiv>
   );
 };
 
-const useMainNavBreadcrumbsStyles = makeStyles((theme) =>
-  createStyles({
-    root: {
-      display: "flex",
-      flexDirection: "row",
-      flexWrap: "nowrap",
-      height: 36,
-      marginTop: 1,
-      paddingLeft: theme.spacing(2),
-      paddingRight: theme.spacing(2),
-      backgroundColor: "white",
-      alignItems: "center",
-      boxShadow: "0px 1px 0px #D2DCE6",
-    },
-    breadcrumbItem: {
-      fontWeight: 500,
-      color: "#8C9196",
-      "&:not(:first-child)": {
-        marginLeft: theme.spacing(1),
-      },
-    },
-    link: {
-      textDecoration: "none",
-      color: "#8C9196",
-    },
-    currentItem: {
-      color: "black",
-    },
-  }),
-);
+const MainNavBreadcrumbsRoot = styled("div")(({theme}) => ({
+  display: "flex",
+  flexDirection: "row",
+  flexWrap: "nowrap",
+  height: 36,
+  marginTop: 1,
+  paddingLeft: theme.spacing(2),
+  paddingRight: theme.spacing(2),
+  backgroundColor: "white",
+  alignItems: "center",
+  boxShadow: "0px 1px 0px #D2DCE6",
+}));
+
+const BreadcrumbItemTypography = styled(Typography)(({theme}) => ({
+  fontWeight: 500,
+  color: "#8C9196",
+  "&:not(:first-of-type)": {
+    marginLeft: theme.spacing(1),
+  },
+}));
+
+const StyledLink = styled(Link)(({theme}) => ({
+  textDecoration: "none",
+  color: "#8C9196",
+}));
 
 const MainNavBreadcrumbs = () => {
-  const classes = useMainNavBreadcrumbsStyles();
   const { mainNavPageHierarchy } = useContext(MainNavContext);
 
   if (mainNavPageHierarchy.length <= 1) {
@@ -265,7 +226,7 @@ const MainNavBreadcrumbs = () => {
   let currentPath = "";
 
   return (
-    <div className={classes.root}>
+    <MainNavBreadcrumbsRoot>
       {mainNavPageHierarchy.map(({ title, id, path }, index) => {
         if (path) {
           if (path.startsWith("/")) {
@@ -275,40 +236,37 @@ const MainNavBreadcrumbs = () => {
           }
         }
         const linkOrText = path ? (
-          <Link
-            className={classNames(classes.link, {
-              [classes.currentItem]: index === mainNavPageHierarchy.length - 1,
-            })}
+          <StyledLink
+            sx={[index === mainNavPageHierarchy.length - 1 && {color: "black"}]}
             to={currentPath}
           >
             {title}
-          </Link>
+          </StyledLink>
         ) : (
           title
         );
         if (index === 0) {
           return (
-            <Typography
+            <BreadcrumbItemTypography
               key={id}
-              className={classes.breadcrumbItem}
               variant="body2"
             >
               {linkOrText}
-            </Typography>
+            </BreadcrumbItemTypography>
           );
         } else {
           return (
             <React.Fragment key={id}>
-              <Typography className={classes.breadcrumbItem} variant="body2">
+              <BreadcrumbItemTypography variant="body2">
                 {"/"}
-              </Typography>
-              <Typography className={classes.breadcrumbItem} variant="body2">
+              </BreadcrumbItemTypography>
+              <BreadcrumbItemTypography variant="body2">
                 {linkOrText}
-              </Typography>
+              </BreadcrumbItemTypography>
             </React.Fragment>
           );
         }
       })}
-    </div>
+    </MainNavBreadcrumbsRoot>
   );
 };

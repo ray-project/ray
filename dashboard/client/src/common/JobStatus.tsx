@@ -1,7 +1,5 @@
 import { Box } from "@mui/material";
-import createStyles from "@mui/styles/createStyles";
-import makeStyles from "@mui/styles/makeStyles";
-import classNames from "classnames";
+import { styled } from "@mui/material/styles"
 import React from "react";
 import { IconBaseProps } from "react-icons";
 import {
@@ -14,33 +12,29 @@ import { StatusChip } from "../components/StatusChip";
 import { JobStatus, UnifiedJob } from "../type/job";
 import { ClassNameProps } from "./props";
 
-const useJobRunningIconStyles = makeStyles((theme) =>
-  createStyles({
-    icon: {
-      width: 20,
-      height: 20,
+const iconSmall = {
+  width: 16,
+  height: 16,
+};
+
+const JobRunningIconType = styled(RiLoader4Line)(({theme}) => ({
+  width: 20,
+  height: 20,
+  animation: `spinner 2s linear infinite`,
+  color: "#1E88E5",
+  animationName: "$spinner",
+  animationDuration: "1000ms",
+  animationIterationCount: "infinite",
+  animationTimingFunction: "linear",
+  "@keyframes spinner": {
+    from: {
+      transform: "rotate(0deg)",
     },
-    iconSmall: {
-      width: 16,
-      height: 16,
+    to: {
+      transform: "rotate(360deg)",
     },
-    "@keyframes spinner": {
-      from: {
-        transform: "rotate(0deg)",
-      },
-      to: {
-        transform: "rotate(360deg)",
-      },
-    },
-    iconRunning: {
-      color: "#1E88E5",
-      animationName: "$spinner",
-      animationDuration: "1000ms",
-      animationIterationCount: "infinite",
-      animationTimingFunction: "linear",
-    },
-  }),
-);
+  },
+}));
 
 type JobRunningIconProps = { small?: boolean } & ClassNameProps & IconBaseProps;
 
@@ -49,43 +43,30 @@ export const JobRunningIcon = ({
   small = false,
   ...props
 }: JobRunningIconProps) => {
-  const classes = useJobRunningIconStyles();
   return (
-    <RiLoader4Line
-      className={classNames(
-        classes.icon,
-        classes.iconRunning,
-        {
-          [classes.iconSmall]: small,
-        },
-        className,
-      )}
+    <JobRunningIconType className={className} sx={[small && iconSmall]}
       {...props}
     />
   );
 };
 
-const useJobStatusIconStyles = makeStyles((theme) =>
-  createStyles({
-    icon: {
-      width: 20,
-      height: 20,
-    },
-    iconSmall: {
-      width: 16,
-      height: 16,
-    },
-    colorSuccess: {
-      color: theme.palette.success.main,
-    },
-    colorError: {
-      color: theme.palette.error.main,
-    },
-    colorStopped: {
-      color: "#757575",
-    },
-  }),
-);
+const JobSuccessIconElement = styled(RiCheckboxCircleFill)(({theme}) => ({
+  width: 20,
+  height: 20,
+  color: theme.palette.success.main,
+}));
+
+const JobErrorIconElement = styled(RiCloseCircleFill)(({theme}) => ({
+  width: 20,
+  height: 20,
+  color: theme.palette.error.main,
+}));
+
+const JobStoppedIconElement = styled(RiStopCircleFill)(({theme}) => ({
+  width: 20,
+  height: 20,
+  color: "#757575",
+}));
 
 type JobStatusIconProps = {
   job: UnifiedJob;
@@ -97,47 +78,13 @@ export const JobStatusIcon = ({
   small = false,
   className,
 }: JobStatusIconProps) => {
-  const classes = useJobStatusIconStyles();
   switch (job.status) {
     case JobStatus.SUCCEEDED:
-      return (
-        <RiCheckboxCircleFill
-          className={classNames(
-            classes.icon,
-            classes.colorSuccess,
-            {
-              [classes.iconSmall]: small,
-            },
-            className,
-          )}
-        />
-      );
+      return <JobSuccessIconElement className={className} sx={[small && iconSmall]} />;
     case JobStatus.FAILED:
-      return (
-        <RiCloseCircleFill
-          className={classNames(
-            classes.icon,
-            classes.colorError,
-            {
-              [classes.iconSmall]: small,
-            },
-            className,
-          )}
-        />
-      );
+      return <JobErrorIconElement className={className} sx={[small && iconSmall]} />;
     case JobStatus.STOPPED:
-      return (
-        <RiStopCircleFill
-          className={classNames(
-            classes.icon,
-            classes.colorStopped,
-            {
-              [classes.iconSmall]: small,
-            },
-            className,
-          )}
-        />
-      );
+      return <JobStoppedIconElement className={className} sx={[small && iconSmall]} />;
     default:
       return <JobRunningIcon className={className} small={small} />;
   }

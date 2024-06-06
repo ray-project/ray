@@ -1,6 +1,4 @@
-import createStyles from "@mui/styles/createStyles";
-import makeStyles from "@mui/styles/makeStyles";
-import classNames from "classnames";
+import { styled } from "@mui/material/styles"
 import React, { PropsWithChildren, useContext } from "react";
 import { IconType } from "react-icons/lib";
 import { Link, Outlet } from "react-router-dom";
@@ -11,27 +9,23 @@ import {
   useSideTabState,
 } from "./sideTabContext";
 
-const useStyles = makeStyles((theme) =>
-  createStyles({
-    root: {},
-    tabsContainer: {
-      position: "fixed",
-      height: "100%",
-      width: 64,
-      display: "flex",
-      flexDirection: "column",
-      flexWrap: "nowrap",
-      alignItems: "center",
-      paddingTop: theme.spacing(1),
-      paddingBottom: theme.spacing(2),
-      background: "white",
-      borderRight: "1px solid #D2DCE6",
-    },
-    contentContainer: {
-      marginLeft: 64,
-    },
-  }),
-);
+const TabsContainerDiv = styled("div")(({theme}) => ({
+  position: "fixed",
+  height: "100%",
+  width: 64,
+  display: "flex",
+  flexDirection: "column",
+  flexWrap: "nowrap",
+  alignItems: "center",
+  paddingTop: theme.spacing(1),
+  paddingBottom: theme.spacing(2),
+  background: "white",
+  borderRight: "1px solid #D2DCE6",
+}));
+
+const ContentContainerDiv = styled("div")(({theme}) => ({
+  marginLeft: 64,
+}));
 
 /**
  * A layout which has tabs on the left and content on the right.
@@ -45,46 +39,34 @@ const useStyles = makeStyles((theme) =>
  * See "TestApp" in SideTabLayout.component.test.tsx for an example.
  */
 export const SideTabLayout = ({ children }: PropsWithChildren<{}>) => {
-  const classes = useStyles();
 
   const sideTabState = useSideTabState();
   return (
     <SideTabContext.Provider value={sideTabState}>
-      <div className={classes.root}>
-        <div className={classes.tabsContainer}>{children}</div>
-        <div className={classes.contentContainer}>
+      <div>
+        <TabsContainerDiv>{children}</TabsContainerDiv>
+        <ContentContainerDiv>
           <Outlet />
-        </div>
+        </ContentContainerDiv>
       </div>
     </SideTabContext.Provider>
   );
 };
 
-const useSideTabStyles = makeStyles((theme) =>
-  createStyles({
-    tab: {
-      width: 40,
-      height: 40,
-      display: "flex",
-      justifyContent: "center",
-      alignItems: "center",
-      color: "#5F6469",
-      borderRadius: 4,
-      marginTop: theme.spacing(1),
-      "&:hover": {
-        backgroundColor: "#EBF3FB",
-      },
-    },
-    tabHighlighted: {
-      backgroundColor: "#EBF3FB",
-      color: "#036DCF",
-    },
-    icon: {
-      width: 24,
-      height: 24,
-    },
-  }),
-);
+const TabDiv = styled("div")<{isSelected?:boolean}>(({theme, isSelected}) => ({
+  width: 40,
+  height: 40,
+  display: "flex",
+  justifyContent: "center",
+  alignItems: "center",
+  color: isSelected ? "#036DCF" : "#5F6469",
+  backgroundColor:isSelected ? "#EBF3FB" : undefined,
+  borderRadius: 4,
+  marginTop: theme.spacing(1),
+  "&:hover": {
+    backgroundColor: "#EBF3FB",
+  },
+}));
 
 export type SideTabProps = {
   /**
@@ -102,21 +84,22 @@ export type SideTabProps = {
  * A single tab to show in the tab bar
  */
 export const SideTab = ({ tabId, title, Icon }: SideTabProps) => {
-  const classes = useSideTabStyles();
   const { selectedTab } = useContext(SideTabContext);
   const isSelected = selectedTab === tabId;
+  const Icon24 = styled(Icon as IconType)(({theme}) => ({
+    width: 24,
+    height: 24,
+  }));
   return (
     <StyledTooltip title={title} placement="right">
-      <div
+      <TabDiv
         id={tabId}
         role="tab"
         aria-selected={isSelected}
-        className={classNames(classes.tab, {
-          [classes.tabHighlighted]: isSelected,
-        })}
+        isSelected={isSelected}
       >
-        {Icon ? <Icon className={classes.icon} /> : tabId}
-      </div>
+        {Icon ? <Icon24 /> : tabId}
+      </TabDiv>
     </StyledTooltip>
   );
 };

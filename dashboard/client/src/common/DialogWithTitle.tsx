@@ -1,63 +1,58 @@
 import CloseIcon from "@mui/icons-material/Close";
-import { Dialog, IconButton, Theme, Typography } from "@mui/material";
-import { WithStyles } from "@mui/styles";
-import createStyles from "@mui/styles/createStyles";
-import withStyles from "@mui/styles/withStyles";
+import { Dialog, IconButton, Typography } from "@mui/material";
+import { styled } from "@mui/material/styles";
 import React, { PropsWithChildren } from "react";
 
-const styles = (theme: Theme) =>
-  createStyles({
-    paper: {
-      padding: theme.spacing(3),
-    },
-    closeButton: {
-      position: "absolute",
-      right: theme.spacing(1.5),
-      top: theme.spacing(1.5),
-      zIndex: 1,
-    },
-    title: {
-      borderBottomColor: theme.palette.divider,
-      borderBottomStyle: "solid",
-      borderBottomWidth: 1,
-      fontSize: "1.5rem",
-      lineHeight: 1,
-      marginBottom: theme.spacing(3),
-      paddingBottom: theme.spacing(3),
-    },
-  });
+const PaperDialog = styled(Dialog)(({theme}) => ({
+  paper: {
+    padding: theme.spacing(3),
+  },
+}));
+
+const CloseIconButton = styled(IconButton)(({theme}) => ({
+  position: "absolute",
+  right: theme.spacing(1.5),
+  top: theme.spacing(1.5),
+  zIndex: 1,
+}));
+
+const TitleTypography = styled(Typography)(({theme}) => ({
+  borderBottomColor: theme.palette.divider,
+  borderBottomStyle: "solid",
+  borderBottomWidth: 1,
+  fontSize: "1.5rem",
+  lineHeight: 1,
+  marginBottom: theme.spacing(3),
+  paddingBottom: theme.spacing(3),
+}));
 
 type Props = {
   handleClose: () => void;
   title: string;
 };
 
-class DialogWithTitle extends React.Component<
-  PropsWithChildren<Props> & WithStyles<typeof styles>
-> {
+class DialogWithTitle extends React.Component<PropsWithChildren<Props>> {
   render() {
-    const { classes, handleClose, title } = this.props;
+    const { handleClose, title } = this.props;
     return (
-      <Dialog
-        classes={{ paper: classes.paper }}
+      <PaperDialog
         fullWidth
         maxWidth="md"
         onClose={handleClose}
         open
         scroll="body"
       >
-        <IconButton
-          className={classes.closeButton}
+        <CloseIconButton
           onClick={handleClose}
           size="large"
         >
           <CloseIcon />
-        </IconButton>
-        <Typography className={classes.title}>{title}</Typography>
+        </CloseIconButton>
+        <TitleTypography>{title}</TitleTypography>
         {this.props.children}
-      </Dialog>
+      </PaperDialog>
     );
   }
 }
 
-export default withStyles(styles)(DialogWithTitle);
+export default DialogWithTitle;

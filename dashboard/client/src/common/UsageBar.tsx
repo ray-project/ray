@@ -1,6 +1,5 @@
-import { Theme, Typography } from "@mui/material";
-import createStyles from "@mui/styles/createStyles";
-import makeStyles from "@mui/styles/makeStyles";
+import { Typography } from "@mui/material";
+import { styled } from "@mui/material/styles"
 import React from "react";
 
 const blend = (
@@ -13,21 +12,18 @@ const blend = (
   b1 * (1 - ratio) + b2 * ratio,
 ];
 
-const useUsageBarStyles = makeStyles((theme: Theme) =>
-  createStyles({
-    root: {
-      borderColor: theme.palette.divider,
-      borderStyle: "solid",
-      borderWidth: 1,
-      display: "flex",
-      flexGrow: 1,
-    },
-    inner: {
-      paddingLeft: theme.spacing(1),
-      paddingRight: theme.spacing(1),
-    },
-  }),
-);
+const UsageBarSpan = styled("span")(({theme}) => ({
+  borderColor: theme.palette.divider,
+  borderStyle: "solid",
+  borderWidth: 1,
+  display: "flex",
+  flexGrow: 1,
+}));
+
+const UsageBarInnerSpan = styled("span")(({theme}) => ({
+  paddingLeft: theme.spacing(1),
+  paddingRight: theme.spacing(1),
+}));
 
 type UsageBarProps = {
   percent: number;
@@ -35,7 +31,6 @@ type UsageBarProps = {
 };
 
 const UsageBar: React.FC<UsageBarProps> = ({ percent, text }) => {
-  const classes = useUsageBarStyles();
   const safePercent = Math.max(Math.min(percent, 100), 0);
   const minColor = [0, 255, 0];
   const maxColor = [255, 0, 0];
@@ -56,14 +51,13 @@ const UsageBar: React.FC<UsageBarProps> = ({ percent, text }) => {
   // Use a nested `span` here because the right border is affected by the
   // gradient background otherwise.
   return (
-    <span className={classes.root}>
-      <span
-        className={classes.inner}
+    <UsageBarSpan>
+      <UsageBarInnerSpan
         style={{ background: gradient, flexGrow: 1 }}
       >
         <Typography align="center">{text}</Typography>
-      </span>
-    </span>
+      </UsageBarInnerSpan>
+    </UsageBarSpan>
   );
 };
 

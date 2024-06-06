@@ -1,45 +1,41 @@
 import { Typography } from "@mui/material";
-import createStyles from "@mui/styles/createStyles";
-import makeStyles from "@mui/styles/makeStyles";
-import classNames from "classnames";
+import { styled } from "@mui/material/styles";
 import React, { useContext } from "react";
 import { GlobalContext } from "../../../App";
 import { GrafanaNotRunningAlert } from "../../metrics";
 import { LinkWithArrow, OverviewCard } from "./OverviewCard";
 
-const useStyles = makeStyles((theme) =>
-  createStyles({
-    root: {
-      display: "flex",
-      flexDirection: "column",
-      flexWrap: "nowrap",
-    },
-    graph: {
-      flex: 1,
-    },
-    noGraph: {
-      flex: 1,
-      padding: theme.spacing(2, 3),
-    },
-    alert: {
-      marginTop: theme.spacing(2),
-    },
-    links: {
-      display: "flex",
-      flexDirection: "row",
-      flexWrap: "nowrap",
-      margin: theme.spacing(1, 3, 2),
-    },
-  }),
-);
+const NodeCountCardRoot = styled(OverviewCard)(({theme}) => ({ 
+  display: "flex",
+  flexDirection: "column",
+  flexWrap: "nowrap",
+}));
+
+const GraphIFrame = styled("iframe")(({theme}) => ({ 
+  flex: 1,
+}));
+
+const NoGraphDiv = styled("div")(({theme}) => ({ 
+  flex: 1,
+  padding: theme.spacing(2, 3),
+}));
+
+const StyledGrafanaNotRunningAlert = styled(GrafanaNotRunningAlert)(({theme}) => ({ 
+  marginTop: theme.spacing(2),
+}));
+
+const LinksDiv = styled("div")(({theme}) => ({ 
+  display: "flex",
+  flexDirection: "row",
+  flexWrap: "nowrap",
+  margin: theme.spacing(1, 3, 2),
+}));
 
 type NodeCountCardProps = {
   className?: string;
 };
 
 export const NodeCountCard = ({ className }: NodeCountCardProps) => {
-  const classes = useStyles();
-
   const {
     metricsContextLoaded,
     grafanaHost,
@@ -58,23 +54,22 @@ export const NodeCountCard = ({ className }: NodeCountCardProps) => {
   }
 
   return (
-    <OverviewCard className={classNames(classes.root, className)}>
+    <NodeCountCardRoot className={className}>
       {grafanaHost === undefined || !prometheusHealth ? (
-        <div className={classes.noGraph}>
+        <NoGraphDiv>
           <Typography variant="h3">Node count</Typography>
-          <GrafanaNotRunningAlert className={classes.alert} severity="info" />
-        </div>
+          <StyledGrafanaNotRunningAlert severity="info" />
+        </NoGraphDiv>
       ) : (
-        <iframe
+        <GraphIFrame
           title="Node Count"
-          className={classes.graph}
           src={`${grafanaHost}${path}&refresh${timeRangeParams}&var-SessionName=${sessionName}`}
           frameBorder="0"
         />
       )}
-      <div className={classes.links}>
+      <LinksDiv>
         <LinkWithArrow text="View all nodes" to="/cluster" />
-      </div>
-    </OverviewCard>
+      </LinksDiv>
+    </NodeCountCardRoot>
   );
 };

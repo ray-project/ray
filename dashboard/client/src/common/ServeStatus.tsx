@@ -1,6 +1,4 @@
-import createStyles from "@mui/styles/createStyles";
-import makeStyles from "@mui/styles/makeStyles";
-import classNames from "classnames";
+import { styled } from "@mui/material/styles";
 import React from "react";
 import { RiCloseCircleFill, RiRecordCircleFill } from "react-icons/ri";
 import { ServeDeployment } from "../type/serve";
@@ -12,48 +10,30 @@ type ServeStatusIconProps = {
   small: boolean;
 } & ClassNameProps;
 
-const useServeStatusIconStyles = makeStyles((theme) =>
-  createStyles({
-    icon: {
-      width: 20,
-      height: 20,
-      marginRight: 8,
-    },
-    iconSmall: {
-      width: 16,
-      height: 16,
-    },
-    colorSuccess: {
-      color: theme.palette.success.main,
-    },
-    colorError: {
-      color: theme.palette.error.main,
-    },
-  }),
-);
+const ServeSeccessElement = styled(RiRecordCircleFill)(({theme}) => ({
+  width: 20,
+  height: 20,
+  marginRight: 8,
+  color: theme.palette.success.main,
+}));
+
+const ServeErrorElement = styled(RiCloseCircleFill)(({theme}) => ({
+  width: 20,
+  height: 20,
+  marginRight: 8,
+  color: theme.palette.error.main,
+}));
 
 export const ServeStatusIcon = ({
   deployment,
   small,
   className,
 }: ServeStatusIconProps) => {
-  const classes = useServeStatusIconStyles();
-
   switch (deployment.status) {
     case "HEALTHY":
-      return (
-        <RiRecordCircleFill
-          className={classNames(classes.icon, classes.colorSuccess)}
-          title="Healthy"
-        />
-      );
+      return <ServeSeccessElement title="Healthy" />;
     case "UNHEALTHY":
-      return (
-        <RiCloseCircleFill
-          className={classNames(classes.icon, classes.colorError)}
-          title="Unhealthy"
-        />
-      );
+      return <ServeErrorElement title="Unhealthy" />;
     default:
       // UPDATING
       return (

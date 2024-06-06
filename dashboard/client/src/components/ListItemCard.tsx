@@ -1,7 +1,5 @@
 import { Typography } from "@mui/material";
-import createStyles from "@mui/styles/createStyles";
-import makeStyles from "@mui/styles/makeStyles";
-import classNames from "classnames";
+import { styled } from "@mui/material/styles"
 import React, { ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { ClassNameProps } from "../common/props";
@@ -25,25 +23,19 @@ type ListItemProps = {
   icon: ReactNode;
 } & ClassNameProps;
 
-const useStyles = makeStyles((theme) =>
-  createStyles({
-    root: {
-      display: "flex",
-      flexDirection: "column",
-      padding: theme.spacing(2, 3),
-    },
-    listContainer: {
-      marginTop: theme.spacing(2),
-      flex: 1,
-      overflow: "hidden",
-    },
-    listItem: {
-      "&:not(:first-child)": {
-        marginTop: theme.spacing(1),
-      },
-    },
-  }),
-);
+const ListItemCardRoot = styled(OverviewCard)(({theme}) => ({
+  display: "flex",
+  flexDirection: "column",
+  padding: theme.spacing(2, 3),
+}));
+
+const ListContainerDiv = styled("div")(({theme}) => ({
+  marginTop: theme.spacing(2),
+  flex: 1,
+  overflow: "hidden",
+}));
+
+
 
 export const ListItemCard = ({
   className,
@@ -53,49 +45,54 @@ export const ListItemCard = ({
   footerText,
   footerLink,
 }: ListItemCardProps) => {
-  const classes = useStyles();
 
   return (
-    <OverviewCard className={classNames(classes.root, className)}>
+    <ListItemCardRoot className={className}>
       <Typography variant="h3">{headerTitle}</Typography>
-      <div className={classes.listContainer}>
+      <ListContainerDiv>
         {items.map((item: ListItemProps) => (
-          <ListItem {...item} className={classes.listItem} key={item.title} />
+          <StyledListItem {...item} key={item.title} />
         ))}
         {items.length === 0 && (
           <Typography variant="h4">{itemEmptyTip}</Typography>
         )}
-      </div>
+      </ListContainerDiv>
       <LinkWithArrow text={footerText} to={footerLink} />
-    </OverviewCard>
+    </ListItemCardRoot>
   );
 };
 
-const useListItemStyles = makeStyles((theme) =>
-  createStyles({
-    root: {
-      display: "flex",
-      flexDirection: "row",
-      flexWrap: "nowrap",
-      alignItems: "center",
-      textDecoration: "none",
-    },
+const ListItemRootLink = styled(Link)(({theme}) => ({
+  display: "flex",
+  flexDirection: "row",
+  flexWrap: "nowrap",
+  alignItems: "center",
+  textDecoration: "none",
+}));
 
-    textContainer: {
-      flex: "1 1 auto",
-      width: `calc(100% - calc(${theme.spacing(1)} + 20px))`,
-    },
-    title: {
-      color: "#036DCF",
-    },
-    entrypoint: {
-      overflow: "hidden",
-      textOverflow: "ellipsis",
-      whiteSpace: "nowrap",
-      color: "#5F6469",
-    },
-  }),
-);
+const ListItemRootDiv = styled("div")(({theme}) => ({
+  display: "flex",
+  flexDirection: "row",
+  flexWrap: "nowrap",
+  alignItems: "center",
+  textDecoration: "none",
+}));
+
+const TextContainerDiv = styled("div")(({theme}) => ({
+  flex: "1 1 auto",
+  width: `calc(100% - calc(${theme.spacing(1)} + 20px))`,
+}));
+
+const TitleTypography = styled(Typography)(({theme}) => ({
+  color: "#036DCF",
+}));
+
+const EntrypointTypography = styled(Typography)(({theme}) => ({
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+  whiteSpace: "nowrap",
+  color: "#5F6469",
+}));
 
 const ListItem = ({
   icon,
@@ -104,34 +101,35 @@ const ListItem = ({
   className,
   link,
 }: ListItemProps) => {
-  const classes = useListItemStyles();
 
   const cardContent = (
     <React.Fragment>
       {icon}
-      <div className={classes.textContainer}>
-        <Typography className={classes.title} variant="body2">
+      <TextContainerDiv>
+        <TitleTypography variant="body2">
           {title}
-        </Typography>
-        <Typography
-          className={classes.entrypoint}
-          title={subtitle}
-          variant="caption"
-        >
+        </TitleTypography>
+        <EntrypointTypography title={subtitle} variant="caption">
           {subtitle}
-        </Typography>
-      </div>
+        </EntrypointTypography>
+      </TextContainerDiv>
     </React.Fragment>
   );
   return (
     <div className={className}>
       {link !== undefined ? (
-        <Link className={classes.root} to={link}>
+        <ListItemRootLink to={link}>
           {cardContent}
-        </Link>
+        </ListItemRootLink>
       ) : (
-        <div className={classes.root}>{cardContent}</div>
+        <ListItemRootDiv>{cardContent}</ListItemRootDiv>
       )}
     </div>
   );
 };
+
+const StyledListItem = styled(ListItem)(({theme}) => ({
+  "&:not(:first-of-type)": {
+    marginTop: theme.spacing(1),
+  },
+}));

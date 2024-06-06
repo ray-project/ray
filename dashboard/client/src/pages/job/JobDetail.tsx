@@ -1,5 +1,5 @@
 import { Box } from "@mui/material";
-import makeStyles from "@mui/styles/makeStyles";
+import { styled } from "@mui/material/styles";
 import React, { useRef, useState } from "react";
 import useSWR from "swr";
 import { CollapsibleSection } from "../../common/CollapsibleSection";
@@ -25,27 +25,27 @@ import { JobDriverLogs } from "./JobDriverLogs";
 import { JobProgressBar } from "./JobProgressBar";
 import { TaskTimeline } from "./TaskTimeline";
 
-const useStyle = makeStyles((theme) => ({
-  root: {
-    padding: theme.spacing(2),
-    backgroundColor: "white",
-  },
-  section: {
-    marginBottom: theme.spacing(4),
-  },
-  autoscalerSection: {
-    flexWrap: "wrap",
-    [theme.breakpoints.up("md")]: {
-      flexWrap: "nowrap",
-    },
-  },
-  nodeCountCard: {
-    flex: "1 0 500px",
+const RootDiv = styled("div")(({theme}) => ({
+  padding: theme.spacing(2),
+  backgroundColor: "white",
+}));
+
+const StyledCollapsibleSection = styled(CollapsibleSection)(({theme}) => ({
+  marginBottom: theme.spacing(4),
+}));
+
+const AutoscalerSection = styled(Box)(({theme}) => ({
+  flexWrap: "wrap",
+  [theme.breakpoints.up("md")]: {
+    flexWrap: "nowrap",
   },
 }));
 
+const StyledNodeCountCard = styled(NodeCountCard)(({theme}) => ({
+  flex: "1 0 500px",
+}));
+
 export const JobDetailChartsPage = () => {
-  const classes = useStyle();
   const { job, msg, isLoading, params } = useJobDetail();
 
   const [taskListFilter, setTaskListFilter] = useState<string>();
@@ -72,14 +72,14 @@ export const JobDetailChartsPage = () => {
 
   if (!job) {
     return (
-      <div className={classes.root}>
+      <RootDiv>
         <Loading loading={isLoading} />
         <TitleCard title={`JOB - ${params.id}`}>
           <StatusChip type="job" status="LOADING" />
           <br />
           Request Status: {msg} <br />
         </TitleCard>
-      </div>
+      </RootDiv>
     );
   }
 
@@ -118,24 +118,22 @@ export const JobDetailChartsPage = () => {
   };
 
   return (
-    <div className={classes.root}>
+    <RootDiv>
       <JobMetadataSection job={job} />
 
       {data?.datasets && data.datasets.length > 0 && (
-        <CollapsibleSection
+        <StyledCollapsibleSection
           title="Ray Data Overview"
-          className={classes.section}
         >
           <Section>
             <DataOverview datasets={data.datasets} />
           </Section>
-        </CollapsibleSection>
+        </StyledCollapsibleSection>
       )}
 
-      <CollapsibleSection
+      <StyledCollapsibleSection
         title="Ray Core Overview"
         startExpanded
-        className={classes.section}
       >
         <Section>
           <JobProgressBar
@@ -144,62 +142,57 @@ export const JobDetailChartsPage = () => {
             onClickLink={handleClickLink}
           />
         </Section>
-      </CollapsibleSection>
+      </StyledCollapsibleSection>
 
-      <CollapsibleSection
+      <StyledCollapsibleSection
         title="Logs"
         startExpanded
-        className={classes.section}
       >
         <Section noTopPadding>
           <JobDriverLogs job={job} />
         </Section>
-      </CollapsibleSection>
+      </StyledCollapsibleSection>
 
       {job.job_id && (
-        <CollapsibleSection
+        <StyledCollapsibleSection
           title="Task Timeline (beta)"
           startExpanded
-          className={classes.section}
         >
           <Section>
             <TaskTimeline jobId={job.job_id} />
           </Section>
-        </CollapsibleSection>
+        </StyledCollapsibleSection>
       )}
 
-      <CollapsibleSection
+      <StyledCollapsibleSection
         title="Cluster status and autoscaler"
         startExpanded
-        className={classes.section}
       >
-        <Box
+        <AutoscalerSection
           display="flex"
           flexDirection="row"
           gap={3}
           alignItems="stretch"
-          className={classes.autoscalerSection}
         >
-          <NodeCountCard className={classes.nodeCountCard} />
+          <StyledNodeCountCard />
           <Section flex="1 1 500px">
             <NodeStatusCard clusterStatus={clusterStatus} />
           </Section>
           <Section flex="1 1 500px">
             <ResourceStatusCard clusterStatus={clusterStatus} />
           </Section>
-        </Box>
-      </CollapsibleSection>
+        </AutoscalerSection>
+      </StyledCollapsibleSection>
 
       {job.job_id && (
         <React.Fragment>
-          <CollapsibleSection
+          <StyledCollapsibleSection
             ref={taskTableRef}
             title="Task Table"
             expanded={taskTableExpanded}
             onExpandButtonClick={() => {
               setTaskTableExpanded(!taskTableExpanded);
             }}
-            className={classes.section}
           >
             <Section>
               <TaskList
@@ -208,16 +201,15 @@ export const JobDetailChartsPage = () => {
                 onFilterChange={handleTaskListFilterChange}
               />
             </Section>
-          </CollapsibleSection>
+          </StyledCollapsibleSection>
 
-          <CollapsibleSection
+          <StyledCollapsibleSection
             ref={actorTableRef}
             title="Actor Table"
             expanded={actorTableExpanded}
             onExpandButtonClick={() => {
               setActorTableExpanded(!actorTableExpanded);
             }}
-            className={classes.section}
           >
             <Section>
               <ActorList
@@ -227,18 +219,17 @@ export const JobDetailChartsPage = () => {
                 detailPathPrefix="actors"
               />
             </Section>
-          </CollapsibleSection>
+          </StyledCollapsibleSection>
 
-          <CollapsibleSection
+          <StyledCollapsibleSection
             title="Placement Group Table"
-            className={classes.section}
           >
             <Section>
               <PlacementGroupList jobId={job.job_id} />
             </Section>
-          </CollapsibleSection>
+          </StyledCollapsibleSection>
         </React.Fragment>
       )}
-    </div>
+    </RootDiv>
   );
 };

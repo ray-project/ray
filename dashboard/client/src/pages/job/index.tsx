@@ -13,7 +13,7 @@ import {
 } from "@mui/material";
 import Autocomplete from "@mui/material/Autocomplete";
 import Pagination from "@mui/material/Pagination";
-import makeStyles from "@mui/styles/makeStyles";
+import { styled } from "@mui/material/styles"
 import React from "react";
 import { Outlet } from "react-router-dom";
 import { sliceToPage } from "../../common/util";
@@ -25,17 +25,13 @@ import { MainNavPageInfo } from "../layout/mainNavContext";
 import { useJobList } from "./hook/useJobList";
 import { JobRow } from "./JobRow";
 
-const useStyles = makeStyles((theme) => ({
-  root: {
-    padding: theme.spacing(2),
-    width: "100%",
-  },
-  progressError: {
-    marginTop: theme.spacing(1),
-  },
-  helpInfo: {
-    marginLeft: theme.spacing(1),
-  },
+const RootDiv = styled("div")(({theme}) => ({
+  padding: theme.spacing(2),
+  width: "100%",
+}));
+
+const StyledHelpInfo = styled(HelpInfo)(({theme}) => ({
+  marginLeft: theme.spacing(1),
 }));
 
 const columns = [
@@ -63,7 +59,6 @@ const columns = [
 ];
 
 const JobList = () => {
-  const classes = useStyles();
   const {
     msg,
     isLoading,
@@ -82,7 +77,7 @@ const JobList = () => {
   } = sliceToPage(jobList, page.pageNo, page.pageSize);
 
   return (
-    <div className={classes.root}>
+    <RootDiv>
       <Loading loading={isLoading} />
       <TitleCard title="JOBS">
         Auto Refresh:
@@ -153,9 +148,9 @@ const JobList = () => {
                     >
                       {label}
                       {helpInfo && (
-                        <HelpInfo className={classes.helpInfo}>
+                        <StyledHelpInfo>
                           {helpInfo}
-                        </HelpInfo>
+                        </StyledHelpInfo>
                       )}
                     </Box>
                   </TableCell>
@@ -173,7 +168,7 @@ const JobList = () => {
           </Table>
         </TableContainer>
       </TitleCard>
-    </div>
+    </RootDiv>
   );
 };
 
