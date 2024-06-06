@@ -235,7 +235,7 @@ def test_tpu_resource_returns_tpu_command_runner(test_case):
         ({"acceleratorConfig": {"type": "V4", "topology": "4x4x4"}}, "TPU-v4-128-head"),
         (
             {"acceleratorConfig": {"type": "V5LITE_POD", "topology": "2x4"}},
-            "TPU-v5litepod-8-head"
+            "TPU-v5litepod-8-head",
         ),
     ],
 )
