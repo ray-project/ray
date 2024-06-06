@@ -1094,6 +1094,14 @@ def test_job_finished_after_head_node_restart(
     wait_for_condition(_check_job_is_dead, submission_id=submission_id, timeout=10)
 
 
+def raises_exception(exc_type, f):
+    try:
+        f()
+    except exc_type:
+        return True
+    return False
+
+
 @pytest.mark.parametrize(
     "case",
     [
@@ -1186,17 +1194,21 @@ def test_gcs_server_restart_destroys_out_of_scope_actors(
         assert ray.get(detached2.getpid.remote()) == detached_pid
         assert ray.get(child2.getpid.remote()) == child_pid
     elif case["expect_alive"] == "none":
+
         with pytest.raises(ValueError):
             ray.get_actor("regular", namespace="ns")
 
-        # Known issue: GCS restart does not check liveness of a detached actor, so
-        # you can still ray.get_actor but can not invoke methods.
-        a = ray.get_actor("parent", namespace="ns")
-        with pytest.raises(ray.exceptions.ActorUnavailableError):
-            ray.get(a.getpid.remote())
-
-        with pytest.raises(ValueError):
-            ray.get_actor("child", namespace="ns")
+        # It took some time for raylet to report worker failure.
+        wait_for_condition(
+            lambda: raises_exception(
+                ValueError, lambda: ray.get_actor("regular", namespace="ns")
+            )
+        )
+        wait_for_condition(
+            lambda: raises_exception(
+                ValueError, lambda: ray.get_actor("parent", namespace="ns")
+            )
+        )
     else:
         raise ValueError(f"Unknown case: {case}")
 
