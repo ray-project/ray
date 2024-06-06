@@ -17,6 +17,9 @@ from ray.serve.handle import DeploymentHandle
 
 @pytest.fixture
 def shutdown_ray():
+    if ray.is_initialized():
+        serve.shutdown()
+        ray.shutdown()
     yield
     serve.shutdown()
     ray.shutdown()
