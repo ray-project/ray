@@ -20,7 +20,7 @@ from ray.rllib.utils.test_utils import add_rllib_example_script_args
 parser = add_rllib_example_script_args(
     default_iters=1000000,
     default_reward=20.0,
-    default_timesteps=1000000,
+    default_timesteps=100000,
 )
 # Use `parser` to add your own custom command line options to this script
 # and (if needed) use their values toset up `config` below.
@@ -59,8 +59,8 @@ config = (
     )
     .reporting(
         metrics_num_episodes_for_smoothing=(args.num_gpus or 1),
-        report_images_and_videos=True,
-        report_dream_data=True,
+        report_images_and_videos=False,
+        report_dream_data=False,
         report_individual_batch_item_stats=False,
     )
     # See Appendix A.
@@ -75,4 +75,4 @@ config = (
 if __name__ == "__main__":
     from ray.rllib.utils.test_utils import run_rllib_example_script_experiment
 
-    run_rllib_example_script_experiment(config, args, stop={}, keep_config=True)
+    run_rllib_example_script_experiment(config, args, keep_config=True)
