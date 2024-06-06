@@ -6,6 +6,7 @@ import io.ray.api.BaseActorHandle;
 import io.ray.api.ObjectRef;
 import io.ray.api.PyActorHandle;
 import io.ray.api.Ray;
+import io.ray.api.call.PyActorTaskCaller;
 import io.ray.api.function.PyActorMethod;
 import io.ray.serve.common.Constants;
 import io.ray.serve.exception.RayServeException;
@@ -109,9 +110,10 @@ public class ReplicaSet { // TODO ReplicaScheduler
                   Stream.of(query.getMetadata().toByteArray()),
                   Arrays.stream((Object[]) query.getArgs()))
               .toArray();
-      return ((PyActorHandle) replica)
-          .task(PyActorMethod.of("handle_request_from_java"), args)
-          .remote();
+      PyActorTaskCaller<Object> pyCaller =
+          new PyActorTaskCaller<>(
+              (PyActorHandle) replica, PyActorMethod.of("handle_request_from_java"), args);
+      return pyCaller.remote();
     } else {
       return ((ActorHandle<RayServeWrappedReplica>) replica)
           .task(

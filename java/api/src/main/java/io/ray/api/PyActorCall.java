@@ -39,8 +39,4 @@ interface PyActorCall {
     Object[] args = new Object[]{obj0, obj1, obj2, obj3, obj4};
     return new PyActorTaskCaller<>((PyActorHandle)this, pyActorMethod, args);
   }
-
-  default <R> PyActorTaskCaller<R> task(PyActorMethod<R> pyActorMethod, Object[] args) {
-    return new PyActorTaskCaller<>((PyActorHandle)this, pyActorMethod, args);
-  }
 }
