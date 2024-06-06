@@ -374,7 +374,6 @@ def read_datasource(
         ray_remote_args=ray_remote_args,
         owned_by_consumer=False,
     )
-    block_list._tasks = []
     block_list._estimated_num_blocks = len(read_tasks) if read_tasks else 0
 
     read_op = Read(
