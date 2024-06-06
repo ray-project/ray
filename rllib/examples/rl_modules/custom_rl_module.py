@@ -50,14 +50,18 @@ from ray.rllib.utils.test_utils import (
 from ray.tune.registry import get_trainable_cls, register_env
 
 parser = add_rllib_example_script_args(default_iters=100, default_timesteps=600000)
+parser.set_defaults(env="ALE/Pong-v5")
 
 
 if __name__ == "__main__":
     args = parser.parse_args()
 
+    assert (
+        args.enable_new_api_stack
+    ), "Must set --enable-new-api-stack when running this script!"
+
     register_env("env", lambda cfg: wrap_atari_for_new_api_stack(
-        #TODO(sven) pull from master to get args.env
-        gym.make("ALE/Pong-v5", **cfg), #args.env
+        gym.make(args.env, **cfg),
         dim=42,  # <- need images to be "tiny" for our custom model
         framestack=4,
     ))
@@ -65,10 +69,6 @@ if __name__ == "__main__":
     base_config = (
         get_trainable_cls(args.algo)
         .get_default_config()
-        .api_stack(
-            enable_rl_module_and_learner=True,
-            enable_env_runner_and_connector_v2=True,
-        )
         .environment(
             env="env",
             env_config=dict(
@@ -84,4 +84,4 @@ if __name__ == "__main__":
         )
     )
 
-    run_rllib_example_script_experiment(base_config, args)
+    run_rllib_example_script_experiment(base_config, args, stop={})

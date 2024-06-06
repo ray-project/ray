@@ -465,14 +465,14 @@ class RLModule(abc.ABC):
     def get_train_action_dist_cls(self) -> Type[Distribution]:
         """Returns the action distribution class for this RLModule used for training.
 
-        This class is used to create action distributions from outputs of the
-        forward_train method. If the case that no action distribution class is needed,
+        This class is used to get the correct action distribution class to be used by
+        the training components. In case that no action distribution class is needed,
         this method can return None.
 
         Note that RLlib's distribution classes all implement the `Distribution`
         interface. This requires two special methods: `Distribution.from_logits()` and
-        `Distribution.to_deterministic()`. See the documentation for `Distribution`
-        for more detail.
+        `Distribution.to_deterministic()`. See the documentation of the
+        :py:class:`~ray.rllib.models.distributions.Distribution` class for more details.
         """
         raise NotImplementedError
 
@@ -486,8 +486,8 @@ class RLModule(abc.ABC):
 
         Note that RLlib's distribution classes all implement the `Distribution`
         interface. This requires two special methods: `Distribution.from_logits()` and
-        `Distribution.to_deterministic()`. See the documentation for `Distribution`
-        for more detail.
+        `Distribution.to_deterministic()`. See the documentation of the
+        :py:class:`~ray.rllib.models.distributions.Distribution` class for more details.
         """
         raise NotImplementedError
 
@@ -501,8 +501,8 @@ class RLModule(abc.ABC):
 
         Note that RLlib's distribution classes all implement the `Distribution`
         interface. This requires two special methods: `Distribution.from_logits()` and
-        `Distribution.to_deterministic()`. See the documentation for `Distribution`
-        for more detail.
+        `Distribution.to_deterministic()`. See the documentation of the
+        :py:class:`~ray.rllib.models.distributions.Distribution` class for more details.
         """
         raise NotImplementedError
 

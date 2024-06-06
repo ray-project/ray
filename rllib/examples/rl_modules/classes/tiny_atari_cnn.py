@@ -4,6 +4,7 @@ from ray.rllib.models.torch.misc import normc_initializer
 from ray.rllib.models.torch.misc import same_padding, valid_padding
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
+from ray.rllib.utils.torch_utils import convert_to_torch_tensor
 
 torch, nn = try_import_torch()
 
@@ -75,7 +76,9 @@ class TinyAtariCNN(TorchRLModule):
 
     @override(TorchRLModule)
     def _forward_inference(self, batch, **kwargs):
+        # Compute the basic 1D feature tensor (inputs to policy- and value-heads).
         _, logits = self._compute_features_and_logits(batch)
+        # Return logits as ACTION_DIST_INPUTS (categorical distribution).
         return {
             Columns.ACTION_DIST_INPUTS: logits
         }
@@ -86,20 +89,31 @@ class TinyAtariCNN(TorchRLModule):
 
     @override(TorchRLModule)
     def _forward_train(self, batch, **kwargs):
+        # Compute the basic 1D feature tensor (inputs to policy- and value-heads).
         features, logits = self._compute_features_and_logits(batch)
         # Besides the action logits, we also have to return value predictions here
         # (to be used inside the loss function).
-        vf = self._values(features)
+        values = self._values(features).squeeze(-1)
         return {
             Columns.ACTION_DIST_INPUTS: logits,
-            Columns.VF_PREDS: vf.squeeze(-1),
+            Columns.VF_PREDS: values,
         }
 
     def _compute_features_and_logits(self, batch):
         obs = batch[Columns.OBS].permute(0, 3, 1, 2)
         features = self._base_cnn_stack(obs)
         logits = self._logits(features)
-        return torch.squeeze(features, dim=[-1, -2]), torch.squeeze(logits, dim=[-1, -2])
+        return (
+            torch.squeeze(features, dim=[-1, -2]),
+            torch.squeeze(logits, dim=[-1, -2]),
+        )
+
+    def _compute_values(self, batch, device):
+        obs = convert_to_torch_tensor(batch[Columns.OBS], device=device)
+        features = self._base_cnn_stack(obs.permute(0, 3, 1, 2))
+        logits = self._logits(features)
+        features = torch.squeeze(features, dim=[-1, -2])
+        return self._values(features).squeeze(-1)
 
 
 if __name__ == "__main__":
