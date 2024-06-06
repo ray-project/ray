@@ -13,7 +13,7 @@ import {
 } from "@mui/material";
 import Autocomplete from "@mui/material/Autocomplete";
 import Pagination from "@mui/material/Pagination";
-import { styled } from "@mui/material/styles"
+import { styled } from "@mui/material/styles";
 import React from "react";
 import { Outlet } from "react-router-dom";
 import { sliceToPage } from "../../common/util";
@@ -25,12 +25,12 @@ import { MainNavPageInfo } from "../layout/mainNavContext";
 import { useJobList } from "./hook/useJobList";
 import { JobRow } from "./JobRow";
 
-const RootDiv = styled("div")(({theme}) => ({
+const RootDiv = styled("div")(({ theme }) => ({
   padding: theme.spacing(2),
   width: "100%",
 }));
 
-const StyledHelpInfo = styled(HelpInfo)(({theme}) => ({
+const StyledHelpInfo = styled(HelpInfo)(({ theme }) => ({
   marginLeft: theme.spacing(1),
 }));
 
@@ -147,11 +147,7 @@ const JobList = () => {
                       alignItems="center"
                     >
                       {label}
-                      {helpInfo && (
-                        <StyledHelpInfo>
-                          {helpInfo}
-                        </StyledHelpInfo>
-                      )}
+                      {helpInfo && <StyledHelpInfo>{helpInfo}</StyledHelpInfo>}
                     </Box>
                   </TableCell>
                 ))}

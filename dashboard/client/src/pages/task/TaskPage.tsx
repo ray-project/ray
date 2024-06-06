@@ -24,7 +24,7 @@ import { Task } from "../../type/task";
 import { MainNavPageInfo } from "../layout/mainNavContext";
 import { useStateApiTask } from "../state/hook/useStateApi";
 
-const RootDiv = styled("div")(({theme}) => ({
+const RootDiv = styled("div")(({ theme }) => ({
   padding: theme.spacing(2),
   backgroundColor: "white",
 }));

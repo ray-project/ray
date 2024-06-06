@@ -1,4 +1,4 @@
-import { styled } from "@mui/material/styles"
+import { styled } from "@mui/material/styles";
 import React from "react";
 import Loading from "../../components/Loading";
 import { MetadataSection } from "../../components/MetadataSection";
@@ -8,7 +8,7 @@ import { MainNavPageInfo } from "../layout/mainNavContext";
 
 import { useClusterDetail } from "./hook/useClusterDetail";
 
-const RootDiv = styled("div")(({theme}) => ({
+const RootDiv = styled("div")(({ theme }) => ({
   padding: theme.spacing(2),
 }));
 

@@ -16,7 +16,7 @@ import {
 } from "../../type/serve";
 import { useViewServeDeploymentMetricsButtonUrl } from "./ServeDeploymentMetricsSection";
 
-const StatusMessage = styled(CodeDialogButtonWithPreview)(({theme}) => ({ 
+const StatusMessage = styled(CodeDialogButtonWithPreview)(({ theme }) => ({
   maxWidth: 400,
   display: "inline-flex",
 }));
@@ -46,7 +46,10 @@ export const ServeDeploymentRow = ({
             {/* Empty column for expand/unexpand button in the row of the parent Serve application. */}
           </TableCell>
         )}
-        <TableCell align="center" sx={{fontWeight: showExpandColumn ? 500 : 400}}>
+        <TableCell
+          align="center"
+          sx={{ fontWeight: showExpandColumn ? 500 : 400 }}
+        >
           <Link
             component={RouterLink}
             to={`/serve/applications/${encodeURIComponent(
@@ -61,10 +64,7 @@ export const ServeDeploymentRow = ({
         </TableCell>
         <TableCell align="center">
           {message ? (
-            <StatusMessage
-              title="Message details"
-              code={message}
-            />
+            <StatusMessage title="Message details" code={message} />
           ) : (
             "-"
           )}

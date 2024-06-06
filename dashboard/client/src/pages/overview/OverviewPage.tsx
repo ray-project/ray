@@ -15,20 +15,20 @@ import { RecentJobsCard } from "./cards/RecentJobsCard";
 import { RecentServeCard } from "./cards/RecentServeCard";
 
 const overviewCardStyle = (theme: Theme) => ({
-    flex: "1 0 448px",
-    maxWidth: "100%",
-    [theme.breakpoints.up("md")]: {
-      // Calculate max width based on 1/3 of the total width minus padding between cards
-      maxWidth: `calc((100% - ${theme.spacing(3)} * 2) / 3)`,
-    },
-  });
+  flex: "1 0 448px",
+  maxWidth: "100%",
+  [theme.breakpoints.up("md")]: {
+    // Calculate max width based on 1/3 of the total width minus padding between cards
+    maxWidth: `calc((100% - ${theme.spacing(3)} * 2) / 3)`,
+  },
+});
 
-const RootDiv = styled("div")(({theme}) => ({
+const RootDiv = styled("div")(({ theme }) => ({
   padding: theme.spacing(3),
   backgroundColor: "white",
 }));
 
-const OverviewCardsContainer = styled("div")(({theme}) => ({
+const OverviewCardsContainer = styled("div")(({ theme }) => ({
   display: "flex",
   flexDirection: "row",
   flexWrap: "wrap",
@@ -39,27 +39,29 @@ const OverviewCardsContainer = styled("div")(({theme}) => ({
   },
 }));
 
-const StyledCollapsibleSection = styled(CollapsibleSection)(({theme}) => ({
+const StyledCollapsibleSection = styled(CollapsibleSection)(({ theme }) => ({
   marginTop: theme.spacing(4),
 }));
 
-const StyledClusterUtilizationCard = styled(ClusterUtilizationCard)(({theme}) => ({
+const StyledClusterUtilizationCard = styled(ClusterUtilizationCard)(
+  ({ theme }) => ({
+    ...overviewCardStyle(theme),
+  }),
+);
+
+const StyledRecentJobsCard = styled(RecentJobsCard)(({ theme }) => ({
   ...overviewCardStyle(theme),
 }));
 
-const StyledRecentJobsCard = styled(RecentJobsCard)(({theme}) => ({
+const StyledRecentServeCard = styled(RecentServeCard)(({ theme }) => ({
   ...overviewCardStyle(theme),
 }));
 
-const StyledRecentServeCard = styled(RecentServeCard)(({theme}) => ({
+const StyledNodeCountCard = styled(NodeCountCard)(({ theme }) => ({
   ...overviewCardStyle(theme),
 }));
 
-const StyledNodeCountCard = styled(NodeCountCard)(({theme}) => ({
-  ...overviewCardStyle(theme),
-}));
-
-const StyledOverviewCard = styled(OverviewCard)(({theme}) => ({
+const StyledOverviewCard = styled(OverviewCard)(({ theme }) => ({
   backgroundColor: "white",
   ...overviewCardStyle(theme),
   padding: theme.spacing(2, 3),
@@ -78,7 +80,10 @@ export const OverviewPage = () => {
         <StyledRecentServeCard />
       </OverviewCardsContainer>
 
-      <StyledCollapsibleSection title="Cluster status and autoscaler" startExpanded>
+      <StyledCollapsibleSection
+        title="Cluster status and autoscaler"
+        startExpanded
+      >
         {
           <OverviewCardsContainer>
             <StyledNodeCountCard />

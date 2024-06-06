@@ -1,7 +1,7 @@
 import { styled } from "@mui/material/styles";
 import React, { HTMLAttributes } from "react";
 
-const ButtonSpan = styled("span")(({theme}) => ({
+const ButtonSpan = styled("span")(({ theme }) => ({
   color: theme.palette.primary.main,
   "&:hover": {
     cursor: "pointer",

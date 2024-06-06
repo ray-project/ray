@@ -25,23 +25,23 @@ import { JobDriverLogs } from "./JobDriverLogs";
 import { JobProgressBar } from "./JobProgressBar";
 import { TaskTimeline } from "./TaskTimeline";
 
-const RootDiv = styled("div")(({theme}) => ({
+const RootDiv = styled("div")(({ theme }) => ({
   padding: theme.spacing(2),
   backgroundColor: "white",
 }));
 
-const StyledCollapsibleSection = styled(CollapsibleSection)(({theme}) => ({
+const StyledCollapsibleSection = styled(CollapsibleSection)(({ theme }) => ({
   marginBottom: theme.spacing(4),
 }));
 
-const AutoscalerSection = styled(Box)(({theme}) => ({
+const AutoscalerSection = styled(Box)(({ theme }) => ({
   flexWrap: "wrap",
   [theme.breakpoints.up("md")]: {
     flexWrap: "nowrap",
   },
 }));
 
-const StyledNodeCountCard = styled(NodeCountCard)(({theme}) => ({
+const StyledNodeCountCard = styled(NodeCountCard)(({ theme }) => ({
   flex: "1 0 500px",
 }));
 
@@ -122,19 +122,14 @@ export const JobDetailChartsPage = () => {
       <JobMetadataSection job={job} />
 
       {data?.datasets && data.datasets.length > 0 && (
-        <StyledCollapsibleSection
-          title="Ray Data Overview"
-        >
+        <StyledCollapsibleSection title="Ray Data Overview">
           <Section>
             <DataOverview datasets={data.datasets} />
           </Section>
         </StyledCollapsibleSection>
       )}
 
-      <StyledCollapsibleSection
-        title="Ray Core Overview"
-        startExpanded
-      >
+      <StyledCollapsibleSection title="Ray Core Overview" startExpanded>
         <Section>
           <JobProgressBar
             jobId={job.job_id ? job.job_id : undefined}
@@ -144,20 +139,14 @@ export const JobDetailChartsPage = () => {
         </Section>
       </StyledCollapsibleSection>
 
-      <StyledCollapsibleSection
-        title="Logs"
-        startExpanded
-      >
+      <StyledCollapsibleSection title="Logs" startExpanded>
         <Section noTopPadding>
           <JobDriverLogs job={job} />
         </Section>
       </StyledCollapsibleSection>
 
       {job.job_id && (
-        <StyledCollapsibleSection
-          title="Task Timeline (beta)"
-          startExpanded
-        >
+        <StyledCollapsibleSection title="Task Timeline (beta)" startExpanded>
           <Section>
             <TaskTimeline jobId={job.job_id} />
           </Section>
@@ -221,9 +210,7 @@ export const JobDetailChartsPage = () => {
             </Section>
           </StyledCollapsibleSection>
 
-          <StyledCollapsibleSection
-            title="Placement Group Table"
-          >
+          <StyledCollapsibleSection title="Placement Group Table">
             <Section>
               <PlacementGroupList jobId={job.job_id} />
             </Section>

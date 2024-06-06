@@ -20,12 +20,12 @@ import TaskList from "../state/task";
 import { ActorLogs } from "./ActorLogs";
 import { useActorDetail } from "./hook/useActorDetail";
 
-const ActorDetailPageRoot = styled("div")(({theme}) => ({
+const ActorDetailPageRoot = styled("div")(({ theme }) => ({
   padding: theme.spacing(2),
   backgroundColor: "white",
 }));
 
-const TasksSection = styled(CollapsibleSection)(({theme}) => ({
+const TasksSection = styled(CollapsibleSection)(({ theme }) => ({
   marginTop: theme.spacing(4),
 }));
 

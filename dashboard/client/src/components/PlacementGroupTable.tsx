@@ -164,10 +164,7 @@ const PlacementGroupTable = ({
               }) => (
                 <TableRow key={placement_group_id}>
                   <TableCell align="center">
-                    <IdColTooltip
-                      title={placement_group_id}
-                      arrow
-                    >
+                    <IdColTooltip title={placement_group_id} arrow>
                       <div>{placement_group_id}</div>
                     </IdColTooltip>
                   </TableCell>

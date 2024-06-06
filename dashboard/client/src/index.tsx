@@ -8,6 +8,5 @@ if (rootElement !== null) {
   const root = createRoot(rootElement);
   root.render(<App />);
 } else {
-  console.error('Could not find root element.');
+  console.error("Could not find root element.");
 }
-

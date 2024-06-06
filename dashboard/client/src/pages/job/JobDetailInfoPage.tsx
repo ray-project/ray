@@ -23,7 +23,7 @@ import { MainNavPageInfo } from "../layout/mainNavContext";
 
 import { useJobDetail } from "./hook/useJobDetail";
 
-const RootDiv = styled("div")(({theme}) => ({
+const RootDiv = styled("div")(({ theme }) => ({
   padding: theme.spacing(2),
   backgroundColor: "white",
 }));
@@ -68,7 +68,7 @@ export const JobDetailInfoPage = () => {
   );
 };
 
-const MetadataButton = styled(CodeDialogButtonWithPreview)(({theme}) => ({
+const MetadataButton = styled(CodeDialogButtonWithPreview)(({ theme }) => ({
   display: "inline-flex",
   maxWidth: "100%",
 }));
@@ -78,7 +78,6 @@ type JobMetadataSectionProps = {
 };
 
 export const JobMetadataSection = ({ job }: JobMetadataSectionProps) => {
-
   return (
     <MetadataSection
       metadataList={[

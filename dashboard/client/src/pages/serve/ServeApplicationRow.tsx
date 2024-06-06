@@ -18,17 +18,17 @@ export type ServeApplicationRowsProps = {
   startExpanded?: boolean;
 };
 
-const AppNameTableCell = styled(TableCell)(({theme}) => ({ 
+const AppNameTableCell = styled(TableCell)(({ theme }) => ({
   fontWeight: 500,
 }));
 
-const SRiArrowRightSLine = styled(RiArrowRightSLine)(({theme}) => ({ 
+const SRiArrowRightSLine = styled(RiArrowRightSLine)(({ theme }) => ({
   color: theme.palette.text.secondary,
   fontSize: "1.5em",
   verticalAlign: "middle",
 }));
 
-const SRiArrowDownSLine = styled(RiArrowDownSLine)(({theme}) => ({ 
+const SRiArrowDownSLine = styled(RiArrowDownSLine)(({ theme }) => ({
   color: theme.palette.text.secondary,
   fontSize: "1.5em",
   verticalAlign: "middle",
@@ -62,11 +62,7 @@ export const ServeApplicationRows = ({
       <TableRow>
         <TableCell>
           <IconButton size="small" onClick={onExpandButtonClick}>
-            {!isExpanded ? (
-              <SRiArrowRightSLine />
-            ) : (
-              <SRiArrowDownSLine />
-            )}
+            {!isExpanded ? <SRiArrowRightSLine /> : <SRiArrowDownSLine />}
           </IconButton>
         </TableCell>
         <AppNameTableCell align="center">

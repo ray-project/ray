@@ -64,16 +64,24 @@ export const useMainNavState = (): MainNavContextType => {
     ]);
   }, []);
 
-  const updatePage = useCallback((title: string, id: string, path: string|undefined, pageTitle: string|undefined) => {
-    setPageHierarchy((hierarchy) => {
-      const pageIndex = hierarchy.findIndex((page) => page.id === id);
-      return [
-        ...hierarchy.slice(0, pageIndex),
-        { title, pageTitle, id, path },
-        ...hierarchy.slice(pageIndex + 1),
-      ];
-    });
-  }, []);
+  const updatePage = useCallback(
+    (
+      title: string,
+      id: string,
+      path: string | undefined,
+      pageTitle: string | undefined,
+    ) => {
+      setPageHierarchy((hierarchy) => {
+        const pageIndex = hierarchy.findIndex((page) => page.id === id);
+        return [
+          ...hierarchy.slice(0, pageIndex),
+          { title, pageTitle, id, path },
+          ...hierarchy.slice(pageIndex + 1),
+        ];
+      });
+    },
+    [],
+  );
 
   const removePage = useCallback((pageId: string) => {
     setPageHierarchy((hierarchy) => {

@@ -15,7 +15,7 @@ import {
   Typography,
 } from "@mui/material";
 import Pagination from "@mui/material/Pagination";
-import { styled } from "@mui/material/styles"
+import { styled } from "@mui/material/styles";
 import React from "react";
 import { Outlet, Link as RouterLink } from "react-router-dom";
 import { sliceToPage } from "../../common/util";
@@ -32,13 +32,13 @@ import { MainNavPageInfo } from "../layout/mainNavContext";
 import { useNodeList } from "./hook/useNodeList";
 import { NodeRows } from "./NodeRow";
 
-const RootDiv = styled("div")(({theme}) => ({
+const RootDiv = styled("div")(({ theme }) => ({
   padding: theme.spacing(2),
   width: "100%",
   position: "relative",
 }));
 
-const StyledHelpInfo = styled(HelpInfo)(({theme}) => ({
+const StyledHelpInfo = styled(HelpInfo)(({ theme }) => ({
   marginLeft: theme.spacing(1),
 }));
 
@@ -366,9 +366,7 @@ const Nodes = () => {
                       >
                         {label}
                         {helpInfo && (
-                          <StyledHelpInfo>
-                            {helpInfo}
-                          </StyledHelpInfo>
+                          <StyledHelpInfo>{helpInfo}</StyledHelpInfo>
                         )}
                       </Box>
                     </TableCell>

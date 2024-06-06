@@ -10,7 +10,6 @@ type TaskTimelineProps = {
 };
 
 export const TaskTimeline = ({ jobId }: TaskTimelineProps) => {
-
   return (
     <div>
       {/* TODO(aguo): Add link to external documentation about Timeline view. */}
@@ -51,6 +50,8 @@ const TimelineDownloadButton = ({
   );
 };
 
-const StyledTimelineDownloadButton = styled(TimelineDownloadButton)(({theme}) => ({
-  marginTop: theme.spacing(2),
-}));
+const StyledTimelineDownloadButton = styled(TimelineDownloadButton)(
+  ({ theme }) => ({
+    marginTop: theme.spacing(2),
+  }),
+);

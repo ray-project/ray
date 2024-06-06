@@ -10,14 +10,14 @@ type ServeStatusIconProps = {
   small: boolean;
 } & ClassNameProps;
 
-const ServeSeccessElement = styled(RiRecordCircleFill)(({theme}) => ({
+const ServeSeccessElement = styled(RiRecordCircleFill)(({ theme }) => ({
   width: 20,
   height: 20,
   marginRight: 8,
   color: theme.palette.success.main,
 }));
 
-const ServeErrorElement = styled(RiCloseCircleFill)(({theme}) => ({
+const ServeErrorElement = styled(RiCloseCircleFill)(({ theme }) => ({
   width: 20,
   height: 20,
   marginRight: 8,

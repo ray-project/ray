@@ -1,9 +1,9 @@
 import { Box, BoxProps, Paper, Typography } from "@mui/material";
-import { styled } from "@mui/material/styles"
+import { styled } from "@mui/material/styles";
 import React, { PropsWithChildren } from "react";
 import { ClassNameProps } from "./props";
 
-const ContentContainer = styled(Paper)(({theme}) => ({
+const ContentContainer = styled(Paper)(({ theme }) => ({
   padding: theme.spacing(2),
   height: "100%",
 }));
@@ -30,7 +30,7 @@ export const Section = ({
       )}
       <ContentContainer
         variant="outlined"
-        sx={[noTopPadding && {paddingTop: 0}]}
+        sx={[noTopPadding && { paddingTop: 0 }]}
       >
         {children}
       </ContentContainer>

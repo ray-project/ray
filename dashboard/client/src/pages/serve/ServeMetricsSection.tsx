@@ -15,7 +15,7 @@ import {
   TimeRangeOptions,
 } from "../metrics";
 
-const GrafanaEmbedsContainerDiv = styled("div")(({theme}) => ({
+const GrafanaEmbedsContainerDiv = styled("div")(({ theme }) => ({
   display: "flex",
   flexDirection: "row",
   flexWrap: "wrap",
@@ -23,22 +23,22 @@ const GrafanaEmbedsContainerDiv = styled("div")(({theme}) => ({
   marginTop: theme.spacing(2),
 }));
 
-const ChartPaper = styled(Paper)(({theme}) => ({
+const ChartPaper = styled(Paper)(({ theme }) => ({
   width: "100%",
-      height: 400,
-      overflow: "hidden",
-      [theme.breakpoints.up("md")]: {
-        // Calculate max width based on 1/3 of the total width minus padding between cards
-        width: `calc((100% - ${theme.spacing(3)} * 2) / 3)`,
-      },
+  height: 400,
+  overflow: "hidden",
+  [theme.breakpoints.up("md")]: {
+    // Calculate max width based on 1/3 of the total width minus padding between cards
+    width: `calc((100% - ${theme.spacing(3)} * 2) / 3)`,
+  },
 }));
 
-const GrafanaEmbedIFrame = styled("iframe")(({theme}) => ({
+const GrafanaEmbedIFrame = styled("iframe")(({ theme }) => ({
   width: "100%",
   height: "100%",
 }));
 
-const TopBarBox = styled(Box)(({theme}) => ({
+const TopBarBox = styled(Box)(({ theme }) => ({
   width: "100%",
   display: "flex",
   flexDirection: "row",
@@ -49,7 +49,7 @@ const TopBarBox = styled(Box)(({theme}) => ({
   height: 36,
 }));
 
-const TimeRangeTextField = styled(TextField)(({theme}) => ({
+const TimeRangeTextField = styled(TextField)(({ theme }) => ({
   marginLeft: theme.spacing(2),
 }));
 
@@ -199,11 +199,7 @@ export const ServeMetricsSection = ({
               `/d-solo/${grafanaServeDashboardUid}?${pathParams}` +
               `${refreshParams}${timeRangeParams}&var-datasource=${dashboardDatasource}`;
             return (
-              <ChartPaper
-                key={pathParams}
-                variant="outlined"
-                elevation={0}
-              >
+              <ChartPaper key={pathParams} variant="outlined" elevation={0}>
                 <GrafanaEmbedIFrame
                   key={title}
                   title={title}

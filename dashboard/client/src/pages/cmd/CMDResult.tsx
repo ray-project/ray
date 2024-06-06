@@ -6,12 +6,12 @@ import LogVirtualView from "../../components/LogView/LogVirtualView";
 import TitleCard from "../../components/TitleCard";
 import { getJmap, getJstack, getJstat } from "../../service/util";
 
-const RootDiv = styled("div")(({theme}) => ({
+const RootDiv = styled("div")(({ theme }) => ({
   padding: theme.spacing(4),
   width: "100%",
 }));
 
-const PageMetaBox = styled(Box)(({theme}) => ({
+const PageMetaBox = styled(Box)(({ theme }) => ({
   padding: theme.spacing(2),
   marginTop: theme.spacing(2),
 }));

@@ -1,5 +1,5 @@
 import { Box, IconButton, Tab, Tabs, Typography } from "@mui/material";
-import { styled } from "@mui/material/styles"
+import { styled } from "@mui/material/styles";
 import React, { useEffect, useState } from "react";
 import { RiExternalLinkLine, RiSortAsc, RiSortDesc } from "react-icons/ri";
 import { Link } from "react-router-dom";
@@ -9,7 +9,7 @@ import { LogViewer } from "../pages/log/LogViewer";
 import { HideableBlock } from "./CollapsibleSection";
 import { ClassNameProps } from "./props";
 
-const StyledTabs = styled(Tabs)(({theme}) => ({
+const StyledTabs = styled(Tabs)(({ theme }) => ({
   borderBottom: `1px solid ${theme.palette.divider}`,
 }));
 
@@ -37,7 +37,6 @@ export const MultiTabLogViewer = ({
   contextKey,
   className,
 }: MultiTabLogViewerProps) => {
-
   // DO NOT use `cachedTab` or `setCachedTab` when `contextKey` is undefined!
   const [cachedTab, setCachedTab] = useLocalStorage(
     `MultiTabLogViewer-tabMemory-${contextKey}`,

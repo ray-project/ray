@@ -10,7 +10,7 @@ import {
   TextField,
   Tooltip,
 } from "@mui/material";
-import { styled } from "@mui/material/styles"
+import { styled } from "@mui/material/styles";
 import React, { useContext, useEffect, useState } from "react";
 import { BiRefresh, BiTime } from "react-icons/bi";
 import { RiExternalLinkLine } from "react-icons/ri";
@@ -22,11 +22,11 @@ import { HelpInfo } from "../../components/Tooltip";
 import { MainNavPageInfo } from "../layout/mainNavContext";
 import { MAIN_NAV_HEIGHT } from "../layout/MainNavLayout";
 
-const MetricsRootDiv = styled("div")(({theme}) => ({
+const MetricsRootDiv = styled("div")(({ theme }) => ({
   margin: theme.spacing(1),
 }));
 
-const TopBarPaper = styled(Paper)(({theme}) => ({
+const TopBarPaper = styled(Paper)(({ theme }) => ({
   position: "sticky",
   top: MAIN_NAV_HEIGHT,
   width: "100%",
@@ -40,7 +40,7 @@ const TopBarPaper = styled(Paper)(({theme}) => ({
   height: 36,
 }));
 
-const TimeRangeTextField = styled(TextField)(({theme}) => ({
+const TimeRangeTextField = styled(TextField)(({ theme }) => ({
   marginLeft: theme.spacing(2),
 }));
 
@@ -554,11 +554,11 @@ export const Metrics = () => {
   );
 };
 
-const MetricsCollapsibleSection = styled(CollapsibleSection)(({theme}) => ({
+const MetricsCollapsibleSection = styled(CollapsibleSection)(({ theme }) => ({
   marginTop: theme.spacing(3),
 }));
 
-const GrafanaEmbedsContainerDiv = styled("div")(({theme}) => ({
+const GrafanaEmbedsContainerDiv = styled("div")(({ theme }) => ({
   display: "flex",
   flexDirection: "row",
   flexWrap: "wrap",
@@ -566,17 +566,17 @@ const GrafanaEmbedsContainerDiv = styled("div")(({theme}) => ({
   marginTop: theme.spacing(2),
 }));
 
-const ChartPaper = styled(Paper)(({theme}) => ({
+const ChartPaper = styled(Paper)(({ theme }) => ({
   width: "100%",
-      height: 400,
-      overflow: "hidden",
-      [theme.breakpoints.up("md")]: {
-        // Calculate max width based on 1/3 of the total width minus padding between cards
-        width: `calc((100% - ${theme.spacing(3)} * 2) / 3)`,
-      },
+  height: 400,
+  overflow: "hidden",
+  [theme.breakpoints.up("md")]: {
+    // Calculate max width based on 1/3 of the total width minus padding between cards
+    width: `calc((100% - ${theme.spacing(3)} * 2) / 3)`,
+  },
 }));
 
-const GrafanaEmbedIFrame = styled("iframe")(({theme}) => ({
+const GrafanaEmbedIFrame = styled("iframe")(({ theme }) => ({
   width: "100%",
   height: "100%",
 }));
@@ -611,11 +611,7 @@ const MetricsSection = ({
             `/d-solo/${dashboardUid}?${pathParams}` +
             `&${refreshParams}${timeRangeParams}&var-SessionName=${sessionName}&var-datasource=${dashboardDatasource}`;
           return (
-            <ChartPaper
-              key={pathParams}
-              variant="outlined"
-              elevation={0}
-            >
+            <ChartPaper key={pathParams} variant="outlined" elevation={0}>
               <GrafanaEmbedIFrame
                 key={title}
                 title={title}
@@ -630,7 +626,7 @@ const MetricsSection = ({
   );
 };
 
-const HeadingSpan = styled("span")(({theme}) => ({
+const HeadingSpan = styled("span")(({ theme }) => ({
   fontWeight: 500,
 }));
 
@@ -664,6 +660,8 @@ export const GrafanaNotRunningAlert = ({
   ) : null;
 };
 
-const StyledGrafanaNotRunningAlert = styled(GrafanaNotRunningAlert)(({theme}) => ({
-  marginTop: 30,
-}));
+const StyledGrafanaNotRunningAlert = styled(GrafanaNotRunningAlert)(
+  ({ theme }) => ({
+    marginTop: 30,
+  }),
+);

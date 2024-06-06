@@ -6,7 +6,7 @@ import ActorList from "../actor/ActorList";
 import { MainNavPageInfo } from "../layout/mainNavContext";
 import { useJobDetail } from "./hook/useJobDetail";
 
-const JobDetailActorsPageRoot = styled("div")(({theme}) => ({
+const JobDetailActorsPageRoot = styled("div")(({ theme }) => ({
   padding: theme.spacing(2),
   backgroundColor: "white",
 }));

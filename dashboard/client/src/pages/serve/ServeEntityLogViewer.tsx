@@ -15,7 +15,7 @@ import {
   LOG_CONTEXT_KEY_SERVE_PROXY,
 } from "./ServeSystemActorDetailPage";
 
-const CaptionTextTypography = styled(Typography)(({theme}) => ({
+const CaptionTextTypography = styled(Typography)(({ theme }) => ({
   color: theme.palette.grey[600],
 }));
 
@@ -34,7 +34,6 @@ export const ServeEntityLogViewer = ({
   proxies,
   deployments,
 }: ServeEntityLogsProps) => {
-
   const [params, setParams] = useSearchParams();
 
   const showEntityGroups = controller !== undefined || proxies !== undefined;

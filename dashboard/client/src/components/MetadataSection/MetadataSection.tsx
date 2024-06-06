@@ -1,5 +1,5 @@
 import { Box, IconButton, Link, Tooltip, Typography } from "@mui/material";
-import { styled } from "@mui/material/styles"
+import { styled } from "@mui/material/styles";
 import copy from "copy-to-clipboard";
 import React, { useState } from "react";
 import { RiFileCopyLine } from "react-icons/ri";
@@ -45,41 +45,41 @@ export type Metadata = {
   readonly isAvailable?: boolean;
 };
 
-const RootBox = styled(Box)(({theme}) => ({
+const RootBox = styled(Box)(({ theme }) => ({
   display: "grid",
   gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
   rowGap: theme.spacing(1),
   columnGap: theme.spacing(4),
 }));
 
-const LabelTypography = styled(Typography)(({theme}) => ({
+const LabelTypography = styled(Typography)(({ theme }) => ({
   color: theme.palette.text.secondary,
 }));
 
-const LabelTooltip = styled(HelpInfo)(({theme}) => ({
+const LabelTooltip = styled(HelpInfo)(({ theme }) => ({
   marginLeft: theme.spacing(0.5),
 }));
 
-const ContentContainerDiv = styled("div")(({theme}) => ({
+const ContentContainerDiv = styled("div")(({ theme }) => ({
   display: "flex",
   alignItems: "center",
 }));
 
-const ContentTypography = styled(Typography)(({theme}) => ({
+const ContentTypography = styled(Typography)(({ theme }) => ({
   display: "block",
   textOverflow: "ellipsis",
   overflow: "hidden",
   whiteSpace: "nowrap",
 }));
 
-const ContentLink = styled(Link)(({theme}) => ({
+const ContentLink = styled(Link)(({ theme }) => ({
   display: "block",
   textOverflow: "ellipsis",
   overflow: "hidden",
   whiteSpace: "nowrap",
 })) as typeof Link;
 
-const StyledIconButton = styled(IconButton)(({theme}) => ({
+const StyledIconButton = styled(IconButton)(({ theme }) => ({
   color: "black",
   marginLeft: theme.spacing(0.5),
 }));
@@ -171,14 +171,8 @@ const MetadataList: React.FC<{
       {filteredMetadataList.map(({ label, labelTooltip, content }, idx) => (
         <Box key={idx} flex={1} paddingTop={0.5} paddingBottom={0.5}>
           <Box display="flex" alignItems="center" marginBottom={0.5}>
-            <LabelTypography variant="body2">
-              {label}
-            </LabelTypography>
-            {labelTooltip && (
-              <LabelTooltip>
-                {labelTooltip}
-              </LabelTooltip>
-            )}
+            <LabelTypography variant="body2">{label}</LabelTypography>
+            {labelTooltip && <LabelTooltip>{labelTooltip}</LabelTooltip>}
           </Box>
           <MetadataContentField content={content} label={label} />
         </Box>

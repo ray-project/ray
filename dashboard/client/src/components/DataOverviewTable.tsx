@@ -12,7 +12,7 @@ import {
 } from "@mui/material";
 import Autocomplete from "@mui/material/Autocomplete";
 import Pagination from "@mui/material/Pagination";
-import { styled } from "@mui/material/styles"
+import { styled } from "@mui/material/styles";
 import React, { useState } from "react";
 import { RiArrowDownSLine, RiArrowRightSLine } from "react-icons/ri";
 import { formatDateFromTimeMs } from "../common/formatUtils";
@@ -122,11 +122,7 @@ const DataOverviewTable = ({
                     alignItems="center"
                   >
                     {label}
-                    {helpInfo && (
-                      <StyledHelpInfo>
-                        {helpInfo}
-                      </StyledHelpInfo>
-                    )}
+                    {helpInfo && <StyledHelpInfo>{helpInfo}</StyledHelpInfo>}
                   </Box>
                 </TableCell>
               ))}
@@ -154,12 +150,12 @@ const DataOverviewTable = ({
   );
 };
 
-const SRiArrowDownSLine = styled(RiArrowDownSLine)(({theme}) => ({
+const SRiArrowDownSLine = styled(RiArrowDownSLine)(({ theme }) => ({
   width: 16,
   height: 16,
 }));
 
-const SRiArrowRightSLine = styled(RiArrowRightSLine)(({theme}) => ({
+const SRiArrowRightSLine = styled(RiArrowRightSLine)(({ theme }) => ({
   width: 16,
   height: 16,
 }));

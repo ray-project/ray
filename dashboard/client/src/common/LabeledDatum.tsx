@@ -1,5 +1,5 @@
 import { Box, Grid, Tooltip } from "@mui/material";
-import { styled } from "@mui/material/styles"
+import { styled } from "@mui/material/styles";
 import React, { ReactChild } from "react";
 
 type LabeledDatumProps = {
@@ -8,7 +8,7 @@ type LabeledDatumProps = {
   tooltip?: string;
 };
 
-const LabeledDatumBox = styled(Box)(({theme}) => ({
+const LabeledDatumBox = styled(Box)(({ theme }) => ({
   textDecorationLine: "underline",
   textDecorationColor: "#a6c3e3",
   textDecorationThickness: "1px",

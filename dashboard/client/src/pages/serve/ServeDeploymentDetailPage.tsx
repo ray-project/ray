@@ -29,15 +29,15 @@ import { useServeDeploymentDetails } from "./hook/useServeApplications";
 import { ServeReplicaRow } from "./ServeDeploymentRow";
 import { ServeEntityLogViewer } from "./ServeEntityLogViewer";
 
-const RootDiv = styled("div")(({theme}) => ({ 
+const RootDiv = styled("div")(({ theme }) => ({
   padding: theme.spacing(3),
 }));
 
-const StyledHelpInfo = styled(HelpInfo)(({theme}) => ({ 
+const StyledHelpInfo = styled(HelpInfo)(({ theme }) => ({
   marginTop: theme.spacing(2),
 }));
 
-const LogCollapsibleSection = styled(CollapsibleSection)(({theme}) => ({ 
+const LogCollapsibleSection = styled(CollapsibleSection)(({ theme }) => ({
   marginTop: theme.spacing(4),
 }));
 
@@ -211,11 +211,7 @@ export const ServeDeploymentDetailPage = () => {
                       alignItems="center"
                     >
                       {label}
-                      {helpInfo && (
-                        <StyledHelpInfo>
-                          {helpInfo}
-                        </StyledHelpInfo>
-                      )}
+                      {helpInfo && <StyledHelpInfo>{helpInfo}</StyledHelpInfo>}
                     </Box>
                   </TableCell>
                 ))}
@@ -233,10 +229,7 @@ export const ServeDeploymentDetailPage = () => {
           </Table>
         </TableContainer>
       </CollapsibleSection>
-      <LogCollapsibleSection
-        title="Logs"
-        startExpanded
-      >
+      <LogCollapsibleSection title="Logs" startExpanded>
         <ServeEntityLogViewer deployments={[deployment]} />
       </LogCollapsibleSection>
     </RootDiv>

@@ -9,11 +9,11 @@ import {
 import { useJobProgress, useJobProgressByLineage } from "./hook/useJobProgress";
 import { TaskProgressBar } from "./TaskProgressBar";
 
-const StyledAdvancedProgressBar = styled(AdvancedProgressBar)(({theme}) => ({
+const StyledAdvancedProgressBar = styled(AdvancedProgressBar)(({ theme }) => ({
   marginTop: theme.spacing(0.5),
 }));
 
-const HideFinishedCheckbox = styled(FormControlLabel)(({theme}) => ({
+const HideFinishedCheckbox = styled(FormControlLabel)(({ theme }) => ({
   marginRight: 0,
 }));
 
@@ -27,7 +27,6 @@ export const JobProgressBar = ({
   job,
   ...advancedProgressBarProps
 }: JobProgressBarProps) => {
-
   // Controls the first time we fetch the advanced progress bar data
   const [advancedProgressBarRendered, setAdvancedProgressBarRendered] =
     useState(false);

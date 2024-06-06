@@ -5,26 +5,28 @@ import { GlobalContext } from "../../../App";
 import { GrafanaNotRunningAlert } from "../../metrics";
 import { LinkWithArrow, OverviewCard } from "./OverviewCard";
 
-const RootOverviewCard = styled(OverviewCard)(({theme}) => ({ 
+const RootOverviewCard = styled(OverviewCard)(({ theme }) => ({
   display: "flex",
   flexDirection: "column",
   flexWrap: "nowrap",
 }));
 
-const NoGraphDiv = styled("div")(({theme}) => ({ 
+const NoGraphDiv = styled("div")(({ theme }) => ({
   flex: 1,
   padding: theme.spacing(2, 3),
 }));
 
-const GraphIFrame = styled("iframe")(({theme}) => ({ 
+const GraphIFrame = styled("iframe")(({ theme }) => ({
   flex: 1,
 }));
 
-const StyledGrafanaNotRunningAlert = styled(GrafanaNotRunningAlert)(({theme}) => ({ 
-  marginTop: theme.spacing(2),
-}));
+const StyledGrafanaNotRunningAlert = styled(GrafanaNotRunningAlert)(
+  ({ theme }) => ({
+    marginTop: theme.spacing(2),
+  }),
+);
 
-const LinksDiv = styled("div")(({theme}) => ({ 
+const LinksDiv = styled("div")(({ theme }) => ({
   display: "flex",
   flexDirection: "row",
   flexWrap: "nowrap",

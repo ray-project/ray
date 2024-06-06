@@ -5,7 +5,7 @@ import { ServeStatusIcon } from "../../../common/ServeStatus";
 import { ListItemCard } from "../../../components/ListItemCard";
 import { useServeDeployments } from "../../serve/hook/useServeApplications";
 
-const StyledServeStatusIcon = styled(ServeStatusIcon)(({theme}) => ({ 
+const StyledServeStatusIcon = styled(ServeStatusIcon)(({ theme }) => ({
   marginRight: theme.spacing(1),
 }));
 
@@ -36,9 +36,7 @@ export const RecentServeCard = ({ className }: RecentServeCardProps) => {
             )}/${encodeURIComponent(deployment.name)}`
           : undefined,
       className: className,
-      icon: (
-        <StyledServeStatusIcon deployment={deployment} small />
-      ),
+      icon: <StyledServeStatusIcon deployment={deployment} small />,
     };
   });
 

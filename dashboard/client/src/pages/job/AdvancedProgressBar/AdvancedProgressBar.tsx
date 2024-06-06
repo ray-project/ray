@@ -44,30 +44,30 @@ export const AdvancedProgressBar = ({
   );
 };
 
-const NameContainerTableCell = styled(TableCell)(({theme}) => ({
+const NameContainerTableCell = styled(TableCell)(({ theme }) => ({
   paddingLeft: 0,
   whiteSpace: "nowrap",
   display: "flex",
   alignItems: "center",
 }));
 
-const SpacerSpan = styled("span")(({theme}) => ({
+const SpacerSpan = styled("span")(({ theme }) => ({
   width: 4,
 }));
 
-const ProgressBarContainerTableCell = styled(TableCell)(({theme}) => ({
+const ProgressBarContainerTableCell = styled(TableCell)(({ theme }) => ({
   width: "100%",
   paddingRight: 0,
 }));
 
-const StyledRiSubtractLine = styled(RiSubtractLine)(({theme}) => ({
+const StyledRiSubtractLine = styled(RiSubtractLine)(({ theme }) => ({
   width: 16,
   height: 16,
   verticalAlign: "top",
   marginRight: theme.spacing(0.5),
 }));
 
-const StyledButton = styled("button")(({theme}) => ({
+const StyledButton = styled("button")(({ theme }) => ({
   border: "none",
   cursor: "pointer",
   color: "#036DCF",
@@ -75,7 +75,7 @@ const StyledButton = styled("button")(({theme}) => ({
   background: "none",
 }));
 
-const StyledLink = styled(Link)(({theme}) => ({
+const StyledLink = styled(Link)(({ theme }) => ({
   border: "none",
   cursor: "pointer",
   color: "#036DCF",
@@ -112,7 +112,6 @@ export const AdvancedProgressBarSegment = ({
   onParentCollapseButtonPressed,
   onClickLink,
 }: AdvancedProgressBarSegmentProps) => {
-
   const [expanded, setExpanded] = useState(startExpanded);
   const isGroup = type === "GROUP";
 
@@ -124,7 +123,7 @@ export const AdvancedProgressBarSegment = ({
     ? RiArrowDownSLine
     : RiArrowRightSLine;
 
-  const StyledIconComponent = styled(IconComponent)(({theme}) => ({
+  const StyledIconComponent = styled(IconComponent)(({ theme }) => ({
     width: 16,
     height: 16,
     verticalAlign: "top",
@@ -177,9 +176,7 @@ export const AdvancedProgressBarSegment = ({
                   {name}
                 </StyledButton>
               ) : (
-                <StyledLink to={`tasks/${link.id}`}>
-                  {name}
-                </StyledLink>
+                <StyledLink to={`tasks/${link.id}`}>{name}</StyledLink>
               )
             ) : (
               name

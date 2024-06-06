@@ -27,34 +27,35 @@ import {
 } from "./ServeMetricsSection";
 import { ServeSystemPreview } from "./ServeSystemDetails";
 
-const RootDiv = styled("div")(({theme}) => ({
+const RootDiv = styled("div")(({ theme }) => ({
   padding: theme.spacing(3),
 }));
 
-const StyledTable = styled(Table)(({theme}) => ({
+const StyledTable = styled(Table)(({ theme }) => ({
   tableLayout: "fixed",
 }));
 
-const ServeInstanceWarningAlert = styled(Alert)(({theme}) => ({
+const ServeInstanceWarningAlert = styled(Alert)(({ theme }) => ({
   marginBottom: theme.spacing(2),
 }));
 
-const StyledHelpInfo = styled(HelpInfo)(({theme}) => ({
+const StyledHelpInfo = styled(HelpInfo)(({ theme }) => ({
   marginLeft: theme.spacing(1),
 }));
 
-const DeploymentsCollapsibleSection = styled(CollapsibleSection)(({theme}) => ({
+const DeploymentsCollapsibleSection = styled(CollapsibleSection)(
+  ({ theme }) => ({
+    marginTop: theme.spacing(4),
+  }),
+);
+
+const StyledCollapsibleSection = styled(CollapsibleSection)(({ theme }) => ({
   marginTop: theme.spacing(4),
 }));
 
-const StyledCollapsibleSection = styled(CollapsibleSection)(({theme}) => ({
+const StyledServeMetricsSection = styled(ServeMetricsSection)(({ theme }) => ({
   marginTop: theme.spacing(4),
 }));
-
-const StyledServeMetricsSection = styled(ServeMetricsSection)(({theme}) => ({
-  marginTop: theme.spacing(4),
-}));
-
 
 const columns: { label: string; helpInfo?: ReactElement; width?: string }[] = [
   { label: "" }, // Empty space for expand button
@@ -147,9 +148,7 @@ export const ServeDeploymentsListPage = () => {
                         >
                           {label}
                           {helpInfo && (
-                            <StyledHelpInfo>
-                              {helpInfo}
-                            </StyledHelpInfo>
+                            <StyledHelpInfo>{helpInfo}</StyledHelpInfo>
                           )}
                         </Box>
                       </TableCell>
@@ -168,10 +167,7 @@ export const ServeDeploymentsListPage = () => {
               </StyledTable>
             </TableContainer>
           </DeploymentsCollapsibleSection>
-          <StyledCollapsibleSection
-            title="Logs"
-            startExpanded
-          >
+          <StyledCollapsibleSection title="Logs" startExpanded>
             <ServeEntityLogViewer
               controller={serveDetails.controller_info}
               proxies={proxies}
@@ -180,9 +176,7 @@ export const ServeDeploymentsListPage = () => {
           </StyledCollapsibleSection>
         </React.Fragment>
       )}
-      <StyledServeMetricsSection
-        metricsConfig={APPS_METRICS_CONFIG}
-      />
+      <StyledServeMetricsSection metricsConfig={APPS_METRICS_CONFIG} />
     </RootDiv>
   );
 };

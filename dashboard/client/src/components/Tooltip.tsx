@@ -1,10 +1,10 @@
 import HelpOutlineIcon from "@mui/icons-material/HelpOutline";
 import { Tooltip } from "@mui/material";
-import { styled } from "@mui/material/styles"
+import { styled } from "@mui/material/styles";
 import React, { ReactNode } from "react";
 
-export const StyledTooltip = styled(Tooltip)(({theme}) => ({
-  tooltip:{
+export const StyledTooltip = styled(Tooltip)(({ theme }) => ({
+  tooltip: {
     backgroundColor: theme.palette.background.paper,
     border: "1px solid #dadde9",
     color: theme.palette.text.primary,
@@ -12,7 +12,7 @@ export const StyledTooltip = styled(Tooltip)(({theme}) => ({
   },
 }));
 
-const StyledHelpOutlineIcon = styled(HelpOutlineIcon)(({theme}) => ({
+const StyledHelpOutlineIcon = styled(HelpOutlineIcon)(({ theme }) => ({
   color: theme.palette.grey[500],
 }));
 

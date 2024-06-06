@@ -9,7 +9,7 @@ import {
   Typography,
 } from "@mui/material";
 import { grey } from "@mui/material/colors";
-import { styled } from "@mui/material/styles"
+import { styled } from "@mui/material/styles";
 import React, { useMemo, useState } from "react";
 import { RiDownload2Line } from "react-icons/ri";
 import { Outlet, Link as RouterLink, useSearchParams } from "react-router-dom";
@@ -21,7 +21,7 @@ import { getStateApiDownloadLogUrl, listStateApiLogs } from "../../service/log";
 import { getNodeList } from "../../service/node";
 import { MainNavPageInfo } from "../layout/mainNavContext";
 
-const RootDiv = styled("div")(({theme}) => ({
+const RootDiv = styled("div")(({ theme }) => ({
   padding: theme.spacing(2),
   width: "100%",
 }));
@@ -126,7 +126,7 @@ export const StateApiLogsNodesList = () => {
   );
 };
 
-const StyledIconButton = styled(IconButton)(({theme}) => ({
+const StyledIconButton = styled(IconButton)(({ theme }) => ({
   verticalAlign: "baseline",
   color: grey[700],
 })) as typeof IconButton;

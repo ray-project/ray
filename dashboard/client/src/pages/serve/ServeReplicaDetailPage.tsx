@@ -21,17 +21,19 @@ import { ServeReplicaMetricsSection } from "./ServeDeploymentMetricsSection";
 
 export const LOG_CONTEXT_KEY_SERVE_DEPLOYMENTS = "serve-entity-deployments";
 
-const RootDiv = styled("div")(({theme}) => ({
+const RootDiv = styled("div")(({ theme }) => ({
   padding: theme.spacing(3),
 }));
 
-const StyledCollapsibleSection = styled(CollapsibleSection)(({theme}) => ({
+const StyledCollapsibleSection = styled(CollapsibleSection)(({ theme }) => ({
   marginTop: theme.spacing(4),
 }));
 
-const StyledServeReplicaMetricsSection = styled(ServeReplicaMetricsSection)(({theme}) => ({
-  marginTop: theme.spacing(4),
-}));
+const StyledServeReplicaMetricsSection = styled(ServeReplicaMetricsSection)(
+  ({ theme }) => ({
+    marginTop: theme.spacing(4),
+  }),
+);
 
 export const ServeReplicaDetailPage = () => {
   const { applicationName, deploymentName, replicaId } = useParams();
@@ -141,10 +143,7 @@ export const ServeReplicaDetailPage = () => {
         deploymentName={deployment.name}
         replicaId={replica.replica_id}
       />
-      <StyledCollapsibleSection
-        title="Tasks History"
-        startExpanded
-      >
+      <StyledCollapsibleSection title="Tasks History" startExpanded>
         <TaskList actorId={replica.actor_id ? replica.actor_id : undefined} />
       </StyledCollapsibleSection>
     </RootDiv>

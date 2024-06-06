@@ -11,15 +11,15 @@ import {
 } from "./ServeMetricsSection";
 import { ServeSystemDetails } from "./ServeSystemDetails";
 
-const RootDiv = styled("div")(({theme}) => ({
+const RootDiv = styled("div")(({ theme }) => ({
   padding: theme.spacing(3),
 }));
 
-const ServeInstanceWarningAlert = styled(Alert)(({theme}) => ({
+const ServeInstanceWarningAlert = styled(Alert)(({ theme }) => ({
   marginBottom: theme.spacing(2),
 }));
 
-const StyledServeMetricsSection = styled(ServeMetricsSection)(({theme}) => ({
+const StyledServeMetricsSection = styled(ServeMetricsSection)(({ theme }) => ({
   marginTop: theme.spacing(4),
 }));
 

@@ -1,5 +1,5 @@
 import { Box } from "@mui/material";
-import { styled } from "@mui/material/styles"
+import { styled } from "@mui/material/styles";
 import React from "react";
 import { IconBaseProps } from "react-icons";
 import {
@@ -17,7 +17,7 @@ const iconSmall = {
   height: 16,
 };
 
-const JobRunningIconType = styled(RiLoader4Line)(({theme}) => ({
+const JobRunningIconType = styled(RiLoader4Line)(({ theme }) => ({
   width: 20,
   height: 20,
   animation: `spinner 2s linear infinite`,
@@ -44,25 +44,27 @@ export const JobRunningIcon = ({
   ...props
 }: JobRunningIconProps) => {
   return (
-    <JobRunningIconType className={className} sx={[small && iconSmall]}
+    <JobRunningIconType
+      className={className}
+      sx={[small && iconSmall]}
       {...props}
     />
   );
 };
 
-const JobSuccessIconElement = styled(RiCheckboxCircleFill)(({theme}) => ({
+const JobSuccessIconElement = styled(RiCheckboxCircleFill)(({ theme }) => ({
   width: 20,
   height: 20,
   color: theme.palette.success.main,
 }));
 
-const JobErrorIconElement = styled(RiCloseCircleFill)(({theme}) => ({
+const JobErrorIconElement = styled(RiCloseCircleFill)(({ theme }) => ({
   width: 20,
   height: 20,
   color: theme.palette.error.main,
 }));
 
-const JobStoppedIconElement = styled(RiStopCircleFill)(({theme}) => ({
+const JobStoppedIconElement = styled(RiStopCircleFill)(({ theme }) => ({
   width: 20,
   height: 20,
   color: "#757575",
@@ -80,11 +82,23 @@ export const JobStatusIcon = ({
 }: JobStatusIconProps) => {
   switch (job.status) {
     case JobStatus.SUCCEEDED:
-      return <JobSuccessIconElement className={className} sx={[small && iconSmall]} />;
+      return (
+        <JobSuccessIconElement
+          className={className}
+          sx={[small && iconSmall]}
+        />
+      );
     case JobStatus.FAILED:
-      return <JobErrorIconElement className={className} sx={[small && iconSmall]} />;
+      return (
+        <JobErrorIconElement className={className} sx={[small && iconSmall]} />
+      );
     case JobStatus.STOPPED:
-      return <JobStoppedIconElement className={className} sx={[small && iconSmall]} />;
+      return (
+        <JobStoppedIconElement
+          className={className}
+          sx={[small && iconSmall]}
+        />
+      );
     default:
       return <JobRunningIcon className={className} small={small} />;
   }

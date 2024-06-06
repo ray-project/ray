@@ -13,27 +13,27 @@ import { memoryConverter } from "../../util/converter";
 import { MainNavPageInfo } from "../layout/mainNavContext";
 import { useNodeDetail } from "./hook/useNodeDetail";
 
-const RootDiv = styled("div")(({theme}) => ({
+const RootDiv = styled("div")(({ theme }) => ({
   padding: theme.spacing(2),
 }));
 
-const PaperDiv = styled("div")(({theme}) => ({
-  padding: theme.spacing(2),
-  marginTop: theme.spacing(2),
-  marginBottom: theme.spacing(2),
-}));
-
-const PaperTableContainer = styled(TableContainer)(({theme}) => ({
+const PaperDiv = styled("div")(({ theme }) => ({
   padding: theme.spacing(2),
   marginTop: theme.spacing(2),
   marginBottom: theme.spacing(2),
 }));
 
-const LabelDiv = styled("div")(({theme}) => ({
+const PaperTableContainer = styled(TableContainer)(({ theme }) => ({
+  padding: theme.spacing(2),
+  marginTop: theme.spacing(2),
+  marginBottom: theme.spacing(2),
+}));
+
+const LabelDiv = styled("div")(({ theme }) => ({
   fontWeight: "bold",
 }));
 
-const StyledTabs = styled(Tabs)(({theme}) => ({
+const StyledTabs = styled(Tabs)(({ theme }) => ({
   marginBottom: theme.spacing(2),
 }));
 
@@ -96,8 +96,7 @@ const NodeDetailPage = () => {
           <PaperDiv>
             <Grid container spacing={2}>
               <Grid item xs>
-                <LabelDiv>Hostname</LabelDiv>{" "}
-                {nodeDetail.hostname}
+                <LabelDiv>Hostname</LabelDiv> {nodeDetail.hostname}
               </Grid>
               <Grid item xs>
                 <LabelDiv>IP</LabelDiv> {nodeDetail.ip}
@@ -107,8 +106,8 @@ const NodeDetailPage = () => {
               <Grid item xs>
                 {nodeDetail.cpus && (
                   <React.Fragment>
-                    <LabelDiv>CPU (Logic/Physic)</LabelDiv>{" "}
-                    {nodeDetail.cpus[0]}/ {nodeDetail.cpus[1]}
+                    <LabelDiv>CPU (Logic/Physic)</LabelDiv> {nodeDetail.cpus[0]}
+                    / {nodeDetail.cpus[1]}
                   </React.Fragment>
                 )}
               </Grid>
@@ -208,8 +207,7 @@ const NodeDetailPage = () => {
                   <LabelDiv>Pid</LabelDiv> {raylet?.pid}
                 </Grid>
                 <Grid item xs>
-                  <LabelDiv>Workers Num</LabelDiv>{" "}
-                  {raylet?.numWorkers}
+                  <LabelDiv>Workers Num</LabelDiv> {raylet?.numWorkers}
                 </Grid>
                 <Grid item xs>
                   <LabelDiv>Node Manager Port</LabelDiv>{" "}

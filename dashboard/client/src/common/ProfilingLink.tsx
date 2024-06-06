@@ -12,22 +12,22 @@ import {
   TextField,
   Typography,
 } from "@mui/material";
-import { styled } from "@mui/material/styles"
+import { styled } from "@mui/material/styles";
 import React, { PropsWithChildren, useState } from "react";
 import { HelpInfo } from "../components/Tooltip";
 import { ClassNameProps } from "./props";
 
-const ButtonLink = styled(Link)(({theme}) => ({
+const ButtonLink = styled(Link)(({ theme }) => ({
   cursor: "pointer",
 }));
 
-const DialogContentDiv = styled("div")(({theme}) => ({
+const DialogContentDiv = styled("div")(({ theme }) => ({
   padding: "12px",
   display: "flex",
   justifyContent: "flex-end",
 }));
 
-const SecondaryButton = styled(Button)(({theme}) => ({
+const SecondaryButton = styled(Button)(({ theme }) => ({
   textTransform: "capitalize",
   color: "#5F6469",
 }));
@@ -167,10 +167,7 @@ export const ProfilerButton = ({
 
   return (
     <div>
-      <ButtonLink
-        onClick={handleOpen}
-        aria-label="Memory Profiling"
-      >
+      <ButtonLink onClick={handleOpen} aria-label="Memory Profiling">
         Memory&nbsp;Profiling{type ? ` (${type})` : ""}
       </ButtonLink>
 
@@ -261,10 +258,7 @@ export const ProfilerButton = ({
           />
         </DialogContent>
         <DialogContentDiv>
-          <SecondaryButton
-            onClick={handleClose}
-            variant="text"
-          >
+          <SecondaryButton onClick={handleClose} variant="text">
             Cancel
           </SecondaryButton>
           <Button

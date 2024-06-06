@@ -1,7 +1,7 @@
 import { Box, Typography } from "@mui/material";
-import { styled } from "@mui/material/styles"
+import { styled } from "@mui/material/styles";
 import dayjs from "dayjs";
-import prolog from 'highlight.js/lib/languages/prolog'
+import prolog from "highlight.js/lib/languages/prolog";
 import { lowlight } from "lowlight";
 import React, { MutableRefObject, useCallback, useEffect, useRef, useState } from "react";
 import { FixedSizeList as List } from "react-window";
@@ -88,7 +88,7 @@ export type LogVirtualViewProps = {
   endTime?: string;
 };
 
-const WarningInfo = styled("p")(({theme}) => ({
+const WarningInfo = styled("p")(({ theme }) => ({
   color: theme.palette.error.main,
 }));
 

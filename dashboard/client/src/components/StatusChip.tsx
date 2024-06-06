@@ -99,7 +99,7 @@ const typeMap = {
   [key: string]: Color;
 };
 
-const StatusChipRoot = styled("span")(({theme}) => ({
+const StatusChipRoot = styled("span")(({ theme }) => ({
   padding: "2px 8px",
   border: "solid 1px",
   borderRadius: 4,
@@ -109,7 +109,7 @@ const StatusChipRoot = styled("span")(({theme}) => ({
 }));
 
 const StyledSpan = styled("span")();
-const AfterIconSpan = styled("span")(({theme}) => ({
+const AfterIconSpan = styled("span")(({ theme }) => ({
   marginLeft: 4,
 }));
 
@@ -145,9 +145,7 @@ export const StatusChip = ({ type, status, suffix, icon }: StatusChipProps) => {
   return (
     <StatusChipRoot style={style}>
       {icon}
-      <StatusSpan>
-        {status}
-      </StatusSpan>
+      <StatusSpan>{status}</StatusSpan>
       <Box sx={{ marginLeft: 0.5 }}>{suffix}</Box>
     </StatusChipRoot>
   );

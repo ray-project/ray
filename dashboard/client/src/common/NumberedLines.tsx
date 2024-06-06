@@ -1,8 +1,8 @@
-import { Table, TableBody, TableCell, TableRow, Theme } from "@mui/material";
+import { Table, TableBody, TableCell, TableRow } from "@mui/material";
 import { styled } from "@mui/material/styles";
 import React from "react";
 
-const BaseTableCell = styled(TableCell)(({theme}) => ({
+const BaseTableCell = styled(TableCell)(({ theme }) => ({
   borderWidth: 0,
   fontFamily: "SFMono-Regular,Consolas,Liberation Mono,Menlo,monospace",
   padding: 0,
@@ -11,7 +11,7 @@ const BaseTableCell = styled(TableCell)(({theme}) => ({
   },
 }));
 
-const LineNumberCell = styled(BaseTableCell)(({theme}) => ({
+const LineNumberCell = styled(BaseTableCell)(({ theme }) => ({
   color: theme.palette.text.secondary,
   paddingRight: theme.spacing(2),
   textAlign: "right",
@@ -24,7 +24,7 @@ const LineNumberCell = styled(BaseTableCell)(({theme}) => ({
   },
 }));
 
-const LineCell = styled(BaseTableCell)(({theme}) => ({
+const LineCell = styled(BaseTableCell)(({ theme }) => ({
   textAlign: "left",
   whiteSpace: "pre-wrap",
 }));
@@ -42,9 +42,7 @@ class NumberedLines extends React.Component<Props> {
           {lines.map((line, index) => (
             <TableRow key={index}>
               <LineNumberCell data-line-number={index + 1} />
-              <LineCell>
-                {line}
-              </LineCell>
+              <LineCell>{line}</LineCell>
             </TableRow>
           ))}
         </TableBody>

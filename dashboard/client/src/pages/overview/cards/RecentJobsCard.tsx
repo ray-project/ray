@@ -6,7 +6,7 @@ import { ListItemCard } from "../../../components/ListItemCard";
 import { UnifiedJob } from "../../../type/job";
 import { useJobList } from "../../job/hook/useJobList";
 
-const StyledJobStatusIcon = styled(JobStatusIcon)(({theme}) => ({ 
+const StyledJobStatusIcon = styled(JobStatusIcon)(({ theme }) => ({
   marginRight: theme.spacing(1),
 }));
 

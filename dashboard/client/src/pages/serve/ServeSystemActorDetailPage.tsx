@@ -25,7 +25,7 @@ import {
   useServeProxyDetails,
 } from "./hook/useServeApplications";
 
-const RootDiv = styled("div")(({theme}) => ({
+const RootDiv = styled("div")(({ theme }) => ({
   padding: theme.spacing(3),
 }));
 

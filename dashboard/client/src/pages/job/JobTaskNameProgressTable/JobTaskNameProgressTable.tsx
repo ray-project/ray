@@ -15,7 +15,7 @@ import { HelpInfo } from "../../../components/Tooltip";
 import { useJobProgressByTaskName } from "../hook/useJobProgress";
 import { MiniTaskProgressBar } from "../TaskProgressBar";
 
-const StyledHelpInfo = styled(HelpInfo)(({theme}) => ({
+const StyledHelpInfo = styled(HelpInfo)(({ theme }) => ({
   marginLeft: theme.spacing(1),
 }));
 
@@ -35,7 +35,6 @@ export const JobTaskNameProgressTable = ({
   jobId,
   className,
 }: JobTaskNameProgressTableProps) => {
-
   const { progress, page, setPage, total } = useJobProgressByTaskName(jobId);
 
   return (
@@ -54,9 +53,7 @@ export const JobTaskNameProgressTable = ({
               <TableCell align="center" key={label}>
                 <Box display="flex" justifyContent="center" alignItems="center">
                   {label}
-                  {helpInfo && (
-                    <StyledHelpInfo>{helpInfo}</StyledHelpInfo>
-                  )}
+                  {helpInfo && <StyledHelpInfo>{helpInfo}</StyledHelpInfo>}
                 </Box>
               </TableCell>
             ))}

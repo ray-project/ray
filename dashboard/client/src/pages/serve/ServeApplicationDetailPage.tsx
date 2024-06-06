@@ -28,11 +28,11 @@ import { MainNavPageInfo } from "../layout/mainNavContext";
 import { useServeApplicationDetails } from "./hook/useServeApplications";
 import { ServeDeploymentRow } from "./ServeDeploymentRow";
 
-const RootDiv = styled("div")(({theme}) => ({ 
+const RootDiv = styled("div")(({ theme }) => ({
   padding: theme.spacing(3),
 }));
 
-const StyledHelpInfo = styled(HelpInfo)(({theme}) => ({ 
+const StyledHelpInfo = styled(HelpInfo)(({ theme }) => ({
   marginLeft: theme.spacing(1),
 }));
 
@@ -220,11 +220,7 @@ export const ServeApplicationDetailPage = () => {
                       alignItems="center"
                     >
                       {label}
-                      {helpInfo && (
-                        <StyledHelpInfo>
-                          {helpInfo}
-                        </StyledHelpInfo>
-                      )}
+                      {helpInfo && <StyledHelpInfo>{helpInfo}</StyledHelpInfo>}
                     </Box>
                   </TableCell>
                 ))}

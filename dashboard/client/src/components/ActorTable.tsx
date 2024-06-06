@@ -524,11 +524,7 @@ const ActorTable = ({
                     alignItems="center"
                   >
                     {label}
-                    {helpInfo && (
-                      <StyledHelpInfo>
-                        {helpInfo}
-                      </StyledHelpInfo>
-                    )}
+                    {helpInfo && <StyledHelpInfo>{helpInfo}</StyledHelpInfo>}
                   </Box>
                 </TableCell>
               ))}
@@ -643,10 +639,7 @@ const ActorTable = ({
                   </TableCell>
                   <TableCell align="center">
                     {address?.rayletId ? (
-                      <IdColTooltip
-                        title={address?.rayletId}
-                        arrow
-                      >
+                      <IdColTooltip title={address?.rayletId} arrow>
                         <div>
                           <Link
                             component={RouterLink}

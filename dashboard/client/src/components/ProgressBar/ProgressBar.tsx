@@ -4,17 +4,17 @@ import React from "react";
 import { RiArrowDownSLine, RiArrowRightSLine } from "react-icons/ri";
 import { HelpInfo, StyledTooltip } from "../Tooltip";
 
-const RootDiv = styled("div")(({theme}) => ({
+const RootDiv = styled("div")(({ theme }) => ({
   display: "flex",
   flexDirection: "column",
 }));
 
-const LegendRootDiv = styled("div")(({theme}) => ({
+const LegendRootDiv = styled("div")(({ theme }) => ({
   display: "flex",
   flexDirection: "row",
 }));
 
-const LegendItemContainerDiv = styled("div")(({theme}) => ({
+const LegendItemContainerDiv = styled("div")(({ theme }) => ({
   display: "flex",
   flexDirection: "row",
   flexWrap: "nowrap",
@@ -27,36 +27,36 @@ const LegendItemContainerDiv = styled("div")(({theme}) => ({
   },
 }));
 
-const ColorLegendDiv = styled("div")(({theme}) => ({
+const ColorLegendDiv = styled("div")(({ theme }) => ({
   width: 16,
   height: 16,
   borderRadius: 4,
   marginRight: theme.spacing(1),
 }));
 
-const HintHelpInfo = styled(HelpInfo)(({theme}) => ({
+const HintHelpInfo = styled(HelpInfo)(({ theme }) => ({
   marginLeft: theme.spacing(0.5),
 }));
 
-const ProgressBarContainer = styled("div")(({theme}) => ({
+const ProgressBarContainer = styled("div")(({ theme }) => ({
   display: "flex",
   flexDirection: "row",
   alignItems: "center",
 }));
 
-const RiArrowDownSLine16 = styled(RiArrowDownSLine)(({theme}) => ({
+const RiArrowDownSLine16 = styled(RiArrowDownSLine)(({ theme }) => ({
   width: 16,
   height: 16,
   marginRight: theme.spacing(1),
 }));
 
-const RiArrowRightSLine16 = styled(RiArrowRightSLine)(({theme}) => ({
+const RiArrowRightSLine16 = styled(RiArrowRightSLine)(({ theme }) => ({
   width: 16,
   height: 16,
   marginRight: theme.spacing(1),
 }));
 
-const ProgressBarRoot = styled("div")(({theme}) => ({
+const ProgressBarRoot = styled("div")(({ theme }) => ({
   display: "flex",
   flexDirection: "row",
   flexWrap: "nowrap",
@@ -67,13 +67,13 @@ const ProgressBarRoot = styled("div")(({theme}) => ({
   overflow: "hidden",
 }));
 
-const SegmentSpan = styled("span")(({theme}) => ({
+const SegmentSpan = styled("span")(({ theme }) => ({
   "&:not(:last-child)": {
     marginRight: 1,
   },
 }));
 
-const ProgressTotal = styled("div")(({theme}) => ({
+const ProgressTotal = styled("div")(({ theme }) => ({
   flex: "1 0 40px",
   marginLeft: theme.spacing(1),
   textAlign: "end",
@@ -194,7 +194,7 @@ export const ProgressBar = ({
               </LegendItemContainerDiv>
               {filteredSegments.map(({ value, label, hint, color }) => (
                 <LegendItemContainerDiv key={label}>
-                  <ColorLegendDiv style={{ backgroundColor: color }}/>
+                  <ColorLegendDiv style={{ backgroundColor: color }} />
                   <Typography>
                     {label}: {value}
                   </Typography>
@@ -208,11 +208,7 @@ export const ProgressBar = ({
       )}
       <ProgressBarContainer onClick={onClick}>
         {expanded !== undefined &&
-          (expanded ? (
-            <RiArrowDownSLine16 />
-          ) : (
-            <RiArrowRightSLine16 />
-          ))}
+          (expanded ? <RiArrowDownSLine16 /> : <RiArrowRightSLine16 />)}
         <LegendTooltip
           showTooltip={showTooltip}
           total={finalTotal}
@@ -245,7 +241,7 @@ export const ProgressBar = ({
   );
 };
 
-const LegendTooltipItemContainer = styled("div")(({theme}) => ({
+const LegendTooltipItemContainer = styled("div")(({ theme }) => ({
   display: "flex",
   flexDirection: "row",
   flexWrap: "nowrap",
@@ -275,16 +271,12 @@ const LegendTooltip = ({
         title={
           <Box>
             <LegendTooltipItemContainer>
-              <ColorLegendDiv
-                style={{ backgroundColor: "black" }}
-              />
+              <ColorLegendDiv style={{ backgroundColor: "black" }} />
               <Typography>Total: {total}</Typography>
             </LegendTooltipItemContainer>
             {segments.map(({ value, label, color }) => (
               <LegendTooltipItemContainer key={label}>
-                <ColorLegendDiv
-                  style={{ backgroundColor: color }}
-                />
+                <ColorLegendDiv style={{ backgroundColor: color }} />
                 <Typography>
                   {label}: {value}
                 </Typography>

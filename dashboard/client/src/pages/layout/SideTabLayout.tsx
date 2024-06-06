@@ -1,4 +1,4 @@
-import { styled } from "@mui/material/styles"
+import { styled } from "@mui/material/styles";
 import React, { PropsWithChildren, useContext } from "react";
 import { IconType } from "react-icons/lib";
 import { Link, Outlet } from "react-router-dom";
@@ -9,7 +9,7 @@ import {
   useSideTabState,
 } from "./sideTabContext";
 
-const TabsContainerDiv = styled("div")(({theme}) => ({
+const TabsContainerDiv = styled("div")(({ theme }) => ({
   position: "fixed",
   height: "100%",
   width: 64,
@@ -23,7 +23,7 @@ const TabsContainerDiv = styled("div")(({theme}) => ({
   borderRight: "1px solid #D2DCE6",
 }));
 
-const ContentContainerDiv = styled("div")(({theme}) => ({
+const ContentContainerDiv = styled("div")(({ theme }) => ({
   marginLeft: 64,
 }));
 
@@ -39,7 +39,6 @@ const ContentContainerDiv = styled("div")(({theme}) => ({
  * See "TestApp" in SideTabLayout.component.test.tsx for an example.
  */
 export const SideTabLayout = ({ children }: PropsWithChildren<{}>) => {
-
   const sideTabState = useSideTabState();
   return (
     <SideTabContext.Provider value={sideTabState}>
@@ -53,20 +52,22 @@ export const SideTabLayout = ({ children }: PropsWithChildren<{}>) => {
   );
 };
 
-const TabDiv = styled("div")<{isSelected?:boolean}>(({theme, isSelected}) => ({
-  width: 40,
-  height: 40,
-  display: "flex",
-  justifyContent: "center",
-  alignItems: "center",
-  color: isSelected ? "#036DCF" : "#5F6469",
-  backgroundColor:isSelected ? "#EBF3FB" : undefined,
-  borderRadius: 4,
-  marginTop: theme.spacing(1),
-  "&:hover": {
-    backgroundColor: "#EBF3FB",
-  },
-}));
+const TabDiv = styled("div")<{ isSelected?: boolean }>(
+  ({ theme, isSelected }) => ({
+    width: 40,
+    height: 40,
+    display: "flex",
+    justifyContent: "center",
+    alignItems: "center",
+    color: isSelected ? "#036DCF" : "#5F6469",
+    backgroundColor: isSelected ? "#EBF3FB" : undefined,
+    borderRadius: 4,
+    marginTop: theme.spacing(1),
+    "&:hover": {
+      backgroundColor: "#EBF3FB",
+    },
+  }),
+);
 
 export type SideTabProps = {
   /**
@@ -86,7 +87,7 @@ export type SideTabProps = {
 export const SideTab = ({ tabId, title, Icon }: SideTabProps) => {
   const { selectedTab } = useContext(SideTabContext);
   const isSelected = selectedTab === tabId;
-  const Icon24 = styled(Icon as IconType)(({theme}) => ({
+  const Icon24 = styled(Icon as IconType)(({ theme }) => ({
     width: 24,
     height: 24,
   }));

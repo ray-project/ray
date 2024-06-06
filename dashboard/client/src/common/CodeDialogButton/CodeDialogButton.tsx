@@ -1,11 +1,11 @@
 import { Card, Link, Typography } from "@mui/material";
-import { styled } from "@mui/material/styles"
+import { styled } from "@mui/material/styles";
 import yaml from "js-yaml";
 import React, { useState } from "react";
 import DialogWithTitle from "../DialogWithTitle";
 import { ClassNameProps } from "../props";
 
-const ConfigTextTypography = styled(Typography)(({theme}) => ({
+const ConfigTextTypography = styled(Typography)(({ theme }) => ({
   whiteSpace: "pre",
   fontFamily: "SFMono-Regular,Consolas,Liberation Mono,Menlo,monospace",
   padding: theme.spacing(2),
@@ -36,7 +36,6 @@ export const CodeDialogButton = ({
   buttonText = "View",
   code,
 }: CodeDialogButtonProps) => {
-
   const [showConfigDialog, setShowConfigDialog] = useState(false);
 
   const handleConfigClick = () => {
@@ -66,14 +65,14 @@ export const CodeDialogButton = ({
   );
 };
 
-const RootDiv = styled("div")(({theme}) => ({
+const RootDiv = styled("div")(({ theme }) => ({
   display: "flex",
   flexWrap: "nowrap",
   flexDirection: "row",
   gap: theme.spacing(1),
 }));
 
-const PreviewTextSpan = styled("span")(({theme}) => ({
+const PreviewTextSpan = styled("span")(({ theme }) => ({
   display: "block",
   whiteSpace: "nowrap",
   overflow: "hidden",

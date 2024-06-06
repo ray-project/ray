@@ -4,7 +4,7 @@ import React, { PropsWithChildren } from "react";
 import { RiArrowRightLine } from "react-icons/ri";
 import { Link } from "react-router-dom";
 
-const OverviewCardRoot = styled(Paper)(({theme}) => ({ 
+const OverviewCardRoot = styled(Paper)(({ theme }) => ({
   height: 400,
   overflow: "hidden",
 }));
@@ -21,7 +21,7 @@ export const OverviewCard = ({ children, className }: OverviewCardProps) => {
   );
 };
 
-const LinkWithArrowRoot = styled(Link)(({theme}) => ({ 
+const LinkWithArrowRoot = styled(Link)(({ theme }) => ({
   color: "#036DCF",
   textDecoration: "none",
   display: "flex",
@@ -30,7 +30,7 @@ const LinkWithArrowRoot = styled(Link)(({theme}) => ({
   alignItems: "center",
 }));
 
-const LinkWithArrowIcon = styled(RiArrowRightLine)(({theme}) => ({ 
+const LinkWithArrowIcon = styled(RiArrowRightLine)(({ theme }) => ({
   marginLeft: theme.spacing(0.5),
   width: 24,
   height: 24,

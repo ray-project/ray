@@ -2,11 +2,11 @@ import { Tooltip } from "@mui/material";
 import { styled } from "@mui/material/styles";
 import { HelpInfo } from "../components/Tooltip";
 
-export const TableContainerDiv = styled("div")(({theme}) => ({
+export const TableContainerDiv = styled("div")(({ theme }) => ({
   overflowX: "scroll",
 }));
 
-export const IdColTooltip = styled(Tooltip)(({theme}) => ({
+export const IdColTooltip = styled(Tooltip)(({ theme }) => ({
   display: "block",
   width: "50px",
   overflow: "hidden",
@@ -14,7 +14,7 @@ export const IdColTooltip = styled(Tooltip)(({theme}) => ({
   whiteSpace: "nowrap",
 }));
 
-export const IdColSpan = styled("span")(({theme}) => ({
+export const IdColSpan = styled("span")(({ theme }) => ({
   display: "block",
   width: "50px",
   overflow: "hidden",
@@ -22,7 +22,7 @@ export const IdColSpan = styled("span")(({theme}) => ({
   whiteSpace: "nowrap",
 }));
 
-export const OverflowColTooltip = styled(Tooltip)(({theme}) => ({
+export const OverflowColTooltip = styled(Tooltip)(({ theme }) => ({
   display: "block",
   width: "100px",
   overflow: "hidden",
@@ -30,6 +30,6 @@ export const OverflowColTooltip = styled(Tooltip)(({theme}) => ({
   whiteSpace: "nowrap",
 }));
 
-export const StyledHelpInfo = styled(HelpInfo)(({theme}) => ({
+export const StyledHelpInfo = styled(HelpInfo)(({ theme }) => ({
   marginLeft: theme.spacing(1),
 }));

@@ -3,20 +3,20 @@ import { Dialog, IconButton, Typography } from "@mui/material";
 import { styled } from "@mui/material/styles";
 import React, { PropsWithChildren } from "react";
 
-const PaperDialog = styled(Dialog)(({theme}) => ({
+const PaperDialog = styled(Dialog)(({ theme }) => ({
   paper: {
     padding: theme.spacing(3),
   },
 }));
 
-const CloseIconButton = styled(IconButton)(({theme}) => ({
+const CloseIconButton = styled(IconButton)(({ theme }) => ({
   position: "absolute",
   right: theme.spacing(1.5),
   top: theme.spacing(1.5),
   zIndex: 1,
 }));
 
-const TitleTypography = styled(Typography)(({theme}) => ({
+const TitleTypography = styled(Typography)(({ theme }) => ({
   borderBottomColor: theme.palette.divider,
   borderBottomStyle: "solid",
   borderBottomWidth: 1,
@@ -42,10 +42,7 @@ class DialogWithTitle extends React.Component<PropsWithChildren<Props>> {
         open
         scroll="body"
       >
-        <CloseIconButton
-          onClick={handleClose}
-          size="large"
-        >
+        <CloseIconButton onClick={handleClose} size="large">
           <CloseIcon />
         </CloseIconButton>
         <TitleTypography>{title}</TitleTypography>

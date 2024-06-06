@@ -1,7 +1,7 @@
-import { styled } from "@mui/material/styles"
+import { styled } from "@mui/material/styles";
 import React, { PropsWithChildren } from "react";
 
-const ContainerDiv = styled("div")(({theme}) => ({
+const ContainerDiv = styled("div")(({ theme }) => ({
   background: "linear-gradient(45deg, #21CBF3ee 30%, #2196F3ee 90%)",
   border: `1px solid #ffffffbb`,
   padding: "0 12px",
@@ -13,7 +13,7 @@ const ContainerDiv = styled("div")(({theme}) => ({
   flexGrow: 1,
 }));
 
-const DisplayBarDiv = styled("div")(({theme}) => ({
+const DisplayBarDiv = styled("div")(({ theme }) => ({
   background: theme.palette.background.paper,
   position: "absolute",
   right: 0,
@@ -26,7 +26,7 @@ const DisplayBarDiv = styled("div")(({theme}) => ({
   boxSizing: "border-box",
 }));
 
-const TextDiv = styled("div")(({theme}) => ({
+const TextDiv = styled("div")(({ theme }) => ({
   fontSize: 12,
   zIndex: 2,
   position: "relative",

@@ -11,7 +11,7 @@ import {
 } from "@mui/material";
 import Autocomplete from "@mui/material/Autocomplete";
 import Pagination from "@mui/material/Pagination";
-import { styled } from "@mui/material/styles"
+import { styled } from "@mui/material/styles";
 import dayjs from "dayjs";
 import React, { useContext, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
@@ -27,39 +27,39 @@ type EventTableProps = {
   job_id?: string;
 };
 
-const PageMetaDiv = styled("div")(({theme}) => ({
+const PageMetaDiv = styled("div")(({ theme }) => ({
   padding: theme.spacing(2),
   marginTop: theme.spacing(2),
 }));
 
-const FilterContainerDiv = styled("div")(({theme}) => ({
+const FilterContainerDiv = styled("div")(({ theme }) => ({
   display: "flex",
   alignItems: "center",
 }));
 
-const SearchAutocomplete = styled(Autocomplete)(({theme}) => ({
+const SearchAutocomplete = styled(Autocomplete)(({ theme }) => ({
   margin: theme.spacing(1),
   display: "inline-block",
   fontSize: 12,
 }));
 
-const SearchTextField = styled(TextField)(({theme}) => ({
+const SearchTextField = styled(TextField)(({ theme }) => ({
   margin: theme.spacing(1),
   display: "inline-block",
   fontSize: 12,
 }));
 
-const SearchButton = styled(Button)(({theme}) => ({
+const SearchButton = styled(Button)(({ theme }) => ({
   margin: theme.spacing(1),
   display: "inline-block",
   fontSize: 12,
 }));
 
-const InfoKVGrid = styled(Grid)(({theme}) => ({
+const InfoKVGrid = styled(Grid)(({ theme }) => ({
   margin: theme.spacing(1),
 }));
 
-const LiArticle = styled("article")(({theme}) => ({
+const LiArticle = styled("article")(({ theme }) => ({
   color: theme.palette.text.secondary,
   fontSize: 12,
 }));
@@ -306,13 +306,9 @@ const EventTable = (props: EventTableProps) => {
                       )}
                     </Grid>
                     <Grid container>
-                      <InfoKVGrid item >
-                        severity: {severity}
-                      </InfoKVGrid>
-                      <InfoKVGrid item >
-                        source: {sourceType}
-                      </InfoKVGrid>
-                      <InfoKVGrid item >
+                      <InfoKVGrid item>severity: {severity}</InfoKVGrid>
+                      <InfoKVGrid item>source: {sourceType}</InfoKVGrid>
+                      <InfoKVGrid item>
                         hostname:{" "}
                         {nodeMap[hostname] ? (
                           <Link to={`/node/${nodeMap[hostname]}`}>
@@ -322,29 +318,19 @@ const EventTable = (props: EventTableProps) => {
                           hostname
                         )}
                       </InfoKVGrid>
-                      <InfoKVGrid item >
-                        pid: {realPid}
-                      </InfoKVGrid>
+                      <InfoKVGrid item>pid: {realPid}</InfoKVGrid>
                       {jobId && (
-                        <InfoKVGrid item >
+                        <InfoKVGrid item>
                           jobId: <Link to={`/job/${jobId}`}>{jobId}</Link>
                         </InfoKVGrid>
                       )}
                       {jobName && (
-                        <InfoKVGrid item >
-                          jobId: {jobName}
-                        </InfoKVGrid>
+                        <InfoKVGrid item>jobId: {jobName}</InfoKVGrid>
                       )}
                       {eventId && (
-                        <InfoKVGrid item >
-                          eventId: {eventId}
-                        </InfoKVGrid>
+                        <InfoKVGrid item>eventId: {eventId}</InfoKVGrid>
                       )}
-                      {nodeId && (
-                        <InfoKVGrid item >
-                          nodeId: {nodeId}
-                        </InfoKVGrid>
-                      )}
+                      {nodeId && <InfoKVGrid item>nodeId: {nodeId}</InfoKVGrid>}
                     </Grid>
                     <LogVirtualView content={message} language="prolog" />
                   </LiArticle>

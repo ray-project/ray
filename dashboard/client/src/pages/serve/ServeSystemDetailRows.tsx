@@ -7,7 +7,7 @@ import { ServeProxy, ServeSystemActor } from "../../type/serve";
 import { useFetchActor } from "../actor/hook/useActorDetail";
 import { convertActorStateForServeController } from "./ServeSystemActorDetailPage";
 
-const IdColTooltip = styled(Tooltip)(({theme}) => ({
+const IdColTooltip = styled(Tooltip)(({ theme }) => ({
   display: "inline-block",
   width: "50px",
   overflow: "hidden",

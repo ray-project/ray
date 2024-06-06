@@ -6,19 +6,19 @@ import {
   Switch,
   TextField,
 } from "@mui/material";
-import { styled } from "@mui/material/styles"
+import { styled } from "@mui/material/styles";
 import React, { memo, useState } from "react";
 import LogVirtualView from "../../components/LogView/LogVirtualView";
 
-const SearchTextField = styled(TextField)(({theme}) => ({
+const SearchTextField = styled(TextField)(({ theme }) => ({
   margin: theme.spacing(1),
 }));
 
-const SearchDiv = styled("div")(({theme}) => ({
+const SearchDiv = styled("div")(({ theme }) => ({
   margin: theme.spacing(1),
 }));
 
-const SearchButton = styled(Button)(({theme}) => ({
+const SearchButton = styled(Button)(({ theme }) => ({
   margin: theme.spacing(1),
 }));
 
@@ -115,10 +115,7 @@ export const LogViewer = memo(
                   onChange={(e, v) => setSearch({ ...search, revert: v })}
                 />
                 {onRefreshClick && (
-                  <SearchButton
-                    variant="contained"
-                    onClick={onRefreshClick}
-                  >
+                  <SearchButton variant="contained" onClick={onRefreshClick}>
                     Refresh
                   </SearchButton>
                 )}

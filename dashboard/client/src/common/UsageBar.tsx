@@ -1,5 +1,5 @@
 import { Typography } from "@mui/material";
-import { styled } from "@mui/material/styles"
+import { styled } from "@mui/material/styles";
 import React from "react";
 
 const blend = (
@@ -12,7 +12,7 @@ const blend = (
   b1 * (1 - ratio) + b2 * ratio,
 ];
 
-const UsageBarSpan = styled("span")(({theme}) => ({
+const UsageBarSpan = styled("span")(({ theme }) => ({
   borderColor: theme.palette.divider,
   borderStyle: "solid",
   borderWidth: 1,
@@ -20,7 +20,7 @@ const UsageBarSpan = styled("span")(({theme}) => ({
   flexGrow: 1,
 }));
 
-const UsageBarInnerSpan = styled("span")(({theme}) => ({
+const UsageBarInnerSpan = styled("span")(({ theme }) => ({
   paddingLeft: theme.spacing(1),
   paddingRight: theme.spacing(1),
 }));
@@ -52,9 +52,7 @@ const UsageBar: React.FC<UsageBarProps> = ({ percent, text }) => {
   // gradient background otherwise.
   return (
     <UsageBarSpan>
-      <UsageBarInnerSpan
-        style={{ background: gradient, flexGrow: 1 }}
-      >
+      <UsageBarInnerSpan style={{ background: gradient, flexGrow: 1 }}>
         <Typography align="center">{text}</Typography>
       </UsageBarInnerSpan>
     </UsageBarSpan>

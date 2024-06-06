@@ -1,11 +1,10 @@
 import { TableHead, TableRow, TableSortLabel } from "@mui/material";
-import { styled } from "@mui/material/styles"
+import { styled } from "@mui/material/styles";
 import React from "react";
 import { StyledTableCell } from "./TableCell";
 import { Order } from "./tableUtils";
 
-
-const SortableTableHeadSpan = styled("span")(({theme}) => ({
+const SortableTableHeadSpan = styled("span")(({ theme }) => ({
   border: 0,
   clip: "rect(0 0 0 0)",
   height: 1,

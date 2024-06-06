@@ -43,19 +43,19 @@ type NodeRowProps = Pick<NodeRowsProps, "node"> & {
   onExpandButtonClick: () => void;
 };
 
-const SRiArrowRightSLine = styled(RiArrowRightSLine)(({theme}) => ({
+const SRiArrowRightSLine = styled(RiArrowRightSLine)(({ theme }) => ({
   color: theme.palette.text.secondary,
   fontSize: "1.5em",
   verticalAlign: "middle",
 }));
 
-const SRiArrowDownSLine = styled(RiArrowDownSLine)(({theme}) => ({
+const SRiArrowDownSLine = styled(RiArrowDownSLine)(({ theme }) => ({
   color: theme.palette.text.secondary,
   fontSize: "1.5em",
   verticalAlign: "middle",
 }));
 
-const IdColNodeLink = styled(NodeLink)(({theme}) => ({
+const IdColNodeLink = styled(NodeLink)(({ theme }) => ({
   display: "block",
   width: "50px",
   overflow: "hidden",
@@ -63,15 +63,15 @@ const IdColNodeLink = styled(NodeLink)(({theme}) => ({
   whiteSpace: "nowrap",
 }));
 
-const LogicalResources = styled(CodeDialogButtonWithPreview)(({theme}) => ({
+const LogicalResources = styled(CodeDialogButtonWithPreview)(({ theme }) => ({
   maxWidth: 200,
 }));
 
-const Labels = styled(CodeDialogButtonWithPreview)(({theme}) => ({
+const Labels = styled(CodeDialogButtonWithPreview)(({ theme }) => ({
   maxWidth: 200,
 }));
 
-const StateMessage = styled(CodeDialogButtonWithPreview)(({theme}) => ({
+const StateMessage = styled(CodeDialogButtonWithPreview)(({ theme }) => ({
   maxWidth: 200,
 }));
 
@@ -107,11 +107,7 @@ export const NodeRow = ({
     <TableRow>
       <TableCell>
         <IconButton size="small" onClick={onExpandButtonClick}>
-          {!expanded ? (
-            <SRiArrowRightSLine/>
-          ) : (
-            <SRiArrowDownSLine/>
-          )}
+          {!expanded ? <SRiArrowRightSLine /> : <SRiArrowDownSLine />}
         </IconButton>
       </TableCell>
       <TableCell align="center">
@@ -130,7 +126,10 @@ export const NodeRow = ({
       <TableCell align="center">
         <Tooltip title={raylet.nodeId} arrow>
           <div>
-            <IdColNodeLink nodeId={raylet.nodeId} to={`nodes/${raylet.nodeId}`} />
+            <IdColNodeLink
+              nodeId={raylet.nodeId}
+              to={`nodes/${raylet.nodeId}`}
+            />
           </div>
         </Tooltip>
       </TableCell>
@@ -224,7 +223,6 @@ type WorkerRowProps = {
  * A single row that represents the data of a Worker
  */
 export const WorkerRow = ({ node, worker }: WorkerRowProps) => {
-
   const {
     ip,
     mem,

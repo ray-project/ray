@@ -4,12 +4,12 @@ import { RightPaddedTypography } from "../../common/CustomTypography";
 import UsageBar from "../../common/UsageBar";
 import { GPUStats, NodeDetail } from "../../type/node";
 
-const StyledBox = styled(Box)(({theme}) => ({
+const StyledBox = styled(Box)(({ theme }) => ({
   display: "flex",
   minWidth: 120,
 }));
 
-const GpuColumnDiv = styled("div")(({theme}) => ({
+const GpuColumnDiv = styled("div")(({ theme }) => ({
   minWidth: 120,
 }));
 

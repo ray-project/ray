@@ -28,11 +28,11 @@ import { LinkWithArrow } from "../overview/cards/OverviewCard";
 import { convertActorStateForServeController } from "./ServeSystemActorDetailPage";
 import { ServeControllerRow, ServeProxyRow } from "./ServeSystemDetailRows";
 
-const TitleTypography = styled(Typography)(({theme}) => ({
+const TitleTypography = styled(Typography)(({ theme }) => ({
   marginBottom: theme.spacing(2),
 }));
 
-const StyledHelpInfo = styled(HelpInfo)(({theme}) => ({
+const StyledHelpInfo = styled(HelpInfo)(({ theme }) => ({
   marginLeft: theme.spacing(1),
 }));
 
@@ -62,7 +62,6 @@ export const ServeSystemDetails = ({
   page,
   setPage,
 }: ServeSystemDetailsProps) => {
-
   const {
     items: list,
     constrainedPage,
@@ -71,9 +70,7 @@ export const ServeSystemDetails = ({
 
   return (
     <div>
-      <TitleTypography variant="h3">
-        System
-      </TitleTypography>
+      <TitleTypography variant="h3">System</TitleTypography>
       {serveDetails.http_options && (
         <MetadataSection
           metadataList={[
@@ -130,11 +127,7 @@ export const ServeSystemDetails = ({
                     alignItems="center"
                   >
                     {label}
-                    {helpInfo && (
-                      <StyledHelpInfo>
-                        {helpInfo}
-                      </StyledHelpInfo>
-                    )}
+                    {helpInfo && <StyledHelpInfo>{helpInfo}</StyledHelpInfo>}
                   </Box>
                 </TableCell>
               ))}

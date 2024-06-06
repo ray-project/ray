@@ -15,7 +15,7 @@ import { UnifiedJob } from "../../type/job";
 import { useJobProgress } from "./hook/useJobProgress";
 import { MiniTaskProgressBar } from "./TaskProgressBar";
 
-const OverflowCell = styled(Tooltip)(({theme}) => ({
+const OverflowCell = styled(Tooltip)(({ theme }) => ({
   display: "block",
   margin: "auto",
   maxWidth: 360,
@@ -24,7 +24,7 @@ const OverflowCell = styled(Tooltip)(({theme}) => ({
   whiteSpace: "nowrap",
 }));
 
-const StatusMessage = styled(CodeDialogButtonWithPreview)(({theme}) => ({
+const StatusMessage = styled(CodeDialogButtonWithPreview)(({ theme }) => ({
   maxWidth: 250,
   display: "inline-flex",
 }));
@@ -89,10 +89,7 @@ export const JobRow = ({ job }: JobRowProps) => {
       </TableCell>
       <TableCell align="center">
         {message ? (
-          <StatusMessage
-            title="Status message"
-            code={message}
-          />
+          <StatusMessage title="Status message" code={message} />
         ) : (
           "-"
         )}

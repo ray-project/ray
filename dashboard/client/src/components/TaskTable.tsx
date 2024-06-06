@@ -207,11 +207,7 @@ const TaskTable = ({
                     alignItems="center"
                   >
                     {label}
-                    {helpInfo && (
-                      <StyledHelpInfo>
-                        {helpInfo}
-                      </StyledHelpInfo>
-                    )}
+                    {helpInfo && <StyledHelpInfo>{helpInfo}</StyledHelpInfo>}
                   </Box>
                 </TableCell>
               ))}
@@ -263,18 +259,12 @@ const TaskTable = ({
                   </TableCell>
                   <TableCell align="center">{func_or_class_name}</TableCell>
                   <TableCell align="center">
-                    <IdColTooltip
-                      title={node_id ? node_id : "-"}
-                      arrow
-                    >
+                    <IdColTooltip title={node_id ? node_id : "-"} arrow>
                       {node_id ? <NodeLink nodeId={node_id} /> : <div>-</div>}
                     </IdColTooltip>
                   </TableCell>
                   <TableCell align="center">
-                    <IdColTooltip
-                      title={actor_id ? actor_id : "-"}
-                      arrow
-                    >
+                    <IdColTooltip title={actor_id ? actor_id : "-"} arrow>
                       {actor_id ? (
                         <ActorLink actorId={actor_id} />
                       ) : (
@@ -283,10 +273,7 @@ const TaskTable = ({
                     </IdColTooltip>
                   </TableCell>
                   <TableCell align="center">
-                    <IdColTooltip
-                      title={worker_id ? worker_id : "-"}
-                      arrow
-                    >
+                    <IdColTooltip title={worker_id ? worker_id : "-"} arrow>
                       <div>{worker_id ? worker_id : "-"}</div>
                     </IdColTooltip>
                   </TableCell>

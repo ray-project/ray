@@ -1,5 +1,5 @@
 import { IconButton, Tooltip, Typography } from "@mui/material";
-import { styled } from "@mui/material/styles"
+import { styled } from "@mui/material/styles";
 import React, { useContext } from "react";
 import { RiBookMarkLine, RiFeedbackLine } from "react-icons/ri/";
 import { Link, Outlet } from "react-router-dom";
@@ -10,7 +10,7 @@ import { MainNavContext, useMainNavState } from "./mainNavContext";
 export const MAIN_NAV_HEIGHT = 56;
 export const BREADCRUMBS_HEIGHT = 36;
 
-const StyledNav = styled("nav")(({theme}) => ({
+const StyledNav = styled("nav")(({ theme }) => ({
   position: "fixed",
   width: "100%",
   backgroundColor: "white",
@@ -46,9 +46,13 @@ export const MainNavLayout = () => {
   );
 };
 
-const RootMain = styled("main")<{tallNav?:boolean}>(({theme, tallNav}) => ({
-  paddingTop: tallNav ? MAIN_NAV_HEIGHT + BREADCRUMBS_HEIGHT + 2 : MAIN_NAV_HEIGHT,
-}));
+const RootMain = styled("main")<{ tallNav?: boolean }>(
+  ({ theme, tallNav }) => ({
+    paddingTop: tallNav
+      ? MAIN_NAV_HEIGHT + BREADCRUMBS_HEIGHT + 2
+      : MAIN_NAV_HEIGHT,
+  }),
+);
 
 const Main = () => {
   const { mainNavPageHierarchy } = useContext(MainNavContext);
@@ -62,7 +66,7 @@ const Main = () => {
   );
 };
 
-const RootDiv = styled("div")(({theme})=>({
+const RootDiv = styled("div")(({ theme }) => ({
   display: "flex",
   flexDirection: "row",
   flexWrap: "nowrap",
@@ -72,14 +76,14 @@ const RootDiv = styled("div")(({theme})=>({
   boxShadow: "0px 1px 0px #D2DCE6",
 }));
 
-const LogoLink = styled(Link)(({theme}) => ({
+const LogoLink = styled(Link)(({ theme }) => ({
   display: "flex",
   justifyContent: "center",
   marginLeft: theme.spacing(2),
   marginRight: theme.spacing(3),
 }));
 
-const NavItemLink = styled(Link)(({theme}) => ({
+const NavItemLink = styled(Link)(({ theme }) => ({
   marginRight: theme.spacing(6),
   fontSize: "1rem",
   fontWeight: 500,
@@ -87,15 +91,15 @@ const NavItemLink = styled(Link)(({theme}) => ({
   textDecoration: "none",
 }));
 
-const FlexSpacerDiv = styled("div")(({theme}) => ({
+const FlexSpacerDiv = styled("div")(({ theme }) => ({
   flexGrow: 1,
 }));
 
-const ActionItemsContainerDiv = styled("div")(({theme}) => ({
+const ActionItemsContainerDiv = styled("div")(({ theme }) => ({
   marginRight: theme.spacing(2),
 }));
 
-const ActionItemIconButton = styled(IconButton)(({theme}) => ({
+const ActionItemIconButton = styled(IconButton)(({ theme }) => ({
   color: "#5F6469",
 })) as typeof IconButton;
 
@@ -155,7 +159,7 @@ const MainNavBar = () => {
       {navItems.map(({ title, path, id }) => (
         <Typography key={id}>
           <NavItemLink
-            sx={[rootRouteId === id && {color: "#036DCF"}]}
+            sx={[rootRouteId === id && { color: "#036DCF" }]}
             to={path}
           >
             {title}
@@ -189,7 +193,7 @@ const MainNavBar = () => {
   );
 };
 
-const MainNavBreadcrumbsRoot = styled("div")(({theme}) => ({
+const MainNavBreadcrumbsRoot = styled("div")(({ theme }) => ({
   display: "flex",
   flexDirection: "row",
   flexWrap: "nowrap",
@@ -202,7 +206,7 @@ const MainNavBreadcrumbsRoot = styled("div")(({theme}) => ({
   boxShadow: "0px 1px 0px #D2DCE6",
 }));
 
-const BreadcrumbItemTypography = styled(Typography)(({theme}) => ({
+const BreadcrumbItemTypography = styled(Typography)(({ theme }) => ({
   fontWeight: 500,
   color: "#8C9196",
   "&:not(:first-of-type)": {
@@ -210,7 +214,7 @@ const BreadcrumbItemTypography = styled(Typography)(({theme}) => ({
   },
 }));
 
-const StyledLink = styled(Link)(({theme}) => ({
+const StyledLink = styled(Link)(({ theme }) => ({
   textDecoration: "none",
   color: "#8C9196",
 }));
@@ -237,7 +241,9 @@ const MainNavBreadcrumbs = () => {
         }
         const linkOrText = path ? (
           <StyledLink
-            sx={[index === mainNavPageHierarchy.length - 1 && {color: "black"}]}
+            sx={[
+              index === mainNavPageHierarchy.length - 1 && { color: "black" },
+            ]}
             to={currentPath}
           >
             {title}
@@ -247,10 +253,7 @@ const MainNavBreadcrumbs = () => {
         );
         if (index === 0) {
           return (
-            <BreadcrumbItemTypography
-              key={id}
-              variant="body2"
-            >
+            <BreadcrumbItemTypography key={id} variant="body2">
               {linkOrText}
             </BreadcrumbItemTypography>
           );
