@@ -2117,7 +2117,6 @@ py_test(
 
 # subdirectory: checkpoints/
 # ....................................
-
 py_test(
     name = "examples/checkpoints/checkpoint_by_custom_criteria",
     main = "examples/checkpoints/checkpoint_by_custom_criteria.py",
@@ -2317,7 +2316,6 @@ py_test(
 
 # subdirectory: curriculum/
 # ....................................
-
 py_test(
     name = "examples/curriculum/curriculum_learning",
     main = "examples/curriculum/curriculum_learning.py",
@@ -2329,7 +2327,6 @@ py_test(
 
 # subdirectory: debugging/
 # ....................................
-
 #@OldAPIStack
 py_test(
     name = "examples/debugging/deterministic_training_torch",
@@ -2342,7 +2339,6 @@ py_test(
 
 # subdirectory: envs/
 # ....................................
-
 py_test(
     name = "examples/envs/custom_gym_env",
     main = "examples/envs/custom_gym_env.py",
@@ -2483,7 +2479,6 @@ py_test(
 
 # subdirectory: gpus/
 # ....................................
-
 py_test(
     name = "examples/gpus/fractional_0.5_gpus_per_learner",
     main = "examples/gpus/fractional_gpus_per_learner.py",
@@ -2503,7 +2498,6 @@ py_test(
 
 # subdirectory: hierarchical/
 # ....................................
-
 #@OldAPIStack
 py_test(
     name = "examples/hierarchical/hierarchical_training_tf",
@@ -2526,7 +2520,6 @@ py_test(
 
 # subdirectory: inference/
 # ....................................
-
 #@OldAPIStack
 py_test(
     name = "examples/inference/policy_inference_after_training_tf",
@@ -2939,6 +2932,15 @@ py_test(
 
 # subdirectory: rl_modules/
 # ....................................
+py_test(
+    name = "examples/rl_modules/custom_rl_module",
+    main = "examples/rl_modules/custom_rl_module.py",
+    tags = ["team:rllib", "examples"],
+    size = "medium",
+    srcs = ["examples/rl_modules/custom_rl_module.py"],
+    args = ["--enable-new-api-stack", "--stop-iters=3"],
+)
+
 #@OldAPIStack @HybridAPIStack
 py_test(
     name = "examples/rl_modules/classes/mobilenet_rlm_hybrid_api_stack",

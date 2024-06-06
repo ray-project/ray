@@ -1,6 +1,7 @@
 import pathlib
 from typing import Any, List, Mapping, Tuple, Union, Type
 
+import gymnasium as gym
 from packaging import version
 
 from ray.rllib.core.rl_module import RLModule
@@ -8,7 +9,11 @@ from ray.rllib.core.rl_module.rl_module_with_target_networks_interface import (
     RLModuleWithTargetNetworksInterface,
 )
 from ray.rllib.core.rl_module.torch.torch_compile_config import TorchCompileConfig
-from ray.rllib.models.torch.torch_distributions import TorchDistribution
+from ray.rllib.models.torch.torch_distributions import (
+    TorchCategorical,
+    TorchDiagGaussian,
+    TorchDistribution,
+)
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.numpy import convert_to_numpy
@@ -19,47 +24,6 @@ from ray.rllib.utils.torch_utils import (
 from ray.rllib.utils.typing import NetworkType
 
 torch, nn = try_import_torch()
-
-
-def compile_wrapper(rl_module: "TorchRLModule", compile_config: TorchCompileConfig):
-    """A wrapper that compiles the forward methods of a TorchRLModule."""
-
-    # TODO(Artur): Remove this once our requirements enforce torch >= 2.0.0
-    # Check if torch framework supports torch.compile.
-    if (
-        torch is not None
-        and version.parse(torch.__version__) < TORCH_COMPILE_REQUIRED_VERSION
-    ):
-        raise ValueError("torch.compile is only supported from torch 2.0.0")
-
-    compiled_forward_train = torch.compile(
-        rl_module._forward_train,
-        backend=compile_config.torch_dynamo_backend,
-        mode=compile_config.torch_dynamo_mode,
-        **compile_config.kwargs
-    )
-
-    rl_module._forward_train = compiled_forward_train
-
-    compiled_forward_inference = torch.compile(
-        rl_module._forward_inference,
-        backend=compile_config.torch_dynamo_backend,
-        mode=compile_config.torch_dynamo_mode,
-        **compile_config.kwargs
-    )
-
-    rl_module._forward_inference = compiled_forward_inference
-
-    compiled_forward_exploration = torch.compile(
-        rl_module._forward_exploration,
-        backend=compile_config.torch_dynamo_backend,
-        mode=compile_config.torch_dynamo_mode,
-        **compile_config.kwargs
-    )
-
-    rl_module._forward_exploration = compiled_forward_exploration
-
-    return rl_module
 
 
 class TorchRLModule(nn.Module, RLModule):
@@ -84,6 +48,18 @@ class TorchRLModule(nn.Module, RLModule):
     def __init__(self, *args, **kwargs) -> None:
         nn.Module.__init__(self)
         RLModule.__init__(self, *args, **kwargs)
+
+    @override(RLModule)
+    def get_inference_action_dist_cls(self) -> Type[TorchDistribution]:
+        return self._get_default_action_dist_class("inference")
+
+    @override(RLModule)
+    def get_exploration_action_dist_cls(self) -> Type[TorchDistribution]:
+        return self._get_default_action_dist_class("exploration")
+
+    @override(RLModule)
+    def get_train_action_dist_cls(self) -> Type[TorchDistribution]:
+        return self._get_default_action_dist_class("train")
 
     def forward(self, batch: Mapping[str, Any], **kwargs) -> Mapping[str, Any]:
         """forward pass of the module.
@@ -155,6 +131,20 @@ class TorchRLModule(nn.Module, RLModule):
             The modified state dict.
         """
         pass
+
+    def _get_default_action_dist_class(self, what: str) -> Type[TorchDistribution]:
+        # The default implementation is to return TorchCategorical for Discrete action
+        # spaces and TorchDiagGaussian for Box action spaces. For all other spaces,
+        # raise a NotImplementedError
+        if isinstance(self.config.action_space, gym.spaces.Discrete):
+            return TorchCategorical
+        elif isinstance(self.config.action_space, gym.spaces.Box):
+            return TorchDiagGaussian
+        else:
+            raise NotImplementedError(
+                f"Override your RLModule's `get_{what}_action_dist_cls` method and "
+                "return the correct TorchDistribution class from it!"
+            )
 
 
 class TorchDDPRLModule(RLModule, nn.parallel.DistributedDataParallel):
@@ -234,3 +224,44 @@ class TorchDDPRLModuleWithTargetNetworksInterface(
     @override(RLModuleWithTargetNetworksInterface)
     def get_target_network_pairs(self) -> List[Tuple[NetworkType, NetworkType]]:
         return self.module.get_target_network_pairs()
+
+
+def compile_wrapper(rl_module: "TorchRLModule", compile_config: TorchCompileConfig):
+    """A wrapper that compiles the forward methods of a TorchRLModule."""
+
+    # TODO(Artur): Remove this once our requirements enforce torch >= 2.0.0
+    # Check if torch framework supports torch.compile.
+    if (
+        torch is not None
+        and version.parse(torch.__version__) < TORCH_COMPILE_REQUIRED_VERSION
+    ):
+        raise ValueError("torch.compile is only supported from torch 2.0.0")
+
+    compiled_forward_train = torch.compile(
+        rl_module._forward_train,
+        backend=compile_config.torch_dynamo_backend,
+        mode=compile_config.torch_dynamo_mode,
+        **compile_config.kwargs,
+    )
+
+    rl_module._forward_train = compiled_forward_train
+
+    compiled_forward_inference = torch.compile(
+        rl_module._forward_inference,
+        backend=compile_config.torch_dynamo_backend,
+        mode=compile_config.torch_dynamo_mode,
+        **compile_config.kwargs,
+    )
+
+    rl_module._forward_inference = compiled_forward_inference
+
+    compiled_forward_exploration = torch.compile(
+        rl_module._forward_exploration,
+        backend=compile_config.torch_dynamo_backend,
+        mode=compile_config.torch_dynamo_mode,
+        **compile_config.kwargs,
+    )
+
+    rl_module._forward_exploration = compiled_forward_exploration
+
+    return rl_module
