@@ -222,7 +222,7 @@ class RayActorOptionsSchema(BaseModel):
         ),
         ge=0,
     )
-    object_store_memory: float = Field(
+    object_store_memory: int = Field(
         default=None,
         description=(
             "Restrict the object store memory used per replica when "
