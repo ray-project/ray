@@ -222,6 +222,8 @@ def test_set_tpu_visible_ids_and_bounds(mock_glob, test_case):
             assert os.environ.get(tpu.TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR, None) is None
             assert os.environ.get(tpu.TPU_SINGLE_HOST_BOUNDS, None) is None
             assert os.environ.get(tpu.TPU_VISIBLE_CHIPS_ENV_VAR, None) is None
+
+
 @pytest.mark.parametrize(
     "test_config",
     [

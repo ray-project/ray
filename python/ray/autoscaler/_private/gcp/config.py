@@ -53,6 +53,7 @@ HAS_TPU_PROVIDER_FIELD = "_has_tpus"
 DEFAULT_TPU_NUM_CHIPS_PER_HOST = 4
 DEFAULT_TPU_CORES_PER_CHIP = 2
 
+
 def tpu_accelerator_config_to_type(accelerator_config: dict) -> str:
     """Convert a provided accelerator_config to accelerator_type.
 
