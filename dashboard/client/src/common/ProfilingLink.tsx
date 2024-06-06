@@ -27,7 +27,7 @@ const DialogContentDiv = styled("div")(({ theme }) => ({
   justifyContent: "flex-end",
 }));
 
-const SecondaryButton = styled(Button)(({ theme }) => ({
+const SecondaryButton = styled(Button)(({theme}) => ({
   textTransform: "capitalize",
   color: "#5F6469",
 }));

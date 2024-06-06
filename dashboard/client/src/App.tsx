@@ -1,5 +1,8 @@
 import { CssBaseline } from "@mui/material";
-import { StyledEngineProvider, ThemeProvider } from "@mui/material/styles";
+import {
+  StyledEngineProvider,
+  ThemeProvider,
+} from "@mui/material/styles";
 import dayjs from "dayjs";
 import duration from "dayjs/plugin/duration";
 import React, { Suspense, useEffect, useState } from "react";
