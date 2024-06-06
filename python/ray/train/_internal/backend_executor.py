@@ -120,6 +120,8 @@ class BackendExecutor:
             )
         ]
 
+        self._start_time = time.time()
+
         self.state_tracking_enabled = env_integer(RAY_TRAIN_ENABLE_STATE_TRACKING, 0)
 
     def start(
@@ -548,7 +550,7 @@ class BackendExecutor:
                 controller_actor_id=core_context.get_actor_id(),
                 datasets=datasets,
                 worker_group=self.worker_group,
-                start_time=time.time(),
+                start_time=self._start_time,
             )
 
         # Run the training function asynchronously in its own thread.
