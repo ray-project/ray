@@ -2,7 +2,7 @@ import io
 import logging
 import uuid
 from types import ModuleType
-from typing import TYPE_CHECKING, Any, List, Optional, Union
+from typing import TYPE_CHECKING, Any, Callable, List, Optional, Tuple, Union
 
 import ray
 import ray.util.serialization
@@ -24,6 +24,11 @@ if TYPE_CHECKING:
 # into the program using Ray. Ray provides a default configuration at
 # entry/init points.
 logger = logging.getLogger(__name__)
+
+
+# Signature for a torch.Tensor allocator is:
+# (shape: Tuple[int], dtype: torch.dtype) -> torch.Tensor.
+TorchTensorAllocator = Callable[[Tuple[int], "torch.dtype"], "torch.Tensor"]
 
 
 class NestedTorchTensorNcclChannel(ChannelInterface):
@@ -171,6 +176,13 @@ class NestedTorchTensorNcclChannel(ChannelInterface):
             self._cpu_data_channel.close()
 
 
+def _torch_zeros_allocator(shape: Tuple[int], dtype: "torch.dtype"):
+    import torch
+
+    ctx = ChannelContext.get_current()
+    return torch.zeros(shape, dtype=dtype, device=ctx.torch_device)
+
+
 @DeveloperAPI
 class TorchTensorNcclChannel(ChannelInterface):
     def __init__(
@@ -179,13 +191,27 @@ class TorchTensorNcclChannel(ChannelInterface):
         readers: List[ray.actor.ActorHandle],
         typ: "TorchTensorType",
         _meta_channel: Optional["Channel"] = None,
+        _torch_tensor_allocator: Optional[TorchTensorAllocator] = None,
     ):
+        """
+        Create a channel for torch.Tensors transferred via NCCL.
+
+        Args:
+            writer: The actor that may write to the channel. None signifies the driver.
+            readers: The actors that may read from the channel. None signifies
+                the driver.
+            typ: Type information about the values passed through the channel.
+            _meta_channel: A channel used to send metadata for the tensors,
+                i.e. shape and dtype. If not provided, and if the typ does not
+                specify a static shape and dtype, then a metadata channel based
+                on shared memory will be created.
+            _torch_tensor_allocator: An optional allocator function for
+                allocating torch.Tensor buffers on receivers. By default,
+                torch.zeros will be used.
+        """
         import torch
 
-        from ray.experimental.channel.torch_tensor_type import (
-            TorchTensorType,
-            _get_default_torch_device,
-        )
+        from ray.experimental.channel.torch_tensor_type import TorchTensorType
 
         self.torch: ModuleType = torch
 
@@ -195,9 +221,9 @@ class TorchTensorNcclChannel(ChannelInterface):
         self._reader_ranks: Optional[List[int]] = None
         self._writer_registered: bool = False
         self._reader_registered: bool = False
-
-        # TODO(swang): Allow default device to be overridden.
-        self._device = _get_default_torch_device()
+        self._torch_tensor_allocator = _torch_tensor_allocator
+        if self._torch_tensor_allocator is None:
+            self._torch_tensor_allocator = _torch_zeros_allocator
 
         assert isinstance(typ, TorchTensorType)
         assert typ.transport == typ.NCCL
@@ -254,17 +280,25 @@ class TorchTensorNcclChannel(ChannelInterface):
     def ensure_registered_as_writer(self):
         assert self._nccl_group is not None, "Actor is not part of a NCCL group"
         assert self._writer_registered
-        assert self._device.type == "cuda"
+        ctx = ChannelContext.get_current()
+        assert ctx.torch_device.type == "cuda"
 
     def ensure_registered_as_reader(self) -> bool:
         assert self._nccl_group is not None, "Actor is not part of a NCCL group"
         assert self._reader_registered
-        assert self._device.type == "cuda"
+        ctx = ChannelContext.get_current()
+        assert ctx.torch_device.type == "cuda"
 
     def __reduce__(self):
         return (
             self.__class__,
-            (self._writer, self._readers, self._typ, self._meta_channel),
+            (
+                self._writer,
+                self._readers,
+                self._typ,
+                self._meta_channel,
+                self._torch_tensor_allocator,
+            ),
         )
 
     def _get_tensor_meta(self, tensor: "torch.Tensor") -> Optional["TorchTensorType"]:
@@ -273,9 +307,10 @@ class TorchTensorNcclChannel(ChannelInterface):
         if not isinstance(tensor, self.torch.Tensor):
             raise ValueError("Task must return torch.Tensors")
 
-        if tensor.device != self._device:
+        ctx = ChannelContext.get_current()
+        if tensor.device != ctx.torch_device:
             raise ValueError(
-                f"torch.Tensor must be on the default device: {self._device}"
+                f"torch.Tensor must be on the default device: {ctx.torch_device}"
             )
 
         meta: Optional["TorchTensorType"] = None
@@ -339,7 +374,7 @@ class TorchTensorNcclChannel(ChannelInterface):
                 self._nccl_group.send(tensor, rank)
 
     def _begin_read_single_tensor(self, typ: "TorchTensorType") -> "torch.Tensor":
-        buf = self.torch.zeros(typ.shape, dtype=typ.dtype, device=self._device)
+        buf = self._torch_tensor_allocator(typ.shape, typ.dtype)
         self._nccl_group.recv(buf, self._writer_rank)
         return buf
 

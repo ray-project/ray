@@ -242,7 +242,6 @@ def summarize_episodes(
         episode_reward_mean=avg_reward,
         episode_len_mean=avg_length,
         episode_media=dict(episode_media),
-        episodes_this_iter=len(new_episodes),
         episodes_timesteps_total=sum(episode_lengths),
         policy_reward_min=policy_reward_min,
         policy_reward_max=policy_reward_max,
@@ -259,4 +258,5 @@ def summarize_episodes(
         episode_return_max=max_reward,
         episode_return_min=min_reward,
         episode_return_mean=avg_reward,
+        episodes_this_iter=len(new_episodes),  # deprecate in favor of `num_epsodes_...`
     )
