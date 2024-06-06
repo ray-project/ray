@@ -853,6 +853,7 @@ def test_serve_instance_details_is_json_serializable():
                 "status": "RUNNING",
                 "message": "fake_message",
                 "last_deployed_time_s": 123,
+                "source": "imperative",
                 "deployments": {
                     "deployment1": {
                         "name": "deployment1",
@@ -888,6 +889,7 @@ def test_serve_instance_details_is_json_serializable():
                     "status": "RUNNING",
                     "message": "fake_message",
                     "last_deployed_time_s": 123.0,
+                    "source": "imperative",
                     "deployments": {
                         "deployment1": {
                             "name": "deployment1",
