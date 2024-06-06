@@ -25,7 +25,7 @@ class WorkerGroupStatus:
 
 
 class WorkerGroup(abc.ABC):
-    def __init__(self, num_workers: int, resources_per_worker: dict):
+    def __init__(self):
         pass
 
     def get_status(self) -> WorkerGroupStatus:
@@ -37,7 +37,7 @@ class WorkerGroup(abc.ABC):
     def poll(self) -> WorkerGroupStatus:
         pass
 
-    def start(self):
+    def start(self, num_workers: int, resources_per_worker: dict):
         pass
 
     def shutdown(self):

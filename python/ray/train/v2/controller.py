@@ -1,9 +1,13 @@
+import logging
 import time
-from typing import Callable, Optional
+from typing import Callable
 
 from ray.train.v2.api.config import ScalingConfig
 from ray.train.v2.scaling_policy import ScalingDecision
 from ray.train.v2.worker_group.worker_group import WorkerGroup, WorkerGroupStatus
+
+
+logger = logging.getLogger(__file__)
 
 
 class TrainController:
@@ -13,16 +17,14 @@ class TrainController:
         self._scaling_config = scaling_config
 
         self._scaling_policy = scaling_config.scaling_policy_cls(scaling_config)
-        self._worker_group: Optional[WorkerGroup] = None
+        self._worker_group: WorkerGroup = self._scaling_config.worker_group_cls()
 
     def relaunch_training(self, num_workers: int, resources_per_worker: dict):
-        if self._worker_group:
-            self._worker_group.shutdown()
+        self._worker_group.shutdown()
 
-        self._worker_group = self._scaling_config.worker_group_cls(
+        self._worker_group.start(
             num_workers=num_workers, resources_per_worker=resources_per_worker
         )
-        self._worker_group.start()
         self._worker_group.run_train_fn(self._train_fn)
 
     def _handle_scaling(self, decision: ScalingDecision):
@@ -33,7 +35,16 @@ class TrainController:
             )
 
     def _handle_failures(self, worker_group_status: WorkerGroupStatus):
-        pass
+        worker_errors = worker_group_status.errors
+        if not worker_errors:
+            return
+
+        errors = worker_errors.values()
+        logger.error(
+            "Restarting workers after encountering "
+            f"{len(errors)} worker errors:\n" + ("\n".join([str(e) for e in errors]))
+        )
+        self._worker_group.shutdown()
 
     def _finished(self, worker_group_status: WorkerGroupStatus):
         return not worker_group_status.errors and worker_group_status.finished
@@ -50,6 +61,9 @@ class TrainController:
 
         return status
 
+    def _shutdown(self):
+        self._worker_group.shutdown()
+
     def run(self):
         while True:
             worker_group_status = self._poll_workers()
@@ -61,3 +75,5 @@ class TrainController:
 
             if self._finished(worker_group_status):
                 break
+
+        self._shutdown()
