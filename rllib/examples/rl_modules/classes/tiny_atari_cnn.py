@@ -1,7 +1,11 @@
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.rl_module.torch import TorchRLModule
-from ray.rllib.models.torch.misc import normc_initializer
-from ray.rllib.models.torch.misc import same_padding, valid_padding
+from ray.rllib.models.torch.misc import (
+    normc_initializer,
+    same_padding,
+    valid_padding,
+)
+from ray.rllib.models.torch.torch_distributions import TorchCategorical
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.torch_utils import convert_to_torch_tensor
