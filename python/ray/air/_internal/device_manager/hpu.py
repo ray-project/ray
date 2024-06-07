@@ -3,7 +3,7 @@ from typing import List
 import torch
 
 from ray._private.accelerators.hpu import HPU_PACKAGE_AVAILABLE
-from ray.air._internal.accelerator_utils.device_manager import TorchDeviceManager
+from ray.air._internal.device_manager.torch_device_manager import TorchDeviceManager
 
 if HPU_PACKAGE_AVAILABLE:
     import habana_frameworks.torch.hpu as torch_hpu

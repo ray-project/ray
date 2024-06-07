@@ -20,7 +20,7 @@ from torch.utils.data import (
 )
 
 from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
-from ray.air._internal.accelerator_utils import try_register_torch_accelerator_module
+from ray.air._internal.device_manager import try_register_torch_accelerator_module
 from ray.train._internal import session
 from ray.train._internal.accelerator import Accelerator
 from ray.train._internal.session import get_accelerator, get_session, set_accelerator

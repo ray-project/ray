@@ -1,13 +1,13 @@
 import logging
 
 from ray._private.accelerators.hpu import HPU_PACKAGE_AVAILABLE
-from ray.air._internal.accelerator_utils.device_manager import TorchDeviceManager
-from ray.air._internal.accelerator_utils.hpu import HPUTorchDeviceManager
-from ray.air._internal.accelerator_utils.npu import (
+from ray.air._internal.device_manager.hpu import HPUTorchDeviceManager
+from ray.air._internal.device_manager.npu import (
     NPU_TORCH_PACKAGE_AVAILABLE,
     NPUTorchDeviceManager,
 )
-from ray.air._internal.accelerator_utils.nvidia_gpu import CUDATorchDeviceManager
+from ray.air._internal.device_manager.nvidia_gpu import CUDATorchDeviceManager
+from ray.air._internal.device_manager.torch_device_manager import TorchDeviceManager
 
 logger = logging.getLogger(__name__)
 
@@ -35,7 +35,7 @@ def get_torch_device_manager_cls_by_resources(resources) -> TorchDeviceManager:
     device_manager = None
 
     for resource_type, resource_value in resources.items():
-        if resource_value > 0 and resource_type != "CPU":
+        if resource_value and resource_type != "CPU":
             device_manager = ACCELERATOR_TORCH_DEVICE_MANAGER.get(resource_type, None)
 
     return device_manager or CUDATorchDeviceManager

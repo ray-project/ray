@@ -4,7 +4,7 @@ from typing import List
 import torch
 
 import ray
-from ray.air._internal.accelerator_utils.device_manager import TorchDeviceManager
+from ray.air._internal.device_manager.torch_device_manager import TorchDeviceManager
 
 
 class CUDATorchDeviceManager(TorchDeviceManager):

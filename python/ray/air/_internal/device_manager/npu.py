@@ -7,7 +7,7 @@ import torch
 
 import ray
 from ray._private.accelerators.npu import ASCEND_RT_VISIBLE_DEVICES_ENV_VAR
-from ray.air._internal.accelerator_utils.device_manager import TorchDeviceManager
+from ray.air._internal.device_manager.torch_device_manager import TorchDeviceManager
 
 
 @lru_cache()

@@ -7,9 +7,6 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Type, TypeVar
 import ray
 import ray._private.ray_constants as ray_constants
 from ray._private.ray_constants import env_integer
-from ray.air._internal.accelerator_utils import (
-    get_torch_device_manager_cls_by_resources,
-)
 from ray.data import Dataset
 from ray.exceptions import RayActorError
 from ray.train import Checkpoint, DataConfig
@@ -517,10 +514,6 @@ class BackendExecutor:
             node_rank_map,
         ) = self._create_rank_world_size_mappings()
 
-        device_manager = get_torch_device_manager_cls_by_resources(
-            self._resources_per_worker
-        )()
-
         futures = []
         for index in range(len(self.worker_group)):
             futures.append(
@@ -538,7 +531,7 @@ class BackendExecutor:
                     metadata=metadata,
                     checkpoint=checkpoint,
                     storage=storage,
-                    device_manager=device_manager,
+                    device_manager=None,
                 )
             )
 

@@ -5,7 +5,7 @@ import numpy as np
 import pandas as pd
 import torch
 
-from ray.air._internal.accelerator_utils.nvidia_gpu import CUDATorchDeviceManager
+from ray.air._internal.device_manager.nvidia_gpu import CUDATorchDeviceManager
 from ray.air.util.data_batch_conversion import _unwrap_ndarray_object_type_if_needed
 
 
