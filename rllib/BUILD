@@ -624,7 +624,7 @@ py_test(
     srcs = ["algorithms/dreamerv3/tests/test_dreamerv3.py"]
 )
 
-# Impala
+# IMPALA
 py_test(
     name = "test_impala",
     tags = ["team:rllib", "algorithms_dir"],
