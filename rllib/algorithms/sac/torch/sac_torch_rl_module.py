@@ -22,7 +22,7 @@ from ray.rllib.utils.typing import NetworkType
 torch, nn = try_import_torch()
 
 
-class SACTorchRLModule(TorchRLModule, SACRLModule):
+class SACTorchRLModule(SACRLModule, TorchRLModule):
     framework: str = "torch"
 
     @override(SACRLModule)
