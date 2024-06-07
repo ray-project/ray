@@ -1795,7 +1795,7 @@ def init(
 
     # Configure the logging settings for the user driver program.
     # This needs to be done after Ray is initialized since
-    # it needs runtime context to get log context.
+    # logger needs runtime context to get context like job id.
     if logging_config:
         dict_config = logging_config._get_dict_config()
         logging.config.dictConfig(dict_config)
