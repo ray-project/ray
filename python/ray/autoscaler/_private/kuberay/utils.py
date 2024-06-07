@@ -102,6 +102,9 @@ def tpu_node_selectors_to_type(topology: str, accelerator: str) -> Optional[str]
         # Reduce e.g. "2x2x2" to 8
         chip_dimensions = [int(chip_count) for chip_count in topology.split("x")]
         num_chips = reduce(lambda x, y: x * y, chip_dimensions)
-        num_cores = num_chips * 2
+        default_num_cores_per_chip = 2
+        if generation == "v5e":
+            default_num_cores_per_chip = 1
+        num_cores = num_chips * default_num_cores_per_chip
         return f"{generation}-{num_cores}"
     return None
