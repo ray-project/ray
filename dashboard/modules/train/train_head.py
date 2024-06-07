@@ -45,7 +45,7 @@ class TrainHead(dashboard_utils.DashboardHeadModule):
             try:
                 train_runs = await stats_actor.get_all_train_runs.remote()
                 train_runs = sorted(
-                    list(train_runs.values()),
+                    train_runs.values(),
                     key=lambda run: run.start_time,
                     reverse=True,
                 )
