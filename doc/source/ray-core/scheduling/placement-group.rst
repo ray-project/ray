@@ -4,7 +4,7 @@ Placement Groups
 .. _ray-placement-group-doc-ref:
 
 Placement groups allow users to atomically reserve groups of resources across multiple nodes (i.e., gang scheduling).
-They can be then used to schedule Ray tasks and actors packed as close as possible for locality (PACK), or spread apart
+They can then be used to schedule Ray tasks and actors packed together for locality (PACK), or spread apart
 (SPREAD). Placement groups are generally used for gang-scheduling actors, but also support tasks.
 
 Here are some real-world use cases:
@@ -309,10 +309,10 @@ You can schedule actors or tasks to a placement group using
 
   When you use an actor with a placement group, always specify ``num_cpus``.
 
-  By default (with no arguments to ``ray.remote``) Ray actor requires 1 CPU when it is scheduled. But after it is created, it occupies 0 CPU.
+  By default (with no arguments to ``ray.remote``), a Ray actor requires 1 CPU when it is scheduled. But after it is created, it occupies 0 CPUs.
 
-  When scheduling an actor without resource requirements and a placement group, the placement group has to be created (since it requires 1 CPU to be scheduled).
-  However, after the actor is created, it doesn't consume the placement group resources.
+  When scheduling an actor with no resource requirements and a placement group, the placement group gets created (since the actor requires 1 CPU to be scheduled).
+  However, after the actor is created, it doesn't consume any placement group resources.
 
 The actor is scheduled now! One bundle can be used by multiple tasks and actors (i.e., the bundle to task (or actor) is a one-to-many relationship).
 In this case, since the actor uses 1 CPU, 1 GPU remains from the bundle.
