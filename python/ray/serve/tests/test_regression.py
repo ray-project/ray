@@ -17,6 +17,9 @@ from ray.serve.handle import DeploymentHandle
 
 @pytest.fixture
 def shutdown_ray():
+    if ray.is_initialized():
+        serve.shutdown()
+        ray.shutdown()
     yield
     serve.shutdown()
     ray.shutdown()
@@ -261,6 +264,22 @@ def test_healthcheck_timeout(serve_instance):
         response.result(timeout_s=10)
     signal.send.remote()
     response.result()
+
+
+def test_object_store_memory(shutdown_ray):
+    """Test that object_store_memory can be specified.
+
+    See https://github.com/ray-project/ray/issues/45321
+    """
+
+    ray.init()
+
+    @serve.deployment(ray_actor_options={"object_store_memory": 1024})
+    def f():
+        return "hello"
+
+    h = serve.run(f.bind())
+    assert h.remote().result() == "hello"
 
 
 if __name__ == "__main__":
