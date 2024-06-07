@@ -74,6 +74,7 @@ from ray.autoscaler.tags import (
     TAG_RAY_LAUNCH_CONFIG,
     TAG_RAY_NODE_KIND,
     TAG_RAY_NODE_STATUS,
+    TAG_RAY_REPLICA_INDEX,
     TAG_RAY_RUNTIME_CONFIG,
     TAG_RAY_USER_NODE_TYPE,
 )
@@ -129,8 +130,7 @@ class NonTerminatedNodes:
         self.head_id: Optional[NodeID] = None
 
         for node in self.all_node_ids:
-            tags = provider.node_tags(node)
-            node_kind = tags[TAG_RAY_NODE_KIND]
+            node_kind = provider.node_tags(node)[TAG_RAY_NODE_KIND]
             if node_kind == NODE_KIND_WORKER:
                 self.worker_ids.append(node)
             elif node_kind == NODE_KIND_HEAD:
@@ -498,7 +498,7 @@ class StandardAutoscaler:
         (3) Terminates outdated nodes,
                 namely nodes whose configs don't match `node_config` for the
                 relevant node type.
-        (4) Terminate nodes part of a multi-host replica being deleted.
+        (4) Terminates nodes part of a multi-host replica being deleted.
 
         Avoids terminating non-outdated nodes required by
         autoscaler.sdk.request_resources().
@@ -545,11 +545,6 @@ class StandardAutoscaler:
             should_keep_or_terminate, reason = self._keep_worker_of_node_type(
                 node_id, node_type_counts
             )
-            if should_keep_or_terminate == KeepOrTerminate.terminate:
-                self.schedule_node_termination(node_id, reason, logger.info)
-                continue
-            # Check if node is part of a multi-host replica that is being deleted
-            should_keep_or_terminate, reason = self._keep_worker_of_multihost_replica(node_id)
             if should_keep_or_terminate == KeepOrTerminate.terminate:
                 self.schedule_node_termination(node_id, reason, logger.info)
                 continue

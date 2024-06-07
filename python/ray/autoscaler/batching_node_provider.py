@@ -14,8 +14,8 @@ from ray.autoscaler.tags import (
     NODE_KIND_HEAD,
     TAG_RAY_NODE_KIND,
     TAG_RAY_NODE_STATUS,
+    TAG_RAY_REPLICA_INDEX,
     TAG_RAY_USER_NODE_TYPE,
-    TAG_RAY_MULTIHOST_REPLICA,
 )
 
 provider_exists = False
@@ -203,7 +203,7 @@ class BatchingNodeProvider(NodeProvider):
             TAG_RAY_NODE_KIND: node_data.kind,
             TAG_RAY_NODE_STATUS: node_data.status,
             TAG_RAY_USER_NODE_TYPE: node_data.type,
-            TAG_RAY_MULTIHOST_REPLICA: node_data.multihost_replica,
+            TAG_RAY_REPLICA_INDEX: node_data.replica_index,
         }
 
     def internal_ip(self, node_id: str) -> str:
