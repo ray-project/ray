@@ -14,7 +14,7 @@ from ray.rllib.utils.torch_utils import convert_to_torch_tensor
 torch, nn = try_import_torch()
 
 
-class PPOTorchRLModule(TorchRLModule, PPORLModule):
+class PPOTorchRLModule(PPORLModule, TorchRLModule):
     framework: str = "torch"
 
     @override(PPORLModule)
