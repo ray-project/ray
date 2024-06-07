@@ -20,10 +20,13 @@ from torch.utils.data import (
 )
 
 from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
+from ray.air._internal.accelerator_utils import try_register_torch_accelerator_module
 from ray.train._internal import session
 from ray.train._internal.accelerator import Accelerator
-from ray.train._internal.session import get_accelerator, set_accelerator
+from ray.train._internal.session import get_accelerator, get_session, set_accelerator
 from ray.util.annotations import Deprecated, PublicAPI
+
+try_register_torch_accelerator_module()
 
 if Version(torch.__version__) < Version("1.11.0"):
     FullyShardedDataParallel = None
@@ -365,6 +368,8 @@ class _TorchAccelerator(Accelerator):
         self.amp_is_enabled = amp
         self.scaler = GradScaler() if amp else None
         self._seed = None
+        # default is CUDADeviceManager
+        self.device_manager = get_session().device_manager
 
     def prepare_model(
         self,
@@ -402,8 +407,8 @@ class _TorchAccelerator(Accelerator):
             if isinstance(device, list):
                 device = device[0]
 
-        if torch.cuda.is_available():
-            torch.cuda.set_device(device)
+        if self.device_manager.is_device_available():
+            self.device_manager.set_device(device)
 
         if move_to_device:
             if rank == 0:
@@ -451,7 +456,7 @@ class _TorchAccelerator(Accelerator):
         if parallel_strategy and world_size > 1:
             if parallel_strategy == "ddp":
                 DataParallel = DistributedDataParallel
-                if torch.cuda.is_available():
+                if self.device_manager.is_device_available():
                     parallel_strategy_kwargs = {
                         "device_ids": [device],
                         "output_device": device,
@@ -632,11 +637,20 @@ class _WrappedDataLoader(DataLoader):
         self._dataloader = base_dataloader
         self.dataloader_iter = None
         self.device = device
+
+        self.device_manager = get_session().device_manager
+        # reset device is needed for npu in a new thread so far.
+        if device.type == "npu":
+            self.device_manager.set_device(device)
+
         # disable auto transfer (host->device) if cpu is used
-        self._auto_transfer = auto_transfer if device.type == "cuda" else False
-        # create a new CUDA stream to move data from host to device concurrently
+        if device.type == "cuda" or device.type == "npu":
+            self._auto_transfer = auto_transfer
+        else:
+            self._auto_transfer = False
+        # create a new CUDA/NPU stream to move data from host to device concurrently
         self._memcpy_stream = (
-            torch.cuda.Stream(device)
+            self.device_manager.create_stream(device)
             if device.type == "cuda" and self._auto_transfer
             else None
         )
@@ -653,7 +667,7 @@ class _WrappedDataLoader(DataLoader):
                 logger.debug(f"Item {i} cannot be moved to device " f"{self.device}.")
             return i
 
-        with torch.cuda.stream(self._memcpy_stream):
+        with self.device_manager.get_stream_context(self._memcpy_stream):
             if isinstance(item, collections.abc.Mapping):
                 item_on_device = {k: self._move_to_device(v) for k, v in item.items()}
             elif isinstance(item, tuple):
@@ -677,7 +691,7 @@ class _WrappedDataLoader(DataLoader):
         # https://pytorch.org/docs/stable/generated/torch.Tensor.record_stream.html
         # The training stream (current) needs to wait until
         # the memory copy stream finishes.
-        curr_stream = torch.cuda.current_stream()
+        curr_stream = self.device_manager.current_stream()
         curr_stream.wait_stream(self._memcpy_stream)
         # When a tensor is used by CUDA streams different from
         # its original allocator, we need to call ``record_stream``

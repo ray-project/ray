@@ -9,10 +9,13 @@ import torch.distributed as dist
 
 import ray
 from ray._private.accelerators.hpu import HPU_PACKAGE_AVAILABLE
+from ray.air._internal.accelerator_utils import try_register_torch_accelerator_module
 from ray.train._internal.utils import get_address_and_port
 from ray.train._internal.worker_group import WorkerGroup
 from ray.train.backend import Backend, BackendConfig
 from ray.util import PublicAPI
+
+try_register_torch_accelerator_module()
 
 logger = logging.getLogger(__name__)
 
