@@ -45,8 +45,8 @@ KUBERAY_CRD_VER = os.getenv("KUBERAY_CRD_VER", "v1alpha1")
 
 RAY_HEAD_POD_NAME = os.getenv("RAY_HEAD_POD_NAME")
 
-# Key for label that identifies which multi-host relica a pod belongs to
-MULTIHOST_REPLICA_KEY = "multihost-replica"
+# Key for GKE label that identifies which multi-host replica a pod belongs to
+REPLICA_INDEX_KEY = "replicaIndex"
 
 # Design:
 
@@ -82,8 +82,10 @@ def node_data_from_pod(pod: Dict[str, Any]) -> NodeData:
     kind, type = kind_and_type(pod)
     status = status_tag(pod)
     ip = pod_ip(pod)
-    multihost_replica = multihost_replica_id(pod)
-    return NodeData(kind=kind, type=type, multihost_replica=multihost_replica, status=status, ip=ip)
+    replica_index = replica_index_label(pod)
+    return NodeData(
+        kind=kind, type=type, replica_index=replica_index, status=status, ip=ip
+    )
 
 
 def kind_and_type(pod: Dict[str, Any]) -> Tuple[NodeKind, NodeType]:
@@ -98,14 +100,6 @@ def kind_and_type(pod: Dict[str, Any]) -> Tuple[NodeKind, NodeType]:
         kind = NODE_KIND_WORKER
         type = labels[KUBERAY_LABEL_KEY_TYPE]
     return kind, type
-
-
-def multihost_replica_id(pod: Dict[str, Any]) -> string:
-    """ Returns the replica identifier for a multi-host worker group.
-    If the pod belongs to a single-host group, returns an empty string.
-    """
-    labels = pod["metadata"]["labels"]
-    return labels[MULTIHOST_REPLICA_KEY]
 
 
 def replica_index_label(pod: Dict[str, Any]) -> Optional[str]:
@@ -234,10 +228,12 @@ def _worker_group_replicas(raycluster: Dict[str, Any], group_index: int):
     # 1 is the default replicas value used by the KubeRay operator
     return raycluster["spec"]["workerGroupSpecs"][group_index].get("replicas", 1)
 
+
 def _worker_group_num_of_hosts(raycluster: Dict[str, Any], group_index: int):
     # Extract NumOfHosts of a worker group. 1 is the default NumOfHosts value used by
     # the KubeRay operator.
     return raycluster["spec"]["workerGroupSpecs"][group_index].get("numOfHosts", 1)
+
 
 class IKubernetesHttpApiClient(ABC):
     """
