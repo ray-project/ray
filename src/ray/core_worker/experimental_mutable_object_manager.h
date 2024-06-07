@@ -45,7 +45,7 @@ class MutableObjectManager : public std::enable_shared_from_this<MutableObjectMa
           mutable_object_manager_(mutable_object_manager),
           object_id_(object_id) {}
 
-    ~ChannelBuffer();
+    ~ChannelBuffer() { RAY_UNUSED(mutable_object_manager_->ReadRelease(object_id_)); }
 
     const ObjectID &object_id() const { return object_id_; }
 

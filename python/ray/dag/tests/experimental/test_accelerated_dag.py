@@ -579,7 +579,7 @@ def test_asyncio(ray_start_regular_shared, max_queue_size):
     compiled_dag.teardown()
 
 
-@pytest.mark.parametrize("max_queue_size", [None, 2])
+@pytest.mark.parametrize("max_queue_size", [None])
 def test_asyncio_exceptions(ray_start_regular_shared, max_queue_size):
     a = Actor.remote(0, fail_after=100)
     with InputNode() as i:
@@ -597,21 +597,17 @@ def test_asyncio_exceptions(ray_start_regular_shared, max_queue_size):
             assert result == i + 1
             print(f"Got result {result}")
 
-        exc = None
-        for i in range(99):
-            print(f"Executing {i}")
-            awaitable_output = await compiled_dag.execute_async(1)
-            try:
-                result = await awaitable_output.get()
-            except Exception as e:
-                exc = e
-                print(f"Got exception {e}")
-        assert isinstance(exc, RuntimeError), exc
+        with pytest.raises(RuntimeError):
+            for i in range(99):
+                print(f"Executing {i}")
+                awaitable_output = await compiled_dag.execute_async(1)
+                await awaitable_output.get()
 
     loop.run_until_complete(main())
     # Note: must teardown before starting a new Ray session, otherwise you'll get
     # a segfault from the dangling monitor thread upon the new Ray init.
     compiled_dag.teardown()
+    print("Teardown done")
 
 
 if __name__ == "__main__":

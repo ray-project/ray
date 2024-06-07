@@ -38,9 +38,6 @@ std::string GetSemaphoreHeaderName(const std::string &name) {
 
 }  // namespace
 
-MutableObjectManager::ChannelBuffer::~ChannelBuffer() {
-  RAY_UNUSED(mutable_object_manager_->ReadRelease(object_id_));
-}
 
 Status MutableObjectManager::RegisterChannel(
     const ObjectID &object_id,
