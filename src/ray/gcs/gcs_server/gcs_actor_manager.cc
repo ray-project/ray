@@ -109,6 +109,43 @@ const ray::rpc::ActorDeathCause GenActorOutOfScopeCause(const ray::gcs::GcsActor
   return death_cause;
 }
 
+// Returns true if an actor should be dead and should not be loaded to registered_actors_.
+// `true` Cases:
+// 0. state==DEAD
+// 1. root owner is job, and job is dead
+// 2. root owner is another detached actor, and that actor is dead
+bool OnInitializeActorShouldDie(const ray::gcs::GcsInitData &gcs_init_data,
+                                ray::ActorID actor_id) {
+  const auto &jobs = gcs_init_data.Jobs();
+  const auto &actors = gcs_init_data.Actors();
+  const auto &actor_task_specs = gcs_init_data.ActorTaskSpecs();
+
+  const auto &actor_table_data = actors.find(actor_id);
+  if (actor_table_data == actors.end() ||
+      actor_table_data->second.state() == ray::rpc::ActorTableData::DEAD) {
+    return true;
+  }
+
+  // Since state!=DEAD it should have a task spec.
+  const auto &actor_task_spec = ray::map_find_or_die(actor_task_specs, actor_id);
+  ActorID root_detached_actor_id =
+      ray::TaskSpecification(actor_task_spec).RootDetachedActorId();
+  if (root_detached_actor_id.IsNil()) {
+    // owner is job, NOT detached actor, should die with job
+    auto job_iter = jobs.find(actor_id.JobId());
+    return job_iter == jobs.end() || job_iter->second.is_dead();
+  } else if (actor_id == root_detached_actor_id) {
+    // owner is itself, just live on
+    return false;
+  } else {
+    // owner is another detached actor, should die with the owner actor
+    // Root detached actor can be dead only if state() == DEAD.
+    auto root_detached_actor_iter = actors.find(root_detached_actor_id);
+    return root_detached_actor_iter == actors.end() ||
+           root_detached_actor_iter->second.state() == ray::rpc::ActorTableData::DEAD;
+  }
+};
+
 }  // namespace
 
 namespace ray {
@@ -1384,56 +1421,59 @@ void GcsActorManager::SchedulePendingActors() {
 }
 
 void GcsActorManager::Initialize(const GcsInitData &gcs_init_data) {
-  const auto &jobs = gcs_init_data.Jobs();
   const auto &actor_task_specs = gcs_init_data.ActorTaskSpecs();
   absl::flat_hash_map<NodeID, std::vector<WorkerID>> node_to_workers;
-
+  std::vector<ActorID> dead_actors;
   for (const auto &[actor_id, actor_table_data] : gcs_init_data.Actors()) {
-    // Bookkeep DEAD actors.
-    if (actor_table_data.state() == rpc::ActorTableData::DEAD) {
+    // We only load actors which are supposed to be alive:
+    //   - Actors whose state != DEAD.
+    //   - Non-deatched actors whose owner (job or root_detached_actor) is alive.
+    //   - Detached actors which lives even when their original owner is dead.
+    if (!OnInitializeActorShouldDie(gcs_init_data, actor_id)) {
+      const auto &actor_task_spec = map_find_or_die(actor_task_specs, actor_id);
+      auto actor = std::make_shared<GcsActor>(
+          actor_table_data, actor_task_spec, actor_state_counter_);
+
+      registered_actors_.emplace(actor_id, actor);
+      function_manager_.AddJobReference(actor->GetActorID().JobId());
+      if (!actor->GetName().empty()) {
+        named_actors_[actor->GetRayNamespace()][actor->GetName()] = actor->GetActorID();
+      }
+
+      if (actor_table_data.state() == ray::rpc::ActorTableData::DEPENDENCIES_UNREADY) {
+        const auto &owner = actor->GetOwnerAddress();
+        const auto &owner_node = NodeID::FromBinary(owner.raylet_id());
+        const auto &owner_worker = WorkerID::FromBinary(owner.worker_id());
+        RAY_CHECK(unresolved_actors_[owner_node][owner_worker]
+                      .emplace(actor->GetActorID())
+                      .second);
+      } else if (actor_table_data.state() == ray::rpc::ActorTableData::ALIVE) {
+        created_actors_[actor->GetNodeID()].emplace(actor->GetWorkerID(),
+                                                    actor->GetActorID());
+      }
+
+      if (!actor->IsDetached()) {
+        // This actor is owned. Send a long polling request to the actor's
+        // owner to determine when the actor should be removed.
+        PollOwnerForActorOutOfScope(actor);
+      }
+
+      if (!actor->GetWorkerID().IsNil()) {
+        RAY_CHECK(!actor->GetNodeID().IsNil());
+        node_to_workers[actor->GetNodeID()].emplace_back(actor->GetWorkerID());
+      }
+    } else {
+      dead_actors.push_back(actor_id);
       auto actor = std::make_shared<GcsActor>(actor_table_data, actor_state_counter_);
-      AddDestroyedActorToCache(actor);
-      continue;
-    }
-    // Load all non-DEAD actors. Some of these actors are actually already dead, e.g.
-    // those whose jobs are dead, or root_detached_actors are dead. These actors are
-    // destroyed in PollOwnerForActorOutOfScope's callback.
-    const auto &actor_task_spec = map_find_or_die(actor_task_specs, actor_id);
-    auto actor = std::make_shared<GcsActor>(
-        actor_table_data, actor_task_spec, actor_state_counter_);
-
-    registered_actors_.emplace(actor_id, actor);
-    function_manager_.AddJobReference(actor->GetActorID().JobId());
-    if (!actor->GetName().empty()) {
-      named_actors_[actor->GetRayNamespace()][actor->GetName()] = actor->GetActorID();
-    }
-
-    if (actor_table_data.state() == ray::rpc::ActorTableData::DEPENDENCIES_UNREADY) {
-      const auto &owner = actor->GetOwnerAddress();
-      const auto &owner_node = NodeID::FromBinary(owner.raylet_id());
-      const auto &owner_worker = WorkerID::FromBinary(owner.worker_id());
-      RAY_CHECK(unresolved_actors_[owner_node][owner_worker]
-                    .emplace(actor->GetActorID())
-                    .second);
-    } else if (actor_table_data.state() == ray::rpc::ActorTableData::ALIVE) {
-      created_actors_[actor->GetNodeID()].emplace(actor->GetWorkerID(),
-                                                  actor->GetActorID());
-    }
-
-    if (!actor->IsDetached()) {
-      // This actor is owned. Send a long polling request to the actor's
-      // owner to determine when the actor should be removed.
-      PollOwnerForActorOutOfScope(actor);
-    }
-
-    if (!actor->GetWorkerID().IsNil()) {
-      RAY_CHECK(!actor->GetNodeID().IsNil());
-      node_to_workers[actor->GetNodeID()].emplace_back(actor->GetWorkerID());
+      destroyed_actors_.emplace(actor_id, actor);
+      sorted_destroyed_actor_list_.emplace_back(actor_id,
+                                                (int64_t)actor_table_data.timestamp());
     }
   }
-  // `AddDestroyedActorToCache` assumes the new calls come with actors with a more
-  // recent timestamp. This is not true in Initialize, so we sort it here.
-  // IDEA: instead of manually managing this sorted list, make a proper ring buffer.
+  if (!dead_actors.empty()) {
+    RAY_CHECK_OK(
+        gcs_table_storage_->ActorTaskSpecTable().BatchDelete(dead_actors, nullptr));
+  }
   sorted_destroyed_actor_list_.sort([](const std::pair<ActorID, int64_t> &left,
                                        const std::pair<ActorID, int64_t> &right) {
     return left.second < right.second;
