@@ -365,11 +365,12 @@ class RuntimeEnv(dict):
             )
 
         if self.get("container"):
-            if len(runtime_env) > 1:
+            invalid_keys = set(runtime_env.keys()) - {"container", "config"}
+            if len(invalid_keys):
                 raise ValueError(
                     "The 'container' field currently cannot be used "
                     "together with other fields of runtime_env. "
-                    f"Specified fields: {runtime_env.keys()}"
+                    f"Specified fields: {invalid_keys}"
                 )
 
         if self.get("image_uri"):
