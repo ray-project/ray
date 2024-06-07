@@ -2855,19 +2855,28 @@ class Algorithm(Trainable, AlgorithmBase):
             "config": self.config,
         }
 
-        if hasattr(self, "workers"):
-            state["worker"] = self.workers.local_worker().get_state()
+        # New API stack.
+        if self.config.enable_env_runner_and_connector_v2:
+            # Save entire MetricsLogger state.
+            state["metrics_logger"] = self.metrics.get_state()
 
-        # Also store eval `policy_mapping_fn` (in case it's different from main one).
-        # Note, the new `EnvRunner API` has no policy mapping function.
-        if (
-            hasattr(self, "evaluation_workers")
-            and self.evaluation_workers is not None
-            and not self.config.enable_env_runner_and_connector_v2
-        ):
-            state[
-                "eval_policy_mapping_fn"
-            ] = self.evaluation_workers.local_worker().policy_mapping_fn
+        # Old API stack.
+        else:
+            if hasattr(self, "workers"):
+                state["worker"] = self.workers.local_worker().get_state()
+
+            # Also store eval `policy_mapping_fn` (in case it's different from main one).
+            # Note, the new `EnvRunner API` has no policy mapping function.
+            if (
+                    hasattr(self, "evaluation_workers")
+                    and self.evaluation_workers is not None
+            ):
+                state[
+                    "eval_policy_mapping_fn"
+                ] = self.evaluation_workers.local_worker().policy_mapping_fn
+
+        # Save counters.
+        state["counters"] = self._counters
 
         # TODO: Experimental functionality: Store contents of replay buffer
         #  to checkpoint, only if user has configured this.
@@ -2875,13 +2884,6 @@ class Algorithm(Trainable, AlgorithmBase):
             "store_buffer_in_checkpoints"
         ):
             state["local_replay_buffer"] = self.local_replay_buffer.get_state()
-
-        # New API stack: Save entire MetricsLogger state.
-        if self.config.enable_env_runner_and_connector_v2:
-            state["metrics_logger"] = self.metrics.get_state()
-        # Old API stack: Save only counters.
-        else:
-            state["counters"] = self._counters
 
         # Save current `training_iteration`.
         state[TRAINING_ITERATION] = self.training_iteration

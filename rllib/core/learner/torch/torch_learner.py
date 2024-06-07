@@ -136,7 +136,12 @@ class TorchLearner(Learner):
         gradients = self.compute_gradients(loss_per_module)
         postprocessed_gradients = self.postprocess_gradients(gradients)
         self.apply_gradients(postprocessed_gradients)
-        return fwd_out, loss_per_module, self.metrics.deactivate_tensor_mode()
+
+        # Deactivate tensor-mode on our MetricsLogger and collect the (tensor)
+        # results.
+        collected_tensor_metrics = self.metrics.deactivate_tensor_mode()
+
+        return fwd_out, loss_per_module, collected_tensor_metrics
 
     @override(Learner)
     def compute_gradients(
