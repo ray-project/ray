@@ -16,7 +16,7 @@ parser.set_defaults(num_agents=2)
 # Use `parser` to add your own custom command line options to this script
 # and (if needed) use their values to set up `config` below.
 args = parser.parse_args()
-args.num_agents = 2
+
 register_env(
     "multi_agent_pendulum",
     lambda _: MultiAgentPendulum({"num_agents": args.num_agents}),
@@ -35,15 +35,6 @@ config = (
             "post_fcnet_weights_initializer_config": {"gain": 0.01},
         }
     )
-    .api_stack(
-        enable_rl_module_and_learner=True,
-        enable_env_runner_and_connector_v2=True,
-    )
-    .env_runners(
-        rollout_fragment_length="auto",
-        num_env_runners=0,
-        num_envs_per_env_runner=1,
-    )
     .training(
         initial_alpha=1.001,
         lr=3e-4,
@@ -51,14 +42,14 @@ config = (
         n_step=1,
         tau=0.005,
         train_batch_size_per_learner=256,
-        target_network_update_freq=250,
+        target_network_update_freq=1,
         replay_buffer_config={
             "type": "MultiAgentPrioritizedEpisodeReplayBuffer",
             "capacity": 100000,
             "alpha": 1.0,
             "beta": 0.0,
         },
-        num_steps_sampled_before_learning_starts=1024,
+        num_steps_sampled_before_learning_starts=256,
     )
     .rl_module(
         model_config_dict={
@@ -92,5 +83,4 @@ stop = {
 if __name__ == "__main__":
     from ray.rllib.utils.test_utils import run_rllib_example_script_experiment
 
-    args.local_mode = True
     run_rllib_example_script_experiment(config, args, stop=stop)

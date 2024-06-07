@@ -47,6 +47,8 @@ class MultiAgentPrioritizedEpisodeReplayBuffer(
             **kwargs,
         )
 
+        # TODO (simon): If not needed in synchronized sampling, remove.
+        # Maps indices from samples to their corresponding tree index.
         self._sample_idx_to_tree_idx = {}
         # Initialize segment trees for the priority weights per module. Note, b/c
         # the trees are binary we need for them a capacity that is an exponential
@@ -54,6 +56,7 @@ class MultiAgentPrioritizedEpisodeReplayBuffer(
         # nodes in the trees).
         tree_capacity = int(2 ** np.ceil(np.log2(self.capacity)))
 
+        # Each module receives its own segment trees for independent sampling.
         self._module_to_max_priority = defaultdict(lambda: 1.0)
         self._module_to_sum_segment = defaultdict(
             lambda: SumSegmentTree(2 * tree_capacity)
@@ -70,26 +73,56 @@ class MultiAgentPrioritizedEpisodeReplayBuffer(
         self._module_to_max_idx = defaultdict(lambda: 0)
         # Map from tree indices to sample indices (i.e. `self._indices`).
         self._module_to_tree_idx_to_sample_idx = defaultdict(lambda: {})
-
+        # Map from module ID to the last sampled indices to update priorities.
         self._module_to_last_sampled_indices = defaultdict(lambda: [])
 
     @override(MultiAgentEpisodeReplayBuffer)
     def add(
         self,
         episodes: Union[List["MultiAgentEpisode"], "MultiAgentEpisode"],
-        weight: Optional[float] = None,
+        weight: Optional[Union[float, Dict[ModuleID, float]]] = None,
     ) -> None:
+        """Adds incoming episodes to the replay buffer.
 
+        Note, if the incoming episodes' time steps cause the buffer to overflow,
+        older episodes are evicted. Because episodes usually come in chunks and
+        not complete, this could lead to edge cases (e.g. with very small capacity
+        or very long episode length) where the first part of an episode is evicted
+        while the next part just comes in.
+        In such cases, we evict the complete episode, including the new chunk,
+        unless the episode is the last one in the buffer. In the latter case the
+        buffer will be allowed to overflow in a temporary fashion, i.e. during
+        the next addition of samples to the buffer an attempt is made to fall below
+        capacity again.
+
+        The user is advised to select a large enough buffer with regard to the maximum
+        expected episode length.
+
+        Args:
+            episodes: A list of `SingleAgentEpisode`s that contain the episode data.
+            weight: A starting priority for the time steps in `episodes`. If `None`
+                the maximum priority is used, i.e. 1.0 (as suggested in the original
+                paper we scale weights to the interval [0.0, 1.0]). If a dictionary
+                is provided, it must contain the weights for each module.
+
+        """
+        # Define the weights.
         weight_per_module = {}
+        # If no weight is provided, use the maximum priority.
         if weight is None:
             weight = self._max_priority
+        # If `weight` is a dictionary, use the module weights.
         elif isinstance(dict, weight):
             weight_per_module = weight
+            # Define the weight as the mean of the module weights.
             weight = np.mean(list(weight.values()))
 
         episodes: List["MultiAgentEpisode"] = force_list(episodes)
 
         new_episode_ids: List[str] = [eps.id_ for eps in episodes]
+        # Calculate the total number of environment timesteps in the new episodes.
+        # Note, we need the potential new sum of timesteps to decide whether to
+        # evict episodes.
         total_env_timesteps = sum([eps.env_steps() for eps in episodes])
         self._num_timesteps += total_env_timesteps
         self._num_timesteps_added += total_env_timesteps
@@ -97,6 +130,8 @@ class MultiAgentPrioritizedEpisodeReplayBuffer(
         # Evict old episodes.
         eps_evicted_ids: Set[Union[str, int]] = set()
         eps_evicted_idxs: Set[int] = set()
+        # Only evict episodes if the buffer is full and there is more than one
+
         while (
             self._num_timesteps > self.capacity
             and self._num_remaining_episodes(new_episode_ids, eps_evicted_ids) != 1
@@ -116,9 +151,10 @@ class MultiAgentPrioritizedEpisodeReplayBuffer(
                     if eps.id_ == evicted_episode.id_
                 )
                 new_eps_to_evict = episodes.pop(idx)
+                # Remove the timesteps of the evicted new episode from the counter.
                 self._num_timesteps -= new_eps_to_evict.env_steps()
                 self._num_timesteps_added -= new_eps_to_evict.env_steps()
-            # Remove the timesteps of the evicted episode from the counter.
+            # Remove the timesteps of the evicted old episode from the counter.
             self._num_timesteps -= evicted_episode.env_steps()
             self._num_agent_timesteps -= evicted_episode.agent_steps()
             self._num_episodes_evicted += 1
@@ -141,18 +177,21 @@ class MultiAgentPrioritizedEpisodeReplayBuffer(
             # episode.
             i = 0
             for idx_tuple in self._indices:
-                # If episode index is not from an evicted episode, keep it.
+                # If episode index is from an evicted episode, remove it from the
+                # indices and clean up.
                 if idx_tuple[0] in eps_evicted_idxs:
                     # Here we need the index of a multi-agent sample in the segment
                     # tree.
                     self._free_nodes.appendleft(idx_tuple[2])
                     # Remove also the potentially maximum index.
                     self._max_idx -= 1 if self._max_idx == idx_tuple[2] else 0
+                    # Reset to defaults.
                     self._sum_segment[idx_tuple[2]] = 0.0
                     self._min_segment[idx_tuple[2]] = float("inf")
                     sample_idx = self._tree_idx_to_sample_idx[idx_tuple[2]]
                     self._tree_idx_to_sample_idx.pop(idx_tuple[2])
                     self._sample_idx_to_tree_idx.pop(sample_idx)
+                # Otherwise, keep the index.
                 else:
                     new_indices.append(idx_tuple)
                     self._tree_idx_to_sample_idx[idx_tuple[2]] = i
@@ -168,6 +207,8 @@ class MultiAgentPrioritizedEpisodeReplayBuffer(
                 # certain agent timestep in a certain multi-agent episode.
                 i = 0
                 for idx_quadlet in module_indices:
+                    # If episode index is from an evicted episode, remove it from the
+                    # indices and clean up.
                     if idx_quadlet[0] in eps_evicted_idxs:
                         # Here we need the index of a multi-agent sample in the segment
                         # tree.
@@ -178,6 +219,7 @@ class MultiAgentPrioritizedEpisodeReplayBuffer(
                             if self._module_to_max_idx[module_id] == idx_quadlet[3]
                             else 0
                         )
+                        # Set to defaults.
                         self._module_to_sum_segment[module_id][idx_quadlet[3]] = 0.0
                         self._module_to_min_segment[module_id][idx_quadlet[3]] = float(
                             "inf"
@@ -185,6 +227,7 @@ class MultiAgentPrioritizedEpisodeReplayBuffer(
                         self._module_to_tree_idx_to_sample_idx[module_id].pop(
                             idx_quadlet[3]
                         )
+                    # Otherwise, keep the index.
                     else:
                         new_module_indices.append(idx_quadlet)
                         self._module_to_tree_idx_to_sample_idx[module_id][
@@ -370,7 +413,71 @@ class MultiAgentPrioritizedEpisodeReplayBuffer(
         beta: float = 0.0,
         **kwargs,
     ) -> Union[List["MultiAgentEpisode"], List["SingleAgentEpisode"]]:
+        """Samples a list of episodes with multi-agent transitions.
 
+        This sampling method also adds (importance sampling) weights to the returned
+        batch. See for prioritized sampling Schaul et al. (2016).
+
+        Multi-agent transitions can be sampled either `"independent"` or
+        `"synchronized"` with the former sampling for each module independent agent
+        steps and the latter sampling agent transitions from the same environment step.
+
+        The n-step parameter can be either a single integer or a tuple of two integers.
+        In the former case, the n-step is fixed to the given integer and in the latter
+        case, the n-step is sampled uniformly from the given range. Large n-steps could
+        potentially lead to many retries because not all samples might have a full
+        n-step transition.
+
+        Sampling returns episode lists of size B (number of 'rows'), where each episode
+        holds a transition of the form
+
+        `(o_t, a_t, sum(r_t+1:t+n), o_t+n, terminated_t+n, truncated_t+n)`
+
+        where `o_t` is the observation in `t`, `a_t` the action chosen at observation
+        `o_t`, `o_t+n` is the observation `n` timesteps later and `sum(r_t+1:t+n)` is
+        the sum of all rewards collected over the time steps between `t+1` and `t+n`.
+        The `n`-step can be chosen freely when sampling and defaults to `1`. If `n_step`
+        is a tuple it is sampled uniformly across the interval defined by the tuple (for
+        each row in the batch), i.e. from the interval `[n_step[0], n_step[1]]`.
+
+        If requested, `info`s of a transition's first and  last timestep `t+n` and/or
+        `extra_model_outputs` from the first timestep (e.g. log-probabilities, etc.) are
+        added to the batch.
+
+        Each episode contains - in addition to the data tuples presented above - two
+        further entries in its `extra_model_outputs`, namely `n_steps` and `weigths`.
+        The former holds the `n_step` used for each transition and the latter the
+        (importance sampling) weight of `1.0` for each row in the batch. This weight
+        is used for weighted loss calculations in the training process.
+
+        Args:
+            num_items: The number of items to sample. If provided, `batch_size_B`
+                should be `None`.
+            batch_size_B: The batch size to sample. If provided, `num_items`
+                should be `None`.
+            batch_length_T: The length of the sampled batch. If not provided, the
+                default batch length is used. This feature is not yet implemented.
+            n_step: The n-step to sample. If the n-step is a tuple, the n-step is
+                sampled uniformly from the given range. If not provided, the default
+                n-step of `1` is used.
+            gamma: The discount factor for the n-step reward calculation.
+            include_infos: Whether to include the infos in the sampled episodes.
+            include_extra_model_outputs: Whether to include the extra model outputs
+                in the sampled episodes.
+            replay_mode: The replay mode to use for sampling. Either `"independent"`
+                or `"synchronized"`.
+            modules_to_sample: A list of module IDs to sample from. If not provided,
+                transitions for aall modules are sampled.
+            beta: The exponent of the importance sampling weight (see Schaul et
+                al. (2016)). A `beta=0.0` does not correct for the bias introduced
+                by prioritized replay and `beta=1.0` fully corrects for it.
+
+        Returns:
+            A list of 1-step long single-agent episodes containing all basic episode
+            data and if requested infos and extra model outputs. In addition extra model
+            outputs hold the (importance sampling) weights and the n-step used for each
+            transition.
+        """
         assert beta >= 0.0
 
         if num_items is not None:
@@ -420,7 +527,13 @@ class MultiAgentPrioritizedEpisodeReplayBuffer(
         modules_to_sample: Optional[List[ModuleID]],
         beta: Optional[float],
     ) -> Union[List["MultiAgentEpisode"], List["SingleAgentEpisode"]]:
-        """Samples a batch of independent multi-agent transitions."""
+        """Samples a single-agent episode list with independent transitions.
+
+        Note, independent sampling means that each module samples its transitions
+        independently from the replay buffer. This is the default sampling mode.
+        In contrast, synchronized sampling samples transitions from the same
+        environment step.
+        """
 
         actual_n_step = n_step or 1
         # Sample the n-step if necessary.
@@ -433,8 +546,8 @@ class MultiAgentPrioritizedEpisodeReplayBuffer(
 
         sampled_episodes = []
         # TODO (simon): Ensure that the module has data and if not, skip it.
-        #  TODO (sven): Should we then error out or skip? I think the Learner
-        #  should handle this case when a module has no train data.
+        # TODO (sven): Should we then error out or skip? I think the Learner
+        # should handle this case when a module has no train data.
         modules_to_sample = modules_to_sample or set(self._module_to_indices.keys())
         for module_id in modules_to_sample:
             # Sample proportionally from the replay buffer's module segments using the
@@ -624,6 +737,7 @@ class MultiAgentPrioritizedEpisodeReplayBuffer(
         # Clear the corresponding index list for the module.
         self._module_to_last_sampled_indices[module_id].clear()
 
+        # TODO (simon): Use this later for synchronized sampling.
         # for ma_episode_idx in ma_episode_indices:
         #     ma_episode_tree_idx = self._sample_idx_to_tree_idx(ma_episode_idx)
         #     ma_episode_idx =
