@@ -3006,7 +3006,7 @@ def read_lance(
         datasource=datasource,
         ray_remote_args=ray_remote_args,
         concurrency=concurrency,
-        override_num_locks=override_num_blocks,
+        override_num_blocks=override_num_blocks,
     )
 
 
