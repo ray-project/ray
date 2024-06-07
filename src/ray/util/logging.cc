@@ -547,7 +547,7 @@ RayLog::~RayLog() {
   // NOTE(lingxuan.zlx): See more fmt by visiting https://github.com/fmtlib/fmt.
   if (log_format_json_) {
     logger->log(GetMappedSeverity(severity_),
-                /*fmt*/ ",\"{}\":{}{}",
+                /*fmt*/ ",\"{}\":\"{}\"{}",
                 kLogKeyMessage,
                 json_escape_string(msg_osstream_.str()),
                 context_osstream_.str());
@@ -567,7 +567,7 @@ RayLog::~RayLog() {
 template <>
 RayLog &RayLog::WithFieldJsonFormat<std::string>(std::string_view key,
                                                  const std::string &value) {
-  context_osstream_ << ",\"" << key << "\":" << json_escape_string(value);
+  context_osstream_ << ",\"" << key << "\":\"" << json_escape_string(value) << "\"";
   return *this;
 }
 

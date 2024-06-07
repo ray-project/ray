@@ -212,10 +212,15 @@ TEST(PrintLogTest, TestJSONLogging) {
   RAY_LOG(WARNING) << "this needs\nescape\"";
   RAY_LOG(INFO).WithField("key1", "value1").WithField("key2", "value\n2")
       << "contextual log";
+  // Make sure logging binary won't crash
+  // even though it might generate invalid json.
+  std::string binary(12, 0);
+  FillRandom(&binary);
+  RAY_LOG(INFO) << binary;
 
   std::vector<std::string> log_lines =
       absl::StrSplit(GetCapturedStdout(), '\n', absl::SkipEmpty());
-  ASSERT_EQ(3, log_lines.size());
+  ASSERT_EQ(4, log_lines.size());
   json log1 = json::parse(log_lines[0]);
   json log2 = json::parse(log_lines[1]);
   json log3 = json::parse(log_lines[2]);
