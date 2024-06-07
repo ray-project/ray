@@ -560,7 +560,7 @@ class ReplicaActor:
         )
         with self._wrap_user_method_call(request_metadata):
             return await self._user_callable_wrapper.call_user_method(
-                request_metadata, request_args[0], request_kwargs
+                request_metadata, request_args, request_kwargs
             )
 
     async def is_allocated(self) -> str:
