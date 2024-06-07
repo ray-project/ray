@@ -154,7 +154,6 @@ class TestReplicaConfig:
                 "num_gpus": 10,
                 "resources": {"abc": 1.0},
                 "memory": 1000000.0,
-                "object_store_memory": 1000000,
             },
         )
         with pytest.raises(TypeError):
@@ -173,12 +172,6 @@ class TestReplicaConfig:
             ReplicaConfig.create(Class, ray_actor_options={"memory": "hello"})
         with pytest.raises(ValueError):
             ReplicaConfig.create(Class, ray_actor_options={"memory": -1})
-        with pytest.raises(TypeError):
-            ReplicaConfig.create(
-                Class, ray_actor_options={"object_store_memory": "hello"}
-            )
-        with pytest.raises(ValueError):
-            ReplicaConfig.create(Class, ray_actor_options={"object_store_memory": -1})
         with pytest.raises(TypeError):
             ReplicaConfig.create(Class, ray_actor_options={"resources": []})
 
