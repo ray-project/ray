@@ -22,8 +22,7 @@ class PPOTorchRLModule(TorchRLModule, PPORLModule):
         super().setup()
 
         # If not an inference-only module (e.g., for evaluation), set up the
-        # parameter names to be removed or renamed when syncing from the state dict
-        # when synching.
+        # parameter names to be removed or renamed when syncing from the state dict.
         if not self.inference_only:
             # Set the expected and unexpected keys for the inference-only module.
             self._set_inference_only_state_dict_keys()
