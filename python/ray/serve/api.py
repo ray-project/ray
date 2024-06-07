@@ -508,7 +508,7 @@ def _run(
         raise RayServeException("Application name must a non-empty string.")
 
     client = _private_api.serve_start(
-        http_options={"location": "EveryNode"},
+        http_options={"location": http_locations},
     )
 
     # Record after Ray has been started.
@@ -573,6 +573,7 @@ def run(
     blocking: bool = False,
     name: str = SERVE_DEFAULT_APP_NAME,
     route_prefix: str = DEFAULT.VALUE,
+    http_locations: str = "EveryNode",
     logging_config: Optional[Union[Dict, LoggingConfig]] = None,
 ) -> DeploymentHandle:
     """Run an application and return a handle to its ingress deployment.
@@ -604,6 +605,7 @@ def run(
         target=target,
         name=name,
         route_prefix=route_prefix,
+        http_locations=http_locations,
         logging_config=logging_config,
     )
     logger.info(f"Deployed app '{name}' successfully.")

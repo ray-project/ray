@@ -81,6 +81,7 @@ export type UnifiedJob = {
   driver_info: DriverInfo | null;
   driver_agent_http_address: string | null;
   driver_node_id: string | null;
+  byted_ray_user?: string;
 };
 
 export type DriverInfo = {

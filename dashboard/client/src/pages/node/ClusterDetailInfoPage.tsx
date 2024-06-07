@@ -123,7 +123,7 @@ export const ClusterDetailInfoPage = () => {
                     copyableValue: clusterDetail.data.clusterName,
                   }
                 : { value: "-" },
-            }
+            },
           ]}
         />
       </TitleCard>

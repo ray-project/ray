@@ -9,12 +9,12 @@ export const useJobList = () => {
   const [isRefreshing, setRefresh] = useState(true);
   const [filter, setFilter] = useState<
     {
-      key: "job_id" | "status" | "submission_id";
+      key: "job_id" | "status" | "submission_id" | "byted_ray_user";
       val: string;
     }[]
   >([]);
   const refreshRef = useRef(isRefreshing);
-  const changeFilter = (key: "job_id" | "status" | "submission_id", val: string) => {
+  const changeFilter = (key: "job_id" | "status" | "submission_id" | "byted_ray_user", val: string) => {
     const f = filter.find((e) => e.key === key);
     if (f) {
       f.val = val;

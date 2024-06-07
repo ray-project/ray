@@ -762,7 +762,35 @@ async def download_and_unpack_package(
                             + install_warning
                         )
                 if protocol == Protocol.HDFS:
-                    subprocess.check_call(["hdfs", "dfs", "-get", pkg_uri, pkg_file])
+                    if os.environ.get("BYTED_RAY_RUNTIME_USE_ARNOLD_HDFS") is not None:
+                        # arnold hdfs only support open source hdfs, only support copy to a directory
+                        # (TODO) may have multi thread bug
+                        subprocess.check_call(
+                            [
+                                "/opt/tiger/arnold/hdfs_client/hdfs",
+                                "dfs",
+                                "-get",
+                                pkg_uri,
+                                base_directory,
+                            ]
+                        )
+                        subprocess.check_call(
+                            [
+                                "mv",
+                                os.path.join(base_directory, pkg_uri.split("/")[:-1]),
+                                pkg_file,
+                            ]
+                        )
+                    else:
+                        subprocess.check_call(
+                            [
+                                "/opt/tiger/yarn_deploy/hadoop/bin/hdfs",
+                                "dfs",
+                                "-get",
+                                pkg_uri,
+                                pkg_file,
+                            ]
+                        )
                 elif protocol == Protocol.GIT:
                     await download_package_from_git(
                         runtime_env, str(pkg_file), logger, pkg_uri

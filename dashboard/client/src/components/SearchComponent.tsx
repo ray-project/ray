@@ -79,7 +79,7 @@ export const SearchSelect = ({
       }}
       defaultValue={defaultValue}
     >
-      {showAllOption ?? <MenuItem value="">All</MenuItem>}
+      <MenuItem value="">All</MenuItem>
       {options.map((e) =>
         typeof e === "string" ? (
           <MenuItem value={e}>{e}</MenuItem>

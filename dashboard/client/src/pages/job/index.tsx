@@ -14,7 +14,7 @@ import Pagination from "@material-ui/lab/Pagination";
 import React from "react";
 import { Outlet } from "react-router-dom";
 import Loading from "../../components/Loading";
-import { SearchInput } from "../../components/SearchComponent";
+import { SearchInput, SearchSelect } from "../../components/SearchComponent";
 import TitleCard from "../../components/TitleCard";
 import { HelpInfo } from "../../components/Tooltip";
 import { MainNavPageInfo } from "../layout/mainNavContext";
@@ -37,6 +37,7 @@ const useStyles = makeStyles((theme) => ({
 const columns = [
   { label: "Job ID" },
   { label: "Submission ID" },
+  { label: "Byted User" },
   { label: "Entrypoint" },
   { label: "Status" },
   { label: "Status message" },
@@ -96,6 +97,16 @@ const JobList = () => {
           <SearchInput
             label="Submission ID"
             onChange={(value) => changeFilter("submission_id", value)}
+          />
+          <SearchInput
+            label="Byted User"
+            onChange={(value) => changeFilter("byted_ray_user", value)}
+          />
+          <SearchSelect
+            label="Status"
+            onChange={(value) => changeFilter("status", value.trim())}
+            options={["RUNNING", "FAILED", "STOPPED", "SUCCEEDED"]}
+            showAllOption={true}
           />
           <SearchInput
             label="Page Size"

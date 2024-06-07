@@ -490,10 +490,23 @@ class JobHead(dashboard_utils.DashboardHeadModule):
             )
             for submission_id, job in submission_jobs.items()
         ]
+
+        byted_submssion_list = []
+        for submission_job in submission_jobs:
+            byted_submssion_list.append(submission_job.dict())
+            if (
+                submission_job.runtime_env is not None
+                and "env_vars" in submission_job.runtime_env
+            ):
+                if "BYTED_RAY_USER" in submission_job.runtime_env["env_vars"]:
+                    byted_submssion_list[-1][
+                        "byted_ray_user"
+                    ] = submission_job.runtime_env["env_vars"]["BYTED_RAY_USER"]
+
         return Response(
             text=json.dumps(
                 [
-                    *[submission_job.dict() for submission_job in submission_jobs],
+                    *byted_submssion_list,
                     *[job_info.dict() for job_info in driver_jobs.values()],
                 ]
             ),

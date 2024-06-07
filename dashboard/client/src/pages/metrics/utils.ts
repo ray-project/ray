@@ -50,21 +50,22 @@ export const getMetricsInfo = async () => {
     dashboardUids: undefined,
     dashboardDatasource: undefined,
   };
-  try {
-    const resp = await fetchGrafanaHealthcheck();
-    if (resp.data.result) {
-      info.grafanaHost = resp.data.data.grafanaHost;
-      info.sessionName = resp.data.data.sessionName;
-      info.dashboardUids = resp.data.data.dashboardUids;
-      info.dashboardDatasource = resp.data.data.dashboardDatasource;
-    }
-  } catch (e) {}
-  try {
-    const resp = await fetchPrometheusHealthcheck();
-    if (resp.data.result) {
-      info.prometheusHealth = resp.data.result;
-    }
-  } catch (e) {}
+  // not used in bytedance
+  // try {
+  //   const resp = await fetchGrafanaHealthcheck();
+  //   if (resp.data.result) {
+  //     info.grafanaHost = resp.data.data.grafanaHost;
+  //     info.sessionName = resp.data.data.sessionName;
+  //     info.grafanaDefaultDashboardUid =
+  //       resp.data.data.grafanaDefaultDashboardUid;
+  //   }
+  // } catch (e) {}
+  // try {
+  //   const resp = await fetchPrometheusHealthcheck();
+  //   if (resp.data.result) {
+  //     info.prometheusHealth = resp.data.result;
+  //   }
+  // } catch (e) {}
 
   return info;
 };

@@ -143,6 +143,11 @@ class DataOrganizer:
             "object_store_available_memory": total - used,
         }
 
+        if "hostname" in node_info and node_info["raylet"]["state"] == "ALIVE":
+            if cls.bytedance_cpu_metric != "":
+                if node_info["raylet"]["nodeName"].find("head") == -1:
+                    node_info["raylet"]["is_head_node"] = False
+
         node_info = node_physical_stats
         # Merge node stats to node physical stats under raylet
         node_info["raylet"] = node_stats

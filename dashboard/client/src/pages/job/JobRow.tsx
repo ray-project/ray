@@ -38,6 +38,7 @@ export const JobRow = ({ job }: JobRowProps) => {
   const {
     job_id,
     submission_id,
+    byted_ray_user,
     driver_info,
     status,
     message,
@@ -81,6 +82,7 @@ export const JobRow = ({ job }: JobRowProps) => {
         )}
       </TableCell>
       <TableCell align="center">{submission_id ?? "-"}</TableCell>
+      <TableCell align="center">{byted_ray_user ?? "-"}</TableCell>
       <TableCell align="center">
         <Tooltip
           className={classes.overflowCell}

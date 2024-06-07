@@ -101,6 +101,57 @@ def job_cli_group():
     pass
 
 
+def get_user_from_sec_token_string():
+    import os
+    import subprocess
+    import json
+
+    byted_sec_string = ""
+    if os.environ.get("SEC_TOKEN_PATH") is not None:
+        sec_path = os.environ.get("SEC_TOKEN_PATH")
+        if os.path.exists(sec_path):
+            try:
+                f = open(sec_path, "r")
+                byted_sec_string = f.read()
+            except Exception as e:
+                cli_logger.print("bytedray failed to open sec_token_path, error: ", e)
+
+    if os.environ.get("SEC_TOKEN_STRING") is not None:
+        byted_sec_string = os.environ.get("SEC_TOKEN_STRING")
+
+    sec_list = byted_sec_string.split(".")
+    if len(sec_list) != 3:
+        return "unknown"
+
+    error_msg = ""
+    try:
+        error_msg = subprocess.check_output(
+            "echo " + sec_list[1] + "|base64 -d", shell=True, stderr=subprocess.STDOUT
+        )
+    except subprocess.CalledProcessError as e:
+        error_msg = e.output
+
+    error_msg = error_msg.decode("utf-8")
+
+    if len(error_msg) > 2 and error_msg.rfind("}") != -1 and error_msg[0] == "{":
+        sec_map = {}
+        try:
+            sec_map = json.loads(error_msg[0 : error_msg.rfind("}") + 1])
+        except Exception as e:
+            cli_logger.print("bytedray failed to load sec_token, error: ", e)
+
+        if "legid" in sec_map:
+            sec_map = sec_map["legid"]
+
+        if "user" in sec_map:
+            result = str(sec_map["user"])
+            cli_logger.print(
+                f"bytedray get user {result} from SEC_TOKEN_PATH/SEC_TOKEN_STRING"
+            )
+            return result
+    return "unknown"
+
+
 @job_cli_group.command()
 @click.option(
     "--address",
@@ -260,6 +311,13 @@ def submit(
             no_wait=no_wait,
         )
 
+    byted_ray_user = ""
+    if (
+        os.environ.get("SEC_TOKEN_STRING") is not None
+        or os.environ.get("SEC_TOKEN_PATH") is not None
+    ):
+        byted_ray_user = get_user_from_sec_token_string()
+
     client = _get_sdk_client(
         address, create_cluster_if_needed=True, headers=headers, verify=verify
     )
@@ -269,6 +327,13 @@ def submit(
         runtime_env_json=runtime_env_json,
         working_dir=working_dir,
     )
+
+    if byted_ray_user != "":
+        if "env_vars" not in final_runtime_env:
+            final_runtime_env["env_vars"] = {"BYTED_RAY_USER": byted_ray_user}
+        else:
+            final_runtime_env["env_vars"]["BYTED_RAY_USER"] = byted_ray_user
+
     job_id = client.submit_job(
         entrypoint=list2cmdline(entrypoint),
         submission_id=submission_id,
