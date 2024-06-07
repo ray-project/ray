@@ -2329,7 +2329,7 @@ class Algorithm(Trainable, AlgorithmBase):
                 will raise a KeyError.
 
         Raises:
-            KeyError if `policy_id` cannot be found in this Algorithm.
+            KeyError: if `policy_id` cannot be found in this Algorithm.
 
         .. testcode::
 
@@ -2777,7 +2777,7 @@ class Algorithm(Trainable, AlgorithmBase):
             env_context: The EnvContext to configure the environment.
 
         Raises:
-            Exception in case something is wrong with the given environment.
+            Exception: in case something is wrong with the given environment.
         """
         pass
 

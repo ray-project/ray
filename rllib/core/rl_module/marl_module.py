@@ -155,8 +155,8 @@ class MultiAgentRLModule(RLModule):
 
         Raises:
             ValueError: If the module ID already exists and override is False.
-            Warnings are raised if the module id is not valid according to the logic of
-            validate_policy_id().
+                Warnings are raised if the module id is not valid according to the
+                logic of ``validate_policy_id()``.
         """
         validate_policy_id(module_id)
         if module_id in self._rl_modules and not override:
