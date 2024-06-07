@@ -1396,6 +1396,11 @@ def init(
     else:
         logging.getLogger("ray").handlers.clear()
 
+    # Configure the logging settings for the driver process.
+    if logging_config:
+        dict_config = logging_config._get_dict_config()
+        logging.config.dictConfig(dict_config)
+
     # Parse the hidden options:
     _enable_object_reconstruction: bool = kwargs.pop(
         "_enable_object_reconstruction", False
@@ -1792,13 +1797,6 @@ def init(
 
     for hook in _post_init_hooks:
         hook()
-
-    # Configure the logging settings for the user driver program.
-    # This needs to be done after Ray is initialized since
-    # logger needs runtime context to get context like job id.
-    if logging_config:
-        dict_config = logging_config._get_dict_config()
-        logging.config.dictConfig(dict_config)
 
     node_id = global_worker.core_worker.get_current_node_id()
     global_node_address_info = _global_node.address_info.copy()
