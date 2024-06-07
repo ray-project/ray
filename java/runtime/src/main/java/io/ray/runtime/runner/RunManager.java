@@ -19,6 +19,7 @@ public class RunManager {
   private static final Logger LOGGER = LoggerFactory.getLogger(RunManager.class);
 
   private static final Pattern pattern = Pattern.compile("--address='([^']+)'");
+
   /** Start the head node. */
   public static void startRayHead(RayConfig rayConfig) {
     LOGGER.debug("Starting ray runtime @ {}.", rayConfig.nodeIp);
