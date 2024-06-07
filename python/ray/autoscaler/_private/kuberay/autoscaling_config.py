@@ -264,6 +264,11 @@ def _get_ray_resources_from_group_spec(
         resources["GPU"] = num_gpus
 
     if num_tpus is not None:
+        # Add TPU Ray resource if not already added by ray_start_params,
+        # but specified in k8s_resource_limits.
+        if "TPU" not in custom_resource_dict:
+            resources["TPU"] = num_tpus
+
         """Add TPU head resource, similar to the GCP node_provider.
         Sets the Ray resource TPU-{...}-head to ensure the Ray autoscaler
         has sufficient resources to make scaling decisions.

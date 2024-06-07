@@ -116,6 +116,7 @@ def _get_basic_autoscaling_config() -> dict:
                     "memory": 536870912,
                     "Custom2": 5,
                     "Custom3": 1,
+                    "TPU": 4,
                     "TPU-v4-16-head": 1,
                 },
             },
@@ -246,12 +247,6 @@ def _get_autoscaling_config_with_options() -> dict:
     return config
 
 
-def _get_autoscaling_config_with_tpu_custom_resource() -> dict:
-    config = _get_basic_autoscaling_config()
-    config["available_node_types"]["tpu-group"]["resources"]["TPU"] = 4
-    return config
-
-
 @pytest.mark.parametrize(
     "input,output",
     [
@@ -315,7 +310,7 @@ TEST_DATA = (
         ),
         pytest.param(
             _get_ray_cr_with_tpu_custom_resource(),
-            _get_autoscaling_config_with_tpu_custom_resource(),
+            _get_basic_autoscaling_config(),
             None,
             None,
             None,
@@ -331,7 +326,7 @@ TEST_DATA = (
         ),
         pytest.param(
             _get_ray_cr_with_tpu_k8s_resource_limit_and_custom_resource(),
-            _get_autoscaling_config_with_tpu_custom_resource(),
+            _get_basic_autoscaling_config(),
             None,
             None,
             None,
