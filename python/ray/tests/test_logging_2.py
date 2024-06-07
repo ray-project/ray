@@ -14,22 +14,28 @@ from ray._private.test_utils import run_string_as_driver
 
 class TestCoreContextFilter:
     def test_driver_process(self, shutdown_only):
+        log_context = ["job_id", "worker_id", "node_id"]
         filter = CoreContextFilter()
         record = logging.makeLogRecord({})
         assert filter.filter(record)
-        should_exist = ["job_id", "worker_id", "node_id"]
+        # Ray is not initialized so no context
+        for attr in log_context:
+            assert not hasattr(record, attr)
+
+        ray.init()
+        record = logging.makeLogRecord({})
+        assert filter.filter(record)
         runtime_context = ray.get_runtime_context()
         expected_values = {
             "job_id": runtime_context.get_job_id(),
             "worker_id": runtime_context.get_worker_id(),
             "node_id": runtime_context.get_node_id(),
         }
-        for attr in should_exist:
+        for attr in log_context:
             assert hasattr(record, attr)
             assert getattr(record, attr) == expected_values[attr]
         # This is not a worker process, so actor_id and task_id should not exist.
-        should_not_exist = ["actor_id", "task_id"]
-        for attr in should_not_exist:
+        for attr in ["actor_id", "task_id"]:
             assert not hasattr(record, attr)
 
     def test_task_process(self, shutdown_only):

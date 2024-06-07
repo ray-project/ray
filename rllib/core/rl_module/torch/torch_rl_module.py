@@ -21,47 +21,6 @@ from ray.rllib.utils.typing import NetworkType
 torch, nn = try_import_torch()
 
 
-def compile_wrapper(rl_module: "TorchRLModule", compile_config: TorchCompileConfig):
-    """A wrapper that compiles the forward methods of a TorchRLModule."""
-
-    # TODO(Artur): Remove this once our requirements enforce torch >= 2.0.0
-    # Check if torch framework supports torch.compile.
-    if (
-        torch is not None
-        and version.parse(torch.__version__) < TORCH_COMPILE_REQUIRED_VERSION
-    ):
-        raise ValueError("torch.compile is only supported from torch 2.0.0")
-
-    compiled_forward_train = torch.compile(
-        rl_module._forward_train,
-        backend=compile_config.torch_dynamo_backend,
-        mode=compile_config.torch_dynamo_mode,
-        **compile_config.kwargs
-    )
-
-    rl_module._forward_train = compiled_forward_train
-
-    compiled_forward_inference = torch.compile(
-        rl_module._forward_inference,
-        backend=compile_config.torch_dynamo_backend,
-        mode=compile_config.torch_dynamo_mode,
-        **compile_config.kwargs
-    )
-
-    rl_module._forward_inference = compiled_forward_inference
-
-    compiled_forward_exploration = torch.compile(
-        rl_module._forward_exploration,
-        backend=compile_config.torch_dynamo_backend,
-        mode=compile_config.torch_dynamo_mode,
-        **compile_config.kwargs
-    )
-
-    rl_module._forward_exploration = compiled_forward_exploration
-
-    return rl_module
-
-
 class TorchRLModule(nn.Module, RLModule):
     """A base class for RLlib PyTorch RLModules.
 
@@ -234,3 +193,44 @@ class TorchDDPRLModuleWithTargetNetworksInterface(
     @override(RLModuleWithTargetNetworksInterface)
     def get_target_network_pairs(self) -> List[Tuple[NetworkType, NetworkType]]:
         return self.module.get_target_network_pairs()
+
+
+def compile_wrapper(rl_module: "TorchRLModule", compile_config: TorchCompileConfig):
+    """A wrapper that compiles the forward methods of a TorchRLModule."""
+
+    # TODO(Artur): Remove this once our requirements enforce torch >= 2.0.0
+    # Check if torch framework supports torch.compile.
+    if (
+        torch is not None
+        and version.parse(torch.__version__) < TORCH_COMPILE_REQUIRED_VERSION
+    ):
+        raise ValueError("torch.compile is only supported from torch 2.0.0")
+
+    compiled_forward_train = torch.compile(
+        rl_module._forward_train,
+        backend=compile_config.torch_dynamo_backend,
+        mode=compile_config.torch_dynamo_mode,
+        **compile_config.kwargs,
+    )
+
+    rl_module._forward_train = compiled_forward_train
+
+    compiled_forward_inference = torch.compile(
+        rl_module._forward_inference,
+        backend=compile_config.torch_dynamo_backend,
+        mode=compile_config.torch_dynamo_mode,
+        **compile_config.kwargs,
+    )
+
+    rl_module._forward_inference = compiled_forward_inference
+
+    compiled_forward_exploration = torch.compile(
+        rl_module._forward_exploration,
+        backend=compile_config.torch_dynamo_backend,
+        mode=compile_config.torch_dynamo_mode,
+        **compile_config.kwargs,
+    )
+
+    rl_module._forward_exploration = compiled_forward_exploration
+
+    return rl_module
