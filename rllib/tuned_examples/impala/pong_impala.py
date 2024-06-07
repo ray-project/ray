@@ -81,7 +81,7 @@ config = (
 )
 
 stop = {
-    "env_runner_results/episode_return_mean": 19.0,
+    "env_runner_results/episode_return_mean": 20.0,
     "num_env_steps_sampled_lifetime": 5000000,
 }
 
