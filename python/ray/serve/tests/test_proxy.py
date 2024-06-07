@@ -10,7 +10,7 @@ import pytest
 import ray
 from ray import serve
 from ray.actor import ActorHandle
-from ray.serve._private.common import DeploymentID, EndpointInfo
+from ray.serve._private.common import DeploymentID, EndpointInfo, RequestMetadata
 from ray.serve._private.constants import (
     DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_S,
     SERVE_NAMESPACE,
@@ -557,16 +557,22 @@ class TestHTTPProxy:
     async def test_receive_asgi_messages(self):
         """Test HTTPProxy receive_asgi_messages received correct message."""
         http_proxy = self.create_http_proxy()
-        request_id = "fake-request-id"
+        internal_request_id = "fake-internal-request-id"
+        request_metadata = RequestMetadata(
+            request_id="fake-request-id",
+            internal_request_id="fake-internal-request-id",
+            endpoint="fake-endpoint",
+        )
         queue = AsyncMock()
-        http_proxy.asgi_receive_queues[request_id] = queue
+        http_proxy.asgi_receive_queues[internal_request_id] = queue
 
-        await http_proxy.receive_asgi_messages(request_id=request_id)
+        await http_proxy.receive_asgi_messages(request_metadata=request_metadata)
         queue.wait_for_message.assert_called_once()
         queue.get_messages_nowait.assert_called_once()
 
         with pytest.raises(KeyError):
-            await http_proxy.receive_asgi_messages(request_id="non-existent-request-id")
+            request_metadata.internal_request_id = "non-existent-internal-request-id"
+            await http_proxy.receive_asgi_messages(request_metadata=request_metadata)
 
     @pytest.mark.asyncio
     async def test_call(self):
