@@ -6,7 +6,7 @@
 
 * KubeRay v0.6.0 or higher
   * KubeRay v0.6.0 or v1.0.0: Ray 1.10 or higher.
-  * KubeRay v1.1.0 is highly recommended: Ray 2.8.0 or higher. This document is mainly for KubeRay v1.1.0.
+  * KubeRay v1.1.1 is highly recommended: Ray 2.8.0 or higher. This document is mainly for KubeRay v1.1.1.
 
 ## What's a RayJob?
 
@@ -20,7 +20,7 @@ A RayJob manages two aspects:
 With RayJob, KubeRay automatically creates a RayCluster and submits a job when the cluster is ready. You can also configure RayJob to automatically delete the RayCluster once the Ray job finishes.
 
 To understand the following content better, you should understand the difference between:
-* RayJob: A Kubernetes custom resource definition (CRD) provided by KubeRay.
+* RayJob: A Kubernetes custom resource definition provided by KubeRay.
 * Ray job: A Ray job is a packaged Ray application that can run on a remote Ray cluster. See [this document](jobs-overview) for more details.
 * Submitter: The submitter is a Kubernetes Job that runs `ray job submit` to submit a Ray job to the RayCluster.
 
@@ -30,25 +30,41 @@ To understand the following content better, you should understand the difference
   * `rayClusterSpec` - Defines the **RayCluster** custom resource to run the Ray job on.
 * Ray job configuration
   * `entrypoint` - The submitter runs `ray job submit --address ... --submission-id ... -- $entrypoint` to submit a Ray job to the RayCluster.
-  * `runtimeEnvYAML` - _(Optional)_ A runtime environment that describes the dependencies the Ray job needs to run, including files, packages, environment variables, and more. Provide the configuration as a multi-line YAML string. See {ref}`Runtime Environments <runtime-environments>` for more details. _(New in KubeRay version 1.0.0)_
-  * `jobId` - _(Optional)_ Defines the submission ID for the Ray job. If not provided, KubeRay generates one automatically. See {ref}`Ray Jobs CLI API Reference <ray-job-submission-cli-ref>` for more details about the submission ID.
-  * `metadata` - _(Optional)_ See {ref}`Ray Jobs CLI API Reference <ray-job-submission-cli-ref>` for more details about the `--metadata-json` option.
-  * `entrypointNumCpus` / `entrypointNumGpus` / `entrypointResources` _(Optional)_: See {ref}`Ray Jobs CLI API Reference <ray-job-submission-cli-ref>` for more details.
-* Submitter configuration
-  * `submitterPodTemplate` - _(Optional)_ Defines the Pod template for the submitter Kubernetes Job.
+  * `runtimeEnvYAML` (Optional): A runtime environment that describes the dependencies the Ray job needs to run, including files, packages, environment variables, and more. Provide the configuration as a multi-line YAML string.
+  Example:
+
+    ```yaml
+    spec:
+      runtimeEnvYAML: |
+        pip:
+          - requests==2.26.0
+          - pendulum==2.1.2
+        env_vars:
+          KEY: "VALUE"
+    ```
+
+  See {ref}`Runtime Environments <runtime-environments>` for more details. _(New in KubeRay version 1.0.0)_
+  * `jobId` (Optional): Defines the submission ID for the Ray job. If not provided, KubeRay generates one automatically. See {ref}`Ray Jobs CLI API Reference <ray-job-submission-cli-ref>` for more details about the submission ID.
+  * `metadata` (Optional): See {ref}`Ray Jobs CLI API Reference <ray-job-submission-cli-ref>` for more details about the `--metadata-json` option.
+  * `entrypointNumCpus` / `entrypointNumGpus` / `entrypointResources` (Optional): See {ref}`Ray Jobs CLI API Reference <ray-job-submission-cli-ref>` for more details.
+* Submission configuration
+  * `submissionMode` (Optional): `submissionMode` specifies how RayJob submits the Ray job to the RayCluster. In "K8sJobMode", the KubeRay operator creates a submitter Kubernetes Job to submit the Ray job. In "HTTPMode", the KubeRay operator sends a request to the RayCluster to create a Ray job. The default value is "K8sJobMode".
+  * `submitterPodTemplate` (Optional): Defines the Pod template for the submitter Kubernetes Job. This field is only effective when `submissionMode` is "K8sJobMode".
     * `RAY_DASHBOARD_ADDRESS` - The KubeRay operator injects this environment variable to the submitter Pod. The value is `$HEAD_SERVICE:$DASHBOARD_PORT`.
     * `RAY_JOB_SUBMISSION_ID` - The KubeRay operator injects this environment variable to the submitter Pod. The value is the `RayJob.Status.JobId` of the RayJob.
     * Example: `ray job submit --address=http://$RAY_DASHBOARD_ADDRESS --submission-id=$RAY_JOB_SUBMISSION_ID ...`
+    * See [ray-job.sample.yaml](https://github.com/ray-project/kuberay/blob/master/ray-operator/config/samples/ray-job.sample.yaml) for more details.
 * Automatic resource cleanup
-  * `shutdownAfterJobFinishes` - _(Optional)_ Determines whether to recycle the RayCluster and the submitter after the Ray job finishes. The default value is false.
-  * `ttlSecondsAfterFinished` - _(Optional)_ Only works if `shutdownAfterJobFinishes` is true. The KubeRay operator deletes the RayCluster and the submitter `ttlSecondsAfterFinished` seconds after the Ray job finishes. The default value is 0.
+  * `shutdownAfterJobFinishes` (Optional): Determines whether to recycle the RayCluster after the Ray job finishes. The default value is false.
+  * `ttlSecondsAfterFinished` (Optional): Only works if `shutdownAfterJobFinishes` is true. The KubeRay operator deletes the RayCluster and the submitter `ttlSecondsAfterFinished` seconds after the Ray job finishes. The default value is 0.
+  * `activeDeadlineSeconds` (Optional): If the RayJob doesn't transition the `JobDeploymentStatus` to `Complete` or `Failed` within `activeDeadlineSeconds`, the KubeRay operator transitions the `JobDeploymentStatus` to `Failed`, citing `DeadlineExceeded` as the reason.
 
 ## Example: Run a simple Ray job with RayJob
 
 ## Step 1: Create a Kubernetes cluster with Kind
 
 ```sh
-kind create cluster --image=kindest/node:v1.23.0
+kind create cluster --image=kindest/node:v1.26.0
 ```
 
 ## Step 2: Install the KubeRay operator
@@ -58,11 +74,7 @@ Follow the [RayCluster Quickstart](kuberay-operator-deploy) to install the lates
 ## Step 3: Install a RayJob
 
 ```sh
-# Step 3.1: Download `ray-job.sample.yaml`
-curl -LO https://raw.githubusercontent.com/ray-project/kuberay/ray-operator/v1.1.0-alpha.0/ray-operator/config/samples/ray-job.sample.yaml
-
-# Step 3.2: Create a RayJob
-kubectl apply -f ray-job.sample.yaml
+kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/v1.1.1/ray-operator/config/samples/ray-job.sample.yaml
 ```
 
 ## Step 4: Verify the Kubernetes cluster status
@@ -72,8 +84,8 @@ kubectl apply -f ray-job.sample.yaml
 kubectl get rayjob
 
 # [Example output]
-# NAME            AGE
-# rayjob-sample   7s
+# NAME            JOB STATUS   DEPLOYMENT STATUS   START TIME             END TIME   AGE
+# rayjob-sample                Running             2024-03-02T19:09:15Z              96s
 
 # Step 4.2: List all RayCluster custom resources in the `default` namespace.
 kubectl get raycluster
@@ -142,21 +154,19 @@ The Python script `sample_code.py` used by `entrypoint` is a simple Ray script t
 ## Step 6: Delete the RayJob
 
 ```sh
-kubectl delete -f ray-job.sample.yaml
+kubectl delete -f https://raw.githubusercontent.com/ray-project/kuberay/v1.1.1/ray-operator/config/samples/ray-job.sample.yaml
 ```
 
 ## Step 7: Create a RayJob with `shutdownAfterJobFinishes` set to true
 
 ```sh
-# Step 7.1: Download `ray-job.shutdown.yaml`
-curl -LO https://raw.githubusercontent.com/ray-project/kuberay/ray-operator/v1.1.0-alpha.0/ray-operator/config/samples/ray-job.shutdown.yaml
-
-# Step 7.2: Create a RayJob
-kubectl apply -f ray-job.shutdown.yaml
+kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/v1.1.1/ray-operator/config/samples/ray-job.shutdown.yaml
 ```
 
 The `ray-job.shutdown.yaml` defines a RayJob custom resource with `shutdownAfterJobFinishes: true` and `ttlSecondsAfterFinished: 10`.
-Hence, the KubeRay operator deletes the RayCluster and the submitter 10 seconds after the Ray job finishes.
+Hence, the KubeRay operator deletes the RayCluster 10 seconds after the Ray job finishes. Note that the submitter job is not deleted 
+because it contains the ray job logs and does not use any cluster resources once completed. In addition, the submitter job will always 
+be cleaned up when the RayJob is eventually deleted due to its owner reference back to the RayJob.
 
 ## Step 8: Check the RayJob status
 
@@ -166,20 +176,19 @@ kubectl get rayjobs.ray.io rayjob-sample-shutdown -o jsonpath='{.status.jobDeplo
 kubectl get rayjobs.ray.io rayjob-sample-shutdown -o jsonpath='{.status.jobStatus}'
 ```
 
-## Step 9: Check if the KubeRay operator deletes the RayCluster and the submitter
+## Step 9: Check if the KubeRay operator deletes the RayCluster
 
 ```sh
-# List the RayCluster custom resources in the `default` namespace. The RayCluster and the submitter Kubernetes 
-# Job associated with the RayJob `rayjob-sample-shutdown` should be deleted.
+# List the RayCluster custom resources in the `default` namespace. The RayCluster
+# associated with the RayJob `rayjob-sample-shutdown` should be deleted.
 kubectl get raycluster
-kubectl get jobs
 ```
 
 ## Step 10: Clean up
 
 ```sh
 # Step 10.1: Delete the RayJob
-kubectl delete -f ray-job.shutdown.yaml
+kubectl delete -f https://raw.githubusercontent.com/ray-project/kuberay/v1.1.1/ray-operator/config/samples/ray-job.shutdown.yaml
 
 # Step 10.2: Delete the KubeRay operator
 helm uninstall kuberay-operator
@@ -188,8 +197,8 @@ helm uninstall kuberay-operator
 kind delete cluster
 ```
 
-## Advanced Usage
+## Next steps
 
-The Pod template for the Kubernetes Job that runs `ray job submit` can be customized by setting the `submitterPodTemplate` field in the RayJob custom resource.  See <https://raw.githubusercontent.com/ray-project/kuberay/f6546651ff37140211913214642ce7a1d8cf20e2/ray-operator/config/samples/ray_v1alpha1_rayjob.yaml> for an example (commented out in this file).
-
-If `submitterPodTemplate` is unspecified, the Pod will consist of a container named `ray-job-submitter` with image matching that of the Ray head, resource requests of 500m CPU and 200MiB memory, and limits of 1 CPU and 1GiB memory.
+* [RayJob Batch Inference Example](kuberay-batch-inference-example)
+* [Priority Scheduling with RayJob and Kueue](kuberay-kueue-priority-scheduling-example)
+* [Gang Scheduling with RayJob and Kueue](kuberay-kueue-gang-scheduling-example)

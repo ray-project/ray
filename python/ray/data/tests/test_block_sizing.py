@@ -27,7 +27,7 @@ def test_map(shutdown_only, restore_data_context):
     last_snapshot = get_initial_core_execution_metrics_snapshot()
 
     # Test read.
-    ds = ray.data.range(100_000, parallelism=1).materialize()
+    ds = ray.data.range(100_000, override_num_blocks=1).materialize()
     assert (
         num_blocks_expected <= ds._plan.initial_num_blocks() <= num_blocks_expected + 1
     )
@@ -40,7 +40,11 @@ def test_map(shutdown_only, restore_data_context):
     # Test read -> map.
     # NOTE(swang): For some reason BlockBuilder's estimated memory usage when a
     # map fn is used is 2x the actual memory usage.
-    ds = ray.data.range(100_000, parallelism=1).map(lambda row: row).materialize()
+    ds = (
+        ray.data.range(100_000, override_num_blocks=1)
+        .map(lambda row: row)
+        .materialize()
+    )
     assert (
         num_blocks_expected * 2
         <= ds._plan.initial_num_blocks()
@@ -57,7 +61,7 @@ def test_map(shutdown_only, restore_data_context):
     num_blocks_expected //= 2
 
     # Test read.
-    ds = ray.data.range(100_000, parallelism=1).materialize()
+    ds = ray.data.range(100_000, override_num_blocks=1).materialize()
     assert (
         num_blocks_expected <= ds._plan.initial_num_blocks() <= num_blocks_expected + 1
     )
@@ -68,7 +72,11 @@ def test_map(shutdown_only, restore_data_context):
     )
 
     # Test read -> map.
-    ds = ray.data.range(100_000, parallelism=1).map(lambda row: row).materialize()
+    ds = (
+        ray.data.range(100_000, override_num_blocks=1)
+        .map(lambda row: row)
+        .materialize()
+    )
     assert (
         num_blocks_expected * 2
         <= ds._plan.initial_num_blocks()
@@ -85,7 +93,7 @@ def test_map(shutdown_only, restore_data_context):
     ctx.target_shuffle_max_block_size = ctx.target_max_block_size / 2
 
     # Test read.
-    ds = ray.data.range(100_000, parallelism=1).materialize()
+    ds = ray.data.range(100_000, override_num_blocks=1).materialize()
     assert (
         num_blocks_expected <= ds._plan.initial_num_blocks() <= num_blocks_expected + 1
     )
@@ -96,7 +104,11 @@ def test_map(shutdown_only, restore_data_context):
     )
 
     # Test read -> map.
-    ds = ray.data.range(100_000, parallelism=1).map(lambda row: row).materialize()
+    ds = (
+        ray.data.range(100_000, override_num_blocks=1)
+        .map(lambda row: row)
+        .materialize()
+    )
     assert (
         num_blocks_expected * 2
         <= ds._plan.initial_num_blocks()
@@ -134,7 +146,7 @@ def test_shuffle(shutdown_only, restore_data_context, shuffle_op):
     # Test AllToAll and Map -> AllToAll Datasets. Check that Map inherits
     # AllToAll's target block size.
     ctx = DataContext.get_current()
-    ctx.min_parallelism = 1
+    ctx.read_op_min_num_blocks = 1
     ctx.target_min_block_size = 1
     mem_size = 800_000
     shuffle_fn, kwargs, fusion_supported = shuffle_op

@@ -13,6 +13,7 @@ import pytest
 
 import ray
 from ray.data.context import DataContext
+from ray.data.exceptions import UserCodeException
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.test_util import ConcurrencyCounter  # noqa
 from ray.data.tests.util import column_udf, column_udf_class, extract_values
@@ -46,7 +47,7 @@ def test_basic_actors(shutdown_only):
     ) == list(range(1, n + 1))
 
     # Test setting custom max inflight tasks.
-    ds = ray.data.range(10, parallelism=5)
+    ds = ray.data.range(10, override_num_blocks=5)
     assert sorted(
         extract_values(
             "id",
@@ -74,7 +75,7 @@ def test_basic_actors(shutdown_only):
 
 def test_callable_classes(shutdown_only):
     ray.init(num_cpus=2)
-    ds = ray.data.range(10, parallelism=10)
+    ds = ray.data.range(10, override_num_blocks=10)
 
     class StatefulFn:
         def __init__(self):
@@ -179,7 +180,7 @@ def test_callable_classes(shutdown_only):
 def test_concurrent_callable_classes(shutdown_only):
     """Test that concurrenct actor pool runs user UDF in a separate thread."""
     ray.init(num_cpus=2)
-    ds = ray.data.range(10, parallelism=10)
+    ds = ray.data.range(10, override_num_blocks=10)
 
     class StatefulFn:
         def __call__(self, x):
@@ -198,13 +199,13 @@ def test_concurrent_callable_classes(shutdown_only):
         def __call__(self, x):
             raise ValueError
 
-    with pytest.raises(ValueError):
+    with pytest.raises((UserCodeException, ValueError)):
         ds.map_batches(ErrorFn, concurrency=1, max_concurrency=2).take_all()
 
 
 def test_transform_failure(shutdown_only):
     ray.init(num_cpus=2)
-    ds = ray.data.from_items([0, 10], parallelism=2)
+    ds = ray.data.from_items([0, 10], override_num_blocks=2)
 
     def mapper(x):
         time.sleep(x)
@@ -221,7 +222,7 @@ def test_actor_task_failure(shutdown_only, restore_data_context):
     ctx = DataContext.get_current()
     ctx.actor_task_retry_on_errors = [ValueError]
 
-    ds = ray.data.from_items([0, 10], parallelism=2)
+    ds = ray.data.from_items([0, 10], override_num_blocks=2)
 
     class Mapper:
         def __init__(self):
@@ -238,7 +239,7 @@ def test_actor_task_failure(shutdown_only, restore_data_context):
 
 def test_concurrency(shutdown_only):
     ray.init(num_cpus=6)
-    ds = ray.data.range(10, parallelism=10)
+    ds = ray.data.range(10, override_num_blocks=10)
 
     def udf(x):
         return x
@@ -319,7 +320,7 @@ def test_drop_columns(ray_start_regular_shared, tmp_path):
             {"col3": 3}
         ]
         # Test dropping non-existent column
-        with pytest.raises(KeyError):
+        with pytest.raises((UserCodeException, KeyError)):
             ds.drop_columns(["dummy_col", "col1", "col2"]).materialize()
 
 
@@ -348,7 +349,7 @@ def test_select_columns(ray_start_regular_shared):
             "col2",
         ]
         # Test selecting a column that is not in the dataset schema
-        with pytest.raises(KeyError):
+        with pytest.raises((UserCodeException, KeyError)):
             each_ds.select_columns(cols=["col1", "col2", "dummy_col"]).materialize()
 
 
@@ -656,7 +657,7 @@ def test_map_with_memory_resources(shutdown_only):
         ray.get(concurrency_counter.decr.remote())
         return batch
 
-    ds = ray.data.range(num_blocks, parallelism=num_blocks)
+    ds = ray.data.range(num_blocks, override_num_blocks=num_blocks)
     ds = ds.map_batches(
         map_batches,
         batch_size=None,
@@ -707,7 +708,7 @@ def test_map_batches_actors_preserves_order(shutdown_only):
     ray.shutdown()
     ray.init(num_cpus=2)
     # Test that actor compute model preserves block order.
-    ds = ray.data.range(10, parallelism=5)
+    ds = ray.data.range(10, override_num_blocks=5)
     assert extract_values("id", ds.map_batches(UDFClass, concurrency=1).take()) == list(
         range(10)
     )
@@ -733,7 +734,9 @@ def test_map_batches_batch_mutation(
         df["id"] += 1
         return df
 
-    ds = ray.data.range(num_rows, parallelism=num_blocks).repartition(num_blocks)
+    ds = ray.data.range(num_rows, override_num_blocks=num_blocks).repartition(
+        num_blocks
+    )
     # Convert to Pandas blocks.
     ds = ds.map_batches(lambda df: df, batch_format="pandas", batch_size=None)
 
@@ -760,18 +763,26 @@ def test_map_batches_batch_zero_copy(
         df["id"] += 1
         return df
 
-    ds = ray.data.range(num_rows, parallelism=num_blocks).repartition(num_blocks)
+    ds = ray.data.range(num_rows, override_num_blocks=num_blocks).repartition(
+        num_blocks
+    )
     # Convert to Pandas blocks.
     ds = ds.map_batches(lambda df: df, batch_format="pandas", batch_size=None)
     ds = ds.materialize()
 
     # Apply UDF that mutates the batches, which should fail since the batch is
     # read-only.
-    with pytest.raises(ValueError, match="tried to mutate a zero-copy read-only batch"):
-        ds = ds.map_batches(
-            mutate, batch_format="pandas", batch_size=batch_size, zero_copy_batch=True
-        )
-        ds.materialize()
+    with pytest.raises(UserCodeException):
+        with pytest.raises(
+            ValueError, match="tried to mutate a zero-copy read-only batch"
+        ):
+            ds = ds.map_batches(
+                mutate,
+                batch_format="pandas",
+                batch_size=batch_size,
+                zero_copy_batch=True,
+            )
+            ds.materialize()
 
 
 BLOCK_BUNDLING_TEST_CASES = [
@@ -787,7 +798,7 @@ def test_map_batches_block_bundling_auto(
 ):
     # Ensure that we test at least 2 batches worth of blocks.
     num_blocks = max(10, 2 * batch_size // block_size)
-    ds = ray.data.range(num_blocks * block_size, parallelism=num_blocks)
+    ds = ray.data.range(num_blocks * block_size, override_num_blocks=num_blocks)
     # Confirm that we have the expected number of initial blocks.
     assert ds._plan.initial_num_blocks() == num_blocks
 
@@ -819,7 +830,7 @@ def test_map_batches_block_bundling_skewed_manual(
     ray_start_regular_shared, block_sizes, batch_size, expected_num_blocks
 ):
     num_blocks = len(block_sizes)
-    ds = ray.data.from_pandas(
+    ds = ray.data.from_blocks(
         [pd.DataFrame({"a": [1] * block_size}) for block_size in block_sizes]
     )
     # Confirm that we have the expected number of initial blocks.
@@ -845,7 +856,7 @@ def test_map_batches_block_bundling_skewed_auto(
     ray_start_regular_shared, block_sizes, batch_size
 ):
     num_blocks = len(block_sizes)
-    ds = ray.data.from_pandas(
+    ds = ray.data.from_blocks(
         [pd.DataFrame({"a": [1] * block_size}) for block_size in block_sizes]
     )
     # Confirm that we have the expected number of initial blocks.
@@ -878,7 +889,7 @@ def test_map_with_mismatched_columns(ray_start_regular_shared):
         else:
             return {"b": "hello2", "a": "hello1"}
 
-    ds = ray.data.range(10, parallelism=1)
+    ds = ray.data.range(10, override_num_blocks=1)
     error_message = "Current row has different columns compared to previous rows."
     with pytest.raises(ValueError) as e:
         ds.map(bad_fn).materialize()
@@ -888,7 +899,7 @@ def test_map_with_mismatched_columns(ray_start_regular_shared):
 
 
 def test_map_batches_preserve_empty_blocks(ray_start_regular_shared):
-    ds = ray.data.range(10, parallelism=10)
+    ds = ray.data.range(10, override_num_blocks=10)
     ds = ds.map_batches(lambda x: [])
     ds = ds.map_batches(lambda x: x)
     assert ds._plan.initial_num_blocks() == 10, ds
@@ -937,33 +948,46 @@ def test_map_batches_preserves_empty_block_format(ray_start_regular_shared):
     assert type(ray.get(block_refs[0])) == pd.DataFrame
 
 
+def test_map_with_objects_and_tensors(ray_start_regular_shared):
+    # Tests https://github.com/ray-project/ray/issues/45235
+
+    class UnsupportedType:
+        pass
+
+    def f(batch):
+        batch_size = len(batch["id"])
+        return {
+            "array": np.zeros((batch_size, 32, 32, 3)),
+            "unsupported": [UnsupportedType()] * batch_size,
+        }
+
+    ray.data.range(1).map_batches(f).materialize()
+
+
 def test_random_sample(ray_start_regular_shared):
     import math
 
     def ensure_sample_size_close(dataset, sample_percent=0.5):
-        r1 = ds.random_sample(sample_percent)
+        r1 = dataset.random_sample(sample_percent)
         assert math.isclose(
-            r1.count(), int(ds.count() * sample_percent), rel_tol=2, abs_tol=2
+            r1.count(), int(dataset.count() * sample_percent), rel_tol=2, abs_tol=2
         )
 
-    ds = ray.data.range(10, parallelism=2)
+    ds = ray.data.range(10, override_num_blocks=2)
     ensure_sample_size_close(ds)
 
-    ds = ray.data.range(10, parallelism=2)
-    ensure_sample_size_close(ds)
-
-    ds = ray.data.range_tensor(5, parallelism=2, shape=(2, 2))
+    ds = ray.data.range_tensor(5, override_num_blocks=2, shape=(2, 2))
     ensure_sample_size_close(ds)
 
     # imbalanced datasets
-    ds1 = ray.data.range(1, parallelism=1)
-    ds2 = ray.data.range(2, parallelism=1)
-    ds3 = ray.data.range(3, parallelism=1)
+    ds1 = ray.data.range(1, override_num_blocks=1)
+    ds2 = ray.data.range(2, override_num_blocks=1)
+    ds3 = ray.data.range(3, override_num_blocks=1)
     # noinspection PyTypeChecker
     ds = ds1.union(ds2).union(ds3)
     ensure_sample_size_close(ds)
     # Small datasets
-    ds1 = ray.data.range(5, parallelism=5)
+    ds1 = ray.data.range(5, override_num_blocks=5)
     ensure_sample_size_close(ds1)
 
 
@@ -993,7 +1017,7 @@ def test_actor_pool_strategy_default_num_actors(shutdown_only):
     ray.shutdown()
     ray.init(num_cpus=num_cpus)
     compute_strategy = ray.data.ActorPoolStrategy()
-    ray.data.range(10, parallelism=10).map_batches(
+    ray.data.range(10, override_num_blocks=10).map_batches(
         UDFClass, compute=compute_strategy, batch_size=1
     ).materialize()
 
@@ -1007,14 +1031,14 @@ def test_actor_pool_strategy_bundles_to_max_actors(shutdown_only):
 
     max_size = 2
     ds = (
-        ray.data.range(10, parallelism=10)
+        ray.data.range(10, override_num_blocks=10)
         .map_batches(UDFClass, batch_size=None, concurrency=max_size)
         .materialize()
     )
 
     # Check batch size is still respected.
     ds = (
-        ray.data.range(10, parallelism=10)
+        ray.data.range(10, override_num_blocks=10)
         .map_batches(UDFClass, batch_size=10, concurrency=max_size)
         .materialize()
     )

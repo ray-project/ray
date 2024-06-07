@@ -522,6 +522,11 @@ bool LocalTaskManager::PoppedWorkerHandler(
             task_id,
             rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_RUNTIME_ENV_SETUP_FAILED,
             /*scheduling_failure_message*/ runtime_env_setup_error_message);
+      } else if (status == PopWorkerStatus::JobFinished) {
+        // The task job finished.
+        // Just remove the task from dispatch queue.
+        RAY_LOG(DEBUG) << "Call back to a job finished task, task id = " << task_id;
+        erase_from_dispatch_queue_fn(work, scheduling_class);
       } else {
         // In other cases, set the work status `WAITING` to make this task
         // could be re-dispatched.
@@ -979,7 +984,7 @@ void LocalTaskManager::ReleaseWorkerResources(std::shared_ptr<WorkerInterface> w
       }
     }
 
-    for (const auto cpu_resource_id : cpu_resource_ids) {
+    for (const auto &cpu_resource_id : cpu_resource_ids) {
       allocated_instances->Remove(cpu_resource_id);
     }
   }
@@ -998,7 +1003,7 @@ bool LocalTaskManager::ReleaseCpuResourcesFromBlockedWorker(
 
   bool cpu_resources_released = false;
   if (worker->GetAllocatedInstances() != nullptr) {
-    for (const auto resource_id : worker->GetAllocatedInstances()->ResourceIds()) {
+    for (const auto &resource_id : worker->GetAllocatedInstances()->ResourceIds()) {
       if (IsCPUOrPlacementGroupCPUResource(resource_id)) {
         auto cpu_instances = worker->GetAllocatedInstances()->GetDouble(resource_id);
         cluster_resource_scheduler_->GetLocalResourceManager().AddResourceInstances(
@@ -1027,7 +1032,7 @@ bool LocalTaskManager::ReturnCpuResourcesToUnblockedWorker(
 
   bool cpu_resources_returned = false;
   if (worker->GetAllocatedInstances() != nullptr) {
-    for (const auto resource_id : worker->GetAllocatedInstances()->ResourceIds()) {
+    for (const auto &resource_id : worker->GetAllocatedInstances()->ResourceIds()) {
       if (IsCPUOrPlacementGroupCPUResource(resource_id)) {
         auto cpu_instances = worker->GetAllocatedInstances()->GetDouble(resource_id);
         // Important: we allow going negative here, since otherwise you can use infinite
@@ -1071,7 +1076,7 @@ ResourceSet LocalTaskManager::CalcNormalTaskResources() const {
       auto resource_set = allocated_instances->ToResourceSet();
       // Blocked normal task workers have temporarily released its allocated CPU.
       if (worker->IsBlocked()) {
-        for (const auto resource_id : allocated_instances->ResourceIds()) {
+        for (const auto &resource_id : allocated_instances->ResourceIds()) {
           if (IsCPUOrPlacementGroupCPUResource(resource_id)) {
             resource_set.Set(resource_id, 0);
           }

@@ -1,15 +1,14 @@
-import os
 import sys
+
 import pytest
 
 from ray.exceptions import RayActorError, RayTaskError
 from ray.train import Checkpoint
-from ray.train.constants import RAY_TRAIN_COUNT_PREEMPTION_AS_FAILURE
 from ray.train._internal.session import _TrainingResult
 from ray.train._internal.storage import StorageContext
-from ray.tune.experiment import Trial
-
+from ray.train.constants import RAY_TRAIN_COUNT_PREEMPTION_AS_FAILURE
 from ray.train.tests.util import mock_storage_context
+from ray.tune.experiment import Trial
 
 
 @pytest.fixture
@@ -114,7 +113,7 @@ def test_trial_logdir_length():
         storage=mock_storage_context(),
     )
     trial.init_local_path()
-    assert len(os.path.basename(trial.local_path)) < 200
+    assert len(trial.storage.trial_dir_name) < 200
 
 
 if __name__ == "__main__":

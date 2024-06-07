@@ -12,7 +12,7 @@ from ray.rllib.algorithms.ppo import PPOConfig
 
 config = (
     PPOConfig()
-    .experimental(_enable_new_api_stack=True)
+    .api_stack(enable_rl_module_and_learner=True)
     .framework("torch")
     .environment("CartPole-v1")
 )
@@ -80,12 +80,12 @@ from ray.rllib.core.testing.bc_algorithm import BCConfigTest
 
 config = (
     BCConfigTest()
-    .experimental(_enable_new_api_stack=True)
+    .api_stack(enable_rl_module_and_learner=True)
     .environment("CartPole-v1")
     .rl_module(
+        model_config_dict={"fcnet_hiddens": [32, 32]},
         rl_module_spec=SingleAgentRLModuleSpec(module_class=DiscreteBCTorchModule),
     )
-    .training(model={"fcnet_hiddens": [32, 32]})
 )
 
 algo = config.build()
@@ -98,19 +98,19 @@ from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.core.rl_module.marl_module import MultiAgentRLModuleSpec
 from ray.rllib.core.testing.torch.bc_module import DiscreteBCTorchModule
 from ray.rllib.core.testing.bc_algorithm import BCConfigTest
-from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
+from ray.rllib.examples.envs.classes.multi_agent import MultiAgentCartPole
 
 
 config = (
     BCConfigTest()
-    .experimental(_enable_new_api_stack=True)
+    .api_stack(enable_rl_module_and_learner=True)
     .environment(MultiAgentCartPole, env_config={"num_agents": 2})
     .rl_module(
+        model_config_dict={"fcnet_hiddens": [32, 32]},
         rl_module_spec=MultiAgentRLModuleSpec(
             module_specs=SingleAgentRLModuleSpec(module_class=DiscreteBCTorchModule)
         ),
     )
-    .training(model={"fcnet_hiddens": [32, 32]})
 )
 # __pass-specs-to-configs-ma-end__
 
@@ -406,7 +406,7 @@ from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 config = (
     PPOConfig()
     # Enable the new API stack (RLModule and Learner APIs).
-    .experimental(_enable_new_api_stack=True).environment("CartPole-v1")
+    .api_stack(enable_rl_module_and_learner=True).environment("CartPole-v1")
 )
 env = gym.make("CartPole-v1")
 # Create an RL Module that we would like to checkpoint
@@ -414,7 +414,10 @@ module_spec = SingleAgentRLModuleSpec(
     module_class=PPOTorchRLModule,
     observation_space=env.observation_space,
     action_space=env.action_space,
-    model_config_dict={"fcnet_hiddens": [32]},
+    # If we want to use this externally created module in the algorithm,
+    # we need to provide the same config as the algorithm. Any changes to
+    # the defaults can be given via the right side of the `|` operator.
+    model_config_dict=config.model_config | {"fcnet_hiddens": [32]},
     catalog_class=PPOCatalog,
 )
 module = module_spec.build()

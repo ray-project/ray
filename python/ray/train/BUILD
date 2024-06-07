@@ -502,6 +502,14 @@ py_test(
 )
 
 py_test(
+    name = "test_state",
+    size = "small",
+    srcs = ["tests/test_state.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":train_lib", ":conftest"]
+)
+
+py_test(
     name = "test_tensorflow_checkpoint",
     size = "small",
     srcs = ["tests/test_tensorflow_checkpoint.py"],
@@ -650,13 +658,26 @@ py_test(
     deps = [":train_lib", ":conftest"],
 )
 
-### E2E Data + Train 
+### E2E Data + Train
 py_test(
     name = "test_datasets_train",
     size = "medium",
     srcs = ["tests/test_datasets_train.py"],
     tags = ["exclusive", "team:ml", "datasets_train", "gpu"],
     args = ["--smoke-test", "--num-workers=2", "--use-gpu"]
+)
+
+### Train Dashboard
+py_test(
+    name = "test_train_head",
+    size = "small",
+    srcs = ["tests/test_train_head.py"],
+    tags = [
+        "exclusive",
+        "ray_air",
+        "team:ml",
+    ],
+    deps = [":train_lib", ":conftest"],
 )
 
 # This is a dummy test dependency that causes the above tests to be

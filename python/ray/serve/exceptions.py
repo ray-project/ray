@@ -8,7 +8,7 @@ class RayServeException(Exception):
 
 @PublicAPI(stability="alpha")
 class BackPressureError(RayServeException):
-    """Raised when max_queued_requests is exceeded on a handle (or in the proxy)."""
+    """Raised when max_queued_requests is exceeded on a DeploymentHandle."""
 
     def __init__(self, *, num_queued_requests: int, max_queued_requests: int):
         self._message = (

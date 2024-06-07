@@ -308,7 +308,7 @@ async def test_timeout(job_sdk_client):
     data = head_client.get_job_info(job_id)
     assert "Failed to set up runtime environment" in data.message
     assert "Timeout" in data.message
-    assert "consider increasing `setup_timeout_seconds`" in data.message
+    assert "setup_timeout_seconds" in data.message
 
 
 @pytest.mark.asyncio
@@ -395,6 +395,8 @@ async def test_tail_job_logs_with_echo(job_sdk_client):
     async for lines in agent_client.tail_job_logs(job_id):
         print(lines, end="")
         for line in lines.strip().split("\n"):
+            if "Runtime env is setting up." in line:
+                continue
             assert line.split(" ") == ["Hello", str(i)]
             i += 1
 

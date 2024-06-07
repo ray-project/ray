@@ -328,6 +328,11 @@ cdef extern from "ray/core_worker/common.h" nogil:
                      c_string concurrency_group_name,
                      int64_t generator_backpressure_num_objects,
                      c_string serialized_runtime_env)
+        CTaskOptions(c_string name, int num_returns,
+                     unordered_map[c_string, double] &resources,
+                     c_string concurrency_group_name,
+                     int64_t generator_backpressure_num_objects,
+                     c_string serialized_runtime_env, c_bool enable_task_events)
 
     cdef cppclass CActorCreationOptions "ray::core::ActorCreationOptions":
         CActorCreationOptions()
@@ -344,7 +349,8 @@ cdef extern from "ray/core_worker/common.h" nogil:
             c_string serialized_runtime_env,
             const c_vector[CConcurrencyGroup] &concurrency_groups,
             c_bool execute_out_of_order,
-            int32_t max_pending_calls)
+            int32_t max_pending_calls,
+            c_bool enable_task_events)
 
     cdef cppclass CPlacementGroupCreationOptions \
             "ray::core::PlacementGroupCreationOptions":
@@ -354,12 +360,13 @@ cdef extern from "ray/core_worker/common.h" nogil:
             CPlacementStrategy strategy,
             const c_vector[unordered_map[c_string, double]] &bundles,
             c_bool is_detached,
-            double max_cpu_fraction_per_node
+            double max_cpu_fraction_per_node,
+            CNodeID soft_target_node_id,
         )
 
     cdef cppclass CObjectLocation "ray::core::ObjectLocation":
         const CNodeID &GetPrimaryNodeID() const
-        const uint64_t GetObjectSize() const
+        const int64_t GetObjectSize() const
         const c_vector[CNodeID] &GetNodeIDs() const
         c_bool IsSpilled() const
         const c_string &GetSpilledURL() const
@@ -422,6 +429,12 @@ cdef extern from "ray/gcs/gcs_client/gcs_client.h" nogil:
             int64_t timeout_ms,
             c_string &serialized_reply)
         CClusterID GetClusterId()
+        CRayStatus GetClusterResourceState(
+            int64_t timeout_ms,
+            c_string &serialized_reply)
+        CRayStatus ReportAutoscalingState(
+            int64_t timeout_ms,
+            const c_string &serialized_reply)
         CRayStatus DrainNode(
             const c_string &node_id,
             int32_t reason,
@@ -495,6 +508,10 @@ cdef extern from "src/ray/protobuf/gcs.pb.h" nogil:
         c_string ray_namespace() const
         const c_string &SerializeAsString()
 
+    cdef cppclass CNodeDeathInfo "ray::rpc::NodeDeathInfo":
+        int reason() const
+        c_string reason_message() const
+
     cdef cppclass CGcsNodeInfo "ray::rpc::GcsNodeInfo":
         c_string node_id() const
         c_string node_name() const
@@ -507,6 +524,7 @@ cdef extern from "src/ray/protobuf/gcs.pb.h" nogil:
         c_string raylet_socket_name() const
         int metrics_export_port() const
         int runtime_env_agent_port() const
+        CNodeDeathInfo death_info() const
         void ParseFromString(const c_string &serialized)
 
     cdef enum CGcsNodeState "ray::rpc::GcsNodeInfo_GcsNodeState":

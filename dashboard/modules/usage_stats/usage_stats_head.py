@@ -52,6 +52,14 @@ class UsageStatsHead(dashboard_utils.DashboardHeadModule):
                 usage_stats_prompt_enabled=self.usage_stats_prompt_enabled,
             )
 
+        @routes.get("/cluster_id")
+        async def get_cluster_id(self, req) -> aiohttp.web.Response:
+            return ray.dashboard.optional_utils.rest_response(
+                success=True,
+                message="Fetched cluster id",
+                cluster_id=self._dashboard_head.gcs_client.cluster_id.hex(),
+            )
+
     def _check_grafana_running(self):
         from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
 
@@ -126,6 +134,7 @@ class UsageStatsHead(dashboard_utils.DashboardHeadModule):
                 self.total_failed,
                 self.seq_no,
                 self._dashboard_head.gcs_client.address,
+                self._dashboard_head.gcs_client.cluster_id.hex(),
             )
 
             error = None
@@ -156,6 +165,29 @@ class UsageStatsHead(dashboard_utils.DashboardHeadModule):
         with ThreadPoolExecutor(max_workers=1) as executor:
             await loop.run_in_executor(executor, lambda: self._report_usage_sync())
 
+    def _report_disabled_usage_sync(self):
+        assert not self.usage_stats_enabled
+
+        try:
+            if ray_usage_lib.is_ray_init_cluster(
+                self._dashboard_head.gcs_client.address
+            ):
+                return
+
+            data = ray_usage_lib.generate_disabled_report_data()
+            self.client.report_usage_data(ray_usage_lib._usage_stats_report_url(), data)
+        except Exception as e:
+            logger.debug(f"Disabled usage report failed: {e}")
+
+    async def _report_disabled_usage_async(self):
+        assert not self.usage_stats_enabled
+
+        loop = get_or_create_event_loop()
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            await loop.run_in_executor(
+                executor, lambda: self._report_disabled_usage_sync()
+            )
+
     @async_loop_forever(ray_usage_lib._usage_stats_report_interval_s())
     async def periodically_report_usage(self):
         await self._report_usage_async()
@@ -166,6 +198,7 @@ class UsageStatsHead(dashboard_utils.DashboardHeadModule):
         )
         if not self.usage_stats_enabled:
             logger.info("Usage reporting is disabled.")
+            await self._report_disabled_usage_async()
             return
         else:
             logger.info("Usage reporting is enabled.")

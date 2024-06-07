@@ -1,4 +1,4 @@
-import { Alert } from "@material-ui/lab";
+import { Alert, Link } from "@mui/material";
 import React, { useEffect, useState } from "react";
 import { getUsageStatsEnabled } from "../service/global";
 
@@ -20,13 +20,13 @@ export const UsageStatsAlert = () => {
           `--disable-usage-stats` to the command that starts the cluster, or run
           the following command: `ray disable-usage-stats` before starting the
           cluster. See{" "}
-          <a
+          <Link
             href="https://docs.ray.io/en/master/cluster/usage-stats.html"
             target="_blank"
             rel="noreferrer"
           >
             https://docs.ray.io/en/master/cluster/usage-stats.html
-          </a>{" "}
+          </Link>{" "}
           for more details.
         </span>
       ) : (

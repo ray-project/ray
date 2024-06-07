@@ -409,6 +409,7 @@ def op_two_block():
         "max_rss_bytes": [1024 * 1024 * 2, 1024 * 1024 * 1],
         "wall_time": [5, 10],
         "cpu_time": [1.2, 3.4],
+        "udf_time": [1.1, 1.7],
         "node_id": ["a1", "b2"],
         "task_idx": [0, 1],
     }
@@ -424,6 +425,7 @@ def op_two_block():
         )
         block_exec_stats.wall_time_s = block_params["wall_time"][i]
         block_exec_stats.cpu_time_s = block_params["cpu_time"][i]
+        block_exec_stats.udf_time_s = block_params["udf_time"][i]
         block_exec_stats.node_id = block_params["node_id"][i]
         block_exec_stats.max_rss_bytes = block_params["max_rss_bytes"][i]
         block_exec_stats.task_idx = block_params["task_idx"][i]

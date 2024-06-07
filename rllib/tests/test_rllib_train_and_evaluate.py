@@ -8,7 +8,11 @@ from unittest import mock
 import ray
 from ray import air, tune
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
-from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
+from ray.rllib.examples.envs.classes.multi_agent import MultiAgentCartPole
+from ray.rllib.utils.metrics import (
+    ENV_RUNNER_RESULTS,
+    EPISODE_RETURN_MEAN,
+)
 from ray.rllib.utils.test_utils import framework_iterator
 from ray.tune.registry import get_trainable_cls
 
@@ -35,7 +39,7 @@ def evaluate_test(algo, env="CartPole-v1", test_episode_rollout=False):
             "TEST_TMPDIR='{}' python {}/train.py --storage-path={} --run={} "
             "--checkpoint-freq=1 ".format(tmp_dir, rllib_dir, tmp_dir, algo)
             + "--config='{"
-            + '"num_workers": 1, "num_gpus": 0{}{}'.format(fw_, extra_config)
+            + '"num_env_runners": 1, "num_gpus": 0{}{}'.format(fw_, extra_config)
             + ', "min_sample_timesteps_per_iteration": 5,'
             '"min_time_s_per_iteration": 0.1, '
             '"model": {"fcnet_hiddens": [10]}'
@@ -96,7 +100,7 @@ def learn_test_plus_evaluate(algo: str, env="CartPole-v1"):
         # call rllib train here to see if the RLModule API is enabled.
         algo_cls = get_trainable_cls(algo)
         config = algo_cls.get_default_config()
-        if config._enable_new_api_stack:
+        if config.enable_rl_module_and_learner:
             eval_ = ', \\"evaluation_config\\": {}'
         else:
             eval_ = ', \\"evaluation_config\\": {\\"explore\\": false}'
@@ -107,11 +111,11 @@ def learn_test_plus_evaluate(algo: str, env="CartPole-v1"):
             "--checkpoint-freq=1 --checkpoint-at-end ".format(
                 tmp_dir, rllib_dir, tmp_dir, algo
             )
-            + '--config="{\\"num_gpus\\": 0, \\"num_workers\\": 1'
+            + '--config="{\\"num_gpus\\": 0, \\"num_env_runners\\": 1'
             + eval_
             + fw_
             + '}" '
-            + '--stop="{\\"episode_reward_mean\\": 100.0}"'
+            + '--stop="{\\"env_runners/episode_return_mean\\": 100.0}"'
             + " --env={}".format(env)
         )
 
@@ -183,7 +187,7 @@ def learn_test_multi_agent_plus_evaluate(algo: str):
             .get_default_config()
             .environment(MultiAgentCartPole)
             .framework(fw)
-            .rollouts(num_rollout_workers=1)
+            .env_runners(num_env_runners=1)
             .multi_agent(
                 policies={"pol0", "pol1"},
                 policy_mapping_fn=policy_fn,
@@ -201,7 +205,7 @@ def learn_test_multi_agent_plus_evaluate(algo: str):
             )
         )
 
-        stop = {"episode_reward_mean": 100.0}
+        stop = {f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": 100.0}
 
         with mock.patch.dict({"TEST_TMPDIR": tmp_dir}):
             results = tune.Tuner(
@@ -219,7 +223,7 @@ def learn_test_multi_agent_plus_evaluate(algo: str):
 
         # Find last checkpoint and use that for the rollout.
         best_checkpoint = results.get_best_result(
-            metric="episode_reward_mean",
+            metric=f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}",
             mode="max",
         ).checkpoint
 
@@ -298,15 +302,16 @@ class TestCLISmokeTests(unittest.TestCase):
 
     def test_yaml_run(self):
         assert os.popen(
-            f"python {rllib_dir}/scripts.py train file tuned_examples/simple_q/"
-            f"cartpole-simpleq-test.yaml"
+            f"python {rllib_dir}/scripts.py train file tuned_examples/ppo/"
+            f"cartpole-ppo.yaml"
         ).read()
 
     def test_python_run(self):
         assert os.popen(
-            f"python {rllib_dir}/scripts.py train file tuned_examples/simple_q/"
-            f"cartpole_simpleq_test.py "
-            f"--stop={'timesteps_total': 50000, 'episode_reward_mean': 200}"
+            f"python {rllib_dir}/scripts.py train file tuned_examples/ppo/"
+            f"cartpole_ppo.py "
+            f"--stop=\"{{'num_env_steps_sampled_lifetime': 50000, "
+            f"'env_runners/episode_return_mean': 200}}\""
         ).read()
 
     def test_all_example_files_exist(self):

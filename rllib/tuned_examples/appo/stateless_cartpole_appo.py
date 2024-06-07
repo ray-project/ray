@@ -1,14 +1,20 @@
+# @OldAPIStack
 from ray.rllib.algorithms.appo.appo import APPOConfig
-from ray.rllib.examples.env.stateless_cartpole import StatelessCartPole
+from ray.rllib.examples.envs.classes.stateless_cartpole import StatelessCartPole
+from ray.rllib.utils.metrics import (
+    ENV_RUNNER_RESULTS,
+    EPISODE_RETURN_MEAN,
+    NUM_ENV_STEPS_SAMPLED_LIFETIME,
+)
 
 
 config = (
     APPOConfig()
     # TODO: Switch over to new stack once it supports LSTMs.
-    .experimental(_enable_new_api_stack=False)
+    .api_stack(enable_rl_module_and_learner=False)
     .environment(StatelessCartPole)
     .resources(num_gpus=0)
-    .rollouts(num_rollout_workers=1, observation_filter="MeanStdFilter")
+    .env_runners(num_env_runners=1, observation_filter="MeanStdFilter")
     .training(
         lr=0.0003,
         num_sgd_iter=6,
@@ -23,6 +29,6 @@ config = (
 )
 
 stop = {
-    "timesteps_total": 500000,
-    "sampler_results/episode_reward_mean": 150.0,
+    f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}": 500000,
+    f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": 150.0,
 }

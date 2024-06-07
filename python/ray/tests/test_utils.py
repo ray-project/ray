@@ -9,7 +9,7 @@ import pytest
 import logging
 from ray._private.utils import (
     get_or_create_event_loop,
-    pasre_pg_formatted_resources_to_original,
+    parse_pg_formatted_resources_to_original,
     try_import_each_module,
     get_current_node_cpu_model_name,
 )
@@ -81,13 +81,13 @@ def test_try_import_each_module():
             )
 
 
-def test_pasre_pg_formatted_resources():
-    out = pasre_pg_formatted_resources_to_original(
+def test_parse_pg_formatted_resources():
+    out = parse_pg_formatted_resources_to_original(
         {"CPU_group_e765be422c439de2cd263c5d9d1701000000": 1, "memory": 100}
     )
     assert out == {"CPU": 1, "memory": 100}
 
-    out = pasre_pg_formatted_resources_to_original(
+    out = parse_pg_formatted_resources_to_original(
         {
             "memory_group_4da1c24ac25bec85bc817b258b5201000000": 100.0,
             "memory_group_0_4da1c24ac25bec85bc817b258b5201000000": 100.0,

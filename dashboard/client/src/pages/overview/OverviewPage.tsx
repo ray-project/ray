@@ -1,4 +1,5 @@
-import { createStyles, makeStyles } from "@material-ui/core";
+import createStyles from "@mui/styles/createStyles";
+import makeStyles from "@mui/styles/makeStyles";
 import classNames from "classnames";
 import React from "react";
 import { CollapsibleSection } from "../../common/CollapsibleSection";
@@ -36,7 +37,7 @@ const useStyles = makeStyles((theme) =>
       maxWidth: "100%",
       [theme.breakpoints.up("md")]: {
         // Calculate max width based on 1/3 of the total width minus padding between cards
-        maxWidth: `calc((100% - ${theme.spacing(3)}px * 2) / 3)`,
+        maxWidth: `calc((100% - ${theme.spacing(3)} * 2) / 3)`,
       },
     },
     autoscalerCard: {
@@ -51,7 +52,7 @@ const useStyles = makeStyles((theme) =>
 export const OverviewPage = () => {
   const classes = useStyles();
 
-  const { cluster_status } = useRayStatus();
+  const { clusterStatus } = useRayStatus();
 
   return (
     <div className={classes.root}>
@@ -79,7 +80,7 @@ export const OverviewPage = () => {
                 classes.autoscalerCard,
               )}
             >
-              <NodeStatusCard cluster_status={cluster_status} />
+              <NodeStatusCard clusterStatus={clusterStatus} />
             </OverviewCard>
             <OverviewCard
               className={classNames(
@@ -88,7 +89,7 @@ export const OverviewPage = () => {
                 classes.autoscalerCard,
               )}
             >
-              <ResourceStatusCard cluster_status={cluster_status} />
+              <ResourceStatusCard clusterStatus={clusterStatus} />
             </OverviewCard>
           </div>
         }

@@ -1,9 +1,12 @@
 from abc import ABC, abstractmethod
-from typing import Any, Callable, Dict, List, Optional, Union
+from typing import Any, Callable, Dict, Iterator, List, Optional, Union
 
 import ray
 from .ref_bundle import RefBundle
 from ray._raylet import ObjectRefGenerator
+from ray.data._internal.execution.autoscaler.autoscaling_actor_pool import (
+    AutoscalingActorPool,
+)
 from ray.data._internal.execution.interfaces.execution_options import (
     ExecutionOptions,
     ExecutionResources,
@@ -179,12 +182,26 @@ class PhysicalOperator(Operator):
         self._inputs_complete = not input_dependencies
         self._target_max_block_size = target_max_block_size
         self._started = False
+        self._in_task_submission_backpressure = False
         self._metrics = OpRuntimeMetrics(self)
         self._estimated_output_blocks = None
         self._execution_completed = False
 
     def __reduce__(self):
         raise ValueError("Operator is not serializable.")
+
+    # Override the following 3 methods to correct type hints.
+
+    @property
+    def input_dependencies(self) -> List["PhysicalOperator"]:
+        return super().input_dependencies  # type: ignore
+
+    @property
+    def output_dependencies(self) -> List["PhysicalOperator"]:
+        return super().output_dependencies  # type: ignore
+
+    def post_order_iter(self) -> Iterator["PhysicalOperator"]:
+        return super().post_order_iter()  # type: ignore
 
     @property
     def target_max_block_size(self) -> Optional[int]:
@@ -386,26 +403,41 @@ class PhysicalOperator(Operator):
         """
         return ExecutionResources()
 
-    def incremental_resource_usage(
-        self, consider_autoscaling=True
-    ) -> ExecutionResources:
+    def incremental_resource_usage(self) -> ExecutionResources:
         """Returns the incremental resources required for processing another input.
 
         For example, an operator that launches a task per input could return
         ExecutionResources(cpu=1) as its incremental usage.
-
-        Args:
-            consider_autoscaling: Whether to consider the possibility of autoscaling.
         """
         return ExecutionResources()
 
-    def notify_resource_usage(
-        self, input_queue_size: int, under_resource_limits: bool
-    ) -> None:
-        """Called periodically by the executor.
+    def notify_in_task_submission_backpressure(self, in_backpressure: bool) -> None:
+        """Called periodically from the executor to update internal in backpressure
+        status for stats collection purposes.
 
         Args:
-            input_queue_size: The number of inputs queued outside this operator.
-            under_resource_limits: Whether this operator is under resource limits.
+            in_backpressure: Value this operator's in_backpressure should be set to.
         """
-        pass
+        # only update on change to in_backpressure
+        if self._in_task_submission_backpressure != in_backpressure:
+            self._metrics.on_toggle_task_submission_backpressure(in_backpressure)
+            self._in_task_submission_backpressure = in_backpressure
+
+    def get_autoscaling_actor_pools(self) -> List[AutoscalingActorPool]:
+        """Return a list of `AutoscalingActorPool`s managed by this operator."""
+        return []
+
+    def implements_accurate_memory_accounting(self) -> bool:
+        """Return whether this operator implements accurate memory accounting.
+
+        An operator that implements accurate memory accounting should should properly
+        report its memory usage via the following APIs:
+          - `self._metrics.on_input_queued`.
+          - `self._metrics.on_input_dequeued`.
+          - `self._metrics.on_output_queued`.
+          - `self._metrics.on_output_dequeued`.
+        """
+        # TODO(hchen): Currently we only enable `ReservationOpResourceAllocator` when
+        # all operators in the dataset have implemented accurate memory accounting.
+        # Eventually all operators should implement accurate memory accounting.
+        return False

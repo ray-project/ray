@@ -85,10 +85,14 @@ cdef extern from "ray/core_worker/context.h" nogil:
         c_bool CurrentActorIsAsync()
         const c_string &GetCurrentSerializedRuntimeEnv()
         int CurrentActorMaxConcurrency()
+        const CActorID &GetRootDetachedActorID()
 
 cdef extern from "ray/core_worker/generator_waiter.h" nogil:
     cdef cppclass CGeneratorBackpressureWaiter "ray::core::GeneratorBackpressureWaiter": # noqa
-        CGeneratorBackpressureWaiter(int64_t generator_backpressure_num_objects) # noqa
+        CGeneratorBackpressureWaiter(
+                int64_t generator_backpressure_num_objects,
+                (CRayStatus() nogil) check_signals)
+        CRayStatus WaitAllObjectsReported()
 
 cdef extern from "ray/core_worker/core_worker.h" nogil:
     cdef cppclass CActorHandle "ray::core::ActorHandle":
@@ -99,6 +103,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         c_string ExtensionData() const
         int MaxPendingCalls() const
         int MaxTaskRetries() const
+        c_bool EnableTaskEvents() const
 
     cdef cppclass CCoreWorker "ray::core::CoreWorker":
         void ConnectToRaylet()
@@ -162,11 +167,11 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
             const CObjectID& return_id,
             shared_ptr[CRayObject] *return_object,
             const CObjectID& generator_id)
-        void DelObjectRefStream(const CObjectID &generator_id)
+        void AsyncDelObjectRefStream(const CObjectID &generator_id)
         CRayStatus TryReadObjectRefStream(
             const CObjectID &generator_id,
             CObjectReference *object_ref_out)
-        c_bool IsFinished(const CObjectID &generator_id) const
+        c_bool StreamingGeneratorIsFinished(const CObjectID &generator_id) const
         pair[CObjectReference, c_bool] PeekObjectRefStream(
             const CObjectID &generator_id)
         CObjectID AllocateDynamicReturnId(
@@ -254,17 +259,21 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
                                   const CObjectID &object_id)
         CRayStatus ExperimentalChannelSetError(
                                   const CObjectID &object_id)
+        CRayStatus ExperimentalRegisterMutableObjectWriter(
+                const CObjectID &object_id, const CNodeID *node_id)
+        CRayStatus ExperimentalRegisterMutableObjectReader(const CObjectID &object_id)
+        CRayStatus ExperimentalRegisterMutableObjectReaderRemote(
+                const CObjectID &object_id, const CActorID &reader_actor,
+                int64_t num_readers, const CObjectID &reader_ref)
         CRayStatus SealOwned(const CObjectID &object_id, c_bool pin_object,
                              const unique_ptr[CAddress] &owner_address)
         CRayStatus SealExisting(const CObjectID &object_id, c_bool pin_object,
                                 const CObjectID &generator_id,
                                 const unique_ptr[CAddress] &owner_address)
-        CRayStatus ExperimentalChannelRegisterWriter(const CObjectID &object_id)
-        CRayStatus ExperimentalChannelRegisterReader(const CObjectID &object_id)
         CRayStatus ExperimentalChannelReadRelease(
                     const c_vector[CObjectID] &object_ids)
         CRayStatus Get(const c_vector[CObjectID] &ids, int64_t timeout_ms,
-                       c_vector[shared_ptr[CRayObject]] *results)
+                       c_vector[shared_ptr[CRayObject]] results)
         CRayStatus GetIfLocal(
             const c_vector[CObjectID] &ids,
             c_vector[shared_ptr[CRayObject]] *results)
@@ -275,6 +284,9 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
                         c_bool fetch_local)
         CRayStatus Delete(const c_vector[CObjectID] &object_ids,
                           c_bool local_only)
+        CRayStatus GetLocalObjectLocations(
+                const c_vector[CObjectID] &object_ids,
+                c_vector[optional[CObjectLocation]] *results)
         CRayStatus GetLocationFromOwner(
                 const c_vector[CObjectID] &object_ids,
                 int64_t timeout_ms,

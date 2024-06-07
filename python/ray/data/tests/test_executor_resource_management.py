@@ -15,17 +15,41 @@ from ray.data.tests.util import run_op_tasks_sync
 SMALL_STR = "hello" * 120
 
 
-def test_resource_utils(ray_start_10_cpus_shared):
+def test_execution_resources(ray_start_10_cpus_shared):
+    """Unit test for ExecutionResources."""
     r1 = ExecutionResources()
     r2 = ExecutionResources(cpu=1)
     r3 = ExecutionResources(gpu=1)
     r4 = ExecutionResources(cpu=1, gpu=1, object_store_memory=100 * 1024 * 1024)
     r5 = ExecutionResources(cpu=1, gpu=1, object_store_memory=1024 * 1024 * 1024)
+    unlimited = ExecutionResources.for_limits()
 
-    # Test str.
-    assert r3.object_store_memory_str() == "None"
-    assert r4.object_store_memory_str() == "100.0 MiB"
-    assert r5.object_store_memory_str() == "1.0 GiB"
+    # Test __eq__.
+    assert r1 == ExecutionResources(0, 0, 0)
+    assert r2 == ExecutionResources(1, 0, 0)
+    assert r3 == ExecutionResources(0, 1, 0)
+    assert r4 == ExecutionResources(1, 1, 100 * 1024 * 1024)
+    assert r5 == ExecutionResources(1, 1, 1024 * 1024 * 1024)
+    assert unlimited == ExecutionResources(float("inf"), float("inf"), float("inf"))
+
+    # Test __repr__.
+    assert repr(r1) == "ExecutionResources(cpu=0.0, gpu=0.0, object_store_memory=0.0B)"
+    assert repr(r2) == "ExecutionResources(cpu=1.0, gpu=0.0, object_store_memory=0.0B)"
+    assert repr(r3) == "ExecutionResources(cpu=0.0, gpu=1.0, object_store_memory=0.0B)"
+    assert (
+        repr(r4) == "ExecutionResources(cpu=1.0, gpu=1.0, object_store_memory=100.0MB)"
+    )
+    assert repr(r5) == "ExecutionResources(cpu=1.0, gpu=1.0, object_store_memory=1.0GB)"
+    assert (
+        repr(unlimited)
+        == "ExecutionResources(cpu=inf, gpu=inf, object_store_memory=inf)"
+    )
+
+    # Test object_store_memory_str.
+    assert r3.object_store_memory_str() == "0.0B"
+    assert r4.object_store_memory_str() == "100.0MB"
+    assert r5.object_store_memory_str() == "1.0GB"
+    assert unlimited.object_store_memory_str() == "inf"
 
     # Test add.
     assert r1.add(r1) == r1
@@ -36,12 +60,31 @@ def test_resource_utils(ray_start_10_cpus_shared):
         cpu=2, gpu=2, object_store_memory=200 * 1024 * 1024
     )
 
+    # Test subtract.
+    assert r2.subtract(r1) == r2
+    assert r2.subtract(r2) == r1
+    assert r4.subtract(r2) == ExecutionResources(
+        gpu=1, object_store_memory=100 * 1024 * 1024
+    )
+    assert r5.subtract(r4) == ExecutionResources(object_store_memory=924 * 1024 * 1024)
+    assert r4.subtract(r5) == ExecutionResources(object_store_memory=-924 * 1024 * 1024)
+
+    # Test scale.
+    assert r1.scale(2) == r1
+    assert r2.scale(2) == ExecutionResources(cpu=2)
+    assert r3.scale(0.5) == ExecutionResources(gpu=0.5)
+    assert r4.scale(0.5) == ExecutionResources(
+        cpu=0.5, gpu=0.5, object_store_memory=50 * 1024 * 1024
+    )
+    assert r5.scale(0) == r1
+    assert unlimited.scale(0) == r1
+
     # Test limit.
     for r in [r1, r2, r3, r4, r5]:
         assert r.satisfies_limit(r)
-        assert r.satisfies_limit(ExecutionResources())
-    assert r2.satisfies_limit(r3)
-    assert r3.satisfies_limit(r2)
+        assert r.satisfies_limit(unlimited)
+    assert r2.satisfies_limit(ExecutionResources.for_limits(gpu=1))
+    assert r3.satisfies_limit(ExecutionResources.for_limits(cpu=1))
     assert r4.satisfies_limit(r5)
     assert not r5.satisfies_limit(r4)
 
@@ -88,6 +131,29 @@ def test_resource_canonicalization(ray_start_10_cpus_shared):
             compute_strategy=TaskPoolStrategy(),
             ray_remote_args={"num_gpus": 2, "num_cpus": 1},
         )
+
+
+def test_execution_options_resource_limit():
+    """Test ExecutionOptions.resource_limit."""
+    # Test that the default resource_limits should be inf.
+    options = ExecutionOptions()
+    assert options.resource_limits.cpu == float("inf")
+    assert options.resource_limits.gpu == float("inf")
+    assert options.resource_limits.object_store_memory == float("inf")
+
+    # Test when passing in the resource_limits parameter, missing
+    # fields should be set to inf.
+    options = ExecutionOptions(resource_limits=ExecutionResources(cpu=1))
+    assert options.resource_limits.cpu == 1
+    assert options.resource_limits.gpu == float("inf")
+    assert options.resource_limits.object_store_memory == float("inf")
+
+    # Test when modifying the resource_limits attribute,
+    # missing fields should be set to inf.
+    options.resource_limits = ExecutionResources(object_store_memory=100)
+    assert options.resource_limits.cpu == float("inf")
+    assert options.resource_limits.gpu == float("inf")
+    assert options.resource_limits.object_store_memory == 100
 
 
 def test_scheduling_strategy_overrides(ray_start_10_cpus_shared, restore_data_context):
@@ -221,8 +287,8 @@ def test_actor_pool_resource_reporting(ray_start_10_cpus_shared, restore_data_co
         * data_context.target_max_block_size
     )
     assert op.base_resource_usage() == ExecutionResources(cpu=2, gpu=0)
-    # All actors are idle (pending creation), therefore shouldn't need to scale up when
-    # submitting a new task, so incremental resource usage should be 0.
+    # `incremental_resource_usage` should always report 0 CPU and GPU, as
+    # it doesn't consider scaling-up.
     assert op.incremental_resource_usage() == ExecutionResources(
         cpu=0, gpu=0, object_store_memory=inc_obj_store_mem
     )
@@ -234,8 +300,6 @@ def test_actor_pool_resource_reporting(ray_start_10_cpus_shared, restore_data_co
 
     # Add inputs.
     for i in range(4):
-        # Pool is still idle while waiting for actors to start, so additional tasks
-        # shouldn't trigger scale-up, so incremental resource usage should still be 0.
         assert op.incremental_resource_usage() == ExecutionResources(
             cpu=0, gpu=0, object_store_memory=inc_obj_store_mem
         )
@@ -251,11 +315,6 @@ def test_actor_pool_resource_reporting(ray_start_10_cpus_shared, restore_data_co
     # Wait for actors to start.
     assert op.num_active_tasks() == 2
     run_op_tasks_sync(op, only_existing=True)
-
-    # Now that both actors have started, a new task would trigger scale-up, so
-    inc_usage = op.incremental_resource_usage()
-    assert inc_usage.cpu == 1, inc_usage
-    assert inc_usage.gpu == 0, inc_usage
 
     # Actors have now started and the pool is actively running tasks.
     assert op.current_processor_usage() == ExecutionResources(cpu=2, gpu=0)
@@ -275,7 +334,9 @@ def test_actor_pool_resource_reporting(ray_start_10_cpus_shared, restore_data_co
     # Wait until tasks are done.
     run_op_tasks_sync(op)
 
-    # Work is done and the pool has been scaled down.
+    # Work is done, scale down the actor pool.
+    for pool in op.get_autoscaling_actor_pools():
+        pool.scale_down(pool.current_size())
     assert op.current_processor_usage() == ExecutionResources(cpu=0, gpu=0)
     assert op.metrics.obj_store_mem_internal_inqueue == 0
     assert op.metrics.obj_store_mem_internal_outqueue == pytest.approx(
@@ -289,8 +350,9 @@ def test_actor_pool_resource_reporting(ray_start_10_cpus_shared, restore_data_co
     while op.has_next():
         op.get_next()
 
-    # Work is done, pool has been scaled down, and outputs have been consumed.
-    assert op.current_processor_usage() == ExecutionResources(cpu=0, gpu=0)
+    # Work is done, scale down the actor pool, and outputs have been consumed.
+    for pool in op.get_autoscaling_actor_pools():
+        pool.scale_down(pool.current_size())
     assert op.metrics.obj_store_mem_internal_inqueue == 0
     assert op.metrics.obj_store_mem_internal_outqueue == 0
     assert op.metrics.obj_store_mem_pending_task_inputs == 0
@@ -316,8 +378,8 @@ def test_actor_pool_resource_reporting_with_bundling(ray_start_10_cpus_shared):
         * data_context.target_max_block_size
     )
     assert op.base_resource_usage() == ExecutionResources(cpu=2, gpu=0)
-    # All actors are idle (pending creation), therefore shouldn't need to scale up when
-    # submitting a new task, so incremental resource usage should be 0.
+    # `incremental_resource_usage` should always report 0 CPU and GPU, as
+    # it doesn't consider scaling-up.
     assert op.incremental_resource_usage() == ExecutionResources(
         cpu=0, gpu=0, object_store_memory=inc_obj_store_mem
     )
@@ -329,8 +391,6 @@ def test_actor_pool_resource_reporting_with_bundling(ray_start_10_cpus_shared):
 
     # Add inputs.
     for i in range(4):
-        # Pool is still idle while waiting for actors to start, so additional tasks
-        # shouldn't trigger scale-up, so incremental resource usage should still be 0.
         assert op.incremental_resource_usage() == ExecutionResources(
             cpu=0, gpu=0, object_store_memory=inc_obj_store_mem
         )
@@ -354,11 +414,6 @@ def test_actor_pool_resource_reporting_with_bundling(ray_start_10_cpus_shared):
     assert op.num_active_tasks() == 2
     run_op_tasks_sync(op, only_existing=True)
 
-    # Now that both actors have started, a new task would trigger scale-up, so
-    inc_usage = op.incremental_resource_usage()
-    assert inc_usage.cpu == 1, inc_usage
-    assert inc_usage.gpu == 0, inc_usage
-
     # Actors have now started and the pool is actively running tasks.
     assert op.current_processor_usage() == ExecutionResources(cpu=2, gpu=0)
 
@@ -368,8 +423,9 @@ def test_actor_pool_resource_reporting_with_bundling(ray_start_10_cpus_shared):
     # Wait until tasks are done.
     run_op_tasks_sync(op)
 
-    # Work is done and the pool has been scaled down.
-    assert op.current_processor_usage() == ExecutionResources(cpu=0, gpu=0)
+    # Work is done, scale down the actor pool.
+    for pool in op.get_autoscaling_actor_pools():
+        pool.scale_down(pool.current_size())
     assert op.metrics.obj_store_mem_internal_inqueue == 0
     assert op.metrics.obj_store_mem_internal_outqueue == pytest.approx(6400, rel=0.5)
     assert op.metrics.obj_store_mem_pending_task_inputs == 0
@@ -379,7 +435,9 @@ def test_actor_pool_resource_reporting_with_bundling(ray_start_10_cpus_shared):
     while op.has_next():
         op.get_next()
 
-    # Work is done, pool has been scaled down, and outputs have been consumed.
+    # Work is done, scale down the actor pool, and outputs have been consumed.
+    for pool in op.get_autoscaling_actor_pools():
+        pool.scale_down(pool.current_size())
     assert op.current_processor_usage() == ExecutionResources(cpu=0, gpu=0)
     assert op.metrics.obj_store_mem_internal_inqueue == 0
     assert op.metrics.obj_store_mem_internal_outqueue == 0
@@ -417,7 +475,7 @@ def test_limit_resource_reporting(ray_start_10_cpus_shared):
 def test_output_splitter_resource_reporting(ray_start_10_cpus_shared):
     input_op = InputDataBuffer(make_ref_bundles([[SMALL_STR] for i in range(4)]))
     op = OutputSplitter(input_op, 2, equal=False, locality_hints=["0", "1"])
-    op.start(ExecutionOptions())
+    op.start(ExecutionOptions(actor_locality_enabled=True))
 
     assert op.current_processor_usage() == ExecutionResources(
         cpu=0, gpu=0, object_store_memory=0

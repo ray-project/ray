@@ -14,6 +14,25 @@
 
 #pragma once
 
+#ifdef __APPLE__
+#include <pthread.h>
+#endif
+
+#ifdef __linux__
+#include <sys/syscall.h>
+#endif
+
+#ifdef _WIN32
+#ifndef _WINDOWS_
+#ifndef WIN32_LEAN_AND_MEAN  // Sorry for the inconvenience. Please include any related
+                             // headers you need manually.
+                             // (https://stackoverflow.com/a/8294669)
+#define WIN32_LEAN_AND_MEAN  // Prevent inclusion of WinSock2.h
+#endif
+#include <Windows.h>  // Force inclusion of WinGDI here to resolve name conflict
+#endif
+#endif
+
 #include <chrono>
 #include <iterator>
 #include <memory>
@@ -86,6 +105,19 @@ inline std::string AppendToEachLine(const std::string &str,
   }
   return ss.str();
 }
+
+// Returns the TID of the calling thread.
+#ifdef __APPLE__
+inline uint64_t GetTid() {
+  uint64_t tid;
+  RAY_CHECK_EQ(pthread_threadid_np(NULL, &tid), 0);
+  return tid;
+}
+#elif defined(_WIN32)
+inline DWORD GetTid() { return GetCurrentThreadId(); }
+#else
+inline pid_t GetTid() { return syscall(__NR_gettid); }
+#endif
 
 inline int64_t current_sys_time_s() {
   std::chrono::seconds s_since_epoch = std::chrono::duration_cast<std::chrono::seconds>(
@@ -246,6 +278,27 @@ void FillRandom(T *data) {
     (*data)[i] = static_cast<uint8_t>(
         absl::Uniform(generator, 0, std::numeric_limits<uint8_t>::max()));
   }
+}
+
+inline void setEnv(const std::string &name, const std::string &value) {
+#ifdef _WIN32
+  std::string env = name + "=" + value;
+  int ret = _putenv(env.c_str());
+#else
+  int ret = setenv(name.c_str(), value.c_str(), 1);
+#endif
+  RAY_CHECK_EQ(ret, 0) << "Failed to set env var " << name << " " << value;
+}
+
+inline void unsetEnv(const std::string &name) {
+#ifdef _WIN32
+  // Use _putenv on Windows with an empty value to unset
+  std::string env = name + "=";
+  int ret = _putenv(env.c_str());
+#else
+  int ret = unsetenv(name.c_str());
+#endif
+  RAY_CHECK_EQ(ret, 0) << "Failed to unset env var " << name;
 }
 
 inline void SetThreadName(const std::string &thread_name) {

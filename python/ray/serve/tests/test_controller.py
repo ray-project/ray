@@ -66,7 +66,7 @@ def test_deploy_app_custom_exception(serve_instance):
         ]
     }
 
-    ray.get(controller.deploy_config.remote(config=ServeDeploySchema.parse_obj(config)))
+    ray.get(controller.apply_config.remote(config=ServeDeploySchema.parse_obj(config)))
 
     def check_custom_exception() -> bool:
         status = serve.status().applications["broken_app"]
@@ -157,6 +157,7 @@ def test_get_serve_instance_details_json_serializable(serve_instance, policy):
                             "deployment_config": {
                                 "name": "autoscaling_app",
                                 "max_concurrent_queries": 100,
+                                "max_ongoing_requests": 100,
                                 "max_queued_requests": -1,
                                 "user_config": None,
                                 "autoscaling_config": {
@@ -164,11 +165,14 @@ def test_get_serve_instance_details_json_serializable(serve_instance, policy):
                                     "initial_replicas": None,
                                     "max_replicas": 10,
                                     "target_num_ongoing_requests_per_replica": 1.0,
+                                    "target_ongoing_requests": None,
                                     "metrics_interval_s": 10.0,
                                     "look_back_period_s": 30.0,
                                     "smoothing_factor": 1.0,
                                     "upscale_smoothing_factor": None,
                                     "downscale_smoothing_factor": None,
+                                    "upscaling_factor": None,
+                                    "downscaling_factor": None,
                                     "downscale_delay_s": 600.0,
                                     "upscale_delay_s": 30.0,
                                 },
@@ -181,6 +185,7 @@ def test_get_serve_instance_details_json_serializable(serve_instance, policy):
                                     "num_cpus": 1.0,
                                 },
                             },
+                            "target_num_replicas": 1,
                             "replicas": [
                                 {
                                     "node_id": node_id,

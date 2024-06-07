@@ -1,6 +1,6 @@
 import collections
 from types import GeneratorType
-from typing import Any, Callable, Iterable, Iterator, Optional
+from typing import Any, Callable, Iterable, Iterator, List, Optional
 
 import numpy as np
 import pandas as pd
@@ -39,16 +39,20 @@ from ray.data.block import (
     UserDefinedFunction,
 )
 from ray.data.context import DataContext
+from ray.data.exceptions import UserCodeException
+from ray.util.rpdb import _is_ray_debugger_enabled
 
 
 def plan_udf_map_op(
-    op: AbstractUDFMap, input_physical_dag: PhysicalOperator
+    op: AbstractUDFMap, physical_children: List[PhysicalOperator]
 ) -> MapOperator:
     """Get the corresponding physical operators DAG for AbstractUDFMap operators.
 
     Note this method only converts the given `op`, but not its input dependencies.
     See Planner.plan() for more details.
     """
+    assert len(physical_children) == 1
+    input_physical_dag = physical_children[0]
 
     compute = get_compute(op._compute)
     fn, init_fn = _parse_op_fn(op)
@@ -83,6 +87,7 @@ def plan_udf_map_op(
         target_max_block_size=None,
         compute_strategy=compute,
         min_rows_per_bundle=op._min_rows_per_bundled_input,
+        ray_remote_args_fn=op._ray_remote_args_fn,
         ray_remote_args=op._ray_remote_args,
     )
 
@@ -104,7 +109,10 @@ def _parse_op_fn(op: AbstractUDFMap):
         def fn(item: Any) -> Any:
             assert ray.data._cached_fn is not None
             assert ray.data._cached_cls == op_fn
-            return ray.data._cached_fn(item, *fn_args, **fn_kwargs)
+            try:
+                return ray.data._cached_fn(item, *fn_args, **fn_kwargs)
+            except Exception as e:
+                _handle_debugger_exception(e)
 
         def init_fn():
             if ray.data._cached_fn is None:
@@ -116,12 +124,26 @@ def _parse_op_fn(op: AbstractUDFMap):
     else:
 
         def fn(item: Any) -> Any:
-            return op_fn(item, *fn_args, **fn_kwargs)
+            try:
+                return op_fn(item, *fn_args, **fn_kwargs)
+            except Exception as e:
+                _handle_debugger_exception(e)
 
         def init_fn():
             pass
 
     return fn, init_fn
+
+
+def _handle_debugger_exception(e: Exception):
+    """If the Ray Debugger is enabled, keep the full stack trace unmodified
+    so that the debugger can stop at the initial unhandled exception.
+    Otherwise, clear the stack trace to omit noisy internal code path."""
+
+    if _is_ray_debugger_enabled():
+        raise e
+    else:
+        raise UserCodeException() from e
 
 
 # Following are util functions for converting UDFs to `MapTransformCallable`s.
@@ -279,7 +301,7 @@ def _create_map_transformer_for_map_batches_op(
             zero_copy_batch=zero_copy_batch,
         ),
         # Apply the UDF.
-        BatchMapTransformFn(batch_fn),
+        BatchMapTransformFn(batch_fn, is_udf=True),
         # Convert output batches to blocks.
         BuildOutputBlocksMapTransformFn.for_batches(),
     ]
@@ -296,7 +318,7 @@ def _create_map_transformer_for_row_based_map_op(
         # Convert input blocks to rows.
         BlocksToRowsMapTransformFn.instance(),
         # Apply the UDF.
-        RowMapTransformFn(row_fn),
+        RowMapTransformFn(row_fn, is_udf=True),
         # Convert output rows to blocks.
         BuildOutputBlocksMapTransformFn.for_rows(),
     ]

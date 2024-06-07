@@ -6,7 +6,7 @@ import shutil
 import unittest
 
 import ray
-from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
+from ray.rllib.examples.envs.classes.multi_agent import MultiAgentCartPole
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.test_utils import framework_iterator
@@ -30,7 +30,7 @@ def export_test(
     cls = get_trainable_cls(alg_name)
     config = cls.get_default_config()
     if alg_name in RLMODULE_SUPPORTED_ALGOS:
-        config = config.experimental(_enable_new_api_stack=False)
+        config = config.api_stack(enable_rl_module_and_learner=False)
     config.framework(framework)
     # Switch on saving native DL-framework (tf, torch) model files.
     config.checkpointing(export_native_model_files=True)

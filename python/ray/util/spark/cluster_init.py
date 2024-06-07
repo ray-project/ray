@@ -144,11 +144,11 @@ class RayClusterOnSpark:
             else:
                 try:
                     __import__("ray.dashboard.optional_deps")
-                except ModuleNotFoundError:
+                except ModuleNotFoundError as e:
                     _logger.warning(
                         "Dependencies to launch the optional dashboard API "
                         "server cannot be found. They can be installed with "
-                        "pip install ray[default]."
+                        f"pip install ray[default], root cause: ({repr(e)})"
                     )
 
             if self.autoscale:
@@ -1025,6 +1025,25 @@ def _setup_ray_cluster_internal(
     num_spark_task_gpus = int(
         spark.sparkContext.getConf().get("spark.task.resource.gpu.amount", "0")
     )
+    if num_spark_task_gpus > 0:
+        warn_msg = (
+            "You configured 'spark.task.resource.gpu.amount' to "
+            f"{num_spark_task_gpus},"
+            "we recommend setting this value to 0 so that Spark jobs do not "
+            "reserve GPU resources, preventing Ray-on-Spark workloads from having the "
+            "maximum number of GPUs available."
+        )
+
+        if is_in_databricks_runtime():
+            from ray.util.spark.databricks_hook import (
+                get_databricks_display_html_function,
+            )
+
+            get_databricks_display_html_function()(
+                f"<b style='color:red;'>{warn_msg}</b>"
+            )
+        else:
+            _logger.warning(warn_msg)
 
     if num_gpus_worker_node is not None and num_gpus_worker_node < 0:
         raise ValueError("Argument `num_gpus_worker_node` value must be >= 0.")
@@ -1037,10 +1056,7 @@ def _setup_ray_cluster_internal(
         )
 
         num_cpus_spark_worker = _get_cpu_cores()
-        if num_spark_task_gpus == 0:
-            num_gpus_spark_worker = 0
-        else:
-            num_gpus_spark_worker = _get_num_physical_gpus()
+        num_gpus_spark_worker = _get_num_physical_gpus()
         total_mem_bytes = _get_spark_worker_total_physical_memory()
 
         return (
@@ -1297,7 +1313,7 @@ def _setup_ray_cluster_internal(
     return cluster.address, remote_connection_address
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI
 def setup_ray_cluster(
     *,
     max_worker_nodes: int,
@@ -1464,6 +1480,7 @@ def setup_ray_cluster(
     )
 
 
+@PublicAPI
 def setup_global_ray_cluster(
     *,
     max_worker_nodes: int,
@@ -1734,7 +1751,7 @@ def _start_ray_worker_nodes(
     job_rdd.mapPartitions(ray_cluster_job_mapper).collect()
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI
 def shutdown_ray_cluster() -> None:
     """
     Shut down the active ray cluster.

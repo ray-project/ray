@@ -1,5 +1,5 @@
 import abc
-from typing import Any, Dict
+from typing import Dict
 
 import numpy as np
 
@@ -7,8 +7,8 @@ from ray.rllib.algorithms.impala.impala import (
     ImpalaConfig,
     LEARNER_RESULTS_CURR_ENTROPY_COEFF_KEY,
 )
+from ray.rllib.core.columns import Columns
 from ray.rllib.core.learner.learner import Learner
-from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.lambda_defaultdict import LambdaDefaultDict
 from ray.rllib.utils.numpy import convert_to_numpy
@@ -41,8 +41,7 @@ class ImpalaLearner(Learner):
             )
         )
 
-    @override(Learner)
-    def _preprocess_train_data(
+    def _compute_v_trace_from_episodes(
         self,
         *,
         batch,
@@ -74,7 +73,7 @@ class ImpalaLearner(Learner):
         # GAE computations.
         vf_preds = unpad_data_if_necessary(episode_lens_p1, vf_preds)
         # Generate the bootstrap value column (with only one entry per batch row).
-        batch[SampleBatch.VALUES_BOOTSTRAPPED] = extract_bootstrapped_values(
+        batch[Columns.VALUES_BOOTSTRAPPED] = extract_bootstrapped_values(
             vf_preds=vf_preds,
             episode_lengths=episode_lens,
             T=self.config.get_rollout_fragment_length(),
@@ -82,9 +81,7 @@ class ImpalaLearner(Learner):
         # Remove the extra timesteps again from vf_preds and value targets. Now that
         # the GAE computation is done, we don't need this last timestep anymore in any
         # of our data.
-        batch[SampleBatch.VF_PREDS] = remove_last_ts_from_data(
-            episode_lens_p1, vf_preds
-        )
+        batch[Columns.VF_PREDS] = remove_last_ts_from_data(episode_lens_p1, vf_preds)
 
         # Remove the extra (artificial) timesteps again at the end of all episodes.
         remove_last_ts_from_episodes_and_restore_truncateds(episodes, orig_truncateds)
@@ -99,8 +96,8 @@ class ImpalaLearner(Learner):
     @override(Learner)
     def additional_update_for_module(
         self, *, module_id: ModuleID, config: ImpalaConfig, timestep: int
-    ) -> Dict[str, Any]:
-        results = super().additional_update_for_module(
+    ) -> None:
+        super().additional_update_for_module(
             module_id=module_id, config=config, timestep=timestep
         )
 
@@ -108,9 +105,11 @@ class ImpalaLearner(Learner):
         new_entropy_coeff = self.entropy_coeff_schedulers_per_module[module_id].update(
             timestep=timestep
         )
-        results.update({LEARNER_RESULTS_CURR_ENTROPY_COEFF_KEY: new_entropy_coeff})
-
-        return results
+        self.metrics.log_value(
+            (module_id, LEARNER_RESULTS_CURR_ENTROPY_COEFF_KEY),
+            new_entropy_coeff,
+            window=1,
+        )
 
     @abc.abstractmethod
     def _compute_values(self, batch) -> np._typing.NDArray:

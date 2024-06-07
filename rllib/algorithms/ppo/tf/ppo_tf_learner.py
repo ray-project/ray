@@ -1,5 +1,5 @@
 import logging
-from typing import Any, Dict
+from typing import Dict
 
 from ray.rllib.algorithms.ppo.ppo import (
     LEARNER_RESULTS_KL_KEY,
@@ -9,10 +9,10 @@ from ray.rllib.algorithms.ppo.ppo import (
     PPOConfig,
 )
 from ray.rllib.algorithms.ppo.ppo_learner import PPOLearner
+from ray.rllib.core.columns import Columns
 from ray.rllib.core.learner.learner import POLICY_LOSS_KEY, VF_LOSS_KEY, ENTROPY_KEY
 from ray.rllib.core.learner.tf.tf_learner import TfLearner
 from ray.rllib.evaluation.postprocessing import Postprocessing
-from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.tf_utils import explained_variance
 from ray.rllib.utils.annotations import override
@@ -48,8 +48,8 @@ class PPOTfLearner(PPOLearner, TfLearner):
             # In the RNN case, we expect incoming tensors to be padded to the maximum
             # sequence length. We infer the max sequence length from the actions
             # tensor.
-            maxlen = tf.math.reduce_max(batch[SampleBatch.SEQ_LENS])
-            mask = tf.sequence_mask(batch[SampleBatch.SEQ_LENS], maxlen)
+            maxlen = tf.math.reduce_max(batch[Columns.SEQ_LENS])
+            mask = tf.sequence_mask(batch[Columns.SEQ_LENS], maxlen)
 
             def possibly_masked_mean(t):
                 return tf.reduce_mean(tf.boolean_mask(t, mask))
@@ -64,15 +64,14 @@ class PPOTfLearner(PPOLearner, TfLearner):
             module_id
         ].get_exploration_action_dist_cls()
         curr_action_dist = action_dist_class_train.from_logits(
-            fwd_out[SampleBatch.ACTION_DIST_INPUTS]
+            fwd_out[Columns.ACTION_DIST_INPUTS]
         )
         prev_action_dist = action_dist_class_exploration.from_logits(
-            batch[SampleBatch.ACTION_DIST_INPUTS]
+            batch[Columns.ACTION_DIST_INPUTS]
         )
 
         logp_ratio = tf.exp(
-            curr_action_dist.logp(batch[SampleBatch.ACTIONS])
-            - batch[SampleBatch.ACTION_LOGP]
+            curr_action_dist.logp(batch[Columns.ACTIONS]) - batch[Columns.ACTION_LOGP]
         )
 
         # Only calculate kl loss if necessary (kl-coeff > 0.0).
@@ -95,7 +94,7 @@ class PPOTfLearner(PPOLearner, TfLearner):
 
         # Compute a value function loss.
         if config.use_critic:
-            value_fn_out = fwd_out[SampleBatch.VF_PREDS]
+            value_fn_out = fwd_out[Columns.VF_PREDS]
             vf_loss = tf.math.square(value_fn_out - batch[Postprocessing.VALUE_TARGETS])
             vf_loss_clipped = tf.clip_by_value(vf_loss, 0, config.vf_clip_param)
             mean_vf_loss = possibly_masked_mean(vf_loss_clipped)
@@ -122,9 +121,8 @@ class PPOTfLearner(PPOLearner, TfLearner):
         if config.use_kl_loss:
             total_loss += self.curr_kl_coeffs_per_module[module_id] * mean_kl_loss
 
-        # Register important loss stats.
-        self.register_metrics(
-            module_id,
+        # Log important loss stats.
+        self.metrics.log_dict(
             {
                 POLICY_LOSS_KEY: -tf.reduce_mean(surrogate_loss),
                 VF_LOSS_KEY: mean_vf_loss,
@@ -134,12 +132,14 @@ class PPOTfLearner(PPOLearner, TfLearner):
                 ),
                 ENTROPY_KEY: mean_entropy,
                 LEARNER_RESULTS_KL_KEY: mean_kl_loss,
-                # "advantages": possibly_masked_mean(batch[Postprocessing.ADVANTAGES]),
-                # "values": possibly_masked_mean(batch[SampleBatch.VF_PREDS]),
+                # "advantages": possibly_masked_mean(batch[Columns.ADVANTAGES]),
+                # "values": possibly_masked_mean(batch[Columns.VF_PREDS]),
                 # "value_targets": possibly_masked_mean(
-                #    batch[Postprocessing.VALUE_TARGETS]
+                #    batch[Columns.VALUE_TARGETS]
                 # ),
             },
+            key=module_id,
+            window=1,  # <- single items (should not be mean/ema-reduced over time).
         )
         # Return the total loss.
         return total_loss
@@ -152,18 +152,17 @@ class PPOTfLearner(PPOLearner, TfLearner):
         config: PPOConfig,
         timestep: int,
         sampled_kl_values: dict,
-    ) -> Dict[str, Any]:
-        assert sampled_kl_values, "Sampled KL values are empty."
+    ) -> None:
 
-        results = super().additional_update_for_module(
+        super().additional_update_for_module(
             module_id=module_id,
             config=config,
             timestep=timestep,
-            sampled_kl_values=sampled_kl_values,
         )
 
         # Update KL coefficient.
         if config.use_kl_loss:
+            assert sampled_kl_values, "Sampled KL values are empty."
             sampled_kl = sampled_kl_values[module_id]
             curr_var = self.curr_kl_coeffs_per_module[module_id]
             if sampled_kl > 2.0 * config.kl_target:
@@ -171,6 +170,10 @@ class PPOTfLearner(PPOLearner, TfLearner):
                 curr_var.assign(curr_var * 1.5)
             elif sampled_kl < 0.5 * config.kl_target:
                 curr_var.assign(curr_var * 0.5)
-            results.update({LEARNER_RESULTS_CURR_KL_COEFF_KEY: curr_var.numpy()})
 
-        return results
+            # Log the updated KL-coeff value.
+            self.metrics.log_value(
+                (module_id, LEARNER_RESULTS_CURR_KL_COEFF_KEY),
+                curr_var.numpy(),
+                window=1,
+            )

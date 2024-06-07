@@ -1,8 +1,7 @@
 import {
+  Autocomplete,
   Box,
-  createStyles,
-  InputAdornment,
-  makeStyles,
+  Pagination,
   Table,
   TableBody,
   TableCell,
@@ -12,14 +11,16 @@ import {
   TextField,
   TextFieldProps,
   Typography,
-} from "@material-ui/core";
-import { Autocomplete, Pagination } from "@material-ui/lab";
+} from "@mui/material";
+import createStyles from "@mui/styles/createStyles";
+import makeStyles from "@mui/styles/makeStyles";
 import React, { ReactElement } from "react";
 import { Outlet, useParams } from "react-router-dom";
 import { CodeDialogButton } from "../../common/CodeDialogButton";
 import { CollapsibleSection } from "../../common/CollapsibleSection";
 import { DurationText } from "../../common/DurationText";
 import { formatDateFromTimeMs } from "../../common/formatUtils";
+import { sliceToPage } from "../../common/util";
 import Loading from "../../components/Loading";
 import { MetadataSection } from "../../components/MetadataSection";
 import { StatusChip } from "../../components/StatusChip";
@@ -52,7 +53,6 @@ const columns: { label: string; helpInfo?: ReactElement; width?: string }[] = [
   { label: "Status message", width: "30%" },
   { label: "Num replicas" },
   { label: "Actions" },
-  { label: "Application" },
   { label: "Route prefix" },
   { label: "Last deployed at" },
   { label: "Duration (since last deploy)" },
@@ -80,6 +80,12 @@ export const ServeApplicationDetailPage = () => {
   }
 
   const appName = application.name ? application.name : "-";
+
+  const {
+    items: list,
+    constrainedPage,
+    maxPage,
+  } = sliceToPage(filteredDeployments, page.pageNo, page.pageSize);
 
   return (
     <div className={classes.root}>
@@ -201,16 +207,13 @@ export const ServeApplicationDetailPage = () => {
                 onChange: ({ target: { value } }) => {
                   setPage("pageSize", Math.min(Number(value), 500) || 10);
                 },
-                endAdornment: (
-                  <InputAdornment position="end">Per Page</InputAdornment>
-                ),
               }}
             />
           </div>
           <div style={{ display: "flex", alignItems: "center" }}>
             <Pagination
-              count={Math.ceil(filteredDeployments.length / page.pageSize)}
-              page={page.pageNo}
+              count={maxPage}
+              page={constrainedPage}
               onChange={(e, pageNo) => setPage("pageNo", pageNo)}
             />
           </div>
@@ -240,18 +243,14 @@ export const ServeApplicationDetailPage = () => {
               </TableRow>
             </TableHead>
             <TableBody>
-              {filteredDeployments
-                .slice(
-                  (page.pageNo - 1) * page.pageSize,
-                  page.pageNo * page.pageSize,
-                )
-                .map((deployment) => (
-                  <ServeDeploymentRow
-                    key={deployment.name}
-                    deployment={deployment}
-                    application={application}
-                  />
-                ))}
+              {list.map((deployment) => (
+                <ServeDeploymentRow
+                  key={deployment.name}
+                  deployment={deployment}
+                  application={application}
+                  showExpandColumn={false}
+                />
+              ))}
             </TableBody>
           </Table>
         </TableContainer>

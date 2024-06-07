@@ -1,13 +1,10 @@
-import os
+import logging
 import threading
 import time
 import uuid
 from typing import Dict, Iterator, List, Optional
 
-from ray.data._internal.dataset_logger import DatasetLogger
-from ray.data._internal.execution.autoscaling_requester import (
-    get_or_create_autoscaling_requester_actor,
-)
+from ray.data._internal.execution.autoscaler import create_autoscaler
 from ray.data._internal.execution.backpressure_policy import (
     BackpressurePolicy,
     get_backpressure_policies,
@@ -23,7 +20,6 @@ from ray.data._internal.execution.interfaces import (
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.resource_manager import ResourceManager
 from ray.data._internal.execution.streaming_executor_state import (
-    AutoscalingState,
     OpState,
     Topology,
     build_streaming_topology,
@@ -31,15 +27,12 @@ from ray.data._internal.execution.streaming_executor_state import (
     select_operator_to_run,
     update_operator_states,
 )
+from ray.data._internal.logging import get_log_directory
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.stats import DatasetStats, StatsManager
 from ray.data.context import DataContext
 
-logger = DatasetLogger(__name__)
-
-# Set this environment variable for detailed scheduler debugging logs.
-# If not set, execution state will still be logged after each scheduling loop.
-DEBUG_TRACE_SCHEDULING = "RAY_DATA_TRACE_SCHEDULING" in os.environ
+logger = logging.getLogger(__name__)
 
 # Force a progress bar update after this many events processed . This avoids the
 # progress bar seeming to stall for very large scale workloads.
@@ -67,7 +60,6 @@ class StreamingExecutor(Executor, threading.Thread):
         self._global_info: Optional[ProgressBar] = None
 
         self._execution_id = uuid.uuid4().hex
-        self._autoscaling_state = AutoscalingState()
 
         # The executor can be shutdown while still running.
         self._shutdown_lock = threading.RLock()
@@ -107,27 +99,26 @@ class StreamingExecutor(Executor, threading.Thread):
         self._start_time = time.perf_counter()
 
         if not isinstance(dag, InputDataBuffer):
-            stdout_logger = logger.get_logger()
-            log_path = logger.get_datasets_log_path()
-            message = "Starting execution of Dataset."
-            if log_path is not None:
-                message += f" Full log is in {log_path}"
-            stdout_logger.info(message)
-            stdout_logger.info("Execution plan of Dataset: %s\n", dag)
-            logger.get_logger(log_to_stdout=False).info(
-                "Execution config: %s", self._options
-            )
-            if not self._options.verbose_progress:
-                logger.get_logger(log_to_stdout=False).info(
-                    "Tip: For detailed progress reporting, run "
-                    "`ray.data.DataContext.get_current()."
-                    "execution_options.verbose_progress = True`"
-                )
+            context = DataContext.get_current()
+            if context.print_on_execution_start:
+                message = "Starting execution of Dataset."
+                log_path = get_log_directory()
+                if log_path is not None:
+                    message += f" Full logs are in {log_path}"
+                logger.info(message)
+                logger.info(f"Execution plan of Dataset: {dag}")
+
+            logger.debug("Execution config: %s", self._options)
 
         # Setup the streaming DAG topology and start the runner thread.
         self._topology, _ = build_streaming_topology(dag, self._options)
         self._resource_manager = ResourceManager(self._topology, self._options)
         self._backpressure_policies = get_backpressure_policies(self._topology)
+        self._autoscaler = create_autoscaler(
+            self._topology,
+            self._resource_manager,
+            self._execution_id,
+        )
 
         self._has_op_completed = {op: False for op in self._topology}
 
@@ -153,7 +144,7 @@ class StreamingExecutor(Executor, threading.Thread):
                         output_split_idx
                     )
                     if self._outer._global_info:
-                        self._outer._global_info.update(1, dag._estimated_output_blocks)
+                        self._outer._global_info.update(1, dag.num_outputs_total())
                     return item
                 # Needs to be BaseException to catch KeyboardInterrupt. Otherwise we
                 # can leave dangling progress bars by skipping shutdown.
@@ -176,7 +167,7 @@ class StreamingExecutor(Executor, threading.Thread):
         with self._shutdown_lock:
             if not self._execution_started or self._shutdown:
                 return
-            logger.get_logger(log_to_stdout=False).debug(f"Shutting down {self}.")
+            logger.debug(f"Shutting down {self}.")
             _num_shutdown += 1
             self._shutdown = True
             # Give the scheduling loop some time to finish processing.
@@ -195,9 +186,8 @@ class StreamingExecutor(Executor, threading.Thread):
             stats_summary_string = self._final_stats.to_summary().to_string(
                 include_parent=False
             )
-            logger.get_logger(log_to_stdout=context.enable_auto_log_stats).info(
-                stats_summary_string,
-            )
+            if context.enable_auto_log_stats:
+                logger.info(stats_summary_string)
             # Close the progress bars from top to bottom to avoid them jumping
             # around in the console after completion.
             if self._global_info:
@@ -205,9 +195,7 @@ class StreamingExecutor(Executor, threading.Thread):
             for op, state in self._topology.items():
                 op.shutdown()
                 state.close_progress_bars()
-            # Make request for zero resources to autoscaler for this execution.
-            actor = get_or_create_autoscaling_requester_actor()
-            actor.request_resources.remote({}, self._execution_id)
+            self._autoscaler.on_executor_shutdown()
 
     def run(self):
         """Run the control loop in a helper thread.
@@ -270,10 +258,6 @@ class StreamingExecutor(Executor, threading.Thread):
         Returns:
             True if we should continue running the scheduling loop.
         """
-
-        if DEBUG_TRACE_SCHEDULING:
-            logger.get_logger().info("Scheduling loop step...")
-
         self._resource_manager.update_usages()
         # Note: calling process_completed_tasks() is expensive since it incurs
         # ray.wait() overhead, so make sure to allow multiple dispatch per call for
@@ -294,26 +278,23 @@ class StreamingExecutor(Executor, threading.Thread):
             topology,
             self._resource_manager,
             self._backpressure_policies,
+            self._autoscaler,
             ensure_at_least_one_running=self._consumer_idling(),
-            execution_id=self._execution_id,
-            autoscaling_state=self._autoscaling_state,
         )
+
         i = 0
         while op is not None:
             i += 1
             if i > PROGRESS_BAR_UPDATE_INTERVAL:
                 break
-            if DEBUG_TRACE_SCHEDULING:
-                _debug_dump_topology(topology, self._resource_manager)
             topology[op].dispatch_next_task()
             self._resource_manager.update_usages()
             op = select_operator_to_run(
                 topology,
                 self._resource_manager,
                 self._backpressure_policies,
+                self._autoscaler,
                 ensure_at_least_one_running=self._consumer_idling(),
-                execution_id=self._execution_id,
-                autoscaling_state=self._autoscaling_state,
             )
 
         update_operator_states(topology)
@@ -325,10 +306,7 @@ class StreamingExecutor(Executor, threading.Thread):
         self._update_stats_metrics(state="RUNNING")
         if time.time() - self._last_debug_log_time >= DEBUG_LOG_INTERVAL_SECONDS:
             _log_op_metrics(topology)
-            if not DEBUG_TRACE_SCHEDULING:
-                _debug_dump_topology(
-                    topology, self._resource_manager, log_to_stdout=False
-                )
+            _debug_dump_topology(topology, self._resource_manager)
             self._last_debug_log_time = time.time()
 
         # Log metrics of newly completed operators.
@@ -338,7 +316,7 @@ class StreamingExecutor(Executor, threading.Thread):
                     f"Operator {op} completed. "
                     f"Operator Metrics:\n{op._metrics.as_dict()}"
                 )
-                logger.get_logger(log_to_stdout=False).info(log_str)
+                logger.debug(log_str)
                 self._has_op_completed[op] = True
 
         # Keep going until all operators run to completion.
@@ -353,8 +331,8 @@ class StreamingExecutor(Executor, threading.Thread):
         limits = self._resource_manager.get_global_limits()
         resources_status = (
             "Running: "
-            f"{cur_usage.cpu}/{limits.cpu} CPU, "
-            f"{cur_usage.gpu}/{limits.gpu} GPU, "
+            f"{cur_usage.cpu:.4g}/{limits.cpu:.4g} CPU, "
+            f"{cur_usage.gpu:.4g}/{limits.gpu:.4g} GPU, "
             f"{cur_usage.object_store_memory_str()}/"
             f"{limits.object_store_memory_str()} object_store_memory"
         )
@@ -423,29 +401,17 @@ def _validate_dag(dag: PhysicalOperator, limits: ExecutionResources) -> None:
             "The current cluster doesn't have the required resources to execute your "
             "Dataset pipeline:\n"
         )
-        if (
-            base_usage.cpu is not None
-            and limits.cpu is not None
-            and base_usage.cpu > limits.cpu
-        ):
+        if base_usage.cpu > limits.cpu:
             error_message += (
                 f"- Your application needs {base_usage.cpu} CPU(s), but your cluster "
                 f"only has {limits.cpu}.\n"
             )
-        if (
-            base_usage.gpu is not None
-            and limits.gpu is not None
-            and base_usage.gpu > limits.gpu
-        ):
+        if base_usage.gpu > limits.gpu:
             error_message += (
                 f"- Your application needs {base_usage.gpu} GPU(s), but your cluster "
                 f"only has {limits.gpu}.\n"
             )
-        if (
-            base_usage.object_store_memory is not None
-            and base_usage.object_store_memory is not None
-            and base_usage.object_store_memory > limits.object_store_memory
-        ):
+        if base_usage.object_store_memory > limits.object_store_memory:
             error_message += (
                 f"- Your application needs {base_usage.object_store_memory}B object "
                 f"store memory, but your cluster only has "
@@ -454,22 +420,19 @@ def _validate_dag(dag: PhysicalOperator, limits: ExecutionResources) -> None:
         raise ValueError(error_message.strip())
 
 
-def _debug_dump_topology(
-    topology: Topology, resource_manager: ResourceManager, log_to_stdout: bool = True
-) -> None:
-    """Print out current execution state for the topology for debugging.
+def _debug_dump_topology(topology: Topology, resource_manager: ResourceManager) -> None:
+    """Log current execution state for the topology for debugging.
 
     Args:
         topology: The topology to debug.
         resource_manager: The resource manager for this topology.
     """
-    logger.get_logger(log_to_stdout).info("Execution Progress:")
+    logger.debug("Execution Progress:")
     for i, (op, state) in enumerate(topology.items()):
-        logger.get_logger(log_to_stdout).info(
+        logger.debug(
             f"{i}: {state.summary_str(resource_manager)}, "
             f"Blocks Outputted: {state.num_completed_tasks}/{op.num_outputs_total()}"
         )
-    logger.get_logger(log_to_stdout).info("")
 
 
 def _log_op_metrics(topology: Topology) -> None:
@@ -481,4 +444,4 @@ def _log_op_metrics(topology: Topology) -> None:
     log_str = "Operator Metrics:\n"
     for op in topology:
         log_str += f"{op.name}: {op.metrics.as_dict()}\n"
-    logger.get_logger(log_to_stdout=False).info(log_str)
+    logger.debug(log_str)

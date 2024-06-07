@@ -59,12 +59,12 @@ def start_and_shutdown_ray_cli_function():
     ],
     indirect=True,
 )
-def test_long_poll_timeout_with_max_concurrent_queries(ray_instance):
-    """Test that max_concurrent_queries is respected when there are long poll timeouts.
+def test_long_poll_timeout_with_max_ongoing_requests(ray_instance):
+    """Test that max_ongoing_requests is respected when there are long poll timeouts.
 
     Previously, when a long poll update occurred (e.g., a timeout or new replicas
     added), ongoing requests would no longer be counted against
-    `max_concurrent_queries`.
+    `max_ongoing_requests`.
 
     Issue: https://github.com/ray-project/ray/issues/32652
     """
@@ -83,14 +83,14 @@ def test_long_poll_timeout_with_max_concurrent_queries(ray_instance):
     signal_actor = SignalActor.remote()
     counter_actor = CounterActor.remote()
 
-    @serve.deployment(max_concurrent_queries=1)
+    @serve.deployment(max_ongoing_requests=1)
     async def f():
         await counter_actor.inc.remote()
         await signal_actor.wait.remote()
         return "hello"
 
     # Issue a blocking request which should occupy the only slot due to
-    # `max_concurrent_queries=1`.
+    # `max_ongoing_requests=1`.
     serve.run(f.bind())
 
     @ray.remote
@@ -109,7 +109,7 @@ def test_long_poll_timeout_with_max_concurrent_queries(ray_instance):
     wait_for_condition(check_request_started, timeout=5, num_expected_requests=1)
 
     # Now issue 10 more requests and wait for significantly longer than the long poll
-    # timeout. They should all be queued in the handle due to `max_concurrent_queries`
+    # timeout. They should all be queued in the handle due to `max_ongoing_requests`
     # enforcement (verified via the counter).
     new_refs = [do_req.remote() for _ in range(10)]
     ready, _ = ray.wait(new_refs, timeout=1)
@@ -226,7 +226,7 @@ def test_handle_early_detect_failure(shutdown_ray):
 
     try:
 
-        @serve.deployment(num_replicas=2, max_concurrent_queries=1)
+        @serve.deployment(num_replicas=2, max_ongoing_requests=1)
         def f(do_crash: bool = False):
             if do_crash:
                 os._exit(1)
@@ -251,10 +251,20 @@ def test_handle_early_detect_failure(shutdown_ray):
         serve.shutdown()
 
 
+@pytest.mark.parametrize(
+    "autoscaler_v2",
+    [False, True],
+    ids=["v1", "v2"],
+)
 def test_autoscaler_shutdown_node_http_everynode(
-    monkeypatch, shutdown_ray, call_ray_stop_only  # noqa: F811
+    autoscaler_v2, monkeypatch, shutdown_ray, call_ray_stop_only  # noqa: F811
 ):
     monkeypatch.setenv("RAY_SERVE_PROXY_MIN_DRAINING_PERIOD_S", "1")
+    # Faster health check interval to speed up the test.
+    monkeypatch.setenv("RAY_health_check_failure_threshold", "1")
+    monkeypatch.setenv("RAY_health_check_timeout_ms", "2000")
+    monkeypatch.setenv("RAY_health_check_period_ms", "3000")
+
     cluster = AutoscalingCluster(
         head_resources={"CPU": 4},
         worker_node_types={
@@ -267,6 +277,7 @@ def test_autoscaler_shutdown_node_http_everynode(
                 "max_workers": 1,
             },
         },
+        autoscaler_v2=autoscaler_v2,
         idle_timeout_minutes=0.05,
     )
     cluster.start()
@@ -326,6 +337,8 @@ def test_autoscaler_shutdown_node_http_everynode(
 
     # Clean up serve.
     serve.shutdown()
+    cluster.shutdown()
+    ray.shutdown()
 
 
 def test_drain_and_undrain_http_proxy_actors(
@@ -653,10 +666,12 @@ def test_serve_shut_down_without_duplicated_logs(
 
     all_serve_logs = ""
     for filename in os.listdir(get_serve_logs_dir()):
-        with open(os.path.join(get_serve_logs_dir(), filename), "r") as f:
-            all_serve_logs += f.read()
+        file_path = os.path.join(get_serve_logs_dir(), filename)
+        if os.path.isfile(file_path):
+            with open(file_path, "r") as f:
+                all_serve_logs += f.read()
     assert all_serve_logs.count("Controller shutdown started") == 1
-    assert all_serve_logs.count("Deleting application 'default'") == 1
+    assert all_serve_logs.count("Deleting app 'default'") == 1
 
 
 if __name__ == "__main__":

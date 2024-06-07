@@ -3,8 +3,6 @@
 D. Hafner, J. Pasukonis, J. Ba, T. Lillicrap
 https://arxiv.org/pdf/2301.04104v1.pdf
 """
-from typing import Optional
-
 import gymnasium as gym
 from gymnasium.spaces import Box, Discrete
 import numpy as np
@@ -35,15 +33,15 @@ class ActorNetwork(tf.keras.Model):
     def __init__(
         self,
         *,
-        model_size: Optional[str] = "XS",
+        model_size: str = "XS",
         action_space: gym.Space,
     ):
         """Initializes an ActorNetwork instance.
 
         Args:
-             model_size: The "Model Size" used according to [1] Appendinx B.
+             model_size: The "Model Size" used according to [1] Appendix B.
                 Use None for manually setting the different network sizes.
-             action_space: The action space the our environment used.
+            action_space: The action space the our environment used.
         """
         super().__init__(name="actor")
 

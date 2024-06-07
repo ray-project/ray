@@ -19,7 +19,7 @@ resource-allocation
 autoscaling-guide
 advanced-guides/index
 architecture
-tutorials/index
+examples
 api/index
 ```
 
@@ -233,7 +233,7 @@ micro-batching component to improve throughput.
 ## Learn More
 
 Check out {ref}`serve-getting-started` and {ref}`serve-key-concepts`,
-or head over to the {doc}`tutorials/index` to get started building your Ray Serve applications.
+or head over to the {doc}`examples` to get started building your Ray Serve applications.
 
 
 ```{eval-rst}
@@ -283,10 +283,11 @@ or head over to the {doc}`tutorials/index` to get started building your Ray Serv
         Follow the tutorials to learn how to integrate Ray Serve with :ref:`TensorFlow <serve-ml-models-tutorial>`, and :ref:`Scikit-Learn <serve-ml-models-tutorial>`.
 
         +++
-        .. button-ref:: serve-examples
+        .. button-ref:: examples
             :color: primary
             :outline:
             :expand:
+            :ref-type: doc
 
             Serve Examples
 

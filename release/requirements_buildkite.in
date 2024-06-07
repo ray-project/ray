@@ -2,6 +2,7 @@
 # Copy anyscale pin to requirements.txt and util.py
 anyscale
 bazel-runfiles
+aioboto3
 boto3
 click
 freezegun
@@ -15,6 +16,10 @@ pybuildkite
 PyGithub
 requests
 retry
+twine == 5.0.0
+docker == 7.0.0
 
 # Below are requirements only used by ray_ci
 tzdata
+aws_requests_auth
+requests

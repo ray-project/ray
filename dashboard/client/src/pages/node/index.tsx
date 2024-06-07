@@ -3,6 +3,7 @@ import {
   Button,
   ButtonGroup,
   Grid,
+  Link,
   Paper,
   Switch,
   Table,
@@ -12,11 +13,12 @@ import {
   TableHead,
   TableRow,
   Typography,
-} from "@material-ui/core";
-import { makeStyles } from "@material-ui/core/styles";
-import Pagination from "@material-ui/lab/Pagination";
+} from "@mui/material";
+import Pagination from "@mui/material/Pagination";
+import makeStyles from "@mui/styles/makeStyles";
 import React from "react";
-import { Link, Outlet } from "react-router-dom";
+import { Outlet, Link as RouterLink } from "react-router-dom";
+import { sliceToPage } from "../../common/util";
 import Loading from "../../components/Loading";
 import PercentageBar from "../../components/PercentageBar";
 import { SearchInput, SearchSelect } from "../../components/SearchComponent";
@@ -48,6 +50,7 @@ const columns = [
   { label: "" }, // Expand button
   { label: "Host / Worker Process name" },
   { label: "State" },
+  { label: "State Message" },
   { label: "ID" },
   { label: "IP / PID" },
   { label: "Actions" },
@@ -109,9 +112,9 @@ const columns = [
     label: "Logical Resources",
     helpInfo: (
       <Typography>
-        <a href="https://docs.ray.io/en/latest/ray-core/scheduling/resources.html#physical-resources-and-logical-resources">
+        <Link href="https://docs.ray.io/en/latest/ray-core/scheduling/resources.html#physical-resources-and-logical-resources">
           Logical resources usage
-        </a>{" "}
+        </Link>{" "}
         (e.g., CPU, memory) for a node. Alternatively, you can run the CLI
         command <p style={codeTextStyle}>ray status -v </p>
         to obtain a similar result.
@@ -152,7 +155,9 @@ export const NodeCard = (props: { node: NodeDetail }) => {
   return (
     <Paper variant="outlined" style={{ padding: "12px 12px", margin: 12 }}>
       <p style={{ fontWeight: "bold", fontSize: 12, textDecoration: "none" }}>
-        <Link to={`nodes/${nodeId}`}>{nodeId}</Link>{" "}
+        <Link component={RouterLink} to={`nodes/${nodeId}`}>
+          {nodeId}
+        </Link>{" "}
       </p>
       <p>
         <Grid container spacing={1}>
@@ -212,10 +217,18 @@ export const NodeCard = (props: { node: NodeDetail }) => {
           </Grid>
         )}
       </Grid>
-      <Grid container justify="flex-end" spacing={1} style={{ margin: 8 }}>
+      <Grid
+        container
+        justifyContent="flex-end"
+        spacing={1}
+        style={{ margin: 8 }}
+      >
         <Grid>
           <Button>
-            <Link to={`/logs/?nodeId${encodeURIComponent(raylet.nodeId)}`}>
+            <Link
+              component={RouterLink}
+              to={`/logs/?nodeId${encodeURIComponent(raylet.nodeId)}`}
+            >
               log
             </Link>
           </Button>
@@ -241,6 +254,12 @@ const Nodes = () => {
     mode,
     setMode,
   } = useNodeList();
+
+  const {
+    items: list,
+    constrainedPage,
+    maxPage,
+  } = sliceToPage(nodeList, page.pageNo, page.pageSize);
 
   return (
     <div className={classes.root}>
@@ -271,6 +290,12 @@ const Nodes = () => {
             <SearchInput
               label="IP"
               onChange={(value) => changeFilter("ip", value.trim())}
+            />
+          </Grid>
+          <Grid item>
+            <SearchInput
+              label="Node ID"
+              onChange={(value) => changeFilter("nodeId", value.trim())}
             />
           </Grid>
           <Grid item>
@@ -313,16 +338,10 @@ const Nodes = () => {
           </Grid>
           <Grid item>
             <ButtonGroup size="small">
-              <Button
-                onClick={() => setMode("table")}
-                color={mode === "table" ? "primary" : "default"}
-              >
+              <Button onClick={() => setMode("table")} color="primary">
                 Table
               </Button>
-              <Button
-                onClick={() => setMode("card")}
-                color={mode === "card" ? "primary" : "default"}
-              >
+              <Button onClick={() => setMode("card")} color="primary">
                 Card
               </Button>
             </ButtonGroup>
@@ -330,8 +349,8 @@ const Nodes = () => {
         </Grid>
         <div>
           <Pagination
-            count={Math.ceil(nodeList.length / page.pageSize)}
-            page={page.pageNo}
+            count={maxPage}
+            page={constrainedPage}
             onChange={(e, pageNo) => setPage("pageNo", pageNo)}
           />
         </div>
@@ -359,35 +378,25 @@ const Nodes = () => {
                 </TableRow>
               </TableHead>
               <TableBody>
-                {nodeList
-                  .slice(
-                    (page.pageNo - 1) * page.pageSize,
-                    page.pageNo * page.pageSize,
-                  )
-                  .map((node) => (
-                    <NodeRows
-                      key={node.raylet.nodeId}
-                      node={node}
-                      isRefreshing={isRefreshing}
-                      startExpanded={nodeList.length === 1}
-                    />
-                  ))}
+                {list.map((node) => (
+                  <NodeRows
+                    key={node.raylet.nodeId}
+                    node={node}
+                    isRefreshing={isRefreshing}
+                    startExpanded={nodeList.length === 1}
+                  />
+                ))}
               </TableBody>
             </Table>
           </TableContainer>
         )}
         {mode === "card" && (
           <Grid container>
-            {nodeList
-              .slice(
-                (page.pageNo - 1) * page.pageSize,
-                page.pageNo * page.pageSize,
-              )
-              .map((e) => (
-                <Grid item xs={6}>
-                  <NodeCard node={e} />
-                </Grid>
-              ))}
+            {list.map((e) => (
+              <Grid item xs={6}>
+                <NodeCard node={e} />
+              </Grid>
+            ))}
           </Grid>
         )}
       </TitleCard>

@@ -4,7 +4,7 @@ set -euo pipefail
 
 set -x
 
-PYTHON_VERSIONS=("3.8" "3.9" "3.10" "3.11")
+PYTHON_VERSIONS=("3.9" "3.10" "3.11")
 BAZELISK_VERSION="v1.16.0"
 
 # Check arguments
@@ -39,9 +39,6 @@ install_miniconda() {
     bash "$TMP_DIR/miniconda3/miniconda.sh" -b -u -p "$TMP_DIR/miniconda3"
     rm -rf "$TMP_DIR/miniconda3/miniconda.sh"
 
-    # Add miniconda3 to the PATH to use `conda` command.
-    export PATH="$TMP_DIR/miniconda3/bin:$PATH"
-
     # Initialize conda. This replaces calling `conda init bash`.
     # Conda init command requires a shell restart which should not be done on BK.
     source "$TMP_DIR/miniconda3/etc/profile.d/conda.sh"
@@ -57,7 +54,7 @@ run_sanity_check() {
         "ray[cpp]==$RAY_VERSION"
     (
         cd release/util
-        python sanity_check.py
+        python sanity_check.py --ray_version="$RAY_VERSION" --ray_commit="$BUILDKITE_COMMIT"
         bash sanity_check_cpp.sh
     )
     conda deactivate
@@ -71,7 +68,6 @@ _clean_up() {
 # Create tmp directory unique for the run
 TMP_DIR="$(mktemp -d "$HOME/tmp.XXXXXXXXXX")"
 mkdir -p "$TMP_DIR/bin"
-# Add bin dir to the path.
 export PATH="$TMP_DIR/bin:$PATH"
 
 trap _clean_up EXIT

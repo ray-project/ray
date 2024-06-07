@@ -64,9 +64,25 @@ def check_alive_nodes(expected: int):
                     "max_workers": 100,
                 },
             },
-        }
+            "autoscaler_v2": False,
+        },
+        {
+            "head_resources": {"CPU": 0},
+            "worker_node_types": {
+                "cpu_node": {
+                    "resources": {
+                        "CPU": 9999,
+                    },
+                    "node_config": {},
+                    "min_workers": 0,
+                    "max_workers": 100,
+                },
+            },
+            "autoscaler_v2": True,
+        },
     ],
     indirect=True,
+    ids=["v1", "v2"],
 )
 def test_basic(ray_autoscaling_cluster):
     """Test that max_replicas_per_node is honored."""
@@ -120,9 +136,25 @@ def test_basic(ray_autoscaling_cluster):
                     "max_workers": 100,
                 },
             },
-        }
+            "autoscaler_v2": False,
+        },
+        {
+            "head_resources": {"CPU": 0},
+            "worker_node_types": {
+                "cpu_node": {
+                    "resources": {
+                        "CPU": 9999,
+                    },
+                    "node_config": {},
+                    "min_workers": 0,
+                    "max_workers": 100,
+                },
+            },
+            "autoscaler_v2": True,
+        },
     ],
     indirect=True,
+    ids=["v1", "v2"],
 )
 def test_update_max_replicas_per_node(ray_autoscaling_cluster):
     """Test re-deploying a deployment with different max_replicas_per_node."""
@@ -172,7 +204,7 @@ def test_update_max_replicas_per_node(ray_autoscaling_cluster):
         # there is a strict max replicas per node requirement. However nodes
         # that were hosting the replicas of the old version should eventually
         # be removed from scale-down.
-        wait_for_condition(check_alive_nodes, expected=4)
+        wait_for_condition(check_alive_nodes, expected=4, timeout=60)
 
 
 if __name__ == "__main__":

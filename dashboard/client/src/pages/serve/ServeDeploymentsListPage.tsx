@@ -1,8 +1,8 @@
 import {
+  Alert,
   Box,
-  createStyles,
   InputAdornment,
-  makeStyles,
+  Pagination,
   Table,
   TableBody,
   TableCell,
@@ -10,18 +10,22 @@ import {
   TableHead,
   TableRow,
   TextField,
-  TextFieldProps,
   Typography,
-} from "@material-ui/core";
-import { Alert, Autocomplete, Pagination } from "@material-ui/lab";
+} from "@mui/material";
+import createStyles from "@mui/styles/createStyles";
+import makeStyles from "@mui/styles/makeStyles";
 import React, { ReactElement } from "react";
 import { CollapsibleSection } from "../../common/CollapsibleSection";
+import { sliceToPage } from "../../common/util";
 import Loading from "../../components/Loading";
 import { HelpInfo } from "../../components/Tooltip";
 import { useServeDeployments } from "./hook/useServeApplications";
-import { ServeDeploymentRow } from "./ServeDeploymentRow";
+import { ServeApplicationRows } from "./ServeApplicationRow";
 import { ServeEntityLogViewer } from "./ServeEntityLogViewer";
-import { ServeMetricsSection } from "./ServeMetricsSection";
+import {
+  APPS_METRICS_CONFIG,
+  ServeMetricsSection,
+} from "./ServeMetricsSection";
 import { ServeSystemPreview } from "./ServeSystemDetails";
 
 const useStyles = makeStyles((theme) =>
@@ -48,12 +52,12 @@ const useStyles = makeStyles((theme) =>
 );
 
 const columns: { label: string; helpInfo?: ReactElement; width?: string }[] = [
-  { label: "Deployment name" },
+  { label: "" }, // Empty space for expand button
+  { label: "Name" },
   { label: "Status" },
   { label: "Status message", width: "30%" },
-  { label: "Num replicas" },
+  { label: "Replicas" },
   { label: "Actions" },
-  { label: "Application" },
   { label: "Route prefix" },
   { label: "Last deployed at" },
   { label: "Duration (since last deploy)" },
@@ -63,13 +67,12 @@ export const ServeDeploymentsListPage = () => {
   const classes = useStyles();
   const {
     serveDetails,
-    filteredServeDeployments,
     error,
-    allServeDeployments,
     page,
     setPage,
     proxies,
-    changeFilter,
+    serveApplications,
+    serveDeployments,
   } = useServeDeployments();
 
   if (error) {
@@ -80,6 +83,12 @@ export const ServeDeploymentsListPage = () => {
     return <Loading loading={true} />;
   }
 
+  const {
+    items: list,
+    constrainedPage,
+    maxPage,
+  } = sliceToPage(serveApplications, page.pageNo, page.pageSize);
+
   return (
     <div className={classes.root}>
       {serveDetails.http_options === undefined ? (
@@ -89,82 +98,36 @@ export const ServeDeploymentsListPage = () => {
       ) : (
         <React.Fragment>
           <ServeSystemPreview
-            allDeployments={allServeDeployments}
+            allDeployments={serveDeployments}
+            allApplications={serveApplications}
             proxies={proxies}
             serveDetails={serveDetails}
           />
           <CollapsibleSection
-            title="Deployments"
+            title="Applications / Deployments"
             startExpanded
             className={classes.deploymentsSection}
           >
             <TableContainer>
-              <div style={{ flex: 1, display: "flex", alignItems: "center" }}>
-                <Autocomplete
-                  style={{ margin: 8, width: 120 }}
-                  options={Array.from(
-                    new Set(
-                      allServeDeployments.map((e) => (e.name ? e.name : "-")),
-                    ),
-                  )}
-                  onInputChange={(_: any, value: string) => {
-                    changeFilter(
-                      "name",
-                      value.trim() !== "-" ? value.trim() : "",
-                    );
-                  }}
-                  renderInput={(params: TextFieldProps) => (
-                    <TextField {...params} label="Name" />
-                  )}
-                />
-                <Autocomplete
-                  style={{ margin: 8, width: 120 }}
-                  options={Array.from(
-                    new Set(allServeDeployments.map((e) => e.status)),
-                  )}
-                  onInputChange={(_: any, value: string) => {
-                    changeFilter("status", value.trim());
-                  }}
-                  renderInput={(params: TextFieldProps) => (
-                    <TextField {...params} label="Status" />
-                  )}
-                />
-                <Autocomplete
-                  style={{ margin: 8, width: 120 }}
-                  options={Array.from(
-                    new Set(allServeDeployments.map((e) => e.applicationName)),
-                  )}
-                  onInputChange={(_: any, value: string) => {
-                    changeFilter("applicationName", value.trim());
-                  }}
-                  renderInput={(params: TextFieldProps) => (
-                    <TextField {...params} label="Application" />
-                  )}
-                />
-                <TextField
-                  style={{ margin: 8, width: 120 }}
-                  label="Page Size"
-                  size="small"
-                  defaultValue={10}
-                  InputProps={{
-                    onChange: ({ target: { value } }) => {
-                      setPage("pageSize", Math.min(Number(value), 500) || 10);
-                    },
-                    endAdornment: (
-                      <InputAdornment position="end">Per Page</InputAdornment>
-                    ),
-                  }}
-                />
-              </div>
-              <div style={{ display: "flex", alignItems: "center" }}>
-                <Pagination
-                  count={Math.ceil(
-                    filteredServeDeployments.length / page.pageSize,
-                  )}
-                  page={page.pageNo}
-                  onChange={(e, pageNo) => setPage("pageNo", pageNo)}
-                />
-              </div>
+              <TextField
+                style={{ margin: 8, width: 120 }}
+                label="Page Size"
+                size="small"
+                defaultValue={10}
+                InputProps={{
+                  onChange: ({ target: { value } }) => {
+                    setPage("pageSize", Math.min(Number(value), 500) || 10);
+                  },
+                  endAdornment: (
+                    <InputAdornment position="end">Per Page</InputAdornment>
+                  ),
+                }}
+              />
+              <Pagination
+                count={maxPage}
+                page={constrainedPage}
+                onChange={(e, pageNo) => setPage("pageNo", pageNo)}
+              />
               <Table className={classes.table}>
                 <TableHead>
                   <TableRow>
@@ -191,18 +154,13 @@ export const ServeDeploymentsListPage = () => {
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {filteredServeDeployments
-                    .slice(
-                      (page.pageNo - 1) * page.pageSize,
-                      page.pageNo * page.pageSize,
-                    )
-                    .map((deployment) => (
-                      <ServeDeploymentRow
-                        key={`${deployment.application.name}-${deployment.name}`}
-                        deployment={deployment}
-                        application={deployment.application}
-                      />
-                    ))}
+                  {list.map((application) => (
+                    <ServeApplicationRows
+                      key={`${application.name}`}
+                      application={application}
+                      startExpanded
+                    />
+                  ))}
                 </TableBody>
               </Table>
             </TableContainer>
@@ -215,12 +173,15 @@ export const ServeDeploymentsListPage = () => {
             <ServeEntityLogViewer
               controller={serveDetails.controller_info}
               proxies={proxies}
-              deployments={allServeDeployments}
+              deployments={serveDeployments}
             />
           </CollapsibleSection>
         </React.Fragment>
       )}
-      <ServeMetricsSection className={classes.section} />
+      <ServeMetricsSection
+        className={classes.section}
+        metricsConfig={APPS_METRICS_CONFIG}
+      />
     </div>
   );
 };

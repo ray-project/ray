@@ -34,7 +34,7 @@ class MockedWorker:
 def mocked_worker():
     mocked_core_worker = Mock()
     mocked_core_worker.try_read_next_object_ref_stream.return_value = None
-    mocked_core_worker.delete_object_ref_stream.return_value = None
+    mocked_core_worker.async_delete_object_ref_stream.return_value = None
     mocked_core_worker.create_object_ref_stream.return_value = None
     mocked_core_worker.peek_object_ref_stream.return_value = [], []
     worker = MockedWorker(mocked_core_worker)
@@ -94,7 +94,7 @@ def test_streaming_object_ref_generator_basic_unit(mocked_worker):
                 dumps(generator)
 
             del generator
-            c.delete_object_ref_stream.assert_called()
+            c.async_delete_object_ref_stream.assert_called()
 
 
 def test_streaming_object_ref_generator_task_failed_unit(mocked_worker):

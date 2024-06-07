@@ -44,8 +44,8 @@ from ray.tests.conftest import *  # noqa
 
 
 def _get_blocks(bundle: RefBundle, output_list: List[Block]):
-    for block, _ in bundle.blocks:
-        output_list.append(list(ray.get(block)["id"]))
+    for block_ref in bundle.block_refs:
+        output_list.append(list(ray.get(block_ref)["id"]))
 
 
 def _mul2_transform(block_iter: Iterable[Block], ctx) -> Iterable[Block]:
@@ -133,69 +133,6 @@ def test_num_outputs_total():
 
 
 @pytest.mark.parametrize("use_actors", [False, True])
-def test_map_operator_bulk(ray_start_regular_shared, use_actors):
-    # Create with inputs.
-    input_op = InputDataBuffer(
-        make_ref_bundles([[np.ones(1024) * i] for i in range(100)])
-    )
-    compute_strategy = ActorPoolStrategy(size=1) if use_actors else TaskPoolStrategy()
-    op = MapOperator.create(
-        _mul2_map_data_prcessor,
-        input_op=input_op,
-        name="TestMapper",
-        compute_strategy=compute_strategy,
-    )
-
-    # Feed data and block on exec.
-    op.start(ExecutionOptions(actor_locality_enabled=False))
-    if use_actors:
-        # Actor will be pending after starting the operator.
-        assert op.progress_str() == "0 actors (1 pending) [locality off]"
-    assert op.internal_queue_size() == 0
-    i = 0
-    while input_op.has_next():
-        op.add_input(input_op.get_next(), 0)
-        i += 1
-        if use_actors:
-            assert op.internal_queue_size() == i
-        else:
-            assert op.internal_queue_size() == 0
-    op.all_inputs_done()
-
-    tasks = op.get_active_tasks()
-    while tasks:
-        run_op_tasks_sync(op, only_existing=True)
-        tasks = op.get_active_tasks()
-        if use_actors and tasks:
-            # After actor is ready (first work ref resolved), actor will remain ready
-            # while there is work to do.
-            assert op.progress_str() == "1 actors [locality off]"
-
-    assert op.internal_queue_size() == 0
-    if use_actors:
-        # After all work is done, actor will have been killed to free up resources..
-        assert op.progress_str() == "0 actors [locality off]"
-    else:
-        assert op.progress_str() == ""
-
-    # Check we return transformed bundles in order.
-    assert not op.completed()
-    assert np.array_equal(
-        _take_outputs(op), [[np.ones(1024) * i * 2] for i in range(100)]
-    )
-    assert op.completed()
-
-    # Check dataset stats.
-    stats = op.get_stats()
-    assert "TestMapper" in stats, stats
-    assert len(stats["TestMapper"]) == 100, stats
-
-    # Check memory stats.
-    metrics = op.metrics.as_dict()
-    assert metrics["obj_store_mem_freed"] == pytest.approx(832200, 0.5), metrics
-
-
-@pytest.mark.parametrize("use_actors", [False, True])
 def test_map_operator_streamed(ray_start_regular_shared, use_actors):
     # Create with inputs.
     input_op = InputDataBuffer(
@@ -211,7 +148,7 @@ def test_map_operator_streamed(ray_start_regular_shared, use_actors):
 
     # Feed data and implement streaming exec.
     output = []
-    op.start(ExecutionOptions())
+    op.start(ExecutionOptions(actor_locality_enabled=True))
     while input_op.has_next():
         op.add_input(input_op.get_next(), 0)
         while not op.has_next():
@@ -259,9 +196,11 @@ def test_split_operator(ray_start_regular_shared, equal, chunk_size):
         while op.has_next():
             ref = op.get_next()
             assert ref.owns_blocks, ref
-            for block, _ in ref.blocks:
+            for block_ref in ref.block_refs:
                 assert ref.output_split_idx is not None
-                output_splits[ref.output_split_idx].extend(list(ray.get(block)["id"]))
+                output_splits[ref.output_split_idx].extend(
+                    list(ray.get(block_ref)["id"])
+                )
     op.all_inputs_done()
 
     expected_splits = [[] for _ in range(num_splits)]
@@ -297,8 +236,8 @@ def test_split_operator_random(ray_start_regular_shared, equal, random_seed):
     while op.has_next():
         ref = op.get_next()
         assert ref.owns_blocks, ref
-        for block, _ in ref.blocks:
-            output_splits[ref.output_split_idx].extend(list(ray.get(block)["id"]))
+        for block_ref in ref.block_refs:
+            output_splits[ref.output_split_idx].extend(list(ray.get(block_ref)["id"]))
     if equal:
         actual = [len(output_splits[i]) for i in range(3)]
         expected = [num_inputs // 3] * 3
@@ -327,15 +266,15 @@ def test_split_operator_locality_hints(ray_start_regular_shared):
 
     # Feed data and implement streaming exec.
     output_splits = collections.defaultdict(list)
-    op.start(ExecutionOptions())
+    op.start(ExecutionOptions(actor_locality_enabled=True))
     while input_op.has_next():
         op.add_input(input_op.get_next(), 0)
     op.all_inputs_done()
     while op.has_next():
         ref = op.get_next()
         assert ref.owns_blocks, ref
-        for block, _ in ref.blocks:
-            output_splits[ref.output_split_idx].extend(list(ray.get(block)["id"]))
+        for block_ref in ref.block_refs:
+            output_splits[ref.output_split_idx].extend(list(ray.get(block_ref)["id"]))
 
     total = 0
     for i in range(2):
@@ -646,8 +585,8 @@ def test_limit_operator(ray_start_regular_shared):
 
 def _get_bundles(bundle: RefBundle):
     output = []
-    for block, _ in bundle.blocks:
-        output.extend(list(ray.get(block)["id"]))
+    for block_ref in bundle.block_refs:
+        output.extend(list(ray.get(block_ref)["id"]))
     return output
 
 

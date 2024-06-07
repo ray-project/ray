@@ -37,7 +37,7 @@ from ray._private.test_utils import (
     find_available_port,
     wait_for_condition,
     find_free_port,
-    NodeKillerActor,
+    RayletKiller,
 )
 from ray.cluster_utils import AutoscalingCluster, Cluster, cluster_not_supported
 
@@ -134,6 +134,7 @@ def get_default_fixure_system_config():
         "health_check_initial_delay_ms": 0,
         "health_check_failure_threshold": 10,
         "object_store_full_delay_ms": 100,
+        "local_gc_min_interval_s": 1,
     }
     return system_config
 
@@ -273,12 +274,18 @@ def kill_all_redis_server():
     # Find Redis server processes
     redis_procs = []
     for proc in psutil.process_iter(["name", "cmdline"]):
-        if proc.name() == "redis-server":
-            redis_procs.append(proc)
+        try:
+            if proc.name() == "redis-server":
+                redis_procs.append(proc)
+        except psutil.NoSuchProcess:
+            pass
 
     # Kill Redis server processes
     for proc in redis_procs:
-        proc.kill()
+        try:
+            proc.kill()
+        except psutil.NoSuchProcess:
+            pass
 
 
 @contextmanager
@@ -337,12 +344,13 @@ def shutdown_only(maybe_external_redis):
 @pytest.fixture
 def propagate_logs():
     # Ensure that logs are propagated to ancestor handles. This is required if using the
-    # caplog fixture with Ray's logging.
+    # caplog or capsys fixtures with Ray's logging.
     # NOTE: This only enables log propagation in the driver process, not the workers!
-    logger = logging.getLogger("ray")
-    logger.propagate = True
+    logging.getLogger("ray").propagate = True
+    logging.getLogger("ray.data").propagate = True
     yield
-    logger.propagate = False
+    logging.getLogger("ray").propagate = False
+    logging.getLogger("ray.data").propagate = False
 
 
 # Provide a shared Ray instance for a test class
@@ -913,7 +921,7 @@ def _ray_start_chaos_cluster(request):
     assert len(nodes) == 1
 
     if kill_interval is not None:
-        node_killer = get_and_run_resource_killer(NodeKillerActor, kill_interval)
+        node_killer = get_and_run_resource_killer(RayletKiller, kill_interval)
 
     yield cluster
 
