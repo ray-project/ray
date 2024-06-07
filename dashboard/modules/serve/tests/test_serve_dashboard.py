@@ -361,13 +361,6 @@ def test_get_serve_instance_details(ray_start_stop, f_deployment_options, url):
             },
         ],
     }
-
-    # Deploy app1 and app2 through the declarative API
-    deploy_config_multi_app(config, url)
-
-    # Deploy app3 through the imperative API
-    serve.run(world.DagNode, name="app3", route_prefix="/grape")
-
     expected_values = {
         "app1": {
             "route_prefix": "/apple",
@@ -381,13 +374,9 @@ def test_get_serve_instance_details(ray_start_stop, f_deployment_options, url):
             "deployments": {"FastAPIDeployment"},
             "source": "declarative",
         },
-        "app3": {
-            "route_prefix": "/grape",
-            "docs_path": None,
-            "deployments": {"f", "BasicDriver"},
-            "source": "imperative",
-        },
     }
+
+    deploy_config_multi_app(config, url)
 
     def applications_running():
         response = requests.get(url, timeout=15)
@@ -397,10 +386,9 @@ def test_get_serve_instance_details(ray_start_stop, f_deployment_options, url):
         return (
             serve_details.applications["app1"].status == ApplicationStatus.RUNNING
             and serve_details.applications["app2"].status == ApplicationStatus.RUNNING
-            and serve_details.applications["app3"].status == ApplicationStatus.RUNNING
         )
 
-    wait_for_condition(applications_running, timeout=30)
+    wait_for_condition(applications_running, timeout=15)
     print("All applications are in a RUNNING state.")
 
     serve_details = ServeInstanceDetails(**requests.get(url).json())
@@ -438,6 +426,92 @@ def test_get_serve_instance_details(ray_start_stop, f_deployment_options, url):
             app_details[app].deployed_app_config.dict(exclude_unset=True)
             == config["applications"][i]
         )
+        assert app_details[app].last_deployed_time_s > 0
+        assert app_details[app].route_prefix == expected_values[app]["route_prefix"]
+        assert app_details[app].docs_path == expected_values[app]["docs_path"]
+        assert app_details[app].source == expected_values[app]["source"]
+
+        # CHECK: all deployments are present
+        assert (
+            app_details[app].deployments.keys() == expected_values[app]["deployments"]
+        )
+
+        for deployment in app_details[app].deployments.values():
+            assert deployment.status == DeploymentStatus.HEALTHY
+            assert (
+                deployment.status_trigger
+                == DeploymentStatusTrigger.CONFIG_UPDATE_COMPLETED
+            )
+            # Route prefix should be app level options eventually
+            assert "route_prefix" not in deployment.deployment_config.dict(
+                exclude_unset=True
+            )
+            if isinstance(deployment.deployment_config.num_replicas, int):
+                assert (
+                    len(deployment.replicas)
+                    == deployment.deployment_config.num_replicas
+                )
+                assert len(deployment.replicas) == deployment.target_num_replicas
+
+            for replica in deployment.replicas:
+                assert replica.replica_id
+                assert replica.state == ReplicaState.RUNNING
+                assert deployment.name in replica.actor_name
+                assert replica.actor_id and replica.node_id and replica.node_ip
+                assert replica.start_time_s > app_details[app].last_deployed_time_s
+                file_path = "/tmp/ray/session_latest/logs" + replica.log_file_path
+                assert os.path.exists(file_path)
+
+    print("Finished checking application details.")
+
+
+@pytest.mark.skipif(
+    sys.platform == "darwin" and not TEST_ON_DARWIN, reason="Flaky on OSX."
+)
+@pytest.mark.parametrize("url", [SERVE_AGENT_URL, SERVE_HEAD_URL])
+def test_get_serve_instance_details_for_imperative_apps(ray_start_stop, url):
+    """
+    Most behavior is checked by test_get_serve_instance_details.
+    This test mostly checks for the different behavior of
+    imperatively-deployed apps, with some crossover.
+    """
+    serve.run(world.DagNode, name="app1", route_prefix="/apple")
+    serve.run(world.DagNode, name="app2", route_prefix="/banana")
+
+    def applications_running():
+        response = requests.get(url, timeout=15)
+        assert response.status_code == 200
+
+        serve_details = ServeInstanceDetails(**response.json())
+        return (
+            serve_details.applications["app1"].status == ApplicationStatus.RUNNING
+            and serve_details.applications["app2"].status == ApplicationStatus.RUNNING
+        )
+
+    wait_for_condition(applications_running, timeout=15)
+    print("All applications are in a RUNNING state.")
+
+    expected_values = {
+        "app1": {
+            "route_prefix": "/apple",
+            "docs_path": None,
+            "deployments": {"f", "BasicDriver"},
+            "source": "imperative",
+        },
+        "app2": {
+            "route_prefix": "/banana",
+            "docs_path": None,
+            "deployments": {"f", "BasicDriver"},
+            "source": "imperative",
+        },
+    }
+
+    serve_details = ServeInstanceDetails(**requests.get(url).json())
+
+    app_details = serve_details.applications
+    # CHECK: application details
+    for i, app in enumerate(["app1", "app2"]):
+        assert app_details[app].deployed_app_config is None
         assert app_details[app].last_deployed_time_s > 0
         assert app_details[app].route_prefix == expected_values[app]["route_prefix"]
         assert app_details[app].docs_path == expected_values[app]["docs_path"]
