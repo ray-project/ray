@@ -277,7 +277,7 @@ class StandardAutoscaler:
 
         # Map of replica IDs to worker nodes in each replica.
         # A replica ID refers to the index of a multi-host PodSlice created by KubeRay.
-        self.replicas_to_nodes: Dict[str, List[NodeID]] = defaultdict(List[NodeID])
+        self.replicas_to_nodes: Dict[str, List[NodeID]] = defaultdict(list)
 
         # Disable NodeUpdater threads if true.
         # Should be set to true in situations where another component, such as
@@ -416,12 +416,15 @@ class StandardAutoscaler:
             return
 
         # Populate mapping of replica IDs to nodes in that replica.
-        for node in self.non_terminated_nodes.worker_ids:
-            tags = self.provider.node_tags(node)
+        for node_id in self.non_terminated_nodes.worker_ids:
+            tags = self.provider.node_tags(node_id)
             if TAG_RAY_REPLICA_INDEX in tags:
                 node_replica_index = tags[TAG_RAY_REPLICA_INDEX]
-                if node not in self.replicas_to_nodes[node_replica_index]:
-                    self.replicas_to_nodes[node_replica_index].append(node)
+                if node_replica_index in self.replicas_to_nodes:
+                    if node_id not in self.replicas_to_nodes[node_replica_index]:
+                        self.replicas_to_nodes[node_replica_index].append(node_id)
+                else:
+                    self.replicas_to_nodes[node_replica_index] = list(node_id)
 
         # This will accumulate the nodes we need to terminate.
         self.nodes_to_terminate = []
