@@ -1,5 +1,6 @@
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.rl_module.torch import TorchRLModule
+from ray.rllib.models.torch.torch_distributions import TorchCategorical
 from ray.rllib.models.torch.misc import normc_initializer
 from ray.rllib.models.torch.misc import same_padding, valid_padding
 from ray.rllib.utils.annotations import override
@@ -113,6 +114,21 @@ class TinyAtariCNN(TorchRLModule):
             Columns.ACTION_DIST_INPUTS: logits,
             Columns.VF_PREDS: values,
         }
+
+    # TODO (sven): We still need to define the distibution to use here, even though,
+    #  we have a pretty standard action space (Discrete), which should simply always map
+    #  to a categorical dist. by default.
+    @override(TorchRLModule)
+    def get_inference_action_dist_cls(self):
+        return TorchCategorical
+
+    @override(TorchRLModule)
+    def get_exploration_action_dist_cls(self):
+        return TorchCategorical
+
+    @override(TorchRLModule)
+    def get_train_action_dist_cls(self):
+        return TorchCategorical
 
     # TODO (sven): In order for this RLModule to work with PPO, we must define
     #  our own `_compute_values()` method. This would become more obvious, if we simply
