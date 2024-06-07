@@ -11,7 +11,7 @@ import ray
 import ray.cluster_utils
 import ray.experimental.channel as ray_channel
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
-from ray.dag import CompiledDAG
+from ray.dag.compiled_dag_node import CompiledDAG
 
 logger = logging.getLogger(__name__)
 
