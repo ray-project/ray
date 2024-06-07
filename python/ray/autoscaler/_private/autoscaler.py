@@ -416,7 +416,7 @@ class StandardAutoscaler:
             return
 
         # Populate mapping of replica IDs to nodes in that replica.
-        for node in self.non_terminated_nodes:
+        for node in self.non_terminated_nodes.worker_ids:
             tags = self.provider.node_tags(node)
             if TAG_RAY_REPLICA_INDEX in tags:
                 node_replica_index = tags[TAG_RAY_REPLICA_INDEX]
