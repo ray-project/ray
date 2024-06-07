@@ -273,7 +273,7 @@ def _get_ray_resources_from_group_spec(
 
         For example, a v4-16 worker group with 2 replicas should have the following
         resource labels on worker 0 of each replica:
-            worker 0: resources = {"TPU": 4, "TPU-v4-16-head": 2}
+            worker 0: resources = {"TPU": 4, "TPU-v4-16-head": 1}
         """
         topology = group_spec["template"]["spec"]["nodeSelector"][
             "cloud.google.com/gke-tpu-topology"
