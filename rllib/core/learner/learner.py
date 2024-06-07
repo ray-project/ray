@@ -1264,13 +1264,14 @@ class Learner:
         self._check_is_built()
 
         # Call the learner connector.
+        shared_data = {}
         if self._learner_connector is not None and episodes is not None:
             # Call the learner connector pipeline.
             batch = self._learner_connector(
                 rl_module=self.module,
                 data=batch if batch is not None else {},
                 episodes=episodes,
-                shared_data={},
+                shared_data=shared_data,
             )
             # Convert to a batch.
             # TODO (sven): Try to not require MultiAgentBatch anymore.
@@ -1300,7 +1301,7 @@ class Learner:
 
         # Log all timesteps (env, agent, modules) based on given episodes.
         if self._learner_connector is not None and episodes is not None:
-            self._log_steps_trained_metrics(episodes, batch)
+            self._log_steps_trained_metrics(episodes, batch, shared_data)
         # TODO (sven): Possibly remove this if-else block entirely. We might be in a
         #  world soon where we always learn from episodes, never from an incoming batch.
         else:
@@ -1340,7 +1341,8 @@ class Learner:
         # Convert input batch into a tensor batch (MultiAgentBatch) on the correct
         # device (e.g. GPU). We move the batch already here to avoid having to move
         # every single minibatch that is created in the `batch_iter` below.
-        batch = self._convert_batch_type(batch)
+        if self._learner_connector is None:
+            batch = self._convert_batch_type(batch)
         batch = self._set_slicing_by_batch_id(batch, value=True)
 
         for tensor_minibatch in batch_iter(batch, minibatch_size, num_iters):
@@ -1658,10 +1660,11 @@ class Learner:
     def _get_clip_function() -> Callable:
         """Returns the gradient clipping function to use, given the framework."""
 
-    def _log_steps_trained_metrics(self, episodes, batch):
+    def _log_steps_trained_metrics(self, episodes, batch, shared_data):
         # Logs this iteration's steps trained, based on given `episodes`.
         env_steps = sum(len(e) for e in episodes)
         log_dict = defaultdict(dict)
+        orig_lengths = shared_data.get("_sa_episodes_lengths", {})
         for sa_episode in self._learner_connector.single_agent_episode_iterator(
             episodes, agents_that_stepped_only=False
         ):
@@ -1674,8 +1677,11 @@ class Learner:
             if mid != ALL_MODULES and mid not in batch.policy_batches:
                 continue
 
-            _len = len(sa_episode)
-
+            _len = (
+                orig_lengths[sa_episode.id_]
+                if sa_episode.id_ in orig_lengths
+                else len(sa_episode)
+            )
             # TODO (sven): Decide, whether agent_ids should be part of LEARNER_RESULTS.
             #  Currently and historically, only ModuleID keys and ALL_MODULES were used
             #  and expected. Does it make sense to include e.g. agent steps trained?

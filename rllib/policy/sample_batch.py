@@ -1468,6 +1468,19 @@ class MultiAgentBatch:
             {k: v.copy() for (k, v) in self.policy_batches.items()}, self.count
         )
 
+    @ExperimentalAPI
+    def to_device(self, device, framework="torch"):
+        """TODO: transfer batch to given device as framework tensor."""
+        if framework == "torch":
+            assert torch is not None
+            for pid, policy_batch in self.policy_batches.items():
+                self.policy_batches[pid] = policy_batch.to_device(
+                    device, framework=framework
+                )
+        else:
+            raise NotImplementedError
+        return self
+
     @PublicAPI
     def size_bytes(self) -> int:
         """

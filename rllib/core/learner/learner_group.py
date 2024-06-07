@@ -78,9 +78,6 @@ class LearnerGroup:
         *,
         config: AlgorithmConfig = None,  # TODO (sven): Make this arg mandatory.
         module_spec: Optional[RLModuleSpec] = None,
-        max_queue_len: int = 20,
-        # Deprecated args.
-        learner_spec=None,
     ):
         """Initializes a LearnerGroup instance.
 
@@ -97,23 +94,7 @@ class LearnerGroup:
                 the specifics for your RLModule to be used in each Learner.
             module_spec: If not already specified in `config`, a separate overriding
                 RLModuleSpec may be provided via this argument.
-            max_queue_len: The maximum number of batches to queue up if doing
-                async_update. If the queue is full it will evict the oldest batch first.
         """
-        if learner_spec is not None:
-            deprecation_warning(
-                old="LearnerGroup(learner_spec=...)",
-                new="config = AlgorithmConfig().[resources|training|rl_module](...); "
-                "LearnerGroup(config=config)",
-                error=True,
-            )
-        if config is None:
-            raise ValueError(
-                "LearnerGroup constructor must be called with a `config` arg! "
-                "Pass in a `ray.rllib.algorithms.algorithm_config::AlgorithmConfig` "
-                "object with the proper settings configured."
-            )
-
         # scaling_config = learner_spec.learner_group_scaling_config
         self.config = config
 
@@ -782,8 +763,8 @@ class LearnerGroup:
                     worker_ip_addr, worker_temp_dir, self_ip_addr, path
                 )
 
-                # creating this function here instead of making it a member funciton
-                # becasue it uses the worker_temp_dir variable, and this can't
+                # Creating this function here instead of making it a member function
+                # because it uses the worker_temp_dir variable, and this can't
                 # be passed in as an argument to foreach_actor
                 def remove_dir(w):
                     import shutil

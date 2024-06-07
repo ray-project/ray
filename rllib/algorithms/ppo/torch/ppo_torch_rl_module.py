@@ -112,13 +112,11 @@ class PPOTorchRLModule(TorchRLModule, PPORLModule):
 
         return output
 
+    # TODO (sven): Try to move entire GAE computation into PPO's loss function (similar
+    #  to IMPALA's v-trace architecture). This would also get rid of the second
+    #  Connector pass currently necessary.
     @override(PPORLModule)
     def _compute_values(self, batch, device=None):
-        infos = batch.pop(Columns.INFOS, None)
-        batch = convert_to_torch_tensor(batch, device=device)
-        if infos is not None:
-            batch[Columns.INFOS] = infos
-
         # Separate vf-encoder.
         if hasattr(self.encoder, "critic_encoder"):
             if self.is_stateful():

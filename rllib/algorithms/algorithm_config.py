@@ -1019,6 +1019,7 @@ class AlgorithmConfig(_Config):
             AgentToModuleMapping,
             BatchIndividualItems,
             LearnerConnectorPipeline,
+            NumpyToTensor,
         )
 
         custom_connectors = []
@@ -1075,6 +1076,8 @@ class AlgorithmConfig(_Config):
                 )
             # Batch all data.
             pipeline.append(BatchIndividualItems())
+            # Convert to Tensors.
+            pipeline.append(NumpyToTensor(as_learner_connector=True))
         return pipeline
 
     def build_learner_group(

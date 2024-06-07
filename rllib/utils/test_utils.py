@@ -275,7 +275,14 @@ def add_rllib_example_script_args(
     # Learner scaling options.
     # Old API stack: config.num_gpus.
     # New API stack: config.num_learners (w/ num_gpus_per_learner=1).
-    parser.add_argument("--num-gpus", type=int, default=0)
+    parser.add_argument(
+        "--num-gpus",
+        type=int,
+        default=0,
+        help="The number of GPUs/Learners to use. If none or not enough GPUs "
+        "are available, will still create `--num-gpus` Learners, but place them on one "
+        "CPU each, instead.",
+    )
 
     # Ray init options.
     parser.add_argument("--num-cpus", type=int, default=0)
@@ -1468,14 +1475,16 @@ def run_rllib_example_script_experiment(
             config.resources(num_gpus=0)
             config.learners(
                 num_learners=args.num_gpus,
-                num_gpus_per_learner=1 if torch.cuda.is_available() else 0,
+                num_gpus_per_learner=(
+                    1
+                    if torch and torch.cuda.is_available() and args.num_gpus > 0
+                    else 0
+                ),
             )
+            config.resources(num_gpus=0)
         # Old stack.
         else:
-            config.resources(
-                num_gpus=args.num_gpus,
-                num_cpus_for_main_process=1,
-            )
+            config.resources(num_gpus=args.num_gpus)
 
         # Evaluation setup.
         if args.evaluation_interval > 0:

@@ -174,7 +174,7 @@ except ImportError:
             """Selects the right resource bundles for learner workers based off of cf.
 
             Args:
-                cf: The algorithm config.
+                cf: The AlgorithmConfig instance to extract bundle-information from.
 
             Returns:
                 A list of resource bundles for the learner workers.
@@ -187,7 +187,7 @@ except ImportError:
                 elif cf.num_cpus_per_learner:
                     learner_bundles = [
                         {
-                            "CPU": cf.num_cpus_per_learner * cf.num_learners,
+                            "CPU": cf.num_learners * cf.num_cpus_per_learner,
                         }
                     ]
             else:
@@ -889,7 +889,7 @@ class Algorithm(Trainable, AlgorithmBase):
                 )
             eval_results = self.evaluation_metrics
 
-        # Sync filters on workers.
+        # Sync EnvRunner workers.
         # TODO (sven): For the new API stack, the common execution pattern for any algo
         #  should be: [sample + get_metrics + get_state] -> send all these in one remote
         #  call down to `training_step` (where episodes are sent as ray object

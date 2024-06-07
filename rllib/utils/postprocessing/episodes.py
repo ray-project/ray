@@ -114,7 +114,7 @@ def remove_last_ts_from_data(
     ret = []
     for d in data:
         ret.append(np.concatenate([d[s] for s in slices]))
-    return tuple(ret)
+    return tuple(ret) if len(ret) > 1 else ret[0]
 
 
 @DeveloperAPI

@@ -97,43 +97,42 @@ class TestPPO(unittest.TestCase):
 
         num_iterations = 2
 
-        for fw in framework_iterator(config, frameworks=("torch", "tf2")):
-            # TODO (Kourosh) Bring back "FrozenLake-v1"
-            for env in [
-                # "CliffWalking-v0",
-                "CartPole-v1",
-                "Pendulum-v1",
-            ]:  # "ALE/Breakout-v5"]:
-                print("Env={}".format(env))
-                for lstm in [False]:
-                    print("LSTM={}".format(lstm))
-                    config.rl_module(
-                        model_config_dict=get_model_config(fw, lstm=lstm)
-                    ).framework(eager_tracing=False)
+        # TODO (sven): Bring back "FrozenLake-v1"
+        for env in [
+            # "CliffWalking-v0",
+            "CartPole-v1",
+            "Pendulum-v1",
+        ]:  # "ALE/Breakout-v5"]:
+            print("Env={}".format(env))
+            for lstm in [False]:
+                print("LSTM={}".format(lstm))
+                config.rl_module(
+                    model_config_dict=get_model_config("torch", lstm=lstm)
+                ).framework(eager_tracing=False)
 
-                    algo = config.build(env=env)
-                    # TODO: Maybe add an API to get the Learner(s) instances within
-                    #  a learner group, remote or not.
-                    learner = algo.learner_group._learner
-                    optim = learner.get_optimizer()
-                    # Check initial LR directly set in optimizer vs the first (ts=0)
-                    # value from the schedule.
-                    lr = optim.param_groups[0]["lr"] if fw == "torch" else optim.lr
-                    check(lr, config.lr[0][1])
+                algo = config.build(env=env)
+                # TODO: Maybe add an API to get the Learner(s) instances within
+                #  a learner group, remote or not.
+                learner = algo.learner_group._learner
+                optim = learner.get_optimizer()
+                # Check initial LR directly set in optimizer vs the first (ts=0)
+                # value from the schedule.
+                lr = optim.param_groups[0]["lr"]
+                check(lr, config.lr[0][1])
 
-                    # Check current entropy coeff value using the respective Scheduler.
-                    entropy_coeff = learner.entropy_coeff_schedulers_per_module[
-                        DEFAULT_MODULE_ID
-                    ].get_current_value()
-                    check(entropy_coeff, 0.1)
+                # Check current entropy coeff value using the respective Scheduler.
+                entropy_coeff = learner.entropy_coeff_schedulers_per_module[
+                    DEFAULT_MODULE_ID
+                ].get_current_value()
+                check(entropy_coeff, 0.1)
 
-                    for i in range(num_iterations):
-                        results = algo.train()
-                        check_train_results_new_api_stack(results)
-                        print(results)
+                for i in range(num_iterations):
+                    results = algo.train()
+                    check_train_results_new_api_stack(results)
+                    print(results)
 
-                    # algo.evaluate()
-                    algo.stop()
+                # algo.evaluate()
+                algo.stop()
 
 
 if __name__ == "__main__":
