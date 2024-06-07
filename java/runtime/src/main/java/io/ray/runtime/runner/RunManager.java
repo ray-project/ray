@@ -7,6 +7,8 @@ import java.nio.charset.Charset;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import org.apache.commons.io.IOUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -16,6 +18,7 @@ public class RunManager {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(RunManager.class);
 
+  private static final Pattern pattern = Pattern.compile("--address='([^']+)'");
   /** Start the head node. */
   public static void startRayHead(RayConfig rayConfig) {
     LOGGER.debug("Starting ray runtime @ {}.", rayConfig.nodeIp);
@@ -23,6 +26,8 @@ public class RunManager {
     command.add("ray");
     command.add("start");
     command.add("--head");
+    command.add("--redis-password");
+    command.add(rayConfig.redisPassword);
     command.addAll(rayConfig.headArgs);
 
     String output;
@@ -31,7 +36,13 @@ public class RunManager {
     } catch (Exception e) {
       throw new RuntimeException("Failed to start Ray runtime.", e);
     }
-    rayConfig.setBootstrapAddress(rayConfig.nodeIp + ":6379");
+    Matcher matcher = pattern.matcher(output);
+    if (matcher.find()) {
+      String bootstrapAddress = matcher.group(1);
+      rayConfig.setBootstrapAddress(bootstrapAddress);
+    } else {
+      throw new RuntimeException("Redis address is not found. output: " + output);
+    }
     LOGGER.info("Ray runtime started @ {}.", rayConfig.nodeIp);
   }
 
