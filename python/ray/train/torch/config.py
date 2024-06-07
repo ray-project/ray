@@ -9,7 +9,7 @@ import torch.distributed as dist
 
 import ray
 from ray._private.accelerators.hpu import HPU_PACKAGE_AVAILABLE
-from ray.air._internal.device_manager import (
+from ray.air._internal.device_manager.utils import (
     get_torch_device_manager_cls_by_resources,
     try_register_torch_accelerator_module,
 )
