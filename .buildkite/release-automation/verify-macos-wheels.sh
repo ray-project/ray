@@ -15,7 +15,7 @@ if [[ $# -ne 1 ]]; then
 fi
 
 mac_architecture=$1 # First argument is the architecture of the machine, e.g. x86_64, arm64
-export USE_BAZEL_VERSION="${USE_BAZEL_VERSION:-5.4.1}"
+export USE_BAZEL_VERSION="${USE_BAZEL_VERSION:-6.5.0}"
 
 install_bazel() {
     if [[ "${mac_architecture}" = "arm64" ]]; then
