@@ -188,7 +188,7 @@ class Channel(ChannelInterface):
         """
         assert len(readers) > 0
         for reader in readers:
-            assert reader is not None
+            assert isinstance(reader, ray.actor.ActorHandle)
 
         if typ is None:
             typ = SharedMemoryType(DEFAULT_MAX_BUFFER_SIZE)

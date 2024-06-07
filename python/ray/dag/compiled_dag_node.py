@@ -381,16 +381,18 @@ class CompiledDAG:
     information.
     """
 
-    @ray.remote
-    class DriverActor:
+    @ray.remote(num_cpus=0)
+    class DAGDriverProxyActor:
         """
-        This actor exists simply so that the driver can read from channels. When a
-        channel backing store is created or resized, the writer may need to invoke a
-        remote function on the reader node. A remote function cannot be invoked on the
-        driver, so this actor runs on the same node as the driver to run the remote
-        function.
+        To support the driver as a reader, the output writer needs to be able to invoke
+        remote functions on the driver. This is necessary so that the output writer can
+        create a reader ref on the driver node, and later potentially create a larger
+        reader ref on the driver node if the channel backing store needs to be resized.
+        However, remote functions cannot be invoked on the driver.
 
-        This actor itself does not read from the channel.
+        An accelerated DAG creates an instance of this class when the DAG is
+        initialized. This class has an empty implementation, though it serves as a way
+        for the output writer to invoke remote functions on the driver node.
         """
 
         pass
@@ -480,9 +482,19 @@ class CompiledDAG:
         # this DAG, if any.
         self._nccl_group_id: Optional[str] = None
 
-        # Creates the driver actor. See the comments in the CompiledDAG.DriverActor
-        # class above for more details.
-        self._driver_actor = CompiledDAG.DriverActor.options(
+        # Creates the driver actor.
+        #
+        # To support the driver as a reader, the output writer needs to be able to
+        # invoke remote functions on the driver. This is necessary so that the output
+        # writer can create a reader ref on the driver node, and later potentially
+        # create a larger reader ref on the driver node if the channel backing store
+        # needs to be resized. However, remote functions cannot be invoked on the
+        # driver.
+        #
+        # An accelerated DAG creates an instance of this class when the DAG is
+        # initialized. This class has an empty implementation, though it serves as a way
+        # for the output writer to invoke remote functions on the driver node.
+        self._driver_actor = CompiledDAG.DAGDriverProxyActor.options(
             scheduling_strategy=NodeAffinitySchedulingStrategy(
                 ray.get_runtime_context().get_node_id(), soft=False
             )
