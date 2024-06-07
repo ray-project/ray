@@ -225,7 +225,7 @@ class RayActorOptionsSchema(BaseModel):
     object_store_memory: int = Field(
         default=None,
         description=(
-            "Restrict the object store memory used per replica when "
+            "Restrict the object store memory used per replica (in bytes) when "
             "creating objects. Must be an int. Uses a default if null."
         ),
         ge=0,
