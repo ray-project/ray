@@ -55,8 +55,9 @@ config = (
         train_batch_size_per_learner=500,
         grad_clip=40.0,
         grad_clip_by="global_norm",
+        lr= 0.007 * ((args.num_gpus or 1) ** 0.5),
         vf_loss_coeff=0.5,
-        entropy_coeff=0.007,
+        entropy_coeff=0.008,  # <- crucial parameter to finetune
         # Only update connector states and model weights every n training_step calls.
         broadcast_interval=5,
     )
