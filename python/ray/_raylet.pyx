@@ -584,7 +584,7 @@ cdef int check_status(const CRayStatus& status) nogil except -1:
     elif status.IsRpcError():
         raise RpcError(message, rpc_code=status.rpc_code())
     elif status.IsGrpcError():
-        # ray::GrpcUnavailable and ray::GrpcUnknown.
+        # ray::Status::GrpcUnavailable and ray::Status::GrpcUnknown.
         raise RpcError(message, rpc_code=status.rpc_code())
     elif status.IsIntentionalSystemExit():
         with gil:
