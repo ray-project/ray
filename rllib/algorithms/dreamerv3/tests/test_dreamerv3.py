@@ -41,6 +41,7 @@ class TestDreamerV3(unittest.TestCase):
         config = (
             dreamerv3.DreamerV3Config()
             .framework(eager_tracing=False)
+            .env_runners(num_env_runners=2)
             .training(
                 # Keep things simple. Especially the long dream rollouts seem
                 # to take an enormous amount of time (initially).
@@ -52,13 +53,13 @@ class TestDreamerV3(unittest.TestCase):
                 use_float16=False,
             )
             .learners(
-                num_learners=0,  # TODO 2  # Try with 2 Learners.
+                num_learners=2,  # Try with 2 Learners.
                 num_cpus_per_learner=1,
                 num_gpus_per_learner=0,
             )
         )
 
-        num_iterations = 2
+        num_iterations = 3
 
         for env in [
             "FrozenLake-v1",

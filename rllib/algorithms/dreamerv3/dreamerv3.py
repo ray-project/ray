@@ -152,6 +152,12 @@ class DreamerV3Config(AlgorithmConfig):
         # Dreamer only runs on the new API stack.
         self.enable_rl_module_and_learner = True
         self.enable_env_runner_and_connector_v2 = True
+        # TODO (sven): DreamerV3 still uses its own EnvRunner class. This env-runner
+        #  does not use connectors. We therefore should not attempt to merge/broadcast
+        #  the connector states between EnvRunners (if >0). Note that this is only
+        #  relevant if num_env_runners > 0, which is normally not the case when using
+        #  this algo.
+        self.use_worker_filter_stats = False
         # __sphinx_doc_end__
         # fmt: on
 

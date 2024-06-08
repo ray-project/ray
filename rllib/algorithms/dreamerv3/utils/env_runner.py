@@ -518,8 +518,16 @@ class DreamerV3EnvRunner(EnvRunner):
         # Return reduced metrics.
         return self.metrics.reduce()
 
-    # TODO (sven): Remove the requirement for EnvRunners/RolloutWorkers to have this
-    #  API. Replace by proper state overriding via `EnvRunner.set_state()`
+    def get_weights(self, policies, inference_only):
+        """Returns the weights of our (single-agent) RLModule."""
+        if self.module is None:
+            assert self.config.share_module_between_env_runner_and_learner
+            return {}
+        else:
+            return {
+                DEFAULT_MODULE_ID: self.module.get_state(inference_only=inference_only),
+            }
+
     def set_weights(self, weights, global_vars=None):
         """Writes the weights of our (single-agent) RLModule."""
         if self.module is None:
