@@ -12,16 +12,27 @@ class _SerializationContext:
         # Buffer for transferring data between tasks in the same worker process.
         # The key is the channel ID, and the value is the data.
         self.intra_process_channel_buffers: Dict[str, Any] = {}
+        # The number of readers for each channel. When the number of readers
+        # reaches 0, remove the data from the buffer.
+        self.channel_id_to_num_readers: Dict[str, int] = {}
 
     def set_use_external_transport(self, use_external_transport: bool) -> None:
         self.use_external_transport = use_external_transport
 
-    def set_data(self, channel_id: str, value: Any) -> None:
+    def set_data(self, channel_id: str, value: Any, num_readers: int) -> None:
         assert channel_id not in self.intra_process_channel_buffers
+        assert channel_id not in self.channel_id_to_num_readers
         self.intra_process_channel_buffers[channel_id] = value
+        self.channel_id_to_num_readers[channel_id] = num_readers
 
     def get_data(self, channel_id: str) -> Any:
         assert channel_id in self.intra_process_channel_buffers
+        assert channel_id in self.channel_id_to_num_readers
+        self.channel_id_to_num_readers[channel_id] -= 1
+        if self.channel_id_to_num_readers[channel_id] == 0:
+            # All readers have read the data, so we can remove it.
+            self.channel_id_to_num_readers.pop(channel_id)
+            return self.intra_process_channel_buffers.pop(channel_id)
         return self.intra_process_channel_buffers[channel_id]
 
     def reset_data(self, channel_id: str) -> Any:

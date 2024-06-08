@@ -722,14 +722,14 @@ class TestMultiChannel:
         for task in a_tasks:
             assert isinstance(task.output_channel, MultiChannel)
             assert len(task.output_channel._channels) == 1
-            channel = task.output_channel._channels[0]
+            channel = next(iter(task.output_channel._channels))
             assert isinstance(channel, Channel)
 
         b_tasks = compiled_dag.actor_to_tasks[b]
         assert len(b_tasks) == 1
         assert isinstance(b_tasks[0].output_channel, MultiChannel)
         assert len(b_tasks[0].output_channel._channels) == 1
-        channel = b_tasks[0].output_channel._channels[0]
+        channel = next(iter(b_tasks[0].output_channel._channels))
         assert isinstance(channel, Channel)
 
         output_channel = compiled_dag.execute(1)

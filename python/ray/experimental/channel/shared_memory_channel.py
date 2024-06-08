@@ -1,6 +1,6 @@
 import io
 import logging
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Union, Set
 
 import ray
 from ray._raylet import SerializedObject
@@ -479,14 +479,16 @@ class MultiChannel(ChannelInterface):
         writer: Optional[ray.actor.ActorHandle],
         readers: List[Optional[ray.actor.ActorHandle]],
         _channel_dict: Optional[Dict[ray.ActorID, ChannelInterface]] = None,
-        _channels: Optional[List[ChannelInterface]] = None,
+        _channels: Optional[Set[ChannelInterface]] = None,
     ):
         self._writer = writer
         self._readers = readers
+        self._writer_registered = False
+        self._reader_registered = False
         # A dictionary that maps the actor ID to the channel object.
         self._channel_dict = _channel_dict or {}
-        # A list of channel objects.
-        self._channels = _channels or []
+        # A set of channel objects. The set is a deduplicated version of _channel_dict.
+        self._channels = _channels or set()
         # TODO (kevin85421): Currently, the out-of-band actor handle is not well
         # supported for reference counting. Here, we store the actor handle in
         # `self._self_actor` to ensure its lifetime is the same as the channel object
@@ -501,16 +503,17 @@ class MultiChannel(ChannelInterface):
                 remote_readers.append(reader)
         # There are some local readers which are the same worker process as the writer.
         # Create a local channel for the writer and the local readers.
-        if len(remote_readers) != len(self._readers):
-            local_channel = IntraProcessChannel(self._writer)
-            self._channels.append(local_channel)
+        num_local_readers = len(self._readers) - len(remote_readers)
+        if num_local_readers > 0:
+            local_channel = IntraProcessChannel(self._writer, num_local_readers)
+            self._channels.add(local_channel)
             actor_id = self._get_actor_id(self._writer)
             self._channel_dict[actor_id] = local_channel
         # There are some remote readers which are not the same Ray actor as the writer.
         # Create a shared memory channel for the writer and the remote readers.
         if len(remote_readers) != 0:
             remote_channel = Channel(self._writer, remote_readers)
-            self._channels.append(remote_channel)
+            self._channels.add(remote_channel)
             for reader in remote_readers:
                 actor_id = self._get_actor_id(reader)
                 self._channel_dict[actor_id] = remote_channel
@@ -521,10 +524,18 @@ class MultiChannel(ChannelInterface):
         return reader._actor_id
 
     def ensure_registered_as_writer(self) -> None:
-        pass
+        if self._writer_registered:
+            return
+        for channel in self._channels:
+            channel.ensure_registered_as_writer()
+        self._writer_registered = True
 
     def ensure_registered_as_reader(self) -> None:
-        pass
+        if self._reader_registered:
+            return
+        for channel in self._channels:
+            channel.ensure_registered_as_reader()
+        self._reader_registered = True
 
     def __reduce__(self):
         return MultiChannel, (
@@ -535,14 +546,17 @@ class MultiChannel(ChannelInterface):
         )
 
     def write(self, value: Any):
+        self.ensure_registered_as_writer()
         for channel in self._channels:
             channel.write(value)
 
     def begin_read(self) -> Any:
+        self.ensure_registered_as_reader()
         actor_id = self._get_actor_id(self._self_actor)
         return self._channel_dict[actor_id].begin_read()
 
     def end_read(self):
+        self.ensure_registered_as_reader()
         actor_id = self._get_actor_id(self._self_actor)
         return self._channel_dict[actor_id].end_read()
 
