@@ -157,6 +157,9 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
         self._max_idx = 0
         # Map from tree indices to sample indices (i.e. `self._indices`).
         self._tree_idx_to_sample_idx = {}
+        # Keep track of the indices that were sampled last for updating the
+        # weights later.
+        self._last_sampled_indices = []
 
     @override(EpisodeReplayBuffer)
     def add(
@@ -516,6 +519,7 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
                 "_min_segment": self._min_segment.get_state(),
                 "_free_nodes": list(self._free_nodes),
                 "_max_priority": self._max_priority,
+                "_max_idx": self._max_idx,
                 "_tree_idx_to_sample_idx": list(self._tree_idx_to_sample_idx.items()),
                 # TODO (sven, simon): Do we need these?
                 "_last_sampled_indices": self._last_sampled_indices,
@@ -531,12 +535,13 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
             state: A buffer state stored (usually stored in a checkpoint).
         """
         # Set super's state.
-        super().set_state()
+        super().set_state(state)
         # Set additional attributes.
         self._sum_segment.set_state(state["_sum_segment"])
         self._min_segment.set_state(state["_min_segment"])
         self._free_nodes = deque(state["_free_nodes"])
         self._max_priority = state["_max_priority"]
+        self._max_idx = state["_max_idx"]
         self._tree_idx_to_sample_idx = dict(state["_tree_idx_to_sample_idx"])
         # TODO (sven, simon): Do we need these?
         self._last_sampled_indices = state["_last_sampled_indices"]

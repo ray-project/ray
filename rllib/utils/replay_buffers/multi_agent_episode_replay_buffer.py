@@ -1,5 +1,5 @@
 import copy
-from collections import defaultdict
+from collections import defaultdict, deque
 from gymnasium.core import ActType, ObsType
 import numpy as np
 import scipy
@@ -352,7 +352,7 @@ class MultiAgentEpisodeReplayBuffer(EpisodeReplayBuffer):
         return self._num_agent_timesteps
 
     @override(EpisodeReplayBuffer)
-    def get_num_episodes(self, module_id: ModuleID = None) -> int:
+    def get_num_episodes(self, module_id: Optional[ModuleID] = None) -> int:
         """Returns number of episodes stored for a module in the buffer.
 
         Note, episodes could be either complete or truncated.
@@ -370,7 +370,15 @@ class MultiAgentEpisodeReplayBuffer(EpisodeReplayBuffer):
             else super().get_num_episodes()
         )
 
-    def get_num_timesteps(self, module_id: ModuleID = None) -> int:
+    def get_num_episodes_evicted(self, module_id: Optional[ModuleID] = None) -> int:
+        """Returns number of episodes evicted for a module in the buffer."""
+        return (
+            self._num_module_episodes_evicted[module_id]
+            if module_id
+            else super().get_num_episodes_evicted()
+        )
+
+    def get_num_timesteps(self, module_id: Optional[ModuleID] = None) -> int:
         """Returns number of individual timesteps for a module stored in the buffer.
 
         Args:
@@ -386,7 +394,7 @@ class MultiAgentEpisodeReplayBuffer(EpisodeReplayBuffer):
             else super().get_num_timesteps()
         )
 
-    def get_sampled_timesteps(self, module_id: ModuleID = None) -> int:
+    def get_sampled_timesteps(self, module_id: Optional[ModuleID] = None) -> int:
         """Returns number of timesteps that have been sampled for a module.
 
         Args:
@@ -402,7 +410,7 @@ class MultiAgentEpisodeReplayBuffer(EpisodeReplayBuffer):
             else super().get_sampled_timesteps()
         )
 
-    def get_added_timesteps(self, module_id: ModuleID = None) -> int:
+    def get_added_timesteps(self, module_id: Optional[ModuleID] = None) -> int:
         """Returns number of timesteps that have been added in buffer's lifetime for a module.
 
         Args:
@@ -420,6 +428,15 @@ class MultiAgentEpisodeReplayBuffer(EpisodeReplayBuffer):
 
     @override(EpisodeReplayBuffer)
     def get_state(self) -> Dict[str, Any]:
+        """Gets a pickable state of the buffer.
+
+        This is used for checkpointing the buffer's state. It is specifically helpful,
+        for example, when a trial is paused and resumed later on. The buffer's state
+        can be saved to disk and reloaded when the trial is resumed.
+
+        Returns:
+            A dict containing all necessary information to restore the buffer's state.
+        """
         return super().get_state() | {
             "_module_to_indices": list(self._module_to_indices.items()),
             "_num_agent_timesteps": self._num_agent_timesteps,
@@ -439,17 +456,50 @@ class MultiAgentEpisodeReplayBuffer(EpisodeReplayBuffer):
 
     @override(EpisodeReplayBuffer)
     def set_state(self, state) -> None:
+        """Sets the state of a buffer from a previously stored state.
+
+        See `get_state()` for more information on what is stored in the state. This
+        method is used to restore the buffer's state from a previously stored state.
+        It is specifically helpful, for example, when a trial is paused and resumed
+        later on. The buffer's state can be saved to disk and reloaded when the trial
+        is resumed.
+
+        Args:
+            state: The state to restore the buffer from.
+        """
+        # Set the episodes.
+        self._set_episodes(state)
         # Set the super's state.
         super().set_state(state)
         # Now set the remaining attributes.
-        self._module_to_indices = dict(state["_module_to_indices"])
+        self._module_to_indices = defaultdict(list, dict(state["_module_to_indices"]))
         self._num_agent_timesteps = state["_num_agent_timesteps"]
         self._num_agent_timesteps_added = state["_num_agent_timesteps_added"]
-        self._num_module_timesteps = dict(state["_num_module_timesteps"])
-        self._num_module_timesteps_added = dict(state["_num_module_timesteps_added"])
-        self._num_module_episodes = dict(state["_num_module_episodes"])
-        self._num_module_episodes_evicted = dict(state["_num_module_episodes_evicted"])
-        self.sampled_timesteps_per_module = dict(state["sampled_timesteps_per_module"])
+        self._num_module_timesteps = defaultdict(
+            int, dict(state["_num_module_timesteps"])
+        )
+        self._num_module_timesteps_added = defaultdict(
+            int, dict(state["_num_module_timesteps_added"])
+        )
+        self._num_module_episodes = defaultdict(
+            int, dict(state["_num_module_episodes"])
+        )
+        self._num_module_episodes_evicted = defaultdict(
+            int, dict(state["_num_module_episodes_evicted"])
+        )
+        self.sampled_timesteps_per_module = defaultdict(
+            list, dict(state["sampled_timesteps_per_module"])
+        )
+
+    def _set_episodes(self, state: Dict[str, Any]) -> None:
+        """Sets the episodes from the state."""
+        if not self.episodes:
+            self.episodes = deque(
+                [
+                    MultiAgentEpisode.from_state(eps_data)
+                    for eps_data in state["episodes"]
+                ]
+            )
 
     def _sample_independent(
         self,

@@ -2,7 +2,7 @@ import numpy as np
 import unittest
 
 from ray.rllib.env.multi_agent_episode import MultiAgentEpisode
-from ray.rllib.utils.replay_buffers.multi_agent_prioritized_episode_replay_buffer import (
+from ray.rllib.utils.replay_buffers.ma_prioritized_episode_replay_buffer import (
     MultiAgentPrioritizedEpisodeReplayBuffer,
 )
 from ray.rllib.utils.test_utils import check
@@ -260,6 +260,72 @@ class TestMultiAgentPrioritizedEpisodeReplayBuffer(unittest.TestCase):
                         sum_segments[module_id][i],
                         sum_segments_after[module_id][i],
                     )
+
+    def test_get_state_set_state(self):
+
+        # Define replay buffer (alpha=1.0).
+        buffer = MultiAgentPrioritizedEpisodeReplayBuffer(capacity=100)
+
+        # Generate 200 episode of random length.
+        for _ in range(200):
+            episode = self._get_episode()
+            buffer.add(episode)
+
+        # Get the state Of the buffer.
+        state = buffer.get_state()
+
+        # Create a new buffer and set the state.
+        buffer2 = MultiAgentPrioritizedEpisodeReplayBuffer(capacity=100)
+        buffer2.set_state(state)
+
+        # Check that the two buffers are the same.
+        check(buffer.get_num_episodes(), buffer2.get_num_episodes())
+        check(buffer.get_num_episodes_evicted(), buffer2.get_num_episodes_evicted())
+        check(buffer.get_num_timesteps(), buffer2.get_num_timesteps())
+        check(buffer.get_added_timesteps(), buffer2.get_added_timesteps())
+        check(buffer.get_sampled_timesteps(), buffer2.get_sampled_timesteps())
+        check(buffer.get_num_agent_timesteps(), buffer2.get_num_agent_timesteps())
+        check(buffer.get_added_agent_timesteps(), buffer2.get_added_agent_timesteps())
+        check(buffer.get_module_ids(), buffer2.get_module_ids())
+        # TODO (simon): If `sample_idx_to_tree_idx` remains in the buffer, test it here,
+        # too.
+        # Test for each module, if data structures are identical.
+        for module_id in buffer.get_module_ids():
+            check(
+                buffer.get_num_timesteps(module_id),
+                buffer2.get_num_timesteps(module_id),
+            )
+            check(
+                buffer.get_added_timesteps(module_id),
+                buffer2.get_added_timesteps(module_id),
+            )
+            check(
+                buffer.get_num_episodes(module_id), buffer2.get_num_episodes(module_id)
+            )
+            check(
+                buffer.get_num_episodes_evicted(module_id),
+                buffer2.get_num_episodes_evicted(module_id),
+            )
+            check(
+                buffer._module_to_indices[module_id],
+                buffer2._module_to_indices[module_id],
+            )
+            check(
+                buffer._module_to_max_idx[module_id],
+                buffer2._module_to_max_idx[module_id],
+            )
+            check(
+                buffer._module_to_sum_segment[module_id].value,
+                buffer2._module_to_sum_segment[module_id].value,
+            )
+            check(
+                buffer._module_to_max_priority[module_id],
+                buffer2._module_to_max_priority[module_id],
+            )
+            check(
+                buffer._module_to_tree_idx_to_sample_idx[module_id],
+                buffer2._module_to_tree_idx_to_sample_idx[module_id],
+            )
 
 
 if __name__ == "__main__":
