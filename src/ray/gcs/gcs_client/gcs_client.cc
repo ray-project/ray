@@ -167,14 +167,6 @@ std::pair<std::string, int> GcsClient::GetGcsServerAddress() const {
 
 PythonGcsClient::PythonGcsClient(const GcsClientOptions &options) : options_(options) {}
 
-namespace {
-Status HandleGcsError(rpc::GcsStatus status) {
-  RAY_CHECK_NE(status.code(), static_cast<int>(StatusCode::OK));
-  return Status::Invalid(status.message() +
-                         " [GCS status code: " + std::to_string(status.code()) + "]");
-}
-}  // namespace
-
 Status PythonGcsClient::Connect(const ClusterID &cluster_id,
                                 int64_t timeout_ms,
                                 size_t num_retries) {
@@ -194,17 +186,16 @@ Status PythonGcsClient::Connect(const ClusterID &cluster_id,
     for (; tries > 0; tries--) {
       grpc::ClientContext context;
       PrepareContext(context, timeout_ms);
-      connect_status =
-          GrpcStatusToRayStatus(node_info_stub_->GetClusterId(&context, request, &reply));
-
+      grpc::Status grpc_status = node_info_stub_->GetClusterId(&context, request, &reply);
+      connect_status = HandleGcsStatuses(grpc_status, reply);
       if (connect_status.ok()) {
         cluster_id_ = ClusterID::FromBinary(reply.cluster_id());
         RAY_LOG(DEBUG) << "Received cluster ID from GCS server: " << cluster_id_;
         RAY_CHECK(!cluster_id_.IsNil());
         break;
-      } else if (!connect_status.IsGrpcError()) {
-        return HandleGcsError(reply.status());
       }
+      // Non-OK must be a gRPC error, since HandleGcsStatuses() only returns OK.
+      // Sleep and retry.
       std::this_thread::sleep_for(std::chrono::milliseconds(1000));
       channel_ =
           rpc::GcsRpcClient::CreateGcsChannel(options_.gcs_address_, options_.gcs_port_);
@@ -279,14 +270,21 @@ Status PythonGcsClient::InternalKVMultiGet(
 
   absl::ReaderMutexLock lock(&mutex_);
   rpc::InternalKVMultiGetReply reply;
-  grpc::Status status = kv_stub_->InternalKVMultiGet(&context, request, &reply);
-  RAY_RETURN_NOT_OK(HandleGcsStatuses(status, reply));
+  grpc::Status grpc_status = kv_stub_->InternalKVMultiGet(&context, request, &reply);
 
-  result.clear();
-  for (const auto &entry : reply.results()) {
-    result[entry.key()] = entry.value();
+  // Special: if status is NotFound, still return OK but with an empty result.
+  ray::Status status = HandleGcsStatuses(grpc_status, reply);
+  if (status.ok()) {
+    result.clear();
+    for (const auto &entry : reply.results()) {
+      result[entry.key()] = entry.value();
+    }
+    return Status::OK();
+  } else if (status.IsNotFound()) {
+    result.clear();
+    return Status::OK();
   }
-  return Status::OK();
+  return status;
 }
 
 Status PythonGcsClient::InternalKVPut(const std::string &ns,
@@ -387,10 +385,21 @@ Status PythonGcsClient::PinRuntimeEnvUri(const std::string &uri,
 
   absl::ReaderMutexLock lock(&mutex_);
   rpc::PinRuntimeEnvURIReply reply;
-  grpc::Status status = runtime_env_stub_->PinRuntimeEnvURI(&context, request, &reply);
-  RAY_RETURN_NOT_OK(HandleGcsStatuses(status, reply));
-
-  return Status::OK();
+  grpc::Status grpc_status =
+      runtime_env_stub_->PinRuntimeEnvURI(&context, request, &reply);
+  ray::Status status = HandleGcsStatuses(grpc_status, reply);
+  if (status.IsGrpcUnavailable()) {
+    std::string msg =
+        "Failed to pin URI reference for " + uri + " due to the GCS being " +
+        "unavailable, most likely it has crashed: " + status.message() + ".";
+    return Status::GrpcUnavailable(msg);
+  }
+  if (status.IsGrpcUnknown()) {
+    std::string msg = "Failed to pin URI reference for " + uri +
+                      " due to unexpected error " + status.message() + ".";
+    return Status::GrpcUnknown(msg);
+  }
+  return status;
 }
 
 Status PythonGcsClient::GetAllNodeInfo(int64_t timeout_ms,
@@ -592,6 +601,7 @@ Status PythonCheckGcsHealth(const std::string &gcs_address,
                             const std::string &ray_version,
                             const bool skip_version_check,
                             bool &is_healthy) {
+  is_healthy = false;
   auto channel = rpc::GcsRpcClient::CreateGcsChannel(gcs_address, gcs_port);
   auto stub = rpc::NodeInfoGcsService::NewStub(channel);
   grpc::ClientContext context;
@@ -601,19 +611,14 @@ Status PythonCheckGcsHealth(const std::string &gcs_address,
   }
   rpc::CheckAliveRequest request;
   rpc::CheckAliveReply reply;
-  grpc::Status status = stub->CheckAlive(&context, request, &reply);
+  grpc::Status grpc_status = stub->CheckAlive(&context, request, &reply);
+  ray::Status status = HandleGcsStatuses(grpc_status, reply);
   if (!status.ok()) {
-    is_healthy = false;
-    return Status::RpcError(status.error_message(), status.error_code());
-  }
-  if (reply.status().code() != static_cast<int>(StatusCode::OK)) {
-    is_healthy = false;
-    return HandleGcsError(reply.status());
+    return status;
   }
   if (!skip_version_check) {
     // Check for Ray version match
     if (reply.ray_version() != ray_version) {
-      is_healthy = false;
       std::ostringstream ss;
       ss << "Ray cluster at " << gcs_address << ":" << gcs_port << " has version "
          << reply.ray_version() << ", but this process "

@@ -59,6 +59,10 @@ def test_kv_basic(ray_start_regular, monkeypatch):
     assert gcs_client.internal_kv_del(b"A", False, b"NSS") == 0
     assert ray._private.utils._CALLED_FREQ["internal_kv_get"] == 4
     assert ray._private.utils._CALLED_FREQ["internal_kv_put"] == 5
+    with pytest.raises(ray.exceptions.RaySystemError):
+        # this key is illegal, GCS raises ray::KeyError which translates to
+        # RaySystemError
+        gcs_client.internal_kv_get(b"@namespace_something", b"NS")
 
     # Test internal_kv_multi_get
     assert gcs_client.internal_kv_multi_get([b"A", b"B"], b"NS") == {}
