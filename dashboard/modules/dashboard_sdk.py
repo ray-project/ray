@@ -348,6 +348,15 @@ class SubmissionClient:
                     include_parent_dir=include_parent_dir,
                     excludes=excludes,
                 )
+
+            package_size = package_file.stat().st_size
+            if package_size > 100 * 1024 * 1024:  # 100 MiB
+                logger.warning(
+                    f"The package {package_path} is very large. "
+                    "Consider adding some files or directories to 'excludes'"
+                    "list to skip uploading them: `ray.init(..., "
+                    "runtime_env={'excludes': ['.git', '*.log', 'tmp/']})`"
+                )
             try:
                 r = self._do_request(
                     "PUT",
