@@ -59,7 +59,6 @@ def test_set_error_before_read(ray_start_regular):
         def read(self):
             self._channel.read()
 
-
     for _ in range(10):
         a = Actor.remote()
         b = Actor.remote()
@@ -202,12 +201,11 @@ def test_resize_channel_on_same_node(ray_start_regular):
     def _test(val):
         chan.write(val)
 
-        read_val = chan.begin_read()
+        read_val = chan.read()
         if isinstance(val, np.ndarray):
             assert np.array_equal(read_val, val)
         else:
             assert read_val == val
-        chan.end_read()
 
     # `np.random.rand(100)` requires more than 1000 bytes of storage. The channel is
     # allocated above with a backing store size of 1000 bytes.
@@ -234,12 +232,11 @@ def test_resize_channel_on_same_node_with_actor(ray_start_regular):
             pass
 
         def read(self, channel, val):
-            read_val = channel.begin_read()
+            read_val = channel.read()
             if isinstance(val, np.ndarray):
                 assert np.array_equal(read_val, val)
             else:
                 assert read_val == val
-            channel.end_read()
 
     def _test(channel, actor, val):
         channel.write(val)
@@ -279,12 +276,11 @@ def test_resize_channel_on_different_nodes(ray_start_cluster):
             pass
 
         def read(self, channel, val):
-            read_val = channel.begin_read()
+            read_val = channel.read()
             if isinstance(val, np.ndarray):
                 assert np.array_equal(read_val, val)
             else:
                 assert read_val == val
-            channel.end_read()
 
     def _test(channel, actor, val):
         channel.write(val)
@@ -425,11 +421,11 @@ def test_remote_reader(ray_start_cluster, remote):
 @pytest.mark.parametrize("remote", [True, False])
 def test_remote_reader_close(ray_start_cluster, remote):
     """
-    Tests that readers do not block forever on begin_read() when they close the channel.
+    Tests that readers do not block forever on read() when they close the channel.
     Specifically, the following behavior should happen:
-    1. Each reader calls begin_read() on one channel.
+    1. Each reader calls read() on one channel.
     2. Each reader calls close() on the channel on a different thread.
-    3. Each reader should unblock and return from begin_read().
+    3. Each reader should unblock and return from read().
 
     Tests (1) the readers and writer on the same node (remote=False) along with
     different nodes (remote=True).
@@ -461,7 +457,7 @@ def test_remote_reader_close(ray_start_cluster, remote):
 
         def read(self):
             try:
-                self._reader_chan.begin_read()
+                self._reader_chan.read()
             except IOError:
                 pass
 

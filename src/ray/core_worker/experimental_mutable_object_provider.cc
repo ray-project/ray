@@ -171,6 +171,8 @@ void MutableObjectProvider::PollWriterClosure(
     const ObjectID &object_id,
     std::shared_ptr<MutableObjectReaderInterface> reader) {
   std::shared_ptr<RayObject> object;
+  // The corresponding ReadRelease() will be automatically called when
+  // `object` goes out of scope.
   Status status = object_manager_->ReadAcquire(object_id, object);
   // Check if the thread returned from ReadAcquire() because the process is exiting, not
   // because there is something to read.
@@ -190,8 +192,6 @@ void MutableObjectProvider::PollWriterClosure(
       object->GetData()->Data(),
       [this, &io_context, object_id, reader](const Status &status,
                                              const rpc::PushMutableObjectReply &reply) {
-        RAY_CHECK_OK(object_manager_->ReadRelease(object_id));
-
         io_context.post(
             [this, &io_context, object_id, reader]() {
               PollWriterClosure(io_context, object_id, reader);

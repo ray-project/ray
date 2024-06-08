@@ -38,7 +38,6 @@ std::string GetSemaphoreHeaderName(const std::string &name) {
 
 }  // namespace
 
-
 Status MutableObjectManager::RegisterChannel(
     const ObjectID &object_id,
     std::unique_ptr<plasma::MutableObject> mutable_object,
