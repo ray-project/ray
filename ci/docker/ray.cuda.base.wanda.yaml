@@ -1,5 +1,5 @@
 name: "ray-py$PYTHON_VERSION-cu$CUDA_VERSION-base"
-froms: ["nvidia/cuda:11.8.0-cudnn8-devel-ubuntu20.04"]
+froms: ["nvidia/cuda:$CUDA_VERSION-cudnn8-devel-ubuntu20.04"]
 dockerfile: docker/base-deps/Dockerfile
 build_args:
   - PYTHON_VERSION

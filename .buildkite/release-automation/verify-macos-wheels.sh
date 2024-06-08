@@ -15,7 +15,7 @@ if [[ $# -ne 1 ]]; then
 fi
 
 mac_architecture=$1 # First argument is the architecture of the machine, e.g. x86_64, arm64
-export USE_BAZEL_VERSION="${USE_BAZEL_VERSION:-5.4.1}"
+export USE_BAZEL_VERSION="${USE_BAZEL_VERSION:-6.5.0}"
 
 install_bazel() {
     if [[ "${mac_architecture}" = "arm64" ]]; then
@@ -45,16 +45,26 @@ install_miniconda() {
 }
 
 run_sanity_check() {
-    local python_version="$1"
-    conda create -n "rayio_${python_version}" python="${python_version}" -y
-    conda activate "rayio_${python_version}"
+    local PYTHON_VERSION="$1"
+
+    if [[ "${RAY_COMMIT:-}" == "" ]]; then
+        if [[ "${BUILDKITE_COMMIT:-}" == "" ]]; then
+            echo "neither BUILDKITE_COMMIT nor RAY_COMMIT is set"
+            exit 1
+        fi
+        RAY_COMMIT="${BUILDKITE_COMMIT:-}"
+    fi
+
+    conda create -n "rayio_${PYTHON_VERSION}" python="${PYTHON_VERSION}" -y
+    conda activate "rayio_${PYTHON_VERSION}"
+
     pip install \
         --index-url https://test.pypi.org/simple/ \
         --extra-index-url https://pypi.org/simple \
-        "ray[cpp]==$RAY_VERSION"
+        "ray[cpp]==${RAY_VERSION}"
     (
         cd release/util
-        python sanity_check.py --ray_version="$RAY_VERSION" --ray_commit="$BUILDKITE_COMMIT"
+        python sanity_check.py --ray_version="${RAY_VERSION}" --ray_commit="${RAY_COMMIT}"
         bash sanity_check_cpp.sh
     )
     conda deactivate
