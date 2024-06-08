@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, List, Optional, Union
+from typing import TYPE_CHECKING, List, Union
 
 if TYPE_CHECKING:
     import numpy as np
@@ -7,15 +7,11 @@ if TYPE_CHECKING:
 
 class _SerializationContext:
     def __init__(self):
-        self.torch_device: Optional["torch.device"] = None
         self.use_external_transport: bool = False
         self.tensors: List["torch.Tensor"] = []
 
     def set_use_external_transport(self, use_external_transport: bool) -> None:
         self.use_external_transport = use_external_transport
-
-    def set_torch_device(self, torch_device: "torch.device") -> None:
-        self.torch_device = torch_device
 
     def reset_tensors(self, tensors: List["torch.Tensor"]) -> List["torch.Tensor"]:
         prev_tensors = self.tensors
@@ -23,7 +19,10 @@ class _SerializationContext:
         return prev_tensors
 
     def serialize_tensor(self, tensor: "torch.Tensor") -> Union[int, "np.ndarray"]:
-        if self.use_external_transport and tensor.device == self.torch_device:
+        from ray.experimental.channel import ChannelContext
+
+        ctx = ChannelContext.get_current()
+        if self.use_external_transport and tensor.device == ctx.torch_device:
             # External transport is enabled and we found a tensor that matches
             # our device.  Add the actual tensor to a buffer. The buffer of
             # tensors should later be popped by the caller and sent via
@@ -56,9 +55,13 @@ class _SerializationContext:
     def deserialize_from_numpy(self, np_array: "np.ndarray"):
         import torch
 
+        from ray.experimental.channel import ChannelContext
+
+        ctx = ChannelContext.get_current()
+
         # TODO(swang): Support local P2P transfers if available.
         # If there is a GPU assigned to this worker, move it there.
-        if self.torch_device is not None and self.torch_device.type == "cuda":
+        if ctx.torch_device is not None and ctx.torch_device.type == "cuda":
             # Use zero-copy from_numpy() because we are going to copy to GPU
             # anyway.
             # TODO: Pin the np_array memory to reduce data movement time.
@@ -67,9 +70,9 @@ class _SerializationContext:
             # do as long as all other readers are also copying the data to a
             # GPU.
             cpu_tensor = torch.from_numpy(np_array)
-            return cpu_tensor.to(device=self.torch_device)
+            return cpu_tensor.to(device=ctx.torch_device)
 
         # TODO(swang): Use zero-copy from_numpy() if np_array.flags.writeable
         # is True. This is safe to set when deserializing np_array if the
         # upstream task has num_readers=1.
-        return torch.tensor(np_array, device=self.torch_device)
+        return torch.tensor(np_array, device=ctx.torch_device)
