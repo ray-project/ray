@@ -10,6 +10,7 @@ PYTHON_VERSIONS=(
   "py39 cp39-cp39"
   "py310 cp310-cp310"
   "py311 cp311-cp311"
+  "py312 cp312-cp312"
 )
 
 # Add the repo folder to the safe.dictory global variable to avoid the failure

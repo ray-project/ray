@@ -6,20 +6,17 @@ import io.ray.api.BaseActorHandle;
 import io.ray.api.ObjectRef;
 import io.ray.api.PyActorHandle;
 import io.ray.api.Ray;
+import io.ray.api.call.PyActorTaskCaller;
 import io.ray.api.function.PyActorMethod;
 import io.ray.serve.common.Constants;
 import io.ray.serve.exception.RayServeException;
 import io.ray.serve.generated.ActorNameList;
 import io.ray.serve.replica.RayServeWrappedReplica;
 import io.ray.serve.util.CollectionUtil;
-import java.util.ArrayList;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
-import java.util.Set;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Stream;
 import org.apache.commons.lang3.RandomUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -108,12 +105,15 @@ public class ReplicaSet { // TODO ReplicaScheduler
         handles.get(randomIndex); // TODO controll concurrency using maxConcurrentQueries
     LOGGER.debug("Assigned query {} to replica {}.", query.getMetadata().getRequestId(), replica);
     if (replica instanceof PyActorHandle) {
-      return ((PyActorHandle) replica)
-          .task(
-              PyActorMethod.of("handle_request_from_java"),
-              query.getMetadata().toByteArray(),
-              query.getArgs())
-          .remote();
+      Object[] args =
+          Stream.concat(
+                  Stream.of(query.getMetadata().toByteArray()),
+                  Arrays.stream((Object[]) query.getArgs()))
+              .toArray();
+      PyActorTaskCaller<Object> pyCaller =
+          new PyActorTaskCaller<>(
+              (PyActorHandle) replica, PyActorMethod.of("handle_request_from_java"), args);
+      return pyCaller.remote();
     } else {
       return ((ActorHandle<RayServeWrappedReplica>) replica)
           .task(
