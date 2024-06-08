@@ -1636,10 +1636,17 @@ class ApiTestFast(unittest.TestCase):
         self.assertTrue(
             all(set(result) >= set(flattened_keys) for result in algo.results)
         )
-        with self.assertRaises(TuneError):
-            [trial] = tune.run(train_fn, stop={"1/2/3": 20})
-        with self.assertRaises(TuneError):
-            [trial] = tune.run(train_fn, stop={"test": 1}).trials
+        # Test, whether non-existent stop criteria do NOT cause an error anymore (just
+        # a warning).
+        [trial] = tune.run(train_fn, stop={"1/2/3": 20}).trials
+        self.assertFalse("1" in trial.last_result)
+        [trial] = tune.run(train_fn, stop={"test": 1}).trials
+        self.assertTrue(
+            "test" in trial.last_result
+            and "1" in trial.last_result["test"]
+            and "2" in trial.last_result["test"]["1"]
+            and "3" in trial.last_result["test"]["1"]["2"]
+        )
 
     def testIterationCounter(self):
         def train_fn(config):
