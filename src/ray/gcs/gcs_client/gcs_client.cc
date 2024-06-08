@@ -78,6 +78,25 @@ void GcsSubscriberClient::PubsubCommandBatch(
       });
 }
 
+// Mimics gcs_rpc_client.h VOID_GCS_RPC_CLIENT_METHOD.
+// Handles Status from the gRPC call and the payload status from the reply.
+// The reply proto message has a `GcsStatus` field named `status`.
+// May return:
+// - TimedOut if the gRPC call timed out.
+// - GrpcUnknown or GrpcUnavailable.
+// - Status serialized from the payload status from GCS.
+// - OK
+template <typename Reply>
+ray::Status HandleGcsStatuses(const grpc::Status &return_status, const Reply &reply) {
+  if (!return_status.ok()) {
+    return GrpcStatusToRayStatus(return_status);
+  }
+  if (reply.status().code() != static_cast<int>(StatusCode::OK)) {
+    return Status(StatusCode(reply.status().code()), reply.status().message());
+  }
+  return Status::OK();
+}
+
 }  // namespace
 
 GcsClient::GcsClient(const GcsClientOptions &options, UniqueID gcs_client_id)
@@ -220,16 +239,10 @@ Status PythonGcsClient::CheckAlive(const std::vector<std::string> &raylet_addres
   absl::ReaderMutexLock lock(&mutex_);
   rpc::CheckAliveReply reply;
   grpc::Status status = node_info_stub_->CheckAlive(&context, request, &reply);
+  RAY_RETURN_NOT_OK(HandleGcsStatuses(status, reply));
 
-  if (status.ok()) {
-    if (reply.status().code() == static_cast<int>(StatusCode::OK)) {
-      result =
-          std::vector<bool>(reply.raylet_alive().begin(), reply.raylet_alive().end());
-      return Status::OK();
-    }
-    return HandleGcsError(reply.status());
-  }
-  return Status::RpcError(status.error_message(), status.error_code());
+  result = std::vector<bool>(reply.raylet_alive().begin(), reply.raylet_alive().end());
+  return Status::OK();
 }
 
 Status PythonGcsClient::InternalKVGet(const std::string &ns,
@@ -245,18 +258,11 @@ Status PythonGcsClient::InternalKVGet(const std::string &ns,
 
   absl::ReaderMutexLock lock(&mutex_);
   rpc::InternalKVGetReply reply;
-
   grpc::Status status = kv_stub_->InternalKVGet(&context, request, &reply);
-  if (status.ok()) {
-    if (reply.status().code() == static_cast<int>(StatusCode::OK)) {
-      value = reply.value();
-      return Status::OK();
-    } else if (reply.status().code() == static_cast<int>(StatusCode::NotFound)) {
-      return Status::KeyError(key);
-    }
-    return HandleGcsError(reply.status());
-  }
-  return Status::RpcError(status.error_message(), status.error_code());
+  RAY_RETURN_NOT_OK(HandleGcsStatuses(status, reply));
+
+  value = reply.value();
+  return Status::OK();
 }
 
 Status PythonGcsClient::InternalKVMultiGet(
@@ -273,22 +279,14 @@ Status PythonGcsClient::InternalKVMultiGet(
 
   absl::ReaderMutexLock lock(&mutex_);
   rpc::InternalKVMultiGetReply reply;
-
   grpc::Status status = kv_stub_->InternalKVMultiGet(&context, request, &reply);
-  if (status.ok()) {
-    result.clear();
-    if (reply.status().code() == static_cast<int>(StatusCode::OK)) {
-      for (const auto &entry : reply.results()) {
-        result[entry.key()] = entry.value();
-      }
-      return Status::OK();
-    } else if (reply.status().code() == static_cast<int>(StatusCode::NotFound)) {
-      // result has already been cleared above
-      return Status::OK();
-    }
-    return HandleGcsError(reply.status());
+  RAY_RETURN_NOT_OK(HandleGcsStatuses(status, reply));
+
+  result.clear();
+  for (const auto &entry : reply.results()) {
+    result[entry.key()] = entry.value();
   }
-  return Status::RpcError(status.error_message(), status.error_code());
+  return Status::OK();
 }
 
 Status PythonGcsClient::InternalKVPut(const std::string &ns,
@@ -308,16 +306,11 @@ Status PythonGcsClient::InternalKVPut(const std::string &ns,
 
   absl::ReaderMutexLock lock(&mutex_);
   rpc::InternalKVPutReply reply;
-
   grpc::Status status = kv_stub_->InternalKVPut(&context, request, &reply);
-  if (status.ok()) {
-    if (reply.status().code() == static_cast<int>(StatusCode::OK)) {
-      added_num = reply.added_num();
-      return Status::OK();
-    }
-    return HandleGcsError(reply.status());
-  }
-  return Status::RpcError(status.error_message(), status.error_code());
+  RAY_RETURN_NOT_OK(HandleGcsStatuses(status, reply));
+
+  added_num = reply.added_num();
+  return Status::OK();
 }
 
 Status PythonGcsClient::InternalKVDel(const std::string &ns,
@@ -335,16 +328,11 @@ Status PythonGcsClient::InternalKVDel(const std::string &ns,
 
   absl::ReaderMutexLock lock(&mutex_);
   rpc::InternalKVDelReply reply;
-
   grpc::Status status = kv_stub_->InternalKVDel(&context, request, &reply);
-  if (status.ok()) {
-    if (reply.status().code() == static_cast<int>(StatusCode::OK)) {
-      deleted_num = reply.deleted_num();
-      return Status::OK();
-    }
-    return HandleGcsError(reply.status());
-  }
-  return Status::RpcError(status.error_message(), status.error_code());
+  RAY_RETURN_NOT_OK(HandleGcsStatuses(status, reply));
+
+  deleted_num = reply.deleted_num();
+  return Status::OK();
 }
 
 Status PythonGcsClient::InternalKVKeys(const std::string &ns,
@@ -360,16 +348,11 @@ Status PythonGcsClient::InternalKVKeys(const std::string &ns,
 
   absl::ReaderMutexLock lock(&mutex_);
   rpc::InternalKVKeysReply reply;
-
   grpc::Status status = kv_stub_->InternalKVKeys(&context, request, &reply);
-  if (status.ok()) {
-    if (reply.status().code() == static_cast<int>(StatusCode::OK)) {
-      results = std::vector<std::string>(reply.results().begin(), reply.results().end());
-      return Status::OK();
-    }
-    return HandleGcsError(reply.status());
-  }
-  return Status::RpcError(status.error_message(), status.error_code());
+  RAY_RETURN_NOT_OK(HandleGcsStatuses(status, reply));
+
+  results = std::vector<std::string>(reply.results().begin(), reply.results().end());
+  return Status::OK();
 }
 
 Status PythonGcsClient::InternalKVExists(const std::string &ns,
@@ -385,16 +368,11 @@ Status PythonGcsClient::InternalKVExists(const std::string &ns,
 
   absl::ReaderMutexLock lock(&mutex_);
   rpc::InternalKVExistsReply reply;
-
   grpc::Status status = kv_stub_->InternalKVExists(&context, request, &reply);
-  if (status.ok()) {
-    if (reply.status().code() == static_cast<int>(StatusCode::OK)) {
-      exists = reply.exists();
-      return Status::OK();
-    }
-    return HandleGcsError(reply.status());
-  }
-  return Status::RpcError(status.error_message(), status.error_code());
+  RAY_RETURN_NOT_OK(HandleGcsStatuses(status, reply));
+
+  exists = reply.exists();
+  return Status::OK();
 }
 
 Status PythonGcsClient::PinRuntimeEnvUri(const std::string &uri,
@@ -409,22 +387,10 @@ Status PythonGcsClient::PinRuntimeEnvUri(const std::string &uri,
 
   absl::ReaderMutexLock lock(&mutex_);
   rpc::PinRuntimeEnvURIReply reply;
-
   grpc::Status status = runtime_env_stub_->PinRuntimeEnvURI(&context, request, &reply);
-  if (status.ok()) {
-    if (reply.status().code() == static_cast<int>(StatusCode::OK)) {
-      return Status::OK();
-    } else if (reply.status().code() == static_cast<int>(StatusCode::GrpcUnavailable)) {
-      std::string msg =
-          "Failed to pin URI reference for " + uri + " due to the GCS being " +
-          "unavailable, most likely it has crashed: " + reply.status().message() + ".";
-      return Status::GrpcUnavailable(msg);
-    }
-    std::string msg = "Failed to pin URI reference for " + uri +
-                      " due to unexpected error " + reply.status().message() + ".";
-    return Status::GrpcUnknown(msg);
-  }
-  return Status::RpcError(status.error_message(), status.error_code());
+  RAY_RETURN_NOT_OK(HandleGcsStatuses(status, reply));
+
+  return Status::OK();
 }
 
 Status PythonGcsClient::GetAllNodeInfo(int64_t timeout_ms,
@@ -435,17 +401,12 @@ Status PythonGcsClient::GetAllNodeInfo(int64_t timeout_ms,
   absl::ReaderMutexLock lock(&mutex_);
   rpc::GetAllNodeInfoRequest request;
   rpc::GetAllNodeInfoReply reply;
-
   grpc::Status status = node_info_stub_->GetAllNodeInfo(&context, request, &reply);
-  if (status.ok()) {
-    if (reply.status().code() == static_cast<int>(StatusCode::OK)) {
-      result = std::vector<rpc::GcsNodeInfo>(reply.node_info_list().begin(),
-                                             reply.node_info_list().end());
-      return Status::OK();
-    }
-    return HandleGcsError(reply.status());
-  }
-  return Status::RpcError(status.error_message(), status.error_code());
+  RAY_RETURN_NOT_OK(HandleGcsStatuses(status, reply));
+
+  result = std::vector<rpc::GcsNodeInfo>(reply.node_info_list().begin(),
+                                         reply.node_info_list().end());
+  return Status::OK();
 }
 
 Status PythonGcsClient::GetAllJobInfo(int64_t timeout_ms,
@@ -456,17 +417,12 @@ Status PythonGcsClient::GetAllJobInfo(int64_t timeout_ms,
   absl::ReaderMutexLock lock(&mutex_);
   rpc::GetAllJobInfoRequest request;
   rpc::GetAllJobInfoReply reply;
-
   grpc::Status status = job_info_stub_->GetAllJobInfo(&context, request, &reply);
-  if (status.ok()) {
-    if (reply.status().code() == static_cast<int>(StatusCode::OK)) {
-      result = std::vector<rpc::JobTableData>(reply.job_info_list().begin(),
-                                              reply.job_info_list().end());
-      return Status::OK();
-    }
-    return HandleGcsError(reply.status());
-  }
-  return Status::RpcError(status.error_message(), status.error_code());
+  RAY_RETURN_NOT_OK(HandleGcsStatuses(status, reply));
+
+  result = std::vector<rpc::JobTableData>(reply.job_info_list().begin(),
+                                          reply.job_info_list().end());
+  return Status::OK();
 }
 
 Status PythonGcsClient::GetAllResourceUsage(int64_t timeout_ms,
@@ -477,17 +433,12 @@ Status PythonGcsClient::GetAllResourceUsage(int64_t timeout_ms,
   absl::ReaderMutexLock lock(&mutex_);
   rpc::GetAllResourceUsageRequest request;
   rpc::GetAllResourceUsageReply reply;
-
   grpc::Status status =
       node_resource_info_stub_->GetAllResourceUsage(&context, request, &reply);
-  if (status.ok()) {
-    if (reply.status().code() == static_cast<int>(StatusCode::OK)) {
-      serialized_reply = reply.SerializeAsString();
-      return Status::OK();
-    }
-    return HandleGcsError(reply.status());
-  }
-  return Status::RpcError(status.error_message(), status.error_code());
+  RAY_RETURN_NOT_OK(HandleGcsStatuses(status, reply));
+
+  serialized_reply = reply.SerializeAsString();
+  return Status::OK();
 }
 
 Status PythonGcsClient::RequestClusterResourceConstraint(
@@ -515,11 +466,7 @@ Status PythonGcsClient::RequestClusterResourceConstraint(
 
   grpc::Status status =
       autoscaler_stub_->RequestClusterResourceConstraint(&context, request, &reply);
-
-  if (status.ok()) {
-    return Status::OK();
-  }
-  return Status::RpcError(status.error_message(), status.error_code());
+  return GrpcStatusToRayStatus(status);
 }
 
 Status PythonGcsClient::GetClusterResourceState(int64_t timeout_ms,
@@ -532,14 +479,12 @@ Status PythonGcsClient::GetClusterResourceState(int64_t timeout_ms,
   absl::ReaderMutexLock lock(&mutex_);
   grpc::Status status =
       autoscaler_stub_->GetClusterResourceState(&context, request, &reply);
+  RAY_RETURN_NOT_OK(GrpcStatusToRayStatus(status));
 
-  if (status.ok()) {
-    if (!reply.SerializeToString(&serialized_reply)) {
-      return Status::IOError("Failed to serialize GetClusterResourceState");
-    }
-    return Status::OK();
+  if (!reply.SerializeToString(&serialized_reply)) {
+    return Status::IOError("Failed to serialize GetClusterResourceState");
   }
-  return Status::RpcError(status.error_message(), status.error_code());
+  return Status::OK();
 }
 
 Status PythonGcsClient::GetClusterStatus(int64_t timeout_ms,
@@ -551,14 +496,12 @@ Status PythonGcsClient::GetClusterStatus(int64_t timeout_ms,
 
   absl::ReaderMutexLock lock(&mutex_);
   grpc::Status status = autoscaler_stub_->GetClusterStatus(&context, request, &reply);
+  RAY_RETURN_NOT_OK(GrpcStatusToRayStatus(status));
 
-  if (status.ok()) {
-    if (!reply.SerializeToString(&serialized_reply)) {
-      return Status::IOError("Failed to serialize GetClusterStatusReply");
-    }
-    return Status::OK();
+  if (!reply.SerializeToString(&serialized_reply)) {
+    return Status::IOError("Failed to serialize GetClusterStatusReply");
   }
-  return Status::RpcError(status.error_message(), status.error_code());
+  return Status::OK();
 }
 
 Status PythonGcsClient::ReportAutoscalingState(int64_t timeout_ms,
@@ -576,11 +519,7 @@ Status PythonGcsClient::ReportAutoscalingState(int64_t timeout_ms,
   request.mutable_autoscaling_state()->CopyFrom(state);
   grpc::Status status =
       autoscaler_stub_->ReportAutoscalingState(&context, request, &reply);
-
-  if (status.ok()) {
-    return Status::OK();
-  }
-  return Status::RpcError(status.error_message(), status.error_code());
+  return GrpcStatusToRayStatus(status);
 }
 
 Status PythonGcsClient::DrainNode(const std::string &node_id,
@@ -597,21 +536,18 @@ Status PythonGcsClient::DrainNode(const std::string &node_id,
   request.set_deadline_timestamp_ms(deadline_timestamp_ms);
 
   rpc::autoscaler::DrainNodeReply reply;
-
   grpc::ClientContext context;
   PrepareContext(context, timeout_ms);
 
   absl::ReaderMutexLock lock(&mutex_);
   grpc::Status status = autoscaler_stub_->DrainNode(&context, request, &reply);
+  RAY_RETURN_NOT_OK(GrpcStatusToRayStatus(status));
 
-  if (status.ok()) {
-    is_accepted = reply.is_accepted();
-    if (!is_accepted) {
-      rejection_reason_message = reply.rejection_reason_message();
-    }
-    return Status::OK();
+  is_accepted = reply.is_accepted();
+  if (!is_accepted) {
+    rejection_reason_message = reply.rejection_reason_message();
   }
-  return Status::RpcError(status.error_message(), status.error_code());
+  return Status::OK();
 }
 
 Status PythonGcsClient::DrainNodes(const std::vector<std::string> &node_ids,
@@ -627,20 +563,15 @@ Status PythonGcsClient::DrainNodes(const std::vector<std::string> &node_ids,
 
   absl::ReaderMutexLock lock(&mutex_);
   rpc::DrainNodeReply reply;
-
   grpc::Status status = node_info_stub_->DrainNode(&context, request, &reply);
-  if (status.ok()) {
-    if (reply.status().code() == static_cast<int>(StatusCode::OK)) {
-      drained_node_ids.clear();
-      drained_node_ids.reserve(reply.drain_node_status().size());
-      for (const auto &node_status : reply.drain_node_status()) {
-        drained_node_ids.push_back(node_status.node_id());
-      }
-      return Status::OK();
-    }
-    return HandleGcsError(reply.status());
+  RAY_RETURN_NOT_OK(HandleGcsStatuses(status, reply));
+
+  drained_node_ids.clear();
+  drained_node_ids.reserve(reply.drain_node_status().size());
+  for (const auto &node_status : reply.drain_node_status()) {
+    drained_node_ids.push_back(node_status.node_id());
   }
-  return Status::RpcError(status.error_message(), status.error_code());
+  return Status::OK();
 }
 
 std::unordered_map<std::string, double> PythonGetResourcesTotal(

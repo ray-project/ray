@@ -572,6 +572,9 @@ cdef int check_status(const CRayStatus& status) nogil except -1:
     elif status.IsTimedOut():
         raise GetTimeoutError(message)
     elif status.IsNotFound():
+        # Note: this should really be KeyError or LookupError, but we have too many call
+        # sites Expecting ValueError. For example, the @PublicAPI ray.get_actor raises
+        # ValueError so we will never be able to change this.
         raise ValueError(message)
     elif status.IsObjectNotFound():
         raise ValueError(message)
@@ -2780,7 +2783,7 @@ cdef class GcsClient:
             CRayStatus status
         with nogil:
             status = self.inner.get().InternalKVGet(ns, key, timeout_ms, value)
-        if status.IsKeyError():
+        if status.IsNotFound():
             return None
         else:
             check_status(status)
