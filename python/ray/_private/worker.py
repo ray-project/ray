@@ -882,7 +882,6 @@ class Worker:
         """Prints log messages from workers on all nodes in the same job."""
         subscriber = self.gcs_log_subscriber
         subscriber.subscribe()
-        exception_type = ray.exceptions.RpcError
         localhost = services.get_node_ip_address()
         try:
             # Number of messages received from the last polling. When the batch
@@ -925,7 +924,7 @@ class Worker:
 
                 last_polling_batch_size = subscriber.last_batch_size
 
-        except (OSError, exception_type) as e:
+        except (OSError, ray.exceptions.RpcError) as e:
             logger.error(f"print_logs: {e}")
         finally:
             # Close the pubsub client to avoid leaking file descriptors.

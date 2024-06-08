@@ -115,6 +115,7 @@ cdef extern from "ray/common/status.h" namespace "ray" nogil:
         c_bool IsUnknownError()
         c_bool IsNotImplemented()
         c_bool IsObjectStoreFull()
+        c_bool IsGrpcError()
         c_bool IsOutOfDisk()
         c_bool IsRedisError()
         c_bool IsTimedOut()
@@ -377,7 +378,6 @@ cdef extern from "ray/gcs/gcs_client/gcs_client.h" nogil:
     cdef enum CGrpcStatusCode "grpc::StatusCode":
         UNAVAILABLE "grpc::StatusCode::UNAVAILABLE",
         UNKNOWN "grpc::StatusCode::UNKNOWN",
-        DEADLINE_EXCEEDED "grpc::StatusCode::DEADLINE_EXCEEDED",
         RESOURCE_EXHAUSTED "grpc::StatusCode::RESOURCE_EXHAUSTED",
         UNIMPLEMENTED "grpc::StatusCode::UNIMPLEMENTED",
 

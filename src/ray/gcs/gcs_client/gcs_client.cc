@@ -397,7 +397,7 @@ Status PythonGcsClient::PinRuntimeEnvUri(const std::string &uri,
   if (status.IsGrpcUnknown()) {
     std::string msg = "Failed to pin URI reference for " + uri +
                       " due to unexpected error " + status.message() + ".";
-    return Status::GrpcUnknown(msg);
+    return Status::GrpcUnknown(msg, status.rpc_code());
   }
   return status;
 }

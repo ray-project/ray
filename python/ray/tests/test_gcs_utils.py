@@ -60,7 +60,7 @@ def test_kv_basic(ray_start_regular, monkeypatch):
     assert ray._private.utils._CALLED_FREQ["internal_kv_get"] == 4
     assert ray._private.utils._CALLED_FREQ["internal_kv_put"] == 5
     with pytest.raises(ray.exceptions.RaySystemError):
-        # this key is illegal, GCS raises ray::KeyError which translates to
+        # this key is illegal, GCS raises Status::KeyError which translates to
         # RaySystemError
         gcs_client.internal_kv_get(b"@namespace_something", b"NS")
 

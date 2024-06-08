@@ -227,7 +227,6 @@ OPTIMIZED = __OPTIMIZE__
 
 GRPC_STATUS_CODE_UNAVAILABLE = CGrpcStatusCode.UNAVAILABLE
 GRPC_STATUS_CODE_UNKNOWN = CGrpcStatusCode.UNKNOWN
-GRPC_STATUS_CODE_DEADLINE_EXCEEDED = CGrpcStatusCode.DEADLINE_EXCEEDED
 GRPC_STATUS_CODE_RESOURCE_EXHAUSTED = CGrpcStatusCode.RESOURCE_EXHAUSTED
 GRPC_STATUS_CODE_UNIMPLEMENTED = CGrpcStatusCode.UNIMPLEMENTED
 
@@ -583,6 +582,9 @@ cdef int check_status(const CRayStatus& status) nogil except -1:
     elif status.IsIOError():
         raise IOError(message)
     elif status.IsRpcError():
+        raise RpcError(message, rpc_code=status.rpc_code())
+    elif status.IsGrpcError():
+        # ray::GrpcUnavailable and ray::GrpcUnknown.
         raise RpcError(message, rpc_code=status.rpc_code())
     elif status.IsIntentionalSystemExit():
         with gil:
@@ -3291,7 +3293,7 @@ def check_health(address: str, timeout=2, skip_version_check=False):
             check_status(PythonCheckGcsHealth(
                 c_gcs_address, c_gcs_port, timeout_ms, c_ray_version,
                 c_skip_version_check, c_is_healthy))
-    except RpcError:
+    except (RpcError, GetTimeoutError):
         traceback.print_exc()
     except RaySystemError as e:
         raise RuntimeError(str(e))

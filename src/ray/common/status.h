@@ -108,6 +108,9 @@ enum class StatusCode : char {
   GrpcUnavailable = 26,
   // This represents all other status codes
   // returned by grpc that are not defined above.
+  // TODO(ryw): this name collides with grpc::StatusCode::UNKNOWN.
+  // We should remove this in favor of RpcError which also carries
+  // rpc_code.
   GrpcUnknown = 27,
   // Object store is both out of memory and
   // out of disk.
@@ -243,11 +246,15 @@ class RAY_EXPORT Status {
   }
 
   static Status GrpcUnavailable(const std::string &msg) {
-    return Status(StatusCode::GrpcUnavailable, msg);
+    // Hard code the rpc_code to 14 because we don't want to add dependency to the grpcpp
+    // library.
+    return Status(StatusCode::GrpcUnavailable, msg, /*grpc::StatusCode::UNAVAILABLE*/ 14);
   }
 
-  static Status GrpcUnknown(const std::string &msg) {
-    return Status(StatusCode::GrpcUnknown, msg);
+  static Status GrpcUnknown(const std::string &msg, int rpc_code) {
+    // Note this is not (always) grpc::StatusCode::UNKNOWN == 2, but a catch-all for all
+    // other grpc status codes.
+    return Status(StatusCode::GrpcUnknown, msg, rpc_code);
   }
 
   static Status RpcError(const std::string &msg, int rpc_code) {
@@ -308,6 +315,7 @@ class RAY_EXPORT Status {
   bool IsGrpcUnavailable() const { return code() == StatusCode::GrpcUnavailable; }
   bool IsGrpcUnknown() const { return code() == StatusCode::GrpcUnknown; }
 
+  // gRPC errors also have rpc_code.
   bool IsGrpcError() const { return IsGrpcUnknown() || IsGrpcUnavailable(); }
 
   bool IsRpcError() const { return code() == StatusCode::RpcError; }

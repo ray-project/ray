@@ -100,7 +100,7 @@ inline Status GrpcStatusToRayStatus(const grpc::Status &grpc_status) {
   if (grpc_status.ok()) {
     return Status::OK();
   } else if (grpc_status.error_code() == grpc::StatusCode::DEADLINE_EXCEEDED) {
-    // DEADLINE_EXCEEDED means the gRPC request has timedout. Convert it to Ray timeout
+    // DEADLINE_EXCEEDED means the gRPC request has timed out. Convert it to Ray timeout
     // status code.
     return Status(StatusCode::TimedOut, GrpcStatusToRayStatusMessage(grpc_status));
   } else if (grpc_status.error_code() == grpc::StatusCode::ABORTED) {
@@ -114,7 +114,9 @@ inline Status GrpcStatusToRayStatus(const grpc::Status &grpc_status) {
     // TODO(jjyao) Use GrpcUnknown as the catch-all status for all
     // the unhandled grpc status.
     // If needed, we can define a ray status for each grpc status in the future.
-    return Status::GrpcUnknown(GrpcStatusToRayStatusMessage(grpc_status));
+    // TODO: change to RpcError to avoid naming collide with grpc::StatusCode::UNKNOWN.
+    return Status::GrpcUnknown(GrpcStatusToRayStatusMessage(grpc_status),
+                               grpc_status.error_code());
   }
 }
 
