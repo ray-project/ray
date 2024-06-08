@@ -28,8 +28,7 @@ def test_put_local_get(ray_start_regular):
     for i in range(num_writes):
         val = i.to_bytes(8, "little")
         chan.write(val)
-        assert chan.begin_read() == val
-        chan.end_read()
+        assert chan.read() == val
 
 
 @pytest.mark.skipif(
@@ -57,11 +56,9 @@ def test_set_error_before_read(ray_start_regular):
         def write(self):
             self._channel.write(b"x")
 
-        def begin_read(self):
-            self._channel.begin_read()
+        def read(self):
+            self._channel.read()
 
-        def end_read(self):
-            self._channel.end_read()
 
     for _ in range(10):
         a = Actor.remote()
@@ -72,20 +69,19 @@ def test_set_error_before_read(ray_start_regular):
 
         # Indirectly registers the channel for both the writer and the reader.
         ray.get(a.write.remote())
-        ray.get(b.begin_read.remote())
-        ray.get(b.end_read.remote())
+        ray.get(b.read.remote())
 
-        # Check that the thread does not block on the second call to begin_read() below.
-        # begin_read() acquires a lock, though if the lock is not released when
-        # begin_read() fails (because the channel has been closed), then an additional
-        # call to begin_read() *could* block.
+        # Check that the thread does not block on the second call to read() below.
+        # read() acquires a lock, though if the lock is not released when
+        # read() fails (because the channel has been closed), then an additional
+        # call to read() *could* block.
 
-        # We wrap both calls to begin_read() in pytest.raises() as both calls could
+        # We wrap both calls to read() in pytest.raises() as both calls could
         # trigger an IOError exception if the channel has already been closed.
         with pytest.raises(ray.exceptions.RayTaskError):
-            ray.get([a.close.remote(), b.begin_read.remote()])
+            ray.get([a.close.remote(), b.read.remote()])
         with pytest.raises(ray.exceptions.RayTaskError):
-            ray.get(b.begin_read.remote())
+            ray.get(b.read.remote())
 
 
 @pytest.mark.skipif(
@@ -111,8 +107,7 @@ def test_errors(ray_start_regular):
     a = Actor.remote()
     # Multiple consecutive reads from the same process are fine.
     chan = ray.get(a.make_chan.remote([None], do_write=True))
-    assert chan.begin_read() == b"hello"
-    chan.end_read()
+    assert chan.read() == b"hello"
 
     @ray.remote
     class Reader:
@@ -120,7 +115,7 @@ def test_errors(ray_start_regular):
             pass
 
         def read(self, chan):
-            return chan.begin_read()
+            return chan.read()
 
     readers = [Reader.remote(), Reader.remote()]
     # Check that an exception is thrown when there are more readers than specificed in
@@ -145,12 +140,11 @@ def test_put_different_meta(ray_start_regular):
     def _test(val):
         chan.write(val)
 
-        read_val = chan.begin_read()
+        read_val = chan.read()
         if isinstance(val, np.ndarray):
             assert np.array_equal(read_val, val)
         else:
             assert read_val == val
-        chan.end_read()
 
     _test(b"hello")
     _test("hello")
@@ -175,12 +169,11 @@ def test_multiple_channels_different_nodes(ray_start_cluster):
             pass
 
         def read(self, channel, val):
-            read_val = channel.begin_read()
+            read_val = channel.read()
             if isinstance(val, np.ndarray):
                 assert np.array_equal(read_val, val)
             else:
                 assert read_val == val
-            channel.end_read()
 
     a = Actor.remote()
     chan_a = ray_channel.Channel(None, [a], 1000)
@@ -327,21 +320,18 @@ def test_put_remote_get(ray_start_regular, num_readers):
         def read(self, chan, num_writes):
             for i in range(num_writes):
                 val = i.to_bytes(8, "little")
-                assert chan.begin_read() == val
-                chan.end_read()
+                assert chan.read() == val
 
             for i in range(num_writes):
                 val = i.to_bytes(100, "little")
-                assert chan.begin_read() == val
-                chan.end_read()
+                assert chan.read() == val
 
             for val in [
                 b"hello world",
                 "hello again",
                 1000,
             ]:
-                assert chan.begin_read() == val
-                chan.end_read()
+                assert chan.read() == val
 
     num_writes = 1000
     readers = [Reader.remote() for _ in range(num_readers)]
@@ -410,8 +400,7 @@ def test_remote_reader(ray_start_cluster, remote):
 
         def read(self, num_reads):
             for i in range(num_reads):
-                self._reader_chan.begin_read()
-                self._reader_chan.end_read()
+                self._reader_chan.read()
 
     readers = [Reader.remote() for _ in range(num_readers)]
     channel = ray_channel.Channel(None, readers, 1000)

@@ -420,6 +420,9 @@ class Channel(ChannelInterface):
             self._num_readers,
         )
 
+    def read(self) -> Any:
+        return self.begin_read()
+
     def begin_read(self) -> Any:
         self.ensure_registered_as_reader()
         ret = ray.get(self._reader_ref)
