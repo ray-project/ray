@@ -4,6 +4,7 @@ from ray.rllib.algorithms.ppo.ppo import (
     LEARNER_RESULTS_CURR_ENTROPY_COEFF_KEY,
     PPOConfig,
 )
+from ray.rllib.connectors.learner import AddOneTsToEpisodesAndTruncate
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.learner.learner import Learner
 from ray.rllib.evaluation.postprocessing import Postprocessing
@@ -50,26 +51,32 @@ class PPOLearner(Learner):
             )
         )
 
-    @override(Learner)
-    def _update_from_batch_or_episodes(
-        self,
-        *,
-        batch=None,
-        episodes=None,
-        **kwargs,
-    ):
-        # First perform GAE computation on the entirety of the given train data (all
-        # episodes).
-        if self.config.enable_env_runner_and_connector_v2:
-            batch, episodes = self._compute_gae_from_episodes(episodes=episodes)
+        # Extend all episodes by one artificial timestep to allow the value function net
+        # to compute the bootstrap values (and add a mask to the batch to know, which
+        # slots to mask out).
+        if self.config.add_default_connectors_to_learner_pipeline:
+            self._learner_connector.prepend(AddOneTsToEpisodesAndTruncate())
 
-        # Now that GAE (advantages and value targets) have been added to the train
-        # batch, we can proceed normally (calling super method) with the update step.
-        return super()._update_from_batch_or_episodes(
-            batch=batch,
-            episodes=episodes,
-            **kwargs,
-        )
+    #@override(Learner)
+    #def _update_from_batch_or_episodes(
+    #    self,
+    #    *,
+    #    batch=None,
+    #    episodes=None,
+    #    **kwargs,
+    #):
+    #    # First perform GAE computation on the entirety of the given train data (all
+    #    # episodes).
+    #    if self.config.enable_env_runner_and_connector_v2:
+    #        batch, episodes = self._compute_gae_from_episodes(episodes=episodes)
+
+    #    # Now that GAE (advantages and value targets) have been added to the train
+    #    # batch, we can proceed normally (calling super method) with the update step.
+    #    return super()._update_from_batch_or_episodes(
+    #        batch=batch,
+    #        episodes=episodes,
+    #        **kwargs,
+    #    )
 
     def _compute_gae_from_episodes(
         self,
