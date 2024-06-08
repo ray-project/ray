@@ -62,7 +62,7 @@ h11==0.12.0
 httplib2==0.22.0
 httptools==0.6.1
 humanfriendly==10.0
-idna==3.6
+idna @ file:///croot/idna_1714398848350/work
 imageio==2.31.1
 importlib-metadata==6.11.0
 isodate==0.6.1
@@ -78,7 +78,7 @@ libmambapy @ file:///croot/mamba-split_1714483352891/work/libmambapy
 lz4==4.3.2
 MarkupSafe==2.1.3
 memray==1.10.0
-menuinst @ file:///croot/menuinst_1714510563922/work
+menuinst @ file:///croot/menuinst_1716404372721/work
 msal==1.18.0b1
 msal-extensions==1.0.0
 msgpack==1.0.7
@@ -100,7 +100,7 @@ packaging==21.3
 pandas==1.5.3
 paramiko==2.12.0
 Pillow==9.2.0
-pkginfo==1.10.0
+pkginfo==1.11.0
 platformdirs==3.11.0
 pluggy @ file:///tmp/build/80754af9/pluggy_1648024445381/work
 portalocker==2.8.2
@@ -127,9 +127,9 @@ python-dotenv==1.0.1
 pytz==2022.7.1
 PyWavelets==1.5.0
 PyYAML==6.0.1
-ray @ file:///home/ray/ray-3.0.0.dev0-cp39-cp39-manylinux2014_x86_64.whl#sha256=6eea101b354aa060bb290e3f2a2a747448cc52bf757cdf7e3532edacb7146dcd
+ray @ file:///home/ray/ray-3.0.0.dev0-cp39-cp39-manylinux2014_x86_64.whl#sha256=dae7fec08365958c4b6377f3b0e2db532c4e056218623575df76b8572b00e87f
 redis==3.5.3
-requests @ file:///croot/requests_1707355572290/work
+requests==2.31.0
 requests-oauthlib==2.0.0
 rich==12.6.0
 rsa==4.7.2
@@ -145,7 +145,7 @@ starlette==0.36.3
 tabulate==0.9.0
 tensorboardX==2.6.2.2
 tifffile==2023.7.10
-tqdm @ file:///croot/tqdm_1714567712644/work
+tqdm @ file:///croot/tqdm_1716395931952/work
 typer==0.9.0
 typing_extensions==4.8.0
 uritemplate==3.0.1
