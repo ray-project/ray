@@ -288,6 +288,7 @@ class RuntimeEnv(dict):
         "worker_process_setup_hook",
         "_nsight",
         "mpi",
+        "image_uri",
     }
 
     extensions_fields: Set[str] = {
@@ -310,6 +311,7 @@ class RuntimeEnv(dict):
         config: Optional[Union[Dict, RuntimeEnvConfig]] = None,
         _validate: bool = True,
         mpi: Optional[Dict] = None,
+        image_uri: Optional[str] = None,
         **kwargs,
     ):
         super().__init__()
@@ -335,6 +337,8 @@ class RuntimeEnv(dict):
             runtime_env["worker_process_setup_hook"] = worker_process_setup_hook
         if mpi is not None:
             runtime_env["mpi"] = mpi
+        if image_uri is not None:
+            runtime_env["image_uri"] = image_uri
         if runtime_env.get("java_jars"):
             runtime_env["java_jars"] = runtime_env.get("java_jars")
 
@@ -361,11 +365,21 @@ class RuntimeEnv(dict):
             )
 
         if self.get("container"):
-            if len(runtime_env) > 1:
+            invalid_keys = set(runtime_env.keys()) - {"container", "config"}
+            if len(invalid_keys):
                 raise ValueError(
                     "The 'container' field currently cannot be used "
                     "together with other fields of runtime_env. "
-                    f"Specified fields: {runtime_env.keys()}"
+                    f"Specified fields: {invalid_keys}"
+                )
+
+        if self.get("image_uri"):
+            invalid_keys = set(runtime_env.keys()) - {"image_uri", "config"}
+            if len(invalid_keys):
+                raise ValueError(
+                    "The 'image_uri' field currently cannot be used "
+                    "together with other fields of runtime_env. "
+                    f"Specified fields: {invalid_keys}"
                 )
 
         for option, validate_fn in OPTION_TO_VALIDATION_FN.items():
@@ -544,6 +558,9 @@ class RuntimeEnv(dict):
         if not self.has_py_container():
             return None
         return self["container"].get("run_options", [])
+
+    def image_uri(self) -> Optional[str]:
+        return self.get("image_uri")
 
     def plugins(self) -> List[Tuple[str, Any]]:
         result = list()

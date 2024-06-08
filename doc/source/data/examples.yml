@@ -1,6 +1,7 @@
 text: Below are examples for using Ray Data for batch inference workloads with a variety of frameworks and use cases.
 columns_to_show:
   - frameworks
+groupby: skill_level
 examples:
   - title: Image Classification Batch Inference with PyTorch ResNet152
     skill_level: beginner

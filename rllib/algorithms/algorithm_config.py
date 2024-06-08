@@ -230,8 +230,8 @@ class AlgorithmConfig(_Config):
 
         Raises:
             KeyError: In case a non-existing property name (kwargs key) is being
-            passed in. Valid property names are taken from a default AlgorithmConfig
-            object of `cls`.
+                passed in. Valid property names are taken from a default
+                AlgorithmConfig object of `cls`.
         """
         default_config = cls()
         config_overrides = {}
@@ -3517,7 +3517,7 @@ class AlgorithmConfig(_Config):
 
         Raises:
             ValueError: If there is a mismatch between user provided
-            `rollout_fragment_length` and `total_train_batch_size`.
+                `rollout_fragment_length` and `total_train_batch_size`.
         """
         if (
             self.rollout_fragment_length != "auto"

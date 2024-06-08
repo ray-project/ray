@@ -129,6 +129,8 @@ from ray._private.worker import (  # noqa: E402,F401
     wait,
 )
 
+from ray._private.ray_logging.logging_config import LoggingConfig  # noqa: E402
+
 # We import ray.actor because some code is run in actor.py which initializes
 # some functions in the worker.
 import ray.actor  # noqa: E402,F401
@@ -201,6 +203,7 @@ __all__ = [
     "LOCAL_MODE",
     "SCRIPT_MODE",
     "WORKER_MODE",
+    "LoggingConfig",
 ]
 
 # Public APIs that should automatically trigger ray.init().
@@ -239,6 +242,7 @@ NON_AUTO_INIT_APIS = {
     "show_in_dashboard",
     "shutdown",
     "timeline",
+    "LoggingConfig",
 }
 
 assert set(__all__) == AUTO_INIT_APIS | NON_AUTO_INIT_APIS
