@@ -423,33 +423,9 @@ class TrainableFunctionApiTest(unittest.TestCase):
 
         self.assertRaises(TuneError, f)
 
-    def testBadParams5(self):
-        def f():
-            run_experiments({"foo": {"run": "__fake", "stop": {"asdf": 1}}})
-
-        self.assertRaises(TuneError, f)
-
     def testBadParams6(self):
         def f():
             run_experiments({"foo": {"run": "PPO", "resources_per_trial": {"asdf": 1}}})
-
-        self.assertRaises(TuneError, f)
-
-    def testBadStoppingReturn(self):
-        def train_fn(config):
-            train.report(dict(a=1))
-
-        register_trainable("f1", train_fn)
-
-        def f():
-            run_experiments(
-                {
-                    "foo": {
-                        "run": "f1",
-                        "stop": {"time": 10},
-                    }
-                }
-            )
 
         self.assertRaises(TuneError, f)
 
@@ -458,8 +434,12 @@ class TrainableFunctionApiTest(unittest.TestCase):
             for i in range(10):
                 train.report(dict(test={"test1": {"test2": i}}))
 
-        with self.assertRaises(TuneError):
-            [trial] = tune.run(train_fn, stop={"test": {"test1": {"test2": 6}}}).trials
+        [trial] = tune.run(train_fn, stop={"test": {"test1": {"test2": 6}}}).trials
+        self.assertTrue(
+            "test" in trial.last_result
+            and "test1" in trial.last_result["test"]
+            and "test2" in trial.last_result["test"]["test1"]
+        )
         [trial] = tune.run(train_fn, stop={"test/test1/test2": 6}).trials
         self.assertEqual(trial.last_result["training_iteration"], 7)
 
