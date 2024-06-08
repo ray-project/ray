@@ -668,7 +668,7 @@ class CompiledDAG:
 
         frontier = [self.input_task_idx]
         visited = set()
-        # Create output buffers
+        # Create output buffers. This loop does a breadth-first search through the DAG.
         while frontier:
             cur_idx = frontier.pop(0)
             if cur_idx in visited:
@@ -684,6 +684,8 @@ class CompiledDAG:
                 type_hint.set_nccl_group_id(self._nccl_group_id)
 
             if isinstance(task.dag_node, ClassMethodNode):
+                # `readers` is the nodes that are ordered after the current one (`task`)
+                # in the DAG.
                 readers = [self.idx_to_task[idx] for idx in task.downstream_node_idxs]
                 assert len(readers) == 1
 
@@ -694,19 +696,27 @@ class CompiledDAG:
                     # This node is a multi-output node, which means that it will only be
                     # read by the driver, not an actor. Thus, we handle this case by
                     # setting `reader_handles` to `[self._driver_actor]`.
+
+                    # TODO(jhumphri): Handle case where there is an actor, other than
+                    # just the driver actor, also reading the output from the `task`
+                    # node.
+                    # For example, the following currently does not work:
+                    # def test_blah(ray_start_regular):
+                    #     a = Actor.remote(0)
+                    #     b = Actor.remote(10)
+                    #     with InputNode() as inp:
+                    #         x = a.inc.bind(inp)
+                    #         y = b.inc.bind(x)
+                    #         dag = MultiOutputNode([x, y])
+
+                    #     compiled_dag = dag.experimental_compile()
+                    #     output_channel = compiled_dag.execute(1)
+                    #     result = output_channel.begin_read()
+                    #     print(result)
+                    #     output_channel.end_read()
+
+                    #     compiled_dag.teardown()
                     reader_handles = [self._driver_actor]
-
-                    fn = task.dag_node._get_remote_method("__ray_call__")
-
-                    actor_node = ray.get(fn.remote(_get_node_id))
-
-                    # The driver and all actors that write outputs must be on the same
-                    # node for now.
-                    if actor_node != _get_node_id(self):
-                        raise NotImplementedError(
-                            "The driver and all actors that write outputs must be on "
-                            "the same node for now."
-                        )
                 else:
                     reader_handles = [
                         reader.dag_node._get_actor_handle() for reader in readers

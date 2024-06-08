@@ -83,6 +83,53 @@ def test_driver_as_reader(ray_start_cluster, remote):
     chan.end_read()
 
 
+@pytest.mark.parametrize("remote", [True, False])
+def test_driver_as_reader_with_resize(ray_start_cluster, remote):
+    cluster = ray_start_cluster
+    if remote:
+        # This node is for the driver. num_cpus is 1 because the
+        # CompiledDAG.DAGDriverProxyActor needs a place to run.
+        cluster.add_node(num_cpus=1)
+        ray.init(address=cluster.address)
+        # This node is for the writer actor.
+        cluster.add_node(num_cpus=1)
+    else:
+        # This node is for both the driver (including the DriverHelperActor) and the
+        # writer actor.
+        cluster.add_node(num_cpus=2)
+        ray.init(address=cluster.address)
+
+    @ray.remote(num_cpus=1)
+    class Actor:
+        def setup(self, driver_actor):
+            self._channel = ray_channel.Channel(
+                ray.get_runtime_context().current_actor,
+                [driver_actor],
+                1000,
+            )
+
+        def get_channel(self):
+            return self._channel
+
+        def write(self):
+            self._channel.write(b"x")
+
+        def write_large(self):
+            self._channel.write(b"x" * 2000)
+
+    a = Actor.remote()
+    ray.get(a.setup.remote(create_driver_actor()))
+    chan = ray.get(a.get_channel.remote())
+
+    ray.get(a.write.remote())
+    assert chan.begin_read() == b"x"
+    chan.end_read()
+
+    ray.get(a.write_large.remote())
+    assert chan.begin_read() == b"x" * 2000
+    chan.end_read()
+
+
 @pytest.mark.skipif(
     sys.platform != "linux" and sys.platform != "darwin",
     reason="Requires Linux or Mac.",
