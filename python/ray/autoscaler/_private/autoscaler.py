@@ -645,19 +645,23 @@ class StandardAutoscaler:
         # explicitly disabled.
         if self.worker_rpc_drain:
             self.drain_nodes_via_gcs(self.nodes_to_terminate)
+        # Clean up multi-host replicas to delete
+        for node in self.nodes_to_terminate:
+            tags = self.provider.node_tags(node)
+            if TAG_RAY_REPLICA_INDEX in tags:
+                assert self.replicas_to_nodes
+                replica_id = tags[TAG_RAY_REPLICA_INDEX]
+                if replica_id in self.replicas_to_nodes:
+                    if node in self.replicas_to_nodes[replica_id]:
+                        self.replicas_to_nodes[replica_id].remove(node)
+                # remove replica ID once all nodes in replica removed
+                if len(self.replicas_to_nodes[replica_id]) == 0:
+                    self.replicas_to_delete.remove(replica_id)
         # Terminate the nodes
         self.provider.terminate_nodes(self.nodes_to_terminate)
         for node in self.nodes_to_terminate:
             self.node_tracker.untrack(node)
             self.prom_metrics.stopped_nodes.inc()
-            # Clean up multi-host replicas to delete
-            tags = self.provider.node_tags(node)
-            if TAG_RAY_REPLICA_INDEX in tags:
-                assert self.replicas_to_nodes
-                replica_id = tags[TAG_RAY_REPLICA_INDEX]
-                self.replicas_to_nodes[replica_id].remove(node)
-                if len(self.replicas_to_nodes[replica_id]) == 0:
-                    self.replicas_to_delete.remove(replica_id)
 
         # Update internal node lists
         self.non_terminated_nodes.remove_terminating_nodes(self.nodes_to_terminate)

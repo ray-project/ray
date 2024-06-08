@@ -59,9 +59,9 @@ class NodeData:
 
     kind: NodeKind
     type: NodeType
-    replica_index: Optional[str]
     ip: Optional[NodeIP]
     status: NodeStatus
+    replica_index: Optional[str] = None
 
 
 class BatchingNodeProvider(NodeProvider):
