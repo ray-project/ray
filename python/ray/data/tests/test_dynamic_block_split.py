@@ -320,10 +320,10 @@ def test_lazy_block_list(shutdown_only, target_max_block_size):
         ),
         override_num_blocks=num_tasks,
     )
-    ds.schema()
+    block_list = ds._plan._in_blocks
+    block_list.ensure_metadata_for_first_block()
 
     # Check internal states of LazyBlockList before execution
-    block_list = ds._plan._in_blocks
     block_refs = block_list._block_partition_refs
     cached_metadata = block_list._cached_metadata
     metadata = block_list.get_metadata()
