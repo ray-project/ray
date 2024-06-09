@@ -38,15 +38,14 @@ class AbstractFrom(LogicalOperator, metaclass=abc.ABCMeta):
         return self._input_data
 
     def schema(self):
-        metadata = list(
-            itertools.chain.from_iterable(
-                bundle.metadata for bundle in self._input_data
-            )
-        )
+        metadata = [m for bundle in self._input_data for m in bundle.metadata]
         return unify_block_metadata_schema(metadata)
 
     def num_rows(self):
-        return sum(bundle.num_rows() or 0 for bundle in self._input_data)
+        if all(bundle.num_rows() is not None for bundle in self._input_data):
+            return sum(bundle.num_rows() for bundle in self._input_data)
+        else:
+            return None
 
 
 class FromItems(AbstractFrom):

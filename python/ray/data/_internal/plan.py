@@ -1,4 +1,5 @@
 import copy
+import functools
 import itertools
 import logging
 from typing import TYPE_CHECKING, Iterator, Optional, Tuple, Type, Union
@@ -82,8 +83,6 @@ class ExecutionPlan:
         self._snapshot_stats = None
         self._snapshot_bundle = None
 
-        # Cached schema.
-        self._schema = None
         # Set when a Dataset is constructed with this plan
         self._dataset_uuid = None
 
@@ -168,9 +167,7 @@ class ExecutionPlan:
                 # (e.g. number of blocks may change based on parallelism).
                 self.execute()
             if self._snapshot_blocks is not None:
-                schema = self._get_unified_blocks_schema(
-                    self._snapshot_blocks, fetch_if_missing=False
-                )
+                schema = self.schema(fetch_if_missing=False)
                 dataset_blocks = self._snapshot_blocks
             else:
                 assert self._in_blocks is not None
@@ -342,6 +339,7 @@ class ExecutionPlan:
         fully executing the dataset."""
         return self._logical_plan.dag.estimated_num_outputs()
 
+    @functools.cache
     def schema(
         self, fetch_if_missing: bool = False
     ) -> Union[type, "pyarrow.lib.Schema"]:
@@ -355,9 +353,6 @@ class ExecutionPlan:
         Returns:
             The schema of the output dataset.
         """
-        if self._schema is not None:
-            return self._schema
-
         schema = None
         if (
             self._snapshot_bundle is not None
@@ -374,9 +369,14 @@ class ExecutionPlan:
                 ):
                     schema = metadata.schema
                     break
+        elif self.is_read_only():
+            # For consistency with the previous implementation, we fetch the schema if
+            # the plan is read-only even if `fetch_if_missing` is False.
+            blocks_with_metadata, _, _ = self.execute_to_iterator()
+            _, metadata = next(iter(blocks_with_metadata))
+            schema = metadata.schema
 
-        self._schema = schema
-        return self._schema
+        return schema
 
     def _get_unified_blocks_schema(
         self, blocks: BlockList, fetch_if_missing: bool = False
