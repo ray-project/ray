@@ -2840,6 +2840,11 @@ def wait(
                 "ray.ObjectRefGenerator, "
                 f"got list containing {type(ray_waitable)}"
             )
+        if isinstance(ray_waitable, CompiledDAGRef):
+            raise TypeError(
+                "wait() does not support CompiledDAGRef. "
+                "Please call `get()` on the CompiledDAGRef to get the result."
+            )
     worker.check_connected()
 
     # TODO(swang): Check main thread.

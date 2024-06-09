@@ -31,6 +31,10 @@ from ray.experimental.channel.torch_tensor_nccl_channel import (
 
 MAX_BUFFER_SIZE = int(100 * 1e6)  # 100MB
 
+MAX_BUFFER_TOTAL_MEMORY = int(10 * 1e9)  # 10GB
+
+MAX_BUFFER_COUNT = MAX_BUFFER_TOTAL_MEMORY // MAX_BUFFER_SIZE
+
 logger = logging.getLogger(__name__)
 
 
@@ -449,8 +453,9 @@ class CompiledDAG:
         # Uniquely identifies the NCCL communicator that will be used within
         # this DAG, if any.
         self._nccl_group_id: Optional[str] = None
-        self._execution_index = 0
+        self._execution_index: int = 0
         self._result_buffer = []
+        self._buffered_results: int = 0
 
     def _add_node(self, node: "ray.dag.DAGNode") -> None:
         idx = self.counter
@@ -909,11 +914,17 @@ class CompiledDAG:
             The execution result corresponding to the given execution index.
         """
         while execution_index >= len(self._result_buffer):
-            # TODO: limit _result_buffer size
+            if self._buffered_results > MAX_BUFFER_COUNT:
+                raise ValueError(
+                    "Too many buffered results: call ray.get() on previous "
+                    "CompiledDAGRefs to free them up from buffer."
+                )
             self._result_buffer.append(self._dag_output_fetcher.begin_read())
+            self._buffered_results += 1
 
         result = self._result_buffer[execution_index]
         self._result_buffer[execution_index] = None
+        self._buffered_results -= 1
         return result
 
     def execute(

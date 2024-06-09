@@ -96,7 +96,6 @@ void PlasmaObjectHeader::SetErrorUnlocked(Semaphores &sem) {
   // We do a store release so that no loads/stores are reordered after the store to
   // `has_error`. This store release pairs with the acquire load in `CheckHasError()`.
   has_error.store(true, std::memory_order_release);
-  RAY_LOG(ERROR) << "SetErrorUnlocked() called";
   // Increment `sem.object_sem` once to potentially unblock the writer. There will never
   // be more than one writer.
   RAY_CHECK_EQ(sem_post(sem.object_sem), 0);

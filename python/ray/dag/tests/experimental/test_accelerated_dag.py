@@ -2,6 +2,7 @@
 import logging
 import os
 import random
+import re
 import sys
 import time
 import asyncio
@@ -406,6 +407,23 @@ def test_dag_errors(ray_start_regular):
         match="Compiled DAGs currently only support actor method nodes",
     ):
         dag.experimental_compile()
+
+    with InputNode() as inp:
+        dag = a.inc.bind(inp)
+    compiled_dag = dag.experimental_compile()
+    ref = compiled_dag.execute(1)
+    expected_error = re.escape(
+        "wait() does not support CompiledDAGRef. "
+        "Please call `get()` on the CompiledDAGRef to get the result."
+    )
+    with pytest.raises(TypeError, match=expected_error):
+        ray.wait([ref])
+
+    ref = compiled_dag.execute(1)
+    print(ref)
+    assert isinstance(ref, ray.ObjectRef)
+    with pytest.raises(TypeError, match=r".*was found to be non-serializable.*"):
+        ray.put([ref])
 
 
 def test_dag_fault_tolerance_chain(ray_start_regular_shared):
