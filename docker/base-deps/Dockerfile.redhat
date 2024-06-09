@@ -1,0 +1,62 @@
+# The base-deps Docker image installs main libraries needed to run Ray
+
+# The GPU options are NVIDIA CUDA developer images.
+ARG BASE_IMAGE="registry.access.redhat.com/ubi8/ubi"
+FROM ${BASE_IMAGE}
+# FROM directive resets ARG
+ARG BASE_IMAGE
+# If this arg is not "autoscaler" then no autoscaler requirements will be included
+ARG AUTOSCALER="autoscaler"
+ENV TZ=America/Los_Angeles
+ENV LC_ALL=C.UTF-8
+ENV LANG=C.UTF-8
+# TODO(ilr) $HOME seems to point to result in "" instead of "/home/ray"
+# ENV PATH "/home/ray/anaconda3/bin:$PATH"
+ARG HOSTTYPE=${HOSTTYPE:-x86_64}
+
+ARG RAY_UID=1000
+ARG RAY_GID=0
+
+RUN useradd -ms /bin/bash -d /home/ray ray --uid $RAY_UID --gid $RAY_GID
+
+ENV HOME=/home/ray
+
+RUN rm -rf /var/cache/yum /var/cache/dnf
+
+SHELL ["/bin/bash", "-c"]
+RUN yum -y install https://dl.fedoraproject.org/pub/epel/epel-release-latest-8.noarch.rpm
+RUN yum install -y \
+        git \
+        jemalloc-devel \
+        wget \
+        cmake \
+        gcc-c++ \ 
+        zlib-devel \
+        $(if [ "$AUTOSCALER" = "autoscaler" ]; then echo \
+        http://mirror.centos.org/centos/8-stream/BaseOS/x86_64/os/Packages/tmux-2.7-3.el8.x86_64.rpm \
+        screen \
+        rsync \
+        openssh-clients \
+        gnupg; fi) \
+        libffi \
+        python38 \
+        python38-Cython \
+        python38-psutil
+RUN update-alternatives --install /usr/bin/unversioned-python python /usr/bin/python3.8 1
+RUN python3 -m pip install --no-cache-dir \
+        flatbuffers \
+        # Necessary for Dataset to work properly.
+        numpy\>=1.20 \
+    # To avoid the following error on Jenkins:
+    # AttributeError: 'numpy.ufunc' object has no attribute '__module__'
+    && python3 -m pip uninstall -y dask
+
+RUN yum clean all && rm -rf /var/cache/yum /var/cache/dnf
+
+COPY autoscaler-requirements.txt .
+RUN (if [ "$AUTOSCALER" = "autoscaler" ]; \
+        then python3 -m pip install --no-cache-dir -r autoscaler-requirements.txt; \
+    fi; rm autoscaler-requirements.txt)
+
+USER ray
+WORKDIR $HOME

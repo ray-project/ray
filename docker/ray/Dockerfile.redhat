@@ -1,0 +1,19 @@
+ARG GPU
+ARG FULL_BASE_IMAGE=rayproject/ray-deps:nightly-redhat"$GPU"
+FROM $FULL_BASE_IMAGE
+
+ARG WHEEL_PATH
+ARG FIND_LINKS_PATH=".whl"
+ARG CONSTRAINTS_FILE="requirements_compiled.txt"
+
+USER root
+
+COPY $WHEEL_PATH .
+
+RUN python3 -m pip --no-cache-dir install \
+    `basename $WHEEL_PATH`[all] \
+    && rm `basename $WHEEL_PATH`
+
+RUN python3 -m pip freeze > /home/ray/pip-freeze.txt
+
+USER ray
