@@ -26,25 +26,16 @@ from ray.tests.conftest import *  # noqa
 
 # Data source generates random bytes data
 class RandomBytesDatasource(Datasource):
-    def create_reader(self, **read_args):
-        return RandomBytesReader(
-            read_args["num_batches_per_task"],
-            read_args["row_size"],
-            num_rows_per_batch=read_args.get("num_rows_per_batch", None),
-            use_bytes=read_args.get("use_bytes", True),
-            use_arrow=read_args.get("use_arrow", False),
-        )
-
-
-class RandomBytesReader(Reader):
     def __init__(
         self,
+        num_tasks: int,
         num_batches_per_task: int,
         row_size: int,
         num_rows_per_batch=None,
         use_bytes=True,
         use_arrow=False,
     ):
+        self.num_tasks = num_tasks
         self.num_batches_per_task = num_batches_per_task
         self.row_size = row_size
         if num_rows_per_batch is None:
@@ -89,7 +80,7 @@ class RandomBytesReader(Reader):
                         }
                     )
 
-        return parallelism * [
+        return self.num_tasks * [
             ReadTask(
                 lambda: _blocks_generator(),
                 BlockMetadata(
@@ -103,6 +94,9 @@ class RandomBytesReader(Reader):
                 ),
             )
         ]
+
+    def num_rows(self) -> int:
+        return self.num_tasks * self.num_batches_per_task * self.num_rows_per_batch
 
 
 class SlowCSVDatasource(CSVDatasource):
@@ -195,24 +189,22 @@ def test_dataset(
 
     last_snapshot = get_initial_core_execution_metrics_snapshot()
     ds = ray.data.read_datasource(
-        RandomBytesDatasource(),
+        RandomBytesDatasource(
+            num_tasks=num_tasks,
+            num_batches_per_task=num_blocks_per_task,
+            row_size=ctx.target_max_block_size,
+        ),
         override_num_blocks=num_tasks,
-        num_batches_per_task=num_blocks_per_task,
-        row_size=ctx.target_max_block_size,
     )
     # Note the following calls to ds will not fully execute it.
     assert ds.schema() is not None
     assert ds.count() == num_blocks_per_task * num_tasks
     assert ds._plan.initial_num_blocks() == num_tasks
-    assert (
-        ds.size_bytes()
-        >= 0.7 * ctx.target_max_block_size * num_blocks_per_task * num_tasks
-    )
     last_snapshot = assert_core_execution_metrics_equals(
         CoreExecutionMetrics(
             task_count={
                 "_get_datasource_or_legacy_reader": 1,
-                "_execute_read_task_split": 1,
+                "ReadRandomBytes": lambda count: count < num_tasks,
             },
             object_store_stats={
                 "cumulative_created_plasma_bytes": lambda count: True,
@@ -294,10 +286,12 @@ def test_filter(ray_start_regular_shared, target_max_block_size):
     block_size = 1024
 
     ds = ray.data.read_datasource(
-        RandomBytesDatasource(),
+        RandomBytesDatasource(
+            num_tasks=1,
+            num_batches_per_task=num_blocks_per_task,
+            row_size=block_size,
+        ),
         override_num_blocks=1,
-        num_batches_per_task=num_blocks_per_task,
-        row_size=block_size,
     )
 
     ds = ds.filter(lambda _: True)
@@ -319,10 +313,12 @@ def test_lazy_block_list(shutdown_only, target_max_block_size):
     num_tasks = 10
 
     ds = ray.data.read_datasource(
-        RandomBytesDatasource(),
+        RandomBytesDatasource(
+            num_tasks=num_tasks,
+            num_batches_per_task=num_blocks_per_task,
+            row_size=block_size,
+        ),
         override_num_blocks=num_tasks,
-        num_batches_per_task=num_blocks_per_task,
-        row_size=block_size,
     )
     ds.schema()
 
@@ -401,10 +397,12 @@ def test_read_large_data(ray_start_cluster):
         return pd.DataFrame({"one": [1]})
 
     ds = ray.data.read_datasource(
-        RandomBytesDatasource(),
+        RandomBytesDatasource(
+            num_tasks=1,
+            num_batches_per_task=num_blocks_per_task,
+            row_size=block_size,
+        ),
         override_num_blocks=1,
-        num_batches_per_task=num_blocks_per_task,
-        row_size=block_size,
     )
 
     ds = ds.map_batches(foo, num_rows_per_batch=None)
@@ -419,11 +417,13 @@ def _test_write_large_data(
     block_size = 10 * 1024 * 1024
 
     ds = ray.data.read_datasource(
-        RandomBytesDatasource(),
+        RandomBytesDatasource(
+            num_tasks=1,
+            num_batches_per_task=num_blocks_per_task,
+            row_size=block_size,
+            use_bytes=use_bytes,
+        ),
         override_num_blocks=1,
-        num_batches_per_task=num_blocks_per_task,
-        row_size=block_size,
-        use_bytes=use_bytes,
     )
 
     # This should succeed without OOM.
@@ -565,13 +565,15 @@ def test_block_slicing(
     num_tasks = 1
 
     ds = ray.data.read_datasource(
-        RandomBytesDatasource(),
+        RandomBytesDatasource(
+            num_tasks=num_tasks,
+            num_batches_per_task=num_batches,
+            num_rows_per_batch=num_rows_per_batch,
+            row_size=row_size,
+            use_bytes=False,
+            use_arrow=True,
+        ),
         override_num_blocks=num_tasks,
-        num_batches_per_task=num_batches,
-        num_rows_per_batch=num_rows_per_batch,
-        row_size=row_size,
-        use_bytes=False,
-        use_arrow=True,
     ).materialize()
     assert ds._plan.initial_num_blocks() == expected_num_blocks
 

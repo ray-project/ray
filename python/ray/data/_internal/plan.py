@@ -356,7 +356,6 @@ class ExecutionPlan:
             The schema of the output dataset.
         """
         if self._schema is not None:
-            print("Using cached schema")
             return self._schema
 
         schema = None
@@ -364,14 +363,10 @@ class ExecutionPlan:
             self._snapshot_bundle is not None
             and not self._snapshot_operator.output_dependencies
         ):
-            print("Using materialize block schema")
             schema = unify_block_metadata_schema(self._snapshot_bundle.metadata)
         elif self._logical_plan.dag.schema() is not None:
-            print("Using schema from logical plan")
             schema = self._logical_plan.dag.schema()
         elif fetch_if_missing:
-            print(self._logical_plan.dag)
-            print("Actually loading data")
             blocks_with_metadata, _, _ = self.execute_to_iterator()
             for _, metadata in blocks_with_metadata:
                 if metadata.schema is not None and (

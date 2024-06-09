@@ -2,7 +2,7 @@ from typing import TYPE_CHECKING, Callable, Iterable, List, Optional, Union
 
 import numpy as np
 
-from ray.data._internal.util import _check_pyarrow_version
+from ray.data._internal.util import _check_pyarrow_version, unify_block_metadata_schema
 from ray.data.block import Block, BlockMetadata
 from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
 
@@ -88,7 +88,14 @@ class Datasource:
 
     def schema(self) -> Optional[Union[type, "pyarrow.lib.Schema"]]:
         """Return the schema of the datasource, or ``None`` if unknown."""
-        return None
+        if self.should_create_reader:
+            return None
+
+        read_tasks = self.get_read_tasks(1)
+        assert len(read_tasks) > 0, "Datasource must return at least one read task"
+        # `get_read_tasks` isn't guaranteed to return exactly one read task.
+        metadata = (read_task.get_metadata() for read_task in read_tasks)
+        return unify_block_metadata_schema(metadata)
 
 
 @Deprecated

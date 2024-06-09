@@ -1,8 +1,10 @@
 import abc
+import itertools
 from typing import TYPE_CHECKING, List, Union
 
 from ray.data._internal.execution.interfaces import RefBundle
 from ray.data._internal.logical.interfaces import LogicalOperator
+from ray.data._internal.util import _check_pyarrow_version, unify_block_metadata_schema
 from ray.data.block import Block, BlockMetadata
 from ray.types import ObjectRef
 
@@ -34,6 +36,17 @@ class AbstractFrom(LogicalOperator, metaclass=abc.ABCMeta):
     @property
     def input_data(self) -> List[RefBundle]:
         return self._input_data
+
+    def schema(self):
+        metadata = list(
+            itertools.chain.from_iterable(
+                bundle.metadata for bundle in self._input_data
+            )
+        )
+        return unify_block_metadata_schema(metadata)
+
+    def num_rows(self):
+        return sum(bundle.num_rows() or 0 for bundle in self._input_data)
 
 
 class FromItems(AbstractFrom):

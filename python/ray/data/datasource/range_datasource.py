@@ -1,4 +1,5 @@
 import builtins
+import functools
 from copy import copy
 from typing import Iterable, List, Optional, Tuple
 
@@ -113,6 +114,7 @@ class RangeDatasource(Datasource):
 
         return read_tasks
 
+    @functools.cache
     def schema(self):
         if self._n == 0:
             return None
