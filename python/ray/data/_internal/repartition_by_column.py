@@ -55,12 +55,12 @@ def split_single_block(
         arr_ = arr
     else:
         arr_ = np.rec.fromarrays(arr.values())
-        indices = np.hstack([[0], np.where(arr_[1:] != arr_[:-1])[0] + 1, [len(arr)]])
+        indices = np.hstack([[0], np.where(arr_[1:] != arr_[:-1])[0] + 1, [len(arr_)]])
 
     for start, end in zip(indices[:-1], indices[1:]):
         key = arr_[start]
         key = tuple(key) if isinstance(key, np.record) else key
-        yield key, accessor.slice(start, end)
+        yield key, accessor.slice(start, end, copy=True)
 
 
 def merge_tables(keys_and_blocks: List[Tuple]):
