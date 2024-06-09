@@ -1,8 +1,10 @@
+import logging
 import sys
 
 import pytest
 
 from ray.exceptions import RayActorError, RayTaskError
+from ray.tests.conftest import propagate_logs  # noqa
 from ray.train import Checkpoint
 from ray.train._internal.session import _TrainingResult
 from ray.train._internal.storage import StorageContext
@@ -114,6 +116,40 @@ def test_trial_logdir_length():
     )
     trial.init_local_path()
     assert len(trial.storage.trial_dir_name) < 200
+
+
+def test_should_stop(caplog, propagate_logs):  # noqa
+    """Test whether `Trial.should_stop()` works as expected given a result dict."""
+    trial = Trial(
+        "MockTrainable",
+        stub=True,
+        trial_id="abcd1234",
+        stopping_criterion={"a": 10.0, "b/c": 20.0},
+    )
+
+    # Criterion is not reached yet -> don't stop.
+    result = {"a": 9.999, "b/c": 0.0, "some_other_key": True}
+    assert not trial.should_stop(result)
+
+    # Criterion is exactly reached -> stop.
+    result = {"a": 10.0, "b/c": 0.0, "some_other_key": False}
+    assert trial.should_stop(result)
+
+    # Criterion is exceeded -> stop.
+    result = {"a": 10000.0, "b/c": 0.0, "some_other_key": False}
+    assert trial.should_stop(result)
+
+    # Test nested criterion.
+    result = {"a": 5.0, "b/c": 1000.0, "some_other_key": False}
+    assert trial.should_stop(result)
+
+    # Test criterion NOT found in result metrics.
+    result = {"b/c": 1000.0}
+    with caplog.at_level(logging.WARNING):
+        trial.should_stop(result)
+    assert (
+        "Stopping criterion 'a' not found in result dict! Available keys are ['b/c']."
+    ) in caplog.text
 
 
 if __name__ == "__main__":
