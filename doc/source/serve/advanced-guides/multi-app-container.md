@@ -10,7 +10,7 @@ This feature is experimental and the API is subject to change. If you have addit
 The `container` runtime environment feature uses [Podman](https://podman.io/) to start and run containers. Follow the [Podman Installation Instructions](https://podman.io/docs/installation) to install Podman in the environment for all head and worker nodes.
 
 :::{note}
-For Ubuntu, the Podman package is available in the official repositories for Ubuntu 22.10 and newer.
+For Ubuntu, the Podman package is available in the official repositories for Ubuntu 20.10 and newer.
 
 ```bash
 sudo apt-get update
