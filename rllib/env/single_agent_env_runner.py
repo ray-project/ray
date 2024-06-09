@@ -83,7 +83,8 @@ class SingleAgentEnvRunner(EnvRunner):
             module_spec: SingleAgentRLModuleSpec = self.config.rl_module_spec
             module_spec.observation_space = self._env_to_module.observation_space
             module_spec.action_space = self.env.single_action_space
-            module_spec.model_config_dict = self.config.model_config
+            if module_spec.model_config_dict is None:
+                module_spec.model_config_dict = self.config.model_config
             # Only load a light version of the module, if available. This is useful
             # if the the module has target or critic networks not needed in sampling
             # or inference.
@@ -212,6 +213,8 @@ class SingleAgentEnvRunner(EnvRunner):
         # Have to reset the env (on all vector sub_envs).
         if force_reset or self._needs_initial_reset:
             # Create n new episodes and make the `on_episode_created` callbacks.
+            # TODO (sven): Add callback `on_episode_created` as soon as
+            # `gymnasium-v1.0.0a2` PR is coming.
             self._episodes = [None for _ in range(self.num_envs)]
             for env_index in range(self.num_envs):
                 self._new_episode(env_index)
@@ -396,13 +399,18 @@ class SingleAgentEnvRunner(EnvRunner):
         # Reset the environment.
         # TODO (simon): Check, if we need here the seed from the config.
         observations, infos = self.env.reset()
+
+        episodes = []
         episodes = [None for _ in range(self.num_envs)]
         for env_index in range(self.num_envs):
             self._new_episode(env_index, episodes)
-        _shared_data = {}
+            # TODO (sven): Add callback `on_episode_created` as soon as
+            # `gymnasium-v1.0.0a2` PR is coming.
 
-        _was_terminated = [False for _ in range(self.num_envs)]
-        _was_truncated = [False for _ in range(self.num_envs)]
+        #_was_terminated = [False for _ in range(self.num_envs)]
+        #_was_truncated = [False for _ in range(self.num_envs)]
+
+        _shared_data = {}
 
         for env_index in range(self.num_envs):
             episodes[env_index].add_env_reset(

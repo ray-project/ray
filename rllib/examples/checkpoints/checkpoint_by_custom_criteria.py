@@ -1,7 +1,7 @@
 """Example extracting a checkpoint from n trials using one or more custom criteria.
 
 This example:
-- runs a simple CartPole experiment with three different learning rates (three tune
+- runs a CartPole experiment with three different learning rates (three tune
 "trials"). During the experiment, for each trial, we create a checkpoint at each
 iteration.
 - at the end of the experiment, we compare the trials and pick the one that performed

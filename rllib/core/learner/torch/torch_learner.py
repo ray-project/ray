@@ -136,7 +136,7 @@ class TorchLearner(Learner):
         self, loss_per_module: Dict[ModuleID, TensorType], **kwargs
     ) -> ParamDict:
         for optim in self._optimizer_parameters:
-            # set_to_none is a faster way to zero out the gradients
+            # `set_to_none=True` is a faster way to zero out the gradients.
             optim.zero_grad(set_to_none=True)
         loss_per_module[ALL_MODULES].backward()
         grads = {pid: p.grad for pid, p in self._params.items()}

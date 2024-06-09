@@ -178,8 +178,22 @@ class RuntimeEnvAgent:
         runtime_env_agent_port,
     ):
         super().__init__()
-        self._runtime_env_dir = runtime_env_dir
+
+        self._logger = default_logger
         self._logging_params = logging_params
+        self._logging_params.update(filename=self.LOG_FILENAME)
+        self._logger = setup_component_logger(
+            logger_name=default_logger.name, **self._logging_params
+        )
+        # Don't propagate logs to the root logger, because these logs
+        # might contain sensitive information. Instead, these logs should
+        # be confined to the runtime env agent log file `self.LOG_FILENAME`.
+        self._logger.propagate = False
+
+        self._logger.info("Starting runtime env agent at pid %s", os.getpid())
+        self._logger.info(f"Parent raylet pid is {os.environ.get('RAY_RAYLET_PID')}")
+
+        self._runtime_env_dir = runtime_env_dir
         self._gcs_address = gcs_address
         self._per_job_logger_cache = dict()
         # Cache the results of creating envs to avoid repeatedly calling into
@@ -232,18 +246,6 @@ class RuntimeEnvAgent:
             self.unused_runtime_env_processor,
         )
 
-        self._logger = default_logger
-        self._logging_params.update(filename=self.LOG_FILENAME)
-        self._logger = setup_component_logger(
-            logger_name=default_logger.name, **self._logging_params
-        )
-        # Don't propagate logs to the root logger, because these logs
-        # might contain sensitive information. Instead, these logs should
-        # be confined to the runtime env agent log file `self.LOG_FILENAME`.
-        self._logger.propagate = False
-
-        self._logger.info("Starting runtime env agent at pid %s", os.getpid())
-        self._logger.info("Parent raylet pid is %s", int(os.environ["RAY_RAYLET_PID"]))
         self._logger.info(
             "Listening to address %s, port %d", address, runtime_env_agent_port
         )

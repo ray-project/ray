@@ -318,20 +318,6 @@ message NodeSnapshot {
   repeated string node_activity = 3;
 }
 
-message NodeDeathInfo {
-  // TODO(sang): Update drain reason
-  enum Reason {
-    UNSPECIFIED = 0;
-    EXPECTED_TERMINATION = 1;
-    UNEXPECTED_TERMINATION = 2;
-    AUTOSCALER_DRAIN_PREEMPTED = 3;
-    AUTOSCALER_DRAIN_IDLE = 4;
-  }
-  Reason reason = 1;
-  // A message describing the reason for the node death.
-  string reason_message = 2;
-}
-
 message GcsNodeInfo {
   // State of a node.
   enum GcsNodeState {

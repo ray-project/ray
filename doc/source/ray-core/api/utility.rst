@@ -11,6 +11,10 @@ Utility
    ray.cluster_resources
    ray.available_resources
 
+   .. Other docs have references to these
+   ray.util.queue.Empty
+   ray.util.queue.Full
+
 .. _custom-metric-api-ref:
 
 Custom Metrics

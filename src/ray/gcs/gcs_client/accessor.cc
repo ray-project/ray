@@ -1151,6 +1151,7 @@ Status InternalKVAccessor::AsyncInternalKVDel(const std::string &ns,
   rpc::InternalKVDelRequest req;
   req.set_namespace_(ns);
   req.set_key(key);
+  req.set_del_by_prefix(del_by_prefix);
   client_impl_->GetGcsRpcClient().InternalKVDel(
       req,
       [callback](const Status &status, const rpc::InternalKVDelReply &reply) {

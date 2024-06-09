@@ -8,6 +8,8 @@ from ray.util.annotations import PublicAPI
 if TYPE_CHECKING:
     import torch
 
+    from ray.experimental.channel.torch_tensor_nccl_channel import TorchTensorAllocator
+
 logger = logging.getLogger(__name__)
 
 # 100KB to store metadata and/or exceptions.
@@ -107,10 +109,6 @@ class TorchTensorType(ChannelOutputType):
 
         import torch
 
-        default_device = _get_default_torch_device()
-        ctx = ChannelContext.get_current()
-        ctx.serialization_context.set_torch_device(default_device)
-
         def serialize(t):
             ctx = ChannelContext.get_current()
             return ctx.serialization_context.serialize_tensor(t)
@@ -132,13 +130,16 @@ class TorchTensorType(ChannelOutputType):
         self,
         writer: Optional["ray.actor.ActorHandle"],
         readers: List[Optional["ray.actor.ActorHandle"]],
+        _torch_tensor_allocator: Optional["TorchTensorAllocator"] = None,
     ) -> type:
         if self.requires_nccl():
             from ray.experimental.channel.torch_tensor_nccl_channel import (
                 TorchTensorNcclChannel,
             )
 
-            return TorchTensorNcclChannel(writer, readers, self)
+            return TorchTensorNcclChannel(
+                writer, readers, self, _torch_tensor_allocator=_torch_tensor_allocator
+            )
 
         # Transfer via host memory using a shared-memory channel.
         import torch

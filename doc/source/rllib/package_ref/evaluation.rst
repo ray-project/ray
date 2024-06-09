@@ -145,6 +145,17 @@ Miscellaneous
 
 .. _workerset-reference-docs:
 
+EnvRunner API
+-------------
+
+.. currentmodule:: ray.rllib.env.env_runner
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   EnvRunner
+
 EnvRunnerGroup API
 ------------------
 
