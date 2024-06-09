@@ -1,5 +1,4 @@
 import abc
-import itertools
 from typing import TYPE_CHECKING, List, Union
 
 from ray.data._internal.execution.interfaces import RefBundle

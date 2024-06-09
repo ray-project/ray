@@ -1,6 +1,9 @@
-from typing import Iterator, List, Optional
+from typing import TYPE_CHECKING, Iterator, List, Optional, Union
 
 from .operator import Operator
+
+if TYPE_CHECKING:
+    import pyarrow
 
 
 class LogicalOperator(Operator):

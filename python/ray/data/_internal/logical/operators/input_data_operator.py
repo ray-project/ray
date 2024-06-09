@@ -1,4 +1,3 @@
-import itertools
 from typing import Callable, List, Optional
 
 from ray.data._internal.execution.interfaces import RefBundle
