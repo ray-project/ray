@@ -84,10 +84,23 @@ class Datasource:
 
     def num_rows(self) -> Optional[int]:
         """Return the number of rows in the datasource, or ``None`` if unknown."""
-        return None
+        # Legacy datasources might not implement `get_read_tasks`.
+        if self.should_create_reader:
+            return None
+
+        read_tasks = self.get_read_tasks(1)
+        assert len(read_tasks) > 0, "Datasource must return at least one read task"
+        # `get_read_tasks` isn't guaranteed to return exactly one read task.
+        metadata = (read_task.get_metadata() for read_task in read_tasks)
+
+        if all(meta.num_rows is None for meta in metadata):
+            return None
+        else:
+            return sum(meta.num_rows for meta in metadata)
 
     def schema(self) -> Optional[Union[type, "pyarrow.lib.Schema"]]:
         """Return the schema of the datasource, or ``None`` if unknown."""
+        # Legacy datasources might not implement `get_read_tasks`.
         if self.should_create_reader:
             return None
 
