@@ -7,8 +7,8 @@ set -x
 
 GPU=""
 BASE_IMAGE="ubuntu:focal"
-WHEEL_URL="https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp37-cp37m-manylinux2014_x86_64.whl"
-PYTHON_VERSION="3.7.16"
+WHEEL_URL="https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp39-cp39-manylinux2014_x86_64.whl"
+PYTHON_VERSION="3.9.19"
 
 
 while [[ $# -gt 0 ]]
@@ -17,7 +17,7 @@ key="$1"
 case $key in
     --gpu)
     GPU="-gpu"
-    BASE_IMAGE="nvidia/cuda:11.2.0-cudnn8-devel-ubuntu18.04"
+    BASE_IMAGE="nvidia/cuda:11.8.0-cudnn8-devel-ubuntu20.04"
     ;;
     --base-image)
     # Override for the base image.
@@ -39,20 +39,15 @@ case $key in
     # It also can facilitate cleanup.
     OUTPUT_SHA=YES
     ;;
-    --wheel-to-use)
-    # Which wheel to use. This defaults to the latest nightly on python 3.7
-    echo "not implemented, just hardcode me :'("
-    exit 1
-    ;;
     --python-version)
-    # Python version to install. e.g. 3.7.7.
+    # Python version to install. e.g. 3.9.19.
     # Changing python versions may require a different wheel.
-    # If not provided defaults to 3.7.7
+    # If not provided defaults to 3.9.19
     shift
     PYTHON_VERSION=$1
     ;;
     *)
-    echo "Usage: build-docker.sh [ --gpu ] [ --base-image ] [ --no-cache-build ] [ --shas-only ] [ --build-development-image ] [ --build-examples ] [ --wheel-to-use ] [ --python-version ]"
+    echo "Usage: build-docker.sh [ --gpu ] [ --base-image ] [ --no-cache-build ] [ --shas-only ] [ --build-development-image ] [ --build-examples ] [ --python-version ]"
     exit 1
 esac
 shift
