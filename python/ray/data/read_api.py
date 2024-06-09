@@ -769,7 +769,7 @@ def read_parquet(
         files.
     """
     if meta_provider is None:
-        meta_provider = get_parquet_metadata_provider()
+        meta_provider = get_parquet_metadata_provider(override_num_blocks)
     arrow_parquet_args = _resolve_parquet_args(
         tensor_column_schema,
         **arrow_parquet_args,
@@ -3006,7 +3006,7 @@ def read_lance(
         datasource=datasource,
         ray_remote_args=ray_remote_args,
         concurrency=concurrency,
-        override_num_locks=override_num_blocks,
+        override_num_blocks=override_num_blocks,
     )
 
 

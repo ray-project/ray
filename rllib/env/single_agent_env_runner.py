@@ -91,12 +91,9 @@ class SingleAgentEnvRunner(EnvRunner):
         try:
             module_spec: SingleAgentRLModuleSpec = self.config.rl_module_spec
             module_spec.observation_space = self._env_to_module.observation_space
-            # TODO (simon): The `gym.Wrapper` for `gym.vector.VectorEnv` should
-            #  actually hold the spaces for a single env, but for boxes the
-            #  shape is (1, 1) which brings a problem with the action dists.
-            #  shape=(1,) is expected.
             module_spec.action_space = self.env.envs[0].action_space
-            module_spec.model_config_dict = self.config.model_config
+            if module_spec.model_config_dict is None:
+                module_spec.model_config_dict = self.config.model_config
             # Only load a light version of the module, if available. This is useful
             # if the the module has target or critic networks not needed in sampling
             # or inference.
