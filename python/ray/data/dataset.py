@@ -85,7 +85,6 @@ from ray.data.context import DataContext
 from ray.data.datasource import (
     Connection,
     Datasink,
-    Datasource,
     FilenameProvider,
     ReadTask,
     _BigQueryDatasink,
@@ -2748,8 +2747,8 @@ class Dataset:
         If pyarrow can't represent your data, this method errors.
 
         By default, the format of the output files is ``{uuid}_{block_idx}.parquet``,
-        where ``uuid`` is a unique id for the dataset. To modify this behavior, 
-        implement a custom :class:`~ray.data.datasource.FilenameProvider` and pass it in 
+        where ``uuid`` is a unique id for the dataset. To modify this behavior,
+        implement a custom :class:`~ray.data.datasource.FilenameProvider` and pass it in
         as the ``filename_provider`` argument.
 
         Examples:
@@ -2847,8 +2846,8 @@ class Dataset:
         pandas dataframes.
 
         By default, the format of the output files is ``{uuid}_{block_idx}.json``,
-        where ``uuid`` is a unique id for the dataset. To modify this behavior, 
-        implement a custom :class:`~ray.data.datasource.FilenameProvider` and pass it in 
+        where ``uuid`` is a unique id for the dataset. To modify this behavior,
+        implement a custom :class:`~ray.data.datasource.FilenameProvider` and pass it in
         as the ``filename_provider`` argument.
 
         Examples:
@@ -3143,7 +3142,7 @@ class Dataset:
         pyarrow tables.
 
         By default, the format of the output files is ``{uuid}_{block_idx}.tfrecords``,
-        where ``uuid`` is a unique id for the dataset. To modify this behavior, 
+        where ``uuid`` is a unique id for the dataset. To modify this behavior,
         implement a custom :class:`~ray.data.datasource.FilenameProvider`
         and pass it in as the ``filename_provider`` argument.
 
