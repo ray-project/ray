@@ -67,11 +67,6 @@ Algorithms
    :py:class:`~ray.rllib.algorithms.algorithm.Algorithm` class to train two different policies in parallel
    (also using multi-agent API).
 
-Catalogs
---------
-
-
-
 Checkpoints
 -----------
 
@@ -122,11 +117,12 @@ Curriculum Learning
 -  |new_stack| `How to set up curriculum learning with the custom callbacks API <https://github.com/ray-project/ray/blob/master/rllib/examples/curriculum/curriculum_learning.py>`__:
    Example of how to make the environment go through different levels of difficulty (from easy to harder to solve)
    and thus help the learning algorithm to cope with an otherwise unsolvable task.
-   Also see the :doc:`curriculum learning how-to </rllib/rllib-advanced-api#curriculum-learning>` from the documentation.
+   Also see the :doc:`curriculum learning how-to </rllib/rllib-advanced-api>` from the documentation.
 
 Debugging
 ---------
-
+- |old_stack| `How to train an RLlib algorithm using a deterministic/reproducible setup <https://github.com/ray-project/ray/blob/master/rllib/examples/debugging/deterministic_training.py>`__:
+   Example showing how you can train an RLlib algo in a deterministic, reproducible fashion using seeding.
 
 Environments
 ------------
@@ -142,6 +138,20 @@ Environments
    Use this example to try things out and watch the game and the learning progress live in the editor.
    Providing a compiled game, this example could also run in distributed fashion with `num_env_runners > 0`.
    For a more heavy-weight, distributed, cloud-based example, see ``Unity3D client/server`` below.
+
+- |old_stack| `Unity3D client/server <https://github.com/ray-project/ray/tree/master/rllib/examples/envs/external_envs/unity3d_server.py>`__:
+   Example of how to setup n distributed Unity3D (compiled) games in the cloud that function as data collecting
+   clients against a central RLlib Policy server learning how to play the game.
+   The n distributed clients could themselves be servers for external/human players and allow for control
+   being fully in the hands of the Unity entities instead of RLlib.
+   Note: Uses Unity's MLAgents SDK (>=1.0) and supports all provided MLAgents example games and multi-agent setups.
+
+- |old_stack| `CartPole client/server <https://github.com/ray-project/ray/tree/master/rllib/examples/envs/external_envs/cartpole_server.py>`__:
+   Example of online serving of predictions for a simple CartPole policy.
+
+- |old_stack| `Saving experiences <https://github.com/ray-project/ray/blob/master/rllib/examples/offline_rl/saving_experiences.py>`__:
+   Example of how to externally generate experience batches in RLlib-compatible format.
+
 
 Evaluation
 ----------
@@ -170,8 +180,12 @@ Hierarchical Training
 Inference (of Models/Policies)
 ------------------------------
 
--
-
+- |old_stack| `How to do inference with an already trained policy <https://github.com/ray-project/ray/blob/master/rllib/examples/inference/policy_inference_after_training.py>`__:
+   Example of how to perform inference (compute actions) on an already trained policy.
+- |old_stack| `How to do inference with an already trained (LSTM) policy <https://github.com/ray-project/ray/blob/master/rllib/examples/inference/policy_inference_after_training_with_lstm.py>`__:
+   Example of how to perform inference (compute actions) on an already trained (LSTM) policy.
+- |old_stack| `How to do inference with an already trained (attention) policy <https://github.com/ray-project/ray/blob/master/rllib/examples/inference/policy_inference_after_training_with_attention.py>`__:
+   Example of how to perform inference (compute actions) on an already trained (attention) policy.
 
 Metrics
 -------
@@ -233,33 +247,13 @@ Ray Tune and RLlib
 RLModules
 ---------
 
-- |new_stack| `How to Custom tune experiment <https://github.com/ray-project/ray/blob/master/rllib/examples/ray_tune/custom_experiment.py>`__:
-   How to run a custom Ray Tune experiment with RLlib with custom training- and evaluation phases.
-
 - |new_stack| `Autoregressive action distribution example <https://github.com/ray-project/ray/blob/master/rllib/examples/rl_modules/autoregressive_actions.py>`__:
    Learning with an auto-regressive action distribution (for example, two action components, where distribution of the second component depends on the first's actually sampled value).
 
 - |old_stack| `Parametric actions <https://github.com/ray-project/ray/blob/master/rllib/examples/_old_api_stack/parametric_actions_cartpole.py>`__:
    Example of how to handle variable-length or parametric action spaces.
-
 - |old_stack| `Using the "Repeated" space of RLlib for variable lengths observations <https://github.com/ray-project/ray/blob/master/rllib/examples/_old_api_stack/complex_struct_space.py>`__:
    How to use RLlib's `Repeated` space to handle variable length observations.
-
-
-Tuned Examples
-++++++++++++++
-
-- `Tuned examples <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples>`__:
-   Collection of tuned hyperparameters sorted by algorithm.
-
-
-
-TODO: clean up from here on
-
-
-Custom- and Complex Models
---------------------------
-
 - |old_stack| `Custom Keras model <https://github.com/ray-project/ray/blob/master/rllib/examples/_old_api_stack/custom_keras_model.py>`__:
    Example of using a custom Keras model.
 - |old_stack| `Registering a custom model with supervised loss <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_model_loss_and_metrics.py>`__:
@@ -276,22 +270,15 @@ Custom- and Complex Models
    Example of DeepMind's Differentiable Neural Computer for partially observable environments.
 
 
-Serving and Offline
--------------------
-- `Unity3D client/server <https://github.com/ray-project/ray/tree/master/rllib/examples/envs/external_envs/unity3d_server.py>`__:
-   Example of how to setup n distributed Unity3D (compiled) games in the cloud that function as data collecting
-   clients against a central RLlib Policy server learning how to play the game.
-   The n distributed clients could themselves be servers for external/human players and allow for control
-   being fully in the hands of the Unity entities instead of RLlib.
-   Note: Uses Unity's MLAgents SDK (>=1.0) and supports all provided MLAgents example games and multi-agent setups.
-- `CartPole client/server <https://github.com/ray-project/ray/tree/master/rllib/examples/envs/external_envs/cartpole_server.py>`__:
-   Example of online serving of predictions for a simple CartPole policy.
-- `Saving experiences <https://github.com/ray-project/ray/blob/master/rllib/examples/offline_rl/saving_experiences.py>`__:
-   Example of how to externally generate experience batches in RLlib-compatible format.
+Tuned Examples
+++++++++++++++
+
+- `Tuned examples <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples>`__:
+   Collection of tuned hyperparameters sorted by algorithm.
 
 
 Community Examples
-------------------
+++++++++++++++++++
 - |old_stack| `Arena AI <https://sites.google.com/view/arena-unity/home>`__:
    A General Evaluation Platform and Building Toolkit for Single/Multi-Agent Intelligence
    with RLlib-generated baselines.
@@ -328,7 +315,7 @@ Community Examples
 
 
 Blog Posts
-----------
+++++++++++
 
 - |old_stack| `Attention Nets and More with RLlib’s Trajectory View API <https://medium.com/distributed-computing-with-ray/attention-nets-and-more-with-rllibs-trajectory-view-api-d326339a6e65>`__:
    Blog describing RLlib's new "trajectory view API" and how it enables implementations of GTrXL (attention net) architectures.
