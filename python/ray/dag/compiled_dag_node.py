@@ -390,9 +390,10 @@ class CompiledDAG:
         reader ref on the driver node if the channel backing store needs to be resized.
         However, remote functions cannot be invoked on the driver.
 
-        An accelerated DAG creates an instance of this class when the DAG is
-        initialized. This class has an empty implementation, though it serves as a way
-        for the output writer to invoke remote functions on the driver node.
+        An accelerated DAG creates an actor from this class when the DAG is intialized.
+        The actor is on the same node as the driver. This class has an empty
+        implementation, though it serves as a way for the output writer to invoke remote
+        functions on the driver node.
         """
 
         pass
@@ -482,18 +483,13 @@ class CompiledDAG:
         # this DAG, if any.
         self._nccl_group_id: Optional[str] = None
 
-        # Creates the driver actor.
+        # Creates the driver actor on the same node as the driver.
         #
         # To support the driver as a reader, the output writer needs to be able to
-        # invoke remote functions on the driver. This is necessary so that the output
-        # writer can create a reader ref on the driver node, and later potentially
-        # create a larger reader ref on the driver node if the channel backing store
-        # needs to be resized. However, remote functions cannot be invoked on the
-        # driver.
-        #
-        # An accelerated DAG creates an instance of this class when the DAG is
-        # initialized. This class has an empty implementation, though it serves as a way
-        # for the output writer to invoke remote functions on the driver node.
+        # invoke remote functions on the driver (e.g., to create the reader ref, to
+        # create a reader ref for a larger object when the channel backing store is
+        # resized, etc.). The `_driver_actor` serves as a way for the output writer to
+        # invoke remote functions on the driver node.
         self._driver_actor = CompiledDAG.DAGDriverProxyActor.options(
             scheduling_strategy=NodeAffinitySchedulingStrategy(
                 ray.get_runtime_context().get_node_id(), soft=False
