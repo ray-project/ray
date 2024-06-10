@@ -40,7 +40,8 @@ class ObjectManagerClient {
   ObjectManagerClient(const std::string &address,
                       const int port,
                       ClientCallManager &client_call_manager,
-                      int num_connections = 4)
+                      int num_connections =
+                          ::RayConfig::instance().object_manager_client_connection_num())
       : num_connections_(num_connections) {
     push_rr_index_ = rand() % num_connections_;
     pull_rr_index_ = rand() % num_connections_;

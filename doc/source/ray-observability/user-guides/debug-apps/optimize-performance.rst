@@ -346,8 +346,11 @@ Here are the steps to use PyTorch Profiler during training with Ray Train or bat
 
 * Visualize the results with tools like Tensorboard.
 
+GPU Profiling with Nsight System Profiler
+------------------------------------------
+GPU profiling is critical for ML training and inference. Ray allows users to run Nsight System Profiler with Ray actors and tasks. :ref:`See for details <profiling-nsight-profiler>`.
 
-Profiling for Developers
+Profiling for developers
 ------------------------
 If you are developing Ray Core or debugging some system level failures, profiling the Ray Core could help. In this case, see :ref:`Profiling for Ray developers <ray-core-internal-profiling>`.
 

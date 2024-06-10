@@ -38,7 +38,6 @@ swap:
   cellular network: mobile network
   chapter: documents|pages|sections
   check box: checkbox
-  check: select
   CLI: command-line tool
   click on: click|click in
   Cloud: Google Cloud Platform|GCP
@@ -58,10 +57,14 @@ swap:
   Googling: search with Google
   grayed-out: unavailable
   HTTPs: HTTPS
+  "[Hh]uggingface": HuggingFace
   in order to: to
   ingest: import|load
   k8s: Kubernetes
+  "[Kk]ube[Rr]ay": KubeRay
   long press: touch & hold
+  MacOS: macOS
+  HomeBrew: Homebrew
   network IP address: internal IP address
   omnibox: address bar
   open-source: open source

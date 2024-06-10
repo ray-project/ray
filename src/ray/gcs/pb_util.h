@@ -112,6 +112,8 @@ inline std::shared_ptr<ray::rpc::ActorTableData> CreateActorTableData(
 /// Helper function to produce worker failure data.
 inline std::shared_ptr<ray::rpc::WorkerTableData> CreateWorkerFailureData(
     const WorkerID &worker_id,
+    const NodeID &node_id,
+    const std::string &ip_address,
     int64_t timestamp,
     rpc::WorkerExitType disconnect_type,
     const std::string &disconnect_detail,
@@ -121,6 +123,8 @@ inline std::shared_ptr<ray::rpc::WorkerTableData> CreateWorkerFailureData(
   // Only report the worker id + delta (new data upon worker failures).
   // GCS will merge the data with original worker data.
   worker_failure_info_ptr->mutable_worker_address()->set_worker_id(worker_id.Binary());
+  worker_failure_info_ptr->mutable_worker_address()->set_raylet_id(node_id.Binary());
+  worker_failure_info_ptr->mutable_worker_address()->set_ip_address(ip_address);
   worker_failure_info_ptr->set_timestamp(timestamp);
   worker_failure_info_ptr->set_exit_type(disconnect_type);
   worker_failure_info_ptr->set_exit_detail(disconnect_detail);
@@ -166,20 +170,25 @@ inline const std::string &GetActorDeathCauseString(
 inline rpc::RayErrorInfo GetErrorInfoFromActorDeathCause(
     const rpc::ActorDeathCause &death_cause) {
   rpc::RayErrorInfo error_info;
-  if (death_cause.context_case() == ContextCase::kActorDiedErrorContext ||
-      death_cause.context_case() == ContextCase::kCreationTaskFailureContext) {
+  switch (death_cause.context_case()) {
+  case ContextCase::kActorDiedErrorContext:
+  case ContextCase::kCreationTaskFailureContext:
     error_info.mutable_actor_died_error()->CopyFrom(death_cause);
     error_info.set_error_type(rpc::ErrorType::ACTOR_DIED);
-  } else if (death_cause.context_case() == ContextCase::kRuntimeEnvFailedContext) {
+    break;
+  case ContextCase::kRuntimeEnvFailedContext:
     error_info.mutable_runtime_env_setup_failed_error()->CopyFrom(
         death_cause.runtime_env_failed_context());
     error_info.set_error_type(rpc::ErrorType::RUNTIME_ENV_SETUP_FAILED);
-  } else if (death_cause.context_case() == ContextCase::kActorUnschedulableContext) {
+    break;
+  case ContextCase::kActorUnschedulableContext:
     error_info.set_error_type(rpc::ErrorType::ACTOR_UNSCHEDULABLE_ERROR);
-  } else if (death_cause.context_case() == ContextCase::kOomContext) {
+    break;
+  case ContextCase::kOomContext:
     error_info.mutable_actor_died_error()->CopyFrom(death_cause);
     error_info.set_error_type(rpc::ErrorType::OUT_OF_MEMORY);
-  } else {
+    break;
+  default:
     RAY_CHECK(death_cause.context_case() == ContextCase::CONTEXT_NOT_SET);
     error_info.set_error_type(rpc::ErrorType::ACTOR_DIED);
   }
@@ -296,6 +305,37 @@ inline bool IsTaskTerminated(const rpc::TaskEvents &task_event) {
 
   const auto &state_updates = task_event.state_updates();
   return state_updates.has_finished_ts() || state_updates.has_failed_ts();
+}
+
+inline size_t NumProfileEvents(const rpc::TaskEvents &task_event) {
+  if (!task_event.has_profile_events()) {
+    return 0;
+  }
+  return static_cast<size_t>(task_event.profile_events().events_size());
+}
+
+inline TaskAttempt GetTaskAttempt(const rpc::TaskEvents &task_event) {
+  return std::make_pair<>(TaskID::FromBinary(task_event.task_id()),
+                          task_event.attempt_number());
+}
+
+inline bool IsActorTask(const rpc::TaskEvents &task_event) {
+  if (!task_event.has_task_info()) {
+    return false;
+  }
+
+  const auto &task_info = task_event.task_info();
+  return task_info.type() == rpc::TaskType::ACTOR_TASK ||
+         task_info.type() == rpc::TaskType::ACTOR_CREATION_TASK;
+}
+
+inline bool IsTaskFinished(const rpc::TaskEvents &task_event) {
+  if (!task_event.has_state_updates()) {
+    return false;
+  }
+
+  const auto &state_updates = task_event.state_updates();
+  return state_updates.has_finished_ts();
 }
 
 /// Fill the rpc::TaskStateUpdate with the timestamps according to the status change.

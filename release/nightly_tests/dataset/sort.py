@@ -1,13 +1,12 @@
-import json
 import os
 import resource
-import time
 from typing import List
 import traceback
 
 import numpy as np
 import psutil
 
+from benchmark import Benchmark
 import ray
 from ray._private.internal_api import memory_summary
 from ray.data._internal.util import _check_pyarrow_version
@@ -17,34 +16,42 @@ from ray.data.datasource import Datasource, ReadTask
 
 
 class RandomIntRowDatasource(Datasource):
-    """An example datasource that generates rows with random int64 columns.
+    """An example datasource that generates rows with random int64 keys and a
+    row of the given byte size.
 
     Examples:
         >>> source = RandomIntRowDatasource()
-        >>> ray.data.read_datasource(source, n=10, num_columns=2).take()
-        ... {'c_0': 1717767200176864416, 'c_1': 999657309586757214}
-        ... {'c_0': 4983608804013926748, 'c_1': 1160140066899844087}
+        >>> ray.data.read_datasource(source, n=10, row_size_bytes=2).take()
+        ... {'c_0': 1717767200176864416, 'c_1': b"..."}
+        ... {'c_0': 4983608804013926748, 'c_1': b"..."}
     """
 
     def prepare_read(
-        self, parallelism: int, n: int, num_columns: int
+        self, parallelism: int, n: int, row_size_bytes: int
     ) -> List[ReadTask]:
         _check_pyarrow_version()
         import pyarrow
 
         read_tasks: List[ReadTask] = []
         block_size = max(1, n // parallelism)
+        row = np.random.bytes(row_size_bytes)
 
-        def make_block(count: int, num_columns: int) -> Block:
+        def make_block(count: int, row_size_bytes: int) -> Block:
             return pyarrow.Table.from_arrays(
-                np.random.randint(
-                    np.iinfo(np.int64).max, size=(num_columns, count), dtype=np.int64
-                ),
-                names=[f"c_{i}" for i in range(num_columns)],
+                [
+                    np.random.randint(
+                        np.iinfo(np.int64).max, size=(count,), dtype=np.int64
+                    ),
+                    [row for _ in range(count)],
+                ],
+                names=["c_0", "c_1"],
             )
 
         schema = pyarrow.Table.from_pydict(
-            {f"c_{i}": [0] for i in range(num_columns)}
+            {
+                "c_0": [0],
+                "c_1": [row],
+            }
         ).schema
 
         i = 0
@@ -52,15 +59,15 @@ class RandomIntRowDatasource(Datasource):
             count = min(block_size, n - i)
             meta = BlockMetadata(
                 num_rows=count,
-                size_bytes=8 * count * num_columns,
+                size_bytes=count * (8 + row_size_bytes),
                 schema=schema,
                 input_files=None,
                 exec_stats=None,
             )
             read_tasks.append(
                 ReadTask(
-                    lambda count=count, num_columns=num_columns: [
-                        make_block(count, num_columns)
+                    lambda count=count, row_size_bytes=row_size_bytes: [
+                        make_block(count, row_size_bytes)
                     ],
                     meta,
                 )
@@ -86,7 +93,15 @@ if __name__ == "__main__":
     parser.add_argument(
         "--shuffle", help="shuffle instead of sort", action="store_true"
     )
+    # Use 100-byte records to approximately match Cloudsort benchmark.
+    parser.add_argument(
+        "--row-size-bytes",
+        help="Size of each row in bytes.",
+        default=100,
+        type=int,
+    )
     parser.add_argument("--use-polars", action="store_true")
+    parser.add_argument("--limit-num-blocks", type=int, default=None)
 
     args = parser.parse_args()
 
@@ -94,6 +109,11 @@ if __name__ == "__main__":
         print("Using polars for sort")
         ctx = DataContext.get_current()
         ctx.use_polars = True
+    ctx = DataContext.get_current()
+    if args.limit_num_blocks is not None:
+        DataContext.get_current().set_config(
+            "debug_limit_shuffle_execution_to_num_blocks", args.limit_num_blocks
+        )
 
     num_partitions = int(args.num_partitions)
     partition_size = int(float(args.partition_size))
@@ -102,72 +122,69 @@ if __name__ == "__main__":
         f"{partition_size / 1e9}GB partition size, "
         f"{num_partitions * partition_size / 1e9}GB total"
     )
-    start_time = time.time()
-    source = RandomIntRowDatasource()
-    num_rows_per_partition = partition_size // 8
-    ds = ray.data.read_datasource(
-        source,
-        parallelism=num_partitions,
-        n=num_rows_per_partition * num_partitions,
-        num_columns=1,
-    )
-    exc = None
-    ds_stats = None
-    try:
+
+    def run_benchmark(args):
+        source = RandomIntRowDatasource()
+        # Each row has an int64 key.
+        num_rows_per_partition = partition_size // (8 + args.row_size_bytes)
+        ds = ray.data.read_datasource(
+            source,
+            override_num_blocks=num_partitions,
+            n=num_rows_per_partition * num_partitions,
+            row_size_bytes=args.row_size_bytes,
+        )
+
         if args.shuffle:
             ds = ds.random_shuffle()
         else:
             ds = ds.sort(key="c_0")
-        ds.materialize()
+        exc = None
+        try:
+            ds = ds.materialize()
+        except Exception as e:
+            exc = e
+
         ds_stats = ds.stats()
-    except Exception as e:
-        exc = e
-        pass
 
-    end_time = time.time()
+        # TODO(swang): Add stats for OOM worker kills. This is not very
+        # convenient to do programmatically right now because it requires
+        # querying Prometheus.
+        print("==== Driver memory summary ====")
+        maxrss = int(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss * 1e3)
+        print(f"max: {maxrss / 1e9}/GB")
+        process = psutil.Process(os.getpid())
+        rss = int(process.memory_info().rss)
+        print(f"rss: {rss / 1e9}/GB")
 
-    duration = end_time - start_time
-    print("Finished in", duration)
-    print("")
+        try:
+            print(memory_summary(stats_only=True))
+        except Exception:
+            print("Failed to retrieve memory summary")
+            print(traceback.format_exc())
+        print("")
 
-    print("==== Driver memory summary ====")
-    maxrss = int(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss * 1e3)
-    print(f"max: {maxrss / 1e9}/GB")
-    process = psutil.Process(os.getpid())
-    rss = int(process.memory_info().rss)
-    print(f"rss: {rss / 1e9}/GB")
+        if ds_stats is not None:
+            print(ds_stats)
 
-    try:
-        print(memory_summary(stats_only=True))
-    except Exception:
-        print("Failed to retrieve memory summary")
-        print(traceback.format_exc())
-    print("")
-
-    if ds_stats is not None:
-        print(ds_stats)
-
-    if "TEST_OUTPUT_JSON" in os.environ:
-        out_file = open(os.environ["TEST_OUTPUT_JSON"], "w")
         results = {
-            "time": duration,
-            "success": "1" if exc is None else "0",
             "num_partitions": num_partitions,
             "partition_size": partition_size,
-            "perf_metrics": [
-                {
-                    "perf_metric_name": "peak_driver_memory",
-                    "perf_metric_value": maxrss,
-                    "perf_metric_type": "MEMORY",
-                },
-                {
-                    "perf_metric_name": "runtime",
-                    "perf_metric_value": duration,
-                    "perf_metric_type": "LATENCY",
-                },
-            ],
+            "peak_driver_memory": maxrss,
         }
-        json.dump(results, out_file)
 
-    if exc:
-        raise exc
+        # Wait until after the stats have been printed to raise any exceptions.
+        if exc is not None:
+            print(results)
+            raise exc
+
+        return results
+
+    benchmark = Benchmark("sort-shuffle")
+    benchmark.run_fn("main", run_benchmark, args)
+
+    test_output_json = os.environ.get("TEST_OUTPUT_JSON", "")
+    if test_output_json:
+        out_file = open(test_output_json, "w")
+        benchmark.write_result(out_file)
+
+    ray.timeline("dump.json")

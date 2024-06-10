@@ -25,20 +25,28 @@ extern "C" {
 struct redisAsyncContext;
 struct redisReply;
 typedef void redisCallbackFn(struct redisAsyncContext *, void *, void *);
+
+#include "hiredis/async.h"
+#include "hiredis/hiredis.h"
 }
 
 namespace ray {
-
 namespace gcs {
+
+struct RedisContextDeleter {
+  RedisContextDeleter(){};
+
+  void operator()(redisContext *context) { redisFree(context); }
+  void operator()(redisAsyncContext *context) { redisAsyncFree(context); }
+};
 
 /// \class RedisAsyncContext
 /// RedisAsyncContext class is a wrapper of hiredis `asyncRedisContext`, providing
 /// C++ style and thread-safe API.
 class RedisAsyncContext {
  public:
-  explicit RedisAsyncContext(redisAsyncContext *redis_async_context);
-
-  ~RedisAsyncContext();
+  explicit RedisAsyncContext(
+      std::unique_ptr<redisAsyncContext, RedisContextDeleter> redis_async_context);
 
   /// Get the raw 'redisAsyncContext' pointer.
   ///
@@ -83,7 +91,7 @@ class RedisAsyncContext {
   /// data and don't actually do any IO operations. So the perf impact of adding the lock
   /// should be minimum.
   std::mutex mutex_;
-  redisAsyncContext *redis_async_context_{nullptr};
+  std::unique_ptr<redisAsyncContext, RedisContextDeleter> redis_async_context_;
 };
 
 }  // namespace gcs

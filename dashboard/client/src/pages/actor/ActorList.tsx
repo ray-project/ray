@@ -1,6 +1,6 @@
 import React from "react";
 import ActorTable, { ActorTableProps } from "../../components/ActorTable";
-import { Actor } from "../../type/actor";
+import { ActorDetail } from "../../type/actor";
 import { useActorList } from "./hook/useActorList";
 
 /**
@@ -14,8 +14,8 @@ const ActorList = ({
   jobId?: string | null;
   detailPathPrefix?: string;
 } & Pick<ActorTableProps, "filterToActorId" | "onFilterChange">) => {
-  const data: { [actorId: string]: Actor } | undefined = useActorList();
-  const actors: { [actorId: string]: Actor } = data ? data : {};
+  const data: { [actorId: string]: ActorDetail } | undefined = useActorList();
+  const actors: { [actorId: string]: ActorDetail } = data ? data : {};
 
   return (
     <div>

@@ -47,7 +47,7 @@ SERVE_GRAFANA_PANELS = [
         ],
         fill=0,
         stack=False,
-        grid_pos=GridPos(0, 0, 8, 8),
+        grid_pos=GridPos(0, 0, 12, 8),
     ),
     Panel(
         id=7,
@@ -56,15 +56,15 @@ SERVE_GRAFANA_PANELS = [
         unit="qps",
         targets=[
             Target(
-                expr='sum(rate(ray_serve_num_http_requests{{application=~"$Application",application!~"",route=~"$HTTP_Route",route!~"/-/.*",{global_filters}}}[5m])) by (application, route)',
+                expr='sum(rate(ray_serve_num_http_requests_total{{application=~"$Application",application!~"",route=~"$HTTP_Route",route!~"/-/.*",{global_filters}}}[5m])) by (application, route)',
                 legend="{{application, route}}",
             ),
             Target(
-                expr='sum(rate(ray_serve_num_grpc_requests{{application=~"$Application",application!~"",method=~"$gRPC_Method",{global_filters}}}[5m])) by (application, method)',
+                expr='sum(rate(ray_serve_num_grpc_requests_total{{application=~"$Application",application!~"",method=~"$gRPC_Method",{global_filters}}}[5m])) by (application, method)',
                 legend="{{application, method}}",
             ),
         ],
-        grid_pos=GridPos(8, 0, 8, 8),
+        grid_pos=GridPos(12, 0, 12, 8),
     ),
     Panel(
         id=8,
@@ -73,15 +73,32 @@ SERVE_GRAFANA_PANELS = [
         unit="qps",
         targets=[
             Target(
-                expr='sum(rate(ray_serve_num_http_error_requests{{application=~"$Application",application!~"",route=~"$HTTP_Route",route!~"/-/.*",{global_filters}}}[5m])) by (application, route)',
+                expr='sum(rate(ray_serve_num_http_error_requests_total{{application=~"$Application",application!~"",route=~"$HTTP_Route",route!~"/-/.*",{global_filters}}}[5m])) by (application, route)',
                 legend="{{application, route}}",
             ),
             Target(
-                expr='sum(rate(ray_serve_num_grpc_error_requests{{application=~"$Application",application!~"",method=~"$gRPC_Method",{global_filters}}}[5m])) by (application, method)',
+                expr='sum(rate(ray_serve_num_grpc_error_requests_total{{application=~"$Application",application!~"",method=~"$gRPC_Method",{global_filters}}}[5m])) by (application, method)',
                 legend="{{application, method}}",
             ),
         ],
-        grid_pos=GridPos(16, 0, 8, 8),
+        grid_pos=GridPos(0, 1, 12, 8),
+    ),
+    Panel(
+        id=17,
+        title="Error QPS per application per error code",
+        description="Error QPS for each selected application.",
+        unit="qps",
+        targets=[
+            Target(
+                expr='sum(rate(ray_serve_num_http_error_requests_total{{application=~"$Application",application!~"",route=~"$HTTP_Route",route!~"/-/.*",{global_filters}}}[5m])) by (application, route, error_code)',
+                legend="{{application, route, error_code}}",
+            ),
+            Target(
+                expr='sum(rate(ray_serve_num_grpc_error_requests_total{{application=~"$Application",application!~"",method=~"$gRPC_Method",{global_filters}}}[5m])) by (application, method, error_code)',
+                legend="{{application, method, error_code}}",
+            ),
+        ],
+        grid_pos=GridPos(12, 1, 12, 8),
     ),
     Panel(
         id=12,
@@ -104,7 +121,7 @@ SERVE_GRAFANA_PANELS = [
         ],
         fill=0,
         stack=False,
-        grid_pos=GridPos(0, 1, 8, 8),
+        grid_pos=GridPos(0, 2, 8, 8),
     ),
     Panel(
         id=15,
@@ -127,7 +144,7 @@ SERVE_GRAFANA_PANELS = [
         ],
         fill=0,
         stack=False,
-        grid_pos=GridPos(8, 1, 8, 8),
+        grid_pos=GridPos(8, 2, 8, 8),
     ),
     Panel(
         id=16,
@@ -150,7 +167,7 @@ SERVE_GRAFANA_PANELS = [
         ],
         fill=0,
         stack=False,
-        grid_pos=GridPos(16, 1, 8, 8),
+        grid_pos=GridPos(16, 2, 8, 8),
     ),
     Panel(
         id=2,
@@ -163,7 +180,7 @@ SERVE_GRAFANA_PANELS = [
                 legend="{{application, deployment}}",
             ),
         ],
-        grid_pos=GridPos(0, 2, 8, 8),
+        grid_pos=GridPos(0, 3, 8, 8),
     ),
     Panel(
         id=13,
@@ -172,11 +189,11 @@ SERVE_GRAFANA_PANELS = [
         unit="qps",
         targets=[
             Target(
-                expr='sum(rate(ray_serve_deployment_request_counter{{application=~"$Application",application!~"",{global_filters}}}[5m])) by (application, deployment)',
+                expr='sum(rate(ray_serve_deployment_request_counter_total{{application=~"$Application",application!~"",{global_filters}}}[5m])) by (application, deployment)',
                 legend="{{application, deployment}}",
             ),
         ],
-        grid_pos=GridPos(8, 2, 8, 8),
+        grid_pos=GridPos(8, 3, 8, 8),
     ),
     Panel(
         id=14,
@@ -185,11 +202,11 @@ SERVE_GRAFANA_PANELS = [
         unit="qps",
         targets=[
             Target(
-                expr='sum(rate(ray_serve_deployment_error_counter{{application=~"$Application",application!~"",{global_filters}}}[5m])) by (application, deployment)',
+                expr='sum(rate(ray_serve_deployment_error_counter_total{{application=~"$Application",application!~"",{global_filters}}}[5m])) by (application, deployment)',
                 legend="{{application, deployment}}",
             ),
         ],
-        grid_pos=GridPos(16, 2, 8, 8),
+        grid_pos=GridPos(16, 3, 8, 8),
     ),
     Panel(
         id=9,
@@ -208,7 +225,7 @@ SERVE_GRAFANA_PANELS = [
         ],
         fill=0,
         stack=False,
-        grid_pos=GridPos(0, 3, 8, 8),
+        grid_pos=GridPos(0, 4, 8, 8),
     ),
     Panel(
         id=10,
@@ -227,7 +244,7 @@ SERVE_GRAFANA_PANELS = [
         ],
         fill=0,
         stack=False,
-        grid_pos=GridPos(8, 3, 8, 8),
+        grid_pos=GridPos(8, 4, 8, 8),
     ),
     Panel(
         id=11,
@@ -246,7 +263,7 @@ SERVE_GRAFANA_PANELS = [
         ],
         fill=0,
         stack=False,
-        grid_pos=GridPos(16, 3, 8, 8),
+        grid_pos=GridPos(16, 4, 8, 8),
     ),
     Panel(
         id=3,
@@ -261,7 +278,7 @@ SERVE_GRAFANA_PANELS = [
         ],
         fill=0,
         stack=False,
-        grid_pos=GridPos(0, 4, 8, 8),
+        grid_pos=GridPos(0, 5, 8, 8),
     ),
     Panel(
         id=4,
@@ -283,7 +300,7 @@ SERVE_GRAFANA_PANELS = [
                 legend="Pending Nodes: {{NodeType}}",
             ),
         ],
-        grid_pos=GridPos(8, 4, 8, 8),
+        grid_pos=GridPos(8, 5, 8, 8),
     ),
     Panel(
         id=6,
@@ -303,7 +320,85 @@ SERVE_GRAFANA_PANELS = [
         fill=1,
         linewidth=2,
         stack=False,
-        grid_pos=GridPos(16, 4, 8, 8),
+        grid_pos=GridPos(16, 5, 8, 8),
+    ),
+    Panel(
+        id=20,
+        title="Ongoing HTTP Requests",
+        description="The number of ongoing requests in the HTTP Proxy.",
+        unit="requests",
+        targets=[
+            Target(
+                expr="ray_serve_num_ongoing_http_requests{{{global_filters}}}",
+                legend="Ongoing HTTP Requests",
+            ),
+        ],
+        grid_pos=GridPos(0, 6, 8, 8),
+    ),
+    Panel(
+        id=21,
+        title="Ongoing gRPC Requests",
+        description="The number of ongoing requests in the gRPC Proxy.",
+        unit="requests",
+        targets=[
+            Target(
+                expr="ray_serve_num_ongoing_grpc_requests{{{global_filters}}}",
+                legend="Ongoing gRPC Requests",
+            ),
+        ],
+        grid_pos=GridPos(8, 6, 8, 8),
+    ),
+    Panel(
+        id=22,
+        title="Scheduling Tasks",
+        description="The number of request scheduling tasks in the router.",
+        unit="tasks",
+        targets=[
+            Target(
+                expr="ray_serve_num_scheduling_tasks{{{global_filters}}}",
+                legend="Scheduling Tasks",
+            ),
+        ],
+        grid_pos=GridPos(16, 6, 8, 8),
+    ),
+    Panel(
+        id=23,
+        title="Scheduling Tasks in Backoff",
+        description="The number of request scheduling tasks in the router that are undergoing backoff.",
+        unit="tasks",
+        targets=[
+            Target(
+                expr="ray_serve_num_scheduling_tasks_in_backoff{{{global_filters}}}",
+                legend="Scheduling Tasks in Backoff",
+            ),
+        ],
+        grid_pos=GridPos(0, 7, 8, 8),
+    ),
+    Panel(
+        id=24,
+        title="Controller Control Loop Duration",
+        description="The duration of the last control loop.",
+        unit="seconds",
+        targets=[
+            Target(
+                expr="ray_serve_controller_control_loop_duration_s{{{global_filters}}}",
+                legend="Control Loop Duration",
+            ),
+        ],
+        grid_pos=GridPos(8, 7, 8, 8),
+    ),
+    Panel(
+        id=25,
+        title="Number of Control Loops",
+        description="The number of control loops performed by the controller. Increases monotonically over the controller's lifetime.",
+        unit="loops",
+        targets=[
+            Target(
+                expr="ray_serve_controller_num_control_loops{{{global_filters}}}",
+                legend="Control Loops",
+            ),
+        ],
+        grid_pos=GridPos(16, 7, 8, 8),
     ),
 ]
 

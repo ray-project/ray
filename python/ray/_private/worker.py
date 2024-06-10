@@ -37,12 +37,10 @@ from urllib.parse import urlparse
 import colorama
 import setproctitle
 
-if sys.version_info >= (3, 8):
-    from typing import Literal, Protocol
-else:
-    from typing_extensions import Literal, Protocol
+from typing import Literal, Protocol
 
 import ray
+import ray._private.worker
 import ray._private.node
 import ray._private.parameter
 import ray._private.profiling as profiling
@@ -52,13 +50,16 @@ import ray._private.services as services
 import ray._private.state
 import ray._private.storage as storage
 
+from ray._private.ray_logging.logging_config import LoggingConfig
+
 # Ray modules
 import ray.actor
 import ray.cloudpickle as pickle  # noqa
 import ray.job_config
 import ray.remote_function
 from ray import ActorID, JobID, Language, ObjectRef
-from ray._raylet import StreamingObjectRefGenerator
+from ray._raylet import raise_sys_exit_with_custom_error_message
+from ray._raylet import ObjectRefGenerator, TaskID
 from ray.runtime_env.runtime_env import _merge_runtime_env
 from ray._private import ray_option_utils
 from ray._private.client_mode_hook import client_mode_hook
@@ -107,6 +108,7 @@ RESTORE_WORKER_MODE = 4
 logger = logging.getLogger(__name__)
 
 
+T = TypeVar("T")
 T0 = TypeVar("T0")
 T1 = TypeVar("T1")
 T2 = TypeVar("T2")
@@ -427,10 +429,10 @@ class Worker:
         self.mode = None
         self.actors = {}
         # When the worker is constructed. Record the original value of the
-        # (CUDA_VISIBLE_DEVICES, NEURON_RT_VISIBLE_CORES, TPU_VISIBLE_CHIPS, ..)
-        # environment variables.
-        self.original_gpu_and_accelerator_runtime_ids = (
-            ray._private.utils.get_gpu_and_accelerator_runtime_ids()
+        # (CUDA_VISIBLE_DEVICES, ONEAPI_DEVICE_SELECTOR, ROCR_VISIBLE_DEVICES,
+        # NEURON_RT_VISIBLE_CORES, TPU_VISIBLE_CHIPS, ..) environment variables.
+        self.original_visible_accelerator_ids = (
+            ray._private.utils.get_visible_accelerator_ids()
         )
         # A dictionary that maps from driver id to SerializationContext
         # TODO: clean up the SerializationContext once the job finished.
@@ -439,9 +441,6 @@ class Worker:
         # This event is checked regularly by all of the threads so that they
         # know when to exit.
         self.threads_stopped = threading.Event()
-        # Index of the current session. This number will
-        # increment every time when `ray.shutdown` is called.
-        self._session_index = 0
         # If this is set, the next .remote call should drop into the
         # debugger, at the specified breakpoint ID.
         self.debugger_breakpoint = b""
@@ -467,6 +466,11 @@ class Worker:
         # different drivers that connect to the same Serve instance.
         # See https://github.com/ray-project/ray/pull/35070.
         self._filter_logs_by_job = True
+        # the debugger port for this worker
+        self._debugger_port = None
+        # Cache the job id from initialize_job_config() to optimize lookups.
+        # This is on the critical path of ray.get()/put() calls.
+        self._cached_job_id = None
 
     @property
     def connected(self):
@@ -485,7 +489,9 @@ class Worker:
 
     @property
     def current_job_id(self):
-        if hasattr(self, "core_worker"):
+        if self._cached_job_id is not None:
+            return self._cached_job_id
+        elif hasattr(self, "core_worker"):
             return self.core_worker.get_current_job_id()
         return JobID.nil()
 
@@ -530,16 +536,55 @@ class Worker:
         return self.core_worker.should_capture_child_tasks_in_placement_group()
 
     @property
-    def current_session_and_job(self):
+    def current_cluster_and_job(self):
         """Get the current session index and job id as pair."""
-        assert isinstance(self._session_index, int)
+        assert isinstance(self.node.cluster_id, ray.ClusterID)
         assert isinstance(self.current_job_id, ray.JobID)
-        return self._session_index, self.current_job_id
+        return self.node.cluster_id, self.current_job_id
 
     @property
     def runtime_env(self):
         """Get the runtime env in json format"""
         return self.core_worker.get_current_runtime_env()
+
+    @property
+    def debugger_port(self):
+        """Get the debugger port for this worker"""
+        worker_id = self.core_worker.get_worker_id()
+        return ray._private.state.get_worker_debugger_port(worker_id)
+
+    def set_debugger_port(self, port):
+        worker_id = self.core_worker.get_worker_id()
+        ray._private.state.update_worker_debugger_port(worker_id, port)
+
+    def set_cached_job_id(self, job_id):
+        """Set the cached job id to speed `current_job_id()`."""
+        self._cached_job_id = job_id
+
+    @contextmanager
+    def task_paused_by_debugger(self):
+        """Use while the task is paused by debugger"""
+        try:
+            self.core_worker.update_task_is_debugger_paused(
+                ray.get_runtime_context()._get_current_task_id(), True
+            )
+            yield
+        finally:
+            self.core_worker.update_task_is_debugger_paused(
+                ray.get_runtime_context()._get_current_task_id(), False
+            )
+
+    @contextmanager
+    def worker_paused_by_debugger(self):
+        """
+        Updates the worker num paused threads when the worker is paused by debugger
+        """
+        try:
+            worker_id = self.core_worker.get_worker_id()
+            ray._private.state.update_worker_num_paused_threads(worker_id, 1)
+            yield
+        finally:
+            ray._private.state.update_worker_num_paused_threads(worker_id, -1)
 
     def set_err_file(self, err_file=Optional[IO[AnyStr]]) -> None:
         """Set the worker's err file where stderr is redirected to"""
@@ -549,7 +594,7 @@ class Worker:
         """Set the worker's out file where stdout is redirected to"""
         self._out_file = out_file
 
-    def record_task_log_start(self):
+    def record_task_log_start(self, task_id: TaskID, attempt_number: int):
         """Record the task log info when task starts executing for
         non concurrent actor tasks."""
         if not self._enable_record_actor_task_log and not self.actor_id.is_nil():
@@ -559,14 +604,19 @@ class Worker:
             # https://github.com/ray-project/ray/issues/35598
             return
 
+        if not hasattr(self, "core_worker"):
+            return
+
         self.core_worker.record_task_log_start(
+            task_id,
+            attempt_number,
             self.get_out_file_path(),
             self.get_err_file_path(),
             self.get_current_out_offset(),
             self.get_current_err_offset(),
         )
 
-    def record_task_log_end(self):
+    def record_task_log_end(self, task_id: TaskID, attempt_number: int):
         """Record the task log info when task finishes executing for
         non concurrent actor tasks."""
         if not self._enable_record_actor_task_log and not self.actor_id.is_nil():
@@ -576,8 +626,14 @@ class Worker:
             # https://github.com/ray-project/ray/issues/35598
             return
 
+        if not hasattr(self, "core_worker"):
+            return
+
         self.core_worker.record_task_log_end(
-            self.get_current_out_offset(), self.get_current_err_offset()
+            task_id,
+            attempt_number,
+            self.get_current_out_offset(),
+            self.get_current_err_offset(),
         )
 
     def get_err_file_path(self) -> str:
@@ -656,7 +712,13 @@ class Worker:
     def set_load_code_from_local(self, load_code_from_local):
         self._load_code_from_local = load_code_from_local
 
-    def put_object(self, value, object_ref=None, owner_address=None):
+    def put_object(
+        self,
+        value: Any,
+        object_ref: Optional["ray.ObjectRef"] = None,
+        owner_address: Optional[str] = None,
+        _is_experimental_channel: bool = False,
+    ):
         """Put value in the local object store with object reference `object_ref`.
 
         This assumes that the value for `object_ref` has not yet been placed in
@@ -671,6 +733,10 @@ class Worker:
             object_ref: The object ref of the value to be
                 put. If None, one will be generated.
             owner_address: The serialized address of object's owner.
+            _is_experimental_channel: An experimental flag for mutable
+                objects. If True, then the returned object will not have a
+                valid value. The object must be written to using the
+                ray.experimental.channel API before readers can read.
 
         Returns:
             ObjectRef: The object ref the object was put under.
@@ -704,6 +770,11 @@ class Worker:
                 f"{sio.getvalue()}"
             )
             raise TypeError(msg) from e
+
+        # If the object is mutable, then the raylet should never read the
+        # object. Instead, clients will keep the object pinned.
+        pin_object = not _is_experimental_channel
+
         # This *must* be the first place that we construct this python
         # ObjectRef because an entry with 0 local references is created when
         # the object is Put() in the core worker, expecting that this python
@@ -712,7 +783,11 @@ class Worker:
         # reference counter.
         return ray.ObjectRef(
             self.core_worker.put_serialized_object_and_increment_local_ref(
-                serialized_value, object_ref=object_ref, owner_address=owner_address
+                serialized_value,
+                object_ref=object_ref,
+                pin_object=pin_object,
+                owner_address=owner_address,
+                _is_experimental_channel=_is_experimental_channel,
             ),
             # The initial local reference is already acquired internally.
             skip_adding_local_ref=True,
@@ -734,7 +809,11 @@ class Worker:
             context = self.get_serialization_context()
             return context.deserialize_objects(data_metadata_pairs, object_refs)
 
-    def get_objects(self, object_refs: list, timeout: Optional[float] = None):
+    def get_objects(
+        self,
+        object_refs: list,
+        timeout: Optional[float] = None,
+    ):
         """Get the values in the object store associated with the IDs.
 
         Return the values from the local object store for object_refs. This
@@ -761,7 +840,9 @@ class Worker:
 
         timeout_ms = int(timeout * 1000) if timeout is not None else -1
         data_metadata_pairs = self.core_worker.get_objects(
-            object_refs, self.current_task_id, timeout_ms
+            object_refs,
+            self.current_task_id,
+            timeout_ms,
         )
         debugger_breakpoint = b""
         for data, metadata in data_metadata_pairs:
@@ -773,17 +854,25 @@ class Worker:
                     debugger_breakpoint = metadata_fields[1][
                         len(ray_constants.OBJECT_METADATA_DEBUG_PREFIX) :
                     ]
-        return (
-            self.deserialize_objects(data_metadata_pairs, object_refs),
-            debugger_breakpoint,
-        )
+        values = self.deserialize_objects(data_metadata_pairs, object_refs)
+        for i, value in enumerate(values):
+            if isinstance(value, RayError):
+                if isinstance(value, ray.exceptions.ObjectLostError):
+                    global_worker.core_worker.dump_object_store_memory_usage()
+                if isinstance(value, RayTaskError):
+                    raise value.as_instanceof_cause()
+                else:
+                    raise value
+        return values, debugger_breakpoint
 
     def main_loop(self):
         """The main loop a worker runs to receive and execute tasks."""
 
         def sigterm_handler(signum, frame):
-            shutdown(True)
-            sys.exit(1)
+            raise_sys_exit_with_custom_error_message(
+                "The process receives a SIGTERM.", exit_code=1
+            )
+            # Note: shutdown() function is called from atexit handler.
 
         ray._private.utils.set_sigterm_handler(sigterm_handler)
         self.core_worker.run_task_loop()
@@ -842,10 +931,10 @@ class Worker:
             # Close the pubsub client to avoid leaking file descriptors.
             subscriber.close()
 
-    def get_resource_ids_for_resource(
+    def get_accelerator_ids_for_accelerator_resource(
         self, resource_name: str, resource_regex: str
     ) -> Union[List[str], List[int]]:
-        """Get the resource IDs that are assigned to the given resource.
+        """Get the accelerator IDs that are assigned to the given accelerator resource.
 
         Args:
             resource_name: The name of the resource.
@@ -854,12 +943,11 @@ class Worker:
         Returns:
             (List[str]) The IDs that are assigned to the given resource pre-configured.
             (List[int]) The IDs that are assigned to the given resource.
-
         """
         resource_ids = self.core_worker.resource_ids()
         assigned_ids = set()
-        # Handle both normal and placement group GPU, accelerator resources.
-        # Note: We should only get the GPU, accelerator ids from the placement
+        # Handle both normal and placement group accelerator resources.
+        # Note: We should only get the accelerator ids from the placement
         # group resource that does not contain the bundle index!
         import re
 
@@ -869,31 +957,30 @@ class Worker:
                     assigned_ids.add(resource_id)
 
         # If the user had already set the environment variables
-        # (CUDA_VISIBLE_DEVICES, NEURON_RT_VISIBLE_CORES, TPU_VISIBLE_CHIPS, ..) then
-        # respect that in the sense that only IDs that appear in (CUDA_VISIBLE_DEVICES,
-        # NEURON_RT_VISIBLE_CORES, TPU_VISIBLE_CHIPS, ..) should be returned.
-        if (
-            self.original_gpu_and_accelerator_runtime_ids.get(resource_name, None)
-            is not None
-        ):
-            runtime_ids = self.original_gpu_and_accelerator_runtime_ids[resource_name]
-            assigned_ids = [str(runtime_ids[i]) for i in assigned_ids]
-            # Give all accelerator ids local_mode.
+        # (CUDA_VISIBLE_DEVICES, ONEAPI_DEVICE_SELECTOR, NEURON_RT_VISIBLE_CORES,
+        # TPU_VISIBLE_CHIPS, ..) then respect that in the sense that only IDs
+        # that appear in (CUDA_VISIBLE_DEVICES, ONEAPI_DEVICE_SELECTOR,
+        # ROCR_VISIBLE_DEVICES, NEURON_RT_VISIBLE_CORES, TPU_VISIBLE_CHIPS, ..)
+        # should be returned.
+        if self.original_visible_accelerator_ids.get(resource_name, None) is not None:
+            original_ids = self.original_visible_accelerator_ids[resource_name]
+            assigned_ids = {str(original_ids[i]) for i in assigned_ids}
+            # Give all accelerator ids in local_mode.
             if self.mode == LOCAL_MODE:
                 if resource_name == ray_constants.GPU:
-                    max_runtime_ids = self.node.get_resource_spec().num_gpus
+                    max_accelerators = self.node.get_resource_spec().num_gpus
                 else:
-                    max_runtime_ids = self.node.get_resource_spec().resources.get(
+                    max_accelerators = self.node.get_resource_spec().resources.get(
                         resource_name, None
                     )
-                if max_runtime_ids:
-                    assigned_ids = runtime_ids[:max_runtime_ids]
+                if max_accelerators:
+                    assigned_ids = original_ids[:max_accelerators]
         return list(assigned_ids)
 
 
 @PublicAPI
 @client_mode_hook
-def get_gpu_ids():
+def get_gpu_ids() -> Union[List[int], List[str]]:
     """Get the IDs of the GPUs that are available to the worker.
 
     If the CUDA_VISIBLE_DEVICES environment variable was set when the worker
@@ -906,7 +993,7 @@ def get_gpu_ids():
     """
     worker = global_worker
     worker.check_connected()
-    return worker.get_resource_ids_for_resource(
+    return worker.get_accelerator_ids_for_accelerator_resource(
         ray_constants.GPU, f"^{ray_constants.GPU}_group_[0-9A-Za-z]+$"
     )
 
@@ -1071,7 +1158,6 @@ class RayContext(BaseContext, Mapping):
     python_version: str
     ray_version: str
     ray_commit: str
-    protocol_version: Optional[str]
 
     def __init__(self, address_info: Dict[str, Optional[str]]):
         super().__init__()
@@ -1079,9 +1165,6 @@ class RayContext(BaseContext, Mapping):
         self.python_version = "{}.{}.{}".format(*sys.version_info[:3])
         self.ray_version = ray.__version__
         self.ray_commit = ray.__commit__
-        # No client protocol version since this driver was intiialized
-        # directly
-        self.protocol_version = None
         self.address_info = address_info
 
     def __getitem__(self, key):
@@ -1147,6 +1230,7 @@ def init(
     configure_logging: bool = True,
     logging_level: int = ray_constants.LOGGER_LEVEL,
     logging_format: Optional[str] = None,
+    logging_config: Optional[LoggingConfig] = None,
     log_to_driver: bool = True,
     namespace: Optional[str] = None,
     runtime_env: Optional[Union[Dict[str, Any], "RuntimeEnv"]] = None,  # noqa: F821
@@ -1221,8 +1305,12 @@ def init(
             quantities for them available.
         labels: [Experimental] The key-value labels of the node.
         object_store_memory: The amount of memory (in bytes) to start the
-            object store with. By default, this is automatically set based on
-            available system memory.
+            object store with.
+            By default, this is 30%
+            (ray_constants.DEFAULT_OBJECT_STORE_MEMORY_PROPORTION)
+            of available system memory capped by
+            the shm size and 200G (ray_constants.DEFAULT_OBJECT_STORE_MAX_MEMORY_BYTES)
+            but can be set higher.
         local_mode: Deprecated: consider using the Ray Debugger instead.
         ignore_reinit_error: If true, Ray suppresses errors from calling
             ray.init() a second time. Ray won't be restarted.
@@ -1241,12 +1329,15 @@ def init(
         configure_logging: True (default) if configuration of logging is
             allowed here. Otherwise, the user may want to configure it
             separately.
-        logging_level: Logging level, defaults to logging.INFO. Ignored unless
+        logging_level: Logging level for the "ray" logger of the driver process,
+            defaults to logging.INFO. Ignored unless "configure_logging" is true.
+        logging_format: Logging format for the "ray" logger of the driver process,
+            defaults to a string containing a timestamp, filename, line number, and
+            message. See the source file ray_constants.py for details. Ignored unless
             "configure_logging" is true.
-        logging_format: Logging format, defaults to string containing a
-            timestamp, filename, line number, and message. See the source file
-            ray_constants.py for details. Ignored unless "configure_logging"
-            is true.
+        logging_config: [Experimental] Logging configuration will be applied to the
+            root loggers for both the driver process and all worker processes belonging
+            to the current job. See :class:`~ray.LoggingConfig` for details.
         log_to_driver: If true, the output from all of the worker
             processes on all nodes will be directed to the driver.
         namespace: A namespace is a logical grouping of jobs and named actors.
@@ -1299,10 +1390,16 @@ def init(
         Exception: An exception is raised if an inappropriate combination of
             arguments is passed in.
     """
+    # Configure the "ray" logger for the driver process.
     if configure_logging:
         setup_logger(logging_level, logging_format or ray_constants.LOGGER_FORMAT)
     else:
         logging.getLogger("ray").handlers.clear()
+
+    # Configure the logging settings for the driver process.
+    if logging_config:
+        dict_config = logging_config._get_dict_config()
+        logging.config.dictConfig(dict_config)
 
     # Parse the hidden options:
     _enable_object_reconstruction: bool = kwargs.pop(
@@ -1328,16 +1425,27 @@ def init(
     # Fix for https://github.com/ray-project/ray/issues/26729
     _skip_env_hook: bool = kwargs.pop("_skip_env_hook", False)
 
+    # terminate any signal before connecting driver
+    def sigterm_handler(signum, frame):
+        sys.exit(signum)
+
+    if threading.current_thread() is threading.main_thread():
+        ray._private.utils.set_sigterm_handler(sigterm_handler)
+    else:
+        logger.warning(
+            "SIGTERM handler is not set because current thread "
+            "is not the main thread."
+        )
+
     # If available, use RAY_ADDRESS to override if the address was left
     # unspecified, or set to "auto" in the call to init
     address_env_var = os.environ.get(ray_constants.RAY_ADDRESS_ENVIRONMENT_VARIABLE)
-    if address_env_var:
-        if address is None or address == "auto":
-            address = address_env_var
-            logger.info(
-                f"Using address {address_env_var} set in the environment "
-                f"variable {ray_constants.RAY_ADDRESS_ENVIRONMENT_VARIABLE}"
-            )
+    if address_env_var and (address is None or address == "auto"):
+        address = address_env_var
+        logger.info(
+            f"Using address {address_env_var} set in the environment "
+            f"variable {ray_constants.RAY_ADDRESS_ENVIRONMENT_VARIABLE}"
+        )
 
     if address is not None and "://" in address:
         # Address specified a protocol, use ray client
@@ -1465,6 +1573,11 @@ def init(
             # Set runtime_env in job_config if passed in as part of ray.init()
             job_config.set_runtime_env(runtime_env)
 
+    # Pass the logging_config to job_config to configure loggers of all worker
+    # processes belonging to the job.
+    if logging_config:
+        job_config.set_py_logging_config(logging_config)
+
     redis_address, gcs_address = None, None
     bootstrap_address = services.canonicalize_bootstrap_address(address, _temp_dir)
     if bootstrap_address is not None:
@@ -1504,18 +1617,6 @@ def init(
 
     if bootstrap_address is None:
         # In this case, we need to start a new cluster.
-
-        # terminate any signal before connecting driver
-        def sigterm_handler(signum, frame):
-            sys.exit(signum)
-
-        try:
-            ray._private.utils.set_sigterm_handler(sigterm_handler)
-        except ValueError:
-            logger.warning(
-                "Failed to set SIGTERM handler, processes might "
-                "not be cleaned up properly on exit."
-            )
 
         # Don't collect usage stats in ray.init() unless it's a nightly wheel.
         from ray._private.usage import usage_lib
@@ -1560,10 +1661,11 @@ def init(
         # handler. We still spawn a reaper process in case the atexit handler
         # isn't called.
         _global_node = ray._private.node.Node(
+            ray_params=ray_params,
             head=True,
             shutdown_at_exit=False,
             spawn_reaper=True,
-            ray_params=ray_params,
+            ray_init_cluster=True,
         )
     else:
         # In this case, we are connecting to an existing cluster.
@@ -1741,7 +1843,8 @@ def shutdown(_exiting_interpreter: bool = False):
     # we will tear down any processes spawned by ray.init() and the background
     # IO thread in the core worker doesn't currently handle that gracefully.
     if hasattr(global_worker, "core_worker"):
-        global_worker.core_worker.shutdown()
+        if global_worker.mode == SCRIPT_MODE or global_worker.mode == LOCAL_MODE:
+            global_worker.core_worker.shutdown_driver()
         del global_worker.core_worker
     # We need to reset function actor manager to clear the context
     global_worker.function_actor_manager = FunctionActorManager(global_worker)
@@ -1760,6 +1863,7 @@ def shutdown(_exiting_interpreter: bool = False):
     # TODO(rkn): Instead of manually resetting some of the worker fields, we
     # should simply set "global_worker" to equal "None" or something like that.
     global_worker.set_mode(None)
+    global_worker.set_cached_job_id(None)
 
 
 atexit.register(shutdown, True)
@@ -1789,7 +1893,7 @@ sys.excepthook = custom_excepthook
 
 
 def print_to_stdstream(data):
-    should_dedup = data.get("pid") not in ["autoscaler", "raylet"]
+    should_dedup = data.get("pid") not in ["autoscaler"]
 
     if data["is_err"]:
         if should_dedup:
@@ -1907,9 +2011,9 @@ def print_worker_logs(data: Dict[str, str], print_file: Any):
         else:
             res = "pid="
             if data.get("actor_name"):
-                res = data["actor_name"] + " " + res
+                res = f"{data['actor_name']} {res}"
             elif data.get("task_name"):
-                res = data["task_name"] + " " + res
+                res = f"{data['task_name']} {res}"
             return res
 
     def message_for(data: Dict[str, str], line: str) -> str:
@@ -1927,9 +2031,9 @@ def print_worker_logs(data: Dict[str, str], print_file: Any):
             return colorama.Fore.YELLOW
         elif data.get("pid") == "autoscaler":
             if "Error:" in line or "Warning:" in line:
-                return colorama.Style.BRIGHT + colorama.Fore.YELLOW
+                return colorama.Fore.YELLOW
             else:
-                return colorama.Style.BRIGHT + colorama.Fore.CYAN
+                return colorama.Fore.CYAN
         elif os.getenv("RAY_COLOR_PREFIX") == "1":
             colors = [
                 # colorama.Fore.BLUE, # Too dark
@@ -1962,41 +2066,25 @@ def print_worker_logs(data: Dict[str, str], print_file: Any):
         pid = data.get("pid")
         lines = data.get("lines", [])
 
-    if data.get("ip") == data.get("localhost"):
-        for line in lines:
-            if RAY_TQDM_MAGIC in line:
-                process_tqdm(line)
+    ip = data.get("ip")
+    ip_prefix = "" if ip == data.get("localhost") else f", ip={ip}"
+    for line in lines:
+        if RAY_TQDM_MAGIC in line:
+            process_tqdm(line)
+        else:
+            hide_tqdm()
+            # If RAY_COLOR_PREFIX=0, do not wrap with any color codes
+            if os.getenv("RAY_COLOR_PREFIX") == "0":
+                color_pre = ""
+                color_post = ""
             else:
-                hide_tqdm()
-                print(
-                    "{}{}({}{}){} {}".format(
-                        colorama.Style.DIM,
-                        color_for(data, line),
-                        prefix_for(data),
-                        pid,
-                        colorama.Style.RESET_ALL,
-                        message_for(data, line),
-                    ),
-                    file=print_file,
-                )
-    else:
-        for line in lines:
-            if RAY_TQDM_MAGIC in line:
-                process_tqdm(line)
-            else:
-                hide_tqdm()
-                print(
-                    "{}{}({}{}, ip={}){} {}".format(
-                        colorama.Style.DIM,
-                        color_for(data, line),
-                        prefix_for(data),
-                        pid,
-                        data.get("ip"),
-                        colorama.Style.RESET_ALL,
-                        message_for(data, line),
-                    ),
-                    file=print_file,
-                )
+                color_pre = color_for(data, line)
+                color_post = colorama.Style.RESET_ALL
+            print(
+                f"{color_pre}({prefix_for(data)}{pid}{ip_prefix}){color_post} "
+                f"{message_for(data, line)}",
+                file=print_file,
+            )
     # Restore once at end of batch to avoid excess hiding/unhiding of tqdm.
     restore_tqdm()
 
@@ -2062,12 +2150,13 @@ def listen_error_messages(worker, threads_stopped):
                 continue
 
             error_message = error_data["error_message"]
-            if error_data["type"] == ray_constants.TASK_PUSH_ERROR:
-                # TODO(ekl) remove task push errors entirely now that we have
-                # the separate unhandled exception handler.
-                pass
-            else:
-                logger.warning(error_message)
+            print_to_stdstream(
+                {
+                    "lines": [error_message],
+                    "pid": "raylet",
+                    "is_err": False,
+                }
+            )
     except (OSError, ConnectionError) as e:
         logger.error(f"listen_error_messages: {e}")
 
@@ -2296,7 +2385,7 @@ def connect(
         runtime_env_hash,
         startup_token,
         session_name,
-        node.cluster_id,
+        node.cluster_id.hex(),
         "" if mode != SCRIPT_MODE else entrypoint,
         worker_launch_time_ms,
         worker_launched_time_ms,
@@ -2378,8 +2467,6 @@ def disconnect(exiting_interpreter=False):
             worker.logger_thread.join()
         worker.threads_stopped.clear()
 
-        worker._session_index += 1
-
         for leftover in stdout_deduplicator.flush():
             print_worker_logs(leftover, sys.stdout)
         for leftover in stderr_deduplicator.flush():
@@ -2394,19 +2481,6 @@ def disconnect(exiting_interpreter=False):
         ray_actor = None  # This can occur during program termination
     if ray_actor is not None:
         ray_actor._ActorClassMethodMetadata.reset_cache()
-
-
-def start_import_thread():
-    """Start the import thread if the worker is connected."""
-    worker = global_worker
-    worker.check_connected()
-
-    assert _mode() not in (
-        RESTORE_WORKER_MODE,
-        SPILL_WORKER_MODE,
-    ), "import thread can not be used in IO workers."
-    if worker.import_thread and ray._raylet.Config.start_python_importer_thread():
-        worker.import_thread.start()
 
 
 @contextmanager
@@ -2474,7 +2548,7 @@ def get(object_refs: "ObjectRef[R]", *, timeout: Optional[float] = None) -> R:
 @PublicAPI
 @client_mode_hook
 def get(
-    object_refs: Union[ray.ObjectRef, Sequence[ray.ObjectRef]],
+    object_refs: Union["ObjectRef[Any]", Sequence["ObjectRef[Any]"]],
     *,
     timeout: Optional[float] = None,
 ) -> Union[Any, List[Any]]:
@@ -2493,6 +2567,8 @@ def get(
     This method will issue a warning if it's running inside async context,
     you can use ``await object_ref`` instead of ``ray.get(object_ref)``. For
     a list of object refs, you can use ``await asyncio.gather(*object_refs)``.
+
+    Passing :class:`~ObjectRefGenerator` is not allowed.
 
     Related patterns and anti-patterns:
 
@@ -2535,9 +2611,9 @@ def get(
             blocking_get_inside_async_warned = True
 
     with profiling.profile("ray.get"):
-        # TODO(sang): Should make StreamingObjectRefGenerator
+        # TODO(sang): Should make ObjectRefGenerator
         # compatible to ray.get for dataset.
-        if isinstance(object_refs, StreamingObjectRefGenerator):
+        if isinstance(object_refs, ObjectRefGenerator):
             return object_refs
 
         is_individual_id = isinstance(object_refs, ray.ObjectRef)
@@ -2546,7 +2622,8 @@ def get(
 
         if not isinstance(object_refs, list):
             raise ValueError(
-                "'object_refs' must either be an ObjectRef or a list of ObjectRefs."
+                f"Invalid type of object refs, {type(object_refs)}, is given. "
+                "'object_refs' must either be an ObjectRef or a list of ObjectRefs. "
             )
 
         # TODO(ujvl): Consider how to allow user to retrieve the ready objects.
@@ -2583,7 +2660,9 @@ def get(
 @PublicAPI
 @client_mode_hook
 def put(
-    value: Any, *, _owner: Optional["ray.actor.ActorHandle"] = None
+    value: Any,
+    *,
+    _owner: Optional["ray.actor.ActorHandle"] = None,
 ) -> "ray.ObjectRef":
     """Store an object in the object store.
 
@@ -2646,12 +2725,15 @@ blocking_wait_inside_async_warned = False
 @PublicAPI
 @client_mode_hook
 def wait(
-    object_refs: List["ray.ObjectRef"],
+    ray_waitables: List[Union[ObjectRef, ObjectRefGenerator]],
     *,
     num_returns: int = 1,
     timeout: Optional[float] = None,
     fetch_local: bool = True,
-) -> Tuple[List["ray.ObjectRef"], List["ray.ObjectRef"]]:
+) -> Tuple[
+    List[Union[ObjectRef, ObjectRefGenerator]],
+    List[Union[ObjectRef, ObjectRefGenerator]],
+]:
     """Return a list of IDs that are ready and a list of IDs that are not.
 
     If timeout is set, the function returns either when the requested number of
@@ -2659,19 +2741,30 @@ def wait(
     is not set, the function simply waits until that number of objects is ready
     and returns that exact number of object refs.
 
-    This method returns two lists. The first list consists of object refs that
-    correspond to objects that are available in the object store. The second
-    list corresponds to the rest of the object refs (which may or may not be
-    ready).
+    `ray_waitables` is a list of :class:`~ray.ObjectRef` and
+    :class:`~ray.ObjectRefGenerator`.
 
-    Ordering of the input list of object refs is preserved. That is, if A
+    The method returns two lists, ready and unready `ray_waitables`.
+
+    ObjectRef:
+        object refs that correspond to objects that are available
+        in the object store are in the first list.
+        The rest of the object refs are in the second list.
+
+    ObjectRefGenerator:
+            Generators whose next reference (that will be obtained
+            via `next(generator)`) has a corresponding object available
+            in the object store are in the first list.
+            All other generators are placed in the second list.
+
+    Ordering of the input list of ray_waitables is preserved. That is, if A
     precedes B in the input list, and both are in the ready list, then A will
     precede B in the ready list. This also holds true if A and B are both in
     the remaining list.
 
     This method will issue a warning if it's running inside an async context.
-    Instead of ``ray.wait(object_refs)``, you can use
-    ``await asyncio.wait(object_refs)``.
+    Instead of ``ray.wait(ray_waitables)``, you can use
+    ``await asyncio.wait(ray_waitables)``.
 
     Related patterns and anti-patterns:
 
@@ -2679,17 +2772,18 @@ def wait(
     - :doc:`/ray-core/patterns/ray-get-submission-order`
 
     Args:
-        object_refs: List of :class:`~ObjectRefs` or
-            :class:`~StreamingObjectRefGenerators` for objects that may or may
+        ray_waitables: List of :class:`~ObjectRef` or
+            :class:`~ObjectRefGenerator` for objects that may or may
             not be ready. Note that these must be unique.
-        num_returns: The number of object refs that should be returned.
+        num_returns: The number of ray_waitables that should be returned.
         timeout: The maximum amount of time in seconds to wait before
             returning.
         fetch_local: If True, wait for the object to be downloaded onto
-            the local node before returning it as ready. If False, ray.wait()
-            will not trigger fetching of objects to the local node and will
-            return immediately once the object is available anywhere in the
-            cluster.
+            the local node before returning it as ready. If the `ray_waitable`
+            is a generator, it will wait until the next object in the generator
+            is downloaed. If False, ray.wait() will not trigger fetching of
+            objects to the local node and will return immediately once the
+            object is available anywhere in the cluster.
 
     Returns:
         A list of object refs that are ready and a list of the remaining object
@@ -2712,20 +2806,20 @@ def wait(
             )
             blocking_wait_inside_async_warned = True
 
-    if isinstance(object_refs, ObjectRef) or isinstance(
-        object_refs, StreamingObjectRefGenerator
+    if isinstance(ray_waitables, ObjectRef) or isinstance(
+        ray_waitables, ObjectRefGenerator
     ):
         raise TypeError(
-            "wait() expected a list of ray.ObjectRef or ray.StreamingObjectRefGenerator"
-            ", got a single ray.ObjectRef or ray.StreamingObjectRefGenerator "
-            f"{object_refs}"
+            "wait() expected a list of ray.ObjectRef or ray.ObjectRefGenerator"
+            ", got a single ray.ObjectRef or ray.ObjectRefGenerator "
+            f"{ray_waitables}"
         )
 
-    if not isinstance(object_refs, list):
+    if not isinstance(ray_waitables, list):
         raise TypeError(
             "wait() expected a list of ray.ObjectRef or "
-            "ray.StreamingObjectRefGenerator, "
-            f"got {type(object_refs)}"
+            "ray.ObjectRefGenerator, "
+            f"got {type(ray_waitables)}"
         )
 
     if timeout is not None and timeout < 0:
@@ -2733,14 +2827,14 @@ def wait(
             "The 'timeout' argument must be nonnegative. " f"Received {timeout}"
         )
 
-    for object_ref in object_refs:
-        if not isinstance(object_ref, ObjectRef) and not isinstance(
-            object_ref, StreamingObjectRefGenerator
+    for ray_waitable in ray_waitables:
+        if not isinstance(ray_waitable, ObjectRef) and not isinstance(
+            ray_waitable, ObjectRefGenerator
         ):
             raise TypeError(
                 "wait() expected a list of ray.ObjectRef or "
-                "ray.StreamingObjectRefGenerator, "
-                f"got list containing {type(object_ref)}"
+                "ray.ObjectRefGenerator, "
+                f"got list containing {type(ray_waitable)}"
             )
     worker.check_connected()
 
@@ -2749,23 +2843,23 @@ def wait(
         # TODO(rkn): This is a temporary workaround for
         # https://github.com/ray-project/ray/issues/997. However, it should be
         # fixed in Arrow instead of here.
-        if len(object_refs) == 0:
+        if len(ray_waitables) == 0:
             return [], []
 
-        if len(object_refs) != len(set(object_refs)):
-            raise ValueError("Wait requires a list of unique object refs.")
+        if len(ray_waitables) != len(set(ray_waitables)):
+            raise ValueError("Wait requires a list of unique ray_waitables.")
         if num_returns <= 0:
             raise ValueError("Invalid number of objects to return %d." % num_returns)
-        if num_returns > len(object_refs):
+        if num_returns > len(ray_waitables):
             raise ValueError(
                 "num_returns cannot be greater than the number "
-                "of objects provided to ray.wait."
+                "of ray_waitables provided to ray.wait."
             )
 
         timeout = timeout if timeout is not None else 10**6
         timeout_milliseconds = int(timeout * 1000)
         ready_ids, remaining_ids = worker.core_worker.wait(
-            object_refs,
+            ray_waitables,
             num_returns,
             timeout_milliseconds,
             worker.current_task_id,
@@ -2796,7 +2890,7 @@ def get_actor(name: str, namespace: Optional[str] = None) -> "ray.actor.ActorHan
         ActorHandle to the actor.
 
     Raises:
-        ValueError if the named actor does not exist.
+        ValueError: if the named actor does not exist.
     """
     if not name:
         raise ValueError("Please supply a non-empty value to get_actor")
@@ -2843,7 +2937,10 @@ def kill(actor: "ray.actor.ActorHandle", *, no_restart: bool = True):
 @PublicAPI
 @client_mode_hook
 def cancel(
-    object_ref: "ray.ObjectRef", *, force: bool = False, recursive: bool = True
+    ray_waitable: Union["ObjectRef[R]", "ObjectRefGenerator[R]"],
+    *,
+    force: bool = False,
+    recursive: bool = True,
 ) -> None:
     """Cancels a task.
 
@@ -2891,26 +2988,27 @@ def cancel(
         are cancelled.
 
     Args:
-        object_ref: ObjectRef returned by the Task
-            that should be cancelled.
-        force: Whether to force-kill a running Task by killing
-            the worker that is running the Task.
-        recursive: Whether to try to cancel Tasks submitted by the
-            Task specified.
+        ray_waitable: :class:`~ObjectRef` and
+            :class:`~ObjectRefGenerator`
+            returned by the task that should be canceled.
+        force: Whether to force-kill a running task by killing
+            the worker that is running the task.
+        recursive: Whether to try to cancel tasks submitted by the
+            task specified.
     """
     worker = ray._private.worker.global_worker
     worker.check_connected()
 
-    if isinstance(object_ref, ray._raylet.StreamingObjectRefGenerator):
-        assert hasattr(object_ref, "_generator_ref")
-        object_ref = object_ref._generator_ref
+    if isinstance(ray_waitable, ray._raylet.ObjectRefGenerator):
+        assert hasattr(ray_waitable, "_generator_ref")
+        ray_waitable = ray_waitable._generator_ref
 
-    if not isinstance(object_ref, ray.ObjectRef):
+    if not isinstance(ray_waitable, ray.ObjectRef):
         raise TypeError(
             "ray.cancel() only supported for object refs. "
-            f"For actors, try ray.kill(). Got: {type(object_ref)}."
+            f"For actors, try ray.kill(). Got: {type(ray_waitable)}."
         )
-    return worker.core_worker.cancel_task(object_ref, force, recursive)
+    return worker.core_worker.cancel_task(ray_waitable, force, recursive)
 
 
 def _mode(worker=global_worker):
@@ -3098,7 +3196,7 @@ def remote(__t: type) -> Any:
 @overload
 def remote(
     *,
-    num_returns: Union[int, float] = Undefined,
+    num_returns: Union[int, Literal["streaming"]] = Undefined,
     num_cpus: Union[int, float] = Undefined,
     num_gpus: Union[int, float] = Undefined,
     resources: Dict[str, float] = Undefined,
@@ -3244,7 +3342,7 @@ def remote(
             invocation. The default value is 1.
             Pass "dynamic" to allow the task to decide how many
             return values to return during execution, and the caller will
-            receive an ObjectRef[ObjectRefGenerator].
+            receive an ObjectRef[DynamicObjectRefGenerator].
             See :ref:`dynamic generators <dynamic-generators>` for more details.
         num_cpus: The quantity of CPU resources to reserve
             for this task or for the lifetime of the actor.
@@ -3270,7 +3368,7 @@ def remote(
             By default it is empty.
         accelerator_type: If specified, requires that the task or actor run
             on a node with the specified type of accelerator.
-            See `ray.util.accelerators` for accelerator types.
+            See :ref:`accelerator types <accelerator_types>`.
         memory: The heap memory request in bytes for this task/actor,
             rounded down to the nearest integer.
         max_calls: Only for *remote functions*. This specifies the

@@ -127,6 +127,8 @@ cdef extern from "ray/common/status.h" namespace "ray" nogil:
         c_bool IsRpcError()
         c_bool IsOutOfResource()
         c_bool IsObjectRefEndOfStream()
+        c_bool IsIntentionalSystemExit()
+        c_bool IsUnexpectedSystemExit()
 
         c_string ToString()
         c_string CodeAsString()
@@ -250,6 +252,7 @@ cdef extern from "src/ray/protobuf/common.pb.h" nogil:
     cdef CWorkerType WORKER_TYPE_UTIL_WORKER "ray::core::WorkerType::UTIL_WORKER"  # noqa: E501
     cdef CWorkerExitType WORKER_EXIT_TYPE_USER_ERROR "ray::rpc::WorkerExitType::USER_ERROR"  # noqa: E501
     cdef CWorkerExitType WORKER_EXIT_TYPE_SYSTEM_ERROR "ray::rpc::WorkerExitType::SYSTEM_ERROR"  # noqa: E501
+    cdef CWorkerExitType WORKER_EXIT_TYPE_INTENTIONAL_SYSTEM_ERROR "ray::rpc::WorkerExitType::INTENDED_SYSTEM_EXIT"  # noqa: E501
 
 cdef extern from "src/ray/protobuf/common.pb.h" nogil:
     cdef CTaskType TASK_TYPE_NORMAL_TASK "ray::TaskType::NORMAL_TASK"
@@ -318,11 +321,18 @@ cdef extern from "ray/core_worker/common.h" nogil:
         CTaskOptions()
         CTaskOptions(c_string name, int num_returns,
                      unordered_map[c_string, double] &resources,
-                     c_string concurrency_group_name)
+                     c_string concurrency_group_name,
+                     int64_t generator_backpressure_num_objects)
         CTaskOptions(c_string name, int num_returns,
                      unordered_map[c_string, double] &resources,
                      c_string concurrency_group_name,
+                     int64_t generator_backpressure_num_objects,
                      c_string serialized_runtime_env)
+        CTaskOptions(c_string name, int num_returns,
+                     unordered_map[c_string, double] &resources,
+                     c_string concurrency_group_name,
+                     int64_t generator_backpressure_num_objects,
+                     c_string serialized_runtime_env, c_bool enable_task_events)
 
     cdef cppclass CActorCreationOptions "ray::core::ActorCreationOptions":
         CActorCreationOptions()
@@ -339,7 +349,8 @@ cdef extern from "ray/core_worker/common.h" nogil:
             c_string serialized_runtime_env,
             const c_vector[CConcurrencyGroup] &concurrency_groups,
             c_bool execute_out_of_order,
-            int32_t max_pending_calls)
+            int32_t max_pending_calls,
+            c_bool enable_task_events)
 
     cdef cppclass CPlacementGroupCreationOptions \
             "ray::core::PlacementGroupCreationOptions":
@@ -349,16 +360,18 @@ cdef extern from "ray/core_worker/common.h" nogil:
             CPlacementStrategy strategy,
             const c_vector[unordered_map[c_string, double]] &bundles,
             c_bool is_detached,
-            double max_cpu_fraction_per_node
+            double max_cpu_fraction_per_node,
+            CNodeID soft_target_node_id,
         )
 
     cdef cppclass CObjectLocation "ray::core::ObjectLocation":
         const CNodeID &GetPrimaryNodeID() const
-        const uint64_t GetObjectSize() const
+        const int64_t GetObjectSize() const
         const c_vector[CNodeID] &GetNodeIDs() const
         c_bool IsSpilled() const
         const c_string &GetSpilledURL() const
         const CNodeID &GetSpilledNodeID() const
+        const c_bool GetDidSpill() const
 
 cdef extern from "ray/gcs/gcs_client/gcs_client.h" nogil:
     cdef enum CGrpcStatusCode "grpc::StatusCode":
@@ -369,7 +382,7 @@ cdef extern from "ray/gcs/gcs_client/gcs_client.h" nogil:
         UNIMPLEMENTED "grpc::StatusCode::UNIMPLEMENTED",
 
     cdef cppclass CGcsClientOptions "ray::gcs::GcsClientOptions":
-        CGcsClientOptions(const c_string &gcs_address)
+        CGcsClientOptions(const c_string &gcs_address, int port)
 
     cdef cppclass CPythonGcsClient "ray::gcs::PythonGcsClient":
         CPythonGcsClient(const CGcsClientOptions &options)
@@ -416,12 +429,20 @@ cdef extern from "ray/gcs/gcs_client/gcs_client.h" nogil:
             int64_t timeout_ms,
             c_string &serialized_reply)
         CClusterID GetClusterId()
+        CRayStatus GetClusterResourceState(
+            int64_t timeout_ms,
+            c_string &serialized_reply)
+        CRayStatus ReportAutoscalingState(
+            int64_t timeout_ms,
+            const c_string &serialized_reply)
         CRayStatus DrainNode(
             const c_string &node_id,
             int32_t reason,
             const c_string &reason_message,
+            int64_t deadline_timestamp_ms,
             int64_t timeout_ms,
-            c_bool &is_accepted)
+            c_bool &is_accepted,
+            c_string &rejection_reason_message)
         CRayStatus DrainNodes(
             const c_vector[c_string]& node_ids,
             int64_t timeout_ms,
@@ -443,8 +464,6 @@ cdef extern from "ray/gcs/pubsub/gcs_pub_sub.h" nogil:
             const c_string &key_id, const CErrorTableData &data, int64_t num_retries)
 
         CRayStatus PublishLogs(const c_string &key_id, const CLogBatch &data)
-
-        CRayStatus PublishFunctionKey(const CPythonFunction& python_function)
 
     cdef cppclass CPythonGcsSubscriber "ray::gcs::PythonGcsSubscriber":
 
@@ -483,13 +502,15 @@ cdef extern from "src/ray/protobuf/gcs.pb.h" nogil:
     cdef enum CChannelType "ray::rpc::ChannelType":
         RAY_ERROR_INFO_CHANNEL "ray::rpc::ChannelType::RAY_ERROR_INFO_CHANNEL",
         RAY_LOG_CHANNEL "ray::rpc::ChannelType::RAY_LOG_CHANNEL",
-        RAY_PYTHON_FUNCTION_CHANNEL \
-            "ray::rpc::ChannelType::RAY_PYTHON_FUNCTION_CHANNEL",
         GCS_ACTOR_CHANNEL "ray::rpc::ChannelType::GCS_ACTOR_CHANNEL",
 
     cdef cppclass CJobConfig "ray::rpc::JobConfig":
         c_string ray_namespace() const
         const c_string &SerializeAsString()
+
+    cdef cppclass CNodeDeathInfo "ray::rpc::NodeDeathInfo":
+        int reason() const
+        c_string reason_message() const
 
     cdef cppclass CGcsNodeInfo "ray::rpc::GcsNodeInfo":
         c_string node_id() const
@@ -503,6 +524,7 @@ cdef extern from "src/ray/protobuf/gcs.pb.h" nogil:
         c_string raylet_socket_name() const
         int metrics_export_port() const
         int runtime_env_agent_port() const
+        CNodeDeathInfo death_info() const
         void ParseFromString(const c_string &serialized)
 
     cdef enum CGcsNodeState "ray::rpc::GcsNodeInfo_GcsNodeState":

@@ -10,7 +10,7 @@ from unittest.mock import patch
 import ray.util.client.server.server as ray_client_server
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
 
-from ray.util.client import _ClientContext, CURRENT_PROTOCOL_VERSION
+from ray.util.client import _ClientContext
 from ray.cluster_utils import cluster_not_supported
 
 import ray
@@ -144,7 +144,6 @@ def test_num_clients(init_and_serve_lazy):
     assert isinstance(info3["ray_version"], str), info3
     assert isinstance(info3["ray_commit"], str), info3
     assert isinstance(info3["python_version"], str), info3
-    assert isinstance(info3["protocol_version"], str), info3
     api3.disconnect()
 
 
@@ -164,38 +163,6 @@ def test_python_version(init_and_serve):
             python_version="2.7.12",
             ray_version="",
             ray_commit="",
-            protocol_version=CURRENT_PROTOCOL_VERSION,
-        )
-
-    # inject mock connection function
-    server_handle.data_servicer._build_connection_response = mock_connection_response
-
-    ray = _ClientContext()
-    with pytest.raises(RuntimeError):
-        _ = ray.connect("localhost:50051")
-
-    ray = _ClientContext()
-    info3 = ray.connect("localhost:50051", ignore_version=True)
-    assert info3["num_clients"] == 1, info3
-    ray.disconnect()
-
-
-def test_protocol_version(init_and_serve):
-    server_handle = init_and_serve
-    ray = _ClientContext()
-    info1 = ray.connect("localhost:50051")
-    local_py_version = ".".join([str(x) for x in list(sys.version_info)[:3]])
-    assert info1["protocol_version"] == CURRENT_PROTOCOL_VERSION, info1
-    ray.disconnect()
-    time.sleep(1)
-
-    def mock_connection_response():
-        return ray_client_pb2.ConnectionInfoResponse(
-            num_clients=1,
-            python_version=local_py_version,
-            ray_version="",
-            ray_commit="",
-            protocol_version="2050-01-01",  # from the future
         )
 
     # inject mock connection function

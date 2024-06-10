@@ -10,7 +10,6 @@ import sys
 import time
 import warnings
 
-import numpy as np
 import pytest
 import requests
 import socket
@@ -20,7 +19,7 @@ import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.modules
 import ray.dashboard.utils as dashboard_utils
 from click.testing import CliRunner
-from requests.exceptions import ConnectionError
+from requests.exceptions import ConnectionError, HTTPError
 from ray._private import ray_constants
 from ray._private.ray_constants import (
     DEBUG_AUTOSCALING_ERROR,
@@ -29,6 +28,7 @@ from ray._private.ray_constants import (
 from ray._private.utils import get_or_create_event_loop
 from ray._private.test_utils import (
     format_web_url,
+    fetch_prometheus_metrics,
     get_error_message,
     init_error_pubsub,
     run_string_as_driver,
@@ -36,6 +36,7 @@ from ray._private.test_utils import (
     wait_until_server_available,
     wait_until_succeeded_without_exception,
 )
+from ray.core.generated import common_pb2
 import ray.scripts.scripts as scripts
 from ray.dashboard import dashboard
 from ray.dashboard.head import DashboardHead
@@ -50,10 +51,9 @@ import psutil
 
 try:
     import aiohttp.web
-
     import ray.dashboard.optional_utils as dashboard_optional_utils
 
-    routes = dashboard_optional_utils.ClassMethodRouteTable
+    head_routes = dashboard_optional_utils.DashboardHeadRouteTable
 except Exception:
     pass
 
@@ -199,7 +199,7 @@ def test_raylet_and_agent_share_fate(shutdown_only):
 
     ray.shutdown()
 
-    ray.init()
+    ray_context = ray.init()
     all_processes = ray._private.worker._global_node.all_processes
     raylet_proc_info = all_processes[ray_constants.PROCESS_TYPE_RAYLET][0]
     raylet_proc = psutil.Process(raylet_proc_info.process.pid)
@@ -214,9 +214,30 @@ def test_raylet_and_agent_share_fate(shutdown_only):
     agent_proc.wait()
     raylet_proc.wait(15)
 
+    worker_node_id = ray_context.address_info["node_id"]
+    worker_node_info = [
+        node for node in ray.nodes() if node["NodeID"] == worker_node_id
+    ][0]
+    assert not worker_node_info["Alive"]
+    assert worker_node_info["DeathReason"] == common_pb2.NodeDeathInfo.Reason.Value(
+        "UNEXPECTED_TERMINATION"
+    )
+    assert (
+        "failed and raylet fate-shares with it."
+        in worker_node_info["DeathReasonMessage"]
+    )
 
-def test_agent_report_unexpected_raylet_death(shutdown_only):
+
+@pytest.mark.parametrize("parent_health_check_by_pipe", [True, False])
+def test_agent_report_unexpected_raylet_death(
+    monkeypatch, shutdown_only, parent_health_check_by_pipe
+):
     """Test agent reports Raylet death if it is not SIGTERM."""
+
+    monkeypatch.setenv(
+        "RAY_enable_pipe_based_agent_to_parent_health_check",
+        parent_health_check_by_pipe,
+    )
 
     ray.init()
     p = init_error_pubsub()
@@ -249,8 +270,16 @@ def test_agent_report_unexpected_raylet_death(shutdown_only):
     )
 
 
-def test_agent_report_unexpected_raylet_death_large_file(shutdown_only):
+@pytest.mark.parametrize("parent_health_check_by_pipe", [True, False])
+def test_agent_report_unexpected_raylet_death_large_file(
+    monkeypatch, shutdown_only, parent_health_check_by_pipe
+):
     """Test agent reports Raylet death if it is not SIGTERM."""
+
+    monkeypatch.setenv(
+        "RAY_enable_pipe_based_agent_to_parent_health_check",
+        parent_health_check_by_pipe,
+    )
 
     ray.init()
     p = init_error_pubsub()
@@ -376,7 +405,55 @@ def test_http_get(enable_test_module, ray_start_with_dashboard):
     os.environ.get("RAY_MINIMAL") == "1",
     reason="This test is not supposed to work for minimal installation.",
 )
-def test_class_method_route_table(enable_test_module):
+def test_browser_no_post_no_put(enable_test_module, ray_start_with_dashboard):
+    assert wait_until_server_available(ray_start_with_dashboard["webui_url"]) is True
+    webui_url = ray_start_with_dashboard["webui_url"]
+    webui_url = format_web_url(webui_url)
+
+    timeout_seconds = 30
+    start_time = time.time()
+    while True:
+        time.sleep(3)
+        try:
+            # Starting and getting jobs should be fine from API clients
+            response = requests.post(
+                webui_url + "/api/jobs/", json={"entrypoint": "ls"}
+            )
+            response.raise_for_status()
+            response = requests.get(webui_url + "/api/jobs/")
+            response.raise_for_status()
+
+            # Starting job should be blocked for browsers
+            response = requests.post(
+                webui_url + "/api/jobs/",
+                json={"entrypoint": "ls"},
+                headers={
+                    "User-Agent": (
+                        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                        "AppleWebKit/537.36 (KHTML, like Gecko) "
+                        "Chrome/119.0.0.0 Safari/537.36"
+                    )
+                },
+            )
+            with pytest.raises(HTTPError):
+                response.raise_for_status()
+
+            # Getting jobs should be fine for browsers
+            response = requests.get(webui_url + "/api/jobs/")
+            response.raise_for_status()
+            break
+        except (AssertionError, requests.exceptions.ConnectionError) as e:
+            logger.info("Retry because of %s", e)
+        finally:
+            if time.time() > start_time + timeout_seconds:
+                raise Exception("Timed out while testing.")
+
+
+@pytest.mark.skipif(
+    os.environ.get("RAY_MINIMAL") == "1",
+    reason="This test is not supposed to work for minimal installation.",
+)
+def test_method_route_table(enable_test_module):
     head_cls_list = dashboard_utils.get_all_modules(dashboard_utils.DashboardHeadModule)
     agent_cls_list = dashboard_utils.get_all_modules(
         dashboard_utils.DashboardAgentModule
@@ -406,34 +483,46 @@ def test_class_method_route_table(enable_test_module):
                 return True
         return False
 
-    all_routes = dashboard_optional_utils.ClassMethodRouteTable.routes()
-    assert any(_has_route(r, "HEAD", "/test/route_head") for r in all_routes)
-    assert any(_has_route(r, "GET", "/test/route_get") for r in all_routes)
-    assert any(_has_route(r, "POST", "/test/route_post") for r in all_routes)
-    assert any(_has_route(r, "PUT", "/test/route_put") for r in all_routes)
-    assert any(_has_route(r, "PATCH", "/test/route_patch") for r in all_routes)
-    assert any(_has_route(r, "DELETE", "/test/route_delete") for r in all_routes)
-    assert any(_has_route(r, "*", "/test/route_view") for r in all_routes)
+    # Check agent routes
+    unbound_agent_routes = dashboard_optional_utils.DashboardAgentRouteTable.routes()
+    assert any(_has_route(r, "HEAD", "/test/route_head") for r in unbound_agent_routes)
+    assert any(_has_route(r, "POST", "/test/route_post") for r in unbound_agent_routes)
+    assert any(
+        _has_route(r, "PATCH", "/test/route_patch") for r in unbound_agent_routes
+    )
+
+    # Check head routes
+    unbound_head_routes = dashboard_optional_utils.DashboardHeadRouteTable.routes()
+    assert any(_has_route(r, "GET", "/test/route_get") for r in unbound_head_routes)
+    assert any(_has_route(r, "PUT", "/test/route_put") for r in unbound_head_routes)
+    assert any(
+        _has_route(r, "DELETE", "/test/route_delete") for r in unbound_head_routes
+    )
+    assert any(_has_route(r, "*", "/test/route_view") for r in unbound_head_routes)
 
     # Test bind()
-    bound_routes = dashboard_optional_utils.ClassMethodRouteTable.bound_routes()
-    assert len(bound_routes) == 0
-    dashboard_optional_utils.ClassMethodRouteTable.bind(
+    bound_agent_routes = (
+        dashboard_optional_utils.DashboardAgentRouteTable.bound_routes()
+    )
+    assert len(bound_agent_routes) == 0
+    dashboard_optional_utils.DashboardAgentRouteTable.bind(
         test_agent_cls.__new__(test_agent_cls)
     )
-    bound_routes = dashboard_optional_utils.ClassMethodRouteTable.bound_routes()
-    assert any(_has_route(r, "POST", "/test/route_post") for r in bound_routes)
-    assert all(not _has_route(r, "PUT", "/test/route_put") for r in bound_routes)
+    bound_agent_routes = (
+        dashboard_optional_utils.DashboardAgentRouteTable.bound_routes()
+    )
+    assert any(_has_route(r, "POST", "/test/route_post") for r in bound_agent_routes)
+    assert all(not _has_route(r, "PUT", "/test/route_put") for r in bound_agent_routes)
 
     # Static def should be in bound routes.
-    routes.static("/test/route_static", "/path")
-    bound_routes = dashboard_optional_utils.ClassMethodRouteTable.bound_routes()
-    assert any(_has_static(r, "/path", "/test/route_static") for r in bound_routes)
+    head_routes.static("/test/route_static", "/path")
+    bound_head_routes = dashboard_optional_utils.DashboardHeadRouteTable.bound_routes()
+    assert any(_has_static(r, "/path", "/test/route_static") for r in bound_head_routes)
 
     # Test duplicated routes should raise exception.
     try:
 
-        @routes.get("/test/route_get")
+        @head_routes.get("/test/route_get")
         def _duplicated_route(req):
             pass
 
@@ -445,7 +534,7 @@ def test_class_method_route_table(enable_test_module):
 
     # Test exception in handler
     post_handler = None
-    for r in bound_routes:
+    for r in bound_agent_routes:
         if _has_route(r, "POST", "/test/route_post"):
             post_handler = r.handler
             break
@@ -754,14 +843,6 @@ def test_immutable_types():
     with pytest.raises(AttributeError):
         immutable_dict["list"].insert(1, 2)
 
-    d2 = dashboard_utils.ImmutableDict({1: np.zeros([3, 5])})
-    with pytest.raises(TypeError):
-        print(d2[1])
-
-    d3 = dashboard_utils.ImmutableList([1, np.zeros([3, 5])])
-    with pytest.raises(TypeError):
-        print(d3[1])
-
 
 @pytest.mark.skipif(
     os.environ.get("RAY_MINIMAL") == "1" or os.environ.get("RAY_DEFAULT") == "1",
@@ -874,7 +955,11 @@ def test_dashboard_port_conflict(ray_start_with_dashboard):
     os.environ.get("RAY_MINIMAL") == "1",
     reason="This test is not supposed to work for minimal installation.",
 )
-def test_gcs_check_alive(fast_gcs_failure_detection, ray_start_with_dashboard):
+def test_gcs_check_alive(
+    fast_gcs_failure_detection, ray_start_with_dashboard, call_ray_stop_only
+):
+    # call_ray_stop_only is used to ensure a clean environment (especially
+    # killing dashboard agent in time) before the next test runs.
     assert wait_until_server_available(ray_start_with_dashboard["webui_url"]) is True
 
     all_processes = ray._private.worker._global_node.all_processes
@@ -909,12 +994,11 @@ def test_dashboard_does_not_depend_on_serve():
 
     ctx = ray.init()
 
-    # Ensure standard dashboard features, like snapshot, still work
-    response = requests.get(f"http://{ctx.dashboard_url}/api/snapshot")
+    # Ensure standard dashboard features, like component_activities, still work
+    response = requests.get(f"http://{ctx.dashboard_url}/api/component_activities")
     assert response.status_code == 200
 
-    assert response.json()["result"] is True
-    assert "snapshot" in response.json()["data"]
+    assert "driver" in response.json()
 
     agent_url = (
         ctx.address_info["node_ip_address"]
@@ -924,7 +1008,7 @@ def test_dashboard_does_not_depend_on_serve():
 
     # Check that Serve-dependent features fail
     try:
-        response = requests.get(f"http://{agent_url}/api/serve/deployments/")
+        response = requests.get(f"http://{agent_url}/api/serve/applications/")
         print(f"response status code: {response.status_code}, expected: 501")
         assert response.status_code == 501
     except requests.ConnectionError as e:
@@ -962,7 +1046,7 @@ def test_agent_does_not_depend_on_serve(shutdown_only):
 
     # Check that Serve-dependent features fail
     try:
-        response = requests.get(f"http://{agent_url}/api/serve/deployments/")
+        response = requests.get(f"http://{agent_url}/api/serve/applications/")
         print(f"response status code: {response.status_code}, expected: 501")
         assert response.status_code == 501
     except requests.ConnectionError as e:
@@ -988,7 +1072,7 @@ def test_agent_port_conflict(shutdown_only):
     node = ray._private.worker._global_node
     agent_url = node.node_ip_address + ":" + str(node.dashboard_agent_listen_port)
     wait_for_condition(
-        lambda: requests.get(f"http://{agent_url}/api/serve/deployments/").status_code
+        lambda: requests.get(f"http://{agent_url}/api/serve/applications/").status_code
         == 200
     )
     ray.shutdown()
@@ -1026,7 +1110,7 @@ def test_agent_port_conflict(shutdown_only):
     try:
         wait_for_condition(
             lambda: requests.get(
-                f"http://{agent_url}/api/serve/deployments/"
+                f"http://{agent_url}/api/serve/applications/"
             ).status_code
             == 200
         )
@@ -1197,5 +1281,54 @@ def test_dashboard_not_included_ray_minimal(shutdown_only, capsys):
         requests.get("http://localhost:8265")
 
 
+@pytest.mark.skipif(
+    os.environ.get("RAY_MINIMAL") == "1",
+    reason="This test is not supposed to work for minimal installation.",
+)
+@pytest.mark.asyncio
+async def test_dashboard_exports_metric_on_event_loop_lag(
+    enable_test_module, ray_start_with_dashboard
+):
+    """
+    When the event loop is blocked, the dashboard should export a metric.
+    Uses aiohttp to send concurrent requests to block the event loop.
+    As the number of blocking call goes up, the event loop lag converges to ~5s on my
+    laptop. We assert it to be >1s to be safe.
+    """
+    import aiohttp
+    from prometheus_client.samples import Sample
+    from typing import List, Dict
+
+    ray_context = ray_start_with_dashboard
+    assert wait_until_server_available(ray_context["webui_url"]) is True
+    webui_url = format_web_url(ray_context["webui_url"])
+    blocking_url = webui_url + "/test/block_event_loop?seconds=1"
+
+    async def make_blocking_call():
+        async with aiohttp.ClientSession() as session:
+            async with session.get(blocking_url) as resp:
+                resp.raise_for_status()
+                return await resp.text()
+
+    # Blocks the event loop for 1 second for 10 times.
+    tasks = [make_blocking_call() for _ in range(10)]
+    await asyncio.gather(*tasks)
+
+    # Fetch the metrics from the dashboard.
+    addr = ray_context["raylet_ip_address"]
+    prom_addresses = [f"{addr}:{dashboard_consts.DASHBOARD_METRIC_PORT}"]
+
+    def check_lag_metrics():
+        metrics_samples: Dict[str, List[Sample]] = fetch_prometheus_metrics(
+            prom_addresses
+        )
+        lag_metric_samples = metrics_samples["ray_dashboard_event_loop_lag_seconds"]
+        assert len(lag_metric_samples) > 0
+        assert any(sample.value > 1 for sample in lag_metric_samples)
+        return True
+
+    wait_for_condition(check_lag_metrics)
+
+
 if __name__ == "__main__":
-    sys.exit(pytest.main(["-v", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

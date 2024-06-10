@@ -14,17 +14,13 @@ import ray._private.services
 import ray._private.utils
 import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.utils as dashboard_utils
-from ray._raylet import GcsClient
 from ray._private.process_watcher import create_check_raylet_task
 from ray._private.gcs_utils import GcsAioClient
 from ray._private.ray_logging import (
     setup_component_logger,
     configure_log_file,
 )
-from ray.experimental.internal_kv import (
-    _initialize_internal_kv,
-    _internal_kv_initialized,
-)
+from ray._private.ray_constants import AGENT_GRPC_MAX_MESSAGE_LENGTH
 
 logger = logging.getLogger(__name__)
 
@@ -79,18 +75,17 @@ class DashboardAgent:
         self.http_server = None
 
         # Used by the agent and sub-modules.
-        # TODO(architkulkarni): Remove gcs_client once the agent exclusively uses
-        # gcs_aio_client and not gcs_client.
-        self.gcs_client = GcsClient(address=self.gcs_address)
-        _initialize_internal_kv(self.gcs_client)
-        assert _internal_kv_initialized()
-        self.gcs_aio_client = GcsAioClient(address=self.gcs_address)
+        self.gcs_aio_client = GcsAioClient(
+            address=self.gcs_address,
+            nums_reconnect_retry=ray._config.gcs_rpc_server_reconnect_timeout_s(),
+        )
 
         if not self.minimal:
             self._init_non_minimal()
 
     def _init_non_minimal(self):
         from ray._private.gcs_pubsub import GcsAioPublisher
+        from ray.dashboard.http_server_agent import HttpServerAgent
 
         self.aio_publisher = GcsAioPublisher(address=self.gcs_address)
 
@@ -112,7 +107,19 @@ class DashboardAgent:
         else:
             aiogrpc.init_grpc_aio()
 
-        self.server = aiogrpc.server(options=(("grpc.so_reuseport", 0),))
+        self.server = aiogrpc.server(
+            options=(
+                ("grpc.so_reuseport", 0),
+                (
+                    "grpc.max_send_message_length",
+                    AGENT_GRPC_MAX_MESSAGE_LENGTH,
+                ),  # noqa
+                (
+                    "grpc.max_receive_message_length",
+                    AGENT_GRPC_MAX_MESSAGE_LENGTH,
+                ),
+            )  # noqa
+        )
         grpc_ip = "127.0.0.1" if self.ip == "127.0.0.1" else "0.0.0.0"
         try:
             self.grpc_port = ray._private.tls_utils.add_port_to_grpc_server(
@@ -131,12 +138,12 @@ class DashboardAgent:
         else:
             logger.info("Dashboard agent grpc address: %s:%s", grpc_ip, self.grpc_port)
 
-    async def _configure_http_server(self, modules):
-        from ray.dashboard.http_server_agent import HttpServerAgent
-
-        http_server = HttpServerAgent(self.ip, self.listen_port)
-        await http_server.start(modules)
-        return http_server
+        # If the agent is not minimal it should start the http server
+        # to communicate with the dashboard in a head node.
+        # Http server is not started in the minimal version because
+        # it requires additional dependencies that are not
+        # included in the minimal ray package.
+        self.http_server = HttpServerAgent(self.ip, self.listen_port)
 
     def _load_modules(self):
         """Load dashboard agent modules."""
@@ -167,6 +174,9 @@ class DashboardAgent:
         ), "Accessing unsupported API (GcsAioPublisher) in a minimal ray."
         return self.aio_publisher
 
+    def get_node_id(self) -> str:
+        return self.node_id
+
     async def run(self):
         # Start a grpc asyncio server.
         if self.server:
@@ -174,15 +184,9 @@ class DashboardAgent:
 
         modules = self._load_modules()
 
-        # Setup http server if necessary.
-        if not self.minimal:
-            # If the agent is not minimal it should start the http server
-            # to communicate with the dashboard in a head node.
-            # Http server is not started in the minimal version because
-            # it requires additional dependencies that are not
-            # included in the minimal ray package.
+        if self.http_server:
             try:
-                self.http_server = await self._configure_http_server(modules)
+                await self.http_server.start(modules)
             except Exception:
                 # TODO(SongGuyang): Catch the exception here because there is
                 # port conflict issue which brought from static port. We should
@@ -205,24 +209,30 @@ class DashboardAgent:
         )
 
         tasks = [m.run(self.server) for m in modules]
+
         if sys.platform not in ["win32", "cygwin"]:
 
-            def callback():
+            def callback(msg):
                 logger.info(
-                    f"Terminated Raylet: ip={self.ip}, node_id={self.node_id}. "
+                    f"Terminated Raylet: ip={self.ip}, node_id={self.node_id}. {msg}"
                 )
 
             check_parent_task = create_check_raylet_task(
                 self.log_dir, self.gcs_address, callback, loop
             )
             tasks.append(check_parent_task)
-        await asyncio.gather(*tasks)
 
         if self.server:
-            await self.server.wait_for_termination()
+            tasks.append(self.server.wait_for_termination())
         else:
-            while True:
-                await asyncio.sleep(3600)  # waits forever
+
+            async def wait_forever():
+                while True:
+                    await asyncio.sleep(3600)
+
+            tasks.append(wait_forever())
+
+        await asyncio.gather(*tasks)
 
         if self.http_server:
             await self.http_server.cleanup()

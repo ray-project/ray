@@ -1,7 +1,7 @@
 import asyncio
 import logging
 
-from ray.serve.benchmarks.microbenchmark import main as benchmark_main
+from ray.serve._private.benchmarks.microbenchmark import main as benchmark_main
 from serve_test_cluster_utils import (
     setup_local_single_node_cluster,
     setup_anyscale_cluster,
@@ -25,7 +25,7 @@ async def main():
 
     result_json = await benchmark_main()
     logger.info(result_json)
-    save_test_results(result_json, default_output_file="/tmp/micro_benchmark.json")
+    save_test_results(result_json)
 
 
 if __name__ == "__main__":

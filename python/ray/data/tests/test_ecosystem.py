@@ -33,7 +33,7 @@ def test_to_dask(ray_start_regular_shared, ds_format):
     df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
     df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
     df = pd.concat([df1, df2])
-    ds = ray.data.from_pandas([df1, df2])
+    ds = ray.data.from_blocks([df1, df2])
     if ds_format == "arrow":
         ds = ds.map_batches(lambda df: df, batch_format="pyarrow", batch_size=None)
     ddf = ds.to_dask()
@@ -52,7 +52,7 @@ def test_to_dask(ray_start_regular_shared, ds_format):
     df1["two"] = df1["two"].astype(pd.StringDtype())
     df2["two"] = df2["two"].astype(pd.StringDtype())
     df = pd.concat([df1, df2])
-    ds = ray.data.from_pandas([df1, df2])
+    ds = ray.data.from_blocks([df1, df2])
     if ds_format == "arrow":
         ds = ds.map_batches(lambda df: df, batch_format="pyarrow", batch_size=None)
     ddf = ds.to_dask(
@@ -76,7 +76,7 @@ def test_to_dask(ray_start_regular_shared, ds_format):
     df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
     df2 = pd.DataFrame({"three": [4, 5, 6], "four": ["e", "f", "g"]})
     df = pd.concat([df1, df2])
-    ds = ray.data.from_pandas([df1, df2])
+    ds = ray.data.from_blocks([df1, df2])
     if ds_format == "arrow":
         ds = ds.map_batches(lambda df: df, batch_format="pyarrow", batch_size=None)
     ddf = ds.to_dask(verify_meta=False)
@@ -128,7 +128,6 @@ def test_to_dask_tensor_column_cast_arrow(ray_start_regular_shared):
         ctx.enable_tensor_extension_casting = original
 
 
-@pytest.mark.skipif(sys.version_info < (3, 8), reason="requires python3.8 or higher")
 def test_from_modin(ray_start_regular_shared):
     import modin.pandas as mopd
 
@@ -141,7 +140,6 @@ def test_from_modin(ray_start_regular_shared):
     assert df.equals(dfds)
 
 
-@pytest.mark.skipif(sys.version_info < (3, 8), reason="requires python3.8 or higher")
 def test_to_modin(ray_start_regular_shared):
     # create two modin dataframes
     # one directly from a pandas dataframe, and
@@ -159,6 +157,4 @@ def test_to_modin(ray_start_regular_shared):
 
 
 if __name__ == "__main__":
-    import sys
-
     sys.exit(pytest.main(["-v", __file__]))

@@ -1,12 +1,73 @@
 import abc
 import operator
+import time
 from abc import abstractmethod
-from typing import Dict, List
+from collections import defaultdict
+from typing import Dict, List, Optional, Tuple
 
-from ray.autoscaler.v2.schema import ClusterStatus, ResourceUsage
+import ray
+from ray.autoscaler.v2.schema import AutoscalerInstance, ClusterStatus, ResourceUsage
 from ray.autoscaler.v2.sdk import get_cluster_status
 from ray.core.generated import autoscaler_pb2
-from ray.core.generated.instance_manager_pb2 import Instance
+from ray.core.generated.instance_manager_pb2 import Instance, NodeKind
+
+
+class MockEventLogger:
+    def __init__(self, logger) -> None:
+        self._logs = defaultdict(list)
+        self._logger = logger
+
+    def info(self, s):
+        self._logger.info(s)
+        self._logs["info"].append(s)
+
+    def warning(self, s):
+        self._logger.warning(s)
+        self._logs["warning"].append(s)
+
+    def error(self, s):
+        self._logger.error(s)
+        self._logs["error"].append(s)
+
+    def debug(self, s):
+        self._logger.debug(s)
+        self._logs["debug"].append(s)
+
+    def get_logs(self, level: str) -> List[str]:
+        return self._logs[level]
+
+
+class MockSubscriber:
+    def __init__(self):
+        self.events = []
+
+    def notify(self, events):
+        self.events.extend(events)
+
+    def clear(self):
+        self.events.clear()
+
+    def events_by_id(self, instance_id):
+        return [e for e in self.events if e.instance_id == instance_id]
+
+
+def make_autoscaler_instance(
+    im_instance: Optional[Instance] = None,
+    ray_node: Optional[autoscaler_pb2.NodeState] = None,
+    cloud_instance_id: Optional[str] = None,
+) -> AutoscalerInstance:
+
+    if cloud_instance_id:
+        if im_instance:
+            im_instance.cloud_instance_id = cloud_instance_id
+        if ray_node:
+            ray_node.instance_id = cloud_instance_id
+
+    return AutoscalerInstance(
+        im_instance=im_instance,
+        ray_node=ray_node,
+        cloud_instance_id=cloud_instance_id,
+    )
 
 
 def get_cluster_resource_state(stub) -> autoscaler_pb2.ClusterResourceState:
@@ -24,17 +85,31 @@ class FakeCounter:
 def create_instance(
     instance_id,
     status=Instance.UNKNOWN,
-    version=0,
-    ray_status=Instance.RAY_STATUS_UNKOWN,
     instance_type="worker_nodes1",
+    status_times: List[Tuple["Instance.InstanceStatus", int]] = None,
+    launch_request_id="",
+    version=0,
+    cloud_instance_id="",
+    ray_node_id="",
+    node_kind=NodeKind.WORKER,
 ):
+
+    if not status_times:
+        status_times = [(status, time.time_ns())]
+
     return Instance(
         instance_id=instance_id,
         status=status,
         version=version,
         instance_type=instance_type,
-        ray_status=ray_status,
-        timestamp_since_last_modified=1,
+        launch_request_id=launch_request_id,
+        status_history=[
+            Instance.StatusHistory(instance_status=status, timestamp_ns=ts)
+            for status, ts in status_times
+        ],
+        cloud_instance_id=cloud_instance_id,
+        node_id=ray_node_id,
+        node_kind=node_kind,
     )
 
 
@@ -83,10 +158,9 @@ class NodeCountCheck(Check):
         self.count = count
 
     def check(self, status: ClusterStatus):
-        if len(status.healthy_nodes) != self.count:
-            raise CheckFailure(
-                f"Expected {self.count} nodes, got {len(status.healthy_nodes)}"
-            )
+        healthy_nodes = len(status.active_nodes) + len(status.idle_nodes)
+        if healthy_nodes != self.count:
+            raise CheckFailure(f"Expected {self.count} nodes, got {healthy_nodes}")
 
     def __str__(self) -> str:
         return f"NodeCountCheck: {self.count}"
@@ -123,7 +197,8 @@ class TotalResourceCheck(Check):
 def check_cluster(
     targets: List[Check],
 ) -> bool:
-    cluster_status = get_cluster_status()
+    gcs_address = ray.get_runtime_context().gcs_address
+    cluster_status = get_cluster_status(gcs_address)
 
     for target in targets:
         target.check(cluster_status)

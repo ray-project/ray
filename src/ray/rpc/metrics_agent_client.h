@@ -30,39 +30,41 @@ namespace rpc {
 /// Client used for communicating with a remote node manager server.
 class MetricsAgentClient {
  public:
-  /// Constructor.
-  ///
-  /// \param[in] address Address of the metrics agent server.
-  /// \param[in] port Port of the metrics agent server.
-  /// \param[in] client_call_manager The `ClientCallManager` used for managing requests.
-  MetricsAgentClient(const std::string &address,
-                     const int port,
-                     ClientCallManager &client_call_manager) {
-    RAY_LOG(DEBUG) << "Initiate the metrics client of address:" << address
-                   << " port:" << port;
-    grpc_client_ =
-        std::make_unique<GrpcClient<ReporterService>>(address, port, client_call_manager);
-  };
-
-  /// Report metrics to metrics agent.
-  ///
-  /// \param[in] request The request message.
-  /// \param[in] callback The callback function that handles reply.
-  VOID_RPC_CLIENT_METHOD(ReporterService,
-                         ReportMetrics,
-                         grpc_client_,
-                         /*method_timeout_ms*/ -1, )
+  virtual ~MetricsAgentClient() = default;
 
   /// Report open census protobuf metrics to metrics agent.
   ///
   /// \param[in] request The request message.
   /// \param[in] callback The callback function that handles reply.
+  VOID_RPC_CLIENT_VIRTUAL_METHOD_DECL(ReporterService, ReportOCMetrics)
+};
+
+class MetricsAgentClientImpl : public MetricsAgentClient {
+ public:
+  /// Constructor.
+  ///
+  /// \param[in] address Address of the metrics agent server.
+  /// \param[in] port Port of the metrics agent server.
+  /// \param[in] client_call_manager The `ClientCallManager` used for managing requests.
+  MetricsAgentClientImpl(const std::string &address,
+                         const int port,
+                         instrumented_io_context &io_service)
+      : client_call_manager_(io_service) {
+    RAY_LOG(DEBUG) << "Initiate the metrics client of address:" << address
+                   << " port:" << port;
+    grpc_client_ = std::make_unique<GrpcClient<ReporterService>>(
+        address, port, client_call_manager_);
+  };
+
   VOID_RPC_CLIENT_METHOD(ReporterService,
                          ReportOCMetrics,
                          grpc_client_,
-                         /*method_timeout_ms*/ -1, )
+                         /*method_timeout_ms*/ -1,
+                         override)
 
  private:
+  /// Call Manager for gRPC client.
+  rpc::ClientCallManager client_call_manager_;
   /// The RPC client.
   std::unique_ptr<GrpcClient<ReporterService>> grpc_client_;
 };

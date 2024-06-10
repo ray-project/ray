@@ -1,3 +1,4 @@
+import threading
 from typing import Dict
 from unittest.mock import MagicMock, patch
 
@@ -85,32 +86,6 @@ def test_basic_dataset_iter_rows(ray_start_regular_shared):
     # assert it.stats() == ds.stats()
 
 
-def test_basic_dataset_pipeline(ray_start_regular_shared):
-    ds = ray.data.range(100).window(bytes_per_window=1).repeat()
-    it = ds.iterator()
-    for _ in range(2):
-        result = []
-        for batch in it.iter_batches():
-            batch = batch["id"].tolist()
-            result += batch
-        assert result == list(range(100))
-
-    assert it.stats() == ds.stats()
-
-
-def test_basic_dataset_pipeline_iter_rows(ray_start_regular_shared):
-    ds = ray.data.range(100).window(bytes_per_window=1).repeat()
-    it = ds.iterator()
-    for _ in range(2):
-        result = []
-        for row in it.iter_rows():
-            row = row["id"]
-            result.append(row)
-        assert result == list(range(100))
-
-    assert it.stats() == ds.stats()
-
-
 def test_tf_conversion(ray_start_regular_shared):
     ds = ray.data.range(5)
     it = ds.iterator()
@@ -127,45 +102,6 @@ def test_tf_e2e(ray_start_regular_shared):
     it = ds.iterator()
     model = build_model()
     model.fit(it.to_tf("id", "id"), epochs=3)
-
-
-def test_tf_e2e_pipeline(ray_start_regular_shared):
-    ds = ray.data.range(5).repeat(2)
-    it = ds.iterator()
-    model = build_model()
-    model.fit(it.to_tf("id", "id"), epochs=2)
-
-    ds = ray.data.range(5).repeat(2)
-    it = ds.iterator()
-    model = build_model()
-    # 3 epochs fails since we only repeated twice.
-    with pytest.raises(Exception, match=r"generator raised StopIteration"):
-        model.fit(it.to_tf("id", "id"), epochs=3)
-
-
-def test_tf_conversion_pipeline(ray_start_regular_shared):
-    ds = ray.data.range(5).repeat(2)
-    it = ds.iterator()
-    tf_dataset = it.to_tf("id", "id")
-    for i, row in enumerate(tf_dataset):
-        assert all(row[0] == i)
-        assert all(row[1] == i)
-        assert isinstance(row[0], tf.Tensor)
-        assert isinstance(row[1], tf.Tensor)
-
-    # Repeated twice.
-    tf_dataset = it.to_tf("id", "id")
-    for i, row in enumerate(tf_dataset):
-        assert all(row[0] == i)
-        assert all(row[1] == i)
-        assert isinstance(row[0], tf.Tensor)
-        assert isinstance(row[1], tf.Tensor)
-
-    # Fails on third try.
-    with pytest.raises(Exception, match=r"generator raised StopIteration"):
-        tf_dataset = it.to_tf("id", "id")
-        for _ in tf_dataset:
-            pass
 
 
 def test_torch_conversion(ray_start_regular_shared):
@@ -200,26 +136,6 @@ def test_torch_multi_use_iterator(ray_start_regular_shared):
             assert batch["id"].tolist() == list(range(5))
 
 
-def test_torch_conversion_pipeline(ray_start_regular_shared):
-    ds = ray.data.range(5).repeat(2)
-    it = ds.iterator()
-
-    # First epoch.
-    for batch in it.iter_torch_batches():
-        assert isinstance(batch["id"], torch.Tensor)
-        assert batch["id"].tolist() == list(range(5))
-
-    # Second epoch.
-    for batch in it.iter_torch_batches():
-        assert isinstance(batch["id"], torch.Tensor)
-        assert batch["id"].tolist() == list(range(5))
-
-    # Fails on third iteration.
-    with pytest.raises(Exception, match=r"generator raised StopIteration"):
-        for batch in it.iter_torch_batches():
-            pass
-
-
 def test_torch_conversion_collate_fn(ray_start_regular_shared):
     def collate_fn(batch: Dict[str, np.ndarray]):
         return torch.as_tensor(batch["id"] + 5)
@@ -243,9 +159,10 @@ def test_torch_conversion_collate_fn(ray_start_regular_shared):
 
     # Test that we don't automatically set device if collate_fn is specified.
     with patch(
-        "ray.air._internal.torch_utils.get_device", lambda: torch.device("cuda")
+        "ray.air._internal.torch_utils.get_devices", lambda: [torch.device("cuda")]
     ):
-        assert ray.air._internal.torch_utils.get_device().type == "cuda"
+        devices = ray.air._internal.torch_utils.get_devices()
+        assert devices[0].type == "cuda"
 
         it.iter_batches = MagicMock()
         for batch in it.iter_torch_batches(collate_fn=collate_fn):
@@ -259,6 +176,45 @@ def test_torch_conversion_collate_fn(ray_start_regular_shared):
         assert all(
             kwargs["_finalize_fn"] is None for kwargs in iter_batches_calls_kwargs
         ), iter_batches_calls_kwargs
+
+
+def test_iterator_to_materialized_dataset(ray_start_regular_shared):
+    """Tests that `DataIterator.materialize` fully consumes the
+    iterator and returns a `MaterializedDataset` view of the data
+    that can be used to interact with the full dataset
+    (e.g. load it all into memory)."""
+    ds = ray.data.range(10)
+    num_splits = 2
+    iters = ds.streaming_split(num_splits, equal=True)
+
+    def consume_in_parallel(fn):
+        runners = [
+            threading.Thread(target=fn, args=(it, i)) for i, it in enumerate(iters)
+        ]
+        [r.start() for r in runners]
+        [r.join() for r in runners]
+
+    materialized_ds = {}
+    shard_data = {}
+
+    def materialize(it, i):
+        materialized_ds[i] = it.materialize()
+
+    def iter_batches(it, i):
+        data = []
+        for batch in it.iter_batches():
+            data.extend(batch["id"].tolist())
+        shard_data[i] = data
+
+    consume_in_parallel(materialize)
+    consume_in_parallel(iter_batches)
+
+    # Check that the materialized datasets contain the same data as the
+    # original iterators.
+    for i in range(num_splits):
+        assert sorted(materialized_ds[i].to_pandas()["id"].tolist()) == sorted(
+            shard_data[i]
+        )
 
 
 if __name__ == "__main__":

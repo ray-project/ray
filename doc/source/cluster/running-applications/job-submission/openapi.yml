@@ -411,6 +411,9 @@ components:
         entrypoint_num_gpus:
           type: number
           description: "Number of GPUs to allocate for the execution of the entrypoint command, separately from any Ray tasks or actors that are created by it."
+        entrypoint_memory:
+          type: integer
+          description: "The quantity of memory to reserve for the execution of the entrypoint command, separately from any tasks or actors launched by it."
         entrypoint_resources:
           type: object
           description: "The quantity of various custom resources to allocate for the execution of the entrypoint command, separately from any Ray tasks or actors that are created by it."

@@ -6,11 +6,10 @@ import os
 import socket
 import sys
 import traceback
-import warnings
 
 import psutil
 
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, TypedDict, Union
 from collections import defaultdict
 
 import ray
@@ -20,7 +19,10 @@ from ray.dashboard.consts import (
     GCS_RPC_TIMEOUT_SECONDS,
     COMPONENT_METRICS_TAG_KEYS,
 )
-from ray.dashboard.modules.reporter.profile_manager import CpuProfilingManager
+from ray.dashboard.modules.reporter.profile_manager import (
+    CpuProfilingManager,
+    MemoryProfilingManager,
+)
 import ray.dashboard.modules.reporter.reporter_consts as reporter_consts
 import ray.dashboard.utils as dashboard_utils
 from opencensus.stats import stats as stats_module
@@ -29,7 +31,6 @@ from prometheus_client.core import REGISTRY
 from ray._private.metrics_agent import Gauge, MetricsAgent, Record
 from ray._private.ray_constants import DEBUG_AUTOSCALING_STATUS
 from ray.core.generated import reporter_pb2, reporter_pb2_grpc
-from ray.util.debug import log_once
 from ray.dashboard import k8s_utils
 from ray._raylet import WorkerID
 
@@ -47,25 +48,6 @@ ENABLE_K8S_DISK_USAGE = os.environ.get("RAY_DASHBOARD_ENABLE_K8S_DISK_USAGE") ==
 IN_CONTAINER = os.path.exists("/sys/fs/cgroup")
 # Using existence of /sys/fs/cgroup as the criterion is consistent with
 # Ray's existing resource logic, see e.g. ray._private.utils.get_num_cpus().
-
-try:
-    import gpustat.core as gpustat
-except ModuleNotFoundError:
-    gpustat = None
-    if log_once("gpustat_import_warning"):
-        warnings.warn(
-            "`gpustat` package is not installed. GPU monitoring is "
-            "not available. To have full functionality of the "
-            "dashboard please install `pip install ray["
-            "default]`.)"
-        )
-except ImportError as e:
-    gpustat = None
-    if log_once("gpustat_import_warning"):
-        warnings.warn(
-            "Importing gpustat failed, fix this to have full "
-            "functionality of the dashboard. The original error was:\n\n" + e.msg
-        )
 
 
 def recursive_asdict(o):
@@ -95,127 +77,151 @@ METRICS_GAUGES = {
         "node_cpu_utilization",
         "Total CPU usage on a ray node",
         "percentage",
-        ["ip", "SessionName"],
+        ["ip", "Version", "SessionName"],
     ),
     "node_cpu_count": Gauge(
         "node_cpu_count",
         "Total CPUs available on a ray node",
         "cores",
-        ["ip", "SessionName"],
+        ["ip", "Version", "SessionName"],
     ),
     "node_mem_used": Gauge(
-        "node_mem_used", "Memory usage on a ray node", "bytes", ["ip", "SessionName"]
+        "node_mem_used",
+        "Memory usage on a ray node",
+        "bytes",
+        ["ip", "Version", "SessionName"],
     ),
     "node_mem_available": Gauge(
         "node_mem_available",
         "Memory available on a ray node",
         "bytes",
-        ["ip", "SessionName"],
+        ["ip", "Version", "SessionName"],
     ),
     "node_mem_total": Gauge(
-        "node_mem_total", "Total memory on a ray node", "bytes", ["ip", "SessionName"]
+        "node_mem_total",
+        "Total memory on a ray node",
+        "bytes",
+        ["ip", "Version", "SessionName"],
     ),
     "node_mem_shared_bytes": Gauge(
         "node_mem_shared_bytes",
         "Total shared memory usage on a ray node",
         "bytes",
-        ["ip", "SessionName"],
+        ["ip", "Version", "SessionName"],
     ),
     "node_gpus_available": Gauge(
         "node_gpus_available",
         "Total GPUs available on a ray node",
         "percentage",
-        ["ip", "SessionName", "GpuDeviceName", "GpuIndex"],
+        ["ip", "Version", "SessionName", "GpuDeviceName", "GpuIndex"],
     ),
     "node_gpus_utilization": Gauge(
         "node_gpus_utilization",
         "Total GPUs usage on a ray node",
         "percentage",
-        ["ip", "SessionName", "GpuDeviceName", "GpuIndex"],
+        ["ip", "Version", "SessionName", "GpuDeviceName", "GpuIndex"],
     ),
     "node_gram_used": Gauge(
         "node_gram_used",
         "Total GPU RAM usage on a ray node",
         "bytes",
-        ["ip", "SessionName", "GpuDeviceName", "GpuIndex"],
+        ["ip", "Version", "SessionName", "GpuDeviceName", "GpuIndex"],
     ),
     "node_gram_available": Gauge(
         "node_gram_available",
         "Total GPU RAM available on a ray node",
         "bytes",
-        ["ip", "SessionName", "GpuDeviceName", "GpuIndex"],
+        ["ip", "Version", "SessionName", "GpuDeviceName", "GpuIndex"],
     ),
     "node_disk_io_read": Gauge(
-        "node_disk_io_read", "Total read from disk", "bytes", ["ip", "SessionName"]
+        "node_disk_io_read",
+        "Total read from disk",
+        "bytes",
+        ["ip", "Version", "SessionName"],
     ),
     "node_disk_io_write": Gauge(
-        "node_disk_io_write", "Total written to disk", "bytes", ["ip", "SessionName"]
+        "node_disk_io_write",
+        "Total written to disk",
+        "bytes",
+        ["ip", "Version", "SessionName"],
     ),
     "node_disk_io_read_count": Gauge(
         "node_disk_io_read_count",
         "Total read ops from disk",
         "io",
-        ["ip", "SessionName"],
+        ["ip", "Version", "SessionName"],
     ),
     "node_disk_io_write_count": Gauge(
         "node_disk_io_write_count",
         "Total write ops to disk",
         "io",
-        ["ip", "SessionName"],
+        ["ip", "Version", "SessionName"],
     ),
     "node_disk_io_read_speed": Gauge(
-        "node_disk_io_read_speed", "Disk read speed", "bytes/sec", ["ip", "SessionName"]
+        "node_disk_io_read_speed",
+        "Disk read speed",
+        "bytes/sec",
+        ["ip", "Version", "SessionName"],
     ),
     "node_disk_io_write_speed": Gauge(
         "node_disk_io_write_speed",
         "Disk write speed",
         "bytes/sec",
-        ["ip", "SessionName"],
+        ["ip", "Version", "SessionName"],
     ),
     "node_disk_read_iops": Gauge(
-        "node_disk_read_iops", "Disk read iops", "iops", ["ip", "SessionName"]
+        "node_disk_read_iops",
+        "Disk read iops",
+        "iops",
+        ["ip", "Version", "SessionName"],
     ),
     "node_disk_write_iops": Gauge(
-        "node_disk_write_iops", "Disk write iops", "iops", ["ip", "SessionName"]
+        "node_disk_write_iops",
+        "Disk write iops",
+        "iops",
+        ["ip", "Version", "SessionName"],
     ),
     "node_disk_usage": Gauge(
         "node_disk_usage",
         "Total disk usage (bytes) on a ray node",
         "bytes",
-        ["ip", "SessionName"],
+        ["ip", "Version", "SessionName"],
     ),
     "node_disk_free": Gauge(
         "node_disk_free",
         "Total disk free (bytes) on a ray node",
         "bytes",
-        ["ip", "SessionName"],
+        ["ip", "Version", "SessionName"],
     ),
     "node_disk_utilization_percentage": Gauge(
         "node_disk_utilization_percentage",
         "Total disk utilization (percentage) on a ray node",
         "percentage",
-        ["ip", "SessionName"],
+        ["ip", "Version", "SessionName"],
     ),
     "node_network_sent": Gauge(
-        "node_network_sent", "Total network sent", "bytes", ["ip", "SessionName"]
+        "node_network_sent",
+        "Total network sent",
+        "bytes",
+        ["ip", "Version", "SessionName"],
     ),
     "node_network_received": Gauge(
         "node_network_received",
         "Total network received",
         "bytes",
-        ["ip", "SessionName"],
+        ["ip", "Version", "SessionName"],
     ),
     "node_network_send_speed": Gauge(
         "node_network_send_speed",
         "Network send speed",
         "bytes/sec",
-        ["ip", "SessionName"],
+        ["ip", "Version", "SessionName"],
     ),
     "node_network_receive_speed": Gauge(
         "node_network_receive_speed",
         "Network receive speed",
         "bytes/sec",
-        ["ip", "SessionName"],
+        ["ip", "Version", "SessionName"],
     ),
     "component_cpu_percentage": Gauge(
         "component_cpu_percentage",
@@ -242,25 +248,54 @@ METRICS_GAUGES = {
         "MB",
         COMPONENT_METRICS_TAG_KEYS,
     ),
+    "component_num_fds": Gauge(
+        "component_num_fds",
+        "Number of open fds of all components on the node.",
+        "count",
+        COMPONENT_METRICS_TAG_KEYS,
+    ),
     "cluster_active_nodes": Gauge(
         "cluster_active_nodes",
         "Active nodes on the cluster",
         "count",
-        ["node_type", "SessionName"],
+        ["node_type", "Version", "SessionName"],
     ),
     "cluster_failed_nodes": Gauge(
         "cluster_failed_nodes",
         "Failed nodes on the cluster",
         "count",
-        ["node_type", "SessionName"],
+        ["node_type", "Version", "SessionName"],
     ),
     "cluster_pending_nodes": Gauge(
         "cluster_pending_nodes",
         "Pending nodes on the cluster",
         "count",
-        ["node_type", "SessionName"],
+        ["node_type", "Version", "SessionName"],
     ),
 }
+
+MB = 1024 * 1024
+
+# Types
+Percentage = int
+Megabytes = int
+
+
+# gpu utilization for nvidia gpu from a single process
+class ProcessGPUInfo(TypedDict):
+    pid: int
+    gpu_memory_usage: Megabytes
+
+
+# gpu utilization for nvidia gpu
+class GpuUtilizationInfo(TypedDict):
+    index: int
+    name: str
+    uuid: str
+    utilization_gpu: Optional[Percentage]
+    memory_used: Megabytes
+    memory_total: Megabytes
+    processes_pids: Optional[List[ProcessGPUInfo]]
 
 
 class ReporterAgent(
@@ -363,6 +398,31 @@ class ReporterAgent(
         )
         return reporter_pb2.CpuProfilingReply(output=output, success=success)
 
+    async def MemoryProfiling(self, request, context):
+        pid = request.pid
+        format = request.format
+        leaks = request.leaks
+        duration = request.duration
+        native = request.native
+        trace_python_allocators = request.trace_python_allocators
+        p = MemoryProfilingManager(self._log_dir)
+        success, profiler_filename, output = await p.attach_profiler(
+            pid, native=native, trace_python_allocators=trace_python_allocators
+        )
+        if not success:
+            return reporter_pb2.MemoryProfilingReply(output=output, success=success)
+
+        # add 1 second sleep for memray overhead
+        await asyncio.sleep(duration + 1)
+        success, output = await p.detach_profiler(pid)
+        warning = None if success else output
+        success, output = await p.get_profile_result(
+            pid, profiler_filename=profiler_filename, format=format, leaks=leaks
+        )
+        return reporter_pb2.MemoryProfilingReply(
+            output=output, success=success, warning=warning
+        )
+
     async def ReportOCMetrics(self, request, context):
         # Do nothing if metrics collection is disabled.
         if self._metrics_collection_disabled:
@@ -387,31 +447,77 @@ class ReporterAgent(
 
     @staticmethod
     def _get_gpu_usage():
+        import ray._private.thirdparty.pynvml as pynvml
+
         global enable_gpu_usage_check
-        if gpustat is None or not enable_gpu_usage_check:
+        if not enable_gpu_usage_check:
             return []
         gpu_utilizations = []
-        gpus = []
-        try:
-            gpus = gpustat.new_query().gpus
-        except Exception as e:
-            logger.debug(f"gpustat failed to retrieve GPU information: {e}")
 
-            # gpustat calls pynvml.nvmlInit()
-            # On machines without GPUs, this can run subprocesses that spew to
-            # stderr. Then with log_to_driver=True, we get log spew from every
+        def decode(b: Union[str, bytes]) -> str:
+            if isinstance(b, bytes):
+                return b.decode("utf-8")  # for python3, to unicode
+            return b
+
+        try:
+            pynvml.nvmlInit()
+        except Exception as e:
+            logger.debug(f"pynvml failed to retrieve GPU information: {e}")
+
+            # On machines without GPUs, pynvml.nvmlInit() can run subprocesses that
+            # spew to stderr. Then with log_to_driver=True, we get log spew from every
             # single raylet. To avoid this, disable the GPU usage check on
             # certain errors.
             # https://github.com/ray-project/ray/issues/14305
             # https://github.com/ray-project/ray/pull/21686
             if type(e).__name__ == "NVMLError_DriverNotLoaded":
                 enable_gpu_usage_check = False
+            return gpu_utilizations
 
-        for gpu in gpus:
-            # Note the keys in this dict have periods which throws
-            # off javascript so we change .s to _s
-            gpu_data = {"_".join(key.split(".")): val for key, val in gpu.entry.items()}
-            gpu_utilizations.append(gpu_data)
+        num_gpus = pynvml.nvmlDeviceGetCount()
+        for i in range(num_gpus):
+            gpu_handle = pynvml.nvmlDeviceGetHandleByIndex(i)
+            memory_info = pynvml.nvmlDeviceGetMemoryInfo(gpu_handle)
+            utilization = None
+            try:
+                utilization_info = pynvml.nvmlDeviceGetUtilizationRates(gpu_handle)
+                utilization = int(utilization_info.gpu)
+            except pynvml.NVMLError as e:
+                logger.debug(f"pynvml failed to retrieve GPU utilization: {e}")
+
+            # processes pids
+            processes_pids = None
+            try:
+                nv_comp_processes = pynvml.nvmlDeviceGetComputeRunningProcesses(
+                    gpu_handle
+                )
+                nv_graphics_processes = pynvml.nvmlDeviceGetGraphicsRunningProcesses(
+                    gpu_handle
+                )
+                processes_pids = [
+                    ProcessGPUInfo(
+                        pid=int(nv_process.pid),
+                        gpu_memory_usage=int(nv_process.usedGpuMemory) // MB
+                        if nv_process.usedGpuMemory
+                        else 0,
+                    )
+                    for nv_process in (nv_comp_processes + nv_graphics_processes)
+                ]
+            except pynvml.NVMLError as e:
+                logger.debug(f"pynvml failed to retrieve GPU processes: {e}")
+
+            info = GpuUtilizationInfo(
+                index=i,
+                name=decode(pynvml.nvmlDeviceGetName(gpu_handle)),
+                uuid=decode(pynvml.nvmlDeviceGetUUID(gpu_handle)),
+                utilization_gpu=utilization,
+                memory_used=int(memory_info.used) // MB,
+                memory_total=int(memory_info.total) // MB,
+                processes_pids=processes_pids,
+            )
+            gpu_utilizations.append(info)
+        pynvml.nvmlShutdown()
+
         return gpu_utilizations
 
     @staticmethod
@@ -529,6 +635,7 @@ class ReporterAgent(
                             "cmdline",
                             "memory_info",
                             "memory_full_info",
+                            "num_fds",
                         ]
                     )
                 )
@@ -566,6 +673,7 @@ class ReporterAgent(
                     "cmdline",
                     "memory_info",
                     "memory_full_info",
+                    "num_fds",
                 ]
             )
 
@@ -582,6 +690,7 @@ class ReporterAgent(
                 "cmdline",
                 "memory_info",
                 "memory_full_info",
+                "num_fds",
             ]
         )
 
@@ -591,7 +700,10 @@ class ReporterAgent(
             load = (cpu_percent, cpu_percent, cpu_percent)
         else:
             load = os.getloadavg()
-        per_cpu_load = tuple((round(x / self._cpu_counts[0], 2) for x in load))
+        if self._cpu_counts[0] > 0:
+            per_cpu_load = tuple((round(x / self._cpu_counts[0], 2) for x in load))
+        else:
+            per_cpu_load = None
         return load, per_cpu_load
 
     @staticmethod
@@ -688,6 +800,13 @@ class ReporterAgent(
                 tags=tags,
             )
         )
+        records.append(
+            Record(
+                gauge=METRICS_GAUGES["component_num_fds"],
+                value=0,
+                tags=tags,
+            )
+        )
         return records
 
     def _generate_system_stats_record(
@@ -709,6 +828,7 @@ class ReporterAgent(
         total_rss = 0.0
         total_uss = 0.0
         total_shm = 0.0
+        total_num_fds = 0
 
         for stat in stats:
             total_cpu_percentage += float(stat.get("cpu_percent", 0.0))  # noqa
@@ -721,6 +841,7 @@ class ReporterAgent(
             mem_full_info = stat.get("memory_full_info")
             if mem_full_info is not None:
                 total_uss += float(mem_full_info.uss) / 1.0e6
+            total_num_fds += int(stat.get("num_fds", 0))
 
         tags = {"ip": self._ip, "Component": component_name}
         if pid:
@@ -756,6 +877,13 @@ class ReporterAgent(
                     tags=tags,
                 )
             )
+        records.append(
+            Record(
+                gauge=METRICS_GAUGES["component_num_fds"],
+                value=total_num_fds,
+                tags=tags,
+            )
+        )
 
         return records
 
@@ -883,21 +1011,14 @@ class ReporterAgent(
             )
             records_reported.append(node_mem_shared)
 
-        # The output example of gpustats.
+        # The output example of GpuUtilizationInfo.
         """
         {'index': 0,
         'uuid': 'GPU-36e1567d-37ed-051e-f8ff-df807517b396',
         'name': 'NVIDIA A10G',
-        'temperature_gpu': 20,
-        'fan_speed': 0,
         'utilization_gpu': 1,
-        'utilization_enc': 0,
-        'utilization_dec': 0,
-        'power_draw': 51,
-        'enforced_power_limit': 300,
         'memory_used': 0,
-        'memory_total': 22731,
-        'processes': []}
+        'memory_total': 22731}
         """
         # -- GPU per node --
         gpus = stats["gpus"]
@@ -1112,7 +1233,10 @@ class ReporterAgent(
                     records_reported = self._record_stats(stats, cluster_stats)
                     self._metrics_agent.record_and_export(
                         records_reported,
-                        global_tags={"SessionName": self._session_name},
+                        global_tags={
+                            "Version": ray.__version__,
+                            "SessionName": self._session_name,
+                        },
                     )
                     self._metrics_agent.clean_all_dead_worker_metrics()
                 await publisher.publish_resource_usage(self._key, jsonify_asdict(stats))

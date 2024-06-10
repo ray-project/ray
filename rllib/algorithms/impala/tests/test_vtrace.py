@@ -46,13 +46,13 @@ def _ground_truth_vtrace_calculation(
     """Calculates the ground truth for V-trace in Python/Numpy.
 
     NOTE:
-    The discount, log_rhos, rewards, values, and bootstrap_value are all assumed to
+    The discount, log_rhos, rewards, values, and bootstrap_values are all assumed to
     come from trajectories of experience. Typically batches of trajectories could be
     thought of as having the shape [B, T] where B is the batch dimension, and T is
     the timestep dimension. Computing vtrace returns requires that the data is time
     major, meaning that it has the shape [T, B]. One can use a function like
     `make_time_major` to properly format their discount, log_rhos, rewards, values,
-    and bootstrap_value before calling _ground_truth_vtrace_calculation.
+    and bootstrap_values before calling _ground_truth_vtrace_calculation.
 
     Args:
         discounts: Array of shape [T*B] of discounts. T is the lenght of the trajectory
@@ -64,7 +64,7 @@ def _ground_truth_vtrace_calculation(
         rewards: Array of shape [T*B] of rewards.
         values: Array of shape [T*B] of the value function estimated for every timestep
             in a batch.
-        bootstrap_value: Array of shape [T] of the value function estimated at the last
+        bootstrap_values: Array of shape [B] of the value function estimated at the last
             timestep for each trajectory in the batch.
         clip_rho_threshold: The threshold for clipping the importance weights.
         clip_pg_rho_threshold: The threshold for clipping the importance weights for

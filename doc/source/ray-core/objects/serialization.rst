@@ -23,6 +23,23 @@ Plasma is used to efficiently transfer objects across different processes and di
 
 Each node has its own object store. When data is put into the object store, it does not get automatically broadcasted to other nodes. Data remains local to the writer until requested by another task or actor on another node.
 
+Serializing ObjectRefs
+~~~~~~~~~~~~~~~~~~~~~~
+
+Explicitly serializing `ObjectRefs` using `ray.cloudpickle` should be used as a last resort. Passing `ObjectRefs` through Ray task arguments and return values is the recommended approach.
+
+Ray `ObjectRefs` can be serialized using `ray.cloudpickle`. The `ObjectRef` can then be deserialized and accessed with `ray.get()`. Note that `ray.cloudpickle` must be used; other pickle tools are not guaranteed to work. Additionally, the process that deserializes the `ObjectRef` must be part of the same Ray cluster that serialized it.
+
+When serialized, the `ObjectRef`'s value will remain pinned in Ray's shared memory object store. The object must be explicitly freed by calling `ray._private.internal_api.free(obj_ref)`.
+
+.. warning::
+  
+  `ray._private.internal_api.free(obj_ref)` is a private API and may be changed in future Ray versions.
+
+This code example demonstrates how to serialize an `ObjectRef`, store it in external storage, deserialize and use it, and lastly free its object.
+
+.. literalinclude:: /ray-core/doc_code/object_ref_serialization.py
+
 Numpy Arrays
 ~~~~~~~~~~~~
 

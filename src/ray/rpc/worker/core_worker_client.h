@@ -36,6 +36,19 @@
 #include "src/ray/protobuf/core_worker.grpc.pb.h"
 #include "src/ray/protobuf/core_worker.pb.h"
 
+namespace std {
+template <>
+struct hash<ray::rpc::Address> {
+  size_t operator()(const ray::rpc::Address &addr) const {
+    size_t hash = std::hash<int32_t>()(addr.port());
+    hash ^= std::hash<std::string>()(addr.ip_address());
+    hash ^= std::hash<std::string>()(addr.worker_id());
+    hash ^= std::hash<std::string>()(addr.raylet_id());
+    return hash;
+  }
+};
+}  // namespace std
+
 namespace ray {
 namespace rpc {
 
@@ -57,42 +70,9 @@ const static int64_t RequestSizeInBytes(const PushTaskRequest &request) {
 // Shared between direct actor and task submitters.
 /* class CoreWorkerClientInterface; */
 
-// TODO(swang): Remove and replace with rpc::Address.
-class WorkerAddress {
- public:
-  WorkerAddress(const rpc::Address &address)
-      : ip_address(address.ip_address()),
-        port(address.port()),
-        worker_id(WorkerID::FromBinary(address.worker_id())),
-        raylet_id(NodeID::FromBinary(address.raylet_id())) {}
-  template <typename H>
-  friend H AbslHashValue(H h, const WorkerAddress &w) {
-    return H::combine(std::move(h), w.ip_address, w.port, w.worker_id, w.raylet_id);
-  }
-
-  bool operator==(const WorkerAddress &other) const {
-    return other.ip_address == ip_address && other.port == port &&
-           other.worker_id == worker_id && other.raylet_id == raylet_id;
-  }
-
-  rpc::Address ToProto() const {
-    rpc::Address addr;
-    addr.set_raylet_id(raylet_id.Binary());
-    addr.set_ip_address(ip_address);
-    addr.set_port(port);
-    addr.set_worker_id(worker_id.Binary());
-    return addr;
-  }
-
-  /// The ip address of the worker.
-  const std::string ip_address;
-  /// The local port of the worker.
-  const int port;
-  /// The unique id of the worker.
-  const WorkerID worker_id;
-  /// The unique id of the worker raylet.
-  const NodeID raylet_id;
-};
+inline bool operator==(const rpc::Address &lhs, const rpc::Address &rhs) {
+  return google::protobuf::util::MessageDifferencer::Equivalent(lhs, rhs);
+}
 
 /// Abstract client interface for testing.
 class CoreWorkerClientInterface : public pubsub::SubscriberClientInterface {
@@ -101,6 +81,8 @@ class CoreWorkerClientInterface : public pubsub::SubscriberClientInterface {
     static const rpc::Address empty_addr_;
     return empty_addr_;
   }
+
+  virtual bool IsChannelIdleAfterRPCs() const { return false; }
 
   /// Push an actor task directly from worker to worker.
   ///
@@ -176,6 +158,10 @@ class CoreWorkerClientInterface : public pubsub::SubscriberClientInterface {
   virtual void RemoteCancelTask(const RemoteCancelTaskRequest &request,
                                 const ClientCallback<RemoteCancelTaskReply> &callback) {}
 
+  virtual void RegisterMutableObjectReader(
+      const RegisterMutableObjectReaderRequest &request,
+      const ClientCallback<RegisterMutableObjectReaderReply> &callback) {}
+
   virtual void GetCoreWorkerStats(
       const GetCoreWorkerStatsRequest &request,
       const ClientCallback<GetCoreWorkerStatsReply> &callback) {}
@@ -233,6 +219,10 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
   };
 
   const rpc::Address &Addr() const override { return addr_; }
+
+  bool IsChannelIdleAfterRPCs() const override {
+    return grpc_client_->IsChannelIdleAfterRPCs();
+  }
 
   VOID_RPC_CLIENT_METHOD(CoreWorkerService,
                          DirectActorCallArgWaitComplete,
@@ -296,6 +286,12 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
 
   VOID_RPC_CLIENT_METHOD(CoreWorkerService,
                          ReportGeneratorItemReturns,
+                         grpc_client_,
+                         /*method_timeout_ms*/ -1,
+                         override)
+
+  VOID_RPC_CLIENT_METHOD(CoreWorkerService,
+                         RegisterMutableObjectReader,
                          grpc_client_,
                          /*method_timeout_ms*/ -1,
                          override)

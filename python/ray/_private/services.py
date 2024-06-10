@@ -19,12 +19,14 @@ from typing import List, Optional, IO, AnyStr
 
 # Import psutil after ray so the packaged version is used.
 import psutil
+from filelock import FileLock
 
 # Ray modules
 import ray
 import ray._private.ray_constants as ray_constants
 from ray._raylet import GcsClient, GcsClientOptions
 from ray.core.generated.common_pb2 import Language
+from ray._private.ray_constants import RAY_NODE_IP_FILENAME
 
 resource = None
 if sys.platform != "win32":
@@ -42,6 +44,7 @@ RAY_HOME = os.path.join(os.path.dirname(os.path.dirname(__file__)), "..", "..")
 RAY_PATH = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))
 RAY_PRIVATE_DIR = "_private"
 AUTOSCALER_PRIVATE_DIR = os.path.join("autoscaler", "_private")
+AUTOSCALER_V2_DIR = os.path.join("autoscaler", "v2")
 
 # Location of the raylet executables.
 RAYLET_EXECUTABLE = os.path.join(
@@ -473,6 +476,16 @@ def get_node_to_connect_for_driver(gcs_address, node_ip_address):
     return global_state.get_node_to_connect_for_driver(node_ip_address)
 
 
+def get_node(gcs_address, node_id):
+    """
+    Get the node information from the global state accessor.
+    """
+    global_state = ray._private.state.GlobalState()
+    gcs_options = _get_gcs_client_options(gcs_address)
+    global_state._initialize_global_state(gcs_options)
+    return global_state.get_node(node_id)
+
+
 def get_webui_url_from_internal_kv():
     assert ray.experimental.internal_kv._internal_kv_initialized()
     webui_url = ray.experimental.internal_kv._internal_kv_get(
@@ -649,6 +662,11 @@ def node_ip_address_from_perspective(address: str):
     return node_ip_address
 
 
+# NOTE: This API should not be used when you obtain the
+# IP address when ray.init is not called because
+# it cannot find the IP address if it is specified by
+# ray start --node-ip-address. You should instead use
+# get_cached_node_ip_address.
 def get_node_ip_address(address="8.8.8.8:53"):
     if ray._private.worker._global_node is not None:
         return ray._private.worker._global_node.node_ip_address
@@ -658,6 +676,103 @@ def get_node_ip_address(address="8.8.8.8:53"):
         # https://github.com/ray-project/ray/issues/18730.
         return "127.0.0.1"
     return node_ip_address_from_perspective(address)
+
+
+def get_cached_node_ip_address(session_dir: str) -> str:
+    """Get a node address cached on this session.
+
+    If a ray instance is started by `ray start --node-ip-address`,
+    the node ip address is cached to a file RAY_NODE_IP_FILENAME.
+    Otherwise, the file exists, but it is emptyl.
+
+    This API is process-safe, meaning the file access is protected by
+    a file lock.
+
+    Args:
+        session_dir: Path to the Ray session directory.
+
+    Returns:
+        node_ip_address cached on the current node. None if the node
+        the file doesn't exist, meaning ray instance hasn't been
+        started on a current node. If node_ip_address is not written
+        to a file, it means --node-ip-address is not given, and in this
+        case, we find the IP address ourselves.
+    """
+    file_path = Path(os.path.join(session_dir, RAY_NODE_IP_FILENAME))
+    cached_node_ip_address = {}
+
+    with FileLock(str(file_path.absolute()) + ".lock"):
+        if not file_path.exists():
+            return None
+
+        with file_path.open() as f:
+            cached_node_ip_address.update(json.load(f))
+
+        if "node_ip_address" in cached_node_ip_address:
+            return cached_node_ip_address["node_ip_address"]
+        else:
+            return ray.util.get_node_ip_address()
+
+
+def write_node_ip_address(session_dir: str, node_ip_address: Optional[str]) -> None:
+    """Write a node ip address of the current session to
+    RAY_NODE_IP_FILENAME.
+
+    If a ray instance is started by `ray start --node-ip-address`,
+    the node ip address is cached to a file RAY_NODE_IP_FILENAME.
+
+    This API is process-safe, meaning the file access is protected by
+    a file lock.
+
+    The file contains a single string node_ip_address. If nothing
+    is written, it means --node-ip-address was not given, and Ray
+    resolves the IP address on its own. It assumes in a single node,
+    you can have only 1 IP address (which is the assumption ray
+    has in general).
+
+    node_ip_address is the ip address of the current node.
+
+    Args:
+        session_dir: The path to Ray session directory.
+        node_ip_address: The node IP address of the current node.
+            If None, it means the node ip address is not given
+            by --node-ip-address. In this case, we don't write
+            anything to a file.
+    """
+    file_path = Path(os.path.join(session_dir, RAY_NODE_IP_FILENAME))
+    cached_node_ip_address = {}
+
+    with FileLock(str(file_path.absolute()) + ".lock"):
+        if not file_path.exists():
+            with file_path.open(mode="w") as f:
+                json.dump({}, f)
+
+        with file_path.open() as f:
+            cached_node_ip_address.update(json.load(f))
+
+        cached_node_ip = cached_node_ip_address.get("node_ip_address")
+
+        if node_ip_address is not None:
+            if cached_node_ip:
+                if cached_node_ip == node_ip_address:
+                    # Nothing to do.
+                    return
+                else:
+                    logger.warning(
+                        "The node IP address of the current host recorded "
+                        f"in {RAY_NODE_IP_FILENAME} ({cached_node_ip}) "
+                        "is different from the current IP address: "
+                        f"{node_ip_address}. Ray will use {node_ip_address} "
+                        "as the current node's IP address. "
+                        "Creating 2 instances in the same host with different "
+                        "IP address is not supported. "
+                        "Please create an enhnacement request to"
+                        "https://github.com/ray-project/ray/issues."
+                    )
+
+            cached_node_ip_address["node_ip_address"] = node_ip_address
+            with file_path.open(mode="w") as f:
+                json.dump(cached_node_ip_address, f)
 
 
 def create_redis_client(redis_address, password=None):
@@ -970,6 +1085,7 @@ def start_reaper(fate_share=None):
 
 
 def start_log_monitor(
+    session_dir: str,
     logs_dir: str,
     gcs_address: str,
     fate_share: Optional[bool] = None,
@@ -982,6 +1098,7 @@ def start_log_monitor(
     """Start a log monitor process.
 
     Args:
+        session_dir: The session directory.
         logs_dir: The directory of logging files.
         gcs_address: GCS address for pubsub.
         fate_share: Whether to share fate between log_monitor
@@ -1006,6 +1123,7 @@ def start_log_monitor(
         sys.executable,
         "-u",
         log_monitor_filepath,
+        f"--session-dir={session_dir}",
         f"--logs-dir={logs_dir}",
         f"--gcs-address={gcs_address}",
         f"--logging-rotate-bytes={max_bytes}",
@@ -1127,7 +1245,7 @@ def start_api_server(
         # dashboard inclusion, the install is not minimal.
         if include_dashboard and minimal:
             logger.error(
-                "--include-dashboard is not supported when minimal ray is used."
+                "--include-dashboard is not supported when minimal ray is used. "
                 "Download ray[default] to use the dashboard."
             )
             raise Exception("Cannot include dashboard with missing packages.")
@@ -1248,7 +1366,7 @@ def start_api_server(
                     "Error should be written to 'dashboard.log' or "
                     "'dashboard.err'. We are printing the last "
                     f"{lines_to_read} lines for you. See "
-                    "'https://docs.ray.io/en/master/ray-observability/ray-logging.html#logging-directory-structure' "  # noqa
+                    "'https://docs.ray.io/en/master/ray-observability/user-guides/configure-logging.html#logging-directory-structure' "  # noqa
                     "to find where the log file is."
                 )
                 try:
@@ -1378,6 +1496,7 @@ def start_gcs_server(
 def start_raylet(
     redis_address: str,
     gcs_address: str,
+    node_id: str,
     node_ip_address: str,
     node_manager_port: int,
     raylet_name: str,
@@ -1425,6 +1544,7 @@ def start_raylet(
     Args:
         redis_address: The address of the primary Redis server.
         gcs_address: The address of GCS server.
+        node_id: The hex ID of this node.
         node_ip_address: The IP address of this node.
         node_manager_port: The port to use for the node manager. If it's
             0, a random port will be used.
@@ -1554,7 +1674,6 @@ def start_raylet(
             f"--object-store-name={plasma_store_name}",
             f"--raylet-name={raylet_name}",
             f"--redis-address={redis_address}",
-            f"--temp-dir={temp_dir}",
             f"--metrics-agent-port={metrics_agent_port}",
             f"--runtime-env-agent-port={runtime_env_agent_port}",
             f"--logging-rotate-bytes={max_bytes}",
@@ -1650,6 +1769,7 @@ def start_raylet(
         f"--min_worker_port={min_worker_port}",
         f"--max_worker_port={max_worker_port}",
         f"--node_manager_port={node_manager_port}",
+        f"--node_id={node_id}",
         f"--node_ip_address={node_ip_address}",
         f"--maximum_startup_concurrency={maximum_startup_concurrency}",
         f"--static_resource_list={resource_argument}",
@@ -1868,7 +1988,7 @@ def determine_plasma_store_config(
             shm_avail = ray._private.utils.get_shared_memory_bytes()
             # Compare the requested memory size to the memory available in
             # /dev/shm.
-            if shm_avail > object_store_memory:
+            if shm_avail >= object_store_memory:
                 plasma_directory = "/dev/shm"
             elif (
                 not os.environ.get("RAY_OBJECT_STORE_ALLOW_SLOW_STORAGE")
@@ -1972,6 +2092,7 @@ def start_monitor(
     max_bytes: int = 0,
     backup_count: int = 0,
     monitor_ip: Optional[str] = None,
+    autoscaler_v2: bool = False,
 ):
     """Run a process to monitor the other processes.
 
@@ -1992,12 +2113,15 @@ def start_monitor(
     Returns:
         ProcessInfo for the process that was started.
     """
-    monitor_path = os.path.join(RAY_PATH, AUTOSCALER_PRIVATE_DIR, "monitor.py")
+    if autoscaler_v2:
+        entrypoint = os.path.join(RAY_PATH, AUTOSCALER_V2_DIR, "monitor.py")
+    else:
+        entrypoint = os.path.join(RAY_PATH, AUTOSCALER_PRIVATE_DIR, "monitor.py")
 
     command = [
         sys.executable,
         "-u",
-        monitor_path,
+        entrypoint,
         f"--logs-dir={logs_dir}",
         f"--logging-rotate-bytes={max_bytes}",
         f"--logging-rotate-backup-count={backup_count}",

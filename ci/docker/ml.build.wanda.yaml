@@ -1,0 +1,24 @@
+name: "$IMAGE_TO"
+froms: ["$IMAGE_FROM"]
+dockerfile: ci/docker/ml.build.Dockerfile
+srcs:
+  - ci/env/install-dependencies.sh
+  - ci/env/install-horovod.sh
+  - ci/env/install-hdfs.sh
+  - python/requirements.txt
+  - python/requirements_compiled.txt
+  - python/requirements/test-requirements.txt
+  - python/requirements/ml/core-requirements.txt
+  - python/requirements/ml/dl-cpu-requirements.txt
+  - python/requirements/ml/dl-gpu-requirements.txt
+  - python/requirements/ml/train-requirements.txt
+  - python/requirements/ml/train-test-requirements.txt
+  - python/requirements/ml/tune-requirements.txt
+  - python/requirements/ml/tune-test-requirements.txt
+  - python/requirements/ml/data-requirements.txt
+  - python/requirements/ml/data-test-requirements.txt
+build_args:
+  - DOCKER_IMAGE_BASE_BUILD=$IMAGE_FROM
+  - RAYCI_IS_GPU_BUILD
+tags:
+  - cr.ray.io/rayproject/$IMAGE_TO

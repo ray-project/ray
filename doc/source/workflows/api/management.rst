@@ -4,6 +4,7 @@ Workflow Management API
 .. currentmodule:: ray.workflow
 
 .. autosummary::
+   :nosignatures:
    :toctree: doc/
 
    resume

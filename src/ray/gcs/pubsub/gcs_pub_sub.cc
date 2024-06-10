@@ -91,7 +91,7 @@ Status GcsPublisher::PublishError(const std::string &id,
   return Status::OK();
 }
 
-std::string GcsPublisher::DebugString() const { return "GcsPublisher {}"; }
+std::string GcsPublisher::DebugString() const { return publisher_->DebugString(); }
 
 Status GcsSubscriber::SubscribeAllJobs(
     const SubscribeCallback<JobID, rpc::JobTableData> &subscribe,
@@ -286,15 +286,6 @@ Status PythonGcsPublisher::PublishLogs(const std::string &key_id,
   return DoPublishWithRetries(request, -1, -1);
 }
 
-Status PythonGcsPublisher::PublishFunctionKey(
-    const rpc::PythonFunction &python_function) {
-  rpc::GcsPublishRequest request;
-  auto *message = request.add_pub_messages();
-  message->set_channel_type(rpc::RAY_PYTHON_FUNCTION_CHANNEL);
-  message->mutable_python_function_message()->MergeFrom(python_function);
-  return DoPublishWithRetries(request, -1, -1);
-}
-
 PythonGcsSubscriber::PythonGcsSubscriber(const std::string &gcs_address,
                                          int gcs_port,
                                          rpc::ChannelType channel_type,
@@ -449,20 +440,14 @@ Status PythonGcsSubscriber::Close() {
 
   grpc::ClientContext context;
 
-  rpc::GcsSubscriberCommandBatchRequest request;
+  rpc::GcsUnregisterSubscriberRequest request;
   request.set_subscriber_id(subscriber_id_);
-  request.set_sender_id(worker_id_);
-  auto *cmd = request.add_commands();
-  cmd->set_channel_type(channel_type_);
-  cmd->mutable_unsubscribe_message();
-
-  rpc::GcsSubscriberCommandBatchReply reply;
-  grpc::Status status =
-      pubsub_stub_->GcsSubscriberCommandBatch(&context, request, &reply);
+  rpc::GcsUnregisterSubscriberReply reply;
+  grpc::Status status = pubsub_stub_->GcsUnregisterSubscriber(&context, request, &reply);
 
   if (!status.ok()) {
-    RAY_LOG(DEBUG) << "Error while closing the subscriber: " << status.error_message()
-                   << " [code " << status.error_code() << "]";
+    RAY_LOG(WARNING) << "Error while unregistering the subscriber: "
+                     << status.error_message() << " [code " << status.error_code() << "]";
   }
   return Status::OK();
 }

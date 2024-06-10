@@ -111,7 +111,7 @@ class TestAgentConnector(unittest.TestCase):
                 "sensor2": 8.8,
             },
             SampleBatch.REWARDS: 5.8,
-            SampleBatch.ACTIONS: [[1, 1], [2]],
+            SampleBatch.ACTIONS: [[1, 1], [2, 2]],
             SampleBatch.INFOS: {"random": "info"},
         }
 
@@ -465,7 +465,7 @@ class TestViewRequirementAgentConnector(unittest.TestCase):
             PPOConfig()
             .framework("torch")
             .environment(env="CartPole-v1")
-            .rollouts(create_env_on_local_worker=True)
+            .env_runners(create_env_on_local_worker=True)
         )
 
         env = gym.make("CartPole-v1")

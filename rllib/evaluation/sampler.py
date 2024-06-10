@@ -1,6 +1,5 @@
 import logging
 import queue
-import threading
 import time
 from abc import ABCMeta, abstractmethod
 from collections import defaultdict, namedtuple
@@ -36,7 +35,7 @@ from ray.rllib.offline import InputReader
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.policy_map import PolicyMap
 from ray.rllib.policy.sample_batch import SampleBatch, concat_samples
-from ray.rllib.utils.annotations import DeveloperAPI, override
+from ray.rllib.utils.annotations import OldAPIStack, override
 from ray.rllib.utils.debug import summarize
 from ray.rllib.utils.deprecation import deprecation_warning, DEPRECATED_VALUE
 from ray.rllib.utils.framework import try_import_tf
@@ -83,7 +82,7 @@ class _NewEpisodeDefaultDict(defaultdict):
             return ret
 
 
-@DeveloperAPI
+@OldAPIStack
 class SamplerInput(InputReader, metaclass=ABCMeta):
     """Reads input experiences from an existing sampler."""
 
@@ -96,7 +95,6 @@ class SamplerInput(InputReader, metaclass=ABCMeta):
         return concat_samples(batches)
 
     @abstractmethod
-    @DeveloperAPI
     def get_data(self) -> SampleBatchType:
         """Called by `self.next()` to return the next batch of data.
 
@@ -108,7 +106,6 @@ class SamplerInput(InputReader, metaclass=ABCMeta):
         raise NotImplementedError
 
     @abstractmethod
-    @DeveloperAPI
     def get_metrics(self) -> List[RolloutMetrics]:
         """Returns list of episode metrics since the last call to this method.
 
@@ -121,7 +118,6 @@ class SamplerInput(InputReader, metaclass=ABCMeta):
         raise NotImplementedError
 
     @abstractmethod
-    @DeveloperAPI
     def get_extra_batches(self) -> List[SampleBatchType]:
         """Returns list of extra batches since the last call to this method.
 
@@ -140,7 +136,7 @@ class SamplerInput(InputReader, metaclass=ABCMeta):
         raise NotImplementedError
 
 
-@DeveloperAPI
+@OldAPIStack
 class SyncSampler(SamplerInput):
     """Sync SamplerInput that collects experiences when `get_data()` is called."""
 
@@ -305,236 +301,7 @@ class SyncSampler(SamplerInput):
         return extra
 
 
-@DeveloperAPI
-class AsyncSampler(threading.Thread, SamplerInput):
-    """Async SamplerInput that collects experiences in thread and queues them.
-
-    Once started, experiences are continuously collected in the background
-    and put into a Queue, from where they can be unqueued by the caller
-    of `get_data()`.
-    """
-
-    def __init__(
-        self,
-        *,
-        worker: "RolloutWorker",
-        env: BaseEnv,
-        clip_rewards: Union[bool, float],
-        rollout_fragment_length: int,
-        count_steps_by: str = "env_steps",
-        callbacks: "DefaultCallbacks",
-        multiple_episodes_in_batch: bool = False,
-        normalize_actions: bool = True,
-        clip_actions: bool = False,
-        observation_fn: Optional["ObservationFunction"] = None,
-        sample_collector_class: Optional[Type[SampleCollector]] = None,
-        render: bool = False,
-        blackhole_outputs: bool = False,
-        # Obsolete.
-        policies=None,
-        policy_mapping_fn=None,
-        preprocessors=None,
-        obs_filters=None,
-        tf_sess=None,
-        no_done_at_end=DEPRECATED_VALUE,
-        horizon=DEPRECATED_VALUE,
-        soft_horizon=DEPRECATED_VALUE,
-    ):
-        """Initializes an AsyncSampler instance.
-
-        Args:
-            worker: The RolloutWorker that will use this Sampler for sampling.
-            env: Any Env object. Will be converted into an RLlib BaseEnv.
-            clip_rewards: True for +/-1.0 clipping,
-                actual float value for +/- value clipping. False for no
-                clipping.
-            rollout_fragment_length: The length of a fragment to collect
-                before building a SampleBatch from the data and resetting
-                the SampleBatchBuilder object.
-            count_steps_by: One of "env_steps" (default) or "agent_steps".
-                Use "agent_steps", if you want rollout lengths to be counted
-                by individual agent steps. In a multi-agent env,
-                a single env_step contains one or more agent_steps, depending
-                on how many agents are present at any given time in the
-                ongoing episode.
-            multiple_episodes_in_batch: Whether to pack multiple
-                episodes into each batch. This guarantees batches will be
-                exactly `rollout_fragment_length` in size.
-            normalize_actions: Whether to normalize actions to the
-                action space's bounds.
-            clip_actions: Whether to clip actions according to the
-                given action_space's bounds.
-            blackhole_outputs: Whether to collect samples, but then
-                not further process or store them (throw away all samples).
-            observation_fn: Optional multi-agent observation func to use for
-                preprocessing observations.
-            sample_collector_class: An optional SampleCollector sub-class to
-                use to collect, store, and retrieve environment-, model-,
-                and sampler data.
-            render: Whether to try to render the environment after each step.
-        """
-        # All of the following arguments are deprecated. They will instead be
-        # provided via the passed in `worker` arg, e.g. `worker.policy_map`.
-        if log_once("async-sampler-deprecation-warning"):
-            deprecation_warning(
-                old="rllib.evaluation.sampler.AsyncSampler",
-                help=(
-                    "AsyncSampler is being deprecated from RLlib in future releases. "
-                    "See https://github.com/ray-project/enhancements/blob/main/reps/2023-04-28-remove-algorithms-from-rllib.md"  # noqa: E501
-                    "for more details. "
-                ),
-            )
-        if log_once("deprecated_async_sampler_args"):
-            if policies is not None:
-                deprecation_warning(old="policies")
-            if policy_mapping_fn is not None:
-                deprecation_warning(old="policy_mapping_fn")
-            if preprocessors is not None:
-                deprecation_warning(old="preprocessors")
-            if obs_filters is not None:
-                deprecation_warning(old="obs_filters")
-            if tf_sess is not None:
-                deprecation_warning(old="tf_sess")
-            if horizon != DEPRECATED_VALUE:
-                deprecation_warning(old="horizon", error=True)
-            if soft_horizon != DEPRECATED_VALUE:
-                deprecation_warning(old="soft_horizon", error=True)
-            if no_done_at_end != DEPRECATED_VALUE:
-                deprecation_warning(old="no_done_at_end", error=True)
-
-        self.worker = worker
-
-        for _, f in worker.filters.items():
-            assert getattr(
-                f, "is_concurrent", False
-            ), "Observation Filter must support concurrent updates."
-
-        self.base_env = convert_to_base_env(env)
-        threading.Thread.__init__(self)
-        self.queue = queue.Queue(5)
-        self.extra_batches = queue.Queue()
-        self.metrics_queue = queue.Queue()
-        self.rollout_fragment_length = rollout_fragment_length
-        self.clip_rewards = clip_rewards
-        self.daemon = True
-        self.multiple_episodes_in_batch = multiple_episodes_in_batch
-        self.callbacks = callbacks
-        self.normalize_actions = normalize_actions
-        self.clip_actions = clip_actions
-        self.blackhole_outputs = blackhole_outputs
-        self.perf_stats = _PerfStats(
-            ema_coef=worker.config.sampler_perf_stats_ema_coef,
-        )
-        self.shutdown = False
-        self.observation_fn = observation_fn
-        self.render = render
-        if not sample_collector_class:
-            sample_collector_class = SimpleListCollector
-        self.sample_collector = sample_collector_class(
-            self.worker.policy_map,
-            self.clip_rewards,
-            self.callbacks,
-            self.multiple_episodes_in_batch,
-            self.rollout_fragment_length,
-            count_steps_by=count_steps_by,
-        )
-        self.count_steps_by = count_steps_by
-
-    @override(threading.Thread)
-    def run(self):
-        try:
-            self._run()
-        except BaseException as e:
-            self.queue.put(e)
-            raise e
-
-    def _run(self):
-        # We are in a thread: Switch on eager execution mode, iff framework==tf2.
-        if (
-            tf1
-            and self.worker.config.framework_str == "tf2"
-            and not tf1.executing_eagerly()
-        ):
-            tf1.enable_eager_execution()
-
-        if self.blackhole_outputs:
-            queue_putter = lambda x: None
-            extra_batches_putter = lambda x: None
-        else:
-            queue_putter = self.queue.put
-            extra_batches_putter = lambda x: self.extra_batches.put(x, timeout=600.0)
-        if self.worker.config.enable_connectors:
-            env_runner = EnvRunnerV2(
-                worker=self.worker,
-                base_env=self.base_env,
-                multiple_episodes_in_batch=self.multiple_episodes_in_batch,
-                callbacks=self.callbacks,
-                perf_stats=self.perf_stats,
-                rollout_fragment_length=self.rollout_fragment_length,
-                count_steps_by=self.count_steps_by,
-                render=self.render,
-            ).run()
-        else:
-            env_runner = _env_runner(
-                self.worker,
-                self.base_env,
-                extra_batches_putter,
-                self.normalize_actions,
-                self.clip_actions,
-                self.multiple_episodes_in_batch,
-                self.callbacks,
-                self.perf_stats,
-                self.observation_fn,
-                self.sample_collector,
-                self.render,
-            )
-        while not self.shutdown:
-            # The timeout variable exists because apparently, if one worker
-            # dies, the other workers won't die with it, unless the timeout is
-            # set to some large number. This is an empirical observation.
-            item = next(env_runner)
-            if isinstance(item, RolloutMetrics):
-                self.metrics_queue.put(item)
-            else:
-                queue_putter(item)
-
-    @override(SamplerInput)
-    def get_data(self) -> SampleBatchType:
-        if not self.is_alive():
-            raise RuntimeError("Sampling thread has died")
-        rollout = self.queue.get(timeout=600.0)
-
-        # Propagate errors.
-        if isinstance(rollout, BaseException):
-            raise rollout
-
-        return rollout
-
-    @override(SamplerInput)
-    def get_metrics(self) -> List[RolloutMetrics]:
-        completed = []
-        while True:
-            try:
-                completed.append(
-                    self.metrics_queue.get_nowait()._replace(
-                        perf_stats=self.perf_stats.get()
-                    )
-                )
-            except queue.Empty:
-                break
-        return completed
-
-    @override(SamplerInput)
-    def get_extra_batches(self) -> List[SampleBatchType]:
-        extra = []
-        while True:
-            try:
-                extra.append(self.extra_batches.get_nowait())
-            except queue.Empty:
-                break
-        return extra
-
-
+@OldAPIStack
 def _env_runner(
     worker: "RolloutWorker",
     base_env: BaseEnv,
@@ -707,6 +474,7 @@ def _env_runner(
             perf_stats.incr("env_render_time", time.time() - t5)
 
 
+@OldAPIStack
 def _process_observations(
     *,
     worker: "RolloutWorker",
@@ -1125,6 +893,7 @@ def _process_observations(
     return active_envs, to_eval, outputs
 
 
+@OldAPIStack
 def _do_policy_eval(
     *,
     to_eval: Dict[PolicyID, List[_PolicyEvalData]],
@@ -1183,6 +952,7 @@ def _do_policy_eval(
     return eval_results
 
 
+@OldAPIStack
 def _process_policy_eval_results(
     *,
     to_eval: Dict[PolicyID, List[_PolicyEvalData]],
@@ -1279,6 +1049,7 @@ def _process_policy_eval_results(
     return actions_to_send
 
 
+@OldAPIStack
 def _create_episode(active_episodes, env_id, callbacks, worker, base_env):
     # Make sure we are really creating a new episode here.
     assert env_id not in active_episodes
@@ -1297,6 +1068,7 @@ def _create_episode(active_episodes, env_id, callbacks, worker, base_env):
     return new_episode
 
 
+@OldAPIStack
 def _call_on_episode_start(episode, env_id, callbacks, worker, base_env):
     # Call each policy's Exploration.on_episode_start method.
     # Note: This may break the exploration (e.g. ParameterNoise) of

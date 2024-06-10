@@ -24,6 +24,7 @@
 
 #include "ray/common/buffer.h"
 #include "ray/common/status.h"
+#include "ray/object_manager/common.h"
 #include "ray/object_manager/plasma/common.h"
 #include "ray/util/visibility.h"
 #include "src/ray/protobuf/common.pb.h"
@@ -31,8 +32,22 @@
 namespace plasma {
 
 using ray::Buffer;
+using ray::PlasmaObjectHeader;
 using ray::SharedMemoryBuffer;
 using ray::Status;
+
+struct MutableObject {
+  MutableObject(uint8_t *base_ptr, const PlasmaObject &object_info)
+      : header(
+            reinterpret_cast<PlasmaObjectHeader *>(base_ptr + object_info.header_offset)),
+        buffer(std::make_shared<SharedMemoryBuffer>(base_ptr + object_info.data_offset,
+                                                    object_info.allocated_size)),
+        allocated_size(object_info.allocated_size) {}
+
+  PlasmaObjectHeader *header;
+  std::shared_ptr<SharedMemoryBuffer> buffer;
+  const int64_t allocated_size;
+};
 
 /// Object buffer data structure.
 struct ObjectBuffer {
@@ -82,6 +97,10 @@ class PlasmaClientInterface {
                      std::vector<ObjectBuffer> *object_buffers,
                      bool is_from_worker) = 0;
 
+  virtual Status ExperimentalMutableObjectRegisterWriter(const ObjectID &object_id) = 0;
+  virtual Status GetExperimentalMutableObject(
+      const ObjectID &object_id, std::unique_ptr<MutableObject> *mutable_object) = 0;
+
   /// Seal an object in the object store. The object will be immutable after
   /// this
   /// call.
@@ -127,6 +146,7 @@ class PlasmaClientInterface {
   /// be either sealed or aborted.
   virtual Status CreateAndSpillIfNeeded(const ObjectID &object_id,
                                         const ray::rpc::Address &owner_address,
+                                        bool is_mutable,
                                         int64_t data_size,
                                         const uint8_t *metadata,
                                         int64_t metadata_size,
@@ -193,6 +213,7 @@ class PlasmaClient : public PlasmaClientInterface {
   /// be either sealed or aborted.
   Status CreateAndSpillIfNeeded(const ObjectID &object_id,
                                 const ray::rpc::Address &owner_address,
+                                bool is_mutable,
                                 int64_t data_size,
                                 const uint8_t *metadata,
                                 int64_t metadata_size,
@@ -254,6 +275,23 @@ class PlasmaClient : public PlasmaClientInterface {
              int64_t timeout_ms,
              std::vector<ObjectBuffer> *object_buffers,
              bool is_from_worker);
+
+  /// Register an experimental mutable object writer. The writer is on a different node
+  /// and wants to write to this node.
+  ///
+  /// \param[in] object_id The ID of the object.
+  /// \return The return status.
+  Status ExperimentalMutableObjectRegisterWriter(const ObjectID &object_id);
+
+  /// Get an experimental mutable object.
+  ///
+  /// \param[in] object_id The ID of the object.
+  /// \param[in] mutable_object Struct containing pointers for the object
+  /// header, which is used to synchronize with other writers and readers, and
+  /// the object data and metadata, which is read by the application.
+  /// \return The return status.
+  Status GetExperimentalMutableObject(const ObjectID &object_id,
+                                      std::unique_ptr<MutableObject> *mutable_object);
 
   /// Tell Plasma that the client no longer needs the object. This should be
   /// called after Get() or Create() when the client is done with the object.

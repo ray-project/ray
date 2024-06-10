@@ -2,6 +2,7 @@ Utility
 =======
 
 .. autosummary::
+   :nosignatures:
    :toctree: doc/
 
    ray.util.ActorPool
@@ -10,12 +11,17 @@ Utility
    ray.cluster_resources
    ray.available_resources
 
+   .. Other docs have references to these
+   ray.util.queue.Empty
+   ray.util.queue.Full
+
 .. _custom-metric-api-ref:
 
 Custom Metrics
 --------------
 
 .. autosummary::
+   :nosignatures:
    :toctree: doc/
 
    ray.util.metrics.Counter
@@ -28,8 +34,9 @@ Debugging
 ---------
 
 .. autosummary::
+   :nosignatures:
    :toctree: doc/
 
-   ray.util.pdb.set_trace
+   ray.util.rpdb.set_trace
    ray.util.inspect_serializability
    ray.timeline

@@ -43,6 +43,10 @@ class InternalPubSubHandler : public rpc::InternalPubSubHandler {
                                        rpc::GcsSubscriberCommandBatchReply *reply,
                                        rpc::SendReplyCallback send_reply_callback) final;
 
+  void HandleGcsUnregisterSubscriber(rpc::GcsUnregisterSubscriberRequest request,
+                                     rpc::GcsUnregisterSubscriberReply *reply,
+                                     rpc::SendReplyCallback send_reply_callback) final;
+
   // Stops the event loop and the thread of the pubsub handler.
   void Stop();
 

@@ -107,15 +107,25 @@ void CoreWorkerDirectTaskReceiver::HandleTask(
                                 &application_error);
     reply->set_is_retryable_error(is_retryable_error);
     reply->set_is_application_error(!application_error.empty());
+    std::string task_execution_error;
+
+    if (!application_error.empty()) {
+      task_execution_error = "User exception:\n" + application_error;
+    }
+    // System errors occurred while executing the task.
     if (!status.ok()) {
-      // System errors occurred while executing the task.
-      reply->set_task_execution_error(status.ToString());
-    } else if (!application_error.empty()) {
+      if (!task_execution_error.empty()) {
+        task_execution_error += "\n\n";
+      }
+      task_execution_error += "System error:\n" + status.ToString();
+    }
+
+    if (!task_execution_error.empty()) {
       // Application errors occurred while executing the task.
       // We could get the errors from return_objects, but it would require deserializing
       // the serialized error message. So we just record the error message directly while
       // executing the task.
-      reply->set_task_execution_error(application_error);
+      reply->set_task_execution_error(task_execution_error);
     }
 
     for (const auto &it : streaming_generator_returns) {
@@ -174,7 +184,7 @@ void CoreWorkerDirectTaskReceiver::HandleTask(
         // Tell raylet that an actor creation task has finished execution, so that
         // raylet can publish actor creation event to GCS, and mark this worker as
         // actor, thus if this worker dies later raylet will restart the actor.
-        RAY_CHECK_OK(task_done_());
+        RAY_CHECK_OK(actor_creation_task_done_());
         if (status.IsCreationTaskError()) {
           RAY_LOG(WARNING) << "Actor creation task finished with errors, task_id: "
                            << task_spec.TaskId()

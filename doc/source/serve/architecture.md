@@ -46,7 +46,7 @@ When an HTTP or gRPC request is sent to the corresponding HTTP or gRPC proxy, th
   application name metadata. Serve places the request in a queue.
 3. For each request in a deployment's queue, an available replica is looked up
   and the request is sent to it. If no replicas are available (that is, more
-  than `max_concurrent_queries` requests are outstanding at each replica), the request
+  than `max_ongoing_requests` requests are outstanding at each replica), the request
   is left in the queue until a replica becomes available.
 
 Each replica maintains a queue of requests and executes requests one at a time, possibly
@@ -88,7 +88,7 @@ Ray Serve's autoscaling feature automatically increases or decreases a deploymen
 - The Serve Autoscaler runs in the Serve Controller actor.
 - Each `DeploymentHandle` and each replica periodically pushes its metrics to the autoscaler.
 - For each deployment, the autoscaler periodically checks `DeploymentHandle` queues and in-flight queries on replicas to decide whether or not to scale the number of replicas.
-- Each `DeploymentHandle` continuously polls the controller to check for new deployment replicas. Whenever new replicas are discovered, it sends any buffered or new queries to the replica until `max_concurrent_queries` is reached.  Queries are sent to replicas in round-robin fashion, subject to the constraint that no replica is handling more than `max_concurrent_queries` requests at a time.
+- Each `DeploymentHandle` continuously polls the controller to check for new deployment replicas. Whenever new replicas are discovered, it sends any buffered or new queries to the replica until `max_ongoing_requests` is reached.  Queries are sent to replicas in round-robin fashion, subject to the constraint that no replica is handling more than `max_ongoing_requests` requests at a time.
 
 :::{note}
 When the controller dies, requests can still be sent via HTTP, gRPC and `DeploymentHandle`, but autoscaling is paused. When the controller recovers, the autoscaling resumes, but all previous metrics collected are lost.
@@ -110,13 +110,13 @@ servers.  You can use your own load balancer on top of Ray Serve.
 This architecture ensures horizontal scalability for Serve. You can scale your HTTP and gRPC ingress by adding more nodes. You can also scale your model inference by increasing the number
 of replicas via the `num_replicas` option of your deployment.
 
-### How do ServeHandles work?
+### How do DeploymentHandles work?
 
-{mod}`ServeHandles <ray.serve.handle.RayServeHandle>` wrap a handle to a "router" on the
+{mod}`DeploymentHandles <ray.serve.handle.DeploymentHandle>` wrap a handle to a "router" on the
 same node which routes requests to replicas for a deployment. When a
 request is sent from one replica to another via the handle, the
 requests go through the same data path as incoming HTTP or gRPC requests. This enables
-the same deployment selection and batching procedures to happen. ServeHandles are
+the same deployment selection and batching procedures to happen. DeploymentHandles are
 often used to implement [model composition](serve-model-composition).
 
 ### What happens to large requests?

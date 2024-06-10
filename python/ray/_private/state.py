@@ -1,9 +1,9 @@
 import json
 import logging
 from collections import defaultdict
-from typing import Set
+from typing import Dict
 
-from google.protobuf.json_format import MessageToDict
+from ray._private.protobuf_compat import message_to_dict
 
 import ray
 from ray._private.client_mode_hook import client_mode_hook
@@ -346,7 +346,7 @@ class GlobalState:
             "bundles": {
                 # The value here is needs to be dictionarified
                 # otherwise, the payload becomes unserializable.
-                bundle.bundle_id.bundle_index: MessageToDict(bundle)["unitResources"]
+                bundle.bundle_id.bundle_index: message_to_dict(bundle)["unitResources"]
                 for bundle in placement_group_info.bundles
             },
             "bundles_to_node_id": {
@@ -508,7 +508,7 @@ class GlobalState:
             logger.warning(
                 "No profiling events found. Ray profiling must be enabled "
                 "by setting RAY_PROFILING=1, and make sure "
-                "RAY_task_events_report_interval_ms is a positive value (default 1000)."
+                "RAY_task_events_report_interval_ms=0."
             )
 
         if filename is not None:
@@ -664,6 +664,61 @@ class GlobalState:
             worker_data.SerializeToString()
         )
 
+    def update_worker_debugger_port(self, worker_id, debugger_port):
+        """Update the debugger port of a worker.
+
+        Args:
+            worker_id: ID of this worker. Type is bytes.
+            debugger_port: Port of the debugger. Type is int.
+
+        Returns:
+             Is operation success
+        """
+        self._check_connected()
+
+        assert worker_id is not None, "worker_id is not valid"
+        assert (
+            debugger_port is not None and debugger_port > 0
+        ), "debugger_port is not valid"
+
+        return self.global_state_accessor.update_worker_debugger_port(
+            worker_id, debugger_port
+        )
+
+    def get_worker_debugger_port(self, worker_id):
+        """Get the debugger port of a worker.
+
+        Args:
+            worker_id: ID of this worker. Type is bytes.
+
+        Returns:
+             Debugger port of the worker.
+        """
+        self._check_connected()
+
+        assert worker_id is not None, "worker_id is not valid"
+
+        return self.global_state_accessor.get_worker_debugger_port(worker_id)
+
+    def update_worker_num_paused_threads(self, worker_id, num_paused_threads_delta):
+        """Updates the number of paused threads of a worker.
+
+        Args:
+            worker_id: ID of this worker. Type is bytes.
+            num_paused_threads_delta: The delta of the number of paused threads.
+
+        Returns:
+             Is operation success
+        """
+        self._check_connected()
+
+        assert worker_id is not None, "worker_id is not valid"
+        assert num_paused_threads_delta is not None, "worker_id is not valid"
+
+        return self.global_state_accessor.update_worker_num_paused_threads(
+            worker_id, num_paused_threads_delta
+        )
+
     def cluster_resources(self):
         """Get the current total cluster resources.
 
@@ -689,7 +744,7 @@ class GlobalState:
         """Returns a set of node IDs corresponding to nodes still alive."""
         return {node["NodeID"] for node in self.node_table() if (node["Alive"])}
 
-    def _available_resources_per_node(self):
+    def available_resources_per_node(self):
         """Returns a dictionary mapping node id to avaiable resources."""
         self._check_connected()
         available_resources_by_id = {}
@@ -707,13 +762,6 @@ class GlobalState:
             node_id = ray._private.utils.binary_to_hex(message.node_id)
             available_resources_by_id[node_id] = dynamic_resources
 
-        # Update nodes in cluster.
-        node_ids = self._live_node_ids()
-        # Remove disconnected nodes.
-        for node_id in list(available_resources_by_id.keys()):
-            if node_id not in node_ids:
-                del available_resources_by_id[node_id]
-
         return available_resources_by_id
 
     def available_resources(self):
@@ -730,7 +778,7 @@ class GlobalState:
         """
         self._check_connected()
 
-        available_resources_by_id = self._available_resources_per_node()
+        available_resources_by_id = self.available_resources_per_node()
 
         # Calculate total available resources.
         total_available_resources = defaultdict(int)
@@ -752,8 +800,17 @@ class GlobalState:
             node_ip_address
         )
 
-    def get_draining_nodes(self) -> Set[str]:
-        """Get all the hex ids of nodes that are being drained."""
+    def get_node(self, node_id: str):
+        """Get the node information for a node id."""
+        self._check_connected()
+        return self.global_state_accessor.get_node(node_id)
+
+    def get_draining_nodes(self) -> Dict[str, int]:
+        """Get all the hex ids of nodes that are being drained
+        and the corresponding draining deadline timestamps in ms.
+
+        There is no deadline if the timestamp is 0.
+        """
         self._check_connected()
         return self.global_state_accessor.get_draining_nodes()
 
@@ -866,8 +923,7 @@ def timeline(filename=None):
     """Return a list of profiling events that can viewed as a timeline.
 
     Ray profiling must be enabled by setting the RAY_PROFILING=1 environment
-    variable prior to starting Ray, and RAY_task_events_report_interval_ms set
-    to be positive (default 1000)
+    variable prior to starting Ray, and set RAY_task_events_report_interval_ms=0
 
     To view this information as a timeline, simply dump it as a json file by
     passing in "filename" or using using json.dump, and then load go to
@@ -933,3 +989,54 @@ def available_resources():
             resource in the cluster.
     """
     return state.available_resources()
+
+
+@DeveloperAPI
+def available_resources_per_node():
+    """Get the current available resources of each live node.
+
+    Note that this information can grow stale as tasks start and finish.
+
+    Returns:
+        A dictionary mapping node hex id to available resources dictionary.
+    """
+
+    return state.available_resources_per_node()
+
+
+def update_worker_debugger_port(worker_id, debugger_port):
+    """Update the debugger port of a worker.
+
+    Args:
+        worker_id: ID of this worker. Type is bytes.
+        debugger_port: Port of the debugger. Type is int.
+
+    Returns:
+         Is operation success
+    """
+    return state.update_worker_debugger_port(worker_id, debugger_port)
+
+
+def update_worker_num_paused_threads(worker_id, num_paused_threads_delta):
+    """Update the number of paused threads of a worker.
+
+    Args:
+        worker_id: ID of this worker. Type is bytes.
+        num_paused_threads_delta: The delta of the number of paused threads.
+
+    Returns:
+         Is operation success
+    """
+    return state.update_worker_num_paused_threads(worker_id, num_paused_threads_delta)
+
+
+def get_worker_debugger_port(worker_id):
+    """Get the debugger port of a worker.
+
+    Args:
+        worker_id: ID of this worker. Type is bytes.
+
+    Returns:
+         Debugger port of the worker.
+    """
+    return state.get_worker_debugger_port(worker_id)

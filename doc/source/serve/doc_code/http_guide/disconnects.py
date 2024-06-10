@@ -2,8 +2,8 @@
 # fmt: off
 
 import ray
+import sys
 from typing import List
-from builtins import print
 
 from ray._private.test_utils import wait_for_condition
 
@@ -26,8 +26,11 @@ class PrintStorage:
 
 print_storage_handle = PrintStorage.remote()
 
-original_print = print
-print = lambda s: ray.get(print_storage_handle.add.remote(s)) or original_print(s)
+
+def print(string: str):
+    ray.get(print_storage_handle.add.remote(string))
+    sys.stdout.write(f"{string}\n")
+
 
 # __start_basic_disconnect__
 import asyncio
@@ -57,22 +60,14 @@ except Timeout:
     pass
 
 wait_for_condition(
-    lambda: {"Replica received request!", "Request got cancelled!"} == set(
-        ray.get(print_storage_handle.get.remote())
-    ),
+    lambda: {"Replica received request!", "Request got cancelled!"}
+    == set(ray.get(print_storage_handle.get.remote())),
     timeout=5,
 )
 
-original_print(ray.get(print_storage_handle.get.remote()))
+sys.stdout.write(f"{ray.get(print_storage_handle.get.remote())}\n")
 
 ray.get(print_storage_handle.clear.remote())
-
-
-# Refresh print: when Ray pickles print in the previous Serve app, it changes
-# print somehow. Without refreshing print by re-importing it, Ray fails to
-# pickle any new deployments that use print.
-from builtins import print as print2
-original_print = print2
 
 
 # __start_shielded_disconnect__
@@ -82,7 +77,6 @@ from ray import serve
 
 @serve.deployment
 class SnoringSleeper:
-    
     async def snore(self):
         await asyncio.sleep(1)
         print("ZZZ")
@@ -117,10 +111,11 @@ wait_for_condition(
         "SnoringSleeper received request!",
         "SnoringSleeper's request was cancelled!",
         "ZZZ",
-    } == set(ray.get(print_storage_handle.get.remote())),
+    }
+    == set(ray.get(print_storage_handle.get.remote())),
     timeout=5,
 )
 
-original_print(ray.get(print_storage_handle.get.remote()))
+sys.stdout.write(f"{ray.get(print_storage_handle.get.remote())}\n")
 
 ray.get(print_storage_handle.clear.remote())

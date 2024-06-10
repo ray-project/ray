@@ -1,6 +1,6 @@
 import unittest
 
-from ray.rllib.algorithms.pg import PGConfig
+from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.policy.policy import PolicySpec
 
 
@@ -10,7 +10,7 @@ class TestCheckMultiAgent(unittest.TestCase):
             TypeError,
             "got an unexpected keyword argument 'wrong_key'",
             lambda: (
-                PGConfig().multi_agent(
+                PPOConfig().multi_agent(
                     policies={"p0"}, policies_to_train=["p0"], wrong_key=1
                 )
             ),
@@ -21,7 +21,7 @@ class TestCheckMultiAgent(unittest.TestCase):
             KeyError,
             "Policy IDs must always be of type",
             lambda: (
-                PGConfig().multi_agent(
+                PPOConfig().multi_agent(
                     policies={1, "good_id"},
                     policy_mapping_fn=lambda agent_id, episode, worker, **kw: "good_id",
                 )
@@ -32,38 +32,38 @@ class TestCheckMultiAgent(unittest.TestCase):
         self.assertRaisesRegex(
             ValueError,
             "config.multi_agent\\(count_steps_by=..\\) must be one of",
-            lambda: (PGConfig().multi_agent(count_steps_by="invalid_value")),
+            lambda: (PPOConfig().multi_agent(count_steps_by="invalid_value")),
         )
 
     def test_multi_agent_invalid_override_configs(self):
         self.assertRaisesRegex(
             KeyError,
-            "Invalid property name invdli for config class PGConfig",
+            "Invalid property name invdli for config class PPOConfig",
             lambda: (
-                PGConfig().multi_agent(
+                PPOConfig().multi_agent(
                     policies={
-                        "p0": PolicySpec(config=PGConfig.overrides(invdli=42.0)),
+                        "p0": PolicySpec(config=PPOConfig.overrides(invdli=42.0)),
                     }
                 )
             ),
         )
         self.assertRaisesRegex(
             KeyError,
-            "Invalid property name invdli for config class PGConfig",
+            "Invalid property name invdli for config class PPOConfig",
             lambda: (
-                PGConfig().multi_agent(
+                PPOConfig().multi_agent(
                     policies={
-                        "p0": PolicySpec(config=PGConfig.overrides(invdli=42.0)),
+                        "p0": PolicySpec(config=PPOConfig.overrides(invdli=42.0)),
                     }
                 )
             ),
         )
 
     def test_setting_multiagent_key_in_config_should_fail(self):
-        config = PGConfig().multi_agent(
+        config = PPOConfig().multi_agent(
             policies={
                 "pol1": (None, None, None, None),
-                "pol2": (None, None, None, PGConfig.overrides(lr=0.001)),
+                "pol2": (None, None, None, PPOConfig.overrides(lr=0.001)),
             }
         )
 

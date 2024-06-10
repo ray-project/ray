@@ -11,6 +11,7 @@ from ray._private.ray_constants import env_integer
 from ray._private.profiling import chrome_tracing_dump
 
 import ray.dashboard.memory_utils as memory_utils
+from ray.dashboard.utils import compose_state_message
 
 from ray.util.state.common import (
     protobuf_message_to_dict,
@@ -190,6 +191,18 @@ class StateAPIManager:
                     ):
                         # Case insensitive match for string filter values.
                         match = datum[filter_column].lower() == filter_value.lower()
+                    elif isinstance(filter_value, str) and isinstance(
+                        datum[filter_column], bool
+                    ):
+                        match = datum[filter_column] == convert_string_to_type(
+                            filter_value, bool
+                        )
+                    elif isinstance(filter_value, str) and isinstance(
+                        datum[filter_column], int
+                    ):
+                        match = datum[filter_column] == convert_string_to_type(
+                            filter_value, int
+                        )
                     else:
                         match = datum[filter_column] == filter_value
                 elif filter_predicate == "!=":
@@ -240,6 +253,7 @@ class StateAPIManager:
                 ],
             )
             result.append(data)
+
         num_after_truncation = len(result) + reply.num_filtered
         result = self._filter(result, option.filters, ActorState, option.detail)
         num_filtered = len(result)
@@ -310,6 +324,10 @@ class StateAPIManager:
             data["node_ip"] = data["node_manager_address"]
             data["start_time_ms"] = int(data["start_time_ms"])
             data["end_time_ms"] = int(data["end_time_ms"])
+            death_info = data.get("death_info", {})
+            data["state_message"] = compose_state_message(
+                death_info.get("reason", None), death_info.get("reason_message", None)
+            )
 
             result.append(data)
 
@@ -407,14 +425,17 @@ class StateAPIManager:
             protobuf_to_task_state_dict(message) for message in reply.events_by_task
         ]
 
-        num_after_truncation = len(result)
-        num_total = num_after_truncation + reply.num_status_task_events_dropped
+        # Num pre-truncation is the number of tasks returned from
+        # source + num filtered on source
+        num_after_truncation = len(result) + reply.num_filtered_on_gcs
+        num_total = reply.num_total_stored + reply.num_status_task_events_dropped
 
         result = self._filter(result, option.filters, TaskState, option.detail)
         num_filtered = len(result)
 
         result.sort(key=lambda entry: entry["task_id"])
         result = list(islice(result, option.limit))
+        # TODO(rickyx): we could do better with the warning logic. It's messy now.
         return ListApiResponse(
             result=result,
             total=num_total,

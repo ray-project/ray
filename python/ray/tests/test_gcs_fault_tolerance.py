@@ -2,11 +2,13 @@ import sys
 import os
 import threading
 from time import sleep
+import signal
 
 import pytest
 
 import ray
 from ray._private.utils import get_or_create_event_loop
+from ray.util.placement_group import placement_group
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 import ray._private.gcs_utils as gcs_utils
 from ray._private import ray_constants
@@ -18,6 +20,8 @@ from ray._private.test_utils import (
     wait_for_pid_to_exit,
     run_string_as_driver,
 )
+from ray.job_submission import JobSubmissionClient, JobStatus
+from ray._raylet import GcsClient
 
 import psutil
 
@@ -31,6 +35,17 @@ class Increase:
 @ray.remote
 def increase(x):
     return x + 1
+
+
+def cluster_kill_gcs_wait(cluster):
+    head_node = cluster.head_node
+    gcs_server_process = head_node.all_processes["gcs_server"][0].process
+    gcs_server_pid = gcs_server_process.pid
+    # Kill gcs server.
+    cluster.head_node.kill_gcs_server()
+    # Wait to prevent the gcs server process becoming zombie.
+    gcs_server_process.wait()
+    wait_for_pid_to_exit(gcs_server_pid, 300)
 
 
 @pytest.mark.parametrize(
@@ -111,6 +126,46 @@ def test_gcs_server_restart_during_actor_creation(
             health_check_initial_delay_ms=0,
             health_check_period_ms=1000,
             health_check_failure_threshold=3,
+            enable_autoscaler_v2=True,
+        ),
+    ],
+    indirect=True,
+)
+def test_autoscaler_init(
+    ray_start_cluster_head_with_external_redis,
+):
+    """
+    Checks that autoscaler initializes properly after GCS restarts.
+    """
+    cluster = ray_start_cluster_head_with_external_redis
+    cluster.add_node()
+    cluster.wait_for_nodes()
+
+    # Make sure both head and worker node are alive.
+    nodes = ray.nodes()
+    assert len(nodes) == 2
+    assert nodes[0]["alive"] and nodes[1]["alive"]
+
+    cluster_kill_gcs_wait(cluster)
+
+    # Restart gcs server process.
+    cluster.head_node.start_gcs_server()
+
+    from ray.autoscaler.v2.sdk import get_cluster_status
+
+    status = get_cluster_status(ray.get_runtime_context().gcs_address)
+    assert len(status.idle_nodes) == 2
+
+
+@pytest.mark.parametrize(
+    "ray_start_cluster_head_with_external_redis",
+    [
+        generate_system_config_map(
+            gcs_failover_worker_reconnect_timeout=2,
+            gcs_rpc_server_reconnect_timeout_s=60,
+            health_check_initial_delay_ms=0,
+            health_check_period_ms=1000,
+            health_check_failure_threshold=3,
         ),
     ],
     indirect=True,
@@ -139,14 +194,7 @@ def test_node_failure_detector_when_gcs_server_restart(
             to_be_removed_node = node
     assert to_be_removed_node is not None
 
-    head_node = cluster.head_node
-    gcs_server_process = head_node.all_processes["gcs_server"][0].process
-    gcs_server_pid = gcs_server_process.pid
-    # Kill gcs server.
-    cluster.head_node.kill_gcs_server()
-    # Wait to prevent the gcs server process becoming zombie.
-    gcs_server_process.wait()
-    wait_for_pid_to_exit(gcs_server_pid, 1000)
+    cluster_kill_gcs_wait(cluster)
 
     raylet_process = worker.all_processes["raylet"][0].process
     raylet_pid = raylet_process.pid
@@ -564,11 +612,13 @@ def test_named_actor_workloads(ray_start_regular_with_external_redis):
     print("GCS is killed")
     ray.worker._global_node.kill_gcs_server()
 
+    # detached actor should keep working
+    assert ray.get(c.r.remote(10)) == 10
+
     print("Start to create a new actor")
     with pytest.raises(ray.exceptions.GetTimeoutError):
         cc = Counter.options(name="cc", lifetime="detached").remote()
 
-    assert ray.get(c.r.remote(10)) == 10
     ray.worker._global_node.start_gcs_server()
     cc = Counter.options(name="cc", lifetime="detached").remote()
     assert ray.get(cc.r.remote(10)) == 10
@@ -588,8 +638,6 @@ def test_named_actor_workloads(ray_start_regular_with_external_redis):
     indirect=True,
 )
 def test_pg_actor_workloads(ray_start_regular_with_external_redis):
-    from ray.util.placement_group import placement_group
-
     bundle1 = {"CPU": 1}
     pg = placement_group([bundle1], strategy="STRICT_PACK")
 
@@ -973,6 +1021,196 @@ def test_redis_logs(external_redis):
                 "--force",
             ],
         )
+
+
+@pytest.mark.parametrize(
+    "ray_start_cluster_head_with_external_redis",
+    [
+        generate_system_config_map(
+            gcs_failover_worker_reconnect_timeout=20,
+            gcs_rpc_server_reconnect_timeout_s=2,
+        )
+    ],
+    indirect=True,
+)
+def test_job_finished_after_head_node_restart(
+    ray_start_cluster_head_with_external_redis,
+):
+    cluster = ray_start_cluster_head_with_external_redis
+    head_node = cluster.head_node
+
+    # submit job
+    client = JobSubmissionClient(head_node.address)
+    submission_id = client.submit_job(
+        entrypoint="python -c 'import ray; ray.init(); print(ray.cluster_resources()); \
+            import time; time.sleep(1000)'"
+    )
+
+    def get_job_info(submission_id):
+        gcs_client = GcsClient(cluster.address)
+        all_job_info = gcs_client.get_all_job_info()
+
+        return list(
+            filter(
+                lambda job_info: "job_submission_id" in job_info.config.metadata
+                and job_info.config.metadata["job_submission_id"] == submission_id,
+                list(all_job_info.values()),
+            )
+        )
+
+    def _check_job_running(submission_id: str) -> bool:
+        job_infos = get_job_info(submission_id)
+        if len(job_infos) == 0:
+            return False
+        job_info = job_infos[0].job_info
+        return job_info.status == JobStatus.RUNNING
+
+    # wait until job info is written in redis
+    wait_for_condition(_check_job_running, submission_id=submission_id, timeout=10)
+
+    # kill head node
+    ray.shutdown()
+    gcs_server_process = head_node.all_processes["gcs_server"][0].process
+    gcs_server_pid = gcs_server_process.pid
+
+    cluster.remove_node(head_node)
+
+    # Wait to prevent the gcs server process becoming zombie.
+    gcs_server_process.wait()
+    wait_for_pid_to_exit(gcs_server_pid, 1000)
+
+    # restart head node
+    cluster.add_node()
+    ray.init(cluster.address)
+
+    # verify if job is finished, which marked is_dead
+    def _check_job_is_dead(submission_id: str) -> bool:
+        job_infos = get_job_info(submission_id)
+        if len(job_infos) == 0:
+            return False
+        job_info = job_infos[0]
+        return job_info.is_dead
+
+    wait_for_condition(_check_job_is_dead, submission_id=submission_id, timeout=10)
+
+
+def raises_exception(exc_type, f):
+    try:
+        f()
+    except exc_type:
+        return True
+    return False
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        {"kill_job": False, "kill_actor": False, "expect_alive": "all"},
+        {"kill_job": True, "kill_actor": False, "expect_alive": "AB"},
+        {"kill_job": True, "kill_actor": True, "expect_alive": "none"},
+    ],
+)
+@pytest.mark.skipif(not enable_external_redis(), reason="Only valid in redis env")
+def test_gcs_server_restart_destroys_out_of_scope_actors(
+    external_redis, ray_start_cluster, case
+):
+    """
+    If an actor goes out of scope *when GCS is down*, when GCS restarts, the actor
+    should be destroyed by GCS in its restarting.
+
+    Set up: in a job,
+    - create a regular actor
+    - create a detached actor A, which creates a child actor B
+
+    Situations:
+
+    Case 0: nobody died
+        all should be alive
+
+    Case 1: before GCS is down, job died
+        regular actor should be dead, A and B should still be alive
+
+    Case 2: before GCS is down, job died; during GCS is down, A died
+        all should be dead
+    """
+
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=4)
+    cluster.wait_for_nodes()
+    ray.init(address=cluster.address)
+
+    @ray.remote
+    class A:
+        def __init__(self):
+            self.children = []
+
+        def getpid(self):
+            return os.getpid()
+
+        def spawn(self, name, namespace):
+            child = A.options(name=name, namespace=namespace).remote()
+            self.children.append(child)
+            return child
+
+    regular = A.options(name="regular", namespace="ns").remote()
+    detached = A.options(lifetime="detached", name="parent", namespace="ns").remote()
+    child = ray.get(detached.spawn.remote("child", "ns"))
+
+    regular_pid = ray.get(regular.getpid.remote())
+    detached_pid = ray.get(detached.getpid.remote())
+    child_pid = ray.get(child.getpid.remote())
+
+    print(f"regular actor ID: {regular._actor_id}, pid: {regular_pid}")
+    print(f"detached actor ID: {detached._actor_id}, pid: {detached_pid}")
+    print(f"child actor ID: {child._actor_id}, pid: {child_pid}")
+
+    if case["kill_job"]:
+        # kill the job and restart.
+        ray.shutdown()
+        ray.init(address=cluster.address)
+
+    cluster_kill_gcs_wait(cluster)
+
+    # When GCS is down...
+    if case["kill_actor"]:
+        os.kill(detached_pid, signal.SIGKILL)
+
+    cluster.head_node.start_gcs_server()
+    print("GCS restarted")
+
+    if case["expect_alive"] == "all":
+        regular2 = ray.get_actor("regular", namespace="ns")
+        detached2 = ray.get_actor("parent", namespace="ns")
+        child2 = ray.get_actor("child", namespace="ns")
+
+        assert ray.get(regular2.getpid.remote()) == regular_pid
+        assert ray.get(detached2.getpid.remote()) == detached_pid
+        assert ray.get(child2.getpid.remote()) == child_pid
+    elif case["expect_alive"] == "AB":
+        with pytest.raises(ValueError):
+            ray.get_actor("regular", namespace="ns")
+        detached2 = ray.get_actor("parent", namespace="ns")
+        child2 = ray.get_actor("child", namespace="ns")
+        assert ray.get(detached2.getpid.remote()) == detached_pid
+        assert ray.get(child2.getpid.remote()) == child_pid
+    elif case["expect_alive"] == "none":
+
+        with pytest.raises(ValueError):
+            ray.get_actor("regular", namespace="ns")
+
+        # It took some time for raylet to report worker failure.
+        wait_for_condition(
+            lambda: raises_exception(
+                ValueError, lambda: ray.get_actor("regular", namespace="ns")
+            )
+        )
+        wait_for_condition(
+            lambda: raises_exception(
+                ValueError, lambda: ray.get_actor("parent", namespace="ns")
+            )
+        )
+    else:
+        raise ValueError(f"Unknown case: {case}")
 
 
 if __name__ == "__main__":

@@ -28,9 +28,7 @@ class WorkflowEventHandleError(Exception):
 app = FastAPI()
 
 
-@serve.deployment(
-    name=common.HTTP_EVENT_PROVIDER_NAME, route_prefix="/event", num_replicas=1
-)
+@serve.deployment(num_replicas=1)
 @serve.ingress(app)
 class HTTPEventProvider:
     """HTTPEventProvider is defined to be a Ray Serve deployment with route_prefix='/event',
@@ -241,15 +239,11 @@ class HTTPListener(EventListener):
     def __init__(self):
         super().__init__()
         try:
-            self.handle = ray.serve.get_deployment(
-                common.HTTP_EVENT_PROVIDER_NAME
-            ).get_handle(sync=True)
-        except KeyError:
+            self.handle = ray.serve.get_app_handle(common.HTTP_EVENT_PROVIDER_NAME)
+        except ray.serve.exceptions.RayServeException:
             mgr = workflow_access.get_management_actor()
             ray.get(mgr.create_http_event_provider.remote())
-            self.handle = ray.serve.get_deployment(
-                common.HTTP_EVENT_PROVIDER_NAME
-            ).get_handle(sync=True)
+            self.handle = ray.serve.get_app_handle(common.HTTP_EVENT_PROVIDER_NAME)
 
     async def poll_for_event(self, event_key: str = None) -> Event:
         """workflow.wait_for_event calls this method to subscribe to the

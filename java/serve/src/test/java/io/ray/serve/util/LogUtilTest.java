@@ -7,7 +7,7 @@ public class LogUtilTest {
 
   @Test
   public void formatTest() {
-    String result = LogUtil.format("{},{},{}", "1", "2", "3");
+    String result = MessageFormatter.format("{},{},{}", "1", "2", "3");
     Assert.assertEquals(result, "1,2,3");
   }
 }

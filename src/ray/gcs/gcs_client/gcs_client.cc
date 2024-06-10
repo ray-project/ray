@@ -159,6 +159,7 @@ Status HandleGcsError(rpc::GcsStatus status) {
 Status PythonGcsClient::Connect(const ClusterID &cluster_id,
                                 int64_t timeout_ms,
                                 size_t num_retries) {
+  absl::WriterMutexLock lock(&mutex_);
   channel_ =
       rpc::GcsRpcClient::CreateGcsChannel(options_.gcs_address_, options_.gcs_port_);
   node_info_stub_ = rpc::NodeInfoGcsService::NewStub(channel_);
@@ -216,6 +217,7 @@ Status PythonGcsClient::CheckAlive(const std::vector<std::string> &raylet_addres
     request.add_raylet_address(address);
   }
 
+  absl::ReaderMutexLock lock(&mutex_);
   rpc::CheckAliveReply reply;
   grpc::Status status = node_info_stub_->CheckAlive(&context, request, &reply);
 
@@ -241,6 +243,7 @@ Status PythonGcsClient::InternalKVGet(const std::string &ns,
   request.set_namespace_(ns);
   request.set_key(key);
 
+  absl::ReaderMutexLock lock(&mutex_);
   rpc::InternalKVGetReply reply;
 
   grpc::Status status = kv_stub_->InternalKVGet(&context, request, &reply);
@@ -268,6 +271,7 @@ Status PythonGcsClient::InternalKVMultiGet(
   request.set_namespace_(ns);
   request.mutable_keys()->Add(keys.begin(), keys.end());
 
+  absl::ReaderMutexLock lock(&mutex_);
   rpc::InternalKVMultiGetReply reply;
 
   grpc::Status status = kv_stub_->InternalKVMultiGet(&context, request, &reply);
@@ -302,6 +306,7 @@ Status PythonGcsClient::InternalKVPut(const std::string &ns,
   request.set_value(value);
   request.set_overwrite(overwrite);
 
+  absl::ReaderMutexLock lock(&mutex_);
   rpc::InternalKVPutReply reply;
 
   grpc::Status status = kv_stub_->InternalKVPut(&context, request, &reply);
@@ -328,6 +333,7 @@ Status PythonGcsClient::InternalKVDel(const std::string &ns,
   request.set_key(key);
   request.set_del_by_prefix(del_by_prefix);
 
+  absl::ReaderMutexLock lock(&mutex_);
   rpc::InternalKVDelReply reply;
 
   grpc::Status status = kv_stub_->InternalKVDel(&context, request, &reply);
@@ -352,6 +358,7 @@ Status PythonGcsClient::InternalKVKeys(const std::string &ns,
   request.set_namespace_(ns);
   request.set_prefix(prefix);
 
+  absl::ReaderMutexLock lock(&mutex_);
   rpc::InternalKVKeysReply reply;
 
   grpc::Status status = kv_stub_->InternalKVKeys(&context, request, &reply);
@@ -376,6 +383,7 @@ Status PythonGcsClient::InternalKVExists(const std::string &ns,
   request.set_namespace_(ns);
   request.set_key(key);
 
+  absl::ReaderMutexLock lock(&mutex_);
   rpc::InternalKVExistsReply reply;
 
   grpc::Status status = kv_stub_->InternalKVExists(&context, request, &reply);
@@ -399,6 +407,7 @@ Status PythonGcsClient::PinRuntimeEnvUri(const std::string &uri,
   request.set_uri(uri);
   request.set_expiration_s(expiration_s);
 
+  absl::ReaderMutexLock lock(&mutex_);
   rpc::PinRuntimeEnvURIReply reply;
 
   grpc::Status status = runtime_env_stub_->PinRuntimeEnvURI(&context, request, &reply);
@@ -423,6 +432,7 @@ Status PythonGcsClient::GetAllNodeInfo(int64_t timeout_ms,
   grpc::ClientContext context;
   PrepareContext(context, timeout_ms);
 
+  absl::ReaderMutexLock lock(&mutex_);
   rpc::GetAllNodeInfoRequest request;
   rpc::GetAllNodeInfoReply reply;
 
@@ -443,6 +453,7 @@ Status PythonGcsClient::GetAllJobInfo(int64_t timeout_ms,
   grpc::ClientContext context;
   PrepareContext(context, timeout_ms);
 
+  absl::ReaderMutexLock lock(&mutex_);
   rpc::GetAllJobInfoRequest request;
   rpc::GetAllJobInfoReply reply;
 
@@ -463,6 +474,7 @@ Status PythonGcsClient::GetAllResourceUsage(int64_t timeout_ms,
   grpc::ClientContext context;
   PrepareContext(context, timeout_ms);
 
+  absl::ReaderMutexLock lock(&mutex_);
   rpc::GetAllResourceUsageRequest request;
   rpc::GetAllResourceUsageReply reply;
 
@@ -485,6 +497,7 @@ Status PythonGcsClient::RequestClusterResourceConstraint(
   grpc::ClientContext context;
   PrepareContext(context, timeout_ms);
 
+  absl::ReaderMutexLock lock(&mutex_);
   rpc::autoscaler::RequestClusterResourceConstraintRequest request;
   rpc::autoscaler::RequestClusterResourceConstraintReply reply;
   RAY_CHECK(bundles.size() == count_array.size());
@@ -509,6 +522,26 @@ Status PythonGcsClient::RequestClusterResourceConstraint(
   return Status::RpcError(status.error_message(), status.error_code());
 }
 
+Status PythonGcsClient::GetClusterResourceState(int64_t timeout_ms,
+                                                std::string &serialized_reply) {
+  rpc::autoscaler::GetClusterResourceStateRequest request;
+  rpc::autoscaler::GetClusterResourceStateReply reply;
+  grpc::ClientContext context;
+  PrepareContext(context, timeout_ms);
+
+  absl::ReaderMutexLock lock(&mutex_);
+  grpc::Status status =
+      autoscaler_stub_->GetClusterResourceState(&context, request, &reply);
+
+  if (status.ok()) {
+    if (!reply.SerializeToString(&serialized_reply)) {
+      return Status::IOError("Failed to serialize GetClusterResourceState");
+    }
+    return Status::OK();
+  }
+  return Status::RpcError(status.error_message(), status.error_code());
+}
+
 Status PythonGcsClient::GetClusterStatus(int64_t timeout_ms,
                                          std::string &serialized_reply) {
   rpc::autoscaler::GetClusterStatusRequest request;
@@ -516,6 +549,7 @@ Status PythonGcsClient::GetClusterStatus(int64_t timeout_ms,
   grpc::ClientContext context;
   PrepareContext(context, timeout_ms);
 
+  absl::ReaderMutexLock lock(&mutex_);
   grpc::Status status = autoscaler_stub_->GetClusterStatus(&context, request, &reply);
 
   if (status.ok()) {
@@ -527,25 +561,54 @@ Status PythonGcsClient::GetClusterStatus(int64_t timeout_ms,
   return Status::RpcError(status.error_message(), status.error_code());
 }
 
+Status PythonGcsClient::ReportAutoscalingState(int64_t timeout_ms,
+                                               const std::string &serialized_state) {
+  rpc::autoscaler::ReportAutoscalingStateRequest request;
+  rpc::autoscaler::ReportAutoscalingStateReply reply;
+  rpc::autoscaler::AutoscalingState state;
+  grpc::ClientContext context;
+  PrepareContext(context, timeout_ms);
+
+  absl::ReaderMutexLock lock(&mutex_);
+  if (!state.ParseFromString(serialized_state)) {
+    return Status::IOError("Failed to parse ReportAutoscalingState");
+  }
+  request.mutable_autoscaling_state()->CopyFrom(state);
+  grpc::Status status =
+      autoscaler_stub_->ReportAutoscalingState(&context, request, &reply);
+
+  if (status.ok()) {
+    return Status::OK();
+  }
+  return Status::RpcError(status.error_message(), status.error_code());
+}
+
 Status PythonGcsClient::DrainNode(const std::string &node_id,
                                   int32_t reason,
                                   const std::string &reason_message,
+                                  int64_t deadline_timestamp_ms,
                                   int64_t timeout_ms,
-                                  bool &is_accepted) {
+                                  bool &is_accepted,
+                                  std::string &rejection_reason_message) {
   rpc::autoscaler::DrainNodeRequest request;
   request.set_node_id(NodeID::FromHex(node_id).Binary());
   request.set_reason(static_cast<rpc::autoscaler::DrainNodeReason>(reason));
   request.set_reason_message(reason_message);
+  request.set_deadline_timestamp_ms(deadline_timestamp_ms);
 
   rpc::autoscaler::DrainNodeReply reply;
 
   grpc::ClientContext context;
   PrepareContext(context, timeout_ms);
 
+  absl::ReaderMutexLock lock(&mutex_);
   grpc::Status status = autoscaler_stub_->DrainNode(&context, request, &reply);
 
   if (status.ok()) {
     is_accepted = reply.is_accepted();
+    if (!is_accepted) {
+      rejection_reason_message = reply.rejection_reason_message();
+    }
     return Status::OK();
   }
   return Status::RpcError(status.error_message(), status.error_code());
@@ -562,6 +625,7 @@ Status PythonGcsClient::DrainNodes(const std::vector<std::string> &node_ids,
     request.add_drain_node_data()->set_node_id(node_id);
   }
 
+  absl::ReaderMutexLock lock(&mutex_);
   rpc::DrainNodeReply reply;
 
   grpc::Status status = node_info_stub_->DrainNode(&context, request, &reply);
@@ -621,7 +685,7 @@ Status PythonCheckGcsHealth(const std::string &gcs_address,
       is_healthy = false;
       std::ostringstream ss;
       ss << "Ray cluster at " << gcs_address << ":" << gcs_port << " has version "
-         << reply.ray_version() << ", but this process"
+         << reply.ray_version() << ", but this process "
          << "is running Ray version " << ray_version << ".";
       return Status::Invalid(ss.str());
     }

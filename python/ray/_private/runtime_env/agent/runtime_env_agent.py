@@ -14,9 +14,10 @@ from ray._private.ray_constants import (
 import ray._private.runtime_env.agent.runtime_env_consts as runtime_env_consts
 from ray._private.ray_logging import setup_component_logger
 from ray._private.runtime_env.conda import CondaPlugin
-from ray._private.runtime_env.container import ContainerManager
 from ray._private.runtime_env.context import RuntimeEnvContext
+from ray._private.runtime_env.default_impl import get_image_uri_plugin
 from ray._private.runtime_env.java_jars import JavaJarsPlugin
+from ray._private.runtime_env.image_uri import ContainerPlugin
 from ray._private.runtime_env.pip import PipPlugin
 from ray._private.gcs_utils import GcsAioClient
 from ray._private.runtime_env.plugin import (
@@ -27,6 +28,8 @@ from ray._private.utils import get_or_create_event_loop
 from ray._private.runtime_env.plugin import RuntimeEnvPluginManager
 from ray._private.runtime_env.py_modules import PyModulesPlugin
 from ray._private.runtime_env.working_dir import WorkingDirPlugin
+from ray._private.runtime_env.nsight import NsightPlugin
+from ray._private.runtime_env.mpi import MPIPlugin
 from ray.core.generated import (
     runtime_env_agent_pb2,
     agent_manager_pb2,
@@ -175,8 +178,22 @@ class RuntimeEnvAgent:
         runtime_env_agent_port,
     ):
         super().__init__()
-        self._runtime_env_dir = runtime_env_dir
+
+        self._logger = default_logger
         self._logging_params = logging_params
+        self._logging_params.update(filename=self.LOG_FILENAME)
+        self._logger = setup_component_logger(
+            logger_name=default_logger.name, **self._logging_params
+        )
+        # Don't propagate logs to the root logger, because these logs
+        # might contain sensitive information. Instead, these logs should
+        # be confined to the runtime env agent log file `self.LOG_FILENAME`.
+        self._logger.propagate = False
+
+        self._logger.info("Starting runtime env agent at pid %s", os.getpid())
+        self._logger.info(f"Parent raylet pid is {os.environ.get('RAY_RAYLET_PID')}")
+
+        self._runtime_env_dir = runtime_env_dir
         self._gcs_address = gcs_address
         self._per_job_logger_cache = dict()
         # Cache the results of creating envs to avoid repeatedly calling into
@@ -198,7 +215,12 @@ class RuntimeEnvAgent:
         self._working_dir_plugin = WorkingDirPlugin(
             self._runtime_env_dir, self._gcs_aio_client
         )
-        self._container_manager = ContainerManager(temp_dir)
+        self._container_plugin = ContainerPlugin(temp_dir)
+        # TODO(jonathan-anyscale): change the plugin to ProfilerPlugin
+        # and unify with nsight and other profilers.
+        self._nsight_plugin = NsightPlugin(self._runtime_env_dir)
+        self._mpi_plugin = MPIPlugin()
+        self._image_uri_plugin = get_image_uri_plugin(temp_dir)
 
         # TODO(architkulkarni): "base plugins" and third-party plugins should all go
         # through the same code path.  We should never need to refer to
@@ -209,6 +231,10 @@ class RuntimeEnvAgent:
             self._conda_plugin,
             self._py_modules_plugin,
             self._java_jars_plugin,
+            self._container_plugin,
+            self._nsight_plugin,
+            self._mpi_plugin,
+            self._image_uri_plugin,
         ]
         self._plugin_manager = RuntimeEnvPluginManager()
         for plugin in self._base_plugins:
@@ -220,23 +246,11 @@ class RuntimeEnvAgent:
             self.unused_runtime_env_processor,
         )
 
-        self._logger = default_logger
-        self._logging_params.update(filename=self.LOG_FILENAME)
-        self._logger = setup_component_logger(
-            logger_name=default_logger.name, **self._logging_params
-        )
-        # Don't propagate logs to the root logger, because these logs
-        # might contain sensitive information. Instead, these logs should
-        # be confined to the runtime env agent log file `self.LOG_FILENAME`.
-        self._logger.propagate = False
-
-        self._logger.info("Starting runtime env agent at pid %s", os.getpid())
-        self._logger.info("Parent raylet pid is %s", int(os.environ["RAY_RAYLET_PID"]))
         self._logger.info(
             "Listening to address %s, port %d", address, runtime_env_agent_port
         )
 
-    def uris_parser(self, runtime_env):
+    def uris_parser(self, runtime_env: RuntimeEnv):
         result = list()
         for name, plugin_setup_context in self._plugin_manager.plugins.items():
             plugin = plugin_setup_context.class_instance
@@ -267,11 +281,11 @@ class RuntimeEnvAgent:
             else:
                 delete_runtime_env()
 
-    def get_or_create_logger(self, job_id: bytes):
+    def get_or_create_logger(self, job_id: bytes, log_files: List[str]):
         job_id = job_id.decode()
         if job_id not in self._per_job_logger_cache:
             params = self._logging_params.copy()
-            params["filename"] = f"runtime_env_setup-{job_id}.log"
+            params["filename"] = [f"runtime_env_setup-{job_id}.log", *log_files]
             params["logger_name"] = f"runtime_env_{job_id}"
             params["propagate"] = False
             per_job_logger = setup_component_logger(**params)
@@ -293,15 +307,14 @@ class RuntimeEnvAgent:
             allocated_resource: dict = json.loads(
                 serialized_allocated_resource_instances or "{}"
             )
+            runtime_env_config = RuntimeEnvConfig.from_proto(request.runtime_env_config)
+            log_files = runtime_env_config.get("log_files", [])
             # Use a separate logger for each job.
-            per_job_logger = self.get_or_create_logger(request.job_id)
+            per_job_logger = self.get_or_create_logger(request.job_id, log_files)
             # TODO(chenk008): Add log about allocated_resource to
             # avoid lint error. That will be moved to cgroup plugin.
             per_job_logger.debug(f"Worker has resource :" f"{allocated_resource}")
             context = RuntimeEnvContext(env_vars=runtime_env.env_vars())
-            await self._container_manager.setup(
-                runtime_env, context, logger=per_job_logger
-            )
 
             # Warn about unrecognized fields in the runtime env.
             for name, _ in runtime_env.plugins():
@@ -312,16 +325,35 @@ class RuntimeEnvAgent:
                         "fields in the runtime_env will raise an exception."
                     )
 
-                """Run setup for each plugin unless it has already been cached."""
-            for (
-                plugin_setup_context
-            ) in self._plugin_manager.sorted_plugin_setup_contexts():
-                plugin = plugin_setup_context.class_instance
-                uri_cache = plugin_setup_context.uri_cache
-                await create_for_plugin_if_needed(
-                    runtime_env, plugin, uri_cache, context, per_job_logger
-                )
+            # Creates each runtime env URI by their priority. `working_dir` is special
+            # because it needs to be created before other plugins. All other plugins are
+            # created in the priority order (smaller priority value -> earlier to
+            # create), with a special environment variable being set to the working dir.
+            # ${RAY_RUNTIME_ENV_CREATE_WORKING_DIR}
 
+            # First create working dir...
+            working_dir_ctx = self._plugin_manager.plugins[WorkingDirPlugin.name]
+            await create_for_plugin_if_needed(
+                runtime_env,
+                working_dir_ctx.class_instance,
+                working_dir_ctx.uri_cache,
+                context,
+                per_job_logger,
+            )
+
+            # Then within the working dir, create the other plugins.
+            working_dir_uri_or_none = runtime_env.working_dir_uri()
+            with self._working_dir_plugin.with_working_dir_env(working_dir_uri_or_none):
+                """Run setup for each plugin unless it has already been cached."""
+                for (
+                    plugin_setup_context
+                ) in self._plugin_manager.sorted_plugin_setup_contexts():
+                    plugin = plugin_setup_context.class_instance
+                    if plugin.name != WorkingDirPlugin.name:
+                        uri_cache = plugin_setup_context.uri_cache
+                        await create_for_plugin_if_needed(
+                            runtime_env, plugin, uri_cache, context, per_job_logger
+                        )
             return context
 
         async def _create_runtime_env_with_retry(
@@ -372,12 +404,14 @@ class RuntimeEnvAgent:
                     )
                     if isinstance(e, asyncio.TimeoutError):
                         hint = (
-                            f"Failed due to timeout; check runtime_env setup logs"
-                            " and consider increasing `setup_timeout_seconds` beyond "
-                            f"the default of {DEFAULT_RUNTIME_ENV_TIMEOUT_SECONDS}."
+                            f"Failed to install runtime_env within the "
+                            f"timeout of {setup_timeout_seconds} seconds. Consider "
+                            "increasing the timeout in the runtime_env config. "
                             "For example: \n"
                             '    runtime_env={"config": {"setup_timeout_seconds":'
                             " 1800}, ...}\n"
+                            "If not provided, the default timeout is "
+                            f"{DEFAULT_RUNTIME_ENV_TIMEOUT_SECONDS} seconds. "
                         )
                         error_message = hint + error_message
                     await asyncio.sleep(

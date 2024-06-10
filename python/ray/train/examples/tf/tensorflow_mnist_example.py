@@ -2,16 +2,16 @@
 # Original code:
 # https://www.tensorflow.org/tutorials/distribute/multi_worker_with_keras
 import argparse
-from filelock import FileLock
 import json
 import os
 
 import numpy as np
 import tensorflow as tf
+from filelock import FileLock
 
-from ray.train.tensorflow import TensorflowTrainer
 from ray.air.integrations.keras import ReportCheckpointCallback
 from ray.train import Result, RunConfig, ScalingConfig
+from ray.train.tensorflow import TensorflowTrainer
 
 
 def mnist_dataset(batch_size: int) -> tf.data.Dataset:

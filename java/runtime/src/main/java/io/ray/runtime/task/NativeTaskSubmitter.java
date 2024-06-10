@@ -80,6 +80,9 @@ public class NativeTaskSubmitter implements TaskSubmitter {
       int numReturns,
       CallOptions options) {
     Preconditions.checkState(actor instanceof NativeActorHandle);
+    // TODO: Ray Java does not support per-method MaxRetries. It only supports
+    // setting Actor-level MaxTaskRetries for any method calls.
+    // See: src/ray/core_worker/lib/java/io_ray_runtime_task_NativeTaskSubmitter.cc
     List<byte[]> returnIds =
         nativeSubmitActorTask(
             actor.getId().getBytes(),

@@ -14,8 +14,7 @@ from ray.data._internal.planner.exchange.pull_based_shuffle_task_scheduler impor
 from ray.data._internal.planner.exchange.push_based_shuffle_task_scheduler import (
     PushBasedShuffleTaskScheduler,
 )
-from ray.data._internal.planner.exchange.sort_task_spec import SortTaskSpec
-from ray.data._internal.sort import SortKey
+from ray.data._internal.planner.exchange.sort_task_spec import SortKey, SortTaskSpec
 from ray.data._internal.stats import StatsDict
 from ray.data._internal.util import unify_block_metadata_schema
 from ray.data.aggregate import AggregateFn
@@ -25,6 +24,7 @@ from ray.data.context import DataContext
 def generate_aggregate_fn(
     key: Optional[str],
     aggs: List[AggregateFn],
+    _debug_limit_shuffle_execution_to_num_blocks: Optional[int] = None,
 ) -> AllToAllTransformFn:
     """Generate function to aggregate blocks by the specified key column or key
     function.
@@ -39,9 +39,8 @@ def generate_aggregate_fn(
         blocks = []
         metadata = []
         for ref_bundle in refs:
-            for block, block_metadata in ref_bundle.blocks:
-                blocks.append(block)
-                metadata.append(block_metadata)
+            blocks.extend(ref_bundle.block_refs)
+            metadata.extend(ref_bundle.metadata)
         if len(blocks) == 0:
             return (blocks, {})
         unified_schema = unify_block_metadata_schema(metadata)
@@ -73,6 +72,13 @@ def generate_aggregate_fn(
         else:
             scheduler = PullBasedShuffleTaskScheduler(agg_spec)
 
-        return scheduler.execute(refs, num_outputs, ctx)
+        return scheduler.execute(
+            refs,
+            num_outputs,
+            ctx,
+            _debug_limit_execution_to_num_blocks=(
+                _debug_limit_shuffle_execution_to_num_blocks
+            ),
+        )
 
     return fn

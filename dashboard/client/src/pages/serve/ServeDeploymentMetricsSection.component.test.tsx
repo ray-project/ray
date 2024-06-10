@@ -1,6 +1,7 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import React, { PropsWithChildren } from "react";
 import { GlobalContext } from "../../App";
+import { STYLE_WRAPPER } from "../../util/test-utils";
 import { ServeReplicaMetricsSection } from "./ServeDeploymentMetricsSection";
 
 const Wrapper = ({ children }: PropsWithChildren<{}>) => {
@@ -13,17 +14,17 @@ const Wrapper = ({ children }: PropsWithChildren<{}>) => {
           default: "rayDefaultDashboard",
           serve: "rayServeDashboard",
           serveDeployment: "rayServeDeploymentDashboard",
+          data: "rayDataDashboard",
         },
         prometheusHealth: true,
         sessionName: "session-name",
-        ipLogMap: {},
         nodeMap: {},
         nodeMapByIp: {},
         namespaceMap: {},
         dashboardDatasource: "Prometheus",
       }}
     >
-      {children}
+      <STYLE_WRAPPER>{children}</STYLE_WRAPPER>
     </GlobalContext.Provider>
   );
 };
@@ -38,17 +39,17 @@ const MetricsDisabledWrapper = ({ children }: PropsWithChildren<{}>) => {
           default: "rayDefaultDashboard",
           serve: "rayServeDashboard",
           serveDeployment: "rayServeDeploymentDashboard",
+          data: "rayDataDashboard",
         },
         prometheusHealth: false,
         sessionName: undefined,
-        ipLogMap: {},
         nodeMap: {},
         nodeMapByIp: {},
         namespaceMap: {},
         dashboardDatasource: "Prometheus",
       }}
     >
-      {children}
+      <STYLE_WRAPPER>{children}</STYLE_WRAPPER>
     </GlobalContext.Provider>
   );
 };

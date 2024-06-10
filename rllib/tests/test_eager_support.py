@@ -1,8 +1,8 @@
 import unittest
 
 import ray
-from ray import air
-from ray import tune
+from ray import air, tune
+from ray.air.constants import TRAINING_ITERATION
 from ray.rllib.utils.framework import try_import_tf
 from ray.tune.registry import get_trainable_cls
 
@@ -14,9 +14,7 @@ def check_support(alg, config, test_eager=False, test_trace=True):
     config["log_level"] = "ERROR"
     # Test both continuous and discrete actions.
     for cont in [True, False]:
-        if cont and alg in ["DQN", "APEX", "SimpleQ"]:
-            continue
-        elif not cont and alg in ["DDPG", "APEX_DDPG", "TD3"]:
+        if cont and alg == "DQN":
             continue
 
         if cont:
@@ -31,7 +29,7 @@ def check_support(alg, config, test_eager=False, test_trace=True):
             tune.Tuner(
                 a,
                 param_space=config,
-                run_config=air.RunConfig(stop={"training_iteration": 1}, verbose=1),
+                run_config=air.RunConfig(stop={TRAINING_ITERATION: 1}, verbose=1),
             ).fit()
         if test_trace:
             config["eager_tracing"] = True
@@ -39,62 +37,34 @@ def check_support(alg, config, test_eager=False, test_trace=True):
             tune.Tuner(
                 a,
                 param_space=config,
-                run_config=air.RunConfig(stop={"training_iteration": 1}, verbose=1),
+                run_config=air.RunConfig(stop={TRAINING_ITERATION: 1}, verbose=1),
             ).fit()
 
 
-class TestEagerSupportPG(unittest.TestCase):
+class TestEagerSupportPolicyGradient(unittest.TestCase):
     def setUp(self):
         ray.init(num_cpus=4)
 
     def tearDown(self):
         ray.shutdown()
 
-    def test_simple_q(self):
-        check_support(
-            "SimpleQ",
-            {
-                "num_workers": 0,
-                "num_steps_sampled_before_learning_starts": 0,
-            },
-        )
-
     def test_dqn(self):
         check_support(
             "DQN",
             {
-                "num_workers": 0,
+                "num_env_runners": 0,
                 "num_steps_sampled_before_learning_starts": 0,
             },
         )
 
-    def test_ddpg(self):
-        check_support("DDPG", {"num_workers": 0})
-
-    # TODO(sven): Add these once APEX_DDPG supports eager.
-    # def test_apex_ddpg(self):
-    #     check_support("APEX_DDPG", {"num_workers": 1})
-
-    def test_td3(self):
-        check_support("TD3", {"num_workers": 0})
-
-    def test_a2c(self):
-        check_support("A2C", {"num_workers": 0})
-
-    def test_a3c(self):
-        check_support("A3C", {"num_workers": 1})
-
-    def test_pg(self):
-        check_support("PG", {"num_workers": 0})
-
     def test_ppo(self):
-        check_support("PPO", {"num_workers": 0})
+        check_support("PPO", {"num_env_runners": 0})
 
     def test_appo(self):
-        check_support("APPO", {"num_workers": 1, "num_gpus": 0})
+        check_support("APPO", {"num_env_runners": 1, "num_gpus": 0})
 
     def test_impala(self):
-        check_support("IMPALA", {"num_workers": 1, "num_gpus": 0}, test_eager=True)
+        check_support("IMPALA", {"num_env_runners": 1, "num_gpus": 0}, test_eager=True)
 
 
 class TestEagerSupportOffPolicy(unittest.TestCase):
@@ -104,45 +74,12 @@ class TestEagerSupportOffPolicy(unittest.TestCase):
     def tearDown(self):
         ray.shutdown()
 
-    def test_simple_q(self):
-        check_support(
-            "SimpleQ",
-            {
-                "num_workers": 0,
-                "replay_buffer_config": {"num_steps_sampled_before_learning_starts": 0},
-            },
-        )
-
     def test_dqn(self):
         check_support(
             "DQN",
             {
-                "num_workers": 0,
+                "num_env_runners": 0,
                 "num_steps_sampled_before_learning_starts": 0,
-            },
-        )
-
-    def test_ddpg(self):
-        check_support("DDPG", {"num_workers": 0})
-
-    # def test_apex_ddpg(self):
-    #     check_support("APEX_DDPG", {"num_workers": 1})
-
-    def test_td3(self):
-        check_support("TD3", {"num_workers": 0})
-
-    def test_apex_dqn(self):
-        check_support(
-            "APEX",
-            {
-                "num_workers": 2,
-                "replay_buffer_config": {"num_steps_sampled_before_learning_starts": 0},
-                "num_gpus": 0,
-                "min_time_s_per_iteration": 1,
-                "min_sample_timesteps_per_iteration": 100,
-                "optimizer": {
-                    "num_replay_buffer_shards": 1,
-                },
             },
         )
 
@@ -150,7 +87,7 @@ class TestEagerSupportOffPolicy(unittest.TestCase):
         check_support(
             "SAC",
             {
-                "num_workers": 0,
+                "num_env_runners": 0,
                 "num_steps_sampled_before_learning_starts": 0,
             },
         )

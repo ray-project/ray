@@ -1,0 +1,3 @@
+flaky_tests:
+  # non-gpu tests
+  - //python/ray/train:horovod_cifar_pbt_example

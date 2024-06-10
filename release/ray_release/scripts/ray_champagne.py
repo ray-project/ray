@@ -21,7 +21,7 @@ ANYSCALE_SECRET_ARM = (
     "arn:aws:secretsmanager:us-west-2:029272617770:secret:release-automation"
 )
 ANYSCALE_SECRETS = {
-    "anyscale-staging-token20221014164754935800000001-pfQunc": (
+    "anyscale-staging-token20231008005227440600000001-JTgxb0": (
         "https://console.anyscale-staging.com"
     ),
     "anyscale-demos-FaVACh": "https://console.anyscale.com",

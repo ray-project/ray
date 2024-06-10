@@ -75,7 +75,7 @@ PlasmaAllocator::PlasmaAllocator(const std::string &plasma_directory,
   auto allocation = Allocate(kFootprintLimit - kDlMallocReserved);
   RAY_CHECK(allocation.has_value())
       << "PlasmaAllocator initialization failed."
-      << " It's likely we don't have enought space in " << plasma_directory;
+      << " It's likely we don't have enough space in " << plasma_directory;
   // This will unmap the file, but the next one created will be as large
   // as this one (this is an implementation detail of dlmalloc).
   Free(std::move(allocation.value()));

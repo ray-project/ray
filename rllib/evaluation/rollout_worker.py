@@ -39,7 +39,7 @@ from ray.rllib.env.external_multi_agent_env import ExternalMultiAgentEnv
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.env.wrappers.atari_wrappers import is_atari, wrap_deepmind
 from ray.rllib.evaluation.metrics import RolloutMetrics
-from ray.rllib.evaluation.sampler import AsyncSampler, SyncSampler
+from ray.rllib.evaluation.sampler import SyncSampler
 from ray.rllib.models import ModelCatalog
 from ray.rllib.models.preprocessors import Preprocessor
 from ray.rllib.offline import (
@@ -65,8 +65,8 @@ from ray.rllib.policy.sample_batch import (
 )
 from ray.rllib.policy.torch_policy import TorchPolicy
 from ray.rllib.policy.torch_policy_v2 import TorchPolicyV2
-from ray.rllib.utils import check_env, force_list
-from ray.rllib.utils.annotations import DeveloperAPI, override
+from ray.rllib.utils import force_list
+from ray.rllib.utils.annotations import OldAPIStack, override
 from ray.rllib.utils.debug import summarize, update_global_seed_if_necessary
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE, deprecation_warning
 from ray.rllib.utils.error import ERR_MSG_NO_GPUS, HOWTO_CHANGE_CONFIG
@@ -112,7 +112,7 @@ logger = logging.getLogger(__name__)
 _global_worker: Optional["RolloutWorker"] = None
 
 
-@DeveloperAPI
+@OldAPIStack
 def get_global_worker() -> "RolloutWorker":
     """Returns a handle to the active rollout worker in this process."""
 
@@ -132,11 +132,11 @@ def _update_env_seed_if_necessary(
 
     # A single RL job is unlikely to have more than 10K
     # rollout workers.
-    max_num_envs_per_workers: int = 1000
+    max_num_envs_per_env_runner: int = 1000
     assert (
-        worker_idx < max_num_envs_per_workers
+        worker_idx < max_num_envs_per_env_runner
     ), "Too many envs per worker. Random seeds may collide."
-    computed_seed: int = worker_idx * max_num_envs_per_workers + vector_idx + seed
+    computed_seed: int = worker_idx * max_num_envs_per_env_runner + vector_idx + seed
 
     # Gymnasium.env.
     # This will silently fail for most Farama-foundation gymnasium environments.
@@ -155,7 +155,7 @@ def _update_env_seed_if_necessary(
             )
 
 
-@DeveloperAPI
+@OldAPIStack
 class RolloutWorker(ParallelIteratorWorker, EnvRunner):
     """Common experience collection class.
 
@@ -166,48 +166,58 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
     This class supports vectorized and multi-agent policy evaluation (e.g.,
     VectorEnv, MultiAgentEnv, etc.)
 
-    Examples:
-        >>> # Create a rollout worker and using it to collect experiences.
-        >>> import gymnasium as gym
-        >>> from ray.rllib.evaluation.rollout_worker import RolloutWorker
-        >>> from ray.rllib.algorithms.pg.pg_tf_policy import PGTF1Policy
-        >>> worker = RolloutWorker( # doctest: +SKIP
-        ...   env_creator=lambda _: gym.make("CartPole-v1"), # doctest: +SKIP
-        ...   default_policy_class=PGTF1Policy) # doctest: +SKIP
-        >>> print(worker.sample()) # doctest: +SKIP
+    .. testcode::
+        :skipif: True
+
+        # Create a rollout worker and using it to collect experiences.
+        import gymnasium as gym
+        from ray.rllib.evaluation.rollout_worker import RolloutWorker
+        from ray.rllib.algorithms.ppo.ppo_tf_policy import PPOTF1Policy
+        worker = RolloutWorker(
+          env_creator=lambda _: gym.make("CartPole-v1"),
+          default_policy_class=PPOTF1Policy)
+        print(worker.sample())
+
+        # Creating a multi-agent rollout worker
+        from gymnasium.spaces import Discrete, Box
+        import random
+        MultiAgentTrafficGrid = ...
+        worker = RolloutWorker(
+          env_creator=lambda _: MultiAgentTrafficGrid(num_cars=25),
+          config=AlgorithmConfig().multi_agent(
+            policies={
+              # Use an ensemble of two policies for car agents
+              "car_policy1":
+                (PGTFPolicy, Box(...), Discrete(...),
+                 AlgorithmConfig.overrides(gamma=0.99)),
+              "car_policy2":
+                (PGTFPolicy, Box(...), Discrete(...),
+                 AlgorithmConfig.overrides(gamma=0.95)),
+              # Use a single shared policy for all traffic lights
+              "traffic_light_policy":
+                (PGTFPolicy, Box(...), Discrete(...), {}),
+            },
+            policy_mapping_fn=(
+              lambda agent_id, episode, **kwargs:
+              random.choice(["car_policy1", "car_policy2"])
+              if agent_id.startswith("car_") else "traffic_light_policy"),
+            ),
+        )
+        print(worker.sample())
+
+    .. testoutput::
+
         SampleBatch({
             "obs": [[...]], "actions": [[...]], "rewards": [[...]],
-            "terminateds": [[...]], "truncateds": [[...]], "new_obs": [[...]]})
-        >>> # Creating a multi-agent rollout worker
-        >>> from gymnasium.spaces import Discrete, Box
-        >>> import random
-        >>> MultiAgentTrafficGrid = ... # doctest: +SKIP
-        >>> worker = RolloutWorker( # doctest: +SKIP
-        ...   env_creator=lambda _: MultiAgentTrafficGrid(num_cars=25),
-        ...   config=AlgorithmConfig().multi_agent(
-        ...     policies={ # doctest: +SKIP
-        ...       # Use an ensemble of two policies for car agents
-        ...       "car_policy1": # doctest: +SKIP
-        ...         (PGTFPolicy, Box(...), Discrete(...),
-        ...          AlgorithmConfig.overrides(gamma=0.99)),
-        ...       "car_policy2": # doctest: +SKIP
-        ...         (PGTFPolicy, Box(...), Discrete(...),
-        ...          AlgorithmConfig.overrides(gamma=0.95)),
-        ...       # Use a single shared policy for all traffic lights
-        ...       "traffic_light_policy":
-        ...         (PGTFPolicy, Box(...), Discrete(...), {}),
-        ...     },
-        ...     policy_mapping_fn=(
-        ...       lambda agent_id, episode, **kwargs:
-        ...       random.choice(["car_policy1", "car_policy2"])
-        ...       if agent_id.startswith("car_") else "traffic_light_policy"),
-        ...     ),
-        ..  )
-        >>> print(worker.sample()) # doctest: +SKIP
+            "terminateds": [[...]], "truncateds": [[...]], "new_obs": [[...]]}
+        )
+
         MultiAgentBatch({
             "car_policy1": SampleBatch(...),
             "car_policy2": SampleBatch(...),
-            "traffic_light_policy": SampleBatch(...)})
+            "traffic_light_policy": SampleBatch(...)}
+        )
+
     """
 
     def __init__(
@@ -237,9 +247,9 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
                 non-zero and unique value. This index is passed to created envs
                 through EnvContext so that envs can be configured per worker.
             recreated_worker: Whether this worker is a recreated one. Workers are
-                recreated by an Algorithm (via WorkerSet) in case
-                `recreate_failed_workers=True` and one of the original workers (or an
-                already recreated one) has failed. They don't differ from original
+                recreated by an Algorithm (via EnvRunnerGroup) in case
+                `recreate_failed_env_runners=True` and one of the original workers (or
+                an already recreated one) has failed. They don't differ from original
                 workers other than the value of this flag (`self.recreated_worker`).
             log_dir: Directory where logs can be placed.
             spaces: An optional space dict mapping policy IDs
@@ -285,7 +295,7 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
         EnvRunner.__init__(self, config=config)
 
         self.num_workers = (
-            num_workers if num_workers is not None else self.config.num_rollout_workers
+            num_workers if num_workers is not None else self.config.num_env_runners
         )
         # In case we are reading from distributed datasets, store the shards here
         # and pick our shard by our worker-index.
@@ -346,7 +356,7 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
             worker_index=self.worker_index
         )
         self.total_rollout_fragment_length: int = (
-            configured_rollout_fragment_length * self.config.num_envs_per_worker
+            configured_rollout_fragment_length * self.config.num_envs_per_env_runner
         )
         self.preprocessing_enabled: bool = not config._disable_preprocessor_api
         self.last_batch: Optional[SampleBatchType] = None
@@ -399,9 +409,6 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
         clip_rewards = self.config.clip_rewards
 
         if self.env is not None:
-            # Validate environment (general validation function).
-            if not self.config.disable_env_checking:
-                check_env(self.env, self.config)
             # Custom validation function given, typically a function attribute of the
             # Algorithm.
             if validate_env is not None:
@@ -481,11 +488,11 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
         num_gpus = (
             self.config.num_gpus
             if self.worker_index == 0
-            else self.config.num_gpus_per_worker
+            else self.config.num_gpus_per_env_runner
         )
 
         # This is only for the old API where local_worker was responsible for learning
-        if not self.config._enable_learner_api:
+        if not self.config.enable_rl_module_and_learner:
             # Error if we don't find enough GPUs.
             if (
                 ray.is_initialized()
@@ -530,7 +537,7 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
         # state.
         for pol in self.policy_map.values():
             if not pol._model_init_state_automatically_added and not pol.config.get(
-                "_enable_rl_module_api", False
+                "enable_rl_module_and_learner", False
             ):
                 pol._update_model_view_requirements_from_init_state()
 
@@ -559,11 +566,11 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
         # further clones of self.env and creates a RLlib BaseEnv (which is
         # vectorized under the hood).
         else:
-            # Always use vector env for consistency even if num_envs_per_worker=1.
+            # Always use vector env for consistency even if num_envs_per_env_runner=1.
             self.async_env: BaseEnv = convert_to_base_env(
                 self.env,
                 make_env=self.make_sub_env_fn,
-                num_envs=self.config.num_envs_per_worker,
+                num_envs=self.config.num_envs_per_env_runner,
                 remote_envs=self.config.remote_worker_envs,
                 remote_env_batch_wait_ms=self.config.remote_env_batch_wait_ms,
                 worker=self,
@@ -598,23 +605,6 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
 
         if self.env is None:
             self.sampler = None
-        elif self.config.sample_async:
-            self.sampler = AsyncSampler(
-                worker=self,
-                env=self.async_env,
-                clip_rewards=clip_rewards,
-                rollout_fragment_length=rollout_fragment_length_for_sampler,
-                count_steps_by=self.config.count_steps_by,
-                callbacks=self.callbacks,
-                multiple_episodes_in_batch=pack,
-                normalize_actions=self.config.normalize_actions,
-                clip_actions=self.config.clip_actions,
-                observation_fn=self.config.observation_fn,
-                sample_collector_class=self.config.sample_collector,
-                render=render,
-            )
-            # Start the Sampler thread.
-            self.sampler.start()
         else:
             self.sampler = SyncSampler(
                 worker=self,
@@ -642,12 +632,6 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
         # not tracking weights versions.
         self.weights_seq_no: Optional[int] = None
 
-        logger.debug(
-            "Created rollout worker with env {} ({}), policies {}".format(
-                self.async_env, self.env, self.policy_map
-            )
-        )
-
     @override(EnvRunner)
     def assert_healthy(self):
         is_healthy = self.policy_map and self.input_reader and self.output_writer
@@ -665,16 +649,21 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
         Returns:
             A columnar batch of experiences (e.g., tensors) or a MultiAgentBatch.
 
-        Examples:
-            >>> import gymnasium as gym
-            >>> from ray.rllib.evaluation.rollout_worker import RolloutWorker
-            >>> from ray.rllib.algorithms.pg.pg_tf_policy import PGTF1Policy
-            >>> worker = RolloutWorker( # doctest: +SKIP
-            ...   env_creator=lambda _: gym.make("CartPole-v1"), # doctest: +SKIP
-            ...   default_policy_class=PGTF1Policy, # doctest: +SKIP
-            ...   config=AlgorithmConfig(), # doctest: +SKIP
-            ... )
-            >>> print(worker.sample()) # doctest: +SKIP
+        .. testcode::
+            :skipif: True
+
+            import gymnasium as gym
+            from ray.rllib.evaluation.rollout_worker import RolloutWorker
+            from ray.rllib.algorithms.ppo.ppo_tf_policy import PPOTF1Policy
+            worker = RolloutWorker(
+              env_creator=lambda _: gym.make("CartPole-v1"),
+              default_policy_class=PPOTF1Policy,
+              config=AlgorithmConfig(),
+            )
+            print(worker.sample())
+
+        .. testoutput::
+
             SampleBatch({"obs": [...], "action": [...], ...})
         """
         if self.config.fake_sampler and self.last_batch is not None:
@@ -706,7 +695,7 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
             self.config.batch_mode == "truncate_episodes"
             and not self.config.offline_sampling
         ):
-            max_batches = self.config.num_envs_per_worker
+            max_batches = self.config.num_envs_per_env_runner
         else:
             max_batches = float("inf")
         while steps_so_far < self.total_rollout_fragment_length and (
@@ -747,14 +736,19 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
             A columnar batch of experiences (e.g., tensors) and the
                 size of the collected batch.
 
-        Examples:
-            >>> import gymnasium as gym
-            >>> from ray.rllib.evaluation.rollout_worker import RolloutWorker
-            >>> from ray.rllib.algorithms.pg.pg_tf_policy import PGTF1Policy
-            >>> worker = RolloutWorker( # doctest: +SKIP
-            ...   env_creator=lambda _: gym.make("CartPole-v1"), # doctest: +SKIP
-            ...   default_policy_class=PGTFPolicy) # doctest: +SKIP
-            >>> print(worker.sample_with_count()) # doctest: +SKIP
+        .. testcode::
+            :skipif: True
+
+            import gymnasium as gym
+            from ray.rllib.evaluation.rollout_worker import RolloutWorker
+            from ray.rllib.algorithms.ppo.ppo_tf_policy import PPOTF1Policy
+            worker = RolloutWorker(
+              env_creator=lambda _: gym.make("CartPole-v1"),
+              default_policy_class=PPOTFPolicy)
+            print(worker.sample_with_count())
+
+        .. testoutput::
+
             (SampleBatch({"obs": [...], "action": [...], ...}), 3)
         """
         batch = self.sample()
@@ -772,15 +766,17 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
         Returns:
             Dictionary of extra metadata from compute_gradients().
 
-        Examples:
-            >>> import gymnasium as gym
-            >>> from ray.rllib.evaluation.rollout_worker import RolloutWorker
-            >>> from ray.rllib.algorithms.pg.pg_tf_policy import PGTF1Policy
-            >>> worker = RolloutWorker( # doctest: +SKIP
-            ...   env_creator=lambda _: gym.make("CartPole-v1"), # doctest: +SKIP
-            ...   default_policy_class=PGTF1Policy) # doctest: +SKIP
-            >>> batch = worker.sample() # doctest: +SKIP
-            >>> info = worker.learn_on_batch(samples) # doctest: +SKIP
+        .. testcode::
+            :skipif: True
+
+            import gymnasium as gym
+            from ray.rllib.evaluation.rollout_worker import RolloutWorker
+            from ray.rllib.algorithms.ppo.ppo_tf_policy import PPOTF1Policy
+            worker = RolloutWorker(
+              env_creator=lambda _: gym.make("CartPole-v1"),
+              default_policy_class=PPOTF1Policy)
+            batch = worker.sample()
+            info = worker.learn_on_batch(samples)
         """
         if log_once("learn_on_batch"):
             logger.info(
@@ -894,15 +890,17 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
             Note that the first return value (grads) can be applied as is to a
             compatible worker using the worker's `apply_gradients()` method.
 
-        Examples:
-            >>> import gymnasium as gym
-            >>> from ray.rllib.evaluation.rollout_worker import RolloutWorker
-            >>> from ray.rllib.algorithms.pg.pg_tf_policy import PGTF1Policy
-            >>> worker = RolloutWorker( # doctest: +SKIP
-            ...   env_creator=lambda _: gym.make("CartPole-v1"), # doctest: +SKIP
-            ...   default_policy_class=PGTF1Policy) # doctest: +SKIP
-            >>> batch = worker.sample() # doctest: +SKIP
-            >>> grads, info = worker.compute_gradients(samples) # doctest: +SKIP
+        .. testcode::
+            :skipif: True
+
+            import gymnasium as gym
+            from ray.rllib.evaluation.rollout_worker import RolloutWorker
+            from ray.rllib.algorithms.ppo.ppo_tf_policy import PPOTF1Policy
+            worker = RolloutWorker(
+              env_creator=lambda _: gym.make("CartPole-v1"),
+              default_policy_class=PPOTF1Policy)
+            batch = worker.sample()
+            grads, info = worker.compute_gradients(samples)
         """
         if log_once("compute_gradients"):
             logger.info("Compute gradients on:\n\n{}\n".format(summarize(samples)))
@@ -963,16 +961,18 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
                 mapping PolicyIDs to the respective model gradients
                 structs.
 
-        Examples:
-            >>> import gymnasium as gym
-            >>> from ray.rllib.evaluation.rollout_worker import RolloutWorker
-            >>> from ray.rllib.algorithms.pg.pg_tf_policy import PGTF1Policy
-            >>> worker = RolloutWorker( # doctest: +SKIP
-            ...   env_creator=lambda _: gym.make("CartPole-v1"), # doctest: +SKIP
-            ...   default_policy_class=PGTF1Policy) # doctest: +SKIP
-            >>> samples = worker.sample() # doctest: +SKIP
-            >>> grads, info = worker.compute_gradients(samples) # doctest: +SKIP
-            >>> worker.apply_gradients(grads) # doctest: +SKIP
+        .. testcode::
+            :skipif: True
+
+            import gymnasium as gym
+            from ray.rllib.evaluation.rollout_worker import RolloutWorker
+            from ray.rllib.algorithms.ppo.ppo_tf_policy import PPOTF1Policy
+            worker = RolloutWorker(
+              env_creator=lambda _: gym.make("CartPole-v1"),
+              default_policy_class=PPOTF1Policy)
+            samples = worker.sample()
+            grads, info = worker.compute_gradients(samples)
+            worker.apply_gradients(grads)
         """
         if log_once("apply_gradients"):
             logger.info("Apply gradients:\n\n{}\n".format(summarize(grads)))
@@ -1121,7 +1121,7 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
         """
         validate_policy_id(policy_id, error=False)
 
-        if module_spec is not None and not self.config._enable_rl_module_api:
+        if module_spec is not None and not self.config.enable_rl_module_and_learner:
             raise ValueError(
                 "If you pass in module_spec to the policy, the RLModule API needs "
                 "to be enabled."
@@ -1462,22 +1462,30 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
     def get_weights(
         self,
         policies: Optional[Container[PolicyID]] = None,
+        inference_only: bool = False,
     ) -> Dict[PolicyID, ModelWeights]:
         """Returns each policies' model weights of this worker.
 
         Args:
             policies: List of PolicyIDs to get the weights from.
                 Use None for all policies.
+            inference_only: This argument is only added for interface
+                consistency with the new api stack.
 
         Returns:
             Dict mapping PolicyIDs to ModelWeights.
 
-        Examples:
-            >>> from ray.rllib.evaluation.rollout_worker import RolloutWorker
-            >>> # Create a RolloutWorker.
-            >>> worker = ... # doctest: +SKIP
-            >>> weights = worker.get_weights() # doctest: +SKIP
-            >>> print(weights) # doctest: +SKIP
+        .. testcode::
+            :skipif: True
+
+            from ray.rllib.evaluation.rollout_worker import RolloutWorker
+            # Create a RolloutWorker.
+            worker = ...
+            weights = worker.get_weights()
+            print(weights)
+
+        .. testoutput::
+
             {"default_policy": {"layer1": array(...), "layer2": ...}}
         """
         if policies is None:
@@ -1513,13 +1521,15 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
                 (in self.weights_seq_no) and in future calls - if the seq no did not
                 change wrt. the last call - will ignore the call to save on performance.
 
-        Examples:
-            >>> from ray.rllib.evaluation.rollout_worker import RolloutWorker
-            >>> # Create a RolloutWorker.
-            >>> worker = ... # doctest: +SKIP
-            >>> weights = worker.get_weights() # doctest: +SKIP
-            >>> # Set `global_vars` (timestep) as well.
-            >>> worker.set_weights(weights, {"timestep": 42}) # doctest: +SKIP
+        .. testcode::
+            :skipif: True
+
+            from ray.rllib.evaluation.rollout_worker import RolloutWorker
+            # Create a RolloutWorker.
+            worker = ...
+            weights = worker.get_weights()
+            # Set `global_vars` (timestep) as well.
+            worker.set_weights(weights, {"timestep": 42})
         """
         # Only update our weights, if no seq no given OR given seq no is different
         # from ours.
@@ -1545,12 +1555,17 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
         Returns:
             The current `self.global_vars` dict of this RolloutWorker.
 
-        Examples:
-            >>> from ray.rllib.evaluation.rollout_worker import RolloutWorker
-            >>> # Create a RolloutWorker.
-            >>> worker = ... # doctest: +SKIP
-            >>> global_vars = worker.get_global_vars() # doctest: +SKIP
-            >>> print(global_vars) # doctest: +SKIP
+        .. testcode::
+            :skipif: True
+
+            from ray.rllib.evaluation.rollout_worker import RolloutWorker
+            # Create a RolloutWorker.
+            worker = ...
+            global_vars = worker.get_global_vars()
+            print(global_vars)
+
+        .. testoutput::
+
             {"timestep": 424242}
         """
         return self.global_vars
@@ -1570,9 +1585,11 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
             policy_ids: Optional list of Policy IDs to update. If None, will update all
                 policies on the to-be-updated workers.
 
-        Examples:
-            >>> worker = ... # doctest: +SKIP
-            >>> global_vars = worker.set_global_vars( # doctest: +SKIP
+        .. testcode::
+            :skipif: True
+
+            worker = ...
+            global_vars = worker.set_global_vars(
             ...     {"timestep": 4242})
         """
         # Handle per-policy values.
@@ -1607,10 +1624,6 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
         # If we have an env -> Release its resources.
         if self.env is not None:
             self.async_env.stop()
-
-        # In case we have-an AsyncSampler, kill its sampling thread.
-        if hasattr(self, "sampler") and isinstance(self.sampler, AsyncSampler):
-            self.sampler.shutdown = True
 
         # Close all policies' sessions (if tf static graph).
         for policy in self.policy_map.cache.values():
@@ -1651,17 +1664,14 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
         """Returns the kwargs dict used to create this worker."""
         return self._original_kwargs
 
-    @DeveloperAPI
     def get_host(self) -> str:
         """Returns the hostname of the process running this evaluator."""
         return platform.node()
 
-    @DeveloperAPI
     def get_node_ip(self) -> str:
         """Returns the IP address of the node that this worker runs on."""
         return ray.util.get_node_ip_address()
 
-    @DeveloperAPI
     def find_free_port(self) -> int:
         """Finds a free port on the node that this worker runs on."""
         from ray.air._internal.util import find_free_port
@@ -1704,7 +1714,7 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
         updated_policy_dict = self._get_complete_policy_specs_dict(policy_dict)
 
         # Use the updated policy dict to create the marl_module_spec if necessary
-        if self.config._enable_rl_module_api:
+        if self.config.enable_rl_module_and_learner:
             spec = self.config.get_marl_module_spec(
                 policy_dict=updated_policy_dict,
                 single_agent_rl_module_spec=single_agent_rl_module_spec,
@@ -1783,7 +1793,7 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
                     obs_space,
                     merged_conf.model,
                     include_multi_binary=self.config.get(
-                        "_enable_rl_module_api", False
+                        "enable_rl_module_and_learner", False
                     ),
                 )
                 # Original observation space should be accessible at
@@ -1850,9 +1860,9 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
                 new_policy = policy
 
             # Maybe torch compile an RLModule.
-            if self.config.get("_enable_rl_module_api", False) and self.config.get(
-                "torch_compile_worker"
-            ):
+            if self.config.get(
+                "enable_rl_module_and_learner", False
+            ) and self.config.get("torch_compile_worker"):
                 if self.config.framework_str != "torch":
                     raise ValueError("Attempting to compile a non-torch RLModule.")
                 rl_module = getattr(new_policy, "model", None)
@@ -1931,8 +1941,7 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
         # A callable returning an InputReader object to use.
         if isinstance(self.config.input_, FunctionType):
             return self.config.input_
-        # Use RLlib's Sampler classes (SyncSampler or AsynchSampler, depending
-        # on `config.sample_async` setting).
+        # Use RLlib's Sampler classes (SyncSampler).
         elif self.config.input_ == "sampler":
             return lambda ioctx: ioctx.default_sampler_input()
         # Ray Dataset input -> Use `config.input_config` to construct DatasetReader.
@@ -1995,8 +2004,6 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
     def _get_make_sub_env_fn(
         self, env_creator, env_context, validate_env, env_wrapper, seed
     ):
-        config = self.config
-
         def _make_sub_env_local(vector_index):
             # Used to created additional environments during environment
             # vectorization.
@@ -2006,20 +2013,6 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
             env_ctx = env_context.copy_with_overrides(vector_index=vector_index)
             # Create the sub-env.
             env = env_creator(env_ctx)
-            # Validate first.
-            if not config.disable_env_checking:
-                try:
-                    check_env(env, config)
-                except Exception as e:
-                    logger.warning(
-                        "We've added a module for checking environments that "
-                        "are used in experiments. Your env may not be set up"
-                        "correctly. You can disable env checking for now by setting "
-                        "`disable_env_checking` to True in your experiment config "
-                        "dictionary. You can run the environment checking module "
-                        "standalone by calling ray.rllib.utils.check_env(env)."
-                    )
-                    raise e
             # Custom validation function given by user.
             if validate_env is not None:
                 validate_env(env, env_ctx)

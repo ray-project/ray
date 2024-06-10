@@ -22,7 +22,7 @@ the end of each training epoch.
 
     .. tab-item:: PyTorch
 
-        .. code-block:: python
+        .. testcode::
 
             from ray import train
 
@@ -36,7 +36,8 @@ the end of each training epoch.
 
         In PyTorch Lightning, we use a callback to call ``train.report()``.
 
-        .. code-block:: python
+        .. testcode::
+            :skipif: True
 
             from ray import train
             import pytorch_lightning as pl
@@ -56,18 +57,6 @@ the end of each training epoch.
                     callbacks=[MyRayTrainReportCallback()]
                 )
                 trainer.fit()
-
-The session concept exists on several levels: The execution layer (called `Tune Session`) and the Data Parallel training layer
-(called `Train Session`).
-The following figure shows how these two sessions look like in a Data Parallel training scenario.
-
-..
-  https://docs.google.com/drawings/d/1bydKt9pKy36DsQuCPJ8LmTUj3lbhHhQLjYDofDHbOSE/edit
-
-.. image:: /train/images/session.svg
-   :width: 650px
-   :align: center
-
 
 .. _train-aggregating-results:
 

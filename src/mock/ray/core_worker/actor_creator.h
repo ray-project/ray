@@ -41,27 +41,3 @@ class MockActorCreatorInterface : public ActorCreatorInterface {
 
 }  // namespace core
 }  // namespace ray
-
-namespace ray {
-namespace core {
-
-class MockDefaultActorCreator : public DefaultActorCreator {
- public:
-  MOCK_METHOD(Status,
-              RegisterActor,
-              (const TaskSpecification &task_spec),
-              (const, override));
-  MOCK_METHOD(Status,
-              AsyncRegisterActor,
-              (const TaskSpecification &task_spec, gcs::StatusCallback callback),
-              (override));
-  MOCK_METHOD(bool, IsActorInRegistering, (const ActorID &actor_id), (const, override));
-  MOCK_METHOD(Status,
-              AsyncCreateActor,
-              (const TaskSpecification &task_spec,
-               const rpc::ClientCallback<rpc::CreateActorReply> &callback),
-              (override));
-};
-
-}  // namespace core
-}  // namespace ray

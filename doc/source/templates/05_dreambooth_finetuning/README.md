@@ -12,7 +12,7 @@
 ## Run the example
 
 This README will only contain minimal instructions on running this example on Anyscale.
-See [the guide on the Ray documentation](https://docs.ray.io/en/latest/ray-air/examples/dreambooth_finetuning.html)
+See [the guide on the Ray documentation](https://docs.ray.io/en/latest/train/examples/pytorch/dreambooth_finetuning.html)
 for a step-by-step walkthrough of the training code.
 
 You can get started fine-tuning on a sample dog dataset with default settings with the following commands:

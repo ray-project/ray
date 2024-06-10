@@ -37,7 +37,6 @@ class DBReporter(Reporter):
             "job_id": result.job_id or "",
             "job_url": result.job_url or "",
             "cluster_id": result.cluster_id or "",
-            "wheel_url": result.wheels_url or "",
             "buildkite_url": result.buildkite_url or "",
             "buildkite_job_id": result.buildkite_job_id or "",
             "runtime": result.runtime or -1.0,

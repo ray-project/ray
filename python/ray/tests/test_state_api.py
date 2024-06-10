@@ -5,13 +5,14 @@ import sys
 import signal
 from collections import Counter
 from typing import List, Tuple
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, AsyncMock
 
 import pytest
+from ray._private.state_api_test_utils import get_state_api_manager
 from ray.util.state import get_job
 from ray.dashboard.modules.job.pydantic_models import JobDetails
 from ray.util.state.common import Humanify
-from ray._private.gcs_utils import GcsAioClient, GcsChannel
+from ray._private.gcs_utils import GcsAioClient
 import yaml
 from click.testing import CliRunner
 
@@ -26,6 +27,7 @@ from ray._private.test_utils import (
     wait_for_condition,
     async_wait_for_condition_async_predicate,
     find_free_port,
+    SignalActor,
 )
 from ray.cluster_utils import cluster_not_supported
 from ray._raylet import NodeID
@@ -119,11 +121,6 @@ from ray.util.state.state_manager import IdToIpMap, StateDataSourceClient
 from ray.job_submission import JobSubmissionClient
 from ray.runtime_env import RuntimeEnv
 
-if sys.version_info >= (3, 8, 0):
-    from unittest.mock import AsyncMock
-else:
-    from asyncmock import AsyncMock
-
 """
 Unit tests
 """
@@ -156,14 +153,7 @@ def state_source_client(gcs_address):
 def state_api_manager_e2e(ray_start_with_dashboard):
     address_info = ray_start_with_dashboard
     gcs_address = address_info["gcs_address"]
-    gcs_aio_client = GcsAioClient(address=gcs_address)
-    gcs_channel = GcsChannel(gcs_address=gcs_address, aio=True)
-    gcs_channel.connect()
-    state_api_data_source_client = StateDataSourceClient(
-        gcs_channel.channel(), gcs_aio_client
-    )
-    manager = StateAPIManager(state_api_data_source_client)
-
+    manager = get_state_api_manager(gcs_address)
     yield manager
 
 
@@ -277,6 +267,7 @@ def generate_task_data(events_by_task):
         events_by_task=events_by_task,
         num_status_task_events_dropped=0,
         num_profile_task_events_dropped=0,
+        num_total_stored=len(events_by_task),
     )
 
 
@@ -914,10 +905,6 @@ async def test_api_manager_list_workers(state_api_manager):
     assert exc_info.value.args[0] == GCS_QUERY_FAILURE_WARNING
 
 
-@pytest.mark.skipif(
-    sys.version_info < (3, 8, 0),
-    reason=("Not passing in CI although it works locally. Will handle it later."),
-)
 @pytest.mark.asyncio
 async def test_api_manager_list_tasks(state_api_manager):
     data_source_client = state_api_manager.data_source_client
@@ -999,10 +986,6 @@ async def test_api_manager_list_tasks(state_api_manager):
     assert len(result.result) == 1
 
 
-@pytest.mark.skipif(
-    sys.version_info < (3, 8, 0),
-    reason=("Not passing in CI although it works locally. Will handle it later."),
-)
 @pytest.mark.asyncio
 async def test_api_manager_list_tasks_events(state_api_manager):
     data_source_client = state_api_manager.data_source_client
@@ -1111,10 +1094,6 @@ async def test_api_manager_list_tasks_events(state_api_manager):
     assert result["end_time_ms"] is None
 
 
-@pytest.mark.skipif(
-    sys.version_info < (3, 8, 0),
-    reason=("Not passing in CI although it works locally. Will handle it later."),
-)
 @pytest.mark.asyncio
 async def test_api_manager_summarize_tasks(state_api_manager):
     data_source_client = state_api_manager.data_source_client
@@ -1202,10 +1181,6 @@ async def test_api_manager_summarize_tasks(state_api_manager):
     assert data[first_task_name].state_counts["PENDING_NODE_ASSIGNMENT"] == 1
 
 
-@pytest.mark.skipif(
-    sys.version_info < (3, 8, 0),
-    reason=("Not passing in CI although it works locally. Will handle it later."),
-)
 @pytest.mark.asyncio
 async def test_api_manager_list_objects(state_api_manager):
     data_source_client = state_api_manager.data_source_client
@@ -1314,10 +1289,6 @@ async def test_api_manager_list_objects(state_api_manager):
         )
 
 
-@pytest.mark.skipif(
-    sys.version_info < (3, 8, 0),
-    reason=("Not passing in CI although it works locally. Will handle it later."),
-)
 @pytest.mark.asyncio
 async def test_api_manager_list_runtime_envs(state_api_manager):
     data_source_client = state_api_manager.data_source_client
@@ -2183,19 +2154,23 @@ def test_list_get_nodes(ray_start_cluster):
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=1, node_name="head_node")
     ray.init(address=cluster.address)
-    cluster.add_node(num_cpus=1, node_name="worker_node")
+    worker_node = cluster.add_node(num_cpus=1, node_name="worker_node")
+
+    cluster.remove_node(worker_node)
 
     def verify():
         nodes = list_nodes(detail=True)
         for node in nodes:
-            assert node["state"] == "ALIVE"
             assert is_hex(node["node_id"])
-            assert (
-                node["is_head_node"]
-                if node["node_name"] == "head_node"
-                else not node["is_head_node"]
-            )
             assert node["labels"] == {"ray.io/node_id": node["node_id"]}
+            if node["node_name"] == "head_node":
+                assert node["is_head_node"]
+                assert node["state"] == "ALIVE"
+                assert node["state_message"] is None
+            else:
+                assert not node["is_head_node"]
+                assert node["state"] == "DEAD"
+                assert node["state_message"] == "Expected termination: received SIGTERM"
 
         # Check with legacy API
         check_nodes = ray.nodes()
@@ -2370,9 +2345,14 @@ def test_list_get_tasks(shutdown_only):
     def impossible():
         pass
 
-    out = [f.options(name=f"f_{i}").remote() for i in range(2)]  # noqa
-    g_out = g.remote(f.remote())  # noqa
-    im = impossible.remote()  # noqa
+    f_refs = [f.options(name=f"f_{i}").remote() for i in range(2)]  # noqa
+    g_ref = g.remote(f.remote())  # noqa
+    im_ref = impossible.remote()  # noqa
+
+    def verify_task_from_objectref(task, job_id, tasks):
+        assert task["job_id"] == job_id
+        assert task["actor_id"] is None
+        assert any(task["task_id"] == t["task_id"] for t in tasks)
 
     def verify():
         tasks = list_tasks()
@@ -2381,6 +2361,12 @@ def test_list_get_tasks(shutdown_only):
             assert task["job_id"] == job_id
         for task in tasks:
             assert task["actor_id"] is None
+
+        # Test get_task by objectRef
+        for ref in f_refs:
+            verify_task_from_objectref(get_task(ref), job_id, tasks)
+        verify_task_from_objectref(get_task(g_ref), job_id, tasks)
+        verify_task_from_objectref(get_task(im_ref), job_id, tasks)
 
         waiting_for_execution = len(
             list(
@@ -3469,6 +3455,10 @@ def test_raise_on_missing_output_truncation(monkeypatch, shutdown_only):
             "RAY_MAX_LIMIT_FROM_DATA_SOURCE",
             "10",
         )
+        m.setenv(
+            "RAY_task_events_skip_driver_for_test",
+            "1",
+        )
         ray.init()
 
         @ray.remote
@@ -3485,7 +3475,7 @@ def test_raise_on_missing_output_truncation(monkeypatch, shutdown_only):
         try:
             list_tasks(_explain=True, timeout=3)
         except RayStateApiException as e:
-            assert "Failed to retrieve all tasks from the cluster" in str(e)
+            assert "Failed to retrieve all" in str(e)
             assert "(> 10)" in str(e)
         else:
             assert False
@@ -3493,7 +3483,7 @@ def test_raise_on_missing_output_truncation(monkeypatch, shutdown_only):
         try:
             summarize_tasks(_explain=True, timeout=3)
         except RayStateApiException as e:
-            assert "Failed to retrieve all tasks from the cluster" in str(e)
+            assert "Failed to retrieve all" in str(e)
             assert "(> 10)" in str(e)
         else:
             assert False
@@ -3572,6 +3562,33 @@ def test_core_state_api_usage_tags(shutdown_only):
     assert set(result.keys()).issuperset(
         {TagKey.Name(tag).lower() for tag in expected_tags}
     )
+
+
+# Tests fix for https://github.com/ray-project/ray/issues/44459
+def test_job_info_is_running_task(shutdown_only):
+    ray.init()
+
+    # To reliably know a job has a long running task, we need to wait a SignalActor
+    # to know the task has started.
+    signal = SignalActor.remote()
+
+    @ray.remote
+    def f(signal):
+        ray.get(signal.send.remote())
+        import time
+
+        while True:
+            time.sleep(10000)
+
+    long_running = f.remote(signal)  # noqa: F841
+    ray.get(signal.wait.remote())
+
+    client = ray.worker.global_worker.gcs_client
+    job_id = ray.worker.global_worker.current_job_id.binary()
+    all_job_info = client.get_all_job_info()
+    assert len(all_job_info) == 1
+    assert job_id in all_job_info
+    assert client.get_all_job_info()[job_id].is_running_tasks is True
 
 
 if __name__ == "__main__":

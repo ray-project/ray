@@ -5,12 +5,9 @@ import shutil
 import tempfile
 import unittest
 
-import pytest
-
 import ray
 from ray import tune
 from ray.train import CheckpointConfig
-from ray.rllib import _register_all
 from ray.tune import Trainable
 from ray.tune.utils import validate_save_restore
 
@@ -39,10 +36,6 @@ class SerialTuneRelativeLocalDirTest(unittest.TestCase):
                 extra_data = pickle.load(f)
             self.state.update(extra_data)
 
-    @pytest.fixture(autouse=True)
-    def setLocalDir(self, tmp_path, monkeypatch):
-        monkeypatch.setenv("RAY_AIR_LOCAL_CACHE_DIR", str(tmp_path / "ray_results"))
-
     def setUp(self):
         self.absolute_local_dir = None
         ray.init(num_cpus=1, num_gpus=0, local_mode=self.local_mode)
@@ -52,8 +45,6 @@ class SerialTuneRelativeLocalDirTest(unittest.TestCase):
             shutil.rmtree(self.absolute_local_dir, ignore_errors=True)
             self.absolute_local_dir = None
         ray.shutdown()
-        # Without this line, test_tune_server.testAddTrial would fail.
-        _register_all()
 
     def _get_trial_dir(self, absoulte_exp_dir):
         print("looking for", self.MockTrainable._name)
@@ -148,7 +139,8 @@ class SerialTuneRelativeLocalDirTest(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

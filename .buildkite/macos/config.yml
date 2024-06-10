@@ -1,0 +1,20 @@
+name: ray-postmerge-macos
+artifacts_bucket: ray-ci-artifact-branch-public
+ci_temp: s3://ray-ci-artifact-branch-public/ci-temp/
+ci_work_repo: 029272617770.dkr.ecr.us-west-2.amazonaws.com/rayproject/citemp
+forge_prefix: cr.ray.io/rayproject/
+builder_queues:
+  builder: builder_queue_branch
+runner_queues:
+  macos: macos-branch
+  macos-arm64: macos-branch-arm64
+buildkite_dirs:
+  - .buildkite/macos
+env:
+  BUILDKITE_BAZEL_CACHE_URL: https://bazel-cache-dev.s3.us-west-2.amazonaws.com
+hook_env_keys:
+  - RAYCI_CHECKOUT_DIR
+skip_tags:
+  - disabled
+tag_filter_command:
+  - ./ci/ci_tags_from_change.sh

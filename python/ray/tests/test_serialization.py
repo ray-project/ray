@@ -678,7 +678,7 @@ def test_serialization_before_init(shutdown_only):
     ray.get(ray.put(A(1)))  # success!
 
 
-def test_serialization_pydantic(ray_start_regular):
+def test_serialization_pydantic_runtime_env(ray_start_regular):
     @ray.remote
     def test(pydantic_model):
         return pydantic_model.x
@@ -703,6 +703,34 @@ def test_serialization_pydantic(ray_start_regular):
 
     assert ray.get(py1.remote()) == 1
     assert ray.get(py2.remote()) == 2
+
+
+def test_usage_with_dataclass(ray_start_regular):
+    import dataclasses
+
+    @dataclasses.dataclass
+    class Test:
+        v: str
+
+    @ray.remote
+    def test(x, expect):
+        assert dataclasses.asdict(x) == expect, dataclasses.asdict(x)
+        return x
+
+    expect_dict = {"v": "x"}
+
+    x = Test(v="x")
+    new_x = ray.get(test.remote(x, expect=expect_dict))
+    assert new_x == x
+    assert dataclasses.asdict(new_x) == dataclasses.asdict(x)
+    assert dataclasses.asdict(new_x) == expect_dict
+
+    y = Test(v="y")
+    expect_dict = {"v": "y"}
+    new_y = ray.get(test.remote(y, expect=expect_dict))
+    assert new_y == y
+    assert dataclasses.asdict(new_y) == dataclasses.asdict(y)
+    assert dataclasses.asdict(new_y) == expect_dict
 
 
 if __name__ == "__main__":

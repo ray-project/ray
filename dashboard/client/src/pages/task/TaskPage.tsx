@@ -1,4 +1,6 @@
-import { Box, createStyles, makeStyles, Typography } from "@material-ui/core";
+import { Box, Typography } from "@mui/material";
+import createStyles from "@mui/styles/createStyles";
+import makeStyles from "@mui/styles/makeStyles";
 import React from "react";
 import { useParams } from "react-router-dom";
 import { CodeDialogButtonWithPreview } from "../../common/CodeDialogButton";
@@ -13,6 +15,7 @@ import {
 import {
   TaskCpuProfilingLink,
   TaskCpuStackTraceLink,
+  TaskMemoryProfilingButton,
 } from "../../common/ProfilingLink";
 import { Section } from "../../common/Section";
 import Loading from "../../components/Loading";
@@ -239,6 +242,12 @@ const TaskPageContents = ({
                       attemptNumber={attempt_number}
                       nodeId={node_id}
                     />
+                    <br />
+                    <TaskMemoryProfilingButton
+                      taskId={task_id}
+                      attemptNumber={attempt_number}
+                      nodeId={node_id}
+                    />
                   </React.Fragment>
                 ),
               }
@@ -319,5 +328,11 @@ const TaskLogs = ({
       ? [{ title: "Error stack trace", contents: errorDetails }]
       : []),
   ];
-  return <MultiTabLogViewer tabs={tabs} otherLogsLink={otherLogsLink} />;
+  return (
+    <MultiTabLogViewer
+      tabs={tabs}
+      otherLogsLink={otherLogsLink}
+      contextKey="tasks-page"
+    />
+  );
 };

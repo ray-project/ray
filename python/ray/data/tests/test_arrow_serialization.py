@@ -7,7 +7,7 @@ import numpy as np
 import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
-from pkg_resources._vendor.packaging.version import parse as parse_version
+from packaging.version import parse as parse_version
 from pytest_lazyfixture import lazy_fixture
 
 import ray

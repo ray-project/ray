@@ -1,4 +1,6 @@
-import { createStyles, makeStyles, Typography } from "@material-ui/core";
+import { Typography } from "@mui/material";
+import createStyles from "@mui/styles/createStyles";
+import makeStyles from "@mui/styles/makeStyles";
 import React from "react";
 import { useParams } from "react-router-dom";
 import { CollapsibleSection } from "../../common/CollapsibleSection";
@@ -13,7 +15,7 @@ import { MetadataSection } from "../../components/MetadataSection";
 import { StatusChip } from "../../components/StatusChip";
 import { ActorDetail, ActorEnum } from "../../type/actor";
 import {
-  ServeHttpProxy,
+  ServeProxy,
   ServeSystemActor,
   ServeSystemActorStatus,
 } from "../../type/serve";
@@ -21,7 +23,7 @@ import { useFetchActor } from "../actor/hook/useActorDetail";
 import { MainNavPageInfo } from "../layout/mainNavContext";
 import {
   useServeControllerDetails,
-  useServeHTTPProxyDetails,
+  useServeProxyDetails,
 } from "./hook/useServeApplications";
 
 const useStyles = makeStyles((theme) =>
@@ -32,20 +34,20 @@ const useStyles = makeStyles((theme) =>
   }),
 );
 
-export const ServeHttpProxyDetailPage = () => {
+export const ServeProxyDetailPage = () => {
   const classes = useStyles();
-  const { httpProxyId } = useParams();
+  const { proxyId } = useParams();
 
-  const { httpProxy, loading } = useServeHTTPProxyDetails(httpProxyId);
+  const { proxy, loading } = useServeProxyDetails(proxyId);
 
   if (loading) {
     return <Loading loading />;
   }
 
-  if (!httpProxy) {
+  if (!proxy) {
     return (
       <Typography color="error">
-        HTTPProxyActor with id "{httpProxyId}" not found.
+        ProxyActor with id "{proxyId}" not found.
       </Typography>
     );
   }
@@ -54,25 +56,21 @@ export const ServeHttpProxyDetailPage = () => {
     <div className={classes.root}>
       <MainNavPageInfo
         pageInfo={
-          httpProxy.node_id
+          proxy.node_id
             ? {
-                id: "serveHttpProxy",
-                title: `HTTPProxyActor:${httpProxy.node_id}`,
-                pageTitle: `${httpProxy.node_id} | Serve HTTPProxyActor`,
-                path: `/serve/httpProxies/${encodeURIComponent(
-                  httpProxy.node_id,
-                )}`,
+                id: "serveProxy",
+                title: `ProxyActor:${proxy.node_id}`,
+                pageTitle: `${proxy.node_id} | Serve ProxyActor`,
+                path: `/serve/proxies/${encodeURIComponent(proxy.node_id)}`,
               }
             : {
-                id: "serveHttpProxy",
-                title: "HTTPProxyActor",
+                id: "serveProxy",
+                title: "ProxyActor",
                 path: undefined,
               }
         }
       />
-      <ServeSystemActorDetail
-        actor={{ type: "httpProxy", detail: httpProxy }}
-      />
+      <ServeSystemActorDetail actor={{ type: "proxy", detail: proxy }} />
     </div>
   );
 };
@@ -107,8 +105,8 @@ export const ServeControllerDetailPage = () => {
 
 type ActorInfo =
   | {
-      type: "httpProxy";
-      detail: ServeHttpProxy;
+      type: "proxy";
+      detail: ServeProxy;
     }
   | {
       type: "controller";
@@ -135,8 +133,8 @@ export const ServeSystemActorDetail = ({
   actor,
 }: ServeSystemActorDetailProps) => {
   const name =
-    actor.type === "httpProxy"
-      ? `HTTPProxyActor:${actor.detail.actor_id}`
+    actor.type === "proxy"
+      ? `ProxyActor:${actor.detail.actor_id}`
       : "Serve Controller";
 
   const { data: fetchedActor } = useFetchActor(actor.detail.actor_id);
@@ -154,11 +152,8 @@ export const ServeSystemActorDetail = ({
           {
             label: "Status",
             content:
-              actor.type === "httpProxy" ? (
-                <StatusChip
-                  type="serveHttpProxy"
-                  status={actor.detail.status}
-                />
+              actor.type === "proxy" ? (
+                <StatusChip type="serveProxy" status={actor.detail.status} />
               ) : fetchedActor ? (
                 <StatusChip
                   type="serveController"
@@ -240,8 +235,11 @@ export const ServeSystemActorDetail = ({
   );
 };
 
+export const LOG_CONTEXT_KEY_SERVE_CONTROLLER = "serve-entity-controllers";
+export const LOG_CONTEXT_KEY_SERVE_PROXY = "serve-entity-proxies";
+
 type ServeSystemActorLogsProps = {
-  type: "controller" | "httpProxy";
+  type: "controller" | "proxy";
   actor: Pick<ActorDetail, "address" | "actorId" | "pid">;
   systemLogFilePath: string;
 };
@@ -264,5 +262,9 @@ const ServeSystemActorLogs = ({
         : systemLogFilePath,
     },
   ];
-  return <MultiTabLogViewer tabs={tabs} />;
+  const contextKey =
+    type === "controller"
+      ? LOG_CONTEXT_KEY_SERVE_CONTROLLER
+      : LOG_CONTEXT_KEY_SERVE_PROXY;
+  return <MultiTabLogViewer tabs={tabs} contextKey={contextKey} />;
 };

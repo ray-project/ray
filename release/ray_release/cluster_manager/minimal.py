@@ -57,25 +57,16 @@ class MinimalClusterManager(ClusterManager):
         if not self.cluster_env_id:
             logger.info("Cluster env not found. Creating new one.")
             try:
-                if self.test.is_byod_cluster():
-                    result = self.sdk.create_byod_cluster_environment(
-                        dict(
-                            name=self.cluster_env_name,
-                            config_json=dict(
-                                docker_image=self.test.get_anyscale_byod_image(),
-                                ray_version="nightly",
-                                env_vars=self.test.get_byod_runtime_env(),
-                            ),
-                        )
+                result = self.sdk.create_byod_cluster_environment(
+                    dict(
+                        name=self.cluster_env_name,
+                        config_json=dict(
+                            docker_image=self.test.get_anyscale_byod_image(),
+                            ray_version="nightly",
+                            env_vars=self.test.get_byod_runtime_env(),
+                        ),
                     )
-                else:
-                    result = self.sdk.create_cluster_environment(
-                        dict(
-                            name=self.cluster_env_name,
-                            project_id=self.project_id,
-                            config_json=self.cluster_env,
-                        )
-                    )
+                )
                 self.cluster_env_id = result.result.id
             except Exception as e:
                 logger.warning(
@@ -181,12 +172,6 @@ class MinimalClusterManager(ClusterManager):
             time.sleep(1)
 
         self.cluster_env_build_id = build_id
-
-    def fetch_build_info(self):
-        assert self.cluster_env_build_id
-
-        result = self.sdk.get_cluster_environment_build(self.cluster_env_build_id)
-        self.cluster_env = result.result.config_json
 
     def create_cluster_compute(self, _repeat: bool = True):
         assert self.cluster_compute_id is None

@@ -1,7 +1,6 @@
 import {
   Box,
-  createStyles,
-  makeStyles,
+  Pagination,
   Table,
   TableBody,
   TableCell,
@@ -9,10 +8,12 @@ import {
   TableHead,
   TableRow,
   Typography,
-} from "@material-ui/core";
-import { Pagination } from "@material-ui/lab";
+} from "@mui/material";
+import createStyles from "@mui/styles/createStyles";
+import makeStyles from "@mui/styles/makeStyles";
 import _ from "lodash";
 import React, { ReactElement } from "react";
+import { sliceToPage } from "../../common/util";
 import Loading from "../../components/Loading";
 import { MetadataSection } from "../../components/MetadataSection";
 import { StatusChip, StatusChipProps } from "../../components/StatusChip";
@@ -20,12 +21,13 @@ import { HelpInfo } from "../../components/Tooltip";
 import {
   ServeApplication,
   ServeApplicationsRsp,
-  ServeHttpProxy,
+  ServeDeployment,
+  ServeProxy,
 } from "../../type/serve";
 import { useFetchActor } from "../actor/hook/useActorDetail";
 import { LinkWithArrow } from "../overview/cards/OverviewCard";
 import { convertActorStateForServeController } from "./ServeSystemActorDetailPage";
-import { ServeControllerRow, ServeHttpProxyRow } from "./ServeSystemDetailRows";
+import { ServeControllerRow, ServeProxyRow } from "./ServeSystemDetailRows";
 
 const useStyles = makeStyles((theme) =>
   createStyles({
@@ -46,7 +48,7 @@ export type ServeDetails = Pick<
 
 type ServeSystemDetailsProps = {
   serveDetails: ServeDetails;
-  httpProxies: ServeHttpProxy[];
+  proxies: ServeProxy[];
   page: { pageSize: number; pageNo: number };
   setPage: (key: string, value: number) => void;
 };
@@ -61,11 +63,17 @@ const columns: { label: string; helpInfo?: ReactElement; width?: string }[] = [
 
 export const ServeSystemDetails = ({
   serveDetails,
-  httpProxies,
+  proxies,
   page,
   setPage,
 }: ServeSystemDetailsProps) => {
   const classes = useStyles();
+
+  const {
+    items: list,
+    constrainedPage,
+    maxPage,
+  } = sliceToPage(proxies, page.pageNo, page.pageSize);
 
   return (
     <div>
@@ -108,8 +116,8 @@ export const ServeSystemDetails = ({
       <TableContainer>
         <div style={{ display: "flex", alignItems: "center" }}>
           <Pagination
-            count={Math.ceil(httpProxies.length / page.pageSize)}
-            page={page.pageNo}
+            count={maxPage}
+            page={constrainedPage}
             onChange={(e, pageNo) => setPage("pageNo", pageNo)}
           />
         </div>
@@ -140,17 +148,9 @@ export const ServeSystemDetails = ({
           </TableHead>
           <TableBody>
             <ServeControllerRow controller={serveDetails.controller_info} />
-            {httpProxies
-              .slice(
-                (page.pageNo - 1) * page.pageSize,
-                page.pageNo * page.pageSize,
-              )
-              .map((httpProxy) => (
-                <ServeHttpProxyRow
-                  key={httpProxy.actor_id}
-                  httpProxy={httpProxy}
-                />
-              ))}
+            {list.map((proxy) => (
+              <ServeProxyRow key={proxy.actor_id} proxy={proxy} />
+            ))}
           </TableBody>
         </Table>
       </TableContainer>
@@ -160,13 +160,15 @@ export const ServeSystemDetails = ({
 
 type ServeSystemPreviewProps = {
   serveDetails: ServeDetails;
-  httpProxies: ServeHttpProxy[];
+  proxies: ServeProxy[];
+  allDeployments: ServeDeployment[];
   allApplications: ServeApplication[];
 };
 
 export const ServeSystemPreview = ({
   serveDetails,
-  httpProxies,
+  proxies,
+  allDeployments,
   allApplications,
 }: ServeSystemPreviewProps) => {
   const { data: controllerActor } = useFetchActor(
@@ -196,9 +198,9 @@ export const ServeSystemPreview = ({
             label: "Proxy status",
             content: (
               <StatusCountChips
-                elements={httpProxies}
+                elements={proxies}
                 statusKey="status"
-                type="serveHttpProxy"
+                type="serveProxy"
               />
             ),
           },
@@ -241,7 +243,7 @@ const StatusCountChips = <T,>({
   );
 
   return (
-    <Box display="inline-flex" gridGap={8} flexWrap="wrap">
+    <Box display="inline-flex" gap={1} flexWrap="wrap">
       {_.orderBy(
         Object.entries(statusCounts),
         ([, count]) => count,

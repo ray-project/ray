@@ -1,4 +1,5 @@
 import os
+
 import pytest
 import torch
 import torch.nn
@@ -7,11 +8,11 @@ from torchvision import datasets
 from torchvision.transforms import transforms
 
 import ray
+from ray.train import ScalingConfig
 from ray.train.examples.horovod.horovod_pytorch_example import Net
 from ray.train.examples.horovod.horovod_pytorch_example import (
     train_func as hvd_train_func,
 )
-from ray.train import ScalingConfig
 from ray.train.horovod import HorovodTrainer
 from ray.train.torch import TorchPredictor
 

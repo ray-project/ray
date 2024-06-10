@@ -6,7 +6,7 @@ aws:
         - DeviceName: /dev/sda1
           Ebs:
             DeleteOnTermination: true
-            VolumeSize: 1000
+            VolumeSize: 1250
 
 head_node_type:
     name: head_node

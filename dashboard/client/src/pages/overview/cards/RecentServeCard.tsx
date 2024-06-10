@@ -1,9 +1,10 @@
-import { createStyles, makeStyles } from "@material-ui/core";
+import createStyles from "@mui/styles/createStyles";
+import makeStyles from "@mui/styles/makeStyles";
 import _ from "lodash";
 import React from "react";
 import { ServeStatusIcon } from "../../../common/ServeStatus";
 import { ListItemCard } from "../../../components/ListItemCard";
-import { useServeApplications } from "../../serve/hook/useServeApplications";
+import { useServeDeployments } from "../../serve/hook/useServeApplications";
 
 const useStyles = makeStyles((theme) =>
   createStyles({
@@ -20,33 +21,45 @@ type RecentServeCardProps = {
 export const RecentServeCard = ({ className }: RecentServeCardProps) => {
   const classes = useStyles();
 
-  // Use mock data by uncommenting the following line
-  // const applications = mockServeApplications.applications;
-  const { allServeApplications: applications } = useServeApplications();
+  const { serveDeployments: deployments } = useServeDeployments();
 
-  const sortedApplications = _.orderBy(
-    applications,
-    ["last_deployed_time_s"],
-    ["desc"],
+  const sortedDeployments = _.orderBy(
+    deployments,
+    ["application.last_deployed_time_s", "name"],
+    ["desc", "asc"],
   ).slice(0, 6);
 
-  const sortedApplicationsToRender = sortedApplications.map((app) => {
+  const sortedDeploymentsToRender = sortedDeployments.map((deployment) => {
     return {
-      title: app.name,
-      subtitle: app?.deployed_app_config?.import_path || "-",
-      link: app.name ? `/serve/applications/${app.name}` : undefined,
+      title: deployment.name,
+      subtitle:
+        deployment.application.deployed_app_config?.import_path ||
+        deployment.application.name ||
+        deployment.application.route_prefix,
+      link:
+        deployment.application.name && deployment.name
+          ? `/serve/applications/${encodeURIComponent(
+              deployment.application.name,
+            )}/${encodeURIComponent(deployment.name)}`
+          : undefined,
       className: className,
-      icon: <ServeStatusIcon className={classes.icon} app={app} small />,
+      icon: (
+        <ServeStatusIcon
+          className={classes.icon}
+          deployment={deployment}
+          small
+        />
+      ),
     };
   });
 
   return (
     <ListItemCard
-      headerTitle="Serve Applications"
+      headerTitle="Serve Deployments"
       className={className}
-      items={sortedApplicationsToRender}
-      emptyListText="No Applications yet..."
-      footerText="View all applications"
+      items={sortedDeploymentsToRender}
+      emptyListText="No Deployments yet..."
+      footerText="View all deployments"
       footerLink="/serve"
     />
   );

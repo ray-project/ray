@@ -31,13 +31,9 @@ workload. Using the Dask-on-Ray scheduler, the entire Dask ecosystem can be exec
 
      * - Ray Version
        - Dask Version
-     * - ``2.7.0``
-       - | ``2022.2.0 (Python version < 3.8)``
-         | ``2022.10.1 (Python version >= 3.8)``
-     * - ``2.6.0``
-       - | ``2022.2.0 (Python version < 3.8)``
-         | ``2022.10.1 (Python version >= 3.8)``
-     * - ``2.5.0``
+     * - ``2.8.0`` or above
+       - ``2022.10.1``
+     * - ``2.5.0`` to ``2.7.x``
        - | ``2022.2.0 (Python version < 3.8)``
          | ``2022.10.1 (Python version >= 3.8)``
      * - ``2.4.0``
@@ -228,8 +224,7 @@ The following Ray-specific callbacks are provided:
    6. :code:`ray_finish(result)`: Run after all Ray tasks have finished
       executing and the final result has been returned.
 
-See the docstring for
-:meth:`RayDaskCallback.__init__() <ray.util.dask.callbacks.RayDaskCallback>.__init__`
+See the docstring for :class:`~ray.util.dask.RayDaskCallback`
 for further details about these callbacks, their arguments, and their return
 values.
 
@@ -275,3 +270,18 @@ execution time exceeds some user-defined threshold:
   *submitted*, not executed.
 
 This callback API is currently unstable and subject to change.
+
+API
+---
+
+.. autosummary::
+    :nosignatures:
+    :toctree: doc/
+
+    ~ray.util.dask.RayDaskCallback
+    ~ray.util.dask.callbacks.RayDaskCallback._ray_presubmit
+    ~ray.util.dask.callbacks.RayDaskCallback._ray_postsubmit
+    ~ray.util.dask.callbacks.RayDaskCallback._ray_pretask
+    ~ray.util.dask.callbacks.RayDaskCallback._ray_posttask
+    ~ray.util.dask.callbacks.RayDaskCallback._ray_postsubmit_all
+    ~ray.util.dask.callbacks.RayDaskCallback._ray_finish

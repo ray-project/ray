@@ -159,6 +159,13 @@ TaskID TaskSpecification::ParentTaskId() const {
   return TaskID::FromBinary(message_->parent_task_id());
 }
 
+ActorID TaskSpecification::RootDetachedActorId() const {
+  if (message_->root_detached_actor_id().empty() /* e.g., empty proto default */) {
+    return ActorID::Nil();
+  }
+  return ActorID::FromBinary(message_->root_detached_actor_id());
+}
+
 TaskID TaskSpecification::SubmitterTaskId() const {
   if (message_->submitter_task_id().empty() /* e.g., empty proto default */) {
     return TaskID::Nil();
@@ -198,7 +205,8 @@ int TaskSpecification::GetRuntimeEnvHash() const {
   WorkerCacheKey env = {SerializedRuntimeEnv(),
                         GetRequiredResources().GetResourceMap(),
                         IsActorCreationTask(),
-                        GetRequiredResources().Get(scheduling::ResourceID::GPU()) > 0};
+                        GetRequiredResources().Get(scheduling::ResourceID::GPU()) > 0,
+                        !(RootDetachedActorId().IsNil())};
   return env.IntHash();
 }
 
@@ -241,6 +249,14 @@ bool TaskSpecification::ReturnsDynamic() const { return message_->returns_dynami
 // streaming generator.
 bool TaskSpecification::IsStreamingGenerator() const {
   return message_->streaming_generator();
+}
+
+int64_t TaskSpecification::GeneratorBackpressureNumObjects() const {
+  auto result = message_->generator_backpressure_num_objects();
+  // generator_backpressure_num_objects == 0 makes no sense.
+  // it means it pauses the generator even before it starts.
+  RAY_CHECK_NE(result, 0);
+  return result;
 }
 
 std::vector<ObjectID> TaskSpecification::DynamicReturnIds() const {
@@ -374,6 +390,10 @@ const std::string TaskSpecification::GetSerializedRetryExceptionAllowlist() cons
   return message_->serialized_retry_exception_allowlist();
 }
 
+bool TaskSpecification::EnableTaskEvents() const {
+  return message_->enable_task_events();
+}
+
 // === Below are getter methods specific to actor creation tasks.
 
 ActorID TaskSpecification::ActorCreationId() const {
@@ -477,13 +497,13 @@ std::string TaskSpecification::DebugString() const {
 
   stream << ", task_id=" << TaskId() << ", task_name=" << GetName()
          << ", job_id=" << JobId() << ", num_args=" << NumArgs()
-         << ", num_returns=" << NumReturns() << ", depth=" << GetDepth()
-         << ", attempt_number=" << AttemptNumber();
+         << ", num_returns=" << NumReturns() << ", max_retries=" << MaxRetries()
+         << ", depth=" << GetDepth() << ", attempt_number=" << AttemptNumber();
 
   if (IsActorCreationTask()) {
     // Print actor creation task spec.
     stream << ", actor_creation_task_spec={actor_id=" << ActorCreationId()
-           << ", max_restarts=" << MaxActorRestarts() << ", max_retries=" << MaxRetries()
+           << ", max_restarts=" << MaxActorRestarts()
            << ", max_concurrency=" << MaxActorConcurrency()
            << ", is_asyncio_actor=" << IsAsyncioActor()
            << ", is_detached=" << IsDetachedActor() << "}";
@@ -491,9 +511,7 @@ std::string TaskSpecification::DebugString() const {
     // Print actor task spec.
     stream << ", actor_task_spec={actor_id=" << ActorId()
            << ", actor_caller_id=" << CallerId() << ", actor_counter=" << ActorCounter()
-           << "}";
-  } else if (IsNormalTask()) {
-    stream << ", max_retries=" << MaxRetries();
+           << ", retry_exceptions=" << ShouldRetryExceptions() << "}";
   }
 
   // Print non-sensitive runtime env info.
@@ -584,13 +602,15 @@ WorkerCacheKey::WorkerCacheKey(
     const std::string serialized_runtime_env,
     const absl::flat_hash_map<std::string, double> &required_resources,
     bool is_actor,
-    bool is_gpu)
+    bool is_gpu,
+    bool is_root_detached_actor)
     : serialized_runtime_env(serialized_runtime_env),
       required_resources(RayConfig::instance().worker_resource_limits_enabled()
                              ? required_resources
                              : absl::flat_hash_map<std::string, double>{}),
       is_actor(is_actor && RayConfig::instance().isolate_workers_across_task_types()),
       is_gpu(is_gpu && RayConfig::instance().isolate_workers_across_resource_types()),
+      is_root_detached_actor(is_root_detached_actor),
       hash_(CalculateHash()) {}
 
 std::size_t WorkerCacheKey::CalculateHash() const {
@@ -607,6 +627,7 @@ std::size_t WorkerCacheKey::CalculateHash() const {
     boost::hash_combine(hash, serialized_runtime_env);
     boost::hash_combine(hash, is_actor);
     boost::hash_combine(hash, is_gpu);
+    boost::hash_combine(hash, is_root_detached_actor);
 
     std::vector<std::pair<std::string, double>> resource_vars(required_resources.begin(),
                                                               required_resources.end());
@@ -627,7 +648,7 @@ bool WorkerCacheKey::operator==(const WorkerCacheKey &k) const {
 
 bool WorkerCacheKey::EnvIsEmpty() const {
   return IsRuntimeEnvEmpty(serialized_runtime_env) && required_resources.empty() &&
-         !is_gpu;
+         !is_gpu && !is_root_detached_actor;
 }
 
 std::size_t WorkerCacheKey::Hash() const { return hash_; }

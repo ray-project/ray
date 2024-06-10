@@ -32,8 +32,6 @@ using rpc::GcsNodeInfo;
 using rpc::JobTableData;
 using rpc::ObjectTableData;
 using rpc::PlacementGroupTableData;
-using rpc::ResourceMap;
-using rpc::ResourceTableData;
 using rpc::ResourceUsageBatchData;
 using rpc::ScheduleData;
 using rpc::StoredConfig;
@@ -258,6 +256,8 @@ class GcsTableStorage {
     system_config_table_ = std::make_unique<GcsInternalConfigTable>(store_client_);
   }
 
+  virtual ~GcsTableStorage() = default;
+
   GcsJobTable &JobTable() {
     RAY_CHECK(job_table_ != nullptr);
     return *job_table_;
@@ -278,7 +278,7 @@ class GcsTableStorage {
     return *placement_group_table_;
   }
 
-  GcsNodeTable &NodeTable() {
+  virtual GcsNodeTable &NodeTable() {
     RAY_CHECK(node_table_ != nullptr);
     return *node_table_;
   }

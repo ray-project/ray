@@ -20,7 +20,7 @@ from ray._private.utils import split_address
 
 import aiosignal  # noqa: F401
 
-from google.protobuf.json_format import MessageToDict
+import ray._private.protobuf_compat
 from frozenlist import FrozenList  # noqa: F401
 
 from ray._private.utils import binary_to_hex, check_dashboard_dependencies_installed
@@ -217,12 +217,13 @@ def message_to_dict(message, decode_keys=None, **kwargs):
                     d[k] = v
         return d
 
+    d = ray._private.protobuf_compat.message_to_dict(
+        message, use_integers_for_enums=False, **kwargs
+    )
     if decode_keys:
-        return _decode_keys(
-            MessageToDict(message, use_integers_for_enums=False, **kwargs)
-        )
+        return _decode_keys(d)
     else:
-        return MessageToDict(message, use_integers_for_enums=False, **kwargs)
+        return d
 
 
 class SignalManager:
@@ -653,3 +654,33 @@ def get_address_for_submission_client(address: Optional[str]) -> str:
         address = ray_address_to_api_server_url(address)
     logger.debug(f"Using API server address {address}.")
     return address
+
+
+def compose_state_message(
+    death_reason: Optional[str], death_reason_message: Optional[str]
+) -> Optional[str]:
+    """Compose node state message based on death information.
+
+    Args:
+        death_reason: The reason of node death.
+            This is a string representation of `gcs_pb2.NodeDeathInfo.Reason`.
+        death_reason_message: The message of node death.
+            This corresponds to `gcs_pb2.NodeDeathInfo.ReasonMessage`.
+    """
+    if death_reason == "EXPECTED_TERMINATION":
+        state_message = "Expected termination"
+    elif death_reason == "UNEXPECTED_TERMINATION":
+        state_message = "Unexpected termination"
+    elif death_reason == "AUTOSCALER_DRAIN_PREEMPTED":
+        state_message = "Terminated due to preemption"
+    elif death_reason == "AUTOSCALER_DRAIN_IDLE":
+        state_message = "Terminated due to idle (no Ray activity)"
+    else:
+        state_message = None
+
+    if death_reason_message:
+        if state_message:
+            state_message += f": {death_reason_message}"
+        else:
+            state_message = death_reason_message
+    return state_message

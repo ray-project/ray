@@ -98,47 +98,48 @@ class FiberState {
   }
 
   FiberState(int max_concurrency)
-      : rate_limiter_(max_concurrency),
+      : allocator_(kStackSize),
+        rate_limiter_(max_concurrency),
         fiber_stopped_event_(std::make_shared<StdEvent>()) {
     std::shared_ptr<StdEvent> fiber_stopped_event = fiber_stopped_event_;
-    fiber_runner_thread_ =
-        std::thread(
-            [&, fiber_stopped_event]() {
-              while (!channel_.is_closed()) {
-                std::function<void()> func;
-                auto op_status = channel_.pop(func);
-                if (op_status == boost::fibers::channel_op_status::success) {
-                  boost::fibers::fiber(boost::fibers::launch::dispatch, func).detach();
-                } else if (op_status == boost::fibers::channel_op_status::closed) {
-                  // The channel was closed. We will just exit the loop and finish
-                  // cleanup.
-                  break;
-                } else {
-                  RAY_LOG(ERROR)
-                      << "Async actor fiber channel returned unexpected error code, "
-                      << "shutting down the worker thread. Please submit a github issue "
-                      << "at https://github.com/ray-project/ray";
-                  return;
-                }
-              }
+    fiber_runner_thread_ = std::thread([&, fiber_stopped_event]() {
+      while (!channel_.is_closed()) {
+        std::function<void()> func;
+        auto op_status = channel_.pop(func);
+        if (op_status == boost::fibers::channel_op_status::success) {
+          boost::fibers::fiber(
+              boost::fibers::launch::dispatch, std::allocator_arg, allocator_, func)
+              .detach();
+        } else if (op_status == boost::fibers::channel_op_status::closed) {
+          // The channel was closed. We will just exit the loop and finish
+          // cleanup.
+          break;
+        } else {
+          RAY_LOG(ERROR)
+              << "Async actor fiber channel returned unexpected error code, "
+              << "shutting down the worker thread. Please submit a github issue "
+              << "at https://github.com/ray-project/ray";
+          return;
+        }
+      }
 
-              // Boost fiber thread cannot be terminated and joined
-              // if there are still running detached fibers.
-              // When we exit async actor, we stop running coroutines
-              // which means the corresponding waiting boost fibers
-              // will never be resumed by done callbacks of those coroutines.
-              // As a result, those fibers will never exit and the fiber
-              // runner thread cannot be joined.
-              // The hack here is that we rely on the process exit to clean up
-              // the fiber runner thread. What we guarantee here is that
-              // no fibers can run after this point as we don't yield here.
-              // This makes sure this thread won't accidentally
-              // access being destructed core worker.
-              fiber_stopped_event->Notify();
-              while (true) {
-                std::this_thread::sleep_for(std::chrono::hours(1));
-              }
-            });
+      // Boost fiber thread cannot be terminated and joined
+      // if there are still running detached fibers.
+      // When we exit async actor, we stop running coroutines
+      // which means the corresponding waiting boost fibers
+      // will never be resumed by done callbacks of those coroutines.
+      // As a result, those fibers will never exit and the fiber
+      // runner thread cannot be joined.
+      // The hack here is that we rely on the process exit to clean up
+      // the fiber runner thread. What we guarantee here is that
+      // no fibers can run after this point as we don't yield here.
+      // This makes sure this thread won't accidentally
+      // access being destructed core worker.
+      fiber_stopped_event->Notify();
+      while (true) {
+        std::this_thread::sleep_for(std::chrono::hours(1));
+      }
+    });
   }
 
   void EnqueueFiber(std::function<void()> &&callback) {
@@ -158,6 +159,18 @@ class FiberState {
   }
 
  private:
+  // The fiber stack size. 128 KiB on Linux and Windows. 256 KiB on Mac.
+  // Note that the default fiber stack size is 128 KiB. In the Mac CI environment, this is
+  // not large enough and thus it causes segfaults. See
+  // https://github.com/ray-project/ray/pull/44331.
+#if defined(__APPLE__)
+  static constexpr size_t kStackSize = 1024 * 256;
+#else
+  static constexpr size_t kStackSize = 1024 * 128;
+#endif
+
+  // The fiber stack allocator.
+  boost::fibers::fixedsize_stack allocator_;
   /// The fiber channel used to send task between the submitter thread
   /// (main direct_actor_trasnport thread) and the fiber_runner_thread_ (defined below)
   FiberChannel channel_;

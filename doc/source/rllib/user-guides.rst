@@ -1,12 +1,32 @@
 .. include:: /_includes/rllib/we_are_hiring.rst
 
-.. include:: /_includes/rllib/rlm_learner_migration_banner.rst
+.. include:: /_includes/rllib/new_api_stack.rst
 
 .. _rllib-guides:
 
 ===========
 User Guides
 ===========
+
+.. toctree::
+    :hidden:
+
+    rllib-advanced-api
+    rllib-models
+    rllib-saving-and-loading-algos-and-policies
+    rllib-concepts
+    rllib-sample-collection
+    rllib-replay-buffers
+    rllib-offline
+    rllib-catalogs
+    rllib-connector
+    rllib-rlmodule
+    rllib-learner
+    rllib-torch2x
+    rllib-fault-tolerance
+    rllib-dev
+    rllib-cli
+
 
 .. _rllib-feature-guide:
 

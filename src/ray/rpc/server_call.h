@@ -19,6 +19,7 @@
 
 #include <boost/asio.hpp>
 
+#include "ray/common/asio/asio_chaos.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/grpc_util.h"
 #include "ray/common/id.h"
@@ -204,6 +205,7 @@ class ServerCallImpl : public ServerCall {
   void SetState(const ServerCallState &new_state) override { state_ = new_state; }
 
   void HandleRequest() override {
+    stats_handle_ = io_service_.stats().RecordStart(call_name_);
     bool auth_success = true;
     if (::RayConfig::instance().enable_cluster_auth()) {
       if constexpr (EnableAuth == AuthType::LAZY_AUTH) {
@@ -233,7 +235,10 @@ class ServerCallImpl : public ServerCall {
     }
     if (!io_service_.stopped()) {
       io_service_.post([this, auth_success] { HandleRequestImpl(auth_success); },
-                       call_name_);
+                       call_name_ + ".HandleRequestImpl",
+                       // Implement the delay of the rpc server call as the
+                       // delay of HandleRequestImpl().
+                       ray::asio::testing::get_delay_us(call_name_));
     } else {
       // Handle service for rpc call has stopped, we must handle the call here
       // to send reply and remove it from cq
@@ -311,6 +316,7 @@ class ServerCallImpl : public ServerCall {
  private:
   /// Log the duration this query used
   void LogProcessTime() {
+    EventTracker::RecordEnd(std::move(stats_handle_));
     auto end_time = absl::GetCurrentTimeNanos();
     if (record_metrics_) {
       ray::stats::STATS_grpc_server_req_process_time_ms.Record(
@@ -364,6 +370,9 @@ class ServerCallImpl : public ServerCall {
 
   /// Human-readable name for this RPC call.
   std::string call_name_;
+
+  /// The stats handle tracking this RPC call.
+  std::shared_ptr<StatsHandle> stats_handle_;
 
   /// ID of the cluster to check incoming RPC calls against.
   /// Check skipped if empty.

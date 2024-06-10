@@ -73,5 +73,6 @@ export const useSorter = (initialSortKey?: string) => {
     setSortKey: (key: string) => setSorter({ ...sorter, key }),
     setOrderDesc: (desc: boolean) => setSorter({ ...sorter, desc }),
     sorterKey: sorter.key,
+    descVal: sorter.desc,
   };
 };

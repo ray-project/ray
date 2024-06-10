@@ -1,5 +1,5 @@
-from ray import serve
 import ray.cloudpickle as pickle
+from ray import serve
 
 
 class NonserializableException(Exception):

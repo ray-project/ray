@@ -11,8 +11,9 @@ import ray
 from ray._private.test_utils import (
     run_string_as_driver,
     run_string_as_driver_nonblocking,
-    wait_for_condition,
+    run_string_as_driver_stdout_stderr,
 )
+from ray.autoscaler.v2.utils import is_autoscaler_v2
 
 
 def test_dedup_logs():
@@ -37,6 +38,44 @@ ray.get([verbose.remote() for _ in range(10)])
     assert out_str.count("[repeated 9x across cluster]") == 1
 
 
+def test_dedup_error_warning_logs(ray_start_cluster, monkeypatch):
+    with monkeypatch.context() as m:
+        m.setenv("RAY_DEDUP_LOGS_AGG_WINDOW_S", 5)
+        cluster = ray_start_cluster
+        cluster.add_node(num_cpus=1)
+        cluster.add_node(num_cpus=1)
+        cluster.add_node(num_cpus=1)
+
+        script = """
+import ray
+import time
+from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
+
+ray.init()
+
+@ray.remote(num_cpus=0)
+class Foo:
+    def __init__(self):
+        time.sleep(1)
+
+# NOTE: We should save actor, otherwise it will be out of scope.
+actors = [Foo.remote() for _ in range(30)]
+for actor in actors:
+    try:
+        ray.get(actor.__ray_ready__.remote())
+    except ray.exceptions.OutOfMemoryError:
+        # When running the test on a small machine,
+        # some actors might be killed by the memory monitor.
+        # We just catch and ignore the error.
+        pass
+"""
+        out_str = run_string_as_driver(script)
+        print(out_str)
+    assert "PYTHON worker processes have been started" in out_str
+    assert out_str.count("RAY_DEDUP_LOGS") == 1
+    assert "[repeated" in out_str
+
+
 def test_logger_config_with_ray_init():
     """Test that the logger is correctly configured when ray.init is called."""
 
@@ -55,14 +94,13 @@ ray.init(num_cpus=1)
 def test_spill_logs():
     script = """
 import ray
-import numpy as np
 
 ray.init(object_store_memory=200e6)
 
 x = []
 
 for _ in range(10):
-    x.append(ray.put(np.ones(100 * 1024 * 1024, dtype=np.uint8)))
+    x.append(ray.put(bytes(100 * 1024 * 1024)))
 """
 
     proc = run_string_as_driver_nonblocking(script, env={"RAY_verbose_spill_logs": "1"})
@@ -158,13 +196,13 @@ x = foo.remote()
 time.sleep(15)
     """
 
-    proc = run_string_as_driver_nonblocking(script)
-    out_str = proc.stdout.read().decode("ascii")
-    err_str = proc.stderr.read().decode("ascii")
-
+    out_str, err_str = run_string_as_driver_stdout_stderr(script)
     print(out_str, err_str)
-    assert "Tip:" in out_str
-    assert "Error: No available node types can fulfill" in out_str
+    assert "Tip:" in out_str, (out_str, err_str)
+    assert "No available node types can fulfill" in out_str, (
+        out_str,
+        err_str,
+    )
 
 
 @pytest.mark.parametrize(
@@ -201,13 +239,21 @@ b = A.remote()
 time.sleep(25)
     """
 
-    proc = run_string_as_driver_nonblocking(script)
-    out_str = proc.stdout.read().decode("ascii")
-    err_str = proc.stderr.read().decode("ascii")
+    out_str, err_str = run_string_as_driver_stdout_stderr(script)
 
     print(out_str, err_str)
-    assert "Tip:" in out_str
-    assert "Warning: The following resource request cannot" in out_str
+    assert "Tip:" in out_str, (out_str, err_str)
+
+    if is_autoscaler_v2():
+        assert "No available node types can fulfill resource requests" in out_str, (
+            out_str,
+            err_str,
+        )
+    else:
+        assert "Warning: The following resource request cannot" in out_str, (
+            out_str,
+            err_str,
+        )
 
 
 # TODO(rickyx): Remove this after migration
@@ -219,13 +265,6 @@ time.sleep(25)
             "resources": {"node:x": 1},
             "env_vars": {
                 "RAY_enable_autoscaler_v2": "0",
-            },
-        },
-        {
-            "num_cpus": 1,
-            "resources": {"node:x": 1},
-            "env_vars": {
-                "RAY_enable_autoscaler_v2": "1",
             },
         },
     ],
@@ -314,16 +353,10 @@ event_logger.info("Test autoscaler event")
 # Block and sleep
 time.sleep(3)
     """
-
-    proc = run_string_as_driver_nonblocking(script)
-
-    def verify():
-        out_str = proc.stdout.read().decode("ascii")
-        print(out_str)
-        assert out_str and "Test autoscaler event" in out_str
-        return True
-
-    wait_for_condition(verify)
+    out_str, err_str = run_string_as_driver_stdout_stderr(script)
+    print(out_str)
+    print(err_str)
+    assert "Test autoscaler event" in out_str, (out_str, err_str)
 
 
 @pytest.mark.parametrize(
@@ -371,25 +404,20 @@ time.sleep(3)
 
     env = os.environ.copy()
     env["RAY_LOG_TO_DRIVER_EVENT_LEVEL"] = event_level
-    proc = run_string_as_driver_nonblocking(script, env=env)
 
-    def verify():
-        out_str = proc.stdout.read().decode("ascii")
-        print(out_str)
-        # Filter only autoscaler prints.
-        assert out_str
+    out_str, err_str = run_string_as_driver_stdout_stderr(script, env=env)
+    print(out_str)
+    print(err_str)
 
-        out_str = "".join(
-            [line for line in out_str.splitlines() if "autoscaler" in line]
-        )
-        for expected in expected_msg.split(","):
-            assert expected in out_str
-        if unexpected_msg:
-            for unexpected in unexpected_msg.split(","):
-                assert unexpected not in out_str
-        return True
+    # Filter only autoscaler prints.
+    assert out_str
 
-    wait_for_condition(verify)
+    out_str = "".join([line for line in out_str.splitlines() if "autoscaler" in line])
+    for expected in expected_msg.split(","):
+        assert expected in out_str
+    if unexpected_msg:
+        for unexpected in unexpected_msg.split(","):
+            assert unexpected not in out_str
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")

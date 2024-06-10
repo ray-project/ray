@@ -7,10 +7,10 @@ from typing import Callable, Optional, Type, Union
 import ray
 import ray.cloudpickle as pickle
 from ray.experimental.internal_kv import (
+    _internal_kv_del,
     _internal_kv_get,
     _internal_kv_initialized,
     _internal_kv_put,
-    _internal_kv_del,
 )
 from ray.tune.error import TuneError
 from ray.util.annotations import DeveloperAPI
@@ -95,17 +95,16 @@ def register_trainable(name: str, trainable: Union[Callable, Type], warn: bool =
             automatically converted into a class during registration.
     """
 
-    from ray.tune.trainable import wrap_function
-    from ray.tune.trainable import Trainable
+    from ray.tune.trainable import Trainable, wrap_function
 
     if isinstance(trainable, type):
         logger.debug("Detected class for trainable.")
     elif isinstance(trainable, FunctionType) or isinstance(trainable, partial):
         logger.debug("Detected function for trainable.")
-        trainable = wrap_function(trainable, warn=warn)
+        trainable = wrap_function(trainable)
     elif callable(trainable):
         logger.info("Detected unknown callable for trainable. Converting to class.")
-        trainable = wrap_function(trainable, warn=warn)
+        trainable = wrap_function(trainable)
 
     if not issubclass(trainable, Trainable):
         raise TypeError("Second argument must be convertable to Trainable", trainable)
@@ -246,7 +245,7 @@ class _Registry:
 
     def unregister_all(self, category: Optional[str] = None):
         remaining = set()
-        for (cat, key) in self._registered:
+        for cat, key in self._registered:
             if category and category == cat:
                 self.unregister(cat, key)
             else:

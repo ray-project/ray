@@ -106,6 +106,11 @@ class AutoscalingRequester:
         self._timeout = ttl
 
 
+# Creating/getting an actor from multiple threads is not safe.
+# https://github.com/ray-project/ray/issues/41324
+_autoscaling_requester_lock: threading.RLock = threading.RLock()
+
+
 def get_or_create_autoscaling_requester_actor():
     ctx = DataContext.get_current()
     scheduling_strategy = ctx.scheduling_strategy
@@ -114,13 +119,13 @@ def get_or_create_autoscaling_requester_actor():
     # point to the head node.
     scheduling_strategy = NodeAffinitySchedulingStrategy(
         ray.get_runtime_context().get_node_id(),
-        soft=True,
-        _spill_on_unavailable=True,
+        soft=False,
     )
-    return AutoscalingRequester.options(
-        name="AutoscalingRequester",
-        namespace="AutoscalingRequester",
-        get_if_exists=True,
-        lifetime="detached",
-        scheduling_strategy=scheduling_strategy,
-    ).remote()
+    with _autoscaling_requester_lock:
+        return AutoscalingRequester.options(
+            name="AutoscalingRequester",
+            namespace="AutoscalingRequester",
+            get_if_exists=True,
+            lifetime="detached",
+            scheduling_strategy=scheduling_strategy,
+        ).remote()

@@ -69,7 +69,7 @@ Given concrete choices for ``a``, ``b`` and ``x`` we can evaluate the objective 
         .. tip:: ``session.report`` can't be used within a ``Trainable`` class.
 
 Learn more about the details of :ref:`Trainables here <trainable-docs>`
-and :ref:`have a look at our examples <tune-general-examples>`.
+and :doc:`have a look at our examples <examples/other-examples>`.
 Next, let's have a closer look at what the ``config`` dictionary is that you pass into your trainables.
 
 .. _tune-key-concepts-search-spaces:
@@ -181,7 +181,7 @@ Simply pass in a ``search_alg`` argument to ``tune.TuneConfig``, which is taken 
     :end-before: __bayes_end__
 
 Tune has Search Algorithms that integrate with many popular **optimization** libraries,
-such as :ref:`Nevergrad <nevergrad>`, :ref:`HyperOpt <tune-hyperopt>`, or :ref:`Optuna <tune-optuna>`.
+such as :ref:`HyperOpt <tune-hyperopt>` or :ref:`Optuna <tune-optuna>`.
 Tune automatically converts the provided search space into the search
 spaces the search algorithms and underlying libraries expect.
 See the :ref:`Search Algorithm API documentation <tune-search-alg>` for more details.
@@ -204,18 +204,6 @@ Here's an overview of all available search algorithms in Tune:
      - Bayesian/Bandit Optimization
      - [`Ax <https://ax.dev/>`__]
      - :doc:`/tune/examples/includes/ax_example`
-   * - :ref:`BlendSearch <BlendSearch>`
-     - Blended Search
-     - [`Bs <https://github.com/microsoft/FLAML/tree/main/flaml/tune>`__]
-     - :doc:`/tune/examples/includes/blendsearch_example`
-   * - :ref:`CFO <CFO>`
-     - Cost-Frugal hyperparameter Optimization
-     - [`Cfo <https://github.com/microsoft/FLAML/tree/main/flaml/tune>`__]
-     - :doc:`/tune/examples/includes/cfo_example`
-   * - :ref:`DragonflySearch <Dragonfly>`
-     - Scalable Bayesian Optimization
-     - [`Dragonfly <https://dragonfly-opt.readthedocs.io/>`__]
-     - :doc:`/tune/examples/includes/dragonfly_example`
    * - :ref:`HyperOptSearch <tune-hyperopt>`
      - Tree-Parzen Estimators
      - [`HyperOpt <http://hyperopt.github.io/hyperopt>`__]
@@ -236,10 +224,6 @@ Here's an overview of all available search algorithms in Tune:
      - Optuna search algorithms
      - [`Optuna <https://optuna.org/>`__]
      - :doc:`/tune/examples/optuna_example`
-   * - :ref:`SigOptSearch <sigopt>`
-     - Closed source
-     - [`SigOpt <https://sigopt.com/>`__]
-     - :doc:`/tune/examples/includes/sigopt_example`
 
 .. note:: Unlike :ref:`Tune's Trial Schedulers <tune-schedulers>`,
     Tune Search Algorithms cannot affect or stop training processes.

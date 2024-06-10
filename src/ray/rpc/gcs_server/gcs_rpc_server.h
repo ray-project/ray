@@ -20,7 +20,6 @@
 #include "ray/rpc/server_call.h"
 #include "src/ray/protobuf/autoscaler.grpc.pb.h"
 #include "src/ray/protobuf/gcs_service.grpc.pb.h"
-#include "src/ray/protobuf/monitor.grpc.pb.h"
 
 namespace ray {
 namespace rpc {
@@ -289,52 +288,6 @@ class ActorInfoGrpcService : public GrpcService {
   ActorInfoGcsServiceHandler &service_handler_;
 };
 
-class MonitorGcsServiceHandler {
- public:
-  virtual ~MonitorGcsServiceHandler() = default;
-
-  virtual void HandleGetRayVersion(GetRayVersionRequest request,
-                                   GetRayVersionReply *reply,
-                                   SendReplyCallback send_reply_callback) = 0;
-
-  virtual void HandleDrainAndKillNode(DrainAndKillNodeRequest request,
-                                      DrainAndKillNodeReply *reply,
-                                      SendReplyCallback send_reply_callback) = 0;
-
-  virtual void HandleGetSchedulingStatus(GetSchedulingStatusRequest request,
-                                         GetSchedulingStatusReply *reply,
-                                         SendReplyCallback send_reply_callback) = 0;
-};
-
-/// The `GrpcService` for `MonitorServer`.
-class MonitorGrpcService : public GrpcService {
- public:
-  /// Constructor.
-  ///
-  /// \param[in] handler The service handler that actually handle the requests.
-  explicit MonitorGrpcService(instrumented_io_context &io_service,
-                              MonitorGcsServiceHandler &handler)
-      : GrpcService(io_service), service_handler_(handler){};
-
- protected:
-  grpc::Service &GetGrpcService() override { return service_; }
-
-  void InitServerCallFactories(
-      const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
-      std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
-      const ClusterID &cluster_id) override {
-    MONITOR_SERVICE_RPC_HANDLER(GetRayVersion);
-    MONITOR_SERVICE_RPC_HANDLER(DrainAndKillNode);
-    MONITOR_SERVICE_RPC_HANDLER(GetSchedulingStatus);
-  }
-
- private:
-  /// The grpc async service object.
-  MonitorGcsService::AsyncService service_;
-  /// The service handler that actually handle the requests.
-  MonitorGcsServiceHandler &service_handler_;
-};
-
 class NodeInfoGcsServiceHandler {
  public:
   virtual ~NodeInfoGcsServiceHandler() = default;
@@ -346,6 +299,10 @@ class NodeInfoGcsServiceHandler {
   virtual void HandleRegisterNode(RegisterNodeRequest request,
                                   RegisterNodeReply *reply,
                                   SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleUnregisterNode(UnregisterNodeRequest request,
+                                    UnregisterNodeReply *reply,
+                                    SendReplyCallback send_reply_callback) = 0;
 
   virtual void HandleCheckAlive(CheckAliveRequest request,
                                 CheckAliveReply *reply,
@@ -389,6 +346,7 @@ class NodeInfoGrpcService : public GrpcService {
         RayConfig::instance().gcs_max_active_rpcs_per_handler(),
         AuthType::EMPTY_AUTH);
     NODE_INFO_SERVICE_RPC_HANDLER(RegisterNode);
+    NODE_INFO_SERVICE_RPC_HANDLER(UnregisterNode);
     NODE_INFO_SERVICE_RPC_HANDLER(DrainNode);
     NODE_INFO_SERVICE_RPC_HANDLER(GetAllNodeInfo);
     NODE_INFO_SERVICE_RPC_HANDLER(GetInternalConfig);
@@ -406,10 +364,6 @@ class NodeResourceInfoGcsServiceHandler {
  public:
   virtual ~NodeResourceInfoGcsServiceHandler() = default;
 
-  virtual void HandleGetResources(GetResourcesRequest request,
-                                  GetResourcesReply *reply,
-                                  SendReplyCallback send_reply_callback) = 0;
-
   virtual void HandleGetAllAvailableResources(
       rpc::GetAllAvailableResourcesRequest request,
       rpc::GetAllAvailableResourcesReply *reply,
@@ -418,10 +372,6 @@ class NodeResourceInfoGcsServiceHandler {
   virtual void HandleGetDrainingNodes(rpc::GetDrainingNodesRequest request,
                                       rpc::GetDrainingNodesReply *reply,
                                       rpc::SendReplyCallback send_reply_callback) = 0;
-
-  virtual void HandleReportResourceUsage(ReportResourceUsageRequest request,
-                                         ReportResourceUsageReply *reply,
-                                         SendReplyCallback send_reply_callback) = 0;
 
   virtual void HandleGetAllResourceUsage(GetAllResourceUsageRequest request,
                                          GetAllResourceUsageReply *reply,
@@ -445,10 +395,8 @@ class NodeResourceInfoGrpcService : public GrpcService {
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
       std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
       const ClusterID &cluster_id) override {
-    NODE_RESOURCE_INFO_SERVICE_RPC_HANDLER(GetResources);
     NODE_RESOURCE_INFO_SERVICE_RPC_HANDLER(GetAllAvailableResources);
     NODE_RESOURCE_INFO_SERVICE_RPC_HANDLER(GetDrainingNodes);
-    NODE_RESOURCE_INFO_SERVICE_RPC_HANDLER(ReportResourceUsage);
     NODE_RESOURCE_INFO_SERVICE_RPC_HANDLER(GetAllResourceUsage);
   }
 
@@ -478,6 +426,15 @@ class WorkerInfoGcsServiceHandler {
   virtual void HandleAddWorkerInfo(AddWorkerInfoRequest request,
                                    AddWorkerInfoReply *reply,
                                    SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleUpdateWorkerDebuggerPort(UpdateWorkerDebuggerPortRequest request,
+                                              UpdateWorkerDebuggerPortReply *reply,
+                                              SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleUpdateWorkerNumPausedThreads(
+      UpdateWorkerNumPausedThreadsRequest request,
+      UpdateWorkerNumPausedThreadsReply *reply,
+      SendReplyCallback send_reply_callback) = 0;
 };
 
 /// The `GrpcService` for `WorkerInfoGcsService`.
@@ -501,6 +458,8 @@ class WorkerInfoGrpcService : public GrpcService {
     WORKER_INFO_SERVICE_RPC_HANDLER(GetWorkerInfo);
     WORKER_INFO_SERVICE_RPC_HANDLER(GetAllWorkerInfo);
     WORKER_INFO_SERVICE_RPC_HANDLER(AddWorkerInfo);
+    WORKER_INFO_SERVICE_RPC_HANDLER(UpdateWorkerDebuggerPort);
+    WORKER_INFO_SERVICE_RPC_HANDLER(UpdateWorkerNumPausedThreads);
   }
 
  private:
@@ -710,6 +669,10 @@ class InternalPubSubGcsServiceHandler {
   virtual void HandleGcsSubscriberCommandBatch(GcsSubscriberCommandBatchRequest request,
                                                GcsSubscriberCommandBatchReply *reply,
                                                SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleGcsUnregisterSubscriber(GcsUnregisterSubscriberRequest request,
+                                             GcsUnregisterSubscriberReply *reply,
+                                             SendReplyCallback send_reply_callback) = 0;
 };
 
 class InternalPubSubGrpcService : public GrpcService {
@@ -727,6 +690,7 @@ class InternalPubSubGrpcService : public GrpcService {
     INTERNAL_PUBSUB_SERVICE_RPC_HANDLER(GcsPublish);
     INTERNAL_PUBSUB_SERVICE_RPC_HANDLER(GcsSubscriberPoll);
     INTERNAL_PUBSUB_SERVICE_RPC_HANDLER(GcsSubscriberCommandBatch);
+    INTERNAL_PUBSUB_SERVICE_RPC_HANDLER(GcsUnregisterSubscriber);
   }
 
  private:
@@ -736,7 +700,6 @@ class InternalPubSubGrpcService : public GrpcService {
 
 using JobInfoHandler = JobInfoGcsServiceHandler;
 using ActorInfoHandler = ActorInfoGcsServiceHandler;
-using MonitorServiceHandler = MonitorGcsServiceHandler;
 using NodeInfoHandler = NodeInfoGcsServiceHandler;
 using NodeResourceInfoHandler = NodeResourceInfoGcsServiceHandler;
 using WorkerInfoHandler = WorkerInfoGcsServiceHandler;

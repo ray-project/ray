@@ -43,9 +43,8 @@ This is fixed by added custom filename mappings in `source/conf.py` (look for "a
 #### Deployment Handles
 
 :::{note}
-Ray 2.7 introduces a new {mod}`DeploymentHandle <ray.serve.handle.DeploymentHandle>` API that will replace the existing `RayServeHandle` and `RayServeSyncHandle` APIs.
-Existing code will continue to work, but you are encouraged to opt-in to the new API to avoid breakages in the future.
-To opt into the new API, you can either use `handle.options(use_new_handle_api=True)` on each handle or set it globally via environment variable: `export RAY_SERVE_ENABLE_NEW_HANDLE_API=1`.
+The deprecated `RayServeHandle` and `RayServeSyncHandle` APIs have been fully removed as of Ray 2.10.
+See the [model composition guide](serve-model-composition) for how to update code to use the {mod}`DeploymentHandle <ray.serve.handle.DeploymentHandle>` API instead.
 :::
 
 ```{eval-rst}
@@ -57,8 +56,6 @@ To opt into the new API, you can either use `handle.options(use_new_handle_api=T
    serve.handle.DeploymentHandle
    serve.handle.DeploymentResponse
    serve.handle.DeploymentResponseGenerator
-   serve.handle.RayServeHandle
-   serve.handle.RayServeSyncHandle
 ```
 
 ### Running Applications
@@ -100,6 +97,9 @@ To opt into the new API, you can either use `handle.options(use_new_handle_api=T
    serve.get_multiplexed_model_id
    serve.get_app_handle
    serve.get_deployment_handle
+   serve.grpc_util.RayServegRPCContext
+   serve.exceptions.BackPressureError
+   serve.exceptions.RayServeException
 ```
 
 (serve-cli)=
@@ -116,132 +116,9 @@ To opt into the new API, you can either use `handle.options(use_new_handle_api=T
 
 ## Serve REST API
 
-### V1 REST API (Single-application)
+The Serve REST API is exposed at the same port as the Ray Dashboard. The Dashboard port is `8265` by default. This port can be changed using the `--dashboard-port` argument when running `ray start`. All example requests in this section use the default port.
 
-#### `PUT "/api/serve/deployments/"`
-
-Declaratively deploys the Serve application. Starts Serve on the Ray cluster if it's not already running. See [single-app config schema](serve-rest-api-config-schema) for the request's JSON schema.
-
-**Example Request**:
-
-```http
-PUT /api/serve/deployments/ HTTP/1.1
-Host: http://localhost:52365/
-Accept: application/json
-Content-Type: application/json
-
-{
-    "import_path": "text_ml:app",
-    "runtime_env": {
-        "working_dir": "https://github.com/ray-project/serve_config_examples/archive/HEAD.zip"
-    },
-    "deployments": [
-        {"name": "Translator", "user_config": {"language": "french"}},
-        {"name": "Summarizer"},
-    ]
-}
-```
-
-**Example Response**
-
-
-```http
-HTTP/1.1 200 OK
-Content-Type: application/json
-```
-
-#### `GET "/api/serve/deployments/"`
-
-Gets the config for the application currently deployed on the Ray cluster. This config represents the current goal state for the Serve application. See [single-app config schema](serve-rest-api-config-schema) for the response's JSON schema.
-
-**Example Request**:
-```http
-GET /api/serve/deployments/ HTTP/1.1
-Host: http://localhost:52365/
-Accept: application/json
-```
-
-**Example Response**:
-
-```http
-HTTP/1.1 200 OK
-Content-Type: application/json
-
-{
-    "import_path": "text_ml:app",
-    "runtime_env": {
-        "working_dir": "https://github.com/ray-project/serve_config_examples/archive/HEAD.zip"
-    },
-    "deployments": [
-        {"name": "Translator", "user_config": {"language": "french"}},
-        {"name": "Summarizer"},
-    ]
-}
-```
-
-
-#### `GET "/api/serve/deployments/status"`
-
-Gets the Serve application's current status, including all the deployment statuses. See [status schema](serve-rest-api-response-schema) for the response's JSON schema.
-
-**Example Request**:
-
-```http
-GET /api/serve/deployments/status HTTP/1.1
-Host: http://localhost:52365/
-Accept: application/json
-```
-
-**Example Response**
-
-```http
-HTTP/1.1 200 OK
-Content-Type: application/json
-
-{
-    "name": "default",
-    "app_status": {
-        "status": "RUNNING",
-        "message": "",
-        "deployment_timestamp": 1694043082.0397763
-    },
-    "deployment_statuses": [
-        {
-            "name": "Translator",
-            "status": "HEALTHY",
-            "message": ""
-        },
-        {
-            "name": "Summarizer",
-            "status": "HEALTHY",
-            "message": ""
-        }
-    ]
-}
-```
-
-#### `DELETE "/api/serve/deployments/"`
-
-Shuts down Serve and the Serve application running on the Ray cluster. Has no effect if Serve is not running on the Ray cluster.
-    
-**Example Request**:
-
-```http
-DELETE /api/serve/deployments/ HTTP/1.1
-Host: http://localhost:52365/
-Accept: application/json
-```
-
-**Example Response**
-
-```http
-HTTP/1.1 200 OK
-Content-Type: application/json
-```
-
-### V2 REST API (Multi-application)
-
-#### `PUT "/api/serve/applications/"`
+### `PUT "/api/serve/applications/"`
 
 Declaratively deploys a list of Serve applications. If Serve is already running on the Ray cluster, removes all applications not listed in the new config. If Serve is not running on the Ray cluster, starts Serve. See [multi-app config schema](serve-rest-api-config-schema) for the request's JSON schema.
 
@@ -249,7 +126,7 @@ Declaratively deploys a list of Serve applications. If Serve is already running 
 
 ```http
 PUT /api/serve/applications/ HTTP/1.1
-Host: http://localhost:52365/
+Host: http://localhost:8265/
 Accept: application/json
 Content-Type: application/json
 
@@ -281,13 +158,13 @@ HTTP/1.1 200 OK
 Content-Type: application/json
 ```
 
-#### `GET "/api/serve/applications/"`
+### `GET "/api/serve/applications/"`
 
 Gets cluster-level info and comprehensive details on all Serve applications deployed on the Ray cluster. See [metadata schema](serve-rest-api-response-schema) for the response's JSON schema.
 
 ```http
 GET /api/serve/applications/ HTTP/1.1
-Host: http://localhost:52365/
+Host: http://localhost:8265/
 Accept: application/json
 ```
 
@@ -360,7 +237,7 @@ Content-Type: application/json
                     "deployment_config": {
                         "name": "Translator",
                         "num_replicas": 1,
-                        "max_concurrent_queries": 100,
+                        "max_ongoing_requests": 100,
                         "user_config": {
                             "language": "german"
                         },
@@ -398,7 +275,7 @@ Content-Type: application/json
                     "deployment_config": {
                         "name": "Summarizer",
                         "num_replicas": 1,
-                        "max_concurrent_queries": 100,
+                        "max_ongoing_requests": 100,
                         "user_config": null,
                         "graceful_shutdown_wait_loop_s": 2.0,
                         "graceful_shutdown_timeout_s": 20.0,
@@ -431,7 +308,7 @@ Content-Type: application/json
 }
 ```
 
-#### `DELETE "/api/serve/applications/"`
+### `DELETE "/api/serve/applications/"`
 
 Shuts down Serve and all applications running on the Ray cluster. Has no effect if Serve is not running on the Ray cluster.
 
@@ -439,7 +316,7 @@ Shuts down Serve and all applications running on the Ray cluster. Has no effect 
 
 ```http
 DELETE /api/serve/applications/ HTTP/1.1
-Host: http://localhost:52365/
+Host: http://localhost:8265/
 Accept: application/json
 ```
 
@@ -460,6 +337,7 @@ Content-Type: application/json
 
 ```{eval-rst}
 .. autosummary::
+   :nosignatures:
    :toctree: doc/
 
    schema.ServeDeploySchema
@@ -473,21 +351,26 @@ Content-Type: application/json
 (serve-rest-api-response-schema)=
 ## Response Schemas
 
-### V1 REST API
 ```{eval-rst}
 .. autosummary::
-   :toctree: doc/
-
-   schema.ServeStatusSchema
-```
-
-### V2 REST API
-```{eval-rst}
-.. autosummary::
+   :nosignatures:
    :toctree: doc/
 
    schema.ServeInstanceDetails
    schema.ApplicationDetails
    schema.DeploymentDetails
    schema.ReplicaDetails
+```
+
+## Observability
+
+```{eval-rst}
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   metrics.Counter
+   metrics.Histogram
+   metrics.Gauge
+   schema.LoggingConfig
 ```

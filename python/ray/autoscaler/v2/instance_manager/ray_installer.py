@@ -1,13 +1,22 @@
+import dataclasses
 import logging
 import subprocess
 
 from ray.autoscaler._private.updater import NodeUpdater
 from ray.autoscaler._private.util import with_envs, with_head_node_ip
 from ray.autoscaler.node_provider import NodeProvider as NodeProviderV1
-from ray.autoscaler.v2.instance_manager.config import NodeProviderConfig
+from ray.autoscaler.v2.instance_manager.config import AutoscalingConfig
 from ray.core.generated.instance_manager_pb2 import Instance
 
 logger = logging.getLogger(__name__)
+
+
+@dataclasses.dataclass(frozen=True)
+class RayInstallError:
+    # Instance manager's instance id.
+    im_instance_id: str
+    # Error details.
+    details: str
 
 
 class RayInstaller(object):
@@ -18,7 +27,7 @@ class RayInstaller(object):
     def __init__(
         self,
         provider: NodeProviderV1,
-        config: NodeProviderConfig,
+        config: AutoscalingConfig,
         process_runner=subprocess,
     ) -> None:
         self._provider = provider
@@ -28,8 +37,9 @@ class RayInstaller(object):
     def install_ray(self, instance: Instance, head_node_ip: str) -> bool:
         """
         Install ray on the target instance synchronously.
+        TODO:(rickyx): This runs in another thread, and errors are silently
+        ignored. We should propagate the error to the main thread.
         """
-
         setup_commands = self._config.get_worker_setup_commands(instance.instance_type)
         ray_start_commands = self._config.get_worker_start_ray_commands()
         docker_config = self._config.get_docker_config(instance.instance_type)
@@ -49,9 +59,7 @@ class RayInstaller(object):
             cluster_name=self._config.get_config("cluster_name"),
             file_mounts=self._config.get_config("file_mounts"),
             initialization_commands=with_head_node_ip(
-                self._config.get_node_type_specific_config(
-                    instance.instance_type, "initialization_commands"
-                ),
+                self._config.get_initialization_commands(instance.instance_type),
                 head_node_ip,
             ),
             setup_commands=with_head_node_ip(setup_commands, head_node_ip),

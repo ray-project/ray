@@ -1,60 +1,47 @@
 import { render, screen } from "@testing-library/react";
 import React from "react";
-import { ServeApplication, ServeApplicationStatus } from "../type/serve";
+import { ServeDeployment, ServeDeploymentStatus } from "../type/serve";
+import { TEST_APP_WRAPPER } from "../util/test-utils";
 import { ServeStatusIcon } from "./ServeStatus";
 
-const APP: ServeApplication = {
-  name: "MyServeApp",
-  route_prefix: "/my-serve-app",
-  docs_path: null,
-  status: ServeApplicationStatus.RUNNING,
-  message: "",
-  last_deployed_time_s: 1682029771.0748637,
-  deployed_app_config: null,
-  deployments: {},
+const DEPLOYMENT: ServeDeployment = {
+  name: "MyServeDeployment",
+  deployment_config: {} as any,
+  message: "Running",
+  replicas: [],
+  status: ServeDeploymentStatus.HEALTHY,
 };
 
 describe("ServeStatusIcon", () => {
-  it("renders RUNNING status", async () => {
-    render(<ServeStatusIcon app={APP} small={false} />);
+  it("renders HEALTHY status", async () => {
+    render(<ServeStatusIcon deployment={DEPLOYMENT} small={false} />, {
+      wrapper: TEST_APP_WRAPPER,
+    });
 
-    await screen.findByTestId("serve-status-icon");
-
-    const icon = screen.getByTestId("serve-status-icon");
-    const classList = icon.getAttribute("class");
-    expect(classList).toContain("colorSuccess");
+    await screen.findByTitle("Healthy");
   });
 
-  it("renders NOT_STARTED status", async () => {
+  it("renders UNHEALTHY status", async () => {
     render(
       <ServeStatusIcon
-        app={{ ...APP, status: ServeApplicationStatus.NOT_STARTED }}
+        deployment={{ ...DEPLOYMENT, status: ServeDeploymentStatus.UNHEALTHY }}
         small={false}
       />,
+      { wrapper: TEST_APP_WRAPPER },
     );
 
-    await screen.findByTestId("serve-status-icon");
-
-    expect(screen.queryByTestId("serve-status-icon")).not.toHaveClass(
-      "colorSuccess",
-    );
-    expect(screen.queryByTestId("serve-status-icon")).not.toHaveClass(
-      "colorError",
-    );
+    await screen.findByTitle("Unhealthy");
   });
 
-  it("renders DEPLOY_FAILED status", async () => {
+  it("renders UPDATING status", async () => {
     render(
       <ServeStatusIcon
-        app={{ ...APP, status: ServeApplicationStatus.DEPLOY_FAILED }}
+        deployment={{ ...DEPLOYMENT, status: ServeDeploymentStatus.UPDATING }}
         small={false}
       />,
+      { wrapper: TEST_APP_WRAPPER },
     );
 
-    await screen.findByTestId("serve-status-icon");
-
-    const icon = screen.getByTestId("serve-status-icon");
-    const classList = icon.getAttribute("class");
-    expect(classList).toContain("colorError");
+    await screen.findByTitle("Updating");
   });
 });

@@ -1,4 +1,6 @@
-import { createStyles, makeStyles, Paper, Typography } from "@material-ui/core";
+import { Paper, Typography } from "@mui/material";
+import createStyles from "@mui/styles/createStyles";
+import makeStyles from "@mui/styles/makeStyles";
 import classNames from "classnames";
 import React, { PropsWithChildren } from "react";
 import { RiArrowRightLine } from "react-icons/ri";
@@ -20,11 +22,7 @@ type OverviewCardProps = PropsWithChildren<{
 export const OverviewCard = ({ children, className }: OverviewCardProps) => {
   const classes = useStyles();
   return (
-    <Paper
-      className={classNames(classes.root, className)}
-      elevation={1}
-      variant="outlined"
-    >
+    <Paper className={classNames(classes.root, className)} variant="outlined">
       {children}
     </Paper>
   );

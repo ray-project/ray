@@ -107,21 +107,29 @@ def _get_ip(
 def _update_docker_status(
     docker_compose_path: str, project_name: str, docker_status_path: str
 ):
+    data_str = ""
     try:
-        data_str = subprocess.check_output(
-            [
-                "docker",
-                "compose",
-                "-f",
-                docker_compose_path,
-                "-p",
-                project_name,
-                "ps",
-                "--format",
-                "json",
-            ]
+        data_str = (
+            subprocess.check_output(
+                [
+                    "docker",
+                    "compose",
+                    "-f",
+                    docker_compose_path,
+                    "-p",
+                    project_name,
+                    "ps",
+                    "--format",
+                    "json",
+                ]
+            )
+            .decode("utf-8")
+            .strip()
+            .split("\n")
         )
-        data: List[Dict[str, str]] = json.loads(data_str)
+        data: List[Dict[str, str]] = []
+        for line in data_str:
+            data.append(json.loads(line))
     except Exception as e:
         print(f"Ran into error when fetching status: {e}")
         return None

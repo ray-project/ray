@@ -3,8 +3,9 @@ import tempfile
 from typing import TYPE_CHECKING, Optional, Union
 
 from sklearn.base import BaseEstimator
-from ray.train._internal.framework_checkpoint import FrameworkCheckpoint
+
 import ray.cloudpickle as cpickle
+from ray.train._internal.framework_checkpoint import FrameworkCheckpoint
 from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:

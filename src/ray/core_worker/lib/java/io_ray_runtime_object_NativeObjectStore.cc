@@ -42,6 +42,7 @@ Status PutSerializedObject(JNIEnv *env,
       nested_ids.push_back(ObjectID::FromBinary(ref.object_id()));
     }
     status = CoreWorkerProcess::GetCoreWorker().CreateOwnedAndIncrementLocalRef(
+        /*is_experimental_mutable_object=*/false,
         native_ray_object->GetMetadata(),
         data_size,
         nested_ids,
@@ -128,7 +129,7 @@ JNIEXPORT jobject JNICALL Java_io_ray_runtime_object_NativeObjectStore_nativeGet
   });
   std::vector<std::shared_ptr<RayObject>> results;
   auto status =
-      CoreWorkerProcess::GetCoreWorker().Get(object_ids, (int64_t)timeoutMs, &results);
+      CoreWorkerProcess::GetCoreWorker().Get(object_ids, (int64_t)timeoutMs, results);
   THROW_EXCEPTION_AND_RETURN_IF_NOT_OK(env, status, nullptr);
   return NativeVectorToJavaList<std::shared_ptr<RayObject>>(
       env, results, NativeRayObjectToJavaNativeRayObject);

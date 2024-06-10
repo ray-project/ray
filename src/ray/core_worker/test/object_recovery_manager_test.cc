@@ -16,12 +16,13 @@
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
+#include "mock/ray/pubsub/publisher.h"
+#include "mock/ray/pubsub/subscriber.h"
 #include "ray/common/task/task_spec.h"
 #include "ray/common/task/task_util.h"
 #include "ray/common/test_util.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
 #include "ray/core_worker/transport/direct_task_transport.h"
-#include "ray/pubsub/mock_pubsub.h"
 #include "ray/raylet_client/raylet_client.h"
 
 namespace ray {
@@ -113,8 +114,8 @@ class ObjectRecoveryManagerTestBase : public ::testing::Test {
  public:
   ObjectRecoveryManagerTestBase(bool lineage_enabled)
       : local_raylet_id_(NodeID::FromRandom()),
-        publisher_(std::make_shared<mock_pubsub::MockPublisher>()),
-        subscriber_(std::make_shared<mock_pubsub::MockSubscriber>()),
+        publisher_(std::make_shared<pubsub::MockPublisher>()),
+        subscriber_(std::make_shared<pubsub::MockSubscriber>()),
         object_directory_(std::make_shared<MockObjectDirectory>()),
         memory_store_(std::make_shared<CoreWorkerMemoryStore>()),
         raylet_client_(std::make_shared<MockRayletClient>()),
@@ -157,8 +158,8 @@ class ObjectRecoveryManagerTestBase : public ::testing::Test {
   NodeID local_raylet_id_;
   absl::flat_hash_map<ObjectID, rpc::ErrorType> failed_reconstructions_;
 
-  std::shared_ptr<mock_pubsub::MockPublisher> publisher_;
-  std::shared_ptr<mock_pubsub::MockSubscriber> subscriber_;
+  std::shared_ptr<pubsub::MockPublisher> publisher_;
+  std::shared_ptr<pubsub::MockSubscriber> subscriber_;
   std::shared_ptr<MockObjectDirectory> object_directory_;
   std::shared_ptr<CoreWorkerMemoryStore> memory_store_;
   std::shared_ptr<MockRayletClient> raylet_client_;

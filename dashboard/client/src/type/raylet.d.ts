@@ -10,6 +10,10 @@ export type ViewMeasures = {
   distribution_bucket_counts?: number[];
 };
 
+type LabelMap = {
+  [key: string]: string;
+};
+
 export type Raylet = {
   numWorkers: number;
   pid: number;
@@ -17,9 +21,11 @@ export type Raylet = {
   nodeManagerPort: number;
   brpcPort: pid;
   state: string;
+  stateMessage: string;
   startTime: number;
   terminateTime: number;
   objectStoreAvailableMemory: number;
   objectStoreUsedMemory: number;
   isHeadNode: boolean;
+  labels: LabelMap;
 };

@@ -1,36 +1,43 @@
-import sys
-from typing import Optional, Union
+from typing import Optional, Union, Tuple
 import numpy as np
 
 import ray
-from ray.data._internal.compute import ActorPoolStrategy, ComputeStrategy
 from ray.data.dataset import Dataset, MaterializedDataset
 
 from benchmark import Benchmark
 
-if sys.version_info >= (3, 8):
-    from typing import Literal
-else:
-    from typing_extensions import Literal
+from typing import Literal
 
 
 def map_batches(
     input_ds: Dataset,
     batch_size: int,
     batch_format: Literal["default", "pandas", "pyarrow", "numpy"],
-    compute: Optional[Union[str, ComputeStrategy]] = None,
+    concurrency: Optional[Union[int, Tuple[int, int]]] = None,
     num_calls: Optional[int] = 1,
     is_eager_executed: Optional[bool] = False,
 ) -> Dataset:
     assert isinstance(input_ds, MaterializedDataset)
     ds = input_ds
 
+    def udf(x):
+        return x
+
+    class UDFClass:
+        def __call__(self, x):
+            return x
+
+    if concurrency is None:
+        fn = udf
+    else:
+        fn = UDFClass
+
     for _ in range(num_calls):
         ds = ds.map_batches(
-            lambda x: x,
+            fn,
             batch_format=batch_format,
             batch_size=batch_size,
-            compute=compute,
+            concurrency=concurrency,
         )
         if is_eager_executed:
             ds = ds.materialize()
@@ -51,7 +58,7 @@ def run_map_batches_benchmark(benchmark: Benchmark):
         for batch_size in batch_sizes:
             num_calls = 2
             test_name = f"map-batches-{batch_format}-{batch_size}-{num_calls}-eager"
-            benchmark.run(
+            benchmark.run_materialize_ds(
                 test_name,
                 map_batches,
                 input_ds=input_ds,
@@ -61,7 +68,7 @@ def run_map_batches_benchmark(benchmark: Benchmark):
                 is_eager_executed=True,
             )
             test_name = f"map-batches-{batch_format}-{batch_size}-{num_calls}-lazy"
-            benchmark.run(
+            benchmark.run_materialize_ds(
                 test_name,
                 map_batches,
                 input_ds=input_ds,
@@ -72,9 +79,9 @@ def run_map_batches_benchmark(benchmark: Benchmark):
 
     # Test multiple calls of map_batches.
     for num_calls in num_calls_list:
-        for compute in [None, ActorPoolStrategy(size=1)]:
+        for concurrency in [None, 1]:
             batch_size = 4096
-            if compute is None:
+            if concurrency is None:
                 compute_strategy = "tasks"
             else:
                 compute_strategy = "actors"
@@ -83,13 +90,13 @@ def run_map_batches_benchmark(benchmark: Benchmark):
                 f"map-batches-{batch_format}-{batch_size}-{num_calls}-"
                 f"{compute_strategy}-eager"
             )
-            benchmark.run(
+            benchmark.run_materialize_ds(
                 test_name,
                 map_batches,
                 input_ds=input_ds,
                 batch_format=batch_format,
                 batch_size=batch_size,
-                compute=compute,
+                concurrency=concurrency,
                 num_calls=num_calls,
                 is_eager_executed=True,
             )
@@ -97,13 +104,13 @@ def run_map_batches_benchmark(benchmark: Benchmark):
                 f"map-batches-{batch_format}-{batch_size}-{num_calls}-"
                 f"{compute_strategy}-lazy"
             )
-            benchmark.run(
+            benchmark.run_materialize_ds(
                 test_name,
                 map_batches,
                 input_ds=input_ds,
                 batch_format=batch_format,
                 batch_size=batch_size,
-                compute=compute,
+                concurrency=concurrency,
                 num_calls=num_calls,
             )
 
@@ -115,7 +122,7 @@ def run_map_batches_benchmark(benchmark: Benchmark):
         for new_format in ["pyarrow", "pandas", "numpy"]:
             for batch_size in batch_sizes:
                 test_name = f"map-batches-{current_format}-to-{new_format}-{batch_size}"
-                benchmark.run(
+                benchmark.run_materialize_ds(
                     test_name,
                     map_batches,
                     input_ds=new_input_ds,
@@ -130,20 +137,20 @@ def run_map_batches_benchmark(benchmark: Benchmark):
     ).materialize()
 
     for batch_format in batch_formats:
-        for compute in [None, ActorPoolStrategy(min_size=1, max_size=float("inf"))]:
-            if compute is None:
+        for concurrency in [None, (1, 1000)]:
+            if concurrency is None:
                 compute_strategy = "tasks"
             else:
                 compute_strategy = "actors"
             test_name = f"map-batches-{batch_format}-{compute_strategy}-multi-files"
 
-            benchmark.run(
+            benchmark.run_materialize_ds(
                 test_name,
                 map_batches,
                 input_ds=input_ds,
                 batch_format=batch_format,
                 batch_size=4096,
-                compute=compute,
+                concurrency=concurrency,
                 num_calls=1,
             )
 
@@ -158,7 +165,7 @@ def run_map_batches_benchmark(benchmark: Benchmark):
     # And the first one will generate multiple output blocks.
     ray.data._internal.logical.optimizers.PHYSICAL_OPTIMIZER_RULES = []
     parallelism = input_size // batch_size
-    input_ds = ray.data.range(input_size, parallelism=parallelism).materialize()
+    input_ds = ray.data.range(input_size, override_num_blocks=parallelism).materialize()
 
     def map_batches_fn(num_output_blocks, batch):
         """A map_batches function that generates num_output_blocks output blocks."""
@@ -197,7 +204,7 @@ def run_map_batches_benchmark(benchmark: Benchmark):
             return_ds = ds
             return ds
 
-        benchmark.run(
+        benchmark.run_materialize_ds(
             test_name,
             test_fn,
         )

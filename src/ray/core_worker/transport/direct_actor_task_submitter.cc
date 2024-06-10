@@ -146,7 +146,7 @@ Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(TaskSpecification task_spe
     auto status = Status::IOError("cancelling task of dead actor");
     // No need to increment the number of completed tasks since the actor is
     // dead.
-    bool fail_immediatedly =
+    bool fail_immediately =
         error_info.has_actor_died_error() &&
         error_info.actor_died_error().has_oom_context() &&
         error_info.actor_died_error().oom_context().fail_immediately();
@@ -155,7 +155,7 @@ Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(TaskSpecification task_spe
                                                       &status,
                                                       &error_info,
                                                       /*mark_task_object_failed*/ true,
-                                                      fail_immediatedly);
+                                                      fail_immediately);
   }
 
   // If the task submission subsequently fails, then the client will receive
@@ -236,7 +236,7 @@ void CoreWorkerDirectActorTaskSubmitter::ConnectActor(const ActorID &actor_id,
 
     RAY_LOG(INFO) << "Connecting to actor " << actor_id << " at worker "
                   << WorkerID::FromBinary(address.worker_id());
-    ResendOutOfOrderTasks(actor_id);
+    ResendOutOfOrderCompletedTasks(actor_id);
     SendPendingTasks(actor_id);
   }
 
@@ -254,8 +254,7 @@ void CoreWorkerDirectActorTaskSubmitter::DisconnectActor(
 
   absl::flat_hash_map<TaskID, rpc::ClientCallback<rpc::PushTaskReply>>
       inflight_task_callbacks;
-  std::deque<std::pair<int64_t, std::pair<TaskSpecification, Status>>>
-      wait_for_death_info_tasks;
+  std::deque<std::shared_ptr<PendingTaskWaitingForDeathInfo>> wait_for_death_info_tasks;
   std::vector<TaskID> task_ids_to_fail;
   {
     absl::MutexLock lock(&mu_);
@@ -292,7 +291,7 @@ void CoreWorkerDirectActorTaskSubmitter::DisconnectActor(
       wait_for_death_info_tasks = std::move(queue->second.wait_for_death_info_tasks);
       // Reset the queue
       queue->second.wait_for_death_info_tasks =
-          std::deque<std::pair<int64_t, std::pair<TaskSpecification, Status>>>();
+          std::deque<std::shared_ptr<PendingTaskWaitingForDeathInfo>>();
     } else if (queue->second.state != rpc::ActorTableData::DEAD) {
       // Only update the actor's state if it is not permanently dead. The actor
       // will eventually get restarted or marked as permanently dead.
@@ -329,12 +328,9 @@ void CoreWorkerDirectActorTaskSubmitter::DisconnectActor(
     if (!wait_for_death_info_tasks.empty()) {
       RAY_LOG(DEBUG) << "Failing tasks waiting for death info, size="
                      << wait_for_death_info_tasks.size() << ", actor_id=" << actor_id;
-      for (auto &net_err_task_pair : wait_for_death_info_tasks) {
-        RAY_UNUSED(GetTaskFinisherWithoutMu().FailPendingTask(
-            net_err_task_pair.second.first.TaskId(),
-            error_type,
-            /* status */ &net_err_task_pair.second.second,
-            &error_info));
+      for (auto &task : wait_for_death_info_tasks) {
+        GetTaskFinisherWithoutMu().FailPendingTask(
+            task->task_spec.TaskId(), error_type, &task->status, &error_info);
       }
     }
   }
@@ -342,28 +338,53 @@ void CoreWorkerDirectActorTaskSubmitter::DisconnectActor(
   FailInflightTasks(inflight_task_callbacks);
 }
 
+void CoreWorkerDirectActorTaskSubmitter::FailTaskWithError(
+    const PendingTaskWaitingForDeathInfo &task) {
+  rpc::RayErrorInfo error_info;
+  if (!task.actor_preempted) {
+    error_info = task.timeout_error_info;
+  } else {
+    // Special error for preempted actor. The task "timed out" because the actor may
+    // not have sent a notification to the gcs; regardless we already know it's
+    // preempted and it's dead.
+    auto actor_death_cause = error_info.mutable_actor_died_error();
+    auto actor_died_error_context = actor_death_cause->mutable_actor_died_error_context();
+    actor_died_error_context->set_actor_id(task.task_spec.ActorId().Binary());
+    auto node_death_info = actor_died_error_context->mutable_node_death_info();
+    node_death_info->set_reason(rpc::NodeDeathInfo::AUTOSCALER_DRAIN_PREEMPTED);
+    node_death_info->set_reason_message(
+        "the node was inferred to be dead due to draining.");
+    error_info.set_error_type(rpc::ErrorType::ACTOR_DIED);
+    error_info.set_error_message("Actor died by preemption.");
+  }
+  GetTaskFinisherWithoutMu().FailPendingTask(
+      task.task_spec.TaskId(), error_info.error_type(), &task.status, &error_info);
+}
+
 void CoreWorkerDirectActorTaskSubmitter::CheckTimeoutTasks() {
-  std::vector<std::pair<TaskSpecification, Status>> task_specs_and_status;
+  // For each task in `wait_for_death_info_tasks`, if it times out, fail it with
+  // timeout_error_info. But operating on the queue requires the mu_ lock; while calling
+  // FailPendingTask requires the opposite. So we copy the tasks out from the queue within
+  // the lock. This requires putting the data into shared_ptr.
+  std::vector<std::shared_ptr<PendingTaskWaitingForDeathInfo>> timeout_tasks;
+  int64_t now = current_time_ms();
   {
     absl::MutexLock lock(&mu_);
-    for (auto &queue_pair : client_queues_) {
-      auto &queue = queue_pair.second;
-      auto deque_itr = queue.wait_for_death_info_tasks.begin();
-      while (deque_itr != queue.wait_for_death_info_tasks.end() &&
-             /*timeout timestamp*/ deque_itr->first < current_time_ms()) {
-        auto &task_spec_status_pair = deque_itr->second;
-        task_specs_and_status.push_back(task_spec_status_pair);
-        deque_itr = queue.wait_for_death_info_tasks.erase(deque_itr);
+    for (auto &[actor_id, client_queue] : client_queues_) {
+      auto &deque = client_queue.wait_for_death_info_tasks;
+      auto deque_itr = deque.begin();
+      while (deque_itr != deque.end() && (*deque_itr)->deadline_ms < now) {
+        // Populate the info of whether the actor is preempted. If so we hard fail the
+        // task.
+        (*deque_itr)->actor_preempted = client_queue.preempted;
+        timeout_tasks.push_back(*deque_itr);
+        deque_itr = deque.erase(deque_itr);
       }
     }
   }
-
-  // Do not hold mu_, because FailPendingTask may call python from cpp,
-  // and may cause deadlock with SubmitActorTask thread when aquire GIL.
-  for (auto &task_spec_status_pair : task_specs_and_status) {
-    GetTaskFinisherWithoutMu().FailPendingTask(task_spec_status_pair.first.TaskId(),
-                                               rpc::ErrorType::ACTOR_DIED,
-                                               &task_spec_status_pair.second);
+  // Note: mu_ released.
+  for (auto &task : timeout_tasks) {
+    FailTaskWithError(*task);
   }
 }
 
@@ -388,10 +409,7 @@ void CoreWorkerDirectActorTaskSubmitter::SendPendingTasks(const ActorID &actor_i
               rpc::PushTaskReply reply;
               rpc::Address addr;
               HandlePushTaskReply(
-                  Status::IOError("The actor is temporarily unavailable."),
-                  reply,
-                  addr,
-                  task_spec);
+                  Status::IOError("The actor is restarting."), reply, addr, task_spec);
             },
             "CoreWorkerDirectActorTaskSubmitter::SendPendingTasks_ForceFail");
       }
@@ -419,7 +437,8 @@ void CoreWorkerDirectActorTaskSubmitter::SendPendingTasks(const ActorID &actor_i
   }
 }
 
-void CoreWorkerDirectActorTaskSubmitter::ResendOutOfOrderTasks(const ActorID &actor_id) {
+void CoreWorkerDirectActorTaskSubmitter::ResendOutOfOrderCompletedTasks(
+    const ActorID &actor_id) {
   auto it = client_queues_.find(actor_id);
   RAY_CHECK(it != client_queues_.end());
   if (!it->second.rpc_client) {
@@ -429,6 +448,7 @@ void CoreWorkerDirectActorTaskSubmitter::ResendOutOfOrderTasks(const ActorID &ac
   RAY_CHECK(!client_queue.worker_id.empty());
   auto out_of_order_completed_tasks =
       client_queue.actor_submit_queue->PopAllOutOfOrderCompletedTasks();
+
   for (const auto &completed_task : out_of_order_completed_tasks) {
     // Making a copy here because we are flipping a flag and the original value is
     // const.
@@ -506,6 +526,7 @@ void CoreWorkerDirectActorTaskSubmitter::HandlePushTaskReply(
   const auto actor_id = task_spec.ActorId();
   const auto actor_counter = task_spec.ActorCounter();
   const auto task_skipped = task_spec.GetMessage().skip_execution();
+  const bool is_retryable_exception = status.ok() && reply.is_retryable_error();
   /// Whether or not we will retry this actor task.
   auto will_retry = false;
 
@@ -514,7 +535,9 @@ void CoreWorkerDirectActorTaskSubmitter::HandlePushTaskReply(
     // reply for a previously completed task. We are not calling CompletePendingTask
     // because the tasks are pushed directly to the actor, not placed on any queues
     // in task_finisher_.
-  } else if (status.ok()) {
+  } else if (status.ok() && !is_retryable_exception) {
+    // status.ok() means the worker completed the reply, either succeeded or with a
+    // retryable failure (e.g. user exceptions). We complete only on non-retryable case.
     task_finisher_.CompletePendingTask(
         task_id, reply, addr, reply.is_application_error());
   } else if (status.IsSchedulingCancelled()) {
@@ -532,10 +555,14 @@ void CoreWorkerDirectActorTaskSubmitter::HandlePushTaskReply(
                                                &error_info);
   } else {
     bool is_actor_dead = false;
-    bool fail_immediatedly = false;
-    rpc::ErrorType error_type;
+    bool fail_immediately = false;
     rpc::RayErrorInfo error_info;
-    {
+    if (status.ok()) {
+      // retryable user exception.
+      RAY_CHECK(is_retryable_exception);
+      error_info = gcs::GetRayErrorInfo(rpc::ErrorType::TASK_EXECUTION_EXCEPTION,
+                                        reply.task_execution_error());
+    } else {
       // push task failed due to network error. For example, actor is dead
       // and no process response for the push task.
       absl::MutexLock lock(&mu_);
@@ -544,14 +571,27 @@ void CoreWorkerDirectActorTaskSubmitter::HandlePushTaskReply(
       auto &queue = queue_pair->second;
 
       // If the actor is already dead, immediately mark the task object as failed.
-      // Otherwise, start the grace period before marking the object as dead.
+      // Otherwise, start the grace period, waiting for the actor death reason. Before the
+      // deadline:
+      // - If we got the death reason: mark the object as failed with that reason.
+      // - If we did not get the death reason: raise ACTOR_UNAVAILABLE with the status.
+      // - If we did not get the death reason, but *the actor is preempted*: raise
+      // ACTOR_DIED. See `CheckTimeoutTasks`.
       is_actor_dead = queue.state == rpc::ActorTableData::DEAD;
-      const auto &death_cause = queue.death_cause;
-      error_info = GetErrorInfoFromActorDeathCause(death_cause);
-      error_type = error_info.error_type();
-      fail_immediatedly = error_info.has_actor_died_error() &&
-                          error_info.actor_died_error().has_oom_context() &&
-                          error_info.actor_died_error().oom_context().fail_immediately();
+      if (is_actor_dead) {
+        const auto &death_cause = queue.death_cause;
+        error_info = GetErrorInfoFromActorDeathCause(death_cause);
+        fail_immediately = error_info.has_actor_died_error() &&
+                           error_info.actor_died_error().has_oom_context() &&
+                           error_info.actor_died_error().oom_context().fail_immediately();
+      } else {
+        // The actor may or may not be dead, but the request failed. Consider the failure
+        // temporary. May recognize retry, so fail_immediately = false.
+        error_info.set_error_message("The actor is temporarily unavailable: " +
+                                     status.ToString());
+        error_info.set_error_type(rpc::ErrorType::ACTOR_UNAVAILABLE);
+        error_info.mutable_actor_unavailable_error()->set_actor_id(actor_id.Binary());
+      }
     }
 
     // This task may have been waiting for dependency resolution, so cancel
@@ -560,17 +600,23 @@ void CoreWorkerDirectActorTaskSubmitter::HandlePushTaskReply(
 
     will_retry = GetTaskFinisherWithoutMu().FailOrRetryPendingTask(
         task_id,
-        error_type,
+        error_info.error_type(),
         &status,
         &error_info,
         /*mark_task_object_failed*/ is_actor_dead,
-        fail_immediatedly);
-
+        fail_immediately);
     if (!is_actor_dead && !will_retry) {
-      // No retry == actor is dead.
-      // If actor is not dead yet, wait for the grace period until we mark the
-      // return object as failed.
-      if (RayConfig::instance().timeout_ms_task_wait_for_death_info() != 0) {
+      // Ran out of retries, last failure = either user exception or actor death.
+      if (status.ok()) {
+        // last failure = user exception, just complete it with failure.
+        RAY_CHECK(reply.is_retryable_error());
+
+        GetTaskFinisherWithoutMu().CompletePendingTask(
+            task_id, reply, addr, reply.is_application_error());
+      }
+      // last failure = Actor death, but we still see the actor "alive" so we optionally
+      // wait for a grace period for the death info.
+      else if (RayConfig::instance().timeout_ms_task_wait_for_death_info() != 0) {
         int64_t death_info_grace_period_ms =
             current_time_ms() +
             RayConfig::instance().timeout_ms_task_wait_for_death_info();
@@ -578,17 +624,23 @@ void CoreWorkerDirectActorTaskSubmitter::HandlePushTaskReply(
         auto queue_pair = client_queues_.find(actor_id);
         RAY_CHECK(queue_pair != client_queues_.end());
         auto &queue = queue_pair->second;
-        queue.wait_for_death_info_tasks.emplace_back(death_info_grace_period_ms,
-                                                     std::make_pair(task_spec, status));
+        queue.wait_for_death_info_tasks.push_back(
+            std::make_shared<PendingTaskWaitingForDeathInfo>(
+                death_info_grace_period_ms, task_spec, status, error_info));
         RAY_LOG(INFO)
             << "PushActorTask failed because of network error, this task "
                "will be stashed away and waiting for Death info from GCS, task_id="
             << task_spec.TaskId()
             << ", wait_queue_size=" << queue.wait_for_death_info_tasks.size();
       } else {
-        // If we don't need death info, just fail the request.
+        // TODO(vitsai): if we don't need death info, just fail the request.
+        {
+          absl::MutexLock lock(&mu_);
+          auto queue_pair = client_queues_.find(actor_id);
+          RAY_CHECK(queue_pair != client_queues_.end());
+        }
         GetTaskFinisherWithoutMu().FailPendingTask(
-            task_spec.TaskId(), rpc::ErrorType::ACTOR_DIED, &status);
+            task_spec.TaskId(), error_info.error_type(), &status, &error_info);
       }
     }
   }
@@ -597,8 +649,11 @@ void CoreWorkerDirectActorTaskSubmitter::HandlePushTaskReply(
     auto queue_pair = client_queues_.find(actor_id);
     RAY_CHECK(queue_pair != client_queues_.end());
     auto &queue = queue_pair->second;
-    if (!will_retry) {
-      queue.actor_submit_queue->MarkTaskCompleted(actor_counter, task_spec);
+    // Every seqno for the actor_submit_queue must be MarkSeqnoCompleted.
+    // On exception-retry we update the seqno so we need to call;
+    // On exception's or actor's last try we also need to call.
+    if ((!will_retry) || is_retryable_exception) {
+      queue.actor_submit_queue->MarkSeqnoCompleted(actor_counter, task_spec);
     }
     queue.cur_pending_calls--;
   }

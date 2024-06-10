@@ -19,17 +19,22 @@ class CartPoleDebug(CartPoleEnv):
         self.observation_space = gym.spaces.Box(low, high, shape=(5,), dtype=np.float32)
 
         self.timesteps_ = 0
+        self._next_action = 0
+        self._seed = 1
 
     def reset(self, *, seed=None, options=None):
-        ret = super().reset()
+        ret = super().reset(seed=self._seed)
+        self._seed += 1
         self.timesteps_ = 0
+        self._next_action = 0
         obs = np.concatenate([np.array([self.timesteps_]), ret[0]])
         return obs, ret[1]
 
     def step(self, action):
-        ret = super().step(action)
+        ret = super().step(self._next_action)
 
         self.timesteps_ += 1
+        self._next_action = 0 if self._next_action else 1
 
         obs = np.concatenate([np.array([self.timesteps_]), ret[0]])
         reward = 0.1 * self.timesteps_

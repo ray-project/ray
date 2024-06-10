@@ -1,0 +1,8 @@
+group: forge
+steps:
+  - name: forge
+    wanda: .buildkite/release-automation/forge_x86_64.wanda.yaml
+
+  - name: forge-arm64
+    wanda: .buildkite/release-automation/forge_arm64.wanda.yaml
+    instance_type: builder-arm64

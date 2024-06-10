@@ -1,8 +1,5 @@
-import copy
 import logging
-import os
-import warnings
-from collections import defaultdict
+from collections import Counter, defaultdict
 from dataclasses import _MISSING_TYPE, dataclass, fields
 from pathlib import Path
 from typing import (
@@ -13,29 +10,28 @@ from typing import (
     List,
     Mapping,
     Optional,
-    Union,
     Tuple,
+    Union,
 )
 
 import pyarrow.fs
 
+from ray._private.ray_constants import RESOURCE_CONSTRAINT_PREFIX
 from ray._private.storage import _get_storage_uri
 from ray._private.thirdparty.tabulate.tabulate import tabulate
-from ray.air.constants import WILDCARD_KEY
-from ray.util.annotations import PublicAPI, Deprecated
-from ray.widgets import Template, make_table_html_repr
 from ray.data.preprocessor import Preprocessor
+from ray.util.annotations import Deprecated, PublicAPI
+from ray.widgets import Template, make_table_html_repr
 
 if TYPE_CHECKING:
-    from ray.data import Dataset
+    from ray.train import SyncConfig
     from ray.tune.callback import Callback
+    from ray.tune.execution.placement_groups import PlacementGroupFactory
+    from ray.tune.experimental.output import AirVerbosity
     from ray.tune.progress_reporter import ProgressReporter
     from ray.tune.search.sample import Domain
     from ray.tune.stopper import Stopper
-    from ray.train import SyncConfig
-    from ray.tune.experimental.output import AirVerbosity
     from ray.tune.utils.log import Verbosity
-    from ray.tune.execution.placement_groups import PlacementGroupFactory
 
 
 # Dict[str, List] is to support `tune.grid_search`:
@@ -46,6 +42,10 @@ SampleRange = Union["Domain", Dict[str, List]]
 MAX = "max"
 MIN = "min"
 _DEPRECATED_VALUE = "DEPRECATED"
+
+DATASET_CONFIG_DEPRECATION_MSG = """
+Use `ray.train.DataConfig` instead of DatasetConfig to configure data ingest for training. See https://docs.ray.io/en/releases-2.6.3/ray-air/check-ingest.html#migrating-from-the-legacy-datasetconfig-api for more details.
+"""  # noqa: E501
 
 
 logger = logging.getLogger(__name__)
@@ -73,11 +73,20 @@ def _repr_dataclass(obj, *, default_values: Optional[Dict[str, Any]] = None) -> 
 
     non_default_values = {}  # Maps field name to value.
 
+    def equals(value, default_value):
+        # We need to special case None because of a bug in pyarrow:
+        # https://github.com/apache/arrow/issues/38535
+        if value is None and default_value is None:
+            return True
+        if value is None or default_value is None:
+            return False
+        return value == default_value
+
     for field in fields(obj):
         value = getattr(obj, field.name)
         default_value = default_values.get(field.name, field.default)
         is_required = isinstance(field.default, _MISSING_TYPE)
-        if is_required or value != default_value:
+        if is_required or not equals(value, default_value):
             non_default_values[field.name] = value
 
     string = f"{obj.__class__.__name__}("
@@ -95,8 +104,13 @@ class ScalingConfig:
     """Configuration for scaling training.
 
     Args:
-        trainer_resources: Resources to allocate for the trainer. If None is provided,
-            will default to 1 CPU for most trainers.
+        trainer_resources: Resources to allocate for the training coordinator.
+            The training coordinator launches the worker group and executes
+            the training function per worker, and this process does NOT require
+            GPUs. The coordinator is always scheduled on the same node as the
+            rank 0 worker, so one example use case is to set a minimum amount
+            of resources (e.g. CPU memory) required by the rank 0 node.
+            By default, this assigns 1 CPU to the training coordinator.
         num_workers: The number of workers (Ray actors) to launch.
             Each worker will reserve 1 CPU by default. The number of CPUs
             reserved by each worker can be overridden with the
@@ -112,6 +126,12 @@ class ScalingConfig:
         placement_strategy: The placement strategy to use for the
             placement group of the Ray actors. See :ref:`Placement Group
             Strategies <pgroup-strategy>` for the possible options.
+        accelerator_type: [Experimental] If specified, Ray Train will launch the
+            training coordinator and workers on the nodes with the specified type
+            of accelerators.
+            See :ref:`the available accelerator types <accelerator_types>`.
+            Ensure that your cluster has instances with the specified accelerator type
+            or is able to autoscale to fulfill the request.
 
     Example:
 
@@ -131,13 +151,12 @@ class ScalingConfig:
 
     """
 
-    # If adding new attributes here, please also update
-    # ray.train.gbdt_trainer._convert_scaling_config_to_ray_params
     trainer_resources: Optional[Union[Dict, SampleRange]] = None
-    num_workers: Optional[Union[int, SampleRange]] = None
+    num_workers: Union[int, SampleRange] = 1
     use_gpu: Union[bool, SampleRange] = False
     resources_per_worker: Optional[Union[Dict, SampleRange]] = None
     placement_strategy: Union[str, SampleRange] = "PACK"
+    accelerator_type: Optional[str] = None
 
     def __post_init__(self):
         if self.resources_per_worker:
@@ -174,13 +193,20 @@ class ScalingConfig:
                 # Note that we don't request any CPUs, which avoids possible
                 # scheduling contention. Generally nodes have many more CPUs than
                 # GPUs, so not requesting a CPU does not lead to oversubscription.
-                return {"GPU": 1}
+                resources_per_worker = {"GPU": 1}
             else:
-                return {"CPU": 1}
-        resources_per_worker = {
-            k: v for k, v in self.resources_per_worker.items() if v != 0
-        }
-        resources_per_worker.setdefault("GPU", int(self.use_gpu))
+                resources_per_worker = {"CPU": 1}
+        else:
+            resources_per_worker = {
+                k: v for k, v in self.resources_per_worker.items() if v != 0
+            }
+
+        if self.use_gpu:
+            resources_per_worker.setdefault("GPU", 1)
+
+        if self.accelerator_type:
+            accelerator = f"{RESOURCE_CONSTRAINT_PREFIX}{self.accelerator_type}"
+            resources_per_worker.setdefault(accelerator, 0.001)
         return resources_per_worker
 
     @property
@@ -196,24 +222,28 @@ class ScalingConfig:
                 try:
                     import google.colab  # noqa: F401
 
-                    trainer_resources = 0
+                    trainer_num_cpus = 0
                 except ImportError:
-                    trainer_resources = 1
+                    trainer_num_cpus = 1
             else:
                 # If there are no additional workers, then always reserve 1 CPU for
                 # the Trainer.
-                trainer_resources = 1
+                trainer_num_cpus = 1
 
-            return {"CPU": trainer_resources}
-        return {k: v for k, v in self.trainer_resources.items() if v != 0}
+            trainer_resources = {"CPU": trainer_num_cpus}
+        else:
+            trainer_resources = {
+                k: v for k, v in self.trainer_resources.items() if v != 0
+            }
+
+        return trainer_resources
 
     @property
     def total_resources(self):
         """Map of total resources required for the trainer."""
         total_resource_map = defaultdict(float, self._trainer_resources_not_none)
-        num_workers = self.num_workers or 0
         for k, value in self._resources_per_worker_not_none.items():
-            total_resource_map[k] += value * num_workers
+            total_resource_map[k] += value * self.num_workers
         return dict(total_resource_map)
 
     @property
@@ -239,49 +269,44 @@ class ScalingConfig:
         """Returns a PlacementGroupFactory to specify resources for Tune."""
         from ray.tune.execution.placement_groups import PlacementGroupFactory
 
-        trainer_resources = self._trainer_resources_not_none
-        trainer_bundle = [trainer_resources]
-        worker_resources = {
-            "CPU": self.num_cpus_per_worker,
-            "GPU": self.num_gpus_per_worker,
-        }
-        worker_resources_extra = (
-            {} if self.resources_per_worker is None else self.resources_per_worker
-        )
-        worker_bundles = [
-            {**worker_resources, **worker_resources_extra}
-            for _ in range(self.num_workers if self.num_workers else 0)
-        ]
-        bundles = trainer_bundle + worker_bundles
+        trainer_bundle = self._trainer_resources_not_none
+        worker_bundle = self._resources_per_worker_not_none
+
+        # Colocate Trainer and rank0 worker by merging their bundles
+        # Note: This empty bundle is required so that the Tune actor manager schedules
+        # the Trainable onto the combined bundle while taking none of its resources,
+        # rather than a non-empty head bundle.
+        combined_bundle = dict(Counter(trainer_bundle) + Counter(worker_bundle))
+        bundles = [{}, combined_bundle] + [worker_bundle] * (self.num_workers - 1)
         return PlacementGroupFactory(bundles, strategy=self.placement_strategy)
 
     @classmethod
     def from_placement_group_factory(
         cls, pgf: "PlacementGroupFactory"
     ) -> "ScalingConfig":
-        """Create a ScalingConfig from a Tune's PlacementGroupFactory"""
-        if pgf.head_bundle_is_empty:
-            trainer_resources = {}
-            worker_bundles = pgf.bundles
-        else:
-            trainer_resources = pgf.bundles[0]
-            worker_bundles = pgf.bundles[1:]
+        """Create a ScalingConfig from a Tune's PlacementGroupFactory
 
-        use_gpu = False
+        Note that this is only needed for ResourceChangingScheduler, which
+        modifies a trial's PlacementGroupFactory but doesn't propagate
+        the changes to ScalingConfig. TrainTrainable needs to reconstruct
+        a ScalingConfig from on the trial's PlacementGroupFactory.
+        """
+
+        # pgf.bundles = [{trainer + worker}, {worker}, ..., {worker}]
+        num_workers = len(pgf.bundles)
+        combined_resources = pgf.bundles[0]
+        resources_per_worker = pgf.bundles[-1]
+        use_gpu = bool(resources_per_worker.get("GPU", False))
         placement_strategy = pgf.strategy
-        resources_per_worker = None
-        num_workers = None
 
-        if worker_bundles:
-            first_bundle = worker_bundles[0]
-            if not all(bundle == first_bundle for bundle in worker_bundles[1:]):
-                raise ValueError(
-                    "All worker bundles (any other than the first one) "
-                    "must be equal to each other."
-                )
-            use_gpu = bool(first_bundle.get("GPU"))
-            num_workers = len(worker_bundles)
-            resources_per_worker = first_bundle
+        # In `as_placement_group_factory`, we merged the trainer resource into the
+        # first worker resources bundle. We need to calculate the resources diff to
+        # get the trainer resources.
+        # Note: If there's only one worker, we won't be able to calculate the diff.
+        # We'll have empty trainer bundle and assign all resources to the worker.
+        trainer_resources = dict(
+            Counter(combined_resources) - Counter(resources_per_worker)
+        )
 
         return ScalingConfig(
             trainer_resources=trainer_resources,
@@ -293,11 +318,7 @@ class ScalingConfig:
 
 
 @dataclass
-@Deprecated(
-    message="Use `ray.train.DataConfig` instead of DatasetConfig to "
-    "configure data ingest for training. "
-    "See https://docs.ray.io/en/master/ray-air/check-ingest.html#migrating-from-the-legacy-datasetconfig-api for more details."  # noqa: E501
-)
+@Deprecated(DATASET_CONFIG_DEPRECATION_MSG)
 class DatasetConfig:
     """Configuration for ingest of a single Dataset.
 
@@ -365,157 +386,8 @@ class DatasetConfig:
     use_stream_api: Optional[int] = None
     stream_window_size: Optional[int] = None
 
-    def __repr__(self):
-        return _repr_dataclass(self)
-
-    def _repr_html_(self, title=None) -> str:
-        if title is None:
-            title = type(self).__name__
-        return make_table_html_repr(obj=self, title=title)
-
     def __post_init__(self):
-        if self.use_stream_api is not None or self.stream_window_size is not None:
-            raise DeprecationWarning(
-                "DatasetConfig.use_stream_api and DatasetConfig.stream_window_size "
-                "have been removed as of Ray 2.3. Instead, use "
-                "DatasetConfig.max_object_store_memory_fraction with a value "
-                "0 or greater "
-                "(https://docs.ray.io/en/latest/ray-air/package-ref.html"
-                "#ray.air.config.DatasetConfig)."
-            )
-
-    def fill_defaults(self) -> "DatasetConfig":
-        """Return a copy of this config with all default values filled in."""
-        return DatasetConfig(
-            fit=self.fit or False,
-            split=self.split or False,
-            required=self.required or False,
-            max_object_store_memory_fraction=self.max_object_store_memory_fraction
-            if self.max_object_store_memory_fraction is not None
-            else -1,
-            global_shuffle=self.global_shuffle or False,
-            transform=self.transform if self.transform is not None else True,
-            randomize_block_order=self.randomize_block_order
-            if self.randomize_block_order is not None
-            else True,
-            per_epoch_preprocessor=self.per_epoch_preprocessor,
-        )
-
-    @staticmethod
-    def merge(
-        a: Dict[str, "DatasetConfig"], b: Optional[Dict[str, "DatasetConfig"]]
-    ) -> Dict[str, "DatasetConfig"]:
-        """Merge two given DatasetConfigs, the second taking precedence.
-
-        Raises:
-            ValueError: if validation fails on the merged configs.
-        """
-        has_wildcard = WILDCARD_KEY in a
-        result = a.copy()
-        if b is None:
-            return result
-        for key in b:
-            if key in a:
-                result[key] = a[key]._merge(b[key])
-            elif has_wildcard:
-                result[key] = a[WILDCARD_KEY]._merge(b[key])
-            else:
-                raise ValueError(
-                    f"Invalid dataset config `{key}`. It must be one of `{list(a)}`."
-                )
-        return result
-
-    @staticmethod
-    def validated(
-        config: Dict[str, "DatasetConfig"], datasets: Optional[Dict[str, "Dataset"]]
-    ) -> Dict[str, "DatasetConfig"]:
-        """Validate the given config and datasets are usable.
-
-        Returns dict of validated configs with defaults filled out.
-        """
-        datasets = datasets or {}
-        has_wildcard = WILDCARD_KEY in config
-        fittable = set()
-        result = {k: v.fill_defaults() for k, v in config.items()}
-        for k, v in result.items():
-            if v.fit:
-                fittable.add(k)
-                if not v.transform:
-                    raise ValueError(
-                        f"Error configuring dataset `{k}`: cannot specify both "
-                        "fit=True and transform=False."
-                    )
-            if v.required:
-                if k not in datasets:
-                    raise ValueError(
-                        f"The required dataset `{k}` was not found in {datasets}."
-                    )
-            if not isinstance(v.max_object_store_memory_fraction, (float, int)):
-                raise ValueError(
-                    f"Error configuring dataset `{k}`: "
-                    "max_object_store_memory_fraction "
-                    "must be None or a float with value -1 or >=0, but got "
-                    f"{v.max_object_store_memory_fraction}."
-                )
-            if not (
-                v.max_object_store_memory_fraction == -1
-                or v.max_object_store_memory_fraction >= 0
-            ):
-                raise ValueError(
-                    f"Error configuring dataset `{k}`: "
-                    "max_object_store_memory_fraction "
-                    "must be None or a float with value -1 or >=0, but got "
-                    f"{v.max_object_store_memory_fraction}."
-                )
-            if v.per_epoch_preprocessor is not None:
-                if not isinstance(v.per_epoch_preprocessor, Preprocessor):
-                    raise ValueError(
-                        "`per_epoch_preprocessor` must be a ray.data.Preprocessor "
-                        f"but got {v.per_epoch_preprocessor}."
-                    )
-                if (
-                    v.per_epoch_preprocessor.fit_status()
-                    != Preprocessor.FitStatus.NOT_FITTABLE
-                ):
-                    raise ValueError(
-                        "`per_epoch_preprocessor` currently does not support "
-                        "fittable ray.data.Preprocessors."
-                    )
-
-        if len(fittable) > 1:
-            raise ValueError(
-                f"More than one dataset was specified to be fit: {fittable}"
-            )
-        if not has_wildcard:
-            for k, v in datasets.items():
-                if k not in result:
-                    raise ValueError(
-                        f"An unexpected dataset `{k}` was given. The list of expected "
-                        f"datasets is `{list(result)}`."
-                    )
-        return result
-
-    def _merge(self, other: "DatasetConfig") -> "DatasetConfig":
-        """Merge the given DatasetConfig into this one."""
-        new_config = DatasetConfig(
-            fit=self.fit if other.fit is None else other.fit,
-            split=self.split if other.split is None else other.split,
-            required=self.required if other.required is None else other.required,
-            transform=self.transform if other.transform is None else other.transform,
-            max_object_store_memory_fraction=self.max_object_store_memory_fraction
-            if other.max_object_store_memory_fraction is None
-            else other.max_object_store_memory_fraction,
-            global_shuffle=self.global_shuffle
-            if other.global_shuffle is None
-            else other.global_shuffle,
-            randomize_block_order=self.randomize_block_order
-            if other.randomize_block_order is None
-            else other.randomize_block_order,
-            per_epoch_preprocessor=self.per_epoch_preprocessor
-            if other.per_epoch_preprocessor is None
-            else other.per_epoch_preprocessor,
-        )
-        return new_config
+        raise DeprecationWarning(DATASET_CONFIG_DEPRECATION_MSG)
 
 
 @dataclass
@@ -528,27 +400,26 @@ class FailureConfig:
             Will recover from the latest checkpoint if present.
             Setting to -1 will lead to infinite recovery retries.
             Setting to 0 will disable retries. Defaults to 0.
-        fail_fast: Whether to fail upon the first error. Only used for
-            Ray Tune - this does not apply
-            to single training runs (e.g. with ``Trainer.fit()``).
-            If fail_fast='raise' provided, Ray Tune will automatically
-            raise the exception received by the Trainable. fail_fast='raise'
-            can easily leak resources and should be used with caution (it
-            is best used with `ray.init(local_mode=True)`).
+        fail_fast: Whether to fail upon the first error.
+            If fail_fast='raise' provided, the original error during training will be
+            immediately raised. fail_fast='raise' can easily leak resources and
+            should be used with caution.
     """
 
     max_failures: int = 0
     fail_fast: Union[bool, str] = False
 
     def __post_init__(self):
-        # Same check as in tune.run
-        if self.fail_fast and self.max_failures != 0:
-            raise ValueError("max_failures must be 0 if fail_fast=True.")
-
         # Same check as in TuneController
         if not (isinstance(self.fail_fast, bool) or self.fail_fast.upper() == "RAISE"):
             raise ValueError(
                 "fail_fast must be one of {bool, 'raise'}. " f"Got {self.fail_fast}."
+            )
+
+        # Same check as in tune.run
+        if self.fail_fast and self.max_failures != 0:
+            raise ValueError(
+                f"max_failures must be 0 if fail_fast={repr(self.fail_fast)}."
             )
 
     def __repr__(self):
@@ -730,10 +601,14 @@ class RunConfig:
     Args:
         name: Name of the trial or experiment. If not provided, will be deduced
             from the Trainable.
-        storage_path: [Beta] Path to store results at. Can be a local directory or
-            a destination on cloud storage. If Ray storage is set up,
-            defaults to the storage location. Otherwise, this defaults to
-            the local ``~/ray_results`` directory.
+        storage_path: [Beta] Path where all results and checkpoints are persisted.
+            Can be a local directory or a destination on cloud storage.
+            For multi-node training/tuning runs, this must be set to a
+            shared storage location (e.g., S3, NFS).
+            This defaults to the local ``~/ray_results`` directory.
+        storage_filesystem: [Beta] A custom filesystem to use for storage.
+            If this is provided, `storage_path` should be a path with its
+            prefix stripped (e.g., `s3://bucket/path` -> `bucket/path`).
         failure_config: Failure mode configuration.
         checkpoint_config: Checkpointing configuration.
         sync_config: Configuration object for syncing. See train.SyncConfig.
@@ -783,7 +658,29 @@ class RunConfig:
 
     def __post_init__(self):
         from ray.train import SyncConfig
+        from ray.train.constants import DEFAULT_STORAGE_PATH
         from ray.tune.experimental.output import AirVerbosity, get_air_verbosity
+
+        if self.local_dir is not None:
+            raise DeprecationWarning(
+                "The `RunConfig(local_dir)` argument is deprecated. "
+                "You should set the `RunConfig(storage_path)` instead."
+                "See the docs: https://docs.ray.io/en/latest/train/user-guides/"
+                "persistent-storage.html#setting-the-local-staging-directory"
+            )
+
+        if self.storage_path is None:
+            # TODO(justinvyu): [Deprecated] Remove in 2.30
+            self.storage_path = DEFAULT_STORAGE_PATH
+
+            # If no remote path is set, try to get Ray Storage URI
+            ray_storage_uri: Optional[str] = _get_storage_uri()
+            if ray_storage_uri is not None:
+                logger.info(
+                    "Using configured Ray Storage URI as the `storage_path`: "
+                    f"{ray_storage_uri}"
+                )
+                self.storage_path = ray_storage_uri
 
         if not self.failure_config:
             self.failure_config = FailureConfig()
@@ -801,68 +698,8 @@ class RunConfig:
             # Todo (krfricke): Currently uses number to pass test_configs::test_repr
             self.verbose = get_air_verbosity(AirVerbosity.DEFAULT) or 3
 
-        # Convert Paths to strings
-        if isinstance(self.local_dir, Path):
-            self.local_dir = self.local_dir.as_posix()
-
         if isinstance(self.storage_path, Path):
             self.storage_path = self.storage_path.as_posix()
-
-        # TODO(justinvyu): [code_removal] Legacy stuff below.
-        from ray.tune.utils.util import _resolve_storage_path
-        from ray.train._internal.storage import _use_storage_context
-        from ray.train._internal.syncer import Syncer
-
-        if _use_storage_context():
-            return
-
-        local_path, remote_path = _resolve_storage_path(
-            self.storage_path, self.local_dir, self.sync_config.upload_dir
-        )
-
-        if self.sync_config.upload_dir:
-            assert remote_path == self.sync_config.upload_dir
-            warnings.warn(
-                "Setting a `SyncConfig.upload_dir` is deprecated and will be removed "
-                "in the future. Pass `RunConfig.storage_path` instead."
-            )
-            # Set upload_dir to None to avoid further downstream resolution.
-            # Copy object first to not alter user input.
-            self.sync_config = copy.copy(self.sync_config)
-            self.sync_config.upload_dir = None
-
-        if self.local_dir:
-            assert local_path == self.local_dir
-            warnings.warn(
-                "Setting a `RunConfig.local_dir` is deprecated and will be removed "
-                "in the future. If you are not using remote storage,"
-                "set the `RunConfig.storage_path` instead. Otherwise, set the"
-                "`RAY_AIR_LOCAL_CACHE_DIR` environment variable to control "
-                "the local cache location."
-            )
-            self.local_dir = None
-
-        if not remote_path:
-            remote_path = _get_storage_uri()
-            if remote_path:
-                logger.info(
-                    "Using configured Ray storage URI as storage path: "
-                    f"{remote_path}"
-                )
-
-        if remote_path:
-            self.storage_path = remote_path
-            if local_path:
-                # If storage_path is a remote path set by SyncConfig.upload_dir,
-                # this may not have been set in the previous if clause.
-                os.environ["RAY_AIR_LOCAL_CACHE_DIR"] = local_path
-        elif local_path:
-            self.storage_path = local_path
-
-        if isinstance(self.sync_config.syncer, Syncer) and not remote_path:
-            raise ValueError(
-                "Must specify a remote `storage_path` to use a custom `syncer`."
-            )
 
     def __repr__(self):
         from ray.train import SyncConfig

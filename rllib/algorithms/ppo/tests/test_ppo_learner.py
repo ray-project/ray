@@ -1,53 +1,50 @@
-import ray
 import unittest
-import numpy as np
-import torch
 import tempfile
+
+import gymnasium as gym
+import numpy as np
 import tensorflow as tf
+import torch
 import tree  # pip install dm-tree
 
+import ray
 import ray.rllib.algorithms.ppo as ppo
-from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
-
-from ray.rllib.algorithms.ppo.ppo_learner import LEARNER_RESULTS_CURR_KL_COEFF_KEY
-from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
-from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
+from ray.rllib.algorithms.ppo.ppo import LEARNER_RESULTS_CURR_KL_COEFF_KEY
+from ray.rllib.core.columns import Columns
+from ray.rllib.evaluation.postprocessing import compute_gae_for_sample_batch
+from ray.rllib.examples.envs.classes.multi_agent import MultiAgentCartPole
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.tune.registry import register_env
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO
 from ray.rllib.utils.test_utils import check, framework_iterator
+from ray.tune.registry import register_env
 
-from ray.rllib.evaluation.postprocessing import (
-    compute_gae_for_sample_batch,
-)
 
 # Fake CartPole episode of n time steps.
 FAKE_BATCH = {
-    SampleBatch.OBS: np.array(
+    Columns.OBS: np.array(
         [[0.1, 0.2, 0.3, 0.4], [0.5, 0.6, 0.7, 0.8], [0.9, 1.0, 1.1, 1.2]],
         dtype=np.float32,
     ),
-    SampleBatch.NEXT_OBS: np.array(
+    Columns.NEXT_OBS: np.array(
         [[0.1, 0.2, 0.3, 0.4], [0.5, 0.6, 0.7, 0.8], [0.9, 1.0, 1.1, 1.2]],
         dtype=np.float32,
     ),
-    SampleBatch.ACTIONS: np.array([0, 1, 1]),
-    SampleBatch.PREV_ACTIONS: np.array([0, 1, 1]),
-    SampleBatch.REWARDS: np.array([1.0, -1.0, 0.5], dtype=np.float32),
-    SampleBatch.PREV_REWARDS: np.array([1.0, -1.0, 0.5], dtype=np.float32),
-    SampleBatch.TERMINATEDS: np.array([False, False, True]),
-    SampleBatch.TRUNCATEDS: np.array([False, False, False]),
-    SampleBatch.VF_PREDS: np.array([0.5, 0.6, 0.7], dtype=np.float32),
-    SampleBatch.ACTION_DIST_INPUTS: np.array(
+    Columns.ACTIONS: np.array([0, 1, 1]),
+    Columns.REWARDS: np.array([1.0, -1.0, 0.5], dtype=np.float32),
+    Columns.TERMINATEDS: np.array([False, False, True]),
+    Columns.TRUNCATEDS: np.array([False, False, False]),
+    Columns.VF_PREDS: np.array([0.5, 0.6, 0.7], dtype=np.float32),
+    Columns.ACTION_DIST_INPUTS: np.array(
         [[-2.0, 0.5], [-3.0, -0.3], [-0.1, 2.5]], dtype=np.float32
     ),
-    SampleBatch.ACTION_LOGP: np.array([-0.5, -0.1, -0.2], dtype=np.float32),
-    SampleBatch.EPS_ID: np.array([0, 0, 0]),
-    SampleBatch.AGENT_INDEX: np.array([0, 0, 0]),
+    Columns.ACTION_LOGP: np.array([-0.5, -0.1, -0.2], dtype=np.float32),
+    Columns.EPS_ID: np.array([0, 0, 0]),
 }
 
 
 class TestPPO(unittest.TestCase):
+    ENV = gym.make("CartPole-v1")
+
     @classmethod
     def setUpClass(cls):
         ray.init()
@@ -57,13 +54,11 @@ class TestPPO(unittest.TestCase):
         ray.shutdown()
 
     def test_loss(self):
-
         config = (
             ppo.PPOConfig()
+            .api_stack(enable_rl_module_and_learner=True)
             .environment("CartPole-v1")
-            .rollouts(
-                num_rollout_workers=0,
-            )
+            .env_runners(num_env_runners=0)
             .training(
                 gamma=0.99,
                 model=dict(
@@ -71,10 +66,6 @@ class TestPPO(unittest.TestCase):
                     fcnet_activation="linear",
                     vf_share_layers=False,
                 ),
-                _enable_learner_api=True,
-            )
-            .rl_module(
-                _enable_rl_module_api=True,
             )
         )
 
@@ -99,20 +90,11 @@ class TestPPO(unittest.TestCase):
             algo_config.validate()
             algo_config.freeze()
 
-            learner_group_config = algo_config.get_learner_group_config(
-                SingleAgentRLModuleSpec(
-                    module_class=algo_config.rl_module_spec.module_class,
-                    observation_space=policy.observation_space,
-                    action_space=policy.action_space,
-                    model_config_dict=policy.config["model"],
-                    catalog_class=PPOCatalog,
-                )
-            )
-            learner_group = learner_group_config.build()
+            learner_group = algo_config.build_learner_group(env=self.ENV)
 
             # Load the algo weights onto the learner_group.
             learner_group.set_weights(algo.get_weights())
-            learner_group.update(train_batch.as_multi_agent())
+            learner_group.update_from_batch(batch=train_batch.as_multi_agent())
 
             algo.stop()
 
@@ -120,9 +102,10 @@ class TestPPO(unittest.TestCase):
         """Tests saving and loading the state of the PPO Learner Group."""
         config = (
             ppo.PPOConfig()
+            .api_stack(enable_rl_module_and_learner=True)
             .environment("CartPole-v1")
-            .rollouts(
-                num_rollout_workers=0,
+            .env_runners(
+                num_env_runners=0,
             )
             .training(
                 gamma=0.99,
@@ -131,34 +114,22 @@ class TestPPO(unittest.TestCase):
                     fcnet_activation="linear",
                     vf_share_layers=False,
                 ),
-                _enable_learner_api=True,
-            )
-            .rl_module(
-                _enable_rl_module_api=True,
             )
         )
-        algo = config.build()
-        policy = algo.get_policy()
 
         for _ in framework_iterator(config, ("tf2", "torch")):
             algo_config = config.copy(copy_frozen=False)
             algo_config.validate()
             algo_config.freeze()
-            learner_group_config = algo_config.get_learner_group_config(
-                SingleAgentRLModuleSpec(
-                    module_class=algo_config.rl_module_spec.module_class,
-                    observation_space=policy.observation_space,
-                    action_space=policy.action_space,
-                    model_config_dict=policy.config["model"],
-                    catalog_class=PPOCatalog,
-                )
-            )
-            learner_group1 = learner_group_config.build()
-            learner_group2 = learner_group_config.build()
+            learner_group1 = algo_config.build_learner_group(env=self.ENV)
+            learner_group2 = algo_config.build_learner_group(env=self.ENV)
             with tempfile.TemporaryDirectory() as tmpdir:
                 learner_group1.save_state(tmpdir)
                 learner_group2.load_state(tmpdir)
-                check(learner_group1.get_state(), learner_group2.get_state())
+                # Remove functions from state b/c they are not comparable via `check`.
+                s1 = learner_group1.get_state()
+                s2 = learner_group2.get_state()
+                check(s1, s2)
 
     def test_kl_coeff_changes(self):
         # Simple environment with 4 independent cartpole entities
@@ -169,10 +140,12 @@ class TestPPO(unittest.TestCase):
         initial_kl_coeff = 0.01
         config = (
             ppo.PPOConfig()
+            .api_stack(enable_rl_module_and_learner=True)
             .environment("CartPole-v1")
-            .rollouts(
-                num_rollout_workers=0,
+            .env_runners(
+                num_env_runners=0,
                 rollout_fragment_length=50,
+                exploration_config={},
             )
             .training(
                 gamma=0.99,
@@ -181,13 +154,8 @@ class TestPPO(unittest.TestCase):
                     fcnet_activation="linear",
                     vf_share_layers=False,
                 ),
-                _enable_learner_api=True,
                 kl_coeff=initial_kl_coeff,
             )
-            .rl_module(
-                _enable_rl_module_api=True,
-            )
-            .exploration(exploration_config={})
             .environment("multi_agent_cartpole")
             .multi_agent(
                 policies={"p0", "p1"},

@@ -19,8 +19,8 @@ class SayHi:
 
 @serve.deployment
 class Ingress:
-    def __init__(self, say_hi):
-        self._say_hi: DeploymentHandle = say_hi.options(use_new_handle_api=True)
+    def __init__(self, say_hi: DeploymentHandle):
+        self._say_hi = say_hi
 
     async def __call__(self):
         # Make a call to the SayHi deployment and pass the result ref to
@@ -32,6 +32,6 @@ class Ingress:
 
 
 app = Ingress.bind(SayHi.bind())
-handle: DeploymentHandle = serve.run(app).options(use_new_handle_api=True)
+handle: DeploymentHandle = serve.run(app)
 assert handle.remote().result() == "Ray task got message: 'Hi from Serve deployment'"
 # __response_to_object_ref_example_end__

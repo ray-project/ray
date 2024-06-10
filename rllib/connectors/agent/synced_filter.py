@@ -2,11 +2,11 @@ from ray.rllib.connectors.connector import (
     AgentConnector,
     ConnectorContext,
 )
-from ray.util.annotations import PublicAPI
+from ray.rllib.utils.annotations import OldAPIStack
 from ray.rllib.utils.filter import Filter
 
 
-@PublicAPI(stability="alpha")
+@OldAPIStack
 class SyncedFilterAgentConnector(AgentConnector):
     """An agent connector that filters with synchronized parameters."""
 

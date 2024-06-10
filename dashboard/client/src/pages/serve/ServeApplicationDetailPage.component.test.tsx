@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import React from "react";
 import { useParams } from "react-router-dom";
@@ -22,7 +22,7 @@ const mockGetServeApplications = jest.mocked(getServeApplications);
 
 describe("ServeApplicationDetailPage", () => {
   it("renders page with deployments and replicas", async () => {
-    expect.assertions(22);
+    expect.assertions(13);
 
     mockUseParams.mockReturnValue({
       applicationName: "home",
@@ -107,7 +107,7 @@ describe("ServeApplicationDetailPage", () => {
 
     const user = userEvent.setup();
 
-    await screen.findByText("home");
+    await screen.findAllByText("home");
     expect(screen.getByTestId("metadata-content-for-Name")).toHaveTextContent(
       "home",
     );
@@ -141,28 +141,9 @@ describe("ServeApplicationDetailPage", () => {
     expect(screen.getByText(/import_path: home:graph/)).toBeVisible();
 
     // Config dialog for first deployment
-    await user.click(screen.getAllByText("Deployment config")[0]);
+    await user.click(screen.getAllByText("View config")[0]);
     await screen.findByText(/test-config: 1/);
     expect(screen.getByText(/test-config: 1/)).toBeVisible();
     expect(screen.getByText(/autoscaling-value: 2/)).toBeVisible();
-
-    // All deployments are already expanded
-    expect(screen.getByText("test-replica-1")).toBeVisible();
-    expect(screen.getByText("test-replica-2")).toBeVisible();
-    expect(screen.getByText("test-replica-3")).toBeVisible();
-
-    // Collapse the first deployment
-    await user.click(screen.getAllByTitle("Collapse")[0]);
-    await waitFor(() => screen.queryByText("test-replica-1") === null);
-    expect(screen.queryByText("test-replica-1")).toBeNull();
-    expect(screen.queryByText("test-replica-2")).toBeNull();
-    expect(screen.getByText("test-replica-3")).toBeVisible();
-
-    // Expand the first deployment again
-    await user.click(screen.getByTitle("Expand"));
-    await screen.findByText("test-replica-1");
-    expect(screen.getByText("test-replica-1")).toBeVisible();
-    expect(screen.getByText("test-replica-2")).toBeVisible();
-    expect(screen.getByText("test-replica-3")).toBeVisible();
   });
 });

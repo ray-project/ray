@@ -1,14 +1,14 @@
 import collections
-from typing import Dict, List, Optional, Tuple, TYPE_CHECKING
+import logging
+from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 
 import numpy as np
-import logging
 
-from ray.util.annotations import PublicAPI
+from ray.tune.error import TuneError
+from ray.tune.experiment import Trial
 from ray.tune.result import DEFAULT_METRIC
 from ray.tune.schedulers.trial_scheduler import FIFOScheduler, TrialScheduler
-from ray.tune.experiment import Trial
-from ray.tune.error import TuneError
+from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
     from ray.tune.execution.tune_controller import TuneController

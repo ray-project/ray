@@ -1,5 +1,5 @@
 import os
-from typing import Iterable, List
+from typing import Any, Iterable, List
 
 import pandas as pd
 import pyarrow as pa
@@ -13,13 +13,12 @@ import ray
 from ray._private.test_utils import wait_for_condition
 from ray.data._internal.execution.interfaces import TaskContext
 from ray.data.block import Block, BlockAccessor
-from ray.data.datasource import Datasource, DummyOutputDatasource, WriteResult
+from ray.data.datasource import Datasink, DummyOutputDatasink
 from ray.data.datasource.file_meta_provider import _handle_read_os_error
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.mock_http_server import *  # noqa
 from ray.data.tests.util import extract_values
 from ray.tests.conftest import *  # noqa
-from ray.types import ObjectRef
 
 
 def df_to_csv(dataframe, path, **kwargs):
@@ -77,7 +76,7 @@ def test_to_arrow_refs(ray_start_regular_shared):
 
 
 def test_get_internal_block_refs(ray_start_regular_shared):
-    blocks = ray.data.range(10, parallelism=10).get_internal_block_refs()
+    blocks = ray.data.range(10, override_num_blocks=10).get_internal_block_refs()
     assert len(blocks) == 10
     out = []
     for b in ray.get(blocks):
@@ -145,18 +144,18 @@ def test_read_example_data(ray_start_regular_shared, tmp_path):
     ]
 
 
-def test_write_datasource(ray_start_regular_shared):
-    output = DummyOutputDatasource()
-    ds = ray.data.range(10, parallelism=2)
-    ds.write_datasource(output)
+def test_write_datasink(ray_start_regular_shared):
+    output = DummyOutputDatasink()
+    ds = ray.data.range(10, override_num_blocks=2)
+    ds.write_datasink(output)
     assert output.num_ok == 1
     assert output.num_failed == 0
     assert ray.get(output.data_sink.get_rows_written.remote()) == 10
 
     output.enabled = False
-    ds = ray.data.range(10, parallelism=2)
+    ds = ray.data.range(10, override_num_blocks=2)
     with pytest.raises(ValueError):
-        ds.write_datasource(output, ray_remote_args={"max_retries": 0})
+        ds.write_datasink(output, ray_remote_args={"max_retries": 0})
     assert output.num_ok == 1
     assert output.num_failed == 1
     assert ray.get(output.data_sink.get_rows_written.remote()) == 10
@@ -181,17 +180,33 @@ def test_from_tf(ray_start_regular_shared):
         tf.debugging.assert_equal(expected_label, actual_label)
 
 
-def test_from_torch(shutdown_only, tmp_path):
+@pytest.mark.parametrize("local_read", [True, False])
+def test_from_torch(shutdown_only, local_read, tmp_path):
     torch_dataset = torchvision.datasets.MNIST(tmp_path, download=True)
     expected_data = list(torch_dataset)
 
-    ray_dataset = ray.data.from_torch(torch_dataset)
+    ray_dataset = ray.data.from_torch(torch_dataset, local_read=local_read)
+
+    actual_data = extract_values("item", list(ray_dataset.take_all()))
+    assert actual_data == expected_data
+
+    import torch
+
+    class IterMNIST(torch.utils.data.IterableDataset):
+        def __len__(self):
+            return len(torch_dataset)
+
+        def __iter__(self):
+            return iter(torch_dataset)
+
+    iter_torch_dataset = IterMNIST()
+    ray_dataset = ray.data.from_torch(iter_torch_dataset)
 
     actual_data = extract_values("item", list(ray_dataset.take_all()))
     assert actual_data == expected_data
 
 
-class NodeLoggerOutputDatasource(Datasource):
+class NodeLoggerOutputDatasink(Datasink):
     """A writable datasource that logs node IDs of write tasks, for testing."""
 
     def __init__(self):
@@ -221,8 +236,7 @@ class NodeLoggerOutputDatasource(Datasource):
         self,
         blocks: Iterable[Block],
         ctx: TaskContext,
-        **write_args,
-    ) -> WriteResult:
+    ) -> Any:
         data_sink = self.data_sink
 
         def write(b):
@@ -235,17 +249,15 @@ class NodeLoggerOutputDatasource(Datasource):
         ray.get(tasks)
         return "ok"
 
-    def on_write_complete(self, write_results: List[WriteResult]) -> None:
+    def on_write_complete(self, write_results: List[Any]) -> None:
         assert all(w == "ok" for w in write_results), write_results
         self.num_ok += 1
 
-    def on_write_failed(
-        self, write_results: List[ObjectRef[WriteResult]], error: Exception
-    ) -> None:
+    def on_write_failed(self, error: Exception) -> None:
         self.num_failed += 1
 
 
-def test_write_datasource_ray_remote_args(ray_start_cluster):
+def test_write_datasink_ray_remote_args(ray_start_cluster):
     ray.shutdown()
     cluster = ray_start_cluster
     cluster.add_node(
@@ -262,10 +274,10 @@ def test_write_datasource_ray_remote_args(ray_start_cluster):
 
     bar_node_id = ray.get(get_node_id.options(resources={"bar": 1}).remote())
 
-    output = NodeLoggerOutputDatasource()
-    ds = ray.data.range(100, parallelism=10)
+    output = NodeLoggerOutputDatasink()
+    ds = ray.data.range(100, override_num_blocks=10)
     # Pin write tasks to node with "bar" resource.
-    ds.write_datasource(output, ray_remote_args={"resources": {"bar": 1}})
+    ds.write_datasink(output, ray_remote_args={"resources": {"bar": 1}})
     assert output.num_ok == 1
     assert output.num_failed == 0
     assert ray.get(output.data_sink.get_rows_written.remote()) == 100
@@ -304,17 +316,19 @@ def test_get_reader(shutdown_only):
 
     head_node_id = ray.get_runtime_context().get_node_id()
 
-    # Issue read so `_get_reader` being executed.
+    # Issue read so `_get_datasource_or_legacy_reader` being executed.
     ray.data.range(10).materialize()
 
-    # Verify `_get_reader` being executed on same node (head node).
+    # Verify `_get_datasource_or_legacy_reader` being executed on same node (head node).
     def verify_get_reader():
         from ray.util.state import list_tasks
 
-        task_states = list_tasks(filters=[("name", "=", "_get_reader")])
+        task_states = list_tasks(
+            filters=[("name", "=", "_get_datasource_or_legacy_reader")]
+        )
         # Verify only one task being executed on same node.
         assert len(task_states) == 1
-        assert task_states[0]["name"] == "_get_reader"
+        assert task_states[0]["name"] == "_get_datasource_or_legacy_reader"
         assert task_states[0]["node_id"] == head_node_id
         return True
 

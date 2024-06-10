@@ -1,4 +1,5 @@
-import { createStyles, makeStyles } from "@material-ui/core";
+import createStyles from "@mui/styles/createStyles";
+import makeStyles from "@mui/styles/makeStyles";
 import _ from "lodash";
 import React from "react";
 import { JobStatusIcon } from "../../../common/JobStatus";
@@ -35,8 +36,14 @@ export const RecentJobsCard = ({ className }: RecentJobsCardProps) => {
   const sortedJobs = _.orderBy(jobList, ["startTime"], ["desc"]).slice(0, 6);
 
   const sortedJobToRender = sortedJobs.map((job) => {
+    let title: string | undefined;
+    if (job.submission_id && job.job_id) {
+      title = `${job.submission_id} (${job.job_id})`;
+    } else {
+      title = job.submission_id ?? job.job_id ?? undefined;
+    }
     return {
-      title: job.job_id ?? job.submission_id ?? undefined,
+      title,
       subtitle: job.entrypoint,
       link: getLink(job),
       className: className,

@@ -27,8 +27,10 @@
 namespace ray {
 namespace syncer {
 
+using ray::rpc::syncer::CommandsSyncMessage;
 using ray::rpc::syncer::MessageType;
 using ray::rpc::syncer::RaySyncMessage;
+using ray::rpc::syncer::ResourceViewSyncMessage;
 
 using ServerBidiReactor = grpc::ServerBidiReactor<RaySyncMessage, RaySyncMessage>;
 using ClientBidiReactor = grpc::ClientBidiReactor<RaySyncMessage, RaySyncMessage>;

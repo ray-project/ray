@@ -7,7 +7,6 @@ import pytest
 from ray.data._internal.block_batching.block_batching import (
     BlockPrefetcher,
     _prefetch_blocks,
-    batch_block_refs,
     batch_blocks,
 )
 from ray.data.block import Block
@@ -16,20 +15,6 @@ from ray.data.block import Block
 def block_generator(num_rows: int, num_blocks: int):
     for _ in range(num_blocks):
         yield pa.table({"foo": [1] * num_rows})
-
-
-def test_batch_block_refs():
-    with mock.patch(
-        "ray.data._internal.block_batching.block_batching._prefetch_blocks"
-    ) as mock_prefetch, mock.patch(
-        "ray.data._internal.block_batching.block_batching.batch_blocks"
-    ) as mock_batch_blocks:
-        block_iter = block_generator(2, 2)
-        batch_iter = batch_block_refs(block_iter)
-        for _ in batch_iter:
-            pass
-        assert mock_prefetch.call_count == 1
-        assert mock_batch_blocks.call_count == 1
 
 
 def test_batch_blocks():

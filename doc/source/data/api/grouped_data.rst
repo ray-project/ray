@@ -12,6 +12,7 @@ Constructor
 -----------
 
 .. autosummary::
+   :nosignatures:
    :toctree: doc/
 
    grouped_data.GroupedData
@@ -20,6 +21,7 @@ Computations / Descriptive Stats
 --------------------------------
 
 .. autosummary::
+   :nosignatures:
    :toctree: doc/
 
    grouped_data.GroupedData.count
@@ -33,6 +35,7 @@ Function Application
 --------------------
 
 .. autosummary::
+   :nosignatures:
    :toctree: doc/
 
    grouped_data.GroupedData.aggregate
@@ -42,6 +45,7 @@ Aggregate Function
 ------------------
 
 .. autosummary::
+   :nosignatures:
    :toctree: doc/
 
    aggregate.AggregateFn

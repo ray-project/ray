@@ -719,6 +719,89 @@ def test_accessing_actor_after_cluster_crashed(shutdown_only):
     assert "It might be dead or it's from a different cluster" in exc_info.value.args[0]
 
 
+def test_internal_error_as_instance_of_cause_correct(shutdown_only):
+    """Verify as_instance_of_cause returns the correct exception
+    even when an exception is ray internal error.
+    """
+    ray.init()
+
+    @ray.remote
+    class A:
+        def kill(self):
+            import os
+
+            os._exit(1)
+
+        def get(self):
+            return 1
+
+    a = A.remote()
+
+    @ray.remote
+    class B:
+        def get_result(self, a):
+            return ray.get(a.get.remote())
+
+    b = B.remote()
+    a.kill.remote()
+    try:
+        ray.get(b.get_result.remote(a))
+    except Exception as e:
+        assert isinstance(e.as_instanceof_cause(), ray.exceptions.RayActorError)
+        assert isinstance(e.cause, ray.exceptions.RayActorError)
+        assert isinstance(e, ray.exceptions.RayActorError)
+
+
+@pytest.mark.parametrize(
+    "ray_start_cluster",
+    [
+        {
+            "num_cpus": 1,
+            "num_nodes": 1,
+        }
+    ],
+    indirect=True,
+)
+def test_shows_both_user_exception_system_error_same_time(ray_start_cluster):
+    @ray.remote(max_calls=1)
+    def f():
+        raise Exception("this is an exception")
+
+    with pytest.raises(Exception):
+        ray.get(f.remote())
+
+    # Wait for the task info to be propagated.
+    import time
+
+    time.sleep(1)
+
+    tasks = list_tasks(filters=[("name", "=", "f")], detail=True)
+    assert len(tasks) == 1, tasks
+    task = tasks[0]
+    assert task["state"] == "FAILED"
+    assert task["error_type"] == "TASK_EXECUTION_EXCEPTION"
+    # The error message should look like below (modulo line breaks), and we compare
+    # without the stacktrace:
+    #
+    # User exception:
+    # ray::f() (pid=70293, ip=127.0.0.1)
+    #   File "<YOUR_RAY_DIR>/python/ray/tests/test_exit_observability.py", line 465,
+    # in f
+    #     raise Exception("this is an exception")
+    # Exception: this is an exception
+    #
+    # System error:
+    # IntentionalSystemExit: Worker exits with an exit code 0. Exited because worker
+    # reached max_calls=1 for this method.
+    error_message = task["error_message"]
+    assert error_message.startswith("User exception:\nray::f()"), error_message
+    assert error_message.endswith(
+        "Exception: this is an exception\n\nSystem error:\n"
+        "IntentionalSystemExit: Worker exits with an exit "
+        "code 0. Exited because worker reached max_calls=1 for this method."
+    ), task
+
+
 if __name__ == "__main__":
     import os
 

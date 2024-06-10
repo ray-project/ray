@@ -1,3 +1,8 @@
+
+.. include:: /_includes/rllib/we_are_hiring.rst
+
+.. include:: /_includes/rllib/new_api_stack.rst
+
 .. _replay-buffer-api-reference-docs:
 
 Replay Buffer API
@@ -11,6 +16,7 @@ Replay Buffer Base Classes
 .. currentmodule:: ray.rllib.utils.replay_buffers
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     ~replay_buffer.StorageUnit
@@ -26,6 +32,7 @@ Public Methods
 
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     ~ReplayBuffer.sample
@@ -44,6 +51,7 @@ This leads to the need for MultiAgentReplayBuffers that store the experiences of
 .. currentmodule:: ray.rllib.utils.replay_buffers
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     ~multi_agent_replay_buffer.MultiAgentReplayBuffer
@@ -54,6 +62,7 @@ Utility Methods
 ---------------
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     ~utils.update_priorities_in_replay_buffer

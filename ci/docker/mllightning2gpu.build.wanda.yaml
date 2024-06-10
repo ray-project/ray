@@ -1,0 +1,25 @@
+name: mllightning2gpubuild
+froms: [cr.ray.io/rayproject/oss-ci-base_gpu]
+dockerfile: ci/docker/ml.build.Dockerfile
+srcs:
+  - ci/env/install-dependencies.sh
+  - ci/env/install-horovod.sh
+  - ci/env/install-hdfs.sh
+  - python/requirements.txt
+  - python/requirements_compiled.txt
+  - python/requirements/test-requirements.txt
+  - python/requirements/ml/core-requirements.txt
+  - python/requirements/ml/dl-cpu-requirements.txt
+  - python/requirements/ml/dl-gpu-requirements.txt
+  - python/requirements/ml/train-requirements.txt
+  - python/requirements/ml/train-test-requirements.txt
+  - python/requirements/ml/tune-requirements.txt
+  - python/requirements/ml/tune-test-requirements.txt
+  - python/requirements/ml/data-requirements.txt
+  - python/requirements/ml/data-test-requirements.txt
+build_args:
+  - DOCKER_IMAGE_BASE_BUILD=cr.ray.io/rayproject/oss-ci-base_gpu
+  - RAYCI_IS_GPU_BUILD=true
+  - RAYCI_LIGHTNING_2=true
+tags:
+  - cr.ray.io/rayproject/mllightning2gpubuild

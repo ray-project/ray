@@ -28,8 +28,8 @@ class HeavyLoad:
 @serve.deployment
 class Driver:
     def __init__(self, a_handle, b_handle):
-        self.a_handle: DeploymentHandle = a_handle.options(use_new_handle_api=True)
-        self.b_handle: DeploymentHandle = b_handle.options(use_new_handle_api=True)
+        self.a_handle: DeploymentHandle = a_handle
+        self.b_handle: DeploymentHandle = b_handle
 
     async def __call__(self) -> str:
         a_future = self.a_handle.remote()

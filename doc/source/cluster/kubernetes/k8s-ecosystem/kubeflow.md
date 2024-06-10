@@ -23,7 +23,7 @@ The [Kubeflow](https://www.kubeflow.org/) project is dedicated to making deploym
 ## Step 1: Create a Kubernetes cluster with Kind.
 ```sh
 # Kubeflow is sensitive to Kubernetes version and Kustomize version.
-kind create cluster --image=kindest/node:v1.23.0
+kind create cluster --image=kindest/node:v1.26.0
 kustomize version --short
 # 3.2.0
 ```
@@ -42,7 +42,7 @@ kustomize version --short
 ```sh
 # Create a RayCluster CR, and the KubeRay operator will reconcile a Ray cluster
 # with 1 head Pod and 1 worker Pod.
-helm install raycluster kuberay/ray-cluster --version 1.0.0-rc.0 --set image.tag=2.2.0-py38-cpu
+helm install raycluster kuberay/ray-cluster --version 1.0.0 --set image.tag=2.2.0-py38-cpu
 
 # Check RayCluster
 kubectl get pod -l ray.io/cluster=raycluster-kuberay

@@ -1,0 +1,54 @@
+# Run this experiment by doing:
+# $ rllib train file [this very file]
+
+# This configuration can expect to reach -160 reward in 10k-20k timesteps.
+pendulum-ddpg:
+    env: Pendulum-v1
+    run: DDPG
+    stop:
+      sampler_results/episode_reward_mean: -320
+      timesteps_total: 30000
+    config:
+        # Works for both torch and tf.
+        seed: 42
+        framework: torch
+        # === Model ===
+        actor_hiddens: [64, 64]
+        critic_hiddens: [64, 64]
+        n_step: 1
+        model: {}
+        gamma: 0.99
+
+        # === Exploration ===
+        exploration_config:
+            type: "OrnsteinUhlenbeckNoise"
+            scale_timesteps: 10000
+            initial_scale: 1.0
+            final_scale: 0.02
+            ou_base_scale: 0.1
+            ou_theta: 0.15
+            ou_sigma: 0.2
+
+        min_sample_timesteps_per_iteration: 600
+        target_network_update_freq: 0
+        tau: 0.001
+
+        # === Replay buffer ===
+        replay_buffer_config:
+          type: MultiAgentPrioritizedReplayBuffer
+          capacity: 10000
+          worker_side_prioritization: false
+        num_steps_sampled_before_learning_starts: 500
+        clip_rewards: False
+
+        # === Optimization ===
+        actor_lr: 0.001
+        critic_lr: 0.001
+        use_huber: True
+        huber_threshold: 1.0
+        l2_reg: 0.000001
+        rollout_fragment_length: 1
+        train_batch_size: 64
+
+        # === Parallelism ===
+        num_workers: 0

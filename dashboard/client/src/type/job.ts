@@ -97,6 +97,7 @@ export type TaskProgress = {
   numRunning?: number;
   numPendingNodeAssignment?: number;
   numFailed?: number;
+  numCancelled?: number;
   numUnknown?: number;
 };
 

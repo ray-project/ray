@@ -1,11 +1,11 @@
 import sys
 
 import pytest
-from ray.serve.dag import InputNode
-from ray.serve._private.deployment_graph_build import build as pipeline_build
 
 import ray
 from ray import serve
+from ray.serve._private.deployment_graph_build import build as pipeline_build
+from ray.serve.dag import InputNode
 
 
 @serve.deployment
@@ -45,10 +45,9 @@ def test_dag_building():
 def test_nested_building():
     with InputNode() as inp:
         out = func.bind(inp)
-        out = Driver.bind().__call__.bind(out)
-        out = func.bind(out)
-    dag = Driver.bind(out, func.bind())
-    assert len(pipeline_build(dag)) == 5
+        out = Driver.bind(func.bind())
+        dag = Driver.bind(out)
+    assert len(pipeline_build(dag)) == 3
 
 
 def test_environment_end():

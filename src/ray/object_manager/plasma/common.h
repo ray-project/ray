@@ -123,18 +123,35 @@ class LocalObject {
 
   const plasma::flatbuf::ObjectSource &GetSource() const { return source; }
 
+  ray::PlasmaObjectHeader *GetPlasmaObjectHeader() const {
+    RAY_CHECK(object_info.is_mutable) << "Object is not mutable";
+    auto header_ptr = static_cast<uint8_t *>(allocation.address);
+    return reinterpret_cast<ray::PlasmaObjectHeader *>(header_ptr);
+  }
+
   void ToPlasmaObject(PlasmaObject *object, bool check_sealed) const {
     RAY_DCHECK(object != nullptr);
     if (check_sealed) {
       RAY_DCHECK(Sealed());
     }
     object->store_fd = GetAllocation().fd;
+    object->header_offset = GetAllocation().offset;
     object->data_offset = GetAllocation().offset;
     object->metadata_offset = GetAllocation().offset + GetObjectInfo().data_size;
+    if (object_info.is_mutable) {
+      object->data_offset += sizeof(ray::PlasmaObjectHeader);
+      object->metadata_offset += sizeof(ray::PlasmaObjectHeader);
+    };
     object->data_size = GetObjectInfo().data_size;
     object->metadata_size = GetObjectInfo().metadata_size;
+    // Senders and receivers of a channel may store different data and metadata
+    // sizes locally depending on what data is written to the channel, but the
+    // plasma store keeps the original data and metadata size.
+    object->allocated_size = object->data_size + object->metadata_size;
     object->device_num = GetAllocation().device_num;
     object->mmap_size = GetAllocation().mmap_size;
+    object->fallback_allocated = GetAllocation().fallback_allocated;
+    object->is_experimental_mutable_object = object_info.is_mutable;
   }
 
  private:

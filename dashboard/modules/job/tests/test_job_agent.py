@@ -87,7 +87,8 @@ def _check_job(
     client: JobSubmissionClient, job_id: str, status: JobStatus, timeout: int = 10
 ) -> bool:
     res_status = client.get_job_status(job_id)
-    return res_status == status
+    assert res_status == status
+    return True
 
 
 @pytest.fixture(
@@ -252,12 +253,27 @@ async def test_submit_job(job_sdk_client, runtime_env_option, monkeypatch):
     submit_result = await agent_client.submit_job_internal(request)
     job_id = submit_result.submission_id
 
-    wait_for_condition(
-        partial(
-            _check_job, client=head_client, job_id=job_id, status=JobStatus.SUCCEEDED
-        ),
-        timeout=60,
-    )
+    try:
+        job_start_time = time.time()
+        wait_for_condition(
+            partial(
+                _check_job,
+                client=head_client,
+                job_id=job_id,
+                status=JobStatus.SUCCEEDED,
+            ),
+            timeout=300,
+        )
+        job_duration = time.time() - job_start_time
+        print(f"The job took {job_duration}s to succeed.")
+    except RuntimeError as e:
+        # If the job is still pending, include job logs and info in error.
+        if head_client.get_job_status(job_id) == JobStatus.PENDING:
+            logs = head_client.get_job_logs(job_id)
+            info = head_client.get_job_info(job_id)
+            raise RuntimeError(
+                f"Job was stuck in PENDING.\nLogs: {logs}\nInfo: {info}"
+            ) from e
 
     # There is only one node, so there is no need to replace the client of the JobAgent
     resp = await agent_client.get_job_logs_internal(job_id)
@@ -272,7 +288,7 @@ async def test_timeout(job_sdk_client):
         pip={
             "packages": ["tensorflow", "requests", "botocore", "torch"],
             "pip_check": False,
-            "pip_version": "==22.0.2;python_version=='3.8.11'",
+            "pip_version": "==23.3.2;python_version=='3.9.16'",
         },
         config=RuntimeEnvConfig(setup_timeout_seconds=1),
     ).to_dict()
@@ -292,7 +308,7 @@ async def test_timeout(job_sdk_client):
     data = head_client.get_job_info(job_id)
     assert "Failed to set up runtime environment" in data.message
     assert "Timeout" in data.message
-    assert "consider increasing `setup_timeout_seconds`" in data.message
+    assert "setup_timeout_seconds" in data.message
 
 
 @pytest.mark.asyncio
@@ -379,6 +395,8 @@ async def test_tail_job_logs_with_echo(job_sdk_client):
     async for lines in agent_client.tail_job_logs(job_id):
         print(lines, end="")
         for line in lines.strip().split("\n"):
+            if "Runtime env is setting up." in line:
+                continue
             assert line.split(" ") == ["Hello", str(i)]
             i += 1
 

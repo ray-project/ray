@@ -112,12 +112,6 @@ std::string FormatPlacementGroupResource(const std::string &original_resource_na
   return result;
 }
 
-std::string FormatPlacementGroupResource(const std::string &original_resource_name,
-                                         const BundleSpecification &bundle_spec) {
-  return FormatPlacementGroupResource(
-      original_resource_name, bundle_spec.PlacementGroupId(), bundle_spec.Index());
-}
-
 std::string GetOriginalResourceName(const std::string &resource) {
   auto data = ParsePgFormattedResource(
       resource, /*for_wildcard_resource*/ true, /*for_indexed_resource*/ true);
@@ -184,23 +178,37 @@ std::unordered_map<std::string, double> AddPlacementGroupConstraint(
     const std::unordered_map<std::string, double> &resources,
     const PlacementGroupID &placement_group_id,
     int64_t bundle_index) {
-  std::unordered_map<std::string, double> new_resources;
-  if (!placement_group_id.IsNil()) {
-    RAY_CHECK((bundle_index == -1 || bundle_index >= 0))
-        << "Invalid bundle index " << bundle_index;
-    for (auto iter = resources.begin(); iter != resources.end(); iter++) {
-      auto wildcard_name =
-          FormatPlacementGroupResource(iter->first, placement_group_id, -1);
-      new_resources[wildcard_name] = iter->second;
-      if (bundle_index >= 0) {
-        auto index_name =
-            FormatPlacementGroupResource(iter->first, placement_group_id, bundle_index);
-        new_resources[index_name] = iter->second;
-      }
-    }
-    return new_resources;
+  if (placement_group_id.IsNil()) {
+    return resources;
   }
-  return resources;
+
+  std::unordered_map<std::string, double> new_resources;
+  RAY_CHECK((bundle_index == -1 || bundle_index >= 0))
+      << "Invalid bundle index " << bundle_index;
+  for (auto iter = resources.begin(); iter != resources.end(); iter++) {
+    auto wildcard_name =
+        FormatPlacementGroupResource(iter->first, placement_group_id, -1);
+    new_resources[wildcard_name] = iter->second;
+    if (bundle_index >= 0) {
+      auto index_name =
+          FormatPlacementGroupResource(iter->first, placement_group_id, bundle_index);
+      new_resources[index_name] = iter->second;
+    }
+  }
+
+  // Note that all nodes that have placement group have a special
+  // keyword bundle_group_[pg_id].
+  // Always include bundle resource wildcard resources, so that
+  // even when the task doesn't require any resource, it can use the placement group.
+  auto bundle_key =
+      FormatPlacementGroupResource(kBundle_ResourceLabel, placement_group_id, -1);
+  new_resources[bundle_key] = 0.001;
+  if (bundle_index >= 0) {
+    auto bundle_key_with_index = FormatPlacementGroupResource(
+        kBundle_ResourceLabel, placement_group_id, bundle_index);
+    new_resources[bundle_key_with_index] = 0.001;
+  }
+  return new_resources;
 }
 
 std::unordered_map<std::string, double> AddPlacementGroupConstraint(

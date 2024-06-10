@@ -3,6 +3,20 @@
 Ray Clusters Overview
 =====================
 
+.. toctree::
+    :hidden:
+
+    Key Concepts <key-concepts>
+    Deploying on Kubernetes <kubernetes/index>
+    Deploying on VMs <vms/index>
+    metrics
+    configure-manage-dashboard
+    Applications Guide <running-applications/index>
+    faq
+    package-overview
+    usage-stats
+
+
 Ray enables seamless scaling of workloads from a laptop to a large cluster. While Ray
 works out of the box on single machines with just a call to ``ray.init``, to run Ray
 applications on multiple nodes you must first *deploy a Ray cluster*.

@@ -4,22 +4,17 @@ import pathlib
 from typing import (
     Any,
     Callable,
+    Dict,
     Hashable,
-    Mapping,
-    Optional,
     Sequence,
     Tuple,
+    TYPE_CHECKING,
     Union,
 )
 
-from ray.rllib.core.learner.learner import (
-    FrameworkHyperparameters,
-    Learner,
-    LearnerHyperparameters,
-)
+from ray.rllib.core.learner.learner import Learner
 from ray.rllib.core.rl_module.rl_module import (
     RLModule,
-    ModuleID,
     SingleAgentRLModuleSpec,
 )
 from ray.rllib.core.rl_module.tf.tf_rl_module import TfRLModule
@@ -29,12 +24,15 @@ from ray.rllib.utils.annotations import (
     override,
     OverrideToImplementCustomLogic,
 )
+from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.metrics import ALL_MODULES
 from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.serialization import convert_numpy_to_python_primitives
-from ray.rllib.utils.typing import Optimizer, Param, ParamDict, TensorType
+from ray.rllib.utils.typing import ModuleID, Optimizer, Param, ParamDict, TensorType
 
+if TYPE_CHECKING:
+    from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 
 tf1, tf, tfv = try_import_tf()
 
@@ -45,13 +43,7 @@ class TfLearner(Learner):
 
     framework: str = "tf2"
 
-    def __init__(
-        self,
-        *,
-        framework_hyperparameters: Optional[FrameworkHyperparameters] = None,
-        **kwargs,
-    ):
-
+    def __init__(self, **kwargs):
         # by default in rllib we disable tf2 behavior
         # This call re-enables it as it is needed for using
         # this class.
@@ -62,14 +54,9 @@ class TfLearner(Learner):
             # enable_v2_behavior after variables have already been created.
             pass
 
-        super().__init__(
-            framework_hyperparameters=(
-                framework_hyperparameters or FrameworkHyperparameters()
-            ),
-            **kwargs,
-        )
+        super().__init__(**kwargs)
 
-        self._enable_tf_function = self._framework_hyperparameters.eager_tracing
+        self._enable_tf_function = self.config.eager_tracing
 
         # This is a placeholder which will be filled by
         # `_make_distributed_strategy_if_necessary`.
@@ -78,12 +65,18 @@ class TfLearner(Learner):
     @OverrideToImplementCustomLogic
     @override(Learner)
     def configure_optimizers_for_module(
-        self, module_id: ModuleID, hps: LearnerHyperparameters
+        self, module_id: ModuleID, config: "AlgorithmConfig" = None, hps=None
     ) -> None:
+        if hps is not None:
+            deprecation_warning(
+                old="Learner.configure_optimizers_for_module(.., hps=..)",
+                help="Deprecated argument. Use `config` (AlgorithmConfig) instead.",
+                error=True,
+            )
         module = self._module[module_id]
 
         # For this default implementation, the learning rate is handled by the
-        # attached lr Scheduler (controlled by self.hps.learning_rate, which can be a
+        # attached lr Scheduler (controlled by self.config.lr, which can be a
         # fixed value of a schedule setting).
         optimizer = tf.keras.optimizers.Adam()
         params = self.get_parameters(module)
@@ -98,13 +91,13 @@ class TfLearner(Learner):
             module_id=module_id,
             optimizer=optimizer,
             params=params,
-            lr_or_lr_schedule=hps.learning_rate,
+            lr_or_lr_schedule=config.lr,
         )
 
     @override(Learner)
     def compute_gradients(
         self,
-        loss_per_module: Mapping[str, TensorType],
+        loss_per_module: Dict[str, TensorType],
         gradient_tape: "tf.GradientTape",
         **kwargs,
     ) -> ParamDict:
@@ -193,7 +186,7 @@ class TfLearner(Learner):
     def _load_optimizer_from_hparams(
         self, path: pathlib.Path, optim_name: str
     ) -> "tf.keras.optimizers.Optimizer":
-        """Load an optimizer from the hyperparameters saved at path/optim_name_hparams.json.
+        """Load an optimizer from the hyperparameters saved at path/[name]_hparams.json.
 
         Args:
             path: The path to the directory to load the hyperparameters from.
@@ -263,11 +256,11 @@ class TfLearner(Learner):
             self._load_optimizer_state(path, new_optim, name)
 
     @override(Learner)
-    def set_module_state(self, state: Mapping[str, Any]) -> None:
+    def set_module_state(self, state: Dict[str, Any]) -> None:
         self._module.set_state(state)
 
     @override(Learner)
-    def get_optimizer_state(self) -> Mapping[str, Any]:
+    def get_optimizer_state(self) -> Dict[str, Any]:
         optim_state = {}
         with tf.init_scope():
             for name, optim in self._named_optimizers.items():
@@ -275,7 +268,7 @@ class TfLearner(Learner):
         return optim_state
 
     @override(Learner)
-    def set_optimizer_state(self, state: Mapping[str, Any]) -> None:
+    def set_optimizer_state(self, state: Dict[str, Any]) -> None:
         for name, state_array in state.items():
             if name not in self._named_optimizers:
                 raise ValueError(
@@ -425,12 +418,15 @@ class TfLearner(Learner):
         #  traced-by-ray functions (for making the TfLearner class a ray actor).
         _ray_trace_ctx=None,
     ):
+        # Activate tensor-mode on our MetricsLogger.
+        self.metrics.activate_tensor_mode()
+
         def helper(_batch):
             # TODO (Kourosh, Sven): We need to go back to NestedDict because that's the
             #  constraint on forward_train and compute_loss APIs. This seems to be
             #  in-efficient. However, for tf>=2.12, it works also w/o this conversion
             #  so remove this after we upgrade officially to tf==2.12.
-            _batch = NestedDict(_batch)
+            _batch = NestedDict(_batch.copy())
             with tf.GradientTape(persistent=True) as tape:
                 fwd_out = self._module.forward_train(_batch)
                 loss_per_module = self.compute_loss(fwd_out=fwd_out, batch=_batch)
@@ -439,7 +435,7 @@ class TfLearner(Learner):
             postprocessed_gradients = self.postprocess_gradients(gradients)
             self.apply_gradients(postprocessed_gradients)
 
-            return fwd_out, loss_per_module, dict(self._metrics)
+            return fwd_out, loss_per_module, self.metrics.deactivate_tensor_mode()
 
         return self._strategy.run(helper, args=(batch,))
 

@@ -74,11 +74,22 @@ class Process {
   /// \param[in] decouple True iff the parent will not wait for the child to exit.
   /// \param[in] env Additional environment variables to be set on this process besides
   /// the environment variables of the parent process.
+  /// \param[in] pipe_to_stdin If true, it creates a pipe and redirect to child process'
+  /// stdin. It is used for health checking from a child process.
+  /// Child process can read stdin to detect when the current process dies.
+  ///
+  // The subprocess is child of this process, so it's caller process's duty to handle
+  // SIGCHLD signal and reap the zombie children.
+  //
+  // Note: if RAY_kill_child_processes_on_worker_exit_with_raylet_subreaper is set to
+  // true, Raylet will kill any orphan grandchildren processes when the spawned process
+  // dies, *even if* `decouple` is set to `true`.
   explicit Process(const char *argv[],
                    void *io_service,
                    std::error_code &ec,
                    bool decouple = false,
-                   const ProcessEnvironment &env = {});
+                   const ProcessEnvironment &env = {},
+                   bool pipe_to_stdin = false);
   /// Convenience function to run the given command line and wait for it to finish.
   static std::error_code Call(const std::vector<std::string> &args,
                               const ProcessEnvironment &env = {});

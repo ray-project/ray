@@ -34,7 +34,7 @@ A **placement group** reserves the resources from the cluster. The reserved reso
 Create a Placement Group (Reserve Resources)
 --------------------------------------------
 
-You can create a placement group using :func:`ray.util.placement_group() <ray.util.placement_group.placement_group>`. 
+You can create a placement group using :func:`ray.util.placement_group`. 
 Placement groups take in a list of bundles and a :ref:`placement strategy <pgroup-strategy>`. 
 Note that each bundle must be able to fit on a single node on the Ray cluster.
 For example, if you only have a 8 CPU node, and if you have a bundle that requires ``{"CPU": 9}``,

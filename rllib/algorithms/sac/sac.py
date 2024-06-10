@@ -1,9 +1,11 @@
 import logging
-from typing import Type, Dict, Any, Optional, Union
+from typing import Any, Dict, Optional, Tuple, Type, Union
 
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
 from ray.rllib.algorithms.dqn.dqn import DQN
 from ray.rllib.algorithms.sac.sac_tf_policy import SACTFPolicy
+from ray.rllib.core.learner import Learner
+from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils import deep_update
 from ray.rllib.utils.annotations import override
@@ -12,6 +14,7 @@ from ray.rllib.utils.deprecation import (
     deprecation_warning,
 )
 from ray.rllib.utils.framework import try_import_tf, try_import_tfp
+from ray.rllib.utils.typing import RLModuleSpec, ResultDict
 
 tf1, tf, tfv = try_import_tf()
 tfp = try_import_tfp()
@@ -22,14 +25,15 @@ logger = logging.getLogger(__name__)
 class SACConfig(AlgorithmConfig):
     """Defines a configuration class from which an SAC Algorithm can be built.
 
-    Example:
-        >>> config = SACConfig().training(gamma=0.9, lr=0.01)  # doctest: +SKIP
-        >>> config = config.resources(num_gpus=0)  # doctest: +SKIP
-        >>> config = config.rollouts(num_rollout_workers=4)  # doctest: +SKIP
-        >>> print(config.to_dict())  # doctest: +SKIP
-        >>> # Build a Algorithm object from the config and run 1 training iteration.
-        >>> algo = config.build(env="CartPole-v1")  # doctest: +SKIP
-        >>> algo.train()  # doctest: +SKIP
+    .. testcode::
+
+        config = SACConfig().training(gamma=0.9, lr=0.01, train_batch_size=32)
+        config = config.resources(num_gpus=0)
+        config = config.env_runners(num_env_runners=1)
+
+        # Build a Algorithm object from the config and run 1 training iteration.
+        algo = config.build(env="CartPole-v1")
+        algo.train()
     """
 
     def __init__(self, algo_class=None):
@@ -81,7 +85,10 @@ class SACConfig(AlgorithmConfig):
         self.grad_clip = None
         self.target_network_update_freq = 0
 
-        # .exploration()
+        # .env_runners()
+        # Set to `self.n_step`, if 'auto'.
+        self.rollout_fragment_length = "auto"
+        self.compress_observations = False
         self.exploration_config = {
             # The Exploration class to use. In the simplest case, this is the name
             # (str) of any class present in the `rllib.utils.exploration` package.
@@ -91,10 +98,6 @@ class SACConfig(AlgorithmConfig):
             "type": "StochasticSampling",
             # Add constructor kwargs here (if any).
         }
-
-        # .rollout()
-        self.rollout_fragment_length = "auto"
-        self.compress_observations = False
 
         # .training()
         self.train_batch_size = 256
@@ -125,7 +128,7 @@ class SACConfig(AlgorithmConfig):
         tau: Optional[float] = NotProvided,
         initial_alpha: Optional[float] = NotProvided,
         target_entropy: Optional[Union[str, float]] = NotProvided,
-        n_step: Optional[int] = NotProvided,
+        n_step: Optional[Union[int, Tuple[int, int]]] = NotProvided,
         store_buffer_in_checkpoints: Optional[bool] = NotProvided,
         replay_buffer_config: Optional[Dict[str, Any]] = NotProvided,
         training_intensity: Optional[float] = NotProvided,
@@ -166,7 +169,11 @@ class SACConfig(AlgorithmConfig):
                 This is the inverse of reward scale, and will be optimized
                 automatically.
             n_step: N-step target updates. If >1, sars' tuples in trajectories will be
-                postprocessed to become sa[discounted sum of R][s t+n] tuples.
+                postprocessed to become sa[discounted sum of R][s t+n] tuples. An
+                integer will be interpreted as a fixed n-step value. If a tuple of 2
+                ints is provided here, the n-step value will be drawn for each sample(!)
+                in the train batch from a uniform distribution over the closed interval
+                defined by `[n_step[0], n_step[1]]`.
             store_buffer_in_checkpoints: Set this to True, if you want the contents of
                 your buffer(s) to be stored in any saved checkpoints as well.
                 Warnings will be created if:
@@ -211,16 +218,16 @@ class SACConfig(AlgorithmConfig):
             training_intensity: The intensity with which to update the model (vs
                 collecting samples from the env).
                 If None, uses "natural" values of:
-                `train_batch_size` / (`rollout_fragment_length` x `num_workers` x
-                `num_envs_per_worker`).
+                `train_batch_size` / (`rollout_fragment_length` x `num_env_runners` x
+                `num_envs_per_env_runner`).
                 If not None, will make sure that the ratio between timesteps inserted
                 into and sampled from th buffer matches the given values.
                 Example:
                 training_intensity=1000.0
                 train_batch_size=250
                 rollout_fragment_length=1
-                num_workers=1 (or 0)
-                num_envs_per_worker=1
+                num_env_runners=1 (or 0)
+                num_envs_per_env_runner=1
                 -> natural value = 250 / 1 = 250.0
                 -> will make sure that replay+train op will be executed 4x asoften as
                 rollout+insert op (4 * 250 = 1000).
@@ -301,15 +308,23 @@ class SACConfig(AlgorithmConfig):
         super().validate()
 
         # Check rollout_fragment_length to be compatible with n_step.
+        if isinstance(self.n_step, tuple):
+            min_rollout_fragment_length = self.n_step[1]
+        else:
+            min_rollout_fragment_length = self.n_step
+
         if (
             not self.in_evaluation
             and self.rollout_fragment_length != "auto"
-            and self.rollout_fragment_length < self.n_step
+            and self.rollout_fragment_length
+            < min_rollout_fragment_length  # (self.n_step or 1)
         ):
             raise ValueError(
                 f"Your `rollout_fragment_length` ({self.rollout_fragment_length}) is "
-                f"smaller than `n_step` ({self.n_step})! "
-                f"Try setting config.rollouts(rollout_fragment_length={self.n_step})."
+                f"smaller than needed for `n_step` ({self.n_step})! If `n_step` is "
+                f"an integer try setting `rollout_fragment_length={self.n_step}`. If "
+                "`n_step` is a tuple, try setting "
+                f"`rollout_fragment_length={self.n_step[1]}`."
             )
 
         if self.use_state_preprocessor != DEPRECATED_VALUE:
@@ -331,11 +346,63 @@ class SACConfig(AlgorithmConfig):
             )
             try_import_tfp(error=True)
 
+        # Validate that we use the corresponding `EpisodeReplayBuffer` when using
+        # episodes.
+        # TODO (sven, simon): Implement the multi-agent case for replay buffers.
+        if self.enable_env_runner_and_connector_v2 and self.replay_buffer_config[
+            "type"
+        ] not in [
+            "EpisodeReplayBuffer",
+            "PrioritizedEpisodeReplayBuffer",
+            "MultiAgentEpisodeReplayBuffer",
+        ]:
+            raise ValueError(
+                "When using the new `EnvRunner API` the replay buffer must be of type "
+                "`EpisodeReplayBuffer`."
+            )
+
+    @override(AlgorithmConfig)
     def get_rollout_fragment_length(self, worker_index: int = 0) -> int:
         if self.rollout_fragment_length == "auto":
-            return self.n_step
+            return (
+                self.n_step[1]
+                if isinstance(self.n_step, (tuple, list))
+                else self.n_step
+            )
         else:
             return self.rollout_fragment_length
+
+    @override(AlgorithmConfig)
+    def get_default_rl_module_spec(self) -> RLModuleSpec:
+        from ray.rllib.algorithms.sac.sac_catalog import SACCatalog
+
+        if self.framework_str == "torch":
+            from ray.rllib.algorithms.sac.torch.sac_torch_rl_module import (
+                SACTorchRLModule,
+            )
+
+            return SingleAgentRLModuleSpec(
+                module_class=SACTorchRLModule, catalog_class=SACCatalog
+            )
+        else:
+            raise ValueError(
+                f"The framework {self.framework_str} is not supported. " "Use `torch`."
+            )
+
+    @override(AlgorithmConfig)
+    def get_default_learner_class(self) -> Union[Type["Learner"], str]:
+        if self.framework_str == "torch":
+            from ray.rllib.algorithms.sac.torch.sac_torch_learner import SACTorchLearner
+
+            return SACTorchLearner
+        else:
+            raise ValueError(
+                f"The framework {self.framework_str} is not supported. " "Use `torch`."
+            )
+
+    @property
+    def _model_config_auto_includes(self):
+        return super()._model_config_auto_includes | {"twin_q": self.twin_q}
 
 
 class SAC(DQN):
@@ -369,3 +436,27 @@ class SAC(DQN):
             return SACTorchPolicy
         else:
             return SACTFPolicy
+
+    @override(DQN)
+    def training_step(self) -> ResultDict:
+        """SAC training iteration function.
+
+        Each training iteration, we:
+        - Sample (MultiAgentBatch) from workers.
+        - Store new samples in replay buffer.
+        - Sample training batch (MultiAgentBatch) from replay buffer.
+        - Learn on training batch.
+        - Update remote workers' new policy weights.
+        - Update target network every `target_network_update_freq` sample steps.
+        - Return all collected metrics for the iteration.
+
+        Returns:
+            The results dict from executing the training iteration.
+        """
+        # New API stack (RLModule, Learner, EnvRunner, ConnectorV2).
+        if self.config.enable_env_runner_and_connector_v2:
+            return self._training_step_new_api_stack(with_noise_reset=False)
+        # Old and hybrid API stacks (Policy, RolloutWorker, Connector, maybe RLModule,
+        # maybe Learner).
+        else:
+            return self._training_step_old_and_hybrid_api_stack()

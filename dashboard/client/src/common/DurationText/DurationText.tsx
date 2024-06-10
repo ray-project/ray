@@ -1,10 +1,18 @@
-import { Typography } from "@material-ui/core";
+import { Typography } from "@mui/material";
 import dayjs from "dayjs";
 import React, { useEffect, useState } from "react";
 
 type DurationTextProps = {
   startTime: Date | number;
   endTime?: Date | number | null;
+};
+
+export const getDurationVal = ({ startTime, endTime }: DurationTextProps) => {
+  // Helper to get duration value for DurationText component
+  // Assume current time, if end time is nullish
+  const endTimeToRender = endTime ? endTime : new Date();
+  const durationTime = dayjs(endTimeToRender).diff(dayjs(startTime));
+  return durationTime;
 };
 
 /**
@@ -15,11 +23,7 @@ export const DurationText = ({ startTime, endTime }: DurationTextProps) => {
   // Increments to force a re-render.
   const [, setRerenderCounter] = useState(0);
 
-  // Assume current time, if end time is nullish
-  const endTimeToRender = endTime ? endTime : new Date();
-  const duration = dayjs.duration(
-    dayjs(endTimeToRender).diff(dayjs(startTime)),
-  );
+  const duration = dayjs.duration(getDurationVal({ startTime, endTime }));
 
   let durationText: string;
   let refreshInterval = 1000;

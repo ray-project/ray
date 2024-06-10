@@ -1,10 +1,8 @@
 import logging
-from typing import TYPE_CHECKING, Dict, Iterable, List, Optional
+from typing import TYPE_CHECKING, Dict, List, Optional
 
-from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
-from ray.data._internal.execution.interfaces import TaskContext
-from ray.data.block import Block, BlockAccessor, BlockMetadata
-from ray.data.datasource.datasource import Datasource, Reader, ReadTask, WriteResult
+from ray.data.block import Block, BlockMetadata
+from ray.data.datasource.datasource import Datasource, ReadTask
 from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
@@ -15,58 +13,8 @@ logger = logging.getLogger(__name__)
 
 @PublicAPI(stability="alpha")
 class MongoDatasource(Datasource):
-    """Datasource for reading from and writing to MongoDB.
+    """Datasource for reading from and writing to MongoDB."""
 
-    Examples:
-        >>> import ray
-        >>> from ray.data.datasource import MongoDatasource
-        >>> from pymongoarrow.api import Schema # doctest: +SKIP
-        >>> ds = ray.data.read_datasource( # doctest: +SKIP
-        ...     MongoDatasource(), # doctest: +SKIP
-        ...     uri="mongodb://username:password@mongodb0.example.com:27017/?authSource=admin", # noqa: E501 # doctest: +SKIP
-        ...     database="my_db", # doctest: +SKIP
-        ...     collection="my_collection", # doctest: +SKIP
-        ...     schema=Schema({"col1": pa.string(), "col2": pa.int64()}), # doctest: +SKIP
-        ... ) # doctest: +SKIP
-    """
-
-    def create_reader(self, **kwargs) -> Reader:
-        return _MongoDatasourceReader(**kwargs)
-
-    def write(
-        self,
-        blocks: Iterable[Block],
-        ctx: TaskContext,
-        uri: str,
-        database: str,
-        collection: str,
-    ) -> WriteResult:
-        import pymongo
-
-        _validate_database_collection_exist(
-            pymongo.MongoClient(uri), database, collection
-        )
-
-        def write_block(uri: str, database: str, collection: str, block: Block):
-            from pymongoarrow.api import write
-
-            block = BlockAccessor.for_block(block).to_arrow()
-            client = pymongo.MongoClient(uri)
-            write(client[database][collection], block)
-
-        builder = DelegatingBlockBuilder()
-        for block in blocks:
-            builder.add_block(block)
-        block = builder.build()
-
-        write_block(uri, database, collection, block)
-
-        # TODO: decide if we want to return richer object when the task
-        # succeeds.
-        return "ok"
-
-
-class _MongoDatasourceReader(Reader):
     def __init__(
         self,
         uri: str,

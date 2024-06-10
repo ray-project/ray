@@ -349,12 +349,6 @@ DEFINE_stats(gcs_task_manager_task_events_stored,
              (),
              ray::stats::GAUGE);
 
-DEFINE_stats(gcs_task_manager_task_events_stored_bytes,
-             "Number of bytes of all task events stored in GCS.",
-             (),
-             (),
-             ray::stats::GAUGE);
-
 /// Memory Manager
 DEFINE_stats(
     memory_manager_worker_eviction_total,

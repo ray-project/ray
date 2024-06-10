@@ -288,6 +288,10 @@ def main(results=None):
     results += timeit("n:n async-actor calls async", async_actor_multi, m * n)
     ray.shutdown()
 
+    ############################
+    # End of channel perf tests.
+    ############################
+
     NUM_PGS = 100
     NUM_BUNDLES = 1
     ray.init(resources={"custom": 100})

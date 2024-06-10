@@ -2,7 +2,7 @@
 
 # Checks Python and doc files for common mispellings.
 
-BANNED_WORDS="RLLib Rllib"
+BANNED_WORDS="RLLib Rllib Kuberay"
 
 echo "Checking for common mis-spellings..."
 for word in $BANNED_WORDS; do

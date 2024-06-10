@@ -6,11 +6,15 @@ import warnings
 from contextlib import contextmanager
 from typing import Dict, List, Optional, Type, Union
 
-from pytorch_lightning import Callback, Trainer, LightningModule
 from ray import train
-from ray.util import log_once
-from ray.util.annotations import PublicAPI, Deprecated
 from ray.train import Checkpoint
+from ray.util import log_once
+from ray.util.annotations import Deprecated, PublicAPI
+
+try:
+    from lightning import Callback, LightningModule, Trainer
+except ModuleNotFoundError:
+    from pytorch_lightning import Callback, LightningModule, Trainer
 
 
 logger = logging.getLogger(__name__)

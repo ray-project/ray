@@ -5,17 +5,12 @@ from typing import Any, Callable, Dict, Optional, Tuple, Type, Union
 import ray
 from ray.air.execution import FixedResourceManager
 from ray.air.execution._internal import RayActorManager
-from ray.air.execution.resources import (
-    ResourceManager,
-    ResourceRequest,
-)
-
 from ray.air.execution._internal.tracked_actor import TrackedActor
+from ray.air.execution.resources import ResourceManager, ResourceRequest
+from ray.train.tests.util import mock_storage_context
 from ray.tune.execution.tune_controller import TuneController
 from ray.tune.experiment import Trial
 from ray.tune.utils.resource_updater import _ResourceUpdater
-
-from ray.train.tests.util import mock_storage_context
 
 
 class NoopClassCache:
@@ -105,6 +100,9 @@ class _FakeResourceUpdater(_ResourceUpdater):
     def get_num_gpus(self) -> int:
         return self._resource_manager._total_resources.get("GPU", 0)
 
+    def update_avail_resources(self, *args, **kwargs):
+        pass
+
 
 class TestingTrial(Trial):
     def __init__(self, *args, **kwargs):
@@ -122,7 +120,6 @@ class TestingTrial(Trial):
 
 
 def create_execution_test_objects(
-    tmpdir,
     max_pending_trials: int = 8,
     resources: Optional[Dict[str, float]] = None,
     reuse_actors: bool = True,
@@ -133,13 +130,9 @@ def create_execution_test_objects(
 
     resources = resources or {"CPU": 4}
 
-    storage_path = str(tmpdir)
-    experiment_name = "test_exp"
-
     storage = kwargs.pop("storage", mock_storage_context())
 
     tune_controller = tune_controller_cls(
-        experiment_path=os.path.join(storage_path, experiment_name),
         reuse_actors=reuse_actors,
         storage=storage,
         **kwargs,

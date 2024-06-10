@@ -1,21 +1,20 @@
 import os
 import pickle
+import sys
 from collections import Counter
 
 import pytest
-import sys
 
 import ray
 from ray.air.constants import TRAINING_ITERATION
 from ray.air.execution import FixedResourceManager, PlacementGroupResourceManager
+from ray.train.tests.util import mock_storage_context
 from ray.tune import Experiment, PlacementGroupFactory
 from ray.tune.execution.tune_controller import TuneController
 from ray.tune.experiment import Trial
 from ray.tune.schedulers import FIFOScheduler, TrialScheduler
-from ray.tune.search import Searcher, ConcurrencyLimiter, Repeater, SearchGenerator
+from ray.tune.search import ConcurrencyLimiter, Repeater, Searcher, SearchGenerator
 from ray.tune.search._mock import _MockSuggestionAlgorithm
-
-from ray.train.tests.util import mock_storage_context
 
 
 class TestTuneController(TuneController):

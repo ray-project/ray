@@ -1,13 +1,14 @@
 import logging
 import tempfile
 
+import numpy as np
 import pytest
 
 import ray
 from ray import train, tune
-from ray.train import Checkpoint, ScalingConfig
 from ray.air.constants import MAX_REPR_LENGTH
-from ray.train.gbdt_trainer import GBDTTrainer
+from ray.data.context import DataContext
+from ray.train import Checkpoint, ScalingConfig
 from ray.train.trainer import BaseTrainer
 from ray.util.placement_group import get_current_placement_group
 
@@ -31,14 +32,6 @@ class DummyTrainer(BaseTrainer):
         self.train_loop(self)
 
 
-class DummyGBDTTrainer(GBDTTrainer):
-    _dmatrix_cls: type = None
-    _ray_params_cls: type = None
-    _tune_callback_report_cls: type = None
-    _tune_callback_checkpoint_cls: type = None
-    _init_model_arg_name: str = None
-
-
 def test_trainer_fit(ray_start_4_cpus):
     def training_loop(self):
         train.report(dict(my_metric=1))
@@ -57,12 +50,6 @@ def test_validate_datasets(ray_start_4_cpus):
         DummyTrainer(train_loop=None, datasets={"train": 1})
     assert "The Dataset under train key is not a `ray.data.Dataset`"
 
-    with pytest.raises(ValueError) as e:
-        DummyTrainer(
-            train_loop=None, datasets={"train": ray.data.from_items([1]).repeat()}
-        )
-    assert "The Dataset under train key is a `ray.data.DatasetPipeline`."
-
 
 def test_resources(ray_start_4_cpus):
     def check_cpus(self):
@@ -70,7 +57,10 @@ def test_resources(ray_start_4_cpus):
 
     assert ray.available_resources()["CPU"] == 4
     trainer = DummyTrainer(
-        check_cpus, scaling_config=ScalingConfig(trainer_resources={"CPU": 2})
+        check_cpus,
+        scaling_config=ScalingConfig(
+            trainer_resources={"CPU": 2}, resources_per_worker={}
+        ),
     )
     trainer.fit()
 
@@ -83,7 +73,7 @@ def test_arg_override(ray_start_4_cpus):
         assert self.custom_arg["outer"]["fixed"] == 1
 
         pg = get_current_placement_group()
-        assert len(pg.bundle_specs) == 2  # 1 trainer, 1 worker
+        assert len(pg.bundle_specs) == 1  # Merged trainer and worker bundle
 
     scale_config = ScalingConfig(num_workers=4)
     trainer = DummyTrainer(
@@ -172,6 +162,36 @@ def test_metadata_propagation_data_parallel(ray_start_4_cpus):
     result = trainer.fit()
     meta_out = result.checkpoint.get_metadata()
     assert meta_out == {"a": 1, "b": 2, "c": 3}, meta_out
+
+
+def test_data_context_propagation(ray_start_4_cpus):
+    ctx = DataContext.get_current()
+    # Fake DataContext attribute to propagate to worker.
+    ctx.foo = "bar"
+
+    def training_loop(self):
+        # Dummy train loop that checks that changes in the driver's
+        # DataContext are propagated to the worker.
+        ctx_worker = DataContext.get_current()
+        assert ctx_worker.foo == "bar"
+
+    trainer = DummyTrainer(
+        train_loop=training_loop,
+        datasets={"train": ray.data.range(10)},
+    )
+    trainer.fit()
+
+
+def test_large_params(ray_start_4_cpus):
+    """Tests that large params are not serialized with the trainer actor
+    and are instead put into the object store separately."""
+    huge_array = np.zeros(shape=int(1e8))
+
+    def training_loop(self):
+        huge_array
+
+    trainer = DummyTrainer(training_loop)
+    trainer.fit()
 
 
 if __name__ == "__main__":

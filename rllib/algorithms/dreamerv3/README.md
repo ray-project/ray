@@ -155,7 +155,7 @@ adjustments should be made on top of the default config.
   Use the `DreamerV3Config.training(batch_size_B=..)` API for this. For example, for 2 GPUs,
   use a batch size of `B=32`.
 - Multiply the number of environments you sample from in parallel by the number of GPUs you are using.
-  Use the `DreamerV3Config.rollouts(num_envs_per_worker=..)` for this.
+  Use the `DreamerV3Config.env_runners(num_envs_per_env_runner=..)` for this.
   For example, for 4 GPUs and a default environment count of 8 (the single-GPU default for
   this setting depends on the benchmark you are running), use 32
   parallel environments instead.
@@ -179,6 +179,16 @@ reported in the paper.
 
 ### DeepMind Control Suite (vision)
 <img src="../../../doc/source/rllib/images/dreamerv3/dmc_1_vs_4gpus.svg" style="display:block;">
+
+
+## Running Action Inference after Training
+
+To run action inference on a DreamerV3 Algorithm object, you can use
+[this simple environment loop script](https://github.com/ray-project/ray/tree/master/doc/source/rllib/doc_code/dreamerv3_inference.py).
+
+Note the slight complexity caused by the fact that DreamerV3 a) uses a recurrent model,
+b) uses the new RLModule-based API stack (no Policy class), and c) outputs actions in a one-hot
+fashion for discrete action spaces.
 
 
 ## References

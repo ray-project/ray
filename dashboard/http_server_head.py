@@ -2,32 +2,47 @@ import asyncio
 import errno
 import ipaddress
 import logging
-from math import floor
 import os
+import pathlib
 import sys
 import time
-from ray._private.utils import get_or_create_event_loop
-from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
+from math import floor
 
 from packaging.version import Version
 
+import ray
 import ray.dashboard.optional_utils as dashboard_optional_utils
 import ray.dashboard.utils as dashboard_utils
-
+from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
+from ray._private.utils import get_or_create_event_loop
 from ray.dashboard.dashboard_metrics import DashboardPrometheusMetrics
 
 # All third-party dependencies that are not included in the minimal Ray
 # installation must be included in this file. This allows us to determine if
 # the agent has the necessary dependencies to be started.
 from ray.dashboard.optional_deps import aiohttp, hdrs
-from ray._raylet import GcsClient
-
 
 # Logger for this module. It should be configured at the entry point
 # into the program using Ray. Ray provides a default configuration at
 # entry/init points.
 logger = logging.getLogger(__name__)
-routes = dashboard_optional_utils.ClassMethodRouteTable
+routes = dashboard_optional_utils.DashboardHeadRouteTable
+
+# Env var that enables follow_symlinks for serving UI static files.
+# This is an advanced setting that should only be used with special Ray installations
+# where the dashboard build files are symlinked to a different directory.
+# This is not recommended for most users and can pose a security risk.
+# Please reference the aiohttp docs here:
+# https://docs.aiohttp.org/en/stable/web_reference.html#aiohttp.web.UrlDispatcher.add_static
+ENV_VAR_FOLLOW_SYMLINKS = "RAY_DASHBOARD_BUILD_FOLLOW_SYMLINKS"
+FOLLOW_SYMLINKS_ENABLED = os.environ.get(ENV_VAR_FOLLOW_SYMLINKS) == "1"
+if FOLLOW_SYMLINKS_ENABLED:
+    logger.warning(
+        "Enabling RAY_DASHBOARD_BUILD_FOLLOW_SYMLINKS is not recommended as it "
+        "allows symlinks to directories outside the dashboard build folder. "
+        "You may accidentally expose files on your system outside of the "
+        "build directory."
+    )
 
 
 def setup_static_dir():
@@ -48,7 +63,7 @@ def setup_static_dir():
         )
 
     static_dir = os.path.join(build_dir, "static")
-    routes.static("/static", static_dir, follow_symlinks=True)
+    routes.static("/static", static_dir, follow_symlinks=FOLLOW_SYMLINKS_ENABLED)
     return build_dir
 
 
@@ -60,7 +75,6 @@ class HttpServerDashboardHead:
         http_port: int,
         http_port_retries: int,
         gcs_address: str,
-        gcs_client: GcsClient,
         session_name: str,
         metrics: DashboardPrometheusMetrics,
     ):
@@ -68,7 +82,6 @@ class HttpServerDashboardHead:
         self.http_host = http_host
         self.http_port = http_port
         self.http_port_retries = http_port_retries
-        self.gcs_client = gcs_client
         self.head_node_ip = gcs_address.split(":")[0]
         self.metrics = metrics
         self._session_name = session_name
@@ -88,7 +101,7 @@ class HttpServerDashboardHead:
                 logger.warning(ex)
             else:
                 raise ex
-        dashboard_optional_utils.ClassMethodRouteTable.bind(self)
+        dashboard_optional_utils.DashboardHeadRouteTable.bind(self)
 
         # Create a http session for all modules.
         # aiohttp<4.0.0 uses a 'loop' variable, aiohttp>=4.0.0 doesn't anymore
@@ -110,11 +123,13 @@ class HttpServerDashboardHead:
                 "This error message is harmless and can be ignored. "
                 f"Error: {e}"
             )
-        return aiohttp.web.FileResponse(
+        resp = aiohttp.web.FileResponse(
             os.path.join(
                 os.path.dirname(os.path.abspath(__file__)), "client/build/index.html"
             )
         )
+        resp.headers["Cache-Control"] = "no-cache"
+        return resp
 
     @routes.get("/favicon.ico")
     async def get_favicon(self, req) -> aiohttp.web.FileResponse:
@@ -127,6 +142,39 @@ class HttpServerDashboardHead:
     def get_address(self):
         assert self.http_host and self.http_port
         return self.http_host, self.http_port
+
+    @aiohttp.web.middleware
+    async def path_clean_middleware(self, request, handler):
+        if request.path.startswith("/static") or request.path.startswith("/logs"):
+            parent = pathlib.PurePosixPath(
+                "/logs" if request.path.startswith("/logs") else "/static"
+            )
+
+            # If the destination is not relative to the expected directory,
+            # then the user is attempting path traversal, so deny the request.
+            request_path = pathlib.PurePosixPath(
+                pathlib.posixpath.realpath(request.path)
+            )
+            if request_path != parent and parent not in request_path.parents:
+                logger.info(
+                    f"Rejecting {request_path=} because it is not relative to {parent=}"
+                )
+                raise aiohttp.web.HTTPForbidden()
+        return await handler(request)
+
+    @aiohttp.web.middleware
+    async def browsers_no_post_put_middleware(self, request, handler):
+        if (
+            # A best effort test for browser traffic. All common browsers
+            # start with Mozilla at the time of writing.
+            request.headers["User-Agent"].startswith("Mozilla")
+            and request.method in [hdrs.METH_POST, hdrs.METH_PUT]
+        ):
+            return aiohttp.web.Response(
+                status=405, text="Method Not Allowed for browser traffic."
+            )
+
+        return await handler(request)
 
     @aiohttp.web.middleware
     async def metrics_middleware(self, request, handler):
@@ -145,6 +193,7 @@ class HttpServerDashboardHead:
                 self.metrics.metrics_request_duration.labels(
                     endpoint=handler.__name__,
                     http_status=status_tag,
+                    Version=ray.__version__,
                     SessionName=self._session_name,
                     Component="dashboard",
                 ).observe(resp_time)
@@ -152,21 +201,36 @@ class HttpServerDashboardHead:
                     method=request.method,
                     endpoint=handler.__name__,
                     http_status=status_tag,
+                    Version=ray.__version__,
                     SessionName=self._session_name,
                     Component="dashboard",
                 ).inc()
             except Exception as e:
                 logger.exception(f"Error emitting api metrics: {e}")
 
+    @aiohttp.web.middleware
+    async def cache_control_static_middleware(self, request, handler):
+        if request.path.startswith("/static"):
+            response = await handler(request)
+            response.headers["Cache-Control"] = "max-age=31536000"
+            return response
+        return await handler(request)
+
     async def run(self, modules):
         # Bind http routes of each module.
         for c in modules:
-            dashboard_optional_utils.ClassMethodRouteTable.bind(c)
+            dashboard_optional_utils.DashboardHeadRouteTable.bind(c)
 
         # Http server should be initialized after all modules loaded.
         # working_dir uploads for job submission can be up to 100MiB.
         app = aiohttp.web.Application(
-            client_max_size=100 * 1024**2, middlewares=[self.metrics_middleware]
+            client_max_size=100 * 1024**2,
+            middlewares=[
+                self.metrics_middleware,
+                self.path_clean_middleware,
+                self.browsers_no_post_put_middleware,
+                self.cache_control_static_middleware,
+            ],
         )
         app.add_routes(routes=routes.bound_routes())
 

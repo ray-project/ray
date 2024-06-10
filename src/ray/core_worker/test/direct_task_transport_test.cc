@@ -66,6 +66,7 @@ TaskSpecification BuildTaskSpec(const std::unordered_map<std::string, double> &r
                             1,
                             false,
                             false,
+                            -1,
                             resources,
                             resources,
                             serialized_runtime_env,
@@ -181,6 +182,7 @@ class MockRayletClient : public WorkerLeaseInterface {
   Status ReturnWorker(int worker_port,
                       const WorkerID &worker_id,
                       bool disconnect_worker,
+                      const std::string &disconnect_worker_error_detail,
                       bool worker_exiting) override {
     if (disconnect_worker) {
       num_workers_disconnected++;
@@ -248,7 +250,7 @@ class MockRayletClient : public WorkerLeaseInterface {
       int port,
       const NodeID &retry_at_raylet_id,
       bool cancel = false,
-      std::string worker_id = std::string(),
+      std::string worker_id = WorkerID::FromRandom().Binary(),
       bool reject = false,
       const rpc::RequestWorkerLeaseReply::SchedulingFailureType &failure_type =
           rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_INTENDED) {
@@ -266,11 +268,7 @@ class MockRayletClient : public WorkerLeaseInterface {
       reply.mutable_worker_address()->set_ip_address(address);
       reply.mutable_worker_address()->set_port(port);
       reply.mutable_worker_address()->set_raylet_id(retry_at_raylet_id.Binary());
-      // Set the worker ID if the worker_id string is a valid, non-empty argument. A
-      // worker ID can only be set using a 28-characters string.
-      if (worker_id.length() == 28) {
-        reply.mutable_worker_address()->set_worker_id(worker_id);
-      }
+      reply.mutable_worker_address()->set_worker_id(worker_id);
     }
     if (callbacks.size() == 0) {
       return false;

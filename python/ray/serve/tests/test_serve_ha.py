@@ -1,12 +1,13 @@
 import os
-import pytest
 import sys
 import threading
 from time import sleep
 
-from ray.tests.conftest_docker import *  # noqa
-from ray._private.test_utils import wait_for_condition
+import pytest
+
 from ray._private.resource_spec import HEAD_NODE_RESOURCE_NAME
+from ray._private.test_utils import wait_for_condition
+from ray.tests.conftest_docker import *  # noqa
 
 scripts = """
 import json
@@ -65,7 +66,7 @@ def test_ray_serve_basic(docker_cluster):
     head, worker = docker_cluster
     output = worker.exec_run(cmd=f"python -c '{scripts.format(num_replicas=1)}'")
     assert output.exit_code == 0, output.output
-    assert b"Adding 1 replica to deployment " in output.output
+    assert b"Adding 1 replica to Deployment(" in output.output
 
     output = worker.exec_run(cmd=f"python -c '{check_script.format(num_replicas=1)}'")
     assert output.exit_code == 0, output.output

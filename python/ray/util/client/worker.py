@@ -388,7 +388,6 @@ class Worker:
             "python_version": data.python_version,
             "ray_version": data.ray_version,
             "ray_commit": data.ray_commit,
-            "protocol_version": data.protocol_version,
         }
 
     def register_callback(
@@ -557,12 +556,18 @@ class Worker:
         # data is serialized tuple of (args, kwargs)
         task.data = dumps_from_client((args, kwargs), self._client_id)
         num_returns = instance._num_returns()
-        if instance._num_returns() == "dynamic":
+        if num_returns == "dynamic":
             num_returns = -1
+        if num_returns == "streaming":
+            raise RuntimeError(
+                'Streaming actor methods (num_returns="streaming") '
+                "are not currently supported when using Ray Client."
+            )
+
         return self._call_schedule_for_task(task, num_returns)
 
     def _call_schedule_for_task(
-        self, task: ray_client_pb2.ClientTask, num_returns: int
+        self, task: ray_client_pb2.ClientTask, num_returns: Optional[int]
     ) -> List[Future]:
         logger.debug(f"Scheduling task {task.name} {task.type} {task.payload_id}")
         task.client_id = self._client_id

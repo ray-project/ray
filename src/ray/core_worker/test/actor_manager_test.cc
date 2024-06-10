@@ -121,6 +121,8 @@ class MockDirectActorSubmitter : public CoreWorkerDirectActorTaskSubmitterInterf
 
   MOCK_METHOD0(CheckTimeoutTasks, void());
 
+  MOCK_METHOD(void, SetPreempted, (const ActorID &actor_id), (override));
+
   virtual ~MockDirectActorSubmitter() {}
 };
 

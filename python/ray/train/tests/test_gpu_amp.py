@@ -1,9 +1,9 @@
+import os
+from tempfile import TemporaryDirectory
 from timeit import default_timer as timer
 
-import os
 import torch
 import torchvision
-from tempfile import TemporaryDirectory
 
 import ray.train as train
 from ray.train import Checkpoint, ScalingConfig

@@ -30,6 +30,7 @@ void ObjectStatsCollector::OnObjectCreated(const LocalObject &obj) {
       {/*fallback_allocated*/ kAllocation.fallback_allocated, /*sealed*/ false},
       kObjectSize);
 
+  num_objects_created_total_ += 1;
   num_bytes_created_total_ += kObjectSize;
 
   if (kSource == plasma::flatbuf::ObjectSource::CreatedByWorker) {
@@ -243,6 +244,10 @@ void ObjectStatsCollector::GetDebugDump(std::stringstream &buffer) const {
 }
 
 int64_t ObjectStatsCollector::GetNumBytesInUse() const { return num_bytes_in_use_; }
+
+int64_t ObjectStatsCollector::GetNumObjectsCreatedTotal() const {
+  return num_objects_created_total_;
+}
 
 int64_t ObjectStatsCollector::GetNumBytesCreatedTotal() const {
   return num_bytes_created_total_;

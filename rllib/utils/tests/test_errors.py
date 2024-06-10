@@ -2,7 +2,7 @@ import unittest
 
 import ray
 import ray.rllib.algorithms.impala as impala
-import ray.rllib.algorithms.pg as pg
+import ray.rllib.algorithms.ppo as ppo
 from ray.rllib.utils.error import EnvError
 from ray.rllib.utils.test_utils import framework_iterator
 
@@ -37,7 +37,7 @@ class TestErrors(unittest.TestCase):
     def test_bad_envs(self):
         """Tests different "bad env" errors."""
         config = (
-            pg.PGConfig().rollouts(num_rollout_workers=0)
+            ppo.PPOConfig().env_runners(num_env_runners=0)
             # Non existing/non-registered gym env string.
             .environment("Alien-Attack-v42")
         )
@@ -59,7 +59,9 @@ class TestErrors(unittest.TestCase):
             )
 
         # Non-existing class in a full-class-path.
-        config.environment("ray.rllib.examples.env.random_env.RandomEnvThatDoesntExist")
+        config.environment(
+            "ray.rllib.examples.envs.classes.random_env.RandomEnvThatDoesntExist"
+        )
         for _ in framework_iterator(config):
             self.assertRaisesRegex(
                 EnvError,
@@ -68,7 +70,7 @@ class TestErrors(unittest.TestCase):
             )
 
         # Non-existing module inside a full-class-path.
-        config.environment("ray.rllib.examples.env.module_that_doesnt_exist.SomeEnv")
+        config.environment("ray.rllib.examples.envs.module_that_doesnt_exist.SomeEnv")
         for _ in framework_iterator(config):
             self.assertRaisesRegex(
                 EnvError,

@@ -14,6 +14,7 @@ from ray.rllib.core.models.specs.specs_base import Spec
 from ray.rllib.core.models.specs.specs_base import TensorSpec
 from ray.rllib.core.models.torch.base import TorchModel
 from ray.rllib.core.models.torch.primitives import TorchCNNTranspose, TorchMLP
+from ray.rllib.models.utils import get_initializer_fn
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
 
@@ -102,9 +103,23 @@ class TorchMLPHead(TorchModel):
             hidden_layer_activation=config.hidden_layer_activation,
             hidden_layer_use_layernorm=config.hidden_layer_use_layernorm,
             hidden_layer_use_bias=config.hidden_layer_use_bias,
+            hidden_layer_weights_initializer=config.hidden_layer_weights_initializer,
+            hidden_layer_weights_initializer_config=(
+                config.hidden_layer_weights_initializer_config
+            ),
+            hidden_layer_bias_initializer=config.hidden_layer_bias_initializer,
+            hidden_layer_bias_initializer_config=(
+                config.hidden_layer_bias_initializer_config
+            ),
             output_dim=config.output_layer_dim,
             output_activation=config.output_layer_activation,
             output_use_bias=config.output_layer_use_bias,
+            output_weights_initializer=config.output_layer_weights_initializer,
+            output_weights_initializer_config=(
+                config.output_layer_weights_initializer_config
+            ),
+            output_bias_initializer=config.output_layer_bias_initializer,
+            output_bias_initializer_config=config.output_layer_bias_initializer_config,
         )
 
     @override(Model)
@@ -136,9 +151,23 @@ class TorchFreeLogStdMLPHead(TorchModel):
             hidden_layer_activation=config.hidden_layer_activation,
             hidden_layer_use_layernorm=config.hidden_layer_use_layernorm,
             hidden_layer_use_bias=config.hidden_layer_use_bias,
+            hidden_layer_weights_initializer=config.hidden_layer_weights_initializer,
+            hidden_layer_weights_initializer_config=(
+                config.hidden_layer_weights_initializer_config
+            ),
+            hidden_layer_bias_initializer=config.hidden_layer_bias_initializer,
+            hidden_layer_bias_initializer_config=(
+                config.hidden_layer_bias_initializer_config
+            ),
             output_dim=self._half_output_dim,
             output_activation=config.output_layer_activation,
             output_use_bias=config.output_layer_use_bias,
+            output_weights_initializer=config.output_layer_weights_initializer,
+            output_weights_initializer_config=(
+                config.output_layer_weights_initializer_config
+            ),
+            output_bias_initializer=config.output_layer_bias_initializer,
+            output_bias_initializer_config=config.output_layer_bias_initializer_config,
         )
 
         self.log_std = torch.nn.Parameter(
@@ -177,6 +206,27 @@ class TorchCNNTransposeHead(TorchModel):
             bias=True,
         )
 
+        # Initial Dense layer initializers.
+        initial_dense_weights_initializer = get_initializer_fn(
+            config.initial_dense_weights_initializer, framework="torch"
+        )
+        initial_dense_bias_initializer = get_initializer_fn(
+            config.initial_dense_bias_initializer, framework="torch"
+        )
+
+        # Initialize dense layer weights, if necessary.
+        if initial_dense_weights_initializer:
+            initial_dense_weights_initializer(
+                self.initial_dense.weight,
+                **config.initial_dense_weights_initializer_config or {},
+            )
+        # Initialized dense layer bais, if necessary.
+        if initial_dense_bias_initializer:
+            initial_dense_bias_initializer(
+                self.initial_dense.bias,
+                **config.initial_dense_bias_initializer_config or {},
+            )
+
         # The main CNNTranspose stack.
         self.cnn_transpose_net = TorchCNNTranspose(
             input_dims=config.initial_image_dims,
@@ -184,6 +234,14 @@ class TorchCNNTransposeHead(TorchModel):
             cnn_transpose_activation=config.cnn_transpose_activation,
             cnn_transpose_use_layernorm=config.cnn_transpose_use_layernorm,
             cnn_transpose_use_bias=config.cnn_transpose_use_bias,
+            cnn_transpose_kernel_initializer=config.cnn_transpose_kernel_initializer,
+            cnn_transpose_kernel_initializer_config=(
+                config.cnn_transpose_kernel_initializer_config
+            ),
+            cnn_transpose_bias_initializer=config.cnn_transpose_bias_initializer,
+            cnn_transpose_bias_initializer_config=(
+                config.cnn_transpose_bias_initializer_config
+            ),
         )
 
     @override(Model)

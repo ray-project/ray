@@ -7,6 +7,7 @@ export type DashboardUids = {
   default: string;
   serve: string;
   serveDeployment: string;
+  data: string;
 };
 
 type GrafanaHealthcheckRsp = {

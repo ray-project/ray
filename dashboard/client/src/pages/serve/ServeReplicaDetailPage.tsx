@@ -1,4 +1,6 @@
-import { createStyles, makeStyles, Typography } from "@material-ui/core";
+import { Typography } from "@mui/material";
+import createStyles from "@mui/styles/createStyles";
+import makeStyles from "@mui/styles/makeStyles";
 import React from "react";
 import { useParams } from "react-router-dom";
 import { CodeDialogButton } from "../../common/CodeDialogButton";
@@ -17,6 +19,8 @@ import { ServeReplica } from "../../type/serve";
 import TaskList from "../state/task";
 import { useServeReplicaDetails } from "./hook/useServeApplications";
 import { ServeReplicaMetricsSection } from "./ServeDeploymentMetricsSection";
+
+export const LOG_CONTEXT_KEY_SERVE_DEPLOYMENTS = "serve-entity-deployments";
 
 const useStyles = makeStyles((theme) =>
   createStyles({
@@ -162,7 +166,7 @@ const ServeReplicaLogs = ({
     ...(log_file_path
       ? [
           {
-            title: "replica",
+            title: "Serve logger",
             nodeId: node_id,
             filename: log_file_path.startsWith("/")
               ? log_file_path.substring(1)
@@ -170,6 +174,21 @@ const ServeReplicaLogs = ({
           },
         ]
       : []),
+    {
+      title: "stderr",
+      actorId: actor_id,
+      suffix: "err",
+    },
+    {
+      title: "stdout",
+      actorId: actor_id,
+      suffix: "out",
+    },
   ];
-  return <MultiTabLogViewer tabs={tabs} />;
+  return (
+    <MultiTabLogViewer
+      tabs={tabs}
+      contextKey={LOG_CONTEXT_KEY_SERVE_DEPLOYMENTS}
+    />
+  );
 };

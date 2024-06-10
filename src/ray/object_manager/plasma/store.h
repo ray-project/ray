@@ -83,6 +83,18 @@ class PlasmaStore {
   /// Return the plasma object bytes that are consumed by core workers.
   int64_t GetConsumedBytes();
 
+  /// Return the number of plasma objects that have been created.
+  int64_t GetCumulativeCreatedObjects() const {
+    absl::MutexLock lock(&mutex_);
+    return object_lifecycle_mgr_.GetNumObjectsCreatedTotal();
+  }
+
+  /// Return the plasma object bytes that have been created.
+  int64_t GetCumulativeCreatedBytes() const {
+    absl::MutexLock lock(&mutex_);
+    return object_lifecycle_mgr_.GetNumBytesCreatedTotal();
+  }
+
   /// Get the available memory for new objects to be created. This includes
   /// memory that is currently being used for created but unsealed objects.
   size_t GetAvailableMemory() const ABSL_LOCKS_EXCLUDED(mutex_) {
@@ -178,7 +190,8 @@ class PlasmaStore {
   ///
   /// \param object_id The object ID of the object that is being released.
   /// \param client The client making this request.
-  void ReleaseObject(const ObjectID &object_id, const std::shared_ptr<Client> &client)
+  /// \return bool The client should unmap the mmap section for this object.
+  bool ReleaseObject(const ObjectID &object_id, const std::shared_ptr<Client> &client)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   /// Connect a new client to the PlasmaStore.
@@ -208,13 +221,15 @@ class PlasmaStore {
                            uint64_t req_id) ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   void AddToClientObjectIds(const ObjectID &object_id,
+                            std::optional<MEMFD_TYPE> fallback_allocated_fd,
                             const std::shared_ptr<ClientInterface> &client)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   void ReturnFromGet(const std::shared_ptr<GetRequest> &get_request);
 
-  int RemoveFromClientObjectIds(const ObjectID &object_id,
-                                const std::shared_ptr<Client> &client)
+  // Returns: the client should unmap the mmap section for this object.
+  bool RemoveFromClientObjectIds(const ObjectID &object_id,
+                                 const std::shared_ptr<Client> &client)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   // Start listening for clients.

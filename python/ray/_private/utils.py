@@ -276,101 +276,21 @@ def compute_driver_id_from_job(job_id):
     return ray.WorkerID(driver_id_str)
 
 
-def get_gpu_and_accelerator_runtime_ids() -> Mapping[str, Optional[List[str]]]:
-    """
-    Get the device IDs of GPUs (CUDA), accelerators(NeuronCore and TPUs)
-    using (CUDA_VISIBLE_DEVICES, NEURON_RT_VISIBLE_CORES, TPU_VISIBLE_CHIPS)
-    environment variables.
+def get_visible_accelerator_ids() -> Mapping[str, Optional[List[str]]]:
+    """Get the mapping from accelerator resource name
+    to the visible ids."""
 
-    Returns:
-        A dictionary with keys:
-            - ray_constants.GPU: The list of device IDs of GPUs.
-            - ray_constants.NEURON_CORES: The list of device IDs of
-                accelerators.
-            - ray_constants.TPU: The list of device IDs of TPUs.
-        If either of the environment variables is not set, returns None for
-        corresponding key.
-    """
+    from ray._private.accelerators import (
+        get_all_accelerator_resource_names,
+        get_accelerator_manager_for_resource,
+    )
+
     return {
-        ray_constants.GPU: get_cuda_visible_devices(),
-        ray_constants.NEURON_CORES: get_aws_neuron_core_visible_ids(),
-        ray_constants.TPU: get_tpu_visible_chips(),
+        accelerator_resource_name: get_accelerator_manager_for_resource(
+            accelerator_resource_name
+        ).get_current_process_visible_accelerator_ids()
+        for accelerator_resource_name in get_all_accelerator_resource_names()
     }
-
-
-def get_cuda_visible_devices() -> Optional[List[str]]:
-    """
-    Get the device IDs using CUDA_VISIBLE_DEVICES environment variable.
-
-    Returns:
-        devices (List[str]): If environment variable is set, returns a
-            list of strings representing the IDs of the visible devices.
-            If it is not set or is set to NoDevFiles, returns empty list.
-    """
-    return _get_visible_ids(env_var=ray_constants.CUDA_VISIBLE_DEVICES_ENV_VAR)
-
-
-def get_aws_neuron_core_visible_ids() -> Optional[List[str]]:
-    """
-    Get the device IDs using NEURON_RT_VISIBLE_CORES environment variable.
-
-    Returns:
-        devices (List[str]): If environment variable is set, returns a
-            list of strings representing the IDs of the visible devices.
-            If it is not set or is set to NoDevFiles, returns empty list.
-    """
-    return _get_visible_ids(env_var=ray_constants.NEURON_RT_VISIBLE_CORES_ENV_VAR)
-
-
-def get_tpu_visible_chips() -> Optional[List[str]]:
-    """
-    Get the device IDs using TPU_VISIBLE_CHIPS environment variable.
-
-    Returns:
-        devices (List[str]): If environment variable is set, returns a
-            list of strings representing the IDs of the visible devices.
-            If it is not set or is set to NoDevFiles, returns empty list.
-
-    """
-    return _get_visible_ids(env_var=ray_constants.TPU_VISIBLE_CHIPS_ENV_VAR)
-
-
-def _get_visible_ids(env_var: str) -> Optional[List[str]]:
-    """Get the device IDs from defined environment variable.
-    Args:
-        env_var: Environment variable (e.g., CUDA_VISIBLE_DEVICES,
-        NEURON_RT_VISIBLE_CORES, TPU_VISIBLE_CHIPS) to set based
-        on the accelerator runtime.
-
-    Returns:
-        devices (List[str]): If environment variable is set, returns a
-            list of strings representing the IDs of the visible devices or cores.
-            If it is not set or is set to NoDevFiles, returns empty list.
-    """
-    if env_var not in (
-        ray_constants.CUDA_VISIBLE_DEVICES_ENV_VAR,
-        ray_constants.NEURON_RT_VISIBLE_CORES_ENV_VAR,
-        ray_constants.TPU_VISIBLE_CHIPS_ENV_VAR,
-    ):
-        raise ValueError(f"Invalid environment variable {env_var} to get visible IDs.")
-    visible_ids_str = os.environ.get(env_var, None)
-
-    if visible_ids_str is None:
-        return None
-
-    if visible_ids_str == "":
-        return []
-
-    if visible_ids_str == "NoDevFiles":
-        return []
-
-    # Identifiers are given as strings representing integers or UUIDs.
-    return list(visible_ids_str.split(","))
-
-
-last_set_gpu_ids = None
-last_set_neuron_core_ids = None
-last_set_tpu_chips = None
 
 
 def set_omp_num_threads_if_unset() -> bool:
@@ -413,133 +333,17 @@ def set_omp_num_threads_if_unset() -> bool:
     return True
 
 
-def set_gpu_and_accelerator_runtime_ids() -> None:
-    """Set (CUDA_VISIBLE_DEVICES, NEURON_RT_VISIBLE_CORES, TPU_VISIBLE_CHIPS ,...)
+def set_visible_accelerator_ids() -> None:
+    """Set (CUDA_VISIBLE_DEVICES, ONEAPI_DEVICE_SELECTOR, ROCR_VISIBLE_DEVICES,
+    NEURON_RT_VISIBLE_CORES, TPU_VISIBLE_CHIPS , HABANA_VISIBLE_MODULES ,...)
     environment variables based on the accelerator runtime.
-
-    Raises:
-        ValueError: If the environment variable is set to a different
-            environment variable.
     """
-    ids = ray.get_runtime_context().get_resource_ids()
-    set_cuda_visible_devices(ids[ray_constants.GPU])
-    set_aws_neuron_core_visible_ids(ids[ray_constants.NEURON_CORES])
-    set_tpu_visible_ids_and_bounds(ids[ray_constants.TPU])
-
-
-def set_cuda_visible_devices(gpu_ids: List[str]):
-    """Set the CUDA_VISIBLE_DEVICES environment variable.
-
-    Args:
-        gpu_ids (List[str]): List of strings representing GPU IDs.
-    """
-    if os.environ.get(ray_constants.NOSET_CUDA_VISIBLE_DEVICES_ENV_VAR):
-        return
-    global last_set_gpu_ids
-    if last_set_gpu_ids == gpu_ids:
-        return  # optimization: already set
-    _set_visible_ids(gpu_ids, ray_constants.CUDA_VISIBLE_DEVICES_ENV_VAR)
-    last_set_gpu_ids = gpu_ids
-
-
-def set_aws_neuron_core_visible_ids(neuron_core_ids: List[str]) -> None:
-    """Set the NEURON_RT_VISIBLE_CORES environment variable based on
-    given neuron_core_ids.
-
-    Args:
-        neuron_core_ids (List[str]): List of int representing core IDs.
-    """
-    if os.environ.get(ray_constants.NOSET_AWS_NEURON_RT_VISIBLE_CORES_ENV_VAR):
-        return
-    global last_set_neuron_core_ids
-    if last_set_neuron_core_ids == neuron_core_ids:
-        return  # optimization: already set
-    _set_visible_ids(neuron_core_ids, ray_constants.NEURON_RT_VISIBLE_CORES_ENV_VAR)
-    last_set_neuron_core_ids = neuron_core_ids
-
-
-def set_tpu_visible_ids_and_bounds(tpu_chips: List[str]) -> None:
-    """Set TPU environment variables based on the provided tpu_chips.
-
-    To access a subset of the TPU visible chips, we must use a combination of
-    environment variables that tells the compiler (via ML framework) the:
-    - Visible chips
-    - The physical bounds of chips per host
-    - The host bounds within the context of a TPU pod.
-
-    See: https://github.com/google/jax/issues/14977 for an example/more details.
-
-    Args:
-        tpu_chips (List[str]): List of int representing TPU chips.
-    """
-    if os.environ.get(ray_constants.NOSET_TPU_VISIBLE_CHIPS_ENV_VAR):
-        return
-    global last_set_tpu_chips
-    if last_set_tpu_chips == tpu_chips:
-        return  # optimization: already set
-    if len(tpu_chips) == ray_constants.RAY_TPU_NUM_CHIPS_PER_HOST:
-        # Let the ML framework use the defaults
-        return
-    _set_visible_ids(tpu_chips, ray_constants.TPU_VISIBLE_CHIPS_ENV_VAR)
-    num_chips = len(tpu_chips)
-    if num_chips == 1:
-        os.environ[
-            ray_constants.TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR
-        ] = ray_constants.TPU_CHIPS_PER_HOST_BOUNDS_1_CHIP_CONFIG
-        os.environ[
-            ray_constants.TPU_HOST_BOUNDS_ENV_VAR
-        ] = ray_constants.TPU_SINGLE_HOST_BOUNDS
-    elif num_chips == 2:
-        os.environ[
-            ray_constants.TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR
-        ] = ray_constants.TPU_CHIPS_PER_HOST_BOUNDS_2_CHIP_CONFIG
-        os.environ[
-            ray_constants.TPU_HOST_BOUNDS_ENV_VAR
-        ] = ray_constants.TPU_SINGLE_HOST_BOUNDS
-    last_set_tpu_chips = tpu_chips
-
-
-def _set_visible_ids(visible_ids: List[str], env_var: str):
-    """Set the environment variable (e.g., CUDA_VISIBLE_DEVICES, NEURON_RT_VISIBLE_CORES,
-     TPU_VISIBLE_CHIPS) passed based on accelerator runtime and will raise an error if
-     the function uses different environment variable.
-
-    Args:
-        visible_ids (List[str]): List of strings representing GPU IDs or NeuronCore IDs.
-        env_var: Environment variable to set based on accelerator runtime.
-
-    """
-    if env_var not in (
-        ray_constants.CUDA_VISIBLE_DEVICES_ENV_VAR,
-        ray_constants.NEURON_RT_VISIBLE_CORES_ENV_VAR,
-        ray_constants.TPU_VISIBLE_CHIPS_ENV_VAR,
+    for resource_name, accelerator_ids in (
+        ray.get_runtime_context().get_accelerator_ids().items()
     ):
-        raise ValueError(f"Invalid environment variable {env_var} to set visible IDs.")
-    os.environ[env_var] = ",".join([str(i) for i in visible_ids])
-
-
-def get_neuron_core_constraint_name():
-    """Get the name of the constraint that represents the AWS Neuron core accelerator.
-
-    Returns:
-        (str) The constraint name.
-    """
-    import ray.util.accelerators.accelerators as accelerators
-
-    return get_constraint_name(accelerators.AWS_NEURON_CORE)
-
-
-def get_constraint_name(pretty_name: str):
-    """Get the name of the constraint that represents the given resource.
-
-    Args:
-        pretty_name: The name of the resource.
-
-    Returns:
-        (str) The constraint name.
-    """
-    constraint_name = f"{ray_constants.RESOURCE_CONSTRAINT_PREFIX}" f"{pretty_name}"
-    return constraint_name
+        ray._private.accelerators.get_accelerator_manager_for_resource(
+            resource_name
+        ).set_current_process_visible_accelerator_ids(accelerator_ids)
 
 
 def resources_from_ray_options(options_dict: Dict[str, Any]) -> Dict[str, Any]:
@@ -561,6 +365,11 @@ def resources_from_ray_options(options_dict: Dict[str, Any]) -> Dict[str, Any]:
         raise ValueError(
             "The resources dictionary must not "
             "contain the key 'memory' or 'object_store_memory'"
+        )
+    elif ray_constants.PLACEMENT_GROUP_BUNDLE_RESOURCE_NAME in resources:
+        raise ValueError(
+            "The resource should not include `bundle` which "
+            f"is reserved for Ray. resources: {resources}"
         )
 
     num_cpus = options_dict.get("num_cpus")
@@ -798,45 +607,38 @@ def get_num_cpus(
 
 
 # TODO(clarng): merge code with c++
-def get_cgroupv1_used_memory(filename):
-    with open(filename, "r") as f:
-        lines = f.readlines()
-        cache_bytes = -1
-        rss_bytes = -1
-        inactive_file_bytes = -1
-        working_set = -1
-        for line in lines:
-            if "total_rss " in line:
-                rss_bytes = int(line.split()[1])
-            elif "cache " in line:
-                cache_bytes = int(line.split()[1])
-            elif "inactive_file" in line:
-                inactive_file_bytes = int(line.split()[1])
-        if cache_bytes >= 0 and rss_bytes >= 0 and inactive_file_bytes >= 0:
-            working_set = rss_bytes + cache_bytes - inactive_file_bytes
-            assert working_set >= 0
-            return working_set
-        return None
-
-
-def get_cgroupv2_used_memory(stat_file, usage_file):
-    # Uses same calculation as libcontainer, that is:
-    # memory.current - memory.stat[inactive_file]
-    # Source: https://github.com/google/cadvisor/blob/24dd1de08a72cfee661f6178454db995900c0fee/container/libcontainer/handler.go#L836  # noqa: E501
+def get_cgroup_used_memory(
+    memory_stat_filename: str,
+    memory_usage_filename: str,
+    inactive_file_key: str,
+    active_file_key: str,
+):
+    """
+    The calculation logic is the same with `GetCGroupMemoryUsedBytes`
+    in `memory_monitor.cc` file.
+    """
     inactive_file_bytes = -1
-    current_usage = -1
-    with open(usage_file, "r") as f:
-        current_usage = int(f.read().strip())
-    with open(stat_file, "r") as f:
+    active_file_bytes = -1
+    with open(memory_stat_filename, "r") as f:
         lines = f.readlines()
         for line in lines:
-            if "inactive_file" in line:
+            if f"{inactive_file_key} " in line:
                 inactive_file_bytes = int(line.split()[1])
-        if current_usage >= 0 and inactive_file_bytes >= 0:
-            working_set = current_usage - inactive_file_bytes
-            assert working_set >= 0
-            return working_set
+            elif f"{active_file_key} " in line:
+                active_file_bytes = int(line.split()[1])
+
+    with open(memory_usage_filename, "r") as f:
+        lines = f.readlines()
+        cgroup_usage_in_bytes = int(lines[0].strip())
+
+    if (
+        inactive_file_bytes == -1
+        or cgroup_usage_in_bytes == -1
+        or active_file_bytes == -1
+    ):
         return None
+
+    return cgroup_usage_in_bytes - inactive_file_bytes - active_file_bytes
 
 
 def get_used_memory():
@@ -849,17 +651,28 @@ def get_used_memory():
     # container.
     docker_usage = None
     # For cgroups v1:
-    memory_usage_filename = "/sys/fs/cgroup/memory/memory.stat"
+    memory_usage_filename_v1 = "/sys/fs/cgroup/memory/memory.usage_in_bytes"
+    memory_stat_filename_v1 = "/sys/fs/cgroup/memory/memory.stat"
     # For cgroups v2:
     memory_usage_filename_v2 = "/sys/fs/cgroup/memory.current"
     memory_stat_filename_v2 = "/sys/fs/cgroup/memory.stat"
-    if os.path.exists(memory_usage_filename):
-        docker_usage = get_cgroupv1_used_memory(memory_usage_filename)
+    if os.path.exists(memory_usage_filename_v1) and os.path.exists(
+        memory_stat_filename_v1
+    ):
+        docker_usage = get_cgroup_used_memory(
+            memory_stat_filename_v1,
+            memory_usage_filename_v1,
+            "total_inactive_file",
+            "total_active_file",
+        )
     elif os.path.exists(memory_usage_filename_v2) and os.path.exists(
         memory_stat_filename_v2
     ):
-        docker_usage = get_cgroupv2_used_memory(
-            memory_stat_filename_v2, memory_usage_filename_v2
+        docker_usage = get_cgroup_used_memory(
+            memory_stat_filename_v2,
+            memory_usage_filename_v2,
+            "inactive_file",
+            "active_file",
         )
 
     if docker_usage is not None:
@@ -1406,12 +1219,13 @@ def get_wheel_filename(
     assert py_version in ray_constants.RUNTIME_ENV_CONDA_PY_VERSIONS, py_version
 
     py_version_str = "".join(map(str, py_version))
-    if py_version_str in ["37", "38", "39"]:
-        darwin_os_string = "macosx_10_15_x86_64"
-    else:
-        darwin_os_string = "macosx_10_15_universal2"
 
     architecture = architecture or platform.processor()
+
+    if py_version_str in ["311", "310", "39", "38"] and architecture == "arm64":
+        darwin_os_string = "macosx_11_0_arm64"
+    else:
+        darwin_os_string = "macosx_10_15_x86_64"
 
     if architecture == "aarch64":
         linux_os_string = "manylinux2014_aarch64"
@@ -1711,11 +1525,34 @@ def get_directory_size_bytes(path: Union[str, Path] = ".") -> int:
     return total_size_bytes
 
 
-def check_version_info(cluster_metadata):
+def check_version_info(
+    cluster_metadata,
+    this_process_address,
+    raise_on_mismatch=True,
+    python_version_match_level="patch",
+):
     """Check if the Python and Ray versions stored in GCS matches this process.
     Args:
         cluster_metadata: Ray cluster metadata from GCS.
+        this_process_address: Informational only. The address of this process.
+            e.g. "node address:port" or "Ray Client".
+        raise_on_mismatch: Raise an exception on True, log a warning otherwise.
+        python_version_match_level: "minor" or "patch". To which python version level we
+            try to match. Note if "minor" and the patch is different, we will still log
+            a warning.
 
+    Behavior:
+        - We raise or log a warning, based on raise_on_mismatch, if:
+            - Ray versions do not match; OR
+            - Python (major, minor) versions do not match,
+                if python_version_match_level == 'minor'; OR
+            - Python (major, minor, patch) versions do not match,
+                if python_version_match_level == 'patch'.
+        - We also log a warning if:
+            - Python (major, minor) versions match, AND
+            - Python patch versions do not match, AND
+            - python_version_match_level == 'minor' AND
+            - raise_on_mismatch == False.
     Raises:
         Exception: An exception is raised if there is a version mismatch.
     """
@@ -1723,18 +1560,41 @@ def check_version_info(cluster_metadata):
         cluster_metadata["ray_version"],
         cluster_metadata["python_version"],
     )
-    version_info = compute_version_info()
-    if version_info != cluster_version_info:
-        node_ip_address = ray._private.services.get_node_ip_address()
-        error_message = (
-            "Version mismatch: The cluster was started with:\n"
-            "    Ray: " + cluster_version_info[0] + "\n"
-            "    Python: " + cluster_version_info[1] + "\n"
-            "This process on node " + node_ip_address + " was started with:" + "\n"
-            "    Ray: " + version_info[0] + "\n"
-            "    Python: " + version_info[1] + "\n"
+    my_version_info = compute_version_info()
+
+    # Calculate: ray_matches, python_matches, python_full_matches
+    ray_matches = cluster_version_info[0] == my_version_info[0]
+    python_full_matches = cluster_version_info[1] == my_version_info[1]
+    if python_version_match_level == "patch":
+        python_matches = cluster_version_info[1] == my_version_info[1]
+    elif python_version_match_level == "minor":
+        my_python_versions = my_version_info[1].split(".")
+        cluster_python_versions = cluster_version_info[1].split(".")
+        python_matches = my_python_versions[:2] == cluster_python_versions[:2]
+    else:
+        raise ValueError(
+            f"Invalid python_version_match_level: {python_version_match_level}, "
+            "want: 'minor' or 'patch'"
         )
-        raise RuntimeError(error_message)
+
+    mismatch_msg = (
+        "The cluster was started with:\n"
+        f"    Ray: {cluster_version_info[0]}\n"
+        f"    Python: {cluster_version_info[1]}\n"
+        f"This process on {this_process_address} was started with:\n"
+        f"    Ray: {my_version_info[0]}\n"
+        f"    Python: {my_version_info[1]}\n"
+    )
+
+    if ray_matches and python_matches:
+        if not python_full_matches:
+            logger.warning(f"Python patch version mismatch: {mismatch_msg}")
+    else:
+        error_message = f"Version mismatch: {mismatch_msg}"
+        if raise_on_mismatch:
+            raise RuntimeError(error_message)
+        else:
+            logger.warning(error_message)
 
 
 def get_runtime_env_info(
@@ -1846,7 +1706,7 @@ def split_address(address: str) -> Tuple[str, str]:
     return (module_string, inner_address)
 
 
-def get_or_create_event_loop() -> asyncio.BaseEventLoop:
+def get_or_create_event_loop() -> asyncio.AbstractEventLoop:
     """Get a running async event loop if one exists, otherwise create one.
 
     This function serves as a proxy for the deprecating get_event_loop().
@@ -1878,19 +1738,6 @@ def get_or_create_event_loop() -> asyncio.BaseEventLoop:
             return asyncio.get_event_loop_policy().get_event_loop()
 
     return asyncio.get_event_loop()
-
-
-def make_asyncio_event_version_compat(
-    event_loop: asyncio.AbstractEventLoop,
-) -> asyncio.Event:
-    # Python 3.8 has deprecated the 'loop' parameter, and Python 3.10 has
-    # removed it altogether. Construct an `asyncio.Event` accordingly.
-    if sys.version_info.major >= 3 and sys.version_info.minor >= 10:
-        event = asyncio.Event()
-    else:
-        event = asyncio.Event(loop=event_loop)
-
-    return event
 
 
 def get_entrypoint_name():
@@ -1961,7 +1808,7 @@ def _add_creatable_buckets_param_if_s3_uri(uri: str) -> str:
         A URI with the added allow_bucket_creation=true query parameter, if the provided
         URI is an S3 URL; uri will be returned unchanged otherwise.
     """
-    from pkg_resources._vendor.packaging.version import parse as parse_version
+    from packaging.version import parse as parse_version
 
     pyarrow_version = _get_pyarrow_version()
     if pyarrow_version is not None:
@@ -2160,18 +2007,29 @@ def validate_node_labels(labels: Dict[str, str]):
             )
 
 
-def pasre_pg_formatted_resources_to_original(
+def parse_pg_formatted_resources_to_original(
     pg_formatted_resources: Dict[str, float]
 ) -> Dict[str, float]:
     original_resources = {}
 
     for key, value in pg_formatted_resources.items():
-        result = PLACEMENT_GROUP_WILDCARD_RESOURCE_PATTERN.match(key)
-        if result and len(result.groups()) == 2:
-            original_resources[result.group(1)] = value
-            continue
         result = PLACEMENT_GROUP_INDEXED_BUNDLED_RESOURCE_PATTERN.match(key)
         if result and len(result.groups()) == 3:
+            # Filter out resources that have bundle_group_[pg_id] since
+            # it is an implementation detail.
+            # This resource is automatically added to the resource
+            # request for all tasks that require placement groups.
+            if result.group(1) == ray_constants.PLACEMENT_GROUP_BUNDLE_RESOURCE_NAME:
+                continue
+
+            original_resources[result.group(1)] = value
+            continue
+
+        result = PLACEMENT_GROUP_WILDCARD_RESOURCE_PATTERN.match(key)
+        if result and len(result.groups()) == 2:
+            if result.group(1) == "bundle":
+                continue
+
             original_resources[result.group(1)] = value
             continue
         original_resources[key] = value
@@ -2209,3 +2067,28 @@ def validate_actor_state_name(actor_state_name):
             'it must be one of the following: "DEPENDENCIES_UNREADY", '
             '"PENDING_CREATION", "ALIVE", "RESTARTING", or "DEAD"'
         )
+
+
+def get_current_node_cpu_model_name() -> Optional[str]:
+    if not sys.platform.startswith("linux"):
+        return None
+
+    try:
+        """
+        /proc/cpuinfo content example:
+
+        processor	: 0
+        vendor_id	: GenuineIntel
+        cpu family	: 6
+        model		: 85
+        model name	: Intel(R) Xeon(R) Platinum 8259CL CPU @ 2.50GHz
+        stepping	: 7
+        """
+        with open("/proc/cpuinfo", "r") as f:
+            for line in f:
+                if line.startswith("model name"):
+                    return line.split(":")[1].strip()
+        return None
+    except Exception:
+        logger.debug("Failed to get CPU model name", exc_info=True)
+        return None

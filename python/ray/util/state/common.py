@@ -22,31 +22,23 @@ from ray.util.state.custom_types import (
     TypeWorkerType,
 )
 from ray.util.state.exception import RayStateApiException
+from ray.dashboard.modules.job.pydantic_models import JobDetails
+
+# TODO(aguo): Instead of a version check, modify the below models
+# to use pydantic BaseModel instead of dataclass.
+# In pydantic 2, dataclass no longer needs the `init=True` kwarg to
+# generate an __init__ method. Additionally, it will raise an error if
+# it detects `init=True` to be set.
+from ray._private.pydantic_compat import IS_PYDANTIC_2
 
 try:
-    import pydantic
     from pydantic.dataclasses import dataclass
 
-    from ray.dashboard.modules.job.pydantic_models import JobDetails
 
-    # TODO(aguo): Instead of a version check, modify these classes to use
-    # pydantic BaseModel instead of dataclass.
-    # In pydantic 2, dataclass no longer needs the `init=True` kwarg to
-    # generate an __init__ method. Additionally, it will raise an error if
-    # it detects `init=True` to be set.
-    # In pydantic <1.9.0, __version__ attribute is missing, issue ref:
-    # https://github.com/pydantic/pydantic/issues/2572, so we need to check
-    # the existence prior to comparison.
-    is_pydantic_2 = hasattr(
-        pydantic, "__version__"
-    ) and pydantic.__version__.startswith("2")
 except ImportError:
     # pydantic is not available in the dashboard.
     # We will use the dataclass from the standard library.
     from dataclasses import dataclass
-
-    JobDetails = object
-    is_pydantic_2 = False
 
 
 logger = logging.getLogger(__name__)
@@ -130,7 +122,7 @@ class Humanify:
         return resources
 
 
-@dataclass(init=not is_pydantic_2)
+@dataclass(init=not IS_PYDANTIC_2)
 class ListApiOptions:
     # Maximum number of entries to return
     limit: int = DEFAULT_LIMIT
@@ -172,13 +164,13 @@ class ListApiOptions:
                 )
 
 
-@dataclass(init=not is_pydantic_2)
+@dataclass(init=not IS_PYDANTIC_2)
 class GetApiOptions:
     # Timeout for the HTTP request
     timeout: int = DEFAULT_RPC_TIMEOUT
 
 
-@dataclass(init=not is_pydantic_2)
+@dataclass(init=not IS_PYDANTIC_2)
 class SummaryApiOptions:
     # Timeout for the HTTP request
     timeout: int = DEFAULT_RPC_TIMEOUT
@@ -349,7 +341,7 @@ def filter_fields(data: dict, state_dataclass: StateSchema, detail: bool) -> dic
     return filtered_data
 
 
-@dataclass(init=not is_pydantic_2)
+@dataclass(init=not IS_PYDANTIC_2)
 class GetLogOptions:
     timeout: int
     node_id: Optional[str] = None
@@ -420,7 +412,7 @@ class GetLogOptions:
 
 # See the ActorTableData message in gcs.proto for all potential options that
 # can be included in this class.
-@dataclass(init=not is_pydantic_2)
+@dataclass(init=not IS_PYDANTIC_2)
 class ActorState(StateSchema):
     """Actor State"""
 
@@ -471,7 +463,7 @@ class ActorState(StateSchema):
     repr_name: Optional[str] = state_column(detail=True, filterable=True)
 
 
-@dataclass(init=not is_pydantic_2)
+@dataclass(init=not IS_PYDANTIC_2)
 class PlacementGroupState(StateSchema):
     """PlacementGroup State"""
 
@@ -500,7 +492,7 @@ class PlacementGroupState(StateSchema):
     stats: Optional[dict] = state_column(filterable=False, detail=True)
 
 
-@dataclass(init=not is_pydantic_2)
+@dataclass(init=not IS_PYDANTIC_2)
 class NodeState(StateSchema):
     """Node State"""
 
@@ -515,6 +507,9 @@ class NodeState(StateSchema):
     #: ALIVE: The node is alive.
     #: DEAD: The node is dead.
     state: TypeNodeStatus = state_column(filterable=True)
+    #: The state message of the node.
+    #: This provides more detailed information about the node's state.
+    state_message: Optional[str] = state_column(filterable=False)
     #: The name of the node if it is given by the name argument.
     node_name: str = state_column(filterable=True)
     #: The total resources of the node.
@@ -535,9 +530,10 @@ class NodeState(StateSchema):
     )
 
 
-# NOTE:
-# Declaring this as dataclass would make __init__ not being called properly.
-class JobState(StateSchema, JobDetails):
+# NOTE: Declaring this as dataclass would make __init__ not being called properly.
+# NOTE: `JobDetails` will be `None` in the minimal install because Pydantic is not
+#       installed. Inheriting from `None` raises an exception.
+class JobState(StateSchema, JobDetails if JobDetails is not None else object):
     """The state of the job that's submitted by Ray's Job APIs or driver jobs"""
 
     def __init__(self, **kwargs):
@@ -592,7 +588,7 @@ class JobState(StateSchema, JobDetails):
         }
 
 
-@dataclass(init=not is_pydantic_2)
+@dataclass(init=not IS_PYDANTIC_2)
 class WorkerState(StateSchema):
     """Worker State"""
 
@@ -652,9 +648,13 @@ class WorkerState(StateSchema):
     end_time_ms: Optional[int] = state_column(
         filterable=False, detail=True, format_fn=Humanify.timestamp
     )
+    # the debugger port of the worker
+    debugger_port: Optional[int] = state_column(filterable=True, detail=True)
+    # the number of threads paused in this worker
+    num_paused_threads: Optional[int] = state_column(filterable=True, detail=True)
 
 
-@dataclass(init=not is_pydantic_2)
+@dataclass(init=not IS_PYDANTIC_2)
 class ClusterEventState(StateSchema):
     severity: str = state_column(filterable=True)
     time: str = state_column(filterable=False)
@@ -664,7 +664,7 @@ class ClusterEventState(StateSchema):
     custom_fields: Optional[dict] = state_column(filterable=False, detail=True)
 
 
-@dataclass(init=not is_pydantic_2)
+@dataclass(init=not IS_PYDANTIC_2)
 class TaskState(StateSchema):
     """Task State"""
 
@@ -748,9 +748,11 @@ class TaskState(StateSchema):
     task_log_info: Optional[dict] = state_column(detail=True, filterable=False)
     #: Task error detail info.
     error_message: Optional[str] = state_column(detail=True, filterable=False)
+    # Is task paused by the debugger
+    is_debugger_paused: Optional[bool] = state_column(detail=True, filterable=True)
 
 
-@dataclass(init=not is_pydantic_2)
+@dataclass(init=not IS_PYDANTIC_2)
 class ObjectState(StateSchema):
     """Object State"""
 
@@ -806,7 +808,7 @@ class ObjectState(StateSchema):
     ip: str = state_column(filterable=True)
 
 
-@dataclass(init=not is_pydantic_2)
+@dataclass(init=not IS_PYDANTIC_2)
 class RuntimeEnvState(StateSchema):
     """Runtime Environment State"""
 
@@ -862,7 +864,7 @@ for state in AVAILABLE_STATES:
 """
 
 
-@dataclass(init=not is_pydantic_2)
+@dataclass(init=not IS_PYDANTIC_2)
 class ListApiResponse:
     # NOTE(rickyyx): We currently perform hard truncation when querying
     # resources which could have a large number (e.g. asking raylets for
@@ -908,7 +910,7 @@ Summary API schema
 DRIVER_TASK_ID_PREFIX = "ffffffffffffffffffffffffffffffffffffffff"
 
 
-@dataclass(init=not is_pydantic_2)
+@dataclass(init=not IS_PYDANTIC_2)
 class TaskSummaryPerFuncOrClassName:
     #: The function or class name of this task.
     func_or_class_name: str
@@ -927,7 +929,7 @@ class Link:
     id: str
 
 
-@dataclass(init=not is_pydantic_2)
+@dataclass(init=not IS_PYDANTIC_2)
 class NestedTaskSummary:
     #: The name of this task group
     name: str
@@ -1304,7 +1306,7 @@ class TaskSummaries:
         )
 
 
-@dataclass(init=not is_pydantic_2)
+@dataclass(init=not IS_PYDANTIC_2)
 class ActorSummaryPerClass:
     #: The class name of the actor.
     class_name: str
@@ -1349,7 +1351,7 @@ class ActorSummaries:
         )
 
 
-@dataclass(init=not is_pydantic_2)
+@dataclass(init=not IS_PYDANTIC_2)
 class ObjectSummaryPerKey:
     #: Total number of objects of the type.
     total_objects: int
@@ -1442,7 +1444,7 @@ class ObjectSummaries:
         )
 
 
-@dataclass(init=not is_pydantic_2)
+@dataclass(init=not IS_PYDANTIC_2)
 class StateSummary:
     #: Node ID -> summary per node
     #: If the data is not required to be orgnized per node, it will contain
@@ -1450,7 +1452,7 @@ class StateSummary:
     node_id_to_summary: Dict[str, Union[TaskSummaries, ActorSummaries, ObjectSummaries]]
 
 
-@dataclass(init=not is_pydantic_2)
+@dataclass(init=not IS_PYDANTIC_2)
 class SummaryApiResponse:
     # Carried over from ListApiResponse
     # We currently use list API for listing the resources
@@ -1507,7 +1509,7 @@ def protobuf_message_to_dict(
     return dashboard_utils.message_to_dict(
         message,
         fields_to_decode,
-        including_default_value_fields=True,
+        always_print_fields_with_no_presence=True,
         preserving_proto_field_name=preserving_proto_field_name,
     )
 
@@ -1562,7 +1564,14 @@ def protobuf_to_task_state_dict(message: TaskEvents) -> dict:
         (task_attempt, ["task_id", "attempt_number", "job_id"]),
         (
             state_updates,
-            ["node_id", "worker_id", "task_log_info", "actor_repr_name", "worker_pid"],
+            [
+                "node_id",
+                "worker_id",
+                "task_log_info",
+                "actor_repr_name",
+                "worker_pid",
+                "is_debugger_paused",
+            ],
         ),
     ]
     for src, keys in mappings:

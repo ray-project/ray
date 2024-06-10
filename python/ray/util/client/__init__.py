@@ -1,6 +1,5 @@
 import logging
 import os
-import sys
 import threading
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -12,12 +11,10 @@ from ray._private.client_mode_hook import (
 from ray._private.ray_logging import setup_logger
 from ray.job_config import JobConfig
 from ray.util.annotations import DeveloperAPI
+from ray._private.utils import check_version_info
+
 
 logger = logging.getLogger(__name__)
-
-# This version string is incremented to indicate breaking changes in the
-# protocol that require upgrading the client version.
-CURRENT_PROTOCOL_VERSION = "2023-06-27"
 
 
 class _ClientContext:
@@ -119,28 +116,14 @@ class _ClientContext:
         ray.util.serialization_addons.apply(ctx)
 
     def _check_versions(self, conn_info: Dict[str, Any], ignore_version: bool) -> None:
-        local_major_minor = f"{sys.version_info[0]}.{sys.version_info[1]}"
-        if not conn_info["python_version"].startswith(local_major_minor):
-            version_str = f"{local_major_minor}.{sys.version_info[2]}"
-            msg = (
-                "Python minor versions differ between client and server:"
-                + f" client is {version_str},"
-                + f" server is {conn_info['python_version']}"
-            )
-            if ignore_version or "RAY_IGNORE_VERSION_MISMATCH" in os.environ:
-                logger.warning(msg)
-            else:
-                raise RuntimeError(msg)
-        if CURRENT_PROTOCOL_VERSION != conn_info["protocol_version"]:
-            msg = (
-                "Client Ray installation incompatible with server:"
-                + f" client is {CURRENT_PROTOCOL_VERSION},"
-                + f" server is {conn_info['protocol_version']}"
-            )
-            if ignore_version or "RAY_IGNORE_VERSION_MISMATCH" in os.environ:
-                logger.warning(msg)
-            else:
-                raise RuntimeError(msg)
+        # conn_info has "python_version" and "ray_version" so it can be used to compare.
+        ignore_version = ignore_version or ("RAY_IGNORE_VERSION_MISMATCH" in os.environ)
+        check_version_info(
+            conn_info,
+            "Ray Client",
+            raise_on_mismatch=not ignore_version,
+            python_version_match_level="minor",
+        )
 
     def disconnect(self):
         """Disconnect the Ray Client."""

@@ -3,28 +3,26 @@ import pathlib
 from typing import (
     Any,
     Callable,
+    Dict,
     Hashable,
-    Mapping,
-    Optional,
     Sequence,
     Union,
     Tuple,
 )
 
-from ray.rllib.core.learner.learner import (
-    FrameworkHyperparameters,
-    Learner,
-    LearnerHyperparameters,
+from ray.rllib.algorithms.algorithm_config import (
+    AlgorithmConfig,
     TorchCompileWhatToCompile,
 )
+from ray.rllib.core.learner.learner import Learner
 from ray.rllib.core.rl_module.marl_module import MultiAgentRLModule
 from ray.rllib.core.rl_module.rl_module import (
     RLModule,
-    ModuleID,
     SingleAgentRLModuleSpec,
 )
-from ray.rllib.core.rl_module.torch.torch_rl_module import TorchDDPRLModule
 from ray.rllib.core.rl_module.torch.torch_rl_module import (
+    TorchCompileConfig,
+    TorchDDPRLModule,
     TorchRLModule,
 )
 from ray.rllib.policy.sample_batch import MultiAgentBatch
@@ -32,6 +30,7 @@ from ray.rllib.utils.annotations import (
     override,
     OverrideToImplementCustomLogic,
 )
+from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.metrics import ALL_MODULES
 from ray.rllib.utils.nested_dict import NestedDict
@@ -39,12 +38,12 @@ from ray.rllib.utils.torch_utils import (
     convert_to_torch_tensor,
     copy_torch_tensors,
 )
-from ray.rllib.utils.typing import Optimizer, Param, ParamDict, TensorType
+from ray.rllib.utils.typing import ModuleID, Optimizer, Param, ParamDict, TensorType
 
 torch, nn = try_import_torch()
 
 if torch:
-    from ray.air._internal.torch_utils import get_device
+    from ray.air._internal.torch_utils import get_devices
 
 
 logger = logging.getLogger(__name__)
@@ -53,18 +52,8 @@ logger = logging.getLogger(__name__)
 class TorchLearner(Learner):
     framework: str = "torch"
 
-    def __init__(
-        self,
-        *,
-        framework_hyperparameters: Optional[FrameworkHyperparameters] = None,
-        **kwargs,
-    ):
-        super().__init__(
-            framework_hyperparameters=(
-                framework_hyperparameters or FrameworkHyperparameters()
-            ),
-            **kwargs,
-        )
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
 
         # Will be set during build.
         self._device = None
@@ -75,6 +64,7 @@ class TorchLearner(Learner):
         # This is assumed to not happen, since other forwrad methods are not expected
         # to be used during training.
         self._torch_compile_forward_train = False
+        self._torch_compile_cfg = None
         # Whether to compile the `_uncompiled_update` method of this learner. This
         # implies that everything within `_uncompiled_update` will be compiled,
         # not only the forward_train method of the RL Module.
@@ -82,9 +72,9 @@ class TorchLearner(Learner):
         # Note that this requires recompiling the forward methods once we add/remove
         # RL Modules.
         self._torch_compile_complete_update = False
-        if self._framework_hyperparameters.torch_compile:
+        if self.config.torch_compile_learner:
             if (
-                self._framework_hyperparameters.what_to_compile
+                self.config.torch_compile_learner_what_to_compile
                 == TorchCompileWhatToCompile.COMPLETE_UPDATE
             ):
                 self._torch_compile_complete_update = True
@@ -92,15 +82,29 @@ class TorchLearner(Learner):
             else:
                 self._torch_compile_forward_train = True
 
+            self._torch_compile_cfg = TorchCompileConfig(
+                torch_dynamo_backend=self.config.torch_compile_learner_dynamo_backend,
+                torch_dynamo_mode=self.config.torch_compile_learner_dynamo_mode,
+            )
+
     @OverrideToImplementCustomLogic
     @override(Learner)
     def configure_optimizers_for_module(
-        self, module_id: ModuleID, hps: LearnerHyperparameters
+        self,
+        module_id: ModuleID,
+        config: "AlgorithmConfig" = None,
+        hps=None,
     ) -> None:
+        if hps is not None:
+            deprecation_warning(
+                old="Learner.configure_optimizers_for_module(.., hps=..)",
+                help="Deprecated argument. Use `config` (AlgorithmConfig) instead.",
+                error=True,
+            )
         module = self._module[module_id]
 
         # For this default implementation, the learning rate is handled by the
-        # attached lr Scheduler (controlled by self.hps.learning_rate, which can be a
+        # attached lr Scheduler (controlled by self.config.lr, which can be a
         # fixed value of a schedule setting).
         optimizer = torch.optim.Adam(self.get_parameters(module))
         params = self.get_parameters(module)
@@ -110,7 +114,7 @@ class TorchLearner(Learner):
             module_id=module_id,
             optimizer=optimizer,
             params=params,
-            lr_or_lr_schedule=hps.learning_rate,
+            lr_or_lr_schedule=config.lr,
         )
 
     def _uncompiled_update(
@@ -125,14 +129,14 @@ class TorchLearner(Learner):
         gradients = self.compute_gradients(loss_per_module)
         postprocessed_gradients = self.postprocess_gradients(gradients)
         self.apply_gradients(postprocessed_gradients)
-        return fwd_out, loss_per_module, self._metrics
+        return fwd_out, loss_per_module, self.metrics.deactivate_tensor_mode()
 
     @override(Learner)
     def compute_gradients(
-        self, loss_per_module: Mapping[str, TensorType], **kwargs
+        self, loss_per_module: Dict[ModuleID, TensorType], **kwargs
     ) -> ParamDict:
         for optim in self._optimizer_parameters:
-            # set_to_none is a faster way to zero out the gradients
+            # `set_to_none=True` is a faster way to zero out the gradients.
             optim.zero_grad(set_to_none=True)
         loss_per_module[ALL_MODULES].backward()
         grads = {pid: p.grad for pid, p in self._params.items()}
@@ -154,7 +158,7 @@ class TorchLearner(Learner):
             optim.step()
 
     @override(Learner)
-    def set_module_state(self, state: Mapping[str, Any]) -> None:
+    def set_module_state(self, state: Dict[str, Any]) -> None:
         """Sets the weights of the underlying MultiAgentRLModule"""
         state = convert_to_torch_tensor(state, device=self._device)
         return self._module.set_state(state)
@@ -178,7 +182,7 @@ class TorchLearner(Learner):
         self.set_optimizer_state(state)
 
     @override(Learner)
-    def get_optimizer_state(self) -> Mapping[str, Any]:
+    def get_optimizer_state(self) -> Dict[str, Any]:
         optimizer_name_state = {}
         for name, optim in self._named_optimizers.items():
             optim_state_dict = optim.state_dict()
@@ -187,7 +191,7 @@ class TorchLearner(Learner):
         return optimizer_name_state
 
     @override(Learner)
-    def set_optimizer_state(self, state: Mapping[str, Any]) -> None:
+    def set_optimizer_state(self, state: Dict[str, Any]) -> None:
         for name, state_dict in state.items():
             if name not in self._named_optimizers:
                 raise ValueError(
@@ -211,6 +215,7 @@ class TorchLearner(Learner):
     @override(Learner)
     def _convert_batch_type(self, batch: MultiAgentBatch) -> MultiAgentBatch:
         batch = convert_to_torch_tensor(batch.policy_batches, device=self._device)
+        # TODO (sven): This computation of `env_steps` is not accurate!
         length = max(len(b) for b in batch.values())
         batch = MultiAgentBatch(batch, env_steps=length)
         return batch
@@ -231,18 +236,17 @@ class TorchLearner(Learner):
         module = self._module[module_id]
 
         if self._torch_compile_forward_train:
-            module.compile(self._framework_hyperparameters.torch_compile_cfg)
+            module.compile(self._torch_compile_cfg)
         elif self._torch_compile_complete_update:
             # When compiling the update, we need to reset and recompile
             # _uncompiled_update every time we add/remove a module anew.
             torch._dynamo.reset()
             self._compiled_update_initialized = False
-            torch_compile_cfg = self._framework_hyperparameters.torch_compile_cfg
             self._possibly_compiled_update = torch.compile(
                 self._uncompiled_update,
-                backend=torch_compile_cfg.torch_dynamo_backend,
-                mode=torch_compile_cfg.torch_dynamo_mode,
-                **torch_compile_cfg.kwargs,
+                backend=self._torch_compile_cfg.torch_dynamo_backend,
+                mode=self._torch_compile_cfg.torch_dynamo_mode,
+                **self._torch_compile_cfg.kwargs,
             )
 
         if isinstance(module, TorchRLModule):
@@ -270,12 +274,11 @@ class TorchLearner(Learner):
             # _uncompiled_update every time we add/remove a module anew.
             torch._dynamo.reset()
             self._compiled_update_initialized = False
-            torch_compile_cfg = self._framework_hyperparameters.torch_compile_cfg
             self._possibly_compiled_update = torch.compile(
                 self._uncompiled_update,
-                backend=torch_compile_cfg.torch_dynamo_backend,
-                mode=torch_compile_cfg.torch_dynamo_mode,
-                **torch_compile_cfg.kwargs,
+                backend=self._torch_compile_cfg.torch_dynamo_backend,
+                mode=self._torch_compile_cfg.torch_dynamo_mode,
+                **self._torch_compile_cfg.kwargs,
             )
 
     @override(Learner)
@@ -287,17 +290,25 @@ class TorchLearner(Learner):
         flags, so that `_make_module()` can place the created module on the correct
         device. After running super() it will wrap the module in a TorchDDPRLModule
         if `_distributed` is True.
+        Note, in inherited classes it is advisable to call the parent's `build()`
+        after setting up all variables because `configure_optimizer_for_module` is
+        called in this `Learner.build()`.
         """
         # TODO (Kourosh): How do we handle model parallelism?
         # TODO (Kourosh): Instead of using _TorchAccelerator, we should use the public
         #  API in ray.train but allow for session to be None without any errors raised.
         if self._use_gpu:
-            # get_device() returns the 0th device if
+            # get_devices() returns a list that contains the 0th device if
             # it is called from outside of a Ray Train session. Its necessary to give
             # the user the option to run on the gpu of their choice, so we enable that
             # option here via the local gpu id scaling config parameter.
             if self._distributed:
-                self._device = get_device()
+                devices = get_devices()
+                assert len(devices) == 1, (
+                    "`get_devices()` should only return one cuda device, "
+                    f"but {devices} was returned instead."
+                )
+                self._device = devices[0]
             else:
                 assert self._local_gpu_idx < torch.cuda.device_count(), (
                     f"local_gpu_idx {self._local_gpu_idx} is not a valid GPU id or is "
@@ -316,27 +327,22 @@ class TorchLearner(Learner):
         if self._torch_compile_complete_update:
             torch._dynamo.reset()
             self._compiled_update_initialized = False
-            torch_compile_cfg = self._framework_hyperparameters.torch_compile_cfg
             self._possibly_compiled_update = torch.compile(
                 self._uncompiled_update,
-                backend=torch_compile_cfg.torch_dynamo_backend,
-                mode=torch_compile_cfg.torch_dynamo_mode,
-                **torch_compile_cfg.kwargs,
+                backend=self._torch_compile_cfg.torch_dynamo_backend,
+                mode=self._torch_compile_cfg.torch_dynamo_mode,
+                **self._torch_compile_cfg.kwargs,
             )
         else:
             if self._torch_compile_forward_train:
                 if isinstance(self._module, TorchRLModule):
-                    self._module.compile(
-                        self._framework_hyperparameters.torch_compile_cfg
-                    )
+                    self._module.compile(self._torch_compile_cfg)
                 elif isinstance(self._module, MultiAgentRLModule):
                     for module in self._module._rl_modules.values():
                         # Compile only TorchRLModules, e.g. we don't want to compile
                         # a RandomRLModule.
                         if isinstance(self._module, TorchRLModule):
-                            module.compile(
-                                self._framework_hyperparameters.torch_compile_cfg
-                            )
+                            module.compile(self._torch_compile_cfg)
                 else:
                     raise ValueError(
                         "Torch compile is only supported for TorchRLModule and "
@@ -349,6 +355,9 @@ class TorchLearner(Learner):
 
     @override(Learner)
     def _update(self, batch: NestedDict) -> Tuple[Any, Any, Any]:
+        # Activate tensor-mode on our MetricsLogger.
+        self.metrics.activate_tensor_mode()
+
         # The first time we call _update after building the learner or
         # adding/removing models, we update with the uncompiled update method.
         # This makes it so that any variables that may be created during the first
@@ -430,7 +439,7 @@ class TorchLearner(Learner):
     def _get_tensor_variable(
         self, value, dtype=None, trainable=False
     ) -> "torch.Tensor":
-        return torch.tensor(
+        tensor = torch.tensor(
             value,
             requires_grad=trainable,
             device=self._device,
@@ -445,6 +454,7 @@ class TorchLearner(Learner):
                 )
             ),
         )
+        return nn.Parameter(tensor) if trainable else tensor
 
     @staticmethod
     @override(Learner)

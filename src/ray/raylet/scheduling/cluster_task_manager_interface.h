@@ -32,9 +32,7 @@ class ClusterTaskManagerInterface {
   ///
   /// \param Output parameter. `resource_load` and `resource_load_by_shape` are the only
   /// fields used.
-  virtual void FillResourceUsage(
-      rpc::ResourcesData &data,
-      const std::shared_ptr<NodeResources> &last_reported_resources = nullptr) = 0;
+  virtual void FillResourceUsage(rpc::ResourcesData &data) = 0;
 
   /// Attempt to cancel an already queued task.
   ///
@@ -52,17 +50,6 @@ class ClusterTaskManagerInterface {
 
   virtual bool CancelAllTaskOwnedBy(
       const WorkerID &worker_id,
-      rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type =
-          rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_INTENDED,
-      const std::string &scheduling_failure_message = "") = 0;
-
-  /// Attempt to cancel an already queued task that belongs to an owner.
-  ///
-  /// \param owner_task_id: The id of the parent.
-  /// \param failure_type: The failure type.
-  /// \param scheduling_failure_message: The failure message.
-  virtual void CancelTaskForOwner(
-      const TaskID &owner_task_id,
       rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type =
           rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_INTENDED,
       const std::string &scheduling_failure_message = "") = 0;
