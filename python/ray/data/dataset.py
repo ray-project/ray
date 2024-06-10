@@ -3312,7 +3312,7 @@ class Dataset:
 
 
         By default, the format of the output files is ``{uuid}_{block_idx}.npy``,
-        where ``uuid`` is a unique id for the dataset. To modify this behavior, 
+        where ``uuid`` is a unique id for the dataset. To modify this behavior,
         implement a custom :class:`~ray.data.datasource.FilenameProvider`
         and pass it in as the ``filename_provider`` argument.
 
