@@ -8,26 +8,17 @@ steps:
       - ./ci/lint/lint.sh {{matrix}}
     matrix:
       - clang_format
+      - code_format
       - untested_code_snippet
       - banned_words
       - doc_readme
       - dashboard_format
       - copyright_format
+      - bazel_team
       - bazel_buildifier
       - pytest_format
       - test_coverage
       - documentation_style
-
-  - label: ":lint-roller: lint: {{matrix}}"
-    key: lint-small-py
-    depends_on:
-      - oss-ci-base_build
-    commands:
-      - ./ci/lint/lint.sh {{matrix}}
-    job_env: oss-ci-base_build
-    matrix:
-      - code_format
-      - bazel_team
 
   - label: ":lint-roller: lint: {{matrix}}"
     key: lint-medium
