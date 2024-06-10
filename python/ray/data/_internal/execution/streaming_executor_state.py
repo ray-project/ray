@@ -134,6 +134,10 @@ class OpBufferQueue:
     def __len__(self):
         return len(self._queue)
 
+    def next_ref_dataset_index(self) -> int:
+        assert self.has_next()
+        return self._queue[0].get_subdataset_index
+
     def has_next(self, output_split_idx: Optional[int] = None) -> bool:
         """Whether next RefBundle is available.
 
@@ -206,7 +210,7 @@ class OpState:
     operator queues to be shared across threads.
     """
 
-    def __init__(self, op: PhysicalOperator, inqueues: List[OpBufferQueue]):
+    def __init__(self, op: PhysicalOperator, inqueues: List[OpBufferQueue], start_subdataset_index: int=0):
         # Each inqueue is connected to another operator's outqueue.
         assert len(inqueues) == len(op.input_dependencies), (op, inqueues)
         self.inqueues: List[OpBufferQueue] = inqueues
@@ -227,6 +231,7 @@ class OpState:
         # Used for StreamingExecutor to signal exception or end of execution
         self._finished: bool = False
         self._exception: Optional[Exception] = None
+        self.cur_subdataset_index = start_subdataset_index
 
     def __repr__(self):
         return f"OpState({self.op.name})"
@@ -253,6 +258,21 @@ class OpState:
         else:
             num_bars = 0
         return num_bars
+
+    def same_dataset_allowed(self) -> bool:
+        """Make sure the operator is only handling one subdataset.
+        This operator returns true when:
+        1. The operator has no ongoing tasks
+        2. The operator has ongoing tasks and the inqueue has Refs with the same dataset-index
+        """
+        if self.num_processing() == 0:
+            return True
+        
+        for inqueue in self.inqueues:
+            if inqueue.has_next() and inqueue.next_ref_dataset_index() == self.cur_subdataset_index:
+                return True
+        
+        return False
 
     def close_progress_bars(self):
         """Close all progress bars for this operator."""
@@ -297,11 +317,25 @@ class OpState:
 
     def dispatch_next_task(self) -> None:
         """Move a bundle from the operator inqueue to the operator itself."""
+        has_next_subdataset_index = False
         for i, inqueue in enumerate(self.inqueues):
-            ref = inqueue.pop()
-            if ref is not None:
-                self.op.add_input(ref, input_index=i)
-                return
+            if inqueue.has_next() and inqueue.next_ref_dataset_index() == self.cur_subdataset_index:
+                ref = inqueue.pop()
+                if ref is not None:
+                    self.op.add_input(ref, input_index=i)
+                    return
+            elif inqueue.has_next() and inqueue.next_ref_dataset_index() == self.cur_subdataset_index + 1:
+                has_next_subdataset_index = True
+            assert has_next_subdataset_index, "Nothing to dispatch"
+
+        self.cur_subdataset_index += 1
+
+        for i, inqueue in enumerate(self.inqueues):
+            if inqueue.has_next() and inqueue.next_ref_dataset_index() == self.cur_dataset_index:
+                ref = inqueue.pop()
+                if ref is not None:
+                    self.op.add_input(ref, input_index=i)
+                    return
         assert False, "Nothing to dispatch"
 
     def get_output_blocking(self, output_split_idx: Optional[int]) -> RefBundle:
@@ -574,6 +608,7 @@ def select_operator_to_run(
             op.need_more_inputs()
             and state.num_queued() > 0
             and op.should_add_input()
+            and state.same_dataset_allowed()
             and under_resource_limits
             and not op.completed()
             and all(p.can_add_input(op) for p in backpressure_policies)
@@ -604,7 +639,7 @@ def select_operator_to_run(
         ops = [
             op
             for op, state in topology.items()
-            if op.need_more_inputs() and state.num_queued() > 0 and not op.completed()
+            if op.need_more_inputs() and state.num_queued() > 0 and not op.completed() and state.same_dataset_allowed()
         ]
 
     # Nothing to run.

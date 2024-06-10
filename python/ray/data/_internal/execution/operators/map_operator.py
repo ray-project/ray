@@ -288,11 +288,13 @@ class MapOperator(OneToOneOperator, ABC):
         task_index = self._next_data_task_idx
         self._next_data_task_idx += 1
         self._metrics.on_task_submitted(task_index, inputs)
+        cur_dataset_index = inputs.get_subdataset_index()
 
         def _output_ready_callback(task_index, output: RefBundle):
             # Since output is streamed, it should only contain one block.
             assert len(output) == 1
             self._metrics.on_output_generated(task_index, output)
+            output.set_subdataset_index(cur_dataset_index)
 
             # Notify output queue that the task has produced an new output.
             self._output_queue.notify_task_output_ready(task_index, output)

@@ -336,6 +336,8 @@ class PhysicalOperator(Operator):
         Subclasses should override `_get_next_inner` instead of this method.
         """
         output = self._get_next_inner()
+        # noops to ensure RefBundle has subdataset_index field set
+        output.get_subdataset_index()
         self._metrics.on_output_taken(output)
         return output
 
