@@ -136,7 +136,7 @@ ENV_MAPS = [
 # __END_curriculum_learning_example_env_options__
 
 
-# Simple function sent to an EnvRunner to change the map of all its gym.Envs from
+# Simple function sent to an EnvRunner to change the map of all its gym. Envs from
 # the current one to a new (tougher) one, in which the goal position is further away
 # from the starting position. Note that a map is a list of strings, each one
 # representing one row in the map. Each character in the strings represent a single

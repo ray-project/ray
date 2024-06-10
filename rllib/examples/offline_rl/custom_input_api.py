@@ -1,6 +1,6 @@
 # @OldAPIStack
 
-"""Example of creating a custom input api
+"""Example of creating a custom input API
 
 Custom input apis are useful when your data source is in a custom format or
 when it is necessary to use an external data loading mechanism.
