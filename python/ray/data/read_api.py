@@ -60,7 +60,7 @@ from ray.data.datasource import (
     LanceDatasource,
     MongoDatasource,
     NumpyDatasource,
-    ParquetBaseDatasource,
+    ParquetBulkDatasource,
     ParquetDatasource,
     ParquetMetadataProvider,
     PathPartitionFilter,
@@ -769,7 +769,7 @@ def read_parquet(
         files.
     """
     if meta_provider is None:
-        meta_provider = get_parquet_metadata_provider()
+        meta_provider = get_parquet_metadata_provider(override_num_blocks)
     arrow_parquet_args = _resolve_parquet_args(
         tensor_column_schema,
         **arrow_parquet_args,
@@ -967,7 +967,7 @@ def read_parquet_bulk(
     partition_filter: Optional[PathPartitionFilter] = None,
     shuffle: Union[Literal["files"], None] = None,
     include_paths: bool = False,
-    file_extensions: Optional[List[str]] = ParquetBaseDatasource._FILE_EXTENSIONS,
+    file_extensions: Optional[List[str]] = ParquetBulkDatasource._FILE_EXTENSIONS,
     concurrency: Optional[int] = None,
     override_num_blocks: Optional[int] = None,
     **arrow_parquet_args,
@@ -1062,7 +1062,7 @@ def read_parquet_bulk(
     if columns is not None:
         read_table_args["columns"] = columns
 
-    datasource = ParquetBaseDatasource(
+    datasource = ParquetBulkDatasource(
         paths,
         read_table_args=read_table_args,
         filesystem=filesystem,
@@ -3006,7 +3006,7 @@ def read_lance(
         datasource=datasource,
         ray_remote_args=ray_remote_args,
         concurrency=concurrency,
-        override_num_locks=override_num_blocks,
+        override_num_blocks=override_num_blocks,
     )
 
 

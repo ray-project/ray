@@ -34,3 +34,33 @@ py_test(
         ci_require("pytest"),
     ],
 )
+
+py_test(
+    name = "test_api",
+    size = "small",
+    srcs = ["test_api.py"],
+    exec_compatible_with = ["//:hermetic_python"],
+    tags = [
+        "ci_unit",
+        "team:ci",
+    ],
+    deps = [
+        ":doc",
+        ci_require("pytest"),
+    ],
+)
+
+py_test(
+    name = "test_autodoc",
+    size = "small",
+    srcs = ["test_autodoc.py"],
+    exec_compatible_with = ["//:hermetic_python"],
+    tags = [
+        "ci_unit",
+        "team:ci",
+    ],
+    deps = [
+        ":doc",
+        ci_require("pytest"),
+    ],
+)
