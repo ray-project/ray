@@ -5,11 +5,11 @@
 # Cause the script to exit if a single command fails
 set -euo pipefail
 
-FLAKE8_VERSION_REQUIRED="3.9.1"
+FLAKE8_VERSION_REQUIRED="7.0.0"
 BLACK_VERSION_REQUIRED="22.10.0"
 SHELLCHECK_VERSION_REQUIRED="0.7.1"
 MYPY_VERSION_REQUIRED="1.7.0"
-ISORT_VERSION_REQUIRED="5.10.1"
+ISORT_VERSION_REQUIRED="5.13.2"
 
 check_python_command_exist() {
     VERSION=""
