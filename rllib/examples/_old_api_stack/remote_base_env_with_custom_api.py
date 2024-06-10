@@ -36,7 +36,7 @@ parser.add_argument(
 parser.add_argument("--num-workers", type=int, default=1)
 
 # This should be >1, otherwise, remote envs make no sense.
-parser.add_argument("--num-envs-per-worker", type=int, default=4)
+parser.add_argument("--num-envs-per-env-runner", type=int, default=4)
 
 parser.add_argument(
     "--as-test",

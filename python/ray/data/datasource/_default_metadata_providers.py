@@ -13,7 +13,7 @@ def get_generic_metadata_provider(file_extensions: Optional[List[str]]):
     return DefaultFileMetadataProvider()
 
 
-def get_parquet_metadata_provider():
+def get_parquet_metadata_provider(override_num_blocks: Optional[int] = None):
     # Used by `read_parquet`
     return ParquetMetadataProvider()
 
