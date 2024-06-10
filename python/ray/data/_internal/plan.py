@@ -162,11 +162,9 @@ class ExecutionPlan:
                 )
                 dataset_blocks = self._snapshot_blocks
             else:
-                schema = self.schema(fetch_if_missing=False)
-                if schema is None:
-                    schema = self._get_unified_blocks_schema(
-                        self._in_blocks, fetch_if_missing=False
-                    )
+                schema = self._get_unified_blocks_schema(
+                    self._in_blocks, fetch_if_missing=False
+                )
                 dataset_blocks = self._in_blocks
         else:
             # Get schema of output blocks.
