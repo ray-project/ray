@@ -1,5 +1,5 @@
 # @OldAPIStack
-"""Example of using variable-length Repeated / struct observation spaces.
+"""Example of using variable-length Repeated or struct observation spaces.
 
 This example demonstrates the following:
   - using a custom environment with Repeated / struct observations

@@ -19,30 +19,30 @@ implement `custom training workflows (example) <https://github.com/ray-project/r
 Curriculum Learning
 ~~~~~~~~~~~~~~~~~~~
 
-In curriculum learning, the environment can be set by the user to different difficulties
-throughout the training process. This allows the algorithm to learn how to solve
-the actual (final) problem incrementally, by interacting with and exploring in more and
+In curriculum learning, you can set the environment to different difficulties
+throughout the training process. This setting allows the algorithm to learn how to solve
+the actual and final problem incrementally, by interacting with and exploring in more and
 more difficult phases.
-Normally, such a curriculum starts with setting the environment to an easy difficulty and
-then - as training progresses - transitions more and more toward a harder-to-solve difficulty.
-`See this blog post here <https://bair.berkeley.edu/blog/2017/12/20/reverse-curriculum/>`__
-for another example of how curriculum learning can be done.
+Normally, such a curriculum starts with setting the environment to an easy level and
+then - as training progresses - transitions more toward a harder-to-solve difficulty.
+See the `Reverse Curriculum Generation for Reinforcement Learning Agents <https://bair.berkeley.edu/blog/2017/12/20/reverse-curriculum/>`_ blog post
+for another example of how you can do curriculum learning.
 
 RLlib's Algorithm and custom callbacks APIs allow for implementing any arbitrary
-curricula. We will quickly touch on the `example script found here <>`__ to introduce
-the basic concepts needed, then refer you
+curricula. This `example script <>`__ introduces
+the basic concepts you need to understand.
 
-First, we define some env options. We will work with the `FrozenLake-v1` environment,
-a grid world, whose map is fully customizable. Our three tasks (different env difficulties)
-are represented by slightly different maps that our agent will have to navigate.
+First, define some env options. This example uses the `FrozenLake-v1` environment,
+a grid world, whose map is fully customizable.  Three tasks of different env difficulties
+are represented by slightly different maps that the agent has to navigate.
 
 .. literalinclude:: /../../rllib/examples/curriculum/curriculum_learning.py
    :language: python
    :start-after: __curriculum_learning_example_env_options__
    :end-before: __END_curriculum_learning_example_env_options__
 
-Then, we define the central piece controlling the curriculum, which is a custom callbacks class
-overriding the :py:meth:`~ray.rllib.algorithms.callbacks.Callbacks.on_train_result`
+Then, define the central piece controlling the curriculum, which is a custom callbacks class
+overriding the :py:meth:`~ray.rllib.algorithms.callbacks.Callbacks.on_train_result`.
 
 
 .. TODO move to doc_code and make it use algo configs.
