@@ -59,4 +59,8 @@ class Limit(AbstractOneToOne):
 
     def num_rows(self):
         assert len(self._input_dependencies) == 1, len(self._input_dependencies)
-        return self._input_dependencies[0].num_rows()
+        input_rows = self._input_dependencies[0].num_rows()
+        if input_rows is not None:
+            return min(input_rows, self._limit)
+        else:
+            return self._limit
