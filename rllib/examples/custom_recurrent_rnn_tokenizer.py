@@ -1,6 +1,6 @@
 # @OldAPIStack
 
-"""Example of define custom tokenizers for recurrent models in RLModules.
+"""Example of defining custom tokenizers for recurrent models in RLModules.
 
 This example shows the following steps:
 - Define a custom tokenizer for a recurrent encoder.

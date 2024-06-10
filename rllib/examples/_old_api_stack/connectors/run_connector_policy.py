@@ -1,6 +1,6 @@
 # @OldAPIStack
-"""This example script shows how to load a connector enabled policy,
-and use it in a serving/inference setting.
+"""This example script loads a connector enabled policy,
+and uses it in a serving or inference setting.
 """
 
 import gymnasium as gym

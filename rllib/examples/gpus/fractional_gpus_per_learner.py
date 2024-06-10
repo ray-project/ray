@@ -102,7 +102,7 @@ if __name__ == "__main__":
         .env_runners(num_env_runners=args.num_env_runners)
         # Define Learner scaling.
         .learners(
-            # How many Learner workers do we need? If you have more than 1 GPU, you
+            # How many Learner workers do we need? If you have more than 1 GPU,
             # should set this to the number of GPUs available.
             num_learners=args.num_learners,
             # How many GPUs does each Learner need? If you have more than 1 GPU or only
