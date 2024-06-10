@@ -124,10 +124,7 @@ class ExecutionPlan:
         plan_str = ""
         plan_max_depth = 0
         dataset_blocks = None
-        if (
-            self._snapshot_bundle is None
-            or self._snapshot_operator != self._logical_plan.dag
-        ):
+        if not self.has_computed_output():
 
             def generate_logical_plan_string(
                 op: LogicalOperator,
@@ -159,24 +156,17 @@ class ExecutionPlan:
                 self._logical_plan.dag
             )
 
-            # Get schema of initial blocks.
-            if self.needs_eager_execution():
-                # In the case where the plan contains only a Read/From operator,
-                # it is cheap to execute it.
-                # This allows us to get the most accurate estimates related
-                # to the dataset, after applying execution plan optimizer rules
-                # (e.g. number of blocks may change based on parallelism).
-                self.execute()
             if self._snapshot_blocks is not None:
                 schema = self._get_unified_blocks_schema(
                     self._snapshot_blocks, fetch_if_missing=False
                 )
                 dataset_blocks = self._snapshot_blocks
             else:
-                assert self._in_blocks is not None
-                schema = self._get_unified_blocks_schema(
-                    self._in_blocks, fetch_if_missing=False
-                )
+                schema = self.schema(fetch_if_missing=False)
+                if schema is None:
+                    schema = self._get_unified_blocks_schema(
+                        self._in_blocks, fetch_if_missing=False
+                    )
                 dataset_blocks = self._in_blocks
         else:
             # Get schema of output blocks.
@@ -359,10 +349,7 @@ class ExecutionPlan:
             return self._schema
 
         schema = None
-        if (
-            self._snapshot_bundle is not None
-            and not self._snapshot_operator.output_dependencies
-        ):
+        if self.has_computed_output():
             schema = unify_block_metadata_schema(self._snapshot_bundle.metadata)
         elif self._logical_plan.dag.schema() is not None:
             schema = self._logical_plan.dag.schema()
@@ -407,14 +394,6 @@ class ExecutionPlan:
             return unified_schema
         if not fetch_if_missing:
             return None
-        # Synchronously fetch the schema.
-        # For lazy block lists, this launches read tasks and fetches block metadata
-        # until we find the first valid block schema. This is to minimize new
-        # computations when fetching the schema.
-        for _, m in blocks.iter_blocks_with_metadata():
-            if m.schema is not None and (m.num_rows is None or m.num_rows > 0):
-                return m.schema
-        return None
 
     def meta_count(self) -> Optional[int]:
         """Get the number of rows after applying all plan optimizations, if possible.
@@ -424,10 +403,7 @@ class ExecutionPlan:
         Returns:
             The number of records of the result Dataset, or None.
         """
-        if (
-            self._snapshot_bundle is not None
-            and not self._snapshot_operator.output_dependencies
-        ):
+        if self.has_computed_output():
             num_rows = sum(m.num_rows for m in self._snapshot_bundle.metadata)
         elif self._logical_plan.dag.num_rows() is not None:
             num_rows = self._logical_plan.dag.num_rows()
@@ -467,13 +443,8 @@ class ExecutionPlan:
         ctx = self._context
 
         if self.has_computed_output():
-            return (
-                self.execute(
-                    allow_clear_input_blocks, force_read=False
-                ).iter_blocks_with_metadata(),
-                self._snapshot_stats,
-                None,
-            )
+            bundle = self.execute(allow_clear_input_blocks, force_read=False)
+            return iter(bundle.blocks), self._snapshot_stats, None
 
         from ray.data._internal.execution.legacy_compat import (
             execute_to_legacy_block_iterator,
@@ -502,15 +473,13 @@ class ExecutionPlan:
     def execute(
         self,
         allow_clear_input_blocks: bool = True,
-        force_read: bool = False,
         preserve_order: bool = False,
-    ) -> BlockList:
+    ) -> RefBundle:
         """Execute this plan.
 
         Args:
             allow_clear_input_blocks: Whether we should try to clear the input blocks
                 for each operator.
-            force_read: Whether to force the read operator to fully execute.
             preserve_order: Whether to preserve order in execution.
 
         Returns:
@@ -534,7 +503,6 @@ class ExecutionPlan:
             from ray.data._internal.execution.legacy_compat import (
                 _get_initial_stats_from_plan,
                 execute_to_legacy_block_list,
-                get_legacy_lazy_block_list_read_only,
             )
 
             if self.is_from_in_memory_only():
@@ -542,12 +510,6 @@ class ExecutionPlan:
                 # operator, since the data is already materialized. This also avoids
                 # recording unnecessary metrics for an empty plan execution.
                 blocks = self._in_blocks
-                stats = _get_initial_stats_from_plan(self)
-            elif self.is_read_only():
-                # If the Dataset is read-only, get the LazyBlockList without
-                # executing the plan by only fetching metadata available from
-                # the input Datasource or Reader without executing its ReadTasks.
-                blocks = get_legacy_lazy_block_list_read_only(self)
                 stats = _get_initial_stats_from_plan(self)
             else:
                 from ray.data._internal.execution.streaming_executor import (
@@ -612,11 +574,10 @@ class ExecutionPlan:
 
             # Set the snapshot to the output of the final operator.
             self._snapshot_blocks = blocks
-            if not isinstance(blocks, LazyBlockList):
-                self._snapshot_bundle = RefBundle(
-                    tuple(blocks.iter_blocks_with_metadata()),
-                    owns_blocks=blocks._owned_by_consumer,
-                )
+            self._snapshot_bundle = RefBundle(
+                tuple(blocks.iter_blocks_with_metadata()),
+                owns_blocks=blocks._owned_by_consumer,
+            )
             self._snapshot_operator = self._logical_plan.dag
             self._snapshot_stats = stats
             self._snapshot_stats.dataset_uuid = self._dataset_uuid
@@ -626,22 +587,7 @@ class ExecutionPlan:
             # calculated metadata from initializing the InputDataBuffer.
             if self.is_read_only():
                 self._in_blocks = blocks
-        if isinstance(self._snapshot_blocks, LazyBlockList) and force_read:
-            executed_blocks = self._snapshot_blocks.compute_to_blocklist()
-            # After executing the snapshot blocks, get its updated stats.
-            # The snapshot blocks after execution will contain the execution stats.
-            self._snapshot_stats = self._snapshot_blocks.stats()
-            self._snapshot_blocks = executed_blocks
-            assert not isinstance(executed_blocks, LazyBlockList), type(executed_blocks)
-            self._snapshot_bundle = RefBundle(
-                tuple(executed_blocks.iter_blocks_with_metadata()),
-                owns_blocks=executed_blocks._owned_by_consumer,
-            )
-            self._snapshot_operator = self._logical_plan.dag
-            # When force-read is enabled, we similarly update self._in_blocks.
-            if self.is_read_only():
-                self._in_blocks = self._snapshot_blocks
-        return self._snapshot_blocks
+        return self._snapshot_bundle
 
     def clear_block_refs(self) -> None:
         """Clear all cached block references of this plan, including input blocks.
@@ -673,22 +619,6 @@ class ExecutionPlan:
         """Return whether this plan has lazy input blocks."""
         return isinstance(self._in_blocks, LazyBlockList)
 
-    def needs_eager_execution(self, root_op: Optional[LogicalOperator] = None) -> bool:
-        """Return whether the LogicalPlan corresponding to `root_op`
-        should be eagerly executed. By default, the last operator of
-        the LogicalPlan is used.
-
-        This is often useful for input/read-only plans,
-        where eager execution fetches accurate metadata for the dataset
-        without executing the underlying read tasks."""
-        if root_op is None:
-            root_op = self._logical_plan.dag
-        # Since read tasks will not be scheduled until data is consumed or materialized,
-        # it is cheap to execute the plan (i.e. run the plan optimizer).
-        # In the case where the data is already in-memory (InputData,
-        # FromXXX operator), it is similarly also cheap to execute it.
-        return self.is_from_in_memory_only(root_op) or self.is_read_only(root_op)
-
     def is_read_only(self, root_op: Optional[LogicalOperator] = None) -> bool:
         """Return whether the LogicalPlan corresponding to `root_op`
         contains only a Read op. By default, the last operator of
@@ -715,8 +645,7 @@ class ExecutionPlan:
         output of this plan.
         """
         return (
-            self._snapshot_blocks is not None
-            and not self._snapshot_blocks.is_cleared()
+            self._snapshot_bundle is not None
             and self._snapshot_operator == self._logical_plan.dag
         )
 
