@@ -2843,7 +2843,7 @@ def wait(
         if isinstance(ray_waitable, CompiledDAGRef):
             raise TypeError(
                 "wait() does not support CompiledDAGRef. "
-                "Please call `get()` on the CompiledDAGRef to get the result."
+                "Please call ray.get() on the CompiledDAGRef to get the result."
             )
     worker.check_connected()
 

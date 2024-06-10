@@ -24,8 +24,14 @@ class CompiledDAGRef(ray.ObjectRef):
             f"_reader_refs={self._reader_refs})"
         )
 
+    def __copy__(self):
+        raise ValueError("CompiledDAGRef cannot be copied.")
+
+    def __deepcopy__(self, memo):
+        raise ValueError("CompiledDAGRef cannot be deep copied.")
+
     def get(self):
         if self._called:
-            raise ValueError("This CompiledDAGRef has already been called.")
+            raise ValueError("ray.get() was already called on this CompiledDAGRef.")
         self._called = True
         return self._dag._execute_until(self._execution_index)

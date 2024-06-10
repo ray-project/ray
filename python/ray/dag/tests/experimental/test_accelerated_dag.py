@@ -1,11 +1,11 @@
 # coding: utf-8
+import asyncio
+import copy
 import logging
 import os
 import random
-import re
 import sys
 import time
-import asyncio
 
 import pytest
 
@@ -412,18 +412,42 @@ def test_dag_errors(ray_start_regular):
         dag = a.inc.bind(inp)
     compiled_dag = dag.experimental_compile()
     ref = compiled_dag.execute(1)
-    expected_error = re.escape(
-        "wait() does not support CompiledDAGRef. "
-        "Please call `get()` on the CompiledDAGRef to get the result."
-    )
-    with pytest.raises(TypeError, match=expected_error):
+    with pytest.raises(
+        TypeError,
+        match=(
+            "wait\(\) does not support CompiledDAGRef. "
+            "Please call ray.get\(\) on the CompiledDAGRef to get the result."
+        ),
+    ):
         ray.wait([ref])
 
-    ref = compiled_dag.execute(1)
-    print(ref)
-    assert isinstance(ref, ray.ObjectRef)
     with pytest.raises(TypeError, match=r".*was found to be non-serializable.*"):
         ray.put([ref])
+
+    with pytest.raises(ValueError, match="CompiledDAGRef cannot be copied."):
+        copy.copy(ref)
+
+    with pytest.raises(ValueError, match="CompiledDAGRef cannot be deep copied."):
+        copy.deepcopy(ref)
+
+    with pytest.raises(
+        TypeError, match="CompiledDAGRef cannot be used as Ray task/actor argument."
+    ):
+        f.remote(ref)
+
+    with pytest.raises(
+        TypeError, match="CompiledDAGRef cannot be used as Ray task/actor argument."
+    ):
+        a2.inc.remote(ref)
+
+    result = ray.get(ref)
+    assert result == 1
+
+    with pytest.raises(
+        ValueError, match="ray.get\(\) was already called on this CompiledDAGRef."
+    ):
+        ray.get(ref)
+    compiled_dag.teardown()
 
 
 def test_dag_fault_tolerance_chain(ray_start_regular_shared):
