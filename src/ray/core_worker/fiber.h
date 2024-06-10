@@ -140,6 +140,8 @@ class FiberState {
         std::this_thread::sleep_for(std::chrono::hours(1));
       }
     });
+
+    fiber_runner_thread_.detach();
   }
 
   void EnqueueFiber(std::function<void()> &&callback) {
@@ -155,7 +157,6 @@ class FiberState {
 
   void Join() {
     fiber_stopped_event_->Wait();
-    fiber_runner_thread_.detach();
   }
 
  private:
