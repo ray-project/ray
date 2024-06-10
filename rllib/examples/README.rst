@@ -1,3 +1,8 @@
+.. |newstack| image:: images/tensorflow.png
+    :class: inline-figure
+    :width: 16
+
+
 Examples
 ========
 
@@ -148,9 +153,9 @@ Tuned Examples
 Environments and Adapters
 -------------------------
 
-- `Registering a custom env and model <https://github.com/ray-project/ray/blob/master/rllib/examples/envs/custom_gym_env.py>`__:
+- |oldstack| `Registering a custom env and model <https://github.com/ray-project/ray/blob/master/rllib/examples/envs/custom_gym_env.py>`__:
    Example of defining and registering a gym env and model for use with RLlib.
-- `Local Unity3D multi-agent environment example <https://github.com/ray-project/ray/tree/master/rllib/examples/envs/external_envs/unity3d_env_local.py>`__:
+- |oldstack| `Local Unity3D multi-agent environment example <https://github.com/ray-project/ray/tree/master/rllib/examples/envs/external_envs/unity3d_env_local.py>`__:
    Example of how to setup an RLlib Algorithm against a locally running Unity3D editor instance to
    learn any Unity3D game (including support for multi-agent).
    Use this example to try things out and watch the game and the learning progress live in the editor.
@@ -160,19 +165,19 @@ Environments and Adapters
 Custom- and Complex Models
 --------------------------
 
-- `Custom Keras model <https://github.com/ray-project/ray/blob/master/rllib/examples/_old_api_stack/custom_keras_model.py>`__:
+- |oldstack| `Custom Keras model <https://github.com/ray-project/ray/blob/master/rllib/examples/_old_api_stack/custom_keras_model.py>`__:
    Example of using a custom Keras model.
-- `Registering a custom model with supervised loss <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_model_loss_and_metrics.py>`__:
+- |oldstack| `Registering a custom model with supervised loss <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_model_loss_and_metrics.py>`__:
    Example of defining and registering a custom model with a supervised loss.
-- `Batch normalization <https://github.com/ray-project/ray/blob/master/rllib/examples/_old_api_stack/models/batch_norm_model.py>`__:
+- |oldstack| `Batch normalization <https://github.com/ray-project/ray/blob/master/rllib/examples/_old_api_stack/models/batch_norm_model.py>`__:
    Example of adding batch norm layers to a custom model.
-- `Custom model API example <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_model_api.py>`__:
+- |oldstack| `Custom model API example <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_model_api.py>`__:
    Shows how to define a custom Model API in RLlib, such that it can be used inside certain algorithms.
-- `Trajectory View API utilizing model <https://github.com/ray-project/ray/blob/master/rllib/examples/_old_api_stack/models/trajectory_view_utilizing_models.py>`__:
+- |oldstack| `Trajectory View API utilizing model <https://github.com/ray-project/ray/blob/master/rllib/examples/_old_api_stack/models/trajectory_view_utilizing_models.py>`__:
    An example on how a model can use the trajectory view API to specify its own input.
-- `MobileNetV2 wrapping example model <https://github.com/ray-project/ray/blob/master/rllib/examples/_old_api_stack/models/mobilenet_v2_with_lstm_models.py>`__:
+- |oldstack| `MobileNetV2 wrapping example model <https://github.com/ray-project/ray/blob/master/rllib/examples/_old_api_stack/models/mobilenet_v2_with_lstm_models.py>`__:
    Implementations of `tf.keras.applications.mobilenet_v2.MobileNetV2` and `torch.hub (mobilenet_v2)`-wrapping example models.
-- `Differentiable Neural Computer <https://github.com/ray-project/ray/blob/master/rllib/examples/_old_api_stack/models/neural_computer.py>`__:
+- |oldstack| `Differentiable Neural Computer <https://github.com/ray-project/ray/blob/master/rllib/examples/_old_api_stack/models/neural_computer.py>`__:
    Example of DeepMind's Differentiable Neural Computer for partially observable environments.
 
 
@@ -248,63 +253,61 @@ Multi-Agent and Hierarchical
 Special Action- and Observation Spaces
 --------------------------------------
 
-- `Nested action spaces <https://github.com/ray-project/ray/blob/master/rllib/examples/connectors/nested_action_spaces.py>`__:
-   Learning in arbitrarily nested action spaces.
-- `Parametric actions <https://github.com/ray-project/ray/blob/master/rllib/examples/_old_api_stack/parametric_actions_cartpole.py>`__:
+- |newstack| `Autoregressive action distribution example <https://github.com/ray-project/ray/blob/master/rllib/examples/rl_modules/autoregressive_actions.py>`__:
+   Learning with an auto-regressive action distribution (for example, two action components, where distribution of the second component depends on the first's actually sampled value).
+- |oldstack| `Parametric actions <https://github.com/ray-project/ray/blob/master/rllib/examples/_old_api_stack/parametric_actions_cartpole.py>`__:
    Example of how to handle variable-length or parametric action spaces.
-- `Using the "Repeated" space of RLlib for variable lengths observations <https://github.com/ray-project/ray/blob/master/rllib/examples/_old_api_stack/complex_struct_space.py>`__:
+- |oldstack| `Using the "Repeated" space of RLlib for variable lengths observations <https://github.com/ray-project/ray/blob/master/rllib/examples/_old_api_stack/complex_struct_space.py>`__:
    How to use RLlib's `Repeated` space to handle variable length observations.
-- `Autoregressive action distribution example <https://github.com/ray-project/ray/blob/master/rllib/examples/autoregressive_action_dist.py>`__:
-   Learning with auto-regressive action dependencies (for example two action components, where distribution for the second component depends on the first's actually sampled value).
 
 
 Community Examples
 ------------------
-- `Arena AI <https://sites.google.com/view/arena-unity/home>`__:
+- |oldstack| `Arena AI <https://sites.google.com/view/arena-unity/home>`__:
    A General Evaluation Platform and Building Toolkit for Single/Multi-Agent Intelligence
    with RLlib-generated baselines.
-- `CARLA <https://github.com/layssi/Carla_Ray_Rlib>`__:
+- |oldstack| `CARLA <https://github.com/layssi/Carla_Ray_Rlib>`__:
    Example of training autonomous vehicles with RLlib and `CARLA <http://carla.org/>`__ simulator.
-- `The Emergence of Adversarial Communication in Multi-Agent Reinforcement Learning <https://arxiv.org/pdf/2008.02616.pdf>`__:
+- |oldstack| `The Emergence of Adversarial Communication in Multi-Agent Reinforcement Learning <https://arxiv.org/pdf/2008.02616.pdf>`__:
    Using Graph Neural Networks and RLlib to train multiple cooperative and adversarial agents to solve the
    "cover the area"-problem, thereby learning how to best communicate (or - in the adversarial case - how to disturb communication) (`code <https://github.com/proroklab/adversarial_comms>`__).
-- `Flatland <https://flatland.aicrowd.com/intro.html>`__:
+- |oldstack| `Flatland <https://flatland.aicrowd.com/intro.html>`__:
    A dense traffic simulating environment with RLlib-generated baselines.
-- `GFootball <https://github.com/google-research/football/blob/master/gfootball/examples/run_multiagent_rllib.py>`__:
+- |oldstack| `GFootball <https://github.com/google-research/football/blob/master/gfootball/examples/run_multiagent_rllib.py>`__:
    Example of setting up a multi-agent version of `GFootball <https://github.com/google-research>`__ with RLlib.
-- `mobile-env <https://github.com/stefanbschneider/mobile-env>`__:
+- |oldstack| `mobile-env <https://github.com/stefanbschneider/mobile-env>`__:
    An open, minimalist Gymnasium environment for autonomous coordination in wireless mobile networks.
    Includes an example notebook using Ray RLlib for multi-agent RL with mobile-env.
-- `Neural MMO <https://github.com/NeuralMMO/environment>`__:
+- |oldstack| `Neural MMO <https://github.com/NeuralMMO/environment>`__:
    A multiagent AI research environment inspired by Massively Multiplayer Online (MMO) role playing games –
    self-contained worlds featuring thousands of agents per persistent macrocosm, diverse skilling systems, local and global economies, complex emergent social structures,
    and ad-hoc high-stakes single and team based conflict.
-- `NeuroCuts <https://github.com/neurocuts/neurocuts>`__:
+- |oldstack| `NeuroCuts <https://github.com/neurocuts/neurocuts>`__:
    Example of building packet classification trees using RLlib / multi-agent in a bandit-like setting.
-- `NeuroVectorizer <https://github.com/ucb-bar/NeuroVectorizer>`__:
+- |oldstack| `NeuroVectorizer <https://github.com/ucb-bar/NeuroVectorizer>`__:
    Example of learning optimal LLVM vectorization compiler pragmas for loops in C and C++ codes using RLlib.
-- `Roboschool / SageMaker <https://github.com/aws/amazon-sagemaker-examples/tree/0cd3e45f425b529bf06f6155ca71b5e4bc515b9b/reinforcement_learning/rl_roboschool_ray>`__:
+- |oldstack| `Roboschool / SageMaker <https://github.com/aws/amazon-sagemaker-examples/tree/0cd3e45f425b529bf06f6155ca71b5e4bc515b9b/reinforcement_learning/rl_roboschool_ray>`__:
    Example of training robotic control policies in SageMaker with RLlib.
-- `Sequential Social Dilemma Games <https://github.com/eugenevinitsky/sequential_social_dilemma_games>`__:
+- |oldstack| `Sequential Social Dilemma Games <https://github.com/eugenevinitsky/sequential_social_dilemma_games>`__:
    Example of using the multi-agent API to model several `social dilemma games <https://arxiv.org/abs/1702.03037>`__.
-- `Simple custom environment for single RL with Ray and RLlib <https://github.com/lcipolina/Ray_tutorials/blob/main/RLLIB_Ray2_0.ipynb>`__:
+- |oldstack| `Simple custom environment for single RL with Ray and RLlib <https://github.com/lcipolina/Ray_tutorials/blob/main/RLLIB_Ray2_0.ipynb>`__:
    Create a custom environment and train a single agent RL using Ray 2.0 with Tune.
-- `StarCraft2 <https://github.com/oxwhirl/smac>`__:
+- |oldstack| `StarCraft2 <https://github.com/oxwhirl/smac>`__:
    Example of training in StarCraft2 maps with RLlib / multi-agent.
-- `Traffic Flow <https://berkeleyflow.readthedocs.io/en/latest/flow_setup.html>`__:
+- |oldstack| `Traffic Flow <https://berkeleyflow.readthedocs.io/en/latest/flow_setup.html>`__:
    Example of optimizing mixed-autonomy traffic simulations with RLlib / multi-agent.
 
 
 Blog Posts
 ----------
 
-- `Attention Nets and More with RLlib’s Trajectory View API <https://medium.com/distributed-computing-with-ray/attention-nets-and-more-with-rllibs-trajectory-view-api-d326339a6e65>`__:
+- |oldstack| `Attention Nets and More with RLlib’s Trajectory View API <https://medium.com/distributed-computing-with-ray/attention-nets-and-more-with-rllibs-trajectory-view-api-d326339a6e65>`__:
    Blog describing RLlib's new "trajectory view API" and how it enables implementations of GTrXL (attention net) architectures.
-- `Reinforcement Learning with RLlib in the Unity Game Engine <https://medium.com/distributed-computing-with-ray/reinforcement-learning-with-rllib-in-the-unity-game-engine-1a98080a7c0d>`__:
+- |oldstack| `Reinforcement Learning with RLlib in the Unity Game Engine <https://medium.com/distributed-computing-with-ray/reinforcement-learning-with-rllib-in-the-unity-game-engine-1a98080a7c0d>`__:
    How-To guide about connecting RLlib with the Unity3D game engine for running visual- and physics-based RL experiments.
-- `Lessons from Implementing 12 Deep RL Algorithms in TF and PyTorch <https://medium.com/distributed-computing-with-ray/lessons-from-implementing-12-deep-rl-algorithms-in-tf-and-pytorch-1b412009297d>`__:
+- |oldstack| `Lessons from Implementing 12 Deep RL Algorithms in TF and PyTorch <https://medium.com/distributed-computing-with-ray/lessons-from-implementing-12-deep-rl-algorithms-in-tf-and-pytorch-1b412009297d>`__:
    Discussion on how the Ray Team ported 12 of RLlib's algorithms from TensorFlow to PyTorch and the lessons learned.
-- `Scaling Multi-Agent Reinforcement Learning <http://bair.berkeley.edu/blog/2018/12/12/rllib>`__:
+- |oldstack| `Scaling Multi-Agent Reinforcement Learning <http://bair.berkeley.edu/blog/2018/12/12/rllib>`__:
    Blog post of a brief tutorial on multi-agent RL and its design in RLlib.
-- `Functional RL with Keras and TensorFlow Eager <https://medium.com/riselab/functional-rl-with-keras-and-tensorflow-eager-7973f81d6345>`__:
+- |oldstack| `Functional RL with Keras and TensorFlow Eager <https://medium.com/riselab/functional-rl-with-keras-and-tensorflow-eager-7973f81d6345>`__:
    Exploration of a functional paradigm for implementing reinforcement learning (RL) algorithms.
