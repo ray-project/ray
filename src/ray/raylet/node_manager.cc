@@ -2029,16 +2029,20 @@ void NodeManager::HandleReleaseUnusedWorkers(rpc::ReleaseUnusedWorkersRequest re
     in_use_worker_ids.emplace(worker_id);
   }
 
-  std::vector<WorkerID> unused_worker_ids;
+  std::vector<std::shared_ptr<WorkerInterface>> unused_workers;
   for (auto &iter : leased_workers_) {
     // We need to exclude workers used by common tasks.
     // Because they are not used by GCS.
     if (!iter.second->GetActorId().IsNil() && !in_use_worker_ids.count(iter.first)) {
-      unused_worker_ids.emplace_back(iter.first);
+      unused_workers.push_back(iter.second);
     }
   }
 
-  ReleaseWorkers(unused_worker_ids);
+  for (auto &worker : unused_workers) {
+    DestroyWorker(worker,
+                  rpc::WorkerExitType::INTENDED_SYSTEM_EXIT,
+                  "Worker is no longer needed by the GCS.");
+  }
 
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }

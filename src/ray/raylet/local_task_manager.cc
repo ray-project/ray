@@ -1137,12 +1137,12 @@ void LocalTaskManager::DebugStr(std::stringstream &buffer) const {
                                          .GetTaskSpecification()
                                          .FunctionDescriptor()
                                          ->CallString();
-    buffer << "    - ("
-           << "language="
+    buffer << "    - (language="
            << rpc::Language_descriptor()->FindValueByNumber(worker->GetLanguage())->name()
            << " "
            << "actor_or_task=" << task_or_actor_name << " "
-           << "pid=" << worker->GetProcess().GetId() << "): "
+           << "pid=" << worker->GetProcess().GetId() << " "
+           << "worker_id=" << worker->WorkerId() << "): "
            << worker->GetAssignedTask()
                   .GetTaskSpecification()
                   .GetRequiredResources()

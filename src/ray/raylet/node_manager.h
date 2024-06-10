@@ -229,15 +229,12 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   }
 
  private:
+  // Removes the worker from node_manager's leased_workers_ map.
+  // Warning: this does NOT release the worker's resources, or put the leased worker
+  // back to the worker pool, or destroy the worker. The caller must handle the worker's
+  // resources well.
   void ReleaseWorker(const WorkerID &worker_id) {
     leased_workers_.erase(worker_id);
-    SetIdleIfLeaseEmpty();
-  }
-
-  void ReleaseWorkers(const std::vector<WorkerID> &worker_ids) {
-    for (auto &it : worker_ids) {
-      leased_workers_.erase(it);
-    }
     SetIdleIfLeaseEmpty();
   }
 
@@ -537,6 +534,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
                           rpc::SendReplyCallback send_reply_callback) override;
 
   /// Handle a `ReleaseUnusedWorkers` request.
+  // On GCS restart, there's a pruning effort. GCS sends raylet a list of workers it still
+  // wants (that it keeps tracks of); and the raylet destroys all other workers.
   void HandleReleaseUnusedWorkers(rpc::ReleaseUnusedWorkersRequest request,
                                   rpc::ReleaseUnusedWorkersReply *reply,
                                   rpc::SendReplyCallback send_reply_callback) override;
