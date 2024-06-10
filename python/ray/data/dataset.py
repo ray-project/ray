@@ -1799,7 +1799,6 @@ class Dataset:
 
         owned_by_consumer = self._plan.execute().owns_blocks
         datasets = [self] + list(other)
-        bls: List[BlockList] = []
         has_nonlazy = any(not ds._plan.is_read_only() for ds in datasets)
         if has_nonlazy:
             ops_to_union = []
