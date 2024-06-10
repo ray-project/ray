@@ -38,7 +38,7 @@ from ray.data.datasource.path_util import (
     _has_file_extension,
     _resolve_paths_and_filesystem,
 )
-from ray.util.annotations import Deprecated, DeveloperAPI
+from ray.util.annotations import DeveloperAPI
 
 if TYPE_CHECKING:
     import pandas as pd
