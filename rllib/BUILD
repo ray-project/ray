@@ -417,7 +417,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous", "torch_only"],
     size = "large", # bazel may complain about it being too long sometimes - large is on purpose as some frameworks take longer
     srcs = ["tuned_examples/ppo/multi_agent_pendulum_ppo.py"],
-    args = ["--as-test", "--enable-new-api-stack"]
+    args = ["--enable-new-api-stack", "--num-agents=2", "--as-test"]
 )
 
 #@OldAPIStack
