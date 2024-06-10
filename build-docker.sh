@@ -17,7 +17,7 @@ key="$1"
 case $key in
     --gpu)
     GPU="-gpu"
-    BASE_IMAGE="nvidia/cuda:11.8.0-cudnn8-devel-ubuntu20.04"
+    BASE_IMAGE="nvidia/cuda:11.8.0-cudnn8-devel-ubuntu22.04"
     ;;
     --base-image)
     # Override for the base image.
