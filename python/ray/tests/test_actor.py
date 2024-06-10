@@ -1221,9 +1221,10 @@ def test_keep_calling_get_actor(ray_start_regular_shared):
     actor = Actor.options(name="ABC").remote()
     assert ray.get(actor.hello.remote()) == "hello"
 
+    # Getting the actor by name acts as a weakref.
     for _ in range(10):
-        actor = ray.get_actor("ABC")
-        assert ray.get(actor.hello.remote()) == "hello"
+        named_actor = ray.get_actor("ABC")
+        assert ray.get(named_actor.hello.remote()) == "hello"
 
     del actor
 
