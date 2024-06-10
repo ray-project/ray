@@ -147,6 +147,7 @@ class StreamingExecutor(Executor, threading.Thread):
                     )
                     if self._outer._global_info:
                         self._outer._global_info.update(1, dag._estimated_output_blocks)
+                    print(f'outputting subdataset_idx={item.get_subdataset_index()}')
                     return item
                 # Needs to be BaseException to catch KeyboardInterrupt. Otherwise we
                 # can leave dangling progress bars by skipping shutdown.
