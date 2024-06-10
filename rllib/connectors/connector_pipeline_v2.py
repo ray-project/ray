@@ -37,7 +37,7 @@ class ConnectorPipelineV2(ConnectorV2):
         **kwargs,
     ):
         """Initializes a ConnectorPipelineV2 instance.
-        
+
         Args:
             input_observation_space: The (optional) input observation space for this
                 connector piece. This is the space coming from a previous connector
@@ -62,6 +62,7 @@ class ConnectorPipelineV2(ConnectorV2):
     @override(ConnectorV2)
     def __call__(
         self,
+        *,
         rl_module: RLModule,
         data: Any,
         episodes: List[EpisodeType],

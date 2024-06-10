@@ -2486,6 +2486,15 @@ py_test(
 
 # subdirectory: inference/
 # ....................................
+py_test(
+    name = "examples/inference/policy_inference_after_training_w_connector",
+    main = "examples/inference/policy_inference_after_training_w_connector.py",
+    tags = ["team:rllib", "exclusive", "examples"],
+    size = "medium",
+    srcs = ["examples/inference/policy_inference_after_training_w_connector.py"],
+    args = ["--enable-new-api-stack", "--stop-reward=150.0"]
+)
+
 #@OldAPIStack
 py_test(
     name = "examples/inference/policy_inference_after_training_tf",

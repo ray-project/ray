@@ -44,8 +44,43 @@ You can visualize experiment results in ~/ray_results using TensorBoard.
 Results to expect
 -----------------
 
+For the training step - depending on your `--stop-reward` setting, you should see
+something similar to this:
+
+Number of trials: 1/1 (1 TERMINATED)
++--------------------------------+------------+-----------------+--------+
+| Trial name                     | status     | loc             |   iter |
+|                                |            |                 |        |
+|--------------------------------+------------+-----------------+--------+
+| PPO_stateless-cart_cc890_00000 | TERMINATED | 127.0.0.1:72238 |      7 |
++--------------------------------+------------+-----------------+--------+
++------------------+------------------------+------------------------+
+|   total time (s) |   num_env_steps_sample |   num_env_steps_traine |
+|                  |             d_lifetime |             d_lifetime |
++------------------+------------------------+------------------------+
+|          31.9655 |                  28000 |                  28000 |
++------------------+------------------------+------------------------+
+
+Then, after restoring the RLModule for the inference phase, your output should
+look similar to:
+
+Training completed. Creating an env-loop for inference ...
+Env ...
+Env-to-module ConnectorV2 ...
+RLModule restored ...
+Module-to-env ConnectorV2 ...
+Episode done: Total reward = 103.0
+Episode done: Total reward = 90.0
+Episode done: Total reward = 100.0
+Episode done: Total reward = 111.0
+Episode done: Total reward = 85.0
+Episode done: Total reward = 90.0
+Episode done: Total reward = 100.0
+Episode done: Total reward = 102.0
+Episode done: Total reward = 97.0
+Episode done: Total reward = 81.0
+Done performing action inference through 10 Episodes
 """
-import numpy as np
 import os
 
 from ray.rllib.connectors.env_to_module import (
@@ -61,7 +96,6 @@ from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 from ray.rllib.examples.envs.classes.stateless_cartpole import StatelessCartPole
 from ray.rllib.utils.framework import try_import_torch
-from ray.rllib.utils.numpy import convert_to_numpy, softmax
 from ray.rllib.utils.metrics import (
     ENV_RUNNER_RESULTS,
     EPISODE_RETURN_MEAN,
@@ -110,6 +144,11 @@ if __name__ == "__main__":
     base_config = (
         get_trainable_cls(args.algo)
         .get_default_config()
+        .training(
+            num_sgd_iter=6,
+            lr=0.0003,
+            vf_loss_coeff=0.01,
+        )
         # Add an LSTM setup to the default RLModule used.
         .rl_module(model_config_dict={"use_lstm": True})
     )
@@ -172,10 +211,12 @@ if __name__ == "__main__":
     )
 
     while num_episodes < args.num_episodes_during_inference:
+        shared_data = {}
         input_dict = env_to_module(
-            episodes=[episode],
+            episodes=[episode],  # ConnectorV2 pipelines operate on lists of episodes.
             rl_module=rl_module,
             explore=args.explore_during_inference,
+            shared_data=shared_data,
         )
         # No exploration.
         if not args.explore_during_inference:
@@ -186,15 +227,24 @@ if __name__ == "__main__":
 
         to_env = module_to_env(
             data=rl_module_out,
-            episodes=[episode],
+            episodes=[episode],  # ConnectorV2 pipelines operate on lists of episodes.
             rl_module=rl_module,
             explore=args.explore_during_inference,
+            shared_data=shared_data,
         )
-        # Send the computed action `a` to the env.
-        action = to_env[Columns.ACTIONS]
+        # Send the computed action to the env. Note that the RLModule and the
+        # connector pipelines work on batched data (B=1 in this case), whereas the Env
+        # is not vectorized here, so we need to use `action[0]`.
+        action = to_env.pop(Columns.ACTIONS)[0]
         obs, reward, terminated, truncated, _ = env.step(action)
         episode.add_env_step(
-            obs, action, reward, terminated=terminated, truncated=truncated
+            obs,
+            action,
+            reward,
+            terminated=terminated,
+            truncated=truncated,
+            # Same here: [0] b/c RLModule output is batched (w/ B=1).
+            extra_model_outputs={k: v[0] for k, v in to_env.items()},
         )
 
         # Is the episode `done`? -> Reset.
