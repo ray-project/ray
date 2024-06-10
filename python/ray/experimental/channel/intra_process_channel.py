@@ -46,7 +46,7 @@ class IntraProcessChannel(ChannelInterface):
         return IntraProcessChannel, (
             self._actor_handle,
             self._num_readers,
-            self._channel_id
+            self._channel_id,
         )
 
     def write(self, value: Any):
