@@ -9,6 +9,7 @@ import pytest
 
 from ray._private.test_utils import async_wait_for_condition
 from ray._private.utils import get_or_create_event_loop
+from ray.serve._private.autoscaling_state import HandleMetricReport
 from ray.serve._private.common import (
     DeploymentHandleSource,
     DeploymentID,
@@ -727,13 +728,15 @@ class TestRouterMetricsManager:
             # Check metrics are pushed correctly
             metrics_manager.push_autoscaling_metrics_to_controller()
             mock_controller_handle.record_handle_metrics.remote.assert_called_with(
-                deployment_id=deployment_id,
-                handle_id=handle_id,
-                actor_id=self_actor_id,
-                handle_source=DeploymentHandleSource.PROXY,
-                queued_requests=n,
-                running_requests=running_requests,
-                send_timestamp=start,
+                HandleMetricReport(
+                    deployment_id=deployment_id,
+                    handle_id=handle_id,
+                    actor_id=self_actor_id,
+                    handle_source=DeploymentHandleSource.PROXY,
+                    queued_requests=n,
+                    running_requests=running_requests,
+                    timestamp=start,
+                )
             )
 
     @pytest.mark.skipif(

@@ -2,14 +2,16 @@ import asyncio
 import logging
 import threading
 import time
+import weakref
 from collections import defaultdict
 from contextlib import contextmanager
-from functools import partial
+from functools import lru_cache, partial
 from typing import Any, DefaultDict, Dict, List, Optional, Tuple, Union
 
 import ray
 from ray.actor import ActorHandle
 from ray.dag.py_obj_scanner import _PyObjScanner
+from ray.serve._private.autoscaling_state import HandleMetricReport
 from ray.serve._private.common import (
     DeploymentHandleSource,
     DeploymentID,
@@ -201,10 +203,17 @@ class RouterMetricsManager:
                     ),
                 )
                 # Push metrics to the controller periodically.
-                self.metrics_pusher.register_or_update_task(
-                    self.PUSH_METRICS_TO_CONTROLLER_TASK_NAME,
-                    self.push_autoscaling_metrics_to_controller,
-                    autoscaling_config.metrics_interval_s,
+                # self.metrics_pusher.register_or_update_task(
+                #     self.PUSH_METRICS_TO_CONTROLLER_TASK_NAME,
+                #     self.push_autoscaling_metrics_to_controller,
+                #     autoscaling_config.metrics_interval_s,
+                # )
+                shared = SharedHandleMetricsPusher.get_or_create(
+                    self._controller_handle
+                )
+                shared.register(self)
+                logger.info(
+                    f"Registered {self._handle_id} with shared metrics pusher {shared}."
                 )
             else:
                 self.metrics_pusher.register_or_update_task(
@@ -249,20 +258,23 @@ class RouterMetricsManager:
             and self.num_queued_requests > 0
         )
 
-    def push_autoscaling_metrics_to_controller(self):
-        """Pushes queued and running request metrics to the controller.
-
-        These metrics are used by the controller for autoscaling.
-        """
-
-        self._controller_handle.record_handle_metrics.remote(
-            send_timestamp=time.time(),
+    def metrics_report(self) -> HandleMetricReport:
+        return HandleMetricReport(
+            timestamp=time.time(),
             deployment_id=self._deployment_id,
             handle_id=self._handle_id,
             actor_id=self._self_actor_id,
             handle_source=self._handle_source,
             **self._get_aggregated_requests(),
         )
+
+    def push_autoscaling_metrics_to_controller(self):
+        """Pushes queued and running request metrics to the controller.
+
+        These metrics are used by the controller for autoscaling.
+        """
+
+        self._controller_handle.record_handle_metrics.remote(self.metrics_report())
 
     def _add_autoscaling_metrics_point(self):
         """Adds metrics point for queued and running requests at replicas.
@@ -284,7 +296,7 @@ class RouterMetricsManager:
         self.metrics_store.prune_keys_and_compact_data(start_timestamp)
 
     def _get_aggregated_requests(self):
-        running_requests = dict()
+        running_requests = {}
         if RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE and self.autoscaling_config:
             look_back_period = self.autoscaling_config.look_back_period_s
             running_requests = {
@@ -307,6 +319,45 @@ class RouterMetricsManager:
 
         if self.metrics_pusher:
             await self.metrics_pusher.graceful_shutdown()
+
+
+class SharedHandleMetricsPusher:
+    def __init__(self, controller_handle: ActorHandle):
+        self._controller_handler = controller_handle
+
+        self._metrics_pusher = MetricsPusher()
+        self._router_metrics_managers: weakref.WeakSet[
+            RouterMetricsManager
+        ] = weakref.WeakSet()
+
+    @classmethod
+    @lru_cache(maxsize=None)
+    def get_or_create(
+        cls, controller_handle: ActorHandle
+    ) -> "SharedHandleMetricsPusher":
+        pusher = cls(controller_handle=controller_handle)
+        pusher.start()
+        logger.info(f"Started {pusher}.")
+        return pusher
+
+    def register(self, router_metrics_manager: RouterMetricsManager) -> None:
+        self._router_metrics_managers.add(router_metrics_manager)
+
+    def start(self) -> None:
+        self._metrics_pusher.start()
+
+        self._metrics_pusher.register_or_update_task(
+            "push_metrics_to_controller",
+            self.push_metrics,
+            HANDLE_METRIC_PUSH_INTERVAL_S,
+        )
+
+    def push_metrics(self) -> None:
+        # TODO: gathering reports could block the event loop for a long time
+        logger.info("Pushing handle metrics to controller")
+        self._controller_handler.bulk_record_handle_metrics.remote(
+            [m.metrics_report() for m in self._router_metrics_managers]
+        )
 
 
 class Router:
