@@ -322,8 +322,12 @@ TEST_F(ActorManagerTest, RegisterActorHandles) {
   // Sinece RegisterActor happens in a non-owner worker, we should
   // make sure it borrows an object.
   EXPECT_CALL(*reference_counter_, AddBorrowedObject(_, _, _, _));
-  ActorID returned_actor_id = actor_manager_->RegisterActorHandle(
-      std::move(actor_handle), outer_object_id, call_site, caller_address);
+  EXPECT_CALL(*reference_counter_, AddLocalReference(_, _));
+  ActorID returned_actor_id = actor_manager_->RegisterActorHandle(std::move(actor_handle),
+                                                                  outer_object_id,
+                                                                  call_site,
+                                                                  caller_address,
+                                                                  /*add_local_ref=*/true);
   ASSERT_TRUE(returned_actor_id == actor_id);
   // Let's try to get the handle and make sure it works.
   const std::shared_ptr<ActorHandle> actor_handle_to_get =
