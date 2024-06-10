@@ -91,12 +91,11 @@ class Datasource:
         read_tasks = self.get_read_tasks(1)
         assert len(read_tasks) > 0, "Datasource must return at least one read task"
         # `get_read_tasks` isn't guaranteed to return exactly one read task.
-        metadata = (read_task.get_metadata() for read_task in read_tasks)
-
-        if all(meta.num_rows is None for meta in metadata):
-            return None
-        else:
+        metadata = [read_task.get_metadata() for read_task in read_tasks]
+        if all(meta.num_rows is not None for meta in metadata):
             return sum(meta.num_rows for meta in metadata)
+        else:
+            return None
 
     def schema(self) -> Optional[Union[type, "pyarrow.lib.Schema"]]:
         """Return the schema of the datasource, or ``None`` if unknown."""
@@ -107,7 +106,7 @@ class Datasource:
         read_tasks = self.get_read_tasks(1)
         assert len(read_tasks) > 0, "Datasource must return at least one read task"
         # `get_read_tasks` isn't guaranteed to return exactly one read task.
-        metadata = (read_task.get_metadata() for read_task in read_tasks)
+        metadata = [read_task.get_metadata() for read_task in read_tasks]
         return unify_block_metadata_schema(metadata)
 
 

@@ -30,13 +30,13 @@ class InputData(LogicalOperator):
         if self.input_data is None:
             return None
 
-        metadata = [m for bundle in self._input_data for m in bundle.metadata]
+        metadata = [m for bundle in self.input_data for m in bundle.metadata]
         return unify_block_metadata_schema(metadata)
 
     def num_rows(self):
         if self.input_data is None:
             return None
-        elif all(bundle.num_rows() is not None for bundle in self._input_data):
-            return sum(bundle.num_rows() for bundle in self._input_data)
+        elif all(bundle.num_rows() is not None for bundle in self.input_data):
+            return sum(bundle.num_rows() for bundle in self.input_data)
         else:
             return None

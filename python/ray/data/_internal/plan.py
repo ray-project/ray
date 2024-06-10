@@ -1,5 +1,4 @@
 import copy
-import functools
 import itertools
 import logging
 from typing import TYPE_CHECKING, Iterator, Optional, Tuple, Type, Union
@@ -83,6 +82,8 @@ class ExecutionPlan:
         self._snapshot_stats = None
         self._snapshot_bundle = None
 
+        # Cached schema.
+        self._schema = None
         # Set when a Dataset is constructed with this plan
         self._dataset_uuid = None
 
@@ -167,7 +168,9 @@ class ExecutionPlan:
                 # (e.g. number of blocks may change based on parallelism).
                 self.execute()
             if self._snapshot_blocks is not None:
-                schema = self.schema(fetch_if_missing=False)
+                schema = self._get_unified_blocks_schema(
+                    self._snapshot_blocks, fetch_if_missing=False
+                )
                 dataset_blocks = self._snapshot_blocks
             else:
                 assert self._in_blocks is not None
@@ -339,7 +342,6 @@ class ExecutionPlan:
         fully executing the dataset."""
         return self._logical_plan.dag.estimated_num_outputs()
 
-    @functools.cache
     def schema(
         self, fetch_if_missing: bool = False
     ) -> Union[type, "pyarrow.lib.Schema"]:
@@ -353,6 +355,9 @@ class ExecutionPlan:
         Returns:
             The schema of the output dataset.
         """
+        if self._schema is not None:
+            return self._schema
+
         schema = None
         if (
             self._snapshot_bundle is not None
@@ -376,7 +381,8 @@ class ExecutionPlan:
             _, metadata = next(iter(blocks_with_metadata))
             schema = metadata.schema
 
-        return schema
+        self._schema = schema
+        return self._schema
 
     def _get_unified_blocks_schema(
         self, blocks: BlockList, fetch_if_missing: bool = False

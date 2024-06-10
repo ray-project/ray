@@ -2603,7 +2603,7 @@ class Dataset:
             The :class:`ray.data.Schema` class of the records, or None if the
             schema is not known and fetch_if_missing is False.
         """
-        base_schema = self.limit(1)._plan.schema(fetch_if_missing=fetch_if_missing)
+        base_schema = self._plan.schema(fetch_if_missing=fetch_if_missing)
         if base_schema is not None:
             schema = Schema(base_schema)
         else:
