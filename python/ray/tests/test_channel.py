@@ -555,12 +555,12 @@ def test_intra_process_channel(ray_start_cluster):
     sys.platform != "linux" and sys.platform != "darwin",
     reason="Requires Linux or Mac.",
 )
-def test_multi_channel_single_reader(ray_start_cluster):
+def test_composite_channel_single_reader(ray_start_cluster):
     """
-    (1) The driver can write data to MultiChannel and an actor can read it.
-    (2) An actor can write data to MultiChannel and the actor itself can read it.
-    (3) An actor can write data to MultiChannel and another actor can read it.
-    (4) An actor can write data to MultiChannel and the driver can read it.
+    (1) The driver can write data to CompositeChannel and an actor can read it.
+    (2) An actor can write data to CompositeChannel and the actor itself can read it.
+    (3) An actor can write data to CompositeChannel and another actor can read it.
+    (4) An actor can write data to CompositeChannel and the driver can read it.
     """
     # This node is for both the driver and the Reader actors.
     cluster = ray_start_cluster
@@ -576,7 +576,7 @@ def test_multi_channel_single_reader(ray_start_cluster):
             self._chan = channel
 
         def create_multi_channel(self, writer, readers):
-            self._chan = ray_channel.MultiChannel(writer, readers)
+            self._chan = ray_channel.CompositeChannel(writer, readers)
             return self._chan
 
         def read(self):
@@ -589,7 +589,7 @@ def test_multi_channel_single_reader(ray_start_cluster):
     actor2 = Actor.remote()
 
     # Create a channel to communicate between driver process and actor1.
-    driver_to_actor1_channel = ray_channel.MultiChannel(None, [actor1])
+    driver_to_actor1_channel = ray_channel.CompositeChannel(None, [actor1])
     ray.get(actor1.pass_channel.remote(driver_to_actor1_channel))
     driver_to_actor1_channel.write("hello")
     assert ray.get(actor1.read.remote()) == "hello"
@@ -619,14 +619,14 @@ def test_multi_channel_single_reader(ray_start_cluster):
     sys.platform != "linux" and sys.platform != "darwin",
     reason="Requires Linux or Mac.",
 )
-def test_multi_channel_multiple_readers(ray_start_cluster):
+def test_composite_channel_multiple_readers(ray_start_cluster):
     """
-    Test the behavior of MultiChannel when there are multiple readers.
+    Test the behavior of CompositeChannel when there are multiple readers.
 
-    (1) The driver can write data to MultiChannel and two actors can read it.
-    (2) An actor can write data to MultiChannel and another actor, as well as
+    (1) The driver can write data to CompositeChannel and two actors can read it.
+    (2) An actor can write data to CompositeChannel and another actor, as well as
         itself, can read it.
-    (3) An actor can write data to MultiChannel and two Ray tasks on the same
+    (3) An actor can write data to CompositeChannel and two Ray tasks on the same
         actor can read it.
     """
     # This node is for both the driver and the Reader actors.
@@ -643,7 +643,7 @@ def test_multi_channel_multiple_readers(ray_start_cluster):
             self._chan = channel
 
         def create_multi_channel(self, writer, readers):
-            self._chan = ray_channel.MultiChannel(writer, readers)
+            self._chan = ray_channel.CompositeChannel(writer, readers)
             return self._chan
 
         def read(self):
@@ -658,14 +658,14 @@ def test_multi_channel_multiple_readers(ray_start_cluster):
     actor1 = Actor.remote()
     actor2 = Actor.remote()
 
-    # The driver writes data to MultiChannel and actor1 and actor2 read it.
-    driver_output_channel = ray_channel.MultiChannel(None, [actor1, actor2])
+    # The driver writes data to CompositeChannel and actor1 and actor2 read it.
+    driver_output_channel = ray_channel.CompositeChannel(None, [actor1, actor2])
     ray.get(actor1.pass_channel.remote(driver_output_channel))
     ray.get(actor2.pass_channel.remote(driver_output_channel))
     driver_output_channel.write("hello")
     assert ray.get([actor1.read.remote(), actor2.read.remote()]) == ["hello"] * 2
 
-    # actor1 writes data to MultiChannel and actor1 and actor2 read it.
+    # actor1 writes data to CompositeChannel and actor1 and actor2 read it.
     actor1_output_channel = ray.get(
         actor1.create_multi_channel.remote(actor1, [actor1, actor2])
     )
@@ -673,7 +673,7 @@ def test_multi_channel_multiple_readers(ray_start_cluster):
     ray.get(actor1.write.remote("world"))
     assert ray.get([actor1.read.remote(), actor2.read.remote()]) == ["world"] * 2
 
-    # actor1 writes data to MultiChannel and two Ray tasks on actor1 read it.
+    # actor1 writes data to CompositeChannel and two Ray tasks on actor1 read it.
     actor1_output_channel = ray.get(
         actor1.create_multi_channel.remote(actor1, [actor1, actor1])
     )
@@ -682,8 +682,8 @@ def test_multi_channel_multiple_readers(ray_start_cluster):
 
     """
     TODO (kevin85421): Add tests for the following cases:
-    (1) actor1 writes data to MultiChannel and two Ray tasks on actor2 read it.
-    (2) actor1 writes data to MultiChannel and actor2 and the driver reads it.
+    (1) actor1 writes data to CompositeChannel and two Ray tasks on actor2 read it.
+    (2) actor1 writes data to CompositeChannel and actor2 and the driver reads it.
     Currently, (1) is not supported, and (2) is blocked by the reference count issue.
     """
 

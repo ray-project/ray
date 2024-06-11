@@ -155,7 +155,7 @@ class SharedMemoryType(ChannelOutputType):
                     cpu_data_typ=cpu_data_typ,
                 )
 
-        return MultiChannel(writer, readers)
+        return CompositeChannel(writer, readers)
 
     def set_nccl_group_id(self, group_id: str) -> None:
         assert self.requires_nccl()
@@ -461,7 +461,7 @@ class Channel(ChannelInterface):
 
 
 @PublicAPI(stability="alpha")
-class MultiChannel(ChannelInterface):
+class CompositeChannel(ChannelInterface):
     """
     Can be used to send data to different readers via different channels.
     For example, if the reader is in the same worker process as the writer,
@@ -487,7 +487,7 @@ class MultiChannel(ChannelInterface):
         self._reader_registered = False
         # A dictionary that maps the actor ID to the channel object.
         self._channel_dict = _channel_dict or {}
-        # A set of channel objects. The set is a deduplicated version of _channel_dict.
+        # The set of channels is a deduplicated version of the _channel_dict values.
         self._channels = _channels or set()
         # TODO (kevin85421): Currently, the out-of-band actor handle is not well
         # supported for reference counting. Here, we store the actor handle in
@@ -495,7 +495,7 @@ class MultiChannel(ChannelInterface):
         # as a workaround. We should fix this issue in the future.
         self._self_actor = _get_self_actor()
         if self._channels:
-            # This MultiChannel object is created by deserialization.
+            # This CompositeChannel object is created by deserialization.
             # We don't need to create channels again.
             return
 
@@ -540,7 +540,7 @@ class MultiChannel(ChannelInterface):
         self._reader_registered = True
 
     def __reduce__(self):
-        return MultiChannel, (
+        return CompositeChannel, (
             self._writer,
             self._readers,
             self._channel_dict,

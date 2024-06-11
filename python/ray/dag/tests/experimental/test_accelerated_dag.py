@@ -646,8 +646,8 @@ def test_asyncio_exceptions(ray_start_regular_shared, max_queue_size):
     compiled_dag.teardown()
 
 
-class TestMultiChannel:
-    def test_multi_channel_one_actor(self, ray_start_regular_shared):
+class TestCompositeChannel:
+    def test_composite_channel_one_actor(self, ray_start_regular_shared):
         """
         In this test, there are three 'inc' tasks on the same Ray actor, chained
         together. Therefore, the DAG will look like this:
@@ -659,9 +659,9 @@ class TestMultiChannel:
         tasks will be conducted through local channels, i.e., IntraProcessChannel in
         this case.
 
-        To elaborate, all output channels of the actor DAG nodes will be MultiChannel,
-        and the first two will have a local channel, while the last one will have a
-        remote channel.
+        To elaborate, all output channels of the actor DAG nodes will be
+        CompositeChannel, and the first two will have a local channel, while the last
+        one will have a remote channel.
         """
         a = Actor.remote(0)
         with InputNode() as inp:
@@ -687,7 +687,7 @@ class TestMultiChannel:
 
         compiled_dag.teardown()
 
-    def test_multi_channel_two_actors(self, ray_start_regular_shared):
+    def test_composite_channel_two_actors(self, ray_start_regular_shared):
         """
         In this test, there are three 'inc' tasks on the two Ray actors, chained
         together. Therefore, the DAG will look like this:
@@ -727,13 +727,13 @@ class TestMultiChannel:
 
         compiled_dag.teardown()
 
-    def test_multi_channel_multi_output(self, ray_start_regular_shared):
+    def test_composite_channel_multi_output(self, ray_start_regular_shared):
         """
         Driver -> a.inc -> a.inc ---> Driver
                         |         |
                         -> b.inc -
 
-        All communication in this DAG will be done through MultiChannel.
+        All communication in this DAG will be done through CompositeChannel.
         Under the hood, the communication between two `a.inc` tasks will
         be done through a local channel, i.e., IntraProcessChannel in this
         case, while the communication between `a.inc` and `b.inc` will be
