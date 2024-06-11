@@ -484,9 +484,6 @@ class ExecutionPlan:
                 self._snapshot_bundle = self._logical_plan.dag.output_data()
                 assert stats is not None
             else:
-                from ray.data._internal.execution.legacy_compat import (
-                    execute_to_legacy_block_list,
-                )
                 from ray.data._internal.execution.streaming_executor import (
                     StreamingExecutor,
                 )
