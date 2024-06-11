@@ -21,7 +21,10 @@ async def anyscaled_service(pull_delay_s: int = 0):
 
     @routes.post("/pull_image")
     async def pull_image(req) -> web.Response:
-        request_ctx.update(await req.json())
+        req_json = await req.json()
+        print("Received pull_image request with", req_json)
+
+        request_ctx.update(req_json)
 
         await asyncio.sleep(pull_delay_s)
         return web.Response(text="hi")
@@ -29,6 +32,8 @@ async def anyscaled_service(pull_delay_s: int = 0):
     @routes.post("/execute_ray_worker")
     async def execute_ray_worker(req) -> web.Response:
         req_json = await req.json()
+        print("Received execute_ray_worker request with", req_json)
+
         assert request_ctx["image_uri"] == req_json["image_uri"]
         request_ctx.update(await req.json())
 
@@ -83,7 +88,37 @@ async def test_basic():
 
 
 @pytest.mark.asyncio
+async def test_user_env_var():
+    """Test that user provided environment variables are passed to the worker."""
+
+    if ray.is_initialized():
+        ray.shutdown()
+
+    request_ctx, runner = await anyscaled_service()
+
+    image_uri = f"docker.io/rayproject/ray:{get_random_string()}"
+
+    @ray.remote(
+        runtime_env={"image_uri": image_uri, "env_vars": {"TEST_ABC": "hello world"}}
+    )
+    def f():
+        print("Calling task f()!")
+        return "Hello world"
+
+    assert request_ctx == {}
+    ref = f.remote()
+
+    assert await ref == "Hello world"
+    assert request_ctx["image_uri"] == image_uri
+    assert request_ctx["envs"].get("TEST_ABC") == "hello world"
+
+    await runner.cleanup()
+
+
+@pytest.mark.asyncio
 async def test_ray_env_var():
+    """Test that RAY-prefixed environment variables are passed to the worker."""
+
     if ray.is_initialized():
         ray.shutdown()
 

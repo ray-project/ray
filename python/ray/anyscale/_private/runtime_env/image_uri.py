@@ -55,10 +55,14 @@ class AnyscaleImageURIPlugin(RuntimeEnvPlugin):
         if not runtime_env.image_uri():
             return
 
+        env_var_names = " ".join(runtime_env.env_vars().keys())
         shim_command = [
             sys.executable,
             "-m",
             "ray.anyscale._private.runtime_env.ray_worker_shim",
             f"--ray-worker-image-uri={runtime_env['image_uri']}",
         ]
+        if env_var_names:
+            shim_command.insert(3, f"--env-var-names {env_var_names}")
+
         context.py_executable = " ".join(shim_command)

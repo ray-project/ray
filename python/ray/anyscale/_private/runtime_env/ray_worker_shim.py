@@ -33,13 +33,16 @@ from ray.anyscale._private.constants import ANYSCALE_DATAPLANE_SERVICE_SOCKET
 async def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--ray-worker-image-uri")
+    parser.add_argument("--env-var-names", nargs="*", type=str, default=[])
     known_args, passthrough_args = parser.parse_known_args()
 
     # Pass environment variables
     env_vars = {
         name: value
         for name, value in os.environ.items()
-        if name.startswith("RAY_") or name.startswith("ANYSCALE_")
+        if name.startswith("RAY_")
+        or name.startswith("ANYSCALE_")
+        or name in known_args.env_var_names
     }
     data = {
         "image_uri": known_args.ray_worker_image_uri,
