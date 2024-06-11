@@ -372,11 +372,6 @@ class PhysicalOperator(Operator):
         """
         return 0
 
-    def all_queue_size(self) -> int:
-        """ this should include all queued refBundles and the processings
-        """
-        return self.internal_queue_size()
-
     def shutdown(self) -> None:
         """Abort execution and release all resources used by this operator.
 

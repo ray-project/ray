@@ -84,9 +84,6 @@ class TaskPoolMapOperator(MapOperator):
                 pass
         super().shutdown()
 
-    def all_queue_size(self) -> int:
-        return self.internal_queue_size() + self._block_ref_bundler._bundle_buffer_size
-
     def progress_str(self) -> str:
         return ""
 

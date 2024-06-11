@@ -274,9 +274,6 @@ class OpState:
         """Return the number of bundles currently in processing for this operator."""
         return self.op.num_active_tasks() + self.op.internal_queue_size()
 
-    def num_processing_including_buffer(self):
-        return self.op.num_active_tasks() + self.op.all_queue_size()
-
     def add_output(self, ref: RefBundle) -> None:
         """Move a bundle produced by the operator to its outqueue."""
         self.outqueue.append(ref)
