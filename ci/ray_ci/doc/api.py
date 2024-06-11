@@ -85,10 +85,31 @@ class API:
         doc = doc.strip()
         if not doc.startswith(_SPHINX_AUTOCLASS_HEADER):
             return None
-        api_name = doc[len(_SPHINX_AUTOCLASS_HEADER) :].strip()
+        cls = doc[len(_SPHINX_AUTOCLASS_HEADER) :].strip().removeprefix("~")
+        api_name = f"{current_module}.{cls}" if current_module else cls
 
         return API(
             name=API._fullname(api_name),
             annotation_type=AnnotationType.PUBLIC_API,
             code_type=CodeType.CLASS,
         )
+
+    @staticmethod
+    def _fullname(name: str) -> str:
+        """
+        Some APIs have aliases declared in __init__.py file (see ray/data/__init__.py
+        for example). This method converts the alias to full name. This is to make sure
+        out analysis can be performed on the same set of canonial names.
+        """
+        tokens = name.split(".")
+        attribute = importlib.import_module(tokens[0])
+        for token in tokens[1:]:
+            if not hasattr(attribute, token):
+                # return as it is if the name seems malformed
+                return name
+            attribute = getattr(attribute, token)
+
+        if hasattr(attribute, "__module__") and hasattr(attribute, "__qualname__"):
+            return f"{attribute.__module__}.{attribute.__qualname__}"
+
+        return name

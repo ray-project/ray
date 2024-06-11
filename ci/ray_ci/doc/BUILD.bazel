@@ -15,7 +15,7 @@ py_library(
             "__init__.py",
             "test_*.py",
             "cmd_*.py",
-            "mock/*.py",
+            "__init__.py",
         ],
     ),
     visibility = ["//ci/ray_ci/doc:__subpackages__"],

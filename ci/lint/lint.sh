@@ -65,7 +65,7 @@ api_discrepancy() {
   # shellcheck disable=SC2102
   RAY_DISABLE_EXTRA_CPP=1 pip install -e python/[all]
   # TODO(can): run this check with other ray packages
-  bazel run //ci/ray_ci/doc:cmd_check_api_discrepancy -- ray.data
+  bazel run //ci/ray_ci/doc:cmd_check_api_discrepancy -- ray.data ray.data.grouped_data /ray/doc/source/data/api/api.rst
 }
 
 documentation_style() {
