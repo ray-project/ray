@@ -1,4 +1,5 @@
 import re
+import importlib
 
 from enum import Enum
 from dataclasses import dataclass
@@ -27,6 +28,7 @@ class API:
     annotation_type: AnnotationType
     code_type: CodeType
 
+    @staticmethod
     def from_autosummary(doc: str, current_module: Optional[str] = None) -> List["API"]:
         """
         Parse API from the following autosummary sphinx block.
@@ -64,7 +66,7 @@ class API:
             )
             apis.append(
                 API(
-                    name=api_name,
+                    name=API._fullname(api_name),
                     annotation_type=AnnotationType.PUBLIC_API,
                     code_type=CodeType.FUNCTION,
                 )
@@ -72,6 +74,7 @@ class API:
 
         return apis
 
+    @staticmethod
     def from_autoclass(
         doc: str, current_module: Optional[str] = None
     ) -> Optional["API"]:
@@ -83,10 +86,28 @@ class API:
         doc = doc.strip()
         if not doc.startswith(_SPHINX_AUTOCLASS_HEADER):
             return None
-        api_name = doc[len(_SPHINX_AUTOCLASS_HEADER) :].strip()
+        cls = doc[len(_SPHINX_AUTOCLASS_HEADER) :].strip()
+        api_name = f"{current_module}.{cls}" if current_module else cls
 
         return API(
-            name=f"{current_module}.{api_name}" if current_module else api_name,
+            name=API._fullname(api_name),
             annotation_type=AnnotationType.PUBLIC_API,
             code_type=CodeType.CLASS,
         )
+
+    @staticmethod
+    def _fullname(name: str) -> str:
+        """
+        Some APIs have aliases declared in __init__.py file (see ray/data/__init__.py
+        for example). This method converts the alias to full name. This is to make sure
+        out analysis can be performed on the same set of canonial names.
+        """
+        tokens = name.split(".")
+        attribute = importlib.import_module(tokens[0])
+        for token in tokens[1:]:
+            if not hasattr(attribute, token):
+                # return as it is if the name seems malformed
+                return name
+            attribute = getattr(attribute, token)
+
+        return f"{attribute.__module__}.{attribute.__qualname__}"
