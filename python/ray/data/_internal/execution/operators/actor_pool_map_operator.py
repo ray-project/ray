@@ -97,6 +97,9 @@ class ActorPoolMapOperator(MapOperator):
     def internal_queue_size(self) -> int:
         return len(self._bundle_queue)
 
+    def all_queue_size(self) -> int:
+        return self.internal_queue_size() + self._block_ref_bundler._bundle_buffer_size
+
     def start(self, options: ExecutionOptions):
         self._actor_locality_enabled = options.actor_locality_enabled
         super().start(options)

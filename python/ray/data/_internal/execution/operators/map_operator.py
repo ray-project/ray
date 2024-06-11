@@ -507,13 +507,16 @@ def _merge_ref_bundles(*bundles: RefBundle) -> RefBundle:
     """Merge N ref bundles into a single bundle of multiple blocks."""
     # Check that at least one bundle is non-null.
     assert any(bundle is not None for bundle in bundles)
+    subdataset_index = bundles[0].get_subdataset_index()
+    assert all(bundle.get_subdataset_index() == subdataset_index for bundle in bundles)
+
     blocks = list(
         itertools.chain(
             block for bundle in bundles if bundle is not None for block in bundle.blocks
         )
     )
     owns_blocks = all(bundle.owns_blocks for bundle in bundles if bundle is not None)
-    return RefBundle(blocks, owns_blocks)
+    return RefBundle(blocks, owns_blocks, subdataset_index=subdataset_index)
 
 
 class _OutputQueue(ABC):

@@ -136,7 +136,7 @@ class OpBufferQueue:
 
     def next_ref_dataset_index(self) -> int:
         assert self.has_next()
-        return self._queue[0].get_subdataset_index
+        return self._queue[0].get_subdataset_index()
 
     def has_next(self, output_split_idx: Optional[int] = None) -> bool:
         """Whether next RefBundle is available.
@@ -265,7 +265,7 @@ class OpState:
         1. The operator has no ongoing tasks
         2. The operator has ongoing tasks and the inqueue has Refs with the same dataset-index
         """
-        if self.num_processing() == 0:
+        if self.num_processing_including_buffer() == 0:
             return True
         
         for inqueue in self.inqueues:
@@ -288,6 +288,9 @@ class OpState:
     def num_processing(self):
         """Return the number of bundles currently in processing for this operator."""
         return self.op.num_active_tasks() + self.op.internal_queue_size()
+
+    def num_processing_including_buffer(self):
+        return self.op.num_active_tasks() + self.op.all_queue_size()
 
     def add_output(self, ref: RefBundle) -> None:
         """Move a bundle produced by the operator to its outqueue."""
@@ -326,12 +329,12 @@ class OpState:
                     return
             elif inqueue.has_next() and inqueue.next_ref_dataset_index() == self.cur_subdataset_index + 1:
                 has_next_subdataset_index = True
-            assert has_next_subdataset_index, "Nothing to dispatch"
+        assert has_next_subdataset_index, "Nothing to dispatch"
 
         self.cur_subdataset_index += 1
 
         for i, inqueue in enumerate(self.inqueues):
-            if inqueue.has_next() and inqueue.next_ref_dataset_index() == self.cur_dataset_index:
+            if inqueue.has_next() and inqueue.next_ref_dataset_index() == self.cur_subdataset_index:
                 ref = inqueue.pop()
                 if ref is not None:
                     self.op.add_input(ref, input_index=i)
