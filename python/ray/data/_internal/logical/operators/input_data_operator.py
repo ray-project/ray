@@ -40,3 +40,8 @@ class InputData(LogicalOperator):
             return sum(bundle.num_rows() for bundle in self.input_data)
         else:
             return None
+
+    def num_blocks(self) -> Optional[int]:
+        if self.input_data is None:
+            return None
+        return sum(len(bundle.blocks) for bundle in self.input_data)

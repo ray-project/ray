@@ -528,13 +528,18 @@ def test_dynamic_block_split_deterministic(
 
     # ~800 bytes per block
     ds = ray.data.range(1000, override_num_blocks=10).map_batches(lambda x: x)
-    data = [ray.get(block) for block in ds.materialize()._plan._in_blocks._blocks]
+    data = [
+        ray.get(block) for block in ds.materialize()._plan._snapshot_bundle.block_refs
+    ]
     # Maps: first item of block -> block
     block_map = {block["id"][0]: block for block in data}
     # Iterate over multiple executions of the dataset,
     # and check that blocks were split in the same way
     for _ in range(TEST_ITERATIONS):
-        data = [ray.get(block) for block in ds.materialize()._plan._in_blocks._blocks]
+        data = [
+            ray.get(block)
+            for block in ds.materialize()._plan._snapshot_bundle.block_refs
+        ]
         for block in data:
             assert block_map[block["id"][0]] == block
 

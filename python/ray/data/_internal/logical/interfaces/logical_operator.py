@@ -74,3 +74,7 @@ class LogicalOperator(Operator):
     def input_files(self) -> Optional[List[str]]:
         """The input files of this operator, or ``None`` if not known."""
         return None
+
+    def num_blocks(self) -> Optional[int]:
+        """The number of blocks outputted by this operator, or ``None`` if not known."""
+        return None

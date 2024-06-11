@@ -193,10 +193,7 @@ class ExecutionPlan:
 
         num_blocks = None
         if dataset_cls == MaterializedDataset:
-            assert isinstance(self._logical_plan.dag, InputData)
-            num_blocks = sum(
-                len(bundle.blocks) for bundle in self._logical_plan.dag.input_data
-            )
+            num_blocks = self._logical_plan.dag.num_blocks()
 
         name_str = (
             "name={}, ".format(self._dataset_name)
