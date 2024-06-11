@@ -201,7 +201,8 @@ const LogVirtualView: React.FC<LogVirtualViewProps> = ({
     let formattedLogLine = origin;
     try {
       const parsed_origin = JSON.parse(origin);
-      message = parsed_origin.message;
+      // Iff the parsed origin has a message field, use it as the message.
+      message = parsed_origin.message || origin;
       formattedLogLine = JSON.stringify(parsed_origin, null, 2);
     } catch (e) {
       // Keep the `origin` as message and formattedLogLine, if json parsing failed.
