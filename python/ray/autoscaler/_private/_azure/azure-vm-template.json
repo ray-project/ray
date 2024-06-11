@@ -44,6 +44,13 @@
                 "description": "The version of the VM image"
             }
         },
+        "diskSizeGB": {
+            "type": "int",
+            "defaultValue": 64,
+            "metadata": {
+                "description": "Size of the OS disk in GB"
+            }
+        },
         "vmSize": {
             "type": "string",
             "metadata": {
@@ -220,7 +227,8 @@
                         "createOption": "fromImage",
                         "managedDisk": {
                             "storageAccountType": "[variables('osDiskType')]"
-                        }
+                        },
+                        "diskSizeGB": "[parameters('diskSizeGB')]"
                     },
                     "imageReference": {
                         "publisher": "[parameters('imagePublisher')]",
