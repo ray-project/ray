@@ -36,7 +36,7 @@ First, define some env options. This example uses the `FrozenLake-v1` environmen
 a grid world, whose map is fully customizable.  Three tasks of different env difficulties
 are represented by slightly different maps that the agent has to navigate.
 
-.. literalinclude:: /../../rllib/examples/curriculum/curriculum_learning.py
+.. literalinclude:: ../../../rllib/examples/curriculum/curriculum_learning.py
    :language: python
    :start-after: __curriculum_learning_example_env_options__
    :end-before: __END_curriculum_learning_example_env_options__
