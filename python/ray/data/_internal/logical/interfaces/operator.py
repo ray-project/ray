@@ -47,6 +47,9 @@ class Operator:
 
     def source_dependencies(self) -> List["Operator"]:
         """List of operators that are sources of data for this operator."""
+        if not any(self.input_dependencies):
+            return [self]
+
         sources = []
         for op in self.input_dependencies:
             sources.extend(op.source_dependencies())

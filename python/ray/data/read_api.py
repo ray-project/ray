@@ -127,7 +127,6 @@ def from_blocks(blocks: List[Block]):
     logical_plan = LogicalPlan(from_blocks_op)
     return MaterializedDataset(
         ExecutionPlan(
-            BlockList(block_refs, metadata, owned_by_consumer=False),
             DatasetStats(metadata={"FromBlocks": metadata}, parent=None),
             run_by_consumer=False,
         ),
@@ -211,7 +210,6 @@ def from_items(
     logical_plan = LogicalPlan(from_items_op)
     return MaterializedDataset(
         ExecutionPlan(
-            BlockList(blocks, metadata, owned_by_consumer=False),
             DatasetStats(metadata={"FromItems": metadata}, parent=None),
             run_by_consumer=False,
         ),
@@ -2480,7 +2478,6 @@ def from_pandas_refs(
         logical_plan = LogicalPlan(FromPandas(dfs, metadata))
         return MaterializedDataset(
             ExecutionPlan(
-                BlockList(dfs, metadata, owned_by_consumer=False),
                 DatasetStats(metadata={"FromPandas": metadata}, parent=None),
                 run_by_consumer=False,
             ),
@@ -2495,7 +2492,6 @@ def from_pandas_refs(
     logical_plan = LogicalPlan(FromPandas(blocks, metadata))
     return MaterializedDataset(
         ExecutionPlan(
-            BlockList(blocks, metadata, owned_by_consumer=False),
             DatasetStats(metadata={"FromPandas": metadata}, parent=None),
             run_by_consumer=False,
         ),
@@ -2582,7 +2578,6 @@ def from_numpy_refs(
 
     return MaterializedDataset(
         ExecutionPlan(
-            BlockList(blocks, metadata, owned_by_consumer=False),
             DatasetStats(metadata={"FromNumpy": metadata}, parent=None),
             run_by_consumer=False,
         ),
@@ -2662,7 +2657,6 @@ def from_arrow_refs(
 
     return MaterializedDataset(
         ExecutionPlan(
-            BlockList(tables, metadata, owned_by_consumer=False),
             DatasetStats(metadata={"FromArrow": metadata}, parent=None),
             run_by_consumer=False,
         ),

@@ -1405,9 +1405,10 @@ class Dataset:
 
             split_datasets = []
             for block_refs, metadata in zip(block_refs_splits, metadata_splits):
-                ref_bundles = RefBundle(
-                    [(b, m) for b, m in zip(block_refs, metadata)], owns_blocks=owned_by_consumer
-                )
+                ref_bundles = [RefBundle(
+                    [(b, m)],
+                    owns_blocks=owned_by_consumer) for b, m in zip(block_refs, metadata)
+                ]
                 logical_plan = LogicalPlan(InputData(input_data=ref_bundles))
                 split_datasets.append(
                     MaterializedDataset(
@@ -1602,8 +1603,10 @@ class Dataset:
         for bs, ms in zip(blocks, metadata):
             stats = DatasetStats(metadata={"Split": ms}, parent=parent_stats)
             stats.time_total_s = split_duration
-
-            ref_bundles = _block_list_to_bundles(split_block_list, bundle.owns_blocks)
+            ref_bundles = [
+                RefBundle([(b, m)], owns_blocks=bundle.owns_blocks)
+                for b, m in zip(bs, ms)
+            ]
             logical_plan = LogicalPlan(InputData(input_data=ref_bundles))
 
             splits.append(
@@ -4563,7 +4566,6 @@ class Dataset:
         logical_plan = LogicalPlan(InputData(input_data=ref_bundles))
         output = MaterializedDataset(
             ExecutionPlan(
-                blocks,
                 copy._plan.stats(),
                 run_by_consumer=False,
             ),

@@ -9,8 +9,8 @@ import ray
 from ray._private.internal_api import get_memory_info_reply, get_state_from_address
 from ray.data._internal.block_list import BlockList
 from ray.data._internal.execution.interfaces import RefBundle
-from ray.data._internal.lazy_block_list import LazyBlockList
 from ray.data._internal.logical.interfaces.logical_operator import LogicalOperator
+from ray.data._internal.logical.interfaces.logical_plan import LogicalPlan
 from ray.data._internal.logical.operators.from_operators import AbstractFrom
 from ray.data._internal.logical.operators.input_data_operator import InputData
 from ray.data._internal.logical.operators.read_operator import Read
@@ -160,18 +160,19 @@ class ExecutionPlan:
                 count = self._snapshot_bundle.num_rows()
             else:
                 # This plan hasn't executed any operators.
-                schemas = []
-                counts = []
-                for source in self._logical_plan.dag.source_dependencies():
-                    plan = ExecutionPlan(DatasetStats({}), run_by_consumer=False)
-                    plan.link_logical_plan(LogicalPlan(source))
-                    schemas.append(plan.schema())
-                    counts.append(plan.count())
-                schema = unify_block_metadata_schema(self._snapshot_bundle.metadata)
-                if all(count is not None for count in counts):
-                    count = sum(counts)
-                else:
+                sources = self._logical_plan.dag.source_dependencies()
+                if len(sources) > 1:
+                    # Multiple sources, cannot determine schema.
+                    schema = None
                     count = None
+                else:
+                    assert len(sources) == 1
+                    plan = ExecutionPlan(
+                        DatasetStats(metadata={}, parent=None), run_by_consumer=False
+                    )
+                    plan.link_logical_plan(LogicalPlan(sources[0]))
+                    schema = plan.schema()
+                    count = plan.meta_count()
         else:
             # Get schema of output blocks.
             schema = self.schema(fetch_if_missing=False)
@@ -353,10 +354,13 @@ class ExecutionPlan:
 
         schema = None
         if self.has_computed_output():
+            print("Has completed output")
             schema = unify_block_metadata_schema(self._snapshot_bundle.metadata)
         elif self._logical_plan.dag.schema() is not None:
+            print("Using static schema")
             schema = self._logical_plan.dag.schema()
         elif fetch_if_missing:
+            print("Fetching schema")
             blocks_with_metadata, _, _ = self.execute_to_iterator()
             for _, metadata in blocks_with_metadata:
                 if metadata.schema is not None and (
@@ -365,6 +369,7 @@ class ExecutionPlan:
                     schema = metadata.schema
                     break
         elif self.is_read_only():
+            print("Using read only block")
             # For consistency with the previous implementation, we fetch the schema if
             # the plan is read-only even if `fetch_if_missing` is False.
             blocks_with_metadata, _, _ = self.execute_to_iterator()
