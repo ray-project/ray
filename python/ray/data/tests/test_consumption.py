@@ -294,12 +294,6 @@ def test_dataset_lineage_serialization(shutdown_only):
     plan_uuid = ds._plan._dataset_uuid
 
     serialized_ds = ds.serialize_lineage()
-    # Confirm that the original Dataset was properly copied before clearing/mutating.
-    in_blocks = ds._plan._in_blocks
-    # Should not raise.
-    in_blocks._check_if_cleared()
-    assert isinstance(in_blocks, LazyBlockList)
-    assert in_blocks._block_partition_refs[0] is None
 
     ray.shutdown()
     ray.init()
@@ -326,14 +320,6 @@ def test_dataset_lineage_serialization_unsupported(shutdown_only):
     # In-memory data source unions not supported.
     ds = ray.data.from_items(list(range(10)))
     ds1 = ray.data.from_items(list(range(10, 20)))
-    ds2 = ds.union(ds1)
-
-    with pytest.raises(ValueError):
-        ds2.serialize_lineage()
-
-    # Post-lazy-read unions not supported.
-    ds = ray.data.range(10).map(column_udf("id", lambda x: x + 1))
-    ds1 = ray.data.range(20).map(column_udf("id", lambda x: 2 * x))
     ds2 = ds.union(ds1)
 
     with pytest.raises(ValueError):

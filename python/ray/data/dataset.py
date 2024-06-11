@@ -1405,9 +1405,9 @@ class Dataset:
 
             split_datasets = []
             for block_refs, metadata in zip(block_refs_splits, metadata_splits):
-                ref_bundles = [RefBundle(
-                    [(b, m)],
-                    owns_blocks=owned_by_consumer) for b, m in zip(block_refs, metadata)
+                ref_bundles = [
+                    RefBundle([(b, m)], owns_blocks=owned_by_consumer)
+                    for b, m in zip(block_refs, metadata)
                 ]
                 logical_plan = LogicalPlan(InputData(input_data=ref_bundles))
                 split_datasets.append(

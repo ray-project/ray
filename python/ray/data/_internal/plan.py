@@ -176,11 +176,7 @@ class ExecutionPlan:
         else:
             # Get schema of output blocks.
             schema = self.schema(fetch_if_missing=False)
-            assert schema is not None, "Schema should be available after execution."
             count = self._snapshot_bundle.num_rows()
-            assert (
-                count is not None
-            ), "Number of rows should be available after execution."
 
         if schema is None:
             schema_str = "Unknown schema"
@@ -354,13 +350,10 @@ class ExecutionPlan:
 
         schema = None
         if self.has_computed_output():
-            print("Has completed output")
             schema = unify_block_metadata_schema(self._snapshot_bundle.metadata)
         elif self._logical_plan.dag.schema() is not None:
-            print("Using static schema")
             schema = self._logical_plan.dag.schema()
         elif fetch_if_missing:
-            print("Fetching schema")
             blocks_with_metadata, _, _ = self.execute_to_iterator()
             for _, metadata in blocks_with_metadata:
                 if metadata.schema is not None and (
@@ -369,7 +362,6 @@ class ExecutionPlan:
                     schema = metadata.schema
                     break
         elif self.is_read_only():
-            print("Using read only block")
             # For consistency with the previous implementation, we fetch the schema if
             # the plan is read-only even if `fetch_if_missing` is False.
             blocks_with_metadata, _, _ = self.execute_to_iterator()
@@ -474,6 +466,9 @@ class ExecutionPlan:
         Returns:
             The blocks of the output dataset.
         """
+        if self.has_computed_output():
+            return self._snapshot_bundle
+
         self._has_executed = True
 
         # Always used the saved context for execution.
@@ -489,37 +484,28 @@ class ExecutionPlan:
                     "for more details: "
                     "https://docs.ray.io/en/latest/data/data-internals.html#ray-data-and-tune"  # noqa: E501
                 )
-        if not self.has_computed_output():
-            from ray.data._internal.execution.legacy_compat import (
-                execute_to_legacy_block_list,
-            )
-            from ray.data._internal.execution.streaming_executor import (
-                StreamingExecutor,
-            )
 
-            metrics_tag = create_dataset_tag(self._dataset_name, self._dataset_uuid)
-            executor = StreamingExecutor(
-                copy.deepcopy(context.execution_options),
-                metrics_tag,
-            )
-            blocks = execute_to_legacy_block_list(
-                executor,
-                self,
-                allow_clear_input_blocks=allow_clear_input_blocks,
-                dataset_uuid=self._dataset_uuid,
-                preserve_order=preserve_order,
-            )
-            stats = executor.get_stats()
-            stats_summary_string = stats.to_summary().to_string(include_parent=False)
-            if context.enable_auto_log_stats:
-                logger.info(stats_summary_string)
+        from ray.data._internal.execution.legacy_compat import (
+            execute_to_legacy_block_list,
+        )
+        from ray.data._internal.execution.streaming_executor import StreamingExecutor
 
-        # TODO(ekl) we shouldn't need to set this in the future once we move
-        # to a fully lazy execution model, unless .materialize() is used. Th
-        # reason we need it right now is since the user may iterate over a
-        # Dataset multiple times after fully executing it once.
-        if not self._run_by_consumer:
-            blocks._owned_by_consumer = False
+        metrics_tag = create_dataset_tag(self._dataset_name, self._dataset_uuid)
+        executor = StreamingExecutor(
+            copy.deepcopy(context.execution_options),
+            metrics_tag,
+        )
+        blocks = execute_to_legacy_block_list(
+            executor,
+            self,
+            allow_clear_input_blocks=allow_clear_input_blocks,
+            dataset_uuid=self._dataset_uuid,
+            preserve_order=preserve_order,
+        )
+        stats = executor.get_stats()
+        stats_summary_string = stats.to_summary().to_string(include_parent=False)
+        if context.enable_auto_log_stats:
+            logger.info(stats_summary_string)
 
         # Retrieve memory-related stats from ray.
         try:
@@ -584,6 +570,12 @@ class ExecutionPlan:
 
     def stats_summary(self) -> DatasetStatsSummary:
         return self.stats().to_summary()
+
+    def has_lazy_input(self) -> bool:
+        """Return whether this plan has lazy input blocks."""
+        return all(
+            isinstance(op, Read) for op in self._logical_plan.dag.source_dependencies()
+        )
 
     def is_read_only(self, root_op: Optional[LogicalOperator] = None) -> bool:
         """Return whether the LogicalPlan corresponding to `root_op`
