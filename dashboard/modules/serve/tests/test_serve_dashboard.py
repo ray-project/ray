@@ -1,4 +1,6 @@
 import copy
+from collections.abc import Iterator
+
 import grpc
 import re
 import os
@@ -465,11 +467,21 @@ def test_get_serve_instance_details(ray_start_stop, f_deployment_options, url):
     print("Finished checking application details.")
 
 
+@pytest.fixture
+def serve_start_and_shutdown(ray_start_stop: None) -> Iterator[None]:
+    """
+    See https://github.com/ray-project/ray/pull/45522#issuecomment-2159403223
+    """
+    serve.start()
+    yield
+    serve.shutdown()
+
+
 @pytest.mark.skipif(
     sys.platform == "darwin" and not TEST_ON_DARWIN, reason="Flaky on OSX."
 )
 @pytest.mark.parametrize("url", [SERVE_AGENT_URL, SERVE_HEAD_URL])
-def test_get_serve_instance_details_for_imperative_apps(ray_start_stop, url):
+def test_get_serve_instance_details_for_imperative_apps(serve_start_and_shutdown, url):
     """
     Most behavior is checked by test_get_serve_instance_details.
     This test mostly checks for the different behavior of
