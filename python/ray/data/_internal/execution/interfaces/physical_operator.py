@@ -45,6 +45,7 @@ class DataOpTask(OpTask):
         streaming_gen: ObjectRefGenerator,
         output_ready_callback: Callable[[RefBundle], None],
         task_done_callback: Callable[[Optional[Exception]], None],
+        subdataset_index: int,
     ):
         """
         Args:
@@ -61,6 +62,7 @@ class DataOpTask(OpTask):
         self._streaming_gen = streaming_gen
         self._output_ready_callback = output_ready_callback
         self._task_done_callback = task_done_callback
+        self.subdataset_index = subdataset_index
 
     def get_waitable(self) -> ObjectRefGenerator:
         return self._streaming_gen
