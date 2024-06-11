@@ -1023,6 +1023,18 @@ def available_resources_per_node():
 
     return state.available_resources_per_node()
 
+@DeveloperAPI
+def total_resources_per_node():
+    """Get the current total resources of each live node.
+
+    Note that this information can grow stale as tasks start and finish.
+
+    Returns:
+        A dictionary mapping node hex id to total resources dictionary.
+    """
+
+    return state.total_resources_per_node()
+
 
 def update_worker_debugger_port(worker_id, debugger_port):
     """Update the debugger port of a worker.

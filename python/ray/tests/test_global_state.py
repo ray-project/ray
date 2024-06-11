@@ -70,8 +70,9 @@ def test_available_resources_per_node(ray_start_cluster_head):
         assert available_resources_per_node[head_node_id]["CPU"] == 1
         assert available_resources_per_node[worker_node_id]["CPU"] == 2
         assert available_resources_per_node[worker_node_id].get("worker", 0) == 0
+        return True
 
-    wait_for_condition(lambda: available_resources_per_node_check1)
+    wait_for_condition(available_resources_per_node_check1)
 
     cluster.remove_node(worker_node)
     cluster.wait_for_nodes()
@@ -81,8 +82,9 @@ def test_available_resources_per_node(ray_start_cluster_head):
         available_resources_per_node = ray._private.state.available_resources_per_node()
         assert len(available_resources_per_node) == 1
         assert available_resources_per_node[head_node_id]["CPU"] == 1
+        return True
 
-    wait_for_condition(lambda: available_resources_per_node_check2)
+    wait_for_condition(available_resources_per_node_check2)
 
 
 def test_total_resources_per_node(ray_start_cluster_head):
@@ -110,8 +112,9 @@ def test_total_resources_per_node(ray_start_cluster_head):
         assert total_resources_per_node[head_node_id]["CPU"] == 1
         assert total_resources_per_node[worker_node_id]["CPU"] == 3
         assert total_resources_per_node[worker_node_id].get("worker", 0) == 1
+        return True
 
-    wait_for_condition(lambda: total_resources_per_node_check1)
+    wait_for_condition(total_resources_per_node_check1)
 
     cluster.remove_node(worker_node)
     cluster.wait_for_nodes()
@@ -121,8 +124,9 @@ def test_total_resources_per_node(ray_start_cluster_head):
         total_resources_per_node = ray._private.state.total_resources_per_node()
         assert len(total_resources_per_node) == 1
         assert total_resources_per_node[head_node_id]["CPU"] == 1
+        return True
 
-    wait_for_condition(lambda: total_resources_per_node_check2)
+    wait_for_condition(total_resources_per_node_check2)
 
 
 def test_add_remove_cluster_resources(ray_start_cluster_head):
