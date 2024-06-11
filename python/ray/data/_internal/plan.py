@@ -84,7 +84,7 @@ class ExecutionPlan:
         self._run_by_consumer = run_by_consumer
         self._dataset_name = None
 
-        self._has_executed = False
+        self._has_started_execution = False
 
         if data_context is None:
             # Snapshot the current context, so that the config of Datasets is always
@@ -360,11 +360,17 @@ class ExecutionPlan:
             # For consistency with the previous implementation, we fetch the schema if
             # the plan is read-only even if `fetch_if_missing` is False.
             blocks_with_metadata, _, _ = self.execute_to_iterator()
-            _, metadata = next(iter(blocks_with_metadata))
-            schema = metadata.schema
+            try:
+                _, metadata = next(iter(blocks_with_metadata))
+                schema = metadata.schema
+            except StopIteration:  # Empty dataset.
+                schema = None
 
         self._schema = schema
         return self._schema
+
+    def cache_schema(self, schema: Union[type, "pyarrow.lib.Schema"]):
+        self._schema = schema
 
     def input_files(self) -> Optional[List[str]]:
         """Get the input files of the dataset, if available."""
@@ -406,7 +412,7 @@ class ExecutionPlan:
         Returns:
             Tuple of iterator over output blocks and the executor.
         """
-        self._has_executed = True
+        self._has_started_execution = True
 
         # Always used the saved context for execution.
         ctx = self._context
@@ -454,7 +460,7 @@ class ExecutionPlan:
         Returns:
             The blocks of the output dataset.
         """
-        self._has_executed = True
+        self._has_started_execution = True
 
         # Always used the saved context for execution.
         context = self._context
@@ -551,9 +557,9 @@ class ExecutionPlan:
         return self._snapshot_bundle
 
     @property
-    def has_executed(self) -> bool:
-        """Return whether this plan has been partially or fully executed."""
-        return self._has_executed
+    def has_started_execution(self) -> bool:
+        """Return ``True`` if this plan has been partially or fully executed."""
+        return self._has_started_execution
 
     def clear_snapshot(self) -> None:
         """Clear the snapshot kept in the plan to the beginning state."""

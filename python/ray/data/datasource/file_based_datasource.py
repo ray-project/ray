@@ -1,4 +1,3 @@
-import functools
 import io
 import logging
 from typing import (
@@ -39,7 +38,7 @@ from ray.data.datasource.path_util import (
     _has_file_extension,
     _resolve_paths_and_filesystem,
 )
-from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
+from ray.util.annotations import DeveloperAPI
 
 if TYPE_CHECKING:
     import pandas as pd
@@ -63,20 +62,6 @@ OPEN_FILE_RETRY_MAX_BACKOFF_SECONDS = 32
 
 # The max number of attempts for opening file.
 OPEN_FILE_MAX_ATTEMPTS = 10
-
-
-@Deprecated
-@PublicAPI(stability="beta")
-class FileExtensionFilter(PathPartitionFilter):
-    def __init__(
-        self,
-        file_extensions: Union[str, List[str]],
-        allow_if_no_extension: bool = False,
-    ):
-        raise DeprecationWarning(
-            "`FileExtensionFilter` is deprecated. Instead, set the `file_extensions` "
-            "parameter of `read_xxx()` APIs."
-        )
 
 
 @DeveloperAPI
@@ -178,11 +163,9 @@ class FileBasedDatasource(Datasource):
         self._paths_ref = ray.put(paths)
         self._file_sizes_ref = ray.put(file_sizes)
 
-    @functools.cache
     def _paths(self) -> List[str]:
         return ray.get(self._paths_ref)
 
-    @functools.cache
     def _file_sizes(self) -> List[float]:
         return ray.get(self._file_sizes_ref)
 

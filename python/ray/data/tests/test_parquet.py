@@ -327,13 +327,13 @@ def test_parquet_read_bulk(ray_start_regular_shared, fs, data_path):
     assert len(input_files) == 2, input_files
     assert "test1.parquet" in str(input_files)
     assert "test2.parquet" in str(input_files)
-    assert not ds._plan.has_executed
+    assert not ds._plan.has_started_execution
 
     # Schema isn't available, so we do a partial read.
     assert ds.schema() is not None
     assert str(ds) == "Dataset(num_rows=?, schema={one: int64, two: string})", ds
     assert repr(ds) == "Dataset(num_rows=?, schema={one: int64, two: string})", ds
-    assert ds._plan.has_executed
+    assert ds._plan.has_started_execution
     assert not ds._plan.has_computed_output()
 
     # Forces a data read.
@@ -355,7 +355,7 @@ def test_parquet_read_bulk(ray_start_regular_shared, fs, data_path):
 
     ds = ray.data.read_parquet_bulk(paths + [txt_path], filesystem=fs)
     assert ds._plan.initial_num_blocks() == 2
-    assert not ds._plan.has_executed
+    assert not ds._plan.has_started_execution
 
     # Forces a data read.
     values = [[s["one"], s["two"]] for s in ds.take()]
@@ -408,14 +408,14 @@ def test_parquet_read_bulk_meta_provider(ray_start_regular_shared, fs, data_path
     assert len(input_files) == 2, input_files
     assert "test1.parquet" in str(input_files)
     assert "test2.parquet" in str(input_files)
-    assert not ds._plan.has_executed
+    assert not ds._plan.has_started_execution
 
     assert ds.count() == 6
     assert ds.size_bytes() > 0
     assert ds.schema() is not None
     assert str(ds) == "Dataset(num_rows=6, schema={one: int64, two: string})", ds
     assert repr(ds) == "Dataset(num_rows=6, schema={one: int64, two: string})", ds
-    assert ds._plan.has_executed
+    assert ds._plan.has_started_execution
 
     # Forces a data read.
     values = [[s["one"], s["two"]] for s in ds.take()]
