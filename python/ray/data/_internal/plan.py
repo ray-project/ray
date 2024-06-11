@@ -384,6 +384,9 @@ class ExecutionPlan:
         self._schema = schema
         return self._schema
 
+    def cache_schema(self, schema: Union[type, "pyarrow.lib.Schema"]):
+        self._schema = schema
+
     def _get_unified_blocks_schema(
         self, blocks: BlockList, fetch_if_missing: bool = False
     ) -> Union[type, "pyarrow.lib.Schema"]:
