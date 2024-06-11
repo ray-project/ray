@@ -82,7 +82,7 @@ def node_data_from_pod(pod: Dict[str, Any]) -> NodeData:
     kind, type = kind_and_type(pod)
     status = status_tag(pod)
     ip = pod_ip(pod)
-    replica_index = replica_index_label(pod)
+    replica_index = _replica_index_label(pod)
     return NodeData(
         kind=kind, type=type, replica_index=replica_index, status=status, ip=ip
     )
@@ -109,9 +109,7 @@ def _replica_index_label(pod: Dict[str, Any]) -> Optional[str]:
     is an integer from 0 to Replicas-1.
     """
     labels = pod["metadata"]["labels"]
-    if REPLICA_INDEX_KEY in labels:
-        return labels[REPLICA_INDEX_KEY]
-    return None
+    return labels.get(REPLICA_INDEX_KEY, None)
 
 
 def pod_ip(pod: Dict[str, Any]) -> NodeIP:

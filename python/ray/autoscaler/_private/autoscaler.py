@@ -416,6 +416,7 @@ class StandardAutoscaler:
             return
 
         # Populate mapping of replica IDs to nodes in that replica.
+        self.replicas_to_nodes.clear()
         for node_id in self.non_terminated_nodes.worker_ids:
             tags = self.provider.node_tags(node_id)
             if TAG_RAY_REPLICA_INDEX in tags:
@@ -629,8 +630,7 @@ class StandardAutoscaler:
         tags = self.provider.node_tags(node_id)
         if TAG_RAY_REPLICA_INDEX in tags:
             replica_id = tags[TAG_RAY_REPLICA_INDEX]
-            if replica_id not in self.replicas_to_delete:
-                self.replicas_to_delete.add(replica_id)
+            self.replicas_to_delete.add(replica_id)
 
     def terminate_scheduled_nodes(self):
         """Terminate scheduled nodes and clean associated autoscaler state."""
@@ -654,9 +654,9 @@ class StandardAutoscaler:
                 if replica_id in self.replicas_to_nodes:
                     if node in self.replicas_to_nodes[replica_id]:
                         self.replicas_to_nodes[replica_id].remove(node)
-                # remove replica ID once all nodes in replica removed
-                if len(self.replicas_to_nodes[replica_id]) == 0:
-                    self.replicas_to_delete.remove(replica_id)
+                        # remove replica ID once all nodes in replica removed
+                        if len(self.replicas_to_nodes[replica_id]) == 0:
+                            self.replicas_to_delete.remove(replica_id)
         # Terminate the nodes
         self.provider.terminate_nodes(self.nodes_to_terminate)
         for node in self.nodes_to_terminate:
