@@ -85,8 +85,7 @@ class API:
         doc = doc.strip()
         if not doc.startswith(_SPHINX_AUTOCLASS_HEADER):
             return None
-        cls = doc[len(_SPHINX_AUTOCLASS_HEADER) :].strip().removeprefix("~")
-        api_name = f"{current_module}.{cls}" if current_module else cls
+        api_name = doc[len(_SPHINX_AUTOCLASS_HEADER) :].strip()
 
         return API(
             name=API._fullname(api_name),
