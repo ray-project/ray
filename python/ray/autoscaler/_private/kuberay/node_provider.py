@@ -102,7 +102,7 @@ def kind_and_type(pod: Dict[str, Any]) -> Tuple[NodeKind, NodeType]:
     return kind, type
 
 
-def replica_index_label(pod: Dict[str, Any]) -> Optional[str]:
+def _replica_index_label(pod: Dict[str, Any]) -> Optional[str]:
     """Returns the replicaIndex label for a Pod in a multi-host TPU worker group.
     The replicaIndex label is set by the GKE TPU Ray webhook and is of
     the form {$WORKER_GROUP_NAME-$REPLICA_INDEX} where $REPLICA_INDEX
