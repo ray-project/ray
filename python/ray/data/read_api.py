@@ -1732,7 +1732,7 @@ def read_tfrecords(
         >>> import ray
         >>> ray.data.read_tfrecords("s3://anonymous@ray-example-data/iris.tfrecords")
         Dataset(
-           num_rows=150,
+           num_rows=?,
            schema={...}
         )
 
