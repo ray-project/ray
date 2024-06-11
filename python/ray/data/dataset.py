@@ -4540,8 +4540,8 @@ class Dataset:
         copy = Dataset.copy(self, _deep_copy=True, _as=MaterializedDataset)
         copy._plan.execute()
 
-        blocks = copy._plan._snapshot_blocks
-        blocks_with_metadata = blocks.get_blocks_with_metadata() if blocks else []
+        bundle = copy._plan._snapshot_bundle
+        blocks_with_metadata = bundle.blocks
         # TODO(hchen): Here we generate the same number of blocks as
         # the original Dataset. Because the old code path does this, and
         # some unit tests implicily depend on this behavior.
@@ -4562,10 +4562,11 @@ class Dataset:
             ),
             logical_plan,
         )
-        output._plan.execute()  # No-op that marks the plan as fully executed.
         # Metrics are tagged with `copy`s uuid, update the output uuid with
         # this so the user can access the metrics label.
+        output._set_name(copy._name)
         output._set_uuid(copy._get_uuid())
+        output._plan.execute()  # No-op that marks the plan as fully executed.
         return output
 
     def stats(self) -> str:

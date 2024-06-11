@@ -45,3 +45,12 @@ class InputData(LogicalOperator):
         if self.input_data is None:
             return None
         return sum(len(bundle.blocks) for bundle in self.input_data)
+
+    def output_data(self) -> Optional[RefBundle]:
+        if self.input_data is None:
+            return None
+        else:
+            blocks = []
+            for bundle in self.input_data:
+                blocks.extend(bundle.blocks)
+            return RefBundle(blocks, owns_blocks=False)

@@ -51,6 +51,12 @@ class AbstractFrom(LogicalOperator, metaclass=abc.ABCMeta):
             return None
         return sum(len(bundle.blocks) for bundle in self._input_data)
 
+    def output_data(self):
+        blocks = []
+        for bundle in self._input_data:
+            blocks.extend(bundle.blocks)
+        return RefBundle(blocks, owns_blocks=False)
+
 
 class FromItems(AbstractFrom):
     """Logical operator for `from_items`."""

@@ -73,7 +73,6 @@ class ExecutionPlan:
         # A computed snapshot of some prefix of operators and their corresponding
         # output blocks and stats.
         self._snapshot_operator: Optional[LogicalOperator] = None
-        self._snapshot_blocks = None
         self._snapshot_stats = None
         self._snapshot_bundle = None
 
@@ -100,7 +99,6 @@ class ExecutionPlan:
             f"dataset_uuid={self._dataset_uuid}, "
             f"run_by_consumer={self._run_by_consumer}, "
             f"snapshot_operator={self._snapshot_operator}"
-            f"snapshot_blocks={self._snapshot_blocks})"
         )
 
     def get_plan_as_string(self, dataset_cls: Type["Dataset"]) -> str:
@@ -295,9 +293,9 @@ class ExecutionPlan:
             run_by_consumer=self._run_by_consumer,
             data_context=self._context,
         )
-        if self._snapshot_blocks is not None:
+        if self._snapshot_bundle is not None:
             # Copy over the existing snapshot.
-            plan_copy._snapshot_blocks = self._snapshot_blocks
+            plan_copy._snapshot_bundle = self._snapshot_bundle
             plan_copy._snapshot_operator = self._snapshot_operator
             plan_copy._snapshot_stats = self._snapshot_stats
         plan_copy._dataset_name = self._dataset_name
@@ -315,9 +313,9 @@ class ExecutionPlan:
             copy.copy(self._in_stats),
             run_by_consumer=self._run_by_consumer,
         )
-        if self._snapshot_blocks:
+        if self._snapshot_bundle:
             # Copy over the existing snapshot.
-            plan_copy._snapshot_blocks = self._snapshot_blocks.copy()
+            plan_copy._snapshot_bundle = copy.copy(self._snapshot_bundle)
             plan_copy._snapshot_operator = copy.copy(self._snapshot_operator)
             plan_copy._snapshot_stats = copy.copy(self._snapshot_stats)
         plan_copy._dataset_name = self._dataset_name
@@ -456,9 +454,6 @@ class ExecutionPlan:
         Returns:
             The blocks of the output dataset.
         """
-        if self.has_computed_output():
-            return self._snapshot_bundle
-
         self._has_executed = True
 
         # Always used the saved context for execution.
@@ -475,65 +470,86 @@ class ExecutionPlan:
                     "https://docs.ray.io/en/latest/data/data-internals.html#ray-data-and-tune"  # noqa: E501
                 )
 
-        from ray.data._internal.execution.legacy_compat import (
-            execute_to_legacy_block_list,
-        )
-        from ray.data._internal.execution.streaming_executor import StreamingExecutor
-
-        metrics_tag = create_dataset_tag(self._dataset_name, self._dataset_uuid)
-        executor = StreamingExecutor(
-            copy.deepcopy(context.execution_options),
-            metrics_tag,
-        )
-        blocks = execute_to_legacy_block_list(
-            executor,
-            self,
-            allow_clear_input_blocks=allow_clear_input_blocks,
-            dataset_uuid=self._dataset_uuid,
-            preserve_order=preserve_order,
-        )
-        stats = executor.get_stats()
-        stats_summary_string = stats.to_summary().to_string(include_parent=False)
-        if context.enable_auto_log_stats:
-            logger.info(stats_summary_string)
-
-        # Retrieve memory-related stats from ray.
-        try:
-            reply = get_memory_info_reply(
-                get_state_from_address(ray.get_runtime_context().gcs_address)
+        if not self.has_computed_output():
+            from ray.data._internal.execution.legacy_compat import (
+                _get_initial_stats_from_plan,
+                execute_to_legacy_block_list,
             )
-            if reply.store_stats.spill_time_total_s > 0:
-                stats.global_bytes_spilled = int(reply.store_stats.spilled_bytes_total)
-            if reply.store_stats.restore_time_total_s > 0:
-                stats.global_bytes_restored = int(
-                    reply.store_stats.restored_bytes_total
+
+            if self._logical_plan.dag.output_data() is not None:
+                # No need to execute MaterializedDatasets with only an InputData
+                # operator, since the data is already materialized. This also avoids
+                # recording unnecessary metrics for an empty plan execution.
+                stats = _get_initial_stats_from_plan(self)
+                self._snapshot_bundle = self._logical_plan.dag.output_data()
+                assert stats is not None
+            else:
+                from ray.data._internal.execution.legacy_compat import (
+                    execute_to_legacy_block_list,
                 )
-        except Exception as e:
-            logger.debug(
-                "Skipping recording memory spilled and restored statistics due to "
-                f"exception: {e}"
-            )
+                from ray.data._internal.execution.streaming_executor import (
+                    StreamingExecutor,
+                )
 
-        stats.dataset_bytes_spilled = 0
+                metrics_tag = create_dataset_tag(self._dataset_name, self._dataset_uuid)
+                executor = StreamingExecutor(
+                    copy.deepcopy(context.execution_options),
+                    metrics_tag,
+                )
+                blocks = execute_to_legacy_block_list(
+                    executor,
+                    self,
+                    allow_clear_input_blocks=allow_clear_input_blocks,
+                    dataset_uuid=self._dataset_uuid,
+                    preserve_order=preserve_order,
+                )
+                stats = executor.get_stats()
+                stats_summary_string = stats.to_summary().to_string(
+                    include_parent=False
+                )
+                if context.enable_auto_log_stats:
+                    logger.info(stats_summary_string)
 
-        def collect_stats(cur_stats):
-            stats.dataset_bytes_spilled += cur_stats.extra_metrics.get(
-                "obj_store_mem_spilled", 0
-            )
-            for parent in cur_stats.parents:
-                collect_stats(parent)
+                # Set the snapshot to the output of the final operator.
+                self._snapshot_bundle = RefBundle(
+                    tuple(blocks.iter_blocks_with_metadata()),
+                    owns_blocks=blocks._owned_by_consumer,
+                )
 
-        collect_stats(stats)
+            # Retrieve memory-related stats from ray.
+            try:
+                reply = get_memory_info_reply(
+                    get_state_from_address(ray.get_runtime_context().gcs_address)
+                )
+                if reply.store_stats.spill_time_total_s > 0:
+                    stats.global_bytes_spilled = int(
+                        reply.store_stats.spilled_bytes_total
+                    )
+                if reply.store_stats.restore_time_total_s > 0:
+                    stats.global_bytes_restored = int(
+                        reply.store_stats.restored_bytes_total
+                    )
+            except Exception as e:
+                logger.debug(
+                    "Skipping recording memory spilled and restored statistics due to "
+                    f"exception: {e}"
+                )
 
-        # Set the snapshot to the output of the final operator.
-        self._snapshot_blocks = blocks
-        self._snapshot_bundle = RefBundle(
-            tuple(blocks.iter_blocks_with_metadata()),
-            owns_blocks=blocks._owned_by_consumer,
-        )
-        self._snapshot_operator = self._logical_plan.dag
-        self._snapshot_stats = stats
-        self._snapshot_stats.dataset_uuid = self._dataset_uuid
+            stats.dataset_bytes_spilled = 0
+
+            def collect_stats(cur_stats):
+                stats.dataset_bytes_spilled += cur_stats.extra_metrics.get(
+                    "obj_store_mem_spilled", 0
+                )
+                for parent in cur_stats.parents:
+                    collect_stats(parent)
+
+            collect_stats(stats)
+
+            self._snapshot_operator = self._logical_plan.dag
+            assert stats is not None
+            self._snapshot_stats = stats
+            self._snapshot_stats.dataset_uuid = self._dataset_uuid
 
         return self._snapshot_bundle
 
@@ -544,7 +560,6 @@ class ExecutionPlan:
 
     def clear_snapshot(self) -> None:
         """Clear the snapshot kept in the plan to the beginning state."""
-        self._snapshot_blocks = None
         self._snapshot_bundle = None
         self._snapshot_operator = None
         self._snapshot_stats = None

@@ -5,6 +5,8 @@ from .operator import Operator
 if TYPE_CHECKING:
     import pyarrow
 
+    from ray.data._internal.execution.interfaces import RefBundle
+
 
 class LogicalOperator(Operator):
     """Abstract class for logical operators.
@@ -77,4 +79,7 @@ class LogicalOperator(Operator):
 
     def num_blocks(self) -> Optional[int]:
         """The number of blocks outputted by this operator, or ``None`` if not known."""
+        return None
+
+    def output_data(self) -> Optional["RefBundle"]:
         return None

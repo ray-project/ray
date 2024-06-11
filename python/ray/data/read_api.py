@@ -422,8 +422,13 @@ def read_datasource(
     # TODO(hchen/chengsu): Remove the duplicated get_read_tasks call here after
     # removing LazyBlockList code path.
     read_tasks = datasource_or_legacy_reader.get_read_tasks(requested_parallelism)
-
-    stats = DatasetStats(metadata={}, parent=None)
+    import uuid
+    stats = DatasetStats(
+        metadata={"Read": [read_task.get_metadata() for read_task in read_tasks]},
+        parent=None,
+        needs_stats_actor=True,
+        stats_uuid=uuid.uuid4()
+    )
     read_op = Read(
         datasource,
         datasource_or_legacy_reader,

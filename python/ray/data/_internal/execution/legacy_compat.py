@@ -183,7 +183,7 @@ def _get_execution_dag(
 
 
 def _get_initial_stats_from_plan(plan: ExecutionPlan) -> DatasetStats:
-    if plan._snapshot_blocks is not None and not plan._snapshot_blocks.is_cleared():
+    if plan._snapshot_bundle is not None:
         return plan._snapshot_stats
     # For Datasets created from "read_xxx", `plan._in_stats` contains useless data.
     # For Datasets created from "from_xxx", we need to use `plan._in_stats` as
