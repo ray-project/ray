@@ -763,7 +763,8 @@ class GlobalState:
 
         return available_resources_by_id
 
-    def total_resources_per_node(self):
+    # returns a dict that maps node_id(hex string) to a dict of {resource_id: capacity}
+    def total_resources_per_node(self) -> Dict[str, Dict[str, int]]:
         self._check_connected()
         total_resources_by_node = {}
 
