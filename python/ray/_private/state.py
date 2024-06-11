@@ -1023,6 +1023,7 @@ def available_resources_per_node():
 
     return state.available_resources_per_node()
 
+
 @DeveloperAPI
 def total_resources_per_node():
     """Get the current total resources of each live node.
