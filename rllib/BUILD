@@ -2053,6 +2053,15 @@ py_test(
 )
 
 py_test(
+    name = "examples/_old_api_stack/connectors/run_connector_policy_w_lstm",
+    main = "examples/_old_api_stack/connectors/run_connector_policy.py",
+    tags = ["team:rllib", "exclusive", "examples", "old_api_stack"],
+    size = "small",
+    srcs = ["examples/_old_api_stack/connectors/run_connector_policy.py"],
+    args = ["--use-lstm"],
+)
+
+py_test(
     name = "examples/_old_api_stack/connectors/adapt_connector_policy",
     main = "examples/_old_api_stack/connectors/adapt_connector_policy.py",
     tags = ["team:rllib", "exclusive", "examples", "old_api_stack"],
