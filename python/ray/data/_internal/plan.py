@@ -587,12 +587,6 @@ class ExecutionPlan:
             self._snapshot_operator = self._logical_plan.dag
             self._snapshot_stats = stats
             self._snapshot_stats.dataset_uuid = self._dataset_uuid
-
-            # In the case of a read-only dataset, we replace the
-            # input LazyBlockList with a copy that includes the
-            # calculated metadata from initializing the InputDataBuffer.
-            if self.is_read_only():
-                self._in_blocks = blocks
         return self._snapshot_bundle
 
     @property

@@ -1814,9 +1814,6 @@ class Dataset:
 
             logical_plan = LogicalPlan(UnionLogicalOperator(*ops_to_union))
         else:
-            assert all(
-                isinstance(ds._plan._in_blocks, LazyBlockList) for ds in datasets
-            ), [ds._plan._in_blocks for ds in datasets]
             tasks: List[ReadTask] = []
             block_partition_refs: List[ObjectRef[BlockPartition]] = []
             block_partition_meta_refs: List[ObjectRef[BlockMetadata]] = []

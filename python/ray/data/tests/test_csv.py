@@ -376,7 +376,6 @@ def test_csv_read_many_files_partitioned(
         num_input_files=num_files,
         num_rows=num_rows,
         schema="{one: int64, two: int64}",
-        num_computed=num_files,
         sorted_values=sorted(
             itertools.chain.from_iterable(
                 list(
@@ -661,7 +660,7 @@ def test_csv_read_partitioned_with_filter_multikey(
             filesystem=fs,
             override_num_blocks=6,
         )
-        assert_base_partitioned_ds(ds, num_input_files=6, num_computed=6)
+        assert_base_partitioned_ds(ds, num_input_files=6)
         assert ray.get(kept_file_counter.get.remote()) == 6
         if i == 0:
             # expect to skip 1 unpartitioned files in the parent of the base directory
