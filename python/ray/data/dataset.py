@@ -2785,9 +2785,9 @@ class Dataset:
                 implementation. Use this parameter to customize what your filenames
                 look like.
             arrow_parquet_args_fn: Callable that returns a dictionary of write
-                arguments that are provided to `pyarrow.parquet.write_table() <https:/\
+                arguments that are provided to `pyarrow.parquet.ParquetWriter() <https:/\
                     /arrow.apache.org/docs/python/generated/\
-                        pyarrow.parquet.write_table.html#pyarrow.parquet.write_table>`_
+                        pyarrow.parquet.ParquetWriter.html#pyarrow.parquet.ParquetWriter>`_
                 when writing each block to a file. Overrides
                 any duplicate keys from ``arrow_parquet_args``. Use this argument
                 instead of ``arrow_parquet_args`` if any of your write arguments
@@ -2803,9 +2803,9 @@ class Dataset:
                 total number of tasks run. By default, concurrency is dynamically
                 decided based on the available resources.
             arrow_parquet_args: Options to pass to
-                `pyarrow.parquet.write_table() <https://arrow.apache.org/docs/python\
-                    /generated/pyarrow.parquet.write_table.html\
-                        #pyarrow.parquet.write_table>`_, which is used to write out each
+                `pyarrow.parquet.ParquetWriter() <https://arrow.apache.org/docs/python\
+                    /generated/pyarrow.parquet.ParquetWriter.html\
+                        #pyarrow.parquet.ParquetWriter>`_, which is used to write out each
                 block to a file.
         """  # noqa: E501
         datasink = _ParquetDatasink(
