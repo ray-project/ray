@@ -247,16 +247,21 @@ class LongPollHost:
         immediately if the snapshot_ids are outdated, otherwise it will block
         until there's an update.
         """
-        watched_keys = keys_to_snapshot_ids.keys()
-        existent_keys = set(watched_keys).intersection(set(self.snapshot_ids.keys()))
-
         # If there are any keys with outdated snapshot ids,
         # return their updated values immediately.
-        updated_objects = {
-            key: UpdatedObject(self.object_snapshots[key], self.snapshot_ids[key])
-            for key in existent_keys
-            if self.snapshot_ids[key] != keys_to_snapshot_ids[key]
-        }
+        updated_objects = {}
+        for key, snapshot_id in keys_to_snapshot_ids.items():
+            try:
+                existing_id = self.snapshot_ids[key]
+            except KeyError:
+                # The caller may ask for keys that we don't know about (yet),
+                # just ignore them.
+                continue
+
+            if existing_id != snapshot_id:
+                updated_objects[key] = UpdatedObject(
+                    self.object_snapshots[key], existing_id
+                )
         if len(updated_objects) > 0:
             self._count_send(updated_objects)
             return updated_objects
@@ -264,7 +269,7 @@ class LongPollHost:
         # Otherwise, register asyncio events to be waited.
         async_task_to_events = {}
         async_task_to_watched_keys = {}
-        for key in watched_keys:
+        for key in keys_to_snapshot_ids.keys():
             # Create a new asyncio event for this key.
             event = asyncio.Event()
 
