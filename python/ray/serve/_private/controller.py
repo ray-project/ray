@@ -877,6 +877,8 @@ class ServeController:
         grpc_config = self.get_grpc_config()
         applications = {}
 
+        app_configs = self.get_app_configs()
+
         for (
             app_name,
             app_status_info,
@@ -889,8 +891,9 @@ class ServeController:
                 message=app_status_info.message,
                 last_deployed_time_s=app_status_info.deployment_timestamp,
                 # This can be none if the app was deployed through
-                # serve.run, or if the app is in deleting state
-                deployed_app_config=self.get_app_config(app_name),
+                # serve.run, or if the app is in deleting state,
+                # or if a checkpoint hasn't been set yet
+                deployed_app_config=app_configs.get(app_name),
                 deployments=self.application_state_manager.list_deployment_details(
                     app_name
                 ),
@@ -945,13 +948,16 @@ class ServeController:
             statuses.append(self.get_serve_status(name))
         return statuses
 
-    def get_app_config(self, name: str = SERVE_DEFAULT_APP_NAME) -> Optional[Dict]:
+    def get_app_configs(self) -> Optional[Dict[str, ServeApplicationSchema]]:
         checkpoint = self.kv_store.get(CONFIG_CHECKPOINT_KEY)
         if checkpoint is not None:
             _, _, _, config_checkpoints_dict = pickle.loads(checkpoint)
-            if name in config_checkpoints_dict:
-                config = config_checkpoints_dict[name]
-                return ServeApplicationSchema.parse_obj(config).dict(exclude_unset=True)
+            return {
+                app: ServeApplicationSchema.parse_obj(config)
+                for app, config in config_checkpoints_dict.items()
+            }
+        else:
+            return None
 
     def get_all_deployment_statuses(self) -> List[bytes]:
         """Gets deployment status bytes for all live deployments."""
