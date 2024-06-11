@@ -312,7 +312,6 @@ class MapOperator(OneToOneOperator, ABC):
             self._metrics.on_output_generated(task_index, output)
             output.set_subdataset_index(cur_dataset_index)
 
-            self.subdataset_index_to_pending_task_count[cur_dataset_index] = self.subdataset_index_to_pending_task_count[cur_dataset_index] - 1
             cur_queue = self.next_subdataset_save_Dict.get(cur_dataset_index, [])
             cur_queue.append(output)
             self.next_subdataset_save_Dict[cur_dataset_index] = cur_queue
@@ -335,6 +334,9 @@ class MapOperator(OneToOneOperator, ABC):
             )
 
             task = self._data_tasks.pop(task_index)
+            self.subdataset_index_to_pending_task_count[cur_dataset_index] = self.subdataset_index_to_pending_task_count[cur_dataset_index] - 1
+            assert self.subdataset_index_to_pending_task_count[cur_dataset_index] is not None and self.subdataset_index_to_pending_task_count[cur_dataset_index] >= 0
+            self._flush_buffer_to_output_queue(task_index)
             self._finished_streaming_gens.append(task.get_waitable())
             # Notify output queue that this task is complete.
             self._output_queue.notify_task_completed(task_index)
