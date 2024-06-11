@@ -700,7 +700,7 @@ class DataIterator(abc.ABC):
             ... )
             >>> it = ds.iterator(); it
             DataIterator(Dataset(
-               num_rows=150,
+               num_rows=?,
                schema={
                   sepal length (cm): double,
                   sepal width (cm): double,

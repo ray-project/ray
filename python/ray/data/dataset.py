@@ -1395,10 +1395,12 @@ class Dataset:
             metadata_splits = np.array_split(metadata, n)
 
             split_datasets = []
-            for block_refs, metadata in zip(block_refs_splits, metadata_splits):
+            for block_refs_split, metadata_split in zip(
+                block_refs_splits, metadata_splits
+            ):
                 ref_bundles = [
                     RefBundle([(b, m)], owns_blocks=owned_by_consumer)
-                    for b, m in zip(block_refs, metadata)
+                    for b, m in zip(block_refs_split, metadata_split)
                 ]
                 logical_plan = LogicalPlan(InputData(input_data=ref_bundles))
                 split_datasets.append(
@@ -1585,7 +1587,7 @@ class Dataset:
         blocks, metadata = _split_at_indices(
             bundle.blocks,
             indices,
-            bundle.owns_blocks,
+            False,
         )
         split_duration = time.perf_counter() - start_time
         parent_stats = self._plan.stats()
@@ -1595,8 +1597,7 @@ class Dataset:
             stats = DatasetStats(metadata={"Split": ms}, parent=parent_stats)
             stats.time_total_s = split_duration
             ref_bundles = [
-                RefBundle([(b, m)], owns_blocks=bundle.owns_blocks)
-                for b, m in zip(bs, ms)
+                RefBundle([(b, m)], owns_blocks=False) for b, m in zip(bs, ms)
             ]
             logical_plan = LogicalPlan(InputData(input_data=ref_bundles))
 
@@ -4047,7 +4048,7 @@ class Dataset:
             >>> ds = ray.data.read_csv("s3://anonymous@air-example-data/iris.csv")
             >>> ds
             Dataset(
-               num_rows=150,
+               num_rows=?,
                schema={
                   sepal length (cm): double,
                   sepal width (cm): double,
@@ -4682,7 +4683,7 @@ class Dataset:
             .. testoutput::
 
                 Dataset(
-                   num_rows=150,
+                   num_rows=?,
                    schema={
                       sepal length (cm): double,
                       sepal width (cm): double,
@@ -4764,7 +4765,7 @@ class Dataset:
             .. testoutput::
 
                 Dataset(
-                   num_rows=150,
+                   num_rows=?,
                    schema={
                       sepal length (cm): double,
                       sepal width (cm): double,
