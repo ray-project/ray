@@ -264,9 +264,7 @@ class ReaderInterface:
     def close(self) -> None:
         self._closed = True
         for channel in self._input_channels:
-            print(f"Closing channel with reader_ref {channel._reader_ref}")
             channel.close()
-            print(f"Closed channel with reader_ref {channel._reader_ref}")
 
 
 @DeveloperAPI
@@ -331,10 +329,8 @@ class AwaitableBackgroundReader(ReaderInterface):
             c.end_read()
 
     def close(self):
-        print("Closing AwaitableBackgroundReader")
         self._background_task.cancel()
         super().close()
-        print("Closed AwaitableBackgroundReader")
 
 
 @DeveloperAPI

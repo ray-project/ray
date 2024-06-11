@@ -793,7 +793,6 @@ class CompiledDAG:
         if self.has_single_output:
             assert len(self.dag_output_channels) == 1
             self.dag_output_channels = self.dag_output_channels[0]
-            print(f"Output channel reader_ref: {self.dag_output_channels._reader_ref}")
 
         # Driver should ray.put on input, ray.get/release on output
         self._monitor = self._monitor_failures()
