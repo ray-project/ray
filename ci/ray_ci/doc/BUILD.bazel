@@ -12,7 +12,6 @@ py_library(
     srcs = glob(
         ["*.py"],
         exclude = [
-            "__init__.py",
             "test_*.py",
             "cmd_*.py",
         ],

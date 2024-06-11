@@ -1,6 +1,5 @@
 import sys
 import pytest
-from unittest import mock
 
 from ci.ray_ci.doc.api import (
     API,
@@ -12,9 +11,7 @@ from ci.ray_ci.doc.api import (
 from ci.ray_ci.doc.mock.mock_module import mock_function
 
 
-@mock.patch("ci.ray_ci.doc.api.API._fullname")
-def test_from_autosummary(mock_api_fullname):
-    mock_api_fullname.side_effect = lambda x: x
+def test_from_autosummary():
     test_data = [
         {
             "input": {
@@ -59,9 +56,7 @@ def test_from_autosummary(mock_api_fullname):
         ) == str(test["output"])
 
 
-@mock.patch("ci.ray_ci.doc.api.API._fullname")
-def test_from_autoclasss(mock_api_fullname):
-    mock_api_fullname.side_effect = lambda x: x
+def test_from_autoclasss():
     test_data = [
         # valid input, no module
         {

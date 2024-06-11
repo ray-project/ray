@@ -4,7 +4,7 @@ import sys
 import pytest
 
 from ci.ray_ci.doc.autodoc import Autodoc
-from ci.ray_ci.doc.mock.mock_module import MockClass, mock_function
+from ci.ray_ci.doc.mock.mock_module import MockClass, mock_function, mock_w00t
 from ci.ray_ci.doc.api import API, AnnotationType, CodeType
 
 
@@ -15,9 +15,10 @@ def test_walk():
             f.write("\tapi_01.rst\n")
             f.write("\tapi_02.rst\n")
         with open(os.path.join(tmp, "api_01.rst"), "w") as f:
-            f.write(".. currentmodule:: ci.ray_ci.doc.mock\n")
+            f.write(".. currentmodule:: ci.ray_ci.doc\n")
             f.write(".. autosummary::\n\n")
-            f.write("\tmock_function\n")
+            f.write("\t~mock.mock_function\n")
+            f.write("\tmock.mock_module.mock_w00t\n")
         with open(os.path.join(tmp, "api_02.rst"), "w") as f:
             f.write(".. currentmodule:: ci.ray_ci.doc.mock\n")
             f.write(".. autoclass:: MockClass\n")
@@ -28,6 +29,11 @@ def test_walk():
             [
                 API(
                     name="ci.ray_ci.doc.mock.mock_function",
+                    annotation_type=AnnotationType.PUBLIC_API,
+                    code_type=CodeType.FUNCTION,
+                ),
+                API(
+                    name="ci.ray_ci.doc.mock.mock_module.mock_w00t",
                     annotation_type=AnnotationType.PUBLIC_API,
                     code_type=CodeType.FUNCTION,
                 ),
@@ -44,9 +50,13 @@ def test_walk():
         )
         assert (
             apis[1].get_canonical_name()
+            == f"{mock_w00t.__module__}.{mock_w00t.__qualname__}"
+        )
+        assert (
+            apis[2].get_canonical_name()
             == f"{MockClass.__module__}.{MockClass.__qualname__}"
         )
 
 
 if __name__ == "__main__":
-    sys.exit(pytest.main(["-v", __file__]))
+    sys.exit(pytest.main(["-vv", __file__]))
