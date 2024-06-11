@@ -15,6 +15,7 @@ from uvicorn.config import Config
 from uvicorn.lifespan.on import LifespanOn
 
 from ray._private.pydantic_compat import IS_PYDANTIC_2
+from ray.serve._private.common import RequestMetadata
 from ray.serve._private.constants import SERVE_LOGGER_NAME
 from ray.serve._private.utils import serve_encoders
 from ray.serve.exceptions import RayServeException
@@ -218,12 +219,12 @@ class ASGIReceiveProxy:
     def __init__(
         self,
         scope: Scope,
-        request_id: str,
-        receive_asgi_messages: Callable[[str], Awaitable[bytes]],
+        request_metadata: RequestMetadata,
+        receive_asgi_messages: Callable[[RequestMetadata], Awaitable[bytes]],
     ):
         self._type = scope["type"]  # Either 'http' or 'websocket'.
         self._queue = asyncio.Queue()
-        self._request_id = request_id
+        self._request_metadata = request_metadata
         self._receive_asgi_messages = receive_asgi_messages
         self._disconnect_message = None
 
@@ -255,7 +256,9 @@ class ASGIReceiveProxy:
         """
         while True:
             try:
-                pickled_messages = await self._receive_asgi_messages(self._request_id)
+                pickled_messages = await self._receive_asgi_messages(
+                    self._request_metadata
+                )
                 for message in pickle.loads(pickled_messages):
                     self._queue.put_nowait(message)
 
