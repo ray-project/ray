@@ -50,6 +50,14 @@ class RandomizeBlocks(AbstractAllToAll):
         )
         self._seed = seed
 
+    def schema(self):
+        assert len(self._input_dependencies) == 1, len(self._input_dependencies)
+        return self._input_dependencies[0].schema()
+
+    def num_rows(self):
+        assert len(self._input_dependencies) == 1, len(self._input_dependencies)
+        return self._input_dependencies[0].num_rows()
+
 
 class RandomShuffle(AbstractAllToAll):
     """Logical operator for random_shuffle."""

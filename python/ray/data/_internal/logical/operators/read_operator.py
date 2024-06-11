@@ -42,3 +42,9 @@ class Read(AbstractMap):
         Get the true parallelism that should be used during execution.
         """
         return self._detected_parallelism
+
+    def schema(self):
+        return self._datasource.schema()
+
+    def num_rows(self):
+        return self._datasource.num_rows()
