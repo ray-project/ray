@@ -311,8 +311,8 @@ For more details, see the following sections for each framework:
         2. Pass the Ray Dataset into the TorchTrainer via the ``datasets`` argument.
         3. Inside your ``train_loop_per_worker``, access the sharded dataset via :meth:`ray.train.get_dataset_shard`.
         4. Create a iterable dataset via :meth:`ray.data.DataIterator.iter_torch_batches`. 
-        5. Pass the iterable dataset into ``transformers.Trainer`` during initialization.
-        6. Wrap your transformers trainer with the :meth:`ray.train.huggingface.transformers.prepare_trainer` utility, so that it supports Ray Iterable Dataset.
+        5. Pass the iterable dataset while initializing ``transformers.Trainer``.
+        6. Wrap your transformers trainer with the :meth:`ray.train.huggingface.transformers.prepare_trainer` utility.
 
         **Option 2 (without Ray Data):** 
 
