@@ -10,7 +10,10 @@ class _SerializationContext:
         self.use_external_transport: bool = False
         self.tensors: List["torch.Tensor"] = []
         # Buffer for transferring data between tasks in the same worker process.
-        # The key is the channel ID, and the value is the data.
+        # The key is the channel ID, and the value is the data. We don't use a
+        # lock when reading/writing the buffer because a DAG node actor will only
+        # execute one task at a time in `do_exec_tasks`. It will not execute multiple
+        # Ray tasks on a single actor simultaneously.
         self.intra_process_channel_buffers: Dict[str, Any] = {}
         # The number of readers for each channel. When the number of readers
         # reaches 0, remove the data from the buffer.
