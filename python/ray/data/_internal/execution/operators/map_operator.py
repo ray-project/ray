@@ -280,10 +280,14 @@ class MapOperator(OneToOneOperator, ABC):
     def _flush_buffer_to_output_queue(self, task_index):
         # for each cur_dataset_index, if no pending previous task, flush to output
         for subdataset_index in sorted(self.next_subdataset_save_Dict.keys()):
-            if len(self.next_subdataset_save_Dict[subdataset_index]) > 0 and self.subdataset_index_to_pending_task_count[subdataset_index - 1] > 0:
+            if len(self.next_subdataset_save_Dict[subdataset_index]) > 0 \
+                and (subdataset_index == 0 \
+                    or self.subdataset_index_to_pending_task_count[subdataset_index - 1] is None \
+                    or self.subdataset_index_to_pending_task_count[subdataset_index - 1] == 0):
+
                 for output in self.next_subdataset_save_Dict[subdataset_index]:
                     self._output_queue.notify_task_output_ready(task_index, output)
-                self.next_subdataset_save_Dict[subdataset_index] = None
+                self.next_subdataset_save_Dict[subdataset_index] = []
 
     def _submit_data_task(
         self,
@@ -343,7 +347,6 @@ class MapOperator(OneToOneOperator, ABC):
             gen,
             lambda output: _output_ready_callback(task_index, output),
             functools.partial(_task_done_callback, task_index),
-            cur_dataset_index,
         )
 
     def _submit_metadata_task(
