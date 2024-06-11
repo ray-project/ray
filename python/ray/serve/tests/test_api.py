@@ -433,7 +433,7 @@ async def test_delete_while_initializing(serve_instance):
         def incr(self):
             self.count += 1
 
-        def get_count(self):
+        def get_count(self) -> int:
             return self.count
 
     event_holder = EventHolder.remote()
