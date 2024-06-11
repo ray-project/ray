@@ -7,7 +7,6 @@ import pyarrow
 
 import ray
 from ray._private.internal_api import get_memory_info_reply, get_state_from_address
-from ray.data._internal.block_list import BlockList
 from ray.data._internal.execution.interfaces import RefBundle
 from ray.data._internal.logical.interfaces.logical_operator import LogicalOperator
 from ray.data._internal.logical.interfaces.logical_plan import LogicalPlan
@@ -25,7 +24,6 @@ from ray.util.debug import log_once
 if TYPE_CHECKING:
 
     from ray.data._internal.execution.interfaces import Executor
-    from ray.data._internal.logical.interfaces.logical_plan import LogicalPlan
     from ray.data.dataset import Dataset
 
 
@@ -121,7 +119,6 @@ class ExecutionPlan:
         # cheap.
         plan_str = ""
         plan_max_depth = 0
-        dataset_blocks = None
         if not self.has_computed_output():
 
             def generate_logical_plan_string(
@@ -195,8 +192,11 @@ class ExecutionPlan:
             count = "?"
 
         num_blocks = None
-        if self._snapshot_bundle is not None and dataset_cls == MaterializedDataset:
-            num_blocks = len(self._snapshot_bundle.blocks)
+        if dataset_cls == MaterializedDataset:
+            assert isinstance(self._logical_plan.dag, InputData)
+            num_blocks = sum(
+                len(bundle.blocks) for bundle in self._logical_plan.dag.input_data
+            )
 
         name_str = (
             "name={}, ".format(self._dataset_name)
@@ -390,13 +390,6 @@ class ExecutionPlan:
         else:
             num_rows = None
         return num_rows
-
-    def _get_num_rows_from_blocks_metadata(self, blocks: BlockList) -> Optional[int]:
-        metadata = blocks.get_metadata() if blocks else None
-        if metadata and all(m.num_rows is not None for m in metadata):
-            return sum(m.num_rows for m in metadata)
-        else:
-            return None
 
     @omit_traceback_stdout
     def execute_to_iterator(

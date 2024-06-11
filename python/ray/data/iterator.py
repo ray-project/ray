@@ -18,9 +18,7 @@ from typing import (
 import numpy as np
 
 from ray.data._internal.block_batching.iter_batches import iter_batches
-from ray.data._internal.block_list import BlockList
 from ray.data._internal.execution.interfaces import RefBundle
-from ray.data._internal.execution.legacy_compat import _block_list_to_bundles
 from ray.data._internal.logical.operators.input_data_operator import InputData
 from ray.data._internal.logical.optimizers import LogicalPlan
 from ray.data._internal.plan import ExecutionPlan

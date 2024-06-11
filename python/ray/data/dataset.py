@@ -28,18 +28,12 @@ import ray.cloudpickle as pickle
 from ray._private.thirdparty.tabulate.tabulate import tabulate
 from ray._private.usage import usage_lib
 from ray.air.util.tensor_extensions.utils import _create_possibly_ragged_ndarray
-from ray.data._internal.block_list import BlockList
 from ray.data._internal.compute import ComputeStrategy
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.equalize import _equalize
 from ray.data._internal.execution.interfaces import RefBundle
-from ray.data._internal.execution.legacy_compat import (
-    _block_list_to_bundles,
-    _bundles_to_block_list,
-)
 from ray.data._internal.iterator.iterator_impl import DataIteratorImpl
 from ray.data._internal.iterator.stream_split_iterator import StreamSplitDataIterator
-from ray.data._internal.lazy_block_list import LazyBlockList
 from ray.data._internal.logical.operators.all_to_all_operator import (
     RandomizeBlocks,
     RandomShuffle,
@@ -72,8 +66,6 @@ from ray.data.block import (
     VALID_BATCH_FORMATS,
     Block,
     BlockAccessor,
-    BlockMetadata,
-    BlockPartition,
     DataBatch,
     T,
     U,
@@ -88,7 +80,6 @@ from ray.data.datasource import (
     Datasink,
     Datasource,
     FilenameProvider,
-    ReadTask,
     _BigQueryDatasink,
     _CSVDatasink,
     _ImageDatasink,
