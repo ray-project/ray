@@ -370,5 +370,16 @@ def gen_high_impact_tests(mock_gen_from_s3) -> None:
     }
 
 
+def test_get_test_target():
+    input_to_output = {
+        "linux://test": "//test",
+        "darwin://test": "//test",
+        "windows://test": "//test",
+        "test": "test",
+    }
+    for input, output in input_to_output.items():
+        assert Test({"name": input}).get_target() == output
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))

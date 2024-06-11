@@ -36,7 +36,7 @@ Applications can be called via HTTP at the specified `route_prefix` or in Python
 Ray Serve enables flexible model composition and scaling by allowing multiple independent deployments to call into each other.
 When binding a deployment, you can include references to _other bound deployments_.
 Then, at runtime each of these arguments is converted to a {mod}`DeploymentHandle <ray.serve.handle.DeploymentHandle>` that can be used to query the deployment using a Python-native API.
-Below is a basic example where the `Driver` deployment can call into two downstream models.
+Below is a basic example where the `Ingress` deployment can call into two downstream models.
 For a more comprehensive guide, see the [model composition guide](serve-model-composition).
 
 ```{literalinclude} ../serve/doc_code/key_concepts.py

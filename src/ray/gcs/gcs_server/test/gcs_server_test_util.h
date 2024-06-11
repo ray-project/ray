@@ -397,8 +397,6 @@ struct GcsServerMocker {
       return Status::NotImplemented("");
     }
 
-    Status DrainSelf() override { return Status::NotImplemented(""); }
-
     const NodeID &GetSelfId() const override {
       static NodeID node_id;
       return node_id;

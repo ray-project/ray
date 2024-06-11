@@ -6,7 +6,7 @@ This guide shows you how to manage and interact with Ray clusters on Kubernetes.
 
 ## Preparation
 
-* Install [kubectl](https://kubernetes.io/docs/tasks/tools/#kubectl) (>= 1.23), [Helm](https://helm.sh/docs/intro/install/) (>= v3.4), and [Kind](https://kind.sigs.k8s.io/docs/user/quick-start/#installation).
+* Install [kubectl](https://kubernetes.io/docs/tasks/tools/#kubectl) (>= 1.23), [Helm](https://helm.sh/docs/intro/install/) (>= v3.4), [Kind](https://kind.sigs.k8s.io/docs/user/quick-start/#installation), and [Docker](https://docs.docker.com/engine/install/).
 * Make sure your Kubernetes cluster has at least 4 CPU and 4 GB RAM.
 
 ## Step 1: Create a Kubernetes cluster
@@ -26,8 +26,8 @@ Deploy the KubeRay operator with the [Helm chart repository](https://github.com/
 helm repo add kuberay https://ray-project.github.io/kuberay-helm/
 helm repo update
 
-# Install both CRDs and KubeRay operator v1.1.0.
-helm install kuberay-operator kuberay/kuberay-operator --version 1.1.0
+# Install both CRDs and KubeRay operator v1.1.1.
+helm install kuberay-operator kuberay/kuberay-operator --version 1.1.1
 
 # Confirm that the operator is running in the namespace `default`.
 kubectl get pods
@@ -46,14 +46,14 @@ Once the KubeRay operator is running, we are ready to deploy a RayCluster. To do
   :::{tab-item} ARM64 (Apple Silicon)
   ```sh
   # Deploy a sample RayCluster CR from the KubeRay Helm chart repo:
-  helm install raycluster kuberay/ray-cluster --version 1.1.0 --set 'image.tag=2.9.0-aarch64'
+  helm install raycluster kuberay/ray-cluster --version 1.1.1 --set 'image.tag=2.9.0-aarch64'
   ```
   :::
 
   :::{tab-item} x86-64 (Intel/Linux)
   ```sh
   # Deploy a sample RayCluster CR from the KubeRay Helm chart repo:
-  helm install raycluster kuberay/ray-cluster --version 1.1.0
+  helm install raycluster kuberay/ray-cluster --version 1.1.1
   ```
   :::
 
@@ -124,15 +124,7 @@ Now that we have the name of the service, we can use port-forwarding to access t
 ```sh
 # Execute this in a separate shell.
 kubectl port-forward service/raycluster-kuberay-head-svc 8265:8265
-
-# Visit ${YOUR_IP}:8265 in your browser for the Dashboard (e.g. 127.0.0.1:8265)
 ```
-
-Note: We use port-forwarding in this guide as a simple way to experiment with a RayCluster's services. For production use-cases, you would typically either 
-- Access the service from within the Kubernetes cluster or
-- Use an ingress controller to expose the service outside the cluster.
-
-See the {ref}`networking notes <kuberay-networking>` for details.
 
 Now that we have access to the Dashboard port, we can submit jobs to the RayCluster:
 
@@ -141,10 +133,17 @@ Now that we have access to the Dashboard port, we can submit jobs to the RayClus
 ray job submit --address http://localhost:8265 -- python -c "import ray; ray.init(); print(ray.cluster_resources())"
 ```
 
-## Step 5: Cleanup
+## Step 5: Access the Ray Dashboard
+
+Visit `${YOUR_IP}:8265` in your browser for the Dashboard. For example, `127.0.0.1:8265`.
+See the job you submitted in Step 4 in the **Recent jobs** pane as shown below.
+
+![Ray Dashboard](../images/ray-dashboard.png)
+
+## Step 6: Cleanup
 
 ```sh
-# [Step 5.1]: Delete the RayCluster CR
+# [Step 6.1]: Delete the RayCluster CR
 # Uninstall the RayCluster Helm chart
 helm uninstall raycluster
 # release "raycluster" uninstalled
@@ -156,7 +155,7 @@ kubectl get pods
 # NAME                                READY   STATUS    RESTARTS   AGE
 # kuberay-operator-7fbdbf8c89-pt8bk   1/1     Running   0          XXm
 
-# [Step 5.2]: Delete the KubeRay operator
+# [Step 6.2]: Delete the KubeRay operator
 # Uninstall the KubeRay operator Helm chart
 helm uninstall kuberay-operator
 # release "kuberay-operator" uninstalled
@@ -165,6 +164,6 @@ helm uninstall kuberay-operator
 kubectl get pods
 # No resources found in default namespace.
 
-# [Step 5.3]: Delete the Kubernetes cluster
+# [Step 6.3]: Delete the Kubernetes cluster
 kind delete cluster
 ```

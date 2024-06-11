@@ -19,7 +19,6 @@
 
 #include "ray/common/grpc_util.h"
 #include "ray/common/ray_config.h"
-#include "ray/raylet/raylet_util.h"
 
 namespace ray {
 
@@ -28,10 +27,12 @@ LocalResourceManager::LocalResourceManager(
     const NodeResources &node_resources,
     std::function<int64_t(void)> get_used_object_store_memory,
     std::function<bool(void)> get_pull_manager_at_capacity,
+    std::function<void(const rpc::NodeDeathInfo &)> shutdown_raylet_gracefully,
     std::function<void(const NodeResources &)> resource_change_subscriber)
     : local_node_id_(local_node_id),
       get_used_object_store_memory_(get_used_object_store_memory),
       get_pull_manager_at_capacity_(get_pull_manager_at_capacity),
+      shutdown_raylet_gracefully_(shutdown_raylet_gracefully),
       resource_change_subscriber_(resource_change_subscriber) {
   RAY_CHECK(node_resources.total == node_resources.available);
   local_resources_.available = NodeResourceInstanceSet(node_resources.total);
@@ -381,9 +382,8 @@ std::optional<syncer::RaySyncMessage> LocalResourceManager::CreateSyncMessage(
 
 void LocalResourceManager::OnResourceOrStateChanged() {
   if (IsLocalNodeDraining() && IsLocalNodeIdle()) {
-    // The node is drained.
-    RAY_LOG(INFO) << "The node is drained, exiting...";
-    raylet::ShutdownRayletGracefully();
+    RAY_LOG(INFO) << "The node is drained, continue to shut down raylet...";
+    shutdown_raylet_gracefully_(node_death_info_);
   }
 
   ++version_;
@@ -444,10 +444,12 @@ void LocalResourceManager::RecordMetrics() const {
   }
 }
 
-void LocalResourceManager::SetLocalNodeDraining(int64_t draining_deadline_timestamp_ms) {
+void LocalResourceManager::SetLocalNodeDraining(
+    int64_t draining_deadline_timestamp_ms, const rpc::NodeDeathInfo &node_death_info) {
   RAY_CHECK_GE(draining_deadline_timestamp_ms, 0);
   is_local_node_draining_ = true;
   local_node_draining_deadline_timestamp_ms_ = draining_deadline_timestamp_ms;
+  node_death_info_ = node_death_info;
   OnResourceOrStateChanged();
 }
 

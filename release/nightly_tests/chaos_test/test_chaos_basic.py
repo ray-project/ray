@@ -33,7 +33,7 @@ def run_task_workload(total_num_cpus, smoke):
         return ray.get(task.remote())
 
     multiplier = 75
-    # For smoke mode, run less number of tasks
+    # For smoke mode, run fewer tasks
     if smoke:
         multiplier = 1
     TOTAL_TASKS = int(total_num_cpus * 2 * multiplier)
@@ -84,7 +84,7 @@ def run_actor_workload(total_num_cpus, smoke):
 
     NUM_CPUS = int(total_num_cpus)
     multiplier = 2
-    # For smoke mode, run less number of tasks
+    # For smoke mode, run fewer tasks
     if smoke:
         multiplier = 1
     TOTAL_TASKS = int(300 * multiplier)
@@ -156,7 +156,7 @@ def main():
     In the short term, we will only test gRPC network delay +
     node failures.
 
-    Currently, the test runs 3 steps. Each steps records the
+    Currently, the test runs 3 steps. Each step records the
     peak memory usage to observe the memory usage while there
     are node failures.
 
@@ -167,7 +167,7 @@ def main():
 
     Step 3: Start the test with constant node failures.
     """
-    args, unknown = parse_script_args()
+    args, _ = parse_script_args()
     logging.info("Received arguments: {}".format(args))
     ray.init(address="auto")
     total_num_cpus = ray.cluster_resources()["CPU"]

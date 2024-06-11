@@ -34,7 +34,7 @@ def parse_script_args():
         default=0,
         help=(
             "Seconds to wait before node killer starts killing nodes. No-op if "
-            "'no-start' is set.",
+            "'no-start' is set."
         ),
     )
     parser.add_argument(
@@ -47,7 +47,7 @@ def parse_script_args():
 
 def task_filter(task_names):
     def _task_filter():
-        if task_names == []:
+        if not task_names:
             return lambda _: True
 
         def _filter_fn(task):
@@ -60,7 +60,7 @@ def task_filter(task_names):
 
 def task_node_filter(task_names):
     def _task_node_filter():
-        if task_names == []:
+        if not task_names:
             return lambda _: True
 
         tasks = StateApiClient().list(
@@ -80,7 +80,7 @@ def task_node_filter(task_names):
 def main():
     """Start the chaos testing.
 
-    Currently chaos testing only covers random node failures.
+    Currently, chaos testing only covers random node failures.
     """
     args, _ = parse_script_args()
     ray.init(address="auto")

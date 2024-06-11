@@ -360,30 +360,6 @@ def test_lazy_block_list(shutdown_only, target_max_block_size):
     new_block_list.clear()
     assert len(block_list._block_partition_refs) == num_tasks
 
-    block_lists = block_list.split(2)
-    assert len(block_lists) == num_tasks / 2
-    assert len(block_lists[0]._block_partition_refs) == 2
-    assert len(block_lists[0]._cached_metadata) == 2
-
-    block_lists = block_list.split_by_bytes(block_size * num_blocks_per_task * 2)
-    assert len(block_lists) == num_tasks / 2
-    assert len(block_lists[0]._block_partition_refs) == 2
-    assert len(block_lists[0]._cached_metadata) == 2
-
-    new_block_list = block_list.truncate_by_rows(num_blocks_per_task * 3)
-    assert len(new_block_list._block_partition_refs) == 3
-    assert len(new_block_list._cached_metadata) == 3
-
-    left_block_list, right_block_list = block_list.divide(3)
-    assert len(left_block_list._block_partition_refs) == 3
-    assert len(left_block_list._cached_metadata) == 3
-    assert len(right_block_list._block_partition_refs) == num_tasks - 3
-    assert len(right_block_list._cached_metadata) == num_tasks - 3
-
-    new_block_list = block_list.randomize_block_order()
-    assert len(new_block_list._block_partition_refs) == num_tasks
-    assert len(new_block_list._cached_metadata) == num_tasks
-
     output_blocks = block_list.get_blocks_with_metadata()
     assert len(output_blocks) == num_tasks * num_blocks_per_task
     for _, metadata in output_blocks:

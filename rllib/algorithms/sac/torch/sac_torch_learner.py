@@ -204,7 +204,7 @@ class SACTorchLearner(DQNRainbowTorchLearner, SACLearner):
         # Detach this node from the computation graph as we do not want to
         # backpropagate through the target network when optimizing the Q loss.
         q_selected_target = (
-            batch[Columns.REWARDS] + (config.gamma ** batch["n_steps"]) * q_next_masked
+            batch[Columns.REWARDS] + (config.gamma ** batch["n_step"]) * q_next_masked
         ).detach()
 
         # Calculate the TD-error. Note, this is needed for the priority weights in

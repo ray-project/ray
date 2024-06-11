@@ -56,6 +56,7 @@ Policy NOT using the curriculum (trying to solve the hardest task right away):
 """
 from functools import partial
 
+from ray.air.constants import TRAINING_ITERATION
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.connectors.env_to_module import (
@@ -63,7 +64,11 @@ from ray.rllib.connectors.env_to_module import (
     FlattenObservations,
     WriteObservationsToEpisodes,
 )
-from ray.rllib.utils.metrics import ENV_RUNNER_RESULTS
+from ray.rllib.utils.metrics import (
+    ENV_RUNNER_RESULTS,
+    EPISODE_RETURN_MEAN,
+    NUM_ENV_STEPS_SAMPLED_LIFETIME,
+)
 from ray.rllib.utils.test_utils import (
     add_rllib_example_script_args,
     run_rllib_example_script_experiment,
@@ -163,7 +168,7 @@ class EnvTaskCallback(DefaultCallbacks):
         # to a more difficult task (if possible). If we already mastered the most
         # difficult task, we publish our victory in the result dict.
         result["task_solved"] = 0.0
-        current_return = result[ENV_RUNNER_RESULTS]["episode_return_mean"]
+        current_return = result[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN]
         if current_return > args.upgrade_task_threshold:
             if current_task < 2:
                 new_task = current_task + 1
@@ -225,13 +230,13 @@ if __name__ == "__main__":
     )
 
     stop = {
-        "training_iteration": args.stop_iters,
+        TRAINING_ITERATION: args.stop_iters,
         # Reward directly does not matter to us as we would like to continue
         # after the policy reaches a return of ~1.0 on the 0-task (easiest).
         # But we DO want to stop, once the entire task is learned (policy achieves
         # return of 1.0 on the most difficult task=2).
         "task_solved": 1.0,
-        "num_env_steps_sampled_lifetime": args.stop_timesteps,
+        NUM_ENV_STEPS_SAMPLED_LIFETIME: args.stop_timesteps,
     }
 
     run_rllib_example_script_experiment(

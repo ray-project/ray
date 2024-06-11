@@ -22,9 +22,11 @@ config = (
     # Use image observations.
     .environment(env_config={"from_pixels": True})
     .resources(
-        num_learner_workers=0 if num_gpus == 1 else num_gpus,
-        num_gpus_per_learner_worker=1 if num_gpus else 0,
-        num_cpus_for_local_worker=1,
+        num_cpus_for_main_process=1,
+    )
+    .learners(
+        num_learners=0 if num_gpus == 1 else num_gpus,
+        num_gpus_per_learner=1 if num_gpus else 0,
     )
     .env_runners(num_envs_per_env_runner=4 * (num_gpus or 1), remote_worker_envs=True)
     .reporting(

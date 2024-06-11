@@ -362,8 +362,9 @@ TEST_F(ClusterResourceSchedulerTest, NodeAffinitySchedulingStrategyTest) {
   ASSERT_TRUE(resource_scheduler.GetLocalResourceManager().AllocateLocalTaskResources(
       resource_request, task_allocation));
   // Drain the local node so that it's not schedulable for new tasks.
+  rpc::NodeDeathInfo node_death_info;
   resource_scheduler.GetLocalResourceManager().SetLocalNodeDraining(
-      std::numeric_limits<int64_t>::max());
+      std::numeric_limits<int64_t>::max(), node_death_info);
 
   scheduling_strategy.mutable_node_affinity_scheduling_strategy()->set_node_id(
       local_node_id.Binary());

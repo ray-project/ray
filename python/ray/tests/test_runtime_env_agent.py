@@ -13,6 +13,7 @@ from ray._private.test_utils import (
     init_error_pubsub,
     wait_for_condition,
 )
+from ray.core.generated import gcs_pb2
 from ray.runtime_env import RuntimeEnv
 import psutil
 
@@ -139,7 +140,7 @@ def test_raylet_and_agent_share_fate(shutdown_only):
 
     ray.shutdown()
 
-    ray.init()
+    ray_context = ray.init()
     all_processes = ray._private.worker._global_node.all_processes
     raylet_proc_info = all_processes[ray_constants.PROCESS_TYPE_RAYLET][0]
     raylet_proc = psutil.Process(raylet_proc_info.process.pid)
@@ -153,6 +154,19 @@ def test_raylet_and_agent_share_fate(shutdown_only):
     agent_proc.kill()
     agent_proc.wait()
     raylet_proc.wait(15)
+
+    worker_node_id = ray_context.address_info["node_id"]
+    worker_node_info = [
+        node for node in ray.nodes() if node["NodeID"] == worker_node_id
+    ][0]
+    assert not worker_node_info["Alive"]
+    assert worker_node_info["DeathReason"] == gcs_pb2.NodeDeathInfo.Reason.Value(
+        "UNEXPECTED_TERMINATION"
+    )
+    assert (
+        "failed and raylet fate-shares with it."
+        in worker_node_info["DeathReasonMessage"]
+    )
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="no fate sharing for windows")

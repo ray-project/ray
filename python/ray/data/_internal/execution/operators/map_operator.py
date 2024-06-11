@@ -52,6 +52,7 @@ class MapOperator(OneToOneOperator, ABC):
         name: str,
         target_max_block_size: Optional[int],
         min_rows_per_bundle: Optional[int],
+        ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]],
         ray_remote_args: Optional[Dict[str, Any]],
     ):
         # NOTE: This constructor should not be called directly; use MapOperator.create()
@@ -60,7 +61,8 @@ class MapOperator(OneToOneOperator, ABC):
 
         self._map_transformer = map_transformer
         self._ray_remote_args = _canonicalize_ray_remote_args(ray_remote_args or {})
-        self._ray_remote_args_factory = None
+        self._ray_remote_args_fn = ray_remote_args_fn
+        self._ray_remote_args_factory_actor_locality = None
         self._remote_args_for_metrics = copy.deepcopy(self._ray_remote_args)
 
         # Bundles block references up to the min_rows_per_bundle target.
@@ -111,6 +113,7 @@ class MapOperator(OneToOneOperator, ABC):
         # config and not contain implementation code.
         compute_strategy: Optional[ComputeStrategy] = None,
         min_rows_per_bundle: Optional[int] = None,
+        ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
     ) -> "MapOperator":
         """Create a MapOperator.
@@ -132,6 +135,12 @@ class MapOperator(OneToOneOperator, ABC):
                 transform_fn, or None to use the block size. Setting the batch size is
                 important for the performance of GPU-accelerated transform functions.
                 The actual rows passed may be less if the dataset is small.
+            ray_remote_args_fn: A function that returns a dictionary of remote args
+                passed to each map worker. The purpose of this argument is to generate
+                dynamic arguments for each actor/task, and will be called each time
+                prior to initializing the worker. Args returned from this dict will
+                always override the args in ``ray_remote_args``. Note: this is an
+                advanced, experimental feature.
             ray_remote_args: Customize the ray remote args for this op's tasks.
         """
         if compute_strategy is None:
@@ -149,6 +158,7 @@ class MapOperator(OneToOneOperator, ABC):
                 target_max_block_size=target_max_block_size,
                 min_rows_per_bundle=min_rows_per_bundle,
                 concurrency=compute_strategy.size,
+                ray_remote_args_fn=ray_remote_args_fn,
                 ray_remote_args=ray_remote_args,
             )
         elif isinstance(compute_strategy, ActorPoolStrategy):
@@ -163,6 +173,7 @@ class MapOperator(OneToOneOperator, ABC):
                 compute_strategy=compute_strategy,
                 name=name,
                 min_rows_per_bundle=min_rows_per_bundle,
+                ray_remote_args_fn=ray_remote_args_fn,
                 ray_remote_args=ray_remote_args,
             )
         else:
@@ -198,7 +209,7 @@ class MapOperator(OneToOneOperator, ABC):
                     self.i %= len(self.locs)
                     return args
 
-            self._ray_remote_args_factory = RoundRobinAssign(locs)
+            self._ray_remote_args_factory_actor_locality = RoundRobinAssign(locs)
 
         map_transformer = self._map_transformer
         # Apply additional block split if needed.
@@ -227,6 +238,12 @@ class MapOperator(OneToOneOperator, ABC):
         self, input_bundle: Optional[RefBundle] = None
     ) -> Dict[str, Any]:
         ray_remote_args = copy.deepcopy(self._ray_remote_args)
+
+        # Override parameters from user provided remote args function.
+        if self._ray_remote_args_fn:
+            new_remote_args = self._ray_remote_args_fn()
+            for k, v in new_remote_args.items():
+                ray_remote_args[k] = v
         # For tasks with small args, we will use SPREAD by default to optimize for
         # compute load-balancing. For tasks with large args, we will use DEFAULT to
         # allow the Ray locality scheduler a chance to optimize task placement.
@@ -246,8 +263,8 @@ class MapOperator(OneToOneOperator, ABC):
                     self._remote_args_for_metrics = copy.deepcopy(ray_remote_args)
         # This should take precedence over previously set scheduling strategy, as it
         # implements actor-based locality overrides.
-        if self._ray_remote_args_factory:
-            return self._ray_remote_args_factory(ray_remote_args)
+        if self._ray_remote_args_factory_actor_locality:
+            return self._ray_remote_args_factory_actor_locality(ray_remote_args)
         return ray_remote_args
 
     @abstractmethod

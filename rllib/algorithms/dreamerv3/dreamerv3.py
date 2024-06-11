@@ -79,7 +79,7 @@ class DreamerV3Config(AlgorithmConfig):
             )
         )
 
-        config = config.resources(num_learner_workers=0)
+        config = config.learners(num_learners=0)
         # Build a Algorithm object from the config and run 1 training iteration.
         algo = config.build()
         # algo.train()
@@ -160,7 +160,7 @@ class DreamerV3Config(AlgorithmConfig):
         """Returns the batch_size_B per Learner worker.
 
         Needed by some of the DreamerV3 loss math."""
-        return self.batch_size_B // (self.num_learner_workers or 1)
+        return self.batch_size_B // (self.num_learners or 1)
 
     @override(AlgorithmConfig)
     def training(
@@ -391,13 +391,11 @@ class DreamerV3Config(AlgorithmConfig):
             )
 
         # If run on several Learners, the provided batch_size_B must be a multiple
-        # of `num_learner_workers`.
-        if self.num_learner_workers > 1 and (
-            self.batch_size_B % self.num_learner_workers != 0
-        ):
+        # of `num_learners`.
+        if self.num_learners > 1 and (self.batch_size_B % self.num_learners != 0):
             raise ValueError(
                 f"Your `batch_size_B` ({self.batch_size_B}) must be a multiple of "
-                f"`num_learner_workers` ({self.num_learner_workers}) in order for "
+                f"`num_learners` ({self.num_learners}) in order for "
                 "DreamerV3 to be able to split batches evenly across your Learner "
                 "processes."
             )
@@ -447,10 +445,10 @@ class DreamerV3Config(AlgorithmConfig):
 
     @property
     def share_module_between_env_runner_and_learner(self) -> bool:
-        # If we only have one local Learner (num_learner_workers=0) and only
+        # If we only have one local Learner (num_learners=0) and only
         # one local EnvRunner (num_env_runners=0), share the RLModule
         # between these two to avoid having to sync weights, ever.
-        return self.num_learner_workers == 0 and self.num_env_runners == 0
+        return self.num_learners == 0 and self.num_env_runners == 0
 
     @property
     @override(AlgorithmConfig)

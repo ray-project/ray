@@ -16,7 +16,7 @@ boto3==1.26.76
 cloudpickle==2.2.0
 # Keep in sync with `ci/build/upload_build_info.sh`
 cryptography==38.0.1
-cython==0.29.32
+cython==0.29.37
 fastapi==0.109.2
 feather-format==0.4.1
 # Keep compatible with Werkzeug

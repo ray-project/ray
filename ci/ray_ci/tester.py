@@ -1,6 +1,8 @@
+import itertools
 import os
+import subprocess
 import sys
-from typing import List, Tuple, Optional
+from typing import List, Set, Tuple, Optional
 
 import yaml
 import click
@@ -16,7 +18,7 @@ from ci.ray_ci.builder_container import (
 from ci.ray_ci.linux_tester_container import LinuxTesterContainer
 from ci.ray_ci.windows_tester_container import WindowsTesterContainer
 from ci.ray_ci.tester_container import TesterContainer
-from ci.ray_ci.utils import docker_login, ci_init
+from ci.ray_ci.utils import docker_login, ci_init, logger
 from ray_release.test import Test, TestState
 
 CUDA_COPYRIGHT = """
@@ -36,6 +38,7 @@ A copy of this license is made available in this container at /NGC-DL-CONTAINER-
 """  # noqa: E501
 
 DEFAULT_EXCEPT_TAGS = {"manual"}
+MICROCHECK_COMMAND = "@microcheck"
 
 # Gets the path of product/tools/docker (i.e. the parent of 'common')
 bazel_workspace_dir = os.environ.get("BUILD_WORKSPACE_DIRECTORY", "")
@@ -46,14 +49,14 @@ bazel_workspace_dir = os.environ.get("BUILD_WORKSPACE_DIRECTORY", "")
 @click.argument("team", required=True, type=str, nargs=1)
 @click.option(
     "--workers",
-    default=1,
-    type=int,
+    default="1",
+    type=str,
     help=("Number of concurrent test jobs to run."),
 )
 @click.option(
     "--worker-id",
-    default=0,
-    type=int,
+    default="0",
+    type=str,
     help=("Index of the concurrent shard to run."),
 )
 @click.option(
@@ -80,6 +83,16 @@ bazel_workspace_dir = os.environ.get("BUILD_WORKSPACE_DIRECTORY", "")
     show_default=True,
     default=False,
     help=("Run flaky tests."),
+)
+@click.option(
+    "--run-high-impact-tests",
+    is_flag=True,
+    show_default=True,
+    default=False,
+    help=(
+        "Run only high impact tests. "
+        "High impact tests are tests that often catch regressions in the past."
+    ),
 )
 @click.option(
     "--skip-ray-installation",
@@ -144,9 +157,16 @@ bazel_workspace_dir = os.environ.get("BUILD_WORKSPACE_DIRECTORY", "")
             "tsan-clang",
             # java build types
             "java",
+            # do not build ray
+            "skip",
         ]
     ),
     default="optimized",
+)
+@click.option(
+    "--bisect-run-test-target",
+    type=str,
+    help="Test target to run in bisection mode",
 )
 @click.option(
     "--operating-system",
@@ -162,13 +182,14 @@ bazel_workspace_dir = os.environ.get("BUILD_WORKSPACE_DIRECTORY", "")
 def main(
     targets: List[str],
     team: str,
-    workers: int,
-    worker_id: int,
+    workers: str,
+    worker_id: str,
     parallelism_per_worker: int,
     operating_system: str,
     except_tags: str,
     only_tags: str,
     run_flaky_tests: bool,
+    run_high_impact_tests: bool,
     skip_ray_installation: bool,
     build_only: bool,
     gpus: int,
@@ -178,6 +199,7 @@ def main(
     python_version: Optional[str],
     build_name: Optional[str],
     build_type: Optional[str],
+    bisect_run_test_target: Optional[str],
     tmp_filesystem: Optional[str],
 ) -> None:
     if not bazel_workspace_dir:
@@ -190,11 +212,14 @@ def main(
         # for wheel testing, we first build the wheel and then use it for running tests
         architecture = DEFAULT_ARCHITECTURE if build_type == "wheel" else "aarch64"
         BuilderContainer(DEFAULT_PYTHON_VERSION, DEFAULT_BUILD_TYPE, architecture).run()
+    bisect_run_test_target = bisect_run_test_target or os.environ.get(
+        "RAYCI_BISECT_TEST_TARGET"
+    )
     container = _get_container(
         team,
         operating_system,
-        workers,
-        worker_id,
+        int(workers) if workers else 1,
+        int(worker_id) if worker_id else 0,
         parallelism_per_worker,
         gpus,
         network=network,
@@ -207,16 +232,27 @@ def main(
     )
     if build_only:
         sys.exit(0)
-    test_targets = _get_test_targets(
-        container,
-        targets,
+    if bisect_run_test_target:
+        test_targets = [bisect_run_test_target]
+    else:
+        test_targets = _get_test_targets(
+            container,
+            targets,
+            team,
+            operating_system,
+            except_tags=_add_default_except_tags(except_tags),
+            only_tags=only_tags,
+            get_flaky_tests=run_flaky_tests,
+            get_high_impact_tests=run_high_impact_tests
+            or os.environ.get("RAYCI_MICROCHECK_RUN") == "1",
+        )
+    success = container.run_tests(
         team,
-        operating_system,
-        except_tags=_add_default_except_tags(except_tags),
-        only_tags=only_tags,
-        get_flaky_tests=run_flaky_tests,
+        test_targets,
+        test_arg,
+        is_bisect_run=bisect_run_test_target is not None,
+        run_flaky_tests=run_flaky_tests,
     )
-    success = container.run_tests(team, test_targets, test_arg)
     sys.exit(0 if success else 42)
 
 
@@ -330,6 +366,7 @@ def _get_test_targets(
     only_tags: Optional[str] = "",
     yaml_dir: Optional[str] = None,
     get_flaky_tests: bool = False,
+    get_high_impact_tests: bool = False,
 ) -> List[str]:
     """
     Get test targets that are owned by a particular team
@@ -341,17 +378,149 @@ def _get_test_targets(
                 f'bazel query "{query}"',
             ]
         )
-        .decode("utf-8")
-        # CUDA image comes with a license header that we need to remove
-        .replace(CUDA_COPYRIGHT, "")
         .strip()
         .split(os.linesep)
     )
     flaky_tests = set(_get_flaky_test_targets(team, operating_system, yaml_dir))
 
     if get_flaky_tests:
-        return list(flaky_tests.intersection(test_targets))
-    return list(test_targets.difference(flaky_tests))
+        # run flaky test cases, so we include flaky tests in the list of targets
+        # provided by users
+        final_targets = flaky_tests.intersection(test_targets)
+    else:
+        # normal case, we want to exclude flaky tests from the list of targets provided
+        # by users
+        final_targets = test_targets.difference(flaky_tests)
+
+    if get_high_impact_tests:
+        # run high impact test cases, so we include only high impact tests in the list
+        # of targets provided by users
+        high_impact_tests = _get_high_impact_test_targets(
+            team, operating_system, container
+        )
+        final_targets = high_impact_tests.intersection(final_targets)
+
+    return list(final_targets)
+
+
+def _get_high_impact_test_targets(
+    team: str, operating_system: str, container: TesterContainer
+) -> Set[str]:
+    """
+    Get all test targets that are high impact
+    """
+    os_prefix = f"{operating_system}:"
+    step_id_to_tests = Test.gen_high_impact_tests(prefix=os_prefix)
+    high_impact_tests = {
+        test.get_name().lstrip(os_prefix)
+        for test in itertools.chain.from_iterable(step_id_to_tests.values())
+        if test.get_oncall() == team
+    }
+    new_tests = _get_new_tests(os_prefix, container)
+    changed_tests = _get_changed_tests()
+    human_specified_tests = _get_human_specified_tests()
+
+    return (
+        high_impact_tests.union(new_tests)
+        .union(changed_tests)
+        .union(human_specified_tests)
+    )
+
+
+def _get_human_specified_tests() -> Set[str]:
+    """
+    Get all test targets that are specified by humans
+    """
+    base = os.environ.get("BUILDKITE_PULL_REQUEST_BASE_BRANCH")
+    head = os.environ.get("BUILDKITE_COMMIT")
+    if not base or not head:
+        # if not in a PR, return an empty set
+        return set()
+
+    tests = set()
+    messages = subprocess.check_output(
+        ["git", "rev-list", "--format=%b", f"origin/{base}...{head}"],
+        cwd=bazel_workspace_dir,
+    )
+    for message in messages.decode().splitlines():
+        if message.startswith(MICROCHECK_COMMAND):
+            tests = tests.union(message[len(MICROCHECK_COMMAND) :].strip().split(" "))
+    logger.info(f"Human specified tests: {tests}")
+
+    return tests
+
+
+def _get_new_tests(prefix: str, container: TesterContainer) -> Set[str]:
+    """
+    Get all local test targets that are not in database
+    """
+    local_test_targets = set(
+        container.run_script_with_output(['bazel query "tests(//...)"'])
+        .strip()
+        .split(os.linesep)
+    )
+    db_test_targets = {test.get_target() for test in Test.gen_from_s3(prefix=prefix)}
+
+    return local_test_targets.difference(db_test_targets)
+
+
+def _get_changed_tests() -> Set[str]:
+    """
+    Get all changed tests in the current PR
+    """
+    changed_files = _get_changed_files()
+    logger.info(f"Changed files: {changed_files}")
+    return set(
+        itertools.chain.from_iterable(
+            [_get_test_targets_per_file(file) for file in _get_changed_files()]
+        )
+    )
+
+
+def _get_test_targets_per_file(file: str) -> Set[str]:
+    """
+    Get the test target from a file path
+    """
+    try:
+        package = (
+            subprocess.check_output(["bazel", "query", file], cwd=bazel_workspace_dir)
+            .decode()
+            .strip()
+        )
+        if not package:
+            return set()
+        targets = subprocess.check_output(
+            ["bazel", "query", f"tests(attr('srcs', {package}, //...))"],
+            cwd=bazel_workspace_dir,
+        )
+        targets = {
+            target.strip()
+            for target in targets.decode().splitlines()
+            if target is not None
+        }
+        logger.info(f"Found test targets for file {file}: {targets}")
+
+        return targets
+    except subprocess.CalledProcessError:
+        logger.info(f"File {file} is not a test target")
+        return set()
+
+
+def _get_changed_files() -> Set[str]:
+    """
+    Get all changed files in the current PR
+    """
+    base = os.environ.get("BUILDKITE_PULL_REQUEST_BASE_BRANCH")
+    head = os.environ.get("BUILDKITE_COMMIT")
+    if not base or not head:
+        # if not in a PR, return an empty set
+        return set()
+
+    changes = subprocess.check_output(
+        ["git", "diff", "--name-only", f"origin/{base}...{head}"],
+        cwd=bazel_workspace_dir,
+    )
+    return {file.strip() for file in changes.decode().splitlines() if file is not None}
 
 
 def _get_flaky_test_targets(
@@ -363,27 +532,29 @@ def _get_flaky_test_targets(
     if not yaml_dir:
         yaml_dir = os.path.join(bazel_workspace_dir, "ci/ray_ci")
 
-    with open(f"{yaml_dir}/{team}.tests.yml", "rb") as f:
-        # load flaky tests from yaml
-        yaml_flaky_tests = set(yaml.safe_load(f)["flaky_tests"])
-        # load flaky tests from DB
-        s3_flaky_tests = {
-            # remove "linux:" prefix for linux tests to be consistent with the
-            # interface supported in the yaml file
-            test.get_name().lstrip("linux:")
-            for test in Test.gen_from_s3(prefix=f"{operating_system}:")
-            if test.get_oncall() == team and test.get_state() == TestState.FLAKY
-        }
-        all_flaky_tests = sorted(yaml_flaky_tests.union(s3_flaky_tests))
+    yaml_flaky_tests = set()
+    yaml_flaky_file = os.path.join(yaml_dir, f"{team}.tests.yml")
+    if os.path.exists(yaml_flaky_file):
+        with open(yaml_flaky_file, "rb") as f:
+            # load flaky tests from yaml
+            yaml_flaky_tests = set(yaml.safe_load(f)["flaky_tests"])
 
-        # linux tests are prefixed with "//"
-        if operating_system == "linux":
-            return [test for test in all_flaky_tests if test.startswith("//")]
+    # load flaky tests from DB
+    s3_flaky_tests = {
+        # remove "linux:" prefix for linux tests to be consistent with the
+        # interface supported in the yaml file
+        test.get_name().lstrip("linux:")
+        for test in Test.gen_from_s3(prefix=f"{operating_system}:")
+        if test.get_oncall() == team and test.get_state() == TestState.FLAKY
+    }
+    all_flaky_tests = sorted(yaml_flaky_tests.union(s3_flaky_tests))
 
-        # and other os tests are prefixed with "os:"
-        os_prefix = f"{operating_system}:"
-        return [
-            test.lstrip(os_prefix)
-            for test in all_flaky_tests
-            if test.startswith(os_prefix)
-        ]
+    # linux tests are prefixed with "//"
+    if operating_system == "linux":
+        return [test for test in all_flaky_tests if test.startswith("//")]
+
+    # and other os tests are prefixed with "os:"
+    os_prefix = f"{operating_system}:"
+    return [
+        test.lstrip(os_prefix) for test in all_flaky_tests if test.startswith(os_prefix)
+    ]

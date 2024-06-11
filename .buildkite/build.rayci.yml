@@ -1,6 +1,7 @@
 group: build
 steps:
   - label: ":tapioca: build: wheel {{matrix}} (x86_64)"
+    key: linux_wheels
     tags:
       - linux_wheels
       - oss
@@ -39,6 +40,7 @@ steps:
     job_env: manylinux
 
   - label: ":tapioca: build: doc"
+    key: doc_build
     instance_type: medium
     commands:
       - FAST=True make -C doc/ html

@@ -3,7 +3,16 @@ import abc
 from typing import TYPE_CHECKING
 
 from ray.rllib.core.learner.learner import Learner
-from ray.rllib.utils.annotations import override
+from ray.rllib.connectors.common.add_observations_from_episodes_to_batch import (
+    AddObservationsFromEpisodesToBatch,
+)
+from ray.rllib.connectors.learner.add_next_observations_from_episodes_to_train_batch import (  # noqa
+    AddNextObservationsFromEpisodesToTrainBatch,
+)
+from ray.rllib.utils.annotations import (
+    override,
+    OverrideToImplementCustomLogic_CallToSuperRecommended,
+)
 from ray.rllib.utils.metrics import LAST_TARGET_UPDATE_TS, NUM_TARGET_UPDATES
 from ray.rllib.utils.typing import ModuleID
 
@@ -28,6 +37,18 @@ TD_ERROR_MEAN_KEY = "td_error_mean"
 
 
 class DQNRainbowLearner(Learner):
+    @OverrideToImplementCustomLogic_CallToSuperRecommended
+    @override(Learner)
+    def build(self) -> None:
+        super().build()
+        # Prepend a NEXT_OBS from episodes to train batch connector piece (right
+        # after the observation default piece).
+        if self.config.add_default_connectors_to_learner_pipeline:
+            self._learner_connector.insert_after(
+                AddObservationsFromEpisodesToBatch,
+                AddNextObservationsFromEpisodesToTrainBatch(),
+            )
+
     @override(Learner)
     def additional_update_for_module(
         self, *, module_id: ModuleID, config: "DQNConfig", timestep: int, **kwargs

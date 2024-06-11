@@ -33,7 +33,10 @@ from ray.data._internal.compute import ComputeStrategy
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.equalize import _equalize
 from ray.data._internal.execution.interfaces import RefBundle
-from ray.data._internal.execution.legacy_compat import _block_list_to_bundles
+from ray.data._internal.execution.legacy_compat import (
+    _block_list_to_bundles,
+    _bundles_to_block_list,
+)
 from ray.data._internal.iterator.iterator_impl import DataIteratorImpl
 from ray.data._internal.iterator.stream_split_iterator import StreamSplitDataIterator
 from ray.data._internal.lazy_block_list import LazyBlockList
@@ -250,6 +253,7 @@ class Dataset:
         num_cpus: Optional[float] = None,
         num_gpus: Optional[float] = None,
         concurrency: Optional[Union[int, Tuple[int, int]]] = None,
+        ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         **ray_remote_args,
     ) -> "Dataset":
         """Apply the given function to each row of this dataset.
@@ -316,6 +320,12 @@ class Dataset:
             concurrency: The number of Ray workers to use concurrently. For a fixed-sized
                 worker pool of size ``n``, specify ``concurrency=n``. For an autoscaling
                 worker pool from ``m`` to ``n`` workers, specify ``concurrency=(m, n)``.
+            ray_remote_args_fn: A function that returns a dictionary of remote args
+                passed to each map worker. The purpose of this argument is to generate
+                dynamic arguments for each actor/task, and will be called each time prior
+                to initializing the worker. Args returned from this dict will always
+                override the args in ``ray_remote_args``. Note: this is an advanced,
+                experimental feature.
             ray_remote_args: Additional resource requirements to request from
                 Ray for each map worker.
 
@@ -351,6 +361,7 @@ class Dataset:
             fn_constructor_args=fn_constructor_args,
             fn_constructor_kwargs=fn_constructor_kwargs,
             compute=compute,
+            ray_remote_args_fn=ray_remote_args_fn,
             ray_remote_args=ray_remote_args,
         )
         logical_plan = LogicalPlan(map_op)
@@ -383,6 +394,7 @@ class Dataset:
         num_cpus: Optional[float] = None,
         num_gpus: Optional[float] = None,
         concurrency: Optional[Union[int, Tuple[int, int]]] = None,
+        ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         **ray_remote_args,
     ) -> "Dataset":
         """Apply the given function to batches of data.
@@ -521,6 +533,12 @@ class Dataset:
             concurrency: The number of Ray workers to use concurrently. For a fixed-sized
                 worker pool of size ``n``, specify ``concurrency=n``. For an autoscaling
                 worker pool from ``m`` to ``n`` workers, specify ``concurrency=(m, n)``.
+            ray_remote_args_fn: A function that returns a dictionary of remote args
+                passed to each map worker. The purpose of this argument is to generate
+                dynamic arguments for each actor/task, and will be called each time prior
+                to initializing the worker. Args returned from this dict will always
+                override the args in ``ray_remote_args``. Note: this is an advanced,
+                experimental feature.
             ray_remote_args: Additional resource requirements to request from
                 ray for each map worker.
 
@@ -544,6 +562,60 @@ class Dataset:
                 Call this method to transform one record at time.
 
         """  # noqa: E501
+        use_gpus = num_gpus is not None and num_gpus > 0
+        if use_gpus and (batch_size is None or batch_size == "default"):
+            raise ValueError(
+                "You must provide `batch_size` to `map_batches` when requesting GPUs. "
+                "The optimal batch size depends on the model, data, and GPU used. "
+                "We recommend using the largest batch size that doesn't result "
+                "in your GPU device running out of memory. You can view the GPU memory "
+                "usage via the Ray dashboard."
+            )
+
+        if isinstance(batch_size, int) and batch_size < 1:
+            raise ValueError("Batch size can't be negative or 0")
+
+        return self._map_batches_without_batch_size_validation(
+            fn,
+            batch_size=batch_size,
+            compute=compute,
+            batch_format=batch_format,
+            zero_copy_batch=zero_copy_batch,
+            fn_args=fn_args,
+            fn_kwargs=fn_kwargs,
+            fn_constructor_args=fn_constructor_args,
+            fn_constructor_kwargs=fn_constructor_kwargs,
+            num_cpus=num_cpus,
+            num_gpus=num_gpus,
+            concurrency=concurrency,
+            ray_remote_args_fn=ray_remote_args_fn,
+            **ray_remote_args,
+        )
+
+    def _map_batches_without_batch_size_validation(
+        self,
+        fn: UserDefinedFunction[DataBatch, DataBatch],
+        *,
+        batch_size: Union[int, None, Literal["default"]],
+        compute: Optional[ComputeStrategy],
+        batch_format: Optional[str],
+        zero_copy_batch: bool,
+        fn_args: Optional[Iterable[Any]],
+        fn_kwargs: Optional[Dict[str, Any]],
+        fn_constructor_args: Optional[Iterable[Any]],
+        fn_constructor_kwargs: Optional[Dict[str, Any]],
+        num_cpus: Optional[float],
+        num_gpus: Optional[float],
+        concurrency: Optional[Union[int, Tuple[int, int]]],
+        ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]],
+        **ray_remote_args,
+    ):
+        # NOTE: The `map_groups` implementation calls `map_batches` with
+        # `batch_size=None`. The issue is that if you request GPUs with
+        # `batch_size=None`, then `map_batches` raises a value error. So, to allow users
+        # to call `map_groups` with  GPUs, we need a separate method that doesn't
+        # perform batch size validation.
+
         compute = get_compute_strategy(
             fn,
             fn_constructor_args=fn_constructor_args,
@@ -561,14 +633,9 @@ class Dataset:
 
         min_rows_per_bundled_input = None
         if batch_size is not None and batch_size != "default":
-            if batch_size < 1:
-                raise ValueError("Batch size cannot be negative or 0")
             # Enable blocks bundling when batch_size is specified by caller.
             min_rows_per_bundled_input = batch_size
-
-        batch_size = _apply_batch_size(
-            batch_size, use_gpu="num_gpus" in ray_remote_args
-        )
+        batch_size = _apply_batch_size(batch_size)
 
         if batch_format not in VALID_BATCH_FORMATS:
             raise ValueError(
@@ -589,6 +656,7 @@ class Dataset:
             fn_constructor_args=fn_constructor_args,
             fn_constructor_kwargs=fn_constructor_kwargs,
             compute=compute,
+            ray_remote_args_fn=ray_remote_args_fn,
             ray_remote_args=ray_remote_args,
         )
         logical_plan = LogicalPlan(map_batches_op)
@@ -785,6 +853,7 @@ class Dataset:
         num_cpus: Optional[float] = None,
         num_gpus: Optional[float] = None,
         concurrency: Optional[Union[int, Tuple[int, int]]] = None,
+        ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         **ray_remote_args,
     ) -> "Dataset":
         """Apply the given function to each row and then flatten results.
@@ -846,6 +915,12 @@ class Dataset:
                 fixed-sized worker pool of size ``n``, specify ``concurrency=n``.
                 For an autoscaling worker pool from ``m`` to ``n`` workers, specify
                 ``concurrency=(m, n)``.
+            ray_remote_args_fn: A function that returns a dictionary of remote args
+                passed to each map worker. The purpose of this argument is to generate
+                dynamic arguments for each actor/task, and will be called each time
+                prior to initializing the worker. Args returned from this dict will
+                always override the args in ``ray_remote_args``. Note: this is an
+                advanced, experimental feature.
             ray_remote_args: Additional resource requirements to request from
                 ray for each map worker.
 
@@ -879,6 +954,7 @@ class Dataset:
             fn_constructor_args=fn_constructor_args,
             fn_constructor_kwargs=fn_constructor_kwargs,
             compute=compute,
+            ray_remote_args_fn=ray_remote_args_fn,
             ray_remote_args=ray_remote_args,
         )
         logical_plan = LogicalPlan(op)
@@ -890,6 +966,7 @@ class Dataset:
         *,
         compute: Union[str, ComputeStrategy] = None,
         concurrency: Optional[Union[int, Tuple[int, int]]] = None,
+        ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         **ray_remote_args,
     ) -> "Dataset":
         """Filter out rows that don't satisfy the given predicate.
@@ -921,6 +998,12 @@ class Dataset:
                 fixed-sized worker pool of size ``n``, specify ``concurrency=n``.
                 For an autoscaling worker pool from ``m`` to ``n`` workers, specify
                 ``concurrency=(m, n)``.
+            ray_remote_args_fn: A function that returns a dictionary of remote args
+                passed to each map worker. The purpose of this argument is to generate
+                dynamic arguments for each actor/task, and will be called each time
+                prior to initializing the worker. Args returned from this dict will
+                always override the args in ``ray_remote_args``. Note: this is an
+                advanced, experimental feature.
             ray_remote_args: Additional resource requirements to request from
                 ray (e.g., num_gpus=1 to request GPUs for the map tasks).
         """
@@ -935,6 +1018,7 @@ class Dataset:
             input_op=self._logical_plan.dag,
             fn=fn,
             compute=compute,
+            ray_remote_args_fn=ray_remote_args_fn,
             ray_remote_args=ray_remote_args,
         )
         logical_plan = LogicalPlan(op)
@@ -1432,23 +1516,23 @@ class Dataset:
 
         assert len(remaining_block_refs) == 0, len(remaining_block_refs)
 
-        per_split_block_lists = [
-            BlockList(
-                allocation_per_actor[actor],
-                [metadata_mapping[b] for b in allocation_per_actor[actor]],
-                owned_by_consumer=owned_by_consumer,
+        per_split_bundles = []
+        for actor in locality_hints:
+            blocks = allocation_per_actor[actor]
+            metadata = [metadata_mapping[b] for b in blocks]
+            bundle = RefBundle(
+                tuple(zip(blocks, metadata)), owns_blocks=owned_by_consumer
             )
-            for actor in locality_hints
-        ]
+            per_split_bundles.append(bundle)
 
         if equal:
             # equalize the splits
-            per_split_block_lists = _equalize(per_split_block_lists, owned_by_consumer)
+            per_split_bundles = _equalize(per_split_bundles, owned_by_consumer)
 
         split_datasets = []
-        for block_split in per_split_block_lists:
-            ref_bundles = _block_list_to_bundles(block_split, owned_by_consumer)
-            logical_plan = LogicalPlan(InputData(input_data=ref_bundles))
+        for bundle in per_split_bundles:
+            logical_plan = LogicalPlan(InputData(input_data=[bundle]))
+            block_split = _bundles_to_block_list([bundle])
             split_datasets.append(
                 MaterializedDataset(
                     ExecutionPlan(
@@ -1831,7 +1915,9 @@ class Dataset:
         # Always allow None since groupby interprets that as grouping all
         # records into a single global group.
         if key is not None:
-            SortKey(key).validate_schema(self.schema(fetch_if_missing=True))
+            # Fetching the schema can trigger execution, so don't fetch it for
+            # input validation.
+            SortKey(key).validate_schema(self.schema(fetch_if_missing=False))
 
         return GroupedData(self, key)
 
@@ -4788,21 +4874,6 @@ class Dataset:
     def context(self) -> DataContext:
         """Return the DataContext used to create this Dataset."""
         return self._plan._context
-
-    def _divide(self, block_idx: int) -> ("Dataset", "Dataset"):
-        block_list = self._plan.execute()
-        left, right = block_list.divide(block_idx)
-        l_ds = Dataset(
-            ExecutionPlan(
-                left, self._plan.stats(), run_by_consumer=block_list._owned_by_consumer
-            ),
-        )
-        r_ds = Dataset(
-            ExecutionPlan(
-                right, self._plan.stats(), run_by_consumer=block_list._owned_by_consumer
-            ),
-        )
-        return l_ds, r_ds
 
     def _aggregate_on(
         self, agg_cls: type, on: Optional[Union[str, List[str]]], *args, **kwargs

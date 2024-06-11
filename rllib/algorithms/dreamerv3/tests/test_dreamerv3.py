@@ -50,10 +50,10 @@ class TestDreamerV3(unittest.TestCase):
                 symlog_obs=True,
                 use_float16=False,
             )
-            .resources(
-                num_learner_workers=2,  # Try with 2 Learners.
-                num_cpus_per_learner_worker=1,
-                num_gpus_per_learner_worker=0,
+            .learners(
+                num_learners=2,  # Try with 2 Learners.
+                num_cpus_per_learner=1,
+                num_gpus_per_learner=0,
             )
         )
 

@@ -74,9 +74,9 @@ training loop.
         while True:
             result = algo.train()
             train.report(result)
-            if result["episode_reward_mean"] > 200:
+            if result["env_runners"]["episode_return_mean"] > 200:
                 task = 2
-            elif result["episode_reward_mean"] > 100:
+            elif result["env_runners"]["episode_return_mean"] > 100:
                 task = 1
             else:
                 task = 0
@@ -110,9 +110,9 @@ results:
 
     class MyCallbacks(DefaultCallbacks):
         def on_train_result(self, algorithm, result, **kwargs):
-            if result["episode_reward_mean"] > 200:
+            if result["env_runners"]["episode_return_mean"] > 200:
                 task = 2
-            elif result["episode_reward_mean"] > 100:
+            elif result["env_runners"]["episode_return_mean"] > 100:
                 task = 1
             else:
                 task = 0
@@ -465,12 +465,13 @@ the ``evaluation`` key of normal training results:
     Result for PG_SimpleCorridor_2c6b27dc:
       ...
       evaluation:
-        custom_metrics: {}
-        episode_len_mean: 15.864661654135338
-        episode_reward_max: 1.0
-        episode_reward_mean: 0.49624060150375937
-        episode_reward_min: 0.0
-        episodes_this_iter: 133
+        env_runners:
+          custom_metrics: {}
+          episode_len_mean: 15.864661654135338
+          episode_return_max: 1.0
+          episode_return_mean: 0.49624060150375937
+          episode_return_min: 0.0
+          episodes_this_iter: 133
 
 .. code-block:: bash
 
@@ -489,13 +490,14 @@ the ``evaluation`` key of normal training results:
     Result for PG_SimpleCorridor_0de4e686:
       ...
       evaluation:
-        custom_metrics: {}
-        episode_len_mean: 9.15695067264574
-        episode_reward_max: 1.0
-        episode_reward_mean: 0.9596412556053812
-        episode_reward_min: 0.0
-        episodes_this_iter: 223
-        foo: 1
+        env_runners:
+          custom_metrics: {}
+          episode_len_mean: 9.15695067264574
+          episode_return_max: 1.0
+          episode_return_mean: 0.9596412556053812
+          episode_return_min: 0.0
+          episodes_this_iter: 223
+          foo: 1
 
 
 Rewriting Trajectories

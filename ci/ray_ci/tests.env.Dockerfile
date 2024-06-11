@@ -23,6 +23,11 @@ if [[ "$BUILDKITE_PIPELINE_ID" == "0189942e-0876-4b8f-80a4-617f988ec59b" ]]; the
   echo "build --remote_upload_local_results=false" >> ~/.bazelrc
 fi
 
+if [[ "$BUILD_TYPE" == "skip" ]]; then
+  echo "Skipping build"
+  exit 0
+fi
+
 (
   cd dashboard/client
   npm ci

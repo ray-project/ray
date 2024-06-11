@@ -127,10 +127,10 @@ class EnvRunnerGroup:
         self._policy_class = default_policy_class
         self._remote_config = config
         self._remote_args = {
-            "num_cpus": self._remote_config.num_cpus_per_worker,
-            "num_gpus": self._remote_config.num_gpus_per_worker,
-            "resources": self._remote_config.custom_resources_per_worker,
-            "max_restarts": config.max_num_worker_restarts,
+            "num_cpus": self._remote_config.num_cpus_per_env_runner,
+            "num_gpus": self._remote_config.num_gpus_per_env_runner,
+            "resources": self._remote_config.custom_resources_per_env_runner,
+            "max_restarts": config.max_num_env_runner_restarts,
         }
 
         # Set the EnvRunner subclass to be used as "workers". Default: RolloutWorker.
@@ -212,7 +212,7 @@ class EnvRunnerGroup:
                 in the returned set as well (default: True). If `num_env_runners`
                 is 0, always create a local EnvRunner.
         """
-        # Force a local worker if num_workers == 0 (no remote workers).
+        # Force a local worker if num_env_runners == 0 (no remote workers).
         # Otherwise, this EnvRunnerGroup would be empty.
         self._local_worker = None
         if num_env_runners == 0:
@@ -241,7 +241,7 @@ class EnvRunnerGroup:
             validate=config.validate_env_runners_after_construction,
         )
 
-        # If num_workers > 0 and we don't have an env on the local worker,
+        # If num_env_runners > 0 and we don't have an env on the local worker,
         # get the observation- and action spaces for each policy from
         # the first remote worker (which does have an env).
         if (

@@ -34,7 +34,7 @@ def test_actor_pool_scaling():
         internal_queue_size=MagicMock(return_value=1),
     )
     op_state = MagicMock(num_queued=MagicMock(return_value=10))
-    op_scheduling_status = MagicMock(under_resource_limits=False)
+    op_scheduling_status = MagicMock(under_resource_limits=True)
     op_state._scheduling_status = op_scheduling_status
 
     @contextmanager
@@ -85,11 +85,11 @@ def test_actor_pool_scaling():
         with patch(op, "internal_queue_size", 0):
             assert_should_scale_up(False)
 
-    # Shouldn't scale up since the op is under resource limits.
+    # Shouldn't scale up since the op doesn't have enough resources.
     with patch(
         op_scheduling_status,
         "under_resource_limits",
-        True,
+        False,
         is_method=False,
     ):
         assert_should_scale_up(False)

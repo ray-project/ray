@@ -1851,26 +1851,19 @@ class MaxConcurrentTrialsTest(unittest.TestCase):
 # TODO(justinvyu): [Deprecated] Remove this test once the configs are removed.
 def test_local_dir_deprecation(ray_start_2_cpus, tmp_path, monkeypatch):
     monkeypatch.setenv("RAY_AIR_LOCAL_CACHE_DIR", str(tmp_path))
-    with pytest.warns(None) as record:
-        result = ray.tune.Tuner(lambda _: None).fit()[0]
-        assert any("RAY_AIR_LOCAL_CACHE_DIR" in str(r.message) for r in record)
-        assert not result.path.startswith(str(tmp_path))
+    with pytest.raises(DeprecationWarning):
+        ray.tune.Tuner(lambda _: None).fit()
     monkeypatch.delenv("RAY_AIR_LOCAL_CACHE_DIR")
 
     monkeypatch.setenv("TUNE_RESULT_DIR", str(tmp_path))
-    with pytest.warns(None) as record:
-        result = ray.tune.Tuner(lambda _: None).fit()[0]
-        assert any("TUNE_RESULT_DIR" in str(r.message) for r in record)
-        assert not result.path.startswith(str(tmp_path))
+    with pytest.raises(DeprecationWarning):
+        ray.tune.Tuner(lambda _: None).fit()
     monkeypatch.delenv("TUNE_RESULT_DIR")
 
-    with pytest.warns(None) as record:
-        result = ray.tune.Tuner(
+    with pytest.raises(DeprecationWarning):
+        ray.tune.Tuner(
             lambda _: None, run_config=ray.train.RunConfig(local_dir=str(tmp_path))
-        ).fit()[0]
-        assert any("local_dir" in str(r.message) for r in record)
-        # storage_path should fall back to local_dir during the migration period
-        assert result.path.startswith(str(tmp_path))
+        )
 
 
 if __name__ == "__main__":

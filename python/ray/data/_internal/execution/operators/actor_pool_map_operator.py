@@ -28,10 +28,6 @@ logger = logging.getLogger(__name__)
 # fairly high since streaming backpressure prevents us from overloading actors.
 DEFAULT_MAX_TASKS_IN_FLIGHT = 4
 
-# The default time to wait for minimum requested actors
-# to start before raising a timeout, in seconds.
-DEFAULT_WAIT_FOR_MIN_ACTORS_SEC = 60 * 10
-
 
 class ActorPoolMapOperator(MapOperator):
     """A MapOperator implementation that executes tasks on an actor pool.
@@ -55,6 +51,7 @@ class ActorPoolMapOperator(MapOperator):
         compute_strategy: ActorPoolStrategy,
         name: str = "ActorPoolMap",
         min_rows_per_bundle: Optional[int] = None,
+        ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
     ):
         """Create an ActorPoolMapOperator instance.
@@ -71,6 +68,12 @@ class ActorPoolMapOperator(MapOperator):
                 transform_fn, or None to use the block size. Setting the batch size is
                 important for the performance of GPU-accelerated transform functions.
                 The actual rows passed may be less if the dataset is small.
+            ray_remote_args_fn: A function that returns a dictionary of remote args
+                passed to each map worker. The purpose of this argument is to generate
+                dynamic arguments for each actor/task, and will be called each time
+                prior to initializing the worker. Args returned from this dict will
+                always override the args in ``ray_remote_args``. Note: this is an
+                advanced, experimental feature.
             ray_remote_args: Customize the ray remote args for this op's tasks.
         """
         super().__init__(
@@ -79,9 +82,9 @@ class ActorPoolMapOperator(MapOperator):
             name,
             target_max_block_size,
             min_rows_per_bundle,
+            ray_remote_args_fn,
             ray_remote_args,
         )
-        self._ray_remote_args = self._apply_default_remote_args(self._ray_remote_args)
         self._ray_actor_task_remote_args = {}
         actor_task_errors = DataContext.get_current().actor_task_retry_on_errors
         if actor_task_errors:
@@ -96,6 +99,8 @@ class ActorPoolMapOperator(MapOperator):
                 2 * data_context._max_num_blocks_in_streaming_gen_buffer
             )
         self._min_rows_per_bundle = min_rows_per_bundle
+        self._ray_remote_args_fn = ray_remote_args_fn
+        self._ray_remote_args = self._apply_default_remote_args(self._ray_remote_args)
 
         self._actor_pool = _ActorPool(compute_strategy, self._start_actor)
         # A queue of bundles awaiting dispatch to actors.
@@ -123,7 +128,8 @@ class ActorPoolMapOperator(MapOperator):
         # upstream operators, leading to a spike in memory usage prior to steady state.
         logger.debug(f"{self._name}: Waiting for {len(refs)} pool actors to start...")
         try:
-            ray.get(refs, timeout=DEFAULT_WAIT_FOR_MIN_ACTORS_SEC)
+            timeout = DataContext.get_current().wait_for_min_actors_s
+            ray.get(refs, timeout=timeout)
         except ray.exceptions.GetTimeoutError:
             raise ray.exceptions.GetTimeoutError(
                 "Timed out while starting actors. "
@@ -138,6 +144,8 @@ class ActorPoolMapOperator(MapOperator):
         """Start a new actor and add it to the actor pool as a pending actor."""
         assert self._cls is not None
         ctx = DataContext.get_current()
+        if self._ray_remote_args_fn:
+            self._refresh_actor_cls()
         actor = self._cls.remote(
             ctx,
             src_fn_name=self.name,
@@ -212,6 +220,24 @@ class ActorPoolMapOperator(MapOperator):
                 bundle,
                 lambda: _task_done_callback(actor_to_return),
             )
+
+    def _refresh_actor_cls(self):
+        """When `self._ray_remote_args_fn` is specified, this method should
+        be called prior to initializing the new worker in order to get new
+        remote args passed to the worker. It updates `self.cls` with the same
+        `_MapWorker` class, but with the new remote args from
+        `self._ray_remote_args_fn`."""
+        assert self._ray_remote_args_fn, "_ray_remote_args_fn must be provided"
+        remote_args = self._ray_remote_args.copy()
+        new_remote_args = self._ray_remote_args_fn()
+
+        # Override args from user-defined remote args function.
+        new_and_overriden_remote_args = {}
+        for k, v in new_remote_args.items():
+            remote_args[k] = v
+            new_and_overriden_remote_args[k] = v
+        self._cls = ray.remote(**remote_args)(_MapWorker)
+        return new_and_overriden_remote_args
 
     def all_inputs_done(self):
         # Call base implementation to handle any leftover bundles. This may or may not

@@ -3,12 +3,12 @@ cartpole-ppo:
     run: PPO
     num_samples: 3
     stop:
-        sampler_results/episode_reward_mean: 200
+        env_runners/episode_return_mean: 200
         time_total_s: 180
     config:
         # Works for both torch and tf.
         framework: torch
-        num_workers: 1
+        num_env_runners: 1
         num_sgd_iter:
             grid_search: [1, 4]
         sgd_minibatch_size:

@@ -34,8 +34,6 @@ NUMPY_NCCL_DTYPE_MAP = {
     numpy.int64: nccl.NCCL_INT64,
     # FLOAT types
     numpy.half: nccl.NCCL_HALF,
-    # note that numpy.float is float64.
-    numpy.float: nccl.NCCL_FLOAT64,
     numpy.float16: nccl.NCCL_FLOAT16,
     numpy.float32: nccl.NCCL_FLOAT32,
     numpy.float64: nccl.NCCL_FLOAT64,
@@ -47,6 +45,7 @@ if torch_available():
     import torch.utils.dlpack
 
     TORCH_NCCL_DTYPE_MAP = {
+        torch.bool: nccl.NCCL_INT8,
         # INT types
         torch.int: nccl.NCCL_INT,
         torch.uint8: nccl.NCCL_UINT8,
@@ -57,6 +56,7 @@ if torch_available():
         # FLOAT types
         torch.half: nccl.NCCL_HALF,
         torch.float: nccl.NCCL_FLOAT,
+        torch.bfloat16: nccl.NCCL_BFLOAT16,
         torch.float16: nccl.NCCL_FLOAT16,
         torch.float32: nccl.NCCL_FLOAT32,
         torch.float64: nccl.NCCL_FLOAT64,

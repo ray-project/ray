@@ -86,10 +86,10 @@ class LearnerGroup:
 
         Args:
             config: The AlgorithmConfig object to use to configure this LearnerGroup.
-                Call the `resources(num_learner_workers=...)` method on your config to
+                Call the `learners(num_learners=...)` method on your config to
                 specify the number of learner workers to use.
-                Call the same method with arguments `num_cpus_per_learner_worker` and/or
-                `num_gpus_per_learner_worker` to configure the compute used by each
+                Call the same method with arguments `num_cpus_per_learner` and/or
+                `num_gpus_per_learner` to configure the compute used by each
                 Learner worker in this LearnerGroup.
                 Call the `training(learner_class=...)` method on your config to specify,
                 which exact Learner class to use.
@@ -140,25 +140,25 @@ class LearnerGroup:
         else:
             backend_config = _get_backend_config(learner_class)
 
-            # TODO (sven): Cannot set both `num_cpus_per_learner_worker`>1 and
-            #  `num_gpus_per_learner_worker`>0! Users must set one or the other due
+            # TODO (sven): Cannot set both `num_cpus_per_learner`>1 and
+            #  `num_gpus_per_learner`>0! Users must set one or the other due
             #  to issues with placement group fragmentation. See
             #  https://github.com/ray-project/ray/issues/35409 for more details.
-            num_cpus_per_worker = (
-                self.config.num_cpus_per_learner_worker
-                if not self.config.num_gpus_per_learner_worker
+            num_cpus_per_learner = (
+                self.config.num_cpus_per_learner
+                if not self.config.num_gpus_per_learner
                 else 0
             )
-            num_gpus_per_worker = self.config.num_gpus_per_learner_worker
-            resources_per_worker = {
-                "CPU": num_cpus_per_worker,
-                "GPU": num_gpus_per_worker,
+            num_gpus_per_learner = self.config.num_gpus_per_learner
+            resources_per_learner = {
+                "CPU": num_cpus_per_learner,
+                "GPU": num_gpus_per_learner,
             }
 
             backend_executor = BackendExecutor(
                 backend_config=backend_config,
-                num_workers=self.config.num_learner_workers,
-                resources_per_worker=resources_per_worker,
+                num_workers=self.config.num_learners,
+                resources_per_worker=resources_per_learner,
                 max_retries=0,
             )
             backend_executor.start(
@@ -210,7 +210,7 @@ class LearnerGroup:
 
     @property
     def is_remote(self) -> bool:
-        return self.config.num_learner_workers > 0
+        return self.config.num_learners > 0
 
     @property
     def is_local(self) -> bool:
@@ -366,7 +366,7 @@ class LearnerGroup:
             if async_update:
                 raise ValueError(
                     "Cannot call `update_from_batch(update_async=True)` when running in"
-                    " local mode! Try setting `config.num_learner_workers > 0`."
+                    " local mode! Try setting `config.num_learners > 0`."
                 )
 
             results = [
@@ -938,7 +938,7 @@ class LearnerGroup:
         """Load the checkpoints of the modules being trained by this LearnerGroup.
 
            This method only needs to be called if the LearnerGroup is training
-           distributed learners (e.g num_learner_workers > 0).
+           distributed learners (e.g num_learners > 0).
 
         Args:
             marl_module_ckpt_dir: The path to the checkpoint for the

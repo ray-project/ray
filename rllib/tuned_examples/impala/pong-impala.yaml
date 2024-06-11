@@ -1,3 +1,4 @@
+# @OldAPIStack
 # This can reach 18-19 reward within 10 minutes on a Tesla M60 GPU (e.g., G3 EC2 node):
 #   128 workers -> 8 minutes
 #    32 workers -> 17 minutes
@@ -14,5 +15,5 @@ pong-impala:
             repeat_action_probability: 0.0
         rollout_fragment_length: 50
         train_batch_size: 500
-        num_workers: 128
+        num_env_runners: 128
         num_envs_per_env_runner: 1

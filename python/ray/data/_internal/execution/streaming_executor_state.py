@@ -541,6 +541,7 @@ def select_operator_to_run(
         ):
             ops.append(op)
             op_runnable = True
+        # Update scheduling status
         state._scheduling_status = OpSchedulingStatus(
             selected=False,
             runnable=op_runnable,
@@ -564,20 +565,18 @@ def select_operator_to_run(
             if state.num_queued() > 0 and not op.completed()
         ]
 
-    # Nothing to run.
-    if not ops:
-        return None
-
-    # Run metadata-only operators first. After that, choose the operator with the least
-    # memory usage.
-    selected_op = min(
-        ops,
-        key=lambda op: (
-            not op.throttling_disabled(),
-            resource_manager.get_op_usage(op).object_store_memory,
-        ),
-    )
-    topology[selected_op]._scheduling_status.selected = True
+    selected_op = None
+    if ops:
+        # Run metadata-only operators first. After that, choose the operator with the
+        # least memory usage.
+        selected_op = min(
+            ops,
+            key=lambda op: (
+                not op.throttling_disabled(),
+                resource_manager.get_op_usage(op).object_store_memory,
+            ),
+        )
+        topology[selected_op]._scheduling_status.selected = True
     autoscaler.try_trigger_scaling()
     return selected_op
 

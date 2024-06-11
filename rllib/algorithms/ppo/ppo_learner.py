@@ -62,6 +62,7 @@ class PPOLearner(Learner):
         # episodes).
         if self.config.enable_env_runner_and_connector_v2:
             batch, episodes = self._compute_gae_from_episodes(episodes=episodes)
+
         # Now that GAE (advantages and value targets) have been added to the train
         # batch, we can proceed normally (calling super method) with the update step.
         return super()._update_from_batch_or_episodes(

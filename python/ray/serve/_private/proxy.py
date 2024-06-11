@@ -710,11 +710,11 @@ class gRPCProxy(GenericProxy):
                 context._set_on_grpc_context(proxy_request.context)
                 yield result
 
-            yield ResponseStatus(code=grpc.StatusCode.OK)
+            status = ResponseStatus(code=grpc.StatusCode.OK)
         except TimeoutError:
             message = f"Request timed out after {self.request_timeout_s}s."
             logger.warning(message)
-            yield ResponseStatus(
+            status = ResponseStatus(
                 code=grpc.StatusCode.DEADLINE_EXCEEDED,
                 is_error=True,
                 message=message,
@@ -722,13 +722,13 @@ class gRPCProxy(GenericProxy):
         except asyncio.CancelledError:
             message = f"Client for request {request_id} disconnected."
             logger.info(message)
-            yield ResponseStatus(
+            status = ResponseStatus(
                 code=grpc.StatusCode.CANCELLED,
                 is_error=True,
                 message=message,
             )
         except BackPressureError as e:
-            yield ResponseStatus(
+            status = ResponseStatus(
                 code=grpc.StatusCode.UNAVAILABLE,
                 is_error=True,
                 message=e.message,
@@ -738,11 +738,15 @@ class gRPCProxy(GenericProxy):
                 logger.warning(f"Request failed: {e}", extra={"log_to_stderr": False})
             else:
                 logger.exception("Request failed due to unexpected error.")
-            yield ResponseStatus(
+            status = ResponseStatus(
                 code=grpc.StatusCode.INTERNAL,
                 is_error=True,
                 message=str(e),
             )
+
+        # The status code should always be set.
+        assert status is not None
+        yield status
 
 
 class HTTPProxy(GenericProxy):

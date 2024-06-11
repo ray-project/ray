@@ -823,8 +823,22 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \return Status.
   Status DeleteImpl(const std::vector<ObjectID> &object_ids, bool local_only);
 
+  /// Get the locations of a list objects from the local core worker. Locations that
+  /// failed to be retrieved will be returned as nullopt. No RPCs are made in this
+  /// method.
+  ///
+  /// \param[in] object_ids IDs of the objects to get.
+  /// \param[out] results Result list of object locations.
+  /// \return Status.
+  Status GetLocalObjectLocations(const std::vector<ObjectID> &object_ids,
+                                 std::vector<std::optional<ObjectLocation>> *results);
+
   /// Get the locations of a list objects. Locations that failed to be retrieved
   /// will be returned as nullptrs.
+  ///
+  /// Note: this returns shared_ptr while `GetLocalObjectLocations` returns optional.
+  /// This is just an optimization in the implementation because this method needs to
+  /// track RPCs out-of-order. They don't have any semantic differences.
   ///
   /// \param[in] object_ids IDs of the objects to get.
   /// \param[in] timeout_ms Timeout in milliseconds, wait infinitely if it's negative.

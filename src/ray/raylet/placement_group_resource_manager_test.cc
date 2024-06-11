@@ -184,8 +184,9 @@ TEST_F(NewPlacementGroupResourceManagerTest, TestNewPrepareBundleDuringDraining)
 
   ASSERT_TRUE(new_placement_group_resource_manager_->PrepareBundles(bundle1_specs));
   // Drain the node, new bundle prepare will fail.
+  rpc::NodeDeathInfo node_death_info;
   cluster_resource_scheduler_->GetLocalResourceManager().SetLocalNodeDraining(
-      std::numeric_limits<int64_t>::max());
+      std::numeric_limits<int64_t>::max(), node_death_info);
   ASSERT_FALSE(new_placement_group_resource_manager_->PrepareBundles(bundle2_specs));
   // Prepared bundles can still be committed.
   new_placement_group_resource_manager_->CommitBundles(bundle1_specs);

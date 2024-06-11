@@ -41,3 +41,6 @@ open-spiel==1.4
 # Requires libtorrent which is unavailable for arm64
 autorom[accept-rom-license]; platform_machine != "arm64"
 h5py==3.10.0
+
+# Requirements for rendering.
+moviepy

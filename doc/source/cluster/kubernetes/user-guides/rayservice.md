@@ -5,7 +5,7 @@
 ## Prerequisites
 
 This guide focuses solely on the Ray Serve multi-application API, which is available starting from Ray version 2.4.0.
-This guide mainly focuses on the behavior of KubeRay v1.1.0 and Ray 2.9.0.
+This guide mainly focuses on the behavior of KubeRay v1.1.1 and Ray 2.9.0.
 
 * Ray 2.4.0 or newer.
 * KubeRay 0.6.0, KubeRay nightly, or newer.
@@ -40,11 +40,7 @@ Note that the YAML file in this example uses `serveConfigV2` to specify a multi-
 ## Step 3: Install a RayService
 
 ```sh
-# Step 3.1: Download `ray-service.sample.yaml`
-curl -LO https://raw.githubusercontent.com/ray-project/kuberay/release-1.1.0/ray-operator/config/samples/ray-service.sample.yaml
-
-# Step 3.2: Create a RayService
-kubectl apply -f ray-service.sample.yaml
+kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/v1.1.1/ray-operator/config/samples/ray-service.sample.yaml
 ```
 
 * First, look at the Ray Serve configuration `serveConfigV2` embedded in the RayService YAML. Notice two high-level applications: a fruit stand app and a calculator app. Take note of some details about the fruit stand application:
@@ -183,7 +179,7 @@ curl -X POST -H 'Content-Type: application/json' rayservice-sample-serve-svc:800
 
 You can update the configurations for the applications by modifying `serveConfigV2` in the RayService configuration file. Reapplying the modified configuration with `kubectl apply` reapplies the new configurations to the existing RayCluster instead of creating a new RayCluster.
 
-Update the price of mangos from `3` to `4` for the fruit stand app in [ray-service.sample.yaml](https://github.com/ray-project/kuberay/blob/release-1.1.0/ray-operator/config/samples/ray-service.sample.yaml). This change reconfigures the existing MangoStand deployment, and future requests will use the updated Mango price.
+Update the price of mangos from `3` to `4` for the fruit stand app in [ray-service.sample.yaml](https://github.com/ray-project/kuberay/blob/v1.1.1/ray-operator/config/samples/ray-service.sample.yaml). This change reconfigures the existing MangoStand deployment, and future requests will use the updated Mango price.
 
 ```sh
 # Step 7.1: Update the price of mangos from 3 to 4.

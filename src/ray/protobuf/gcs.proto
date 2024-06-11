@@ -328,6 +328,8 @@ message NodeDeathInfo {
     AUTOSCALER_DRAIN_IDLE = 4;
   }
   Reason reason = 1;
+  // A message describing the reason for the node death.
+  string reason_message = 2;
 }
 
 message GcsNodeInfo {
