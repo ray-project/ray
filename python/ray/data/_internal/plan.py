@@ -3,9 +3,12 @@ import itertools
 import logging
 from typing import TYPE_CHECKING, Iterator, Optional, Tuple, Type, Union
 
+import pyarrow
+
 import ray
 from ray._private.internal_api import get_memory_info_reply, get_state_from_address
 from ray.data._internal.block_list import BlockList
+from ray.data._internal.execution.interfaces import RefBundle
 from ray.data._internal.lazy_block_list import LazyBlockList
 from ray.data._internal.logical.interfaces.logical_operator import LogicalOperator
 from ray.data._internal.logical.operators.from_operators import AbstractFrom
@@ -20,7 +23,6 @@ from ray.types import ObjectRef
 from ray.util.debug import log_once
 
 if TYPE_CHECKING:
-    import pyarrow
 
     from ray.data._internal.execution.interfaces import Executor
     from ray.data._internal.logical.interfaces.logical_plan import LogicalPlan
@@ -78,6 +80,7 @@ class ExecutionPlan:
         self._snapshot_operator: Optional[LogicalOperator] = None
         self._snapshot_blocks = None
         self._snapshot_stats = None
+        self._snapshot_bundle = None
 
         # Cached schema.
         self._schema = None
@@ -122,7 +125,7 @@ class ExecutionPlan:
         plan_max_depth = 0
         dataset_blocks = None
         if (
-            self._snapshot_blocks is None
+            self._snapshot_bundle is None
             or self._snapshot_operator != self._logical_plan.dag
         ):
 
@@ -352,58 +355,36 @@ class ExecutionPlan:
         Returns:
             The schema of the output dataset.
         """
-        from ray.data._internal.logical.operators.all_to_all_operator import (
-            RandomizeBlocks,
-        )
-
         if self._schema is not None:
             return self._schema
 
-        if self._snapshot_blocks is None or (
-            self._snapshot_operator is not None
-            and self._snapshot_operator.output_dependencies
+        schema = None
+        if (
+            self._snapshot_bundle is not None
+            and not self._snapshot_operator.output_dependencies
         ):
-            # There remain some operators yet to be executed.
-            # Even if a schema is already previously known, it may change,
-            # so we try executing to get the most updated schema.
+            schema = unify_block_metadata_schema(self._snapshot_bundle.metadata)
+        elif self._logical_plan.dag.schema() is not None:
+            schema = self._logical_plan.dag.schema()
+        elif fetch_if_missing:
+            blocks_with_metadata, _, _ = self.execute_to_iterator()
+            for _, metadata in blocks_with_metadata:
+                if metadata.schema is not None and (
+                    metadata.num_rows is None or metadata.num_rows > 0
+                ):
+                    schema = metadata.schema
+                    break
+        elif self.is_read_only():
+            # For consistency with the previous implementation, we fetch the schema if
+            # the plan is read-only even if `fetch_if_missing` is False.
+            blocks_with_metadata, _, _ = self.execute_to_iterator()
+            try:
+                _, metadata = next(iter(blocks_with_metadata))
+                schema = metadata.schema
+            except StopIteration:  # Empty dataset.
+                schema = None
 
-            # TODO(swang): There are several other operator types that could
-            # inherit the schema or we can compute the schema without having to
-            # execute any of the dataset: limit, filter, map_batches for
-            # add/drop columns, etc.
-            if fetch_if_missing:
-                if isinstance(self._logical_plan.dag, RandomizeBlocks):
-                    # TODO(ekl): this is a hack to optimize the case where we have a
-                    # trailing randomize block operator. That operator has no effect and
-                    # so we don't need to execute all blocks to get the schema.
-
-                    randomize_blocks_op = self._logical_plan.dag
-                    self._logical_plan._dag = randomize_blocks_op.input_dependencies[0]
-                    try:
-                        self.execute()
-                    finally:
-                        self._logical_plan = randomize_blocks_op
-                else:
-                    self.execute()
-            elif self.needs_eager_execution() or (
-                isinstance(self._logical_plan.dag, RandomizeBlocks)
-                and self.needs_eager_execution(
-                    self._logical_plan.dag.input_dependencies[0]
-                )
-            ):
-                # If the plan is input/read only, we execute it, so snapshot has output.
-                # If RandomizeBlocks is the last operator preceded by a input/read
-                # only plan, we can also execute it (regardless of the fetch_if_missing)
-                # since RandomizeBlocks is just changing the order of references
-                # (hence super cheap). Calling execute does not trigger read tasks.
-                self.execute()
-            else:
-                return None
-        # Snapshot is now guaranteed to be the output of the final operator or None.
-        blocks = self._snapshot_blocks
-        if not blocks:
-            return None
-        self._schema = self._get_unified_blocks_schema(blocks, fetch_if_missing)
+        self._schema = schema
         return self._schema
 
     def cache_schema(self, schema: Union[type, "pyarrow.lib.Schema"]):
@@ -449,16 +430,16 @@ class ExecutionPlan:
         Returns:
             The number of records of the result Dataset, or None.
         """
-        if self.needs_eager_execution():
-            # If the plan is input/read only, we execute it, so snapshot has output.
-            # This applies to newly created dataset. For example, initial dataset
-            # from read, and output datasets of Dataset.split().
-            self.execute()
-
-        if self._logical_plan.dag is self._snapshot_operator:
-            return self._get_num_rows_from_blocks_metadata(self._snapshot_blocks)
+        if (
+            self._snapshot_bundle is not None
+            and not self._snapshot_operator.output_dependencies
+        ):
+            num_rows = sum(m.num_rows for m in self._snapshot_bundle.metadata)
+        elif self._logical_plan.dag.num_rows() is not None:
+            num_rows = self._logical_plan.dag.num_rows()
         else:
-            return None
+            num_rows = None
+        return num_rows
 
     def _get_num_rows_from_blocks_metadata(self, blocks: BlockList) -> Optional[int]:
         metadata = blocks.get_metadata() if blocks else None
@@ -637,6 +618,11 @@ class ExecutionPlan:
 
             # Set the snapshot to the output of the final operator.
             self._snapshot_blocks = blocks
+            if not isinstance(blocks, LazyBlockList):
+                self._snapshot_bundle = RefBundle(
+                    tuple(blocks.iter_blocks_with_metadata()),
+                    owns_blocks=blocks._owned_by_consumer,
+                )
             self._snapshot_operator = self._logical_plan.dag
             self._snapshot_stats = stats
             self._snapshot_stats.dataset_uuid = self._dataset_uuid
@@ -646,12 +632,17 @@ class ExecutionPlan:
             # calculated metadata from initializing the InputDataBuffer.
             if self.is_read_only():
                 self._in_blocks = blocks
-        if _is_lazy(self._snapshot_blocks) and force_read:
+        if isinstance(self._snapshot_blocks, LazyBlockList) and force_read:
             executed_blocks = self._snapshot_blocks.compute_to_blocklist()
             # After executing the snapshot blocks, get its updated stats.
             # The snapshot blocks after execution will contain the execution stats.
             self._snapshot_stats = self._snapshot_blocks.stats()
             self._snapshot_blocks = executed_blocks
+            assert not isinstance(executed_blocks, LazyBlockList), type(executed_blocks)
+            self._snapshot_bundle = RefBundle(
+                tuple(executed_blocks.iter_blocks_with_metadata()),
+                owns_blocks=executed_blocks._owned_by_consumer,
+            )
             self._snapshot_operator = self._logical_plan.dag
             # When force-read is enabled, we similarly update self._in_blocks.
             if self.is_read_only():
@@ -668,6 +659,7 @@ class ExecutionPlan:
     def _clear_snapshot(self) -> None:
         """Clear the snapshot kept in the plan to the beginning state."""
         self._snapshot_blocks = None
+        self._snapshot_bundle = None
         self._snapshot_operator = None
         self._snapshot_stats = None
 
@@ -685,7 +677,7 @@ class ExecutionPlan:
 
     def has_lazy_input(self) -> bool:
         """Return whether this plan has lazy input blocks."""
-        return _is_lazy(self._in_blocks)
+        return isinstance(self._in_blocks, LazyBlockList)
 
     def needs_eager_execution(self, root_op: Optional[LogicalOperator] = None) -> bool:
         """Return whether the LogicalPlan corresponding to `root_op`
@@ -743,8 +735,3 @@ class ExecutionPlan:
             if isinstance(op, (Zip, Sort)):
                 return True
         return False
-
-
-def _is_lazy(blocks: BlockList) -> bool:
-    """Whether the provided block list is lazy."""
-    return isinstance(blocks, LazyBlockList)

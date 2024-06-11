@@ -1,6 +1,9 @@
-from typing import Iterator, List, Optional
+from typing import TYPE_CHECKING, Iterator, List, Optional, Union
 
 from .operator import Operator
+
+if TYPE_CHECKING:
+    import pyarrow
 
 
 class LogicalOperator(Operator):
@@ -51,3 +54,19 @@ class LogicalOperator(Operator):
 
     def post_order_iter(self) -> Iterator["LogicalOperator"]:
         return super().post_order_iter()  # type: ignore
+
+    def schema(self) -> Optional[Union[type, "pyarrow.lib.Schema"]]:
+        """The schema of operator outputs, or ``None`` if not known.
+
+        This method is used to get the dataset schema without performing actual
+        computation.
+        """
+        return None
+
+    def num_rows(self) -> Optional[int]:
+        """The number of rows outputted by this operator, or ``None`` if not known.
+
+        This method is used to count the number of rows in a dataset without performing
+        actual computation.
+        """
+        return None
