@@ -25,6 +25,7 @@ from ray.experimental.internal_kv import (
     _internal_kv_put,
     _pin_runtime_env_uri,
 )
+from ray._private.data_holder import get_data_holder
 
 default_logger = logging.getLogger(__name__)
 
@@ -90,6 +91,7 @@ class Protocol(Enum):
     S3 = "s3", "Remote s3 path, assumes everything packed in one zip file."
     GS = "gs", "Remote google storage path, assumes everything packed in one zip file."
     FILE = "file", "File storage path, assumes everything packed in one zip file."
+    PLASMA = "plasma", "For packages dynamically uploaded to the plasma store."
 
     @classmethod
     def remote_protocols(cls):
@@ -430,27 +432,34 @@ def package_exists(pkg_uri: str) -> bool:
     protocol, pkg_name = parse_uri(pkg_uri)
     if protocol == Protocol.GCS:
         return _internal_kv_exists(pkg_uri)
+    elif protocol == Protocol.PLASMA:
+        import ray
+
+        data_holder = get_data_holder()
+        return ray.get(data_holder.exists.remote(pkg_uri))
     else:
         raise NotImplementedError(f"Protocol {protocol} is not supported")
 
 
-def get_uri_for_package(package: Path) -> str:
+def get_uri_for_package(package: Path, protocol: Protocol) -> str:
     """Get a content-addressable URI from a package's contents."""
 
     if package.suffix == ".whl":
         # Wheel file names include the Python package name, version
         # and tags, so it is already effectively content-addressed.
         return "{protocol}://{whl_filename}".format(
-            protocol=Protocol.GCS.value, whl_filename=package.name
+            protocol=protocol.value, whl_filename=package.name
         )
     else:
         hash_val = hashlib.sha1(package.read_bytes()).hexdigest()
         return "{protocol}://{pkg_name}.zip".format(
-            protocol=Protocol.GCS.value, pkg_name=RAY_PKG_PREFIX + hash_val
+            protocol=protocol.value, pkg_name=RAY_PKG_PREFIX + hash_val
         )
 
 
-def get_uri_for_directory(directory: str, excludes: Optional[List[str]] = None) -> str:
+def get_uri_for_directory(
+    directory: str, protocol: Protocol, excludes: Optional[List[str]] = None
+) -> str:
     """Get a content-addressable URI from a directory's contents.
 
     This function will generate the name of the package by the directory.
@@ -484,12 +493,17 @@ def get_uri_for_directory(directory: str, excludes: Optional[List[str]] = None) 
     hash_val = _hash_directory(directory, directory, _get_excludes(directory, excludes))
 
     return "{protocol}://{pkg_name}.zip".format(
-        protocol=Protocol.GCS.value, pkg_name=RAY_PKG_PREFIX + hash_val.hex()
+        protocol=protocol.value, pkg_name=RAY_PKG_PREFIX + hash_val.hex()
     )
 
 
-def upload_package_to_gcs(pkg_uri: str, pkg_bytes: bytes) -> None:
-    """Upload a local package to GCS.
+def upload_package_to_gcs_plasma(pkg_uri: str, pkg_bytes: bytes) -> None:
+    """Upload a local package to GCS or PLASMA.
+
+    If pkg_uri has protocol `gcs`, upload to GCS.
+    If pkg_uri has protocol `plasma`, upload to plasma store. In this case, caller MUST
+        be in a Ray environment.
+    Else, raise.
 
     Args:
         pkg_uri: The URI of the package, e.g. gcs://my_package.zip
@@ -505,9 +519,15 @@ def upload_package_to_gcs(pkg_uri: str, pkg_bytes: bytes) -> None:
     protocol, pkg_name = parse_uri(pkg_uri)
     if protocol == Protocol.GCS:
         _store_package_in_gcs(pkg_uri, pkg_bytes)
+    elif protocol == Protocol.PLASMA:
+        import ray
+
+        data_holder = get_data_holder()
+        ray.get(data_holder.create.remote(pkg_uri, pkg_bytes))
+
     elif protocol in Protocol.remote_protocols():
         raise ValueError(
-            "upload_package_to_gcs should not be called with a remote path."
+            "upload_package_to_gcs_plasma should not be called with a remote path."
         )
     else:
         raise NotImplementedError(f"Protocol {protocol} is not supported")
@@ -585,7 +605,7 @@ def upload_package_if_needed(
         excludes=excludes,
     )
 
-    upload_package_to_gcs(pkg_uri, package_file.read_bytes())
+    upload_package_to_gcs_plasma(pkg_uri, package_file.read_bytes())
 
     # Remove the local file to avoid accumulating temporary zip files.
     package_file.unlink()
@@ -754,6 +774,25 @@ async def download_and_unpack_package(
                         f"Package format {pkg_file.suffix} is ",
                         "not supported for remote protocols",
                     )
+            elif protocol == Protocol.PLASMA:
+                # Note: caller must be in a Ray environment.
+                # TODO: this whole function needs a rewrite. Now I'm just copy pasting.
+
+                data_holder = get_data_holder()
+                # May raise if package is not found
+                data_obj = await data_holder.get.remote(pkg_uri)
+                data = await data_obj
+                pkg_file.write_bytes(data)
+                if is_zip_uri(pkg_uri):
+                    unzip_package(
+                        package_path=pkg_file,
+                        target_dir=local_dir,
+                        remove_top_level_directory=False,
+                        unlink_zip=True,
+                        logger=logger,
+                    )
+                else:
+                    return str(pkg_file)
             else:
                 raise NotImplementedError(f"Protocol {protocol} is not supported")
 

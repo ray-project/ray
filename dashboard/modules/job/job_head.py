@@ -19,7 +19,7 @@ import ray.dashboard.utils as dashboard_utils
 from ray._private.runtime_env.packaging import (
     package_exists,
     pin_runtime_env_uri,
-    upload_package_to_gcs,
+    upload_package_to_gcs_plasma,
 )
 from ray._private.utils import get_or_create_event_loop
 from ray.dashboard.modules.job.common import (
@@ -269,7 +269,7 @@ class JobHead(dashboard_utils.DashboardHeadModule):
             data = await req.read()
             await get_or_create_event_loop().run_in_executor(
                 self._upload_package_thread_pool_executor,
-                upload_package_to_gcs,
+                upload_package_to_gcs_plasma,
                 package_uri,
                 data,
             )

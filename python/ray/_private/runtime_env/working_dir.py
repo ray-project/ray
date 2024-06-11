@@ -15,7 +15,7 @@ from ray._private.runtime_env.packaging import (
     get_uri_for_package,
     parse_uri,
     upload_package_if_needed,
-    upload_package_to_gcs,
+    upload_package_to_gcs_plasma,
 )
 from ray._private.runtime_env.plugin import RuntimeEnvPlugin
 from ray._private.utils import get_directory_size_bytes, try_to_create_directory
@@ -30,6 +30,7 @@ def upload_working_dir_if_needed(
     runtime_env: Dict[str, Any],
     scratch_dir: Optional[str] = os.getcwd(),
     logger: Optional[logging.Logger] = default_logger,
+    protocol=Protocol.GCS,
     upload_fn=None,
 ) -> Dict[str, Any]:
     """Uploads the working_dir and replaces it with a URI.
@@ -51,19 +52,23 @@ def upload_working_dir_if_needed(
 
     # working_dir is already a URI -- just pass it through.
     try:
-        protocol, path = parse_uri(working_dir)
+        uri_protocol, path = parse_uri(working_dir)
+        if uri_protocol is not None:
+            if uri_protocol in Protocol.remote_protocols() and not path.endswith(
+                ".zip"
+            ):
+                raise ValueError("Only .zip files supported for remote URIs.")
+            return runtime_env
     except ValueError:
-        protocol, path = None, None
-
-    if protocol is not None:
-        if protocol in Protocol.remote_protocols() and not path.endswith(".zip"):
-            raise ValueError("Only .zip files supported for remote URIs.")
-        return runtime_env
+        pass
 
     excludes = runtime_env.get("excludes", None)
     try:
-        working_dir_uri = get_uri_for_directory(working_dir, excludes=excludes)
+        working_dir_uri = get_uri_for_directory(
+            working_dir, excludes=excludes, protocol=protocol
+        )
     except ValueError:  # working_dir is not a directory
+        # TODO: in this zip-file case we should still use upload_fn?
         package_path = Path(working_dir)
         if not package_path.exists() or package_path.suffix != ".zip":
             raise ValueError(
@@ -71,9 +76,9 @@ def upload_working_dir_if_needed(
                 "directory or a zip package"
             )
 
-        pkg_uri = get_uri_for_package(package_path)
+        pkg_uri = get_uri_for_package(package_path, protocol=protocol)
         try:
-            upload_package_to_gcs(pkg_uri, package_path.read_bytes())
+            upload_package_to_gcs_plasma(pkg_uri, package_path.read_bytes())
         except Exception as e:
             raise RuntimeEnvSetupError(
                 f"Failed to upload package {package_path} to the Ray cluster: {e}"

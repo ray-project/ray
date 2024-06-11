@@ -23,7 +23,10 @@ from ray._private.runtime_env.packaging import (
     get_uri_for_package,
 )
 from ray._private.runtime_env.py_modules import upload_py_modules_if_needed
-from ray._private.runtime_env.working_dir import upload_working_dir_if_needed
+from ray._private.runtime_env.working_dir import (
+    upload_working_dir_if_needed,
+    Protocol as WorkingDirProtocol,
+)
 from ray.dashboard.modules.job.common import uri_to_http_components
 
 from ray.util.annotations import DeveloperAPI, PublicAPI
@@ -369,9 +372,13 @@ class SubmissionClient:
         is_file: bool = False,
     ) -> str:
         if is_file:
-            package_uri = get_uri_for_package(Path(package_path))
+            package_uri = get_uri_for_package(
+                Path(package_path), protocol=WorkingDirProtocol.PLASMA
+            )
         else:
-            package_uri = get_uri_for_directory(package_path, excludes=excludes)
+            package_uri = get_uri_for_directory(
+                package_path, excludes=excludes, protocol=WorkingDirProtocol.PLASMA
+            )
 
         if not self._package_exists(package_uri):
             self._upload_package(
@@ -395,7 +402,9 @@ class SubmissionClient:
                 is_file=is_file,
             )
 
-        upload_working_dir_if_needed(runtime_env, upload_fn=_upload_fn)
+        upload_working_dir_if_needed(
+            runtime_env, upload_fn=_upload_fn, protocol=WorkingDirProtocol.PLASMA
+        )
 
     def _upload_py_modules_if_needed(self, runtime_env: Dict[str, Any]):
         def _upload_fn(module_path, excludes, is_file=False):
@@ -403,7 +412,9 @@ class SubmissionClient:
                 module_path, include_parent_dir=True, excludes=excludes, is_file=is_file
             )
 
-        upload_py_modules_if_needed(runtime_env, upload_fn=_upload_fn)
+        upload_py_modules_if_needed(
+            runtime_env, upload_fn=_upload_fn, protocol=WorkingDirProtocol.PLASMA
+        )
 
     @PublicAPI(stability="beta")
     def get_version(self) -> str:
