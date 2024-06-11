@@ -5,6 +5,8 @@ from typing import TYPE_CHECKING, Iterator, List, Optional, Tuple, Type, Union
 
 import pyarrow
 
+import pyarrow
+
 import ray
 from ray._private.internal_api import get_memory_info_reply, get_state_from_address
 from ray.data._internal.block_list import BlockList
