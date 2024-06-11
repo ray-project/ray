@@ -110,12 +110,7 @@ const LogLineDetailDialog = ({
   onClose,
 }: LogLineDetailDialogProps) => {
   return (
-    <DialogWithTitle
-      title="Log line details"
-      handleClose={() => {
-        onClose();
-      }}
-    >
+    <DialogWithTitle title="Log line details" handleClose={onClose}>
       <Box
         sx={{
           display: "flex",
@@ -200,10 +195,20 @@ const LogVirtualView: React.FC<LogVirtualViewProps> = ({
     let message = origin;
     let formattedLogLine = origin;
     try {
-      const parsed_origin = JSON.parse(origin);
+      const parsedOrigin = JSON.parse(origin);
       // Iff the parsed origin has a message field, use it as the message.
-      message = parsed_origin.message || origin;
-      formattedLogLine = JSON.stringify(parsed_origin, null, 2);
+      if (parsedOrigin.message) {
+        message = parsedOrigin.message;
+        // If levelname exist on the structured logs, put it in front of the message.
+        if (parsedOrigin.levelname) {
+          message = `${parsedOrigin.levelname} ${message}`;
+        }
+        // If asctime exist on the structured logs, use it as the prefix of the message.
+        if (parsedOrigin.asctime) {
+          message = `${parsedOrigin.asctime}\t${message}`;
+        }
+      }
+      formattedLogLine = JSON.stringify(parsedOrigin, null, 2);
     } catch (e) {
       // Keep the `origin` as message and formattedLogLine, if json parsing failed.
     }
