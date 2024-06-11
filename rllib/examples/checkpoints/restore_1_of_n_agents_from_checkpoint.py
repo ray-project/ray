@@ -2,14 +2,14 @@
 from checkpoint.
 
 This example:
-    - Runs a multi-agent `Pendulum-v1` experiment with >= 2 policies.
-    - Saves a checkpoint of the `MultiAgentRLModule` used every `--checkpoint-freq`
-        iterations.
-    - Stops the experiments after the agents reach a combined return of `-800`.
-    - Picks the best checkpoint by combined return and restores policy 0 from it.
-    - Runs a second experiment with the restored `RLModule` for policy 0 and
-        a fresh `RLModule` for the other policies.
-    - Stops the second experiment after the agents reach a combined return of `-800`.
+        - Runs a multi-agent `Pendulum-v1` experiment with >= 2 policies.
+        - Saves a checkpoint of the `MultiAgentRLModule` used every `--checkpoint-freq`
+            iterations.
+        - Stops the experiments after the agents reach a combined return of `-800`.
+        - Picks the best checkpoint by combined return and restores policy 0 from it.
+        - Runs a second experiment with the restored `RLModule` for policy 0 and
+            a fresh `RLModule` for the other policies.
+        - Stops the second experiment after the agents reach a combined return of `-800`.
 
 How to run this script
 ----------------------
