@@ -16,6 +16,14 @@ steps:
     allow_dependency_failure: true
     commands:
       - bash .buildkite/release-automation/check-commit-hash.sh
+  
+  - label: "Build update version binary"
+    key: build-update-version-zip
+    instance_type: default
+    job_env: forge
+    commands:
+      - bazel build --build_python_zip --incompatible_use_python_toolchains=false --python_path=python //ci/ray_ci/automation:update_version
+      - cp bazel-bin/ci/ray_ci/automation/update_version.zip /artifact-mount/
 
   - label: "Trigger Postmerge test"
     if: build.env("RAYCI_WEEKLY_RELEASE_NIGHTLY") != "1"

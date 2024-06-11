@@ -23,6 +23,10 @@ from ray.rllib.algorithms.ppo import (
     PPOTorchPolicy,
 )
 from ray.rllib.examples.envs.classes.multi_agent import MultiAgentCartPole
+from ray.rllib.utils.metrics import (
+    ENV_RUNNER_RESULTS,
+    EPISODE_RETURN_MEAN,
+)
 from ray.tune.logger import pretty_print
 from ray.tune.registry import register_env
 
@@ -173,8 +177,8 @@ if __name__ == "__main__":
         # Test passed gracefully.
         if (
             args.as_test
-            and result_dqn["episode_reward_mean"] > args.stop_reward
-            and result_ppo["episode_reward_mean"] > args.stop_reward
+            and result_dqn[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN] > args.stop_reward
+            and result_ppo[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN] > args.stop_reward
         ):
             print("test passed (both agents above requested reward)")
             quit(0)

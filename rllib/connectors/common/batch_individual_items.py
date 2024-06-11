@@ -33,7 +33,10 @@ class BatchIndividualItems(ConnectorV2):
             # to a batch structure of:
             # [module_id] -> [col0] -> [list of items]
             if is_marl_module and column in rl_module:
-                assert is_multi_agent
+                # assert is_multi_agent
+                # TODO (simon, sven): Check, if we need for other cases this check.
+                # If MA Off-Policy and independent sampling we need to overcome
+                # this check.
                 module_data = column_data
                 for col, col_data in module_data.copy().items():
                     if isinstance(col_data, list) and col != Columns.INFOS:

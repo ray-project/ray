@@ -165,6 +165,8 @@ def test_ids(ray_start_regular):
         assert rtc.get_job_id() == rtc.job_id.hex()
         assert any("Use get_job_id() instead" in str(warning.message) for warning in w)
 
+    assert rtc.get_actor_name() is None
+
     # placement group id
     # Driver doesn't belong to any placement group.
     assert rtc.get_placement_group_id() is None

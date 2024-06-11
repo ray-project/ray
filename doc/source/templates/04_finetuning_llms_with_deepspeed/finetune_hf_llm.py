@@ -702,14 +702,9 @@ def main():
     ds_plugin = DeepSpeedPlugin(hf_ds_config=config.get("ds_config"))
     config.update(ds_plugin=ds_plugin)
 
-    os.environ["RAY_AIR_LOCAL_CACHE_DIR"] = args.output_dir
-
     ray.init(
         runtime_env={
-            "env_vars": {
-                "HF_HOME": "/mnt/local_storage/.cache/huggingface",
-                "RAY_AIR_LOCAL_CACHE_DIR": os.environ["RAY_AIR_LOCAL_CACHE_DIR"],
-            },
+            "env_vars": {"HF_HOME": "/mnt/local_storage/.cache/huggingface"},
             "working_dir": ".",
         }
     )

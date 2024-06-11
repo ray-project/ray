@@ -33,7 +33,6 @@
 #include "ray/common/task/task_common.h"
 #include "ray/gcs/pb_util.h"
 #include "ray/raylet/format/node_manager_generated.h"
-#include "ray/raylet/raylet_util.h"
 #include "ray/raylet/scheduling/cluster_task_manager.h"
 #include "ray/raylet/worker_killing_policy.h"
 #include "ray/rpc/node_manager/node_manager_client.h"
@@ -99,16 +98,19 @@ void NodeManagerConfig::AddDefaultLabels(const std::string &self_node_id) {
   labels[kLabelKeyNodeID] = self_node_id;
 }
 
-NodeManager::NodeManager(instrumented_io_context &io_service,
-                         const NodeID &self_node_id,
-                         const std::string &self_node_name,
-                         const NodeManagerConfig &config,
-                         const ObjectManagerConfig &object_manager_config,
-                         std::shared_ptr<gcs::GcsClient> gcs_client)
+NodeManager::NodeManager(
+    instrumented_io_context &io_service,
+    const NodeID &self_node_id,
+    const std::string &self_node_name,
+    const NodeManagerConfig &config,
+    const ObjectManagerConfig &object_manager_config,
+    std::shared_ptr<gcs::GcsClient> gcs_client,
+    std::function<void(const rpc::NodeDeathInfo &)> shutdown_raylet_gracefully)
     : self_node_id_(self_node_id),
       self_node_name_(self_node_name),
       io_service_(io_service),
       gcs_client_(gcs_client),
+      shutdown_raylet_gracefully_(shutdown_raylet_gracefully),
       worker_pool_(
           io_service,
           self_node_id_,
@@ -282,7 +284,7 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
           RayConfig::instance().min_memory_free_bytes(),
           RayConfig::instance().memory_monitor_refresh_ms(),
           CreateMemoryUsageRefreshCallback())) {
-  RAY_LOG(INFO) << "Initializing NodeManager with ID " << self_node_id_;
+  RAY_LOG(INFO).WithField(kLogKeyNodeID, self_node_id_) << "Initializing NodeManager";
   cluster_resource_scheduler_ = std::make_shared<ClusterResourceScheduler>(
       io_service,
       scheduling::NodeID(self_node_id_.Binary()),
@@ -308,6 +310,7 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
       },
       /*get_pull_manager_at_capacity*/
       [this]() { return object_manager_.PullManagerHasPullsQueued(); },
+      shutdown_raylet_gracefully,
       /*labels*/
       config.labels);
 
@@ -381,7 +384,8 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
       [this](std::function<void()> task, uint32_t delay_ms) {
         return execute_after(
             io_service_, std::move(task), std::chrono::milliseconds(delay_ms));
-      });
+      },
+      shutdown_raylet_gracefully_);
 
   worker_pool_.SetRuntimeEnvAgentClient(runtime_env_agent_client_);
   worker_pool_.Start();
@@ -394,14 +398,13 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
 }
 
 std::shared_ptr<raylet::RayletClient> NodeManager::CreateRayletClient(
-    const NodeID &node_id) {
+    const NodeID &node_id, rpc::ClientCallManager &client_call_manager) {
   const rpc::GcsNodeInfo *node_info = gcs_client_->Nodes().Get(node_id);
   RAY_CHECK(node_info) << "No GCS info for node " << node_id;
   std::shared_ptr<ray::rpc::NodeManagerWorkerClient> grpc_client =
-      rpc::NodeManagerWorkerClient::make(
-          node_info->node_manager_address(),
-          node_info->node_manager_port(),
-          *mutable_object_provider_->client_call_manager());
+      rpc::NodeManagerWorkerClient::make(node_info->node_manager_address(),
+                                         node_info->node_manager_port(),
+                                         client_call_manager);
   return std::shared_ptr<raylet::RayletClient>(
       new raylet::RayletClient(std::move(grpc_client)));
 };
@@ -1961,8 +1964,9 @@ void NodeManager::HandleDrainRaylet(rpc::DrainRayletRequest request,
                                     rpc::DrainRayletReply *reply,
                                     rpc::SendReplyCallback send_reply_callback) {
   RAY_LOG(INFO) << "Drain raylet RPC has received. Deadline is "
-                << request.deadline_timestamp_ms()
-                << ". Drain reason: " << request.reason_message();
+                << request.deadline_timestamp_ms() << ". Drain reason: "
+                << rpc::autoscaler::DrainNodeReason_Name(request.reason())
+                << ". Drain reason message: " << request.reason_message();
 
   if (request.reason() ==
       rpc::autoscaler::DrainNodeReason::DRAIN_NODE_REASON_IDLE_TERMINATION) {
@@ -1970,7 +1974,7 @@ void NodeManager::HandleDrainRaylet(rpc::DrainRayletRequest request,
         cluster_resource_scheduler_->GetLocalResourceManager().IsLocalNodeIdle();
     if (is_idle) {
       cluster_resource_scheduler_->GetLocalResourceManager().SetLocalNodeDraining(
-          request.deadline_timestamp_ms());
+          request);
       reply->set_is_accepted(true);
     } else {
       reply->set_is_accepted(false);
@@ -1981,8 +1985,7 @@ void NodeManager::HandleDrainRaylet(rpc::DrainRayletRequest request,
     // Non-rejectable draining request.
     RAY_CHECK_EQ(request.reason(),
                  rpc::autoscaler::DrainNodeReason::DRAIN_NODE_REASON_PREEMPTION);
-    cluster_resource_scheduler_->GetLocalResourceManager().SetLocalNodeDraining(
-        request.deadline_timestamp_ms());
+    cluster_resource_scheduler_->GetLocalResourceManager().SetLocalNodeDraining(request);
     reply->set_is_accepted(true);
   }
 
@@ -2003,12 +2006,15 @@ void NodeManager::HandleShutdownRaylet(rpc::ShutdownRayletRequest request,
                      "request RPC is ignored.";
     return;
   }
-  auto shutdown_after_reply = []() {
+  auto shutdown_after_reply = [&]() {
     rpc::DrainServerCallExecutor();
     // Note that the callback is posted to the io service after the shutdown GRPC request
     // is replied. Otherwise, the RPC might not be replied to GCS before it shutsdown
     // itself.
-    ShutdownRayletGracefully();
+    rpc::NodeDeathInfo node_death_info;
+    node_death_info.set_reason(rpc::NodeDeathInfo::EXPECTED_TERMINATION);
+    node_death_info.set_reason_message("Terminated by autoscaler.");
+    shutdown_raylet_gracefully_(node_death_info);
   };
   is_shutdown_request_received_ = true;
   send_reply_callback(Status::OK(), shutdown_after_reply, shutdown_after_reply);
@@ -3085,7 +3091,8 @@ std::unique_ptr<AgentManager> NodeManager::CreateDashboardAgentManager(
       /*delay_executor=*/
       [this](std::function<void()> task, uint32_t delay_ms) {
         return execute_after(io_service_, task, std::chrono::milliseconds(delay_ms));
-      });
+      },
+      shutdown_raylet_gracefully_);
 }
 
 std::unique_ptr<AgentManager> NodeManager::CreateRuntimeEnvAgentManager(
@@ -3116,7 +3123,8 @@ std::unique_ptr<AgentManager> NodeManager::CreateRuntimeEnvAgentManager(
       /*delay_executor=*/
       [this](std::function<void()> task, uint32_t delay_ms) {
         return execute_after(io_service_, task, std::chrono::milliseconds(delay_ms));
-      });
+      },
+      shutdown_raylet_gracefully_);
 }
 
 }  // namespace raylet

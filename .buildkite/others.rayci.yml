@@ -8,6 +8,7 @@ steps:
     wanda: ci/docker/doctest.build.wanda.yaml
 
   - label: ":tapioca: build: pip-compile dependencies"
+    key: pip_compile_dependencies
     instance_type: small
     commands:
       # uncomment the following line to update the pinned versions of pip dependencies
@@ -67,7 +68,10 @@ steps:
     if: build.branch == "master"
     instance_type: small
     commands:
-      - bazel run //ci/ray_ci/automation:determine_microcheck_tests -- {{matrix}} 100 --production
+      - bazel run //ci/ray_ci/automation:determine_microcheck_tests -- {{matrix}} 100 --test-prefix linux:__ --production
+      # we use master branch to determine microcheck tests for darwin and windows, because darwin and windows tests do not run on premerge branches
+      - bazel run //ci/ray_ci/automation:determine_microcheck_tests -- {{matrix}} 100 --test-prefix darwin:__ --consider-master-branch --production
+      - bazel run //ci/ray_ci/automation:determine_microcheck_tests -- {{matrix}} 100 --test-prefix windows:__ --consider-master-branch --production
     matrix:
       - "core"
       - "serverless"

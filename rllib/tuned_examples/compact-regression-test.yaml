@@ -16,7 +16,7 @@ atari-impala:
             frameskip: 1  # no frameskip
         rollout_fragment_length: 50
         train_batch_size: 500
-        num_workers: 10
+        num_env_runners: 10
         num_envs_per_env_runner: 5
         clip_rewards: True
         lr_schedule: [
@@ -43,7 +43,7 @@ atari-ppo-tf:
         rollout_fragment_length: 100
         sgd_minibatch_size: 500
         num_sgd_iter: 10
-        num_workers: 10
+        num_env_runners: 10
         num_envs_per_env_runner: 5
         batch_mode: truncate_episodes
         observation_filter: NoFilter
@@ -70,7 +70,7 @@ atari-ppo-torch:
         rollout_fragment_length: 100
         sgd_minibatch_size: 500
         num_sgd_iter: 10
-        num_workers: 10
+        num_env_runners: 10
         num_envs_per_env_runner: 5
         batch_mode: truncate_episodes
         observation_filter: NoFilter
@@ -102,7 +102,7 @@ apex:
           prioritized_replay_alpha: 0.5
           capacity: 1000000
         num_gpus: 1
-        num_workers: 8
+        num_env_runners: 8
         num_envs_per_env_runner: 8
         rollout_fragment_length: 20
         train_batch_size: 512
@@ -119,7 +119,7 @@ atari-a2c:
             frameskip: 1  # no frameskip
         rollout_fragment_length: 20
         clip_rewards: True
-        num_workers: 5
+        num_env_runners: 5
         num_envs_per_env_runner: 5
         num_gpus: 1
         lr_schedule: [

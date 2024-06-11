@@ -4,7 +4,8 @@ import json
 import logging
 import traceback
 from random import sample
-from typing import Iterator, Optional
+from typing import AsyncIterator, Optional
+from concurrent.futures import ThreadPoolExecutor
 
 import aiohttp.web
 from aiohttp.web import Request, Response
@@ -20,6 +21,7 @@ from ray._private.runtime_env.packaging import (
     pin_runtime_env_uri,
     upload_package_to_gcs,
 )
+from ray._private.utils import get_or_create_event_loop
 from ray.dashboard.modules.job.common import (
     JobDeleteResponse,
     http_uri_components_to_uri,
@@ -113,7 +115,7 @@ class JobAgentSubmissionClient:
             else:
                 await self._raise_error(resp)
 
-    async def tail_job_logs(self, job_id: str) -> Iterator[str]:
+    async def tail_job_logs(self, job_id: str) -> AsyncIterator[str]:
         """Get an iterator that follows the logs of a job."""
         ws = await self._session.ws_connect(
             f"{self._agent_address}/api/job_agent/jobs/{job_id}/logs/tail"
@@ -159,6 +161,9 @@ class JobHead(dashboard_utils.DashboardHeadModule):
         super().__init__(dashboard_head)
         self._dashboard_head = dashboard_head
         self._job_info_client = None
+        self._upload_package_thread_pool_executor = ThreadPoolExecutor(
+            thread_name_prefix="job_head.upload_package"
+        )
 
         # It contains all `JobAgentSubmissionClient` that
         # `JobHead` has ever used, and will not be deleted
@@ -261,7 +266,13 @@ class JobHead(dashboard_utils.DashboardHeadModule):
         )
         logger.info(f"Uploading package {package_uri} to the GCS.")
         try:
-            upload_package_to_gcs(package_uri, await req.read())
+            data = await req.read()
+            await get_or_create_event_loop().run_in_executor(
+                self._upload_package_thread_pool_executor,
+                upload_package_to_gcs,
+                package_uri,
+                data,
+            )
         except Exception:
             return Response(
                 text=traceback.format_exc(),

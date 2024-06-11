@@ -33,7 +33,10 @@ from ray.data._internal.compute import ComputeStrategy
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.equalize import _equalize
 from ray.data._internal.execution.interfaces import RefBundle
-from ray.data._internal.execution.legacy_compat import _block_list_to_bundles
+from ray.data._internal.execution.legacy_compat import (
+    _block_list_to_bundles,
+    _bundles_to_block_list,
+)
 from ray.data._internal.iterator.iterator_impl import DataIteratorImpl
 from ray.data._internal.iterator.stream_split_iterator import StreamSplitDataIterator
 from ray.data._internal.lazy_block_list import LazyBlockList
@@ -80,10 +83,8 @@ from ray.data.block import (
 )
 from ray.data.context import DataContext
 from ray.data.datasource import (
-    BlockWritePathProvider,
     Connection,
     Datasink,
-    Datasource,
     FilenameProvider,
     ReadTask,
     _BigQueryDatasink,
@@ -100,7 +101,7 @@ from ray.data.datasource import (
 from ray.data.iterator import DataIterator
 from ray.data.random_access_dataset import RandomAccessDataset
 from ray.types import ObjectRef
-from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
+from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 from ray.widgets import Template
 from ray.widgets.util import repr_with_fallback
@@ -1513,23 +1514,23 @@ class Dataset:
 
         assert len(remaining_block_refs) == 0, len(remaining_block_refs)
 
-        per_split_block_lists = [
-            BlockList(
-                allocation_per_actor[actor],
-                [metadata_mapping[b] for b in allocation_per_actor[actor]],
-                owned_by_consumer=owned_by_consumer,
+        per_split_bundles = []
+        for actor in locality_hints:
+            blocks = allocation_per_actor[actor]
+            metadata = [metadata_mapping[b] for b in blocks]
+            bundle = RefBundle(
+                tuple(zip(blocks, metadata)), owns_blocks=owned_by_consumer
             )
-            for actor in locality_hints
-        ]
+            per_split_bundles.append(bundle)
 
         if equal:
             # equalize the splits
-            per_split_block_lists = _equalize(per_split_block_lists, owned_by_consumer)
+            per_split_bundles = _equalize(per_split_bundles, owned_by_consumer)
 
         split_datasets = []
-        for block_split in per_split_block_lists:
-            ref_bundles = _block_list_to_bundles(block_split, owned_by_consumer)
-            logical_plan = LogicalPlan(InputData(input_data=ref_bundles))
+        for bundle in per_split_bundles:
+            logical_plan = LogicalPlan(InputData(input_data=[bundle]))
+            block_split = _bundles_to_block_list([bundle])
             split_datasets.append(
                 MaterializedDataset(
                     ExecutionPlan(
@@ -2731,7 +2732,6 @@ class Dataset:
         try_create_dir: bool = True,
         arrow_open_stream_args: Optional[Dict[str, Any]] = None,
         filename_provider: Optional[FilenameProvider] = None,
-        block_path_provider: Optional[BlockWritePathProvider] = None,
         arrow_parquet_args_fn: Callable[[], Dict[str, Any]] = lambda: {},
         num_rows_per_file: Optional[int] = None,
         ray_remote_args: Dict[str, Any] = None,
@@ -2747,10 +2747,9 @@ class Dataset:
         If pyarrow can't represent your data, this method errors.
 
         By default, the format of the output files is ``{uuid}_{block_idx}.parquet``,
-        where ``uuid`` is a unique
-        id for the dataset. To modify this behavior, implement a custom
-        :class:`~ray.data.datasource.BlockWritePathProvider`
-        and pass it in as the ``block_path_provider`` argument.
+        where ``uuid`` is a unique id for the dataset. To modify this behavior,
+        implement a custom :class:`~ray.data.datasource.FilenameProvider` and pass it in
+        as the ``filename_provider`` argument.
 
         Examples:
             >>> import ray
@@ -2792,6 +2791,8 @@ class Dataset:
                 arguments for each dataset block.
             num_rows_per_file: The target number of rows to write to each file. If
                 ``None``, Ray Data writes a system-chosen number of rows to each file.
+                The specified value is a hint, not a strict limit. Ray Data might write
+                more or fewer rows to each file.
             ray_remote_args: Kwargs passed to :meth:`~ray.remote` in the write tasks.
             concurrency: The maximum number of Ray tasks to run concurrently. Set this
                 to control number of tasks to run concurrently. This doesn't change the
@@ -2812,7 +2813,6 @@ class Dataset:
             try_create_dir=try_create_dir,
             open_stream_args=arrow_open_stream_args,
             filename_provider=filename_provider,
-            block_path_provider=block_path_provider,
             dataset_uuid=self._uuid,
         )
         self.write_datasink(
@@ -2830,7 +2830,6 @@ class Dataset:
         try_create_dir: bool = True,
         arrow_open_stream_args: Optional[Dict[str, Any]] = None,
         filename_provider: Optional[FilenameProvider] = None,
-        block_path_provider: Optional[BlockWritePathProvider] = None,
         pandas_json_args_fn: Callable[[], Dict[str, Any]] = lambda: {},
         num_rows_per_file: Optional[int] = None,
         ray_remote_args: Dict[str, Any] = None,
@@ -2848,9 +2847,8 @@ class Dataset:
 
         By default, the format of the output files is ``{uuid}_{block_idx}.json``,
         where ``uuid`` is a unique id for the dataset. To modify this behavior,
-        implement a custom
-        :class:`~ray.data.file_based_datasource.BlockWritePathProvider`
-        and pass it in as the ``block_path_provider`` argument.
+        implement a custom :class:`~ray.data.datasource.FilenameProvider` and pass it in
+        as the ``filename_provider`` argument.
 
         Examples:
             Write the dataset as JSON file to a local directory.
@@ -2900,6 +2898,8 @@ class Dataset:
                 arguments for each dataset block.
             num_rows_per_file: The target number of rows to write to each file. If
                 ``None``, Ray Data writes a system-chosen number of rows to each file.
+                The specified value is a hint, not a strict limit. Ray Data might write
+                more or fewer rows to each file.
             ray_remote_args: kwargs passed to :meth:`~ray.remote` in the write tasks.
             concurrency: The maximum number of Ray tasks to run concurrently. Set this
                 to control number of tasks to run concurrently. This doesn't change the
@@ -2921,7 +2921,6 @@ class Dataset:
             try_create_dir=try_create_dir,
             open_stream_args=arrow_open_stream_args,
             filename_provider=filename_provider,
-            block_path_provider=block_path_provider,
             dataset_uuid=self._uuid,
         )
         self.write_datasink(
@@ -3011,7 +3010,6 @@ class Dataset:
         try_create_dir: bool = True,
         arrow_open_stream_args: Optional[Dict[str, Any]] = None,
         filename_provider: Optional[FilenameProvider] = None,
-        block_path_provider: Optional[BlockWritePathProvider] = None,
         arrow_csv_args_fn: Callable[[], Dict[str, Any]] = lambda: {},
         num_rows_per_file: Optional[int] = None,
         ray_remote_args: Dict[str, Any] = None,
@@ -3029,9 +3027,9 @@ class Dataset:
 
         By default, the format of the output files is ``{uuid}_{block_idx}.csv``,
         where ``uuid`` is a unique id for the dataset. To modify this behavior,
-        implement a custom
-        :class:`~ray.data.datasource.BlockWritePathProvider`
-        and pass it in as the ``block_path_provider`` argument.
+        implement a custom :class:`~ray.data.datasource.FilenameProvider`
+        and pass it in as the ``filename_provider`` argument.
+
 
         Examples:
             Write the dataset as CSV files to a local directory.
@@ -3080,6 +3078,8 @@ class Dataset:
                 write arguments for each dataset block.
             num_rows_per_file: The target number of rows to write to each file. If
                 ``None``, Ray Data writes a system-chosen number of rows to each file.
+                The specified value is a hint, not a strict limit. Ray Data might write
+                more or fewer rows to each file.
             ray_remote_args: kwargs passed to :meth:`~ray.remote` in the write tasks.
             concurrency: The maximum number of Ray tasks to run concurrently. Set this
                 to control number of tasks to run concurrently. This doesn't change the
@@ -3099,7 +3099,6 @@ class Dataset:
             try_create_dir=try_create_dir,
             open_stream_args=arrow_open_stream_args,
             filename_provider=filename_provider,
-            block_path_provider=block_path_provider,
             dataset_uuid=self._uuid,
         )
         self.write_datasink(
@@ -3118,7 +3117,6 @@ class Dataset:
         try_create_dir: bool = True,
         arrow_open_stream_args: Optional[Dict[str, Any]] = None,
         filename_provider: Optional[FilenameProvider] = None,
-        block_path_provider: Optional[BlockWritePathProvider] = None,
         num_rows_per_file: Optional[int] = None,
         ray_remote_args: Dict[str, Any] = None,
         concurrency: Optional[int] = None,
@@ -3145,9 +3143,8 @@ class Dataset:
 
         By default, the format of the output files is ``{uuid}_{block_idx}.tfrecords``,
         where ``uuid`` is a unique id for the dataset. To modify this behavior,
-        implement a custom
-        :class:`~ray.data.file_based_datasource.BlockWritePathProvider`
-        and pass it in as the ``block_path_provider`` argument.
+        implement a custom :class:`~ray.data.datasource.FilenameProvider`
+        and pass it in as the ``filename_provider`` argument.
 
         Examples:
             >>> import ray
@@ -3180,6 +3177,8 @@ class Dataset:
                 look like.
             num_rows_per_file: The target number of rows to write to each file. If
                 ``None``, Ray Data writes a system-chosen number of rows to each file.
+                The specified value is a hint, not a strict limit. Ray Data might write
+                more or fewer rows to each file.
             ray_remote_args: kwargs passed to :meth:`~ray.remote` in the write tasks.
             concurrency: The maximum number of Ray tasks to run concurrently. Set this
                 to control number of tasks to run concurrently. This doesn't change the
@@ -3195,7 +3194,6 @@ class Dataset:
             try_create_dir=try_create_dir,
             open_stream_args=arrow_open_stream_args,
             filename_provider=filename_provider,
-            block_path_provider=block_path_provider,
             dataset_uuid=self._uuid,
         )
         self.write_datasink(
@@ -3214,7 +3212,6 @@ class Dataset:
         try_create_dir: bool = True,
         arrow_open_stream_args: Optional[Dict[str, Any]] = None,
         filename_provider: Optional[FilenameProvider] = None,
-        block_path_provider: Optional[BlockWritePathProvider] = None,
         num_rows_per_file: Optional[int] = None,
         ray_remote_args: Dict[str, Any] = None,
         encoder: Optional[Union[bool, str, callable, list]] = True,
@@ -3235,7 +3232,7 @@ class Dataset:
         This is only supported for datasets convertible to Arrow records.
         To control the number of files, use :meth:`Dataset.repartition`.
 
-        Unless a custom block path provider is given, the format of the output
+        Unless a custom filename provider is given, the format of the output
         files is ``{uuid}_{block_idx}.tfrecords``, where ``uuid`` is a unique id
         for the dataset.
 
@@ -3260,10 +3257,13 @@ class Dataset:
                 already exist. Defaults to ``True``.
             arrow_open_stream_args: kwargs passed to
                 ``pyarrow.fs.FileSystem.open_output_stream``
-            block_path_provider: :class:`~ray.data.datasource.BlockWritePathProvider`
-                implementation to write each dataset block to a custom output path.
+            filename_provider: A :class:`~ray.data.datasource.FilenameProvider`
+                implementation. Use this parameter to customize what your filenames
+                look like.
             num_rows_per_file: The target number of rows to write to each file. If
                 ``None``, Ray Data writes a system-chosen number of rows to each file.
+                The specified value is a hint, not a strict limit. Ray Data might write
+                more or fewer rows to each file.
             ray_remote_args: Kwargs passed to ``ray.remote`` in the write tasks.
             concurrency: The maximum number of Ray tasks to run concurrently. Set this
                 to control number of tasks to run concurrently. This doesn't change the
@@ -3279,7 +3279,6 @@ class Dataset:
             try_create_dir=try_create_dir,
             open_stream_args=arrow_open_stream_args,
             filename_provider=filename_provider,
-            block_path_provider=block_path_provider,
             dataset_uuid=self._uuid,
         )
         self.write_datasink(
@@ -3298,7 +3297,6 @@ class Dataset:
         try_create_dir: bool = True,
         arrow_open_stream_args: Optional[Dict[str, Any]] = None,
         filename_provider: Optional[FilenameProvider] = None,
-        block_path_provider: Optional[BlockWritePathProvider] = None,
         num_rows_per_file: Optional[int] = None,
         ray_remote_args: Dict[str, Any] = None,
         concurrency: Optional[int] = None,
@@ -3312,11 +3310,11 @@ class Dataset:
         To control the number of number of blocks, call
         :meth:`~ray.data.Dataset.repartition`.
 
+
         By default, the format of the output files is ``{uuid}_{block_idx}.npy``,
         where ``uuid`` is a unique id for the dataset. To modify this behavior,
-        implement a custom
-        :class:`~ray.data.datasource.BlockWritePathProvider`
-        and pass it in as the ``block_path_provider`` argument.
+        implement a custom :class:`~ray.data.datasource.FilenameProvider`
+        and pass it in as the ``filename_provider`` argument.
 
         Examples:
             >>> import ray
@@ -3351,6 +3349,8 @@ class Dataset:
                 look like.
             num_rows_per_file: The target number of rows to write to each file. If
                 ``None``, Ray Data writes a system-chosen number of rows to each file.
+                The specified value is a hint, not a strict limit. Ray Data might write
+                more or fewer rows to each file.
             ray_remote_args: kwargs passed to :meth:`~ray.remote` in the write tasks.
             concurrency: The maximum number of Ray tasks to run concurrently. Set this
                 to control number of tasks to run concurrently. This doesn't change the
@@ -3366,7 +3366,6 @@ class Dataset:
             try_create_dir=try_create_dir,
             open_stream_args=arrow_open_stream_args,
             filename_provider=filename_provider,
-            block_path_provider=block_path_provider,
             dataset_uuid=self._uuid,
         )
         self.write_datasink(
@@ -3595,30 +3594,6 @@ class Dataset:
             datasink,
             ray_remote_args=ray_remote_args,
             concurrency=concurrency,
-        )
-
-    @Deprecated
-    @ConsumptionAPI(pattern="Time complexity:")
-    def write_datasource(
-        self,
-        datasource: Datasource,
-        *,
-        ray_remote_args: Dict[str, Any] = None,
-        **write_args,
-    ) -> None:
-        """Writes the dataset to a custom :class:`~ray.data.Datasource`.
-
-        Time complexity: O(dataset size / parallelism)
-
-        Args:
-            datasource: The :class:`~ray.data.Datasource` to write to.
-            ray_remote_args: Kwargs passed to ``ray.remote`` in the write tasks.
-            write_args: Additional write args to pass to the :class:`~ray.data.Datasource`.
-        """  # noqa: E501
-        raise DeprecationWarning(
-            "`write_datasource` is deprecated in Ray 2.9. Create a `Datasink` and use "
-            "`write_datasink` instead. For more information, see "
-            "https://docs.ray.io/en/master/data/api/doc/ray.data.Datasink.html.",  # noqa: E501
         )
 
     @ConsumptionAPI(pattern="Time complexity:")
@@ -4876,21 +4851,6 @@ class Dataset:
     def context(self) -> DataContext:
         """Return the DataContext used to create this Dataset."""
         return self._plan._context
-
-    def _divide(self, block_idx: int) -> ("Dataset", "Dataset"):
-        block_list = self._plan.execute()
-        left, right = block_list.divide(block_idx)
-        l_ds = Dataset(
-            ExecutionPlan(
-                left, self._plan.stats(), run_by_consumer=block_list._owned_by_consumer
-            ),
-        )
-        r_ds = Dataset(
-            ExecutionPlan(
-                right, self._plan.stats(), run_by_consumer=block_list._owned_by_consumer
-            ),
-        )
-        return l_ds, r_ds
 
     def _aggregate_on(
         self, agg_cls: type, on: Optional[Union[str, List[str]]], *args, **kwargs

@@ -155,7 +155,6 @@ build:ci --curses=no
 build:ci --keep_going
 build:ci --progress_report_interval=100
 build:ci --show_progress_rate_limit=15
-build:ci --show_task_finish
 build:ci --ui_actions_shown=1024
 build:ci --show_timestamps
 build:ci-travis --disk_cache=~/ray-bazel-cache
@@ -168,6 +167,7 @@ test:ci --flaky_test_attempts=3
 test:ci --nocache_test_results
 test:ci --spawn_strategy=local
 test:ci --test_output=errors
+test:ci --experimental_ui_max_stdouterr_bytes=-1
 test:ci --test_verbose_timeout_warnings
 test:ci-debug -c dbg
 test:ci-debug --copt="-g"

@@ -16,6 +16,11 @@ from ray.serve._private.test_utils import (
 parser = argparse.ArgumentParser(
     description="Example Python script taking command line arguments."
 )
+parser.add_argument(
+    "--use-image-uri-api",
+    action="store_true",
+    help="Whether to use the new `image_uri` API instead of the old `container` API.",
+)
 parser.add_argument("--image", type=str, help="The docker image to use for Ray worker")
 args = parser.parse_args()
 worker_pth = get_ray_default_worker_file_path()
@@ -23,6 +28,12 @@ worker_pth = get_ray_default_worker_file_path()
 os.environ["RAY_USAGE_STATS_ENABLED"] = "1"
 os.environ["RAY_USAGE_STATS_REPORT_URL"] = "http://127.0.0.1:8000/telemetry"
 os.environ["RAY_USAGE_STATS_REPORT_INTERVAL_S"] = "1"
+
+
+if args.use_image_uri_api:
+    runtime_env = {"image_uri": args.image}
+else:
+    runtime_env = {"container": {"image": args.image, "worker_path": worker_pth}}
 
 
 def check_app(app_name: str, expected: str):
@@ -88,7 +99,7 @@ config["applications"].append(
     {
         "name": "app1",
         "import_path": "serve_application:app",
-        "runtime_env": {"container": {"image": args.image, "worker_path": worker_pth}},
+        "runtime_env": runtime_env,
     },
 )
 client.deploy_apps(ServeDeploySchema.parse_obj(config))
@@ -104,9 +115,7 @@ config["applications"].append(
             {
                 "name": "Model",
                 "ray_actor_options": {
-                    "runtime_env": {
-                        "container": {"image": args.image, "worker_path": worker_pth}
-                    },
+                    "runtime_env": runtime_env,
                 },
             }
         ],

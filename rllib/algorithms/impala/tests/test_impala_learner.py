@@ -89,7 +89,7 @@ class TestImpalaLearner(unittest.TestCase):
                 )
 
             algo_config = config.copy(copy_frozen=False)
-            algo_config.num_learner_workers = 0
+            algo_config.num_learners = 0
             learner_group = algo_config.build_learner_group(
                 env=algo.workers.local_worker().env
             )

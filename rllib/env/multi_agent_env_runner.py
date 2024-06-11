@@ -3,7 +3,6 @@ import logging
 
 from collections import defaultdict
 from functools import partial
-import numpy as np
 from typing import DefaultDict, Dict, List, Optional
 
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
@@ -17,6 +16,13 @@ from ray.rllib.env.multi_agent_episode import MultiAgentEpisode
 from ray.rllib.env.utils import _gym_env_creator
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.metrics import (
+    EPISODE_DURATION_SEC_MEAN,
+    EPISODE_LEN_MAX,
+    EPISODE_LEN_MEAN,
+    EPISODE_LEN_MIN,
+    EPISODE_RETURN_MAX,
+    EPISODE_RETURN_MEAN,
+    EPISODE_RETURN_MIN,
     NUM_AGENT_STEPS_SAMPLED,
     NUM_AGENT_STEPS_SAMPLED_LIFETIME,
     NUM_ENV_STEPS_SAMPLED,
@@ -133,7 +139,7 @@ class MultiAgentEnvRunner(EnvRunner):
         assert not (num_timesteps is not None and num_episodes is not None)
 
         # If no execution details are provided, use the config to try to infer the
-        # desired timesteps/episodes to sample and exploration behavior.
+        # desired timesteps/episodes to sample and the exploration behavior.
         if explore is None:
             explore = self.config.explore
         if num_timesteps is None and num_episodes is None:
@@ -313,6 +319,10 @@ class MultiAgentEnvRunner(EnvRunner):
                 extra_model_outputs=extra_model_outputs,
             )
 
+            # Make the `on_episode_step` callback (before finalizing the episode
+            # object).
+            self._make_on_episode_callback("on_episode_step")
+
             # Episode is done for all agents. Wrap up the old one and create a new
             # one (and reset it) to continue.
             if self._episode.is_done:
@@ -322,17 +332,20 @@ class MultiAgentEnvRunner(EnvRunner):
                 # a call and in case the structure of the observations change
                 # sufficiently, the following `finalize()` call on the episode will
                 # fail.
-                self._env_to_module(
-                    episodes=[self._episode],
-                    explore=explore,
-                    rl_module=self.module,
-                    shared_data=self._shared_data,
-                )
+                if self.module is not None:
+                    self._env_to_module(
+                        episodes=[self._episode],
+                        explore=explore,
+                        rl_module=self.module,
+                        shared_data=self._shared_data,
+                    )
 
-                # Make the `on_episode_step` and `on_episode_end` callbacks (before
-                # finalizing the episode object).
-                self._make_on_episode_callback("on_episode_step")
+                # Make the `on_episode_end` callback (before finalizing the episode,
+                # but after(!) the last env-to-module connector call has been made.
+                # -> All obs (even the terminal one) should have been processed now (by
+                # the connector, if applicable).
                 self._make_on_episode_callback("on_episode_end")
+
                 # Finalize (numpy'ize) the episode.
                 self._episode.finalize(drop_zero_len_single_agent_episodes=True)
                 done_episodes_to_return.append(self._episode)
@@ -348,10 +361,6 @@ class MultiAgentEnvRunner(EnvRunner):
 
                 # Make the `on_episode_start` callback.
                 self._make_on_episode_callback("on_episode_start")
-
-            else:
-                # Make the `on_episode_step` callback.
-                self._make_on_episode_callback("on_episode_step")
 
         # Already perform env-to-module connector call for next call to
         # `_sample_timesteps()`. See comment in c'tor for `self._cached_to_module`.
@@ -405,10 +414,6 @@ class MultiAgentEnvRunner(EnvRunner):
 
         done_episodes_to_return: List[MultiAgentEpisode] = []
 
-        # Reset the environment.
-        # TODO (simon): Check, if we need here the seed from the config.
-        obs, infos = self.env.reset()
-
         # Create a new multi-agent episode.
         _episode = self._new_episode()
         self._make_on_episode_callback("on_episode_created", _episode)
@@ -416,6 +421,9 @@ class MultiAgentEnvRunner(EnvRunner):
             "agent_to_module_mapping_fn": self.config.policy_mapping_fn,
         }
 
+        # Reset the environment.
+        # TODO (simon): Check, if we need here the seed from the config.
+        obs, infos = self.env.reset()
         # Set initial obs and infos in the episodes.
         _episode.add_env_reset(observations=obs, infos=infos)
         self._make_on_episode_callback("on_episode_start", _episode)
@@ -524,8 +532,25 @@ class MultiAgentEnvRunner(EnvRunner):
                 # Increase episode count.
                 eps += 1
 
-                # Make `on_episode_end` callback before finalizing the episode.
-                self._make_on_episode_callback("on_episode_end")
+                # We have to perform an extra env-to-module pass here, just in case
+                # the user's connector pipeline performs (permanent) transforms
+                # on each observation (including this final one here). Without such
+                # a call and in case the structure of the observations change
+                # sufficiently, the following `finalize()` call on the episode will
+                # fail.
+                if self.module is not None:
+                    self._env_to_module(
+                        episodes=[_episode],
+                        explore=explore,
+                        rl_module=self.module,
+                        shared_data=_shared_data,
+                    )
+
+                # Make the `on_episode_end` callback (before finalizing the episode,
+                # but after(!) the last env-to-module connector call has been made.
+                # -> All obs (even the terminal one) should have been processed now (by
+                # the connector, if applicable).
+                self._make_on_episode_callback("on_episode_end", _episode)
 
                 # Finish the episode.
                 done_episodes_to_return.append(
@@ -584,8 +609,9 @@ class MultiAgentEnvRunner(EnvRunner):
                     episode_return += return_eps2
                     episode_duration_s += eps2.get_duration_s()
                     for sa_eps in eps2.agent_episodes.values():
-                        agent_episode_returns[str(sa_eps.agent_id)] += return_eps2
-                        module_episode_returns[sa_eps.module_id] += return_eps2
+                        return_sa = sa_eps.get_return()
+                        agent_episode_returns[str(sa_eps.agent_id)] += return_sa
+                        module_episode_returns[sa_eps.module_id] += return_sa
                 del self._ongoing_episodes_for_metrics[eps.id_]
 
             self._log_episode_metrics(
@@ -595,10 +621,6 @@ class MultiAgentEnvRunner(EnvRunner):
                 agent_episode_returns,
                 module_episode_returns,
             )
-
-        # If no episodes at all, log NaN stats.
-        if len(self._done_episodes_for_metrics) == 0:
-            self._log_episode_metrics(np.nan, np.nan, np.nan)
 
         # Log num episodes counter for this iteration.
         self.metrics.log_value(
@@ -847,9 +869,9 @@ class MultiAgentEnvRunner(EnvRunner):
         # Log general episode metrics.
         self.metrics.log_dict(
             {
-                "episode_len_mean": length,
-                "episode_return_mean": ret,
-                "episode_duration_sec_mean": sec,
+                EPISODE_LEN_MEAN: length,
+                EPISODE_RETURN_MEAN: ret,
+                EPISODE_DURATION_SEC_MEAN: sec,
                 **(
                     {
                         # Per-agent returns.
@@ -868,15 +890,17 @@ class MultiAgentEnvRunner(EnvRunner):
         # For some metrics, log min/max as well.
         self.metrics.log_dict(
             {
-                "episode_len_min": length,
-                "episode_return_min": ret,
+                EPISODE_LEN_MIN: length,
+                EPISODE_RETURN_MIN: ret,
             },
             reduce="min",
+            window=self.config.metrics_num_episodes_for_smoothing,
         )
         self.metrics.log_dict(
             {
-                "episode_len_max": length,
-                "episode_return_max": ret,
+                EPISODE_LEN_MAX: length,
+                EPISODE_RETURN_MAX: ret,
             },
             reduce="max",
+            window=self.config.metrics_num_episodes_for_smoothing,
         )

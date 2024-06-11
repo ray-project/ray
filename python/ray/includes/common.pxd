@@ -508,6 +508,10 @@ cdef extern from "src/ray/protobuf/gcs.pb.h" nogil:
         c_string ray_namespace() const
         const c_string &SerializeAsString()
 
+    cdef cppclass CNodeDeathInfo "ray::rpc::NodeDeathInfo":
+        int reason() const
+        c_string reason_message() const
+
     cdef cppclass CGcsNodeInfo "ray::rpc::GcsNodeInfo":
         c_string node_id() const
         c_string node_name() const
@@ -520,6 +524,7 @@ cdef extern from "src/ray/protobuf/gcs.pb.h" nogil:
         c_string raylet_socket_name() const
         int metrics_export_port() const
         int runtime_env_agent_port() const
+        CNodeDeathInfo death_info() const
         void ParseFromString(const c_string &serialized)
 
     cdef enum CGcsNodeState "ray::rpc::GcsNodeInfo_GcsNodeState":

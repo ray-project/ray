@@ -1,5 +1,6 @@
 import collections
 import logging
+import math
 import os
 import warnings
 from typing import (
@@ -25,12 +26,14 @@ from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.lazy_block_list import LazyBlockList
 from ray.data._internal.logical.operators.from_operators import (
     FromArrow,
+    FromBlocks,
     FromItems,
     FromNumpy,
     FromPandas,
 )
 from ray.data._internal.logical.operators.read_operator import Read
 from ray.data._internal.logical.optimizers import LogicalPlan
+from ray.data._internal.pandas_block import _estimate_dataframe_size
 from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.stats import DatasetStats
@@ -57,7 +60,7 @@ from ray.data.datasource import (
     LanceDatasource,
     MongoDatasource,
     NumpyDatasource,
-    ParquetBaseDatasource,
+    ParquetBulkDatasource,
     ParquetDatasource,
     ParquetMetadataProvider,
     PathPartitionFilter,
@@ -102,6 +105,34 @@ if TYPE_CHECKING:
 T = TypeVar("T")
 
 logger = logging.getLogger(__name__)
+
+
+@DeveloperAPI
+def from_blocks(blocks: List[Block]):
+    """Create a :class:`~ray.data.Dataset` from a list of blocks.
+
+    This method is primarily used for testing. Unlike other methods like
+    :func:`~ray.data.from_pandas` and :func:`~ray.data.from_arrow`, this method
+    gaurentees that it won't modify the number of blocks.
+
+    Args:
+        blocks: List of blocks to create the dataset from.
+
+    Returns:
+        A :class:`~ray.data.Dataset` holding the blocks.
+    """
+    block_refs = [ray.put(block) for block in blocks]
+    metadata = [BlockAccessor.for_block(block).get_metadata() for block in blocks]
+    from_blocks_op = FromBlocks(block_refs, metadata)
+    logical_plan = LogicalPlan(from_blocks_op)
+    return MaterializedDataset(
+        ExecutionPlan(
+            BlockList(block_refs, metadata, owned_by_consumer=False),
+            DatasetStats(metadata={"FromBlocks": metadata}, parent=None),
+            run_by_consumer=False,
+        ),
+        logical_plan,
+    )
 
 
 @PublicAPI
@@ -173,9 +204,7 @@ def from_items(
         block = builder.build()
         blocks.append(ray.put(block))
         metadata.append(
-            BlockAccessor.for_block(block).get_metadata(
-                input_files=None, exec_stats=stats.build()
-            )
+            BlockAccessor.for_block(block).get_metadata(exec_stats=stats.build())
         )
 
     from_items_op = FromItems(blocks, metadata)
@@ -740,7 +769,7 @@ def read_parquet(
         files.
     """
     if meta_provider is None:
-        meta_provider = get_parquet_metadata_provider()
+        meta_provider = get_parquet_metadata_provider(override_num_blocks)
     arrow_parquet_args = _resolve_parquet_args(
         tensor_column_schema,
         **arrow_parquet_args,
@@ -938,7 +967,7 @@ def read_parquet_bulk(
     partition_filter: Optional[PathPartitionFilter] = None,
     shuffle: Union[Literal["files"], None] = None,
     include_paths: bool = False,
-    file_extensions: Optional[List[str]] = ParquetBaseDatasource._FILE_EXTENSIONS,
+    file_extensions: Optional[List[str]] = ParquetBulkDatasource._FILE_EXTENSIONS,
     concurrency: Optional[int] = None,
     override_num_blocks: Optional[int] = None,
     **arrow_parquet_args,
@@ -1033,7 +1062,7 @@ def read_parquet_bulk(
     if columns is not None:
         read_table_args["columns"] = columns
 
-    datasource = ParquetBaseDatasource(
+    datasource = ParquetBulkDatasource(
         paths,
         read_table_args=read_table_args,
         filesystem=filesystem,
@@ -2359,7 +2388,8 @@ def from_modin(df: "modin.pandas.dataframe.DataFrame") -> MaterializedDataset:
 
 @PublicAPI
 def from_pandas(
-    dfs: Union["pandas.DataFrame", List["pandas.DataFrame"]]
+    dfs: Union["pandas.DataFrame", List["pandas.DataFrame"]],
+    override_num_blocks: Optional[int] = None,
 ) -> MaterializedDataset:
     """Create a :class:`~ray.data.Dataset` from a list of pandas dataframes.
 
@@ -2373,10 +2403,14 @@ def from_pandas(
        Create a Ray Dataset from a list of Pandas DataFrames.
 
         >>> ray.data.from_pandas([df, df])
-        MaterializedDataset(num_blocks=2, num_rows=6, schema={a: int64, b: int64})
+        MaterializedDataset(num_blocks=1, num_rows=6, schema={a: int64, b: int64})
 
     Args:
         dfs: A pandas dataframe or a list of pandas dataframes.
+        override_num_blocks: Override the number of output blocks from all read tasks.
+            By default, the number of output blocks is dynamically decided based on
+            input data size and available resources. You shouldn't manually set this
+            value in most cases.
 
     Returns:
         :class:`~ray.data.Dataset` holding data read from the dataframes.
@@ -2386,13 +2420,27 @@ def from_pandas(
     if isinstance(dfs, pd.DataFrame):
         dfs = [dfs]
 
+    context = DataContext.get_current()
+    num_blocks = override_num_blocks
+    if num_blocks is None:
+        total_size = sum(_estimate_dataframe_size(df) for df in dfs)
+        num_blocks = max(math.ceil(total_size / context.target_max_block_size), 1)
+
+    if len(dfs) > 1:
+        # I assume most users pass a single DataFrame as input. For simplicity, I'm
+        # concatenating DataFrames, even though it's not efficient.
+        ary = pd.concat(dfs, axis=0)
+    else:
+        ary = dfs[0]
+    dfs = np.array_split(ary, num_blocks)
+
     from ray.air.util.data_batch_conversion import (
         _cast_ndarray_columns_to_tensor_extension,
     )
 
-    context = DataContext.get_current()
     if context.enable_tensor_extension_casting:
         dfs = [_cast_ndarray_columns_to_tensor_extension(df.copy()) for df in dfs]
+
     return from_pandas_refs([ray.put(df) for df in dfs])
 
 
@@ -2958,7 +3006,7 @@ def read_lance(
         datasource=datasource,
         ray_remote_args=ray_remote_args,
         concurrency=concurrency,
-        override_num_locks=override_num_blocks,
+        override_num_blocks=override_num_blocks,
     )
 
 

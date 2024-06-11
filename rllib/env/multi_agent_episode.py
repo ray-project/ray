@@ -58,6 +58,30 @@ class MultiAgentEpisode:
     up to here, b/c there is nothing to learn from these "premature" rewards.
     """
 
+    __slots__ = (
+        "id_",
+        "agent_to_module_mapping_fn",
+        "_agent_to_module_mapping",
+        "observation_space",
+        "action_space",
+        "env_t_started",
+        "env_t",
+        "agent_t_started",
+        "env_t_to_agent_t",
+        "_hanging_actions_end",
+        "_hanging_extra_model_outputs_end",
+        "_hanging_rewards_end",
+        "_hanging_actions_begin",
+        "_hanging_extra_model_outputs_begin",
+        "_hanging_rewards_begin",
+        "is_terminated",
+        "is_truncated",
+        "agent_episodes",
+        "_temporary_timestep_data",
+        "_start_time",
+        "_last_step_time",
+    )
+
     SKIP_ENV_TS_TAG = "S"
 
     def __init__(
@@ -849,7 +873,12 @@ class MultiAgentEpisode:
                     )
 
                 # Concatenate the env- to agent-timestep mappings.
-                self.env_t_to_agent_t[agent_id].extend(other.env_t_to_agent_t[agent_id])
+                j = self.env_t
+                for i, val in enumerate(other.env_t_to_agent_t[agent_id][1:]):
+                    if val == self.SKIP_ENV_TS_TAG:
+                        self.env_t_to_agent_t[agent_id].append(self.SKIP_ENV_TS_TAG)
+                    else:
+                        self.env_t_to_agent_t[agent_id].append(i + 1 + j)
 
             # Otherwise, the agent is only in `self` and not done. All data is stored
             # already -> skip
@@ -1859,7 +1888,7 @@ class MultiAgentEpisode:
         `env.step()` call.
 
         Returns:
-            A set of AgentIDs that are suposed to send actions to the next `env.step()`
+            A set of AgentIDs that are supposed to send actions to the next `env.step()`
             call.
         """
         return {

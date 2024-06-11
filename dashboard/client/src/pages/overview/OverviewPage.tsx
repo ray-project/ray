@@ -52,7 +52,7 @@ const useStyles = makeStyles((theme) =>
 export const OverviewPage = () => {
   const classes = useStyles();
 
-  const { cluster_status } = useRayStatus();
+  const { clusterStatus } = useRayStatus();
 
   return (
     <div className={classes.root}>
@@ -80,7 +80,7 @@ export const OverviewPage = () => {
                 classes.autoscalerCard,
               )}
             >
-              <NodeStatusCard cluster_status={cluster_status} />
+              <NodeStatusCard clusterStatus={clusterStatus} />
             </OverviewCard>
             <OverviewCard
               className={classNames(
@@ -89,7 +89,7 @@ export const OverviewPage = () => {
                 classes.autoscalerCard,
               )}
             >
-              <ResourceStatusCard cluster_status={cluster_status} />
+              <ResourceStatusCard clusterStatus={clusterStatus} />
             </OverviewCard>
           </div>
         }

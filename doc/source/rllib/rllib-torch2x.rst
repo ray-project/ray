@@ -80,7 +80,7 @@ Some meta-level comments
 
 Exploration
 ------------
-In RLlib, you can now set the configuration so that it uses the compiled module during sampling of an RL agent training process. By default, the rollout workers run on CPU, therefore it is recommended to use the ``ipex`` or ``onnxrt`` backend. However, you can still run the sampling part on GPUs as well by setting ``num_gpus_per_worker`` in which case other backends can be used as well. For enabling torch-compile during training you can also set `torch_compile_learner` equivalents.
+In RLlib, you can now set the configuration so that it uses the compiled module during sampling of an RL agent training process. By default, the rollout workers run on CPU, therefore it is recommended to use the ``ipex`` or ``onnxrt`` backend. However, you can still run the sampling part on GPUs as well by setting ``num_gpus_per_env_runner`` in which case other backends can be used as well. For enabling torch-compile during training you can also set `torch_compile_learner` equivalents.
 
 
 

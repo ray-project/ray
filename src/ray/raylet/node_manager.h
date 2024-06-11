@@ -130,7 +130,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
               const std::string &self_node_name,
               const NodeManagerConfig &config,
               const ObjectManagerConfig &object_manager_config,
-              std::shared_ptr<gcs::GcsClient> gcs_client);
+              std::shared_ptr<gcs::GcsClient> gcs_client,
+              std::function<void(const rpc::NodeDeathInfo &)> shutdown_raylet_gracefully);
 
   /// Process a new client connection.
   ///
@@ -220,6 +221,11 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
 
   std::unique_ptr<core::experimental::MutableObjectProvider> &mutable_object_provider() {
     return mutable_object_provider_;
+  }
+
+  /// Get the local drain request.
+  optional<rpc::DrainRayletRequest> GetLocalDrainRequest() const {
+    return cluster_resource_scheduler_->GetLocalResourceManager().GetLocalDrainRequest();
   }
 
  private:
@@ -703,7 +709,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
 
   /// Creates a Raylet client. Used by `mutable_object_provider_` when a new writer
   /// channel is registered.
-  std::shared_ptr<raylet::RayletClient> CreateRayletClient(const NodeID &node_id);
+  std::shared_ptr<raylet::RayletClient> CreateRayletClient(
+      const NodeID &node_id, rpc::ClientCallManager &client_call_manager);
 
   /// ID of this node.
   NodeID self_node_id_;
@@ -712,6 +719,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   instrumented_io_context &io_service_;
   /// A client connection to the GCS.
   std::shared_ptr<gcs::GcsClient> gcs_client_;
+  /// The function to shutdown raylet gracefully.
+  std::function<void(const rpc::NodeDeathInfo &)> shutdown_raylet_gracefully_;
   /// A pool of workers.
   WorkerPool worker_pool_;
   /// The `ClientCallManager` object that is shared by all `NodeManagerClient`s

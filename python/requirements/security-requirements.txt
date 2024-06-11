@@ -1,0 +1,7 @@
+# Requirement constraints for security.
+#
+# Only for constraining version ranges. Packages listed might not be installed,
+# might not be ray requirements. They are only used in compiling the
+# constraint file
+
+idna>=3.7

@@ -24,9 +24,14 @@ import numpy as np
 
 from ray.rllib.policy.sample_batch import convert_ma_batch_to_sample_batch
 from ray.rllib.algorithms import cql as cql
-from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.execution.rollout_ops import (
     synchronous_parallel_sample,
+)
+from ray.rllib.utils.framework import try_import_torch
+from ray.rllib.utils.metrics import (
+    ENV_RUNNER_RESULTS,
+    EPISODE_RETURN_MEAN,
+    EVALUATION_RESULTS,
 )
 
 torch, _ = try_import_torch()
@@ -107,11 +112,13 @@ if __name__ == "__main__":
     learnt = False
     for i in range(num_iterations):
         print(f"Iter {i}")
-        eval_results = cql_algorithm.train().get("evaluation")
+        eval_results = cql_algorithm.train().get(EVALUATION_RESULTS)
         if eval_results:
-            print("... R={}".format(eval_results["episode_reward_mean"]))
+            print(
+                "... R={}".format(eval_results[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN])
+            )
             # Learn until some reward is reached on an actual live env.
-            if eval_results["episode_reward_mean"] >= min_reward:
+            if eval_results[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN] >= min_reward:
                 # Test passed gracefully.
                 if args.as_test:
                     print("Test passed after {} iterations.".format(i))

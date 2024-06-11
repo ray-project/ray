@@ -488,7 +488,7 @@ def test_json_write(ray_start_regular_shared, fs, data_path, endpoint_url):
         storage_options = dict(client_kwargs=dict(endpoint_url=endpoint_url))
     # Single block.
     df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
-    ds = ray.data.from_pandas([df1])
+    ds = ray.data.from_blocks([df1])
     ds._set_uuid("data")
     ds.write_json(data_path, filesystem=fs)
     file_path = os.path.join(data_path, "data_000000_000000.json")
@@ -500,7 +500,7 @@ def test_json_write(ray_start_regular_shared, fs, data_path, endpoint_url):
 
     # Two blocks.
     df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
-    ds = ray.data.from_pandas([df1, df2])
+    ds = ray.data.from_blocks([df1, df2])
     ds._set_uuid("data")
     ds.write_json(data_path, filesystem=fs)
     file_path2 = os.path.join(data_path, "data_000001_000000.json")

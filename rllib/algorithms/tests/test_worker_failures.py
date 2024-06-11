@@ -15,6 +15,11 @@ from ray.rllib.env.multi_agent_env import make_multi_agent
 from ray.rllib.env.multi_agent_env_runner import MultiAgentEnvRunner
 from ray.rllib.env.single_agent_env_runner import SingleAgentEnvRunner
 from ray.rllib.examples.envs.classes.random_env import RandomEnv
+from ray.rllib.utils.metrics import (
+    ENV_RUNNER_RESULTS,
+    EPISODE_RETURN_MEAN,
+    EVALUATION_RESULTS,
+)
 from ray.tune.registry import register_env
 
 
@@ -862,7 +867,11 @@ class TestWorkerFailures(unittest.TestCase):
         )
         algo = config.build()
         results = algo.train()
-        self.assertTrue(np.isnan(results["evaluation_results"]["episode_return_mean"]))
+        self.assertTrue(
+            np.isnan(
+                results[EVALUATION_RESULTS][ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN]
+            )
+        )
 
 
 if __name__ == "__main__":

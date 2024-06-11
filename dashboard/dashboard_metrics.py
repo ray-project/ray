@@ -74,6 +74,14 @@ try:
                 namespace="ray",
                 registry=self.registry,
             )
+            self.metrics_event_loop_lag = Gauge(
+                "dashboard_event_loop_lag",
+                "Event loop lag in seconds.",
+                tuple(COMPONENT_METRICS_TAG_KEYS),
+                unit="seconds",
+                namespace="ray",
+                registry=self.registry,
+            )
             self.metrics_dashboard_cpu = Gauge(
                 "component_cpu",
                 "Dashboard CPU percentage usage.",

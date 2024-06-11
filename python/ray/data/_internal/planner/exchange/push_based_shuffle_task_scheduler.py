@@ -457,8 +457,7 @@ class PushBasedShuffleTaskScheduler(ExchangeTaskScheduler):
         # processed concurrently.
         input_blocks_list = []
         for ref_bundle in refs:
-            for block, _ in ref_bundle.blocks:
-                input_blocks_list.append(block)
+            input_blocks_list.extend(ref_bundle.block_refs)
         input_owned = all(b.owns_blocks for b in refs)
 
         if map_ray_remote_args is None:

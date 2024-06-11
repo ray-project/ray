@@ -7,6 +7,11 @@ import argparse
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--image", type=str, help="The docker image to use for Ray worker")
+parser.add_argument(
+    "--use-image-uri-api",
+    action="store_true",
+    help="Whether to use the new `image_uri` API instead of the old `container` API.",
+)
 args = parser.parse_args()
 
 worker_pth = get_ray_default_worker_file_path()
@@ -27,8 +32,14 @@ def task_finished():
     return True
 
 
+if args.use_image_uri_api:
+    runtime_env = {"image_uri": args.image}
+else:
+    runtime_env = {"container": {"image": args.image, "worker_path": worker_pth}}
+
+
 # Run a basic workload.
-@ray.remote(runtime_env={"container": {"image": args.image, "worker_path": worker_pth}})
+@ray.remote(runtime_env=runtime_env)
 def f():
     for i in range(10):
         print(f"test {i}")

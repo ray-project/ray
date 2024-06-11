@@ -13,7 +13,10 @@ from ray.rllib.utils.annotations import (
     override,
     OverrideToImplementCustomLogic_CallToSuperRecommended,
 )
-from ray.rllib.utils.metrics import LAST_TARGET_UPDATE_TS, NUM_TARGET_UPDATES
+from ray.rllib.utils.metrics import (
+    LAST_TARGET_UPDATE_TS,
+    NUM_TARGET_UPDATES,
+)
 from ray.rllib.utils.typing import ModuleID
 
 if TYPE_CHECKING:
@@ -32,7 +35,6 @@ QF_TARGET_NEXT_PREDS = "qf_target_next_preds"
 QF_TARGET_NEXT_PROBS = "qf_target_next_probs"
 QF_PREDS = "qf_preds"
 QF_PROBS = "qf_probs"
-TD_ERROR_KEY = "td_error"
 TD_ERROR_MEAN_KEY = "td_error_mean"
 
 
