@@ -265,35 +265,49 @@ def test_databricks_uc_datasource():
         ray.init()
 
         # test query with a table name
-        result = ray.data.read_databricks_tables(
-            warehouse_id=warehouse_id,
-            table="table1",
-            catalog="catalog1",
-            schema="db1",
-            override_num_blocks=5,
-        ).to_pandas()
-
+        result = (
+            ray.data.read_databricks_tables(
+                warehouse_id=warehouse_id,
+                table="table1",
+                catalog="catalog1",
+                schema="db1",
+                override_num_blocks=5,
+            )
+            .to_pandas()
+            .sort_values("c1")
+            .reset_index(drop=True)
+        )
         pd.testing.assert_frame_equal(result, expected_result_df)
 
         # test query with SQL
-        result = ray.data.read_databricks_tables(
-            warehouse_id=warehouse_id,
-            query="select * from table1",
-            catalog="catalog1",
-            schema="db1",
-            override_num_blocks=5,
-        ).to_pandas()
+        result = (
+            ray.data.read_databricks_tables(
+                warehouse_id=warehouse_id,
+                query="select * from table1",
+                catalog="catalog1",
+                schema="db1",
+                override_num_blocks=5,
+            )
+            .to_pandas()
+            .sort_values("c1")
+            .reset_index(drop=True)
+        )
 
         pd.testing.assert_frame_equal(result, expected_result_df)
 
         # test larger parallelism
-        result = ray.data.read_databricks_tables(
-            warehouse_id=warehouse_id,
-            query="select * from table1",
-            catalog="catalog1",
-            schema="db1",
-            override_num_blocks=100,
-        ).to_pandas()
+        result = (
+            ray.data.read_databricks_tables(
+                warehouse_id=warehouse_id,
+                query="select * from table1",
+                catalog="catalog1",
+                schema="db1",
+                override_num_blocks=100,
+            )
+            .to_pandas()
+            .sort_values("c1")
+            .reset_index(drop=True)
+        )
 
         pd.testing.assert_frame_equal(result, expected_result_df)
 
