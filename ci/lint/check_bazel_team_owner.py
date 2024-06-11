@@ -15,6 +15,7 @@ The bazel output looks like
 ...
 
 """
+import json
 import sys
 import xml.etree.ElementTree as ET
 
@@ -29,7 +30,7 @@ def perform_check(raw_xml_string: str):
         for lst in rule.findall("list"):
             if lst.attrib["name"] != "tags":
                 continue
-            tags = [child.attrib["value"] for child in lst.getchildren()]
+            tags = [child.attrib["value"] for child in lst]
             break
         team_owner = [t for t in tags if t.startswith("team:")]
         if len(team_owner) == 0:
@@ -42,7 +43,7 @@ def perform_check(raw_xml_string: str):
             "`team:*` to the tags."
         )
 
-    print(owners)
+    print(json.dumps(owners, indent="  "))
 
 
 if __name__ == "__main__":
