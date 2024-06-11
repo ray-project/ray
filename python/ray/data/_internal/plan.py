@@ -90,7 +90,7 @@ class ExecutionPlan:
         self._run_by_consumer = run_by_consumer
         self._dataset_name = None
 
-        self._has_executed = False
+        self._has_started_execution = False
 
         if data_context is None:
             # Snapshot the current context, so that the config of Datasets is always
@@ -448,7 +448,7 @@ class ExecutionPlan:
         Returns:
             Tuple of iterator over output blocks and the executor.
         """
-        self._has_executed = True
+        self._has_started_execution = True
 
         # Always used the saved context for execution.
         ctx = self._context
@@ -496,7 +496,7 @@ class ExecutionPlan:
         Returns:
             The blocks of the output dataset.
         """
-        self._has_executed = True
+        self._has_started_execution = True
 
         # Always used the saved context for execution.
         context = self._context
@@ -596,9 +596,9 @@ class ExecutionPlan:
         return self._snapshot_bundle
 
     @property
-    def has_executed(self) -> bool:
-        """Return True if this plan has been partially or fully executed."""
-        return self._has_executed
+    def has_started_execution(self) -> bool:
+        """Return ``True`` if this plan has been partially or fully executed."""
+        return self._has_started_execution
 
     def clear_block_refs(self) -> None:
         """Clear all cached block references of this plan, including input blocks.
