@@ -597,7 +597,7 @@ class ExecutionPlan:
 
     @property
     def has_executed(self) -> bool:
-        """Return whether this plan has been partially or fully executed."""
+        """Return True if this plan has been partially or fully executed."""
         return self._has_executed
 
     def clear_block_refs(self) -> None:
