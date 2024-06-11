@@ -218,7 +218,6 @@ def assert_base_partitioned_ds():
         num_input_files=2,
         num_rows=6,
         schema="{one: int64, two: string}",
-        num_computed=2,
         sorted_values=None,
         ds_take_transform_fn=lambda taken: [[s["one"], s["two"]] for s in taken],
         sorted_values_transform_fn=lambda sorted_values: sorted_values,
@@ -252,17 +251,8 @@ def assert_base_partitioned_ds():
             _remove_whitespace(schema),
         ) == _remove_whitespace(repr(ds)), ds
 
-        if num_computed is not None:
-            assert (
-                ds._plan.execute()._num_computed() == num_computed
-            ), f"{ds._plan.execute()._num_computed()} != {num_computed}"
-
         # Force a data read.
         values = ds_take_transform_fn(ds.take_all())
-        if num_computed is not None:
-            assert (
-                ds._plan.execute()._num_computed() == num_computed
-            ), f"{ds._plan.execute()._num_computed()} != {num_computed}"
         actual_sorted_values = sorted_values_transform_fn(sorted(values))
         assert (
             actual_sorted_values == sorted_values

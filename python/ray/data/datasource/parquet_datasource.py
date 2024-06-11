@@ -468,6 +468,9 @@ class ParquetDatasource(Datasource):
     def schema(self) -> "pyarrow.Schema":
         return self._inferred_schema
 
+    def input_files(self) -> Optional[List[str]]:
+        return self._pq_paths
+
 
 def _read_fragments(
     block_udf,

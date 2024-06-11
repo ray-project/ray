@@ -1797,7 +1797,7 @@ class Dataset:
 
         start_time = time.perf_counter()
 
-        owned_by_consumer = self._plan.execute().owns_blocks
+        owned_by_consumer = False
         datasets = [self] + list(other)
         has_nonlazy = any(not ds._plan.is_read_only() for ds in datasets)
         if has_nonlazy:
@@ -1814,6 +1814,9 @@ class Dataset:
 
             logical_plan = LogicalPlan(UnionLogicalOperator(*ops_to_union))
         else:
+            assert all(
+                isinstance(ds._plan._in_blocks, LazyBlockList) for ds in datasets
+            ), [ds._plan._in_blocks for ds in datasets]
             tasks: List[ReadTask] = []
             block_partition_refs: List[ObjectRef[BlockPartition]] = []
             block_partition_meta_refs: List[ObjectRef[BlockMetadata]] = []

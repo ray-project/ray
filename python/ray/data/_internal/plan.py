@@ -448,7 +448,7 @@ class ExecutionPlan:
         ctx = self._context
 
         if self.has_computed_output():
-            bundle = self.execute(allow_clear_input_blocks, force_read=False)
+            bundle = self.execute(allow_clear_input_blocks)
             return iter(bundle.blocks), self._snapshot_stats, None
 
         from ray.data._internal.execution.legacy_compat import (
