@@ -5,12 +5,12 @@ from a checkpoint and a manual env-loop (CartPole-v1). No ConnectorV2s or EnvRun
 used in this example.
 
 This example:
-  - shows how to use an already existing checkpoint to extract a single-agent RLModule
-  from (our policy network).
-  - shows how to setup this recovered policy net for action computations (with or without
-  using exploration).
-  - shows have the policy run through a very simple gymnasium based env-loop, w/o using
-  RLlib's ConnectorV2s or EnvRunners.
+    - shows how to use an already existing checkpoint to extract a single-agent RLModule
+    from (our policy network).
+    - shows how to setup this recovered policy net for action computations (with or
+    without using exploration).
+    - shows have the policy run through a very simple gymnasium based env-loop, w/o
+    using RLlib's ConnectorV2s or EnvRunners.
 
 
 How to run this script

@@ -1,7 +1,7 @@
 from typing import Any, Dict, List, Optional
-from gymnasium.spaces import Discrete, MultiDiscrete
 
 import gymnasium as gym
+from gymnasium.spaces import Discrete, MultiDiscrete
 import numpy as np
 import tree
 

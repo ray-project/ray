@@ -7,13 +7,13 @@ The RLModule contains an LSTM that requires its own previous STATE_OUT as new in
 at every episode step to compute a new action.
 
 This example:
-  - shows how to use an already existing checkpoint to extract a single-agent RLModule
-  from (our policy network).
-  - shows how to setup this recovered policy net for action computations (with or without
-  using exploration).
-  - shows how to create a more complex env-loop in which the action-computing RLModule
-  requires its own previous state outputs as new input and how to use RLlib's Episode
-  APIs to achieve this.
+    - shows how to use an already existing checkpoint to extract a single-agent RLModule
+    from (our policy network).
+    - shows how to setup this recovered policy net for action computations (with or
+    without using exploration).
+    - shows how to create a more complex env-loop in which the action-computing RLModule
+    requires its own previous state outputs as new input and how to use RLlib's Episode
+    APIs to achieve this.
 
 
 How to run this script

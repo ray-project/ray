@@ -54,26 +54,27 @@ Results to expect
 -----------------
 
 With `--num-frames=4` and using the two extra ConnectorV2 pieces (in the env-to-module
-and learner connector pipelines), you should see something like:
+and learner connector pipelines), you should see something like this using:
+`--env ALE/Pong-v5 --num-gpus=4 --num-env-runners=95`
 +---------------------------+------------+--------+------------------+...
 | Trial name                | status     |   iter |   total time (s) |
 |                           |            |        |                  |
 |---------------------------+------------+--------+------------------+...
-| PPO_atari-env_2fc4a_00000 | TERMINATED |     10 |          557.257 |
+| PPO_atari-env_2fc4a_00000 | TERMINATED |    200 |          335.837 |
 +---------------------------+------------+--------+------------------+...
 
-Note that the time to run these 10 iterations is about .% faster than when
+Note that the time to run these 200 iterations is about ~5% faster than when
 performing framestacking already inside the environment (using a
 `gymnasium.wrappers.ObservationWrapper`), due to the additional network traffic
 needed (sending back 4x[obs] batches instead of 1x[obs] to the learners).
 
-Thus, with the `--use-gym-wrapper-framestacking` option, the output looks
-like this:
+Thus, with the `--use-gym-wrapper-framestacking` option (all other options being equal),
+the output looks like this:
 +---------------------------+------------+--------+------------------+...
 | Trial name                | status     |   iter |   total time (s) |
 |                           |            |        |                  |
 |---------------------------+------------+--------+------------------+...
-| PPO_atari-env_2fc4a_00000 | TERMINATED |     10 |          557.257 |
+| PPO_atari-env_2fc4a_00000 | TERMINATED |    200 |          351.505 |
 +---------------------------+------------+--------+------------------+...
 """
 import gymnasium as gym

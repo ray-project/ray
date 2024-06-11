@@ -20,25 +20,16 @@ pieces (or use the ones available already in RLlib) and add them to one of the 3
 different pipelines described above, as required.
 
 This example:
-    - shows how the `FrameStackingEnvToModule` ConnectorV2 piece can be added to the
-    env-to-module pipeline.
-    - shows how the `FrameStackingLearner` ConnectorV2 piece can be added to the
-    learner connector pipeline.
-    - demonstrates that using these two pieces (rather than performing framestacking
-    already inside the environment using a gymnasium wrapper) increases overall
-    performance by about 5%.
+    - shows how the `MeanStdFilter` ConnectorV2 piece can be added to the env-to-module
+    pipeline.
+    - demonstrates that using such a filter enhances learning behavior (or even makes
+    if possible to learn overall) in some environments, especially those with lopsided
+    observation spaces, for example `Box(-3000, -1000, ...)`.
 
 
 How to run this script
 ----------------------
-`python [script file name].py --enable-new-api-stack --num-frames=4 --env=ALE/Pong-v5`
-
-Use the `--num-frames` option to define the number of observations to framestack.
-If you don't want to use Connectors to perform the framestacking, set the
-`--use-gym-wrapper-framestacking` flag to perform framestacking already inside a
-gymnasium observation wrapper. In this case though, be aware that the tensors being
-sent through the network are `--num-frames` x larger than if you use the Connector
-setup.
+`python [script file name].py --enable-new-api-stack`
 
 For debugging, use the following additional command line options
 `--no-tune --num-env-runners=0`
@@ -52,40 +43,39 @@ For logging to your WandB account, use:
 
 Results to expect
 -----------------
+Running this example with the mean-std filter results in the normally expected Pendulum
+learning behavior:
++-------------------------------+------------+-----------------+--------+
+| Trial name                    | status     | loc             |   iter |
+|                               |            |                 |        |
+|-------------------------------+------------+-----------------+--------+
+| PPO_lopsided-pend_f9c96_00000 | TERMINATED | 127.0.0.1:43612 |     77 |
++-------------------------------+------------+-----------------+--------+
++------------------+------------------------+-----------------------+
+|   total time (s) |   num_env_steps_sample |   episode_return_mean |
+|                  |             d_lifetime |                       |
+|------------------+------------------------+-----------------------|
+|          30.7466 |                  40040 |                -276.3 |
++------------------+------------------------+-----------------------+
 
-With `--num-frames=4` and using the two extra ConnectorV2 pieces (in the env-to-module
-and learner connector pipelines), you should see something like:
-+---------------------------+------------+--------+------------------+...
-| Trial name                | status     |   iter |   total time (s) |
-|                           |            |        |                  |
-|---------------------------+------------+--------+------------------+...
-| PPO_atari-env_2fc4a_00000 | TERMINATED |     10 |          557.257 |
-+---------------------------+------------+--------+------------------+...
+If you try using the `--disable-mean-std-filter` (all other things being equal), you
+will either see no learning progress at all (or a very slow one), but more likely some
+numerical instability related error will be thrown:
 
-Note that the time to run these 10 iterations is about .% faster than when
-performing framestacking already inside the environment (using a
-`gymnasium.wrappers.ObservationWrapper`), due to the additional network traffic
-needed (sending back 4x[obs] batches instead of 1x[obs] to the learners).
-
-Thus, with the `--use-gym-wrapper-framestacking` option, the output looks
-like this:
-+---------------------------+------------+--------+------------------+...
-| Trial name                | status     |   iter |   total time (s) |
-|                           |            |        |                  |
-|---------------------------+------------+--------+------------------+...
-| PPO_atari-env_2fc4a_00000 | TERMINATED |     10 |          557.257 |
-+---------------------------+------------+--------+------------------+...
+ValueError: Expected parameter loc (Tensor of shape (64, 1)) of distribution
+            Normal(loc: torch.Size([64, 1]), scale: torch.Size([64, 1])) to satisfy the
+            constraint Real(), but found invalid values:
+tensor([[nan],
+        [nan],
+        [nan],
+        ...
 """
-from ray.air.constants import TRAINING_ITERATION
+import gymnasium as gym
+import numpy as np
+
 from ray.rllib.connectors.env_to_module.mean_std_filter import MeanStdFilter
 from ray.rllib.examples.envs.classes.multi_agent import MultiAgentPendulum
 from ray.rllib.utils.framework import try_import_torch
-from ray.rllib.utils.metrics import (
-    ENV_RUNNER_RESULTS,
-    EPISODE_RETURN_MEAN,
-    EVALUATION_RESULTS,
-    NUM_ENV_STEPS_SAMPLED_LIFETIME,
-)
 from ray.rllib.utils.test_utils import (
     add_rllib_example_script_args,
     run_rllib_example_script_experiment,
@@ -99,6 +89,21 @@ parser = add_rllib_example_script_args(
     default_timesteps=500000,
     default_reward=-300.0,
 )
+parser.add_argument(
+    "--disable-mean-std-filter",
+    action="store_true",
+    help="Run w/o a mean/std env-to-module connector piece (filter).",
+)
+
+
+class LopsidedObs(gym.ObservationWrapper):
+    def __init__(self, env):
+        super().__init__(env)
+        self.observation_space = gym.spaces.Box(-4000.0, -1456.0, (3,), np.float32)
+
+    def observation(self, observation):
+        # Lopside [-1.0, 1.0] Pendulum observations
+        return ((observation + 1.0) / 2.0) * (4000.0 - 1456.0) - 4000.0
 
 
 if __name__ == "__main__":
@@ -111,14 +116,16 @@ if __name__ == "__main__":
     # Register our environment with tune.
     if args.num_agents > 0:
         register_env(
-            "env",
+            "lopsided-pend",
             lambda _: MultiAgentPendulum(config={"num_agents": args.num_agents}),
         )
+    else:
+        register_env("lopsided-pend", lambda _: LopsidedObs(gym.make("Pendulum-v1")))
 
     config = (
         get_trainable_cls(args.algo)
         .get_default_config()
-        .environment("env" if args.num_agents > 0 else "Pendulum-v1")
+        .environment("lopsided-pend")
         .env_runners(
             # TODO (sven): MAEnvRunner does not support vectorized envs yet
             #  due to gym's env checkers and non-compatability with RLlib's
@@ -130,7 +137,9 @@ if __name__ == "__main__":
             # included in an automatically generated EnvToModulePipeline or return a
             # EnvToModulePipeline directly.
             env_to_module_connector=(
-                lambda env: MeanStdFilter(multi_agent=args.num_agents > 0)
+                None
+                if args.disable_mean_std_filter
+                else lambda env: MeanStdFilter(multi_agent=args.num_agents > 0)
             ),
         )
         .training(
@@ -143,25 +152,7 @@ if __name__ == "__main__":
             vf_clip_param=10.0,
             vf_loss_coeff=0.01,
         )
-        .evaluation(
-            evaluation_num_env_runners=1,
-            evaluation_parallel_to_training=True,
-            evaluation_interval=1,
-            evaluation_duration=10,
-            evaluation_duration_unit="episodes",
-            evaluation_config={
-                "explore": False,
-                # Do NOT use the eval EnvRunners' ConnectorV2 states. Instead, before
-                # each round of evaluation, broadcast the latest training
-                # EnvRunnerGroup's ConnectorV2 states (merged from all training remote
-                # EnvRunners) to the eval EnvRunnerGroup (and discard the eval
-                # EnvRunners' stats).
-                "use_worker_filter_stats": False,
-            },
-        )
-    )
-    if args.enable_new_api_stack:
-        config = config.rl_module(
+        .rl_module(
             model_config_dict={
                 "fcnet_activation": "relu",
                 "fcnet_weights_initializer": torch.nn.init.xavier_uniform_,
@@ -170,17 +161,27 @@ if __name__ == "__main__":
                 "uses_new_env_runners": True,
             }
         )
-    else:
-        config = config.training(
-            model=dict(
-                {
-                    "fcnet_activation": "relu",
-                    "fcnet_weights_initializer": torch.nn.init.xavier_uniform_,
-                    "fcnet_bias_initializer": torch.nn.init.constant_,
-                    "fcnet_bias_initializer_config": {"val": 0.0},
-                }
-            )
-        )
+        # In case you would like to run with a evaluation EnvRunners, make sure your
+        # `evaluation_config` key contains the `use_worker_filter_stats=False` setting
+        # (see below). This setting makes sure that the mean/std stats collected by the
+        # evaluation EnvRunners are NOT used for the training EnvRunners (unless you
+        # really want to mix these stats). It's normally a good idea to keep the stats
+        # collected during evaluation completely out of the training data (already for
+        # better reproducibility alone).
+        # .evaluation(
+        #    evaluation_num_env_runners=1,
+        #    evaluation_interval=1,
+        #    evaluation_config={
+        #        "explore": False,
+        #        # Do NOT use the eval EnvRunners' ConnectorV2 states. Instead, before
+        #        # each round of evaluation, broadcast the latest training
+        #        # EnvRunnerGroup's ConnectorV2 states (merged from all training remote
+        #        # EnvRunners) to the eval EnvRunnerGroup (and discard the eval
+        #        # EnvRunners' stats).
+        #        "use_worker_filter_stats": False,
+        #    },
+        # )
+    )
 
     # Add a simple multi-agent setup.
     if args.num_agents > 0:
@@ -189,12 +190,4 @@ if __name__ == "__main__":
             policy_mapping_fn=lambda aid, *a, **kw: f"p{aid}",
         )
 
-    stop = {
-        TRAINING_ITERATION: args.stop_iters,
-        f"{EVALUATION_RESULTS}/{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": (
-            args.stop_reward
-        ),
-        NUM_ENV_STEPS_SAMPLED_LIFETIME: args.stop_timesteps,
-    }
-
-    run_rllib_example_script_experiment(config, args, stop=stop)
+    run_rllib_example_script_experiment(config, args)
