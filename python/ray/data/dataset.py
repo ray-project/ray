@@ -1400,12 +1400,14 @@ class Dataset:
         block_refs, metadata = zip(*bundle.blocks)
 
         if locality_hints is None:
-            blocks = np.array_split(block_refs, n)
-            meta = np.array_split(metadata, n)
+            block_refs_splits = np.array_split(block_refs, n)
+            metadata_splits = np.array_split(metadata, n)
 
             split_datasets = []
-            for b, m in zip(blocks, meta):
-                ref_bundles = _block_list_to_bundles(block_list, owned_by_consumer)
+            for block_refs, metadata in zip(block_refs_splits, metadata_splits):
+                ref_bundles = RefBundle(
+                    [(b, m) for b, m in zip(block_refs, metadata)], owns_blocks=owned_by_consumer
+                )
                 logical_plan = LogicalPlan(InputData(input_data=ref_bundles))
                 split_datasets.append(
                     MaterializedDataset(
@@ -1528,11 +1530,9 @@ class Dataset:
         split_datasets = []
         for bundle in per_split_bundles:
             logical_plan = LogicalPlan(InputData(input_data=[bundle]))
-            block_split = _bundles_to_block_list([bundle])
             split_datasets.append(
                 MaterializedDataset(
                     ExecutionPlan(
-                        block_split,
                         stats,
                         run_by_consumer=owned_by_consumer,
                     ),
@@ -1603,14 +1603,12 @@ class Dataset:
             stats = DatasetStats(metadata={"Split": ms}, parent=parent_stats)
             stats.time_total_s = split_duration
 
-            split_block_list = BlockList(bs, ms, owned_by_consumer=bundle.owns_blocks)
             ref_bundles = _block_list_to_bundles(split_block_list, bundle.owns_blocks)
             logical_plan = LogicalPlan(InputData(input_data=ref_bundles))
 
             splits.append(
                 MaterializedDataset(
                     ExecutionPlan(
-                        split_block_list,
                         stats,
                         run_by_consumer=bundle.owns_blocks,
                     ),

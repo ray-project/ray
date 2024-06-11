@@ -198,7 +198,7 @@ def test_limit_execution(ray_start_regular):
     last_snapshot = assert_core_execution_metrics_equals(
         CoreExecutionMetrics(
             task_count={
-                "_execute_read_task_split": 20,
+                "ReadRange": 20,
                 "_get_datasource_or_legacy_reader": 1,
             }
         ),
