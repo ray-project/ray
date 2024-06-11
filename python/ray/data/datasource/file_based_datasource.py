@@ -1,3 +1,4 @@
+import functools
 import io
 import logging
 from typing import (
@@ -177,9 +178,11 @@ class FileBasedDatasource(Datasource):
         self._paths_ref = ray.put(paths)
         self._file_sizes_ref = ray.put(file_sizes)
 
+    @functools.cache
     def _paths(self) -> List[str]:
         return ray.get(self._paths_ref)
 
+    @functools.cache
     def _file_sizes(self) -> List[float]:
         return ray.get(self._file_sizes_ref)
 
@@ -371,6 +374,9 @@ class FileBasedDatasource(Datasource):
     @property
     def supports_distributed_reads(self) -> bool:
         return self._supports_distributed_reads
+
+    def input_files(self) -> Optional[List[str]]:
+        return self._paths()
 
 
 def _add_partitions(

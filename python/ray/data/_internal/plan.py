@@ -1,7 +1,7 @@
 import copy
 import itertools
 import logging
-from typing import TYPE_CHECKING, Iterator, Optional, Tuple, Type, Union
+from typing import TYPE_CHECKING, Iterator, List, Optional, Tuple, Type, Union
 
 import pyarrow
 
@@ -368,6 +368,10 @@ class ExecutionPlan:
 
         self._schema = schema
         return self._schema
+
+    def input_files(self) -> Optional[List[str]]:
+        """Get the input files of the dataset, if available."""
+        return self._logical_plan.dag.input_files()
 
     def _get_unified_blocks_schema(
         self, blocks: BlockList, fetch_if_missing: bool = False

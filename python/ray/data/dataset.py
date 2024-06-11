@@ -2684,12 +2684,7 @@ class Dataset:
             The list of input files used to create the dataset, or an empty
             list if the input files is not known.
         """
-        metadata = self._plan.execute().metadata
-        files = set()
-        for m in metadata:
-            for f in m.input_files:
-                files.add(f)
-        return list(files)
+        return list(set(self._plan.input_files()))
 
     @ConsumptionAPI
     def write_parquet(
