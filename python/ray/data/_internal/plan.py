@@ -58,7 +58,6 @@ class ExecutionPlan:
 
     def __init__(
         self,
-        in_blocks: BlockList,
         stats: DatasetStats,
         *,
         run_by_consumer: bool,
@@ -67,13 +66,11 @@ class ExecutionPlan:
         """Create a plan with no transformation operators.
 
         Args:
-            in_blocks: Base list of blocks.
             stats: Stats for the base blocks.
             dataset_uuid: Dataset's UUID.
             run_by_consumer: Whether this plan is invoked to run by the consumption
             APIs (e.g. .iter_batches()).
         """
-        self._in_blocks = in_blocks
         self._in_stats = stats
         # A computed snapshot of some prefix of operators and their corresponding
         # output blocks and stats.
@@ -104,7 +101,6 @@ class ExecutionPlan:
             f"ExecutionPlan("
             f"dataset_uuid={self._dataset_uuid}, "
             f"run_by_consumer={self._run_by_consumer}, "
-            f"in_blocks={self._in_blocks}, "
             f"snapshot_operator={self._snapshot_operator}"
             f"snapshot_blocks={self._snapshot_blocks})"
         )
@@ -158,20 +154,32 @@ class ExecutionPlan:
                 self._logical_plan.dag
             )
 
-            if self._snapshot_blocks is not None:
-                schema = self._get_unified_blocks_schema(
-                    self._snapshot_blocks, fetch_if_missing=False
-                )
-                dataset_blocks = self._snapshot_blocks
+            if self._snapshot_bundle is not None:
+                # This plan has executed some but not all operators.
+                schema = unify_block_metadata_schema(self._snapshot_bundle.metadata)
+                count = self._snapshot_bundle.num_rows()
             else:
-                schema = self._get_unified_blocks_schema(
-                    self._in_blocks, fetch_if_missing=False
-                )
-                dataset_blocks = self._in_blocks
+                # This plan hasn't executed any operators.
+                schemas = []
+                counts = []
+                for source in self._logical_plan.dag.source_dependencies():
+                    plan = ExecutionPlan(DatasetStats({}), run_by_consumer=False)
+                    plan.link_logical_plan(LogicalPlan(source))
+                    schemas.append(plan.schema())
+                    counts.append(plan.count())
+                schema = unify_block_metadata_schema(self._snapshot_bundle.metadata)
+                if all(count is not None for count in counts):
+                    count = sum(counts)
+                else:
+                    count = None
         else:
             # Get schema of output blocks.
             schema = self.schema(fetch_if_missing=False)
-            dataset_blocks = self._snapshot_blocks
+            assert schema is not None, "Schema should be available after execution."
+            count = self._snapshot_bundle.num_rows()
+            assert (
+                count is not None
+            ), "Number of rows should be available after execution."
 
         if schema is None:
             schema_str = "Unknown schema"
@@ -185,13 +193,13 @@ class ExecutionPlan:
                 schema_str.append(f"{n}: {t}")
             schema_str = ", ".join(schema_str)
             schema_str = "{" + schema_str + "}"
-        count = self._get_num_rows_from_blocks_metadata(dataset_blocks)
+
         if count is None:
             count = "?"
 
         num_blocks = None
-        if dataset_blocks is not None and dataset_cls == MaterializedDataset:
-            num_blocks = dataset_blocks.estimated_num_blocks()
+        if self._snapshot_bundle is not None and dataset_cls == MaterializedDataset:
+            num_blocks = len(self._snapshot_bundle.blocks)
 
         name_str = (
             "name={}, ".format(self._dataset_name)
@@ -289,7 +297,6 @@ class ExecutionPlan:
             A shallow copy of this execution plan.
         """
         plan_copy = ExecutionPlan(
-            self._in_blocks,
             self._in_stats,
             run_by_consumer=self._run_by_consumer,
             data_context=self._context,
@@ -310,11 +317,7 @@ class ExecutionPlan:
         Returns:
             A deep copy of this execution plan.
         """
-        in_blocks = self._in_blocks
-        if isinstance(in_blocks, BlockList):
-            in_blocks = in_blocks.copy()
         plan_copy = ExecutionPlan(
-            in_blocks,
             copy.copy(self._in_stats),
             run_by_consumer=self._run_by_consumer,
         )
@@ -374,30 +377,6 @@ class ExecutionPlan:
     def input_files(self) -> Optional[List[str]]:
         """Get the input files of the dataset, if available."""
         return self._logical_plan.dag.input_files()
-
-    def _get_unified_blocks_schema(
-        self, blocks: BlockList, fetch_if_missing: bool = False
-    ) -> Union[type, "pyarrow.lib.Schema"]:
-        """Get the unified schema of the blocks.
-
-        Args:
-            blocks: the blocks to get schema
-            fetch_if_missing: Whether to execute the blocks to fetch the schema.
-        """
-
-        # Ensure the first block has schema information available in the metadata.
-        # Otherwise, this will trigger computation on the first block
-        # for a schema read.
-        if isinstance(blocks, LazyBlockList):
-            blocks.ensure_metadata_for_first_block()
-
-        metadata = blocks.get_metadata(fetch_if_missing=False)
-
-        unified_schema = unify_block_metadata_schema(metadata)
-        if unified_schema is not None:
-            return unified_schema
-        if not fetch_if_missing:
-            return None
 
     def meta_count(self) -> Optional[int]:
         """Get the number of rows after applying all plan optimizations, if possible.
@@ -507,92 +486,74 @@ class ExecutionPlan:
                 )
         if not self.has_computed_output():
             from ray.data._internal.execution.legacy_compat import (
-                _get_initial_stats_from_plan,
                 execute_to_legacy_block_list,
             )
-
-            if self.is_from_in_memory_only():
-                # No need to execute MaterializedDatasets with only an InputData
-                # operator, since the data is already materialized. This also avoids
-                # recording unnecessary metrics for an empty plan execution.
-                blocks = self._in_blocks
-                stats = _get_initial_stats_from_plan(self)
-            else:
-                from ray.data._internal.execution.streaming_executor import (
-                    StreamingExecutor,
-                )
-
-                metrics_tag = create_dataset_tag(self._dataset_name, self._dataset_uuid)
-                executor = StreamingExecutor(
-                    copy.deepcopy(context.execution_options),
-                    metrics_tag,
-                )
-                blocks = execute_to_legacy_block_list(
-                    executor,
-                    self,
-                    allow_clear_input_blocks=allow_clear_input_blocks,
-                    dataset_uuid=self._dataset_uuid,
-                    preserve_order=preserve_order,
-                )
-                stats = executor.get_stats()
-                stats_summary_string = stats.to_summary().to_string(
-                    include_parent=False
-                )
-                if context.enable_auto_log_stats:
-                    logger.info(stats_summary_string)
-
-            # TODO(ekl) we shouldn't need to set this in the future once we move
-            # to a fully lazy execution model, unless .materialize() is used. Th
-            # reason we need it right now is since the user may iterate over a
-            # Dataset multiple times after fully executing it once.
-            if not self._run_by_consumer:
-                blocks._owned_by_consumer = False
-
-            # Retrieve memory-related stats from ray.
-            try:
-                reply = get_memory_info_reply(
-                    get_state_from_address(ray.get_runtime_context().gcs_address)
-                )
-                if reply.store_stats.spill_time_total_s > 0:
-                    stats.global_bytes_spilled = int(
-                        reply.store_stats.spilled_bytes_total
-                    )
-                if reply.store_stats.restore_time_total_s > 0:
-                    stats.global_bytes_restored = int(
-                        reply.store_stats.restored_bytes_total
-                    )
-            except Exception as e:
-                logger.debug(
-                    "Skipping recording memory spilled and restored statistics due to "
-                    f"exception: {e}"
-                )
-
-            stats.dataset_bytes_spilled = 0
-
-            def collect_stats(cur_stats):
-                stats.dataset_bytes_spilled += cur_stats.extra_metrics.get(
-                    "obj_store_mem_spilled", 0
-                )
-                for parent in cur_stats.parents:
-                    collect_stats(parent)
-
-            collect_stats(stats)
-
-            # Set the snapshot to the output of the final operator.
-            self._snapshot_blocks = blocks
-            self._snapshot_bundle = RefBundle(
-                tuple(blocks.iter_blocks_with_metadata()),
-                owns_blocks=blocks._owned_by_consumer,
+            from ray.data._internal.execution.streaming_executor import (
+                StreamingExecutor,
             )
-            self._snapshot_operator = self._logical_plan.dag
-            self._snapshot_stats = stats
-            self._snapshot_stats.dataset_uuid = self._dataset_uuid
 
-            # In the case of a read-only dataset, we replace the
-            # input LazyBlockList with a copy that includes the
-            # calculated metadata from initializing the InputDataBuffer.
-            if self.is_read_only():
-                self._in_blocks = blocks
+            metrics_tag = create_dataset_tag(self._dataset_name, self._dataset_uuid)
+            executor = StreamingExecutor(
+                copy.deepcopy(context.execution_options),
+                metrics_tag,
+            )
+            blocks = execute_to_legacy_block_list(
+                executor,
+                self,
+                allow_clear_input_blocks=allow_clear_input_blocks,
+                dataset_uuid=self._dataset_uuid,
+                preserve_order=preserve_order,
+            )
+            stats = executor.get_stats()
+            stats_summary_string = stats.to_summary().to_string(include_parent=False)
+            if context.enable_auto_log_stats:
+                logger.info(stats_summary_string)
+
+        # TODO(ekl) we shouldn't need to set this in the future once we move
+        # to a fully lazy execution model, unless .materialize() is used. Th
+        # reason we need it right now is since the user may iterate over a
+        # Dataset multiple times after fully executing it once.
+        if not self._run_by_consumer:
+            blocks._owned_by_consumer = False
+
+        # Retrieve memory-related stats from ray.
+        try:
+            reply = get_memory_info_reply(
+                get_state_from_address(ray.get_runtime_context().gcs_address)
+            )
+            if reply.store_stats.spill_time_total_s > 0:
+                stats.global_bytes_spilled = int(reply.store_stats.spilled_bytes_total)
+            if reply.store_stats.restore_time_total_s > 0:
+                stats.global_bytes_restored = int(
+                    reply.store_stats.restored_bytes_total
+                )
+        except Exception as e:
+            logger.debug(
+                "Skipping recording memory spilled and restored statistics due to "
+                f"exception: {e}"
+            )
+
+        stats.dataset_bytes_spilled = 0
+
+        def collect_stats(cur_stats):
+            stats.dataset_bytes_spilled += cur_stats.extra_metrics.get(
+                "obj_store_mem_spilled", 0
+            )
+            for parent in cur_stats.parents:
+                collect_stats(parent)
+
+        collect_stats(stats)
+
+        # Set the snapshot to the output of the final operator.
+        self._snapshot_blocks = blocks
+        self._snapshot_bundle = RefBundle(
+            tuple(blocks.iter_blocks_with_metadata()),
+            owns_blocks=blocks._owned_by_consumer,
+        )
+        self._snapshot_operator = self._logical_plan.dag
+        self._snapshot_stats = stats
+        self._snapshot_stats.dataset_uuid = self._dataset_uuid
+
         return self._snapshot_bundle
 
     @property
@@ -600,14 +561,7 @@ class ExecutionPlan:
         """Return whether this plan has been partially or fully executed."""
         return self._has_executed
 
-    def clear_block_refs(self) -> None:
-        """Clear all cached block references of this plan, including input blocks.
-
-        This will render the plan un-executable unless the root is a LazyBlockList."""
-        self._in_blocks.clear()
-        self._clear_snapshot()
-
-    def _clear_snapshot(self) -> None:
+    def clear_snapshot(self) -> None:
         """Clear the snapshot kept in the plan to the beginning state."""
         self._snapshot_blocks = None
         self._snapshot_bundle = None
@@ -626,10 +580,6 @@ class ExecutionPlan:
     def stats_summary(self) -> DatasetStatsSummary:
         return self.stats().to_summary()
 
-    def has_lazy_input(self) -> bool:
-        """Return whether this plan has lazy input blocks."""
-        return isinstance(self._in_blocks, LazyBlockList)
-
     def is_read_only(self, root_op: Optional[LogicalOperator] = None) -> bool:
         """Return whether the LogicalPlan corresponding to `root_op`
         contains only a Read op. By default, the last operator of
@@ -637,19 +587,6 @@ class ExecutionPlan:
         if root_op is None:
             root_op = self._logical_plan.dag
         return isinstance(root_op, Read) and len(root_op.input_dependencies) == 0
-
-    def is_from_in_memory_only(self, root_op: Optional[LogicalOperator] = None) -> bool:
-        """Return whether the LogicalPlan corresponding to `root_op`
-        contains only a read of already in-memory data (e.g. `FromXXX`
-        operators for `from_xxx` APIs, `InputData` operator for
-        :class:`~ray.data.MaterializedDataset`). By default, the last operator of
-        the LogicalPlan is used."""
-        if root_op is None:
-            root_op = self._logical_plan.dag
-        return (
-            isinstance(root_op, (InputData, AbstractFrom))
-            and len(root_op.input_dependencies) == 0
-        )
 
     def has_computed_output(self) -> bool:
         """Whether this plan has a computed snapshot for the final operator, i.e. for the

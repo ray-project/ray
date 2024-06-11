@@ -1791,65 +1791,14 @@ class Dataset:
         Returns:
             A new dataset holding the rows of the input datasets.
         """
-        from ray.data._internal.execution.legacy_compat import (
-            get_legacy_lazy_block_list_read_only,
-        )
-
         start_time = time.perf_counter()
 
-        owned_by_consumer = False
         datasets = [self] + list(other)
-        has_nonlazy = any(not ds._plan.is_read_only() for ds in datasets)
-        if has_nonlazy:
-            ops_to_union = []
-            blocks = []
-            metadata = []
-            for ds in datasets:
-                bundle = ds._plan.execute()
-                op_logical_plan = ds._plan._logical_plan
-                ops_to_union.append(op_logical_plan.dag)
-                blocks.extend(bundle.block_refs)
-                metadata.extend(bundle.metadata)
-            blocklist = BlockList(blocks, metadata, owned_by_consumer=owned_by_consumer)
-
-            logical_plan = LogicalPlan(UnionLogicalOperator(*ops_to_union))
-        else:
-            assert all(
-                isinstance(ds._plan._in_blocks, LazyBlockList) for ds in datasets
-            ), [ds._plan._in_blocks for ds in datasets]
-            tasks: List[ReadTask] = []
-            block_partition_refs: List[ObjectRef[BlockPartition]] = []
-            block_partition_meta_refs: List[ObjectRef[BlockMetadata]] = []
-
-            # Gather read task names from input blocks of unioned Datasets,
-            # and concat them before passing to resulting LazyBlockList
-            read_task_names = []
-            self_read_name = self._plan._in_blocks._read_op_name or "Read"
-            read_task_names.append(self_read_name)
-            other_read_names = [
-                o._plan._in_blocks._read_op_name or "Read" for o in other
-            ]
-            read_task_names.extend(other_read_names)
-
-            for ds in datasets:
-                bl = get_legacy_lazy_block_list_read_only(ds._plan)
-                tasks.extend(bl._tasks)
-                block_partition_refs.extend(bl._block_partition_refs)
-                block_partition_meta_refs.extend(bl._block_partition_meta_refs)
-            blocklist = LazyBlockList(
-                tasks,
-                f"Union({','.join(read_task_names)})",
-                block_partition_refs,
-                block_partition_meta_refs,
-                owned_by_consumer=owned_by_consumer,
-            )
-
-            logical_plan = self._logical_plan
-            logical_plans = [union_ds._plan._logical_plan for union_ds in datasets]
-            op = UnionLogicalOperator(
-                *[plan.dag for plan in logical_plans],
-            )
-            logical_plan = LogicalPlan(op)
+        logical_plans = [union_ds._plan._logical_plan for union_ds in datasets]
+        op = UnionLogicalOperator(
+            *[plan.dag for plan in logical_plans],
+        )
+        logical_plan = LogicalPlan(op)
 
         stats = DatasetStats(
             metadata={"Union": []},
@@ -1857,7 +1806,7 @@ class Dataset:
         )
         stats.time_total_s = time.perf_counter() - start_time
         return Dataset(
-            ExecutionPlan(blocklist, stats, run_by_consumer=owned_by_consumer),
+            ExecutionPlan(stats, run_by_consumer=False),
             logical_plan,
         )
 
@@ -4780,7 +4729,7 @@ class Dataset:
         plan_copy = self._plan.deep_copy()
         logical_plan_copy = copy.copy(self._plan._logical_plan)
         ds = Dataset(plan_copy, logical_plan_copy)
-        ds._plan.clear_block_refs()
+        ds._plan.clear_snapshot()
         ds._set_uuid(self._get_uuid())
 
         def _reduce_remote_fn(rf: ray.remote_function.RemoteFunction):
