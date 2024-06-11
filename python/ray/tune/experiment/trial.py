@@ -98,7 +98,7 @@ class ExportFormat:
         """Validates formats.
 
         Raises:
-            ValueError if the format is unknown.
+            ValueError: if the format is unknown.
         """
         for i in range(len(formats)):
             formats[i] = formats[i].strip().lower()
@@ -660,7 +660,7 @@ class Trial:
         Should only be called when the trial is not running.
 
         Raises:
-            ValueError if trial status is running.
+            ValueError: if trial status is running.
         """
         if self.status is Trial.RUNNING:
             raise ValueError("Cannot update resources while Trial is running.")
