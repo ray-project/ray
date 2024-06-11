@@ -15,8 +15,7 @@ For more details about Ray Data, including comparisons to alternatives, see :ref
 
 .. note::
 
-    In addition to Ray Data, you can continue using the data utilities provided by Machine Learning frameworks, such as PyTorch Dataset, 
-    Hugging Face Dataset, and Lightning Data Module. Ray Train also integrates seamlessly with these tools.
+    In addition to Ray Data, you can continue to use framework-native data utilities with Ray Train, such as PyTorch Dataset, Hugging Face Dataset, and Lightning DataModule.
 
 In this guide, we will cover how to incorporate Ray Data into your Ray Train script, and different ways to customize your data ingestion pipeline.
 
@@ -284,7 +283,7 @@ For more details, see the following sections for each framework:
 
 .. tab-set::
 
-    .. tab-item:: PyTorch
+    .. tab-item:: PyTorch DataLoader
 
         **Option 1 (with Ray Data):** 
 
@@ -300,11 +299,11 @@ For more details, see the following sections for each framework:
         1. Instantiate the Torch Dataset and DataLoader directly in the ``train_loop_per_worker``.
         2. Use the :meth:`ray.train.torch.prepare_data_loader` utility to set up the DataLoader for distributed training.
 
-    .. tab-item:: Lightning
+    .. tab-item:: LightningDataModule
 
         The ``LightningDataModule`` is created with PyTorch ``Dataset``\s and ``DataLoader``\s. You can apply the same logic here.
 
-    .. tab-item:: Hugging Face
+    .. tab-item:: Hugging Face Dataset
 
         **Option 1 (with Ray Data):** 
 
