@@ -76,6 +76,7 @@ See the :doc:`tutorial here </tune/examples/tune-wandb>`.
     :toctree: doc/
 
     ~air.integrations.wandb.WandbLoggerCallback
+    ~air.integrations.wandb.setup_wandb
 
 
 Comet Integration
