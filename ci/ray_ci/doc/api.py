@@ -66,7 +66,7 @@ class API:
             )
             apis.append(
                 API(
-                    name=api_name,
+                    name=API._fullname(api_name),
                     annotation_type=AnnotationType.PUBLIC_API,
                     code_type=CodeType.FUNCTION,
                 )
