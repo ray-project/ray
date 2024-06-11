@@ -3051,11 +3051,11 @@ py_test(
 )
 
 py_test(
-    name = "examples/custom_metrics_and_callbacks",
-    main = "examples/custom_metrics_and_callbacks.py",
+    name = "examples/metrics/custom_metrics_and_callbacks",
+    main = "examples/metrics/custom_metrics_and_callbacks.py",
     tags = ["team:rllib", "exclusive", "examples"],
     size = "small",
-    srcs = ["examples/custom_metrics_and_callbacks.py"],
+    srcs = ["examples/metrics/custom_metrics_and_callbacks.py"],
     args = ["--stop-iters=2"]
 )
 
