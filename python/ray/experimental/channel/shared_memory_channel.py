@@ -495,6 +495,8 @@ class MultiChannel(ChannelInterface):
         # as a workaround. We should fix this issue in the future.
         self._self_actor = _get_self_actor()
         if self._channels:
+            # This MultiChannel object is created by deserialization.
+            # We don't need to create channels again.
             return
 
         remote_readers = []
