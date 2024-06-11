@@ -735,7 +735,7 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "            obj_store_mem_used: A,\n"
         "            cpu_usage: Z,\n"
         "            gpu_usage: Z,\n"
-        "            ray_remote_args: {'num_cpus': N, 'scheduling_strategy': 'SPREAD'},\n"
+        "            ray_remote_args: {'num_cpus': N, 'scheduling_strategy': 'SPREAD'},\n"  # noqa: E501
         "         },\n"
         "         operators_stats=[\n"
         "            OperatorStatsSummary(\n"
