@@ -16,9 +16,6 @@ from ray._private.utils import (
     get_or_create_event_loop,
 )
 
-from ray.experimental.channel.shared_memory_channel import MultiChannel, Channel
-from ray.experimental.channel.intra_process_channel import IntraProcessChannel
-
 
 logger = logging.getLogger(__name__)
 
@@ -673,26 +670,21 @@ class TestMultiChannel:
             dag = a.inc.bind(dag)
 
         compiled_dag = dag.experimental_compile()
-        assert len(compiled_dag.actor_to_tasks) == 1
-
-        num_local_channels = 0
-        num_remote_channels = 0
-        for tasks in compiled_dag.actor_to_tasks.values():
-            assert len(tasks) == 3
-            for task in tasks:
-                assert isinstance(task.output_channel, MultiChannel)
-                assert len(task.output_channel._channels) == 1
-                for channel in task.output_channel._channels:
-                    if isinstance(channel, IntraProcessChannel):
-                        num_local_channels += 1
-                    if isinstance(channel, Channel):
-                        num_remote_channels += 1
-        assert num_local_channels == 2
-        assert num_remote_channels == 1
         output_channel = compiled_dag.execute(1)
         result = output_channel.begin_read()
         assert result == 4
         output_channel.end_read()
+
+        output_channel = compiled_dag.execute(2)
+        result = output_channel.begin_read()
+        assert result == 24
+        output_channel.end_read()
+
+        output_channel = compiled_dag.execute(3)
+        result = output_channel.begin_read()
+        assert result == 108
+        output_channel.end_read()
+
         compiled_dag.teardown()
 
     def test_multi_channel_two_actors(self, ray_start_regular_shared):
@@ -714,28 +706,56 @@ class TestMultiChannel:
             dag = b.inc.bind(dag)
             dag = a.inc.bind(dag)
 
+        # a: 0+1 -> b: 100+1 -> a: 1+101
         compiled_dag = dag.experimental_compile()
-        assert len(compiled_dag.actor_to_tasks) == 2
-
-        a_tasks = compiled_dag.actor_to_tasks[a]
-        assert len(a_tasks) == 2
-        for task in a_tasks:
-            assert isinstance(task.output_channel, MultiChannel)
-            assert len(task.output_channel._channels) == 1
-            channel = next(iter(task.output_channel._channels))
-            assert isinstance(channel, Channel)
-
-        b_tasks = compiled_dag.actor_to_tasks[b]
-        assert len(b_tasks) == 1
-        assert isinstance(b_tasks[0].output_channel, MultiChannel)
-        assert len(b_tasks[0].output_channel._channels) == 1
-        channel = next(iter(b_tasks[0].output_channel._channels))
-        assert isinstance(channel, Channel)
-
         output_channel = compiled_dag.execute(1)
         result = output_channel.begin_read()
         assert result == 102
         output_channel.end_read()
+
+        # a: 102+2 -> b: 101+104 -> a: 104+205
+        output_channel = compiled_dag.execute(2)
+        result = output_channel.begin_read()
+        assert result == 309
+        output_channel.end_read()
+
+        # a: 309+3 -> b: 205+312 -> a: 312+517
+        output_channel = compiled_dag.execute(3)
+        result = output_channel.begin_read()
+        assert result == 829
+        output_channel.end_read()
+
+        compiled_dag.teardown()
+
+    def test_multi_channel_multi_output(self, ray_start_regular_shared):
+        """
+        Driver -> a.inc -> a.inc ---> Driver
+                        |         |
+                        -> b.inc -
+
+        All communication in this DAG will be done through MultiChannel.
+        Under the hood, the communication between two `a.inc` tasks will
+        be done through a local channel, i.e., IntraProcessChannel in this
+        case, while the communication between `a.inc` and `b.inc` will be
+        done through a shared memory channel.
+        """
+        a = Actor.remote(0)
+        b = Actor.remote(100)
+        with InputNode() as inp:
+            dag = a.inc.bind(inp)
+            dag = MultiOutputNode([a.inc.bind(dag), b.inc.bind(dag)])
+
+        compiled_dag = dag.experimental_compile()
+        output_channel = compiled_dag.execute(1)
+        result = output_channel.begin_read()
+        assert result == [2, 101]
+        output_channel.end_read()
+
+        output_channel = compiled_dag.execute(3)
+        result = output_channel.begin_read()
+        assert result == [10, 106]
+        output_channel.end_read()
+
         compiled_dag.teardown()
 
 

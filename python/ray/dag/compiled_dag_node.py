@@ -649,12 +649,12 @@ class CompiledDAG:
 
             if isinstance(task.dag_node, ClassMethodNode):
                 readers = [self.idx_to_task[idx] for idx in task.downstream_node_idxs]
-                assert len(readers) == 1
 
                 def _get_node_id(self):
                     return ray.get_runtime_context().get_node_id()
 
                 if isinstance(readers[0].dag_node, MultiOutputNode):
+                    assert len(readers) == 1
                     # This node is a multi-output node, which means that it will only be
                     # read by the driver, not an actor. Thus, we handle this case by
                     # setting `reader_handles` to `[None]`.
