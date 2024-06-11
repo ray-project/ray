@@ -2492,7 +2492,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
     srcs = ["examples/inference/policy_inference_after_training.py"],
-    args = ["--enable-new-api-stack", --stop-reward=100.0"]
+    args = ["--enable-new-api-stack", "--stop-reward=100.0"]
 )
 
 #@OldAPIStack
