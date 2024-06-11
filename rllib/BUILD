@@ -2495,24 +2495,13 @@ py_test(
 
 # subdirectory: inference/
 # ....................................
-#@OldAPIStack
 py_test(
-    name = "examples/inference/policy_inference_after_training_tf",
+    name = "examples/inference/policy_inference_after_training",
     main = "examples/inference/policy_inference_after_training.py",
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
     srcs = ["examples/inference/policy_inference_after_training.py"],
-    args = ["--stop-iters=3", "--framework=tf"]
-)
-
-#@OldAPIStack
-py_test(
-    name = "examples/inference/policy_inference_after_training_torch",
-    main = "examples/inference/policy_inference_after_training.py",
-    tags = ["team:rllib", "exclusive", "examples"],
-    size = "medium",
-    srcs = ["examples/inference/policy_inference_after_training.py"],
-    args = ["--stop-iters=3", "--framework=torch"]
+    args = ["--enable-new-api-stack", "--stop-reward=100.0"]
 )
 
 #@OldAPIStack
