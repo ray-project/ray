@@ -32,8 +32,8 @@ from ray._private import ray_constants
 _logger = logging.getLogger("ray.util.spark")
 _logger.setLevel(ray_constants.LOGGER_LEVEL.upper())
 
-# checks for closed fds
 def is_fd_closed(lock_fd):
+    # checks for closed fds
     try:
         fd_status = fcntl.fcntl(lock_fd, fcntl.F_GETFD)
         if fd_status == 1:
@@ -48,8 +48,8 @@ def is_fd_closed(lock_fd):
             # Re-raise the exception if it's not a bad file descriptor error
             raise
 
-# List process open FDs and their targets
 def list_fds():
+    # List process open FDs and their targets
     if not sys.platform.startswith('linux'):
         raise NotImplementedError('Unsupported platform: %s' % sys.platform)
     ret = {}
@@ -71,12 +71,12 @@ def try_clean_temp_dir_at_exit(process, lock_fd, collect_log_to_path, temp_dir):
         # Wait for a while to ensure the children processes of the ray node all
         # exited.
         time.sleep(SIGTERM_GRACE_PERIOD_SECONDS + 0.5)
-        _logger.debug(f"try_clean_temp_dir_at_exit -- "
-                      "finished sleeping for: {SIGTERM_GRACE_PERIOD_SECONDS + 0.5}")
+        _logger.debug("try_clean_temp_dir_at_exit -- "
+                      f"finished sleeping for: {SIGTERM_GRACE_PERIOD_SECONDS + 0.5}")
         try: 
             status = process.status()
-            _logger.debug(f"try_clean_temp_dir_at_exit -- "
-                          "ray scripts.scripts.main() status: {status}")
+            _logger.debug("try_clean_temp_dir_at_exit -- "
+                          f"ray scripts.scripts.main() status: {status}")
         except Exception:
             status = "killed"
         if (status in ['running', 'sleeping']):
