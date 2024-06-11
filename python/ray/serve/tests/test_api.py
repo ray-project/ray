@@ -412,6 +412,59 @@ def test_delete_application(serve_instance):
     assert requests.get("http://127.0.0.1:8000/app_g").text == "got g"
 
 
+@pytest.mark.asyncio
+async def test_delete_while_initializing(serve_instance):
+    @ray.remote
+    class EventHolder:
+        def __init__(self):
+            self.event = asyncio.Event()
+
+        def set(self):
+            self.event.set()
+
+        async def wait(self):
+            await self.event.wait()
+
+    @ray.remote
+    class Counter:
+        def __init__(self):
+            self.count = 0
+
+        def incr(self):
+            self.count += 1
+
+        def get_count(self):
+            return self.count
+
+    event_holder = EventHolder.remote()
+    counter = Counter.remote()
+
+    @serve.deployment
+    class HangingStart:
+        async def __init__(self, event_holder, counter):
+            self.event_holder = event_holder
+            self.counter = counter
+            await event_holder.set.remote()
+            print("HangingStart set the EventHolder.")
+            await asyncio.sleep(10000)
+
+        async def __del__(self):
+            print("Running __del__")
+            await self.counter.incr.remote()
+
+    serve._run(HangingStart.bind(event_holder, counter), _blocking=False)
+
+    print("Waiting for the deployment to start initialization.")
+    await event_holder.wait.remote()
+
+    print("Calling serve.delete().")
+    serve.delete(name=SERVE_DEFAULT_APP_NAME)
+
+    # Ensure that __del__ ran once, even though the deployment terminated
+    # during initialization.
+    assert (await counter.get_count.remote()) == 1
+
+
 def test_deployment_name_with_app_name(serve_instance):
     """Test replica name with app name as prefix"""
 
