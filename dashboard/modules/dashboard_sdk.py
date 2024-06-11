@@ -352,8 +352,8 @@ class SubmissionClient:
             package_size = package_file.stat().st_size
             if package_size > 100 * 1024 * 1024:  # 100 MiB
                 logger.warning(
-                    f"The package {package_path} is very large. "
-                    "Consider adding some files or directories to 'excludes'"
+                    f"The package {package_path} is larger than the maximum allowed "
+                    "size. Consider adding some files or directories to 'excludes'"
                     "list to skip uploading them: `ray.init(..., "
                     "runtime_env={'excludes': ['.git', '*.log', 'tmp/']})`"
                 )
