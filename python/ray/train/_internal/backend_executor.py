@@ -120,6 +120,8 @@ class BackendExecutor:
             )
         ]
 
+        # Record the initialization time of BackendExecutor, which is
+        # after trainer.fit() and before worker_group executes the training function.
         self._start_time = time.time()
 
         self.state_tracking_enabled = env_integer(RAY_TRAIN_ENABLE_STATE_TRACKING, 0)

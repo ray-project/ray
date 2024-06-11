@@ -44,6 +44,7 @@ class TrainHead(dashboard_utils.DashboardHeadModule):
         else:
             try:
                 train_runs = await stats_actor.get_all_train_runs.remote()
+                # Sort train runs in reverse chronological order
                 train_runs = sorted(
                     train_runs.values(),
                     key=lambda run: run.start_time,
