@@ -140,6 +140,22 @@ def test_get_ray_image():
         )
 
 
+def test_get_byod_runtime_env():
+    test = _stub_test(
+        {
+            "python": "3.11",
+            "cluster": {
+                "byod": {
+                    "runtime_env": ["a=b"],
+                },
+            },
+        }
+    )
+    runtime_env = test.get_byod_runtime_env()
+    assert runtime_env.get("RAY_BACKEND_LOG_JSON") == "1"
+    assert runtime_env.get("a") == "b"
+
+
 def test_get_anyscale_byod_image():
     os.environ["BUILDKITE_BRANCH"] = "master"
     os.environ["BUILDKITE_COMMIT"] = "1234567890"

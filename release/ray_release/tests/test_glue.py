@@ -164,7 +164,9 @@ class GlueTest(unittest.TestCase):
             ),
             working_dir=self.tempdir,
             cluster=dict(
-                cluster_env="cluster_env.yaml", cluster_compute="cluster_compute.yaml"
+                cluster_env="cluster_env.yaml",
+                cluster_compute="cluster_compute.yaml",
+                byod={},
             ),
             alert="unit_test_alerter",
         )
