@@ -2020,9 +2020,10 @@ void NodeManager::HandleShutdownRaylet(rpc::ShutdownRayletRequest request,
   send_reply_callback(Status::OK(), shutdown_after_reply, shutdown_after_reply);
 }
 
-void NodeManager::HandleReleaseUnusedWorkers(rpc::ReleaseUnusedWorkersRequest request,
-                                             rpc::ReleaseUnusedWorkersReply *reply,
-                                             rpc::SendReplyCallback send_reply_callback) {
+void NodeManager::HandleReleaseUnusedActorWorkers(
+    rpc::ReleaseUnusedActorWorkersRequest request,
+    rpc::ReleaseUnusedActorWorkersReply *reply,
+    rpc::SendReplyCallback send_reply_callback) {
   std::unordered_set<WorkerID> in_use_worker_ids;
   for (int index = 0; index < request.worker_ids_in_use_size(); ++index) {
     auto worker_id = WorkerID::FromBinary(request.worker_ids_in_use(index));
@@ -2031,8 +2032,7 @@ void NodeManager::HandleReleaseUnusedWorkers(rpc::ReleaseUnusedWorkersRequest re
 
   std::vector<std::shared_ptr<WorkerInterface>> unused_workers;
   for (auto &iter : leased_workers_) {
-    // We need to exclude workers used by common tasks.
-    // Because they are not used by GCS.
+    // We only kill *actor* workers.
     if (!iter.second->GetActorId().IsNil() && !in_use_worker_ids.count(iter.first)) {
       unused_workers.push_back(iter.second);
     }
