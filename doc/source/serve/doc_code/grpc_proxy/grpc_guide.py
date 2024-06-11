@@ -27,20 +27,14 @@ serve.start(
 import time
 
 from typing import Generator
-from user_defined_protos_pb2 import (
-    UserDefinedMessage,
-    UserDefinedMessage2,
-    UserDefinedResponse,
-    UserDefinedResponse2,
-)
-
-import ray
 from ray import serve
 
 
 @serve.deployment
 class GrpcDeployment:
-    def __call__(self, user_message: UserDefinedMessage) -> UserDefinedResponse:
+    def __call__(self, user_message):
+        from user_defined_protos_pb2 import UserDefinedMessage, UserDefinedResponse
+
         greeting = f"Hello {user_message.name} from {user_message.origin}"
         num = user_message.num * 2
         user_response = UserDefinedResponse(
@@ -53,9 +47,9 @@ class GrpcDeployment:
     async def get_model(self, model_id: str) -> str:
         return f"loading model: {model_id}"
 
-    async def Multiplexing(
-        self, user_message: UserDefinedMessage2
-    ) -> UserDefinedResponse2:
+    async def Multiplexing(self, user_message):
+        from user_defined_protos_pb2 import UserDefinedMessage2, UserDefinedResponse2
+
         model_id = serve.get_multiplexed_model_id()
         model = await self.get_model(model_id)
         user_response = UserDefinedResponse2(
@@ -63,9 +57,9 @@ class GrpcDeployment:
         )
         return user_response
 
-    def Streaming(
-        self, user_message: UserDefinedMessage
-    ) -> Generator[UserDefinedResponse, None, None]:
+    def Streaming(self, user_message) -> Generator:
+        from user_defined_protos_pb2 import UserDefinedMessage, UserDefinedResponse
+
         for i in range(10):
             greeting = f"{i}: Hello {user_message.name} from {user_message.origin}"
             num = user_message.num * 2 + i
@@ -74,7 +68,6 @@ class GrpcDeployment:
                 num=num,
             )
             yield user_response
-
             time.sleep(0.1)
 
 
