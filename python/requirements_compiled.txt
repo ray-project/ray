@@ -175,7 +175,7 @@ azure-core==1.29.5
     #   azure-identity
     #   azure-mgmt-core
     #   msrest
-azure-identity==1.10.0
+azure-identity==1.16.1
     # via -r /ray/ci/../python/requirements/test-requirements.txt
 azure-mgmt-compute==23.1.0
     # via -r /ray/ci/../python/requirements/test-requirements.txt
