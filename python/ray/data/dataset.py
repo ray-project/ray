@@ -1405,15 +1405,11 @@ class Dataset:
 
             split_datasets = []
             for b, m in zip(blocks, meta):
-                block_list = BlockList(
-                    b.tolist(), m.tolist(), owned_by_consumer=owned_by_consumer
-                )
                 ref_bundles = _block_list_to_bundles(block_list, owned_by_consumer)
                 logical_plan = LogicalPlan(InputData(input_data=ref_bundles))
                 split_datasets.append(
                     MaterializedDataset(
                         ExecutionPlan(
-                            block_list,
                             stats,
                             run_by_consumer=owned_by_consumer,
                         ),

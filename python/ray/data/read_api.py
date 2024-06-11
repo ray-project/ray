@@ -427,30 +427,19 @@ def read_datasource(
     # removing LazyBlockList code path.
     read_tasks = datasource_or_legacy_reader.get_read_tasks(requested_parallelism)
 
-    read_op_name = f"Read{datasource.get_name()}"
-
-    block_list = LazyBlockList(
-        read_tasks,
-        read_op_name=read_op_name,
-        ray_remote_args=ray_remote_args,
-        owned_by_consumer=False,
-    )
-    block_list._estimated_num_blocks = len(read_tasks) if read_tasks else 0
-
+    stats = DatasetStats(metadata={}, parent=None)
     read_op = Read(
         datasource,
         datasource_or_legacy_reader,
         parallelism,
         inmemory_size,
-        block_list._estimated_num_blocks,
+        len(read_tasks) if read_tasks else 0,
         ray_remote_args,
         concurrency,
     )
-
     logical_plan = LogicalPlan(read_op)
-
     return Dataset(
-        plan=ExecutionPlan(block_list, block_list.stats(), run_by_consumer=False),
+        plan=ExecutionPlan(stats, run_by_consumer=False),
         logical_plan=logical_plan,
     )
 
