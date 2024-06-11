@@ -128,6 +128,7 @@ def test_schema_cached(ray_start_regular):
         ds,
         {
             "MapBatches(<lambda>)": lambda count: count <= 5,
+            "slice_fn": 1,
         },
         last_snapshot,
     )

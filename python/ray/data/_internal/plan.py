@@ -365,11 +365,17 @@ class ExecutionPlan:
             # For consistency with the previous implementation, we fetch the schema if
             # the plan is read-only even if `fetch_if_missing` is False.
             blocks_with_metadata, _, _ = self.execute_to_iterator()
-            _, metadata = next(iter(blocks_with_metadata))
-            schema = metadata.schema
+            try:
+                _, metadata = next(iter(blocks_with_metadata))
+                schema = metadata.schema
+            except StopIteration:  # Empty dataset.
+                schema = None
 
         self._schema = schema
         return self._schema
+
+    def cache_schema(self, schema: Union[type, "pyarrow.lib.Schema"]):
+        self._schema = schema
 
     def input_files(self) -> Optional[List[str]]:
         """Get the input files of the dataset, if available."""

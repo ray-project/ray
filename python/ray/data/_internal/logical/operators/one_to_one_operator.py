@@ -63,4 +63,4 @@ class Limit(AbstractOneToOne):
         if input_rows is not None:
             return min(input_rows, self._limit)
         else:
-            return self._limit
+            return None
