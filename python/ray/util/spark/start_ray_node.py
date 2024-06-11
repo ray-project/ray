@@ -11,7 +11,6 @@ import threading
 import psutil
 import importlib
 import errno
-from ray.util.annotations import DeveloperAPI, PublicAPI
 
 from ray.util.spark.cluster_init import (
     RAY_ON_SPARK_LOGGER_LEVEL,
@@ -72,30 +71,36 @@ def try_clean_temp_dir_at_exit(process, lock_fd, collect_log_to_path, temp_dir):
         # Wait for a while to ensure the children processes of the ray node all
         # exited.
         time.sleep(SIGTERM_GRACE_PERIOD_SECONDS + 0.5)
-        _logger.debug(f"try_clean_temp_dir_at_exit -- finished sleeping for: {SIGTERM_GRACE_PERIOD_SECONDS + 0.5}")
+        _logger.debug(f"try_clean_temp_dir_at_exit -- "
+                      "finished sleeping for: {SIGTERM_GRACE_PERIOD_SECONDS + 0.5}")
         try: 
             status = process.status()
-            _logger.debug(f"try_clean_temp_dir_at_exit -- ray scripts.scripts.main() status: {status}")
-        except Exception as e:
+            _logger.debug(f"try_clean_temp_dir_at_exit -- "
+                          "ray scripts.scripts.main() status: {status}")
+        except Exception:
             status = "killed"
         if (status in ['running', 'sleeping']):
-            _logger.debug("try_clean_temp_dir_at_exit -- process sleeping or running, killing now")
+            _logger.debug("try_clean_temp_dir_at_exit -- "
+                          "process sleeping or running, killing now")
             # "ray start ..." command process is still alive. Force to kill it.
             try:
                 process.kill()
             except psutil.NoSuchProcess:
-                _logger.debug("try_clean_temp_dir_at_exit -- no process found, already terminated")
+                _logger.debug("try_clean_temp_dir_at_exit -- "
+                              "no process found, already terminated")
                 pass
             except Exception as e:
                 raise Exception(e)
 
         # Release the shared lock, representing current ray node does not use the
         # temp dir.
-        _logger.debug("try_clean_temp_dir_at_exit -- releasing ray node temp dir lock")
+        _logger.debug("try_clean_temp_dir_at_exit -- "
+                      "releasing ray node temp dir lock")
         fcntl.flock(lock_fd, fcntl.LOCK_UN)
 
         try:
-            _logger.debug("try_clean_temp_dir_at_exit -- acquiring lock for log copy to final destination")
+            _logger.debug("try_clean_temp_dir_at_exit -- "
+                          "acquiring lock for log copy to final destination")
             # acquiring exclusive lock to ensure copy logs and removing dir safely.
             fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
             lock_acquired = True
@@ -105,7 +110,8 @@ def try_clean_temp_dir_at_exit(process, lock_fd, collect_log_to_path, temp_dir):
             # routine. skip cleaning temp-dir, and skip copy logs to destination
             # directory as well.
             lock_acquired = False
-        _logger.debug(f"try_clean_temp_dir_at_exit -- lock acquired: {lock_acquired}")
+        _logger.debug("try_clean_temp_dir_at_exit -- "
+                      f"lock acquired: {lock_acquired}")
 
         if lock_acquired:
             # This is the final terminated ray node on current spark worker,
@@ -138,7 +144,8 @@ def try_clean_temp_dir_at_exit(process, lock_fd, collect_log_to_path, temp_dir):
                     )
                 except Exception as e:
                     _logger.warning(
-                        "try_clean_temp_dir_at_exit -- Collect logs to destination directory failed, "
+                        "try_clean_temp_dir_at_exit -- "
+                        "Collect logs to destination directory failed, "
                         f"error: {repr(e)}."
                     )
 
@@ -152,21 +159,29 @@ def try_clean_temp_dir_at_exit(process, lock_fd, collect_log_to_path, temp_dir):
         pass
     finally:
         if is_fd_closed(lock_fd):
-            _logger.debug("try_clean_temp_dir_at_exit -- lock is already closed, skipping release")
+            _logger.debug("try_clean_temp_dir_at_exit -- "
+                          "lock is already closed, skipping release")
         else:
             fcntl.flock(lock_fd, fcntl.LOCK_UN)
-            _logger.debug("try_clean_temp_dir_at_exit --lock released, closing file descriptor")
+            _logger.debug("try_clean_temp_dir_at_exit -- "
+                          "lock released, closing file descriptor")
             os.close(lock_fd)
         _logger.debug("try_clean_temp_dir_at_exit -- confirming lock closed")
         fd_status_is_closed = is_fd_closed(lock_fd)
-        if fd_status_is_closed != True:
-            raise Exception("try_clean_temp_dir_at_exit -- failed ray temp dir lock release, possible incompatible underlying filesystem, try changing temp dir location or underlying fs")
-        _logger.debug("try_clean_temp_dir_at_exit -- cleaning up any remaining start_ray_node child fd(s)")
+        if fd_status_is_closed is not True:
+            raise Exception("try_clean_temp_dir_at_exit -- "
+                            "failed ray temp dir lock release "
+                            "possible incompatible underlying filesystem, "
+                            "try changing temp dir location or underlying fs")
+        _logger.debug("try_clean_temp_dir_at_exit -- "
+                      "cleaning up any remaining start_ray_node child fd(s)")
         for fd in list(list_fds()):
             if is_fd_closed(fd):
-                _logger.debug(f"try_clean_temp_dir_at_exit -- skipping fd: {fd}, already closed")
+                _logger.debug("try_clean_temp_dir_at_exit -- "
+                              f"skipping fd: {fd}, already closed")
             else:
-                _logger.debug(f"try_clean_temp_dir_at_exit -- closing fd: {fd}")
+                _logger.debug("try_clean_temp_dir_at_exit -- "
+                              f"closing fd: {fd}")
                 os.close(fd)
                 
 def check_parent_alive(process, lock_fd, collect_log_to_path, temp_dir) -> None:
@@ -176,8 +191,11 @@ def check_parent_alive(process, lock_fd, collect_log_to_path, temp_dir) -> None:
         # checks the parent process that launched the job alive, if not terminate
         if os.getppid() != orig_parent_pid:
             process.terminate()
-            try_clean_temp_dir_at_exit(process, lock_fd, collect_log_to_path, temp_dir)
-            ret_code = process.wait()
+            try_clean_temp_dir_at_exit(process, 
+                                       lock_fd, 
+                                       collect_log_to_path, 
+                                       temp_dir)
+            process.wait()
             # Keep the same exit code 143 with sigterm signal.
             os._exit(143)
 
@@ -219,7 +237,8 @@ def main():
                 _logger.debug("lock file detected, continuing ray launch")
                 break
             else:
-                _logger.debug("lock file does not exist, waiting for parent process creation...")
+                _logger.debug("lock file does not exist, "
+                              "waiting for parent process creation...")
                 time.sleep(1)  # Wait for 1 second before checking again
             
         sys.argv = [sys.argv[0], "start", *arg_list]
@@ -237,8 +256,16 @@ def main():
         # using the temp directory.
         fcntl.flock(lock_fd, fcntl.LOCK_SH)
         _logger.debug("initializing thread for parent alive check")
-        _logger.debug(f"RAY_ON_SPARK_START_RAY_PARENT_PID: {os.getenv('RAY_ON_SPARK_START_RAY_PARENT_PID')}, parent pid: {ray_start_parent_pid}, pparent pid: {os.getppid()}")
-        check_parent_thread = threading.Thread(target=check_parent_alive, args=(process, lock_fd, collect_log_to_path, temp_dir), daemon=True)
+        _logger.debug("RAY_ON_SPARK_START_RAY_PARENT_PID: "
+                      f"{os.getenv('RAY_ON_SPARK_START_RAY_PARENT_PID')}, "
+                      f"parent pid: {ray_start_parent_pid}, "
+                      f"pparent pid: {os.getppid()}")
+        check_parent_thread = threading.Thread(target=check_parent_alive, 
+                                               args=(process, 
+                                                     lock_fd, 
+                                                     collect_log_to_path, 
+                                                     temp_dir), 
+                                               daemon=True)
         check_parent_thread.name = f"ray-checkp-{check_parent_thread.name}"
         check_parent_thread.start()
 
@@ -267,23 +294,33 @@ def main():
                 except Exception as e:
                     raise Exception(e)
                 try:
-                    try_clean_temp_dir_at_exit(process, lock_fd, collect_log_to_path, temp_dir)
-                except:
+                    try_clean_temp_dir_at_exit(process, 
+                                               lock_fd, 
+                                               collect_log_to_path, 
+                                               temp_dir)
+                except Exception:
                     pass
                 finally:
-                    _logger.debug("finished try clean temp dir at exit, triggering exit now")
-                    ret_code = process.wait()
+                    _logger.debug("finished try clean temp dir at exit, "
+                                  "triggering exit now")
+                    process.wait()
                     # Sigterm exit code is 143.
                     os._exit(143)
 
             signal.signal(signal.SIGTERM, sigterm_handler)
             _logger.debug("waiting for start_ray_node to finish")
             ret_code = process.wait()
-            try_clean_temp_dir_at_exit(process, lock_fd, collect_log_to_path, temp_dir)
+            try_clean_temp_dir_at_exit(process, 
+                                       lock_fd, 
+                                       collect_log_to_path, 
+                                       temp_dir)
             _logger.debug("exiting")
             sys.exit(ret_code)
         except Exception as e:
-            try_clean_temp_dir_at_exit(process, lock_fd, collect_log_to_path, temp_dir)
+            try_clean_temp_dir_at_exit(process, 
+                                       lock_fd, 
+                                       collect_log_to_path, 
+                                       temp_dir)
             raise Exception(e)
             
 if __name__ == "__main__":

@@ -925,7 +925,7 @@ def start_ray_process(
     if env_updates is None:
         env_updates = {}
 
-    if env_updates.get("PYTHONPATH", None) == None:
+    if env_updates.get("PYTHONPATH", None) is None:
         python_path = ":".join(sys.path)[1:]
         env_updates["PYTHONPATH"] = python_path
 
