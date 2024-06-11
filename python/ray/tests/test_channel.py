@@ -10,8 +10,18 @@ import pytest
 import ray
 import ray.cluster_utils
 import ray.experimental.channel as ray_channel
+from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
+from ray.dag.compiled_dag_node import CompiledDAG
 
 logger = logging.getLogger(__name__)
+
+
+def create_driver_actor():
+    return CompiledDAG.DAGDriverProxyActor.options(
+        scheduling_strategy=NodeAffinitySchedulingStrategy(
+            ray.get_runtime_context().get_node_id(), soft=False
+        )
+    ).remote()
 
 
 @pytest.mark.skipif(
@@ -19,10 +29,7 @@ logger = logging.getLogger(__name__)
     reason="Requires Linux or Mac.",
 )
 def test_put_local_get(ray_start_regular):
-    """
-    Tests that the driver can write and read from a channel.
-    """
-    chan = ray_channel.Channel(None, [None], 1000)
+    chan = ray_channel.Channel(None, [create_driver_actor()], 1000)
 
     num_writes = 1000
     for i in range(num_writes):
@@ -30,6 +37,97 @@ def test_put_local_get(ray_start_regular):
         chan.write(val)
         assert chan.begin_read() == val
         chan.end_read()
+
+
+@pytest.mark.skipif(
+    sys.platform != "linux" and sys.platform != "darwin",
+    reason="Requires Linux or Mac.",
+)
+@pytest.mark.parametrize("remote", [True, False])
+def test_driver_as_reader(ray_start_cluster, remote):
+    cluster = ray_start_cluster
+    if remote:
+        # This node is for the driver. num_cpus is 1 because the
+        # CompiledDAG.DAGDriverProxyActor needs a place to run.
+        cluster.add_node(num_cpus=1)
+        ray.init(address=cluster.address)
+        # This node is for the writer actor.
+        cluster.add_node(num_cpus=1)
+    else:
+        # This node is for both the driver (including the DriverHelperActor) and the
+        # writer actor.
+        cluster.add_node(num_cpus=2)
+        ray.init(address=cluster.address)
+
+    @ray.remote(num_cpus=1)
+    class Actor:
+        def setup(self, driver_actor):
+            self._channel = ray_channel.Channel(
+                ray.get_runtime_context().current_actor,
+                [driver_actor],
+                1000,
+            )
+
+        def get_channel(self):
+            return self._channel
+
+        def write(self):
+            self._channel.write(b"x")
+
+    a = Actor.remote()
+    ray.get(a.setup.remote(create_driver_actor()))
+    chan = ray.get(a.get_channel.remote())
+
+    ray.get(a.write.remote())
+    assert chan.begin_read() == b"x"
+    chan.end_read()
+
+
+@pytest.mark.parametrize("remote", [True, False])
+def test_driver_as_reader_with_resize(ray_start_cluster, remote):
+    cluster = ray_start_cluster
+    if remote:
+        # This node is for the driver. num_cpus is 1 because the
+        # CompiledDAG.DAGDriverProxyActor needs a place to run.
+        cluster.add_node(num_cpus=1)
+        ray.init(address=cluster.address)
+        # This node is for the writer actor.
+        cluster.add_node(num_cpus=1)
+    else:
+        # This node is for both the driver (including the DriverHelperActor) and the
+        # writer actor.
+        cluster.add_node(num_cpus=2)
+        ray.init(address=cluster.address)
+
+    @ray.remote(num_cpus=1)
+    class Actor:
+        def setup(self, driver_actor):
+            self._channel = ray_channel.Channel(
+                ray.get_runtime_context().current_actor,
+                [driver_actor],
+                1000,
+            )
+
+        def get_channel(self):
+            return self._channel
+
+        def write(self):
+            self._channel.write(b"x")
+
+        def write_large(self):
+            self._channel.write(b"x" * 2000)
+
+    a = Actor.remote()
+    ray.get(a.setup.remote(create_driver_actor()))
+    chan = ray.get(a.get_channel.remote())
+
+    ray.get(a.write.remote())
+    assert chan.begin_read() == b"x"
+    chan.end_read()
+
+    ray.get(a.write_large.remote())
+    assert chan.begin_read() == b"x" * 2000
+    chan.end_read()
 
 
 @pytest.mark.skipif(
@@ -110,7 +208,7 @@ def test_errors(ray_start_regular):
 
     a = Actor.remote()
     # Multiple consecutive reads from the same process are fine.
-    chan = ray.get(a.make_chan.remote([None], do_write=True))
+    chan = ray.get(a.make_chan.remote([create_driver_actor()], do_write=True))
     assert chan.begin_read() == b"hello"
     chan.end_read()
 
@@ -137,10 +235,7 @@ def test_errors(ray_start_regular):
     reason="Requires Linux or Mac.",
 )
 def test_put_different_meta(ray_start_regular):
-    """
-    Tests that different object/primitive types can be passed through the same channel.
-    """
-    chan = ray_channel.Channel(None, [None], 1000)
+    chan = ray_channel.Channel(None, [create_driver_actor()], 1000)
 
     def _test(val):
         chan.write(val)
@@ -204,7 +299,7 @@ def test_resize_channel_on_same_node(ray_start_regular):
     Tests that the channel backing store is automatically increased when a large object
     is written to it. The writer and reader are on the same node.
     """
-    chan = ray_channel.Channel(None, [None], 1000)
+    chan = ray_channel.Channel(None, [create_driver_actor()], 1000)
 
     def _test(val):
         chan.write(val)
