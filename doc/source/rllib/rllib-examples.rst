@@ -74,7 +74,6 @@ Checkpoints
 - |new_stack| `How to extract a checkpoint from n Tune trials using one or more custom criteria. <https://github.com/ray-project/ray/blob/master/rllib/examples/checkpoints/checkpoint_by_custom_criteria.py>`__:
    Example of how to find a :ref:`checkpoint <rllib-saving-and-loading-algos-and-policies-docs>` after a `Tuner.fit()` with some custom defined criteria.
 
-
 Connectors
 ----------
 
