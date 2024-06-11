@@ -29,7 +29,7 @@ See the `Reverse Curriculum Generation for Reinforcement Learning Agents <https:
 for another example of how you can do curriculum learning.
 
 RLlib's Algorithm and custom callbacks APIs allow for implementing any arbitrary
-curricula. This `example script <>`__ introduces
+curricula. This `example script <https://github.com/ray-project/ray/blob/master/rllib/examples/curriculum/curriculum_learning.py>`__ introduces
 the basic concepts you need to understand.
 
 First, define some env options. This example uses the `FrozenLake-v1` environment,
