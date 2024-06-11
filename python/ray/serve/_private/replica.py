@@ -727,8 +727,8 @@ class ReplicaActor:
         # can skip the wait period.
         if self._user_callable_initialized:
             await self._drain_ongoing_requests()
-            await self._user_callable_wrapper.call_destructor()
 
+        await self._user_callable_wrapper.call_destructor()
         await self._metrics_manager.shutdown()
 
     async def check_health(self):
@@ -1162,7 +1162,6 @@ class UserCallableWrapper:
         Calling this multiple times has no effect; only the first call will actually
         call the destructor.
         """
-        self._raise_if_not_initialized("call_destructor")
 
         # Only run the destructor once. This is safe because there is no `await` between
         # checking the flag here and flipping it to `True` below.
