@@ -161,7 +161,7 @@ def _exec_task(self, task: "ExecutableTask", idx: int) -> bool:
         output_val = method(*resolved_inputs)
         output_writer.write(output_val)
     except Exception as exc:
-        output_writer.write(_wrap_exception(exc))
+        output_writer.write(exc)
 
     return False
 
@@ -940,6 +940,8 @@ class CompiledDAG:
 
         Returns:
             A list of Channels that can be used to read the DAG result.
+
+        NOTE: Not threadsafe due to _execution_index etc.
         """
         if self._enable_asyncio:
             raise ValueError("Use execute_async if enable_asyncio=True")
