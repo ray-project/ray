@@ -20,12 +20,14 @@ pieces (or use the ones available already in RLlib) and add them to one of the 3
 different pipelines described above, as required.
 
 This example:
-    - shows how the `PrevActionsPrevRewardsConnector` piece can be added to the
+    - shows how the `PrevActionsPrevRewards` ConnectorV2 piece can be added to the
     env-to-module pipeline to extract previous rewards and/or actions from the ongoing
     episodes.
-    - shows how this connector creates  and wraps this information together to the RLModule's
-    original observation and .
-    - demonstrates that using these two pieces (rather than performing framestacking
+    - shows how this connector creates  and wraps this new information (rewards and
+    actions) together with the original observations into the RLModule's input dict
+    as a new gym.spaces.Dict structure.
+    - demonstrates how to plug in RLlib's in-house observation flattening
+    connector after the that using these two pieces (rather than performing framestacking
     already inside the environment using a gymnasium wrapper) increases overall
     performance by about 5%.
 
@@ -83,7 +85,7 @@ from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.connectors.env_to_module import (
     AddObservationsFromEpisodesToBatch,
     FlattenObservations,
-    PrevActionsPrevRewardsConnector,
+    PrevActionsPrevRewards,
     WriteObservationsToEpisodes,
 )
 from ray.rllib.examples.envs.classes.stateless_cartpole import StatelessCartPole
@@ -116,14 +118,14 @@ if __name__ == "__main__":
     def _env_to_module(env):
         # Create the env-to-module connector pipeline.
         return [
-            AddObservationsFromEpisodesToBatch(),
-            PrevActionsPrevRewardsConnector(
+            #AddObservationsFromEpisodesToBatch(),
+            PrevActionsPrevRewards(
                 multi_agent=args.num_agents > 0,
                 n_prev_rewards=args.n_prev_rewards,
                 n_prev_actions=args.n_prev_actions,
             ),
             FlattenObservations(multi_agent=args.num_agents > 0),
-            WriteObservationsToEpisodes(),
+            #WriteObservationsToEpisodes(),
         ]
 
     # Register our environment with tune.

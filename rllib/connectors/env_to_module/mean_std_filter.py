@@ -19,6 +19,8 @@ from ray.rllib.utils.filter import RunningStat
 class MeanStdFilter(ConnectorV2):
     """A connector used to mean-std-filter observations.
 
+
+
     Incoming observations are filtered such that the output of this filter is on
     average 0.0 and has a standard deviation of 1.0. If the observation space is
     a (possibly nested) dict, this filtering is applied separately per element of
@@ -121,13 +123,10 @@ class MeanStdFilter(ConnectorV2):
                 sa_obs, update=self._update_stats
             )
             sa_episode.set_observations(at_indices=-1, new_data=normalized_sa_obs)
-
-            if len(sa_episode) == 0:
-                # TODO (sven): This is kind of a hack.
-                #  We set the Episode's observation space to ours so that we can safely
-                #  set the last obs to the new value (without causing a space mismatch
-                #  error).
-                sa_episode.observation_space = self.observation_space
+            #  We set the Episode's observation space to ours so that we can safely
+            #  set the last obs to the new value (without causing a space mismatch
+            #  error).
+            sa_episode.observation_space = self.observation_space
 
         # Leave `data` as is. RLlib's default connector will automatically
         # populate the OBS column therein from the episodes' now transformed

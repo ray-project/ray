@@ -19,18 +19,12 @@ from ray.util.annotations import PublicAPI
 class FlattenObservations(ConnectorV2):
     """A connector piece that flattens all observation components into a 1D array.
 
-    - Only works on data that has already been added to the batch.
-    - This connector makes the assumption that under the Columns.OBS key in batch,
-    there is either a list of individual env observations to be flattened (single-agent
-    case) or a dict mapping agent- and module IDs to lists of data items to be
-    flattened (multi-agent case).
-    - Does NOT work in a Learner pipeline as it operates on individual observation
-    items (as opposed to batched/time-ranked data).
-    - Therefore, assumes that the altered (flattened) observations will be written
-    back into the episode by a later connector piece in the env-to-module pipeline
-    (which this piece is part of as well).
-    - Does NOT read any information from the given list of Episode objects.
-    - Does NOT write any observations (or other data) to the given Episode objects.
+    - Works directly on the incoming episodes list and changes the last observation
+    in-place (write the flattened observation back into the episode).
+    - This connector does NOT alter the incoming batch (`data`) when called.
+    - This connector does NOT work in a `LearnerConnectorPipeline` because it requires
+    the incoming episodes to still be ongoing (in progress) as it only alters the
+    latest observation, not all observations in an episode.
 
     .. testcode::
 
@@ -177,32 +171,40 @@ class FlattenObservations(ConnectorV2):
                 f"for this connector to work!"
             )
 
-        # Process each item under the Columns.OBS key individually and flatten
-        # it. We are using the `ConnectorV2.foreach_batch_item_change_in_place` API,
-        # allowing us to not worry about multi- or single-agent setups and returning
-        # the new version of each item we are iterating over.
-        self.foreach_batch_item_change_in_place(
-            batch=data,
-            column=Columns.OBS,
-            func=(
-                lambda item, eps_id, agent_id, module_id: (
-                    # Multi-agent AND skip this AgentID.
-                    item
-                    if self._agent_ids and agent_id not in self._agent_ids
-                    # Single-agent or flatten this AgentIDs observation.
+        for sa_episode in self.single_agent_episode_iterator(
+                episodes, agents_that_stepped_only=True
+        ):
+            # Episode is not finalized yet and thus still operates on lists of items.
+            assert not sa_episode.is_finalized
+
+            last_obs = sa_episode.get_observations(-1)
+
+            if self._multi_agent:
+                flattened_obs = {
+                    agent_obs if aid not in self._agent_ids
                     else flatten_inputs_to_1d_tensor(
-                        item,
+                        inputs=agent_obs,
                         # In the multi-agent case, we need to use the specific agent's
                         # space struct, not the multi-agent observation space dict.
-                        (
-                            self._input_obs_base_struct
-                            if not agent_id
-                            else self._input_obs_base_struct[agent_id]
-                        ),
+                        spaces_struct=self._input_obs_base_struct[agent_id],
                         # Our items are individual observations (no batch axis present).
                         batch_axis=False,
                     )
+                    for aid, agent_obs in last_obs.items()
+                }
+            else:
+                flattened_obs = flatten_inputs_to_1d_tensor(
+                    inputs=last_obs,
+                    spaces_struct=self._input_obs_base_struct,
+                    # Our items are individual observations (no batch axis present).
+                    batch_axis=False,
                 )
-            ),
-        )
+
+            # Write new observation directly back into the episode.
+            sa_episode.set_observations(at_indices=-1, new_data=flattened_obs)
+            #  We set the Episode's observation space to ours so that we can safely
+            #  set the last obs to the new value (without causing a space mismatch
+            #  error).
+            sa_episode.observation_space = self.observation_space
+
         return data
