@@ -737,6 +737,19 @@ Status NodeResourceInfoAccessor::AsyncGetAllAvailableResources(
   return Status::OK();
 }
 
+Status NodeResourceInfoAccessor::AsyncGetAllTotalResources(
+    const MultiItemCallback<rpc::TotalResources> &callback) {
+  rpc::GetAllTotalResourcesRequest request;
+  client_impl_->GetGcsRpcClient().GetAllTotalResources(
+      request,
+      [callback](const Status &status, const rpc::GetAllTotalResourcesReply &reply) {
+        callback(status, VectorFromProtobuf(reply.resources_list()));
+        RAY_LOG(DEBUG) << "Finished getting total resources of all nodes, status = "
+                       << status;
+      });
+  return Status::OK();
+}
+
 Status NodeResourceInfoAccessor::AsyncGetDrainingNodes(
     const ItemCallback<std::unordered_map<NodeID, int64_t>> &callback) {
   rpc::GetDrainingNodesRequest request;
