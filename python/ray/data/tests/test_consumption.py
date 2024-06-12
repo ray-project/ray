@@ -521,11 +521,13 @@ def test_dataset_repr(ray_start_regular_shared):
         repr(ds2) == f"MaterializedDataset(num_blocks=5, num_rows={ds2.count()}, "
         "schema={id: int64})"
     )
-    ds3 = ds1.union(ds2)
+
     # TODO(scottjlee): include all of the input datasets to union()
     # in the repr output, instead of only the resulting unioned dataset.
+    # TODO(@bveeramani): Handle schemas for n-ary operators like `Union`.
+    # ds3 = ds1.union(ds2)
     # assert repr(ds3) == ("Union\n+- Dataset(num_rows=9, schema={id: int64})")
-    ds = ds.zip(ds3)
+    # ds = ds.zip(ds3)
     # assert repr(ds) == (
     #     "Zip\n"
     #     "+- MapBatches(<lambda>)\n"

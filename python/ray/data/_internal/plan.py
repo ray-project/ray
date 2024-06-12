@@ -156,6 +156,7 @@ class ExecutionPlan:
             else:
                 # This plan hasn't executed any operators.
                 sources = self._logical_plan.dag.source_dependencies()
+                # TODO(@bveeramani): Handle schemas for n-ary operators like `Union`.
                 if len(sources) > 1:
                     # Multiple sources, cannot determine schema.
                     schema = None
@@ -191,7 +192,8 @@ class ExecutionPlan:
 
         num_blocks = None
         if dataset_cls == MaterializedDataset:
-            num_blocks = self._logical_plan.dag.num_blocks()
+            num_blocks = self.initial_num_blocks()
+            assert num_blocks is not None
 
         name_str = (
             "name={}, ".format(self._dataset_name)
@@ -475,7 +477,6 @@ class ExecutionPlan:
                     "for more details: "
                     "https://docs.ray.io/en/latest/data/data-internals.html#ray-data-and-tune"  # noqa: E501
                 )
-
         if not self.has_computed_output():
             from ray.data._internal.execution.legacy_compat import (
                 _get_initial_stats_from_plan,
@@ -483,11 +484,24 @@ class ExecutionPlan:
             )
 
             if self._logical_plan.dag.output_data() is not None:
-                # No need to execute MaterializedDatasets with only an InputData
-                # operator, since the data is already materialized. This also avoids
+                # If the data is already materialized (e.g., `from_pandas`), we can
+                # skip execution and directly return the output data. This avoids
                 # recording unnecessary metrics for an empty plan execution.
+
+                # TODO(@bveeramani): Make `ExecutionPlan.execute()` return
+                # `List[RefBundle]` instead of `RefBundle`. Among other reasons, it'd
+                # allow us to remove the unwrapping logic below.
+                output_bundles = self._logical_plan.dag.output_data()
+                owns_blocks = all(bundle.owns_blocks for bundle in output_bundles)
+                snapshot_bundle = RefBundle(
+                    [
+                        (block, metadata)
+                        for bundle in output_bundles
+                        for block, metadata in bundle.blocks
+                    ],
+                    owns_blocks=owns_blocks,
+                )
                 stats = _get_initial_stats_from_plan(self)
-                self._snapshot_bundle = self._logical_plan.dag.output_data()
             else:
                 from ray.data._internal.execution.streaming_executor import (
                     StreamingExecutor,
@@ -513,7 +527,7 @@ class ExecutionPlan:
                     logger.info(stats_summary_string)
 
                 # Set the snapshot to the output of the final operator.
-                self._snapshot_bundle = RefBundle(
+                snapshot_bundle = RefBundle(
                     tuple(blocks.iter_blocks_with_metadata()),
                     owns_blocks=blocks._owned_by_consumer,
                 )
@@ -548,10 +562,11 @@ class ExecutionPlan:
 
             collect_stats(stats)
 
-            self._snapshot_operator = self._logical_plan.dag
-            assert stats is not None
-            self._snapshot_stats = stats
-            self._snapshot_stats.dataset_uuid = self._dataset_uuid
+        self._snapshot_operator = self._logical_plan.dag
+        self._snapshot_stats = stats
+        self._snapshot_stats.dataset_uuid = self._dataset_uuid
+        self._snapshot_bundle = snapshot_bundle
+
         return self._snapshot_bundle
 
     @property

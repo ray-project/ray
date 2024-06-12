@@ -1,5 +1,5 @@
 import abc
-from typing import TYPE_CHECKING, List, Union
+from typing import TYPE_CHECKING, List, Optional, Union
 
 from ray.data._internal.execution.interfaces import RefBundle
 from ray.data._internal.logical.interfaces import LogicalOperator
@@ -46,16 +46,8 @@ class AbstractFrom(LogicalOperator, metaclass=abc.ABCMeta):
         else:
             return None
 
-    def num_blocks(self):
-        if self._input_data is None:
-            return None
-        return sum(len(bundle.blocks) for bundle in self._input_data)
-
-    def output_data(self):
-        blocks = []
-        for bundle in self._input_data:
-            blocks.extend(bundle.blocks)
-        return RefBundle(blocks, owns_blocks=False)
+    def output_data(self) -> Optional[List[RefBundle]]:
+        return self._input_data
 
 
 class FromItems(AbstractFrom):
