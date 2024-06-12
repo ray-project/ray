@@ -494,7 +494,7 @@ class ExecutionPlan:
                 # allow us to remove the unwrapping logic below.
                 output_bundles = self._logical_plan.dag.output_data()
                 owns_blocks = all(bundle.owns_blocks for bundle in output_bundles)
-                self._snapshot_bundle = RefBundle(
+                bundle = RefBundle(
                     [
                         (block, metadata)
                         for bundle in output_bundles
@@ -519,18 +519,16 @@ class ExecutionPlan:
                     dataset_uuid=self._dataset_uuid,
                     preserve_order=preserve_order,
                 )
+                bundle = RefBundle(
+                    tuple(blocks.iter_blocks_with_metadata()),
+                    owns_blocks=blocks._owned_by_consumer,
+                )
                 stats = executor.get_stats()
                 stats_summary_string = stats.to_summary().to_string(
                     include_parent=False
                 )
                 if context.enable_auto_log_stats:
                     logger.info(stats_summary_string)
-
-                # Set the snapshot to the output of the final operator.
-                self._snapshot_bundle = RefBundle(
-                    tuple(blocks.iter_blocks_with_metadata()),
-                    owns_blocks=blocks._owned_by_consumer,
-                )
 
             # Retrieve memory-related stats from ray.
             try:
@@ -562,6 +560,8 @@ class ExecutionPlan:
 
             collect_stats(stats)
 
+            # Set the snapshot to the output of the final operator.
+            self._snapshot_bundle = bundle
             self._snapshot_operator = self._logical_plan.dag
             self._snapshot_stats = stats
             self._snapshot_stats.dataset_uuid = self._dataset_uuid
