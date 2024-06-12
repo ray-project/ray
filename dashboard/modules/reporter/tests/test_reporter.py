@@ -464,6 +464,155 @@ def test_report_stats_gpu():
     assert gpu_metrics_aggregatd["node_gram_available"] == GPU_MEMORY * 4 - 6
 
 
+def test_report_stats_gpu():
+    dashboard_agent = MagicMock()
+    agent = ReporterAgent(dashboard_agent)
+    # Assume it is a head node.
+    agent._is_head_node = True
+    # GPUstats query output example.
+    """
+    {'index': 0,
+    'uuid': 'GPU-36e1567d-37ed-051e-f8ff-df807517b396',
+    'name': 'NVIDIA A10G',
+    'temperature_gpu': 20,
+    'fan_speed': 0,
+    'utilization_gpu': 1,
+    'utilization_enc': 0,
+    'utilization_dec': 0,
+    'power_draw': 51,
+    'enforced_power_limit': 300,
+    'memory_used': 0,
+    'memory_total': 22731,
+    'processes': []}
+    """
+    GPU_MEMORY = 22731
+    STATS_TEMPLATE["gpus"] = [
+        {
+            "index": 0,
+            "uuid": "GPU-36e1567d-37ed-051e-f8ff-df807517b396",
+            "name": "NVIDIA A10G",
+            "temperature_gpu": 20,
+            "fan_speed": 0,
+            "utilization_gpu": 0,
+            "utilization_enc": 0,
+            "utilization_dec": 0,
+            "power_draw": 51,
+            "enforced_power_limit": 300,
+            "memory_used": 0,
+            "memory_total": GPU_MEMORY,
+            "processes": [],
+        },
+        {
+            "index": 1,
+            "uuid": "GPU-36e1567d-37ed-051e-f8ff-df807517b397",
+            "name": "NVIDIA A10G",
+            "temperature_gpu": 20,
+            "fan_speed": 0,
+            "utilization_gpu": 1,
+            "utilization_enc": 0,
+            "utilization_dec": 0,
+            "power_draw": 51,
+            "enforced_power_limit": 300,
+            "memory_used": 1,
+            "memory_total": GPU_MEMORY,
+            "processes": [],
+        },
+        {
+            "index": 2,
+            "uuid": "GPU-36e1567d-37ed-051e-f8ff-df807517b398",
+            "name": "NVIDIA A10G",
+            "temperature_gpu": 20,
+            "fan_speed": 0,
+            "utilization_gpu": 2,
+            "utilization_enc": 0,
+            "utilization_dec": 0,
+            "power_draw": 51,
+            "enforced_power_limit": 300,
+            "memory_used": 2,
+            "memory_total": GPU_MEMORY,
+            "processes": [],
+        },
+        # No name.
+        {
+            "index": 3,
+            "uuid": "GPU-36e1567d-37ed-051e-f8ff-df807517b398",
+            "temperature_gpu": 20,
+            "fan_speed": 0,
+            "utilization_gpu": 3,
+            "utilization_enc": 0,
+            "utilization_dec": 0,
+            "power_draw": 51,
+            "enforced_power_limit": 300,
+            "memory_used": 3,
+            "memory_total": GPU_MEMORY,
+            "processes": [],
+        },
+        # No index
+        {
+            "uuid": "GPU-36e1567d-37ed-051e-f8ff-df807517b398",
+            "name": "NVIDIA A10G",
+            "temperature_gpu": 20,
+            "fan_speed": 0,
+            "utilization_gpu": 3,
+            "utilization_enc": 0,
+            "utilization_dec": 0,
+            "power_draw": 51,
+            "enforced_power_limit": 300,
+            "memory_used": 3,
+            "memory_total": 22731,
+            "processes": [],
+        },
+    ]
+    gpu_metrics_aggregatd = {
+        "node_gpus_available": 0,
+        "node_gpus_utilization": 0,
+        "node_gram_used": 0,
+        "node_gram_available": 0,
+    }
+    records = agent._record_stats(STATS_TEMPLATE, {})
+    # If index is not available, we don't emit metrics.
+    num_gpu_records = 0
+    for record in records:
+        if record.gauge.name in gpu_metrics_aggregatd:
+            num_gpu_records += 1
+    assert num_gpu_records == 16
+
+    ip = STATS_TEMPLATE["ip"]
+    gpu_records = defaultdict(list)
+    for record in records:
+        if record.gauge.name in gpu_metrics_aggregatd:
+            gpu_records[record.gauge.name].append(record)
+
+    for name, records in gpu_records.items():
+        records.sort(key=lambda e: e.tags["GpuIndex"])
+        index = 0
+        for record in records:
+            if record.tags["GpuIndex"] == "3":
+                assert record.tags == {"ip": ip, "GpuIndex": "3"}
+            else:
+                assert record.tags == {
+                    "ip": ip,
+                    # The tag value must be string for prometheus.
+                    "GpuIndex": str(index),
+                    "GpuDeviceName": "NVIDIA A10G",
+                }
+
+            if name == "node_gram_available":
+                assert record.value == GPU_MEMORY - index
+            elif name == "node_gpus_available":
+                assert record.value == 1
+            else:
+                assert record.value == index
+
+            gpu_metrics_aggregatd[name] += record.value
+            index += 1
+
+    assert gpu_metrics_aggregatd["node_gpus_available"] == 4
+    assert gpu_metrics_aggregatd["node_gpus_utilization"] == 6
+    assert gpu_metrics_aggregatd["node_gram_used"] == 6
+    assert gpu_metrics_aggregatd["node_gram_available"] == GPU_MEMORY * 4 - 6
+
+
 def test_report_per_component_stats():
     dashboard_agent = MagicMock()
     agent = ReporterAgent(dashboard_agent)
