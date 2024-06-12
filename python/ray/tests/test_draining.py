@@ -104,7 +104,7 @@ def test_preemption(ray_start_cluster):
 
     gcs_client = GcsClient(address=ray.get_runtime_context().gcs_address)
 
-    with pytest.raises(ValueError, "Draining deadline must be non-negative"):
+    with pytest.raises(ValueError, match="Draining deadline must be non-negative"):
         # Test invalid draining deadline
         gcs_client.drain_node(
             worker_node_id,
