@@ -191,7 +191,7 @@ def _get_initial_stats_from_plan(plan: ExecutionPlan) -> DatasetStats:
     # "InputDataBuffer" physical operators, which will be ignored when generating
     # stats, see `StreamingExecutor._generate_stats`.
     # TODO(hchen): Unify the logic by saving the initial stats in `InputDataBuffer
-    if all(isinstance(op, Read) for op in plan._logical_plan.dag.source_dependencies()):
+    if plan.has_lazy_input():
         return DatasetStats(metadata={}, parent=None)
     else:
         return plan._in_stats
