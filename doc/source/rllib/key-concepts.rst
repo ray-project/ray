@@ -114,7 +114,7 @@ The following figure shows *synchronous sampling*, the simplest of `these patter
 
 RLlib uses `Ray actors <actors.html>`__ to scale training from a single core to many thousands of cores in a cluster.
 You can `configure the parallelism <rllib-training.html#specifying-resources>`__ used for training by changing the ``num_env_runners`` parameter.
-Check out our `scaling guide <rllib-training.html#scaling-guide>`__ for more details here.
+See this `scaling guide <rllib-training.html#scaling-guide>`__ for more details here.
 
 
 RL Modules

@@ -1,4 +1,5 @@
 import builtins
+import functools
 from copy import copy
 from typing import Iterable, List, Optional, Tuple
 
@@ -86,25 +87,6 @@ class RangeDatasource(Datasource):
                 start += num_rows
                 count -= num_rows
 
-        if block_format == "arrow":
-            _check_pyarrow_version()
-            import pyarrow as pa
-
-            schema = pa.Table.from_pydict({self._column_name or "value": [0]}).schema
-        elif block_format == "tensor":
-            _check_pyarrow_version()
-            import pyarrow as pa
-
-            tensor = np.ones(tensor_shape, dtype=np.int64) * np.expand_dims(
-                np.arange(0, 10), tuple(range(1, 1 + len(tensor_shape)))
-            )
-            schema = BlockAccessor.batch_to_block(
-                {self._column_name: tensor} if self._column_name else tensor
-            ).schema
-        elif block_format == "list":
-            schema = int
-        else:
-            raise ValueError("Unsupported block type", block_format)
         if block_format == "tensor":
             element_size = int(np.product(tensor_shape))
         else:
@@ -116,7 +98,7 @@ class RangeDatasource(Datasource):
             meta = BlockMetadata(
                 num_rows=count,
                 size_bytes=8 * count * element_size,
-                schema=copy(schema),
+                schema=copy(self.schema()),
                 input_files=None,
                 exec_stats=None,
             )
@@ -131,3 +113,32 @@ class RangeDatasource(Datasource):
             i += block_size
 
         return read_tasks
+
+    @functools.cache
+    def schema(self):
+        if self._n == 0:
+            return None
+
+        if self._block_format == "arrow":
+            _check_pyarrow_version()
+            import pyarrow as pa
+
+            schema = pa.Table.from_pydict({self._column_name or "value": [0]}).schema
+        elif self._block_format == "tensor":
+            _check_pyarrow_version()
+            import pyarrow as pa
+
+            tensor = np.ones(self._tensor_shape, dtype=np.int64) * np.expand_dims(
+                np.arange(0, 10), tuple(range(1, 1 + len(self._tensor_shape)))
+            )
+            schema = BlockAccessor.batch_to_block(
+                {self._column_name: tensor} if self._column_name else tensor
+            ).schema
+        elif self._block_format == "list":
+            schema = int
+        else:
+            raise ValueError("Unsupported block type", self._block_format)
+        return schema
+
+    def num_rows(self):
+        return self._n
