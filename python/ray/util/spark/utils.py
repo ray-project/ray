@@ -369,6 +369,7 @@ def _get_num_physical_gpus():
             check=True,
             text=True,
             capture_output=True,
+            timeout=60,
         )
         return len(completed_proc.stdout.strip().split("\n"))
     except Exception as e:
