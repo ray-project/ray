@@ -14,7 +14,7 @@ const TitleDiv = styled("div")(({ theme }) => ({
   marginBottom: theme.spacing(1),
 }));
 
-const BodyDiv = styled("div")();
+const BodyDiv = styled("div")("");
 
 const TitleCard = ({
   title,

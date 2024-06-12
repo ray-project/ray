@@ -108,7 +108,7 @@ const StatusChipRoot = styled("span")(({ theme }) => ({
   alignItems: "center",
 }));
 
-const StyledSpan = styled("span")();
+const StyledSpan = styled("span")("");
 const AfterIconSpan = styled("span")(({ theme }) => ({
   marginLeft: 4,
 }));
