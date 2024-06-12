@@ -26,6 +26,8 @@ from ray.tune.utils.util import flatten_dict, unflatten_list_dict
 try:
     import ax
     from ax.service.ax_client import AxClient
+    from ax.service.utils.instantiation import ObjectiveProperties
+
 except ImportError:
     ax = AxClient = None
 
@@ -217,12 +219,15 @@ class AxSearch(Searcher):
                     "Please specify the `mode` argument when initializing "
                     "the `AxSearch` object or pass it to `tune.TuneConfig()`."
                 )
+
+
             self._ax.create_experiment(
                 parameters=self._space,
-                objective_name=self._metric,
+                objectives={
+                    self._metric: ObjectiveProperties(minimize=self._mode != "max",)
+                },
                 parameter_constraints=self._parameter_constraints,
                 outcome_constraints=self._outcome_constraints,
-                minimize=self._mode != "max",
             )
         else:
             if any(
