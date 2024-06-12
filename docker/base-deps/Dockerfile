@@ -47,7 +47,7 @@ RUN sudo apt-get update -y && sudo apt-get upgrade -y \
         openssh-client \
         gnupg; fi) \
     && wget --quiet \
-        "https://repo.anaconda.com/miniconda/Miniconda3-py311_23.10.0-1-Linux-${HOSTTYPE}.sh" \
+        "https://repo.anaconda.com/miniconda/Miniconda3-py311_24.4.0-0-Linux-${HOSTTYPE}.sh" \
         -O /tmp/miniconda.sh \
     && /bin/bash /tmp/miniconda.sh -b -u -p $HOME/anaconda3 \
     && $HOME/anaconda3/bin/conda init \ 
