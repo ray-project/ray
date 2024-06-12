@@ -629,8 +629,12 @@ class StandardAutoscaler:
         # Scale down entire multi-host replica of node being deleted
         tags = self.provider.node_tags(node_id)
         if TAG_RAY_REPLICA_INDEX in tags:
-            replica_id = tags[TAG_RAY_REPLICA_INDEX]
-            self.replicas_to_delete.add(replica_id)
+            replica_index = tags[TAG_RAY_REPLICA_INDEX]
+            self.replicas_to_delete.add(replica_index)
+            logger_method(
+                "StandardAutoscaler: "
+                f"Terminating nodes with replicaIndex {replica_index}."
+            )
 
     def terminate_scheduled_nodes(self):
         """Terminate scheduled nodes and clean associated autoscaler state."""
@@ -650,13 +654,13 @@ class StandardAutoscaler:
             tags = self.provider.node_tags(node)
             if TAG_RAY_REPLICA_INDEX in tags:
                 assert self.replicas_to_nodes
-                replica_id = tags[TAG_RAY_REPLICA_INDEX]
-                if replica_id in self.replicas_to_nodes:
-                    if node in self.replicas_to_nodes[replica_id]:
-                        self.replicas_to_nodes[replica_id].remove(node)
+                replica_index = tags[TAG_RAY_REPLICA_INDEX]
+                if replica_index in self.replicas_to_nodes:
+                    if node in self.replicas_to_nodes[replica_index]:
+                        self.replicas_to_nodes[replica_index].remove(node)
                         # remove replica ID once all nodes in replica removed
-                        if len(self.replicas_to_nodes[replica_id]) == 0:
-                            self.replicas_to_delete.remove(replica_id)
+                        if len(self.replicas_to_nodes[replica_index]) == 0:
+                            self.replicas_to_delete.remove(replica_index)
         # Terminate the nodes
         self.provider.terminate_nodes(self.nodes_to_terminate)
         for node in self.nodes_to_terminate:
@@ -1032,13 +1036,13 @@ class StandardAutoscaler:
         tags = self.provider.node_tags(node_id)
 
         if TAG_RAY_REPLICA_INDEX in tags:
-            replica_id = tags[TAG_RAY_REPLICA_INDEX]
+            replica_index = tags[TAG_RAY_REPLICA_INDEX]
             # All nodes in this replica should be deleted, regardless of
             # available_node_types.
-            if replica_id in self.replicas_to_delete:
+            if replica_index in self.replicas_to_delete:
                 return (
                     KeepOrTerminate.terminate,
-                    f"Node belongs to a replica being deleted: {replica_id}",
+                    f"Node belongs to a replica being deleted: {replica_index}",
                 )
 
         if TAG_RAY_USER_NODE_TYPE in tags:
