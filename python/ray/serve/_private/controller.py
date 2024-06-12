@@ -877,7 +877,7 @@ class ServeController:
         grpc_config = self.get_grpc_config()
         applications = {}
 
-        app_configs = self.get_app_configs()
+        app_configs = self.get_app_configs() or {}
 
         for (
             app_name,
