@@ -2924,11 +2924,11 @@ py_test(
 )
 
 py_test(
-    name = "examples/rl_modules/pretraining_single_agent_training_multi_agent_rlm",
-    main = "examples/rl_modules/pretraining_single_agent_training_multi_agent_rlm.py",
+    name = "examples/rl_modules/pretraining_single_agent_training_multi_agent",
+    main = "examples/rl_modules/pretraining_single_agent_training_multi_agent.py",
     tags = ["team:rllib", "examples"],
     size = "medium",
-    srcs = ["examples/rl_modules/pretraining_single_agent_training_multi_agent_rlm.py"],
+    srcs = ["examples/rl_modules/pretraining_single_agent_training_multi_agent.py"],
     args = ["--enable-new-api-stack", "--num-agents=2", "--stop-iters-pretraining=5", "--stop-iters=20", "--stop-reward=150.0"],
 )
 
@@ -3058,11 +3058,11 @@ py_test(
 )
 
 py_test(
-    name = "examples/custom_metrics_and_callbacks",
-    main = "examples/custom_metrics_and_callbacks.py",
+    name = "examples/metrics/custom_metrics_and_callbacks",
+    main = "examples/metrics/custom_metrics_and_callbacks.py",
     tags = ["team:rllib", "exclusive", "examples"],
     size = "small",
-    srcs = ["examples/custom_metrics_and_callbacks.py"],
+    srcs = ["examples/metrics/custom_metrics_and_callbacks.py"],
     args = ["--stop-iters=2"]
 )
 
