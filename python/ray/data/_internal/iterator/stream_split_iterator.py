@@ -15,6 +15,7 @@ from ray.data._internal.util import create_dataset_tag
 from ray.data.block import Block, BlockMetadata
 from ray.data.iterator import DataIterator
 from ray.types import ObjectRef
+from ray.util.annotations import DeveloperAPI
 from ray.util.debug import log_once
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
@@ -29,6 +30,7 @@ logger = logging.getLogger(__name__)
 BLOCKED_CLIENT_WARN_TIMEOUT = 30
 
 
+@DeveloperAPI
 class StreamSplitDataIterator(DataIterator):
     """Implements a collection of iterators over a shared data stream."""
 

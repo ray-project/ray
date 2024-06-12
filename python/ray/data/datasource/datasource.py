@@ -141,7 +141,6 @@ class Reader:
         raise NotImplementedError
 
 
-@DeveloperAPI
 class _LegacyDatasourceReader(Reader):
     def __init__(self, datasource: Datasource, **read_args):
         self._datasource = datasource
