@@ -3,6 +3,7 @@ from typing import TYPE_CHECKING, List, Union
 
 from ray.data._internal.execution.interfaces import RefBundle
 from ray.data._internal.logical.interfaces import LogicalOperator
+from ray.data._internal.util import unify_block_metadata_schema
 from ray.data.block import Block, BlockMetadata
 from ray.types import ObjectRef
 
@@ -34,6 +35,16 @@ class AbstractFrom(LogicalOperator, metaclass=abc.ABCMeta):
     @property
     def input_data(self) -> List[RefBundle]:
         return self._input_data
+
+    def schema(self):
+        metadata = [m for bundle in self._input_data for m in bundle.metadata]
+        return unify_block_metadata_schema(metadata)
+
+    def num_rows(self):
+        if all(bundle.num_rows() is not None for bundle in self._input_data):
+            return sum(bundle.num_rows() for bundle in self._input_data)
+        else:
+            return None
 
 
 class FromItems(AbstractFrom):

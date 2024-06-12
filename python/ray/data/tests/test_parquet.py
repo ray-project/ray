@@ -29,14 +29,6 @@ from ray.data.tests.test_util import ConcurrencyCounter  # noqa
 from ray.tests.conftest import *  # noqa
 
 
-def check_num_computed(ds, streaming_expected) -> None:
-    # When streaming executor is on, the _num_computed() is affected only
-    # by the ds.schema() which will still partial read the blocks, but will
-    # not affected by operations like take() as it's executed via streaming
-    # executor.
-    assert ds._plan.execute()._num_computed() == streaming_expected
-
-
 def test_include_paths(ray_start_regular_shared, tmp_path):
     path = os.path.join(tmp_path, "test.txt")
     table = pa.Table.from_pydict({"animals": ["cat", "dog"]})
@@ -327,29 +319,25 @@ def test_parquet_read_bulk(ray_start_regular_shared, fs, data_path):
         ds = ray.data.read_parquet_bulk(data_path, filesystem=fs, file_extensions=None)
         ds.schema()
 
-    # Expect individual file paths to be processed successfully.
     paths = [path1, path2]
     ds = ray.data.read_parquet_bulk(paths, filesystem=fs)
 
-    # Expect precomputed row counts to be missing.
-    assert ds._meta_count() is None
-
     # Expect to lazily compute all metadata correctly.
-    check_num_computed(ds, 0)
-    assert ds.count() == 6
-    assert ds.size_bytes() > 0
-    assert ds.schema() is not None
     input_files = ds.input_files()
     assert len(input_files) == 2, input_files
     assert "test1.parquet" in str(input_files)
     assert "test2.parquet" in str(input_files)
-    assert str(ds) == "Dataset(num_rows=6, schema={one: int64, two: string})", ds
-    assert repr(ds) == "Dataset(num_rows=6, schema={one: int64, two: string})", ds
-    check_num_computed(ds, 2)
+    assert not ds._plan.has_started_execution
+
+    # Schema isn't available, so we do a partial read.
+    assert ds.schema() is not None
+    assert str(ds) == "Dataset(num_rows=?, schema={one: int64, two: string})", ds
+    assert repr(ds) == "Dataset(num_rows=?, schema={one: int64, two: string})", ds
+    assert ds._plan.has_started_execution
+    assert not ds._plan.has_computed_output()
 
     # Forces a data read.
     values = [[s["one"], s["two"]] for s in ds.take()]
-    check_num_computed(ds, 2)
     assert sorted(values) == [
         [1, "a"],
         [2, "b"],
@@ -367,10 +355,10 @@ def test_parquet_read_bulk(ray_start_regular_shared, fs, data_path):
 
     ds = ray.data.read_parquet_bulk(paths + [txt_path], filesystem=fs)
     assert ds._plan.initial_num_blocks() == 2
+    assert not ds._plan.has_started_execution
 
     # Forces a data read.
     values = [[s["one"], s["two"]] for s in ds.take()]
-    check_num_computed(ds, 0)
     assert sorted(values) == [
         [1, "a"],
         [2, "b"],
@@ -415,25 +403,22 @@ def test_parquet_read_bulk_meta_provider(ray_start_regular_shared, fs, data_path
         meta_provider=DefaultFileMetadataProvider(),
     )
 
-    # Expect precomputed row counts to be missing.
-    assert ds._meta_count() is None
-
     # Expect to lazily compute all metadata correctly.
-    check_num_computed(ds, 0)
-    assert ds.count() == 6
-    assert ds.size_bytes() > 0
-    assert ds.schema() is not None
     input_files = ds.input_files()
     assert len(input_files) == 2, input_files
     assert "test1.parquet" in str(input_files)
     assert "test2.parquet" in str(input_files)
+    assert not ds._plan.has_started_execution
+
+    assert ds.count() == 6
+    assert ds.size_bytes() > 0
+    assert ds.schema() is not None
     assert str(ds) == "Dataset(num_rows=6, schema={one: int64, two: string})", ds
     assert repr(ds) == "Dataset(num_rows=6, schema={one: int64, two: string})", ds
-    check_num_computed(ds, 2)
+    assert ds._plan.has_started_execution
 
     # Forces a data read.
     values = [[s["one"], s["two"]] for s in ds.take()]
-    check_num_computed(ds, 2)
     assert sorted(values) == [
         [1, "a"],
         [2, "b"],
@@ -1045,7 +1030,7 @@ def test_parquet_roundtrip(ray_start_regular_shared, fs, data_path):
     ds2df = ds2.to_pandas()
     assert pd.concat([df1, df2], ignore_index=True).equals(ds2df)
     # Test metadata ops.
-    for block, meta in ds2._plan.execute().get_blocks_with_metadata():
+    for block, meta in ds2._plan.execute().blocks:
         BlockAccessor.for_block(ray.get(block)).size_bytes() == meta.size_bytes
     if fs is None:
         shutil.rmtree(path)
