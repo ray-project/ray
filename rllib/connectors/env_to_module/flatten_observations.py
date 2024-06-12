@@ -31,6 +31,7 @@ class FlattenObservations(ConnectorV2):
         import numpy as np
 
         from ray.rllib.connectors.env_to_module import FlattenObservations
+        from ray.rllib.env.single_agent_episode import SingleAgentEpisode
         from ray.rllib.utils.test_utils import check
 
         # Some arbitrarily nested, complex observation space.
@@ -44,24 +45,26 @@ class FlattenObservations(ConnectorV2):
         })
         act_space = gym.spaces.Discrete(2)
 
-        # A batch of two example items, both coming from the above defined observation
-        # space.
-        batch = {
-            "obs": [
-                # 1st example item.
+        # Two example episodes, both with initial (reset) observations coming from the
+        # above defined observation space.
+        episode_1 = SingleAgentEpisode(
+            observations=[
                 {
                     "a": np.array(-10.0, np.float32),
                     "b": (1, np.array([[-1.0], [-1.0]], np.float32)),
                     "c": np.array([0, 2]),
                 },
-                # 2nd example item.
+            ],
+        )
+        episode_2 = SingleAgentEpisode(
+            observations=[
                 {
                     "a": np.array(10.0, np.float32),
                     "b": (0, np.array([[1.0], [1.0]], np.float32)),
                     "c": np.array([1, 1]),
                 },
             ],
-        }
+        )
 
         # Construct our connector piece.
         connector = FlattenObservations(obs_space, act_space)
@@ -69,23 +72,23 @@ class FlattenObservations(ConnectorV2):
         # Call our connector piece with the example data.
         output_data = connector(
             rl_module=None,  # This connector works without an RLModule.
-            data=batch,
-            episodes=[],  # This connector does not need the `episodes` input.
+            data={},  # This connector does not alter any data.
+            episodes=[episode_1, episode_2],
             explore=True,
             shared_data={},
         )
 
-        # The connector does not change the number of items in the data (still 2 items).
-        check(len(output_data["obs"]), 2)
+        # The connector does not alter the data and acts as pure pass-through.
+        check(output_data, {})
 
-        # The connector has flattened each item in the data to a 1D tensor.
+        # The connector has flattened each item in the episodes to a 1D tensor.
         check(
-            output_data["obs"][0],
+            episode_1.get_observations(0),
             #         box()  disc(2).  box(2, 1).  multidisc(2, 3)........
             np.array([-10.0, 0.0, 1.0, -1.0, -1.0, 1.0, 0.0, 0.0, 0.0, 1.0]),
         )
         check(
-            output_data["obs"][1],
+            episode_2.get_observations(0),
             #         box()  disc(2).  box(2, 1).  multidisc(2, 3)........
             np.array([10.0, 1.0, 0.0, 1.0, 1.0, 0.0, 1.0, 0.0, 1.0, 0.0]),
         )

@@ -19,8 +19,6 @@ from ray.rllib.utils.filter import RunningStat
 class MeanStdFilter(ConnectorV2):
     """A connector used to mean-std-filter observations.
 
-
-
     Incoming observations are filtered such that the output of this filter is on
     average 0.0 and has a standard deviation of 1.0. If the observation space is
     a (possibly nested) dict, this filtering is applied separately per element of
