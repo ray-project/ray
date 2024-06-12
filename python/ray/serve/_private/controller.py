@@ -950,14 +950,14 @@ class ServeController:
 
     def get_app_configs(self) -> Optional[Dict[str, ServeApplicationSchema]]:
         checkpoint = self.kv_store.get(CONFIG_CHECKPOINT_KEY)
-        if checkpoint is not None:
-            _, _, _, config_checkpoints_dict = pickle.loads(checkpoint)
-            return {
-                app: ServeApplicationSchema.parse_obj(config)
-                for app, config in config_checkpoints_dict.items()
-            }
-        else:
+        if checkpoint is None:
             return None
+
+        _, _, _, config_checkpoints_dict = pickle.loads(checkpoint)
+        return {
+            app: ServeApplicationSchema.parse_obj(config)
+            for app, config in config_checkpoints_dict.items()
+        }
 
     def get_all_deployment_statuses(self) -> List[bytes]:
         """Gets deployment status bytes for all live deployments."""
