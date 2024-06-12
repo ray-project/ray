@@ -33,6 +33,7 @@ cdef extern from "ray/gcs/gcs_client/global_state_accessor.h" nogil:
         CJobID GetNextJobID()
         c_vector[c_string] GetAllNodeInfo()
         c_vector[c_string] GetAllAvailableResources()
+        c_vector[c_string] GetAllTotalResources()
         unordered_map[CNodeID, c_int64_t] GetDrainingNodes()
         c_vector[c_string] GetAllTaskEvents()
         unique_ptr[c_string] GetObjectInfo(const CObjectID &object_id)

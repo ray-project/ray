@@ -21,7 +21,7 @@ steps:
           - "3.9"
           - "3.11"
         platform:
-          - cu12.1.1
+          - cu12.1.1-cudnn8
           - cpu
 
   - label: ":tapioca: build: anyscale-ml py{{matrix}}-cu11.8.0 docker"
@@ -30,7 +30,7 @@ steps:
     instance_type: release
     commands:
       - bazel run //ci/ray_ci:build_in_docker -- anyscale --python-version {{matrix}}
-        --platform cu11.8.0 --image-type ray-ml --upload
+        --platform cu11.8.0-cudnn8 --image-type ray-ml --upload
     depends_on:
       - manylinux
       - forge

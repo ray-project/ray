@@ -295,6 +295,13 @@ message AvailableResources {
   map<string, double> resources_available = 2;
 }
 
+message TotalResources {
+  // Node id.
+  bytes node_id = 1;
+  // Resource capacity currently total on this node manager.
+  map<string, double> resources_total = 2;
+}
+
 // A snapshot of the state of a node.
 message NodeSnapshot {
   // The idle state of a node.

@@ -1,4 +1,4 @@
-# TODO (sven): Move this example script into the new API stack (w/ EnvRunners).
+# @HybridAPIStack
 
 """
 This example shows two modifications:
