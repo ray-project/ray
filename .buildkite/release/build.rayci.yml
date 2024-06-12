@@ -21,7 +21,7 @@ steps:
           - "3.9"
           - "3.11"
         platform:
-          - cu12.1.1-cudnn8
+          - cu12.3.2-cudnn9
           - cpu
 
   - label: ":tapioca: build: anyscale-ml py{{matrix}}-cu11.8.0 docker"
