@@ -489,11 +489,6 @@ class CompositeChannel(ChannelInterface):
         self._channel_dict = _channel_dict or {}
         # The set of channels is a deduplicated version of the _channel_dict values.
         self._channels = _channels or set()
-        # TODO (kevin85421): Currently, the out-of-band actor handle is not well
-        # supported for reference counting. Here, we store the actor handle in
-        # `self._self_actor` to ensure its lifetime is the same as the channel object
-        # as a workaround. We should fix this issue in the future.
-        self._self_actor = _get_self_actor()
         if self._channels:
             # This CompositeChannel object is created by deserialization.
             # We don't need to create channels again.
@@ -522,8 +517,8 @@ class CompositeChannel(ChannelInterface):
 
     def _get_actor_id(self, reader: Optional[ray.actor.ActorHandle]) -> str:
         if reader is None:
-            return ray.ActorID.nil()
-        return reader._actor_id
+            return None
+        return reader._actor_id.hex()
 
     def ensure_registered_as_writer(self) -> None:
         if self._writer_registered:
@@ -554,12 +549,12 @@ class CompositeChannel(ChannelInterface):
 
     def begin_read(self) -> Any:
         self.ensure_registered_as_reader()
-        actor_id = self._get_actor_id(self._self_actor)
+        actor_id = ray.get_runtime_context().get_actor_id()
         return self._channel_dict[actor_id].begin_read()
 
     def end_read(self):
         self.ensure_registered_as_reader()
-        actor_id = self._get_actor_id(self._self_actor)
+        actor_id = ray.get_runtime_context().get_actor_id()
         return self._channel_dict[actor_id].end_read()
 
     def close(self) -> None:
