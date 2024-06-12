@@ -335,7 +335,7 @@ class Router:
             metrics.Counter(
                 "serve_num_router_requests",
                 description="The number of requests processed by the router.",
-                tag_keys=("deployment", "route", "application", "submission_id"),
+                tag_keys=("deployment", "route", "application"),
             ),
             metrics.Gauge(
                 "serve_deployment_queued_queries",
