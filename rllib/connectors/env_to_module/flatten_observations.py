@@ -174,7 +174,10 @@ class FlattenObservations(ConnectorV2):
             last_obs = sa_episode.get_observations(-1)
 
             if self._multi_agent:
-                if self._agent_ids is not None and agent_id not in self._agent_ids:
+                if (
+                    self._agent_ids is not None
+                    and sa_episode.agent_id not in self._agent_ids
+                ):
                     flattened_obs = last_obs
                 else:
                     flattened_obs = flatten_inputs_to_1d_tensor(
