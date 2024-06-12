@@ -2034,11 +2034,13 @@ void NodeManager::HandleReleaseUnusedActorWorkers(
   for (auto &iter : leased_workers_) {
     // We only kill *actor* workers.
     if (!iter.second->GetActorId().IsNil() && !in_use_worker_ids.count(iter.first)) {
-      unused_workers.push_back(iter.second);
+      unused_actor_workers.push_back(iter.second);
     }
   }
 
-  for (auto &worker : unused_workers) {
+  for (auto &worker : unused_actor_workers) {
+    RAY_LOG(DEBUG) << "GCS requested to release unused actor worker: "
+                   << worker->WorkerId();
     DestroyWorker(worker,
                   rpc::WorkerExitType::INTENDED_SYSTEM_EXIT,
                   "Worker is no longer needed by the GCS.");

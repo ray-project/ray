@@ -1108,6 +1108,7 @@ def raises_exception(exc_type, f):
         {"kill_job": False, "kill_actor": False, "expect_alive": "all"},
         {"kill_job": True, "kill_actor": False, "expect_alive": "AB"},
         {"kill_job": True, "kill_actor": True, "expect_alive": "none"},
+        {"kill_job": False, "kill_actor": True, "expect_alive": "regular"},
     ],
 )
 @pytest.mark.skipif(not enable_external_redis(), reason="Only valid in redis env")
@@ -1132,6 +1133,9 @@ def test_gcs_server_restart_destroys_out_of_scope_actors(
 
     Case 2: before GCS is down, job died; during GCS is down, A died
         all should be dead
+
+    Case 3: during GCS is down, A died
+        regular actor should be alive, A and B should be dead
     """
 
     cluster = ray_start_cluster
@@ -1201,14 +1205,27 @@ def test_gcs_server_restart_destroys_out_of_scope_actors(
         # It took some time for raylet to report worker failure.
         wait_for_condition(
             lambda: raises_exception(
-                ValueError, lambda: ray.get_actor("regular", namespace="ns")
+                ValueError, lambda: ray.get_actor("parent", namespace="ns")
             )
         )
+        wait_for_condition(
+            lambda: raises_exception(
+                ValueError, lambda: ray.get_actor("child", namespace="ns")
+            )
+        )
+    elif case["expect_alive"] == "regular":
+        regular2 = ray.get_actor("regular", namespace="ns")
         wait_for_condition(
             lambda: raises_exception(
                 ValueError, lambda: ray.get_actor("parent", namespace="ns")
             )
         )
+        wait_for_condition(
+            lambda: raises_exception(
+                ValueError, lambda: ray.get_actor("child", namespace="ns")
+            )
+        )
+        assert ray.get(regular2.getpid.remote()) == regular_pid
     else:
         raise ValueError(f"Unknown case: {case}")
 
