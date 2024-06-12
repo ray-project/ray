@@ -92,7 +92,7 @@ def main(pargs):
         json.dump(config, f)
 
     # create the environment
-    env = wrap_deepmind(gym.make("GymV26Environment-v0", env_id="ALE/Breakout-v5"))
+    env = wrap_deepmind(gym.make("ALE/Breakout-v5"))
 
     # setup RLModule
     model_cfg = MODEL_DEFAULTS.copy()
