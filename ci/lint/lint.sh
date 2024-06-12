@@ -38,8 +38,10 @@ copyright_format() {
 }
 
 bazel_team() {
-  bazelisk query 'kind("cc_test", //...)' --output=xml | bazelisk run //ci/lint:check_bazel_team_owner
-  bazelisk query 'kind("py_test", //...)' --output=xml | bazelisk run //ci/lint:check_bazel_team_owner
+  TMP_DIR="$(mktemp -d)"
+  bazelisk query 'kind("cc_test|py_test", //...)' --output=xml > "${TMP_DIR}/tests.xml"
+  bazelisk run //ci/lint:check_bazel_team_owner < "${TMP_DIR}/tests.xml"
+  rm -rf "${TMP_DIR}"
 }
 
 bazel_buildifier() {
