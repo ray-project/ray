@@ -535,7 +535,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
 
   /// Handle a `ReleaseUnusedActorWorkers` request.
   // On GCS restart, there's a pruning effort. GCS sends raylet a list of actor workers it still
-  // wants (that it keeps tracks of); and the raylet destroys all other workers.
+  // wants (that it keeps tracks of); and the raylet destroys all other actor workers.
   void HandleReleaseUnusedActorWorkers(
       rpc::ReleaseUnusedActorWorkersRequest request,
       rpc::ReleaseUnusedActorWorkersReply *reply,
