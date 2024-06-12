@@ -2747,7 +2747,8 @@ class Algorithm(Trainable, AlgorithmBase):
             deprecation_warning(
                 "callbacks dict interface",
                 "a class extending rllib.algorithms.callbacks.DefaultCallbacks; "
-                "see `rllib/examples/custom_metrics_and_callbacks.py` for an example.",
+                "see `rllib/examples/metrics/custom_metrics_and_callbacks.py` for an "
+                "example.",
                 error=True,
             )
 
