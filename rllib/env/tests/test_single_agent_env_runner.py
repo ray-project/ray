@@ -43,14 +43,16 @@ class TestSingleAgentEnvRunner(unittest.TestCase):
         for _ in range(100):
             episodes = env_runner.sample(num_timesteps=10, random_actions=True)
             # Check the sum of lengths of all episodes returned.
-            check(sum(len(e) for e in episodes), 10)
+            sum_ = sum(map(len, episodes))
+            self.assertTrue(sum_ in [10, 11])
 
         # Sample (by default setting: rollout_fragment_length=64) 10 times.
         for _ in range(100):
             episodes = env_runner.sample(random_actions=True)
             # Check, whether the sum of lengths of all episodes returned is 128
             # 2 (num_env_per_worker) * 64 (rollout_fragment_length).
-            check(sum(len(e) for e in episodes), 128)
+            sum_ = sum(map(len, episodes))
+            self.assertTrue(sum_ in [128, 129])
 
     def test_distributed_env_runner(self):
         """Tests, whether SingleAgentGymEnvRunner can be distributed."""

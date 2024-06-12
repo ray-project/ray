@@ -63,26 +63,33 @@ class SingleAgentEnvRunner(EnvRunner):
 
         # Create a MetricsLogger object for logging custom stats.
         self.metrics = MetricsLogger()
-        # Initialize lifetime counts.
-        self.metrics.log_value(NUM_ENV_STEPS_SAMPLED_LIFETIME, 0, reduce="sum")
 
         # Create our callbacks object.
         self._callbacks: DefaultCallbacks = self.config.callbacks_class()
 
         # Create the vectorized gymnasium env.
-        self.env: Optional[gym.vector.VectorWrapper] = None
+        self.env: Optional[gym.Wrapper] = None
         self.num_envs: int = 0
         self.make_env()
 
         # Create the env-to-module connector pipeline.
         self._env_to_module = self.config.build_env_to_module_connector(self.env)
+        # Cached env-to-module results taken at the end of a `_sample_timesteps()`
+        # call to make sure the final observation (before an episode cut) gets properly
+        # processed (and maybe postprocessed and re-stored into the episode).
+        # For example, if we had a connector that normalizes observations and directly
+        # re-inserts these new obs back into the episode, the last observation in each
+        # sample call would NOT be processed, which could be very harmful in cases,
+        # in which value function bootstrapping of those (truncation) observations is
+        # required in the learning step.
+        self._cached_to_module = None
 
         # Create our own instance of the (single-agent) `RLModule` (which
         # the needs to be weight-synched) each iteration.
         try:
             module_spec: SingleAgentRLModuleSpec = self.config.rl_module_spec
             module_spec.observation_space = self._env_to_module.observation_space
-            module_spec.action_space = self.env.single_action_space
+            module_spec.action_space = self.env.envs[0].action_space
             if module_spec.model_config_dict is None:
                 module_spec.model_config_dict = self.config.model_config
             # Only load a light version of the module, if available. This is useful
@@ -212,42 +219,14 @@ class SingleAgentEnvRunner(EnvRunner):
 
         # Have to reset the env (on all vector sub_envs).
         if force_reset or self._needs_initial_reset:
-            # Create n new episodes and make the `on_episode_created` callbacks.
-            # TODO (sven): Add callback `on_episode_created` as soon as
-            # `gymnasium-v1.0.0a2` PR is coming.
             self._episodes = [None for _ in range(self.num_envs)]
-            for env_index in range(self.num_envs):
-                self._new_episode(env_index)
             self._shared_data = {}
-
-            # Erase all cached ongoing episodes (these will never be completed and
-            # would thus never be returned/cleaned by `get_metrics` and cause a memory
-            # leak).
-            self._ongoing_episodes_for_metrics.clear()
-
-            # Reset the environment.
-            # TODO (simon): Check, if we need here the seed from the config.
-            observations, infos = self.env.reset()
-            observations = unbatch(observations)
-
-            # Call `on_episode_start()` callbacks.
-            for env_index in range(self.num_envs):
-                self._make_on_episode_callback("on_episode_start", env_index)
-
+            self._reset_envs(self._episodes, self._shared_data, explore)
             # We just reset the env. Don't have to force this again in the next
             # call to `self._sample_timesteps()`.
             self._needs_initial_reset = False
 
-            # Set initial observations and infos in the episodes.
-            for env_index in range(self.num_envs):
-                self._episodes[env_index].add_env_reset(
-                    observation=observations[env_index],
-                    infos=infos[env_index],
-                )
-            self._was_terminated = [False for _ in range(self.num_envs)]
-            self._was_truncated = [False for _ in range(self.num_envs)]
-
-        # Loop through timesteps.
+        # Loop through `num_timesteps` timesteps.
         ts = 0
 
         while ts < num_timesteps:
@@ -258,18 +237,16 @@ class SingleAgentEnvRunner(EnvRunner):
                 }
             # Compute an action using the RLModule.
             else:
-                # Env-to-module connector.
-                to_module = self._env_to_module(
-                    rl_module=self.module,
-                    episodes=self._episodes,
-                    explore=explore,
-                    shared_data=self._shared_data,
-                )
+                # Env-to-module connector (already cached).
+                to_module = self._cached_to_module
+                assert to_module is not None
+                self._cached_to_module = None
 
                 # RLModule forward pass: Explore or not.
                 if explore:
                     env_steps_lifetime = (
-                        self.metrics.peek(NUM_ENV_STEPS_SAMPLED_LIFETIME) + ts
+                        self.metrics.peek(NUM_ENV_STEPS_SAMPLED_LIFETIME, default=0)
+                        + ts
                     )
                     to_env = self.module.forward_exploration(
                         to_module, t=env_steps_lifetime
@@ -299,78 +276,90 @@ class SingleAgentEnvRunner(EnvRunner):
             )
             observations, actions = unbatch(observations), unbatch(actions)
 
-            ts += self.num_envs
+            call_on_episode_start = set()
+            for env_index in range(self.num_envs):
+                extra_model_output = {k: v[env_index] for k, v in to_env.items()}
+
+                # Episode has no data in it yet -> Was just reset and needs to be called
+                # with its `add_env_reset()` method.
+                if not self._episodes[env_index].is_reset:
+                    self._episodes[env_index].add_env_reset(
+                        observation=observations[env_index],
+                        infos=infos[env_index],
+                    )
+                    call_on_episode_start.add(env_index)
+
+                # Call `add_env_step()` method on episode.
+                else:
+                    # Only increase ts when we actually stepped (not reset'd as a reset
+                    # does not count as a timestep).
+                    ts += 1
+                    self._episodes[env_index].add_env_step(
+                        observation=observations[env_index],
+                        action=actions[env_index],
+                        reward=rewards[env_index],
+                        infos=infos[env_index],
+                        terminated=terminateds[env_index],
+                        truncated=truncateds[env_index],
+                        extra_model_outputs=extra_model_output,
+                    )
+
+            # Env-to-module connector pass (cache results as we will do the RLModule
+            # forward pass only in the next `while`-iteration.
+            if self.module is not None:
+                self._cached_to_module = self._env_to_module(
+                    episodes=self._episodes,
+                    explore=explore,
+                    rl_module=self.module,
+                    shared_data=self._shared_data,
+                )
 
             for env_index in range(self.num_envs):
-                # Episode was done in previous timestep -> We now have the reset
-                # observations and infos.
-                if self._was_terminated[env_index] or self._was_truncated[env_index]:
-                    # Make the `on_episode_end` callback (before finalizing the episode
+                # Call `on_episode_start()` callback (always after reset).
+                if env_index in call_on_episode_start:
+                    self._make_on_episode_callback("on_episode_start", env_index)
+                # Make the `on_episode_step` callbacks.
+                else:
+                    self._make_on_episode_callback("on_episode_step", env_index)
+
+                # Episode is done.
+                if self._episodes[env_index].is_done:
+                    # Make the `on_episode_end` callbacks (before finalizing the episode
                     # object).
                     self._make_on_episode_callback("on_episode_end", env_index)
 
                     # Then finalize (numpy'ize) the episode.
                     done_episodes_to_return.append(self._episodes[env_index].finalize())
 
-                    # Create a new episode object and perform the
-                    # `on_episode_created()` callback.
-                    self._new_episode(env_index)
-                    # Add the reset data to the new episode.
-                    self._episodes[env_index].add_env_reset(
-                        observations[env_index],
-                        infos[env_index],
-                    )
-                    # Make the `on_episode_start` callback (after having the reset
-                    # data in it).
-                    self._make_on_episode_callback("on_episode_start", env_index)
-
-                else:
-                    # TODO (simon): This might be unfortunate if a user needs to set a
-                    #  certain env parameter during different episodes (for example for
-                    #  benchmarking).
-                    extra_model_output = {k: v[env_index] for k, v in to_env.items()}
-
-                    self._episodes[env_index].add_env_step(
-                        observations[env_index],
-                        actions[env_index],
-                        rewards[env_index],
-                        infos=infos[env_index],
-                        terminated=bool(terminateds[env_index]),
-                        truncated=bool(truncateds[env_index]),
-                        extra_model_outputs=extra_model_output,
+                    # Create a new episode object with no data in it and execute
+                    # `on_episode_created` callback (before the `env.reset()` call).
+                    self._episodes[env_index] = SingleAgentEpisode(
+                        observation_space=self.env.single_observation_space,
+                        action_space=self.env.single_action_space,
                     )
 
-                    # Make the `on_episode_step` callback.
-                    self._make_on_episode_callback("on_episode_step", env_index)
-
-            self._was_terminated = terminateds
-            self._was_truncated = truncateds
+        # Return done episodes ...
+        # TODO (simon): Check, how much memory this attribute uses.
+        self._done_episodes_for_metrics.extend(done_episodes_to_return)
+        # ... and all ongoing episode chunks.
 
         # Also, make sure we start new episode chunks (continuing the ongoing episodes
         # from the to-be-returned chunks).
-        ongoing_episodes_continuations = []
+        ongoing_episodes_continuations = [
+            eps.cut(len_lookback_buffer=self.config.episode_lookback_horizon)
+            for eps in self._episodes
+        ]
+
         ongoing_episodes_to_return = []
         for eps in self._episodes:
-            eps.validate()
-            # - Just done episodes are not returned yet, they need to be finalized in
-            # the next step (after subsequent sub-env's reset observations/info are
-            # available AND after the env-to-module connector has been run on the
-            # terminal observations).
-            # - Just started Episodes do not have to be returned. There is no data
+            # Just started Episodes do not have to be returned. There is no data
             # in them anyway.
-            if eps.is_done or eps.t == 0:
-                ongoing_episodes_continuations.append(eps)
-            else:
-                ongoing_episodes_continuations.append(
-                    eps.cut(len_lookback_buffer=self.config.episode_lookback_horizon)
-                )
-                self._ongoing_episodes_for_metrics[eps.id_].append(eps)
-                # Return finalized (numpy'ized) Episodes.
-                ongoing_episodes_to_return.append(eps.finalize())
-
-        # Return done episodes ...
-        self._done_episodes_for_metrics.extend(done_episodes_to_return)
-        # ... and all ongoing episode chunks.
+            if eps.t == 0:
+                continue
+            eps.validate()
+            self._ongoing_episodes_for_metrics[eps.id_].append(eps)
+            # Return finalized (numpy'ized) Episodes.
+            ongoing_episodes_to_return.append(eps.finalize())
 
         # Continue collecting into the cut Episode chunks.
         self._episodes = ongoing_episodes_continuations
@@ -396,28 +385,9 @@ class SingleAgentEnvRunner(EnvRunner):
 
         done_episodes_to_return: List[SingleAgentEpisode] = []
 
-        # Reset the environment.
-        # TODO (simon): Check, if we need here the seed from the config.
-        observations, infos = self.env.reset()
-
-        episodes = []
         episodes = [None for _ in range(self.num_envs)]
-        for env_index in range(self.num_envs):
-            self._new_episode(env_index, episodes)
-            # TODO (sven): Add callback `on_episode_created` as soon as
-            # `gymnasium-v1.0.0a2` PR is coming.
-
-        #_was_terminated = [False for _ in range(self.num_envs)]
-        #_was_truncated = [False for _ in range(self.num_envs)]
-
         _shared_data = {}
-
-        for env_index in range(self.num_envs):
-            episodes[env_index].add_env_reset(
-                observation=observations[env_index],
-                infos=infos[env_index],
-            )
-            self._make_on_episode_callback("on_episode_start", env_index, episodes)
+        self._reset_envs(episodes, _shared_data, explore)
 
         # Loop over episodes.
         eps = 0
@@ -431,17 +401,15 @@ class SingleAgentEnvRunner(EnvRunner):
             # Compute an action using the RLModule.
             else:
                 # Env-to-module connector.
-                to_module = self._env_to_module(
-                    rl_module=self.module,
-                    episodes=episodes,
-                    explore=explore,
-                    shared_data=_shared_data,
-                )
+                to_module = self._cached_to_module
+                assert to_module is not None
+                self._cached_to_module = None
 
                 # RLModule forward pass: Explore or not.
                 if explore:
                     env_steps_lifetime = (
-                        self.metrics.peek(NUM_ENV_STEPS_SAMPLED_LIFETIME) + ts
+                        self.metrics.peek(NUM_ENV_STEPS_SAMPLED_LIFETIME, default=0)
+                        + ts
                     )
                     to_env = self.module.forward_exploration(
                         to_module, t=env_steps_lifetime
@@ -470,61 +438,81 @@ class SingleAgentEnvRunner(EnvRunner):
                 actions_for_env
             )
             observations, actions = unbatch(observations), unbatch(actions)
-            ts += self.num_envs
 
+            call_on_episode_start = set()
             for env_index in range(self.num_envs):
-                # Episode was done in previous timestep -> We now have the reset
-                # observations and infos.
-                if _was_terminated[env_index] or _was_truncated[env_index]:
+                extra_model_output = {k: v[env_index] for k, v in to_env.items()}
+
+                # Episode has no data in it yet -> Was just reset and needs to be called
+                # with its `add_env_reset()` method.
+                if not episodes[env_index].is_reset:
                     episodes[env_index].add_env_reset(
-                        observations[env_index],
-                        infos[env_index],
+                        observation=observations[env_index],
+                        infos=infos[env_index],
                     )
-                    # Make the `on_episode_start` callback.
-                    self._make_on_episode_callback(
-                        "on_episode_start", env_index, episodes
-                    )
+                    call_on_episode_start.add(env_index)
 
+                # Call `add_env_step()` method on episode.
                 else:
-                    extra_model_output = {k: v[env_index] for k, v in to_env.items()}
-
+                    # Only increase ts when we actually stepped (not reset'd as a reset
+                    # does not count as a timestep).
+                    ts += 1
                     episodes[env_index].add_env_step(
-                        observations[env_index],
-                        actions[env_index],
-                        rewards[env_index],
+                        observation=observations[env_index],
+                        action=actions[env_index],
+                        reward=rewards[env_index],
                         infos=infos[env_index],
                         terminated=terminateds[env_index],
                         truncated=truncateds[env_index],
                         extra_model_outputs=extra_model_output,
                     )
-                    # Make `on_episode_step` and `on_episode_end` callbacks before
-                    # finalizing the episode.
+
+            # Env-to-module connector pass (cache results as we will do the RLModule
+            # forward pass only in the next `while`-iteration.
+            if self.module is not None:
+                self._cached_to_module = self._env_to_module(
+                    episodes=episodes,
+                    explore=explore,
+                    rl_module=self.module,
+                    shared_data=_shared_data,
+                )
+
+            for env_index in range(self.num_envs):
+                # Call `on_episode_start()` callback (always after reset).
+                if env_index in call_on_episode_start:
+                    self._make_on_episode_callback(
+                        "on_episode_start", env_index, episodes
+                    )
+                # Make the `on_episode_step` callbacks.
+                else:
                     self._make_on_episode_callback(
                         "on_episode_step", env_index, episodes
                     )
 
-                    if terminateds[env_index] or truncateds[env_index]:
-                        eps += 1
+                # Episode is done.
+                if episodes[env_index].is_done:
+                    eps += 1
 
-                        # Make the `on_episode_step` and `on_episode_end` callbacks
-                        # (before finalizing the episode object).
-                        self._make_on_episode_callback(
-                            "on_episode_end", env_index, episodes
-                        )
+                    # Make the `on_episode_end` callbacks (before finalizing the episode
+                    # object).
+                    self._make_on_episode_callback(
+                        "on_episode_end", env_index, episodes
+                    )
 
-                        # Finalize (numpy'ize) the episode.
-                        done_episodes_to_return.append(episodes[env_index].finalize())
+                    # Then finalize (numpy'ize) the episode.
+                    done_episodes_to_return.append(episodes[env_index].finalize())
 
-                        # Also early-out if we reach the number of episodes within this
-                        # for-loop.
-                        if eps == num_episodes:
-                            break
+                    # Also early-out if we reach the number of episodes within this
+                    # for-loop.
+                    if eps == num_episodes:
+                        break
 
-                        # Create a new episode object with already the reset data in it.
-                        self._new_episode(env_index, episodes)
-
-            _was_terminated = terminateds
-            _was_truncated = truncateds
+                    # Create a new episode object with no data in it and execute
+                    # `on_episode_created` callback (before the `env.reset()` call).
+                    episodes[env_index] = SingleAgentEpisode(
+                        observation_space=self.env.single_observation_space,
+                        action_space=self.env.single_action_space,
+                    )
 
         self._done_episodes_for_metrics.extend(done_episodes_to_return)
 
@@ -662,14 +650,12 @@ class SingleAgentEnvRunner(EnvRunner):
             )
         gym.register("rllib-single-agent-env-v0", entry_point=entry_point)
 
-        # Wrap into `DictInfoToList` wrapper to get infos as lists.
-        self.env: gym.Wrapper = gym.wrappers.vector.DictInfoToList(
-            gym.make_vec(
+        # Wrap into `VectorListInfo`` wrapper to get infos as lists.
+        self.env: gym.Wrapper = gym.wrappers.VectorListInfo(
+            gym.vector.make(
                 "rllib-single-agent-env-v0",
                 num_envs=self.config.num_envs_per_env_runner,
-                vectorization_mode=(
-                    "async" if self.config.remote_worker_envs else "sync"
-                ),
+                asynchronous=self.config.remote_worker_envs,
             )
         )
         self.num_envs: int = self.env.num_envs
@@ -690,6 +676,44 @@ class SingleAgentEnvRunner(EnvRunner):
     def stop(self):
         # Close our env object via gymnasium's API.
         self.env.close()
+
+    def _reset_envs(self, episodes, shared_data, explore):
+        # Create n new episodes and make the `on_episode_created` callbacks.
+        # TODO (sven): Add callback `on_episode_created` as soon as
+        # `gymnasium-v1.0.0a2` PR is coming.
+        for env_index in range(self.num_envs):
+            self._new_episode(env_index, episodes)
+
+        # Erase all cached ongoing episodes (these will never be completed and
+        # would thus never be returned/cleaned by `get_metrics` and cause a memory
+        # leak).
+        self._ongoing_episodes_for_metrics.clear()
+
+        # Reset the environment.
+        # TODO (simon): Check, if we need here the seed from the config.
+        obs, infos = self.env.reset()
+        obs = unbatch(obs)
+
+        # Set initial obs and infos in the episodes.
+        for env_index in range(self.num_envs):
+            episodes[env_index].add_env_reset(
+                observation=obs[env_index],
+                infos=infos[env_index],
+            )
+
+        # Run the env-to-module connector to make sure the reset-obs/infos have
+        # properly been processed (if applicable).
+        if self.module:
+            self._cached_to_module = self._env_to_module(
+                rl_module=self.module,
+                episodes=episodes,
+                explore=explore,
+                shared_data=shared_data,
+            )
+
+        # Call `on_episode_start()` callbacks (always after reset).
+        for env_index in range(self.num_envs):
+            self._make_on_episode_callback("on_episode_start", env_index, episodes)
 
     def _new_episode(self, env_index, episodes=None):
         episodes = episodes if episodes is not None else self._episodes
