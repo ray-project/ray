@@ -2030,7 +2030,7 @@ void NodeManager::HandleReleaseUnusedActorWorkers(
     in_use_worker_ids.emplace(worker_id);
   }
 
-  std::vector<std::shared_ptr<WorkerInterface>> unused_workers;
+  std::vector<std::shared_ptr<WorkerInterface>> unused_actor_workers;
   for (auto &iter : leased_workers_) {
     // We only kill *actor* workers.
     if (!iter.second->GetActorId().IsNil() && !in_use_worker_ids.count(iter.first)) {
