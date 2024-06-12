@@ -74,6 +74,9 @@ def tpu_accelerator_config_to_type(accelerator_config: dict) -> str:
     num_chips = reduce(lambda x, y: x * y, chip_dimensions)
     num_cores = num_chips * DEFAULT_TPU_CORES_PER_CHIP
 
+    # V5LitePod is rendered as "V5LITE_POD" in accelerator configuration but
+    # accelerator type uses a format like "v5litepod-{cores}", so we need
+    # to manually convert the string here.
     if generation == "v5lite_pod":
         generation = "v5litepod"
         num_cores = num_chips
