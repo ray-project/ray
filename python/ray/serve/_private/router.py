@@ -61,9 +61,8 @@ class RouterMetricsManager:
 
         # Exported metrics
         self.num_router_requests = router_requests_counter
-        submission_id = os.getenv("BYTED_SUBMISSION_ID", "")
         self.num_router_requests.set_default_tags(
-            {"deployment": deployment_id.name, "application": deployment_id.app_name, "submission_id": submission_id}
+            {"deployment": deployment_id.name, "application": deployment_id.app_name}
         )
 
         self.num_queued_requests = 0
@@ -344,7 +343,7 @@ class Router:
                     "The current number of queries to this deployment waiting"
                     " to be assigned to a replica."
                 ),
-                tag_keys=("deployment", "application", "submission_id"),
+                tag_keys=("deployment", "application"),
             ),
         )
 

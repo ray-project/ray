@@ -170,14 +170,13 @@ class _DeploymentHandleBase:
     def _create_request_counter(
         cls, app_name: str, deployment_name: str, handle_id: str
     ):
-        submission_id = os.getenv("BYTED_SUBMISSION_ID", "")
         return metrics.Counter(
             "serve_handle_request_counter",
             description=(
                 "The number of handle.remote() calls that have been "
                 "made on this handle."
             ),
-            tag_keys=("handle", "deployment", "route", "application", "submission_id"),
+            tag_keys=("handle", "deployment", "route", "application"),
         ).set_default_tags(
             {
                 "handle": cls._gen_handle_tag(
@@ -185,7 +184,6 @@ class _DeploymentHandleBase:
                 ),
                 "deployment": deployment_name,
                 "application": app_name,
-                "submission_id": submission_id
             }
         )
 

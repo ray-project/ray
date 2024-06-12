@@ -132,42 +132,6 @@ METRICS_GAUGES = {
         "bytes",
         ["ip", "SessionName", "GpuDeviceName", "GpuIndex"],
     ),
-    "node_gram_total": Gauge(
-        "node_gram_total",
-        "Total GPU RAM total on a ray node",
-        "bytes",
-        ["ip", "SessionName", "GpuDeviceName", "GpuIndex"],
-    ),
-    "component_gpus_available": Gauge(
-        "component_gpus_available",
-        "GPUs available by a ray component",
-        "percentage",
-        ["ip", "SessionName", "GpuDeviceName", "GpuIndex"],
-    ),
-    "component_gpus_utilization": Gauge(
-        "component_gpus_utilization",
-        "GPUs usage by a ray component",
-        "percentage",
-        ["ip", "SessionName", "GpuDeviceName", "GpuIndex"],
-    ),
-    "component_gram_used": Gauge(
-        "component_gram_used",
-        "GPU RAM usage by a ray component",
-        "bytes",
-        ["ip", "SessionName", "GpuDeviceName", "GpuIndex"],
-    ),
-    "component_gram_available": Gauge(
-        "component_gram_available",
-        "GPU RAM available by a ray component",
-        "bytes",
-        ["ip", "SessionName", "GpuDeviceName", "GpuIndex"],
-    ),
-    "component_gram_total": Gauge(
-        "component_gram_total",
-        "GPU RAM total by a ray component",
-        "bytes",
-        ["ip", "SessionName", "GpuDeviceName", "GpuIndex"],
-    ),
     "node_disk_io_read": Gauge(
         "node_disk_io_read", "Total read from disk", "bytes", ["ip", "SessionName"]
     ),
@@ -464,9 +428,7 @@ class ReporterAgent(
             logger.error(traceback.format_exc())
         return reporter_pb2.ReportOCMetricsReply()
 
-    def register_actor_tags(
-        self, pid: int, actor_id: str, submission_id: str, gpu_ids: List[int]
-    ):
+    def register_actor_tags(self, pid: int, actor_id: str, submission_id: str):
         """register actor's info for metric tags
         28928 ae57d275837f10d6eb75ab0402000000 raysubmit_h7Fk6ZUGNGCvST1u
         """
@@ -475,8 +437,6 @@ class ReporterAgent(
             tags["actor_id"] = actor_id
         if submission_id:
             tags["submission_id"] = submission_id
-        if gpu_ids:
-            tags["gpu_ids"] = gpu_ids
         self._actor_tags[pid] = tags
 
     def unregister_actor_tags(self, pid: int):
@@ -488,11 +448,9 @@ class ReporterAgent(
 
     async def RegisterActor(self, request, context):
         logger.warning(
-            f"RegisterActor called {request.pid} {request.actor_id} {request.submission_id}, {request.gpu_ids}"
+            f"RegisterActor called {request.pid} {request.actor_id} {request.submission_id}"
         )
-        self.register_actor_tags(
-            request.pid, request.actor_id, request.submission_id, request.gpu_ids
-        )
+        self.register_actor_tags(request.pid, request.actor_id, request.submission_id)
         return reporter_pb2.RegisterActorToMetircAgentReply(message="It is message.")
 
     @staticmethod
@@ -910,10 +868,6 @@ class ReporterAgent(
             # add actor_id / submission_id to tags
             if int(pid) in self._actor_tags:
                 tags.update(self._actor_tags[int(pid)])
-                if "gpu_ids" in tags.keys():
-                    tags["gpu_ids"] = "_".join(
-                        str(gpu_id) for gpu_id in tags["gpu_ids"]
-                    )
 
         records = []
         records.append(
@@ -1111,58 +1065,7 @@ class ReporterAgent(
                 if gpu_index is not None:
                     gpu_tags = {"ip": ip, "GpuIndex": str(gpu_index)}
                     if gpu_name:
-                        # byte metrics tag key/value just allow a-zA-Z0-9._-/:%, no space
-                        gpu_tags["GpuDeviceName"] = "_".join(gpu_name.split(" "))
-
-                    # add gpu metric for every worker component
-                    # if a gpu is used by two workers, it will emit two metric for every worker
-                    for p_tag in self._actor_tags.values():
-                        if (
-                            "gpu_ids" not in p_tag.keys()
-                            or gpu_index not in p_tag["gpu_ids"]
-                        ):
-                            continue
-                        component_gpu_tags = gpu_tags | p_tag
-                        # byte metrics tag key/value just allow a-zA-Z0-9._-/:%, list type not supported
-                        component_gpu_tags["gpu_ids"] = "_".join(
-                            str(gpu_id) for gpu_id in p_tag["gpu_ids"]
-                        )
-
-                        # There's only 1 GPU per each index, so we record 1 here.
-                        component_gpus_available_record = Record(
-                            gauge=METRICS_GAUGES["component_gpus_available"],
-                            value=1,
-                            tags=component_gpu_tags,
-                        )
-                        component_gpus_utilization_record = Record(
-                            gauge=METRICS_GAUGES["component_gpus_utilization"],
-                            value=gpus_utilization,
-                            tags=component_gpu_tags,
-                        )
-                        component_gram_used_record = Record(
-                            gauge=METRICS_GAUGES["component_gram_used"],
-                            value=gram_used,
-                            tags=component_gpu_tags,
-                        )
-                        component_gram_available_record = Record(
-                            gauge=METRICS_GAUGES["component_gram_available"],
-                            value=gram_available,
-                            tags=component_gpu_tags,
-                        )
-                        component_gram_total_record = Record(
-                            gauge=METRICS_GAUGES["component_gram_total"],
-                            value=gram_total,
-                            tags=component_gpu_tags,
-                        )
-                        records_reported.extend(
-                            [
-                                component_gpus_available_record,
-                                component_gpus_utilization_record,
-                                component_gram_used_record,
-                                component_gram_available_record,
-                                component_gram_total_record,
-                            ]
-                        )
+                        gpu_tags["GpuDeviceName"] = gpu_name
 
                     # There's only 1 GPU per each index, so we record 1 here.
                     gpus_available_record = Record(
@@ -1185,18 +1088,12 @@ class ReporterAgent(
                         value=gram_available,
                         tags=gpu_tags,
                     )
-                    gram_total_record = Record(
-                        gauge=METRICS_GAUGES["node_gram_total"],
-                        value=gram_total,
-                        tags=gpu_tags,
-                    )
                     records_reported.extend(
                         [
                             gpus_available_record,
                             gpus_utilization_record,
                             gram_used_record,
                             gram_available_record,
-                            gram_total_record,
                         ]
                     )
 

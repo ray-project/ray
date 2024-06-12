@@ -123,13 +123,13 @@ class ReplicaMetricsManager:
         )
         self._restart_counter.inc()
 
-        self.submission_id = os.getenv("BYTED_SUBMISSION_ID", "")
-        self.request_counter = metrics.Counter(
+        # Per-request metrics.
+        self._request_counter = metrics.Counter(
             "serve_deployment_request_counter",
             description=(
                 "The number of queries that have been processed in this replica."
             ),
-            tag_keys=("route", "submission_id"),
+            tag_keys=("route",),
         )
 
         self._error_counter = metrics.Counter(
@@ -137,14 +137,14 @@ class ReplicaMetricsManager:
             description=(
                 "The number of exceptions that have occurred in this replica."
             ),
-            tag_keys=("route", "submission_id"),
+            tag_keys=("route",),
         )
 
         self._processing_latency_tracker = metrics.Histogram(
             "serve_deployment_processing_latency_ms",
             description="The latency for queries to be processed.",
             boundaries=DEFAULT_LATENCY_BUCKET_MS,
-            tag_keys=("route", "submission_id"),
+            tag_keys=("route",),
         )
 
         self._num_ongoing_requests_gauge = metrics.Gauge(
@@ -204,11 +204,11 @@ class ReplicaMetricsManager:
         self, *, route: str, status_str: str, latency_ms: float, was_error: bool
     ):
         """Records per-request metrics."""
-        self._processing_latency_tracker.observe(latency_ms, tags={"route": route, "submission_id": self.submission_id})
+        self._processing_latency_tracker.observe(latency_ms, tags={"route": route})
         if was_error:
-            self._error_counter.inc(tags={"route": route, "submission_id": self.submission_id})
+            self._error_counter.inc(tags={"route": route})
         else:
-            self._request_counter.inc(tags={"route": route, "submission_id": self.submission_id})
+            self._request_counter.inc(tags={"route": route})
 
     def _push_autoscaling_metrics(self) -> Dict[str, Any]:
         look_back_period = self._autoscaling_config.look_back_period_s
