@@ -272,7 +272,7 @@ class StandardAutoscaler:
         # Tracks nodes scheduled for termination
         self.nodes_to_terminate: List[NodeID] = []
 
-        # Tracks replicas scheduled for termination
+        # A set of replica IDs used to track replicas scheduled for termination.
         self.replicas_to_delete: Set[str] = set()
 
         # Map of replica IDs to worker nodes in each replica.
