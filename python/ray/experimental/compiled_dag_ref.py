@@ -1,3 +1,5 @@
+import traceback
+
 import ray
 
 
@@ -58,3 +60,27 @@ class CompiledDAGRef(ray.ObjectRef):
             )
         self._called = True
         return self._dag._execute_until(self._execution_index)
+
+
+class DAGExecutionError:
+    """
+    Wraps an exception that occurred during the execution of a DAG.
+    """
+
+    def __init__(self, exc):
+        """
+        Args:
+            exc: The exception that occurred during the execution of the DAG.
+        """
+        self._cause = exc
+        self._backtrace = ray._private.utils.format_error_message(
+            "".join(traceback.format_exception(type(exc), exc, exc.__traceback__)),
+            task_exception=True,
+        )
+
+    def __str__(self):
+        return "Exception occurred during DAG execution:\n" + self._backtrace
+
+    @property
+    def cause(self):
+        return self._cause

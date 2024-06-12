@@ -9,6 +9,7 @@ import time
 
 import pytest
 
+from ray.experimental.compiled_dag_ref import DAGExecutionError
 import ray
 import ray._private
 import ray.cluster_utils
@@ -366,13 +367,15 @@ def test_dag_exception(ray_start_regular, capsys):
 
     compiled_dag = dag.experimental_compile()
     ref = compiled_dag.execute("hello")
-    with pytest.raises(TypeError):
-        ray.get(ref)
+    result = ray.get(ref)
+    assert isinstance(result, DAGExecutionError)
+    assert isinstance(result.cause, TypeError)
 
     # Can do it multiple times.
     ref = compiled_dag.execute("hello")
-    with pytest.raises(TypeError):
-        ray.get(ref)
+    result = ray.get(ref)
+    assert isinstance(result, DAGExecutionError)
+    assert isinstance(result.cause, TypeError)
 
     compiled_dag.teardown()
 
@@ -454,6 +457,30 @@ def test_dag_errors(ray_start_regular):
     compiled_dag.teardown()
 
 
+def test_exceed_max_buffered_results(ray_start_regular):
+    a = Actor.remote(0)
+    with InputNode() as i:
+        dag = a.inc.bind(i)
+
+    compiled_dag = dag.experimental_compile(max_buffered_results=1)
+
+    for i in range(3):
+        ref = compiled_dag.execute(1)
+
+    # ray.get() on the 3rd ref fails because the DAG cannot buffer 2 results.
+    with pytest.raises(
+        ValueError,
+        match=(
+            "Too many buffered results: the allowed max count for buffered "
+            "results is 1; call ray.get\(\) on previous CompiledDAGRefs to "
+            "free them up from buffer"
+        ),
+    ):
+        ray.get(ref)
+
+    compiled_dag.teardown()
+
+
 def test_dag_fault_tolerance_chain(ray_start_regular_shared):
     actors = [
         Actor.remote(0, fail_after=100 if i == 0 else None, sys_exit=False)
@@ -471,10 +498,15 @@ def test_dag_fault_tolerance_chain(ray_start_regular_shared):
         results = ray.get(ref)
         assert results == i
 
-    with pytest.raises(RuntimeError):
-        for i in range(99):
-            ref = compiled_dag.execute(i)
-            ray.get(ref)
+    execution_error = None
+    for i in range(99):
+        ref = compiled_dag.execute(i)
+        result = ray.get(ref)
+        if isinstance(result, DAGExecutionError):
+            execution_error = result
+            break
+    assert execution_error is not None
+    assert isinstance(execution_error.cause, RuntimeError)
 
     compiled_dag.teardown()
 
@@ -513,10 +545,15 @@ def test_dag_fault_tolerance(ray_start_regular_shared):
         results = ray.get(ref)
         assert results == [i + 1] * 4
 
-    with pytest.raises(RuntimeError):
-        for i in range(99):
-            ref = compiled_dag.execute(1)
-            ray.get(ref)
+    execution_error = None
+    for i in range(99):
+        ref = compiled_dag.execute(1)
+        res = ray.get(ref)
+        if isinstance(res[0], DAGExecutionError):
+            execution_error = res[0]
+            break
+    assert execution_error is not None
+    assert isinstance(execution_error.cause, RuntimeError)
 
     compiled_dag.teardown()
 
@@ -642,14 +679,15 @@ def test_asyncio_exceptions(ray_start_regular_shared, max_queue_size):
             result = await awaitable_output.get()
             assert result == i + 1
 
-        exc = None
+        execution_error = None
         for i in range(99):
             awaitable_output = await compiled_dag.execute_async(1)
-            try:
-                await awaitable_output.get()
-            except Exception as e:
-                exc = e
-        assert isinstance(exc, RuntimeError), exc
+            result = await awaitable_output.get()
+            if isinstance(result, DAGExecutionError):
+                execution_error = result
+                break
+        assert execution_error is not None
+        assert isinstance(execution_error.cause, RuntimeError)
 
     loop.run_until_complete(main())
     # Note: must teardown before starting a new Ray session, otherwise you'll get

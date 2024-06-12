@@ -2,12 +2,10 @@ import asyncio
 from collections import defaultdict
 from typing import Any, Dict, List, Tuple, Union, Optional, Set
 import logging
-import traceback
 import threading
 
 import ray
-from ray.exceptions import RayTaskError
-from ray.experimental.compiled_dag_ref import CompiledDAGRef
+from ray.experimental.compiled_dag_ref import CompiledDAGRef, DAGExecutionError
 from ray.experimental.channel import (
     ChannelInterface,
     ChannelOutputType,
@@ -163,22 +161,10 @@ def _exec_task(self, task: "ExecutableTask", idx: int) -> bool:
         output_val = method(*resolved_inputs)
         output_writer.write(output_val)
     except Exception as exc:
-        output_writer.write(exc)
+        # TODO(rui): consider different ways of passing down the exception.
+        output_writer.write(DAGExecutionError(exc))
 
     return False
-
-
-def _wrap_exception(exc):
-    backtrace = ray._private.utils.format_error_message(
-        "".join(traceback.format_exception(type(exc), exc, exc.__traceback__)),
-        task_exception=True,
-    )
-    wrapped = RayTaskError(
-        function_name="do_exec_tasks",
-        traceback_str=backtrace,
-        cause=exc,
-    )
-    return wrapped
 
 
 @PublicAPI(stability="alpha")
@@ -393,6 +379,7 @@ class CompiledDAG:
         buffer_size_bytes: Optional[int],
         enable_asyncio: bool = False,
         async_max_queue_size: Optional[int] = None,
+        max_buffered_results: Optional[int] = None,
     ):
         """
         Args:
@@ -410,6 +397,9 @@ class CompiledDAG:
                 caller is responsible for preventing deadlock, i.e. if the
                 input queue is full, another asyncio task is reading from the
                 DAG output.
+            max_buffered_results: The maximum number of execution results that
+                is allowed to be buffered.
+
         Returns:
             Channel: A wrapper around ray.ObjectRef.
         """
@@ -428,6 +418,9 @@ class CompiledDAG:
         self._enable_asyncio: bool = enable_asyncio
         self._fut_queue = asyncio.Queue()
         self._async_max_queue_size: Optional[int] = async_max_queue_size
+        self._max_buffered_results: Optional[int] = max_buffered_results
+        if self._max_buffered_results is None:
+            self._max_buffered_results = MAX_BUFFER_COUNT
         # Used to ensure that the future returned to the
         # caller corresponds to the correct DAG output. I.e.
         # order of futures added to fut_queue should match the
@@ -475,8 +468,10 @@ class CompiledDAG:
         # The index of the current execution. It is incremented each time
         # the DAG is executed.
         self._execution_index: int = 0
-        self._result_buffer = []
-        self._buffered_results: int = 0
+        # The maximum index of finished executions.
+        # All results with higher indexes have not been generated yet.
+        self._max_execution_index: int = -1
+        self._result_buffer: Dict[int, Any] = {}
 
         # Creates the driver actor on the same node as the driver.
         #
@@ -959,25 +954,32 @@ class CompiledDAG:
         Returns:
             The execution result corresponding to the given execution index.
         """
-        while execution_index >= len(self._result_buffer):
-            if self._buffered_results > MAX_BUFFER_COUNT:
+        while self._max_execution_index < execution_index:
+            if self._max_execution_index + 1 == execution_index:
+                # Directly fetch and return without buffering
+                self._max_execution_index += 1
+                return self._dag_output_fetcher.begin_read()
+            # Otherwise, buffer the result
+            if len(self._result_buffer) > self._max_buffered_results:
                 raise ValueError(
-                    "Too many buffered results: call ray.get() on previous "
-                    "CompiledDAGRefs to free them up from buffer."
+                    "Too many buffered results: the allowed max count for "
+                    f"buffered results is {self._max_buffered_results}; call ray.get() "
+                    "on previous CompiledDAGRefs to free them up from buffer."
                 )
-            self._result_buffer.append(self._dag_output_fetcher.begin_read())
-            self._buffered_results += 1
+            self._max_execution_index += 1
+            self._result_buffer[
+                self._max_execution_index
+            ] = self._dag_output_fetcher.begin_read()
 
-        result = self._result_buffer[execution_index]
-        self._result_buffer[execution_index] = None
-        self._buffered_results -= 1
-        return result
+        # CompiledDAGRef guarantees that the same execution index will not
+        # be requested multiple times
+        return self._result_buffer.pop(execution_index)
 
     def execute(
         self,
         *args,
         **kwargs,
-    ) -> Union[CompiledDAGRef, List[CompiledDAGRef]]:
+    ) -> CompiledDAGRef:
         """Execute this DAG using the compiled execution path.
 
         Args:
@@ -1054,11 +1056,13 @@ def build_compiled_dag_from_ray_dag(
     buffer_size_bytes: Optional[int],
     enable_asyncio: bool = False,
     async_max_queue_size: Optional[int] = None,
+    max_buffered_results: Optional[int] = None,
 ) -> "CompiledDAG":
     compiled_dag = CompiledDAG(
         buffer_size_bytes,
         enable_asyncio,
         async_max_queue_size,
+        max_buffered_results,
     )
 
     def _build_compiled_dag(node):

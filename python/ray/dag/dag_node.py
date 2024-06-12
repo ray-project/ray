@@ -131,14 +131,17 @@ class DAGNode(DAGNodeBase):
         buffer_size_bytes: Optional[int] = None,
         enable_asyncio: bool = False,
         async_max_queue_size: Optional[int] = None,
+        max_buffered_results: Optional[int] = None,
     ) -> "ray.dag.CompiledDAG":
         """Compile an accelerated execution path for this DAG.
 
         Args:
             buffer_size_bytes: The maximum size of messages that can be passed
                 between tasks in the DAG.
-            max_concurrency: The max number of concurrent executions to allow for
-                the DAG.
+            enable_asyncio: Whether to enable asyncio for this DAG.
+            async_max_queue_size: The max queue size for the async execution.
+            max_buffered_results: The maximum number of execution results that
+                is allowed to be buffered.
 
         Returns:
             A compiled DAG.
@@ -148,6 +151,7 @@ class DAGNode(DAGNodeBase):
             buffer_size_bytes,
             enable_asyncio,
             async_max_queue_size,
+            max_buffered_results,
         )
 
     def execute(
