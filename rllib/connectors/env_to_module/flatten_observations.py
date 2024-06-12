@@ -174,19 +174,17 @@ class FlattenObservations(ConnectorV2):
             last_obs = sa_episode.get_observations(-1)
 
             if self._multi_agent:
-                flattened_obs = {
-                    agent_obs
-                    if agent_id not in self._agent_ids
-                    else flatten_inputs_to_1d_tensor(
-                        inputs=agent_obs,
+                if self._agent_ids is not None and agent_id not in self._agent_ids:
+                    flattened_obs = last_obs
+                else:
+                    flattened_obs = flatten_inputs_to_1d_tensor(
+                        inputs=last_obs,
                         # In the multi-agent case, we need to use the specific agent's
                         # space struct, not the multi-agent observation space dict.
-                        spaces_struct=self._input_obs_base_struct[agent_id],
+                        spaces_struct=self._input_obs_base_struct[sa_episode.agent_id],
                         # Our items are individual observations (no batch axis present).
                         batch_axis=False,
                     )
-                    for agent_id, agent_obs in last_obs.items()
-                }
             else:
                 flattened_obs = flatten_inputs_to_1d_tensor(
                     inputs=last_obs,
