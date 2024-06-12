@@ -241,6 +241,13 @@ TEST(UtilTest, GetAllProcsWithPpid) {
 #endif
 }
 
+TEST(UtilTest, ZstdTest) {
+  std::string data = "Zstd test input data";
+  std::string compressed = CompressZstd(data);
+  std::string decompressed = DecompressZstd(compressed);
+  ASSERT_EQ(data, decompressed);
+}
+
 }  // namespace ray
 
 int main(int argc, char **argv) {
