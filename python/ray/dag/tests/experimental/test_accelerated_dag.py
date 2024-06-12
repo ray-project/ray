@@ -444,7 +444,11 @@ def test_dag_errors(ray_start_regular):
     assert result == 1
 
     with pytest.raises(
-        ValueError, match="ray.get\(\) was already called on this CompiledDAGRef."
+        ValueError,
+        match=(
+            "ray.get\(\) can only be called once "
+            "on a CompiledDAGRef and it was already called."
+        ),
     ):
         ray.get(ref)
     compiled_dag.teardown()

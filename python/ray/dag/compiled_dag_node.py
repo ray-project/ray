@@ -453,6 +453,8 @@ class CompiledDAG:
         # Uniquely identifies the NCCL communicator that will be used within
         # this DAG, if any.
         self._nccl_group_id: Optional[str] = None
+        # The index of the current execution. It is incremented each time
+        # the DAG is executed.
         self._execution_index: int = 0
         self._result_buffer = []
         self._buffered_results: int = 0
@@ -904,7 +906,10 @@ class CompiledDAG:
         self,
         execution_index: int,
     ) -> Any:
-        """Repeatedly execute this DAG until the given execution index.
+        """Repeatedly execute this DAG until the given execution index,
+        and buffer all results up to that index. If the DAG has already
+        been executed up to the given index, just return the result
+        corresponding to the given index.
 
         Args:
             execution_index: The execution index to execute until.

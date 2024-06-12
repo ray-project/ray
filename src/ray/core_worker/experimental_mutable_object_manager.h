@@ -36,16 +36,22 @@ namespace experimental {
 
 class MutableObjectManager : public std::enable_shared_from_this<MutableObjectManager> {
  public:
-  class ChannelBuffer : public SharedMemoryBuffer {
+  /// Buffer for a mutable object. This buffer wraps a shared memory buffer of
+  /// a mutable object, and read-releases the mutable object when it is destructed.
+  /// This auto-releasing behavior enables a cleaner API for accelerated DAG so that
+  /// manual calls to ReadRelease() are not needed.
+  class MutableObjectBuffer : public SharedMemoryBuffer {
    public:
-    ChannelBuffer(std::shared_ptr<MutableObjectManager> mutable_object_manager,
-                  std::shared_ptr<Buffer> buffer,
-                  const ObjectID &object_id)
+    MutableObjectBuffer(std::shared_ptr<MutableObjectManager> mutable_object_manager,
+                        std::shared_ptr<Buffer> buffer,
+                        const ObjectID &object_id)
         : SharedMemoryBuffer(buffer, 0, buffer->Size()),
           mutable_object_manager_(mutable_object_manager),
           object_id_(object_id) {}
 
-    ~ChannelBuffer() { RAY_UNUSED(mutable_object_manager_->ReadRelease(object_id_)); }
+    ~MutableObjectBuffer() {
+      RAY_UNUSED(mutable_object_manager_->ReadRelease(object_id_));
+    }
 
     const ObjectID &object_id() const { return object_id_; }
 

@@ -290,8 +290,9 @@ Status MutableObjectManager::ReadAcquire(const ObjectID &object_id,
   size_t total_size = channel->mutable_object->header->data_size +
                       channel->mutable_object->header->metadata_size;
   RAY_CHECK_LE(static_cast<int64_t>(total_size), channel->mutable_object->allocated_size);
-  std::shared_ptr<ChannelBuffer> channel_buffer = std::make_shared<ChannelBuffer>(
-      shared_from_this(), channel->mutable_object->buffer, object_id);
+  std::shared_ptr<MutableObjectBuffer> channel_buffer =
+      std::make_shared<MutableObjectBuffer>(
+          shared_from_this(), channel->mutable_object->buffer, object_id);
   std::shared_ptr<SharedMemoryBuffer> data_buf =
       SharedMemoryBuffer::Slice(channel_buffer,
                                 /*offset=*/0,
