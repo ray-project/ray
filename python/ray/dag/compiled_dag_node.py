@@ -28,6 +28,8 @@ from ray.experimental.channel.torch_tensor_nccl_channel import (
     _destroy_nccl_group,
 )
 
+from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
+
 MAX_BUFFER_SIZE = int(100 * 1e6)  # 100MB
 
 logger = logging.getLogger(__name__)
@@ -379,6 +381,23 @@ class CompiledDAG:
     information.
     """
 
+    @ray.remote(num_cpus=0)
+    class DAGDriverProxyActor:
+        """
+        To support the driver as a reader, the output writer needs to be able to invoke
+        remote functions on the driver. This is necessary so that the output writer can
+        create a reader ref on the driver node, and later potentially create a larger
+        reader ref on the driver node if the channel backing store needs to be resized.
+        However, remote functions cannot be invoked on the driver.
+
+        An accelerated DAG creates an actor from this class when the DAG is intialized.
+        The actor is on the same node as the driver. This class has an empty
+        implementation, though it serves as a way for the output writer to invoke remote
+        functions on the driver node.
+        """
+
+        pass
+
     def __init__(
         self,
         buffer_size_bytes: Optional[int],
@@ -463,6 +482,19 @@ class CompiledDAG:
         # Uniquely identifies the NCCL communicator that will be used within
         # this DAG, if any.
         self._nccl_group_id: Optional[str] = None
+
+        # Creates the driver actor on the same node as the driver.
+        #
+        # To support the driver as a reader, the output writer needs to be able to
+        # invoke remote functions on the driver (e.g., to create the reader ref, to
+        # create a reader ref for a larger object when the channel backing store is
+        # resized, etc.). The `_driver_actor` serves as a way for the output writer to
+        # invoke remote functions on the driver node.
+        self._driver_actor = CompiledDAG.DAGDriverProxyActor.options(
+            scheduling_strategy=NodeAffinitySchedulingStrategy(
+                ray.get_runtime_context().get_node_id(), soft=False
+            )
+        ).remote()
 
     def _add_node(self, node: "ray.dag.DAGNode") -> None:
         idx = self.counter
@@ -632,7 +664,7 @@ class CompiledDAG:
 
         frontier = [self.input_task_idx]
         visited = set()
-        # Create output buffers
+        # Create output buffers. This loop does a breadth-first search through the DAG.
         while frontier:
             cur_idx = frontier.pop(0)
             if cur_idx in visited:
@@ -648,6 +680,8 @@ class CompiledDAG:
                 type_hint.set_nccl_group_id(self._nccl_group_id)
 
             if isinstance(task.dag_node, ClassMethodNode):
+                # `readers` is the nodes that are ordered after the current one (`task`)
+                # in the DAG.
                 readers = [self.idx_to_task[idx] for idx in task.downstream_node_idxs]
                 assert len(readers) == 1
 
@@ -657,20 +691,28 @@ class CompiledDAG:
                 if isinstance(readers[0].dag_node, MultiOutputNode):
                     # This node is a multi-output node, which means that it will only be
                     # read by the driver, not an actor. Thus, we handle this case by
-                    # setting `reader_handles` to `[None]`.
-                    reader_handles = [None]
+                    # setting `reader_handles` to `[self._driver_actor]`.
 
-                    fn = task.dag_node._get_remote_method("__ray_call__")
+                    # TODO(jhumphri): Handle case where there is an actor, other than
+                    # just the driver actor, also reading the output from the `task`
+                    # node.
+                    # For example, the following currently does not work:
+                    # def test_blah(ray_start_regular):
+                    #     a = Actor.remote(0)
+                    #     b = Actor.remote(10)
+                    #     with InputNode() as inp:
+                    #         x = a.inc.bind(inp)
+                    #         y = b.inc.bind(x)
+                    #         dag = MultiOutputNode([x, y])
 
-                    actor_node = ray.get(fn.remote(_get_node_id))
+                    #     compiled_dag = dag.experimental_compile()
+                    #     output_channel = compiled_dag.execute(1)
+                    #     result = output_channel.begin_read()
+                    #     print(result)
+                    #     output_channel.end_read()
 
-                    # The driver and all actors that write outputs must be on the same
-                    # node for now.
-                    if actor_node != _get_node_id(self):
-                        raise NotImplementedError(
-                            "The driver and all actors that write outputs must be on "
-                            "the same node for now."
-                        )
+                    #     compiled_dag.teardown()
+                    reader_handles = [self._driver_actor]
                 else:
                     reader_handles = [
                         reader.dag_node._get_actor_handle() for reader in readers
