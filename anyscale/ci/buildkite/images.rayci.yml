@@ -29,6 +29,7 @@ steps:
           - "11.7.1"
           - "11.8.0"
           - "12.1.1"
+          - "12.3.2"
     env:
       PYTHON_VERSION: "{{matrix.python}}"
       CUDA_VERSION: "{{matrix.cuda}}"
@@ -127,6 +128,7 @@ steps:
           - "cpu"
           - "cu11.8.0"
           - "cu12.1.1"
+          - "cu12.3.2"
 
   - label: ":tapioca: minimized runtime py{{matrix.py}} {{matrix.base}} image"
     if: build.env("RUNTIME_BUILD_ALL") == "true"

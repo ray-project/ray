@@ -76,6 +76,8 @@ elif [[ "${IMG_TYPE}" == "cu11.8.0" ]]; then
     IMG_TYPE_CODE="cu118"
 elif [[ "${IMG_TYPE}" == "cu12.1.1" ]]; then
     IMG_TYPE_CODE="cu121"
+elif [[ "${IMG_TYPE}" == "cu12.3.2" ]]; then
+    IMG_TYPE_CODE="cu123"
 else
     echo "Unknown image type: ${IMG_TYPE}" >/dev/stderr
     exit 1
