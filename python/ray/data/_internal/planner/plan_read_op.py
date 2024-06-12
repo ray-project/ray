@@ -82,8 +82,9 @@ def plan_read_op(op: Read) -> PhysicalOperator:
                 # DAG. We shouldn't eagerly free them. Otherwise, the DAG cannot
                 # be reconstructed.
                 owns_blocks=False,
+                subdataset_index = i // 1000,
             )
-            for read_task in read_tasks
+            for i, read_task in enumerate(read_tasks)
         ]
         end = time.time()
         logger.info(f"Generating reference bundle took: {end-start} seconds")

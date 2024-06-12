@@ -117,8 +117,6 @@ class OpBufferQueue:
         self._queue = deque()
         self._num_per_split = defaultdict(int)
         self._lock = threading.Lock()
-        # Used to buffer output RefBundles indexed by output splits.
-        self._outputs_by_split = defaultdict(deque)
         super().__init__()
 
     @property
@@ -135,6 +133,10 @@ class OpBufferQueue:
 
     def __len__(self):
         return len(self._queue)
+
+    def next_ref_dataset_index(self) -> int:
+        assert self.has_next()
+        return self._queue[0].get_subdataset_index()
 
     def has_next(self, output_split_idx: Optional[int] = None) -> bool:
         """Whether next RefBundle is available.
@@ -217,7 +219,7 @@ class OpState:
     operator queues to be shared across threads.
     """
 
-    def __init__(self, op: PhysicalOperator, inqueues: List[OpBufferQueue]):
+    def __init__(self, op: PhysicalOperator, inqueues: List[OpBufferQueue], start_subdataset_index: int=0):
         # Each inqueue is connected to another operator's outqueue.
         assert len(inqueues) == len(op.input_dependencies), (op, inqueues)
         self.inqueues: List[OpBufferQueue] = inqueues
@@ -238,6 +240,7 @@ class OpState:
         # Used for StreamingExecutor to signal exception or end of execution
         self._finished: bool = False
         self._exception: Optional[Exception] = None
+        self.cur_subdataset_index = start_subdataset_index
 
     def __repr__(self):
         return f"OpState({self.op.name})"
@@ -308,11 +311,25 @@ class OpState:
 
     def dispatch_next_task(self) -> None:
         """Move a bundle from the operator inqueue to the operator itself."""
+        has_larger_subdataset_index = False
         for i, inqueue in enumerate(self.inqueues):
-            ref = inqueue.pop()
-            if ref is not None:
-                self.op.add_input(ref, input_index=i)
-                return
+            if inqueue.has_next() and inqueue.next_ref_dataset_index() == self.cur_subdataset_index:
+                ref = inqueue.pop()
+                if ref is not None:
+                    self.op.add_input(ref, input_index=i)
+                    return
+            elif inqueue.has_next() and inqueue.next_ref_dataset_index() > self.cur_subdataset_index:
+                has_larger_subdataset_index = True
+
+        while has_larger_subdataset_index:
+            for i, inqueue in enumerate(self.inqueues):
+                if inqueue.has_next() and inqueue.next_ref_dataset_index() == self.cur_subdataset_index:
+                    ref = inqueue.pop()
+                    if ref is not None:
+                        self.op.add_input(ref, input_index=i)
+                        return
+                elif inqueue.has_next() and inqueue.next_ref_dataset_index() > self.cur_subdataset_index:
+                    has_larger_subdataset_index = True
         assert False, "Nothing to dispatch"
 
     def get_output_blocking(self, output_split_idx: Optional[int]) -> RefBundle:

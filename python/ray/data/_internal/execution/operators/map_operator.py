@@ -81,6 +81,11 @@ class MapOperator(OneToOneOperator, ABC):
         # When the streaming generator ref is GC'ed, the objects it generated
         # cannot be reconstructed. Should remove it once Ray Core fixes the bug.
         self._finished_streaming_gens: List[ObjectRefGenerator] = []
+
+        # we have refBundle of the next subdataset done but we still have unfinished old subdataset, save to this next_subdataset_save_queue
+        self.next_subdataset_save_Dict : Dict[int, RefBundle] = {}
+        self.subdataset_index_to_pending_task_count = dict()
+
         super().__init__(name, input_op, target_max_block_size)
 
         # If set, then all output blocks will be split into
@@ -273,6 +278,18 @@ class MapOperator(OneToOneOperator, ABC):
         """
         raise NotImplementedError
 
+    def _flush_buffer_to_output_queue(self, task_index):
+        # for each cur_dataset_index, if no pending previous task, flush to output
+        for subdataset_index in sorted(self.next_subdataset_save_Dict.keys()):
+            if len(self.next_subdataset_save_Dict[subdataset_index]) > 0 \
+                and (subdataset_index == 0 \
+                    or self.subdataset_index_to_pending_task_count[subdataset_index - 1] is None \
+                    or self.subdataset_index_to_pending_task_count[subdataset_index - 1] == 0):
+
+                for output in self.next_subdataset_save_Dict[subdataset_index]:
+                    self._output_queue.notify_task_output_ready(task_index, output)
+                self.next_subdataset_save_Dict[subdataset_index] = []
+
     def _submit_data_task(
         self,
         gen: ObjectRefGenerator,
@@ -288,14 +305,19 @@ class MapOperator(OneToOneOperator, ABC):
         task_index = self._next_data_task_idx
         self._next_data_task_idx += 1
         self._metrics.on_task_submitted(task_index, inputs)
+        cur_dataset_index = inputs.get_subdataset_index()
 
         def _output_ready_callback(task_index, output: RefBundle):
             # Since output is streamed, it should only contain one block.
             assert len(output) == 1
             self._metrics.on_output_generated(task_index, output)
+            output.set_subdataset_index(cur_dataset_index)
 
-            # Notify output queue that the task has produced an new output.
-            self._output_queue.notify_task_output_ready(task_index, output)
+            cur_queue = self.next_subdataset_save_Dict.get(cur_dataset_index, [])
+            cur_queue.append(output)
+            self.next_subdataset_save_Dict[cur_dataset_index] = cur_queue
+
+            self._flush_buffer_to_output_queue(task_index)
 
         def _task_done_callback(task_index: int, exception: Optional[Exception]):
             self._metrics.on_task_finished(task_index, exception)
@@ -313,12 +335,16 @@ class MapOperator(OneToOneOperator, ABC):
             )
 
             task = self._data_tasks.pop(task_index)
+            self.subdataset_index_to_pending_task_count[cur_dataset_index] = self.subdataset_index_to_pending_task_count[cur_dataset_index] - 1
+            assert self.subdataset_index_to_pending_task_count[cur_dataset_index] is not None and self.subdataset_index_to_pending_task_count[cur_dataset_index] >= 0
+            self._flush_buffer_to_output_queue(task_index)
             self._finished_streaming_gens.append(task.get_waitable())
             # Notify output queue that this task is complete.
             self._output_queue.notify_task_completed(task_index)
             if task_done_callback:
                 task_done_callback()
 
+        self.subdataset_index_to_pending_task_count[cur_dataset_index] = self.subdataset_index_to_pending_task_count.get(cur_dataset_index, 0) + 1
         self._data_tasks[task_index] = DataOpTask(
             task_index,
             gen,
@@ -347,7 +373,8 @@ class MapOperator(OneToOneOperator, ABC):
 
     def all_inputs_done(self):
         self._block_ref_bundler.done_adding_bundles()
-        if self._block_ref_bundler.has_bundle():
+        # while: because it's possible there are multiple subdatasets left. So there can be more than 1 bnundle returned
+        while self._block_ref_bundler.has_bundle():
             # Handle any leftover bundles in the bundler.
             bundle = self._block_ref_bundler.get_next_bundle()
             self._add_bundled_input(bundle)
@@ -439,16 +466,20 @@ class _BlockRefBundler:
         self._bundle_buffer: List[RefBundle] = []
         self._bundle_buffer_size = 0
         self._finalized = False
+        self._include_different_subdataset_index = False
 
     def add_bundle(self, bundle: RefBundle):
         """Add a bundle to the bundler."""
+        if len(self._bundle_buffer) > 0:
+            self._include_different_subdataset_index = self._include_different_subdataset_index or bundle.get_subdataset_index() != self._bundle_buffer[-1].get_subdataset_index()
         self._bundle_buffer.append(bundle)
         self._bundle_buffer_size += self._get_bundle_size(bundle)
 
     def has_bundle(self) -> bool:
         """Returns whether the bundler has a bundle."""
         return self._bundle_buffer and (
-            self._min_rows_per_bundle is None
+            self._include_different_subdataset_index
+            or self._min_rows_per_bundle is None
             or self._bundle_buffer_size >= self._min_rows_per_bundle
             or (self._finalized and self._bundle_buffer_size > 0)
         )
@@ -469,12 +500,13 @@ class _BlockRefBundler:
         buffer_filled = False
         for bundle in self._bundle_buffer:
             bundle_size = self._get_bundle_size(bundle)
+            empty_or_same_subdataset_id = len(output_buffer) == 0 or bundle.get_subdataset_index() == output_buffer[0].get_subdataset_index()
             if buffer_filled:
                 # Buffer has been filled, save it in the leftovers.
                 leftover.append(bundle)
             elif (
-                output_buffer_size + bundle_size <= self._min_rows_per_bundle
-                or output_buffer_size == 0
+                (output_buffer_size + bundle_size <= self._min_rows_per_bundle
+                or output_buffer_size == 0) and empty_or_same_subdataset_id
             ):
                 # Bundle fits in buffer, or bundle doesn't fit but the buffer still
                 # needs a non-empty bundle.
@@ -490,6 +522,7 @@ class _BlockRefBundler:
         self._bundle_buffer_size = sum(
             self._get_bundle_size(bundle) for bundle in leftover
         )
+        self._include_different_subdataset_index = len(self._bundle_buffer) >= 2 and self._bundle_buffer[0].get_subdataset_index() != self._bundle_buffer[-1].get_subdataset_index()
         return _merge_ref_bundles(*output_buffer)
 
     def done_adding_bundles(self):
@@ -505,13 +538,15 @@ def _merge_ref_bundles(*bundles: RefBundle) -> RefBundle:
     """Merge N ref bundles into a single bundle of multiple blocks."""
     # Check that at least one bundle is non-null.
     assert any(bundle is not None for bundle in bundles)
+    subdataset_index = bundles[0].get_subdataset_index()
+    assert all(bundle.get_subdataset_index() == subdataset_index for bundle in bundles)
     blocks = list(
         itertools.chain(
             block for bundle in bundles if bundle is not None for block in bundle.blocks
         )
     )
     owns_blocks = all(bundle.owns_blocks for bundle in bundles if bundle is not None)
-    return RefBundle(blocks, owns_blocks)
+    return RefBundle(blocks, owns_blocks, subdataset_index=subdataset_index)
 
 
 class _OutputQueue(ABC):
