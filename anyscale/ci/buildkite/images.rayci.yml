@@ -79,8 +79,9 @@ steps:
           - "3.11"
         base:
           - "cpu"
-          - "cu11.8.0"
-          - "cu12.1.1"
+          - "cu11.8.0-cudnn8"
+          - "cu12.1.1-cudnn8"
+          - "cu12.3.2-cudnn9"
 
   - label: ":tapioca: runtime py{{matrix.py}} {{matrix.base}} image"
     if: build.env("RUNTIME_BUILD_ALL") == "true"
@@ -102,9 +103,7 @@ steps:
           - "3.10"
           - "3.11"
         base:
-          - "cu11.5.2"
-          - "cu11.6.2"
-          - "cu11.7.1"
+          - "cu11.7.1-cudnn8"
 
   - label: ":tapioca: minimized runtime py{{matrix.py}} {{matrix.base}} image"
     tags: docker
@@ -172,7 +171,7 @@ steps:
           - "3.11"
         base:
           - "cpu"
-          - "cu11.8.0"
+          - "cu11.8.0-cudnn8"
 
   - wait: ~
     tags: docker

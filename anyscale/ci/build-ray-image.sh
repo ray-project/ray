@@ -64,23 +64,36 @@ fi
 WHEEL_FILE="ray-${RAY_VERSION}-${WHEEL_PYTHON_CODE}-manylinux2014_${HOSTTYPE}.whl"
 CPP_WHEEL_FILE="ray_cpp-${RAY_VERSION}-${WHEEL_PYTHON_CODE}-manylinux2014_${HOSTTYPE}.whl"
 
-if [[ "${IMG_TYPE}" == "cpu" ]]; then
-    IMG_TYPE_CODE=cpu
-elif [[ "${IMG_TYPE}" == "cu11.5.2" ]]; then
-    IMG_TYPE_CODE="cu115"
-elif [[ "${IMG_TYPE}" == "cu11.6.2" ]]; then
-    IMG_TYPE_CODE="cu116"
-elif [[ "${IMG_TYPE}" == "cu11.7.1" ]]; then
-    IMG_TYPE_CODE="cu117"
-elif [[ "${IMG_TYPE}" == "cu11.8.0" ]]; then
-    IMG_TYPE_CODE="cu118"
-elif [[ "${IMG_TYPE}" == "cu12.1.1" ]]; then
-    IMG_TYPE_CODE="cu121"
-elif [[ "${IMG_TYPE}" == "cu12.3.2" ]]; then
-    IMG_TYPE_CODE="cu123"
+if [[ "${USE_MINIMIZED_BASE}" == "1" ]]; then
+    if [[ "${IMG_TYPE}" == "cpu" ]]; then
+        IMG_TYPE_CODE=cpu
+    elif [[ "${IMG_TYPE}" == "cu11.7.1" ]]; then
+        IMG_TYPE_CODE="cu117"
+    elif [[ "${IMG_TYPE}" == "cu11.8.0" ]]; then
+        IMG_TYPE_CODE="cu118"
+    elif [[ "${IMG_TYPE}" == "cu12.1.1" ]]; then
+        IMG_TYPE_CODE="cu121"
+    elif [[ "${IMG_TYPE}" == "cu12.3.2" ]]; then
+        IMG_TYPE_CODE="cu123"
+    else
+        echo "Unknown image type: ${IMG_TYPE}" >/dev/stderr
+        exit 1
+    fi
 else
-    echo "Unknown image type: ${IMG_TYPE}" >/dev/stderr
-    exit 1
+    if [[ "${IMG_TYPE}" == "cpu" ]]; then
+        IMG_TYPE_CODE=cpu
+    elif [[ "${IMG_TYPE}" == "cu11.7.1-cudnn8" ]]; then
+        IMG_TYPE_CODE="cu117"
+    elif [[ "${IMG_TYPE}" == "cu11.8.0-cudnn8" ]]; then
+        IMG_TYPE_CODE="cu118"
+    elif [[ "${IMG_TYPE}" == "cu12.1.1-cudnn8" ]]; then
+        IMG_TYPE_CODE="cu121"
+    elif [[ "${IMG_TYPE}" == "cu12.3.2-cudnn9" ]]; then
+        IMG_TYPE_CODE="cu123"
+    else
+        echo "Unknown image type: ${IMG_TYPE}" >/dev/stderr
+        exit 1
+    fi
 fi
 
 function docker_push_as {
