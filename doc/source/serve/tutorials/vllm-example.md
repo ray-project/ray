@@ -33,7 +33,7 @@ The Serve code is as follows:
 Use `serve run llm:build_app model="NousResearch/Meta-Llama-3-8B-Instruct" tensor-parallel-size=2` to start the Serve app.
 
 :::{note}
-This example uses Tensor Parallel size of 2, which means Ray Serve deploys the model to Ray Actors across 2 GPUs or HPUs(based on the device) using placement groups.
+This example uses Tensor Parallel size of 2, which means Ray Serve deploys the model to Ray Actors across 2 GPUs or HPUs (based on the device type) using placement groups.
 :::
 
 
