@@ -2164,7 +2164,8 @@ class AlgorithmConfig(_Config):
             callbacks_class: Callbacks class, whose methods will be run during
                 various phases of training and environment sample collection.
                 See the `DefaultCallbacks` class and
-                `examples/custom_metrics_and_callbacks.py` for more usage information.
+                `examples/metrics/custom_metrics_and_callbacks.py` for more usage
+                information.
 
         Returns:
             This updated AlgorithmConfig object.
