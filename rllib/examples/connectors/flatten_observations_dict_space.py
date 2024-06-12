@@ -1,4 +1,4 @@
-"""Example using connectors (V2) for observation frame-stacking in Atari environments.
+"""Example using a ConnectorV2 to flatten arbitrarily nested dict or tuple observations.
 
 An RLlib Algorithm has 3 distinct connector pipelines:
 - An env-to-module pipeline in an EnvRunner accepting a list of episodes and producing
@@ -20,25 +20,30 @@ pieces (or use the ones available already in RLlib) and add them to one of the 3
 different pipelines described above, as required.
 
 This example:
-    - shows how the `FrameStackingEnvToModule` ConnectorV2 piece can be added to the
+    - shows how the `FlattenObservation` ConnectorV2 piece can be added to the
     env-to-module pipeline.
-    - shows how the `FrameStackingLearner` ConnectorV2 piece can be added to the
-    learner connector pipeline.
-    - demonstrates that using these two pieces (rather than performing framestacking
-    already inside the environment using a gymnasium wrapper) increases overall
-    performance by about 5%.
+    - demonstrates that by using this connector, any arbitrarily nested dict or tuple
+    observations is properly flattened into a simple 1D tensor, for easier RLModule
+    processing.
+    - shows how - in a multi-agent setup - individual agents can be specified, whose
+    observations should be flattened (while other agents' observations will always
+    be left as-is).
+    - uses a variant of the CartPole-v1 environment, in which the 4 observation items
+    (x-pos, x-veloc, angle, and angle-veloc) are taken apart and put into a nested dict
+    with the structure:
+    {
+        "x-pos": [x-pos],
+        "angular-pos": {
+            "value": [angle],
+            "some_random_stuff": [random Discrete(3)],  # <- should be ignored by algo
+        },
+        "velocs": Tuple([x-veloc], [angle-veloc]),
+    }
 
 
 How to run this script
 ----------------------
-`python [script file name].py --enable-new-api-stack --num-frames=4 --env=ALE/Pong-v5`
-
-Use the `--num-frames` option to define the number of observations to framestack.
-If you don't want to use Connectors to perform the framestacking, set the
-`--use-gym-wrapper-framestacking` flag to perform framestacking already inside a
-gymnasium observation wrapper. In this case though, be aware that the tensors being
-sent through the network are `--num-frames` x larger than if you use the Connector
-setup.
+`python [script file name].py --enable-new-api-stack`
 
 For debugging, use the following additional command line options
 `--no-tune --num-env-runners=0`
@@ -53,35 +58,21 @@ For logging to your WandB account, use:
 Results to expect
 -----------------
 
-With `--num-frames=4` and using the two extra ConnectorV2 pieces (in the env-to-module
-and learner connector pipelines), you should see something like:
-+---------------------------+------------+--------+------------------+...
-| Trial name                | status     |   iter |   total time (s) |
-|                           |            |        |                  |
-|---------------------------+------------+--------+------------------+...
-| PPO_atari-env_2fc4a_00000 | TERMINATED |     10 |          557.257 |
-+---------------------------+------------+--------+------------------+...
-
-Note that the time to run these 10 iterations is about .% faster than when
-performing framestacking already inside the environment (using a
-`gymnasium.wrappers.ObservationWrapper`), due to the additional network traffic
-needed (sending back 4x[obs] batches instead of 1x[obs] to the learners).
-
-Thus, with the `--use-gym-wrapper-framestacking` option, the output looks
-like this:
-+---------------------------+------------+--------+------------------+...
-| Trial name                | status     |   iter |   total time (s) |
-|                           |            |        |                  |
-|---------------------------+------------+--------+------------------+...
-| PPO_atari-env_2fc4a_00000 | TERMINATED |     10 |          557.257 |
-+---------------------------+------------+--------+------------------+...
++---------------------+------------+----------------+--------+------------------+
+| Trial name          | status     | loc            |   iter |   total time (s) |
+|                     |            |                |        |                  |
+|---------------------+------------+----------------+--------+------------------+
+| PPO_env_a2fd6_00000 | TERMINATED | 127.0.0.1:7409 |     25 |          24.1426 |
++---------------------+------------+----------------+--------+------------------+
+------------------------+------------------------+------------------------+
+   num_env_steps_sample |   num_env_steps_traine |   episode_return_mean  |
+             d_lifetime |             d_lifetime |                        |
+------------------------+------------------------+------------------------|
+                 100000 |                 100000 |                 421.42 |
+------------------------+------------------------+------------------------+
 """
 from ray.tune.registry import register_env
-from ray.rllib.connectors.env_to_module import (
-    AddObservationsFromEpisodesToBatch,
-    FlattenObservations,
-    WriteObservationsToEpisodes,
-)
+from ray.rllib.connectors.env_to_module import FlattenObservations
 from ray.rllib.examples.envs.classes.cartpole_with_dict_observation_space import (
     CartPoleWithDictObservationSpace,
 )
@@ -108,11 +99,7 @@ if __name__ == "__main__":
 
     # Define env-to-module-connector pipeline for the new stack.
     def _env_to_module_pipeline(env):
-        return [
-            AddObservationsFromEpisodesToBatch(),
-            FlattenObservations(multi_agent=args.num_agents > 0),
-            WriteObservationsToEpisodes(),
-        ]
+        return FlattenObservations(multi_agent=args.num_agents > 0)
 
     # Register our environment with tune.
     if args.num_agents > 0:

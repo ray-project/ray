@@ -6,7 +6,6 @@ import numpy as np
 import tree  # pip install dm_tree
 
 from ray.rllib.connectors.connector_v2 import ConnectorV2
-from ray.rllib.core.columns import Columns
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.numpy import flatten_inputs_to_1d_tensor
@@ -163,16 +162,8 @@ class FlattenObservations(ConnectorV2):
         shared_data: Optional[dict] = None,
         **kwargs,
     ) -> Any:
-        observations = data.get(Columns.OBS)
-
-        if observations is None:
-            raise ValueError(
-                f"`batch` must already have a column named {Columns.OBS} in it "
-                f"for this connector to work!"
-            )
-
         for sa_episode in self.single_agent_episode_iterator(
-                episodes, agents_that_stepped_only=True
+            episodes, agents_that_stepped_only=True
         ):
             # Episode is not finalized yet and thus still operates on lists of items.
             assert not sa_episode.is_finalized
@@ -181,7 +172,8 @@ class FlattenObservations(ConnectorV2):
 
             if self._multi_agent:
                 flattened_obs = {
-                    agent_obs if aid not in self._agent_ids
+                    agent_obs
+                    if agent_id not in self._agent_ids
                     else flatten_inputs_to_1d_tensor(
                         inputs=agent_obs,
                         # In the multi-agent case, we need to use the specific agent's
@@ -190,7 +182,7 @@ class FlattenObservations(ConnectorV2):
                         # Our items are individual observations (no batch axis present).
                         batch_axis=False,
                     )
-                    for aid, agent_obs in last_obs.items()
+                    for agent_id, agent_obs in last_obs.items()
                 }
             else:
                 flattened_obs = flatten_inputs_to_1d_tensor(
