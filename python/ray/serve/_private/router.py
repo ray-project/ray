@@ -1,6 +1,5 @@
 import asyncio
 import logging
-import os
 import threading
 import time
 from collections import defaultdict

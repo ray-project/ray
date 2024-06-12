@@ -390,13 +390,13 @@ class Worker:
             byted_scm_version = byted_version.byted_scm_version
         except Exception:
             logger.info("No byted_scm_version found.")
-        
+
         return {
             "num_clients": data.num_clients,
             "python_version": data.python_version,
             "ray_version": data.ray_version,
             "ray_commit": data.ray_commit,
-        	"byted_scm_version": byted_scm_version,
+            "byted_scm_version": byted_scm_version,
         }
 
     def register_callback(
