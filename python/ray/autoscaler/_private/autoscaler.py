@@ -272,11 +272,11 @@ class StandardAutoscaler:
         # Tracks nodes scheduled for termination
         self.nodes_to_terminate: List[NodeID] = []
 
-        # A set of replica IDs used to track replicas scheduled for termination.
+        # A set of replica indices used to track replicas scheduled for termination.
         self.replicas_to_delete: Set[str] = set()
 
-        # Map of replica IDs to worker nodes in each replica.
-        # A replica ID refers to the index of a multi-host PodSlice created by KubeRay.
+        # Map of replica indices to worker nodes in each replica.
+        # A replica index refers to a multi-host PodSlice created by KubeRay.
         self.replicas_to_nodes: Dict[str, List[NodeID]] = defaultdict(list)
 
         # Disable NodeUpdater threads if true.
@@ -415,7 +415,7 @@ class StandardAutoscaler:
             )
             return
 
-        # Populate mapping of replica IDs to nodes in that replica.
+        # Populate mapping of replica indices to nodes in that replica.
         self.replicas_to_nodes.clear()
         for node_id in self.non_terminated_nodes.worker_ids:
             tags = self.provider.node_tags(node_id)
@@ -658,7 +658,7 @@ class StandardAutoscaler:
                 if replica_index in self.replicas_to_nodes:
                     if node in self.replicas_to_nodes[replica_index]:
                         self.replicas_to_nodes[replica_index].remove(node)
-                        # remove replica ID once all nodes in replica removed
+                        # remove replica index once all nodes in replica removed
                         if len(self.replicas_to_nodes[replica_index]) == 0:
                             self.replicas_to_delete.remove(replica_index)
         # Terminate the nodes
