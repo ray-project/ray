@@ -425,7 +425,7 @@ class StandardAutoscaler:
                     if node_id not in self.replicas_to_nodes[node_replica_index]:
                         self.replicas_to_nodes[node_replica_index].append(node_id)
                 else:
-                    self.replicas_to_nodes[node_replica_index] = list(node_id)
+                    self.replicas_to_nodes[node_replica_index].append(node_id)
 
         # This will accumulate the nodes we need to terminate.
         self.nodes_to_terminate = []
