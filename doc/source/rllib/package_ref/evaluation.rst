@@ -23,7 +23,7 @@ which sit inside a :py:class:`~ray.rllib.env.env_runner_group.EnvRunnerGroup`
 
     **A typical RLlib EnvRunnerGroup setup inside an RLlib Algorithm:** Each :py:class:`~ray.rllib.env.env_runner_group.EnvRunnerGroup` contains
     exactly one local :py:class:`~ray.rllib.env.env_runner.EnvRunner` object and N ray remote
-    :py:class:`~ray.rllib.env.env_runner.EnvRunner` (ray actors).
+    :py:class:`~ray.rllib.env.env_runner.EnvRunner` (Ray actors).
     The workers contain a policy map (with one or more policies), and - in case a simulator
     (env) is available - a vectorized :py:class:`~ray.rllib.env.base_env.BaseEnv`
     (containing M sub-environments) and a :py:class:`~ray.rllib.evaluation.sampler.SamplerInput` (either synchronous or asynchronous) which controls
