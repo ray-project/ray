@@ -488,7 +488,6 @@ class ExecutionPlan:
                 # recording unnecessary metrics for an empty plan execution.
                 stats = _get_initial_stats_from_plan(self)
                 self._snapshot_bundle = self._logical_plan.dag.output_data()
-                assert stats is not None
             else:
                 from ray.data._internal.execution.streaming_executor import (
                     StreamingExecutor,
@@ -553,7 +552,6 @@ class ExecutionPlan:
             assert stats is not None
             self._snapshot_stats = stats
             self._snapshot_stats.dataset_uuid = self._dataset_uuid
-
         return self._snapshot_bundle
 
     @property
