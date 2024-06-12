@@ -18,6 +18,7 @@ from vllm.entrypoints.openai.protocol import (
 )
 from vllm.entrypoints.openai.serving_chat import OpenAIServingChat
 from vllm.entrypoints.openai.serving_engine import LoRAModulePath
+import importlib
 
 logger = logging.getLogger("ray.serve")
 
@@ -108,8 +109,11 @@ def build_app(cli_args: Dict[str, str]) -> serve.Application:
     logger.info(f"Tensor parallelism = {tp}")
     pg_resources = []
     pg_resources.append({"CPU": 1})  # for the deployment replica
+
+    is_hpu = importlib.util.find_spec('habana_frameworks') is not None
+    device = "HPU" if is_hpu else "GPU"
     for i in range(tp):
-        pg_resources.append({"CPU": 1, "GPU": 1})  # for the vLLM actors
+        pg_resources.append({"CPU": 1, device: 1})  # for the vLLM actors
 
     # We use the "STRICT_PACK" strategy below to ensure all vLLM actors are placed on
     # the same Ray node.
