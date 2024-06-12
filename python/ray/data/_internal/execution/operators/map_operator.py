@@ -345,6 +345,7 @@ class MapOperator(OneToOneOperator, ABC):
                 task_done_callback()
 
         self.subdataset_index_to_pending_task_count[cur_dataset_index] = self.subdataset_index_to_pending_task_count.get(cur_dataset_index, 0) + 1
+        print(self.subdataset_index_to_pending_task_count)
         self._data_tasks[task_index] = DataOpTask(
             task_index,
             gen,
