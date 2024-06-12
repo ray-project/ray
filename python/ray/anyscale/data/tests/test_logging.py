@@ -27,10 +27,7 @@ def test_internal_error_logged_to_error_log(reset_logging, ray_start_regular):
 
     with pytest.raises(FakeException):
         with patch(
-            (
-                "ray.data._internal.execution.legacy_compat."
-                "get_legacy_lazy_block_list_read_only"
-            ),
+            "ray.data._internal.plan.ExecutionPlan.has_computed_output",
             side_effect=FakeException("fake exception"),
         ):
             ray.data.range(1).materialize()
