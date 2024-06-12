@@ -1030,8 +1030,9 @@ def _setup_ray_cluster_internal(
             "You configured 'spark.task.resource.gpu.amount' to "
             f"{num_spark_task_gpus},"
             "we recommend setting this value to 0 so that Spark jobs do not "
-            "reserve GPU resources, preventing Ray-on-Spark workloads from having the "
-            "maximum number of GPUs available."
+            "reserve GPU resources, so that in the same cluster Ray-on-Spark "
+            "cluster can reserve all GPU resources when there are other "
+            "Spark jobs are running."
         )
 
         if is_in_databricks_runtime():
