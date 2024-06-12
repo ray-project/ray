@@ -313,6 +313,8 @@ class OpState:
         """Move a bundle from the operator inqueue to the operator itself."""
         has_larger_subdataset_index = False
         for i, inqueue in enumerate(self.inqueues):
+            if inqueue.has_next():
+                assert inqueue.next_ref_dataset_index() >= self.cur_subdataset_index, "The subdataset_index must be strictly increasing"
             if inqueue.has_next() and inqueue.next_ref_dataset_index() == self.cur_subdataset_index:
                 ref = inqueue.pop()
                 if ref is not None:
@@ -324,6 +326,8 @@ class OpState:
         while has_larger_subdataset_index:
             self.cur_subdataset_index += 1
             for i, inqueue in enumerate(self.inqueues):
+                if inqueue.has_next():
+                    assert inqueue.next_ref_dataset_index() >= self.cur_subdataset_index, "The subdataset_index must be strictly increasing"
                 if inqueue.has_next() and inqueue.next_ref_dataset_index() == self.cur_subdataset_index:
                     ref = inqueue.pop()
                     if ref is not None:
