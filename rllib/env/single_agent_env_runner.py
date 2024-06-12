@@ -1,8 +1,9 @@
-import gymnasium as gym
 import logging
 import tree
 
 from collections import defaultdict
+import gymnasium as gym
+from gymnasium.wrappers.vector import DictInfoToList
 from functools import partial
 from typing import DefaultDict, Dict, List, Optional
 
@@ -68,7 +69,7 @@ class SingleAgentEnvRunner(EnvRunner):
         self._callbacks: DefaultCallbacks = self.config.callbacks_class()
 
         # Create the vectorized gymnasium env.
-        self.env: Optional[gym.Wrapper] = None
+        self.env: Optional[gym.vector.VectorEnvWrapper] = None
         self.num_envs: int = 0
         self.make_env()
 
@@ -89,7 +90,7 @@ class SingleAgentEnvRunner(EnvRunner):
         try:
             module_spec: SingleAgentRLModuleSpec = self.config.rl_module_spec
             module_spec.observation_space = self._env_to_module.observation_space
-            module_spec.action_space = self.env.envs[0].action_space
+            module_spec.action_space = self.env.unwrapped.single_action_space
             if module_spec.model_config_dict is None:
                 module_spec.model_config_dict = self.config.model_config
             # Only load a light version of the module, if available. This is useful
@@ -170,7 +171,7 @@ class SingleAgentEnvRunner(EnvRunner):
 
         # Sample n timesteps.
         if num_timesteps is not None:
-            samples = self._sample_timesteps(
+            samples = self._sample(
                 num_timesteps=num_timesteps,
                 explore=explore,
                 random_actions=random_actions,
@@ -178,7 +179,7 @@ class SingleAgentEnvRunner(EnvRunner):
             )
         # Sample m episodes.
         elif num_episodes is not None:
-            samples = self._sample_episodes(
+            samples = self._sample(
                 num_episodes=num_episodes,
                 explore=explore,
                 random_actions=random_actions,
@@ -189,7 +190,7 @@ class SingleAgentEnvRunner(EnvRunner):
             total = 0
             samples = []
             while total < self.config.train_batch_size:
-                episodes = self._sample_episodes(
+                episodes = self._sample(
                     num_episodes=self.num_envs,
                     explore=explore,
                     random_actions=random_actions,
@@ -206,9 +207,11 @@ class SingleAgentEnvRunner(EnvRunner):
 
         return samples
 
-    def _sample_timesteps(
+    def _sample(
         self,
-        num_timesteps: int,
+        *,
+        num_timesteps: Optional[int] = None,
+        num_episodes: Optional[int] = None,
         explore: bool,
         random_actions: bool = False,
         force_reset: bool = False,
@@ -218,18 +221,26 @@ class SingleAgentEnvRunner(EnvRunner):
         done_episodes_to_return: List[SingleAgentEpisode] = []
 
         # Have to reset the env (on all vector sub_envs).
-        if force_reset or self._needs_initial_reset:
-            self._episodes = [None for _ in range(self.num_envs)]
-            self._shared_data = {}
-            self._reset_envs(self._episodes, self._shared_data, explore)
+        if force_reset or num_episodes is not None or self._needs_initial_reset:
+            episodes = self._episodes = [None for _ in range(self.num_envs)]
+            shared_data = self._shared_data = {}
+            self._reset_envs(episodes, shared_data, explore)
             # We just reset the env. Don't have to force this again in the next
             # call to `self._sample_timesteps()`.
             self._needs_initial_reset = False
+        else:
+            episodes = self._episodes
+            shared_data = self._shared_data
 
-        # Loop through `num_timesteps` timesteps.
+        if num_episodes is not None:
+            self._needs_initial_reset = True
+
+        # Loop through `num_timesteps` timesteps or `num_episodes` episodes.
         ts = 0
-
-        while ts < num_timesteps:
+        eps = 0
+        while (
+            (ts < num_timesteps) if num_timesteps is not None else (eps < num_episodes)
+        ):
             # Act randomly.
             if random_actions:
                 to_env = {
@@ -258,9 +269,9 @@ class SingleAgentEnvRunner(EnvRunner):
                 to_env = self._module_to_env(
                     rl_module=self.module,
                     data=to_env,
-                    episodes=self._episodes,
+                    episodes=episodes,
                     explore=explore,
-                    shared_data=self._shared_data,
+                    shared_data=shared_data,
                 )
 
             # Extract the (vectorized) actions (to be sent to the env) from the
@@ -283,169 +294,6 @@ class SingleAgentEnvRunner(EnvRunner):
                 # Episode has no data in it yet -> Was just reset and needs to be called
                 # with its `add_env_reset()` method.
                 if not self._episodes[env_index].is_reset:
-                    self._episodes[env_index].add_env_reset(
-                        observation=observations[env_index],
-                        infos=infos[env_index],
-                    )
-                    call_on_episode_start.add(env_index)
-
-                # Call `add_env_step()` method on episode.
-                else:
-                    # Only increase ts when we actually stepped (not reset'd as a reset
-                    # does not count as a timestep).
-                    ts += 1
-                    self._episodes[env_index].add_env_step(
-                        observation=observations[env_index],
-                        action=actions[env_index],
-                        reward=rewards[env_index],
-                        infos=infos[env_index],
-                        terminated=terminateds[env_index],
-                        truncated=truncateds[env_index],
-                        extra_model_outputs=extra_model_output,
-                    )
-
-            # Env-to-module connector pass (cache results as we will do the RLModule
-            # forward pass only in the next `while`-iteration.
-            if self.module is not None:
-                self._cached_to_module = self._env_to_module(
-                    episodes=self._episodes,
-                    explore=explore,
-                    rl_module=self.module,
-                    shared_data=self._shared_data,
-                )
-
-            for env_index in range(self.num_envs):
-                # Call `on_episode_start()` callback (always after reset).
-                if env_index in call_on_episode_start:
-                    self._make_on_episode_callback("on_episode_start", env_index)
-                # Make the `on_episode_step` callbacks.
-                else:
-                    self._make_on_episode_callback("on_episode_step", env_index)
-
-                # Episode is done.
-                if self._episodes[env_index].is_done:
-                    # Make the `on_episode_end` callbacks (before finalizing the episode
-                    # object).
-                    self._make_on_episode_callback("on_episode_end", env_index)
-
-                    # Then finalize (numpy'ize) the episode.
-                    done_episodes_to_return.append(self._episodes[env_index].finalize())
-
-                    # Create a new episode object with no data in it and execute
-                    # `on_episode_created` callback (before the `env.reset()` call).
-                    self._episodes[env_index] = SingleAgentEpisode(
-                        observation_space=self.env.single_observation_space,
-                        action_space=self.env.single_action_space,
-                    )
-
-        # Return done episodes ...
-        # TODO (simon): Check, how much memory this attribute uses.
-        self._done_episodes_for_metrics.extend(done_episodes_to_return)
-        # ... and all ongoing episode chunks.
-
-        # Also, make sure we start new episode chunks (continuing the ongoing episodes
-        # from the to-be-returned chunks).
-        ongoing_episodes_continuations = [
-            eps.cut(len_lookback_buffer=self.config.episode_lookback_horizon)
-            for eps in self._episodes
-        ]
-
-        ongoing_episodes_to_return = []
-        for eps in self._episodes:
-            # Just started Episodes do not have to be returned. There is no data
-            # in them anyway.
-            if eps.t == 0:
-                continue
-            eps.validate()
-            self._ongoing_episodes_for_metrics[eps.id_].append(eps)
-            # Return finalized (numpy'ized) Episodes.
-            ongoing_episodes_to_return.append(eps.finalize())
-
-        # Continue collecting into the cut Episode chunks.
-        self._episodes = ongoing_episodes_continuations
-
-        self._increase_sampled_metrics(ts)
-
-        # Return collected episode data.
-        return done_episodes_to_return + ongoing_episodes_to_return
-
-    def _sample_episodes(
-        self,
-        num_episodes: int,
-        explore: bool,
-        random_actions: bool = False,
-    ) -> List[SingleAgentEpisode]:
-        """Helper method to run n episodes.
-
-        See docstring of `self.sample()` for more details.
-        """
-        # If user calls sample(num_timesteps=..) after this, we must reset again
-        # at the beginning.
-        self._needs_initial_reset = True
-
-        done_episodes_to_return: List[SingleAgentEpisode] = []
-
-        episodes = [None for _ in range(self.num_envs)]
-        _shared_data = {}
-        self._reset_envs(episodes, _shared_data, explore)
-
-        # Loop over episodes.
-        eps = 0
-        ts = 0
-        while eps < num_episodes:
-            # Act randomly.
-            if random_actions:
-                to_env = {
-                    Columns.ACTIONS: self.env.action_space.sample(),
-                }
-            # Compute an action using the RLModule.
-            else:
-                # Env-to-module connector.
-                to_module = self._cached_to_module
-                assert to_module is not None
-                self._cached_to_module = None
-
-                # RLModule forward pass: Explore or not.
-                if explore:
-                    env_steps_lifetime = (
-                        self.metrics.peek(NUM_ENV_STEPS_SAMPLED_LIFETIME, default=0)
-                        + ts
-                    )
-                    to_env = self.module.forward_exploration(
-                        to_module, t=env_steps_lifetime
-                    )
-                else:
-                    to_env = self.module.forward_inference(to_module)
-
-                # Module-to-env connector.
-                to_env = self._module_to_env(
-                    rl_module=self.module,
-                    data=to_env,
-                    episodes=episodes,
-                    explore=explore,
-                    shared_data=_shared_data,
-                )
-
-            # Extract the (vectorized) actions (to be sent to the env) from the
-            # module/connector output. Note that these actions are fully ready (e.g.
-            # already unsquashed/clipped) to be sent to the environment) and might not
-            # be identical to the actions produced by the RLModule/distribution, which
-            # are the ones stored permanently in the episode objects.
-            actions = to_env.pop(Columns.ACTIONS)
-            actions_for_env = to_env.pop(Columns.ACTIONS_FOR_ENV, actions)
-            # Step the environment.
-            observations, rewards, terminateds, truncateds, infos = self.env.step(
-                actions_for_env
-            )
-            observations, actions = unbatch(observations), unbatch(actions)
-
-            call_on_episode_start = set()
-            for env_index in range(self.num_envs):
-                extra_model_output = {k: v[env_index] for k, v in to_env.items()}
-
-                # Episode has no data in it yet -> Was just reset and needs to be called
-                # with its `add_env_reset()` method.
-                if not episodes[env_index].is_reset:
                     episodes[env_index].add_env_reset(
                         observation=observations[env_index],
                         infos=infos[env_index],
@@ -474,7 +322,7 @@ class SingleAgentEnvRunner(EnvRunner):
                     episodes=episodes,
                     explore=explore,
                     rl_module=self.module,
-                    shared_data=_shared_data,
+                    shared_data=shared_data,
                 )
 
             for env_index in range(self.num_envs):
@@ -514,14 +362,39 @@ class SingleAgentEnvRunner(EnvRunner):
                         action_space=self.env.single_action_space,
                     )
 
+        # Return done episodes ...
+        # TODO (simon): Check, how much memory this attribute uses.
         self._done_episodes_for_metrics.extend(done_episodes_to_return)
+        # ... and all ongoing episode chunks.
 
-        # Initialized episodes have to be removed as they lack `extra_model_outputs`.
-        samples = [episode for episode in done_episodes_to_return if episode.t > 0]
+        # Also, make sure we start new episode chunks (continuing the ongoing episodes
+        # from the to-be-returned chunks).
+        ongoing_episodes_to_return = []
+        # Only if we are doing individual timesteps: We have to maybe cut an ongoing
+        # episode and continue building it on the next call to `sample()`.
+        if num_timesteps is not None:
+            ongoing_episodes_continuations = [
+                eps.cut(len_lookback_buffer=self.config.episode_lookback_horizon)
+                for eps in self._episodes
+            ]
+
+            for eps in self._episodes:
+                # Just started Episodes do not have to be returned. There is no data
+                # in them anyway.
+                if eps.t == 0:
+                    continue
+                eps.validate()
+                self._ongoing_episodes_for_metrics[eps.id_].append(eps)
+                # Return finalized (numpy'ized) Episodes.
+                ongoing_episodes_to_return.append(eps.finalize())
+
+            # Continue collecting into the cut Episode chunks.
+            self._episodes = ongoing_episodes_continuations
 
         self._increase_sampled_metrics(ts)
 
-        return samples
+        # Return collected episode data.
+        return done_episodes_to_return + ongoing_episodes_to_return
 
     def get_metrics(self) -> ResultDict:
         # Compute per-episode metrics (only on already completed episodes).
@@ -650,12 +523,14 @@ class SingleAgentEnvRunner(EnvRunner):
             )
         gym.register("rllib-single-agent-env-v0", entry_point=entry_point)
 
-        # Wrap into `VectorListInfo`` wrapper to get infos as lists.
-        self.env: gym.Wrapper = gym.wrappers.VectorListInfo(
-            gym.vector.make(
+        # Wrap into `DictInfoToList` wrapper to get infos as lists.
+        self.env = DictInfoToList(
+            gym.make_vec(
                 "rllib-single-agent-env-v0",
                 num_envs=self.config.num_envs_per_env_runner,
-                asynchronous=self.config.remote_worker_envs,
+                vectorization_mode=(
+                    "async" if self.config.remote_worker_envs else "sync"
+                ),
             )
         )
         self.num_envs: int = self.env.num_envs
@@ -723,8 +598,7 @@ class SingleAgentEnvRunner(EnvRunner):
         )
         self._make_on_episode_callback("on_episode_created", env_index, episodes)
 
-    def _make_on_episode_callback(self, which: str, idx: int, episodes=None):
-        episodes = episodes if episodes is not None else self._episodes
+    def _make_on_episode_callback(self, which: str, idx: int, episodes):
         getattr(self._callbacks, which)(
             episode=episodes[idx],
             env_runner=self,
