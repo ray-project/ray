@@ -88,7 +88,11 @@ class LongPollClient:
         self.key_listeners = key_listeners
         self.event_loop = call_in_event_loop
         self.snapshot_ids: Dict[KeyType, int] = {
-            key: -1 for key in self.key_listeners.keys()
+            # The initial snapshot id for each key is < 0,
+            # but real snapshot keys in the long poll host are always >= 0,
+            # so this will always trigger an initial update.
+            key: -1
+            for key in self.key_listeners.keys()
         }
         self.is_running = True
 
@@ -191,11 +195,9 @@ class LongPollHost:
         ] = LISTEN_FOR_CHANGE_REQUEST_TIMEOUT_S,
     ):
         # Map object_key -> int
-        self.snapshot_ids: DefaultDict[KeyType, int] = defaultdict(
-            lambda: random.randint(0, 1_000_000)
-        )
+        self.snapshot_ids: Dict[KeyType, int] = {}
         # Map object_key -> object
-        self.object_snapshots: Dict[KeyType, Any] = dict()
+        self.object_snapshots: Dict[KeyType, Any] = {}
         # Map object_key -> set(asyncio.Event waiting for updates)
         self.notifier_events: DefaultDict[KeyType, Set[asyncio.Event]] = defaultdict(
             set
@@ -403,10 +405,14 @@ class LongPollHost:
         object_key: KeyType,
         updated_object: Any,
     ):
-        self.snapshot_ids[object_key] += 1
+        try:
+            self.snapshot_ids[object_key] += 1
+        except KeyError:
+            # Initial snapshot id must be >= 0, so that the long poll client
+            # can send a negative initial snapshot id to get a fast update.
+            self.snapshot_ids[object_key] = 0
         self.object_snapshots[object_key] = updated_object
         logger.debug(f"LongPollHost: Notify change for key {object_key}.")
 
-        if object_key in self.notifier_events:
-            for event in self.notifier_events.pop(object_key):
-                event.set()
+        for event in self.notifier_events.pop(object_key, set()):
+            event.set()
