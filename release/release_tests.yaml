@@ -2747,14 +2747,14 @@
   group: RLlib tests
   working_dir: rllib_tests
 
-  stable: true
+  stable: false
 
   frequency: weekly
   team: rllib
   cluster:
     byod:
       type: gpu
-      post_build_script: byod_rllib_test.sh
+      post_build_script: byod_rllib_dreamerv3_test.sh
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
         - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
