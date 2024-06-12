@@ -199,7 +199,7 @@ class FlattenObservations(ConnectorV2):
                             if not agent_id
                             else self._input_obs_base_struct[agent_id]
                         ),
-                        # Our items are bare observations (no batch axis present).
+                        # Our items are individual observations (no batch axis present).
                         batch_axis=False,
                     )
                 )
