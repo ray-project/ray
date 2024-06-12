@@ -31,6 +31,11 @@ This example:
     - demonstrates how to use RLlib's `FlattenObservations` right after the
     `PrevActionsPrevRewards` to flatten that new dict observation structure again into
     a single 1D tensor.
+    - uses the StatelessCartPole environment, a CartPole-v1 derivative that's missing
+    both x-veloc and angle-veloc observation components and is therefore non-Markovian
+    (only partially observable). An LSTM default model is used for training. Adding
+    the additional context to the observations (for example, prev. actions) helps the
+    LSTM to more quickly learn in this environment.
 
 
 How to run this script
@@ -57,28 +62,21 @@ For logging to your WandB account, use:
 Results to expect
 -----------------
 
-With `--num-frames=4` and using the two extra ConnectorV2 pieces (in the env-to-module
-and learner connector pipelines), you should see something like:
-+---------------------------+------------+--------+------------------+...
-| Trial name                | status     |   iter |   total time (s) |
-|                           |            |        |                  |
-|---------------------------+------------+--------+------------------+...
-| PPO_atari-env_2fc4a_00000 | TERMINATED |     10 |          557.257 |
-+---------------------------+------------+--------+------------------+...
+You should see something similar to this in your terminal output when running
+ths script as described above:
 
-Note that the time to run these 10 iterations is about .% faster than when
-performing framestacking already inside the environment (using a
-`gymnasium.wrappers.ObservationWrapper`), due to the additional network traffic
-needed (sending back 4x[obs] batches instead of 1x[obs] to the learners).
-
-Thus, with the `--use-gym-wrapper-framestacking` option, the output looks
-like this:
-+---------------------------+------------+--------+------------------+...
-| Trial name                | status     |   iter |   total time (s) |
-|                           |            |        |                  |
-|---------------------------+------------+--------+------------------+...
-| PPO_atari-env_2fc4a_00000 | TERMINATED |     10 |          557.257 |
-+---------------------------+------------+--------+------------------+...
++---------------------+------------+-----------------+--------+------------------+
+| Trial name          | status     | loc             |   iter |   total time (s) |
+|                     |            |                 |        |                  |
+|---------------------+------------+-----------------+--------+------------------+
+| PPO_env_0edd2_00000 | TERMINATED | 127.0.0.1:12632 |     17 |          42.6898 |
++---------------------+------------+-----------------+--------+------------------+
++------------------------+------------------------+------------------------+
+|   num_env_steps_sample |   num_env_steps_traine |   episode_return_mean  |
+|             d_lifetime |             d_lifetime |                        |
+|------------------------+------------------------+------------------------|
+|                  68000 |                  68000 |                 205.22 |
++------------------------+------------------------+------------------------+
 """
 import functools
 
