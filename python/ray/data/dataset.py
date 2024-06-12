@@ -1392,10 +1392,10 @@ class Dataset:
                     "locality_hints must not contain duplicate actor handles"
                 )
 
-        blocks = self._plan.execute()
-        owned_by_consumer = blocks._owned_by_consumer
+        bundle = self._plan.execute()
+        owned_by_consumer = bundle.owns_blocks
         stats = self._plan.stats()
-        block_refs, metadata = zip(*blocks.get_blocks_with_metadata())
+        block_refs, metadata = zip(*bundle.blocks)
 
         if locality_hints is None:
             blocks = np.array_split(block_refs, n)
@@ -1591,11 +1591,11 @@ class Dataset:
         if indices[0] < 0:
             raise ValueError("indices must be positive")
         start_time = time.perf_counter()
-        block_list = self._plan.execute()
+        bundle = self._plan.execute()
         blocks, metadata = _split_at_indices(
-            block_list.get_blocks_with_metadata(),
+            bundle.blocks,
             indices,
-            block_list._owned_by_consumer,
+            bundle.owns_blocks,
         )
         split_duration = time.perf_counter() - start_time
         parent_stats = self._plan.stats()
@@ -1605,12 +1605,8 @@ class Dataset:
             stats = DatasetStats(metadata={"Split": ms}, parent=parent_stats)
             stats.time_total_s = split_duration
 
-            split_block_list = BlockList(
-                bs, ms, owned_by_consumer=block_list._owned_by_consumer
-            )
-            ref_bundles = _block_list_to_bundles(
-                split_block_list, block_list._owned_by_consumer
-            )
+            split_block_list = BlockList(bs, ms, owned_by_consumer=bundle.owns_blocks)
+            ref_bundles = _block_list_to_bundles(split_block_list, bundle.owns_blocks)
             logical_plan = LogicalPlan(InputData(input_data=ref_bundles))
 
             splits.append(
@@ -1618,7 +1614,7 @@ class Dataset:
                     ExecutionPlan(
                         split_block_list,
                         stats,
-                        run_by_consumer=block_list._owned_by_consumer,
+                        run_by_consumer=bundle.owns_blocks,
                     ),
                     logical_plan,
                 )
@@ -1793,32 +1789,25 @@ class Dataset:
         Returns:
             A new dataset holding the rows of the input datasets.
         """
+        from ray.data._internal.execution.legacy_compat import (
+            get_legacy_lazy_block_list_read_only,
+        )
 
         start_time = time.perf_counter()
 
-        owned_by_consumer = self._plan.execute()._owned_by_consumer
+        owned_by_consumer = False
         datasets = [self] + list(other)
-        bls: List[BlockList] = []
-        has_nonlazy = False
-        for ds in datasets:
-            bl = ds._plan.execute()
-            if not isinstance(bl, LazyBlockList):
-                has_nonlazy = True
-            bls.append(bl)
+        has_nonlazy = any(not ds._plan.is_read_only() for ds in datasets)
         if has_nonlazy:
+            ops_to_union = []
             blocks = []
             metadata = []
-            ops_to_union = []
-            for idx, bl in enumerate(bls):
-                if isinstance(bl, LazyBlockList):
-                    bs, ms = bl._get_blocks_with_metadata()
-                else:
-                    assert isinstance(bl, BlockList), type(bl)
-                    bs, ms = bl._blocks, bl._metadata
-                op_logical_plan = datasets[idx]._plan._logical_plan
+            for ds in datasets:
+                bundle = ds._plan.execute()
+                op_logical_plan = ds._plan._logical_plan
                 ops_to_union.append(op_logical_plan.dag)
-                blocks.extend(bs)
-                metadata.extend(ms)
+                blocks.extend(bundle.block_refs)
+                metadata.extend(bundle.metadata)
             blocklist = BlockList(blocks, metadata, owned_by_consumer=owned_by_consumer)
 
             logical_plan = LogicalPlan(UnionLogicalOperator(*ops_to_union))
@@ -1837,7 +1826,8 @@ class Dataset:
             ]
             read_task_names.extend(other_read_names)
 
-            for bl in bls:
+            for ds in datasets:
+                bl = get_legacy_lazy_block_list_read_only(ds._plan)
                 tasks.extend(bl._tasks)
                 block_partition_refs.extend(bl._block_partition_refs)
                 block_partition_meta_refs.extend(bl._block_partition_meta_refs)
@@ -2668,7 +2658,7 @@ class Dataset:
             "Call `ds.materialize()` to get a `MaterializedDataset`."
         )
 
-    @ConsumptionAPI(if_more_than_read=True, pattern="Time complexity:")
+    @ConsumptionAPI
     def size_bytes(self) -> int:
         """Return the in-memory size of the dataset.
 
@@ -2678,18 +2668,16 @@ class Dataset:
             >>> ds.size_bytes()
             80
 
-        Time complexity: O(1)
-
         Returns:
             The in-memory size of the dataset in bytes, or None if the
             in-memory size is not known.
         """
-        metadata = self._plan.execute().get_metadata()
+        metadata = self._plan.execute().metadata
         if not metadata or metadata[0].size_bytes is None:
             return None
         return sum(m.size_bytes for m in metadata)
 
-    @ConsumptionAPI(if_more_than_read=True, pattern="Time complexity:")
+    @ConsumptionAPI
     def input_files(self) -> List[str]:
         """Return the list of input files for the dataset.
 
@@ -2699,18 +2687,11 @@ class Dataset:
             >>> ds.input_files()
             ['ray-example-data/iris.csv']
 
-        Time complexity: O(num input files)
-
         Returns:
             The list of input files used to create the dataset, or an empty
             list if the input files is not known.
         """
-        metadata = self._plan.execute().get_metadata()
-        files = set()
-        for m in metadata:
-            for f in m.input_files:
-                files.add(f)
-        return list(files)
+        return list(set(self._plan.input_files()))
 
     @ConsumptionAPI
     def write_parquet(
@@ -3629,7 +3610,7 @@ class Dataset:
             datasink.on_write_start()
 
             self._write_ds = Dataset(plan, logical_plan).materialize()
-            blocks = ray.get(self._write_ds._plan.execute().get_blocks())
+            blocks = ray.get(self._write_ds._plan.execute().block_refs)
             assert all(
                 isinstance(block, pd.DataFrame) and len(block) == 1 for block in blocks
             )
@@ -4586,7 +4567,7 @@ class Dataset:
             A MaterializedDataset holding the materialized data blocks.
         """
         copy = Dataset.copy(self, _deep_copy=True, _as=MaterializedDataset)
-        copy._plan.execute(force_read=True)
+        copy._plan.execute()
 
         blocks = copy._plan._snapshot_blocks
         blocks_with_metadata = blocks.get_blocks_with_metadata() if blocks else []
@@ -4675,9 +4656,9 @@ class Dataset:
         Returns:
             A list of references to this dataset's blocks.
         """
-        blocks = self._plan.execute().get_blocks()
+        block_refs = self._plan.execute().block_refs
         self._synchronize_progress_bar()
-        return blocks
+        return block_refs
 
     @DeveloperAPI
     def has_serializable_lineage(self) -> bool:

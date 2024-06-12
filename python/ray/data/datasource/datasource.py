@@ -109,6 +109,10 @@ class Datasource:
         metadata = [read_task.get_metadata() for read_task in read_tasks]
         return unify_block_metadata_schema(metadata)
 
+    def input_files(self) -> Optional[List[str]]:
+        """Return a list of input files, or ``None`` if unknown."""
+        return None
+
 
 @Deprecated
 class Reader:
