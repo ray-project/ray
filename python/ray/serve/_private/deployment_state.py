@@ -2096,7 +2096,7 @@ class DeploymentState:
                 "deployment": self.deployment_name,
                 "replica": replica.replica_id.unique_id,
                 "application": self.app_name,
-				"submission_id": submission_id,
+                "submission_id": submission_id,
             },
         )
 
@@ -2118,7 +2118,7 @@ class DeploymentState:
                         "deployment": self.deployment_name,
                         "replica": replica.replica_id.unique_id,
                         "application": self.app_name,
-						"submission_id": submission_id,
+                        "submission_id": submission_id,
                     },
                 )
             else:
@@ -2131,7 +2131,7 @@ class DeploymentState:
                         "deployment": self.deployment_name,
                         "replica": replica.replica_id.unique_id,
                         "application": self.app_name,
-						"submission_id": submission_id,
+                        "submission_id": submission_id,
                     },
                 )
                 self._stop_replica(

@@ -465,7 +465,7 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
                             gpu_ava = match[0]
                             gpu_totals += int(gpu_total)
                             gpu_avas += int(gpu_ava)
-                    
+
                     cpu_matches = re.findall(cpu_pattern, line)
                     if cpu_matches:
                         for match in cpu_matches:

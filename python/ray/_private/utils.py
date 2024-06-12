@@ -1517,7 +1517,7 @@ def compute_version_info():
         import ray.byted_version as byted_version
         byted_scm_version = byted_version.byted_scm_version
     except Exception:
-        logger.info(f'No byted_scm_version found.')
+        logger.info("No byted_scm_version found.")
 
     return ray_version, python_version, byted_scm_version
 
@@ -1567,8 +1567,8 @@ def check_version_info(
         Exception: An exception is raised if there is a version mismatch.
     """
     byted_scm_version = ""
-    if 'byted_scm_version' in cluster_metadata:
-        byted_scm_version = cluster_metadata['byted_scm_version']
+    if "byted_scm_version" in cluster_metadata:
+        byted_scm_version = cluster_metadata["byted_scm_version"]
 
     cluster_version_info = (
         cluster_metadata["ray_version"],

@@ -1,8 +1,8 @@
 import asyncio
 import logging
+import os
 import threading
 import time
-import os
 from collections import defaultdict
 from contextlib import contextmanager
 from functools import partial
@@ -336,7 +336,7 @@ class Router:
             metrics.Counter(
                 "serve_num_router_requests",
                 description="The number of requests processed by the router.",
-                tag_keys=("deployment", "route", "application"),
+                tag_keys=("deployment", "route", "application", "submission_id"),
             ),
             metrics.Gauge(
                 "serve_deployment_queued_queries",

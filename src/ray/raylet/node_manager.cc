@@ -1737,38 +1737,42 @@ void NodeManager::HandleRequestWorkerLease(rpc::RequestWorkerLeaseRequest reques
   auto task_spec = task.GetTaskSpecification();
   worker_pool_.PrestartWorkers(task_spec, request.backlog_size());
 
-  auto send_reply_callback_wrapper =
-      [this, is_actor_creation_task, actor_id, reply, send_reply_callback](
-          Status status, std::function<void()> success, std::function<void()> failure) {
-        RAY_LOG(INFO) << "[actor-schedule] HandleRequestWorkerLease actor" << actor_id
+  auto send_reply_callback_wrapper = [this,
+                                      is_actor_creation_task,
+                                      actor_id,
+                                      reply,
+                                      send_reply_callback](
+                                         Status status,
+                                         std::function<void()> success,
+                                         std::function<void()> failure) {
+    RAY_LOG(INFO) << "[actor-schedule] HandleRequestWorkerLease actor" << actor_id
                   << " status: " << status << " rejected: " << reply->rejected()
                   << " has raylet id " << !reply->worker_address().raylet_id().empty();
-        if (reply->rejected() && is_actor_creation_task) {
-          auto resources_data = reply->mutable_resources_data();
-          resources_data->set_node_id(self_node_id_.Binary());
-          // If resources are not enough due to normal tasks' preemption
-          // for GCS based actor scheduling, return
-          // with normal task resource usages so GCS can fast update
-          // its resource view of this raylet.
-          if (RayConfig::instance().gcs_actor_scheduling_enabled()) {
-            auto normal_task_resources = local_task_manager_->CalcNormalTaskResources();
-            RAY_LOG(INFO) << "[actor-schedule] Reject leasing as the raylet has no enough resources."
-                           << " actor_id = " << actor_id << ", normal_task_resources = "
-                           << normal_task_resources.DebugString()
-                           << ", local_resoruce_view = "
-                           << cluster_resource_scheduler_->GetClusterResourceManager()
-                                  .GetNodeResourceViewString(
-                                      scheduling::NodeID(self_node_id_.Binary()));
-            resources_data->set_resources_normal_task_changed(true);
-            auto resource_map = normal_task_resources.GetResourceMap();
-            resources_data->mutable_resources_normal_task()->insert(resource_map.begin(),
-                                                                    resource_map.end());
-            resources_data->set_resources_normal_task_timestamp(
-                absl::GetCurrentTimeNanos());
-          }
-        }
-        send_reply_callback(status, success, failure);
-      };
+    if (reply->rejected() && is_actor_creation_task) {
+      auto resources_data = reply->mutable_resources_data();
+      resources_data->set_node_id(self_node_id_.Binary());
+      // If resources are not enough due to normal tasks' preemption
+      // for GCS based actor scheduling, return
+      // with normal task resource usages so GCS can fast update
+      // its resource view of this raylet.
+      if (RayConfig::instance().gcs_actor_scheduling_enabled()) {
+        auto normal_task_resources = local_task_manager_->CalcNormalTaskResources();
+        RAY_LOG(INFO)
+            << "[actor-schedule] Reject leasing as the raylet has no enough resources."
+            << " actor_id = " << actor_id
+            << ", normal_task_resources = " << normal_task_resources.DebugString()
+            << ", local_resoruce_view = "
+            << cluster_resource_scheduler_->GetClusterResourceManager()
+                   .GetNodeResourceViewString(scheduling::NodeID(self_node_id_.Binary()));
+        resources_data->set_resources_normal_task_changed(true);
+        auto resource_map = normal_task_resources.GetResourceMap();
+        resources_data->mutable_resources_normal_task()->insert(resource_map.begin(),
+                                                                resource_map.end());
+        resources_data->set_resources_normal_task_timestamp(absl::GetCurrentTimeNanos());
+      }
+    }
+    send_reply_callback(status, success, failure);
+  };
 
   cluster_task_manager_->QueueAndScheduleTask(task,
                                               request.grant_or_reject(),
