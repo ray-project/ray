@@ -70,3 +70,7 @@ class LogicalOperator(Operator):
         actual computation.
         """
         return None
+
+    def input_files(self) -> Optional[List[str]]:
+        """The input files of this operator, or ``None`` if not known."""
+        return None

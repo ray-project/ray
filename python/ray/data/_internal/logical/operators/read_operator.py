@@ -1,4 +1,4 @@
-from typing import Any, Dict, Optional, Union
+from typing import Any, Dict, List, Optional, Union
 
 from ray.data._internal.logical.operators.map_operator import AbstractMap
 from ray.data.datasource.datasource import Datasource, Reader
@@ -48,3 +48,6 @@ class Read(AbstractMap):
 
     def num_rows(self):
         return self._datasource.num_rows()
+
+    def input_files(self) -> Optional[List[str]]:
+        return self._datasource.input_files()
