@@ -35,7 +35,7 @@ install_bazel() {
 install_miniconda() {
     # Install miniconda3 based on the architecture used
     mkdir -p "$TMP_DIR/miniconda3"
-    curl https://repo.anaconda.com/miniconda/Miniconda3-py310_24.4.0-0-MacOSX-"$mac_architecture".sh -o "$TMP_DIR/miniconda3/miniconda.sh"
+    curl https://repo.anaconda.com/miniconda/Miniconda3-py311_24.4.0-0-MacOSX-"$mac_architecture".sh -o "$TMP_DIR/miniconda3/miniconda.sh"
     bash "$TMP_DIR/miniconda3/miniconda.sh" -b -u -p "$TMP_DIR/miniconda3"
     rm -rf "$TMP_DIR/miniconda3/miniconda.sh"
 
