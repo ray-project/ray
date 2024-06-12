@@ -313,6 +313,7 @@ class MapOperator(OneToOneOperator, ABC):
             self._metrics.on_output_generated(task_index, output)
             output.set_subdataset_index(cur_dataset_index)
 
+
             cur_queue = self.next_subdataset_save_Dict.get(cur_dataset_index, [])
             cur_queue.append(output)
             self.next_subdataset_save_Dict[cur_dataset_index] = cur_queue
