@@ -322,6 +322,7 @@ class OpState:
                 has_larger_subdataset_index = True
 
         while has_larger_subdataset_index:
+            self.cur_subdataset_index += 1
             for i, inqueue in enumerate(self.inqueues):
                 if inqueue.has_next() and inqueue.next_ref_dataset_index() == self.cur_subdataset_index:
                     ref = inqueue.pop()
