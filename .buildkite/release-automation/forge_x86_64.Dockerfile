@@ -40,6 +40,5 @@ EOF
 USER forge
 ENV CC=clang
 ENV CXX=clang++-12
-ENV USE_BAZEL_VERSION=5.4.1
 
 CMD ["echo", "ray release-automation forge"]
