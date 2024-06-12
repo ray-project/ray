@@ -3563,7 +3563,7 @@ class Dataset:
                 ``overwrite_table=False`` will append to the table if it exists.
             enable_list_inference: Whether to enable list inference for the BigQuery.
                 Disabled by default. See details in
-                `List logical type <https://cloud.google.com/bigquery/docs/loading-data-cloud-storage-parquet#list_logical_type>`.
+                `List logical type <https://cloud.google.com/bigquery/docs/loading-data-cloud-storage-parquet#list_logical_type>`_.
             ray_remote_args: Kwargs passed to ray.remote in the write tasks.
             concurrency: The maximum number of Ray tasks to run concurrently. Set this
                 to control number of tasks to run concurrently. This doesn't change the
