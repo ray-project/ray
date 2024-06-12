@@ -505,7 +505,7 @@ def test_intra_process_channel(ray_start_cluster):
     (1) Test whether an actor can read/write from an IntraProcessChannel.
     (2) Test whether the _SerializationContext cleans up the
     data after all readers have read it.
-    (3) Test whether the actor can write again after reading num_readers times.
+    (3) Test whether the actor can write again after reading 1 time.
     """
     # This node is for both the driver and the Reader actors.
     cluster = ray_start_cluster
@@ -530,24 +530,21 @@ def test_intra_process_channel(ray_start_cluster):
             ctx = ray_channel.ChannelContext.get_current().serialization_context
             return len(ctx.intra_process_channel_buffers)
 
-    num_readers = 2
     actor = Actor.remote()
-    channel = ray_channel.IntraProcessChannel(actor, num_readers)
+    channel = ray_channel.IntraProcessChannel(actor)
     ray.get(actor.pass_channel.remote(channel))
 
     ray.get(actor.write.remote("hello"))
-    reads = [actor.read.remote() for _ in range(num_readers)]
-    assert ray.get(reads) == ["hello"] * num_readers
+    assert ray.get(actor.read.remote()) == "hello"
 
-    # The _SerializationContext should clean up the data after num_readers reads.
+    # The _SerializationContext should clean up the data after a read.
     assert ray.get(actor.get_ctx_buffer_size.remote()) == 0
 
     # Write again after reading num_readers times.
     ray.get(actor.write.remote("world"))
-    reads = [actor.read.remote() for _ in range(num_readers)]
-    assert ray.get(reads) == ["world"] * num_readers
+    assert ray.get(actor.read.remote()) == "world"
 
-    # The _SerializationContext should clean up the data after num_readers reads.
+    # The _SerializationContext should clean up the data after a read.
     assert ray.get(actor.get_ctx_buffer_size.remote()) == 0
 
 
@@ -626,8 +623,8 @@ def test_composite_channel_multiple_readers(ray_start_cluster):
     (1) The driver can write data to CompositeChannel and two actors can read it.
     (2) An actor can write data to CompositeChannel and another actor, as well as
         itself, can read it.
-    (3) An actor can write data to CompositeChannel and two Ray tasks on the same
-        actor can read it.
+    (3) An actor writes data to CompositeChannel and two Ray tasks on the same
+        actor read it. This is not supported and should raise an exception.
     """
     # This node is for both the driver and the Reader actors.
     cluster = ray_start_cluster
@@ -673,12 +670,12 @@ def test_composite_channel_multiple_readers(ray_start_cluster):
     ray.get(actor1.write.remote("world"))
     assert ray.get([actor1.read.remote(), actor2.read.remote()]) == ["world"] * 2
 
-    # actor1 writes data to CompositeChannel and two Ray tasks on actor1 read it.
-    actor1_output_channel = ray.get(
-        actor1.create_multi_channel.remote(actor1, [actor1, actor1])
-    )
-    ray.get(actor1.write.remote("hello world"))
-    assert ray.get([actor1.read.remote(), actor1.read.remote()]) == ["hello world"] * 2
+    with pytest.raises(ray.exceptions.RayTaskError):
+        # actor1 writes data to CompositeChannel and two Ray tasks on actor1 read it.
+        # This is not supported and should raise an exception.
+        actor1_output_channel = ray.get(
+            actor1.create_multi_channel.remote(actor1, [actor1, actor1])
+        )
 
     """
     TODO (kevin85421): Add tests for the following cases:
