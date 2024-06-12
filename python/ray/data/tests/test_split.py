@@ -344,32 +344,24 @@ def test_split(ray_start_regular_shared):
     assert ds._block_num_rows() == [2] * 10
 
     datasets = ds.split(5)
-    assert [2] * 5 == [
-        dataset._plan.execute().initial_num_blocks() for dataset in datasets
-    ]
+    assert [2] * 5 == [len(dataset._plan.execute().blocks) for dataset in datasets]
     assert 190 == sum([dataset.sum("id") for dataset in datasets])
 
     datasets = ds.split(3)
-    assert [4, 3, 3] == [
-        dataset._plan.execute().initial_num_blocks() for dataset in datasets
-    ]
+    assert [4, 3, 3] == [len(dataset._plan.execute().blocks) for dataset in datasets]
     assert 190 == sum([dataset.sum("id") for dataset in datasets])
 
     datasets = ds.split(1)
-    assert [10] == [
-        dataset._plan.execute().initial_num_blocks() for dataset in datasets
-    ]
+    assert [10] == [len(dataset._plan.execute().blocks) for dataset in datasets]
     assert 190 == sum([dataset.sum("id") for dataset in datasets])
 
     datasets = ds.split(10)
-    assert [1] * 10 == [
-        dataset._plan.execute().initial_num_blocks() for dataset in datasets
-    ]
+    assert [1] * 10 == [len(dataset._plan.execute().blocks) for dataset in datasets]
     assert 190 == sum([dataset.sum("id") for dataset in datasets])
 
     datasets = ds.split(11)
     assert [1] * 10 + [0] == [
-        dataset._plan.execute().initial_num_blocks() for dataset in datasets
+        len(dataset._plan.execute().blocks) for dataset in datasets
     ]
     assert 190 == sum([dataset.sum("id") or 0 for dataset in datasets])
 
