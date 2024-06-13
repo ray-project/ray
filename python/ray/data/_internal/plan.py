@@ -155,7 +155,7 @@ class ExecutionPlan:
                 count = self._snapshot_bundle.num_rows()
             else:
                 # This plan hasn't executed any operators.
-                sources = self._logical_plan.dag.source_dependencies()
+                sources = self._logical_plan.sources()
                 # TODO(@bveeramani): Handle schemas for n-ary operators like `Union`.
                 if len(sources) > 1:
                     # Multiple sources, cannot determine schema.
@@ -593,9 +593,7 @@ class ExecutionPlan:
 
     def has_lazy_input(self) -> bool:
         """Return whether this plan has lazy input blocks."""
-        return all(
-            isinstance(op, Read) for op in self._logical_plan.dag.source_dependencies()
-        )
+        return all(isinstance(op, Read) for op in self._logical_plan.sources())
 
     def is_read_only(self, root_op: Optional[LogicalOperator] = None) -> bool:
         """Return whether the LogicalPlan corresponding to `root_op`

@@ -45,16 +45,6 @@ class Operator:
             yield from op.post_order_iter()
         yield self
 
-    def source_dependencies(self) -> List["Operator"]:
-        """List of operators that are sources of data for this operator."""
-        if not any(self.input_dependencies):
-            return [self]
-
-        sources = []
-        for op in self.input_dependencies:
-            sources.extend(op.source_dependencies())
-        return sources
-
     def __repr__(self) -> str:
         if self.input_dependencies:
             out_str = ", ".join([str(x) for x in self.input_dependencies])
