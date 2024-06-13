@@ -158,6 +158,20 @@ class Node:
             self.validate_ip_port(self.address)
             self._init_gcs_client()
 
+        # Fetch the head OS platform
+        if head:
+            self._head_os = sys.platform
+        else:
+            cluster_metadata = json.loads(
+                ray._private.utils.internal_kv_get_with_retry(
+                    self.get_gcs_client(),
+                    "CLUSTER_METADATA",
+                    ray_constants.KV_NAMESPACE_CLUSTER,
+                    num_retries=ray_constants.NUM_REDIS_GET_RETRIES,
+                )
+            )
+            self._head_os = cluster_metadata["os"]
+
         # Register the temp dir.
         self._session_name = ray_params.session_name
         if self._session_name is None:

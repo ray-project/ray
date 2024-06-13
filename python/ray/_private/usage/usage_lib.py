@@ -408,13 +408,13 @@ def _generate_cluster_metadata(*, ray_init_cluster: bool):
         "ray_version": ray_version,
         "python_version": python_version,
         "ray_init_cluster": ray_init_cluster,
+        "os": sys.platform, # This metadata is required for hyprid-os clusters (e.g. linux head and windows worker)
     }
     # Additional metadata is recorded only when usage stats are enabled.
     if usage_stats_enabled():
         metadata.update(
             {
                 "git_commit": ray.__commit__,
-                "os": sys.platform,
                 "session_start_timestamp_ms": int(time.time() * 1000),
             }
         )
