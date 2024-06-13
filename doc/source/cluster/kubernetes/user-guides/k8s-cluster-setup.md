@@ -7,6 +7,7 @@
 
 aws-eks-gpu-cluster
 gcp-gke-gpu-cluster
+gcp-gke-tpu-cluster
 ```
 
 Most KubeRay documentation only requires a local Kubernetes cluster such as [Kind](https://kind.sigs.k8s.io/).
@@ -17,6 +18,7 @@ We collect a few helpful links for users who are getting started with a managed 
 # Setting up a GKE cluster (Google Cloud)
 
 - {ref}`kuberay-gke-gpu-cluster-setup`
+- {ref}`kuberay-gke-tpu-cluster-setup`
 
 (eks-setup)=
 # Setting up an EKS cluster (AWS)
