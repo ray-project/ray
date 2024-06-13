@@ -84,8 +84,9 @@ class ConnectorV2(abc.ABC):
         self._action_space = None
         self._input_observation_space = None
         self._input_action_space = None
-        self.input_observation_space = input_observation_space
+
         self.input_action_space = input_action_space
+        self.input_observation_space = input_observation_space
 
     @OverrideToImplementCustomLogic
     def recompute_observation_space_from_input_spaces(self) -> gym.Space:
