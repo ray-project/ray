@@ -402,9 +402,8 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
             random_sum = self.rng.random() * self._sum_segment.sum()
             # Get the highest index in the sum-tree for which the sum is
             # smaller or equal the random sum sample.
-            # Note, we sample `o_(t + n_step)` as this is the state that
-            # brought the information contained in the TD-error (see Schaul
-            # et al. (2018), Algorithm 1).
+            # Note, in contrast to Schaul et al. (2018) (who sample `o_(t + n_step)`,
+            # Algorithm 1) we sample `o_t`.
             idx = self._sum_segment.find_prefixsum_idx(random_sum)
             # Get the theoretical probability mass for drawing this sample.
             p_sample = self._sum_segment[idx] / total_segment_sum

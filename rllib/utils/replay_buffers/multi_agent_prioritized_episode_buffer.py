@@ -800,9 +800,8 @@ class MultiAgentPrioritizedEpisodeReplayBuffer(
                 )
                 # Get the highest index in the sum-tree for which the sum is
                 # smaller or equal the random sum sample.
-                # Note, we sample `o_(t + n_step)` as this is the state that
-                # brought the information contained in the TD-error (see Schaul
-                # et al. (2018), Algorithm 1).
+                # Note, in contrast to Schaul et al. (2018) (who sample
+                # `o_(t + n_step)`, Algorithm 1) we sample `o_t`.
                 module_idx = self._module_to_sum_segment[module_id].find_prefixsum_idx(
                     module_random_sum
                 )
