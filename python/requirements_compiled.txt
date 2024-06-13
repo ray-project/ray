@@ -75,10 +75,10 @@ aiosqlite==0.19.0
     # via ypy-websocket
 alabaster==0.7.13
     # via sphinx
-ale-py==0.8.1
+ale-py==0.9.0
     # via
     #   -r /ray/ci/../python/requirements/ml/rllib-test-requirements.txt
-    #   gym
+    #   gymnasium
 alembic==1.12.1
     # via
     #   aim
@@ -274,8 +274,6 @@ charset-normalizer==3.3.2
     # via
     #   aiohttp
     #   requests
-chess==1.7.0
-    # via -r /ray/ci/../python/requirements/ml/rllib-test-requirements.txt
 chex==0.1.7
     # via optax
 clang-format==12.0.1
@@ -306,7 +304,6 @@ cloudpickle==2.2.0
     #   -r /ray/ci/../python/requirements/test-requirements.txt
     #   dask
     #   distributed
-    #   gym
     #   gymnasium
     #   hyperopt
     #   mlagents-envs
@@ -701,13 +698,7 @@ gsutil==5.27
     # via -r /ray/ci/../python/requirements/docker/ray-docker-requirements.txt
 gunicorn==20.1.0
     # via mlflow
-gym==0.26.2
-    # via
-    #   dopamine-rl
-    #   recsim
-gym-notices==0.0.8
-    # via gym
-gymnasium==0.28.1
+gymnasium==1.0.0a2
     # via
     #   -r /ray/ci/../python/requirements.txt
     #   -r /ray/ci/../python/requirements/ml/rllib-test-requirements.txt
@@ -1256,7 +1247,6 @@ numpy==1.24.4
     #   flax
     #   gpy
     #   gradio
-    #   gym
     #   gymnasium
     #   h5py
     #   hebo
@@ -1302,7 +1292,6 @@ numpy==1.24.4
     #   pytorch-lightning
     #   pywavelets
     #   raydp
-    #   recsim
     #   scikit-image
     #   scikit-learn
     #   scipy
@@ -1501,7 +1490,7 @@ pbr==6.0.0
     #   sarif-om
 peewee==3.17.0
     # via semgrep
-pettingzoo==1.23.1
+pettingzoo==1.24.3
     # via -r /ray/ci/../python/requirements/ml/rllib-test-requirements.txt
 pexpect==4.8.0
     # via
@@ -1871,8 +1860,6 @@ querystring-parser==1.2.4
     #   tune-sklearn
 raydp==1.7.0b20231020.dev0
     # via -r /ray/ci/../python/requirements/ml/data-test-requirements.txt
-recsim==0.2.4 ; sys_platform != "darwin" or platform_machine != "arm64"
-    # via -r /ray/ci/../python/requirements/ml/rllib-test-requirements.txt
 redis==4.4.2
     # via -r /ray/ci/../python/requirements/test-requirements.txt
 regex==2023.10.3
@@ -2177,7 +2164,7 @@ statsmodels==0.14.0
     # via
     #   hpbandster
     #   statsforecast
-supersuit==3.8.0
+supersuit==3.9.0
     # via -r /ray/ci/../python/requirements/ml/rllib-test-requirements.txt
 sympy==1.12
     # via

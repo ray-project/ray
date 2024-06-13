@@ -12,6 +12,7 @@ from functools import partial
 from typing import List, Tuple
 
 import gymnasium as gym
+from gymnasium.wrappers.vector import DictInfoToList
 import numpy as np
 import tree  # pip install dm_tree
 
@@ -73,7 +74,7 @@ class DreamerV3EnvRunner(EnvRunner):
 
         # Create the gym.vector.Env object.
         # Atari env.
-        if self.config.env.startswith("ALE/"):
+        if "ALE/" in self.config.env:
             # TODO (sven): This import currently causes a Tune test to fail. Either way,
             #  we need to figure out how to properly setup the CI environment with
             #  the correct versions of all gymnasium-related packages.
@@ -160,11 +161,15 @@ class DreamerV3EnvRunner(EnvRunner):
                     env_descriptor=self.config.env,
                 ),
             )
-            # Create the vectorized gymnasium env.
-            self.env = gym.vector.make(
-                "dreamerv3-custom-env-v0",
-                num_envs=self.config.num_envs_per_env_runner,
-                asynchronous=False,  # self.config.remote_worker_envs,
+            # Wrap into `DictInfoToList` wrapper to get infos as lists.
+            self.env = DictInfoToList(
+                gym.make_vec(
+                    "dreamerv3-custom-env-v0",
+                    num_envs=self.config.num_envs_per_env_runner,
+                    vectorization_mode=(
+                        "async" if self.config.remote_worker_envs else "sync"
+                    ),
+                )
             )
         self.num_envs = self.env.num_envs
         assert self.num_envs == self.config.num_envs_per_env_runner

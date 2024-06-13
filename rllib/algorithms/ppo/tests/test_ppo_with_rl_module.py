@@ -99,7 +99,7 @@ class TestPPO(unittest.TestCase):
 
         for fw in framework_iterator(config, frameworks=("tf2", "torch")):
             # TODO (Kourosh) Bring back "FrozenLake-v1"
-            for env in ["CartPole-v1", "Pendulum-v1", "ALE/Breakout-v5"]:
+            for env in ["CartPole-v1", "Pendulum-v1", "ale_py:ALE/Breakout-v5"]:
                 print("Env={}".format(env))
                 for lstm in [False]:
                     print("LSTM={}".format(lstm))
