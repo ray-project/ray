@@ -8,7 +8,7 @@ from typing import Any, Dict, List, Optional, Set, Tuple, Union
 from ray.rllib.core.columns import Columns
 from ray.rllib.env.multi_agent_episode import MultiAgentEpisode
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode
-from ray.rllib.utils.replay_buffers import EpisodeReplayBuffer
+from ray.rllib.utils.replay_buffers.episode_replay_buffer import EpisodeReplayBuffer
 from ray.rllib.utils import force_list
 from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.utils.spaces.space_utils import batch
