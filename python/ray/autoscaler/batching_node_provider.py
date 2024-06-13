@@ -243,16 +243,17 @@ class BatchingNodeProvider(NodeProvider):
                 f"{node_type}. Skipping termination request."
             )
 
-        # Scale down entire replica if part of a TPU podslice being deleted
+        # Terminate node
+        self.scale_request.desired_num_workers[node_type] -= 1
+        self.scale_request.workers_to_delete.add(node_id)
+
+        # Scale down all nodes in replica if node_id is part of a multi-host podslice
         node_replica_index = self.node_data_dict[node_id].replica_index
         if node_replica_index is not None:
-            for worker in self.replicas_to_nodes[node_replica_index]:
-                # Check if node has already been scheduled to delete
-                if node_id not in self.scale_request.workers_to_delete:
+            for worker_id in self.replicas_to_nodes[node_replica_index]:
+                # Check if worker has already been scheduled to delete
+                if worker_id not in self.scale_request.workers_to_delete:
                     # Assume all workers in a group are of the same type
                     self.scale_request.desired_num_workers[node_type] -= 1
-                    self.scale_request.workers_to_delete.add(node_id)
-        else:
-            self.scale_request.desired_num_workers[node_type] -= 1
-            self.scale_request.workers_to_delete.add(node_id)
+                    self.scale_request.workers_to_delete.add(worker_id)
         self.scale_change_needed = True
