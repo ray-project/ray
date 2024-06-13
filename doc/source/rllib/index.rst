@@ -139,7 +139,6 @@ click the dropdowns below:
        -  |single_agent| |multi_agent| |old_stack| :ref:`APPO (Asynchronous Proximal Policy Optimization) <appo>`
 
     *  Model-based RL
-
        -  |single_agent| |new_stack| :ref:`DreamerV3 <dreamerv3>`
 
     *  Offline RL and Imitation Learning
