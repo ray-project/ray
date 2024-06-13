@@ -1,5 +1,6 @@
+# @OldAPIStack
 """
-Example script on how to train, save, load, and test a stable baselines 2 agent.
+Example script that trains, saves, loads, and tests a stable baselines 2 agent.
 Code taken and adjusted from SB2 docs:
 https://stable-baselines.readthedocs.io/en/master/guide/quickstart.html
 Equivalent script with RLlib: sb2rllib_rllib_example.py

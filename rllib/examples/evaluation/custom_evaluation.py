@@ -85,7 +85,6 @@ from ray.tune.registry import get_trainable_cls
 parser = add_rllib_example_script_args(
     default_iters=50, default_reward=0.7, default_timesteps=50000
 )
-parser.add_argument("--evaluation-parallel-to-training", action="store_true")
 parser.add_argument("--no-custom-eval", action="store_true")
 parser.add_argument("--corridor-length-training", type=int, default=10)
 parser.add_argument("--corridor-length-eval-worker-1", type=int, default=20)

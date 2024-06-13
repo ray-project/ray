@@ -463,13 +463,13 @@ class PPO(Algorithm):
             self.metrics.log_dict(
                 {
                     NUM_AGENT_STEPS_SAMPLED_LIFETIME: self.metrics.peek(
-                        ENV_RUNNER_RESULTS, NUM_AGENT_STEPS_SAMPLED
+                        (ENV_RUNNER_RESULTS, NUM_AGENT_STEPS_SAMPLED)
                     ),
                     NUM_ENV_STEPS_SAMPLED_LIFETIME: self.metrics.peek(
-                        ENV_RUNNER_RESULTS, NUM_ENV_STEPS_SAMPLED
+                        (ENV_RUNNER_RESULTS, NUM_ENV_STEPS_SAMPLED)
                     ),
                     NUM_EPISODES_LIFETIME: self.metrics.peek(
-                        ENV_RUNNER_RESULTS, NUM_EPISODES
+                        (ENV_RUNNER_RESULTS, NUM_EPISODES)
                     ),
                 },
                 reduce="sum",
@@ -494,10 +494,10 @@ class PPO(Algorithm):
             self.metrics.log_dict(
                 {
                     NUM_ENV_STEPS_TRAINED_LIFETIME: self.metrics.peek(
-                        LEARNER_RESULTS, ALL_MODULES, NUM_ENV_STEPS_TRAINED
+                        (LEARNER_RESULTS, ALL_MODULES, NUM_ENV_STEPS_TRAINED)
                     ),
                     # NUM_MODULE_STEPS_TRAINED_LIFETIME: self.metrics.peek(
-                    #    LEARNER_RESULTS, NUM_MODULE_STEPS_TRAINED
+                    #    (LEARNER_RESULTS, NUM_MODULE_STEPS_TRAINED)
                     # ),
                 },
                 reduce="sum",
@@ -531,7 +531,9 @@ class PPO(Algorithm):
             if self.config.use_kl_loss:
                 for mid in modules_to_update:
                     kl = convert_to_numpy(
-                        self.metrics.peek(LEARNER_RESULTS, mid, LEARNER_RESULTS_KL_KEY)
+                        self.metrics.peek(
+                            (LEARNER_RESULTS, mid, LEARNER_RESULTS_KL_KEY)
+                        )
                     )
                     if np.isnan(kl):
                         logger.warning(

@@ -630,22 +630,27 @@ class DQN(Algorithm):
             )
 
         self.metrics.log_dict(
-            self.metrics.peek(ENV_RUNNER_RESULTS, NUM_AGENT_STEPS_SAMPLED, default={}),
+            self.metrics.peek(
+                (ENV_RUNNER_RESULTS, NUM_AGENT_STEPS_SAMPLED), default={}
+            ),
             key=NUM_AGENT_STEPS_SAMPLED_LIFETIME,
             reduce="sum",
         )
         self.metrics.log_value(
             NUM_ENV_STEPS_SAMPLED_LIFETIME,
-            self.metrics.peek(ENV_RUNNER_RESULTS, NUM_ENV_STEPS_SAMPLED, default=0),
+            self.metrics.peek((ENV_RUNNER_RESULTS, NUM_ENV_STEPS_SAMPLED), default=0),
             reduce="sum",
         )
         self.metrics.log_value(
             NUM_EPISODES_LIFETIME,
-            self.metrics.peek(ENV_RUNNER_RESULTS, NUM_EPISODES, default=0),
+            self.metrics.peek((ENV_RUNNER_RESULTS, NUM_EPISODES), default=0),
             reduce="sum",
         )
         self.metrics.log_dict(
-            self.metrics.peek(ENV_RUNNER_RESULTS, NUM_MODULE_STEPS_SAMPLED, default={}),
+            self.metrics.peek(
+                (ENV_RUNNER_RESULTS, NUM_MODULE_STEPS_SAMPLED),
+                default={},
+            ),
             key=NUM_MODULE_STEPS_SAMPLED_LIFETIME,
             reduce="sum",
         )
@@ -708,7 +713,7 @@ class DQN(Algorithm):
                     self.metrics.log_value(
                         NUM_ENV_STEPS_TRAINED_LIFETIME,
                         self.metrics.peek(
-                            LEARNER_RESULTS, ALL_MODULES, NUM_ENV_STEPS_TRAINED
+                            (LEARNER_RESULTS, ALL_MODULES, NUM_ENV_STEPS_TRAINED)
                         ),
                         reduce="sum",
                     )
@@ -725,7 +730,7 @@ class DQN(Algorithm):
                     # TODO (sven): Uncomment this once agent steps are available in the
                     #  Learner stats.
                     # self.metrics.log_dict(self.metrics.peek(
-                    #   LEARNER_RESULTS, NUM_AGENT_STEPS_TRAINED, default={}
+                    #   (LEARNER_RESULTS, NUM_AGENT_STEPS_TRAINED), default={}
                     # ), key=NUM_AGENT_STEPS_TRAINED_LIFETIME, reduce="sum")
 
                 # Update replay buffer priorities.

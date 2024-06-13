@@ -737,6 +737,19 @@ Status NodeResourceInfoAccessor::AsyncGetAllAvailableResources(
   return Status::OK();
 }
 
+Status NodeResourceInfoAccessor::AsyncGetAllTotalResources(
+    const MultiItemCallback<rpc::TotalResources> &callback) {
+  rpc::GetAllTotalResourcesRequest request;
+  client_impl_->GetGcsRpcClient().GetAllTotalResources(
+      request,
+      [callback](const Status &status, const rpc::GetAllTotalResourcesReply &reply) {
+        callback(status, VectorFromProtobuf(reply.resources_list()));
+        RAY_LOG(DEBUG) << "Finished getting total resources of all nodes, status = "
+                       << status;
+      });
+  return Status::OK();
+}
+
 Status NodeResourceInfoAccessor::AsyncGetDrainingNodes(
     const ItemCallback<std::unordered_map<NodeID, int64_t>> &callback) {
   rpc::GetDrainingNodesRequest request;
@@ -1151,6 +1164,7 @@ Status InternalKVAccessor::AsyncInternalKVDel(const std::string &ns,
   rpc::InternalKVDelRequest req;
   req.set_namespace_(ns);
   req.set_key(key);
+  req.set_del_by_prefix(del_by_prefix);
   client_impl_->GetGcsRpcClient().InternalKVDel(
       req,
       [callback](const Status &status, const rpc::InternalKVDelReply &reply) {

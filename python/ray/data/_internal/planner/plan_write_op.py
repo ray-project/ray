@@ -1,4 +1,4 @@
-from typing import Callable, Iterator, Union
+from typing import Callable, Iterator, List, Union
 
 from ray.data._internal.compute import TaskPoolStrategy
 from ray.data._internal.execution.interfaces import PhysicalOperator
@@ -39,7 +39,12 @@ def generate_write_fn(
     return fn
 
 
-def plan_write_op(op: Write, input_physical_dag: PhysicalOperator) -> PhysicalOperator:
+def plan_write_op(
+    op: Write, physical_children: List[PhysicalOperator]
+) -> PhysicalOperator:
+    assert len(physical_children) == 1
+    input_physical_dag = physical_children[0]
+
     write_fn = generate_write_fn(op._datasink_or_legacy_datasource, **op._write_args)
     # Create a MapTransformer for a write operator
     transform_fns = [

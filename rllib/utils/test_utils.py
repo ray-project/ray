@@ -135,6 +135,48 @@ def add_rllib_example_script_args(
         "experiment is then the sum over all individual agents' rewards.",
     )
 
+    # Evaluation options.
+    parser.add_argument(
+        "--evaluation-num-env-runners",
+        type=int,
+        default=0,
+        help="The number of evaluation (remote) EnvRunners to use for the experiment.",
+    )
+    parser.add_argument(
+        "--evaluation-interval",
+        type=int,
+        default=0,
+        help="Every how many iterations to run one round of evaluation. "
+        "Use 0 (default) to disable evaluation.",
+    )
+    parser.add_argument(
+        "--evaluation-duration",
+        type=lambda v: v if v == "auto" else int(v),
+        default=10,
+        help="The number of evaluation units to run each evaluation round. "
+        "Use `--evaluation-duration-unit` to count either in 'episodes' "
+        "or 'timesteps'. If 'auto', will run as many as possible during train pass ("
+        "`--evaluation-parallel-to-training` must be set then).",
+    )
+    parser.add_argument(
+        "--evaluation-duration-unit",
+        type=str,
+        default="episodes",
+        choices=["episodes", "timesteps"],
+        help="The evaluation duration unit to count by. One of 'episodes' or "
+        "'timesteps'. This unit will be run `--evaluation-duration` times in each "
+        "evaluation round. If `--evaluation-duration=auto`, this setting does not "
+        "matter.",
+    )
+    parser.add_argument(
+        "--evaluation-parallel-to-training",
+        action="store_true",
+        help="Whether to run evaluation parallel to training. This might help speed up "
+        "your overall iteration time. Be aware that when using this option, your "
+        "reported evaluation results are referring to one iteration before the current "
+        "one.",
+    )
+
     # tune.Tuner options.
     parser.add_argument(
         "--no-tune",
@@ -1366,7 +1408,7 @@ def run_rllib_example_script_experiment(
         trainable: The Trainable sub-class to run in the tune.Tuner. If None (default),
             use the registered RLlib Algorithm class specified by args.algo.
         tune_callbacks: A list of Tune callbacks to configure with the tune.Tuner.
-            In case `args.wandb_key` is provided, will append a WandB logger to this
+            In case `args.wandb_key` is provided, appends a WandB logger to this
             list.
         keep_config: Set this to True, if you don't want this utility to change the
             given `base_config` in any way and leave it as-is. This is helpful
@@ -1423,6 +1465,7 @@ def run_rllib_example_script_experiment(
         # New stack.
         if config.enable_rl_module_and_learner:
             # Define compute resources used.
+            config.resources(num_gpus=0)
             config.learners(
                 num_learners=args.num_gpus,
                 num_gpus_per_learner=1 if torch.cuda.is_available() else 0,
@@ -1434,13 +1477,27 @@ def run_rllib_example_script_experiment(
                 num_cpus_for_main_process=1,
             )
 
+        # Evaluation setup.
+        if args.evaluation_interval > 0:
+            config.evaluation(
+                evaluation_num_env_runners=args.evaluation_num_env_runners,
+                evaluation_interval=args.evaluation_interval,
+                evaluation_duration=args.evaluation_duration,
+                evaluation_duration_unit=args.evaluation_duration_unit,
+                evaluation_parallel_to_training=args.evaluation_parallel_to_training,
+            )
+
     # Run the experiment w/o Tune (directly operate on the RLlib Algorithm object).
     if args.no_tune:
         assert not args.as_test and not args.as_release_test
         algo = config.build()
-        for _ in range(stop.get(TRAINING_ITERATION, args.stop_iters)):
+        for i in range(stop.get(TRAINING_ITERATION, args.stop_iters)):
             results = algo.train()
-            print(f"R={results[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN]}", end="")
+            if ENV_RUNNER_RESULTS in results:
+                print(
+                    f"iter={i} R={results[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN]}",
+                    end="",
+                )
             if EVALUATION_RESULTS in results:
                 Reval = results[EVALUATION_RESULTS][ENV_RUNNER_RESULTS][
                     EPISODE_RETURN_MEAN
@@ -1570,7 +1627,17 @@ def run_rllib_example_script_experiment(
                 os.environ.get("TEST_OUTPUT_JSON", "/tmp/learning_test.json"),
                 "wt",
             ) as f:
-                json.dump(json_summary, f)
+                try:
+                    json.dump(json_summary, f)
+                # Something went wrong writing json. Try again w/ simplified stats.
+                except Exception:
+                    from ray.rllib.algorithms.algorithm import Algorithm
+
+                    simplified_stats = {
+                        k: stats[k] for k in Algorithm._progress_metrics if k in stats
+                    }
+                    json_summary["stats"] = simplified_stats
+                    json.dump(json_summary, f)
 
         if not test_passed:
             raise ValueError(

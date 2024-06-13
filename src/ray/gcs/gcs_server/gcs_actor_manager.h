@@ -291,7 +291,7 @@ class GcsActorManager : public rpc::ActorInfoHandler {
       std::shared_ptr<GcsPublisher> gcs_publisher,
       RuntimeEnvManager &runtime_env_manager,
       GcsFunctionManager &function_manager,
-      std::function<void(const ActorID &)> destroy_ownded_placement_group_if_needed,
+      std::function<void(const ActorID &)> destroy_owned_placement_group_if_needed,
       const rpc::ClientFactoryFn &worker_client_factory = nullptr);
 
   ~GcsActorManager() = default;

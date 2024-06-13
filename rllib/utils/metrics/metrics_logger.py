@@ -102,7 +102,7 @@ class MetricsLogger:
 
             # Log a value under a deeper nested key.
             logger.log_value(("some", "nested", "key"), -1.0)
-            check(logger.peek("some", "nested", "key"), -1.0)
+            check(logger.peek(("some", "nested", "key")), -1.0)
 
             # Log n values without reducing them (we want to just collect some items).
             logger.log_value("some_items", 5.0, reduce=None)
@@ -169,12 +169,16 @@ class MetricsLogger:
         if not self._key_in_stats(key):
             self._set_key(
                 key,
-                Stats(
-                    value,
-                    reduce=reduce,
-                    window=window,
-                    ema_coeff=ema_coeff,
-                    clear_on_reduce=clear_on_reduce,
+                (
+                    Stats.similar_to(value, init_value=value.values)
+                    if isinstance(value, Stats)
+                    else Stats(
+                        value,
+                        reduce=reduce,
+                        window=window,
+                        ema_coeff=ema_coeff,
+                        clear_on_reduce=clear_on_reduce,
+                    )
                 ),
             )
         # If value itself is a stat, we merge it on time axis into `self`.
@@ -229,7 +233,7 @@ class MetricsLogger:
             # Peek at the current (reduced) values under "a" and "b".
             check(logger.peek("a"), 0.15)
             check(logger.peek("b"), -0.15)
-            check(logger.peek("c", "d"), 5.0)
+            check(logger.peek(("c", "d")), 5.0)
 
             # Reduced all stats.
             results = logger.reduce(return_stats_obj=False)
@@ -320,7 +324,7 @@ class MetricsLogger:
                 [learner1_results, learner2_results],
                 key="learners",
             )
-            check(main_logger.peek("learners", "loss"), 0.15)
+            check(main_logger.peek(("learners", "loss")), 0.15)
 
             # Example: m EnvRunners logging episode returns to be merged.
             main_logger = MetricsLogger()
@@ -358,7 +362,7 @@ class MetricsLogger:
                 main_logger.stats["env_runners"]["mean_ret"].values,
                 [325, 325, 425, 425],
             )
-            check(main_logger.peek("env_runners", "mean_ret"), (325 + 425 + 425) / 3)
+            check(main_logger.peek(("env_runners", "mean_ret")), (325 + 425 + 425) / 3)
 
             # Example: Lifetime sum over n parallel components' stats.
             main_logger = MetricsLogger()
@@ -604,7 +608,12 @@ class MetricsLogger:
     def tensor_mode(self):
         return self._tensor_mode
 
-    def peek(self, *key, default: Optional[Any] = None) -> Any:
+    def peek(
+        self,
+        key: Union[str, Tuple[str]],
+        *,
+        default: Optional[Any] = None,
+    ) -> Any:
         """Returns the (reduced) value(s) found under the given key or key sequence.
 
         If `key` only reaches to a nested dict deeper in `self`, that
@@ -635,7 +644,7 @@ class MetricsLogger:
 
             # Peek at the (reduced) nested struct under ("some", "nested").
             check(
-                logger.peek("some", "nested"),  # <- *args work as well
+                logger.peek(("some", "nested")),
                 {"key": {"sequence": expected_reduced}},
             )
 
