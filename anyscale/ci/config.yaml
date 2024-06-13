@@ -21,6 +21,7 @@ runner_queues:
   macos: "~"
   macos-arm64: "~"
   release: "~"  # TODO(can-anyscale): maybe also enable release tests on postmerge?
+  release-medium: "~"
 buildkite_dirs:
   - .buildkite
   - anyscale/ci/buildkite
