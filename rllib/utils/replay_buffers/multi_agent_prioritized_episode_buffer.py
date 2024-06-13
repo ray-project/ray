@@ -629,7 +629,7 @@ class MultiAgentPrioritizedEpisodeReplayBuffer(
         self,
         ma_episode: MultiAgentEpisode,
         ma_episode_idx: int,
-        exists: bool = True,
+        ma_episode_exists: bool = True,
         weight: Optional[Union[float, Dict[ModuleID, float]]] = None,
     ) -> None:
         """Adds the module indices for new episode chunks.
@@ -638,25 +638,26 @@ class MultiAgentPrioritizedEpisodeReplayBuffer(
             multi_agent_episode: The multi-agent episode to add the module indices for.
             episode_idx: The index of the episode in the `self.episodes`.
         """
+        existing_ma_episode = None
+        if ma_episode_exists:
+            existing_ma_episode = self.episodes[
+                self.episode_id_to_index[ma_episode.id_] - self._num_episodes_evicted
+            ]
 
         for agent_id in ma_episode.agent_ids:
             # Get the corresponding module id.
             module_id = ma_episode.module_for(agent_id)
             # Get the module episode.
             module_eps = ma_episode.agent_episodes[agent_id]
-            # Check if the module episode is already in the buffer.
-            if exists:
-                old_ma_episode = self.episodes[
-                    ma_episode_idx - self._num_episodes_evicted
-                ]
-                # Is the agent episode already in the buffer?
-                # Note, at this point we have not yet concatenated the new
-                # multi-agent episode.
-                existing_eps_len = len(old_ma_episode.agent_episodes[agent_id])
+
+            # Is the agent episode already in the buffer's existing `ma_episode`?
+            if ma_episode_exists and agent_id in existing_ma_episode.agent_episodes:
+                existing_sa_eps_len = len(existing_ma_episode.agent_episodes[agent_id])
+            # Otherwise, it is a new single-agent episode and we increase the counter.
             else:
-                # This agent episode is new. The agent might have just entered
-                # the environment.
-                existing_eps_len = 0
+                existing_sa_eps_len = 0
+                self._num_module_episodes[module_id] += 1
+
             # Add new module indices.
             module_weight = weight.get(
                 module_id, self._module_to_max_priority[module_id]
@@ -668,7 +669,7 @@ class MultiAgentPrioritizedEpisodeReplayBuffer(
                         # Keep the MAE index for sampling.
                         ma_episode_idx,
                         agent_id,
-                        existing_eps_len + i,
+                        existing_sa_eps_len + i,
                         # Get the index in the segment trees.
                         self._get_free_node_per_module_and_assign(
                             module_id,

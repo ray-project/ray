@@ -927,7 +927,7 @@ class MultiAgentEpisodeReplayBuffer(EpisodeReplayBuffer):
 
         # Note we need to take the agent ids from the evicted episode because
         # different episodes can have different agents and module mappings.
-        for agent_id in ma_episode.agent_ids:
+        for agent_id in ma_episode.agent_episodes:
             # Retrieve the corresponding module ID and module episode.
             module_id = ma_episode._agent_to_module_mapping[agent_id]
             module_eps = ma_episode.agent_episodes[agent_id]
@@ -951,11 +951,11 @@ class MultiAgentEpisodeReplayBuffer(EpisodeReplayBuffer):
                 module_id = ma_episode.module_for(agent_id)
                 self._num_module_timesteps[module_id] += agent_steps
                 self._num_module_timesteps_added[module_id] += agent_steps
-                if ma_episode.agent_episodes[agent_id].is_done:
-                    # TODO (simon): Check, if we do not count the same episode
-                    # multiple times.
-                    # Also add to the module episode counter.
-                    self._num_module_episodes[module_id] += 1
+                # if ma_episode.agent_episodes[agent_id].is_done:
+                #     # TODO (simon): Check, if we do not count the same episode
+                #     # multiple times.
+                #     # Also add to the module episode counter.
+                #     self._num_module_episodes[module_id] += 1
 
     def _add_new_module_indices(
         self,
@@ -977,9 +977,9 @@ class MultiAgentEpisodeReplayBuffer(EpisodeReplayBuffer):
                 self.episode_id_to_index[ma_episode.id_] - self._num_episodes_evicted
             ]
 
-        for agent_id in ma_episode.agent_ids:
-            existing_sa_eps_len = 0
-
+        # Note, we iterate through the agent episodes b/c we want to store records
+        # and some agents could not have entered the environment.
+        for agent_id in ma_episode.agent_episodes:
             # Get the corresponding module id.
             module_id = ma_episode.module_for(agent_id)
             # Get the module episode.
@@ -988,6 +988,10 @@ class MultiAgentEpisodeReplayBuffer(EpisodeReplayBuffer):
             # Is the agent episode already in the buffer's existing `ma_episode`?
             if ma_episode_exists and agent_id in existing_ma_episode.agent_episodes:
                 existing_sa_eps_len = len(existing_ma_episode.agent_episodes[agent_id])
+            # Otherwise, it is a new single-agent episode and we increase the counter.
+            else:
+                existing_sa_eps_len = 0
+                self._num_module_episodes[module_id] += 1
 
             # Add new module indices.
             self._module_to_indices[module_id].extend(

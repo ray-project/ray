@@ -2,7 +2,7 @@ import numpy as np
 import unittest
 
 from ray.rllib.env.multi_agent_episode import MultiAgentEpisode
-from ray.rllib.utils.replay_buffers.multi_agent_episode_replay_buffer import (
+from ray.rllib.utils.replay_buffers.multi_agent_episode_buffer import (
     MultiAgentEpisodeReplayBuffer,
 )
 from ray.rllib.utils.test_utils import check
@@ -31,115 +31,115 @@ class TestMultiAgentEpisodeReplayBuffer(unittest.TestCase):
         eps.is_truncated = False if eps.is_terminated else np.random.random() > 0.8
         return eps
 
-    # def test_add_and_eviction_logic(self):
-    #     """Tests episodes getting properly added to buffer and cause proper
-    # eviction."""
+    def test_add_and_eviction_logic(self):
+        """Tests episodes getting properly added to buffer and cause proper
+        eviction."""
 
-    #     # Fill a buffer till capacity (100 ts).
-    #     buffer = MultiAgentEpisodeReplayBuffer(capacity=100)
+        # Fill a buffer till capacity (100 ts).
+        buffer = MultiAgentEpisodeReplayBuffer(capacity=100)
 
-    #     episode = self._get_episode(id_="A", episode_len=50)
-    #     buffer.add(episode)
-    #     self.assertTrue(buffer.get_num_episodes() == 1)
-    #     self.assertTrue(buffer.get_num_timesteps() == 50)
-    #     self.assertTrue(buffer.get_num_agent_timesteps() == 2 * 50)
-    #     self.assertTrue(buffer.get_added_agent_timesteps() == 2 * 50)
-    #     for module_id in buffer.get_module_ids():
-    #         self.assertTrue(buffer.get_num_episodes(module_id) == 1)
-    #         self.assertTrue(buffer.get_num_timesteps(module_id) == 50)
-    #         self.assertTrue(buffer.get_added_timesteps(module_id) == 50)
+        episode = self._get_episode(id_="A", episode_len=50)
+        buffer.add(episode)
+        self.assertTrue(buffer.get_num_episodes() == 1)
+        self.assertTrue(buffer.get_num_timesteps() == 50)
+        self.assertTrue(buffer.get_num_agent_timesteps() == 2 * 50)
+        self.assertTrue(buffer.get_added_agent_timesteps() == 2 * 50)
+        for module_id in buffer.get_module_ids():
+            self.assertTrue(buffer.get_num_episodes(module_id) == 1)
+            self.assertTrue(buffer.get_num_timesteps(module_id) == 50)
+            self.assertTrue(buffer.get_added_timesteps(module_id) == 50)
 
-    #     episode = self._get_episode(id_="B", episode_len=25)
-    #     buffer.add(episode)
-    #     self.assertTrue(buffer.get_num_episodes() == 2)
-    #     self.assertTrue(buffer.get_num_timesteps() == 75)
-    #     self.assertTrue(buffer.get_num_agent_timesteps() == 2 * 75)
-    #     self.assertTrue(buffer.get_added_agent_timesteps() == 2 * 75)
-    #     for module_id in buffer.get_module_ids():
-    #         self.assertTrue(buffer.get_num_episodes(module_id) == 2)
-    #         self.assertTrue(buffer.get_num_timesteps(module_id) == 75)
-    #         self.assertTrue(buffer.get_added_timesteps(module_id) == 75)
+        episode = self._get_episode(id_="B", episode_len=25)
+        buffer.add(episode)
+        self.assertTrue(buffer.get_num_episodes() == 2)
+        self.assertTrue(buffer.get_num_timesteps() == 75)
+        self.assertTrue(buffer.get_num_agent_timesteps() == 2 * 75)
+        self.assertTrue(buffer.get_added_agent_timesteps() == 2 * 75)
+        for module_id in buffer.get_module_ids():
+            self.assertTrue(buffer.get_num_episodes(module_id) == 2)
+            self.assertTrue(buffer.get_num_timesteps(module_id) == 75)
+            self.assertTrue(buffer.get_added_timesteps(module_id) == 75)
 
-    #     # No eviction yet (but we are full).
-    #     episode = self._get_episode(id_="C", episode_len=25)
-    #     buffer.add(episode)
-    #     self.assertTrue(buffer.get_num_episodes() == 3)
-    #     self.assertTrue(buffer.get_num_timesteps() == 100)
-    #     self.assertTrue(buffer.get_num_agent_timesteps() == 2 * 100)
-    #     self.assertTrue(buffer.get_added_agent_timesteps() == 2 * 100)
-    #     for module_id in buffer.get_module_ids():
-    #         self.assertTrue(buffer.get_num_episodes(module_id) == 3)
-    #         self.assertTrue(buffer.get_num_timesteps(module_id) == 100)
-    #         self.assertTrue(buffer.get_added_timesteps(module_id) == 100)
+        # No eviction yet (but we are full).
+        episode = self._get_episode(id_="C", episode_len=25)
+        buffer.add(episode)
+        self.assertTrue(buffer.get_num_episodes() == 3)
+        self.assertTrue(buffer.get_num_timesteps() == 100)
+        self.assertTrue(buffer.get_num_agent_timesteps() == 2 * 100)
+        self.assertTrue(buffer.get_added_agent_timesteps() == 2 * 100)
+        for module_id in buffer.get_module_ids():
+            self.assertTrue(buffer.get_num_episodes(module_id) == 3)
+            self.assertTrue(buffer.get_num_timesteps(module_id) == 100)
+            self.assertTrue(buffer.get_added_timesteps(module_id) == 100)
 
-    #     # Trigger eviction of first episode by adding a single timestep episode.
-    #     episode = self._get_episode(id_="D", episode_len=1)
-    #     buffer.add(episode)
+        # Trigger eviction of first episode by adding a single timestep episode.
+        episode = self._get_episode(id_="D", episode_len=1)
+        buffer.add(episode)
 
-    #     self.assertTrue(buffer.get_num_episodes() == 3)
-    #     self.assertTrue(buffer.get_num_timesteps() == 51)
-    #     self.assertTrue(buffer.get_num_agent_timesteps() == 2 * 51)
-    #     self.assertTrue(buffer.get_added_agent_timesteps() == 2 * 101)
-    #     self.assertTrue({eps.id_ for eps in buffer.episodes} == {"B", "C", "D"})
-    #     for module_id in buffer.get_module_ids():
-    #         self.assertTrue(buffer.get_num_episodes(module_id) == 3)
-    #         self.assertTrue(buffer.get_num_timesteps(module_id) == 51)
-    #         self.assertTrue(buffer.get_added_timesteps(module_id) == 101)
+        self.assertTrue(buffer.get_num_episodes() == 3)
+        self.assertTrue(buffer.get_num_timesteps() == 51)
+        self.assertTrue(buffer.get_num_agent_timesteps() == 2 * 51)
+        self.assertTrue(buffer.get_added_agent_timesteps() == 2 * 101)
+        self.assertTrue({eps.id_ for eps in buffer.episodes} == {"B", "C", "D"})
+        for module_id in buffer.get_module_ids():
+            self.assertTrue(buffer.get_num_episodes(module_id) == 3)
+            self.assertTrue(buffer.get_num_timesteps(module_id) == 51)
+            self.assertTrue(buffer.get_added_timesteps(module_id) == 101)
 
-    #     # Add another big episode and trigger another eviction.
-    #     episode = self._get_episode(id_="E", episode_len=200)
-    #     buffer.add(episode)
-    #     self.assertTrue(buffer.get_num_episodes() == 1)
-    #     self.assertTrue(buffer.get_num_timesteps() == 200)
-    #     self.assertTrue(buffer.get_num_agent_timesteps() == 2 * 200)
-    #     self.assertTrue(buffer.get_added_agent_timesteps() == 2 * 301)
-    #     self.assertTrue({eps.id_ for eps in buffer.episodes} == {"E"})
-    #     for module_id in buffer.get_module_ids():
-    #         self.assertTrue(buffer.get_num_episodes(module_id) == 1)
-    #         self.assertTrue(buffer.get_num_timesteps(module_id) == 200)
-    #         self.assertTrue(buffer.get_added_timesteps(module_id) == 301)
+        # Add another big episode and trigger another eviction.
+        episode = self._get_episode(id_="E", episode_len=200)
+        buffer.add(episode)
+        self.assertTrue(buffer.get_num_episodes() == 1)
+        self.assertTrue(buffer.get_num_timesteps() == 200)
+        self.assertTrue(buffer.get_num_agent_timesteps() == 2 * 200)
+        self.assertTrue(buffer.get_added_agent_timesteps() == 2 * 301)
+        self.assertTrue({eps.id_ for eps in buffer.episodes} == {"E"})
+        for module_id in buffer.get_module_ids():
+            self.assertTrue(buffer.get_num_episodes(module_id) == 1)
+            self.assertTrue(buffer.get_num_timesteps(module_id) == 200)
+            self.assertTrue(buffer.get_added_timesteps(module_id) == 301)
 
-    #     # Add another small episode and trigger another eviction.
-    #     episode = self._get_episode(id_="F", episode_len=2)
-    #     buffer.add(episode)
-    #     self.assertTrue(buffer.get_num_episodes() == 1)
-    #     self.assertTrue(buffer.get_num_timesteps() == 2)
-    #     self.assertTrue(buffer.get_num_agent_timesteps() == 2 * 2)
-    #     self.assertTrue(buffer.get_added_agent_timesteps() == 2 * 303)
-    #     self.assertTrue({eps.id_ for eps in buffer.episodes} == {"F"})
-    #     for module_id in buffer.get_module_ids():
-    #         self.assertTrue(buffer.get_num_episodes(module_id) == 1)
-    #         self.assertTrue(buffer.get_num_timesteps(module_id) == 2)
-    #         self.assertTrue(buffer.get_added_timesteps(module_id) == 303)
+        # Add another small episode and trigger another eviction.
+        episode = self._get_episode(id_="F", episode_len=2)
+        buffer.add(episode)
+        self.assertTrue(buffer.get_num_episodes() == 1)
+        self.assertTrue(buffer.get_num_timesteps() == 2)
+        self.assertTrue(buffer.get_num_agent_timesteps() == 2 * 2)
+        self.assertTrue(buffer.get_added_agent_timesteps() == 2 * 303)
+        self.assertTrue({eps.id_ for eps in buffer.episodes} == {"F"})
+        for module_id in buffer.get_module_ids():
+            self.assertTrue(buffer.get_num_episodes(module_id) == 1)
+            self.assertTrue(buffer.get_num_timesteps(module_id) == 2)
+            self.assertTrue(buffer.get_added_timesteps(module_id) == 303)
 
-    #     # Add N small episodes.
-    #     for i in range(10):
-    #         episode = self._get_episode(id_=str(i), episode_len=10)
-    #         buffer.add(episode)
-    #     self.assertTrue(buffer.get_num_episodes() == 10)
-    #     self.assertTrue(buffer.get_num_timesteps() == 100)
-    #     self.assertTrue(buffer.get_num_agent_timesteps() == 2 * 100)
-    #     self.assertTrue(buffer.get_added_agent_timesteps() == 2 * 403)
-    #     for module_id in buffer.get_module_ids():
-    #         self.assertTrue(buffer.get_num_episodes(module_id) == 10)
-    #         self.assertTrue(buffer.get_num_timesteps(module_id) == 100)
-    #         self.assertTrue(buffer.get_added_timesteps(module_id) == 403)
+        # Add N small episodes.
+        for i in range(10):
+            episode = self._get_episode(id_=str(i), episode_len=10)
+            buffer.add(episode)
+        self.assertTrue(buffer.get_num_episodes() == 10)
+        self.assertTrue(buffer.get_num_timesteps() == 100)
+        self.assertTrue(buffer.get_num_agent_timesteps() == 2 * 100)
+        self.assertTrue(buffer.get_added_agent_timesteps() == 2 * 403)
+        for module_id in buffer.get_module_ids():
+            self.assertTrue(buffer.get_num_episodes(module_id) == 10)
+            self.assertTrue(buffer.get_num_timesteps(module_id) == 100)
+            self.assertTrue(buffer.get_added_timesteps(module_id) == 403)
 
-    #     # Add a 20-ts episode and expect to have evicted 3 episodes.
-    #     episode = self._get_episode(id_="G", episode_len=21)
-    #     buffer.add(episode)
-    #     self.assertTrue(buffer.get_num_episodes() == 8)
-    #     self.assertTrue(buffer.get_num_timesteps() == 91)
-    #     self.assertTrue(buffer.get_num_agent_timesteps() == 2 * 91)
-    #     self.assertTrue(buffer.get_added_agent_timesteps() == 2 * 424)
-    #     self.assertTrue(
-    #         {eps.id_ for eps in buffer.episodes}
-    #         == {"3", "4", "5", "6", "7", "8", "9", "G"}
-    #     )
-    #     for module_id in buffer.get_module_ids():
-    #         self.assertTrue(buffer.get_num_episodes(module_id) == 8)
-    #         self.assertTrue(buffer.get_num_timesteps(module_id) == 91)
-    #         self.assertTrue(buffer.get_added_timesteps(module_id) == 424)
+        # Add a 20-ts episode and expect to have evicted 3 episodes.
+        episode = self._get_episode(id_="G", episode_len=21)
+        buffer.add(episode)
+        self.assertTrue(buffer.get_num_episodes() == 8)
+        self.assertTrue(buffer.get_num_timesteps() == 91)
+        self.assertTrue(buffer.get_num_agent_timesteps() == 2 * 91)
+        self.assertTrue(buffer.get_added_agent_timesteps() == 2 * 424)
+        self.assertTrue(
+            {eps.id_ for eps in buffer.episodes}
+            == {"3", "4", "5", "6", "7", "8", "9", "G"}
+        )
+        for module_id in buffer.get_module_ids():
+            self.assertTrue(buffer.get_num_episodes(module_id) == 8)
+            self.assertTrue(buffer.get_num_timesteps(module_id) == 91)
+            self.assertTrue(buffer.get_added_timesteps(module_id) == 424)
 
     # def test_buffer_independent_sample_logic(self):
     #     """Samples independently from the multi-agent buffer."""

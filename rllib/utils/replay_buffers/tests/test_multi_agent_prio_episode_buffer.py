@@ -46,7 +46,7 @@ class TestMultiAgentPrioritizedEpisodeReplayBuffer(unittest.TestCase):
         self.assertTrue(buffer.get_num_agent_timesteps() == 2 * 50)
         self.assertTrue(buffer.get_added_agent_timesteps() == 2 * 50)
         for module_id in buffer.get_module_ids():
-            # self.assertTrue(buffer.get_num_episodes(module_id) == 1)
+            self.assertTrue(buffer.get_num_episodes(module_id) == 1)
             self.assertTrue(buffer.get_num_timesteps(module_id) == 50)
             self.assertTrue(buffer.get_added_timesteps(module_id) == 50)
 
@@ -57,7 +57,7 @@ class TestMultiAgentPrioritizedEpisodeReplayBuffer(unittest.TestCase):
         self.assertTrue(buffer.get_num_agent_timesteps() == 2 * 75)
         self.assertTrue(buffer.get_added_agent_timesteps() == 2 * 75)
         for module_id in buffer.get_module_ids():
-            # self.assertTrue(buffer.get_num_episodes(module_id) == 2)
+            self.assertTrue(buffer.get_num_episodes(module_id) == 2)
             self.assertTrue(buffer.get_num_timesteps(module_id) == 75)
             self.assertTrue(buffer.get_added_timesteps(module_id) == 75)
 
@@ -69,7 +69,7 @@ class TestMultiAgentPrioritizedEpisodeReplayBuffer(unittest.TestCase):
         self.assertTrue(buffer.get_num_agent_timesteps() == 2 * 100)
         self.assertTrue(buffer.get_added_agent_timesteps() == 2 * 100)
         for module_id in buffer.get_module_ids():
-            # self.assertTrue(buffer.get_num_episodes(module_id) == 3)
+            self.assertTrue(buffer.get_num_episodes(module_id) == 3)
             self.assertTrue(buffer.get_num_timesteps(module_id) == 100)
             self.assertTrue(buffer.get_added_timesteps(module_id) == 100)
 
@@ -83,7 +83,7 @@ class TestMultiAgentPrioritizedEpisodeReplayBuffer(unittest.TestCase):
         self.assertTrue(buffer.get_added_agent_timesteps() == 2 * 101)
         self.assertTrue({eps.id_ for eps in buffer.episodes} == {"B", "C", "D"})
         for module_id in buffer.get_module_ids():
-            # self.assertTrue(buffer.get_num_episodes(module_id) == 3)
+            self.assertTrue(buffer.get_num_episodes(module_id) == 3)
             self.assertTrue(buffer.get_num_timesteps(module_id) == 51)
             self.assertTrue(buffer.get_added_timesteps(module_id) == 101)
 
@@ -96,7 +96,7 @@ class TestMultiAgentPrioritizedEpisodeReplayBuffer(unittest.TestCase):
         self.assertTrue(buffer.get_added_agent_timesteps() == 2 * 301)
         self.assertTrue({eps.id_ for eps in buffer.episodes} == {"E"})
         for module_id in buffer.get_module_ids():
-            # self.assertTrue(buffer.get_num_episodes(module_id) == 1)
+            self.assertTrue(buffer.get_num_episodes(module_id) == 1)
             self.assertTrue(buffer.get_num_timesteps(module_id) == 200)
             self.assertTrue(buffer.get_added_timesteps(module_id) == 301)
 
@@ -109,7 +109,7 @@ class TestMultiAgentPrioritizedEpisodeReplayBuffer(unittest.TestCase):
         self.assertTrue(buffer.get_added_agent_timesteps() == 2 * 303)
         self.assertTrue({eps.id_ for eps in buffer.episodes} == {"F"})
         for module_id in buffer.get_module_ids():
-            # self.assertTrue(buffer.get_num_episodes(module_id) == 1)
+            self.assertTrue(buffer.get_num_episodes(module_id) == 1)
             self.assertTrue(buffer.get_num_timesteps(module_id) == 2)
             self.assertTrue(buffer.get_added_timesteps(module_id) == 303)
 
@@ -122,7 +122,7 @@ class TestMultiAgentPrioritizedEpisodeReplayBuffer(unittest.TestCase):
         self.assertTrue(buffer.get_num_agent_timesteps() == 2 * 100)
         self.assertTrue(buffer.get_added_agent_timesteps() == 2 * 403)
         for module_id in buffer.get_module_ids():
-            # self.assertTrue(buffer.get_num_episodes(module_id) == 10)
+            self.assertTrue(buffer.get_num_episodes(module_id) == 10)
             self.assertTrue(buffer.get_num_timesteps(module_id) == 100)
             self.assertTrue(buffer.get_added_timesteps(module_id) == 403)
 
@@ -138,7 +138,7 @@ class TestMultiAgentPrioritizedEpisodeReplayBuffer(unittest.TestCase):
             == {"3", "4", "5", "6", "7", "8", "9", "G"}
         )
         for module_id in buffer.get_module_ids():
-            # self.assertTrue(buffer.get_num_episodes(module_id) == 8)
+            self.assertTrue(buffer.get_num_episodes(module_id) == 8)
             self.assertTrue(buffer.get_num_timesteps(module_id) == 91)
             self.assertTrue(buffer.get_added_timesteps(module_id) == 424)
 
