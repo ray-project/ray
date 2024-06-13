@@ -14,9 +14,7 @@ gcloud container clusters create kuberay-tpu-cluster \
     --region=us-central2-b --machine-type n2-standard-4
 ```
 
-```{admonition} Note
 You can also create a cluster from the [Google Cloud Console](https://console.cloud.google.com/kubernetes/list).
-```
 
 ## Step 2: Create a TPU node pool
 
@@ -51,4 +49,4 @@ For more details, see [GKE documentation](https://cloud.google.com/kubernetes-en
 
 ## Step 4: Install the TPU initialization webhook
 
-GKE provides a mutating webhook to handle TPU pod scheduling and bootstrap certain environment variables used for [JAX](https://github.com/google/jax) initialization. The Ray TPU webhook is installed once per cluster and requires a Kuberay operator version of at least v1.1.0. For instructions on installing the webhook, see the documentation [here](https://github.com/GoogleCloudPlatform/ai-on-gke/tree/main/ray-on-gke/guides/tpu#manually-installing-the-tpu-initialization-webhook)
+GKE provides a mutating webhook to handle TPU pod scheduling and bootstrap certain environment variables used for [JAX](https://github.com/google/jax) initialization. The Ray TPU webhook is installed once per cluster and requires a Kuberay operator version of at least v1.1.0. For instructions on installing the webhook, see the documentation [here](https://github.com/GoogleCloudPlatform/ai-on-gke/tree/main/ray-on-gke/guides/tpu#manually-installing-the-tpu-initialization-webhook).
