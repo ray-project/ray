@@ -1,7 +1,3 @@
-import sys
-
-import pytest
-
 from ray.data._internal.logical.interfaces import LogicalOperator, LogicalPlan
 
 
@@ -25,5 +21,7 @@ def test_sources_multiple_sources():
 
 if __name__ == "__main__":
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))
