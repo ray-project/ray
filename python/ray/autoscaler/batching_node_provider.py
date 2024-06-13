@@ -245,7 +245,7 @@ class BatchingNodeProvider(NodeProvider):
 
         # Scale down entire replica if part of a TPU podslice being deleted
         node_replica_index = self.node_data_dict[node_id].replica_index
-        if node_replica_index:
+        if node_replica_index is not None:
             for worker in self.replicas_to_nodes[node_replica_index]:
                 # Check if node has already been scheduled to delete
                 if node_id not in self.scale_request.workers_to_delete:
