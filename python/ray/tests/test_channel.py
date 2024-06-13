@@ -78,8 +78,7 @@ def test_driver_as_reader(ray_start_cluster, remote):
     chan = ray.get(a.get_channel.remote())
 
     ray.get(a.write.remote())
-    assert chan.begin_read() == b"x"
-    chan.end_read()
+    assert chan.read() == b"x"
 
 
 @pytest.mark.parametrize("remote", [True, False])
@@ -121,12 +120,10 @@ def test_driver_as_reader_with_resize(ray_start_cluster, remote):
     chan = ray.get(a.get_channel.remote())
 
     ray.get(a.write.remote())
-    assert chan.begin_read() == b"x"
-    chan.end_read()
+    assert chan.read() == b"x"
 
     ray.get(a.write_large.remote())
-    assert chan.begin_read() == b"x" * 2000
-    chan.end_read()
+    assert chan.read() == b"x" * 2000
 
 
 @pytest.mark.skipif(
