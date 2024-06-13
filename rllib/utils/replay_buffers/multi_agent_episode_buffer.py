@@ -8,7 +8,7 @@ from typing import Any, Dict, List, Optional, Set, Tuple, Union
 from ray.rllib.core.columns import Columns
 from ray.rllib.env.multi_agent_episode import MultiAgentEpisode
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode
-from ray.rllib.utils.replay_buffers.episode_replay_buffer import EpisodeReplayBuffer
+from ray.rllib.utils.replay_buffers import EpisodeReplayBuffer
 from ray.rllib.utils import force_list
 from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.utils.spaces.space_utils import batch
@@ -76,7 +76,7 @@ class MultiAgentEpisodeReplayBuffer(EpisodeReplayBuffer):
         # Sample 10,000 env timesteps.
         for i in range(num_timesteps):
             # If terminated we create a new episode.
-            if terminateds["__all__"] or truncateds["__all__"]:
+            if eps.is_done:
                 episodes.append(eps.finalize())
                 eps = MultiAgentEpisode()
                 terminateds = {aid: False for aid in agent_ids}
@@ -103,7 +103,7 @@ class MultiAgentEpisodeReplayBuffer(EpisodeReplayBuffer):
             )
 
         # Add the last (truncated) episode to the list of episodes.
-        if not terminateds["__all__"] or truncateds["__all__"]:
+        if not eps.is_done:
             episodes.append(eps)
 
         # Create the buffer.
@@ -184,11 +184,11 @@ class MultiAgentEpisodeReplayBuffer(EpisodeReplayBuffer):
         not complete, this could lead to edge cases (e.g. with very small capacity
         or very long episode length) where the first part of an episode is evicted
         while the next part just comes in.
-        In such cases, we evict the complete episode, including the new chunk,
-        unless the episode is the last one in the buffer. In the latter case the
-        buffer will be allowed to overflow in a temporary fashion, i.e. during
-        the next addition of samples to the buffer an attempt is made to fall below
-        capacity again.
+        To defend against such case, the complete episode is evicted, including
+        the new chunk, unless the episode is the only one in the buffer. In the
+        latter case the buffer will be allowed to overflow in a temporary fashion,
+        i.e. during the next addition of samples to the buffer an attempt is made
+        to fall below capacity again.
 
         The user is advised to select a large enough buffer with regard to the maximum
         expected episode length.
@@ -622,8 +622,8 @@ class MultiAgentEpisodeReplayBuffer(EpisodeReplayBuffer):
                 if sa_episode_ts + actual_n_step > len(sa_episode):
                     continue
                 # Note, this will be the reward after executing action
-                # `a_(episode_ts)`. For `n_step>1` this will be the sum of
-                # all rewards that were collected over the last n steps.
+                # `a_(episode_ts)`. For `n_step>1` this will be the discounted sum
+                # of all rewards that were collected over the last n steps.
                 sa_raw_rewards = sa_episode.get_rewards(
                     slice(sa_episode_ts, sa_episode_ts + actual_n_step)
                 )

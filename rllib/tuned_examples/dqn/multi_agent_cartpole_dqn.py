@@ -14,7 +14,7 @@ parser.set_defaults(num_agents=2)
 # Use `parser` to add your own custom command line options to this script
 # and (if needed) use their values to set up `config` below.
 args = parser.parse_args()
-args.num_agents = 2
+parser.set_defaults(num_agents=2)
 register_env(
     "multi_agent_cartpole",
     lambda _: MultiAgentCartPole({"num_agents": args.num_agents}),
@@ -63,8 +63,13 @@ stop = {
 }
 
 if __name__ == "__main__":
+    assert (
+        args.num_agents > 0
+    ), "The `--num-agents` arg must be > 0 for this script to work."
+    assert (
+        args.enable_new_api_stack
+    ), "The `--enable-new-api-stack` arg must be activated for this script to work."
+
     from ray.rllib.utils.test_utils import run_rllib_example_script_experiment
 
-    args.local_mode = True
-    args.enable_new_api_stack = True
     run_rllib_example_script_experiment(config, args, stop=stop)

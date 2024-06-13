@@ -2,7 +2,7 @@ import numpy as np
 import unittest
 
 from ray.rllib.env.multi_agent_episode import MultiAgentEpisode
-from ray.rllib.utils.replay_buffers.ma_prioritized_episode_replay_buffer import (
+from ray.rllib.utils.replay_buffers import (
     MultiAgentPrioritizedEpisodeReplayBuffer,
 )
 from ray.rllib.utils.test_utils import check

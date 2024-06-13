@@ -81,6 +81,13 @@ stop = {
 }
 
 if __name__ == "__main__":
+    assert (
+        args.num_agents > 0
+    ), "The `--num-agents` arg must be > 0 for this script to work."
+    assert (
+        args.enable_new_api_stack
+    ), "The `--enable-new-api-stack` arg must be activated for this script to work."
+
     from ray.rllib.utils.test_utils import run_rllib_example_script_experiment
 
     run_rllib_example_script_experiment(config, args, stop=stop)
