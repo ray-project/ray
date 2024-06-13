@@ -143,6 +143,10 @@ class HttpServerDashboardHead:
         assert self.http_host and self.http_port
         return self.http_host, self.http_port
 
+    @aiohttp.web.middlewear
+    async def same_origin_middlewear(self, request, handler):
+        return await handler(request)
+
     @aiohttp.web.middleware
     async def path_clean_middleware(self, request, handler):
         if request.path.startswith("/static") or request.path.startswith("/logs"):
@@ -230,6 +234,7 @@ class HttpServerDashboardHead:
                 self.path_clean_middleware,
                 self.browsers_no_post_put_middleware,
                 self.cache_control_static_middleware,
+                self.same_origin_middleware,
             ],
         )
         app.add_routes(routes=routes.bound_routes())
