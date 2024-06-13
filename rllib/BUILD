@@ -2086,6 +2086,27 @@ py_test(
 # tagged by @OldAPIStack and/or @HybridAPIStack
 # ----------------------
 
+# subdirectory: actions/
+
+# Nested action spaces (flattening obs and learning w/ multi-action distribution).
+py_test(
+    name = "examples/actions/nested_action_spaces_ppo",
+    main = "examples/actions/nested_action_spaces.py",
+    tags = ["team:rllib", "exclusive", "examples"],
+    size = "large",
+    srcs = ["examples/actions/nested_action_spaces.py"],
+    args = ["--enable-new-api-stack", "--as-test", "--framework=torch", "--stop-reward=-500.0", "--algo=PPO"]
+)
+
+py_test(
+    name = "examples/actions/nested_action_spaces_multi_agent_ppo",
+    main = "examples/actions/nested_action_spaces.py",
+    tags = ["team:rllib", "exclusive", "examples"],
+    size = "large",
+    srcs = ["examples/actions/nested_action_spaces.py"],
+    args = ["--enable-new-api-stack", "--as-test", "--num-agents=2", "--framework=torch", "--stop-reward=-1000.0", "--algo=PPO"]
+)
+
 # subdirectory: algorithms/
 
 #@OldAPIStack
@@ -2213,41 +2234,22 @@ py_test(
     args = ["--enable-new-api-stack", "--num-agents=2", "--stop-iter=2", "--framework=torch", "--algo=PPO", "--num-env-runners=4", "--num-cpus=6"]
 )
 
-# Nested action spaces (flattening obs and learning w/ multi-action distribution).
-py_test(
-    name = "examples/connectors/nested_action_spaces_ppo",
-    main = "examples/connectors/nested_action_spaces.py",
-    tags = ["team:rllib", "exclusive", "examples"],
-    size = "large",
-    srcs = ["examples/connectors/nested_action_spaces.py"],
-    args = ["--enable-new-api-stack", "--as-test", "--framework=torch", "--stop-reward=-500.0", "--algo=PPO"]
-)
-
-py_test(
-    name = "examples/connectors/nested_action_spaces_multi_agent_ppo",
-    main = "examples/connectors/nested_action_spaces.py",
-    tags = ["team:rllib", "exclusive", "examples"],
-    size = "large",
-    srcs = ["examples/connectors/nested_action_spaces.py"],
-    args = ["--enable-new-api-stack", "--as-test", "--num-agents=2", "--framework=torch", "--stop-reward=-1000.0", "--algo=PPO"]
-)
-
 # Nested observation spaces (flattening).
 py_test(
-    name = "examples/connectors/nested_observation_spaces_ppo",
-    main = "examples/connectors/nested_observation_spaces.py",
+    name = "examples/connectors/flatten_observations_dict_space_ppo",
+    main = "examples/connectors/flatten_observations_dict_space.py",
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
-    srcs = ["examples/connectors/nested_observation_spaces.py"],
+    srcs = ["examples/connectors/flatten_observations_dict_space.py"],
     args = ["--enable-new-api-stack", "--as-test", "--stop-reward=400.0", "--framework=torch", "--algo=PPO"]
 )
 
 py_test(
-    name = "examples/connectors/nested_observation_spaces_multi_agent_ppo",
-    main = "examples/connectors/nested_observation_spaces.py",
+    name = "examples/connectors/flatten_observations_dict_space_multi_agent_ppo",
+    main = "examples/connectors/flatten_observations_dict_space.py",
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
-    srcs = ["examples/connectors/nested_observation_spaces.py"],
+    srcs = ["examples/connectors/flatten_observations_dict_space.py"],
     args = ["--enable-new-api-stack", "--num-agents=2", "--as-test", "--stop-reward=800.0", "--framework=torch", "--algo=PPO"]
 )
 
