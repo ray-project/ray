@@ -553,10 +553,7 @@ def select_operator_to_run(
 
     # To ensure liveness, allow at least 1 op to run regardless of limits. This is
     # gated on `ensure_at_least_one_running`, which is set if the consumer is blocked.
-    if (
-        ensure_at_least_one_running
-        and not ops
-    ):
+    if ensure_at_least_one_running and not ops:
         # The topology is entirely idle, so choose from all ready ops ignoring limits.
         ops = [
             op
