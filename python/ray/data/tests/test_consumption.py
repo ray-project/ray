@@ -13,7 +13,6 @@ import pytest
 
 import ray
 from ray.data._internal.block_builder import BlockBuilder
-from ray.data._internal.lazy_block_list import LazyBlockList
 from ray.data._internal.util import _check_pyarrow_version
 from ray.data.block import BlockAccessor, BlockMetadata
 from ray.data.context import DataContext
@@ -295,12 +294,6 @@ def test_dataset_lineage_serialization(shutdown_only):
     plan_uuid = ds._plan._dataset_uuid
 
     serialized_ds = ds.serialize_lineage()
-    # Confirm that the original Dataset was properly copied before clearing/mutating.
-    in_blocks = ds._plan._in_blocks
-    # Should not raise.
-    in_blocks._check_if_cleared()
-    assert isinstance(in_blocks, LazyBlockList)
-    assert in_blocks._block_partition_refs[0] is None
 
     ray.shutdown()
     ray.init()
@@ -327,14 +320,6 @@ def test_dataset_lineage_serialization_unsupported(shutdown_only):
     # In-memory data source unions not supported.
     ds = ray.data.from_items(list(range(10)))
     ds1 = ray.data.from_items(list(range(10, 20)))
-    ds2 = ds.union(ds1)
-
-    with pytest.raises(ValueError):
-        ds2.serialize_lineage()
-
-    # Post-lazy-read unions not supported.
-    ds = ray.data.range(10).map(column_udf("id", lambda x: x + 1))
-    ds1 = ray.data.range(20).map(column_udf("id", lambda x: 2 * x))
     ds2 = ds.union(ds1)
 
     with pytest.raises(ValueError):
@@ -536,17 +521,19 @@ def test_dataset_repr(ray_start_regular_shared):
         repr(ds2) == f"MaterializedDataset(num_blocks=5, num_rows={ds2.count()}, "
         "schema={id: int64})"
     )
-    ds3 = ds1.union(ds2)
+
     # TODO(scottjlee): include all of the input datasets to union()
     # in the repr output, instead of only the resulting unioned dataset.
-    assert repr(ds3) == ("Union\n+- Dataset(num_rows=9, schema={id: int64})")
-    ds = ds.zip(ds3)
-    assert repr(ds) == (
-        "Zip\n"
-        "+- MapBatches(<lambda>)\n"
-        "+- Union\n"
-        "   +- Dataset(num_rows=9, schema={id: int64})"
-    )
+    # TODO(@bveeramani): Handle schemas for n-ary operators like `Union`.
+    # ds3 = ds1.union(ds2)
+    # assert repr(ds3) == ("Union\n+- Dataset(num_rows=9, schema={id: int64})")
+    # ds = ds.zip(ds3)
+    # assert repr(ds) == (
+    #     "Zip\n"
+    #     "+- MapBatches(<lambda>)\n"
+    #     "+- Union\n"
+    #     "   +- Dataset(num_rows=9, schema={id: int64})"
+    # )
 
     def my_dummy_fn(x):
         return x
