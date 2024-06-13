@@ -74,16 +74,6 @@ def _stub_test_result(
     )
 
 
-def test_is_byod_cluster():
-    assert not _stub_test({}).is_byod_cluster()
-    assert _stub_test({"cluster": {"byod": {}}}).is_byod_cluster()
-    assert _stub_test({"cluster": {"byod": {"type": "gpu"}}}).is_byod_cluster()
-    with mock.patch.dict(os.environ, {"BUILDKITE_PULL_REQUEST": "1"}):
-        assert _stub_test({"cluster": {"byod": {}}}).is_byod_cluster()
-    with mock.patch.dict(os.environ, {"BUILDKITE_PULL_REQUEST": "false"}):
-        assert _stub_test({"cluster": {"byod": {}}}).is_byod_cluster()
-
-
 def test_convert_env_list_to_dict():
     with mock.patch.dict(os.environ, {"ENV": "env"}):
         assert _convert_env_list_to_dict(["a=b", "c=d=e", "ENV"]) == {

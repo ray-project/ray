@@ -1,5 +1,6 @@
+# @OldAPIStack
 """
-This script demonstrates how to specify custom env APIs in
+This script specifies custom env APIs in
 combination with RLlib's `remote_worker_envs` setting, which
 parallelizes individual sub-envs within a vector env by making each
 one a Ray Actor.

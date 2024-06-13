@@ -357,7 +357,6 @@ void GcsPlacementGroupScheduler::OnAllBundlePrepareRequestReturned(
       << "This method can be called only after all bundle scheduling requests are "
          "returned.";
   const auto &placement_group = lease_status_tracker->GetPlacementGroup();
-  const auto &bundles = lease_status_tracker->GetBundlesToSchedule();
   const auto &prepared_bundle_locations =
       lease_status_tracker->GetPreparedBundleLocations();
   const auto &placement_group_id = placement_group->GetPlacementGroupID();
@@ -383,22 +382,8 @@ void GcsPlacementGroupScheduler::OnAllBundlePrepareRequestReturned(
         ->set_node_id(location.first.Binary());
   }
 
-  // Store data to GCS.
-  rpc::ScheduleData data;
-  for (const auto &iter : bundles) {
-    // TODO(ekl) this is a hack to get a string key for the proto
-    auto key = iter->PlacementGroupId().Hex() + "_" + std::to_string(iter->Index());
-    data.mutable_schedule_plan()->insert(
-        {key, (*prepared_bundle_locations)[iter->BundleId()].first.Binary()});
-  }
-  RAY_CHECK_OK(gcs_table_storage_->PlacementGroupScheduleTable().Put(
-      placement_group_id,
-      data,
-      [this, schedule_success_handler, schedule_failure_handler, lease_status_tracker](
-          Status status) {
-        CommitAllBundles(
-            lease_status_tracker, schedule_failure_handler, schedule_success_handler);
-      }));
+  CommitAllBundles(
+      lease_status_tracker, schedule_failure_handler, schedule_success_handler);
 }
 
 void GcsPlacementGroupScheduler::OnAllBundleCommitRequestReturned(
