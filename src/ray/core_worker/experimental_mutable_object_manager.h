@@ -16,9 +16,11 @@
 
 #include <functional>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <vector>
 
+#include "absl/container/node_hash_map.h"
 #include "gtest/gtest_prod.h"
 #include "ray/common/buffer.h"
 #include "ray/common/ray_object.h"
@@ -32,11 +34,35 @@
 namespace ray {
 namespace experimental {
 
-class MutableObjectManager {
+class MutableObjectManager : public std::enable_shared_from_this<MutableObjectManager> {
  public:
+  /// Buffer for a mutable object. This buffer wraps a shared memory buffer of
+  /// a mutable object, and read-releases the mutable object when it is destructed.
+  /// This auto-releasing behavior enables a cleaner API for accelerated DAG so that
+  /// manual calls to ReadRelease() are not needed.
+  class MutableObjectBuffer : public SharedMemoryBuffer {
+   public:
+    MutableObjectBuffer(std::shared_ptr<MutableObjectManager> mutable_object_manager,
+                        std::shared_ptr<Buffer> buffer,
+                        const ObjectID &object_id)
+        : SharedMemoryBuffer(buffer, 0, buffer->Size()),
+          mutable_object_manager_(mutable_object_manager),
+          object_id_(object_id) {}
+
+    ~MutableObjectBuffer() {
+      RAY_UNUSED(mutable_object_manager_->ReadRelease(object_id_));
+    }
+
+    const ObjectID &object_id() const { return object_id_; }
+
+   private:
+    std::shared_ptr<MutableObjectManager> mutable_object_manager_;
+    ObjectID object_id_;
+  };
+
   struct Channel {
     Channel(std::unique_ptr<plasma::MutableObject> mutable_object_ptr)
-        : lock(std::make_unique<absl::Mutex>()),
+        : lock(std::make_unique<std::mutex>()),
           mutable_object(std::move(mutable_object_ptr)) {}
 
     // WriteAcquire() sets this to true. WriteRelease() sets this to false.
@@ -47,7 +73,7 @@ class MutableObjectManager {
     bool reading = false;
 
     // This mutex protects `next_version_to_read`.
-    std::unique_ptr<absl::Mutex> lock;
+    std::unique_ptr<std::mutex> lock;
     // The last version that we read. To read again, we must pass a newer
     // version than this.
     int64_t next_version_to_read = 1;
@@ -162,9 +188,9 @@ class MutableObjectManager {
   /// an error on acquire.
   Status SetErrorAll();
 
- private:
   Channel *GetChannel(const ObjectID &object_id);
 
+ private:
   // Returns the plasma object header for the object.
   PlasmaObjectHeader *GetHeader(const ObjectID &object_id);
 
@@ -202,7 +228,10 @@ class MutableObjectManager {
   // consider using RCU to avoid synchronization overhead in the common case.
   // This map holds the channels for readers and writers of mutable objects.
   absl::Mutex channel_lock_;
-  absl::flat_hash_map<ObjectID, Channel> channels_;
+  // `channels_` requires pointer stability as one thread may hold a Channel pointer while
+  // another thread mutates `channels_`. Thus, we use absl::node_hash_map instead of
+  // absl::flat_hash_map.
+  absl::node_hash_map<ObjectID, Channel> channels_;
 
   // This maps holds the semaphores for each mutable object. The semaphores are used to
   // (1) synchronize accesses to the object header and (2) synchronize readers and writers

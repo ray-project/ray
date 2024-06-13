@@ -2,6 +2,7 @@ import itertools
 import math
 import random
 import time
+from typing import Any, List, Tuple
 from unittest.mock import patch
 
 import numpy as np
@@ -24,11 +25,12 @@ from ray.data._internal.split import (
     _split_single_block,
 )
 from ray.data._internal.stats import DatasetStats
-from ray.data.block import BlockAccessor, BlockMetadata
+from ray.data.block import Block, BlockAccessor, BlockMetadata
 from ray.data.dataset import Dataset
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.util import extract_values
 from ray.tests.conftest import *  # noqa
+from ray.types import ObjectRef
 
 
 @ray.remote
@@ -91,16 +93,15 @@ def _test_equal_split_balanced(block_sizes, num_splits):
     for block_size in block_sizes:
         block = pd.DataFrame({"id": list(range(total_rows, total_rows + block_size))})
         blocks.append(ray.put(block))
-        metadata.append(BlockAccessor.for_block(block).get_metadata(None, None))
+        metadata.append(BlockAccessor.for_block(block).get_metadata())
         blk = (blocks[-1], metadata[-1])
         ref_bundles.append(RefBundle((blk,), owns_blocks=True))
         total_rows += block_size
-    block_list = BlockList(blocks, metadata, owned_by_consumer=True)
 
     logical_plan = LogicalPlan(InputData(input_data=ref_bundles))
     stats = DatasetStats(metadata={"TODO": []}, parent=None)
     ds = Dataset(
-        ExecutionPlan(block_list, stats, run_by_consumer=True),
+        ExecutionPlan(stats, run_by_consumer=True),
         logical_plan,
     )
 
@@ -342,32 +343,24 @@ def test_split(ray_start_regular_shared):
     assert ds._block_num_rows() == [2] * 10
 
     datasets = ds.split(5)
-    assert [2] * 5 == [
-        dataset._plan.execute().initial_num_blocks() for dataset in datasets
-    ]
+    assert [2] * 5 == [len(dataset._plan.execute().blocks) for dataset in datasets]
     assert 190 == sum([dataset.sum("id") for dataset in datasets])
 
     datasets = ds.split(3)
-    assert [4, 3, 3] == [
-        dataset._plan.execute().initial_num_blocks() for dataset in datasets
-    ]
+    assert [4, 3, 3] == [len(dataset._plan.execute().blocks) for dataset in datasets]
     assert 190 == sum([dataset.sum("id") for dataset in datasets])
 
     datasets = ds.split(1)
-    assert [10] == [
-        dataset._plan.execute().initial_num_blocks() for dataset in datasets
-    ]
+    assert [10] == [len(dataset._plan.execute().blocks) for dataset in datasets]
     assert 190 == sum([dataset.sum("id") for dataset in datasets])
 
     datasets = ds.split(10)
-    assert [1] * 10 == [
-        dataset._plan.execute().initial_num_blocks() for dataset in datasets
-    ]
+    assert [1] * 10 == [len(dataset._plan.execute().blocks) for dataset in datasets]
     assert 190 == sum([dataset.sum("id") for dataset in datasets])
 
     datasets = ds.split(11)
     assert [1] * 10 + [0] == [
-        dataset._plan.execute().initial_num_blocks() for dataset in datasets
+        len(dataset._plan.execute().blocks) for dataset in datasets
     ]
     assert 190 == sum([dataset.sum("id") or 0 for dataset in datasets])
 
@@ -497,19 +490,26 @@ def _create_meta(num_rows):
     )
 
 
-def _create_block(data):
-    data = pd.DataFrame({"id": data})
-    return (ray.put(data), _create_meta(len(data)))
+def _create_block_and_metadata(data: Any) -> Tuple[ObjectRef[Block], BlockMetadata]:
+    block = pd.DataFrame({"id": data})
+    metadata = BlockAccessor.for_block(block).get_metadata()
+    return (ray.put(block), metadata)
 
 
 def _create_blocklist(blocks):
     block_refs = []
     meta = []
     for block in blocks:
-        block_ref, block_meta = _create_block(block)
+        block_ref, block_meta = _create_block_and_metadata(block)
         block_refs.append(block_ref)
         meta.append(block_meta)
     return BlockList(block_refs, meta, owned_by_consumer=True)
+
+
+def _create_bundle(blocks: List[List[Any]]) -> RefBundle:
+    return RefBundle(
+        [_create_block_and_metadata(block) for block in blocks], owns_blocks=True
+    )
 
 
 def _create_blocks_with_metadata(blocks):
@@ -594,7 +594,11 @@ def verify_splits(splits, blocks_by_split):
 
 
 def test_generate_global_split_results(ray_start_regular_shared):
-    inputs = [_create_block([1]), _create_block([2, 3]), _create_block([4])]
+    inputs = [
+        _create_block_and_metadata([1]),
+        _create_block_and_metadata([2, 3]),
+        _create_block_and_metadata([4]),
+    ]
 
     splits = list(zip(*_generate_global_split_results(iter(inputs), [1, 2, 1])))
     verify_splits(splits, [[[1]], [[2, 3]], [[4]]])
@@ -644,15 +648,15 @@ def test_private_split_at_indices(ray_start_regular_shared):
     verify_splits(splits, [[], [[1], [2, 3], [4]], []])
 
 
-def equalize_helper(input_block_lists):
+def equalize_helper(input_block_lists: List[List[List[Any]]]):
     result = _equalize(
-        [_create_blocklist(block_list) for block_list in input_block_lists],
+        [_create_bundle(block_list) for block_list in input_block_lists],
         owned_by_consumer=True,
     )
     result_block_lists = []
-    for blocklist in result:
+    for bundle in result:
         block_list = []
-        for block_ref, _ in blocklist.get_blocks_with_metadata():
+        for block_ref in bundle.block_refs:
             block = ray.get(block_ref)
             block_accessor = BlockAccessor.for_block(block)
             block_list.append(list(block_accessor.to_default()["id"]))

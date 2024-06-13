@@ -12,9 +12,7 @@ from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple
 
 import ray
-from ray.data._internal.execution.autoscaling_requester import (
-    get_or_create_autoscaling_requester_actor,
-)
+from ray.data._internal.execution.autoscaler import Autoscaler
 from ray.data._internal.execution.backpressure_policy import BackpressurePolicy
 from ray.data._internal.execution.interfaces import (
     ExecutionOptions,
@@ -41,18 +39,6 @@ logger = logging.getLogger(__name__)
 # Holds the full execution state of the streaming topology. It's a dict mapping each
 # operator to tracked streaming exec state.
 Topology = Dict[PhysicalOperator, "OpState"]
-
-# Min number of seconds between two autoscaling requests.
-MIN_GAP_BETWEEN_AUTOSCALING_REQUESTS = 20
-
-
-@dataclass
-class AutoscalingState:
-    """State of the interaction between an executor and Ray autoscaler."""
-
-    # The timestamp of the latest resource request made to Ray autoscaler
-    # by an executor.
-    last_request_ts: int = 0
 
 
 class OpBufferQueue:
@@ -156,6 +142,26 @@ class OpBufferQueue:
             self._num_per_split.clear()
 
 
+@dataclass
+class OpSchedulingStatus:
+    """The scheduling status of an operator.
+
+    This will be updated each time when StreamingExecutor makes
+    a scheduling decision, i.e., in each `select_operator_to_run`
+    call.
+    """
+
+    # Whether the op was selected to run in the last scheduling
+    # decision.
+    selected: bool = False
+    # Whether the op was considered runnable in the last scheduling
+    # decision.
+    runnable: bool = False
+    # Whether the resources were sufficient for the operator to run
+    # in the last scheduling decision.
+    under_resource_limits: bool = False
+
+
 class OpState:
     """The execution state tracked for each PhysicalOperator.
 
@@ -186,6 +192,7 @@ class OpState:
         # Used for StreamingExecutor to signal exception or end of execution
         self._finished: bool = False
         self._exception: Optional[Exception] = None
+        self._scheduling_status = OpSchedulingStatus()
 
     def __repr__(self):
         return f"OpState({self.op.name})"
@@ -194,26 +201,25 @@ class OpState:
         """Create progress bars at the given index (line offset in console).
 
         For AllToAllOperator, zero or more sub progress bar would be created.
-        Return the number of progress bars created for this operator.
+        Return the number of enabled progress bars created for this operator.
         """
         is_all_to_all = isinstance(self.op, AllToAllOperator)
         # Only show 1:1 ops when in verbose progress mode.
-        enabled = is_all_to_all or (
-            DataContext.get_current().enable_progress_bars and verbose_progress
+        progress_bar_enabled = DataContext.get_current().enable_progress_bars and (
+            is_all_to_all or verbose_progress
         )
         self.progress_bar = ProgressBar(
             "- " + self.op.name,
             self.op.num_outputs_total(),
             index,
-            enabled=enabled,
+            enabled=progress_bar_enabled,
         )
-        if enabled:
-            num_bars = 1
-            if is_all_to_all:
-                num_bars += self.op.initialize_sub_progress_bars(index + 1)
-        else:
-            num_bars = 0
-        return num_bars
+        num_progress_bars = 1
+        if is_all_to_all:
+            # Initialize must be called for sub progress bars, even the
+            # bars are not enabled via the DataContext.
+            num_progress_bars += self.op.initialize_sub_progress_bars(index + 1)
+        return num_progress_bars if progress_bar_enabled else 0
 
     def close_progress_bars(self):
         """Close all progress bars for this operator."""
@@ -498,9 +504,8 @@ def select_operator_to_run(
     topology: Topology,
     resource_manager: ResourceManager,
     backpressure_policies: List[BackpressurePolicy],
+    autoscaler: Autoscaler,
     ensure_at_least_one_running: bool,
-    execution_id: str,
-    autoscaling_state: AutoscalingState,
 ) -> Optional[PhysicalOperator]:
     """Select an operator to run, if possible.
 
@@ -527,6 +532,7 @@ def select_operator_to_run(
         in_backpressure = not under_resource_limits or any(
             not p.can_add_input(op) for p in backpressure_policies
         )
+        op_runnable = False
         if (
             not in_backpressure
             and not op.completed()
@@ -534,21 +540,16 @@ def select_operator_to_run(
             and op.should_add_input()
         ):
             ops.append(op)
+            op_runnable = True
+        # Update scheduling status
+        state._scheduling_status = OpSchedulingStatus(
+            selected=False,
+            runnable=op_runnable,
+            under_resource_limits=under_resource_limits,
+        )
+
         # Signal whether op in backpressure for stats collections
         op.notify_in_task_submission_backpressure(in_backpressure)
-        # Update the op in all cases to enable internal autoscaling, etc.
-        op.notify_resource_usage(state.num_queued(), under_resource_limits)
-
-    # If no ops are allowed to execute due to resource constraints, try to trigger
-    # cluster scale-up.
-    if not ops and any(state.num_queued() > 0 for state in topology.values()):
-        now = time.time()
-        if (
-            now
-            > autoscaling_state.last_request_ts + MIN_GAP_BETWEEN_AUTOSCALING_REQUESTS
-        ):
-            autoscaling_state.last_request_ts = now
-            _try_to_scale_up_cluster(topology, execution_id)
 
     # To ensure liveness, allow at least 1 op to run regardless of limits. This is
     # gated on `ensure_at_least_one_running`, which is set if the consumer is blocked.
@@ -564,64 +565,20 @@ def select_operator_to_run(
             if state.num_queued() > 0 and not op.completed()
         ]
 
-    # Nothing to run.
-    if not ops:
-        return None
-
-    # Run metadata-only operators first. After that, choose the operator with the least
-    # memory usage.
-    return min(
-        ops,
-        key=lambda op: (
-            not op.throttling_disabled(),
-            resource_manager.get_op_usage(op).object_store_memory,
-        ),
-    )
-
-
-def _try_to_scale_up_cluster(topology: Topology, execution_id: str):
-    """Try to scale up the cluster to accomodate the provided in-progress workload.
-
-    This makes a resource request to Ray's autoscaler consisting of the current,
-    aggregate usage of all operators in the DAG + the incremental usage of all operators
-    that are ready for dispatch (i.e. that have inputs queued). If the autoscaler were
-    to grant this resource request, it would allow us to dispatch one task for every
-    ready operator.
-
-    Note that this resource request does not take the global resource limits or the
-    liveness policy into account; it only tries to make the existing resource usage +
-    one more task per ready operator feasible in the cluster.
-
-    Args:
-        topology: The execution state of the in-progress workload for which we wish to
-            request more resources.
-    """
-    # Get resource usage for all ops + additional resources needed to launch one more
-    # task for each ready op.
-    resource_request = []
-
-    def to_bundle(resource: ExecutionResources) -> Dict:
-        req = {}
-        if resource.cpu:
-            req["CPU"] = math.ceil(resource.cpu)
-        if resource.gpu:
-            req["GPU"] = math.ceil(resource.gpu)
-        return req
-
-    for op, state in topology.items():
-        per_task_resource = op.incremental_resource_usage()
-        task_bundle = to_bundle(per_task_resource)
-        resource_request.extend([task_bundle] * op.num_active_tasks())
-        # Only include incremental resource usage for ops that are ready for
-        # dispatch.
-        if state.num_queued() > 0:
-            # TODO(Clark): Scale up more aggressively by adding incremental resource
-            # usage for more than one bundle in the queue for this op?
-            resource_request.append(task_bundle)
-
-    # Make autoscaler resource request.
-    actor = get_or_create_autoscaling_requester_actor()
-    actor.request_resources.remote(resource_request, execution_id)
+    selected_op = None
+    if ops:
+        # Run metadata-only operators first. After that, choose the operator with the
+        # least memory usage.
+        selected_op = min(
+            ops,
+            key=lambda op: (
+                not op.throttling_disabled(),
+                resource_manager.get_op_usage(op).object_store_memory,
+            ),
+        )
+        topology[selected_op]._scheduling_status.selected = True
+    autoscaler.try_trigger_scaling()
+    return selected_op
 
 
 def _execution_allowed(op: PhysicalOperator, resource_manager: ResourceManager) -> bool:

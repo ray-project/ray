@@ -1508,6 +1508,7 @@ class SingleAgentEpisode:
                 lookback=self.observations.lookback,
                 space=self.observation_space,
             ),
+            observation_space=self.observation_space,
             infos=InfiniteLookbackBuffer(
                 data=self.get_infos(
                     slice(start - self.infos.lookback, stop + 1, step),
@@ -1523,6 +1524,7 @@ class SingleAgentEpisode:
                 lookback=self.actions.lookback,
                 space=self.action_space,
             ),
+            action_space=self.action_space,
             rewards=InfiniteLookbackBuffer(
                 data=self.get_rewards(
                     slice(start - self.rewards.lookback, stop, step),

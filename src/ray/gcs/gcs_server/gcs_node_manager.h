@@ -63,6 +63,11 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
                           rpc::SendReplyCallback send_reply_callback) override;
 
   /// Handle unregister rpc request come from raylet.
+  void HandleUnregisterNode(rpc::UnregisterNodeRequest request,
+                            rpc::UnregisterNodeReply *reply,
+                            rpc::SendReplyCallback send_reply_callback) override;
+
+  /// Handle unregister rpc request come from raylet.
   void HandleDrainNode(rpc::DrainNodeRequest request,
                        rpc::DrainNodeReply *reply,
                        rpc::SendReplyCallback send_reply_callback) override;
@@ -96,13 +101,22 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   /// \param node The info of the node to be added.
   void AddNode(std::shared_ptr<rpc::GcsNodeInfo> node);
 
-  /// Remove from alive nodes.
+  /// Set the node to be draining.
+  ///
+  /// \param node_id The ID of the draining node. This node must already
+  /// be in the alive nodes.
+  /// \param request The drain node request.
+  void SetNodeDraining(const NodeID &node_id,
+                       std::shared_ptr<rpc::autoscaler::DrainNodeRequest> request);
+
+  /// Remove a node from alive nodes. The node's death information will also be set.
   ///
   /// \param node_id The ID of the node to be removed.
-  /// \param is_intended False if this is triggered by `node_failure_detector_`, else
-  /// True.
+  /// \param node_death_info The node death info to set.
+  /// \return The removed node, with death info set. If the node is not found, return
+  /// nullptr.
   std::shared_ptr<rpc::GcsNodeInfo> RemoveNode(const NodeID &node_id,
-                                               bool is_intended = false);
+                                               const rpc::NodeDeathInfo &node_death_info);
 
   /// Get alive node by ID.
   ///
@@ -110,9 +124,6 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   /// \return the node if it is alive. Optional empty value if it is not alive.
   absl::optional<std::shared_ptr<rpc::GcsNodeInfo>> GetAliveNode(
       const NodeID &node_id) const;
-
-  /// Set the death info of the node.
-  void SetDeathInfo(const NodeID &node_id, rpc::NodeDeathInfo death_info);
 
   /// Get all alive nodes.
   ///
@@ -166,8 +177,21 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   /// \param node The node which is dead.
   void AddDeadNodeToCache(std::shared_ptr<rpc::GcsNodeInfo> node);
 
+  /// Infer death cause of the node based on existing draining requests.
+  ///
+  /// \param node_id The ID of the node. The node must not be removed
+  /// from alive nodes yet.
+  /// \return The inferred death info of the node.
+  rpc::NodeDeathInfo InferDeathInfo(const NodeID &node_id);
+
   /// Alive nodes.
   absl::flat_hash_map<NodeID, std::shared_ptr<rpc::GcsNodeInfo>> alive_nodes_;
+  /// Draining nodes.
+  /// This map is used to store the nodes which have received the drain request.
+  /// Invariant: its keys should alway be a subset of the keys of `alive_nodes_`,
+  /// and entry in it should be removed whenever a node is removed from `alive_nodes_`.
+  absl::flat_hash_map<NodeID, std::shared_ptr<rpc::autoscaler::DrainNodeRequest>>
+      draining_nodes_;
   /// Dead nodes.
   absl::flat_hash_map<NodeID, std::shared_ptr<rpc::GcsNodeInfo>> dead_nodes_;
   /// The nodes are sorted according to the timestamp, and the oldest is at the head of

@@ -109,6 +109,21 @@ class TestHead(dashboard_utils.DashboardHeadModule):
         logger.info("test file: %s", file_path)
         return aiohttp.web.FileResponse(file_path)
 
+    @routes.get("/test/block_event_loop")
+    async def block_event_loop(self, req) -> aiohttp.web.Response:
+        """
+        Simulates a blocked event loop. To be used for testing purposes only. Creates a
+        task that blocks the event loop for a specified number of seconds.
+        """
+        seconds = float(req.query.get("seconds", 0.0))
+        time.sleep(seconds)
+
+        return dashboard_optional_utils.rest_response(
+            success=True,
+            message=f"Blocked event loop for {seconds} seconds",
+            timestamp=time.time(),
+        )
+
     async def run(self, server):
         pass
 

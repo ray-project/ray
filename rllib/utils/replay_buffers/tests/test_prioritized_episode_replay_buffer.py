@@ -112,7 +112,7 @@ class TestPrioritizedEpisodeReplayBuffer(unittest.TestCase):
                 sample["terminateds"],
                 sample["truncateds"],
                 sample["weights"],
-                sample["n_steps"],
+                sample["n_step"],
             )
 
             # Make sure terminated and truncated are never both True.
@@ -165,7 +165,7 @@ class TestPrioritizedEpisodeReplayBuffer(unittest.TestCase):
                 sample["terminateds"],
                 sample["truncateds"],
                 sample["weights"],
-                sample["n_steps"],
+                sample["n_step"],
             )
 
             # Make sure terminated and truncated are never both True.
@@ -218,7 +218,7 @@ class TestPrioritizedEpisodeReplayBuffer(unittest.TestCase):
                 sample["terminateds"],
                 sample["truncateds"],
                 sample["weights"],
-                sample["n_steps"],
+                sample["n_step"],
             )
 
             # Make sure terminated and truncated are never both True.
@@ -284,7 +284,7 @@ class TestPrioritizedEpisodeReplayBuffer(unittest.TestCase):
                 sample["terminateds"],
                 sample["truncateds"],
                 sample["weights"],
-                sample["n_steps"],
+                sample["n_step"],
                 sample["infos"],
                 sample[0],
                 sample[1],
@@ -350,7 +350,7 @@ class TestPrioritizedEpisodeReplayBuffer(unittest.TestCase):
             sample["terminateds"],
             sample["truncateds"],
             sample["weights"],
-            sample["n_steps"],
+            sample["n_step"],
             sample["infos"],
             sample[0],
             sample[1],

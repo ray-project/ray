@@ -102,13 +102,6 @@ class SACRLModule(RLModule, RLModuleWithTargetNetworksInterface):
                 self.qf_twin = catalog.build_qf_head(framework=self.framework)
                 self.qf_target_twin = catalog.build_qf_head(framework=self.framework)
 
-            # We do not want to train the target network.
-            self.qf_target_encoder.trainable = False
-            self.qf_target.trainable = False
-            if self.twin_q:
-                self.qf_target_twin_encoder.trainable = False
-                self.qf_target_twin.trainable = False
-
         # Get the action distribution class.
         self.action_dist_cls = catalog.get_action_dist_cls(framework=self.framework)
 

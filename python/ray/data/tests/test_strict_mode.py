@@ -232,6 +232,8 @@ def test_strict_require_batch_size_for_gpu():
     with pytest.raises(ValueError):
         ds.map_batches(lambda x: x, num_gpus=1)
 
+    ds.map_batches(lambda x: x, num_gpus=0)
+
 
 if __name__ == "__main__":
     import sys

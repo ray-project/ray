@@ -139,14 +139,15 @@ class ImpalaTorchLearner(ImpalaLearner, TorchLearner):
             )
         )
 
-        # Register important loss stats.
-        self.register_metrics(
-            module_id,
+        # Log important loss stats.
+        self.metrics.log_dict(
             {
                 "pi_loss": mean_pi_loss,
                 "vf_loss": mean_vf_loss,
                 ENTROPY_KEY: -mean_entropy_loss,
             },
+            key=module_id,
+            window=1,  # <- single items (should not be mean/ema-reduced over time).
         )
         # Return the total loss.
         return total_loss

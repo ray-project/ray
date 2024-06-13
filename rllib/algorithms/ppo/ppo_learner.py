@@ -62,6 +62,7 @@ class PPOLearner(Learner):
         # episodes).
         if self.config.enable_env_runner_and_connector_v2:
             batch, episodes = self._compute_gae_from_episodes(episodes=episodes)
+
         # Now that GAE (advantages and value targets) have been added to the train
         # batch, we can proceed normally (calling super method) with the update step.
         return super()._update_from_batch_or_episodes(
@@ -216,8 +217,8 @@ class PPOLearner(Learner):
         module_id: ModuleID,
         config: "PPOConfig",
         timestep: int,
-    ) -> Dict[str, Any]:
-        results = super().additional_update_for_module(
+    ) -> None:
+        super().additional_update_for_module(
             module_id=module_id,
             config=config,
             timestep=timestep,
@@ -227,9 +228,11 @@ class PPOLearner(Learner):
         new_entropy_coeff = self.entropy_coeff_schedulers_per_module[module_id].update(
             timestep=timestep
         )
-        results.update({LEARNER_RESULTS_CURR_ENTROPY_COEFF_KEY: new_entropy_coeff})
-
-        return results
+        self.metrics.log_value(
+            (module_id, LEARNER_RESULTS_CURR_ENTROPY_COEFF_KEY),
+            new_entropy_coeff,
+            window=1,
+        )
 
     @OverrideToImplementCustomLogic
     def _compute_values(

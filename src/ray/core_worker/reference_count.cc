@@ -1579,7 +1579,10 @@ void ReferenceCounter::FillObjectInformationInternal(
   for (const auto &node_id : it->second.locations) {
     object_info->add_node_ids(node_id.Binary());
   }
-  object_info->set_object_size(it->second.object_size);
+  int64_t object_size = it->second.object_size;
+  if (object_size > 0) {
+    object_info->set_object_size(it->second.object_size);
+  }
   object_info->set_spilled_url(it->second.spilled_url);
   object_info->set_spilled_node_id(it->second.spilled_node_id.Binary());
   auto primary_node_id = it->second.pinned_at_raylet_id.value_or(NodeID::Nil());

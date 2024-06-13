@@ -287,8 +287,8 @@ def test_actor_pool_resource_reporting(ray_start_10_cpus_shared, restore_data_co
         * data_context.target_max_block_size
     )
     assert op.base_resource_usage() == ExecutionResources(cpu=2, gpu=0)
-    # All actors are idle (pending creation), therefore shouldn't need to scale up when
-    # submitting a new task, so incremental resource usage should be 0.
+    # `incremental_resource_usage` should always report 0 CPU and GPU, as
+    # it doesn't consider scaling-up.
     assert op.incremental_resource_usage() == ExecutionResources(
         cpu=0, gpu=0, object_store_memory=inc_obj_store_mem
     )
@@ -300,8 +300,6 @@ def test_actor_pool_resource_reporting(ray_start_10_cpus_shared, restore_data_co
 
     # Add inputs.
     for i in range(4):
-        # Pool is still idle while waiting for actors to start, so additional tasks
-        # shouldn't trigger scale-up, so incremental resource usage should still be 0.
         assert op.incremental_resource_usage() == ExecutionResources(
             cpu=0, gpu=0, object_store_memory=inc_obj_store_mem
         )
@@ -317,11 +315,6 @@ def test_actor_pool_resource_reporting(ray_start_10_cpus_shared, restore_data_co
     # Wait for actors to start.
     assert op.num_active_tasks() == 2
     run_op_tasks_sync(op, only_existing=True)
-
-    # Now that both actors have started, a new task would trigger scale-up, so
-    inc_usage = op.incremental_resource_usage()
-    assert inc_usage.cpu == 1, inc_usage
-    assert inc_usage.gpu == 0, inc_usage
 
     # Actors have now started and the pool is actively running tasks.
     assert op.current_processor_usage() == ExecutionResources(cpu=2, gpu=0)
@@ -341,7 +334,9 @@ def test_actor_pool_resource_reporting(ray_start_10_cpus_shared, restore_data_co
     # Wait until tasks are done.
     run_op_tasks_sync(op)
 
-    # Work is done and the pool has been scaled down.
+    # Work is done, scale down the actor pool.
+    for pool in op.get_autoscaling_actor_pools():
+        pool.scale_down(pool.current_size())
     assert op.current_processor_usage() == ExecutionResources(cpu=0, gpu=0)
     assert op.metrics.obj_store_mem_internal_inqueue == 0
     assert op.metrics.obj_store_mem_internal_outqueue == pytest.approx(
@@ -355,8 +350,9 @@ def test_actor_pool_resource_reporting(ray_start_10_cpus_shared, restore_data_co
     while op.has_next():
         op.get_next()
 
-    # Work is done, pool has been scaled down, and outputs have been consumed.
-    assert op.current_processor_usage() == ExecutionResources(cpu=0, gpu=0)
+    # Work is done, scale down the actor pool, and outputs have been consumed.
+    for pool in op.get_autoscaling_actor_pools():
+        pool.scale_down(pool.current_size())
     assert op.metrics.obj_store_mem_internal_inqueue == 0
     assert op.metrics.obj_store_mem_internal_outqueue == 0
     assert op.metrics.obj_store_mem_pending_task_inputs == 0
@@ -382,8 +378,8 @@ def test_actor_pool_resource_reporting_with_bundling(ray_start_10_cpus_shared):
         * data_context.target_max_block_size
     )
     assert op.base_resource_usage() == ExecutionResources(cpu=2, gpu=0)
-    # All actors are idle (pending creation), therefore shouldn't need to scale up when
-    # submitting a new task, so incremental resource usage should be 0.
+    # `incremental_resource_usage` should always report 0 CPU and GPU, as
+    # it doesn't consider scaling-up.
     assert op.incremental_resource_usage() == ExecutionResources(
         cpu=0, gpu=0, object_store_memory=inc_obj_store_mem
     )
@@ -395,8 +391,6 @@ def test_actor_pool_resource_reporting_with_bundling(ray_start_10_cpus_shared):
 
     # Add inputs.
     for i in range(4):
-        # Pool is still idle while waiting for actors to start, so additional tasks
-        # shouldn't trigger scale-up, so incremental resource usage should still be 0.
         assert op.incremental_resource_usage() == ExecutionResources(
             cpu=0, gpu=0, object_store_memory=inc_obj_store_mem
         )
@@ -420,11 +414,6 @@ def test_actor_pool_resource_reporting_with_bundling(ray_start_10_cpus_shared):
     assert op.num_active_tasks() == 2
     run_op_tasks_sync(op, only_existing=True)
 
-    # Now that both actors have started, a new task would trigger scale-up, so
-    inc_usage = op.incremental_resource_usage()
-    assert inc_usage.cpu == 1, inc_usage
-    assert inc_usage.gpu == 0, inc_usage
-
     # Actors have now started and the pool is actively running tasks.
     assert op.current_processor_usage() == ExecutionResources(cpu=2, gpu=0)
 
@@ -434,8 +423,9 @@ def test_actor_pool_resource_reporting_with_bundling(ray_start_10_cpus_shared):
     # Wait until tasks are done.
     run_op_tasks_sync(op)
 
-    # Work is done and the pool has been scaled down.
-    assert op.current_processor_usage() == ExecutionResources(cpu=0, gpu=0)
+    # Work is done, scale down the actor pool.
+    for pool in op.get_autoscaling_actor_pools():
+        pool.scale_down(pool.current_size())
     assert op.metrics.obj_store_mem_internal_inqueue == 0
     assert op.metrics.obj_store_mem_internal_outqueue == pytest.approx(6400, rel=0.5)
     assert op.metrics.obj_store_mem_pending_task_inputs == 0
@@ -445,7 +435,9 @@ def test_actor_pool_resource_reporting_with_bundling(ray_start_10_cpus_shared):
     while op.has_next():
         op.get_next()
 
-    # Work is done, pool has been scaled down, and outputs have been consumed.
+    # Work is done, scale down the actor pool, and outputs have been consumed.
+    for pool in op.get_autoscaling_actor_pools():
+        pool.scale_down(pool.current_size())
     assert op.current_processor_usage() == ExecutionResources(cpu=0, gpu=0)
     assert op.metrics.obj_store_mem_internal_inqueue == 0
     assert op.metrics.obj_store_mem_internal_outqueue == 0

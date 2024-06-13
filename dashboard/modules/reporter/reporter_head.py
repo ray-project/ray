@@ -2,12 +2,11 @@ import json
 import logging
 import asyncio
 import aiohttp.web
+from concurrent.futures import ThreadPoolExecutor
 from typing import Optional, Tuple, List
 
 
-import ray
-import ray._private.services
-import ray._private.utils
+from ray._private.utils import get_or_create_event_loop, init_grpc_channel
 import ray.dashboard.optional_utils as dashboard_optional_utils
 from ray.dashboard.consts import GCS_RPC_TIMEOUT_SECONDS
 import ray.dashboard.utils as dashboard_utils
@@ -69,6 +68,9 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
         )
         self._gcs_aio_client = dashboard_head.gcs_aio_client
         self._state_api = None
+        self.thread_pool_executor = ThreadPoolExecutor(
+            max_workers=1, thread_name_prefix="reporter_head_worker"
+        )
 
     async def _update_stubs(self, change):
         if change.old:
@@ -79,7 +81,7 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
             node_id, ports = change.new
             ip = DataSource.node_id_to_ip[node_id]
             options = GLOBAL_GRPC_OPTIONS
-            channel = ray._private.utils.init_grpc_channel(
+            channel = init_grpc_channel(
                 f"{ip}:{ports[1]}", options=options, asynchronous=True
             )
             stub = reporter_pb2_grpc.ReporterServiceStub(channel)
@@ -637,9 +639,14 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
                 key, data = await subscriber.poll()
                 if key is None:
                     continue
-                data = json.loads(data)
+                # The JSON Parsing can be CPU heavy. Offload to another thread to avoid
+                # blocking the event loop.
+                loop = get_or_create_event_loop()
+                parsed_data = await loop.run_in_executor(
+                    self.thread_pool_executor, json.loads, data
+                )
                 node_id = key.split(":")[-1]
-                DataSource.node_physical_stats[node_id] = data
+                DataSource.node_physical_stats[node_id] = parsed_data
             except Exception:
                 logger.exception(
                     "Error receiving node physical stats from reporter agent."

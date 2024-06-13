@@ -44,8 +44,6 @@ def start_ray():
 
 
 def test_time(start_ray, tmpdir, monkeypatch):
-    monkeypatch.setenv("RAY_AIR_LOCAL_CACHE_DIR", str(tmpdir))
-
     experiment_name = "test_time"
     num_samples = 2
 

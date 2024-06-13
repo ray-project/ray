@@ -1,5 +1,5 @@
 import logging
-from typing import Any, Dict
+from typing import Dict
 
 from ray.rllib.algorithms.ppo.ppo import (
     LEARNER_RESULTS_KL_KEY,
@@ -116,9 +116,8 @@ class PPOTorchLearner(PPOLearner, TorchLearner):
         if config.use_kl_loss:
             total_loss += self.curr_kl_coeffs_per_module[module_id] * mean_kl_loss
 
-        # Register important loss stats.
-        self.register_metrics(
-            module_id,
+        # Log important loss stats.
+        self.metrics.log_dict(
             {
                 POLICY_LOSS_KEY: -possibly_masked_mean(surrogate_loss),
                 VF_LOSS_KEY: mean_vf_loss,
@@ -129,6 +128,8 @@ class PPOTorchLearner(PPOLearner, TorchLearner):
                 ENTROPY_KEY: mean_entropy,
                 LEARNER_RESULTS_KL_KEY: mean_kl_loss,
             },
+            key=module_id,
+            window=1,  # <- single items (should not be mean/ema-reduced over time).
         )
         # Return the total loss.
         return total_loss
@@ -141,9 +142,9 @@ class PPOTorchLearner(PPOLearner, TorchLearner):
         config: PPOConfig,
         timestep: int,
         sampled_kl_values: dict,
-    ) -> Dict[str, Any]:
+    ) -> None:
 
-        results = super().additional_update_for_module(
+        super().additional_update_for_module(
             module_id=module_id,
             config=config,
             timestep=timestep,
@@ -159,6 +160,10 @@ class PPOTorchLearner(PPOLearner, TorchLearner):
                 curr_var.data *= 1.5
             elif sampled_kl < 0.5 * config.kl_target:
                 curr_var.data *= 0.5
-            results.update({LEARNER_RESULTS_CURR_KL_COEFF_KEY: curr_var.item()})
 
-        return results
+            # Log the updated KL-coeff value.
+            self.metrics.log_value(
+                (module_id, LEARNER_RESULTS_CURR_KL_COEFF_KEY),
+                curr_var.item(),
+                window=1,
+            )

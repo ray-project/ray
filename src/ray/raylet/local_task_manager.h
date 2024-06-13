@@ -386,7 +386,9 @@ class LocalTaskManager : public ILocalTaskManager {
   friend class SchedulerResourceReporter;
   friend class ClusterTaskManagerTest;
   friend class SchedulerStats;
+  friend class LocalTaskManagerTest;
   FRIEND_TEST(ClusterTaskManagerTest, FeasibleToNonFeasible);
+  FRIEND_TEST(LocalTaskManagerTest, TestTaskDispatchingOrder);
 };
 }  // namespace raylet
 }  // namespace ray

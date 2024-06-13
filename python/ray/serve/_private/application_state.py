@@ -767,7 +767,7 @@ class ApplicationState:
             ]
             and status_msg != self._status_msg
         ):
-            logger.warning(status_msg)
+            logger.error(status_msg)
 
         self._status = status
         self._status_msg = status_msg

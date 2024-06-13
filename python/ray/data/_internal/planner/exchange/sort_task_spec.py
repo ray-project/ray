@@ -131,9 +131,7 @@ class SortTaskSpec(ExchangeTaskSpec):
     ) -> List[Union[BlockMetadata, Block]]:
         stats = BlockExecStats.builder()
         out = BlockAccessor.for_block(block).sort_and_partition(boundaries, sort_key)
-        meta = BlockAccessor.for_block(block).get_metadata(
-            input_files=None, exec_stats=stats.build()
-        )
+        meta = BlockAccessor.for_block(block).get_metadata(exec_stats=stats.build())
         return out + [meta]
 
     @staticmethod

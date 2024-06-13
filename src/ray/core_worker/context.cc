@@ -163,6 +163,7 @@ WorkerContext::WorkerContext(WorkerType worker_type,
       current_actor_placement_group_id_(PlacementGroupID::Nil()),
       placement_group_capture_child_tasks_(false),
       main_thread_id_(boost::this_thread::get_id()),
+      root_detached_actor_id_(ActorID::Nil()),
       mutex_() {
   // For worker main thread which initializes the WorkerContext,
   // set task_id according to whether current worker is a driver.
@@ -290,6 +291,7 @@ void WorkerContext::SetCurrentTask(const TaskSpecification &task_spec) {
   RAY_CHECK(current_job_id_ == task_spec.JobId());
   if (task_spec.IsNormalTask()) {
     current_task_is_direct_call_ = true;
+    root_detached_actor_id_ = task_spec.RootDetachedActorId();
   } else if (task_spec.IsActorCreationTask()) {
     if (!current_actor_id_.IsNil()) {
       RAY_CHECK(current_actor_id_ == task_spec.ActorCreationId());
@@ -301,6 +303,7 @@ void WorkerContext::SetCurrentTask(const TaskSpecification &task_spec) {
     is_detached_actor_ = task_spec.IsDetachedActor();
     current_actor_placement_group_id_ = task_spec.PlacementGroupBundleId().first;
     placement_group_capture_child_tasks_ = task_spec.PlacementGroupCaptureChildTasks();
+    root_detached_actor_id_ = task_spec.RootDetachedActorId();
   } else if (task_spec.IsActorTask()) {
     RAY_CHECK(current_actor_id_ == task_spec.ActorId());
   } else {
@@ -328,6 +331,11 @@ std::shared_ptr<const TaskSpecification> WorkerContext::GetCurrentTask() const {
 const ActorID &WorkerContext::GetCurrentActorID() const {
   absl::ReaderMutexLock lock(&mutex_);
   return current_actor_id_;
+}
+
+const ActorID &WorkerContext::GetRootDetachedActorID() const {
+  absl::ReaderMutexLock lock(&mutex_);
+  return root_detached_actor_id_;
 }
 
 bool WorkerContext::CurrentThreadIsMain() const {

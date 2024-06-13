@@ -332,7 +332,7 @@ Implementing custom Attention Networks
 Similar to the RNN case described above, you could also implement your own attention-based networks, instead of using the
 ``use_attention: True`` flag in your model config.
 
-Check out RLlib's `GTrXL (Attention Net) <https://arxiv.org/abs/1910.06764>`__ implementations
+See RLlib's `GTrXL (Attention Net) <https://arxiv.org/abs/1910.06764>`__ implementations
 (for `TF <https://github.com/ray-project/ray/blob/master/rllib/models/tf/attention_net.py>`__ and `PyTorch <https://github.com/ray-project/ray/blob/master/rllib/models/torch/attention_net.py>`__)
 to get a better idea on how to write your own models of this type. These are the models we use
 as wrappers when ``use_attention=True``.

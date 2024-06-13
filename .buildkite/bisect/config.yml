@@ -10,6 +10,8 @@ runner_queues:
   macos: macos-branch
 buildkite_dirs:
   - .buildkite/bisect
+build_env_keys:
+  - RAYCI_TEST_TYPE
 env:
   BUILDKITE_BAZEL_CACHE_URL: https://bazel-cache-dev.s3.us-west-2.amazonaws.com
   RAYCI_SKIP_UPLOAD: "true"

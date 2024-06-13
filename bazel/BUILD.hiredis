@@ -1,5 +1,5 @@
 COPTS = ["-DUSE_SSL=1"] + select({
-    "@bazel_tools//src/conditions:windows": [
+    "@platforms//os:windows": [
         "-D_CRT_DECLARE_NONSTDC_NAMES=0",  # don't define off_t, to avoid conflicts
         "-D_WIN32",
         "-DOPENSSL_IS_BORINGSSL",
@@ -17,7 +17,7 @@ COPTS = ["-DUSE_SSL=1"] + select({
 })
 
 LOPTS = select({
-    "@bazel_tools//src/conditions:windows": [
+    "@platforms//os:windows": [
         "-DefaultLib:" + "Crypt32.lib",
     ],
     "//conditions:default": [

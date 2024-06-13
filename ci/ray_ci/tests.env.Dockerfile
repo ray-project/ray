@@ -18,9 +18,14 @@ RUN <<EOF
 
 set -euo pipefail
 
-if [[ "$BUILDKITE_PIPELINE_ID" == "0189942e-0876-4b8f-80a4-617f988ec59b" ]]; then
-  # Do not upload cache results for premerge pipeline
+if [[ "$BUILDKITE_PIPELINE_ID" != "0189e759-8c96-4302-b6b5-b4274406bf89" ]]; then
+  # Only upload cache results on (Linux and Windows) postmerge pipeline.
   echo "build --remote_upload_local_results=false" >> ~/.bazelrc
+fi
+
+if [[ "$BUILD_TYPE" == "skip" ]]; then
+  echo "Skipping build"
+  exit 0
 fi
 
 (

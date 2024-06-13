@@ -3366,7 +3366,6 @@ class TestMultiAgentEpisode(unittest.TestCase):
         )
         for agent_id, agent_eps in episode_2.agent_episodes.items():
             self.assertEqual(agent_eps.id_, episode.agent_episodes[agent_id].id_)
-        check(episode_2.render_images, episode.render_images)
         check(episode_2._start_time, episode._start_time)
         check(episode_2._last_step_time, episode._last_step_time)
 
