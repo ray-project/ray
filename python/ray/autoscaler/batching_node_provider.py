@@ -170,7 +170,7 @@ class BatchingNodeProvider(NodeProvider):
         for node_id in all_nodes:
             replica_index = self.node_data_dict[node_id].replica_index
             # Only add node to map if it belongs to a TPU podslice
-            if replica_index:
+            if replica_index is not None:
                 self.replicas_to_nodes[replica_index].append(node_id)
         # Support filtering by TAG_RAY_NODE_KIND, TAG_RAY_NODE_STATUS, and
         # TAG_RAY_USER_NODE_TYPE.
