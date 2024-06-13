@@ -14,7 +14,3 @@ pip install werkzeug==2.3.8
 
 # not strictly necessary, but makes debugging easier
 git clone https://github.com/ray-project/ray.git
-
-# Only DreamerV3 still uses tf on the new API stack. But requires tf==2.11.1 to run.
-pip uninstall -y tensorflow tensorflow_probability
-pip install tensorflow==2.11.1 tensorflow_probability==0.19.0
