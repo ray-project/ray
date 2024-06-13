@@ -556,7 +556,6 @@ def select_operator_to_run(
     if (
         ensure_at_least_one_running
         and not ops
-        and all(op.num_active_tasks() == 0 for op in topology)
     ):
         # The topology is entirely idle, so choose from all ready ops ignoring limits.
         ops = [
