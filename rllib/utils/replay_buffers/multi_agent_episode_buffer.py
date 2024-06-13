@@ -52,9 +52,7 @@ class MultiAgentEpisodeReplayBuffer(EpisodeReplayBuffer):
 
         from ray.rllib.env.multi_agent_episode import MultiAgentEpisode
         from ray.rllib.examples.envs.classes.multi_agent import MultiAgentCartPole
-        from ray.rllib.utils.replay_buffers import (
-            MultiAgentEpisodeReplayBuffer,
-        )
+        from ray.rllib.utils.replay_buffers import MultiAgentEpisodeReplayBuffer
 
 
         # Create the environment.
