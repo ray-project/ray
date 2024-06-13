@@ -2215,20 +2215,20 @@ py_test(
 
 # Mixin heuristic actions (into evaluation/inference-only track).
 py_test(
-    name = "examples/connectors/connector_v2_mixin_heuristic_actions_ppo",
-    main = "examples/connectors/connector_v2_mixin_heuristic_actions.py",
+    name = "examples/connectors/mixin_heuristic_actions_ppo",
+    main = "examples/connectors/mixin_heuristic_actions.py",
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
-    srcs = ["examples/connectors/connector_v2_mixin_heuristic_actions.py"],
+    srcs = ["examples/connectors/mixin_heuristic_actions.py"],
     args = ["--enable-new-api-stack", "--as-test", "--stop-reward=500.0", "--framework=torch", "--algo=PPO"]
 )
 
 py_test(
-    name = "examples/connectors/connector_v2_mixin_heuristic_actions_multi_agent_ppo",
-    main = "examples/connectors/connector_v2_mixin_heuristic_actions.py",
+    name = "examples/connectors/mixin_heuristic_actions_multi_agent_ppo",
+    main = "examples/connectors/mixin_heuristic_actions.py",
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
-    srcs = ["examples/connectors/connector_v2_mixin_heuristic_actions.py"],
+    srcs = ["examples/connectors/mixin_heuristic_actions.py"],
     args = ["--enable-new-api-stack", "--num-agents=2", "--as-test", "--stop-reward=1000.0", "--framework=torch", "--algo=PPO"]
 )
 

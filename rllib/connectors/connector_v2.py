@@ -308,10 +308,10 @@ class ConnectorV2(abc.ABC):
     ) -> None:
         """Adds a data item under `column` to the given `batch`.
 
-        If `single_agent_episode` is provided and contains `agent_id` and `module_id`
-        information, will store `item_to_add` in a list under a
-        `([eps id], [AgentID],[ModuleID])` key within `column`. In all other
-        cases, will store the item in a list directly under `column`.
+        If `single_agent_episode` is provided, stores `item_to_add` in a list under
+        the `([eps id],)` key (single-agent) or the `([eps id] [AgentID], [ModuleID])`
+        key (multi-agent) under `column`. If `single_agent_episode` is None, stores
+        the item in a list directly under `column`.
 
         .. testcode::
 

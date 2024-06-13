@@ -994,7 +994,7 @@ class AlgorithmConfig(_Config):
             pipeline.prepend(TensorToNumpy())
 
             # Sample actions from ACTION_DIST_INPUTS (if ACTIONS not present).
-            pipeline.prepend(GetActions())
+            pipeline.append(GetActions())
 
             # Append: Anything that has to do with action sampling.
             # Unsquash/clip actions based on config and action space.

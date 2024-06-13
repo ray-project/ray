@@ -107,8 +107,11 @@ class PPOTorchRLModule(TorchRLModule, PPORLModule):
         output[Columns.VF_PREDS] = vf_out.squeeze(-1)
 
         # Policy head.
-        action_logits = self.pi(encoder_outs[ENCODER_OUT][ACTOR])
-        output[Columns.ACTION_DIST_INPUTS] = action_logits
+        output[Columns.ACTION_DIST_INPUTS] = self.pi(encoder_outs[ENCODER_OUT][ACTOR])
+        dist = self.get_train_action_dist_cls().from_logits(
+            output[Columns.ACTION_DIST_INPUTS]
+        )
+        output[Columns.ACTION_LOGP] = dist.logp(batch[Columns.ACTIONS])
 
         return output
 

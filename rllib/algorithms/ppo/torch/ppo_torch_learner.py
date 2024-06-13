@@ -70,7 +70,7 @@ class PPOTorchLearner(PPOLearner, TorchLearner):
         )
 
         logp_ratio = torch.exp(
-            curr_action_dist.logp(batch[Columns.ACTIONS]) - batch[Columns.ACTION_LOGP]
+            curr_action_dist.logp(batch[Columns.ACTIONS]) - fwd_out[Columns.ACTION_LOGP]
         )
 
         # Only calculate kl loss if necessary (kl-coeff > 0.0).

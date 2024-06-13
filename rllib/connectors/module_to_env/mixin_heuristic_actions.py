@@ -1,16 +1,17 @@
+from collections import defaultdict
 from typing import Any, Callable, List, Optional
 
 import gymnasium as gym
 
 from ray.rllib.connectors.connector_v2 import ConnectorV2
+from ray.rllib.core.columns import Columns
 from ray.rllib.core.rl_module.rl_module import RLModule
-from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.typing import EpisodeType, TensorType
 
 
 class MixinHeuristicActions(ConnectorV2):
-    """Connector mixing in heuristic action (logits) into the RLModule computes ones.
+    """Connector mixing in heuristic action (logits) into the RLModule computed ones.
 
     This connector should be used for a) inference only or b) off-policy algorithms,
     which do NOT require the current RLModule to produce the actions sent to the env.
@@ -18,7 +19,7 @@ class MixinHeuristicActions(ConnectorV2):
     - This connector should be placed into the module-to-env pipeline.
     - If the mixin weight is > 0.0, the connector will compute heuristic action logits
     using a provided (heuristic) function and mixin these heuristic logits into the
-    RLModule computes ones.
+    RLModule computed ones.
     - The connector will rely on the RLlib default connector pieces in the module-to-env
     pipeline to create the action distribution object (whose class is defined by the
     RLModule), sample from this distribution (using the mixin logits), and push the
@@ -61,12 +62,22 @@ class MixinHeuristicActions(ConnectorV2):
         if self.mixin_weight == 0.0:
             return data
 
-        action_dist_inputs = data.get(SampleBatch.ACTION_DIST_INPUTS)
+        action_dist_inputs = data.get(Columns.ACTION_DIST_INPUTS)
         if action_dist_inputs is None:
             raise ValueError(
                 "`data` must already have a column named "
-                f"{SampleBatch.ACTION_DIST_INPUTS} in it for this connector to work!"
+                f"{Columns.ACTION_DIST_INPUTS} in it for this connector to work!"
             )
+
+        obs = defaultdict(list)
+        for sa_episode in self.single_agent_episode_iterator(episodes):
+             eps_id, agent_id, module_id = (
+                 sa_episode.id_, sa_episode.agent_id, sa_episode.module_id
+             )
+             obs[
+                 (eps_id,) + (() if agent_id is None else (agent_id, module_id))
+             ].append(sa_episode.get_observations(-1))
+        obs = dict(obs)
 
         def _wrapped_compute_heuristic_actions(
             obs_and_logits, eps_id, agent_id, module_id
@@ -75,13 +86,14 @@ class MixinHeuristicActions(ConnectorV2):
             # Compute heuristic logits.
             heuristic_logits = self.compute_heuristic_actions(obs)
             # Mixin heuristics with RLModule computed action logits.
-            return heuristic_logits * self.mixin_weight + rl_module_logits * (
+            new_logits = heuristic_logits * self.mixin_weight + rl_module_logits * (
                 1.0 - self.mixin_weight
             )
+            return obs, new_logits
 
         self.foreach_batch_item_change_in_place(
-            batch=data,
-            column=[SampleBatch.OBS, SampleBatch.ACTION_DIST_INPUTS],
+            batch=data | {Columns.OBS: obs},
+            column=[Columns.OBS, Columns.ACTION_DIST_INPUTS],
             func=_wrapped_compute_heuristic_actions,
         )
 

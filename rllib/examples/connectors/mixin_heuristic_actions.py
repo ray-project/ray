@@ -3,9 +3,12 @@ import numpy as np
 from ray.rllib.connectors.module_to_env.mixin_heuristic_actions import (
     MixinHeuristicActions,
 )
-from ray.rllib.env.multi_agent_env_runner import MultiAgentEnvRunner
-from ray.rllib.env.single_agent_env_runner import SingleAgentEnvRunner
-from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
+from ray.rllib.examples.envs.classes.multi_agent import MultiAgentCartPole
+from ray.rllib.utils.metrics import (
+    ENV_RUNNER_RESULTS,
+    EPISODE_RETURN_MEAN,
+    EVALUATION_RESULTS,
+)
 from ray.rllib.utils.test_utils import (
     add_rllib_example_script_args,
     run_rllib_example_script_experiment,
@@ -15,7 +18,7 @@ from ray.tune.registry import get_trainable_cls
 
 # Read in common example script command line arguments.
 parser = add_rllib_example_script_args(
-    default_timesteps=20000, default_reward=500.0, default_iters=100
+    default_timesteps=200000, default_reward=500.0, default_iters=100
 )
 parser.add_argument(
     "--mixin-weight",
@@ -63,35 +66,22 @@ if __name__ == "__main__":
             ),
         )
 
-    config = (
+    base_config = (
         get_trainable_cls(args.algo)
         .get_default_config()
-        # Use new API stack ...
-        .experimental(_enable_new_api_stack=args.enable_new_api_stack)
-        .framework(args.framework)
         .environment("env" if args.num_agents > 0 else "CartPole-v1")
-        .rollouts(
-            num_rollout_workers=args.num_env_runners,
-            # Set up the correct env-runner to use depending on
-            # old-stack/new-stack and multi-agent settings.
-            env_runner_cls=(
-                None
-                if not args.enable_new_api_stack
-                else SingleAgentEnvRunner
-                if args.num_agents == 0
-                else MultiAgentEnvRunner
-            ),
-        )
-        .resources(
-            num_gpus=args.num_gpus,  # old stack
-            num_learner_workers=args.num_gpus,  # new stack
-            num_gpus_per_learner_worker=1 if args.num_gpus else 0,
-            num_cpus_for_local_worker=1,
-        )
+        #.env_runners(
+        #    module_to_env_connector=lambda env: MixinHeuristicActions(
+        #        compute_heuristic_actions=cartpole_perfect_actions,
+        #        mixin_weight=args.mixin_weight,
+        #        ),
+        #)
         .training(
             gamma=0.99,
             lr=0.0003,
-            model=dict(
+        )
+        .rl_module(
+            model_config_dict=dict(
                 {
                     "vf_share_layers": True,
                     "fcnet_hiddens": [32],
@@ -103,10 +93,9 @@ if __name__ == "__main__":
         .evaluation(
             evaluation_interval=1,
             evaluation_num_workers=2,
-            enable_async_evaluation=True,
             evaluation_duration=10,
             evaluation_config={
-                "explore": False,
+                #"explore": False,
                 "_module_to_env_connector": lambda env: MixinHeuristicActions(
                     compute_heuristic_actions=cartpole_perfect_actions,
                     mixin_weight=args.mixin_weight,
@@ -117,13 +106,19 @@ if __name__ == "__main__":
 
     # Add a simple multi-agent setup.
     if args.num_agents > 0:
-        config.multi_agent(
+        base_config.multi_agent(
             policies={f"p{i}" for i in range(args.num_agents)},
             policy_mapping_fn=lambda aid, *a, **kw: f"p{aid}",
         )
 
-    # Run everything as configured.
-    stop = {
-        "evaluation/sampler_results/episode_reward_mean": 500.0,
+    success_metric = {
+        f"{EVALUATION_RESULTS}/{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": (
+            args.stop_reward
+        ),
     }
-    run_rllib_example_script_experiment(config, args, stop=stop)
+
+    run_rllib_example_script_experiment(
+        base_config,
+        args,
+        success_metric=success_metric,
+    )
