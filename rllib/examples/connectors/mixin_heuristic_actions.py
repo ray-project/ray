@@ -90,6 +90,10 @@ if __name__ == "__main__":
                 **({"uses_new_env_runners": True} if args.enable_new_api_stack else {}),
             ),
         )
+
+        TODO: this PR doesn't learn b/c the fwd pass that now computes the LOGP is run several times,'
+        always updating this LOG, whereas in master, LOGP is only computed once on the env runners (in the module-to-env `GetActions` connector piece).
+
         .evaluation(
             evaluation_interval=1,
             evaluation_num_workers=2,
