@@ -1,15 +1,19 @@
 # @OldAPIStack
 
-from packaging.version import Version
 import numpy as np
+import onnxruntime
+
 import ray
 import ray.rllib.algorithms.ppo as ppo
-import onnxruntime
-import os
-import shutil
-import torch
-
+from ray.rllib.utils.framework import try_import_torch
+from ray.rllib.utils.test_utils import add_rllib_example_script_args, check
 from ray.rllib.utils.torch_utils import convert_to_torch_tensor
+
+torch, _ = try_import_torch()
+
+parser = add_rllib_example_script_args()
+parser.add_argument("--use-lstm", action="store_true")
+parser.set_defaults(num_env_runners=1)
 
 
 class ONNXCompatibleWrapper(torch.nn.Module):
@@ -27,15 +31,21 @@ class ONNXCompatibleWrapper(torch.nn.Module):
 
 
 if __name__ == "__main__":
+    args = parser.parse_args()
+
+    ray.init(local_mode=args.local_mode)
+
     # Configure our PPO Algorithm.
     config = (
         ppo.PPOConfig()
         # ONNX is not supported by RLModule API yet.
-        .api_stack(enable_rl_module_and_learner=False)
+        .api_stack(
+            enable_rl_module_and_learner=args.enable_new_api_stack,
+            enable_env_runner_and_connector_v2=args.enable_new_api_stack,
+        )
         .environment("CartPole-v1")
-        .env_runners(num_env_runners=1)
-        .framework("torch")
-        .training(model={"use_lstm": True})
+        .env_runners(num_env_runners=args.num_env_runners)
+        .training(model={"use_lstm": args.use_lstm})
     )
 
     B = 3
@@ -45,24 +55,31 @@ if __name__ == "__main__":
     # Input data for a python inference forward call.
     test_data_python = {
         "obs": np.random.uniform(0, 1.0, size=(B*T, 4)).astype(np.float32),
-        "state_ins": [
-            np.random.uniform(0, 1.0, size=(B, LSTM_CELL)).astype(np.float32),
-            np.random.uniform(0, 1.0, size=(B, LSTM_CELL)).astype(np.float32)
-        ],
-        "seq_lens": np.array([T] * B, np.float32),
+        "state_ins": np.array([0.0], dtype=np.float32),
     }
     # Input data for the ONNX session.
     test_data_onnx = {
         "obs": test_data_python["obs"],
-        "state_in_0": test_data_python["state_ins"][0],
-        "state_in_1": test_data_python["state_ins"][1],
-        "seq_lens": test_data_python["seq_lens"],
     }
+
+    if args.use_lstm:
+        test_data_python.update({
+            "state_ins": [
+                np.random.uniform(0, 1.0, size=(B, LSTM_CELL)).astype(np.float32),
+                np.random.uniform(0, 1.0, size=(B, LSTM_CELL)).astype(np.float32)
+            ],
+            "seq_lens": np.array([T] * B, np.float32),
+        })
+        test_data_onnx.update({
+            "state_in_0": test_data_python["state_ins"][0],
+            "state_in_1": test_data_python["state_ins"][1],
+            "seq_lens": test_data_python["seq_lens"],
+        })
+
     # Input data for compiling the ONNX model.
     test_data_onnx_input = convert_to_torch_tensor(test_data_onnx)
 
-    # Start Ray and initialize a PPO Algorithm.
-    ray.init()
+    # Initialize a PPO Algorithm.
     algo = config.build()
 
     # You could train the model here
@@ -77,29 +94,43 @@ if __name__ == "__main__":
         [
             torch.tensor(test_data_python["state_ins"][0]),
             torch.tensor(test_data_python["state_ins"][1]),
-        ],
-        torch.tensor(test_data_python["seq_lens"]),
+        ] if args.use_lstm else [],
+        torch.tensor(test_data_python["seq_lens"]) if args.use_lstm else None,
     )
 
     # Evaluate tensor to fetch numpy array
     result_pytorch = result_pytorch.detach().numpy()
 
     # This line will export the model to ONNX.
-    onnx_compatible = ONNXCompatibleWrapper(policy.model)
+    onnx_compatible = policy.model
+    if args.use_lstm:
+        onnx_compatible = ONNXCompatibleWrapper(onnx_compatible)
     exported_model_file = "model.onnx"
+    input_names = [
+        "obs",
+        "state_in_0",
+        "state_in_1",
+        "seq_lens",
+    ] if args.use_lstm else ["obs"]
+
     torch.onnx.export(
         onnx_compatible,
-        (test_data_onnx_input["obs"], test_data_onnx_input["state_in_0"], test_data_onnx_input["state_in_1"], test_data_onnx_input["seq_lens"]),
+        (
+            tuple(test_data_onnx_input[n] for n in input_names)
+            if args.use_lstm
+            else ({"obs": test_data_onnx_input["obs"]},)
+        ),
         exported_model_file,
         export_params=True,
         opset_version=11,
         do_constant_folding=True,
-        input_names=["obs", "state_in_0", "state_in_1", "seq_lens"],
-        output_names=["output", "state_out_0", "state_out_1"],
-        dynamic_axes={
-            k: {0: "batch_size"}
-            for k in ["obs", "state_in_0", "state_in_1", "seq_lens"]
-        },
+        input_names=input_names,
+        output_names=[
+            "output",
+            "state_out_0",
+            "state_out_1",
+        ] if args.use_lstm else ["output"],
+        dynamic_axes={k: {0: "batch_size"} for k in input_names},
     )
     # Start an inference session for the ONNX model
     session = onnxruntime.InferenceSession(exported_model_file, None)
@@ -109,7 +140,5 @@ if __name__ == "__main__":
     print("PYTORCH", result_pytorch)
     print("ONNX", result_onnx[0])
 
-    assert np.allclose(
-        result_pytorch, result_onnx
-    ), "Model outputs are NOT equal. FAILED"
+    check(result_pytorch, result_onnx[0])
     print("Model outputs are equal. PASSED")
