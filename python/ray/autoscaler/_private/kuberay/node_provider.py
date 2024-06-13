@@ -227,12 +227,6 @@ def _worker_group_replicas(raycluster: Dict[str, Any], group_index: int):
     return raycluster["spec"]["workerGroupSpecs"][group_index].get("replicas", 1)
 
 
-def _worker_group_num_of_hosts(raycluster: Dict[str, Any], group_index: int):
-    # Extract NumOfHosts of a worker group. 1 is the default NumOfHosts value used by
-    # the KubeRay operator.
-    return raycluster["spec"]["workerGroupSpecs"][group_index].get("numOfHosts", 1)
-
-
 class IKubernetesHttpApiClient(ABC):
     """
     An interface for a Kubernetes HTTP API client.
@@ -468,10 +462,6 @@ class KubeRayNodeProvider(BatchingNodeProvider):  # type: ignore
         for node_type, target_replicas in scale_request.desired_num_workers.items():
             group_index = _worker_group_index(raycluster, node_type)
             group_max_replicas = _worker_group_max_replicas(raycluster, group_index)
-            group_num_of_hosts = _worker_group_num_of_hosts(raycluster, group_index)
-            # Account for multi-host worker groups
-            if group_num_of_hosts != 0:
-                target_replicas /= group_num_of_hosts
             # Cap the replica count to maxReplicas.
             if group_max_replicas is not None and group_max_replicas < target_replicas:
                 logger.warning(
