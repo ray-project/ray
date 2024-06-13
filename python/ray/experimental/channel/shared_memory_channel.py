@@ -458,15 +458,14 @@ class CompositeChannel(ChannelInterface):
     worker process, the data can be sent via shared memory channel.
 
     Args:
-        writer: The actor that may write to the channel. None signifies the driver.
-        readers: The actors that may read from the channel. None signifies
-            the driver.
+        writer: The actor that may write to the channel.
+        readers: The actors that may read from the channel.
     """
 
     def __init__(
         self,
         writer: Optional[ray.actor.ActorHandle],
-        readers: List[Optional[ray.actor.ActorHandle]],
+        readers: List[ray.actor.ActorHandle],
         _channel_dict: Optional[Dict[ray.ActorID, ChannelInterface]] = None,
         _channels: Optional[Set[ChannelInterface]] = None,
     ):
@@ -507,9 +506,7 @@ class CompositeChannel(ChannelInterface):
                 actor_id = self._get_actor_id(reader)
                 self._channel_dict[actor_id] = remote_channel
 
-    def _get_actor_id(self, reader: Optional[ray.actor.ActorHandle]) -> str:
-        if reader is None:
-            return None
+    def _get_actor_id(self, reader: ray.actor.ActorHandle) -> str:
         return reader._actor_id.hex()
 
     def ensure_registered_as_writer(self) -> None:
@@ -542,11 +539,17 @@ class CompositeChannel(ChannelInterface):
     def begin_read(self) -> Any:
         self.ensure_registered_as_reader()
         actor_id = ray.get_runtime_context().get_actor_id()
+        if actor_id is None:
+            # The reader is the driver process. Use the DAGDriverProxyActor's actor ID.
+            actor_id = self._get_actor_id(self._readers[0])
         return self._channel_dict[actor_id].begin_read()
 
     def end_read(self):
         self.ensure_registered_as_reader()
         actor_id = ray.get_runtime_context().get_actor_id()
+        if actor_id is None:
+            # The reader is the driver process. Use the DAGDriverProxyActor's actor ID.
+            actor_id = self._get_actor_id(self._readers[0])
         return self._channel_dict[actor_id].end_read()
 
     def close(self) -> None:
