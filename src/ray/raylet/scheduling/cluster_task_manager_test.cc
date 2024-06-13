@@ -1237,9 +1237,10 @@ TEST_F(ClusterTaskManagerTest, TaskCancellationTest) {
   // Task 4 is infeasible
   task_manager_.QueueAndScheduleTask(task4, false, false, &reply4, callback);
   pool_.TriggerCallbacks();
-  ASSERT_TRUE(task_manager_.CancelTasks([](const RayTask &task) {
-    return true;
-  }, rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_INTENDED, ""));
+  ASSERT_TRUE(task_manager_.CancelTasks(
+      [](const RayTask &task) { return true; },
+      rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_INTENDED,
+      ""));
   ASSERT_TRUE(reply3.canceled());
   ASSERT_TRUE(reply4.canceled());
 

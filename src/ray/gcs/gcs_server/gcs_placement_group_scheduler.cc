@@ -261,7 +261,7 @@ void GcsPlacementGroupScheduler::CancelResourceReserve(
           RAY_LOG(INFO) << "Finished cancelling the resource reserved for bundle: "
                         << bundle_spec->DebugString() << " at node " << node_id;
         } else {
-          // We couldn't delete the pg resources because network issue. Retry.
+          // We couldn't delete the pg resources because of network issue. Retry.
           RAY_LOG(WARNING) << "Failed to cancel the resource reserved for bundle: "
                            << bundle_spec->DebugString() << " at node " << node_id
                            << ". Status: " << status;
