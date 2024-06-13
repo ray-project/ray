@@ -145,6 +145,13 @@ class HttpServerDashboardHead:
 
     @aiohttp.web.middlewear
     async def same_origin_middlewear(self, request, handler):
+        origin = request.headers["Origin"]
+        host = request.headers["Host"]
+        if origin != host:
+            logger.info(
+                f"Rejecting {request_path=} because request origin {origin=} doesn't match configured origin {configured_origin=}"
+            )
+            raise aiohttp.web.HTTPForbidden()
         return await handler(request)
 
     @aiohttp.web.middleware
