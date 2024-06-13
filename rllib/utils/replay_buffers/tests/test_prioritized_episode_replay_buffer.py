@@ -20,9 +20,9 @@ class TestPrioritizedEpisodeReplayBuffer(unittest.TestCase):
                 action=int(t),
                 reward=0.1 * (t + 1),
                 infos={},
-                extra_model_outputs={k: k for k in range(2)}
-                if with_extra_model_outs
-                else None,
+                extra_model_outputs=(
+                    {k: k for k in range(2)} if with_extra_model_outs else None
+                ),
             )
         eps.is_terminated = np.random.random() > 0.5
         eps.is_truncated = False if eps.is_terminated else np.random.random() > 0.8
