@@ -4,6 +4,7 @@ import sys
 import pytest
 
 from ci.ray_ci.doc.autodoc import Autodoc
+from ci.ray_ci.doc.mock.mock_module import MockClass, mock_function
 from ci.ray_ci.doc.api import API, AnnotationType, CodeType
 
 
@@ -14,33 +15,36 @@ def test_walk():
             f.write("\tapi_01.rst\n")
             f.write("\tapi_02.rst\n")
         with open(os.path.join(tmp, "api_01.rst"), "w") as f:
+            f.write(".. currentmodule:: ci.ray_ci.doc.mock\n")
             f.write(".. autosummary::\n\n")
-            f.write("\tfunc_01\n")
-            f.write("\tfunc_02\n")
+            f.write("\tmock_function\n")
         with open(os.path.join(tmp, "api_02.rst"), "w") as f:
-            f.write(".. currentmodule:: mymodule\n")
-            f.write(".. autoclass:: class_01\n")
+            f.write(".. currentmodule:: ci.ray_ci.doc.mock\n")
+            f.write(".. autoclass:: MockClass\n")
 
         autodoc = Autodoc(os.path.join(tmp, "head.rst"))
         apis = autodoc.get_apis()
         assert str(apis) == str(
             [
                 API(
-                    name="func_01",
+                    name="ci.ray_ci.doc.mock.mock_function",
                     annotation_type=AnnotationType.PUBLIC_API,
                     code_type=CodeType.FUNCTION,
                 ),
                 API(
-                    name="func_02",
-                    annotation_type=AnnotationType.PUBLIC_API,
-                    code_type=CodeType.FUNCTION,
-                ),
-                API(
-                    name="mymodule.class_01",
+                    name="ci.ray_ci.doc.mock.MockClass",
                     annotation_type=AnnotationType.PUBLIC_API,
                     code_type=CodeType.CLASS,
                 ),
             ]
+        )
+        assert (
+            apis[0].get_canonical_name()
+            == f"{mock_function.__module__}.{mock_function.__qualname__}"
+        )
+        assert (
+            apis[1].get_canonical_name()
+            == f"{MockClass.__module__}.{MockClass.__qualname__}"
         )
 
 
