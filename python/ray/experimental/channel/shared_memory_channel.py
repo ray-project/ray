@@ -542,11 +542,19 @@ class CompositeChannel(ChannelInterface):
     def begin_read(self) -> Any:
         self.ensure_registered_as_reader()
         actor_id = ray.get_runtime_context().get_actor_id()
+        if actor_id is None:
+            # The reader is the driver process.
+            # Use the actor ID of the DAGDriverProxyActor.
+            actor_id = self._get_actor_id(self._readers[0])
         return self._channel_dict[actor_id].begin_read()
 
     def end_read(self):
         self.ensure_registered_as_reader()
         actor_id = ray.get_runtime_context().get_actor_id()
+        if actor_id is None:
+            # The reader is the driver process.
+            # Use the actor ID of the DAGDriverProxyActor.
+            actor_id = self._get_actor_id(self._readers[0])
         return self._channel_dict[actor_id].end_read()
 
     def close(self) -> None:

@@ -701,7 +701,7 @@ def test_composite_channel_single_reader(ray_start_cluster):
 
     # Create a channel to communicate between actor2 and driver process.
     actor2_to_driver_channel = ray.get(
-        actor2.create_multi_channel.remote(actor2, [None])
+        actor2.create_multi_channel.remote(actor2, [create_driver_actor()])
     )
     ray.get(actor2.write.remote("world hello"))
     assert actor2_to_driver_channel.begin_read() == "world hello"
