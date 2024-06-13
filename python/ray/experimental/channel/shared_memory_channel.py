@@ -417,11 +417,6 @@ class Channel(ChannelInterface):
         ret = ray.get(self._reader_ref)
 
         if isinstance(ret, _ResizeChannel):
-            # The writer says we need to update the channel backing store (due to a
-            # resize).
-            self._worker.core_worker.experimental_channel_read_release(
-                [self._reader_ref]
-            )
             self._reader_ref = ret._reader_ref
             # We need to register the new reader_ref.
             self._reader_registered = False
