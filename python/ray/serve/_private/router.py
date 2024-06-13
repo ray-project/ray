@@ -292,16 +292,17 @@ class RouterMetricsManager:
             )
 
         # Prevent in memory metrics store memory from growing
-        start_timestamp = time.time() - self.autoscaling_config.look_back_period_s
+        start_timestamp = timestamp - self.autoscaling_config.look_back_period_s
         self.metrics_store.prune_keys_and_compact_data(start_timestamp)
 
     def _get_aggregated_requests(self):
         running_requests = {}
         if RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE and self.autoscaling_config:
             look_back_period = self.autoscaling_config.look_back_period_s
+            window_start_time = time.time() - look_back_period
             running_requests = {
                 replica_id: self.metrics_store.window_average(
-                    replica_id, time.time() - look_back_period
+                    replica_id, window_start_time
                 )
                 # If data hasn't been recorded yet, return current
                 # number of queued and ongoing requests.
