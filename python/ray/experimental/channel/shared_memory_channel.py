@@ -466,7 +466,7 @@ class CompositeChannel(ChannelInterface):
     def __init__(
         self,
         writer: Optional[ray.actor.ActorHandle],
-        readers: List[Optional[ray.actor.ActorHandle]],
+        readers: List[ray.actor.ActorHandle],
         _channel_dict: Optional[Dict[ray.ActorID, ChannelInterface]] = None,
         _channels: Optional[Set[ChannelInterface]] = None,
     ):
@@ -507,10 +507,20 @@ class CompositeChannel(ChannelInterface):
                 actor_id = self._get_actor_id(reader)
                 self._channel_dict[actor_id] = remote_channel
 
-    def _get_actor_id(self, reader: Optional[ray.actor.ActorHandle]) -> str:
-        if reader is None:
-            return None
+    def _get_actor_id(self, reader: ray.actor.ActorHandle) -> str:
         return reader._actor_id.hex()
+
+    def _get_self_actor_id(self) -> str:
+        """
+        Get the actor ID of the current process. If the current process is the driver,
+        use the actor ID of the DAGDriverProxyActor.
+        """
+        actor_id = ray.get_runtime_context().get_actor_id()
+        if actor_id is None:
+            # The reader is the driver process.
+            # Use the actor ID of the DAGDriverProxyActor.
+            actor_id = self._get_actor_id(self._readers[0])
+        return actor_id
 
     def ensure_registered_as_writer(self) -> None:
         if self._writer_registered:
@@ -541,20 +551,12 @@ class CompositeChannel(ChannelInterface):
 
     def begin_read(self) -> Any:
         self.ensure_registered_as_reader()
-        actor_id = ray.get_runtime_context().get_actor_id()
-        if actor_id is None:
-            # The reader is the driver process.
-            # Use the actor ID of the DAGDriverProxyActor.
-            actor_id = self._get_actor_id(self._readers[0])
+        actor_id = self._get_self_actor_id()
         return self._channel_dict[actor_id].begin_read()
 
     def end_read(self):
         self.ensure_registered_as_reader()
-        actor_id = ray.get_runtime_context().get_actor_id()
-        if actor_id is None:
-            # The reader is the driver process.
-            # Use the actor ID of the DAGDriverProxyActor.
-            actor_id = self._get_actor_id(self._readers[0])
+        actor_id = self._get_self_actor_id()
         return self._channel_dict[actor_id].end_read()
 
     def close(self) -> None:

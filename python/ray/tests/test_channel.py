@@ -667,7 +667,7 @@ def test_composite_channel_single_reader(ray_start_cluster):
         def pass_channel(self, channel):
             self._chan = channel
 
-        def create_multi_channel(self, writer, readers):
+        def create_composite_channel(self, writer, readers):
             self._chan = ray_channel.CompositeChannel(writer, readers)
             return self._chan
 
@@ -687,13 +687,13 @@ def test_composite_channel_single_reader(ray_start_cluster):
     assert ray.get(actor1.read.remote()) == "hello"
 
     # Create a channel to communicate between two tasks in actor1.
-    ray.get(actor1.create_multi_channel.remote(actor1, [actor1]))
+    ray.get(actor1.create_composite_channel.remote(actor1, [actor1]))
     ray.get(actor1.write.remote("world"))
     assert ray.get(actor1.read.remote()) == "world"
 
     # Create a channel to communicate between actor1 and actor2.
     actor1_to_actor2_channel = ray.get(
-        actor1.create_multi_channel.remote(actor1, [actor2])
+        actor1.create_composite_channel.remote(actor1, [actor2])
     )
     ray.get(actor2.pass_channel.remote(actor1_to_actor2_channel))
     ray.get(actor1.write.remote("hello world"))
@@ -701,7 +701,7 @@ def test_composite_channel_single_reader(ray_start_cluster):
 
     # Create a channel to communicate between actor2 and driver process.
     actor2_to_driver_channel = ray.get(
-        actor2.create_multi_channel.remote(actor2, [create_driver_actor()])
+        actor2.create_composite_channel.remote(actor2, [create_driver_actor()])
     )
     ray.get(actor2.write.remote("world hello"))
     assert actor2_to_driver_channel.begin_read() == "world hello"
@@ -734,7 +734,7 @@ def test_composite_channel_multiple_readers(ray_start_cluster):
         def pass_channel(self, channel):
             self._chan = channel
 
-        def create_multi_channel(self, writer, readers):
+        def create_composite_channel(self, writer, readers):
             self._chan = ray_channel.CompositeChannel(writer, readers)
             return self._chan
 
@@ -759,7 +759,7 @@ def test_composite_channel_multiple_readers(ray_start_cluster):
 
     # actor1 writes data to CompositeChannel and actor1 and actor2 read it.
     actor1_output_channel = ray.get(
-        actor1.create_multi_channel.remote(actor1, [actor1, actor2])
+        actor1.create_composite_channel.remote(actor1, [actor1, actor2])
     )
     ray.get(actor2.pass_channel.remote(actor1_output_channel))
     ray.get(actor1.write.remote("world"))
@@ -769,7 +769,7 @@ def test_composite_channel_multiple_readers(ray_start_cluster):
         # actor1 writes data to CompositeChannel and two Ray tasks on actor1 read it.
         # This is not supported and should raise an exception.
         actor1_output_channel = ray.get(
-            actor1.create_multi_channel.remote(actor1, [actor1, actor1])
+            actor1.create_composite_channel.remote(actor1, [actor1, actor1])
         )
 
     """
