@@ -1,4 +1,6 @@
-"""Example showing how to use "action masking" in RLlib.
+# @OldAPIStack
+
+"""Example that uses "action masking" in RLlib.
 
 "Action masking" allows the agent to select actions based on the current
 observation. This is useful in many practical scenarios, where different

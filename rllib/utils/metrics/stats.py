@@ -1,4 +1,6 @@
+from collections import defaultdict
 import time
+import threading
 from typing import Any, Callable, Dict, Optional, Tuple, Union
 
 import numpy as np
@@ -205,8 +207,8 @@ class Stats:
         self._window = window
         self._ema_coeff = ema_coeff
 
-        # Timing functionality.
-        self._start_time = None
+        # Timing functionality (keep start times per thread).
+        self._start_times = defaultdict(lambda: None)
 
         # Simply store ths flag for the user of this class.
         self._clear_on_reduce = clear_on_reduce
@@ -227,23 +229,32 @@ class Stats:
         """Called when entering a context (with which users can measure a time delta).
 
         Returns:
-            This Stats instance (self).
+            This Stats instance (self), unless another thread has already entered (and
+            not exited yet), in which case a copy of `self` is returned. This way, the
+            second thread(s) cannot mess with the original Stat's (self) time-measuring.
+            This also means that only the first thread to __enter__ actually logs into
+            `self` and the following threads' measurements are discarded (logged into
+            a non-referenced shim-Stats object, which will simply be garbage collected).
         """
-        assert self._start_time is None, "Concurrent updates not supported!"
-        self._start_time = time.time()
+        # In case another thread already is measuring this Stats (timing), simply ignore
+        # the "enter request" and return a clone of `self`.
+        thread_id = threading.get_ident()
+        assert self._start_times[thread_id] is None
+        self._start_times[thread_id] = time.perf_counter()
         return self
 
     def __exit__(self, exc_type, exc_value, tb) -> None:
         """Called when exiting a context (with which users can measure a time delta)."""
-        assert self._start_time is not None
-        time_delta = time.time() - self._start_time
+        thread_id = threading.get_ident()
+        assert self._start_times[thread_id] is not None
+        time_delta = time.perf_counter() - self._start_times[thread_id]
         self.push(time_delta)
 
         # Call the on_exit handler.
         if self._on_exit:
             self._on_exit(time_delta)
 
-        self._start_time = None
+        del self._start_times[thread_id]
 
     def peek(self) -> Any:
         """Returns the result of reducing the internal values list.
@@ -583,11 +594,10 @@ class Stats:
         """
         values = values if values is not None else self.values
         window = window if window is not None else self._window
+        inf_window = window in [None, float("inf")]
 
         # Apply the window (if provided and not inf).
-        values = (
-            values if window is None or window == float("inf") else values[-window:]
-        )
+        values = values if inf_window else values[-window:]
 
         # No reduction method. Return list as-is OR reduce list to len=window.
         if self._reduce_method is None:
@@ -595,19 +605,26 @@ class Stats:
 
         # Special case: Internal values list is empty -> return NaN.
         elif len(values) == 0:
-            return float("nan"), []
+            if self._reduce_method in ["min", "max", "mean"]:
+                return float("nan"), []
+            else:
+                return 0, []
 
         # Do EMA (always a "mean" reduction; possibly using a window).
-        if self._ema_coeff is not None:
+        elif self._ema_coeff is not None:
             # Perform EMA reduction over all values in internal values list.
             mean_value = values[0]
             for v in values[1:]:
                 mean_value = self._ema_coeff * v + (1.0 - self._ema_coeff) * mean_value
-            return mean_value, values
+            if inf_window:
+                return mean_value, [mean_value]
+            else:
+                return mean_value, values
         # Do non-EMA reduction (possibly using a window).
         else:
             # Use the numpy/torch "nan"-prefix to ignore NaN's in our value lists.
             if torch and torch.is_tensor(values[0]):
+                assert all(torch.is_tensor(v) for v in values), values
                 reduce_meth = getattr(torch, "nan" + self._reduce_method)
                 reduce_in = torch.stack(values)
                 if self._reduce_method == "mean":
@@ -643,7 +660,7 @@ class Stats:
 
             # For window=None|inf (infinite window) and reduce != mean, we don't have to
             # keep any values, except the last (reduced) one.
-            if window in [None, float("inf")] and self._reduce_method != "mean":
+            if inf_window and self._reduce_method != "mean":
                 # TODO (sven): What if out values are torch tensors? In this case, we
                 #  would have to do reduction using `torch` above (not numpy) and only
                 #  then return the python primitive AND put the reduced new torch

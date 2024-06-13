@@ -175,7 +175,7 @@ class Channel(ChannelInterface):
     def __init__(
         self,
         writer: Optional[ray.actor.ActorHandle],
-        readers: List[Optional[ray.actor.ActorHandle]],
+        readers: List[ray.actor.ActorHandle],
         typ: Optional[Union[int, SharedMemoryType]] = None,
         _writer_node_id: Optional["ray.NodeID"] = None,
         _reader_node_id: Optional["ray.NodeID"] = None,
@@ -191,8 +191,7 @@ class Channel(ChannelInterface):
 
         Args:
             writer: The actor that may write to the channel. None signifies the driver.
-            readers: The actors that may read from the channel. None signifies
-                the driver.
+            readers: The actors that may read from the channel. No reader may be None.
             typ: Type information about the values passed through the channel.
                 Either an integer representing the max buffer size in bytes
                 allowed, or a SharedMemoryType.
@@ -200,6 +199,8 @@ class Channel(ChannelInterface):
             Channel: A wrapper around ray.ObjectRef.
         """
         assert len(readers) > 0
+        for reader in readers:
+            assert isinstance(reader, ray.actor.ActorHandle)
 
         if typ is None:
             typ = SharedMemoryType(DEFAULT_MAX_BUFFER_SIZE)
@@ -242,21 +243,14 @@ class Channel(ChannelInterface):
             )
             self._writer_ref = _create_channel_ref(self, typ.buffer_size_bytes)
 
-            if readers[0] is None:
-                # Reader is the driver. We assume that the reader and the writer are on
-                # the same node.
-                self._reader_node_id = self._writer_node_id
-                self._reader_ref = self._writer_ref
-            else:
-                # Reader and writer *may* be on different nodes.
-                self._reader_node_id = _get_reader_node_id(self, readers[0])
-                for reader in readers:
-                    reader_node_id = _get_reader_node_id(self, reader)
-                    if reader_node_id != self._reader_node_id:
-                        raise NotImplementedError(
-                            "All readers must be on the same node for now."
-                        )
-                self._create_reader_ref(readers, typ.buffer_size_bytes)
+            self._reader_node_id = _get_reader_node_id(self, readers[0])
+            for reader in readers:
+                reader_node_id = _get_reader_node_id(self, reader)
+                if reader_node_id != self._reader_node_id:
+                    raise NotImplementedError(
+                        "All readers must be on the same node for now."
+                    )
+            self._create_reader_ref(readers, typ.buffer_size_bytes)
 
             assert self._reader_ref is not None
         else:
@@ -315,17 +309,12 @@ class Channel(ChannelInterface):
             self._reader_ref
         ), "`self._reader_ref` must be not be None when registering a writer, because "
         "it should have been initialized in the constructor."
-
-        if len(self._readers) == 1 and self._readers[0] is None:
-            actor_id = ray.ActorID.nil()
-        else:
-            actor_id = self._readers[0]._actor_id
         self._worker.core_worker.experimental_channel_register_writer(
             self._writer_ref,
             self._reader_ref,
             self._writer_node_id,
             self._reader_node_id,
-            actor_id,
+            self._readers[0]._actor_id,
             len(self._readers),
         )
         self._writer_registered = True

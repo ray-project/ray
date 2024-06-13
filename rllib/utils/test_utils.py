@@ -1408,7 +1408,7 @@ def run_rllib_example_script_experiment(
         trainable: The Trainable sub-class to run in the tune.Tuner. If None (default),
             use the registered RLlib Algorithm class specified by args.algo.
         tune_callbacks: A list of Tune callbacks to configure with the tune.Tuner.
-            In case `args.wandb_key` is provided, will append a WandB logger to this
+            In case `args.wandb_key` is provided, appends a WandB logger to this
             list.
         keep_config: Set this to True, if you don't want this utility to change the
             given `base_config` in any way and leave it as-is. This is helpful
@@ -1465,6 +1465,7 @@ def run_rllib_example_script_experiment(
         # New stack.
         if config.enable_rl_module_and_learner:
             # Define compute resources used.
+            config.resources(num_gpus=0)
             config.learners(
                 num_learners=args.num_gpus,
                 num_gpus_per_learner=1 if torch.cuda.is_available() else 0,
@@ -1490,9 +1491,13 @@ def run_rllib_example_script_experiment(
     if args.no_tune:
         assert not args.as_test and not args.as_release_test
         algo = config.build()
-        for _ in range(stop.get(TRAINING_ITERATION, args.stop_iters)):
+        for i in range(stop.get(TRAINING_ITERATION, args.stop_iters)):
             results = algo.train()
-            print(f"R={results[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN]}", end="")
+            if ENV_RUNNER_RESULTS in results:
+                print(
+                    f"iter={i} R={results[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN]}",
+                    end="",
+                )
             if EVALUATION_RESULTS in results:
                 Reval = results[EVALUATION_RESULTS][ENV_RUNNER_RESULTS][
                     EPISODE_RETURN_MEAN
@@ -1622,7 +1627,17 @@ def run_rllib_example_script_experiment(
                 os.environ.get("TEST_OUTPUT_JSON", "/tmp/learning_test.json"),
                 "wt",
             ) as f:
-                json.dump(json_summary, f)
+                try:
+                    json.dump(json_summary, f)
+                # Something went wrong writing json. Try again w/ simplified stats.
+                except Exception:
+                    from ray.rllib.algorithms.algorithm import Algorithm
+
+                    simplified_stats = {
+                        k: stats[k] for k in Algorithm._progress_metrics if k in stats
+                    }
+                    json_summary["stats"] = simplified_stats
+                    json.dump(json_summary, f)
 
         if not test_passed:
             raise ValueError(

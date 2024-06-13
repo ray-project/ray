@@ -132,9 +132,9 @@ and :py:class:`~ray.rllib.core.learner.learner.Learner` APIs via the :py:class:`
             # LearnerGroup.
             config = (
                 PPOConfig()
-                # Number of Learner workers (ray actors).
+                # Number of Learner workers (Ray actors).
                 # Use 0 for no actors, only create a local Learner.
-                # Use >=1 to create n DDP-style Learner workers (ray actors).
+                # Use >=1 to create n DDP-style Learner workers (Ray actors).
                 .learners(num_learners=1)
                 # Specify the learner's hyperparameters.
                 .training(
