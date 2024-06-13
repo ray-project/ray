@@ -796,8 +796,8 @@ bool LocalTaskManager::CancelTasks(
         task_dependency_manager_.RemoveTaskDependencies(
             task.GetTaskSpecification().TaskId());
       }
-      work_it = waiting_task_queue_.erase(work_it);
       waiting_tasks_index_.erase(task.GetTaskSpecification().TaskId());
+      work_it = waiting_task_queue_.erase(work_it);
       tasks_cancelled = true;
     } else {
       ++work_it;
