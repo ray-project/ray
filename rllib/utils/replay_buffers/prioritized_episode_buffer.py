@@ -545,7 +545,9 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
         # TODO (sven, simon): Do we need these?
         self._last_sampled_indices = state["_last_sampled_indices"]
 
-    def update_priorities(self, priorities: NDArray, module_id: ModuleID) -> None:
+    def update_priorities(
+        self, priorities: NDArray, module_id: Optional[ModuleID] = None
+    ) -> None:
         """Update the priorities of items at corresponding indices.
 
         Usually, incoming priorities are TD-errors.

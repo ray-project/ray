@@ -1,9 +1,9 @@
-# import tree
+import copy
 import unittest
 
 import numpy as np
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode
-from ray.rllib.utils.replay_buffers.prioritized_episode_replay_buffer import (
+from ray.rllib.utils.replay_buffers.prioritized_episode_buffer import (
     PrioritizedEpisodeReplayBuffer,
 )
 from ray.rllib.utils.test_utils import check
@@ -87,292 +87,234 @@ class TestPrioritizedEpisodeReplayBuffer(unittest.TestCase):
             == {"3", "4", "5", "6", "7", "8", "9", "G"}
         )
 
-    # def test_prioritized_buffer_sample_logic(self):
-    #     buffer = PrioritizedEpisodeReplayBuffer(capacity=10000)
+    def test_buffer_sample_logic(self):
+        buffer = PrioritizedEpisodeReplayBuffer(capacity=10000)
 
-    #     for _ in range(200):
-    #         episode = self._get_episode()
-    #         buffer.add(episode)
+        for _ in range(200):
+            episode = self._get_episode()
+            buffer.add(episode)
 
-    #     for _ in range(1000):
-    #         sample = buffer.sample(batch_size_B=16, n_step=1)
-    #         (
-    #             obs,
-    #             actions,
-    #             rewards,
-    #             next_obs,
-    #             is_terminated,
-    #             is_truncated,
-    #             weights,
-    #             n_steps,
-    #         ) = (
-    #             sample["obs"],
-    #             sample["actions"],
-    #             sample["rewards"],
-    #             sample["new_obs"],
-    #             sample["terminateds"],
-    #             sample["truncateds"],
-    #             sample["weights"],
-    #             sample["n_step"],
-    #         )
+        for i in range(1000):
+            sample = buffer.sample(batch_size_B=16, n_step=1)
+            check(buffer.get_sampled_timesteps(), 16 * (i + 1))
+            for eps in sample:
 
-    #         # Make sure terminated and truncated are never both True.
-    #         assert not np.any(np.logical_and(is_truncated, is_terminated))
+                (
+                    obs,
+                    action,
+                    reward,
+                    next_obs,
+                    is_terminated,
+                    is_truncated,
+                    weight,
+                    n_step,
+                ) = (
+                    eps.get_observations(0),
+                    eps.get_actions(-1),
+                    eps.get_rewards(-1),
+                    eps.get_observations(-1),
+                    eps.is_terminated,
+                    eps.is_truncated,
+                    eps.get_extra_model_outputs("weights", -1),
+                    eps.get_extra_model_outputs("n_step", -1),
+                )
 
-    #         # All fields have same shape.
-    #         assert (
-    #             obs.shape[:2]
-    #             == rewards.shape
-    #             == actions.shape
-    #             == next_obs.shape
-    #             == is_truncated.shape
-    #             == is_terminated.shape
-    #         )
+                # Make sure terminated and truncated are never both True.
+                assert not (is_truncated and is_terminated)
 
-    #         # Note, floating point numbers cannot be compared directly.
-    #         tolerance = 1e-8
-    #         # Assert that actions correspond to the observations.
-    #         self.assertTrue(np.all(actions - obs < tolerance))
-    #         # Assert that next observations are correctly one step after
-    #         # observations.
-    #         self.assertTrue(np.all(next_obs - obs - 1 < tolerance))
-    #         # Assert that the reward comes from the next observation.
-    #         self.assertTrue(np.all(rewards * 10 - next_obs < tolerance))
+                # Note, floating point numbers cannot be compared directly.
+                tolerance = 1e-8
+                # Assert that actions correspond to the observations.
+                check(obs, action, atol=tolerance)
+                # Assert that next observations are correctly one step after
+                # observations.
+                check(next_obs, obs + 1, atol=tolerance)
+                # Assert that the reward comes from the next observation.
+                check(reward * 10, next_obs, atol=tolerance)
 
-    #         # Furthermore, assert that the importance sampling weights are
-    #         # one for `beta=0.0`.
-    #         self.assertTrue(np.all(weights - 1.0 < tolerance))
+                # Furthermore, assert that the importance sampling weights are
+                # one for `beta=0.0`.
+                check(weight, 1.0, atol=tolerance)
 
-    #         # Assert that all n-steps are 1.0 as passed into `sample`.
-    #         self.assertTrue(np.all(n_steps - 1.0 < tolerance))
+                # Assert that all n-steps are 1.0 as passed into `sample`.
+                check(n_step, 1.0, atol=tolerance)
 
-    #     # Now test a 3-step sampling.
-    #     for _ in range(1000):
-    #         sample = buffer.sample(batch_size_B=16, n_step=3, beta=1.0)
-    #         (
-    #             obs,
-    #             actions,
-    #             rewards,
-    #             next_obs,
-    #             is_terminated,
-    #             is_truncated,
-    #             weights,
-    #             n_steps,
-    #         ) = (
-    #             sample["obs"],
-    #             sample["actions"],
-    #             sample["rewards"],
-    #             sample["new_obs"],
-    #             sample["terminateds"],
-    #             sample["truncateds"],
-    #             sample["weights"],
-    #             sample["n_step"],
-    #         )
+    def test_buffer_sample_logic_with_3_step(self):
+        buffer = PrioritizedEpisodeReplayBuffer(capacity=10000)
 
-    #         # Make sure terminated and truncated are never both True.
-    #         assert not np.any(np.logical_and(is_truncated, is_terminated))
+        for _ in range(200):
+            episode = self._get_episode()
+            buffer.add(episode)
 
-    #         # All fields have same shape.
-    #         assert (
-    #             obs.shape[:2]
-    #             == rewards.shape
-    #             == actions.shape
-    #             == next_obs.shape
-    #             == is_truncated.shape
-    #             == is_terminated.shape
-    #         )
+        for i in range(1000):
+            sample = buffer.sample(batch_size_B=16, n_step=3)
+            check(buffer.get_sampled_timesteps(), 16 * (i + 1))
+            for eps in sample:
 
-    #         # Note, floating point numbers cannot be compared directly.
-    #         tolerance = 1e-8
-    #         # Assert that actions correspond to the observations.
-    #         self.assertTrue(np.all(actions - obs < tolerance))
-    #         # Assert that next observations are correctly one step after
-    #         # observations.
-    #         self.assertTrue(np.all(next_obs - obs - 1 - 2 < tolerance))
-    #         # Assert that the reward is indeed the cumulated sum of rewards
-    #         # collected between the observation and the next_observation.
-    #         reward_sum = (
-    #             next_obs * 0.99**2 + (next_obs - 1) * 0.99 + next_obs - 2
-    #         ) * 0.1
-    #         self.assertTrue(np.all(rewards - reward_sum < tolerance))
+                (
+                    obs,
+                    action,
+                    reward,
+                    next_obs,
+                    is_terminated,
+                    is_truncated,
+                    weight,
+                    n_step,
+                ) = (
+                    eps.get_observations(0),
+                    eps.get_actions(-1),
+                    eps.get_rewards(-1),
+                    eps.get_observations(-1),
+                    eps.is_terminated,
+                    eps.is_truncated,
+                    eps.get_extra_model_outputs("weights", -1),
+                    eps.get_extra_model_outputs("n_step", -1),
+                )
 
-    #         # Furtermore, ensure that all n-steps are 3 as passed into `sample`.
-    #         self.assertTrue(np.all(n_steps - 3.0 < tolerance))
+                # Make sure terminated and truncated are never both True.
+                assert not (is_truncated and is_terminated)
 
-    #     # Now test a random n-step sampling.
-    #     for _ in range(1000):
-    #         sample = buffer.sample(batch_size_B=16, n_step=(1, 5), beta=1.0)
-    #         (
-    #             obs,
-    #             actions,
-    #             rewards,
-    #             next_obs,
-    #             is_terminated,
-    #             is_truncated,
-    #             weights,
-    #             n_steps,
-    #         ) = (
-    #             sample["obs"],
-    #             sample["actions"],
-    #             sample["rewards"],
-    #             sample["new_obs"],
-    #             sample["terminateds"],
-    #             sample["truncateds"],
-    #             sample["weights"],
-    #             sample["n_step"],
-    #         )
+                # Note, floating point numbers cannot be compared directly.
+                tolerance = 1e-8
+                # Assert that actions correspond to the observations.
+                check(obs, action, atol=tolerance)
+                # Assert that next observations are correctly one step after
+                # observations.
+                check(next_obs, obs + 3, atol=tolerance)
+                # Assert that the reward comes from the next observation.
+                # Assert that the reward is indeed the cumulated sum of rewards
+                # collected between the observation and the next_observation.
+                reward_sum = (
+                    next_obs * 0.99**2 + (next_obs - 1) * 0.99 + next_obs - 2
+                ) * 0.1
+                check(reward, reward_sum, atol=tolerance)
 
-    #         # Make sure terminated and truncated are never both True.
-    #         assert not np.any(np.logical_and(is_truncated, is_terminated))
+                # Furthermore, assert that the importance sampling weights are
+                # one for `beta=0.0`.
+                check(weight, 1.0, atol=tolerance)
 
-    #         # All fields have same shape.
-    #         assert (
-    #             obs.shape[:2]
-    #             == rewards.shape
-    #             == actions.shape
-    #             == next_obs.shape
-    #             == is_truncated.shape
-    #             == is_terminated.shape
-    #         )
+                # Assert that all n-steps are 1.0 as passed into `sample`.
+                check(n_step, 3.0, atol=tolerance)
 
-    #         # Note, floating point numbers cannot be compared directly.
-    #         tolerance = 1e-8
+    def test_buffer_sample_logic_with_random_n_step(self):
+        buffer = PrioritizedEpisodeReplayBuffer(capacity=10000)
 
-    #         # Furtermore, ensure that n-steps are in between 1 and 5.
-    #         self.assertTrue(np.all(n_steps - 5.0 < tolerance))
-    #         self.assertTrue(np.all(n_steps - 1.0 > -tolerance))
+        for _ in range(200):
+            episode = self._get_episode()
+            buffer.add(episode)
 
-    #         # Ensure that there is variation in the n-steps.
-    #         self.assertTrue(np.var(n_steps) > 0.0)
+        for i in range(1000):
+            sample = buffer.sample(batch_size_B=16, n_step=(1, 5))
+            check(buffer.get_sampled_timesteps(), 16 * (i + 1))
+            n_steps = []
+            for eps in sample:
+                # Get the n-step that was used for sampling.
+                n_step = eps.get_extra_model_outputs("n_step", -1)
 
-    # def test_infos_and_extra_model_outputs(self):
-    #     # Define replay buffer (alpha=0.8)
-    #     buffer = PrioritizedEpisodeReplayBuffer(capacity=10000, alpha=0.8)
+                # Note, floating point numbers cannot be compared directly.
+                tolerance = 1e-8
+                # Ensure that n-steps are in between 1 and 5.
+                self.assertTrue(n_step - 5.0 < tolerance)
+                self.assertTrue(n_step - 1.0 > -tolerance)
+                n_steps.append(n_step)
+            # Ensure that there is variation in the n-steps.
+            self.assertTrue(np.var(n_steps) > 0.0)
 
-    #     # Fill the buffer with episodes.
-    #     for _ in range(200):
-    #         episode = self._get_episode(with_extra_model_outs=True)
-    #         buffer.add(episode)
+    def test_buffer_sample_logic_with_infos_and_extra_model_output(self):
+        buffer = PrioritizedEpisodeReplayBuffer(capacity=10000)
 
-    #     # Now test a sampling with infos and extra model outputs (beta=0.7).
-    #     for _ in range(1000):
-    #         sample = buffer.sample(
-    #             batch_size_B=16,
-    #             n_step=1,
-    #             beta=0.7,
-    #             include_infos=True,
-    #             include_extra_model_outputs=True,
-    #         )
-    #         (
-    #             obs,
-    #             actions,
-    #             rewards,
-    #             next_obs,
-    #             is_terminated,
-    #             is_truncated,
-    #             weights,
-    #             n_steps,
-    #             infos,
-    #             # Note, each extra model output gets extracted
-    #             # to its own column.
-    #             extra_model_outs_0,
-    #             extra_model_outs_1,
-    #         ) = (
-    #             sample["obs"],
-    #             sample["actions"],
-    #             sample["rewards"],
-    #             sample["new_obs"],
-    #             sample["terminateds"],
-    #             sample["truncateds"],
-    #             sample["weights"],
-    #             sample["n_step"],
-    #             sample["infos"],
-    #             sample[0],
-    #             sample[1],
-    #         )
+        for _ in range(200):
+            episode = self._get_episode(with_extra_model_outs=True)
+            buffer.add(episode)
 
-    #         # Make sure terminated and truncated are never both True.
-    #         assert not np.any(np.logical_and(is_truncated, is_terminated))
+        for i in range(1000):
+            sample = buffer.sample(
+                batch_size_B=16,
+                n_step=1,
+                include_infos=True,
+                include_extra_model_outputs=True,
+            )
+            check(buffer.get_sampled_timesteps(), 16 * (i + 1))
+            for eps in sample:
 
-    #         # All fields have same shape.
-    #         assert (
-    #             obs.shape
-    #             == rewards.shape
-    #             == actions.shape
-    #             == next_obs.shape
-    #             == is_truncated.shape
-    #             == is_terminated.shape
-    #             == weights.shape
-    #             == n_steps.shape
-    #             # Note, infos will be a list of dicitonaries.
-    #             == (len(infos),)
-    #             == extra_model_outs_0.shape
-    #             == extra_model_outs_1.shape
-    #         )
+                (infos, extra_model_output_0, extra_model_output_1,) = (
+                    eps.get_infos(),
+                    eps.get_extra_model_outputs(0),
+                    eps.get_extra_model_outputs(1),
+                )
 
-    # def test_update_priorities(self):
-    #     # Define replay buffer (alpha=1.0).
-    #     buffer = PrioritizedEpisodeReplayBuffer(capacity=100)
+                # Assert that we have infos from both steps.
+                check(len(infos), 2)
+                # Ensure both extra model outputs have both a length of 1.abs
+                check(len(extra_model_output_0), 1)
+                check(len(extra_model_output_1), 1)
 
-    #     # Generate 200 episode of random length.
-    #     for _ in range(200):
-    #         episode = self._get_episode()
-    #         buffer.add(episode)
+    def test_update_priorities(self):
+        # Define replay buffer (alpha=1.0).
+        buffer = PrioritizedEpisodeReplayBuffer(capacity=100)
 
-    #     # Now sample from the buffer and update priorities.
+        # Generate 200 episode of random length.
+        for _ in range(200):
+            episode = self._get_episode()
+            buffer.add(episode)
 
-    #     sample = buffer.sample(batch_size_B=16, n_step=1)
-    #     weights = sample["weights"]
+        # Now sample from the buffer and update priorities.
 
-    #     # Make sure the initial weights are 1.0.
-    #     tolerance = 1e-5
-    #     self.assertTrue(np.all(weights - 1 < tolerance))
+        sample = buffer.sample(batch_size_B=16, n_step=1)
+        weights = np.array(
+            [eps.get_extra_model_outputs("weights", -1) for eps in sample]
+        )
 
-    #     # Define some deltas.
-    #     deltas = np.array([0.01] * 16)
-    #     # Get the last sampled indices (in the segment trees).
-    #     last_sampled_indices = buffer._last_sampled_indices
-    #     # Update th epriorities of the last sampled transitions.
-    #     buffer.update_priorities(priorities=deltas)
+        # Make sure the initial weights are 1.0.
+        tolerance = 1e-5
+        self.assertTrue(np.all(weights - 1 < tolerance))
 
-    #     # Assert that the new priorities are indeed the ones we passed in.
-    #     new_priorities = [buffer._sum_segment[idx] for idx in last_sampled_indices]
-    #     self.assertTrue(np.all(new_priorities - deltas < tolerance))
+        # Define some deltas.
+        deltas = np.array([0.01] * 16)
+        # Get the last sampled indices (in the segment trees).
+        last_sampled_indices = copy.deepcopy(buffer._last_sampled_indices)
+        # Update th epriorities of the last sampled transitions.
+        buffer.update_priorities(priorities=deltas)
 
-    #     # Sample several times.
-    #     index_counts = []
-    #     for _ in range(1000):
-    #         sample = buffer.sample(batch_size_B=16, n_step=1)
+        # Assert that the new priorities are indeed the ones we passed in.
+        new_priorities = [buffer._sum_segment[idx] for idx in last_sampled_indices]
+        self.assertTrue(np.all(new_priorities - deltas < tolerance))
 
-    #         index_counts.append(
-    #             any(
-    #                 [
-    #                     idx in last_sampled_indices
-    #                     for idx in buffer._last_sampled_indices
-    #                 ]
-    #             )
-    #         )
+        # Sample several times.
+        index_counts = []
+        for _ in range(1000):
+            sample = buffer.sample(batch_size_B=16, n_step=1)
 
-    #     self.assertGreater(0.15, sum(index_counts) / len(index_counts))
+            index_counts.append(
+                any(
+                    [
+                        idx in last_sampled_indices
+                        for idx in buffer._last_sampled_indices
+                    ]
+                )
+            )
 
-    #     # Define replay buffer (alpha=1.0).
-    #     buffer = PrioritizedEpisodeReplayBuffer(capacity=10)
-    #     episode = self._get_episode(10)
-    #     buffer.add(episode)
+        self.assertGreater(0.15, sum(index_counts) / len(index_counts))
 
-    #     # Manipulate the priorities such that 1's priority is
-    #     # way higher than the others and sample.
-    #     buffer._last_sampled_indices = [1]
-    #     randn = np.random.random() + 0.2
-    #     buffer.update_priorities(np.array([randn]))
-    #     buffer._last_sampled_indices = [2, 3, 4, 5, 6, 7, 8, 9]
-    #     buffer.update_priorities(np.array([0.01] * 8))
+        # Define replay buffer (alpha=1.0).
+        buffer = PrioritizedEpisodeReplayBuffer(capacity=10)
+        episode = self._get_episode(10)
+        buffer.add(episode)
 
-    #     # Expect that around 90% of the samples are from index 1.
-    #     for _ in range(10):
-    #         sample = buffer.sample(1000)
-    #         number_of_ones = np.sum(np.array(buffer._last_sampled_indices) == 1)
-    #         self.assertTrue(number_of_ones / 1000 > 0.8)
+        # Manipulate the priorities such that 1's priority is
+        # way higher than the others and sample.
+        buffer._last_sampled_indices = [1]
+        randn = np.random.random() + 0.2
+        buffer.update_priorities(np.array([randn]))
+        buffer._last_sampled_indices = [1, 2, 3, 4, 5, 6, 7, 8, 9]
+        buffer.update_priorities(np.array([0.01] * 9))
+
+        # Expect that around 90% of the samples are from index 1.
+        for _ in range(10):
+            sample = buffer.sample(1000)
+            number_of_ones = np.sum(np.array(buffer._last_sampled_indices) == 0)
+            print(f"1s: {number_of_ones / 1000}")
+            self.assertTrue(number_of_ones / 1000 > 0.8)
 
     def test_get_state_and_set_state(self):
         """Test the get_state and set_state methods.
