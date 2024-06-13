@@ -9,10 +9,10 @@ from ray.rllib.env.multi_agent_episode import MultiAgentEpisode
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 from ray.rllib.utils import force_list
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.replay_buffers.multi_agent_episode_replay_buffer import (
+from ray.rllib.utils.replay_buffers import (
     MultiAgentEpisodeReplayBuffer,
 )
-from ray.rllib.utils.replay_buffers.prioritized_episode_replay_buffer import (
+from ray.rllib.utils.replay_buffers import (
     PrioritizedEpisodeReplayBuffer,
 )
 from ray.rllib.utils.typing import ModuleID

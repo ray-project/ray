@@ -16,7 +16,7 @@ from ray.rllib.utils.replay_buffers.multi_agent_replay_buffer import (
     MultiAgentReplayBuffer,
     ReplayMode,
 )
-from ray.rllib.utils.replay_buffers.prioritized_episode_replay_buffer import (
+from ray.rllib.utils.replay_buffers.prioritized_episode_buffer import (
     PrioritizedEpisodeReplayBuffer,
 )
 from ray.rllib.utils.replay_buffers.prioritized_replay_buffer import (
