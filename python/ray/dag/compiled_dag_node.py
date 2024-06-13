@@ -5,7 +5,7 @@ import logging
 import threading
 
 import ray
-from ray.experimental.compiled_dag_ref import CompiledDAGRef, DAGExecutionError
+from ray.experimental.compiled_dag_ref import CompiledDAGRef, RayDAGTaskError
 from ray.experimental.channel import (
     ChannelInterface,
     ChannelOutputType,
@@ -164,7 +164,7 @@ def _exec_task(self, task: "ExecutableTask", idx: int) -> bool:
     except Exception as exc:
         # TODO(rui): consider different ways of passing down the exception,
         # e.g., wrapping with RayTaskError.
-        output_writer.write(DAGExecutionError(exc))
+        output_writer.write(RayDAGTaskError(exc))
 
     return False
 
@@ -400,7 +400,7 @@ class CompiledDAG:
                 input queue is full, another asyncio task is reading from the
                 DAG output.
             max_buffered_results: The maximum number of execution results that
-                is allowed to be buffered.
+                are allowed to be buffered.
 
         Returns:
             Channel: A wrapper around ray.ObjectRef.
@@ -420,6 +420,7 @@ class CompiledDAG:
         self._enable_asyncio: bool = enable_asyncio
         self._fut_queue = asyncio.Queue()
         self._async_max_queue_size: Optional[int] = async_max_queue_size
+        # TODO(rui): consider unify it with async_max_queue_size
         self._max_buffered_results: Optional[int] = max_buffered_results
         if self._max_buffered_results is None:
             self._max_buffered_results = MAX_BUFFER_COUNT
@@ -955,6 +956,8 @@ class CompiledDAG:
 
         Returns:
             The execution result corresponding to the given execution index.
+
+        TODO(rui): catch the case that user holds onto the CompiledDAGRefs
         """
         while self._max_execution_index < execution_index:
             if self._max_execution_index + 1 == execution_index:
@@ -962,7 +965,7 @@ class CompiledDAG:
                 self._max_execution_index += 1
                 return self._dag_output_fetcher.begin_read()
             # Otherwise, buffer the result
-            if len(self._result_buffer) > self._max_buffered_results:
+            if len(self._result_buffer) >= self._max_buffered_results:
                 raise ValueError(
                     "Too many buffered results: the allowed max count for "
                     f"buffered results is {self._max_buffered_results}; call ray.get() "

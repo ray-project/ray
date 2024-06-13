@@ -13,7 +13,8 @@ class CompiledDAGRef(ray.ObjectRef):
     major differences:
     1. ray.get() can only be called once on CompiledDAGRef.
     2. ray.wait() is not supported.
-    3. CompiledDAGRef cannot be copied or deep copied.
+    3. CompiledDAGRef cannot be copied, deep copied, or pickled.
+    4. CompiledDAGRef cannot be passed as an argument to another task.
     """
 
     def __init__(
@@ -65,7 +66,7 @@ class CompiledDAGRef(ray.ObjectRef):
         return self._dag._execute_until(self._execution_index)
 
 
-class DAGExecutionError:
+class RayDAGTaskError:
     """
     Wraps an exception that occurred during the execution of a DAG.
     """

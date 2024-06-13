@@ -10,7 +10,7 @@ import time
 
 import pytest
 
-from ray.experimental.compiled_dag_ref import DAGExecutionError
+from ray.experimental.compiled_dag_ref import RayDAGTaskError
 import ray
 import ray._private
 import ray.cluster_utils
@@ -369,13 +369,13 @@ def test_dag_exception(ray_start_regular, capsys):
     compiled_dag = dag.experimental_compile()
     ref = compiled_dag.execute("hello")
     result = ray.get(ref)
-    assert isinstance(result, DAGExecutionError)
+    assert isinstance(result, RayDAGTaskError)
     assert isinstance(result.cause, TypeError)
 
     # Can do it multiple times.
     ref = compiled_dag.execute("hello")
     result = ray.get(ref)
-    assert isinstance(result, DAGExecutionError)
+    assert isinstance(result, RayDAGTaskError)
     assert isinstance(result.cause, TypeError)
 
     compiled_dag.teardown()
@@ -506,7 +506,7 @@ def test_dag_fault_tolerance_chain(ray_start_regular_shared):
     for i in range(99):
         ref = compiled_dag.execute(i)
         result = ray.get(ref)
-        if isinstance(result, DAGExecutionError):
+        if isinstance(result, RayDAGTaskError):
             execution_error = result
             break
     assert execution_error is not None
@@ -553,7 +553,7 @@ def test_dag_fault_tolerance(ray_start_regular_shared):
     for i in range(99):
         ref = compiled_dag.execute(1)
         res = ray.get(ref)
-        if isinstance(res[0], DAGExecutionError):
+        if isinstance(res[0], RayDAGTaskError):
             execution_error = res[0]
             break
     assert execution_error is not None
@@ -687,7 +687,7 @@ def test_asyncio_exceptions(ray_start_regular_shared, max_queue_size):
         for i in range(99):
             awaitable_output = await compiled_dag.execute_async(1)
             result = await awaitable_output.get()
-            if isinstance(result, DAGExecutionError):
+            if isinstance(result, RayDAGTaskError):
                 execution_error = result
                 break
         assert execution_error is not None
