@@ -519,6 +519,7 @@ class CompositeChannel(ChannelInterface):
         if actor_id is None:
             # The reader is the driver process.
             # Use the actor ID of the DAGDriverProxyActor.
+            assert len(self._readers) == 1
             actor_id = self._get_actor_id(self._readers[0])
         return actor_id
 
