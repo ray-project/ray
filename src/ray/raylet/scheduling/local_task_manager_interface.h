@@ -37,18 +37,10 @@ class ILocalTaskManager {
   // Schedule and dispatch tasks.
   virtual void ScheduleAndDispatchTasks() = 0;
 
-  /// Attempt to cancel an already queued task.
-  ///
-  /// \param task_id: The id of the task to remove.
-  /// \param failure_type: The failure type.
-  ///
-  /// \return True if task was successfully removed. This function will return
-  /// false if the task is already running.
-  virtual bool CancelTask(
-      const TaskID &task_id,
-      rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type =
-          rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_INTENDED,
-      const std::string &scheduling_failure_message = "") = 0;
+  virtual bool CancelTasks(
+      std::function<bool(const RayTask &)> predicate,
+      rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type,
+      const std::string &scheduling_failure_message) = 0;
 
   virtual const absl::flat_hash_map<SchedulingClass,
                                     std::deque<std::shared_ptr<internal::Work>>>
@@ -88,17 +80,9 @@ class NoopLocalTaskManager : public ILocalTaskManager {
   // Schedule and dispatch tasks.
   void ScheduleAndDispatchTasks() override {}
 
-  /// Attempt to cancel an already queued task.
-  ///
-  /// \param task_id: The id of the task to remove.
-  /// \param failure_type: The failure type.
-  ///
-  /// \return True if task was successfully removed. This function will return
-  /// false if the task is already running.
-  bool CancelTask(const TaskID &task_id,
-                  rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type =
-                      rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_INTENDED,
-                  const std::string &scheduling_failure_message = "") override {
+  bool CancelTasks(std::function<bool(const RayTask &)> predicate,
+                   rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type,
+                   const std::string &scheduling_failure_message) override {
     return false;
   }
 
