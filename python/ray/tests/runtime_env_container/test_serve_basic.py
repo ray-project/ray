@@ -1,6 +1,6 @@
 import argparse
 from ray import serve
-from ray._private.test_utils import wait_for_condition, get_ray_default_worker_file_path
+from ray._private.test_utils import wait_for_condition
 from ray.serve.handle import DeploymentHandle
 
 parser = argparse.ArgumentParser()
@@ -12,12 +12,10 @@ parser.add_argument(
 )
 args = parser.parse_args()
 
-WORKER_PATH = get_ray_default_worker_file_path()
-
 if args.use_image_uri_api:
     runtime_env = {"image_uri": args.image}
 else:
-    runtime_env = {"container": {"image": args.image, "worker_path": WORKER_PATH}}
+    runtime_env = {"container": {"image": args.image}}
 
 
 @serve.deployment(ray_actor_options={"runtime_env": runtime_env})

@@ -450,7 +450,6 @@ build_wheels_and_jars() {
       # wheels, but not between different travis runs, because that
       # caused timeouts in the past. See the "cache: false" line below.
       local MOUNT_BAZEL_CACHE=(
-        -v "${HOME}/ray-bazel-cache":/root/ray-bazel-cache
         -e "TRAVIS=true"
         -e "TRAVIS_PULL_REQUEST=${TRAVIS_PULL_REQUEST:-false}"
         -e "TRAVIS_COMMIT=${TRAVIS_COMMIT}"
@@ -482,8 +481,6 @@ build_wheels_and_jars() {
         rm -rf /ray/.whl || true
         cp -rT /ray /ray-mount
         ls -a /ray-mount
-        docker run --rm -v /ray:/ray-mounted ubuntu:22.04 ls /
-        docker run --rm -v /ray:/ray-mounted ubuntu:22.04 ls /ray-mounted
         docker run --rm -w /ray -v /ray:/ray "${MOUNT_BAZEL_CACHE[@]}" \
           "${MOUNT_ENV[@]}" "${IMAGE_NAME}:${IMAGE_TAG}" /ray/python/build-wheel-manylinux2014.sh
         cp -rT /ray-mount /ray # copy new files back here
