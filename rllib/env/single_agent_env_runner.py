@@ -542,7 +542,7 @@ class SingleAgentEnvRunner(EnvRunner):
         self._callbacks.on_environment_created(
             env_runner=self,
             metrics_logger=self.metrics,
-            env=self.env,
+            env=self.env.unwrapped,
             env_context=env_ctx,
         )
 
@@ -602,7 +602,7 @@ class SingleAgentEnvRunner(EnvRunner):
             episode=episodes[idx],
             env_runner=self,
             metrics_logger=self.metrics,
-            env=self.env,
+            env=self.env.unwrapped,
             rl_module=self.module,
             env_index=idx,
         )

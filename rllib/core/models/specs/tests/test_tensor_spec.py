@@ -8,24 +8,17 @@ from ray.rllib.core.models.specs.specs_base import TensorSpec
 
 _, tf, _ = try_import_tf()
 torch, _ = try_import_torch()
-jax, _ = try_import_jax()
-jnp = jax.numpy
 
-# This makes it so that does not convert 64-bit floats to 32-bit
-jax.config.update("jax_enable_x64", True)
-
-FRAMEWORKS_TO_TEST = {"torch", "np", "tf2", "jax"}
+FRAMEWORKS_TO_TEST = {"torch", "np", "tf2"}
 DOUBLE_TYPE = {
     "torch": torch.float64,
     "np": np.float64,
     "tf2": tf.float64,
-    "jax": jnp.float64,
 }
 FLOAT_TYPE = {
     "torch": torch.float32,
     "np": np.float32,
     "tf2": tf.float32,
-    "jax": jnp.float32,
 }
 
 

@@ -119,7 +119,7 @@ class EnvRenderCallback(DefaultCallbacks):
 
         # If we have a vector env, only render the sub-env at index 0.
         if isinstance(env.unwrapped, gym.vector.VectorEnv):
-            image = env.unwrapped.envs[0].render()
+            image = env.envs[0].render()
         # Render the gym.Env.
         else:
             image = env.render()
