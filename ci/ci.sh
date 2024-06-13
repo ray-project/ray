@@ -451,7 +451,6 @@ build_wheels_and_jars() {
       # wheels, but not between different travis runs, because that
       # caused timeouts in the past. See the "cache: false" line below.
       local MOUNT_BAZEL_CACHE=(
-        -v "${HOME}/ray-bazel-cache":/root/ray-bazel-cache
         -e "TRAVIS=true"
         -e "TRAVIS_PULL_REQUEST=${TRAVIS_PULL_REQUEST:-false}"
         -e "TRAVIS_COMMIT=${TRAVIS_COMMIT}"
