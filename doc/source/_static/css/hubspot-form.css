@@ -1,0 +1,68 @@
+.hbspt-form {
+  background-color: #f4f6fa;
+  border-radius: 8px;
+  padding: 30px;
+  position: relative;
+  text-align: center;
+
+  p {
+    color: #333333;
+    font-size: 14px;
+    line-height: 1.5;
+    margin-top: 2rem;
+  }
+  margin-bottom: 60px;
+}
+
+.hbspt-form input,
+button,
+textarea {
+  border: 1px solid #999;
+  border-radius: 8px;
+  display: block;
+  font-family: var(--font-sans-serif);
+  font-size: 16px;
+  font-weight: 500;
+  margin-top: 3px;
+  padding: 13px 24px;
+  width: 100%;
+}
+
+.hbspt-form input button,
+input[type='submit'] {
+  background-color: #4377ff;
+  color: #fff;
+  cursor: pointer;
+  margin-top: 24px;
+  transition: transform 100ms linear;
+
+  &:hover,
+  &:focus {
+    transform: translateY(-3px) scale(1);
+  }
+
+  &:disabled {
+    cursor: not-allowed;
+    opacity: 0.75;
+
+    &:hover,
+    &:focus {
+      transform: translateY(-3px) scale(1);
+    }
+  }
+}
+
+.hbspt-form ul.hs-error-msgs {
+  text-align: left;
+  color: red;
+  padding: 0;
+  margin: 0;
+
+  li {
+    list-style: none;
+
+    a {
+      font-size: 12px;
+    }
+  }
+}

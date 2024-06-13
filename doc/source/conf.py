@@ -413,6 +413,8 @@ def add_custom_assets(
         app.add_css_file("css/ray-libraries.css")
     elif pagename == "ray-overview/use-cases":
         app.add_css_file("css/use_cases.css")
+    elif pagename == "ray-observability/ray-distributed-debugger":
+        app.add_css_file("css/hubspot-form.css")
 
 
 def setup(app):
