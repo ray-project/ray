@@ -660,7 +660,7 @@ class StandardAutoscaler:
                         self.replicas_to_nodes[replica_index].remove(node)
                         # remove replica index once all nodes in replica removed
                         if len(self.replicas_to_nodes[replica_index]) == 0:
-                            self.replicas_to_nodes.remove(replica_index)
+                            self.replicas_to_nodes.pop(replica_index)
                             self.replicas_to_delete.remove(replica_index)
         # Terminate the nodes
         self.provider.terminate_nodes(self.nodes_to_terminate)
