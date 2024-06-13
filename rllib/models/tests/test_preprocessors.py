@@ -129,7 +129,7 @@ class TestPreprocessors(unittest.TestCase):
 
         p4 = ModelCatalog.get_preprocessor(
             gym.make(
-                "ALE/MsPacman-v5",
+                "ale_py:ALE/MsPacman-v5",
                 frameskip=1,
             )
         )

@@ -74,7 +74,7 @@ class DreamerV3EnvRunner(EnvRunner):
 
         # Create the gym.vector.Env object.
         # Atari env.
-        if self.config.env.startswith("ALE/"):
+        if "ALE/" in self.config.env:
             # TODO (sven): This import currently causes a Tune test to fail. Either way,
             #  we need to figure out how to properly setup the CI environment with
             #  the correct versions of all gymnasium-related packages.

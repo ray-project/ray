@@ -523,7 +523,6 @@ class SingleAgentEnvRunner(EnvRunner):
             )
         gym.register("rllib-single-agent-env-v0", entry_point=entry_point)
 
-        # Wrap into `DictInfoToList` wrapper to get infos as lists.
         self.env = DictInfoToList(
             gym.make_vec(
                 "rllib-single-agent-env-v0",

@@ -30,7 +30,7 @@ parser = add_rllib_example_script_args(
 parser.add_argument(
     "--atari-env",
     type=str,
-    default="ALE/Pong-v5",
+    default="ale_py:ALE/Pong-v5",
     help="The name of the Atari env to run, e.g. `ALE/Breakout-v5`.",
 )
 parser.add_argument(
