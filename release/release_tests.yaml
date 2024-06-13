@@ -986,7 +986,7 @@
   team: ml
   cluster:
     byod:
-      type: cu121
+      type: cu123
       # This needs to be in sync with requirements under go/llm-forge.
       post_build_script: byod_finetune_llvms.sh
     cluster_compute: ../testing/compute_configs/04_finetuning_llms_with_deepspeed/aws_7b.yaml
@@ -1010,7 +1010,7 @@
   team: ml
   cluster:
     byod:
-      type: cu121
+      type: cu123
       # This needs to be in sync with requirements under go/llm-forge.
       post_build_script: byod_finetune_llvms.sh
     cluster_compute: ../testing/compute_configs/04_finetuning_llms_with_deepspeed/aws_7b.yaml
