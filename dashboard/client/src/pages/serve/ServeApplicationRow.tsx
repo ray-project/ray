@@ -1,11 +1,6 @@
-import {
-  createStyles,
-  IconButton,
-  Link,
-  makeStyles,
-  TableCell,
-  TableRow,
-} from "@material-ui/core";
+import { IconButton, Link, TableCell, TableRow } from "@mui/material";
+import createStyles from "@mui/styles/createStyles";
+import makeStyles from "@mui/styles/makeStyles";
 import React, { useState } from "react";
 import { RiArrowDownSLine, RiArrowRightSLine } from "react-icons/ri";
 import { Link as RouterLink } from "react-router-dom";

@@ -2,6 +2,7 @@ import ray
 from ray.dag.base import DAGNodeBase
 from ray.dag.py_obj_scanner import _PyObjScanner
 from ray.util.annotations import DeveloperAPI
+import copy
 
 from typing import (
     Optional,
@@ -17,6 +18,7 @@ import uuid
 import asyncio
 
 from ray.dag.compiled_dag_node import build_compiled_dag_from_ray_dag
+from ray.experimental.channel import ChannelOutputType
 
 T = TypeVar("T")
 
@@ -60,6 +62,25 @@ class DAGNode(DAGNodeBase):
         self._stable_uuid = uuid.uuid4().hex
         # Cached values from last call to execute()
         self.cache_from_last_execute = {}
+
+        self._type_hint: Optional[ChannelOutputType] = ChannelOutputType()
+
+    def with_type_hint(self, typ: ChannelOutputType):
+        if typ.is_direct_return:
+            old_contains_typ = self._type_hint.contains_type
+            self._type_hint = copy.deepcopy(typ)
+            if old_contains_typ is not None and typ.contains_type is None:
+                # The contained type was set before the return
+                # type, and the new return type doesn't have a
+                # contained type set.
+                self._type_hint.set_contains_type(old_contains_typ)
+        else:
+            self._type_hint.set_contains_type(typ)
+        return self
+
+    @property
+    def type_hint(self) -> Optional[ChannelOutputType]:
+        return self._type_hint
 
     def get_args(self) -> Tuple[Any]:
         """Return the tuple of arguments for this node."""
@@ -106,18 +127,28 @@ class DAGNode(DAGNodeBase):
         self.cache_from_last_execute = {}
 
     def experimental_compile(
-        self, buffer_size_bytes: Optional[int] = None
+        self,
+        buffer_size_bytes: Optional[int] = None,
+        enable_asyncio: bool = False,
+        async_max_queue_size: Optional[int] = None,
     ) -> "ray.dag.CompiledDAG":
         """Compile an accelerated execution path for this DAG.
 
         Args:
             buffer_size_bytes: The maximum size of messages that can be passed
                 between tasks in the DAG.
+            max_concurrency: The max number of concurrent executions to allow for
+                the DAG.
 
         Returns:
             A compiled DAG.
         """
-        return build_compiled_dag_from_ray_dag(self, buffer_size_bytes)
+        return build_compiled_dag_from_ray_dag(
+            self,
+            buffer_size_bytes,
+            enable_asyncio,
+            async_max_queue_size,
+        )
 
     def execute(
         self, *args, _ray_cache_refs: bool = False, **kwargs
@@ -342,6 +373,7 @@ class DAGNode(DAGNodeBase):
             new_args, new_kwargs, new_options, new_other_args_to_resolve
         )
         instance._stable_uuid = self._stable_uuid
+        instance = instance.with_type_hint(self.type_hint)
         return instance
 
     def __getstate__(self):

@@ -1,12 +1,11 @@
+import logging
 import posixpath
 from typing import TYPE_CHECKING, Any, Callable, Dict, Iterable, Optional
 
-from ray.data._internal.dataset_logger import DatasetLogger
 from ray.data._internal.execution.interfaces import TaskContext
 from ray.data._internal.util import call_with_retry
 from ray.data.block import Block, BlockAccessor
 from ray.data.context import DataContext
-from ray.data.datasource.block_path_provider import BlockWritePathProvider
 from ray.data.datasource.file_datasink import _FileDatasink
 from ray.data.datasource.filename_provider import FilenameProvider
 
@@ -16,7 +15,7 @@ if TYPE_CHECKING:
 WRITE_FILE_MAX_ATTEMPTS = 10
 WRITE_FILE_RETRY_MAX_BACKOFF_SECONDS = 32
 
-logger = DatasetLogger(__name__)
+logger = logging.getLogger(__name__)
 
 
 class _ParquetDatasink(_FileDatasink):
@@ -31,7 +30,6 @@ class _ParquetDatasink(_FileDatasink):
         try_create_dir: bool = True,
         open_stream_args: Optional[Dict[str, Any]] = None,
         filename_provider: Optional[FilenameProvider] = None,
-        block_path_provider: Optional[BlockWritePathProvider] = None,
         dataset_uuid: Optional[str] = None,
     ):
         if arrow_parquet_args is None:
@@ -47,7 +45,6 @@ class _ParquetDatasink(_FileDatasink):
             try_create_dir=try_create_dir,
             open_stream_args=open_stream_args,
             filename_provider=filename_provider,
-            block_path_provider=block_path_provider,
             dataset_uuid=dataset_uuid,
             file_format="parquet",
         )
@@ -77,7 +74,7 @@ class _ParquetDatasink(_FileDatasink):
                         table = BlockAccessor.for_block(block).to_arrow()
                         writer.write_table(table)
 
-        logger.get_logger(log_to_stdout=False).debug(f"Writing {write_path} file.")
+        logger.debug(f"Writing {write_path} file.")
         call_with_retry(
             write_blocks_to_path,
             description=f"write '{write_path}'",

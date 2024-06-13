@@ -3,15 +3,13 @@ import unittest
 
 import ray
 import ray.train
-from ray.train import CheckpointConfig
 from ray.rllib import _register_all
-
-from ray.tune.result import TIMESTEPS_TOTAL
-from ray.tune import Trainable, TuneError
-from ray.tune import register_trainable, run_experiments
-from ray.tune.logger import LegacyLoggerCallback, Logger
+from ray.train import CheckpointConfig
+from ray.tune import Trainable, TuneError, register_trainable, run_experiments
 from ray.tune.experiment import Experiment
-from ray.tune.experiment.trial import Trial, ExportFormat
+from ray.tune.experiment.trial import ExportFormat, Trial
+from ray.tune.logger import LegacyLoggerCallback, Logger
+from ray.tune.result import TIMESTEPS_TOTAL
 
 
 def train_fn(config):
@@ -129,7 +127,11 @@ class RunExperimentTest(unittest.TestCase):
         )
         for trial in trials:
             self.assertEqual(trial.status, Trial.TERMINATED)
-            self.assertTrue(os.path.exists(os.path.join(trial.local_path, "exported")))
+            self.assertTrue(
+                os.path.exists(
+                    os.path.join(trial.storage.trial_working_directory, "exported")
+                )
+            )
 
     def testInvalidExportFormats(self):
         class MyTrainable(Trainable):
@@ -237,7 +239,8 @@ class RunExperimentTest(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

@@ -282,11 +282,11 @@ def test_container_option_serialize(runtime_env_class):
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Flaky on Windows.")
 @pytest.mark.parametrize("runtime_env_class", [dict, RuntimeEnv])
-def test_no_spurious_worker_startup(shutdown_only, runtime_env_class):
+def test_no_spurious_worker_startup(shutdown_only, runtime_env_class, monkeypatch):
     """Test that no extra workers start up during a long env installation."""
 
     # Causes agent to sleep for 15 seconds to simulate creating a runtime env.
-    os.environ["RAY_RUNTIME_ENV_SLEEP_FOR_TESTING_S"] = "15"
+    monkeypatch.setenv("RAY_RUNTIME_ENV_SLEEP_FOR_TESTING_S", "15")
     ray.init(num_cpus=1)
 
     @ray.remote
@@ -343,10 +343,9 @@ def test_no_spurious_worker_startup(shutdown_only, runtime_env_class):
 
 
 @pytest.fixture
-def runtime_env_local_dev_env_var():
-    os.environ["RAY_RUNTIME_ENV_LOCAL_DEV_MODE"] = "1"
+def runtime_env_local_dev_env_var(monkeypatch):
+    monkeypatch.setenv("RAY_RUNTIME_ENV_LOCAL_DEV_MODE", "1")
     yield
-    del os.environ["RAY_RUNTIME_ENV_LOCAL_DEV_MODE"]
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="very slow on Windows.")
@@ -386,6 +385,62 @@ def test_failed_job_env_no_hang(shutdown_only, runtime_env_class):
     # Task with no runtime env should inherit the bad job env.
     with pytest.raises(RuntimeEnvSetupError):
         ray.get(f.remote())
+
+
+RT_ENV_AGENT_SLOW_STARTUP_PLUGIN_CLASS_PATH = (
+    "ray.tests.test_runtime_env.RtEnvAgentSlowStartupPlugin"  # noqa
+)
+RT_ENV_AGENT_SLOW_STARTUP_PLUGIN_NAME = "RtEnvAgentSlowStartupPlugin"
+RT_ENV_AGENT_SLOW_STARTUP_PLUGIN_CLASS_PATH = (
+    "ray.tests.test_runtime_env.RtEnvAgentSlowStartupPlugin"
+)
+
+
+class RtEnvAgentSlowStartupPlugin(RuntimeEnvPlugin):
+
+    name = RT_ENV_AGENT_SLOW_STARTUP_PLUGIN_NAME
+
+    def __init__(self):
+        # This happens in Runtime Env Agent start up process. Make it slow.
+        import time
+
+        time.sleep(5)
+        print("starting...")
+
+
+@pytest.mark.parametrize(
+    "set_runtime_env_plugins",
+    [
+        '[{"class":"' + RT_ENV_AGENT_SLOW_STARTUP_PLUGIN_CLASS_PATH + '"}]',
+    ],
+    indirect=True,
+)
+def test_slow_runtime_env_agent_startup_on_task_pressure(
+    shutdown_only, set_runtime_env_plugins
+):
+    """
+    Starts nodes with runtime env agent and a slow plugin. Then when the runtime env
+    agent is still starting up, we submit a lot of tasks to the cluster. The tasks
+    should wait for the runtime env agent to start up and then run.
+    https://github.com/ray-project/ray/issues/45353
+    """
+    ray.init()
+
+    @ray.remote(num_cpus=0.1)
+    def get_foo():
+        return os.environ.get("foo")
+
+    print("Submitting 20 tasks...")
+
+    # Each task has a different runtime env to ensure the agent is invoked for each.
+    vals = ray.get(
+        [
+            get_foo.options(runtime_env={"env_vars": {"foo": f"bar{i}"}}).remote()
+            for i in range(20)
+        ]
+    )
+    print("20 tasks done.")
+    assert vals == [f"bar{i}" for i in range(20)]
 
 
 class TestURICache:
@@ -502,11 +557,10 @@ class TestURICache:
 
 
 @pytest.fixture
-def enable_dev_mode(local_env_var_enabled):
+def enable_dev_mode(local_env_var_enabled, monkeypatch):
     enabled = "1" if local_env_var_enabled else "0"
-    os.environ["RAY_RUNTIME_ENV_LOG_TO_DRIVER_ENABLED"] = enabled
+    monkeypatch.setenv("RAY_RUNTIME_ENV_LOG_TO_DRIVER_ENABLED", enabled)
     yield
-    del os.environ["RAY_RUNTIME_ENV_LOG_TO_DRIVER_ENABLED"]
 
 
 @pytest.mark.skipif(

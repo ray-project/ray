@@ -1,5 +1,6 @@
 import warnings
 from typing import Dict, Optional
+
 from ray.air.execution.resources.request import ResourceRequest
 from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray.util.placement_group import placement_group

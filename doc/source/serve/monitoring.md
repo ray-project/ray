@@ -179,7 +179,7 @@ Run this deployment using the `serve run` CLI command:
 $ serve run monitoring:say_hello
 
 2023-04-10 15:57:32,100	INFO scripts.py:380 -- Deploying from import path: "monitoring:say_hello".
-[2023-04-10 15:57:33]  INFO ray._private.worker::Started a local Ray instance. View the dashboard at http://127.0.0.1:8265 
+[2023-04-10 15:57:33]  INFO ray._private.worker::Started a local Ray instance. View the dashboard at http://127.0.0.1:8265
 (ServeController pid=63503) INFO 2023-04-10 15:57:35,822 controller 63503 deployment_state.py:1168 - Deploying new version of deployment SayHello.
 (ProxyActor pid=63513) INFO:     Started server process [63513]
 (ServeController pid=63503) INFO 2023-04-10 15:57:35,882 controller 63503 deployment_state.py:1386 - Adding 1 replica to deployment SayHello.
@@ -367,6 +367,11 @@ Deployment log file:
 (ServeReplica:default_Model pid=84006) INFO 2023-07-20 13:47:54,218 default_Model default_Model#yptKoo 123-234 / default replica.py:691 - __CALL__ OK 0.2ms
 ```
 
+:::{note}
+The request ID is used to associate logs across the system. Avoid sending
+duplicate request IDs, which may lead to confusion when debugging.
+:::
+
 (serve-logging-loki)=
 ### Filtering logs with Loki
 
@@ -480,19 +485,19 @@ The following metrics are exposed by Ray Serve:
    * - Name
      - Fields
      - Description
-   * - ``ray_serve_deployment_request_counter`` [**]
+   * - ``ray_serve_deployment_request_counter_total`` [**]
      - * deployment
        * replica
        * route
        * application
      - The number of queries that have been processed in this replica.
-   * - ``ray_serve_deployment_error_counter`` [**]
+   * - ``ray_serve_deployment_error_counter_total`` [**]
      - * deployment
        * replica
        * route
        * application
      - The number of exceptions that have occurred in the deployment.
-   * - ``ray_serve_deployment_replica_starts`` [**]
+   * - ``ray_serve_deployment_replica_starts_total`` [**]
      - * deployment
        * replica
        * application
@@ -513,25 +518,25 @@ The following metrics are exposed by Ray Serve:
        * replica
        * application
      - The current number of queries being processed.
-   * - ``ray_serve_num_http_requests`` [*]
+   * - ``ray_serve_num_http_requests_total`` [*]
      - * route
        * method
        * application
        * status_code
      - The number of HTTP requests processed.
-   * - ``ray_serve_num_grpc_requests`` [*]
+   * - ``ray_serve_num_grpc_requests_total`` [*]
      - * route
        * method
        * application
        * status_code
      - The number of gRPC requests processed.
-   * - ``ray_serve_num_http_error_requests`` [*]
+   * - ``ray_serve_num_http_error_requests_total`` [*]
      - * route
        * error_code
        * method
        * application
      - The number of non-200 HTTP responses.
-   * - ``ray_serve_num_grpc_error_requests`` [*]
+   * - ``ray_serve_num_grpc_error_requests_total`` [*]
      - * route
        * error_code
        * method
@@ -544,10 +549,12 @@ The following metrics are exposed by Ray Serve:
      - * node_id
        * node_ip_address
      - The number of ongoing requests in the gRPC Proxy.
-   * - ``ray_serve_num_router_requests`` [*]
+   * - ``ray_serve_num_router_requests_total`` [*]
      - * deployment
        * route
        * application
+       * handle
+       * actor_id
      - The number of requests processed by the router.
    * - ``ray_serve_num_scheduling_tasks`` [*][†]
      - * deployment
@@ -557,7 +564,7 @@ The following metrics are exposed by Ray Serve:
      - * deployment
        * actor_id
      - The number of request scheduling tasks in the router that are undergoing backoff.
-   * - ``ray_serve_handle_request_counter`` [**]
+   * - ``ray_serve_handle_request_counter_total`` [**]
      - * handle
        * deployment
        * route
@@ -565,16 +572,24 @@ The following metrics are exposed by Ray Serve:
      - The number of requests processed by this DeploymentHandle.
    * - ``ray_serve_deployment_queued_queries`` [*]
      - * deployment
-       * route
-     - The number of queries for this deployment waiting to be assigned to a replica.
-   * - ``ray_serve_num_deployment_http_error_requests`` [*]
+       * application
+       * handle
+       * actor_id
+     - The current number of requests to this deployment that have been submitted to a replica.
+   * - ``ray_serve_num_ongoing_requests_at_replicas`` [*]
+     - * deployment
+       * application
+       * handle
+       * actor_id
+     - The current number of requests to this deployment that's been assigned and sent to execute on a replica.
+   * - ``ray_serve_num_deployment_http_error_requests_total`` [*]
      - * deployment
        * error_code
        * method
        * route
        * application
      - The number of non-200 HTTP responses returned by each deployment.
-   * - ``ray_serve_num_deployment_grpc_error_requests`` [*]
+   * - ``ray_serve_num_deployment_grpc_error_requests_total`` [*]
      - * deployment
        * error_code
        * method
@@ -608,12 +623,12 @@ The following metrics are exposed by Ray Serve:
        * replica
        * application
      - The number of models loaded on the current replica.
-   * - ``ray_serve_multiplexed_models_unload_counter``
+   * - ``ray_serve_multiplexed_models_unload_counter_total``
      - * deployment
        * replica
        * application
      - The number of times models unloaded on the current replica.
-   * - ``ray_serve_multiplexed_models_load_counter``
+   * - ``ray_serve_multiplexed_models_load_counter_total``
      - * deployment
        * replica
        * application
@@ -623,8 +638,8 @@ The following metrics are exposed by Ray Serve:
        * replica
        * application
        * model_id
-     - The mutlplexed model ID registered on the current replica.
-   * - ``ray_serve_multiplexed_get_model_requests_counter``
+     - The mutliplexed model ID registered on the current replica.
+   * - ``ray_serve_multiplexed_get_model_requests_counter_total``
      - * deployment
        * replica
        * application
@@ -675,9 +690,9 @@ Here's an example:
 The emitted logs include:
 
 ```
-# HELP ray_my_counter The number of odd-numbered requests to this deployment.
-# TYPE ray_my_counter gauge
-ray_my_counter{..., deployment="MyDeployment",model="123",replica="MyDeployment#rUVqKh"} 5.0
+# HELP ray_my_counter_total The number of odd-numbered requests to this deployment.
+# TYPE ray_my_counter_total counter
+ray_my_counter_total{..., deployment="MyDeployment",model="123",replica="MyDeployment#rUVqKh"} 5.0
 ```
 
 See the [Ray Metrics documentation](collect-metrics) for more details, including instructions for scraping these metrics using Prometheus.

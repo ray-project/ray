@@ -1,7 +1,5 @@
 import logging
 from collections import Counter
-from contextlib import contextmanager
-from contextvars import ContextVar
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Dict, List, Optional, Set, Union
@@ -11,6 +9,7 @@ from ray._private.pydantic_compat import (
     BaseModel,
     Extra,
     Field,
+    NonNegativeInt,
     PositiveInt,
     StrictInt,
     root_validator,
@@ -36,25 +35,6 @@ from ray.serve._private.deployment_info import DeploymentInfo
 from ray.serve._private.utils import DEFAULT
 from ray.serve.config import ProxyLocation
 from ray.util.annotations import PublicAPI
-
-# Allows selectively toggling validation of runtime_env URIs.
-# This is used by the `serve publish` CLI command to pass through local URIs to
-# publish providers.
-VALIDATE_RUNTIME_ENV_URIS = ContextVar("VALIDATE_RUNTIME_ENV_URIS", default=True)
-
-
-@contextmanager
-def _skip_validating_runtime_env_uris():
-    """Temporarily disable validation of runtime_env URIs across all schema models.
-
-    This uses a contextvar.ContextVar so has the same asyncio and threading properties.
-    """
-    try:
-        VALIDATE_RUNTIME_ENV_URIS.set(False)
-        yield
-    finally:
-        VALIDATE_RUNTIME_ENV_URIS.set(True)
-
 
 # Shared amongst multiple schemas.
 TARGET_CAPACITY_FIELD = Field(
@@ -242,14 +222,6 @@ class RayActorOptionsSchema(BaseModel):
         ),
         ge=0,
     )
-    object_store_memory: float = Field(
-        default=None,
-        description=(
-            "Restrict the object store memory used per replica when "
-            "creating objects. Uses a default if null."
-        ),
-        ge=0,
-    )
     resources: Dict = Field(
         default={},
         description=("The custom resources required by each replica."),
@@ -268,9 +240,6 @@ class RayActorOptionsSchema(BaseModel):
 
         if v is None:
             return
-
-        if not VALIDATE_RUNTIME_ENV_URIS.get():
-            return v
 
         uris = v.get("py_modules", [])
         if "working_dir" in v and v["working_dir"] not in uris:
@@ -456,6 +425,22 @@ class DeploymentSchema(BaseModel, allow_population_by_field_name=True):
         return values
 
     @root_validator
+    def validate_max_replicas_per_node_and_placement_group_bundles(cls, values):
+        max_replicas_per_node = values.get("max_replicas_per_node", None)
+        placement_group_bundles = values.get("placement_group_bundles", None)
+
+        if max_replicas_per_node not in [
+            DEFAULT.VALUE,
+            None,
+        ] and placement_group_bundles not in [DEFAULT.VALUE, None]:
+            raise ValueError(
+                "Setting max_replicas_per_node is not allowed when "
+                "placement_group_bundles is provided."
+            )
+
+        return values
+
+    @root_validator
     def validate_max_queued_requests(cls, values):
         max_queued_requests = values.get("max_queued_requests", None)
         if max_queued_requests is None or max_queued_requests == DEFAULT.VALUE:
@@ -594,9 +579,6 @@ class ServeApplicationSchema(BaseModel):
         # Ensure that all uris in py_modules and working_dir are remote.
         if v is None:
             return
-
-        if not VALIDATE_RUNTIME_ENV_URIS.get():
-            return v
 
         uris = v.get("py_modules", [])
         if "working_dir" in v and v["working_dir"] not in uris:
@@ -912,13 +894,7 @@ class ServeActorDetails(BaseModel, frozen=True):
 class ReplicaDetails(ServeActorDetails, frozen=True):
     """Detailed info about a single deployment replica."""
 
-    replica_id: str = Field(
-        description=(
-            "Unique ID for the replica. By default, this will be "
-            '"<deployment name>#<replica suffix>", where the replica suffix is a '
-            "randomly generated unique string."
-        )
-    )
+    replica_id: str = Field(description="Unique ID for the replica.")
     state: ReplicaState = Field(description="Current state of the replica.")
     pid: Optional[int] = Field(description="PID of the replica actor process.")
     start_time_s: float = Field(
@@ -954,6 +930,13 @@ class DeploymentDetails(BaseModel, extra=Extra.forbid, frozen=True):
             "The set of deployment config options that are currently applied to this "
             "deployment. These options may come from the user's code, config file "
             "options, or Serve default values."
+        )
+    )
+    target_num_replicas: NonNegativeInt = Field(
+        description=(
+            "The current target number of replicas for this deployment. This can "
+            "change over time for autoscaling deployments, but will remain a constant "
+            "number for other deployments."
         )
     )
     replicas: List[ReplicaDetails] = Field(

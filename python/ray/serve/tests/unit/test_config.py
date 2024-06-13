@@ -43,8 +43,10 @@ def test_autoscaling_config_validation():
         # max_replicas must be positive
         AutoscalingConfig(max_replicas=0)
 
+    # target_ongoing_requests must be nonnegative
     with pytest.raises(ValidationError):
-        # max_replicas must be nonnegative
+        AutoscalingConfig(target_ongoing_requests=-1)
+    with pytest.raises(ValidationError):
         AutoscalingConfig(target_num_ongoing_requests_per_replica=-1)
 
     # max_replicas must be greater than or equal to min_replicas
@@ -152,7 +154,6 @@ class TestReplicaConfig:
                 "num_gpus": 10,
                 "resources": {"abc": 1.0},
                 "memory": 1000000.0,
-                "object_store_memory": 1000000,
             },
         )
         with pytest.raises(TypeError):
@@ -171,12 +172,6 @@ class TestReplicaConfig:
             ReplicaConfig.create(Class, ray_actor_options={"memory": "hello"})
         with pytest.raises(ValueError):
             ReplicaConfig.create(Class, ray_actor_options={"memory": -1})
-        with pytest.raises(TypeError):
-            ReplicaConfig.create(
-                Class, ray_actor_options={"object_store_memory": "hello"}
-            )
-        with pytest.raises(ValueError):
-            ReplicaConfig.create(Class, ray_actor_options={"object_store_memory": -1})
         with pytest.raises(TypeError):
             ReplicaConfig.create(Class, ray_actor_options={"resources": []})
 
@@ -306,7 +301,7 @@ class TestReplicaConfig:
 
         # Invalid: unsupported placement_group_strategy.
         with pytest.raises(
-            ValueError, match="Invalid placement group strategy 'FAKE_NEWS'"
+            ValueError, match="Invalid placement group strategy FAKE_NEWS"
         ):
             ReplicaConfig.create(
                 Class,
@@ -319,16 +314,26 @@ class TestReplicaConfig:
         # Invalid: malformed placement_group_bundles.
         with pytest.raises(
             ValueError,
-            match=(
-                "`placement_group_bundles` must be a non-empty list "
-                "of resource dictionaries."
-            ),
+            match=("Bundles must be a non-empty list " "of resource dictionaries."),
         ):
             ReplicaConfig.create(
                 Class,
                 tuple(),
                 dict(),
                 placement_group_bundles=[{"CPU": "1.0"}],
+            )
+
+        # Invalid: invalid placement_group_bundles.
+        with pytest.raises(
+            ValueError,
+            match="cannot be an empty dictionary or resources with only 0",
+        ):
+            ReplicaConfig.create(
+                Class,
+                tuple(),
+                dict(),
+                ray_actor_options={"num_cpus": 0, "num_gpus": 0},
+                placement_group_bundles=[{"CPU": 0, "GPU": 0}],
             )
 
         # Invalid: replica actor does not fit in the first bundle (CPU).
@@ -379,6 +384,53 @@ class TestReplicaConfig:
                 placement_group_bundles=[{"CPU": 1}],
             )
 
+    def test_mutually_exclusive_max_replicas_per_node_and_placement_group_bundles(self):
+        class Class:
+            pass
+
+        ReplicaConfig.create(
+            Class,
+            tuple(),
+            dict(),
+            max_replicas_per_node=5,
+        )
+
+        ReplicaConfig.create(
+            Class,
+            tuple(),
+            dict(),
+            placement_group_bundles=[{"CPU": 1.0}],
+        )
+
+        with pytest.raises(
+            ValueError,
+            match=(
+                "Setting max_replicas_per_node is not allowed when "
+                "placement_group_bundles is provided."
+            ),
+        ):
+            ReplicaConfig.create(
+                Class,
+                tuple(),
+                dict(),
+                max_replicas_per_node=5,
+                placement_group_bundles=[{"CPU": 1.0}],
+            )
+
+        with pytest.raises(
+            ValueError,
+            match=(
+                "Setting max_replicas_per_node is not allowed when "
+                "placement_group_bundles is provided."
+            ),
+        ):
+            config = ReplicaConfig.create(Class, tuple(), dict())
+            config.update(
+                ray_actor_options={},
+                max_replicas_per_node=5,
+                placement_group_bundles=[{"CPU": 1.0}],
+            )
+
     def test_replica_config_lazy_deserialization(self):
         def f():
             return "Check this out!"
@@ -403,6 +455,68 @@ class TestReplicaConfig:
         assert config.deployment_def() == "Check this out!"
         assert config.init_args == tuple()
         assert config.init_kwargs == dict()
+
+
+class TestAutoscalingConfig:
+    def test_target_ongoing_requests(self):
+        autoscaling_config = AutoscalingConfig()
+        assert autoscaling_config.get_target_ongoing_requests() == 1
+
+        autoscaling_config = AutoscalingConfig(target_ongoing_requests=7)
+        assert autoscaling_config.get_target_ongoing_requests() == 7
+
+        autoscaling_config = AutoscalingConfig(
+            target_num_ongoing_requests_per_replica=7
+        )
+        assert autoscaling_config.get_target_ongoing_requests() == 7
+
+        autoscaling_config = AutoscalingConfig(
+            target_ongoing_requests=7, target_num_ongoing_requests_per_replica=70
+        )
+        assert autoscaling_config.get_target_ongoing_requests() == 7
+
+    def test_scaling_factor(self):
+        autoscaling_config = AutoscalingConfig()
+        assert autoscaling_config.get_upscaling_factor() == 1
+        assert autoscaling_config.get_downscaling_factor() == 1
+
+        autoscaling_config = AutoscalingConfig(smoothing_factor=0.4)
+        assert autoscaling_config.get_upscaling_factor() == 0.4
+        assert autoscaling_config.get_downscaling_factor() == 0.4
+
+        autoscaling_config = AutoscalingConfig(upscale_smoothing_factor=0.4)
+        assert autoscaling_config.get_upscaling_factor() == 0.4
+        assert autoscaling_config.get_downscaling_factor() == 1
+
+        autoscaling_config = AutoscalingConfig(downscale_smoothing_factor=0.4)
+        assert autoscaling_config.get_upscaling_factor() == 1
+        assert autoscaling_config.get_downscaling_factor() == 0.4
+
+        autoscaling_config = AutoscalingConfig(
+            smoothing_factor=0.4,
+            upscale_smoothing_factor=0.1,
+            downscale_smoothing_factor=0.01,
+        )
+        assert autoscaling_config.get_upscaling_factor() == 0.1
+        assert autoscaling_config.get_downscaling_factor() == 0.01
+
+        autoscaling_config = AutoscalingConfig(
+            smoothing_factor=0.4,
+            upscaling_factor=0.5,
+            downscaling_factor=0.6,
+        )
+        assert autoscaling_config.get_upscaling_factor() == 0.5
+        assert autoscaling_config.get_downscaling_factor() == 0.6
+
+        autoscaling_config = AutoscalingConfig(
+            smoothing_factor=0.4,
+            upscale_smoothing_factor=0.1,
+            downscale_smoothing_factor=0.01,
+            upscaling_factor=0.5,
+            downscaling_factor=0.6,
+        )
+        assert autoscaling_config.get_upscaling_factor() == 0.5
+        assert autoscaling_config.get_downscaling_factor() == 0.6
 
 
 def test_config_schemas_forward_compatible():
@@ -450,17 +564,22 @@ def test_with_proto():
     assert config == DeploymentConfig.from_proto_bytes(config.to_proto_bytes())
 
 
-def test_zero_default_proto():
+@pytest.mark.parametrize("use_deprecated_smoothing_factor", [True, False])
+def test_zero_default_proto(use_deprecated_smoothing_factor):
     # Test that options set to zero (protobuf default value) still retain their
     # original value after being serialized and deserialized.
-    config = DeploymentConfig(
-        autoscaling_config={
-            "min_replicas": 1,
-            "max_replicas": 2,
-            "smoothing_factor": 0.123,
-            "downscale_delay_s": 0,
-        }
-    )
+    autoscaling_config = {
+        "min_replicas": 1,
+        "max_replicas": 2,
+        "downscale_delay_s": 0,
+    }
+    if use_deprecated_smoothing_factor:
+        autoscaling_config["smoothing_factor"] = 0.123
+    else:
+        autoscaling_config["upscaling_factor"] = 0.123
+        autoscaling_config["downscaling_factor"] = 0.123
+
+    config = DeploymentConfig(autoscaling_config=autoscaling_config)
     serialized_config = config.to_proto_bytes()
     deserialized_config = DeploymentConfig.from_proto_bytes(serialized_config)
     new_delay_s = deserialized_config.autoscaling_config.downscale_delay_s

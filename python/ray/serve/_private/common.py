@@ -22,20 +22,78 @@ from ray.serve.generated.serve_pb2 import (
 from ray.serve.generated.serve_pb2 import StatusOverview as StatusOverviewProto
 from ray.serve.grpc_util import RayServegRPCContext
 
+REPLICA_ID_FULL_ID_STR_PREFIX = "SERVE_REPLICA::"
+
 
 @dataclass(frozen=True)
 class DeploymentID:
     name: str
     app_name: str = SERVE_DEFAULT_APP_NAME
 
-    def __str__(self):
-        return f"{self.app_name}_{self.name}"
-
     def to_replica_actor_class_name(self):
         return f"ServeReplica:{self.app_name}:{self.name}"
 
+    def __str__(self):
+        return f"Deployment(name='{self.name}', app='{self.app_name}')"
 
-ReplicaTag = str
+    def __repr__(self):
+        return str(self)
+
+
+@dataclass(frozen=True)
+class ReplicaID:
+    unique_id: str
+    deployment_id: DeploymentID
+
+    def to_full_id_str(self) -> str:
+        s = f"{self.deployment_id.name}#{self.unique_id}"
+        if self.deployment_id.app_name:
+            s = f"{self.deployment_id.app_name}#{s}"
+
+        return f"{REPLICA_ID_FULL_ID_STR_PREFIX}{s}"
+
+    @staticmethod
+    def is_full_id_str(s: str) -> bool:
+        return s.startswith(REPLICA_ID_FULL_ID_STR_PREFIX)
+
+    @classmethod
+    def from_full_id_str(cls, s: str):
+        assert cls.is_full_id_str(s)
+
+        parsed = s[len(REPLICA_ID_FULL_ID_STR_PREFIX) :].split("#")
+        if len(parsed) == 3:
+            app_name, deployment_name, unique_id = parsed
+        elif len(parsed) == 2:
+            app_name = ""
+            deployment_name, unique_id = parsed
+        else:
+            raise ValueError(
+                f"Given replica ID string {s} didn't match expected pattern, "
+                "ensure it has either two or three fields with delimiter '#'."
+            )
+
+        return cls(
+            unique_id,
+            deployment_id=DeploymentID(name=deployment_name, app_name=app_name),
+        )
+
+    def __repr__(self) -> str:
+        return str(self)
+
+    def __str__(self) -> str:
+        """Returns a human-readable string.
+
+        This is used in user-facing log messages, so take care when updating it.
+        """
+        return (
+            f"Replica("
+            f"id='{self.unique_id}', "
+            f"deployment='{self.deployment_id.name}', "
+            f"app='{self.deployment_id.app_name}'"
+            ")"
+        )
+
+
 NodeId = str
 Duration = float
 ApplicationName = str
@@ -515,66 +573,9 @@ class StatusOverview:
         )
 
 
-@dataclass
-class ReplicaName:
-    app_name: str
-    deployment_name: str
-    replica_suffix: str
-    replica_tag: ReplicaTag = ""
-    delimiter: str = "#"
-    prefix: str = "SERVE_REPLICA::"
-
-    def __init__(self, app_name: str, deployment_name: str, replica_suffix: str):
-        self.app_name = app_name
-        self.deployment_name = deployment_name
-        self.replica_suffix = replica_suffix
-        if app_name:
-            self.replica_tag = self.delimiter.join(
-                [app_name, deployment_name, replica_suffix]
-            )
-        else:
-            self.replica_tag = self.delimiter.join([deployment_name, replica_suffix])
-
-    @property
-    def deployment_id(self):
-        return DeploymentID(name=self.deployment_name, app_name=self.app_name)
-
-    @staticmethod
-    def is_replica_name(actor_name: str) -> bool:
-        return actor_name.startswith(ReplicaName.prefix)
-
-    @classmethod
-    def from_str(cls, actor_name):
-        assert ReplicaName.is_replica_name(actor_name)
-        # TODO(simon): this currently conforms the tag and suffix logic. We
-        # can try to keep the internal name always hard coded with the prefix.
-        replica_tag = actor_name.replace(cls.prefix, "")
-        return ReplicaName.from_replica_tag(replica_tag)
-
-    @classmethod
-    def from_replica_tag(cls, tag):
-        parsed = tag.split(cls.delimiter)
-        if len(parsed) == 3:
-            return cls(
-                app_name=parsed[0], deployment_name=parsed[1], replica_suffix=parsed[2]
-            )
-        elif len(parsed) == 2:
-            return cls("", deployment_name=parsed[0], replica_suffix=parsed[1])
-        else:
-            raise ValueError(
-                f"Given replica tag {tag} didn't match pattern, please "
-                "ensure it has either two or three fields with delimiter "
-                f"{cls.delimiter}"
-            )
-
-    def __str__(self):
-        return self.replica_tag
-
-
 @dataclass(frozen=True)
 class RunningReplicaInfo:
-    deployment_name: str
-    replica_tag: ReplicaTag
+    replica_id: ReplicaID
     node_id: Optional[str]
     availability_zone: Optional[str]
     actor_handle: ActorHandle
@@ -592,8 +593,7 @@ class RunningReplicaInfo:
         hash_val = hash(
             " ".join(
                 [
-                    self.deployment_name,
-                    self.replica_tag,
+                    self.replica_id.to_full_id_str(),
                     self.node_id if self.node_id else "",
                     str(self.actor_handle._actor_id),
                     str(self.max_ongoing_requests),
@@ -642,8 +642,7 @@ class ServeComponentType(str, Enum):
 
 @dataclass
 class MultiplexedReplicaInfo:
-    deployment_id: DeploymentID
-    replica_tag: str
+    replica_id: ReplicaID
     model_ids: List[str]
 
 
@@ -654,24 +653,27 @@ class gRPCRequest:
     grpc_user_request: bytes
 
 
-@dataclass
-class StreamingHTTPRequest:
-    """Sent from the HTTP proxy to replicas on the streaming codepath."""
-
-    pickled_asgi_scope: bytes
-    # Takes request_id, returns a pickled list of ASGI messages.
-    receive_asgi_messages: Callable[[str], Awaitable[bytes]]
-
-
 class RequestProtocol(str, Enum):
     UNDEFINED = "UNDEFINED"
     HTTP = "HTTP"
     GRPC = "gRPC"
 
 
+class DeploymentHandleSource(str, Enum):
+    UNKNOWN = "UNKNOWN"
+    PROXY = "PROXY"
+    REPLICA = "REPLICA"
+
+
 @dataclass
 class RequestMetadata:
+    # request_id can be passed by the client and is only generated by the proxy if the
+    # client did not pass it in the headers. It is used for logging across different
+    # system. We can not guarantee the uniqueness of its value.
     request_id: str
+    # internal_request_id is always generated by the proxy and is used for tracking
+    # request objects. We can assume this is always unique between requests.
+    internal_request_id: str
     endpoint: str
     call_method: str = "__call__"
 
@@ -700,6 +702,15 @@ class RequestMetadata:
     @property
     def is_grpc_request(self) -> bool:
         return self._request_protocol == RequestProtocol.GRPC
+
+
+@dataclass
+class StreamingHTTPRequest:
+    """Sent from the HTTP proxy to replicas on the streaming codepath."""
+
+    pickled_asgi_scope: bytes
+    # Takes request metadata, returns a pickled list of ASGI messages.
+    receive_asgi_messages: Callable[[RequestMetadata], Awaitable[bytes]]
 
 
 class TargetCapacityDirection(str, Enum):

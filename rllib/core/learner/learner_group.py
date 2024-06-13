@@ -13,17 +13,24 @@ from typing import (
 )
 import uuid
 
+import tree  # pip install dm_tree
+
 import ray
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.core.learner.learner import Learner
-from ray.rllib.core.learner.reduce_result_dict_fn import _reduce_mean_results
 from ray.rllib.core.rl_module.rl_module import (
     SingleAgentRLModuleSpec,
     RLMODULE_STATE_DIR_NAME,
 )
+from ray.rllib.env.multi_agent_episode import MultiAgentEpisode
 from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.actor_manager import FaultTolerantActorManager
-from ray.rllib.utils.deprecation import Deprecated, deprecation_warning
+from ray.rllib.utils.deprecation import (
+    Deprecated,
+    DEPRECATED_VALUE,
+    deprecation_warning,
+)
+from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
 from ray.rllib.utils.minibatch_utils import (
     ShardBatchIterator,
     ShardEpisodesIterator,
@@ -32,7 +39,6 @@ from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.typing import (
     EpisodeType,
     ModuleID,
-    ResultDict,
     RLModuleSpec,
     T,
 )
@@ -51,7 +57,10 @@ def _get_backend_config(learner_class: Type[Learner]) -> str:
 
         backend_config = TensorflowConfig()
     else:
-        raise ValueError("framework must be either torch or tf")
+        raise ValueError(
+            "`learner_class.framework` must be either 'torch' or 'tf2' (but is "
+            f"{learner_class.framework}!"
+        )
 
     return backend_config
 
@@ -77,10 +86,10 @@ class LearnerGroup:
 
         Args:
             config: The AlgorithmConfig object to use to configure this LearnerGroup.
-                Call the `resources(num_learner_workers=...)` method on your config to
+                Call the `learners(num_learners=...)` method on your config to
                 specify the number of learner workers to use.
-                Call the same method with arguments `num_cpus_per_learner_worker` and/or
-                `num_gpus_per_learner_worker` to configure the compute used by each
+                Call the same method with arguments `num_cpus_per_learner` and/or
+                `num_gpus_per_learner` to configure the compute used by each
                 Learner worker in this LearnerGroup.
                 Call the `training(learner_class=...)` method on your config to specify,
                 which exact Learner class to use.
@@ -131,25 +140,25 @@ class LearnerGroup:
         else:
             backend_config = _get_backend_config(learner_class)
 
-            # TODO (sven): Cannot set both `num_cpus_per_learner_worker`>1 and
-            #  `num_gpus_per_learner_worker`>0! Users must set one or the other due
+            # TODO (sven): Can't set both `num_cpus_per_learner`>1 and
+            #  `num_gpus_per_learner`>0! Users must set one or the other due
             #  to issues with placement group fragmentation. See
             #  https://github.com/ray-project/ray/issues/35409 for more details.
-            num_cpus_per_worker = (
-                self.config.num_cpus_per_learner_worker
-                if not self.config.num_gpus_per_learner_worker
+            num_cpus_per_learner = (
+                self.config.num_cpus_per_learner
+                if not self.config.num_gpus_per_learner
                 else 0
             )
-            num_gpus_per_worker = self.config.num_gpus_per_learner_worker
-            resources_per_worker = {
-                "CPU": num_cpus_per_worker,
-                "GPU": num_gpus_per_worker,
+            num_gpus_per_learner = self.config.num_gpus_per_learner
+            resources_per_learner = {
+                "CPU": num_cpus_per_learner,
+                "GPU": num_gpus_per_learner,
             }
 
             backend_executor = BackendExecutor(
                 backend_config=backend_config,
-                num_workers=self.config.num_learner_workers,
-                resources_per_worker=resources_per_worker,
+                num_workers=self.config.num_learners,
+                resources_per_worker=resources_per_learner,
                 max_retries=0,
             )
             backend_executor.start(
@@ -180,6 +189,14 @@ class LearnerGroup:
             self._update_request_tags = Counter()
             self._additional_update_request_tags = Counter()
 
+        # A special MetricsLogger object (not exposed to the user) for reducing
+        # the n results dicts returned by our n Learner workers in case we are on
+        # the old or hybrid API stack.
+        self._metrics_logger_old_and_hybrid_stack: Optional[MetricsLogger] = None
+        if not self.config.enable_env_runner_and_connector_v2:
+            self._metrics_logger_old_and_hybrid_stack = MetricsLogger()
+
+    # TODO (sven): Replace this with call to `self.metrics.peek()`?
     def get_stats(self) -> Dict[str, Any]:
         """Returns the current stats for the input queue for this learner group."""
         return {
@@ -193,7 +210,7 @@ class LearnerGroup:
 
     @property
     def is_remote(self) -> bool:
-        return self.config.num_learner_workers > 0
+        return self.config.num_learners > 0
 
     @property
     def is_local(self) -> bool:
@@ -203,15 +220,15 @@ class LearnerGroup:
         self,
         batch: MultiAgentBatch,
         *,
+        timesteps: Optional[Dict[str, Any]] = None,
         async_update: bool = False,
-        reduce_fn: Optional[Callable[[List[Dict[str, Any]]], ResultDict]] = (
-            _reduce_mean_results
-        ),
-        # TODO (sven): Deprecate the following args. They should be extracted from the
-        #  LearnerHyperparameters of those specific algorithms that actually require
-        #  these settings.
+        # TODO (sven): Deprecate the following args. They should be extracted from
+        #  self.config of those specific algorithms that actually require these
+        #  settings.
         minibatch_size: Optional[int] = None,
         num_iters: int = 1,
+        # Already deprecated args.
+        reduce_fn=DEPRECATED_VALUE,
     ) -> Union[Dict[str, Any], List[Dict[str, Any]], List[List[Dict[str, Any]]]]:
         """Performs gradient based update(s) on the Learner(s), based on given batch.
 
@@ -223,13 +240,6 @@ class LearnerGroup:
                 sent asynchronously. If True, will return NOT the results from the
                 update on the given data, but all results from prior asynchronous update
                 requests that have not been returned thus far.
-            reduce_fn: An optional callable to reduce the results from a list of the
-                Learner actors into a single result. This can be any arbitrary function
-                that takes a list of dictionaries and returns a single dictionary. For
-                example, you can either take an average (default) or concatenate the
-                results (for example for metrics) or be more selective about you want to
-                report back to the algorithm's training_step. If None is passed, the
-                results will not get reduced.
             minibatch_size: The minibatch size to use for the update.
             num_iters: The number of complete passes over all the sub-batches in the
                 input multi-agent batch.
@@ -244,11 +254,21 @@ class LearnerGroup:
             results are reduced, a list of dictionaries of the reduced results from each
             call to async_update that is ready.
         """
+        if reduce_fn != DEPRECATED_VALUE:
+            deprecation_warning(
+                old="LearnerGroup.update_from_batch(reduce_fn=..)",
+                new="Learner.metrics.[log_value|log_dict|log_time](key=..., value=..., "
+                "reduce=[mean|min|max|sum], window=..., ema_coeff=...)",
+                help="Use the new ray.rllib.utils.metrics.metrics_logger::MetricsLogger"
+                " API in your custom Learner methods for logging and time-reducing any "
+                "custom metrics. The central `MetricsLogger` instance is available "
+                "under `self.metrics` within your custom Learner.",
+                error=True,
+            )
         return self._update(
             batch=batch,
-            episodes=None,
+            timesteps=timesteps,
             async_update=async_update,
-            reduce_fn=reduce_fn,
             minibatch_size=minibatch_size,
             num_iters=num_iters,
         )
@@ -257,15 +277,15 @@ class LearnerGroup:
         self,
         episodes: List[EpisodeType],
         *,
+        timesteps: Optional[Dict[str, Any]] = None,
         async_update: bool = False,
-        reduce_fn: Optional[Callable[[List[Dict[str, Any]]], ResultDict]] = (
-            _reduce_mean_results
-        ),
-        # TODO (sven): Deprecate the following args. They should be extracted from the
-        #  LearnerHyperparameters of those specific algorithms that actually require
-        #  these settings.
+        # TODO (sven): Deprecate the following args. They should be extracted from
+        #  self.config of those specific algorithms that actually require these
+        #  settings.
         minibatch_size: Optional[int] = None,
         num_iters: int = 1,
+        # Already deprecated args.
+        reduce_fn=DEPRECATED_VALUE,
     ) -> Union[Dict[str, Any], List[Dict[str, Any]], List[List[Dict[str, Any]]]]:
         """Performs gradient based update(s) on the Learner(s), based on given episodes.
 
@@ -280,13 +300,6 @@ class LearnerGroup:
             minibatch_size: The minibatch size to use for the update.
             num_iters: The number of complete passes over all the sub-batches in the
                 input multi-agent batch.
-            reduce_fn: An optional callable to reduce the results from a list of the
-                Learner actors into a single result. This can be any arbitrary function
-                that takes a list of dictionaries and returns a single dictionary. For
-                example, you can either take an average (default) or concatenate the
-                results (for example for metrics) or be more selective about you want to
-                report back to the algorithm's training_step. If None is passed, the
-                results will not get reduced.
 
         Returns:
             If async_update is False, a dictionary with the reduced results of the
@@ -298,11 +311,22 @@ class LearnerGroup:
             results are reduced, a list of dictionaries of the reduced results from each
             call to async_update that is ready.
         """
+        if reduce_fn != DEPRECATED_VALUE:
+            deprecation_warning(
+                old="LearnerGroup.update_from_episodes(reduce_fn=..)",
+                new="Learner.metrics.[log_value|log_dict|log_time](key=..., value=..., "
+                "reduce=[mean|min|max|sum], window=..., ema_coeff=...)",
+                help="Use the new ray.rllib.utils.metrics.metrics_logger::MetricsLogger"
+                " API in your custom Learner methods for logging and time-reducing any "
+                "custom metrics. The central `MetricsLogger` instance is available "
+                "under `self.metrics` within your custom Learner.",
+                error=True,
+            )
+
         return self._update(
-            batch=None,
             episodes=episodes,
+            timesteps=timesteps,
             async_update=async_update,
-            reduce_fn=reduce_fn,
             minibatch_size=minibatch_size,
             num_iters=num_iters,
         )
@@ -312,56 +336,108 @@ class LearnerGroup:
         *,
         batch: Optional[MultiAgentBatch] = None,
         episodes: Optional[List[EpisodeType]] = None,
+        timesteps: Optional[Dict[str, Any]] = None,
         async_update: bool = False,
-        reduce_fn: Optional[Callable[[List[Dict[str, Any]]], ResultDict]] = (
-            _reduce_mean_results
-        ),
         minibatch_size: Optional[int] = None,
         num_iters: int = 1,
     ) -> Union[Dict[str, Any], List[Dict[str, Any]], List[List[Dict[str, Any]]]]:
+
         # Define function to be called on all Learner actors (or the local learner).
-        def _learner_update(learner: Learner, batch_shard=None, episodes_shard=None):
-            if batch_shard is not None:
+        def _learner_update(
+            learner: Learner,
+            _batch_shard=None,
+            _episodes_shard=None,
+            _timesteps=None,
+            _min_total_mini_batches=0,
+        ):
+            if _batch_shard is not None:
                 return learner.update_from_batch(
-                    batch=batch_shard,
-                    reduce_fn=reduce_fn,
+                    batch=_batch_shard,
+                    timesteps=_timesteps,
                     minibatch_size=minibatch_size,
                     num_iters=num_iters,
                 )
             else:
                 return learner.update_from_episodes(
-                    episodes=episodes_shard,
-                    reduce_fn=reduce_fn,
+                    episodes=_episodes_shard,
+                    timesteps=_timesteps,
                     minibatch_size=minibatch_size,
                     num_iters=num_iters,
+                    min_total_mini_batches=_min_total_mini_batches,
                 )
 
+        # Local Learner worker: Don't shard batch/episodes, just run data as-is through
+        # this Learner.
         if self.is_local:
             if async_update:
                 raise ValueError(
                     "Cannot call `update_from_batch(update_async=True)` when running in"
-                    " local mode! Try setting `config.num_learner_workers > 0`."
+                    " local mode! Try setting `config.num_learners > 0`."
                 )
 
             results = [
                 _learner_update(
                     learner=self._learner,
-                    batch_shard=batch,
-                    episodes_shard=episodes,
+                    _batch_shard=batch,
+                    _episodes_shard=episodes,
+                    _timesteps=timesteps,
                 )
             ]
+        # One or more remote Learners: Shard batch/episodes into equal pieces (roughly
+        # equal if multi-agent AND episodes) and send each Learner worker one of these
+        # shards.
         else:
+            # MultiAgentBatch: Shard into equal pieces.
+            # TODO (sven): The sharder used here destroys - for multi-agent only -
+            #  the relationship of the different agents' timesteps to each other.
+            #  Thus, in case the algorithm requires agent-synchronized data (aka.
+            #  "lockstep"), the `ShardBatchIterator` should not be used.
             if episodes is None:
                 partials = [
-                    partial(_learner_update, batch_shard=batch_shard)
+                    partial(
+                        _learner_update, _batch_shard=batch_shard, _timesteps=timesteps
+                    )
                     for batch_shard in ShardBatchIterator(batch, len(self._workers))
                 ]
+            # Single- or MultiAgentEpisodes: Shard into equal pieces (only roughly equal
+            # in case of multi-agent).
             else:
-                partials = [
-                    partial(_learner_update, episodes_shard=episodes_shard)
-                    for episodes_shard in ShardEpisodesIterator(
-                        episodes, len(self._workers)
+                eps_shards = list(ShardEpisodesIterator(episodes, len(self._workers)))
+                # In the multi-agent case AND `minibatch_size` AND num_workers > 1, we
+                # compute a max iteration counter such that the different Learners will
+                # not go through a different number of iterations.
+                min_total_mini_batches = 0
+                if (
+                    isinstance(episodes[0], MultiAgentEpisode)
+                    and minibatch_size
+                    and len(self._workers) > 1
+                ):
+                    # Find episode w/ the largest single-agent episode in it, then
+                    # compute this single-agent episode's total number of mini batches
+                    # (if we iterated over it num_sgd_iter times with the mini batch
+                    # size).
+                    longest_ts = 0
+                    per_mod_ts = defaultdict(int)
+                    for i, shard in enumerate(eps_shards):
+                        for ma_episode in shard:
+                            for sa_episode in ma_episode.agent_episodes.values():
+                                key = (i, sa_episode.module_id)
+                                per_mod_ts[key] += len(sa_episode)
+                                if per_mod_ts[key] > longest_ts:
+                                    longest_ts = per_mod_ts[key]
+                    min_total_mini_batches = self._compute_num_total_mini_batches(
+                        batch_size=longest_ts,
+                        mini_batch_size=minibatch_size,
+                        num_iters=num_iters,
                     )
+                partials = [
+                    partial(
+                        _learner_update,
+                        _episodes_shard=eps_shard,
+                        _timesteps=timesteps,
+                        _min_total_mini_batches=min_total_mini_batches,
+                    )
+                    for eps_shard in eps_shards
                 ]
 
             if async_update:
@@ -390,11 +466,11 @@ class LearnerGroup:
                     else:
                         self._ts_dropped += factor * sum(len(e) for e in episodes)
                 # NOTE: There is a strong assumption here that the requests launched to
-                # learner workers will return at the same time, since they are have a
-                # barrier inside of themselves for gradient aggregation. Therefore
-                # results should be a list of lists where each inner list should be the
-                # length of the number of learner workers, if results from an
-                # non-blocking update are ready.
+                # learner workers will return at the same time, since they have a
+                # barrier inside for gradient aggregation. Therefore, results should be
+                # a list of lists where each inner list should be the length of the
+                # number of learner workers, if results from an non-blocking update are
+                # ready.
                 results = self._get_async_results(results)
 
             else:
@@ -402,13 +478,25 @@ class LearnerGroup:
                     self._worker_manager.foreach_actor(partials)
                 )
 
-        # TODO (sven): Move reduce_fn to the training_step
-        if reduce_fn is None:
-            return results
-        elif not async_update:
-            return reduce_fn(results)
-        else:
-            return [reduce_fn(r) for r in results]
+        # If we are on the old or hybrid API stacks (no EnvRunners), we need to emulate
+        # the old behavior of returning an already reduced dict (as if we had a
+        # reduce_fn).
+        if not self.config.enable_env_runner_and_connector_v2:
+            # If we are doing an ansync update, we operate on a list (different async
+            # requests that now have results ready) of lists (n Learner workers) here.
+            if async_update:
+                results = tree.flatten_up_to(
+                    [[None] * len(r) for r in results], results
+                )
+            self._metrics_logger_old_and_hybrid_stack.merge_and_log_n_dicts(results)
+            results = self._metrics_logger_old_and_hybrid_stack.reduce(
+                # We are returning to a client (Algorithm) that does NOT make any
+                # use of MetricsLogger (or Stats) -> Convert all values to non-Stats
+                # primitives.
+                return_stats_obj=False
+            )
+
+        return results
 
     def _get_results(self, results):
         processed_results = []
@@ -461,7 +549,7 @@ class LearnerGroup:
     def additional_update(
         self,
         *,
-        reduce_fn: Callable[[ResultDict], ResultDict] = _reduce_mean_results,
+        reduce_fn=DEPRECATED_VALUE,
         **kwargs,
     ) -> Union[Dict[str, Any], List[Dict[str, Any]]]:
         """Apply additional non-gradient based updates to the Learners.
@@ -469,27 +557,42 @@ class LearnerGroup:
         For example, this could be used to do a polyak averaging update
         of a target network in off policy algorithms like SAC or DQN.
 
-        By default this is a pass through that calls `Learner.additional_update`
-
-        Args:
-            reduce_fn: See `update()` documentation for more details.
-            \*\*kwargs: Keyword arguments to pass to each Learner.
+        By default, this is a pass through that calls all Learner workers'
+        `additional_update(**kwargs)` method.
 
         Returns:
-            A list of dictionaries of results from the updates from each worker.
+            A list of dictionaries of results returned by the
+            `Learner.additional_update()` calls.
         """
+        if reduce_fn != DEPRECATED_VALUE:
+            deprecation_warning(
+                old="LearnerGroup.additional_update(reduce_fn=..)",
+                new="Learner.metrics.[log_value|log_dict|log_time](key=..., value=..., "
+                "reduce=[mean|min|max|sum], window=..., ema_coeff=...)",
+                help="Use the new ray.rllib.utils.metrics.metrics_logger::MetricsLogger"
+                " API in your custom Learner methods for logging your custom values "
+                "and time-reducing (or parallel-reducing) them.",
+                error=True,
+            )
 
         if self.is_local:
-            return self._learner.additional_update(**kwargs)
+            results = [self._learner.additional_update(**kwargs)]
         else:
             results = self._worker_manager.foreach_actor(
                 [lambda w: w.additional_update(**kwargs) for _ in self._workers]
             )
             results = self._get_results(results)
-            if reduce_fn is None:
-                return results
-            # TODO (sven): Move reduce_fn to the training_step
-            return reduce_fn(results)
+
+        # If we are on hybrid API stack (no EnvRunners), we need to emulate
+        # the existing behavior of returning an already reduced dict (as if we had a
+        # reduce_fn).
+        if not self.config.enable_env_runner_and_connector_v2:
+            self._metrics_logger_old_and_hybrid_stack.merge_and_log_n_dicts(results)
+            results = self._metrics_logger_old_and_hybrid_stack.reduce(
+                return_stats_obj=False
+            )
+
+        return results
 
     def add_module(
         self,
@@ -533,7 +636,17 @@ class LearnerGroup:
                 refs.append(ref)
             ray.get(refs)
 
-    def get_weights(self, module_ids: Optional[Set[str]] = None) -> Dict[str, Any]:
+        # Remove all stats from the module from our metrics logger (hybrid API stack
+        # only), so we don't report results from this module again.
+        if (
+            not self.config.enable_env_runner_and_connector_v2
+            and module_id in self._metrics_logger_old_and_hybrid_stack.stats
+        ):
+            del self._metrics_logger_old_and_hybrid_stack.stats[module_id]
+
+    def get_weights(
+        self, module_ids: Optional[Set[str]] = None, inference_only: bool = False
+    ) -> Dict[str, Any]:
         """Get the weights of the MultiAgentRLModule maintained by each Learner.
 
         Args:
@@ -544,12 +657,13 @@ class LearnerGroup:
 
         """
         if self.is_local:
-            state = self._learner.get_module_state(module_ids)
+            state = self._learner.get_module_state(module_ids, inference_only)
         else:
             worker = self._worker_manager.healthy_actor_ids()[0]
             assert len(self._workers) == self._worker_manager.num_healthy_actors()
             state = self._worker_manager.foreach_actor(
-                lambda w: w.get_module_state(module_ids), remote_actor_ids=[worker]
+                lambda w: w.get_module_state(module_ids, inference_only),
+                remote_actor_ids=[worker],
             )
             state = self._get_results(state)[0]
 
@@ -834,7 +948,7 @@ class LearnerGroup:
         """Load the checkpoints of the modules being trained by this LearnerGroup.
 
            This method only needs to be called if the LearnerGroup is training
-           distributed learners (e.g num_learner_workers > 0).
+           distributed learners (e.g num_learners > 0).
 
         Args:
             marl_module_ckpt_dir: The path to the checkpoint for the
@@ -956,6 +1070,22 @@ class LearnerGroup:
     def __del__(self):
         if not self._is_shut_down:
             self.shutdown()
+
+    @staticmethod
+    def _compute_num_total_mini_batches(batch_size, mini_batch_size, num_iters):
+        num_total_mini_batches = 0
+        rest_size = 0
+        for i in range(num_iters):
+            eaten_batch = -rest_size
+            while eaten_batch < batch_size:
+                eaten_batch += mini_batch_size
+                num_total_mini_batches += 1
+            rest_size = mini_batch_size - (eaten_batch - batch_size)
+            if rest_size:
+                num_total_mini_batches -= 1
+        if rest_size:
+            num_total_mini_batches += 1
+        return num_total_mini_batches
 
     @Deprecated(new="LearnerGroup.update_from_batch(async=False)", error=False)
     def update(self, *args, **kwargs):

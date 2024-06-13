@@ -8,12 +8,23 @@ from ray._private import ray_constants
 from ray._private.ray_logging import setup_component_logger
 from ray._private.services import get_node_ip_address
 from ray._private.utils import try_to_create_directory
+from ray._raylet import GcsClient
 from ray.autoscaler._private.kuberay.autoscaling_config import AutoscalingConfigProducer
 from ray.autoscaler._private.monitor import Monitor
+from ray.autoscaler.v2.instance_manager.config import KubeRayConfigReader
+from ray.autoscaler.v2.utils import is_autoscaler_v2
 
 logger = logging.getLogger(__name__)
 
 BACKOFF_S = 5
+
+
+def _get_log_dir() -> str:
+    return os.path.join(
+        ray._private.utils.get_ray_temp_dir(),
+        ray._private.ray_constants.SESSION_LATEST,
+        "logs",
+    )
 
 
 def run_kuberay_autoscaler(cluster_name: str, cluster_namespace: str):
@@ -51,17 +62,28 @@ def run_kuberay_autoscaler(cluster_name: str, cluster_namespace: str):
         cluster_name, cluster_namespace
     )
 
-    Monitor(
-        address=ray_address,
-        # The `autoscaling_config` arg can be a dict or a `Callable: () -> dict`.
-        # In this case, it's a callable.
-        autoscaling_config=autoscaling_config_producer,
-        monitor_ip=head_ip,
-        # Let the autoscaler process exit after it hits 5 exceptions.
-        # (See ray.autoscaler._private.constants.AUTOSCALER_MAX_NUM_FAILURES.)
-        # Kubernetes will then restart the autoscaler container.
-        retry_on_failure=False,
-    ).run()
+    gcs_client = GcsClient(ray_address)
+    if is_autoscaler_v2(fetch_from_server=True, gcs_client=gcs_client):
+        from ray.autoscaler.v2.monitor import AutoscalerMonitor as MonitorV2
+
+        MonitorV2(
+            address=gcs_client.address,
+            config_reader=KubeRayConfigReader(autoscaling_config_producer),
+            log_dir=_get_log_dir(),
+            monitor_ip=head_ip,
+        ).run()
+    else:
+        Monitor(
+            address=gcs_client.address,
+            # The `autoscaling_config` arg can be a dict or a `Callable: () -> dict`.
+            # In this case, it's a callable.
+            autoscaling_config=autoscaling_config_producer,
+            monitor_ip=head_ip,
+            # Let the autoscaler process exit after it hits 5 exceptions.
+            # (See ray.autoscaler._private.constants.AUTOSCALER_MAX_NUM_FAILURES.)
+            # Kubernetes will then restart the autoscaler container.
+            retry_on_failure=False,
+        ).run()
 
 
 def _setup_logging() -> None:
@@ -70,11 +92,7 @@ def _setup_logging() -> None:
 
     Also log to pod stdout (logs viewable with `kubectl logs <head-pod> -c autoscaler`).
     """
-    log_dir = os.path.join(
-        ray._private.utils.get_ray_temp_dir(),
-        ray._private.ray_constants.SESSION_LATEST,
-        "logs",
-    )
+    log_dir = _get_log_dir()
     # The director should already exist, but try (safely) to create it just in case.
     try_to_create_directory(log_dir)
 

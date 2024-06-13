@@ -11,6 +11,8 @@ from ray._private.test_utils import SignalActor
 from ray._private.utils import get_or_create_event_loop
 from ray.actor import ActorHandle
 from ray.serve._private.common import (
+    DeploymentID,
+    ReplicaID,
     ReplicaQueueLengthInfo,
     RequestMetadata,
     RunningReplicaInfo,
@@ -90,8 +92,9 @@ def setup_fake_replica(ray_instance) -> Tuple[ActorReplicaWrapper, ActorHandle]:
     return (
         ActorReplicaWrapper(
             RunningReplicaInfo(
-                deployment_name="fake_deployment",
-                replica_tag="fake_replica",
+                ReplicaID(
+                    "fake_replica", deployment_id=DeploymentID(name="fake_deployment")
+                ),
                 node_id=None,
                 availability_zone=None,
                 actor_handle=actor_handle,
@@ -113,6 +116,7 @@ async def test_send_request(setup_fake_replica, is_streaming: bool):
         kwargs={"is_streaming": is_streaming},
         metadata=RequestMetadata(
             request_id="abc",
+            internal_request_id="def",
             endpoint="123",
             is_streaming=is_streaming,
         ),
@@ -146,6 +150,7 @@ async def test_send_request_with_rejection(
         kwargs={"is_streaming": is_streaming},
         metadata=RequestMetadata(
             request_id="abc",
+            internal_request_id="def",
             endpoint="123",
             is_streaming=is_streaming,
         ),
@@ -185,6 +190,7 @@ async def test_send_request_with_rejection_cancellation(setup_fake_replica):
         },
         metadata=RequestMetadata(
             request_id="abc",
+            internal_request_id="def",
             endpoint="123",
         ),
     )

@@ -28,7 +28,7 @@ install_bazel() {
       # Only reinstall Bazel if we need to upgrade to a different version.
       python="$(command -v python3 || command -v python || echo python)"
       current_version="$(bazel --version | grep -o "[0-9]\+.[0-9]\+.[0-9]\+")"
-      new_version="$(grep 'USE_BAZEL_VERSION=' "${WORKSPACE_DIR}/.bazeliskrc" | grep -o "[0-9]\+.[0-9]\+.[0-9]\+")"
+      new_version="$(cat "${WORKSPACE_DIR}/.bazelversion")"
       if [[ "$current_version" == "$new_version" ]]; then
         echo "Bazel of the same version already exists, skipping the install"
         export BAZEL_CONFIG_ONLY=1
@@ -79,7 +79,7 @@ install_miniconda() {
 
   if [ ! -x "${conda}" ] || [ "${MINIMAL_INSTALL-}" = 1 ]; then  # If no conda is found, install it
     local miniconda_dir  # Keep directories user-independent, to help with Bazel caching
-    local miniconda_version="Miniconda3-py39_23.1.0-1"
+    local miniconda_version="Miniconda3-py311_24.4.0-0"
     local miniconda_platform=""
     local exe_suffix=".sh"
 
@@ -160,8 +160,11 @@ install_miniconda() {
     )
   fi
 
-  # Install mpi4py
-  "${WORKSPACE_DIR}"/ci/suppress_output conda install -c anaconda mpi4py -y
+  if [[ "${PYTHON-}" != "3.12" ]]; then
+    # Install mpi4py as a test dependency for Python <3.12; currently mpi4py is not 
+    # available for Python 3.12
+    "${WORKSPACE_DIR}"/ci/suppress_output conda install -c anaconda mpi4py -y
+  fi
 
   command -V python
   test -x "${CONDA_PYTHON_EXE}"  # make sure conda is activated

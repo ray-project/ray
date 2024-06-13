@@ -1,43 +1,40 @@
-from collections import Counter
-import os
-import pytest
 import json
+import os
 import random
-import unittest
-import time
-
-import numpy as np
+import shutil
 import sys
 import tempfile
-import shutil
+import time
+import unittest
+from collections import Counter
 from unittest.mock import MagicMock
+
+import numpy as np
+import pytest
 
 import ray
 from ray import train, tune
-from ray.train import CheckpointConfig
 from ray.air.constants import TRAINING_ITERATION
-from ray.train import Checkpoint
-from ray.train._internal.session import _TrainingResult, _FutureTrainingResult
-from ray.train._internal.storage import StorageContext
-from ray.tune import Trainable, PlacementGroupFactory
+from ray.rllib import _register_all
+from ray.train import Checkpoint, CheckpointConfig
 from ray.train._internal.checkpoint_manager import _CheckpointManager
+from ray.train._internal.session import _FutureTrainingResult, _TrainingResult
+from ray.train._internal.storage import StorageContext
+from ray.tune import PlacementGroupFactory, Trainable
+from ray.tune.experiment import Trial
 from ray.tune.experiment.trial import _TemporaryTrialState
 from ray.tune.schedulers import (
-    FIFOScheduler,
-    HyperBandScheduler,
     AsyncHyperBandScheduler,
-    PopulationBasedTraining,
-    MedianStoppingRule,
-    TrialScheduler,
+    FIFOScheduler,
     HyperBandForBOHB,
+    HyperBandScheduler,
+    MedianStoppingRule,
+    PopulationBasedTraining,
+    TrialScheduler,
 )
-
-from ray.tune.schedulers.pbt import _explore, PopulationBasedTrainingReplay
-from ray.tune.search._mock import _MockSearcher
+from ray.tune.schedulers.pbt import PopulationBasedTrainingReplay, _explore
 from ray.tune.search import ConcurrencyLimiter
-from ray.tune.experiment import Trial
-
-from ray.rllib import _register_all
+from ray.tune.search._mock import _MockSearcher
 from ray.tune.trainable.metadata import _TrainingRunMetadata
 
 _register_all()
@@ -1112,7 +1109,6 @@ class PopulationBasedTestingSuite(unittest.TestCase):
         self.storage = StorageContext(
             storage_path=tmpdir, experiment_dir_name="test_trial_scheduler"
         )
-        self.storage.storage_local_path = tmpdir
         runner = _MockTrialRunner(pbt)
         for i in range(num_trials):
             trial_hyperparams = hyperparams or {
@@ -1122,6 +1118,7 @@ class PopulationBasedTestingSuite(unittest.TestCase):
                 "id_factor": i,
             }
             trial = _MockTrial(i, trial_hyperparams, self.storage)
+            trial.init_local_path()
             runner.add_trial(trial)
             trial.status = Trial.RUNNING
         for i in range(num_trials):
@@ -1614,11 +1611,11 @@ class PopulationBasedTestingSuite(unittest.TestCase):
         for log_file in log_files:
             self.assertTrue(
                 os.path.exists(
-                    os.path.join(self.storage.experiment_local_path, log_file)
+                    os.path.join(self.storage.experiment_driver_staging_path, log_file)
                 )
             )
             raw_policy = open(
-                os.path.join(self.storage.experiment_local_path, log_file), "r"
+                os.path.join(self.storage.experiment_driver_staging_path, log_file), "r"
             ).readlines()
             for line in raw_policy:
                 check_policy(json.loads(line))
@@ -1651,11 +1648,11 @@ class PopulationBasedTestingSuite(unittest.TestCase):
         for log_file in log_files:
             self.assertTrue(
                 os.path.exists(
-                    os.path.join(self.storage.experiment_local_path, log_file)
+                    os.path.join(self.storage.experiment_driver_staging_path, log_file)
                 )
             )
             raw_policy = open(
-                os.path.join(self.storage.experiment_local_path, log_file), "r"
+                os.path.join(self.storage.experiment_driver_staging_path, log_file), "r"
             ).readlines()
             for line in raw_policy:
                 check_policy(json.loads(line))
@@ -1792,7 +1789,7 @@ class PopulationBasedTestingSuite(unittest.TestCase):
 
             replay = PopulationBasedTrainingReplay(
                 os.path.join(
-                    self.storage.experiment_local_path,
+                    self.storage.experiment_driver_staging_path,
                     "pbt_policy_{}.txt".format(trial.trial_id),
                 )
             )
@@ -1809,7 +1806,7 @@ class PopulationBasedTestingSuite(unittest.TestCase):
         with self.assertRaises(ValueError):
             replay = PopulationBasedTrainingReplay(
                 os.path.join(
-                    self.storage.experiment_local_path,
+                    self.storage.experiment_driver_staging_path,
                     "pbt_policy_{}.txt".format(trials[1].trial_id),
                 )
             )

@@ -295,6 +295,13 @@ message AvailableResources {
   map<string, double> resources_available = 2;
 }
 
+message TotalResources {
+  // Node id.
+  bytes node_id = 1;
+  // Resource capacity currently total on this node manager.
+  map<string, double> resources_total = 2;
+}
+
 // A snapshot of the state of a node.
 message NodeSnapshot {
   // The idle state of a node.
@@ -316,18 +323,6 @@ message NodeSnapshot {
   // Observability strings describing why the node is not idle.
   // Each string is a reason.
   repeated string node_activity = 3;
-}
-
-message NodeDeathInfo {
-  // TODO(sang): Update drain reason
-  enum Reason {
-    UNSPECIFIED = 0;
-    EXPECTED_TERMINATION = 1;
-    UNEXPECTED_TERMINATION = 2;
-    AUTOSCALER_DRAIN_PREEMPTED = 3;
-    AUTOSCALER_DRAIN_IDLE = 4;
-  }
-  Reason reason = 1;
 }
 
 message GcsNodeInfo {
@@ -620,7 +615,7 @@ message PlacementGroupStats {
     // Scheduling Finished.
     //
     // Placement group creation failed because there was
-    // an issue commiting resources to nodes
+    // an issue committing resources to nodes
     // (e.g., node failures).
     FAILED_TO_COMMIT_RESOURCES = 5;
     // Scheduling has finished properly.

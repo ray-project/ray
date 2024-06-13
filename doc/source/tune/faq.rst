@@ -570,27 +570,7 @@ be automatically fetched and passed to your trainable as a parameter.
 How can I upload my Tune results to cloud storage?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-If an upload directory is provided, Tune will automatically sync results from the ``RAY_AIR_LOCAL_CACHE_DIR`` to the given directory,
-natively supporting standard URIs for systems like S3, gsutil or HDFS. You can add more filesystems by installing
-`fs-spec <https://filesystem-spec.readthedocs.io/en/latest/>`_-compatible filesystems e.g. using pip.
-
-Here is an example of uploading to S3, using a bucket called ``my-log-dir``:
-
-.. literalinclude:: doc_code/faq.py
-    :dedent:
-    :language: python
-    :start-after: __log_1_start__
-    :end-before: __log_1_end__
-
-By default, syncing occurs whenever one of the following conditions are met:
-
-* if you have used a :py:class:`~ray.train.CheckpointConfig` with ``num_to_keep`` and a trial has checkpointed more than ``num_to_keep`` times since last sync,
-* a ``sync_period`` of seconds (default 300) has passed since last sync.
-
-To change the frequency of syncing, set the ``sync_period`` attribute of the sync config to the desired syncing period.
-
-Note that uploading only happens when global experiment state is collected, and the frequency of this is
-determined by the experiment checkpoint period. So the true upload period is given by ``max(sync period, TUNE_GLOBAL_CHECKPOINT_S)``.
+See :ref:`tune-cloud-checkpointing`.
 
 Make sure that worker nodes have the write access to the cloud storage.
 Failing to do so would cause error messages like ``Error message (1): fatal error: Unable to locate credentials``.
@@ -598,46 +578,20 @@ For AWS set up, this involves adding an IamInstanceProfile configuration for wor
 Please :ref:`see here for more tips <aws-cluster-s3>`.
 
 
-.. _tune-docker:
-
-How can I use Tune with Docker?
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-Tune automatically syncs files and checkpoints between different remote
-containers as needed.
-
 .. _tune-kubernetes:
 
 How can I use Tune with Kubernetes?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Ray Tune automatically synchronizes files and checkpoints between different remote nodes as needed.
-This usually happens via the Ray object store, but this can be a :ref:`performance bottleneck <tune-bottlenecks>`,
-especially when running many trials in parallel.
+You should configure shared storage. See this user guide: :ref:`tune-storage-options`.
 
-Instead you should use shared storage for checkpoints so that no additional synchronization across nodes
-is necessary. There are two main options.
+.. _tune-docker:
 
-First, you can use the :ref:`SyncConfig <tune-sync-config>` to store your
-logs and checkpoints on cloud storage, such as AWS S3 or Google Cloud Storage:
+How can I use Tune with Docker?
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-.. literalinclude:: doc_code/faq.py
-    :dedent:
-    :language: python
-    :start-after: __s3_start__
-    :end-before: __s3_end__
+You should configure shared storage. See this user guide: :ref:`tune-storage-options`.
 
-Second, you can set up a shared file system like NFS. If you do this, disable automatic trial syncing:
-
-.. literalinclude:: doc_code/faq.py
-    :dedent:
-    :language: python
-    :start-after: __sync_config_start__
-    :end-before: __sync_config_end__
-
-
-Please note that we strongly encourage you to use one of these two options, as they will
-result in less overhead and provide naturally durable checkpoint storage.
 
 .. _tune-default-search-space:
 
@@ -680,7 +634,7 @@ You can configure this by setting the `RAY_CHDIR_TO_TRIAL_DIR=0` environment var
 This explicitly tells Tune to not change the working directory
 to the trial directory, giving access to paths relative to the original working directory.
 One caveat is that the working directory is now shared between workers, so the
-:meth:`train.get_context().get_trial_dir() <ray.train.context.TrainContext.get_.get_trial_dir>`
+:meth:`train.get_context().get_trial_dir() <ray.train.context.TrainContext.get_trial_dir>`
 API should be used to get the path for saving trial-specific outputs.
 
 .. literalinclude:: doc_code/faq.py

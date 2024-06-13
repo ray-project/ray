@@ -4,7 +4,6 @@ import sys
 import pytest
 
 from ray._private.test_utils import async_wait_for_condition
-from ray._private.utils import get_or_create_event_loop
 from ray.serve._private.metrics_utils import InMemoryMetricsStore, MetricsPusher
 from ray.serve._private.test_utils import MockAsyncTimer
 
@@ -22,7 +21,7 @@ class TestMetricsPusher:
             nonlocal val
             val += 1
 
-        metrics_pusher = MetricsPusher(get_or_create_event_loop())
+        metrics_pusher = MetricsPusher()
         metrics_pusher.start()
         assert len(metrics_pusher._tasks) == 0
 
@@ -38,7 +37,7 @@ class TestMetricsPusher:
         def task(s):
             s["val"] += 1
 
-        metrics_pusher = MetricsPusher(get_or_create_event_loop(), timer.sleep)
+        metrics_pusher = MetricsPusher(async_sleep=timer.sleep)
         metrics_pusher.start()
 
         metrics_pusher.register_or_update_task("basic", lambda: task(state), 0.5)
@@ -61,7 +60,7 @@ class TestMetricsPusher:
         def task(key, s):
             s[key] += 1
 
-        metrics_pusher = MetricsPusher(get_or_create_event_loop(), timer.sleep)
+        metrics_pusher = MetricsPusher(async_sleep=timer.sleep)
         metrics_pusher.start()
 
         # Each task interval is different, and they don't divide each other.
@@ -104,7 +103,7 @@ class TestMetricsPusher:
 
         # Start metrics pusher and register task() with interval 1s.
         # After (fake) 10s, the task should have executed 10 times
-        metrics_pusher = MetricsPusher(get_or_create_event_loop(), timer.sleep)
+        metrics_pusher = MetricsPusher(async_sleep=timer.sleep)
         metrics_pusher.start()
 
         # Give the metrics pusher thread opportunity to execute task
@@ -199,6 +198,17 @@ class TestInMemoryMetricsStore:
         assert s.window_average("m1", window_start_timestamp_s=0) == 1.5
         assert s.max("m1", window_start_timestamp_s=0) == 2
         assert s.max("m2", window_start_timestamp_s=0) == -1
+
+    def test_prune_keys_and_compact_data(self):
+        s = InMemoryMetricsStore()
+        s.add_metrics_point({"m1": 1, "m2": 2, "m3": 8, "m4": 5}, timestamp=1)
+        s.add_metrics_point({"m1": 2, "m2": 3, "m3": 8}, timestamp=2)
+        s.add_metrics_point({"m1": 2, "m2": 5}, timestamp=3)
+        s.prune_keys_and_compact_data(1.1)
+        assert set(s.data) == {"m1", "m2", "m3"}
+        assert len(s.data["m1"]) == 2 and s.data["m1"] == s._get_datapoints("m1", 1.1)
+        assert len(s.data["m2"]) == 2 and s.data["m2"] == s._get_datapoints("m2", 1.1)
+        assert len(s.data["m3"]) == 1 and s.data["m3"] == s._get_datapoints("m3", 1.1)
 
 
 if __name__ == "__main__":

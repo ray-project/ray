@@ -1,5 +1,7 @@
 .. include:: /_includes/rllib/we_are_hiring.rst
 
+.. include:: /_includes/rllib/new_api_stack.rst
+
 Working With Offline Data
 =========================
 
@@ -114,7 +116,7 @@ We can now train a DQN algorithm offline and evaluate it using OPE:
         .evaluation(
             evaluation_interval=1,
             evaluation_duration=10,
-            evaluation_num_workers=1,
+            evaluation_num_env_runners=1,
             evaluation_duration_unit="episodes",
             evaluation_config={"input": "/tmp/cartpole-eval"},
             off_policy_estimation_methods={
@@ -174,9 +176,9 @@ Example: Converting external experiences to batch format
 --------------------------------------------------------
 
 When the env does not support simulation (e.g., it is a web application), it is necessary to generate the ``*.json`` experience batch files outside of RLlib. This can be done by using the `JsonWriter <https://github.com/ray-project/ray/blob/master/rllib/offline/json_writer.py>`__ class to write out batches.
-This `runnable example <https://github.com/ray-project/ray/blob/master/rllib/examples/saving_experiences.py>`__ shows how to generate and save experience batches for CartPole-v1 to disk:
+This `runnable example <https://github.com/ray-project/ray/blob/master/rllib/examples/offline_rl/saving_experiences.py>`__ shows how to generate and save experience batches for CartPole-v1 to disk:
 
-.. literalinclude:: ../../../rllib/examples/saving_experiences.py
+.. literalinclude:: ../../../rllib/examples/offline_rl/saving_experiences.py
    :language: python
    :start-after: __sphinx_doc_begin__
    :end-before: __sphinx_doc_end__
@@ -216,7 +218,7 @@ RLlib supports multiplexing inputs from multiple input sources, including simula
 Scaling I/O throughput
 -----------------------
 
-Similar to scaling online training, you can scale offline I/O throughput by increasing the number of RLlib workers via the ``num_workers`` config. Each worker accesses offline storage independently in parallel, for linear scaling of I/O throughput. Within each read worker, files are chosen in random order for reads, but file contents are read sequentially.
+Similar to scaling online training, you can scale offline I/O throughput by increasing the number of RLlib workers via the ``num_env_runners`` config. Each worker accesses offline storage independently in parallel, for linear scaling of I/O throughput. Within each read worker, files are chosen in random order for reads, but file contents are read sequentially.
 
 Ray Data Integration
 --------------------
@@ -226,7 +228,7 @@ RLlib has experimental support for reading/writing training samples from/to larg
 We support JSON and Parquet files today. Other file formats supported by Ray Data can also be easily added.
 
 Unlike JSON input, a single dataset can be automatically sharded and replayed by multiple rollout workers
-by simply specifying the desired num_workers config.
+by simply specifying the desired ``num_env_runners`` config.
 
 To load sample data using Dataset, specify input and input_config keys like the following:
 
@@ -239,7 +241,7 @@ To load sample data using Dataset, specify input and input_config keys like the 
             "format": "json",  # json or parquet
 	    # Path to data file or directory.
             "path": "/path/to/json_dir/",
-	    # Num of tasks reading dataset in parallel, default is num_workers.
+	    # Num of tasks reading dataset in parallel, default is num_env_runners.
             "parallelism": 3,
 	    # Dataset allocates 0.5 CPU for each reader by default.
 	    # Adjust this value based on the size of your offline dataset.
@@ -361,7 +363,7 @@ You can configure experience input for an agent using the following options:
     # on-policy algorithms.
     "postprocess_inputs": False,
     # If positive, input batches will be shuffled via a sliding window buffer
-    # of this number of batches. Use this if the input data is not in random
+    # of this number of batches. Use this if the input data isn't in random
     # enough order. Input is delayed until the shuffle buffer is filled.
     "shuffle_buffer_size": 0,
 
@@ -404,7 +406,7 @@ The interface for the ``IOContext`` is the following:
     :members:
     :noindex:
 
-See `custom_input_api.py <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_input_api.py>`__ for a runnable example.
+See `custom_input_api.py <https://github.com/ray-project/ray/blob/master/rllib/examples/offline_rl/custom_input_api.py>`__ for a runnable example.
 
 Output API
 ----------

@@ -3,12 +3,14 @@ import os
 import time
 
 from ray.util.debug import log_once
+from ray.rllib.utils.annotations import OldAPIStack
 from ray.rllib.utils.framework import try_import_tf
 
 tf1, tf, tfv = try_import_tf()
 logger = logging.getLogger(__name__)
 
 
+@OldAPIStack
 class _TFRunBuilder:
     """Used to incrementally build up a TensorFlow run.
 

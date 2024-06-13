@@ -2,65 +2,50 @@ import asyncio
 import random
 import sys
 from collections import defaultdict
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Dict, List, Optional, Set, Tuple, Union
 from unittest.mock import Mock, patch
 
 import pytest
 
+from ray._private.test_utils import async_wait_for_condition
 from ray._private.utils import get_or_create_event_loop
 from ray.serve._private.common import (
+    DeploymentHandleSource,
     DeploymentID,
+    ReplicaID,
     ReplicaQueueLengthInfo,
     RequestMetadata,
     RunningReplicaInfo,
 )
 from ray.serve._private.config import DeploymentConfig
+from ray.serve._private.constants import RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE
 from ray.serve._private.replica_scheduler import (
     PendingRequest,
     ReplicaScheduler,
     ReplicaWrapper,
 )
 from ray.serve._private.replica_scheduler.pow_2_scheduler import ReplicaQueueLengthCache
-from ray.serve._private.router import Router, RouterMetricsManager
+from ray.serve._private.router import QUEUED_REQUESTS_KEY, Router, RouterMetricsManager
 from ray.serve._private.test_utils import FakeCounter, FakeGauge, MockTimer
-from ray.serve._private.utils import get_random_string
+from ray.serve._private.utils import FakeObjectRef, FakeObjectRefGen, get_random_string
 from ray.serve.config import AutoscalingConfig
 from ray.serve.exceptions import BackPressureError
-
-
-class FakeObjectRefOrGen:
-    def __init__(self, replica_id: str):
-        self._replica_id = replica_id
-
-    @property
-    def replica_id(self) -> str:
-        return self._replica_id
-
-
-class FakeObjectRef(FakeObjectRefOrGen):
-    def __await__(self):
-        raise NotImplementedError
-
-
-class FakeObjectRefGen(FakeObjectRefOrGen):
-    def __anext__(self):
-        raise NotImplementedError
 
 
 class FakeReplica(ReplicaWrapper):
     def __init__(
         self,
-        replica_id: str,
+        replica_id: ReplicaID,
         *,
         queue_len_info: Optional[ReplicaQueueLengthInfo] = None,
-        is_cross_language: bool = False
+        is_cross_language: bool = False,
     ):
         self._replica_id = replica_id
         self._is_cross_language = is_cross_language
         self._queue_len_info = queue_len_info
 
     @property
-    def replica_id(self) -> str:
+    def replica_id(self) -> ReplicaID:
         return self._replica_id
 
     @property
@@ -91,15 +76,12 @@ class FakeReplica(ReplicaWrapper):
 
 
 class FakeReplicaScheduler(ReplicaScheduler):
-    def __init__(self, **kwargs):
+    def __init__(self):
         self._block_requests = False
         self._blocked_requests: List[asyncio.Event] = []
         self._replica_to_return: Optional[FakeReplica] = None
         self._replica_to_return_on_retry: Optional[FakeReplica] = None
         self._replica_queue_len_cache = ReplicaQueueLengthCache()
-
-    def set_should_block_requests(self, block_requests: bool):
-        self._block_requests = block_requests
 
     @property
     def replica_queue_len_cache(self) -> ReplicaQueueLengthCache:
@@ -118,7 +100,10 @@ class FakeReplicaScheduler(ReplicaScheduler):
         return replicas
 
     def update_replicas(self, replicas: List[ReplicaWrapper]):
-        raise NotImplementedError
+        pass
+
+    def set_should_block_requests(self, block_requests: bool):
+        self._block_requests = block_requests
 
     def set_replica_to_return(self, replica: FakeReplica):
         self._replica_to_return = replica
@@ -157,6 +142,7 @@ def setup_router(request) -> Tuple[Router, FakeReplicaScheduler]:
     if not hasattr(request, "param"):
         request.param = {}
 
+    fake_replica_scheduler = FakeReplicaScheduler()
     router = Router(
         # TODO(edoakes): refactor to make a better fake controller or not depend on it.
         controller_handle=Mock(),
@@ -165,16 +151,17 @@ def setup_router(request) -> Tuple[Router, FakeReplicaScheduler]:
         self_node_id="test-node-id",
         self_actor_id="test-node-id",
         self_availability_zone="test-az",
+        handle_source=DeploymentHandleSource.UNKNOWN,
         event_loop=get_or_create_event_loop(),
         _prefer_local_node_routing=False,
         # TODO(edoakes): just pass a class instance here.
-        _router_cls="ray.serve.tests.unit.test_router.FakeReplicaScheduler",
         enable_queue_len_cache=request.param.get("enable_queue_len_cache", False),
         enable_strict_max_ongoing_requests=request.param.get(
             "enable_strict_max_ongoing_requests", False
         ),
+        replica_scheduler=fake_replica_scheduler,
     )
-    return router, router._replica_scheduler
+    return router, fake_replica_scheduler
 
 
 @pytest.mark.asyncio
@@ -185,11 +172,15 @@ class TestAssignRequest:
     ):
         router, fake_replica_scheduler = setup_router
 
-        replica = FakeReplica("test-replica-1")
+        r1_id = ReplicaID(
+            unique_id="test-replica-1", deployment_id=DeploymentID(name="test")
+        )
+        replica = FakeReplica(r1_id)
         fake_replica_scheduler.set_replica_to_return(replica)
 
         request_metadata = RequestMetadata(
             request_id="test-request-1",
+            internal_request_id="test-internal-request-1",
             endpoint="",
             is_streaming=is_streaming,
         )
@@ -198,7 +189,7 @@ class TestAssignRequest:
             assert isinstance(obj_ref, FakeObjectRefGen)
         else:
             assert isinstance(obj_ref, FakeObjectRef)
-        assert obj_ref.replica_id == "test-replica-1"
+        assert obj_ref.replica_id == r1_id
 
     @pytest.mark.parametrize(
         "setup_router",
@@ -220,8 +211,11 @@ class TestAssignRequest:
     ):
         router, fake_replica_scheduler = setup_router
 
+        r1_id = ReplicaID(
+            unique_id="test-replica-1", deployment_id=DeploymentID(name="test")
+        )
         replica = FakeReplica(
-            "test-replica-1",
+            r1_id,
             queue_len_info=ReplicaQueueLengthInfo(
                 accepted=True, num_ongoing_requests=10
             ),
@@ -230,18 +224,16 @@ class TestAssignRequest:
 
         request_metadata = RequestMetadata(
             request_id="test-request-1",
+            internal_request_id="test-internal-request-1",
             endpoint="",
             is_streaming=is_streaming,
         )
         obj_ref_gen = await router.assign_request(request_metadata)
         assert isinstance(obj_ref_gen, FakeObjectRefGen)
-        assert obj_ref_gen.replica_id == "test-replica-1"
+        assert obj_ref_gen.replica_id == r1_id
 
         if router._enable_queue_len_cache:
-            assert (
-                fake_replica_scheduler.replica_queue_len_cache.get("test-replica-1")
-                == 10
-            )
+            assert fake_replica_scheduler.replica_queue_len_cache.get(r1_id) == 10
 
     @pytest.mark.parametrize(
         "setup_router",
@@ -263,15 +255,22 @@ class TestAssignRequest:
     ):
         router, fake_replica_scheduler = setup_router
 
+        r1_id = ReplicaID(
+            unique_id="test-replica-1", deployment_id=DeploymentID(name="test")
+        )
         replica1 = FakeReplica(
-            "test-replica-1",
+            r1_id,
             queue_len_info=ReplicaQueueLengthInfo(
                 accepted=False, num_ongoing_requests=10
             ),
         )
         fake_replica_scheduler.set_replica_to_return(replica1)
+
+        r2_id = ReplicaID(
+            unique_id="test-replica-2", deployment_id=DeploymentID(name="test")
+        )
         replica2 = FakeReplica(
-            "test-replica-2",
+            r2_id,
             queue_len_info=ReplicaQueueLengthInfo(
                 accepted=True, num_ongoing_requests=20
             ),
@@ -280,22 +279,17 @@ class TestAssignRequest:
 
         request_metadata = RequestMetadata(
             request_id="test-request-1",
+            internal_request_id="test-internal-request-1",
             endpoint="",
             is_streaming=is_streaming,
         )
         obj_ref = await router.assign_request(request_metadata)
         assert isinstance(obj_ref, FakeObjectRefGen)
-        assert obj_ref.replica_id == "test-replica-2"
+        assert obj_ref.replica_id == r2_id
 
         if router._enable_queue_len_cache:
-            assert (
-                fake_replica_scheduler.replica_queue_len_cache.get("test-replica-1")
-                == 10
-            )
-            assert (
-                fake_replica_scheduler.replica_queue_len_cache.get("test-replica-2")
-                == 20
-            )
+            assert fake_replica_scheduler.replica_queue_len_cache.get(r1_id) == 10
+            assert fake_replica_scheduler.replica_queue_len_cache.get(r2_id) == 20
 
     @pytest.mark.parametrize(
         "setup_router",
@@ -307,16 +301,20 @@ class TestAssignRequest:
     ):
         router, fake_replica_scheduler = setup_router
 
-        replica = FakeReplica("test-replica-1", is_cross_language=True)
+        r1_id = ReplicaID(
+            unique_id="test-replica-1", deployment_id=DeploymentID(name="test")
+        )
+        replica = FakeReplica(r1_id, is_cross_language=True)
         fake_replica_scheduler.set_replica_to_return(replica)
 
         request_metadata = RequestMetadata(
             request_id="test-request-1",
+            internal_request_id="test-internal-request-1",
             endpoint="",
         )
         obj_ref = await router.assign_request(request_metadata)
         assert isinstance(obj_ref, FakeObjectRef)
-        assert obj_ref.replica_id == "test-replica-1"
+        assert obj_ref.replica_id == r1_id
 
     async def test_max_queued_requests_no_limit(
         self, setup_router: Tuple[Router, FakeReplicaScheduler]
@@ -325,11 +323,15 @@ class TestAssignRequest:
         fake_replica_scheduler.set_should_block_requests(True)
         router.update_deployment_config(DeploymentConfig(max_queued_requests=-1))
 
-        replica = FakeReplica("test-replica-1")
+        r1_id = ReplicaID(
+            unique_id="test-replica-1", deployment_id=DeploymentID(name="test")
+        )
+        replica = FakeReplica(r1_id)
         fake_replica_scheduler.set_replica_to_return(replica)
 
         request_metadata = RequestMetadata(
             request_id="test-request-1",
+            internal_request_id="test-internal-request-1",
             endpoint="",
         )
 
@@ -346,8 +348,7 @@ class TestAssignRequest:
         fake_replica_scheduler.unblock_requests(100)
         assert all(
             [
-                isinstance(obj_ref, FakeObjectRef)
-                and obj_ref.replica_id == "test-replica-1"
+                isinstance(obj_ref, FakeObjectRef) and obj_ref.replica_id == r1_id
                 for obj_ref in await asyncio.gather(*assign_request_tasks)
             ]
         )
@@ -359,11 +360,15 @@ class TestAssignRequest:
         fake_replica_scheduler.set_should_block_requests(True)
         router.update_deployment_config(DeploymentConfig(max_queued_requests=5))
 
-        replica = FakeReplica("test-replica-1")
+        r1_id = ReplicaID(
+            unique_id="test-replica-1", deployment_id=DeploymentID(name="test")
+        )
+        replica = FakeReplica(r1_id)
         fake_replica_scheduler.set_replica_to_return(replica)
 
         request_metadata = RequestMetadata(
             request_id="test-request-1",
+            internal_request_id="test-internal-request-1",
             endpoint="",
         )
 
@@ -387,7 +392,7 @@ class TestAssignRequest:
         assert len(done) == 1
         obj_ref = await done.pop()
         assert isinstance(obj_ref, FakeObjectRef)
-        assert obj_ref.replica_id == "test-replica-1"
+        assert obj_ref.replica_id == r1_id
 
         # One more task should be allowed to be queued.
         assign_request_tasks = list(pending) + [
@@ -401,8 +406,7 @@ class TestAssignRequest:
         fake_replica_scheduler.unblock_requests(5)
         assert all(
             [
-                isinstance(obj_ref, FakeObjectRef)
-                and obj_ref.replica_id == "test-replica-1"
+                isinstance(obj_ref, FakeObjectRef) and obj_ref.replica_id == r1_id
                 for obj_ref in await asyncio.gather(*assign_request_tasks)
             ]
         )
@@ -414,11 +418,15 @@ class TestAssignRequest:
         fake_replica_scheduler.set_should_block_requests(True)
         router.update_deployment_config(DeploymentConfig(max_queued_requests=5))
 
-        replica = FakeReplica("test-replica-1")
+        r1_id = ReplicaID(
+            unique_id="test-replica-1", deployment_id=DeploymentID(name="test")
+        )
+        replica = FakeReplica(r1_id)
         fake_replica_scheduler.set_replica_to_return(replica)
 
         request_metadata = RequestMetadata(
             request_id="test-request-1",
+            internal_request_id="test-internal-request-1",
             endpoint="",
         )
 
@@ -469,8 +477,7 @@ class TestAssignRequest:
         assert len(pending) == 5
         assert all(
             [
-                isinstance(obj_ref, FakeObjectRef)
-                and obj_ref.replica_id == "test-replica-1"
+                isinstance(obj_ref, FakeObjectRef) and obj_ref.replica_id == r1_id
                 for obj_ref in await asyncio.gather(*done)
             ]
         )
@@ -486,17 +493,15 @@ class TestAssignRequest:
         fake_replica_scheduler.unblock_requests(5)
         assert all(
             [
-                isinstance(obj_ref, FakeObjectRef)
-                and obj_ref.replica_id == "test-replica-1"
+                isinstance(obj_ref, FakeObjectRef) and obj_ref.replica_id == r1_id
                 for obj_ref in await asyncio.gather(*assign_request_tasks)
             ]
         )
 
 
-def running_replica_info(replica_tag: str) -> RunningReplicaInfo:
+def running_replica_info(replica_id: ReplicaID) -> RunningReplicaInfo:
     return RunningReplicaInfo(
-        deployment_name="f",
-        replica_tag=replica_tag,
+        replica_id=replica_id,
         node_id="node_id",
         availability_zone="some-az",
         actor_handle=Mock(),
@@ -506,82 +511,126 @@ def running_replica_info(replica_tag: str) -> RunningReplicaInfo:
 
 class TestRouterMetricsManager:
     def test_num_router_requests(self):
-        metrics_manager = RouterMetricsManager(
-            DeploymentID(name="a", app_name="b"),
-            "random",
-            get_or_create_event_loop(),
-            Mock(),
-            FakeCounter(tag_keys=("deployment", "route", "application")),
-            FakeGauge(tag_keys=("deployment", "application")),
-        )
-        assert metrics_manager.num_router_requests.get_count() == 0
-
-        n = random.randint(0, 10)
-        for _ in range(n):
-            metrics_manager.inc_num_total_requests(route="/alice")
-        assert metrics_manager.num_router_requests.get_count() == n
-        assert metrics_manager.num_router_requests.get_tags() == {
+        tags = {
             "deployment": "a",
             "application": "b",
             "route": "/alice",
+            "handle": "random_handle",
+            "actor_id": "random_actor",
         }
-
-    def test_num_queued_requests_gauge(self):
         metrics_manager = RouterMetricsManager(
             DeploymentID(name="a", app_name="b"),
-            "random",
-            get_or_create_event_loop(),
+            "random_handle",
+            "random_actor",
+            DeploymentHandleSource.UNKNOWN,
             Mock(),
-            FakeCounter(tag_keys=("deployment", "route", "application")),
-            FakeGauge(tag_keys=("deployment", "application")),
+            FakeCounter(
+                tag_keys=("deployment", "route", "application", "handle", "actor_id")
+            ),
+            FakeGauge(tag_keys=("deployment", "application", "handle", "actor_id")),
+            FakeGauge(tag_keys=("deployment", "application", "handle", "actor_id")),
         )
-        assert metrics_manager.num_queued_requests_gauge.get_value() == 0
+        assert metrics_manager.num_router_requests.get_count(tags) is None
+
+        n = random.randint(1, 10)
+        for _ in range(n):
+            metrics_manager.inc_num_total_requests(route="/alice")
+        assert metrics_manager.num_router_requests.get_count(tags) == n
+
+    def test_num_queued_requests_gauge(self):
+        tags = {
+            "deployment": "a",
+            "application": "b",
+            "handle": "random_handle",
+            "actor_id": "random_actor",
+        }
+        metrics_manager = RouterMetricsManager(
+            DeploymentID(name="a", app_name="b"),
+            "random_handle",
+            "random_actor",
+            DeploymentHandleSource.UNKNOWN,
+            Mock(),
+            FakeCounter(
+                tag_keys=("deployment", "route", "application", "handle", "actor_id")
+            ),
+            FakeGauge(tag_keys=("deployment", "application", "handle", "actor_id")),
+            FakeGauge(tag_keys=("deployment", "application", "handle", "actor_id")),
+        )
+        assert metrics_manager.num_queued_requests_gauge.get_value(tags) == 0
 
         n, m = random.randint(0, 10), random.randint(0, 5)
         for _ in range(n):
             metrics_manager.inc_num_queued_requests()
-        assert metrics_manager.num_queued_requests_gauge.get_value() == n
+        assert metrics_manager.num_queued_requests_gauge.get_value(tags) == n
         for _ in range(m):
             metrics_manager.dec_num_queued_requests()
-        assert metrics_manager.num_queued_requests_gauge.get_value() == n - m
-        assert metrics_manager.num_queued_requests_gauge.get_tags() == {
-            "deployment": "a",
-            "application": "b",
-        }
+        assert metrics_manager.num_queued_requests_gauge.get_value(tags) == n - m
 
     def test_track_requests_sent_to_replicas(self):
+        d_id = DeploymentID(name="a", app_name="b")
         metrics_manager = RouterMetricsManager(
-            DeploymentID(name="a", app_name="b"),
+            d_id,
             "random",
-            get_or_create_event_loop(),
+            "random_actor",
+            DeploymentHandleSource.UNKNOWN,
             Mock(),
-            FakeCounter(tag_keys=("deployment", "route", "application")),
-            FakeGauge(tag_keys=("deployment", "application")),
+            FakeCounter(
+                tag_keys=("deployment", "route", "application", "handle", "actor_id")
+            ),
+            FakeGauge(tag_keys=("deployment", "application", "handle", "actor_id")),
+            FakeGauge(tag_keys=("deployment", "application", "handle", "actor_id")),
         )
 
         # r1: number requests -> 0, removed from list of running replicas -> prune
         # r2: number requests -> 0, remains on list of running replicas -> don't prune
         # r3: number requests > 0, removed from list of running replicas -> don't prune
         # r4: number requests > 0, remains on list of running replicas -> don't prune
-        replica_tags = [get_random_string() for _ in range(4)]
-        r1, r2, r3, r4 = replica_tags
+        replica_ids = [
+            ReplicaID(unique_id=f"test-replica-{i}", deployment_id=d_id)
+            for i in range(1, 5)
+        ]
+        r1, r2, r3, r4 = replica_ids
 
         # ri has i requests
         for i in range(4):
             for _ in range(i + 1):
-                metrics_manager.inc_num_running_requests_for_replica(replica_tags[i])
+                metrics_manager.inc_num_running_requests_for_replica(replica_ids[i])
 
         # All 4 replicas should have a positive number of requests
-        for i, r in enumerate(replica_tags):
+        for i, r in enumerate(replica_ids):
             assert metrics_manager.num_requests_sent_to_replicas[r] == i + 1
+        assert (
+            metrics_manager.num_running_requests_gauge.get_value(
+                {
+                    "deployment": "a",
+                    "application": "b",
+                    "handle": "random",
+                    "actor_id": "random_actor",
+                }
+            )
+            == 10
+        )
 
         # Requests at r1 and r2 drop to 0
         for _ in range(1):
-            metrics_manager.process_finished_request(r1, None)
+            metrics_manager.dec_num_running_requests_for_replica(r1, None)
         for _ in range(2):
-            metrics_manager.process_finished_request(r2, None)
+            metrics_manager.dec_num_running_requests_for_replica(r2, None)
         assert metrics_manager.num_requests_sent_to_replicas[r1] == 0
         assert metrics_manager.num_requests_sent_to_replicas[r2] == 0
+
+        # 3 requests finished processing
+        assert (
+            metrics_manager.num_running_requests_gauge.get_value(
+                {
+                    "deployment": "a",
+                    "application": "b",
+                    "handle": "random",
+                    "actor_id": "random_actor",
+                }
+            )
+            == 7
+        )
 
         # Running replicas reduces to [r2, r4]
         metrics_manager.update_running_replicas(
@@ -601,10 +650,14 @@ class TestRouterMetricsManager:
         metrics_manager = RouterMetricsManager(
             DeploymentID(name="a", app_name="b"),
             "random",
-            get_or_create_event_loop(),
+            "random_actor",
+            DeploymentHandleSource.UNKNOWN,
             Mock(),
-            FakeCounter(tag_keys=("deployment", "route", "application")),
-            FakeGauge(tag_keys=("deployment", "application")),
+            FakeCounter(
+                tag_keys=("deployment", "route", "application", "handle", "actor_id")
+            ),
+            FakeGauge(tag_keys=("deployment", "application", "handle", "actor_id")),
+            FakeGauge(tag_keys=("deployment", "application", "handle", "actor_id")),
         )
 
         # Not an autoscaling deployment, should not push metrics
@@ -632,16 +685,27 @@ class TestRouterMetricsManager:
         timer.reset(start)
         deployment_id = DeploymentID(name="a", app_name="b")
         handle_id = "random"
+        self_actor_id = "abc"
         mock_controller_handle = Mock()
 
         with patch("time.time", new=timer.time):
             metrics_manager = RouterMetricsManager(
                 deployment_id,
                 handle_id,
-                get_or_create_event_loop(),
+                self_actor_id,
+                DeploymentHandleSource.PROXY,
                 mock_controller_handle,
-                FakeCounter(tag_keys=("deployment", "route", "application")),
-                FakeGauge(tag_keys=("deployment", "application")),
+                FakeCounter(
+                    tag_keys=(
+                        "deployment",
+                        "route",
+                        "application",
+                        "handle",
+                        "actor_id",
+                    )
+                ),
+                FakeGauge(tag_keys=("deployment", "application", "handle", "actor_id")),
+                FakeGauge(tag_keys=("deployment", "application", "handle", "actor_id")),
             )
             metrics_manager.deployment_config = DeploymentConfig(
                 autoscaling_config=AutoscalingConfig()
@@ -649,12 +713,14 @@ class TestRouterMetricsManager:
 
             # Set up some requests
             n = random.randint(0, 5)
-            replica_tags = [get_random_string() for _ in range(3)]
+            replica_ids = [
+                ReplicaID(get_random_string(), DeploymentID("d", "a")) for _ in range(3)
+            ]
             running_requests = defaultdict(int)
             for _ in range(n):
                 metrics_manager.inc_num_queued_requests()
             for _ in range(20):
-                r = random.choice(replica_tags)
+                r = random.choice(replica_ids)
                 running_requests[r] += 1
                 metrics_manager.inc_num_running_requests_for_replica(r)
 
@@ -663,10 +729,82 @@ class TestRouterMetricsManager:
             mock_controller_handle.record_handle_metrics.remote.assert_called_with(
                 deployment_id=deployment_id,
                 handle_id=handle_id,
+                actor_id=self_actor_id,
+                handle_source=DeploymentHandleSource.PROXY,
                 queued_requests=n,
                 running_requests=running_requests,
                 send_timestamp=start,
             )
+
+    @pytest.mark.skipif(
+        not RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE,
+        reason="Tests handle metrics behavior.",
+    )
+    @pytest.mark.asyncio
+    @patch(
+        "ray.serve._private.router.RAY_SERVE_HANDLE_AUTOSCALING_METRIC_RECORD_PERIOD_S",
+        0.01,
+    )
+    async def test_memory_cleared(self):
+        deployment_id = DeploymentID(name="a", app_name="b")
+        metrics_manager = RouterMetricsManager(
+            deployment_id,
+            "some_handle",
+            "some_actor",
+            DeploymentHandleSource.PROXY,
+            Mock(),
+            FakeCounter(
+                tag_keys=(
+                    "deployment",
+                    "route",
+                    "application",
+                    "handle",
+                    "actor_id",
+                )
+            ),
+            FakeGauge(tag_keys=("deployment", "application", "handle", "actor_id")),
+            FakeGauge(tag_keys=("deployment", "application", "handle", "actor_id")),
+        )
+        metrics_manager.update_deployment_config(
+            deployment_config=DeploymentConfig(
+                autoscaling_config=AutoscalingConfig(look_back_period_s=0.01)
+            ),
+            curr_num_replicas=0,
+        )
+
+        r1 = ReplicaID("r1", deployment_id)
+        r2 = ReplicaID("r2", deployment_id)
+        r3 = ReplicaID("r3", deployment_id)
+
+        def check_database(expected: Set[ReplicaID]):
+            assert set(metrics_manager.metrics_store.data) == expected
+            return True
+
+        # r1: 1
+        metrics_manager.inc_num_running_requests_for_replica(r1)
+        await async_wait_for_condition(
+            check_database, expected={r1, QUEUED_REQUESTS_KEY}
+        )
+
+        # r1: 1, r2: 0
+        metrics_manager.inc_num_running_requests_for_replica(r2)
+        await async_wait_for_condition(
+            check_database, expected={r1, r2, QUEUED_REQUESTS_KEY}
+        )
+        metrics_manager.dec_num_running_requests_for_replica(r2)
+
+        # r1: 1, r2: 0, r3: 0
+        metrics_manager.inc_num_running_requests_for_replica(r3)
+        await async_wait_for_condition(
+            check_database, expected={r1, r2, r3, QUEUED_REQUESTS_KEY}
+        )
+        metrics_manager.dec_num_running_requests_for_replica(r3)
+
+        # update running replicas {r2}
+        metrics_manager.update_running_replicas([running_replica_info(r2)])
+        await async_wait_for_condition(
+            check_database, expected={r1, r2, QUEUED_REQUESTS_KEY}
+        )
 
     @patch(
         "ray.serve._private.router.RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE", "1"
@@ -676,10 +814,14 @@ class TestRouterMetricsManager:
         metrics_manager = RouterMetricsManager(
             DeploymentID(name="a", app_name="b"),
             "random",
-            get_or_create_event_loop(),
+            "random_actor",
+            DeploymentHandleSource.UNKNOWN,
             Mock(),
-            FakeCounter(tag_keys=("deployment", "route", "application")),
-            FakeGauge(tag_keys=("deployment", "application")),
+            FakeCounter(
+                tag_keys=("deployment", "route", "application", "handle", "actor_id")
+            ),
+            FakeGauge(tag_keys=("deployment", "application", "handle", "actor_id")),
+            FakeGauge(tag_keys=("deployment", "application", "handle", "actor_id")),
         )
 
         # Without autoscaling config, do nothing

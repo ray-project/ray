@@ -4,12 +4,11 @@ import warnings
 from typing import Dict, List, Optional, TYPE_CHECKING, Union
 
 import gymnasium as gym
-import numpy as np
-import tree  # pip install dm_tree
 from gymnasium.spaces import Discrete, MultiDiscrete
+import numpy as np
 from packaging import version
+import tree  # pip install dm_tree
 
-import ray
 from ray.rllib.models.repeated_values import RepeatedValues
 from ray.rllib.utils.annotations import Deprecated, PublicAPI, DeveloperAPI
 from ray.rllib.utils.framework import try_import_torch
@@ -137,7 +136,7 @@ def clip_gradients(
         for k, v in gradients_dict.copy().items():
             if v is not None:
                 # Compute the L2-norm of the gradient tensor.
-                norm = v.norm(2)
+                norm = v.norm(2).nan_to_num(neginf=-10e8, posinf=10e8)
                 # Clip all the gradients.
                 if norm > grad_clip:
                     v.mul_(grad_clip / norm)
@@ -155,15 +154,29 @@ def clip_gradients(
         device = grads[0].device
 
         total_norm = torch.norm(
-            torch.stack([torch.norm(g.detach(), norm_type).to(device) for g in grads]),
+            torch.stack(
+                [
+                    torch.norm(g.detach(), norm_type)
+                    # Note, we want to avoid overflow in the norm computation, this does
+                    # not affect the gradients themselves as we clamp by multiplying and
+                    # not by overriding tensor values.
+                    .nan_to_num(neginf=-10e8, posinf=10e8).to(device)
+                    for g in grads
+                ]
+            ),
             norm_type,
-        )
+        ).nan_to_num(neginf=-10e8, posinf=10e8)
         if torch.logical_or(total_norm.isnan(), total_norm.isinf()):
             raise RuntimeError(
                 f"The total norm of order {norm_type} for gradients from "
                 "`parameters` is non-finite, so it cannot be clipped. "
             )
-        clip_coef = grad_clip / (total_norm + 1e-6)
+        # We do want the coefficient to be in between 0.0 and 1.0, therefore
+        # if the global_norm is smaller than the clip value, we use the clip value
+        # as normalization constant.
+        clip_coef = grad_clip / torch.maximum(
+            torch.tensor(grad_clip).to(device), total_norm + 1e-6
+        )
         # Note: multiplying by the clamped coef is redundant when the coef is clamped to
         # 1, but doing so avoids a `if clip_coef < 1:` conditional which can require a
         # CPU <=> device synchronization when the gradients do not reside in CPU memory.
@@ -426,50 +439,6 @@ def flatten_inputs_to_1d_tensor(
         merged = torch.reshape(merged, [B, T, -1])
 
     return merged
-
-
-@PublicAPI
-def get_device(config):
-    """Returns a torch device edepending on a config and current worker index."""
-
-    # Figure out the number of GPUs to use on the local side (index=0) or on
-    # the remote workers (index > 0).
-    worker_idx = config.get("worker_index", 0)
-    if (
-        not config["_fake_gpus"]
-        and ray._private.worker._mode() == ray._private.worker.LOCAL_MODE
-    ):
-        num_gpus = 0
-    elif worker_idx == 0:
-        num_gpus = config["num_gpus"]
-    else:
-        num_gpus = config["num_gpus_per_worker"]
-    # All GPU IDs, if any.
-    gpu_ids = list(range(torch.cuda.device_count()))
-
-    # Place on one or more CPU(s) when either:
-    # - Fake GPU mode.
-    # - num_gpus=0 (either set by user or we are in local_mode=True).
-    # - No GPUs available.
-    if config["_fake_gpus"] or num_gpus == 0 or not gpu_ids:
-        return torch.device("cpu")
-    # Place on one or more actual GPU(s), when:
-    # - num_gpus > 0 (set by user) AND
-    # - local_mode=False AND
-    # - actual GPUs available AND
-    # - non-fake GPU mode.
-    else:
-        # We are a remote worker (WORKER_MODE=1):
-        # GPUs should be assigned to us by ray.
-        if ray._private.worker._mode() == ray._private.worker.WORKER_MODE:
-            gpu_ids = ray.get_gpu_ids()
-
-        if len(gpu_ids) < num_gpus:
-            raise ValueError(
-                "TorchPolicy was not able to find enough GPU IDs! Found "
-                f"{gpu_ids}, but num_gpus={num_gpus}."
-            )
-        return torch.device("cuda")
 
 
 @PublicAPI

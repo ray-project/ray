@@ -4,7 +4,7 @@ from typing import Any, List, Optional
 import ray
 from ray.experimental import tqdm_ray
 from ray.types import ObjectRef
-from ray.util.annotations import PublicAPI
+from ray.util.annotations import Deprecated
 
 try:
     import tqdm
@@ -19,7 +19,7 @@ _canceled_threads = set()
 _canceled_threads_lock = threading.Lock()
 
 
-@PublicAPI
+@Deprecated
 def set_progress_bars(enabled: bool) -> bool:
     """Set whether progress bars are enabled.
 
@@ -31,12 +31,10 @@ def set_progress_bars(enabled: bool) -> bool:
     Returns:
         Whether progress bars were previously enabled.
     """
-    from ray.data import DataContext
-
-    ctx = DataContext.get_current()
-    old_value = ctx.enable_progress_bars
-    ctx.enable_progress_bars = enabled
-    return old_value
+    raise DeprecationWarning(
+        "`set_progress_bars` is deprecated. Set "
+        "`ray.data.DataContext.get_current().enable_progress_bars` instead.",
+    )
 
 
 class ProgressBar:

@@ -18,7 +18,7 @@ MB = 1024 * 1024
 
 # Note: Disk write speed can be as low as 6 MiB/s in AWS Mac instances, so we have to
 # increase the timeout.
-pytestmark = [pytest.mark.timeout(900 if platform.system() == "Darwin" else 180)]
+pytestmark = [pytest.mark.timeout(1800 if platform.system() == "Darwin" else 180)]
 
 
 def _init_ray():
@@ -330,7 +330,7 @@ def test_object_store_memory_metrics_reported_correctly(shutdown_only):
     check_spilled_mb(address, spilled=800, restored=800, fallback=400)
 
     def verify_used_object_store_memory(expected_mb):
-        components_dict, metric_names, metric_samples = fetch_prometheus([prom_addr])
+        _, _, metric_samples = fetch_prometheus([prom_addr])
 
         def in_mb(bytes):
             return int(bytes / 1024 / 1024)

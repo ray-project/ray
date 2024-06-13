@@ -1,21 +1,21 @@
-import os
 import io
 import json
+import logging
+import os
+from dataclasses import dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union
+
 import pandas as pd
 import pyarrow
-from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union
 
 import ray
 from ray.air.constants import (
-    EXPR_RESULT_FILE,
-    EXPR_PROGRESS_FILE,
     EXPR_ERROR_PICKLE_FILE,
+    EXPR_PROGRESS_FILE,
+    EXPR_RESULT_FILE,
 )
 from ray.util.annotations import PublicAPI
-
-import logging
 
 if TYPE_CHECKING:
     from ray.train import Checkpoint
@@ -88,8 +88,8 @@ class Result:
 
     def _repr(self, indent: int = 0) -> str:
         """Construct the representation with specified number of space indent."""
-        from ray.tune.result import AUTO_RESULT_KEYS
         from ray.tune.experimental.output import BLACKLISTED_KEYS
+        from ray.tune.result import AUTO_RESULT_KEYS
 
         shown_attributes = {k: getattr(self, k) for k in self._items_to_repr}
         if self.error:
@@ -155,12 +155,12 @@ class Result:
         """
         # TODO(justinvyu): Fix circular dependency.
         from ray.train import Checkpoint
-        from ray.train.constants import CHECKPOINT_DIR_NAME
         from ray.train._internal.storage import (
-            get_fs_and_path,
             _exists_at_fs_path,
             _list_at_fs_path,
+            get_fs_and_path,
         )
+        from ray.train.constants import CHECKPOINT_DIR_NAME
 
         fs, fs_path = get_fs_and_path(path, storage_filesystem)
         if not _exists_at_fs_path(fs, fs_path):

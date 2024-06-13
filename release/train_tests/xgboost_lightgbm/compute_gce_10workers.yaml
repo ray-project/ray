@@ -1,0 +1,28 @@
+cloud_id: {{env["ANYSCALE_CLOUD_ID"]}}
+region: us-west1
+allowed_azs:
+    - us-west1-b
+
+max_workers: 10
+
+head_node_type:
+    name: head_node
+    instance_type: n1-standard-8
+    resources:
+      cpu: 0
+
+
+worker_node_types:
+    - name: worker_node
+      instance_type: n1-standard-16
+      max_workers: 10
+      min_workers: 10
+      use_spot: false
+
+gcp_advanced_configurations_json:
+  instance_properties:
+    disks:
+      - boot: true
+        auto_delete: true
+        initialize_params:
+          disk_size_gb: 250

@@ -1,10 +1,10 @@
 import json
 from collections import deque
 from numbers import Number
-from typing import Tuple, Optional
+from typing import Optional, Tuple
 
 from ray.train._internal.checkpoint_manager import _CheckpointManager
-from ray.tune.utils.serialization import TuneFunctionEncoder, TuneFunctionDecoder
+from ray.tune.utils.serialization import TuneFunctionDecoder, TuneFunctionEncoder
 
 
 class _TrainingRunMetadata:

@@ -1,4 +1,6 @@
-import { createStyles, makeStyles, Typography } from "@material-ui/core";
+import { Typography } from "@mui/material";
+import createStyles from "@mui/styles/createStyles";
+import makeStyles from "@mui/styles/makeStyles";
 import classNames from "classnames";
 import React, { ReactNode } from "react";
 import { Link } from "react-router-dom";
@@ -81,7 +83,7 @@ const useListItemStyles = makeStyles((theme) =>
 
     textContainer: {
       flex: "1 1 auto",
-      width: `calc(100% - ${theme.spacing(1) + 20}px)`,
+      width: `calc(100% - calc(${theme.spacing(1)} + 20px))`,
     },
     title: {
       color: "#036DCF",

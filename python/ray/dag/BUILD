@@ -1,7 +1,8 @@
 load("//bazel:python.bzl", "doctest")
+load("//bazel:python.bzl", "py_test_module_list")
 
 doctest(
-    files = glob(["**/*.py"]),
+    files = glob(["**/*.py"], exclude=["**/experimental/**/*.py"]),
     tags = ["team:core"],
     deps = [":dag_lib"]
 )
@@ -69,10 +70,24 @@ py_test(
     deps = [":dag_lib"],
 )
 
+py_test_module_list(
+  files = [
+    "tests/experimental/test_accelerated_dag.py",
+    "tests/experimental/test_torch_tensor_dag.py",
+  ],
+  size = "medium",
+  tags = ["exclusive", "accelerated_dag", "no_windows", "team:core"],
+  deps = ["//:ray_lib"],
+)
+
 py_test(
-    name = "test_accelerated_dag",
-    size = "medium",
-    srcs = dag_tests_srcs,
-    tags = ["exclusive", "team:core", "ray_dag_tests"],
-    deps = [":dag_lib"],
+  name = "test_torch_tensor_dag_gpu",
+  srcs = [
+    "tests/experimental/test_torch_tensor_dag.py",
+  ],
+  main = "tests/experimental/test_torch_tensor_dag.py",
+  size = "medium",
+  tags = ["exclusive", "accelerated_dag", "no_windows", "team:core", "multi_gpu"],
+  env = {"RAY_PYTEST_USE_GPU": "1"},
+  deps = ["//:ray_lib"],
 )

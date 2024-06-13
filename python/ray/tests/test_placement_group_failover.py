@@ -120,7 +120,9 @@ def test_gcs_restart_when_placement_group_failover(
         except Exception:
             return False
 
-    wait_for_condition(_check_actor_with_pg_is_ready, timeout=5, retry_interval_ms=1000)
+    wait_for_condition(
+        _check_actor_with_pg_is_ready, timeout=10, retry_interval_ms=1000
+    )
 
 
 if __name__ == "__main__":

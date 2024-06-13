@@ -8,11 +8,14 @@ from ray.rllib.utils.minibatch_utils import (
     ShardEpisodesIterator,
 )
 from ray.rllib.utils.test_utils import check
+from ray.rllib.utils.torch_utils import convert_to_torch_tensor
 
 tf1, tf, tfv = try_import_tf()
 tf1.enable_eager_execution()
 
 CONFIGS = [
+    {"mini_batch_size": 256, "num_sgd_iter": 30, "agent_steps": (1652, 1463)},
+    {"mini_batch_size": 128, "num_sgd_iter": 10, "agent_steps": (1000, 2)},
     {"mini_batch_size": 128, "num_sgd_iter": 3, "agent_steps": (56, 56)},
     {"mini_batch_size": 128, "num_sgd_iter": 7, "agent_steps": (56, 56)},
     {"mini_batch_size": 128, "num_sgd_iter": 10, "agent_steps": (56, 56)},
@@ -46,7 +49,7 @@ class TestMinibatchUtils(unittest.TestCase):
             padding = config.get("padding", False)
             num_env_steps = max(agent_steps)
 
-            for backend in ["tf", "numpy"]:
+            for backend in ["torch", "numpy"]:
                 sample_batches = {
                     f"pol{i}": SampleBatch(
                         {
@@ -73,12 +76,12 @@ class TestMinibatchUtils(unittest.TestCase):
                     )
                     for i in range(len(agent_steps))
                 }
-                if backend == "tf":
+                if backend == "torch":
                     for pid, batch in sample_batches.items():
-                        batch["obs"] = tf.convert_to_tensor(batch["obs"])
+                        batch["obs"] = convert_to_torch_tensor(batch["obs"])
                         if seq_lens:
-                            batch["seq_lens"] = tf.convert_to_tensor(
-                                batch["seq_lens"], dtype=tf.int32
+                            batch["seq_lens"] = convert_to_torch_tensor(
+                                batch["seq_lens"]
                             )
 
                 mb = MultiAgentBatch(sample_batches, num_env_steps)

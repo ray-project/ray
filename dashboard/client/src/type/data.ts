@@ -4,6 +4,7 @@ export type DatasetResponse = {
 
 export type DatasetMetrics = DataMetrics & {
   dataset: string;
+  job_id: string;
   operators: OperatorMetrics[];
   start_time: number;
   end_time: number | undefined;

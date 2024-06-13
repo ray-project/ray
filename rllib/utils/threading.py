@@ -1,9 +1,9 @@
 from typing import Callable
 
-from ray.rllib.utils.annotations import DeveloperAPI
+from ray.rllib.utils.annotations import OldAPIStack
 
 
-@DeveloperAPI
+@OldAPIStack
 def with_lock(func: Callable) -> Callable:
     """Use as decorator (@withlock) around object methods that need locking.
 

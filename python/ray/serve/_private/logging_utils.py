@@ -1,8 +1,11 @@
+import builtins
 import copy
 import json
 import logging
 import os
-from typing import Optional, Tuple
+import sys
+import traceback
+from typing import Any, Optional, Tuple
 
 import ray
 from ray.serve._private.common import ServeComponentType
@@ -10,6 +13,8 @@ from ray.serve._private.constants import (
     RAY_SERVE_ENABLE_CPU_PROFILING,
     RAY_SERVE_ENABLE_JSON_LOGGING,
     RAY_SERVE_ENABLE_MEMORY_PROFILING,
+    RAY_SERVE_LOG_TO_STDERR,
+    SERVE_LOG_ACTOR_ID,
     SERVE_LOG_APPLICATION,
     SERVE_LOG_COMPONENT,
     SERVE_LOG_COMPONENT_ID,
@@ -22,8 +27,10 @@ from ray.serve._private.constants import (
     SERVE_LOG_REQUEST_ID,
     SERVE_LOG_ROUTE,
     SERVE_LOG_TIME,
+    SERVE_LOG_WORKER_ID,
     SERVE_LOGGER_NAME,
 )
+from ray.serve._private.utils import get_component_file_name
 from ray.serve.schema import EncodingType, LoggingConfig
 
 try:
@@ -32,7 +39,7 @@ except ImportError:
     pass
 
 
-LOG_FILE_FMT = "{component_name}_{component_id}{suffix}"
+buildin_print = builtins.print
 
 
 class ServeJSONFormatter(logging.Formatter):
@@ -41,6 +48,12 @@ class ServeJSONFormatter(logging.Formatter):
     The formatter will generate the json log format on the fly
     based on the field of record.
     """
+
+    ADD_IF_EXIST_FIELDS = [
+        SERVE_LOG_REQUEST_ID,
+        SERVE_LOG_ROUTE,
+        SERVE_LOG_APPLICATION,
+    ]
 
     def __init__(
         self,
@@ -52,12 +65,30 @@ class ServeJSONFormatter(logging.Formatter):
             SERVE_LOG_LEVEL_NAME: SERVE_LOG_RECORD_FORMAT[SERVE_LOG_LEVEL_NAME],
             SERVE_LOG_TIME: SERVE_LOG_RECORD_FORMAT[SERVE_LOG_TIME],
         }
+        try:
+            runtime_context = ray.get_runtime_context()
+            actor_id = runtime_context.get_actor_id()
+            if actor_id:
+                self.component_log_fmt[SERVE_LOG_ACTOR_ID] = actor_id
+            worker_id = runtime_context.get_worker_id()
+            if worker_id:
+                self.component_log_fmt[SERVE_LOG_WORKER_ID] = worker_id
+        except Exception:
+            # If get_runtime_context() fails for any reason, do nothing (no adding
+            # actor_id and/or worker_id to the fmt)
+            pass
+
         if component_type and component_type == ServeComponentType.REPLICA:
             self.component_log_fmt[SERVE_LOG_DEPLOYMENT] = component_name
             self.component_log_fmt[SERVE_LOG_REPLICA] = component_id
+            self.component_log_fmt[SERVE_LOG_COMPONENT] = component_type
         else:
             self.component_log_fmt[SERVE_LOG_COMPONENT] = component_name
             self.component_log_fmt[SERVE_LOG_COMPONENT_ID] = component_id
+        self.message_formatter = logging.Formatter(
+            SERVE_LOG_RECORD_FORMAT[SERVE_LOG_MESSAGE]
+        )
+        self.asctime_formatter = logging.Formatter("%(asctime)s")
 
     def format(self, record: logging.LogRecord) -> str:
         """Format the log record into json format.
@@ -69,39 +100,28 @@ class ServeJSONFormatter(logging.Formatter):
                 The formatted log record in json format.
         """
         record_format = copy.deepcopy(self.component_log_fmt)
-        if SERVE_LOG_REQUEST_ID in record.__dict__:
-            record_format[SERVE_LOG_REQUEST_ID] = SERVE_LOG_RECORD_FORMAT[
-                SERVE_LOG_REQUEST_ID
-            ]
-        if SERVE_LOG_ROUTE in record.__dict__:
-            record_format[SERVE_LOG_ROUTE] = SERVE_LOG_RECORD_FORMAT[SERVE_LOG_ROUTE]
+        record_attributes = copy.deepcopy(record.__dict__)
+        record_format[SERVE_LOG_LEVEL_NAME] = record.levelname
+        record_format[SERVE_LOG_TIME] = self.asctime_formatter.format(record)
 
-        if SERVE_LOG_APPLICATION in record.__dict__:
-            record_format[SERVE_LOG_APPLICATION] = SERVE_LOG_RECORD_FORMAT[
-                SERVE_LOG_APPLICATION
-            ]
+        for field in ServeJSONFormatter.ADD_IF_EXIST_FIELDS:
+            if field in record_attributes:
+                record_format[field] = record_attributes[field]
 
-        message_formatter = logging.Formatter(
-            SERVE_LOG_RECORD_FORMAT[SERVE_LOG_MESSAGE]
-        )
-        record_format[SERVE_LOG_MESSAGE] = message_formatter.format(record)
+        record_format[SERVE_LOG_MESSAGE] = self.message_formatter.format(record)
 
-        if SERVE_LOG_EXTRA_FIELDS in record.__dict__:
-            if not isinstance(record.__dict__[SERVE_LOG_EXTRA_FIELDS], dict):
+        if SERVE_LOG_EXTRA_FIELDS in record_attributes:
+            if not isinstance(record_attributes[SERVE_LOG_EXTRA_FIELDS], dict):
                 raise ValueError(
                     f"Expected a dictionary passing into {SERVE_LOG_EXTRA_FIELDS}, "
-                    f"but got {type(record.__dict__[SERVE_LOG_EXTRA_FIELDS])}"
+                    f"but got {type(record_attributes[SERVE_LOG_EXTRA_FIELDS])}"
                 )
-            for k, v in record.__dict__[SERVE_LOG_EXTRA_FIELDS].items():
+            for k, v in record_attributes[SERVE_LOG_EXTRA_FIELDS].items():
                 if k in record_format:
                     raise KeyError(f"Found duplicated key in the log record: {k}")
                 record_format[k] = v
 
-        # create a formatter using the format string
-        formatter = logging.Formatter(json.dumps(record_format))
-
-        # format the log record using the formatter
-        return formatter.format(record)
+        return json.dumps(record_format)
 
 
 class ServeFormatter(logging.Formatter):
@@ -183,6 +203,87 @@ def get_component_logger_file_path() -> Optional[str]:
                 return absolute_path[len(ray_logs_dir) :]
 
 
+class StreamToLogger(object):
+    """
+    Fake file-like stream object that redirects writes to a logger instance.
+
+    This comes from https://stackoverflow.com/a/36296215 directly.
+    """
+
+    def __init__(self, logger: logging.Logger, log_level: int, original_object: Any):
+        self._logger = logger
+        self._log_level = log_level
+        self._original_object = original_object
+        self._linebuf = ""
+
+    def __getattr__(self, attr: str) -> Any:
+        # getting attributes from the original object
+        return getattr(self._original_object, attr)
+
+    @staticmethod
+    def get_stacklevel() -> int:
+        """Rewind stack to get the stacklevel for the user code.
+
+        Going from the back of the traceback and traverse until it's no longer in
+        logging_utils.py or site-packages.
+        """
+        reverse_traces = traceback.extract_stack()[::-1]
+        for index, trace in enumerate(reverse_traces):
+            if (
+                "logging_utils.py" not in trace.filename
+                and "site-packages" not in trace.filename
+            ):
+                return index
+        return 1
+
+    def write(self, buf: str):
+        temp_linebuf = self._linebuf + buf
+        self._linebuf = ""
+        for line in temp_linebuf.splitlines(True):
+            # From the io.TextIOWrapper docs:
+            #   On output, if newline is None, any '\n' characters written
+            #   are translated to the system default line separator.
+            # By default sys.stdout.write() expects '\n' newlines and then
+            # translates them so this is still cross-platform.
+            if line[-1] == "\n":
+                self._logger.log(
+                    self._log_level,
+                    line.rstrip(),
+                    stacklevel=self.get_stacklevel(),
+                )
+            else:
+                self._linebuf += line
+
+    def flush(self):
+        if self._linebuf != "":
+            self._logger.log(
+                self._log_level,
+                self._linebuf.rstrip(),
+                stacklevel=self.get_stacklevel(),
+            )
+        self._linebuf = ""
+
+    def isatty(self) -> bool:
+        return True
+
+
+def redirected_print(*objects, sep=" ", end="\n", file=None, flush=False):
+    """Implement python's print function to redirect logs to Serve's logger.
+
+    If the file is set to anything other than stdout, stderr, or None, call the
+    builtin print. Else, construct the message and redirect to Serve's logger.
+
+    See https://docs.python.org/3/library/functions.html#print
+    """
+    if file not in [sys.stdout, sys.stderr, None]:
+        return buildin_print(objects, sep=sep, end=end, file=file, flush=flush)
+
+    serve_logger = logging.getLogger(SERVE_LOGGER_NAME)
+    message = sep.join(map(str, objects)) + end
+    # We monkey patched print function, so this is always at stack level 2.
+    serve_logger.log(logging.INFO, message, stacklevel=2)
+
+
 def configure_component_logger(
     *,
     component_name: str,
@@ -219,10 +320,12 @@ def configure_component_logger(
 
     logging.setLogRecordFactory(record_factory)
 
-    stream_handler = logging.StreamHandler()
-    stream_handler.setFormatter(ServeFormatter(component_name, component_id))
-    stream_handler.addFilter(log_to_stderr_filter)
-    logger.addHandler(stream_handler)
+    # Only add stream handler if RAY_SERVE_LOG_TO_STDERR is True.
+    if RAY_SERVE_LOG_TO_STDERR:
+        stream_handler = logging.StreamHandler()
+        stream_handler.setFormatter(ServeFormatter(component_name, component_id))
+        stream_handler.addFilter(log_to_stderr_filter)
+        logger.addHandler(stream_handler)
 
     if logging_config.logs_dir:
         logs_dir = logging_config.logs_dir
@@ -235,7 +338,7 @@ def configure_component_logger(
     if backup_count is None:
         backup_count = ray._private.worker._global_node.backup_count
 
-    log_file_name = get_component_log_file_name(
+    log_file_name = get_component_file_name(
         component_name=component_name,
         component_id=component_id,
         component_type=component_type,
@@ -262,6 +365,12 @@ def configure_component_logger(
     if logging_config.enable_access_log is False:
         file_handler.addFilter(log_access_log_filter)
 
+    # Redirect print, stdout, and stderr to Serve logger.
+    if not RAY_SERVE_LOG_TO_STDERR:
+        builtins.print = redirected_print
+        sys.stdout = StreamToLogger(logger, logging.INFO, sys.stdout)
+        sys.stderr = StreamToLogger(logger, logging.INFO, sys.stderr)
+
     logger.addHandler(file_handler)
 
 
@@ -282,7 +391,7 @@ def configure_component_memory_profiler(
             import memray
 
             logs_dir = get_serve_logs_dir()
-            memray_file_name = get_component_log_file_name(
+            memray_file_name = get_component_file_name(
                 component_name=component_name,
                 component_id=component_id,
                 component_type=component_type,
@@ -294,7 +403,7 @@ def configure_component_memory_profiler(
             # tracking memory.
             restart_counter = 1
             while os.path.exists(memray_file_path):
-                memray_file_name = get_component_log_file_name(
+                memray_file_name = get_component_file_name(
                     component_name=component_name,
                     component_id=component_id,
                     component_type=component_type,
@@ -359,7 +468,7 @@ def configure_component_cpu_profiler(
             return None, None
 
         logs_dir = get_serve_logs_dir()
-        cpu_profiler_file_name = get_component_log_file_name(
+        cpu_profiler_file_name = get_component_file_name(
             component_name=component_name,
             component_id=component_id,
             component_type=component_type,
@@ -382,29 +491,6 @@ def get_serve_logs_dir() -> str:
     """Get the directory that stores Serve log files."""
 
     return os.path.join(ray._private.worker._global_node.get_logs_dir_path(), "serve")
-
-
-def get_component_log_file_name(
-    component_name: str,
-    component_id: str,
-    component_type: Optional[ServeComponentType],
-    suffix: str = "",
-) -> str:
-    """Get the component's log file name."""
-
-    # For DEPLOYMENT component type, we want to log the deployment name
-    # instead of adding the component type to the component name.
-    component_log_file_name = component_name
-    if component_type is not None:
-        component_log_file_name = f"{component_type}_{component_name}"
-        if component_type != ServeComponentType.REPLICA:
-            component_name = f"{component_type}_{component_name}"
-    log_file_name = LOG_FILE_FMT.format(
-        component_name=component_log_file_name,
-        component_id=component_id,
-        suffix=suffix,
-    )
-    return log_file_name
 
 
 class LoggingContext:

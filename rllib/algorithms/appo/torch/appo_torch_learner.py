@@ -1,6 +1,5 @@
-from typing import Any, Dict
+from typing import Dict
 
-from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.algorithms.appo.appo import (
     APPOConfig,
     LEARNER_RESULTS_CURR_KL_COEFF_KEY,
@@ -13,6 +12,7 @@ from ray.rllib.algorithms.impala.torch.vtrace_torch_v2 import (
     make_time_major,
     vtrace_torch,
 )
+from ray.rllib.core.columns import Columns
 from ray.rllib.core.learner.learner import POLICY_LOSS_KEY, VF_LOSS_KEY, ENTROPY_KEY
 from ray.rllib.core.learner.torch.torch_learner import TorchLearner
 from ray.rllib.core.rl_module.marl_module import MultiAgentRLModule
@@ -44,21 +44,21 @@ class APPOTorchLearner(AppoLearner, ImpalaTorchLearner):
         fwd_out: Dict[str, TensorType],
     ) -> TensorType:
 
-        values = fwd_out[SampleBatch.VF_PREDS]
+        values = fwd_out[Columns.VF_PREDS]
         action_dist_cls_train = (
             self.module[module_id].unwrapped().get_train_action_dist_cls()
         )
         target_policy_dist = action_dist_cls_train.from_logits(
-            fwd_out[SampleBatch.ACTION_DIST_INPUTS]
+            fwd_out[Columns.ACTION_DIST_INPUTS]
         )
         old_target_policy_dist = action_dist_cls_train.from_logits(
             fwd_out[OLD_ACTION_DIST_LOGITS_KEY]
         )
         old_target_policy_actions_logp = old_target_policy_dist.logp(
-            batch[SampleBatch.ACTIONS]
+            batch[Columns.ACTIONS]
         )
-        behaviour_actions_logp = batch[SampleBatch.ACTION_LOGP]
-        target_actions_logp = target_policy_dist.logp(batch[SampleBatch.ACTIONS])
+        behaviour_actions_logp = batch[Columns.ACTION_LOGP]
+        target_actions_logp = target_policy_dist.logp(batch[Columns.ACTIONS])
         rollout_frag_or_episode_len = config.get_rollout_fragment_length()
         recurrent_seq_len = None
 
@@ -78,7 +78,7 @@ class APPOTorchLearner(AppoLearner, ImpalaTorchLearner):
             recurrent_seq_len=recurrent_seq_len,
         )
         rewards_time_major = make_time_major(
-            batch[SampleBatch.REWARDS],
+            batch[Columns.REWARDS],
             trajectory_len=rollout_frag_or_episode_len,
             recurrent_seq_len=recurrent_seq_len,
         )
@@ -87,11 +87,11 @@ class APPOTorchLearner(AppoLearner, ImpalaTorchLearner):
             trajectory_len=rollout_frag_or_episode_len,
             recurrent_seq_len=recurrent_seq_len,
         )
-        if self.config.uses_new_env_runners:
-            bootstrap_values = batch[SampleBatch.VALUES_BOOTSTRAPPED]
+        if self.config.enable_env_runner_and_connector_v2:
+            bootstrap_values = batch[Columns.VALUES_BOOTSTRAPPED]
         else:
             bootstrap_values_time_major = make_time_major(
-                batch[SampleBatch.VALUES_BOOTSTRAPPED],
+                batch[Columns.VALUES_BOOTSTRAPPED],
                 trajectory_len=rollout_frag_or_episode_len,
                 recurrent_seq_len=recurrent_seq_len,
             )
@@ -102,7 +102,7 @@ class APPOTorchLearner(AppoLearner, ImpalaTorchLearner):
         discounts_time_major = (
             1.0
             - make_time_major(
-                batch[SampleBatch.TERMINATEDS],
+                batch[Columns.TERMINATEDS],
                 trajectory_len=rollout_frag_or_episode_len,
                 recurrent_seq_len=recurrent_seq_len,
             ).float()
@@ -163,9 +163,8 @@ class APPOTorchLearner(AppoLearner, ImpalaTorchLearner):
             + (mean_kl_loss * self.curr_kl_coeffs_per_module[module_id])
         )
 
-        # Register important loss stats.
-        self.register_metrics(
-            module_id,
+        # Log important loss stats.
+        self.metrics.log_dict(
             {
                 POLICY_LOSS_KEY: mean_pi_loss,
                 VF_LOSS_KEY: mean_vf_loss,
@@ -175,6 +174,8 @@ class APPOTorchLearner(AppoLearner, ImpalaTorchLearner):
                     self.curr_kl_coeffs_per_module[module_id]
                 ),
             },
+            key=module_id,
+            window=1,  # <- single items (should not be mean/ema-reduced over time).
         )
         # Return the total loss.
         return total_loss
@@ -231,7 +232,7 @@ class APPOTorchLearner(AppoLearner, ImpalaTorchLearner):
     @override(AppoLearner)
     def _update_module_kl_coeff(
         self, module_id: ModuleID, config: APPOConfig, sampled_kl: float
-    ) -> Dict[str, Any]:
+    ) -> None:
         # Update the current KL value based on the recently measured value.
         # Increase.
         kl_coeff_var = self.curr_kl_coeffs_per_module[module_id]
@@ -243,4 +244,8 @@ class APPOTorchLearner(AppoLearner, ImpalaTorchLearner):
         elif sampled_kl < 0.5 * config.kl_target:
             kl_coeff_var.data *= 0.5
 
-        return {LEARNER_RESULTS_CURR_KL_COEFF_KEY: kl_coeff_var.item()}
+        self.metrics.log_value(
+            (module_id, LEARNER_RESULTS_CURR_KL_COEFF_KEY),
+            kl_coeff_var.item(),
+            window=1,
+        )

@@ -37,7 +37,7 @@ class APIIngress:
     autoscaling_config={
         "min_replicas": 1,
         "max_replicas": 3,
-        "target_num_ongoing_requests_per_replica": 1,
+        "target_ongoing_requests": 1,
     },
 )
 class StableDiffusionV2:

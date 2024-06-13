@@ -51,6 +51,18 @@ class PPOCatalog(Catalog):
     Any custom head can be built by overriding the build_pi_head() and build_vf_head()
     methods. Alternatively, the PiHeadConfig and VfHeadConfig can be overridden to
     build custom heads during RLModule runtime.
+
+    Any module built for exploration or inference is built with the flag
+    `ìnference_only=True` and does not contain a value network. This flag can be set
+    in the `model_config_dict` with the key `ray.rllib.core.rl_module.INFERENCE_ONLY`.
+    In case that the actor-critic-encoder is not shared between the policy and value
+    function, the inference-only module will contain only the actor encoder network
+    , but with different parameter names. We rename parameters when synching between
+    learner and inference-only module to avoid conflicts.
+    The module classes contain a `_inference_only_state_dict_keys` attribute that
+    contains the keys to be taken care of when synching the state. The method
+    `__set_inference_only_state_dict_keys` has to be overridden to define these keys
+    and `_inference_only_get_state_hook`.
     """
 
     def __init__(

@@ -1,13 +1,17 @@
 import os
 import warnings
-from typing import Dict, List, Optional, Union, Any
+from typing import Any, Dict, List, Optional, Union
 
 import numpy as np
 import pandas as pd
 import torch
 
 import ray
+from ray._private.accelerators.hpu import HPU_PACKAGE_AVAILABLE
 from ray.air.util.data_batch_conversion import _unwrap_ndarray_object_type_if_needed
+
+if HPU_PACKAGE_AVAILABLE:
+    import habana_frameworks.torch.hpu as torch_hpu
 
 
 def get_devices() -> List[torch.device]:
@@ -55,6 +59,8 @@ def get_devices() -> List[torch.device]:
             device_ids.append(0)
 
         devices = [torch.device(f"cuda:{device_id}") for device_id in device_ids]
+    elif HPU_PACKAGE_AVAILABLE and torch_hpu.is_available():
+        devices = [torch.device("hpu")]
     else:
         devices = [torch.device("cpu")]
 
@@ -99,7 +105,7 @@ def convert_pandas_to_torch_tensor(
 
     multi_input = columns and (isinstance(columns[0], (list, tuple)))
 
-    if not multi_input and column_dtypes and type(column_dtypes) != torch.dtype:
+    if not multi_input and column_dtypes and not isinstance(column_dtypes, torch.dtype):
         raise TypeError(
             "If `columns` is a list of strings, "
             "`column_dtypes` must be None or a single `torch.dtype`."

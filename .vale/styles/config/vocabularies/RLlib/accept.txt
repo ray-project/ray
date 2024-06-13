@@ -1,0 +1,24 @@
+# Common terms used in the RL and RLlib worlds.
+# Add new terms alphabetically.
+(APPO|appo)
+boolean
+coeff
+config
+(DQN|dqn)
+[Ee]nv
+(IMPALA|impala)
+hyperparameters?
+MARLModule
+MLAgents
+multiagent
+postprocessing
+(PPO|ppo)
+[Pp]y[Tt]orch
+pragmas?
+(RL|rl)lib
+RLModule
+rollout
+(SAC|sac)
+SGD
+[Tt]ensor[Ff]low
+timestep

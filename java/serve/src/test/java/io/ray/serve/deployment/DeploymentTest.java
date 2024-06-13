@@ -90,7 +90,7 @@ public class DeploymentTest extends BaseServeTest2 {
     AutoscalingConfig autoscalingConfig = new AutoscalingConfig();
     autoscalingConfig.setMinReplicas(1);
     autoscalingConfig.setMaxReplicas(3);
-    autoscalingConfig.setTargetNumOngoingRequestsPerReplica(10);
+    autoscalingConfig.setTargetOngoingRequests(10);
     Application deployment =
         Serve.deployment()
             .setName(deploymentName)

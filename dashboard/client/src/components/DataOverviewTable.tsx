@@ -1,7 +1,5 @@
 import {
   Box,
-  createStyles,
-  makeStyles,
   Table,
   TableBody,
   TableCell,
@@ -11,13 +9,16 @@ import {
   TextField,
   TextFieldProps,
   Typography,
-} from "@material-ui/core";
-import Autocomplete from "@material-ui/lab/Autocomplete";
-import Pagination from "@material-ui/lab/Pagination";
+} from "@mui/material";
+import Autocomplete from "@mui/material/Autocomplete";
+import Pagination from "@mui/material/Pagination";
+import createStyles from "@mui/styles/createStyles";
+import makeStyles from "@mui/styles/makeStyles";
 import React, { useState } from "react";
 import { RiArrowDownSLine, RiArrowRightSLine } from "react-icons/ri";
 import { formatDateFromTimeMs } from "../common/formatUtils";
 import rowStyles from "../common/RowStyles";
+import { sliceToPage } from "../common/util";
 import { TaskProgressBar } from "../pages/job/TaskProgressBar";
 import { DatasetMetrics, OperatorMetrics } from "../type/data";
 import { memoryConverter } from "../util/converter";
@@ -30,7 +31,7 @@ const columns = [
   { label: "" }, // Empty column for dropdown icons
   { label: "Dataset / Operator Name", align: "start" },
   {
-    label: "Progress",
+    label: "Blocks Outputted",
     helpInfo: <Typography>Blocks outputted by output operator.</Typography>,
   },
   { label: "State", align: "center" },
@@ -79,7 +80,11 @@ const DataOverviewTable = ({
     Record<string, boolean>
   >({});
 
-  const list = datasetList.slice((pageNo - 1) * pageSize, pageNo * pageSize);
+  const {
+    items: list,
+    constrainedPage,
+    maxPage,
+  } = sliceToPage(datasetList, pageNo, pageSize);
 
   const classes = rowStyles();
 
@@ -100,9 +105,9 @@ const DataOverviewTable = ({
       <div style={{ display: "flex", alignItems: "center" }}>
         <div>
           <Pagination
-            page={pageNo}
+            page={constrainedPage}
             onChange={(e, num) => setPageNo(num)}
-            count={Math.ceil(datasetList.length / pageSize)}
+            count={maxPage}
           />
         </div>
         <div>

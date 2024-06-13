@@ -91,7 +91,7 @@ class TestDatasetReader(unittest.TestCase):
                     "paths": self.dset_path,
                 },
             )
-            .rollouts(num_rollout_workers=10)
+            .env_runners(num_env_runners=10)
         )
         NUM_WORKERS = 4
 

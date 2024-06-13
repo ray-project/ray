@@ -156,7 +156,6 @@ def test_read_text_partitioned_with_filter(
         assert_base_partitioned_ds(
             ds,
             schema="{text: string}",
-            num_computed=None,
             sorted_values=["1 a", "1 b", "1 c", "3 e", "3 f", "3 g"],
             ds_take_transform_fn=_to_lines,
         )
@@ -192,7 +191,7 @@ def test_read_text_remote_args(ray_start_cluster, tmp_path):
         f.write("goodbye")
 
     ds = ray.data.read_text(
-        path, parallelism=2, ray_remote_args={"resources": {"bar": 1}}
+        path, override_num_blocks=2, ray_remote_args={"resources": {"bar": 1}}
     )
 
     blocks = ds.get_internal_block_refs()

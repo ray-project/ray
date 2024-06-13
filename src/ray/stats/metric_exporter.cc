@@ -24,108 +24,6 @@ namespace {
 inline constexpr std::string_view kGrpcIoMetricsNamePrefix = "grpc.io/";
 }
 
-template <>
-void MetricPointExporter::ExportToPoints(
-    const opencensus::stats::ViewData::DataMap<opencensus::stats::Distribution>
-        &view_data,
-    const opencensus::stats::MeasureDescriptor &measure_descriptor,
-    std::vector<std::string> &keys,
-    std::vector<MetricPoint> &points) {
-  // Return if no raw data found in view map.
-  if (view_data.size() == 0) {
-    return;
-  }
-
-  const auto &metric_name = measure_descriptor.name();
-
-  // NOTE(lingxuan.zlx): No sampling in histogram data, so all points all be filled in.
-  std::unordered_map<std::string, std::string> tags;
-  for (size_t i = 0; i < view_data.begin()->first.size(); ++i) {
-    tags[keys[i]] = view_data.begin()->first[i];
-  }
-  // Histogram metric will be append suffix with mean/max/min.
-  double hist_mean = 0.0;
-  double hist_max = 0.0;
-  double hist_min = 0.0;
-  bool in_first_hist_data = true;
-  for (const auto &row : view_data) {
-    if (in_first_hist_data) {
-      hist_mean = static_cast<double>(row.second.mean());
-      hist_max = static_cast<double>(row.second.max());
-      hist_min = static_cast<double>(row.second.min());
-      in_first_hist_data = false;
-    } else {
-      hist_mean += static_cast<double>(row.second.mean());
-      hist_max = std::max(hist_max, static_cast<double>(row.second.max()));
-      hist_min = std::min(hist_min, static_cast<double>(row.second.min()));
-    }
-  }
-  hist_mean /= view_data.size();
-  MetricPoint mean_point = {
-      metric_name + ".mean", current_sys_time_ms(), hist_mean, tags, measure_descriptor};
-  MetricPoint max_point = {
-      metric_name + ".max", current_sys_time_ms(), hist_max, tags, measure_descriptor};
-  MetricPoint min_point = {
-      metric_name + ".min", current_sys_time_ms(), hist_min, tags, measure_descriptor};
-  points.push_back(std::move(mean_point));
-  points.push_back(std::move(max_point));
-  points.push_back(std::move(min_point));
-
-  if (points.size() >= report_batch_size_) {
-    metric_exporter_client_->ReportMetrics(points);
-    points.clear();
-  }
-}
-
-void MetricPointExporter::ExportViewData(
-    const std::vector<std::pair<opencensus::stats::ViewDescriptor,
-                                opencensus::stats::ViewData>> &data) {
-  std::vector<MetricPoint> points;
-  // NOTE(lingxuan.zlx): There is no sampling in view data, so all raw metric
-  // data will be processed.
-  for (const auto &datum : data) {
-    auto &descriptor = datum.first;
-    auto &view_data = datum.second;
-
-    std::vector<std::string> keys;
-    for (size_t i = 0; i < descriptor.columns().size(); ++i) {
-      keys.push_back(descriptor.columns()[i].name());
-    }
-    const auto &measure_descriptor = descriptor.measure_descriptor();
-    switch (view_data.type()) {
-    case opencensus::stats::ViewData::Type::kDouble:
-      ExportToPoints<double>(view_data.double_data(), measure_descriptor, keys, points);
-      break;
-    case opencensus::stats::ViewData::Type::kInt64:
-      ExportToPoints<int64_t>(view_data.int_data(), measure_descriptor, keys, points);
-      break;
-    case opencensus::stats::ViewData::Type::kDistribution:
-      ExportToPoints<opencensus::stats::Distribution>(
-          view_data.distribution_data(), measure_descriptor, keys, points);
-      break;
-    default:
-      RAY_LOG(FATAL) << "Unknown view data type.";
-      break;
-    }
-  }
-  for (auto &point : points) {
-    addGlobalTagsToGrpcMetric(point);
-  }
-  metric_exporter_client_->ReportMetrics(points);
-}
-
-/// Hack. We want to add GlobalTags to all our metrics, but gRPC OpenCencus plugin is not
-/// configurable at all so we don't have chance to add our own tags. We use this hack to
-/// append the tags in export time.
-void MetricPointExporter::addGlobalTagsToGrpcMetric(MetricPoint &metric) {
-  if (std::string_view(metric.metric_name).substr(0, kGrpcIoMetricsNamePrefix.size()) ==
-      kGrpcIoMetricsNamePrefix) {
-    for (const auto &[key, value] : ray::stats::StatsConfig::instance().GetGlobalTags()) {
-      metric.tags[key.name()] = value;
-    }
-  }
-}
-
 OpenCensusProtoExporter::OpenCensusProtoExporter(const int port,
                                                  instrumented_io_context &io_service,
                                                  const std::string address,
@@ -230,6 +128,27 @@ opencensus::proto::metrics::v1::Metric *addMetricProtoPayload(
   metric_descriptor_proto->set_name(measure_descriptor.name());
   metric_descriptor_proto->set_description(measure_descriptor.description());
   metric_descriptor_proto->set_unit(measure_descriptor.units());
+
+  auto descriptor_type = opencensus::proto::metrics::v1::MetricDescriptor::UNSPECIFIED;
+  auto view_aggregation = view_descriptor.aggregation();
+  switch (view_aggregation.type()) {
+  case opencensus::stats::Aggregation::Type::kCount:
+    descriptor_type = opencensus::proto::metrics::v1::MetricDescriptor::CUMULATIVE_INT64;
+    break;
+  case opencensus::stats::Aggregation::Type::kSum:
+    descriptor_type = opencensus::proto::metrics::v1::MetricDescriptor::CUMULATIVE_DOUBLE;
+    break;
+  case opencensus::stats::Aggregation::Type::kDistribution:
+    descriptor_type =
+        opencensus::proto::metrics::v1::MetricDescriptor::CUMULATIVE_DISTRIBUTION;
+    break;
+  case opencensus::stats::Aggregation::Type::kLastValue:
+    descriptor_type = opencensus::proto::metrics::v1::MetricDescriptor::GAUGE_DOUBLE;
+    break;
+  default:
+    break;
+  }
+  metric_descriptor_proto->set_type(descriptor_type);
 
   for (const auto &tag_key : view_descriptor.columns()) {
     metric_descriptor_proto->add_label_keys()->set_key(tag_key.name());

@@ -1,4 +1,4 @@
-import { Link } from "@material-ui/core";
+import { Link } from "@mui/material";
 import React, { PropsWithChildren } from "react";
 import { Link as RouterLink } from "react-router-dom";
 import { ClassNameProps } from "./props";

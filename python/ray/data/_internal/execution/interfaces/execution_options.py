@@ -229,7 +229,7 @@ class ExecutionOptions:
         preserve_order: bool = False,
         # TODO(hchen): Re-enable `actor_locality_enabled` by default after fixing
         # https://github.com/ray-project/ray/issues/43466
-        actor_locality_enabled: bool = True,
+        actor_locality_enabled: bool = False,
         verbose_progress: Optional[bool] = None,
     ):
         if resource_limits is None:
@@ -268,6 +268,10 @@ class ExecutionOptions:
             gpu=value._gpu,
             object_store_memory=value._object_store_memory,
         )
+
+    def is_resource_limits_default(self):
+        """Returns True if resource_limits is the default value."""
+        return self._resource_limits == ExecutionResources.for_limits()
 
     def validate(self) -> None:
         """Validate the options."""

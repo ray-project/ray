@@ -326,9 +326,15 @@ class GcsRpcClient {
                              node_info_grpc_client_,
                              /*method_timeout_ms*/ -1, )
 
-  /// Unregister a node from GCS Service.
+  /// Drain a node from GCS Service.
   VOID_GCS_RPC_CLIENT_METHOD(NodeInfoGcsService,
                              DrainNode,
+                             node_info_grpc_client_,
+                             /*method_timeout_ms*/ -1, )
+
+  /// Unregister a node from GCS Service.
+  VOID_GCS_RPC_CLIENT_METHOD(NodeInfoGcsService,
+                             UnregisterNode,
                              node_info_grpc_client_,
                              /*method_timeout_ms*/ -1, )
 
@@ -353,6 +359,12 @@ class GcsRpcClient {
   /// Get available resources of all nodes from the GCS Service.
   VOID_GCS_RPC_CLIENT_METHOD(NodeResourceInfoGcsService,
                              GetAllAvailableResources,
+                             node_resource_info_grpc_client_,
+                             /*method_timeout_ms*/ -1, )
+
+  /// Get total resources of all nodes from the GCS Service.
+  VOID_GCS_RPC_CLIENT_METHOD(NodeResourceInfoGcsService,
+                             GetAllTotalResources,
                              node_resource_info_grpc_client_,
                              /*method_timeout_ms*/ -1, )
 
@@ -453,6 +465,10 @@ class GcsRpcClient {
   /// Operations for kv (Get, Put, Del, Exists)
   VOID_GCS_RPC_CLIENT_METHOD(InternalKVGcsService,
                              InternalKVGet,
+                             internal_kv_grpc_client_,
+                             /*method_timeout_ms*/ -1, )
+  VOID_GCS_RPC_CLIENT_METHOD(InternalKVGcsService,
+                             InternalKVMultiGet,
                              internal_kv_grpc_client_,
                              /*method_timeout_ms*/ -1, )
   VOID_GCS_RPC_CLIENT_METHOD(InternalKVGcsService,
@@ -558,8 +574,8 @@ class GcsRpcClient {
                             "`ray stop` or "
                          << "is killed unexpectedly. If it is killed unexpectedly, "
                          << "see the log file gcs_server.out. "
-                         << "https://docs.ray.io/en/master/ray-observability/"
-                            "ray-logging.html#logging-directory-structure. "
+                         << "https://docs.ray.io/en/master/ray-observability/user-guides/"
+                            "configure-logging.html#logging-directory-structure. "
                          << "The program will terminate.";
           std::_Exit(EXIT_FAILURE);
         }

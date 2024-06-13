@@ -2,11 +2,11 @@ import abc
 import datetime
 import json
 import pathlib
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Mapping, Any, TYPE_CHECKING, Optional, Type, Dict, Union
 
 import gymnasium as gym
-import tree
+import tree  # pip install dm_tree
 
 if TYPE_CHECKING:
     from ray.rllib.core.rl_module.marl_module import (
@@ -16,16 +16,8 @@ if TYPE_CHECKING:
     from ray.rllib.core.models.catalog import Catalog
 
 import ray
-from ray.rllib.utils.annotations import (
-    ExperimentalAPI,
-    OverrideToImplementCustomLogic_CallToSuperRecommended,
-)
-from ray.rllib.utils.typing import ViewRequirementsDict
-from ray.rllib.utils.annotations import OverrideToImplementCustomLogic
-from ray.rllib.core.models.base import STATE_IN, STATE_OUT
-from ray.rllib.policy.policy import get_gym_space_from_struct_of_tensors
-from ray.rllib.policy.view_requirement import ViewRequirement
-
+from ray.rllib.core import DEFAULT_MODULE_ID
+from ray.rllib.core.columns import Columns
 from ray.rllib.core.models.specs.typing import SpecType
 from ray.rllib.core.models.specs.checker import (
     check_input_specs,
@@ -33,16 +25,23 @@ from ray.rllib.core.models.specs.checker import (
     convert_to_canonical_format,
 )
 from ray.rllib.models.distributions import Distribution
-from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
+from ray.rllib.policy.policy import get_gym_space_from_struct_of_tensors
+from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.policy.view_requirement import ViewRequirement
+from ray.rllib.utils.annotations import (
+    ExperimentalAPI,
+    OverrideToImplementCustomLogic,
+    OverrideToImplementCustomLogic_CallToSuperRecommended,
+)
 from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.numpy import convert_to_numpy
-from ray.rllib.utils.typing import SampleBatchType
 from ray.rllib.utils.serialization import (
     gym_space_from_dict,
     gym_space_to_dict,
     serialize_type,
     deserialize_type,
 )
+from ray.rllib.utils.typing import SampleBatchType, ViewRequirementsDict
 
 
 RLMODULE_METADATA_FILE_NAME = "rl_module_metadata.json"
@@ -148,26 +147,41 @@ class SingleAgentRLModuleSpec:
         )
         return spec
 
-    def update(self, other) -> None:
-        """Updates this spec with the given other spec. Works like dict.update()."""
+    def update(self, other, override: bool = True) -> None:
+        """Updates this spec with the given other spec. Works like dict.update().
+
+        Args:
+            other: The other SingleAgentRLModule spec to update this one from.
+            override: Whether to update all properties in `self` with those of `other.
+                If False, only update those properties in `self` that are not None.
+        """
         if not isinstance(other, SingleAgentRLModuleSpec):
             raise ValueError("Can only update with another SingleAgentRLModuleSpec.")
 
         # If the field is None in the other, keep the current field, otherwise update
         # with the new value.
-        self.module_class = other.module_class or self.module_class
-        self.observation_space = other.observation_space or self.observation_space
-        self.action_space = other.action_space or self.action_space
-        self.model_config_dict = other.model_config_dict or self.model_config_dict
-        self.catalog_class = other.catalog_class or self.catalog_class
-        self.load_state_path = other.load_state_path or self.load_state_path
+        if override:
+            self.module_class = other.module_class or self.module_class
+            self.observation_space = other.observation_space or self.observation_space
+            self.action_space = other.action_space or self.action_space
+            self.model_config_dict = other.model_config_dict or self.model_config_dict
+            self.catalog_class = other.catalog_class or self.catalog_class
+            self.load_state_path = other.load_state_path or self.load_state_path
+        # Only override, if the field is None in `self`.
+        else:
+            self.module_class = self.module_class or other.module_class
+            self.observation_space = self.observation_space or other.observation_space
+            self.action_space = self.action_space or other.action_space
+            self.model_config_dict = self.model_config_dict or other.model_config_dict
+            self.catalog_class = self.catalog_class or other.catalog_class
+            self.load_state_path = self.load_state_path or other.load_state_path
 
     def as_multi_agent(self) -> "MultiAgentRLModuleSpec":
-        """Returns a MultiAgentRLModuleSpec (`self` under DEFAULT_POLICY_ID key)."""
+        """Returns a MultiAgentRLModuleSpec (`self` under DEFAULT_MODULE_ID key)."""
         from ray.rllib.core.rl_module.marl_module import MultiAgentRLModuleSpec
 
         return MultiAgentRLModuleSpec(
-            module_specs={DEFAULT_POLICY_ID: self},
+            module_specs={DEFAULT_MODULE_ID: self},
             load_state_path=self.load_state_path,
         )
 
@@ -189,7 +203,7 @@ class RLModuleConfig:
 
     observation_space: gym.Space = None
     action_space: gym.Space = None
-    model_config_dict: Dict[str, Any] = None
+    model_config_dict: Dict[str, Any] = field(default_factory=dict)
     catalog_class: Type["Catalog"] = None
 
     def get_catalog(self) -> "Catalog":
@@ -343,11 +357,11 @@ class RLModule(abc.ABC):
         config: The config for the RLModule.
 
     Abstract Methods:
-        :py:meth:`~forward_train`: Forward pass during training.
+        ``~_forward_train``: Forward pass during training.
 
-        :py:meth:`~forward_exploration`: Forward pass during training for exploration.
+        ``~_forward_exploration``: Forward pass during training for exploration.
 
-        :py:meth:`~forward_inference`: Forward pass during inference.
+        ``~_forward_inference``: Forward pass during inference.
 
 
     Note:
@@ -360,9 +374,28 @@ class RLModule(abc.ABC):
     """
 
     framework: str = None
+    inference_only: bool = None
 
     def __init__(self, config: RLModuleConfig):
         self.config = config
+
+        from ray.rllib.core.rl_module.marl_module import MultiAgentRLModule
+
+        if isinstance(self, MultiAgentRLModule) or not hasattr(
+            self.config, "model_config_dict"
+        ):
+            # A MARL module is always a learner module b/c it only contains
+            # the single-agent modules. Each of the contained modules can be
+            # single.
+            self.inference_only = False
+        else:
+            # By default, each module is a learner module and contains all
+            # building blocks, such as target networks or critic networks
+            # used in the training process.
+            self.inference_only = self.config.model_config_dict.get(
+                "_inference_only", False
+            )
+
         # Make sure, `setup()` is only called once, no matter what. In some cases
         # of multiple inheritance (and with our __post_init__ functionality in place,
         # this might get called twice.
@@ -383,7 +416,7 @@ class RLModule(abc.ABC):
         def init_decorator(previous_init):
             def new_init(self, *args, **kwargs):
                 previous_init(self, *args, **kwargs)
-                if type(self) == cls:
+                if type(self) is cls:
                     self.__post_init__()
 
             return new_init
@@ -423,22 +456,23 @@ class RLModule(abc.ABC):
 
         This is called automatically during the __init__ method of this class,
         therefore, the subclass should call super.__init__() in its constructor. This
-        abstraction can be used to create any component that your RLModule needs.
+        abstraction can be used to create any components (e.g. NN layers) that your
+        RLModule needs.
         """
-        pass
+        return None
 
     @OverrideToImplementCustomLogic
     def get_train_action_dist_cls(self) -> Type[Distribution]:
         """Returns the action distribution class for this RLModule used for training.
 
-        This class is used to create action distributions from outputs of the
-        forward_train method. If the case that no action distribution class is needed,
+        This class is used to get the correct action distribution class to be used by
+        the training components. In case that no action distribution class is needed,
         this method can return None.
 
         Note that RLlib's distribution classes all implement the `Distribution`
         interface. This requires two special methods: `Distribution.from_logits()` and
-        `Distribution.to_deterministic()`. See the documentation for `Distribution`
-        for more detail.
+        `Distribution.to_deterministic()`. See the documentation of the
+        :py:class:`~ray.rllib.models.distributions.Distribution` class for more details.
         """
         raise NotImplementedError
 
@@ -452,8 +486,8 @@ class RLModule(abc.ABC):
 
         Note that RLlib's distribution classes all implement the `Distribution`
         interface. This requires two special methods: `Distribution.from_logits()` and
-        `Distribution.to_deterministic()`. See the documentation for `Distribution`
-        for more detail.
+        `Distribution.to_deterministic()`. See the documentation of the
+        :py:class:`~ray.rllib.models.distributions.Distribution` class for more details.
         """
         raise NotImplementedError
 
@@ -467,8 +501,8 @@ class RLModule(abc.ABC):
 
         Note that RLlib's distribution classes all implement the `Distribution`
         interface. This requires two special methods: `Distribution.from_logits()` and
-        `Distribution.to_deterministic()`. See the documentation for `Distribution`
-        for more detail.
+        `Distribution.to_deterministic()`. See the documentation of the
+        :py:class:`~ray.rllib.models.distributions.Distribution` class for more details.
         """
         raise NotImplementedError
 
@@ -520,8 +554,8 @@ class RLModule(abc.ABC):
             space = get_gym_space_from_struct_of_tensors(init_state, batched_input=True)
             max_seq_len = self.config.model_config_dict["max_seq_len"]
             assert max_seq_len is not None
-            defaults[STATE_IN] = ViewRequirement(
-                data_col=STATE_OUT,
+            defaults[Columns.STATE_IN] = ViewRequirement(
+                data_col=Columns.STATE_OUT,
                 shift=-1,
                 used_for_compute_actions=True,
                 used_for_training=True,
@@ -531,7 +565,7 @@ class RLModule(abc.ABC):
 
             if self.config.model_config_dict["lstm_use_prev_action"]:
                 defaults[SampleBatch.PREV_ACTIONS] = ViewRequirement(
-                    data_col=SampleBatch.ACTIONS,
+                    data_col=Columns.ACTIONS,
                     shift=-1,
                     used_for_compute_actions=True,
                     used_for_training=True,
@@ -539,14 +573,14 @@ class RLModule(abc.ABC):
 
             if self.config.model_config_dict["lstm_use_prev_reward"]:
                 defaults[SampleBatch.PREV_REWARDS] = ViewRequirement(
-                    data_col=SampleBatch.REWARDS,
+                    data_col=Columns.REWARDS,
                     shift=-1,
                     used_for_compute_actions=True,
                     used_for_training=True,
                 )
 
-            defaults[STATE_OUT] = ViewRequirement(
-                data_col=STATE_OUT,
+            defaults[Columns.STATE_OUT] = ViewRequirement(
+                data_col=Columns.STATE_OUT,
                 used_for_compute_actions=False,
                 used_for_training=True,
                 space=space,
@@ -563,9 +597,7 @@ class RLModule(abc.ABC):
         a dict that has `action_dist` key and its value is an instance of
         `Distribution`.
         """
-        # TODO (sven): We should probably change this to [ACTION_DIST_INPUTS], b/c this
-        #  is what most algos will do.
-        return {"action_dist": Distribution}
+        return [Columns.ACTION_DIST_INPUTS]
 
     @OverrideToImplementCustomLogic_CallToSuperRecommended
     def output_specs_exploration(self) -> SpecType:
@@ -576,9 +608,7 @@ class RLModule(abc.ABC):
         a dict that has `action_dist` key and its value is an instance of
         `Distribution`.
         """
-        # TODO (sven): We should probably change this to [ACTION_DIST_INPUTS], b/c this
-        #  is what most algos will do.
-        return {"action_dist": Distribution}
+        return [Columns.ACTION_DIST_INPUTS]
 
     def output_specs_train(self) -> SpecType:
         """Returns the output specs of the forward_train method."""
@@ -598,7 +628,7 @@ class RLModule(abc.ABC):
 
     def _default_input_specs(self) -> SpecType:
         """Returns the default input specs."""
-        return [SampleBatch.OBS]
+        return [Columns.OBS]
 
     @check_input_specs("_input_specs_inference")
     @check_output_specs("_output_specs_inference")
@@ -670,14 +700,14 @@ class RLModule(abc.ABC):
         """Forward-pass during training. See forward_train for details."""
 
     @OverrideToImplementCustomLogic
-    def get_state(self) -> Mapping[str, Any]:
+    def get_state(self, inference_only: bool = False) -> Mapping[str, Any]:
         """Returns the state dict of the module."""
         return {}
 
     @OverrideToImplementCustomLogic
     def set_state(self, state_dict: Mapping[str, Any]) -> None:
         """Sets the state dict of the module."""
-        pass
+        return None
 
     @OverrideToImplementCustomLogic
     def save_state(self, dir: Union[str, pathlib.Path]) -> None:
@@ -686,16 +716,19 @@ class RLModule(abc.ABC):
         Args:
             dir: The directory to save the checkpoint to.
         """
-        pass
+        return None
 
     @OverrideToImplementCustomLogic
-    def load_state(self, dir: Union[str, pathlib.Path]) -> None:
+    def load_state(
+        self,
+        dir: Union[str, pathlib.Path],
+    ) -> None:
         """Loads the weights of an RLModule from the directory dir.
 
         Args:
             dir: The directory to load the checkpoint from.
         """
-        pass
+        return None
 
     def _module_metadata(
         self,
@@ -835,7 +868,7 @@ class RLModule(abc.ABC):
         from ray.rllib.core.rl_module.marl_module import MultiAgentRLModule
 
         marl_module = MultiAgentRLModule()
-        marl_module.add_module(DEFAULT_POLICY_ID, self)
+        marl_module.add_module(DEFAULT_MODULE_ID, self)
         return marl_module
 
     def unwrapped(self) -> "RLModule":

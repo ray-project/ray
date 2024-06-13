@@ -105,7 +105,6 @@ I/O and Conversion
    Dataset.write_tfrecords
    Dataset.write_webdataset
    Dataset.write_mongo
-   Dataset.write_datasource
    Dataset.to_torch
    Dataset.to_tf
    Dataset.to_dask
@@ -116,7 +115,6 @@ I/O and Conversion
    Dataset.to_pandas_refs
    Dataset.to_numpy_refs
    Dataset.to_arrow_refs
-   Dataset.to_random_access_dataset
 
 Inspecting Metadata
 -------------------
@@ -142,17 +140,6 @@ Execution
     :toctree: doc/
 
     Dataset.materialize
-
-Serialization
--------------
-
-.. autosummary::
-   :nosignatures:
-   :toctree: doc/
-
-   Dataset.has_serializable_lineage
-   Dataset.serialize_lineage
-   Dataset.deserialize_lineage
 
 .. _block-api:
 

@@ -1,10 +1,6 @@
-import {
-  createStyles,
-  Link,
-  makeStyles,
-  TableCell,
-  TableRow,
-} from "@material-ui/core";
+import { Link, TableCell, TableRow } from "@mui/material";
+import createStyles from "@mui/styles/createStyles";
+import makeStyles from "@mui/styles/makeStyles";
 import React from "react";
 import { Link as RouterLink } from "react-router-dom";
 import {

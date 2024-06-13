@@ -2,6 +2,7 @@ import _ from "lodash";
 import { useState } from "react";
 import useSWR from "swr";
 import { API_REFRESH_INTERVAL_MS } from "../../../common/constants";
+import { sliceToPage } from "../../../common/util";
 import {
   getStateApiJobProgressByLineage,
   getStateApiJobProgressByTaskName,
@@ -182,7 +183,7 @@ export const useJobProgressByTaskName = (jobId: string) => {
     ["numFailed", "numActive", "numFinished"],
     ["desc", "desc", "desc"],
   );
-  const paginatedTasks = sortedTasks.slice((page - 1) * 10, page * 10);
+  const paginatedTasks = sliceToPage(sortedTasks, page).items;
 
   return {
     progress: paginatedTasks,

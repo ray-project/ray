@@ -15,6 +15,7 @@ import shutil
 from datetime import datetime
 from typing import Optional, Set, List, Tuple
 from ray.dashboard.modules.metrics import install_and_start_prometheus
+from ray.util.check_open_ports import check_open_ports
 
 import click
 import psutil
@@ -366,7 +367,10 @@ def debug(address):
     required=False,
     type=int,
     help="The amount of memory (in bytes) to start the object store with. "
-    "By default, this is capped at 20GB but can be set higher.",
+    "By default, this is 30% (ray_constants.DEFAULT_OBJECT_STORE_MEMORY_PROPORTION) "
+    "of available system memory capped by "
+    "the shm size and 200G (ray_constants.DEFAULT_OBJECT_STORE_MAX_MEMORY_BYTES) "
+    "but can be set higher.",
 )
 @click.option(
     "--redis-max-memory",
@@ -1161,7 +1165,7 @@ def stop(force: bool, grace_period: int):
     # they are still alive, send sigkill.
     processes_to_kill = RAY_PROCESSES
     # Raylet should exit before all other processes exit.
-    # Otherwise, fate-sharing agents will complain and suicide.
+    # Otherwise, fate-sharing agents will complain and exit.
     assert processes_to_kill[0][0] == "raylet"
 
     # GCS should exit after all other processes exit.
@@ -2573,6 +2577,7 @@ cli.add_command(disable_usage_stats)
 cli.add_command(enable_usage_stats)
 cli.add_command(metrics_group)
 cli.add_command(drain_node)
+cli.add_command(check_open_ports)
 
 try:
     from ray.util.state.state_cli import (
@@ -2593,7 +2598,7 @@ except ImportError as e:
 try:
     from ray.dashboard.modules.job.cli import job_cli_group
 
-    add_command_alias(job_cli_group, name="job", hidden=True)
+    add_command_alias(job_cli_group, name="job", hidden=False)
 except Exception as e:
     logger.debug(f"Integrating ray jobs command line tool failed with {e}")
 

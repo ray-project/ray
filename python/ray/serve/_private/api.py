@@ -12,6 +12,7 @@ from ray.serve._private.client import ServeControllerClient
 from ray.serve._private.constants import (
     CONTROLLER_MAX_CONCURRENCY,
     HTTP_PROXY_TIMEOUT,
+    RAY_SERVE_ENABLE_TASK_EVENTS,
     SERVE_CONTROLLER_NAME,
     SERVE_NAMESPACE,
 )
@@ -108,17 +109,6 @@ def _start_controller(
     if not ray.is_initialized():
         ray.init(namespace=SERVE_NAMESPACE)
 
-    controller_actor_options = {
-        "num_cpus": 0,
-        "name": SERVE_CONTROLLER_NAME,
-        "lifetime": "detached",
-        "max_restarts": -1,
-        "max_task_retries": -1,
-        "resources": {HEAD_NODE_RESOURCE_NAME: 0.001},
-        "namespace": SERVE_NAMESPACE,
-        "max_concurrency": CONTROLLER_MAX_CONCURRENCY,
-    }
-
     # Legacy http proxy actor check
     http_deprecated_args = ["http_host", "http_port", "http_middlewares"]
     for key in http_deprecated_args:
@@ -141,7 +131,17 @@ def _start_controller(
     elif isinstance(global_logging_config, dict):
         global_logging_config = LoggingConfig(**global_logging_config)
 
-    controller = ServeController.options(**controller_actor_options).remote(
+    controller = ServeController.options(
+        num_cpus=0,
+        name=SERVE_CONTROLLER_NAME,
+        lifetime="detached",
+        max_restarts=-1,
+        max_task_retries=-1,
+        resources={HEAD_NODE_RESOURCE_NAME: 0.001},
+        namespace=SERVE_NAMESPACE,
+        max_concurrency=CONTROLLER_MAX_CONCURRENCY,
+        enable_task_events=RAY_SERVE_ENABLE_TASK_EVENTS,
+    ).remote(
         http_config=http_options,
         grpc_options=grpc_options,
         global_logging_config=global_logging_config,

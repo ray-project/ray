@@ -1,22 +1,20 @@
 import os
+import sys
 from collections import Counter
 
 import pytest
-import sys
 
 import ray
-from ray.train import CheckpointConfig
 from ray.air.execution import FixedResourceManager, PlacementGroupResourceManager
+from ray.train import CheckpointConfig
+from ray.train.tests.util import mock_storage_context
 from ray.tune import PlacementGroupFactory, TuneError
 from ray.tune.execution.tune_controller import TuneController
 from ray.tune.experiment import Trial
 from ray.tune.registry import TRAINABLE_CLASS, _global_registry
 from ray.tune.schedulers import FIFOScheduler
 from ray.tune.search import BasicVariantGenerator
-
-from ray.train.tests.util import mock_storage_context
 from ray.tune.tests.execution.utils import BudgetResourceManager
-
 
 STORAGE = mock_storage_context()
 

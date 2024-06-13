@@ -52,9 +52,9 @@ pkill -f $server_script
 sleep 1
 
 if [ -f test_policy_client_server_setup.sh ]; then
-    basedir="../../examples/serving"
+    basedir="../../examples/envs/external_envs"
 else
-    basedir="rllib/examples/serving"  # In bazel.
+    basedir="rllib/examples/envs/external_envs"  # In bazel.
 fi
 
 # Start server with 2 workers (will listen on ports worker_1_port and worker_2_port for client

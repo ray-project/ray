@@ -5,7 +5,7 @@ import {
   DialogContent,
   DialogContentText,
   DialogTitle,
-} from "@material-ui/core";
+} from "@mui/material";
 import React, { PropsWithChildren } from "react";
 import { ClassNameProps } from "./props";
 

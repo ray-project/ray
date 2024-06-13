@@ -2,34 +2,34 @@
 """
 Example of training DCGAN on MNIST using PBT with Tune's function API.
 """
-import ray
-from ray import train, tune
-from ray.train import Checkpoint
-from ray.tune.schedulers import PopulationBasedTraining
-
 import argparse
 import os
-from filelock import FileLock
 import tempfile
+
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.parallel
 import torch.optim as optim
 import torch.utils.data
-import numpy as np
+from filelock import FileLock
 
+import ray
+from ray import train, tune
+from ray.train import Checkpoint
 from ray.tune.examples.pbt_dcgan_mnist.common import (
-    beta1,
     MODEL_PATH,
+    Discriminator,
+    Generator,
+    Net,
+    beta1,
     demo_gan,
     get_data_loader,
     plot_images,
     train_func,
     weights_init,
-    Discriminator,
-    Generator,
-    Net,
 )
+from ray.tune.schedulers import PopulationBasedTraining
 
 
 # __Train_begin__

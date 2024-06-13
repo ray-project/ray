@@ -21,7 +21,7 @@ from ray.serve._private.common import (
     ApplicationStatus,
     DeploymentID,
     DeploymentStatus,
-    ReplicaName,
+    ReplicaID,
 )
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME, SERVE_NAMESPACE
 from ray.serve._private.test_utils import (
@@ -30,13 +30,17 @@ from ray.serve._private.test_utils import (
     check_num_replicas_lte,
 )
 from ray.serve.context import _get_global_client
-from ray.serve.schema import ServeDeploySchema, ServeInstanceDetails
+from ray.serve.schema import (
+    ServeApplicationSchema,
+    ServeDeploySchema,
+    ServeInstanceDetails,
+)
 from ray.serve.tests.common.remote_uris import (
     TEST_DAG_PINNED_URI,
     TEST_RUNTIME_ENV_PINNED_URI,
 )
 from ray.tests.conftest import call_ray_stop_only  # noqa: F401
-from ray.util.state import list_actors, list_tasks
+from ray.util.state import list_actors
 
 
 @pytest.fixture
@@ -537,14 +541,8 @@ def test_controller_recover_and_deploy(client: ServeControllerClient):
     config = ServeDeploySchema.parse_obj(config_json)
     client.deploy_apps(config)
 
-    # Wait for deploy_serve_application task to start->config has been checkpointed
     wait_for_condition(
-        lambda: len(
-            list_tasks(
-                filters=[("func_or_class_name", "=", "build_serve_application")],
-            )
-        )
-        > 0
+        lambda: serve.status().applications["default"].status == "DEPLOYING"
     )
     ray.kill(client._controller, no_restart=False)
 
@@ -689,40 +687,54 @@ def test_update_config_max_ongoing_requests(
 ):
     """Check that replicas stay alive when max_ongoing_requests is updated."""
 
+    signal = SignalActor.options(name="signal123").remote()
+
     max_ongoing_requests_field_name = (
         "max_concurrent_queries"
         if use_max_concurrent_queries
         else "max_ongoing_requests"
     )
     config_template = {
-        "import_path": "ray.serve.tests.test_config_files.pid.node",
-        "deployments": [{"name": "f"}],
+        "import_path": "ray.serve.tests.test_config_files.get_signal.app",
+        "deployments": [{"name": "A"}],
     }
     config_template["deployments"][0][max_ongoing_requests_field_name] = 1000
 
     # Deploy first time, max_concurent_queries set to 1000.
     client.deploy_apps(ServeDeploySchema.parse_obj({"applications": [config_template]}))
     wait_for_condition(check_running, timeout=15)
-
-    all_replicas = ray.get(client._controller._all_running_replicas.remote())
-    assert len(all_replicas) == 1
-    assert all_replicas[list(all_replicas.keys())[0]][0].max_ongoing_requests == 1000
-
     handle = serve.get_app_handle(SERVE_DEFAULT_APP_NAME)
 
+    # Send 10 requests. All of them should be sent to the replica immediately,
+    # but the requests should be blocked waiting for the signal
     refs = [handle.remote() for _ in range(10)]
-    pids1 = {ref.result()[0] for ref in refs}
-    assert len(pids1) == 1
+    wait_for_condition(
+        lambda: ray.get(signal.cur_num_waiters.remote()) == 10, timeout=2
+    )
 
-    # Redeploy with max concurrent queries set to 2.
-    config_template["deployments"][0][max_ongoing_requests_field_name] = 2
+    signal.send.remote()
+    pids = {ref.result() for ref in refs}
+    assert len(pids) == 1
+    pid1 = pids.pop()
+
+    # Reset for redeployment
+    signal.send.remote(clear=True)
+    # Redeploy with max concurrent queries set to 5
+    config_template["deployments"][0][max_ongoing_requests_field_name] = 5
     client.deploy_apps(ServeDeploySchema.parse_obj({"applications": [config_template]}))
-    wait_for_condition(check_running, timeout=15)
+    wait_for_condition(check_running, timeout=2)
 
-    # Verify that the PID of the replica didn't change.
+    # Send 10 requests. Only 5 of them should be sent to the replica
+    # immediately, and the remaining 5 should queue at the handle.
     refs = [handle.remote() for _ in range(10)]
-    pids2 = {ref.result()[0] for ref in refs}
-    assert pids2 == pids1
+    with pytest.raises(RuntimeError):
+        wait_for_condition(
+            lambda: ray.get(signal.cur_num_waiters.remote()) > 5, timeout=2
+        )
+
+    signal.send.remote()
+    pids = {ref.result() for ref in refs}
+    assert pids == {pid1}
 
 
 def test_update_config_health_check_period(client: ServeControllerClient):
@@ -817,7 +829,7 @@ def test_update_autoscaling_config(client: ServeControllerClient):
             {
                 "name": "A",
                 "autoscaling_config": {
-                    "target_num_ongoing_requests_per_replica": 1,
+                    "target_ongoing_requests": 1,
                     "min_replicas": 1,
                     "max_replicas": 10,
                     "metrics_interval_s": 15,
@@ -1216,6 +1228,167 @@ def test_redeploy_old_config_after_failed_deployment(
     wait_for_condition(check_application_running)
 
 
+def test_deploy_does_not_affect_dynamic_apps(client: ServeControllerClient):
+    """
+    Deploy a set of apps via the declarative API (REST API) and then a dynamic
+    app via the imperative API (`serve.run`).
+
+    Check that applying a new config via the declarative API does not affect
+    the app deployed using the imperative API.
+    """
+
+    config = ServeDeploySchema(
+        applications=[
+            ServeApplicationSchema(
+                name="declarative-app-1",
+                route_prefix="/app-1",
+                import_path="ray.serve.tests.test_config_files.world.DagNode",
+            ),
+        ],
+    )
+    client.deploy_apps(config)
+
+    def check_application_running(
+        name: str, route_prefix: str, *, msg: str = "wonderful world"
+    ):
+        status = serve.status().applications[name]
+        assert status.status == "RUNNING"
+        assert requests.post(f"http://localhost:8000{route_prefix}/").text == msg
+        return True
+
+    wait_for_condition(
+        check_application_running, name="declarative-app-1", route_prefix="/app-1"
+    )
+
+    # Now `serve.run` a dynamic app.
+    @serve.deployment
+    class D:
+        def __call__(self, *args) -> str:
+            return "Hello!"
+
+    serve.run(D.bind(), name="dynamic-app", route_prefix="/dynamic")
+    wait_for_condition(
+        check_application_running,
+        name="dynamic-app",
+        route_prefix="/dynamic",
+        msg="Hello!",
+    )
+
+    # Add a new app via declarative API.
+    # Existing declarative app and dynamic app should not be affected.
+    config.applications.append(
+        ServeApplicationSchema(
+            name="declarative-app-2",
+            route_prefix="/app-2",
+            import_path="ray.serve.tests.test_config_files.world.DagNode",
+        ),
+    )
+    client.deploy_apps(config)
+
+    wait_for_condition(
+        check_application_running, name="declarative-app-2", route_prefix="/app-2"
+    )
+    wait_for_condition(
+        check_application_running, name="declarative-app-1", route_prefix="/app-1"
+    )
+    wait_for_condition(
+        check_application_running,
+        name="dynamic-app",
+        route_prefix="/dynamic",
+        msg="Hello!",
+    )
+
+    # Delete one of the apps via declarative API.
+    # Other declarative app and dynamic app should not be affected.
+    config.applications.pop(0)
+    client.deploy_apps(config)
+
+    wait_for_condition(
+        check_application_running, name="declarative-app-2", route_prefix="/app-2"
+    )
+    wait_for_condition(
+        check_application_running,
+        name="dynamic-app",
+        route_prefix="/dynamic",
+        msg="Hello!",
+    )
+
+    wait_for_condition(lambda: "declarative-app-1" not in serve.status().applications)
+
+    # Now overwrite the declarative app with a dynamic app with the same name.
+    # On subsequent declarative apply, that app should not be affected.
+    serve.run(D.bind(), name="declarative-app-2", route_prefix="/app-2")
+    wait_for_condition(
+        check_application_running,
+        name="declarative-app-2",
+        route_prefix="/app-2",
+        msg="Hello!",
+    )
+
+    config.applications = [
+        ServeApplicationSchema(
+            name="declarative-app-1",
+            route_prefix="/app-1",
+            import_path="ray.serve.tests.test_config_files.world.DagNode",
+        ),
+    ]
+    client.deploy_apps(config)
+
+    wait_for_condition(
+        check_application_running,
+        name="declarative-app-1",
+        route_prefix="/app-1",
+    )
+    wait_for_condition(
+        check_application_running,
+        name="dynamic-app",
+        route_prefix="/dynamic",
+        msg="Hello!",
+    )
+    wait_for_condition(
+        check_application_running,
+        name="declarative-app-2",
+        route_prefix="/app-2",
+        msg="Hello!",
+    )
+
+    # Verify that the controller does not delete the dynamic apps on recovery.
+    ray.kill(client._controller, no_restart=False)
+    wait_for_condition(
+        check_application_running,
+        name="dynamic-app",
+        route_prefix="/dynamic",
+        msg="Hello!",
+    )
+    wait_for_condition(
+        check_application_running,
+        name="declarative-app-2",
+        route_prefix="/app-2",
+        msg="Hello!",
+    )
+
+    # Now overwrite the dynamic app with a declarative one and check that it gets
+    # deleted upon another apply that doesn't include it.
+    config.applications = [
+        ServeApplicationSchema(
+            name="declarative-app-2",
+            route_prefix="/app-2",
+            import_path="ray.serve.tests.test_config_files.world.DagNode",
+        ),
+    ]
+    client.deploy_apps(config)
+    wait_for_condition(
+        check_application_running,
+        name="declarative-app-2",
+        route_prefix="/app-2",
+    )
+
+    config.applications = []
+    client.deploy_apps(config)
+
+    wait_for_condition(lambda: "declarative-app-2" not in serve.status().applications)
+
+
 def test_change_route_prefix(client: ServeControllerClient):
     # Deploy application with route prefix /old
     app_config = {
@@ -1247,8 +1420,45 @@ def test_change_route_prefix(client: ServeControllerClient):
     wait_for_condition(check_switched)
 
 
-def test_num_replicas_auto(client: ServeControllerClient):
-    """Test `num_replicas="auto"`."""
+def test_num_replicas_auto_api(client: ServeControllerClient):
+    """Test setting only `num_replicas="auto"`."""
+
+    config_template = {
+        "import_path": "ray.serve.tests.test_config_files.pid.node",
+        "deployments": [{"name": "f", "num_replicas": "auto"}],
+    }
+
+    client.deploy_apps(ServeDeploySchema.parse_obj({"applications": [config_template]}))
+    wait_for_condition(check_running, timeout=15)
+    print("Application is RUNNING.")
+    check_num_replicas_eq("f", 1)
+
+    app_details = client.get_serve_details()["applications"][SERVE_DEFAULT_APP_NAME]
+    deployment_config = app_details["deployments"]["f"]["deployment_config"]
+    assert "num_replicas" not in deployment_config
+    assert deployment_config["max_ongoing_requests"] == 5
+    assert deployment_config["autoscaling_config"] == {
+        # Set by `num_replicas="auto"`
+        "target_ongoing_requests": 2.0,
+        "target_num_ongoing_requests_per_replica": 2.0,
+        "min_replicas": 1,
+        "max_replicas": 100,
+        # Untouched defaults
+        "look_back_period_s": 30.0,
+        "metrics_interval_s": 10.0,
+        "upscale_delay_s": 30.0,
+        "downscale_delay_s": 600.0,
+        "upscale_smoothing_factor": None,
+        "downscale_smoothing_factor": None,
+        "upscaling_factor": None,
+        "downscaling_factor": None,
+        "smoothing_factor": 1.0,
+        "initial_replicas": None,
+    }
+
+
+def test_num_replicas_auto_basic(client: ServeControllerClient):
+    """Test `num_replicas="auto"` and the default values are used in autoscaling."""
 
     signal = SignalActor.options(name="signal123").remote()
 
@@ -1281,6 +1491,7 @@ def test_num_replicas_auto(client: ServeControllerClient):
     assert deployment_config["max_ongoing_requests"] == 5
     assert deployment_config["autoscaling_config"] == {
         # Set by `num_replicas="auto"`
+        "target_ongoing_requests": 2.0,
         "target_num_ongoing_requests_per_replica": 2.0,
         "min_replicas": 1,
         "max_replicas": 100,
@@ -1292,6 +1503,8 @@ def test_num_replicas_auto(client: ServeControllerClient):
         "downscale_delay_s": 600.0,
         "upscale_smoothing_factor": None,
         "downscale_smoothing_factor": None,
+        "upscaling_factor": None,
+        "downscaling_factor": None,
         "smoothing_factor": 1.0,
         "initial_replicas": None,
     }
@@ -1416,17 +1629,16 @@ class TestDeploywithLoggingConfig:
             lambda: requests.post("http://localhost:8000/app1").status_code == 200
         )
 
-        def get_replica_info_format(replica_name: ReplicaName) -> str:
-            return (
-                f"{replica_name.app_name}_{replica_name.deployment_name} "
-                f"{replica_name.replica_suffix}"
-            )
+        def get_replica_info_format(replica_id: ReplicaID) -> str:
+            app_name = replica_id.deployment_id.app_name
+            deployment_name = replica_id.deployment_id.name
+            return f"{app_name}_{deployment_name} {replica_id.unique_id}"
 
         # By default, log level is "INFO"
         r = requests.post("http://localhost:8000/app1")
         r.raise_for_status()
         request_id = r.headers["X-Request-Id"]
-        replica_name = ReplicaName.from_replica_tag(r.json()["replica"])
+        replica_id = ReplicaID.from_full_id_str(r.json()["replica"])
 
         # Make sure 'model_debug_level' log content does not exist.
         with pytest.raises(AssertionError):
@@ -1435,7 +1647,7 @@ class TestDeploywithLoggingConfig:
         # Check the log formatting.
         check_log_file(
             r.json()["log_file"],
-            f" {get_replica_info_format(replica_name)} {request_id} ",
+            f" {get_replica_info_format(replica_id)} {request_id} ",
         )
 
         # Set log level to "DEBUG"
@@ -1453,14 +1665,14 @@ class TestDeploywithLoggingConfig:
         r = requests.post("http://localhost:8000/app1")
         r.raise_for_status()
         request_id = r.headers["X-Request-Id"]
-        replica_name = ReplicaName.from_replica_tag(r.json()["replica"])
+        replica_id = ReplicaID.from_full_id_str(r.json()["replica"])
         check_log_file(
             r.json()["log_file"],
             [
                 # Check for DEBUG-level log statement.
                 ".*this_is_debug_info.*",
                 # Check that the log formatting has remained the same.
-                f" {get_replica_info_format(replica_name)} {request_id} ",
+                f" {get_replica_info_format(replica_id)} {request_id} ",
             ],
         )
 

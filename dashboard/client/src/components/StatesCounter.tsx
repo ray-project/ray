@@ -1,4 +1,4 @@
-import { Grid } from "@material-ui/core";
+import { Grid } from "@mui/material";
 import React from "react";
 import { StatusChip } from "./StatusChip";
 
@@ -17,7 +17,7 @@ const StateCounter = ({
   return (
     <Grid container spacing={2} alignItems="center">
       <Grid item>
-        <StatusChip status="TOTAL" type={type} suffix={`x ${list.length}`} />
+        <StatusChip status="TOTAL" type={type} suffix={` x ${list.length}`} />
       </Grid>
       {Object.entries(stateMap).map(([s, num]) => (
         <Grid key={s} item>

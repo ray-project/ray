@@ -184,99 +184,61 @@ def test_redeploy_single_replica(serve_instance, use_handle):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
-@pytest.mark.parametrize("use_handle", [True, False])
-def test_redeploy_multiple_replicas(serve_instance, use_handle):
-    # Tests that redeploying a deployment with multiple replicas performs
-    # a rolling update.
+def test_redeploy_multiple_replicas(serve_instance):
     client = serve_instance
-
     name = "test"
+    signal = SignalActor.remote()
 
-    @ray.remote(num_cpus=0)
-    def call(block=False):
-        if use_handle:
-            handle = serve.get_deployment_handle(name, "app")
-            ret = handle.handler.remote(block).result()
-        else:
-            ret = requests.get(
-                f"http://localhost:8000/{name}", params={"block": block}
-            ).text
-
-        return ret.split("|")[0], ret.split("|")[1]
-
-    signal_name = f"signal-{get_random_string()}"
-    signal = SignalActor.options(name=signal_name).remote()
-
-    @serve.deployment(name=name, version="1", num_replicas=2)
+    @serve.deployment(name=name, num_replicas=2)
     class V1:
-        async def handler(self, block: bool):
+        async def __call__(self, block: bool):
             if block:
-                signal = ray.get_actor(signal_name)
                 await signal.wait.remote()
 
-            return f"1|{os.getpid()}"
+            return "v1", os.getpid()
 
-        async def __call__(self, request):
-            return await self.handler(request.query_params["block"] == "True")
-
+    @serve.deployment(name=name, num_replicas=2)
     class V2:
-        async def handler(self, *args):
-            return f"2|{os.getpid()}"
+        async def __call__(self, **kwargs):
+            return "v2", os.getpid()
 
-        async def __call__(self, request):
-            return await self.handler()
+    h = serve.run(V1.bind(), name="app")
+    vals1, pids1 = zip(*[h.remote(block=False).result() for _ in range(10)])
+    assert set(vals1) == {"v1"}
+    assert len(set(pids1)) == 2
 
-    def make_nonblocking_calls(expected, expect_blocking=False):
-        # Returns dict[val, set(pid)].
-        blocking = []
-        responses = defaultdict(set)
-        start = time.time()
-        while time.time() - start < 30:
-            refs = [call.remote(block=False) for _ in range(10)]
-            ready, not_ready = ray.wait(refs, timeout=5)
-            for ref in ready:
-                val, pid = ray.get(ref)
-                responses[val].add(pid)
-            for ref in not_ready:
-                blocking.extend(not_ready)
+    # ref2 will block a single replica until the signal is sent.
+    ref2 = h.remote(block=True)
+    with pytest.raises(TimeoutError):
+        ref2.result(timeout_s=1)
 
-            if all(len(responses[val]) == num for val, num in expected.items()) and (
-                expect_blocking is False or len(blocking) > 0
-            ):
-                break
-        else:
-            assert False, f"Timed out, responses: {responses}."
-
-        return responses, blocking
-
-    serve.run(V1.bind(), name="app")
-    responses1, _ = make_nonblocking_calls({"1": 2})
-    pids1 = responses1["1"]
-
-    # ref2 will block a single replica until the signal is sent. Check that
-    # some requests are now blocking.
-    ref2 = call.remote(block=True)
-    responses2, blocking2 = make_nonblocking_calls({"1": 1}, expect_blocking=True)
-    assert list(responses2["1"])[0] in pids1
-
-    # Redeploy new version. Since there is one replica blocking, only one new
-    # replica should be started up.
-    V2 = V1.options(func_or_class=V2, version="2")
+    # Redeploy new version.
     serve._run(V2.bind(), _blocking=False, name="app")
     with pytest.raises(TimeoutError):
-        client._wait_for_application_running("app", timeout_s=0.1)
-    responses3, blocking3 = make_nonblocking_calls({"1": 1}, expect_blocking=True)
+        client._wait_for_application_running("app", timeout_s=2)
+
+    if RAY_SERVE_EAGERLY_START_REPLACEMENT_REPLICAS:
+        # Two new replicas should be started.
+        vals2, pids2 = zip(*[h.remote(block=False).result() for _ in range(10)])
+        assert set(vals2) == {"v2"}
+    else:
+        vals2, pids2 = zip(*[h.remote(block=False).result() for _ in range(10)])
+        # Since there is one replica blocking, only one new
+        # replica should be started up.
+        assert "v1" in vals2
 
     # Signal the original call to exit.
     ray.get(signal.send.remote())
-    val, pid = ray.get(ref2)
-    assert val == "1"
-    assert pid in responses1["1"]
+    val, pid = ref2.result()
+    assert val == "v1"
+    assert pid in pids1
 
     # Now the goal and requests to the new version should complete.
     # We should have two running replicas of the new version.
-    client._wait_for_application_running("app")
-    make_nonblocking_calls({"2": 2})
+    client._wait_for_application_running("app", timeout_s=10)
+    vals3, pids3 = zip(*[h.remote(block=False).result() for _ in range(10)])
+    assert set(vals3) == {"v2"}
+    assert len(set(pids3)) == 2
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")

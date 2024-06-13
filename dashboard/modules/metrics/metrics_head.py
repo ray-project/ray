@@ -1,4 +1,5 @@
 import asyncio
+from ray._private.async_utils import enable_monitor_loop_lag
 import aiohttp
 import logging
 import os
@@ -7,8 +8,9 @@ import shutil
 from typing import Optional
 
 import psutil
-
 from urllib.parse import quote
+
+import ray
 from ray.dashboard.modules.metrics.grafana_dashboard_factory import (
     generate_default_grafana_dashboard,
     generate_serve_grafana_dashboard,
@@ -96,6 +98,9 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
         self._component = "dashboard"
         self._session_name = dashboard_head.session_name
         assert self._component in AVAILABLE_COMPONENT_NAMES_FOR_METRICS
+        self._dashboard_proc = psutil.Process()
+
+        self._event_loop_lag_s_max: Optional[float] = None
 
     @routes.get("/api/grafana_health")
     async def grafana_health(self, req) -> aiohttp.web.Response:
@@ -161,17 +166,6 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
                         success=False,
                         message="prometheus healthcheck failed.",
                         status=resp.status,
-                    )
-
-                text = await resp.text()
-                # Basic sanity check of prometheus health check schema
-                # Different flavors of Prometheus may use different health check strings
-                if "Prometheus" not in text:
-                    return dashboard_optional_utils.rest_response(
-                        success=False,
-                        message="prometheus healthcheck failed.",
-                        status=resp.status,
-                        text=text,
                     )
 
                 return dashboard_optional_utils.rest_response(
@@ -316,28 +310,47 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
 
     @dashboard_utils.async_loop_forever(METRICS_RECORD_INTERVAL_S)
     async def record_dashboard_metrics(self):
-        dashboard_proc = psutil.Process()
         self._dashboard_head.metrics.metrics_dashboard_cpu.labels(
             ip=self._ip,
             pid=self._pid,
+            Version=ray.__version__,
             Component=self._component,
             SessionName=self._session_name,
-        ).set(float(dashboard_proc.cpu_percent()) * 100)
+        ).set(float(self._dashboard_proc.cpu_percent()))
         self._dashboard_head.metrics.metrics_dashboard_mem.labels(
             ip=self._ip,
             pid=self._pid,
+            Version=ray.__version__,
             Component=self._component,
             SessionName=self._session_name,
-        ).set(float(dashboard_proc.memory_full_info().uss) / 1.0e6)
+        ).set(float(self._dashboard_proc.memory_full_info().uss) / 1.0e6)
+
+        # Report the max lag since the last export, if any.
+        if self._event_loop_lag_s_max is not None:
+            self._dashboard_head.metrics.metrics_event_loop_lag.labels(
+                ip=self._ip,
+                pid=self._pid,
+                Version=ray.__version__,
+                Component=self._component,
+                SessionName=self._session_name,
+            ).set(float(self._event_loop_lag_s_max))
+            self._event_loop_lag_s_max = None
 
     async def run(self, server):
         self._create_default_grafana_configs()
         self._create_default_prometheus_configs()
-        await asyncio.gather(self.record_dashboard_metrics())
+
+        def on_new_lag(lag_s):
+            # Record the lag. It's exported in `record_dashboard_metrics`
+            self._event_loop_lag_s_max = max(self._event_loop_lag_s_max or 0, lag_s)
+
+        enable_monitor_loop_lag(on_new_lag)
 
         logger.info(
             f"Generated prometheus and grafana configurations in: {self._metrics_root}"
         )
+
+        await asyncio.gather(self.record_dashboard_metrics())
 
     async def _query_prometheus(self, query):
         async with self.http_session.get(

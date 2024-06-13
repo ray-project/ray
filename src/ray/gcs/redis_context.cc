@@ -88,7 +88,7 @@ void CallbackReply::ParseAsStringArrayOrScanArray(redisReply *redis_reply) {
       // Parse as a scan array
       RAY_CHECK(REDIS_REPLY_STRING == cursor_entry->type);
       std::string cursor_str(cursor_entry->str, cursor_entry->len);
-      next_scan_cursor_reply_ = std::stoi(cursor_str);
+      next_scan_cursor_reply_ = std::stoull(cursor_str);
       const auto scan_array_size = array_entry->elements;
       string_array_reply_.reserve(scan_array_size);
       for (size_t i = 0; i < scan_array_size; ++i) {

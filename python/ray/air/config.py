@@ -1,5 +1,5 @@
 import logging
-from collections import defaultdict, Counter
+from collections import Counter, defaultdict
 from dataclasses import _MISSING_TYPE, dataclass, fields
 from pathlib import Path
 from typing import (
@@ -10,26 +10,28 @@ from typing import (
     List,
     Mapping,
     Optional,
-    Union,
     Tuple,
+    Union,
 )
 
 import pyarrow.fs
 
+from ray._private.ray_constants import RESOURCE_CONSTRAINT_PREFIX
+from ray._private.storage import _get_storage_uri
 from ray._private.thirdparty.tabulate.tabulate import tabulate
-from ray.util.annotations import PublicAPI, Deprecated
-from ray.widgets import Template, make_table_html_repr
 from ray.data.preprocessor import Preprocessor
+from ray.util.annotations import Deprecated, PublicAPI
+from ray.widgets import Template, make_table_html_repr
 
 if TYPE_CHECKING:
+    from ray.train import SyncConfig
     from ray.tune.callback import Callback
+    from ray.tune.execution.placement_groups import PlacementGroupFactory
+    from ray.tune.experimental.output import AirVerbosity
     from ray.tune.progress_reporter import ProgressReporter
     from ray.tune.search.sample import Domain
     from ray.tune.stopper import Stopper
-    from ray.train import SyncConfig
-    from ray.tune.experimental.output import AirVerbosity
     from ray.tune.utils.log import Verbosity
-    from ray.tune.execution.placement_groups import PlacementGroupFactory
 
 
 # Dict[str, List] is to support `tune.grid_search`:
@@ -124,6 +126,12 @@ class ScalingConfig:
         placement_strategy: The placement strategy to use for the
             placement group of the Ray actors. See :ref:`Placement Group
             Strategies <pgroup-strategy>` for the possible options.
+        accelerator_type: [Experimental] If specified, Ray Train will launch the
+            training coordinator and workers on the nodes with the specified type
+            of accelerators.
+            See :ref:`the available accelerator types <accelerator_types>`.
+            Ensure that your cluster has instances with the specified accelerator type
+            or is able to autoscale to fulfill the request.
 
     Example:
 
@@ -148,6 +156,7 @@ class ScalingConfig:
     use_gpu: Union[bool, SampleRange] = False
     resources_per_worker: Optional[Union[Dict, SampleRange]] = None
     placement_strategy: Union[str, SampleRange] = "PACK"
+    accelerator_type: Optional[str] = None
 
     def __post_init__(self):
         if self.resources_per_worker:
@@ -184,14 +193,20 @@ class ScalingConfig:
                 # Note that we don't request any CPUs, which avoids possible
                 # scheduling contention. Generally nodes have many more CPUs than
                 # GPUs, so not requesting a CPU does not lead to oversubscription.
-                return {"GPU": 1}
+                resources_per_worker = {"GPU": 1}
             else:
-                return {"CPU": 1}
-        resources_per_worker = {
-            k: v for k, v in self.resources_per_worker.items() if v != 0
-        }
+                resources_per_worker = {"CPU": 1}
+        else:
+            resources_per_worker = {
+                k: v for k, v in self.resources_per_worker.items() if v != 0
+            }
+
         if self.use_gpu:
             resources_per_worker.setdefault("GPU", 1)
+
+        if self.accelerator_type:
+            accelerator = f"{RESOURCE_CONSTRAINT_PREFIX}{self.accelerator_type}"
+            resources_per_worker.setdefault(accelerator, 0.001)
         return resources_per_worker
 
     @property
@@ -207,16 +222,21 @@ class ScalingConfig:
                 try:
                     import google.colab  # noqa: F401
 
-                    trainer_resources = 0
+                    trainer_num_cpus = 0
                 except ImportError:
-                    trainer_resources = 1
+                    trainer_num_cpus = 1
             else:
                 # If there are no additional workers, then always reserve 1 CPU for
                 # the Trainer.
-                trainer_resources = 1
+                trainer_num_cpus = 1
 
-            return {"CPU": trainer_resources}
-        return {k: v for k, v in self.trainer_resources.items() if v != 0}
+            trainer_resources = {"CPU": trainer_num_cpus}
+        else:
+            trainer_resources = {
+                k: v for k, v in self.trainer_resources.items() if v != 0
+            }
+
+        return trainer_resources
 
     @property
     def total_resources(self):
@@ -581,10 +601,14 @@ class RunConfig:
     Args:
         name: Name of the trial or experiment. If not provided, will be deduced
             from the Trainable.
-        storage_path: [Beta] Path to store results at. Can be a local directory or
-            a destination on cloud storage. If Ray storage is set up,
-            defaults to the storage location. Otherwise, this defaults to
-            the local ``~/ray_results`` directory.
+        storage_path: [Beta] Path where all results and checkpoints are persisted.
+            Can be a local directory or a destination on cloud storage.
+            For multi-node training/tuning runs, this must be set to a
+            shared storage location (e.g., S3, NFS).
+            This defaults to the local ``~/ray_results`` directory.
+        storage_filesystem: [Beta] A custom filesystem to use for storage.
+            If this is provided, `storage_path` should be a path with its
+            prefix stripped (e.g., `s3://bucket/path` -> `bucket/path`).
         failure_config: Failure mode configuration.
         checkpoint_config: Checkpointing configuration.
         sync_config: Configuration object for syncing. See train.SyncConfig.
@@ -634,7 +658,29 @@ class RunConfig:
 
     def __post_init__(self):
         from ray.train import SyncConfig
+        from ray.train.constants import DEFAULT_STORAGE_PATH
         from ray.tune.experimental.output import AirVerbosity, get_air_verbosity
+
+        if self.local_dir is not None:
+            raise DeprecationWarning(
+                "The `RunConfig(local_dir)` argument is deprecated. "
+                "You should set the `RunConfig(storage_path)` instead."
+                "See the docs: https://docs.ray.io/en/latest/train/user-guides/"
+                "persistent-storage.html#setting-the-local-staging-directory"
+            )
+
+        if self.storage_path is None:
+            # TODO(justinvyu): [Deprecated] Remove in 2.30
+            self.storage_path = DEFAULT_STORAGE_PATH
+
+            # If no remote path is set, try to get Ray Storage URI
+            ray_storage_uri: Optional[str] = _get_storage_uri()
+            if ray_storage_uri is not None:
+                logger.info(
+                    "Using configured Ray Storage URI as the `storage_path`: "
+                    f"{ray_storage_uri}"
+                )
+                self.storage_path = ray_storage_uri
 
         if not self.failure_config:
             self.failure_config = FailureConfig()
@@ -651,10 +697,6 @@ class RunConfig:
             # For old output engine, this is Verbosity.V3_TRIAL_DETAILS
             # Todo (krfricke): Currently uses number to pass test_configs::test_repr
             self.verbose = get_air_verbosity(AirVerbosity.DEFAULT) or 3
-
-        # Convert Paths to strings
-        if isinstance(self.local_dir, Path):
-            self.local_dir = self.local_dir.as_posix()
 
         if isinstance(self.storage_path, Path):
             self.storage_path = self.storage_path.as_posix()

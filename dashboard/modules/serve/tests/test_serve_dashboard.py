@@ -447,13 +447,12 @@ def test_get_serve_instance_details(ray_start_stop, f_deployment_options, url):
                     len(deployment.replicas)
                     == deployment.deployment_config.num_replicas
                 )
+                assert len(deployment.replicas) == deployment.target_num_replicas
 
             for replica in deployment.replicas:
+                assert replica.replica_id
                 assert replica.state == ReplicaState.RUNNING
-                assert (
-                    deployment.name in replica.replica_id
-                    and deployment.name in replica.actor_name
-                )
+                assert deployment.name in replica.actor_name
                 assert replica.actor_id and replica.node_id and replica.node_ip
                 assert replica.start_time_s > app_details[app].last_deployed_time_s
                 file_path = "/tmp/ray/session_latest/logs" + replica.log_file_path
@@ -649,7 +648,6 @@ def test_default_dashboard_agent_listen_port():
     [
         {
             **generate_system_config_map(
-                gcs_failover_worker_reconnect_timeout=20,
                 gcs_rpc_server_reconnect_timeout_s=3600,
                 gcs_server_request_timeout_seconds=3,
             ),

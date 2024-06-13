@@ -1,4 +1,6 @@
-"""Example showing how to use "action masking" in RLlib.
+# @OldAPIStack
+
+"""Example that uses "action masking" in RLlib.
 
 "Action masking" allows the agent to select actions based on the current
 observation. This is useful in many practical scenarios, where different
@@ -42,8 +44,8 @@ import os
 from gymnasium.spaces import Box, Discrete
 import ray
 from ray.rllib.algorithms import ppo
-from ray.rllib.examples.env.action_mask_env import ActionMaskEnv
-from ray.rllib.examples.rl_module.action_masking_rlm import (
+from ray.rllib.examples.envs.classes.action_mask_env import ActionMaskEnv
+from ray.rllib.examples.rl_modules.classes.action_masking_rlm import (
     TorchActionMaskRLM,
     TFActionMaskRLM,
 )
@@ -109,10 +111,8 @@ if __name__ == "__main__":
         )
         # We need to disable preprocessing of observations, because preprocessing
         # would flatten the observation dict of the environment.
-        .experimental(
-            _enable_new_api_stack=True,
-            _disable_preprocessor_api=True,
-        )
+        .api_stack(enable_rl_module_and_learner=True)
+        .experimental(_disable_preprocessor_api=True)
         .framework(args.framework)
         .resources(
             # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.

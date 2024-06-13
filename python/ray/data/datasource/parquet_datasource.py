@@ -1,4 +1,5 @@
 import logging
+from dataclasses import dataclass
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -31,11 +32,8 @@ from ray.data.datasource._default_metadata_providers import (
     get_generic_metadata_provider,
 )
 from ray.data.datasource.datasource import ReadTask
-from ray.data.datasource.file_meta_provider import (
-    DefaultParquetMetadataProvider,
-    ParquetMetadataProvider,
-    _handle_read_os_error,
-)
+from ray.data.datasource.file_meta_provider import _handle_read_os_error
+from ray.data.datasource.parquet_meta_provider import ParquetMetadataProvider
 from ray.data.datasource.partitioning import PathPartitionFilter
 from ray.data.datasource.path_util import (
     _has_file_extension,
@@ -50,21 +48,9 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-FRAGMENTS_PER_META_FETCH = 6
-PARALLELIZE_META_FETCH_THRESHOLD = 24
-
 # The `num_cpus` for each metadata prefetching task.
 # Default to 0.5 instead of 1 because it is cheaper than normal read task.
 NUM_CPUS_FOR_META_FETCH_TASK = 0.5
-
-# The application-level exceptions to retry for metadata prefetching task.
-# Default to retry on access denied and read timeout errors because AWS S3 would throw
-# these transient errors when load is too high.
-RETRY_EXCEPTIONS_FOR_META_FETCH_TASK = ["AWS Error ACCESS_DENIED", "Timeout"]
-# Maximum number of retries for metadata prefetching task due to transient errors.
-RETRY_MAX_ATTEMPTS_FOR_META_FETCH_TASK = 32
-# Maximum retry back-off interval in seconds for failed metadata prefetching task.
-RETRY_MAX_BACKOFF_S_FOR_META_FETCH_TASK = 64
 
 # The number of rows to read per batch. This is sized to generate 10MiB batches
 # for rows about 1KiB in size.
@@ -83,7 +69,7 @@ FILE_READING_RETRY = 8
 PARQUET_ENCODING_RATIO_ESTIMATE_DEFAULT = 5
 
 # The lower bound size to estimate Parquet encoding ratio.
-PARQUET_ENCODING_RATIO_ESTIMATE_LOWER_BOUND = 2
+PARQUET_ENCODING_RATIO_ESTIMATE_LOWER_BOUND = 1
 
 # The percentage of files (1% by default) to be sampled from the dataset to estimate
 # Parquet encoding ratio.
@@ -99,6 +85,12 @@ PARQUET_ENCODING_RATIO_ESTIMATE_MAX_NUM_SAMPLES = 10
 # The number of rows to read from each file for sampling. Try to keep it low to avoid
 # reading too much data into memory.
 PARQUET_ENCODING_RATIO_ESTIMATE_NUM_ROWS = 1024
+
+
+@dataclass(frozen=True)
+class _SampleInfo:
+    actual_bytes_per_row: Optional[int]
+    estimated_bytes_per_row: Optional[int]
 
 
 # TODO(ekl) this is a workaround for a pyarrow serialization bug, where serializing a
@@ -127,11 +119,35 @@ def _deserialize_fragments(
     return [p.deserialize() for p in serialized_fragments]
 
 
+def _check_for_legacy_tensor_type(schema):
+    """Check for the legacy tensor extension type and raise an error if found.
+
+    Ray Data uses an extension type to represent tensors in Arrow tables. Previously,
+    the extension type extended `PyExtensionType`. However, this base type can expose
+    users to arbitrary code execution. To prevent this, we don't load the type by
+    default.
+    """
+    import pyarrow as pa
+
+    for name, type in zip(schema.names, schema.types):
+        if isinstance(type, pa.UnknownExtensionType) and isinstance(
+            type, pa.PyExtensionType
+        ):
+            raise RuntimeError(
+                f"Ray Data couldn't infer the type of column '{name}'. This might mean "
+                "you're trying to read data written with an older version of Ray. "
+                "Reading data written with older versions of Ray might expose you to "
+                "arbitrary code execution. To try reading the data anyway, set "
+                "`RAY_DATA_AUTOLOAD_PYEXTENSIONTYPE=1` on all nodes."
+                "To learn more, see https://github.com/ray-project/ray/issues/41314."
+            )
+
+
 @PublicAPI
 class ParquetDatasource(Datasource):
     """Parquet datasource, for reading and writing Parquet files.
 
-    The primary difference from ParquetBaseDatasource is that this uses
+    The primary difference from ParquetBulkDatasource is that this uses
     PyArrow's `ParquetDataset` abstraction for dataset reads, and thus offers
     automatic Arrow dataset schema inference and row count collection at the
     cost of some potential performance and/or compatibility penalties.
@@ -147,7 +163,7 @@ class ParquetDatasource(Datasource):
         _block_udf: Optional[Callable[[Block], Block]] = None,
         filesystem: Optional["pyarrow.fs.FileSystem"] = None,
         schema: Optional[Union[type, "pyarrow.lib.Schema"]] = None,
-        meta_provider: ParquetMetadataProvider = DefaultParquetMetadataProvider(),
+        meta_provider: ParquetMetadataProvider = ParquetMetadataProvider(),
         partition_filter: PathPartitionFilter = None,
         shuffle: Union[Literal["files"], None] = None,
         include_paths: bool = False,
@@ -227,6 +243,8 @@ class ParquetDatasource(Datasource):
                 [schema.field(column) for column in columns], schema.metadata
             )
 
+        _check_for_legacy_tensor_type(schema)
+
         if _block_udf is not None:
             # Try to infer dataset schema by passing dummy table through UDF.
             dummy_table = schema.empty_table()
@@ -280,18 +298,21 @@ class ParquetDatasource(Datasource):
         self._to_batches_kwargs = to_batch_kwargs
         self._columns = columns
         self._schema = schema
-        self._encoding_ratio = self._estimate_files_encoding_ratio()
         self._file_metadata_shuffler = None
         self._include_paths = include_paths
         if shuffle == "files":
             self._file_metadata_shuffler = np.random.default_rng()
 
+        sample_infos = self._sample_fragments()
+        self._encoding_ratio = _estimate_files_encoding_ratio(sample_infos)
+        self._default_read_batch_size_rows = _estimate_default_read_batch_size_rows(
+            sample_infos
+        )
+
     def estimate_inmemory_data_size(self) -> Optional[int]:
         total_size = 0
         for file_metadata in self._metadata:
-            for row_group_idx in range(file_metadata.num_row_groups):
-                row_group_metadata = file_metadata.row_group(row_group_idx)
-                total_size += row_group_metadata.total_byte_size
+            total_size += file_metadata.total_byte_size
         return total_size * self._encoding_ratio
 
     def get_read_tasks(self, parallelism: int) -> List[ReadTask]:
@@ -344,27 +365,17 @@ class ParquetDatasource(Datasource):
             if meta.size_bytes is not None:
                 meta.size_bytes = int(meta.size_bytes * self._encoding_ratio)
 
-            if meta.num_rows and meta.size_bytes:
-                # Make sure the batches read are small enough to enable yielding of
-                # output blocks incrementally during the read.
-                row_size = meta.size_bytes / meta.num_rows
-                # Make sure the row batch size is small enough that block splitting
-                # is still effective.
-                max_parquet_reader_row_batch_size_bytes = (
-                    DataContext.get_current().target_max_block_size // 10
-                )
-                default_read_batch_size_rows = max(
-                    1,
-                    min(
-                        PARQUET_READER_ROW_BATCH_SIZE,
-                        max_parquet_reader_row_batch_size_bytes // row_size,
-                    ),
-                )
-            else:
-                default_read_batch_size_rows = PARQUET_READER_ROW_BATCH_SIZE
-            block_udf, to_batches_kwargs, columns, schema, include_paths = (
+            (
+                block_udf,
+                to_batches_kwargs,
+                default_read_batch_size_rows,
+                columns,
+                schema,
+                include_paths,
+            ) = (
                 self._block_udf,
                 self._to_batches_kwargs,
+                self._default_read_batch_size_rows,
                 self._columns,
                 self._schema,
                 self._include_paths,
@@ -386,14 +397,7 @@ class ParquetDatasource(Datasource):
 
         return read_tasks
 
-    def _estimate_files_encoding_ratio(self) -> float:
-        """Return an estimate of the Parquet files encoding ratio.
-
-        To avoid OOMs, it is safer to return an over-estimate than an underestimate.
-        """
-        if not DataContext.get_current().decoding_size_estimation:
-            return PARQUET_ENCODING_RATIO_ESTIMATE_DEFAULT
-
+    def _sample_fragments(self) -> List[_SampleInfo]:
         # Sample a few rows from Parquet files to estimate the encoding ratio.
         # Launch tasks to sample multiple files remotely in parallel.
         # Evenly distributed to sample N rows in i-th row group in i-th file.
@@ -435,22 +439,37 @@ class ParquetDatasource(Datasource):
                 )
             )
         sample_bar = ProgressBar("Parquet Files Sample", len(futures))
-        sample_ratios = sample_bar.fetch_until_complete(futures)
+        sample_infos = sample_bar.fetch_until_complete(futures)
         sample_bar.close()
-        ratio = np.mean(sample_ratios)
-        logger.debug(f"Estimated Parquet encoding ratio from sampling is {ratio}.")
-        return max(ratio, PARQUET_ENCODING_RATIO_ESTIMATE_LOWER_BOUND)
+
+        return sample_infos
 
     def get_name(self):
         """Return a human-readable name for this datasource.
+
         This will be used as the names of the read tasks.
-        Note: overrides the base `ParquetBaseDatasource` method.
         """
         return "Parquet"
 
     @property
     def supports_distributed_reads(self) -> bool:
         return self._supports_distributed_reads
+
+    def num_rows(self) -> Optional[int]:
+        # If there is a filter operation, the total row count is unknown.
+        if self._to_batches_kwargs.get("filter") is not None:
+            return None
+
+        if not self._metadata:
+            return None
+
+        return sum(metadata.num_rows for metadata in self._metadata)
+
+    def schema(self) -> "pyarrow.Schema":
+        return self._inferred_schema
+
+    def input_files(self) -> Optional[List[str]]:
+        return self._pq_paths
 
 
 def _read_fragments(
@@ -474,13 +493,11 @@ def _read_fragments(
     assert len(fragments) > 0
 
     import pyarrow as pa
-    from pyarrow.dataset import _get_partition_keys
 
     logger.debug(f"Reading {len(fragments)} parquet fragments")
     use_threads = to_batches_kwargs.pop("use_threads", False)
     batch_size = to_batches_kwargs.pop("batch_size", default_read_batch_size_rows)
     for fragment in fragments:
-        part = _get_partition_keys(fragment.partition_expression)
         batches = fragment.to_batches(
             use_threads=use_threads,
             columns=columns,
@@ -490,15 +507,6 @@ def _read_fragments(
         )
         for batch in batches:
             table = pa.Table.from_batches([batch], schema=schema)
-            if part:
-                for col, value in part.items():
-                    if columns and col not in columns:
-                        continue
-                    table = table.set_column(
-                        table.schema.get_field_index(col),
-                        col,
-                        pa.array([value] * len(table)),
-                    )
             if include_paths:
                 table = table.append_column("path", [[fragment.path]] * len(table))
             # If the table is empty, drop it.
@@ -524,73 +532,13 @@ def _deserialize_fragments_with_retry(fragments):
     )
 
 
-def _fetch_metadata_serialization_wrapper(
-    fragments: List[_SerializedFragment],
-    retry_match: Optional[List[str]],
-    retry_max_attempts: int,
-    retry_max_interval: int,
-) -> List["pyarrow.parquet.FileMetaData"]:
-    deserialized_fragments = _deserialize_fragments_with_retry(fragments)
-    try:
-        metadata = call_with_retry(
-            lambda: _fetch_metadata(deserialized_fragments),
-            description="fetch metdata",
-            match=retry_match,
-            max_attempts=retry_max_attempts,
-            max_backoff_s=retry_max_interval,
-        )
-    except OSError as e:
-        raise RuntimeError(
-            f"Exceeded maximum number of attempts ({retry_max_attempts}) to retry "
-            "metadata fetching task. Metadata fetching tasks can fail due to transient "
-            "errors like rate limiting.\n"
-            "\n"
-            "To increase the maximum number of attempts, configure "
-            "`RETRY_MAX_ATTEMPTS_FOR_META_FETCH_TASK`. For example:\n"
-            "```\n"
-            "ray.data.datasource.parquet_datasource.RETRY_MAX_ATTEMPTS_FOR_META_FETCH_TASK = 64\n"  # noqa: E501
-            "```\n"
-            "To increase the maximum retry backoff interval, configure "
-            "`RETRY_MAX_BACKOFF_S_FOR_META_FETCH_TASK`. For example:\n"
-            "```\n"
-            "ray.data.datasource.parquet_datasource.RETRY_MAX_BACKOFF_S_FOR_META_FETCH_TASK = 128\n"  # noqa: E501
-            "```\n"
-            "If the error continues to occur, you can also try decresasing the "
-            "concurency of metadata fetching tasks by setting "
-            "`NUM_CPUS_FOR_META_FETCH_TASK` to a larger value. For example:\n"
-            "```\n"
-            "ray.data.datasource.parquet_datasource.NUM_CPUS_FOR_META_FETCH_TASK = 4.\n"  # noqa: E501
-            "```\n"
-            "To change which exceptions to retry on, set "
-            "`RETRY_EXCEPTIONS_FOR_META_FETCH_TASK` to a list of error messages. For "
-            "example:\n"
-            "```\n"
-            'ray.data.datasource.parquet_datasource.RETRY_EXCEPTIONS_FOR_META_FETCH_TASK = ["AWS Error ACCESS_DENIED", "Timeout"]\n'  # noqa: E501
-            "```"
-        ) from e
-    return metadata
-
-
-def _fetch_metadata(
-    fragments: List["pyarrow.dataset.ParquetFileFragment"],
-) -> List["pyarrow.parquet.FileMetaData"]:
-    fragment_metadata = []
-    for f in fragments:
-        try:
-            fragment_metadata.append(f.metadata)
-        except AttributeError:
-            break
-    return fragment_metadata
-
-
 def _sample_fragment(
     to_batches_kwargs,
     columns,
     schema,
     file_fragment: _SerializedFragment,
-) -> float:
+) -> _SampleInfo:
     # Sample the first rows batch from file fragment `serialized_fragment`.
-    # Return the encoding ratio calculated from the sampled rows.
     fragment = _deserialize_fragments_with_retry([file_fragment])[0]
 
     # Only sample the first row group.
@@ -607,24 +555,69 @@ def _sample_fragment(
         batch_size=batch_size,
         **to_batches_kwargs,
     )
-    # Use first batch in-memory size as ratio estimation.
+    # Use first batch in-memory size for estimation.
     try:
         batch = next(batches)
     except StopIteration:
-        ratio = PARQUET_ENCODING_RATIO_ESTIMATE_LOWER_BOUND
+        sample_data = _SampleInfo(
+            actual_bytes_per_row=None, estimated_bytes_per_row=None
+        )
     else:
         if batch.num_rows > 0:
-            in_memory_size = batch.nbytes / batch.num_rows
             metadata = fragment.metadata
             total_size = 0
             for idx in range(metadata.num_row_groups):
                 total_size += metadata.row_group(idx).total_byte_size
-            file_size = total_size / metadata.num_rows
-            ratio = in_memory_size / file_size
+            sample_data = _SampleInfo(
+                actual_bytes_per_row=batch.nbytes / batch.num_rows,
+                estimated_bytes_per_row=total_size / metadata.num_rows,
+            )
         else:
-            ratio = PARQUET_ENCODING_RATIO_ESTIMATE_LOWER_BOUND
-    logger.debug(
-        f"Estimated Parquet encoding ratio is {ratio} for fragment {fragment} "
-        f"with batch size {batch_size}."
-    )
-    return ratio
+            sample_data = _SampleInfo(
+                actual_bytes_per_row=None, estimated_bytes_per_row=None
+            )
+    return sample_data
+
+
+def _estimate_files_encoding_ratio(sample_infos: List[_SampleInfo]) -> float:
+    """Return an estimate of the Parquet files encoding ratio.
+
+    To avoid OOMs, it is safer to return an over-estimate than an underestimate.
+    """
+    if not DataContext.get_current().decoding_size_estimation:
+        return PARQUET_ENCODING_RATIO_ESTIMATE_DEFAULT
+
+    def compute_encoding_ratio(sample_info: _SampleInfo) -> float:
+        if (
+            sample_info.actual_bytes_per_row is None
+            or sample_info.estimated_bytes_per_row is None
+        ):
+            return PARQUET_ENCODING_RATIO_ESTIMATE_LOWER_BOUND
+        else:
+            return (
+                sample_info.actual_bytes_per_row / sample_info.estimated_bytes_per_row
+            )
+
+    ratio = np.mean(list(map(compute_encoding_ratio, sample_infos)))
+    logger.debug(f"Estimated Parquet encoding ratio from sampling is {ratio}.")
+    return max(ratio, PARQUET_ENCODING_RATIO_ESTIMATE_LOWER_BOUND)
+
+
+def _estimate_default_read_batch_size_rows(sample_infos: List[_SampleInfo]) -> int:
+    def compute_batch_size_rows(sample_info: _SampleInfo) -> int:
+        if sample_info.actual_bytes_per_row is None:
+            return PARQUET_READER_ROW_BATCH_SIZE
+        else:
+            max_parquet_reader_row_batch_size_bytes = (
+                DataContext.get_current().target_max_block_size // 10
+            )
+            return max(
+                1,
+                min(
+                    PARQUET_READER_ROW_BATCH_SIZE,
+                    max_parquet_reader_row_batch_size_bytes
+                    // sample_info.actual_bytes_per_row,
+                ),
+            )
+
+    return np.mean(list(map(compute_batch_size_rows, sample_infos)))

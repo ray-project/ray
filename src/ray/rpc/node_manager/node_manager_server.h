@@ -43,14 +43,15 @@ namespace rpc {
   RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(PrepareBundleResources) \
   RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(CommitBundleResources)  \
   RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(CancelResourceReserve)  \
-  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(RequestObjectSpillage)  \
   RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(ReleaseUnusedBundles)   \
   RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(GetSystemConfig)        \
   RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(ShutdownRaylet)         \
   RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(DrainRaylet)            \
   RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(GetTasksInfo)           \
   RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(GetObjectsInfo)         \
-  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(GetTaskFailureCause)
+  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(GetTaskFailureCause)    \
+  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(RegisterMutableObject)  \
+  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(PushMutableObject)
 
 /// Interface of the `NodeManagerService`, see `src/ray/protobuf/node_manager.proto`.
 class NodeManagerServiceHandler {
@@ -133,10 +134,6 @@ class NodeManagerServiceHandler {
                                             FormatGlobalMemoryInfoReply *reply,
                                             SendReplyCallback send_reply_callback) = 0;
 
-  virtual void HandleRequestObjectSpillage(RequestObjectSpillageRequest request,
-                                           RequestObjectSpillageReply *reply,
-                                           SendReplyCallback send_reply_callback) = 0;
-
   virtual void HandleReleaseUnusedBundles(ReleaseUnusedBundlesRequest request,
                                           ReleaseUnusedBundlesReply *reply,
                                           SendReplyCallback send_reply_callback) = 0;
@@ -156,6 +153,14 @@ class NodeManagerServiceHandler {
   virtual void HandleGetTaskFailureCause(GetTaskFailureCauseRequest request,
                                          GetTaskFailureCauseReply *reply,
                                          SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleRegisterMutableObject(RegisterMutableObjectRequest request,
+                                           RegisterMutableObjectReply *reply,
+                                           SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandlePushMutableObject(PushMutableObjectRequest request,
+                                       PushMutableObjectReply *reply,
+                                       SendReplyCallback send_reply_callback) = 0;
 };
 
 /// The `GrpcService` for `NodeManagerService`.

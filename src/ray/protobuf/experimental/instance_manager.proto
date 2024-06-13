@@ -51,7 +51,7 @@ message Instance {
   // Represents the state of a launched instance.
   // See
   // https://docs.google.com/document/d/1NzQjA8Mh-oMc-QxXOa529oneWCoA8sDiVoNkBqqDb4U/edit#heading=h.k9a1sp4qpqj4
-  // for lifecyle of an instance.
+  // for lifecycle of an instance.
   enum InstanceStatus {
     // The unspecified state
     UNKNOWN = 0;
@@ -72,7 +72,7 @@ message Instance {
     RAY_STOPPING = 7;
     // Ray stopped - follows from the RAY_STOPPING/RAY_RUNNING state.
     RAY_STOPPED = 8;
-    // The instance is terminatng - follows from the RAY_STOPPED state.
+    // The instance is terminating - follows from the RAY_STOPPED state.
     TERMINATING = 9;
     // The instance is terminated - follows from TERMINATING state or any other running
     // states when instance was preempted.
@@ -124,6 +124,11 @@ message Instance {
   string launch_request_id = 11;
   // The instance STOPPED details.
   string exit_details = 12;
+  // The node config hash when launched. This is used to detect outdated
+  // node, which needs to terminated.
+  string launch_config_hash = 13;
+  // The ray node kind, e.g. head, worker, etc.
+  NodeKind node_kind = 14;
 }
 
 // Update event for an instance.
@@ -134,19 +139,24 @@ message InstanceUpdateEvent {
   Instance.InstanceStatus new_instance_status = 2;
   // The details of the status change if any.
   string details = 3;
+  // Whether to upsert the instance. If true, the instance will be created if it
+  // doesn't exist, if false, the instance must exist or the update will fail.
+  bool upsert = 4;
 
-  /// Additional metdata for the update event.
+  /// Additional metadata for the update event.
 
   // The instance type for QUEUED/REQUESTED/ALLOCATED event.
-  optional string instance_type = 4;
+  optional string instance_type = 5;
   // Cloud instance id for ALLOCATED event.
-  optional string cloud_instance_id = 5;
+  optional string cloud_instance_id = 6;
+  // The ray node type for ALLOCATED event.
+  optional NodeKind node_kind = 7;
   // Ray node id for RAY_RUNNING event.
-  optional string ray_node_id = 6;
+  optional string ray_node_id = 8;
   // Launch request id for REQUESTED event.
-  optional string launch_request_id = 7;
+  optional string launch_request_id = 9;
   // Termination request for RAY_STOPPING event.
-  optional TerminationRequest termination_request = 8;
+  optional TerminationRequest termination_request = 10;
 }
 
 // Launch request for a node type.
@@ -186,11 +196,13 @@ message TerminationRequest {
   string instance_type = 5;
 
   // Idle time if the cause is IDLE.
-  optional uint64 idle_time_ms = 6;
+  optional uint64 idle_duration_ms = 6;
   // The per type max instance limit if the cause is MAX_NUM_NODE_PER_TYPE.
   optional uint32 max_num_nodes_per_type = 7;
   // The global max num nodes if the cause is MAX_NUM_NODES.
   optional uint32 max_num_nodes = 8;
+  // Details of the termination.
+  string details = 9;
 }
 
 message UpdateInstanceManagerStateRequest {

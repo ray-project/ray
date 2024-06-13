@@ -47,7 +47,7 @@ class RuntimeEnvPlugin(ABC):
     async def create(
         self,
         uri: Optional[str],
-        runtime_env: "RuntimeEnv",  # noqa: F821
+        runtime_env,
         context: RuntimeEnvContext,
         logger: logging.Logger,
     ) -> float:
@@ -227,7 +227,7 @@ class RuntimeEnvPluginManager:
 
 
 async def create_for_plugin_if_needed(
-    runtime_env,
+    runtime_env: "RuntimeEnv",  # noqa: F821
     plugin: RuntimeEnvPlugin,
     uri_cache: URICache,
     context: RuntimeEnvContext,

@@ -1,7 +1,5 @@
 :orphan:
 
-.. _torch_fashion_mnist_ex:
-
 Train a PyTorch Model on Fashion MNIST
 ======================================
 
@@ -15,6 +13,6 @@ Code example
 See also
 --------
 
-* :ref:`Get Started with PyTorch <train-pytorch>` for a tutorial on using Ray Train and PyTorch 
+* :ref:`Get Started with PyTorch <train-pytorch>` for a tutorial on using Ray Train and PyTorch
 
-* :ref:`Ray Train Examples <train-examples>` for more use cases
+* :doc:`Ray Train Examples <../../examples>` for more use cases

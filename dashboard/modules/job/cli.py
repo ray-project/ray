@@ -98,6 +98,7 @@ async def _tail_logs(client: JobSubmissionClient, job_id: str) -> JobStatus:
 
 @click.group("job")
 def job_cli_group():
+    """Submit, stop, delete, or list Ray jobs."""
     pass
 
 

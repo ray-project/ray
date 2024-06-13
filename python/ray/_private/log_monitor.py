@@ -392,13 +392,6 @@ class LogMonitor:
                             ray_constants.LOG_PREFIX_JOB_ID, 1
                         )[1]
                     elif next_line.startswith(
-                        ray_constants.LOG_PREFIX_TASK_ATTEMPT_START
-                    ) or next_line.startswith(
-                        ray_constants.LOG_PREFIX_TASK_ATTEMPT_END
-                    ):
-                        # Ignore these magic tokens for task logs.
-                        pass
-                    elif next_line.startswith(
                         "Windows fatal exception: access violation"
                     ):
                         # We are suppressing the

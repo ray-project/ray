@@ -28,7 +28,7 @@ SERVE_DEPLOYMENT_GRAFANA_PANELS = [
         unit="qps",
         targets=[
             Target(
-                expr='sum(rate(ray_serve_deployment_request_counter{{route=~"$Route",route!~"/-/.*",{global_filters}}}[5m])) by (application, deployment, replica)',
+                expr='sum(rate(ray_serve_deployment_request_counter_total{{route=~"$Route",route!~"/-/.*",{global_filters}}}[5m])) by (application, deployment, replica)',
                 legend="{{replica}}",
             ),
         ],
@@ -41,7 +41,7 @@ SERVE_DEPLOYMENT_GRAFANA_PANELS = [
         unit="qps",
         targets=[
             Target(
-                expr='sum(rate(ray_serve_deployment_error_counter{{route=~"$Route",route!~"/-/.*",{global_filters}}}[5m])) by (application, deployment, replica)',
+                expr='sum(rate(ray_serve_deployment_error_counter_total{{route=~"$Route",route!~"/-/.*",{global_filters}}}[5m])) by (application, deployment, replica)',
                 legend="{{replica}}",
             ),
         ],
@@ -117,7 +117,7 @@ SERVE_DEPLOYMENT_GRAFANA_PANELS = [
         ],
         fill=0,
         stack=False,
-        grid_pos=GridPos(0, 2, 8, 8),
+        grid_pos=GridPos(0, 2, 12, 8),
     ),
     Panel(
         id=8,
@@ -132,7 +132,7 @@ SERVE_DEPLOYMENT_GRAFANA_PANELS = [
         ],
         fill=0,
         stack=False,
-        grid_pos=GridPos(16, 2, 8, 8),
+        grid_pos=GridPos(12, 2, 12, 8),
     ),
     Panel(
         id=9,
@@ -156,7 +156,7 @@ SERVE_DEPLOYMENT_GRAFANA_PANELS = [
         unit="times",
         targets=[
             Target(
-                expr="sum(ray_serve_multiplexed_models_load_counter{{{global_filters}}}) by (application, deployment, replica)",
+                expr="sum(ray_serve_multiplexed_models_load_counter_total{{{global_filters}}}) by (application, deployment, replica)",
                 legend="{{replica}}",
             ),
         ],
@@ -171,7 +171,7 @@ SERVE_DEPLOYMENT_GRAFANA_PANELS = [
         unit="times",
         targets=[
             Target(
-                expr="sum(ray_serve_multiplexed_models_unload_counter{{{global_filters}}}) by (application, deployment, replica)",
+                expr="sum(ray_serve_multiplexed_models_unload_counter_total{{{global_filters}}}) by (application, deployment, replica)",
                 legend="{{replica}}",
             ),
         ],
@@ -230,7 +230,7 @@ SERVE_DEPLOYMENT_GRAFANA_PANELS = [
         unit="%",
         targets=[
             Target(
-                expr="(1 - sum(rate(ray_serve_multiplexed_models_load_counter{{{global_filters}}}[5m]))/sum(rate(ray_serve_multiplexed_get_model_requests_counter{{{global_filters}}}[5m])))",
+                expr="(1 - sum(rate(ray_serve_multiplexed_models_load_counter_total{{{global_filters}}}[5m]))/sum(rate(ray_serve_multiplexed_get_model_requests_counter_total{{{global_filters}}}[5m])))",
                 legend="{{replica}}",
             ),
         ],

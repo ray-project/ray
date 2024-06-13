@@ -6,7 +6,7 @@ from unittest.mock import MagicMock
 import pytest
 
 import ray
-from ray._private.test_utils import run_string_as_driver_nonblocking, wait_for_condition
+from ray._private.test_utils import run_string_as_driver_nonblocking
 from ray.data._internal.execution.interfaces import (
     ExecutionOptions,
     ExecutionResources,
@@ -24,7 +24,6 @@ from ray.data._internal.execution.streaming_executor import (
     _validate_dag,
 )
 from ray.data._internal.execution.streaming_executor_state import (
-    AutoscalingState,
     OpBufferQueue,
     OpState,
     _execution_allowed,
@@ -56,6 +55,10 @@ def mock_resource_manager(
         ),
         op_resource_allocator_enabled=MagicMock(return_value=False),
     )
+
+
+def mock_autoscaler():
+    return MagicMock()
 
 
 @ray.remote
@@ -200,48 +203,32 @@ def test_select_operator_to_run():
         side_effect=lambda op: ExecutionResources(0, 0, memory_usage[op])
     )
 
-    # Test empty.
-    assert (
-        select_operator_to_run(
-            topo, resource_manager, [], True, "dummy", AutoscalingState()
+    def _select_op_to_run():
+        nonlocal topo, resource_manager
+
+        return select_operator_to_run(
+            topo, resource_manager, [], mock_autoscaler(), True
         )
-        is None
-    )
+
+    # Test empty.
+    assert _select_op_to_run() is None
 
     # Test backpressure based on memory_usage of each operator.
     topo[o1].outqueue.append(make_ref_bundle("dummy1"))
     memory_usage[o1] += 1
-    assert (
-        select_operator_to_run(
-            topo, resource_manager, [], True, "dummy", AutoscalingState()
-        )
-        == o2
-    )
+    assert _select_op_to_run() == o2
+
     topo[o1].outqueue.append(make_ref_bundle("dummy2"))
     memory_usage[o1] += 1
-    assert (
-        select_operator_to_run(
-            topo, resource_manager, [], True, "dummy", AutoscalingState()
-        )
-        == o2
-    )
+    assert _select_op_to_run() == o2
+
     topo[o2].outqueue.append(make_ref_bundle("dummy3"))
     memory_usage[o2] += 1
-    assert (
-        select_operator_to_run(
-            topo, resource_manager, [], True, "dummy", AutoscalingState()
-        )
-        == o3
-    )
+    assert _select_op_to_run() == o3
 
     # Test prioritization of nothrottle ops.
     o2.throttling_disabled = MagicMock(return_value=True)
-    assert (
-        select_operator_to_run(
-            topo, resource_manager, [], True, "dummy", AutoscalingState()
-        )
-        == o2
-    )
+    assert _select_op_to_run() == o2
 
 
 def test_dispatch_next_task():
@@ -404,160 +391,6 @@ def test_execution_allowed():
     )
 
 
-@pytest.mark.skip(
-    reason="Temporarily disable to deflake rest of test suite. Started being flaky "
-    "after moving to civ2? Needs further investigation to confirm."
-)
-def test_resource_constrained_triggers_autoscaling(monkeypatch):
-    RESOURCE_REQUEST_TIMEOUT = 5
-    monkeypatch.setattr(
-        ray.data._internal.execution.autoscaling_requester,
-        "RESOURCE_REQUEST_TIMEOUT",
-        RESOURCE_REQUEST_TIMEOUT,
-    )
-    monkeypatch.setattr(
-        ray.data._internal.execution.autoscaling_requester,
-        "PURGE_INTERVAL",
-        RESOURCE_REQUEST_TIMEOUT,
-    )
-    from ray.data._internal.execution.autoscaling_requester import (
-        get_or_create_autoscaling_requester_actor,
-    )
-
-    ray.shutdown()
-    ray.init(num_cpus=3, num_gpus=1)
-
-    def run_execution(
-        execution_id: str, incremental_cpu: int = 1, autoscaling_state=None
-    ):
-        if autoscaling_state is None:
-            autoscaling_state = AutoscalingState()
-        opt = ExecutionOptions()
-        inputs = make_ref_bundles([[x] for x in range(20)])
-        o1 = InputDataBuffer(inputs)
-        o2 = MapOperator.create(
-            make_map_transformer(lambda block: [b * -1 for b in block]),
-            o1,
-        )
-        o2.num_active_tasks = MagicMock(return_value=1)
-        o3 = MapOperator.create(
-            make_map_transformer(lambda block: [b * 2 for b in block]),
-            o2,
-        )
-        o3.num_active_tasks = MagicMock(return_value=1)
-        o4 = MapOperator.create(
-            make_map_transformer(lambda block: [b * 3 for b in block]),
-            o3,
-            compute_strategy=ray.data.ActorPoolStrategy(min_size=1, max_size=2),
-            ray_remote_args={"num_gpus": incremental_cpu},
-        )
-        o4.num_active_tasks = MagicMock(return_value=1)
-        o4.incremental_resource_usage = MagicMock(
-            return_value=ExecutionResources(gpu=1)
-        )
-        topo = build_streaming_topology(o4, opt)[0]
-        # Make sure only two operator's inqueues has data.
-        topo[o2].inqueues[0].append(make_ref_bundle("dummy"))
-        topo[o4].inqueues[0].append(make_ref_bundle("dummy"))
-        resource_manager = mock_resource_manager(
-            global_usage=ExecutionResources(cpu=2, gpu=1, object_store_memory=1000),
-            global_limits=ExecutionResources.for_limits(
-                cpu=2, gpu=1, object_store_memory=1000
-            ),
-        )
-        selected_op = select_operator_to_run(
-            topo,
-            resource_manager,
-            [],
-            True,
-            execution_id,
-            autoscaling_state,
-        )
-        assert selected_op is None
-        for op in topo:
-            op.shutdown()
-
-    test_timeout = 3
-    ac = get_or_create_autoscaling_requester_actor()
-    ray.get(ac._test_set_timeout.remote(test_timeout))
-
-    run_execution("1")
-    assert ray.get(ac._aggregate_requests.remote()) == [
-        {"CPU": 1},
-        {"CPU": 1},
-        {"CPU": 1},
-        {"GPU": 1},
-        {"GPU": 1},
-        {"CPU": 1},
-    ]
-
-    # For the same execution_id, the later request overrides the previous one.
-    run_execution("1")
-    assert ray.get(ac._aggregate_requests.remote()) == [
-        {"CPU": 1},
-        {"CPU": 1},
-        {"CPU": 1},
-        {"GPU": 1},
-        {"GPU": 1},
-        {"CPU": 1},
-    ]
-
-    # Having another execution, so the resource bundles expanded.
-    run_execution("2")
-    assert ray.get(ac._aggregate_requests.remote()) == [
-        {"CPU": 1},
-        {"CPU": 1},
-        {"CPU": 1},
-        {"GPU": 1},
-        {"GPU": 1},
-        {"CPU": 1},
-        {"CPU": 1},
-        {"CPU": 1},
-        {"GPU": 1},
-        {"GPU": 1},
-    ]
-
-    # Requesting for existing execution again, so no change in resource bundles.
-    run_execution("1")
-    assert ray.get(ac._aggregate_requests.remote()) == [
-        {"CPU": 1},
-        {"CPU": 1},
-        {"CPU": 1},
-        {"GPU": 1},
-        {"GPU": 1},
-        {"CPU": 1},
-        {"CPU": 1},
-        {"CPU": 1},
-        {"GPU": 1},
-        {"GPU": 1},
-    ]
-
-    # After the timeout, all requests should have been purged.
-    time.sleep(test_timeout + 1)
-    ray.get(ac._purge.remote())
-    assert ray.get(ac._aggregate_requests.remote()) == []
-
-    # Test throttling by sending 100 requests: only one request actually
-    # got sent to the actor.
-    autoscaling_state = AutoscalingState()
-    for i in range(5):
-        run_execution("1", 1, autoscaling_state)
-    assert ray.get(ac._aggregate_requests.remote()) == [
-        {"CPU": 1},
-        {"CPU": 1},
-        {"CPU": 1},
-        {"GPU": 1},
-        {"GPU": 1},
-        {"CPU": 1},
-    ]
-
-    # Test that the resource requests will be purged after the timeout.
-    wait_for_condition(
-        lambda: ray.get(ac._aggregate_requests.remote()) == [],
-        timeout=RESOURCE_REQUEST_TIMEOUT * 2,
-    )
-
-
 def test_select_ops_ensure_at_least_one_live_operator():
     opt = ExecutionOptions()
     inputs = make_ref_bundles([[x] for x in range(20)])
@@ -577,40 +410,18 @@ def test_select_ops_ensure_at_least_one_live_operator():
         global_usage=ExecutionResources(cpu=1),
         global_limits=ExecutionResources.for_limits(cpu=1),
     )
-    assert (
-        select_operator_to_run(
-            topo,
-            resource_manager,
-            [],
-            True,
-            "dummy",
-            AutoscalingState(),
+
+    def _select_op_to_run(ensure_at_least_one_running):
+        nonlocal topo, resource_manager
+
+        return select_operator_to_run(
+            topo, resource_manager, [], mock_autoscaler(), ensure_at_least_one_running
         )
-        is None
-    )
+
+    assert _select_op_to_run(True) is None
     o1.num_active_tasks = MagicMock(return_value=0)
-    assert (
-        select_operator_to_run(
-            topo,
-            resource_manager,
-            [],
-            True,
-            "dummy",
-            AutoscalingState(),
-        )
-        is o3
-    )
-    assert (
-        select_operator_to_run(
-            topo,
-            resource_manager,
-            [],
-            False,
-            "dummy",
-            AutoscalingState(),
-        )
-        is None
-    )
+    assert _select_op_to_run(True) is o3
+    assert _select_op_to_run(False) is None
 
 
 def test_configure_output_locality():

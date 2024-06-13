@@ -11,11 +11,11 @@ from ray.rllib.utils.typing import (
     AgentConnectorDataType,
     AgentConnectorsOutput,
 )
-from ray.util.annotations import PublicAPI
+from ray.rllib.utils.annotations import OldAPIStack
 from ray.rllib.evaluation.collectors.agent_collector import AgentCollector
 
 
-@PublicAPI(stability="alpha")
+@OldAPIStack
 class ViewRequirementAgentConnector(AgentConnector):
     """This connector does 2 things:
     1. It filters data columns based on view_requirements for training and inference.
@@ -36,7 +36,7 @@ class ViewRequirementAgentConnector(AgentConnector):
         super().__init__(ctx)
 
         self._view_requirements = ctx.view_requirements
-        _enable_new_api_stack = ctx.config.get("_enable_new_api_stack", False)
+        _enable_new_api_stack = ctx.config.get("enable_rl_module_and_learner", False)
 
         # a dict of env_id to a dict of agent_id to a list of agent_collector objects
         self.agent_collectors = defaultdict(
@@ -68,7 +68,7 @@ class ViewRequirementAgentConnector(AgentConnector):
     def transform(self, ac_data: AgentConnectorDataType) -> AgentConnectorDataType:
         d = ac_data.data
         assert (
-            type(d) == dict
+            type(d) is dict
         ), "Single agent data must be of type Dict[str, TensorStructType]"
 
         env_id = ac_data.env_id

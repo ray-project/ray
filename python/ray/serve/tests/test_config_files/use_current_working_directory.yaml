@@ -1,0 +1,6 @@
+applications:
+  - name: app1
+    route_prefix: /
+    import_path: use_current_working_directory:app
+    deployments:
+      - name: f

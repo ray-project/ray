@@ -1,23 +1,21 @@
 import os
+import sys
 from unittest.mock import patch
 
 import pandas as pd
 import pytest
-import sys
 
 import ray
 from ray import tune
 from ray.air.execution import FixedResourceManager, PlacementGroupResourceManager
+from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.train import CheckpointConfig
+from ray.train.tests.util import mock_storage_context
 from ray.tune import Experiment, PlacementGroupFactory
 from ray.tune.execution.tune_controller import TuneController
 from ray.tune.experiment import Trial
 from ray.tune.impl.placeholder import create_resolvers_map, inject_placeholders
 from ray.tune.search import BasicVariantGenerator
-from ray.rllib.algorithms.callbacks import DefaultCallbacks
-
-from ray.train.tests.util import mock_storage_context
-
 
 STORAGE = mock_storage_context()
 
@@ -150,7 +148,7 @@ def test_controller_restore_no_error_resume(
     while not runner.is_finished():
         runner.step()
 
-    runner.checkpoint(force=True)
+    runner.checkpoint(force=True, wait=True)
 
     assert trials[0].status == Trial.ERROR
     del runner
@@ -195,7 +193,7 @@ def test_controller_restore_error_only_resume(
     while not runner.is_finished():
         runner.step()
 
-    runner.checkpoint(force=True)
+    runner.checkpoint(force=True, wait=True)
 
     assert trials[0].status == Trial.ERROR
     del runner
@@ -423,7 +421,7 @@ def test_controller_restore_checkpoint_overwrite(
             for fname in os.listdir(cdir)
         )
 
-    tmpdir = storage.experiment_local_path
+    tmpdir = storage.experiment_driver_staging_path
     # The Trial `local_dir` must match the TrialRunner `local_checkpoint_dir`
     # to match the directory structure assumed by `TrialRunner.resume`.
     # See `test_trial_runner2.TrialRunnerTest2.testPauseResumeCheckpointCount`
@@ -508,7 +506,7 @@ def test_controller_restore_with_dataset(
     )
     runner.add_trial(trial)
     # Req: TrialRunner checkpointing shouldn't error
-    runner.checkpoint(force=True)
+    runner.checkpoint(force=True, wait=True)
 
     # Manually clear all block refs that may have been created
     ray.shutdown()

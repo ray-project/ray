@@ -113,7 +113,7 @@ def test_randomize_block_order_after_repartition():
 
 
 def test_randomize_blocks_e2e(ray_start_regular_shared):
-    ds = ray.data.range(12, parallelism=4)
+    ds = ray.data.range(12, override_num_blocks=4)
     ds = ds.randomize_block_order(seed=0)
     assert extract_values("id", ds.take_all()) == [
         6,

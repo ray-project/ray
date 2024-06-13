@@ -1,11 +1,12 @@
 import tempfile
+import time
 import unittest
 
 import ray
 from ray.rllib.algorithms.appo import APPOConfig
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.algorithms.ppo import PPOConfig
-from ray.rllib.examples.env.cartpole_crashing import CartPoleCrashing
+from ray.rllib.examples.envs.classes.cartpole_crashing import CartPoleCrashing
 from ray.rllib.utils.test_utils import framework_iterator
 from ray import tune
 
@@ -34,7 +35,7 @@ class OnWorkersRecreatedCallbacks(DefaultCallbacks):
 
 
 class InitAndCheckpointRestoredCallbacks(DefaultCallbacks):
-    def on_algorithm_init(self, *, algorithm, **kwargs):
+    def on_algorithm_init(self, *, algorithm, metrics_logger, **kwargs):
         self._on_init_was_called = True
 
     def on_checkpoint_loaded(self, *, algorithm, **kwargs):
@@ -57,34 +58,39 @@ class TestCallbacks(unittest.TestCase):
             APPOConfig()
             .environment("env")
             .callbacks(OnWorkersRecreatedCallbacks)
-            .rollouts(num_rollout_workers=3)
-            .fault_tolerance(recreate_failed_workers=True)
+            .env_runners(num_env_runners=3)
+            .fault_tolerance(
+                recreate_failed_env_runners=True,
+                delay_between_env_runner_restarts_s=0,
+            )
         )
 
-        for _ in framework_iterator(config, frameworks=("tf2", "torch")):
-            algo = config.build()
-            original_worker_ids = algo.workers.healthy_worker_ids()
-            for id_ in original_worker_ids:
-                self.assertTrue(algo._counters[f"worker_{id_}_recreated"] == 0)
-            self.assertTrue(algo._counters["total_num_workers_recreated"] == 0)
+        algo = config.build()
+        original_worker_ids = algo.workers.healthy_worker_ids()
+        for id_ in original_worker_ids:
+            self.assertTrue(algo._counters[f"worker_{id_}_recreated"] == 0)
+        self.assertTrue(algo._counters["total_num_workers_recreated"] == 0)
 
-            # After building the algorithm, we should have 2 healthy (remote) workers.
-            self.assertTrue(len(original_worker_ids) == 3)
+        # After building the algorithm, we should have 2 healthy (remote) workers.
+        self.assertTrue(len(original_worker_ids) == 3)
 
-            # Train a bit (and have the envs/workers crash a couple of times).
-            for _ in range(5):
-                print(algo.train())
-
-            # After training, the `on_workers_recreated` callback should have captured
-            # the exact worker IDs recreated (the exact number of times) as the actor
-            # manager itself. This confirms that the callback is triggered correctly,
-            # always.
-            new_worker_ids = algo.workers.healthy_worker_ids()
-            self.assertTrue(len(new_worker_ids) == 3)
-            for id_ in new_worker_ids:
-                # num_restored = algo.workers.restored_actors_history[id_]
-                self.assertTrue(algo._counters[f"worker_{id_}_recreated"] > 1)
-            algo.stop()
+        # Train a bit (and have the envs/workers crash).
+        for _ in range(3):
+            print(algo.train())
+        # Restore workers after the iteration (automatically, workers are only
+        # restored before the next iteration).
+        time.sleep(20.0)
+        algo.restore_workers(algo.workers)
+        # After training, the `on_workers_recreated` callback should have captured
+        # the exact worker IDs recreated (the exact number of times) as the actor
+        # manager itself. This confirms that the callback is triggered correctly,
+        # always.
+        new_worker_ids = algo.workers.healthy_worker_ids()
+        self.assertEquals(len(new_worker_ids), 3)
+        for id_ in new_worker_ids:
+            # num_restored = algo.workers.restored_actors_history[id_]
+            self.assertTrue(algo._counters[f"worker_{id_}_recreated"] > 1)
+        algo.stop()
 
     def test_on_init_and_checkpoint_loaded(self):
         config = (

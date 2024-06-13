@@ -2,6 +2,7 @@ from abc import abstractmethod
 from typing import Any, Dict, Type, Union
 from ray.rllib.algorithms.dqn.dqn_rainbow_catalog import DQNRainbowCatalog
 from ray.rllib.algorithms.sac.sac_learner import QF_PREDS
+from ray.rllib.core.columns import Columns
 from ray.rllib.core.models.base import Encoder, Model
 from ray.rllib.core.models.specs.typing import SpecType
 from ray.rllib.core.rl_module.rl_module import RLModule
@@ -9,7 +10,6 @@ from ray.rllib.core.rl_module.rl_module_with_target_networks_interface import (
     RLModuleWithTargetNetworksInterface,
 )
 from ray.rllib.models.distributions import Distribution
-from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import (
     ExperimentalAPI,
     override,
@@ -20,6 +20,7 @@ from ray.rllib.utils.typing import TensorType
 
 ATOMS = "atoms"
 QF_LOGITS = "qf_logits"
+QF_NEXT_PREDS = "qf_next_preds"
 QF_PROBS = "qf_probs"
 QF_TARGET_NEXT_PREDS = "qf_target_next_preds"
 QF_TARGET_NEXT_PROBS = "qf_target_next_probs"
@@ -33,9 +34,13 @@ class DQNRainbowRLModule(RLModule, RLModuleWithTargetNetworksInterface):
         catalog: DQNRainbowCatalog = self.config.get_catalog()
 
         # If a dueling architecture is used.
-        self.is_dueling: bool = self.config.model_config_dict.get("dueling")
+        self.uses_dueling: bool = self.config.model_config_dict.get("dueling")
+        # If double Q learning is used.
+        self.uses_double_q: bool = self.config.model_config_dict.get("double_q")
         # If we use noisy layers.
         self.uses_noisy: bool = self.config.model_config_dict.get("noisy")
+        # If we use a noisy encoder.
+        self.uses_noisy_encoder: bool = False
         # The number of atoms for a distribution support.
         self.num_atoms: int = self.config.model_config_dict.get("num_atoms")
         # If distributional learning is requested configure the support.
@@ -47,7 +52,8 @@ class DQNRainbowRLModule(RLModule, RLModuleWithTargetNetworksInterface):
         if not self.uses_noisy:
             # The epsilon scheduler for epsilon greedy exploration.
             self.epsilon_schedule = Scheduler(
-                self.config.model_config_dict["epsilon"], framework=self.framework
+                fixed_value_or_schedule=self.config.model_config_dict["epsilon"],
+                framework=self.framework,
             )
 
         # Build the encoder for the advantage and value streams. Note,
@@ -55,23 +61,26 @@ class DQNRainbowRLModule(RLModule, RLModuleWithTargetNetworksInterface):
         # Note further, by using the base encoder the correct encoder
         # is chosen for the observation space used.
         self.encoder = catalog.build_encoder(framework=self.framework)
-        # Build the same encoder for the target network(s).
-        self.target_encoder = catalog.build_encoder(framework=self.framework)
+        # If not an inference-only module (e.g., for evaluation), set up the
+        # target networks and state dict keys to be taken care of when syncing.
+        if not self.inference_only or self.framework != "torch":
+            # Build the same encoder for the target network(s).
+            self.target_encoder = catalog.build_encoder(framework=self.framework)
+            # Holds the parameter names to be removed or renamed when synching
+            # from the learner to the inference module.
+            self._inference_only_state_dict_keys = {}
 
         # Build heads.
         self.af = catalog.build_af_head(framework=self.framework)
-        if self.is_dueling:
+        if self.uses_dueling:
+            # If in a dueling setting setup the value function head.
             self.vf = catalog.build_vf_head(framework=self.framework)
-        # Implement the same heads for the target network(s).
-        self.af_target = catalog.build_af_head(framework=self.framework)
-        if self.is_dueling:
-            self.vf_target = catalog.build_vf_head(framework=self.framework)
-
-        # We do not want to train the target networks.
-        self.target_encoder.trainable = False
-        self.af_target.trainable = False
-        if self.is_dueling:
-            self.vf_target.trainable = False
+        if not self.inference_only or self.framework != "torch":
+            # Implement the same heads for the target network(s).
+            self.af_target = catalog.build_af_head(framework=self.framework)
+            if self.uses_dueling:
+                # If in a dueling setting setup the target value function head.
+                self.vf_target = catalog.build_vf_head(framework=self.framework)
 
         # Define the action distribution for sampling the exploit action
         # during exploration.
@@ -93,37 +102,41 @@ class DQNRainbowRLModule(RLModule, RLModuleWithTargetNetworksInterface):
 
     @override(RLModule)
     def input_specs_exploration(self) -> SpecType:
-        return [SampleBatch.OBS, SampleBatch.T]
+        return [Columns.OBS]
 
     @override(RLModule)
     def input_specs_inference(self) -> SpecType:
-        return [SampleBatch.OBS]
+        return [Columns.OBS]
 
     @override(RLModule)
     def input_specs_train(self) -> SpecType:
         return [
-            SampleBatch.OBS,
-            SampleBatch.ACTIONS,
-            SampleBatch.NEXT_OBS,
+            Columns.OBS,
+            Columns.ACTIONS,
+            Columns.NEXT_OBS,
         ]
 
     @override(RLModule)
     def output_specs_exploration(self) -> SpecType:
-        return [SampleBatch.ACTIONS]
+        return [Columns.ACTIONS]
 
     @override(RLModule)
     def output_specs_inference(self) -> SpecType:
-        return [SampleBatch.ACTIONS]
+        return [Columns.ACTIONS]
 
     @override(RLModule)
     def output_specs_train(self) -> SpecType:
         return [
             QF_PREDS,
             QF_TARGET_NEXT_PREDS,
+            # Add keys for double-Q setup.
+            *([QF_NEXT_PREDS] if self.uses_double_q else []),
+            # Add keys for distributional Q-learning.
             *(
                 [
                     ATOMS,
                     QF_LOGITS,
+                    QF_PROBS,
                     QF_TARGET_NEXT_PROBS,
                 ]
                 # We add these keys only when learning a distribution.
@@ -214,4 +227,20 @@ class DQNRainbowRLModule(RLModule, RLModuleWithTargetNetworksInterface):
             and in case of distributional Q-learning in addition to the predictions
             the atoms ("atoms"), the Q-value predictions ("qf_preds"), the Q-logits
             ("qf_logits") and the probabilities for the support atoms ("qf_probs").
+        """
+
+    @abstractmethod
+    @OverrideToImplementCustomLogic
+    def _reset_noise(self, target: bool = False):
+        """Resets the noise for the noisy layers.
+
+        In case of `uses_noisy=True` the noise of the noisy layers needs to be reset
+        at each exploration step and before each training loop. This method is used
+        to reset the noise at specific points in the `Algorithm.training_step()` or
+        'RLModule.forward()` methods. For customization of noise resetting this
+        function can be overridden (e.g. for resetting the noise at the beginning of
+        each episode or at the beginning of each rollout).
+
+        Args:
+            target: If `True` the target network is reset.
         """
