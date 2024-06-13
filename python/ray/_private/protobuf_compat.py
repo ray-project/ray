@@ -6,20 +6,16 @@ This module provides a compatibility layer for different versions of the protobu
 library.
 """
 
-_protobuf_has_old_arg_name = False
+_protobuf_has_old_arg_name_cached = None
 
 
-def _init():
-    """
-    Initialize the compatibility layer. This avoids doing an inspect on every call to
-    `message_to_dict`. If later we have more compat checks, add more globals here.
-    """
-    global _protobuf_has_old_arg_name
-    params = inspect.signature(MessageToDict).parameters
-    _protobuf_has_old_arg_name = "including_default_value_fields" in params
-
-
-_init()
+def _protobuf_has_old_arg_name():
+    """Cache the inspect result to avoid doing it for every single message."""
+    global _protobuf_has_old_arg_name_cached
+    if _protobuf_has_old_arg_name_cached is None:
+        params = inspect.signature(MessageToDict).parameters
+        _protobuf_has_old_arg_name_cached = "including_default_value_fields" in params
+    return _protobuf_has_old_arg_name_cached
 
 
 def rename_always_print_fields_with_no_presence(kwargs):
@@ -39,7 +35,7 @@ def rename_always_print_fields_with_no_presence(kwargs):
     if old_arg_name in kwargs:
         raise ValueError(f"{old_arg_name} is deprecated, please use {new_arg_name}")
 
-    if new_arg_name in kwargs and _protobuf_has_old_arg_name:
+    if new_arg_name in kwargs and _protobuf_has_old_arg_name():
         kwargs[old_arg_name] = kwargs.pop(new_arg_name)
 
     return kwargs
