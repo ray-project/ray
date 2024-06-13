@@ -56,8 +56,8 @@ Most of the scripts share a common subset of generally applicable command line a
 for example `--num-env-runners`, `--no-tune`, or `--wandb-key`.
 
 
-All sub-folders
-+++++++++++++++
+All example sub-folders
++++++++++++++++++++++++
 
 
 Algorithms

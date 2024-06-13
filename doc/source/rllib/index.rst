@@ -2,7 +2,34 @@
 
 .. include:: /_includes/rllib/new_api_stack.rst
 
+.. |tensorflow| image:: images/tensorflow.png
+    :class: inline-figure
+    :width: 16
+
+.. |pytorch| image:: images/pytorch.png
+    :class: inline-figure
+    :width: 16
+
+.. |new_stack| image:: /rllib/images/sigils/new-api-stack.svg
+    :class: inline-figure
+    :width: 64
+
+.. |old_stack| image:: /rllib/images/sigils/old-api-stack.svg
+    :class: inline-figure
+    :width: 64
+
+.. |single_agent| image:: /rllib/images/sigils/single-agent.svg
+    :class: inline-figure
+    :width: 64
+
+.. |multi_agent| image:: /rllib/images/sigils/multi-agent.svg
+    :class: inline-figure
+    :width: 64
+
 .. _rllib-index:
+
+.. image:: images/rllib-logo.png
+    :align: center
 
 RLlib: Industry-Grade Reinforcement Learning
 ============================================
@@ -20,32 +47,24 @@ RLlib: Industry-Grade Reinforcement Learning
     package_ref/index
 
 
-.. image:: images/rllib-logo.png
-    :align: center
-
-**RLlib** is an open-source library for reinforcement learning (RL),
+**RLlib** is an open source library for reinforcement learning (RL),
 offering support for
-production-level, highly distributed RL workloads while maintaining
-unified and simple APIs for a large variety of industry applications.
-Whether you would like to train your agents in a **multi-agent** setup,
-purely from **offline** (historic) datasets, or using **externally
-connected simulators**, RLlib offers a simple solution for each of your decision
-making needs.
+production-level, highly distributed, scalable RL workloads, while maintaining unified
+and simple APIs for a large variety of industry applications.
 
-If you either have your problem coded (in python) as an
-`RL environment <rllib-env.html#configuring-environments>`_
-or own lots of pre-recorded, historic behavioral data to learn from, you will be
-up and running in only a few days.
+Whether training policies in a **multi-agent** setup, purely from **offline** (historic) data,
+or using **externally connected simulators**, RLlib offers simple solutions for each of
+these autonomous decision making needs and allows you to be up and running your experiments within hours.
 
 RLlib is already used in production by industry leaders in many different verticals,
 such as
+`gaming <https://www.anyscale.com/events/2021/06/22/using-reinforcement-learning-to-optimize-iap-offer-recommendations-in-mobile-games>`_,
+`robotics <https://www.anyscale.com/events/2021/06/23/introducing-amazon-sagemaker-kubeflow-reinforcement-learning-pipelines-for>`_,
+`finance <https://www.anyscale.com/events/2021/06/22/a-24x-speedup-for-reinforcement-learning-with-rllib-+-ray>`_,
 `climate control <https://www.anyscale.com/events/2021/06/23/applying-ray-and-rllib-to-real-life-industrial-use-cases>`_,
 `industrial control <https://www.anyscale.com/events/2021/06/23/applying-ray-and-rllib-to-real-life-industrial-use-cases>`_,
 `manufacturing and logistics <https://www.anyscale.com/events/2022/03/29/alphadow-leveraging-rays-ecosystem-to-train-and-deploy-an-rl-industrial>`_,
-`finance <https://www.anyscale.com/events/2021/06/22/a-24x-speedup-for-reinforcement-learning-with-rllib-+-ray>`_,
-`gaming <https://www.anyscale.com/events/2021/06/22/using-reinforcement-learning-to-optimize-iap-offer-recommendations-in-mobile-games>`_,
 `automobile <https://www.anyscale.com/events/2021/06/23/using-rllib-in-an-enterprise-scale-reinforcement-learning-solution>`_,
-`robotics <https://www.anyscale.com/events/2021/06/23/introducing-amazon-sagemaker-kubeflow-reinforcement-learning-pipelines-for>`_,
 `boat design <https://www.youtube.com/watch?v=cLCK13ryTpw>`_,
 and many others.
 
@@ -54,79 +73,79 @@ RLlib in 60 seconds
 
 .. figure:: images/rllib-index-header.svg
 
-It only takes a few steps to get your first RLlib workload
-up and running on your laptop.
+It only takes a few steps to get your first RLlib workload up and running on your laptop.
 
-RLlib does not automatically install a deep-learning framework, but supports
-**TensorFlow** (both 1.x with static-graph and 2.x with eager mode) as well as
-**PyTorch**.
-Depending on your needs, make sure to install either TensorFlow or
-PyTorch (or both, as shown below):
+RLlib doesn't automatically install a deep-learning framework, but supports **PyTorch**
+and **TensorFlow** (2.x).
+
+Depending on your needs, make sure to install one of these (or both), as shown below:
 
 .. raw:: html
 
     <div class="termynal" data-termynal>
-        <span data-ty="input">pip install "ray[rllib]" tensorflow torch</span>
+        <span data-ty="input">pip install "ray[rllib]" torch tensorflow</span>
     </div>
 
 .. note::
 
-    For installation on computers running Apple Silicon (such as M1), please follow instructions
-    `here. <https://docs.ray.io/en/latest/ray-overview/installation.html#m1-mac-apple-silicon-support>`_
+    For installation on computers running Apple Silicon (such as M1),
+    `follow instructions here. <https://docs.ray.io/en/latest/ray-overview/installation.html#m1-mac-apple-silicon-support>`_
     To be able to run our Atari examples, you should also install
-    `pip install "gym[atari]" "gym[accept-rom-license]" atari_py`.
+    `pip install "gymnasium[atari]" "gymnasium[accept-rom-license]" ale_py`.
 
 This is all you need to start coding against RLlib.
-Here is an example of running a PPO Algorithm on the
+Here is an example of running the PPO Algorithm on the
 `Taxi domain <https://www.gymlibrary.dev/environments/toy_text/taxi/>`_.
-We first create a `config` for the algorithm, which sets the right environment, and
-defines all training parameters we want.
-Next, we `build` the algorithm and `train` it for a total of `5` iterations.
-A training iteration includes parallel sample collection by the environment workers, as well as loss calculation on the collected batch and a model update.
-As a last step, we `evaluate` the trained Algorithm:
+You first create a `config` for the algorithm, which sets the right RL environment and
+defines all needed training parameters.
+
+Next, `build` the algorithm and `train` it for a total of `5` iterations.
+One training iteration includes parallel sample collection by the distributed :py:class:`~ray.rllib.env.env_runner.EnvRunner` actors,
+loss calculation on the collected data, and a model update.
+
+As a last step, the trained Algorithm is evaluated:
 
 .. literalinclude:: doc_code/rllib_in_60s.py
     :language: python
     :start-after: __rllib-in-60s-begin__
     :end-before: __rllib-in-60s-end__
 
-Note that you can use any Farama-Foundation Gymnasium environment as `env`.
-In `rollouts` you can for instance specify the number of parallel workers to collect samples from the environment.
-The `framework` config lets you choose between "tf2", "tf" and "torch" for execution.
-You can also tweak RLlib's default `model` config,and set up a separate config for `evaluation`.
+Note that you can use any `Farama-Foundation Gymnasium <https://github.com/Farama-Foundation/Gymnasium>`__ environment as `env`.
 
-If you want to learn more about the RLlib training API,
-`you can learn more about it here <rllib-training.html#using-the-python-api>`_.
-Also, see `here for a simple example on how to write an action inference loop after training. <https://github.com/ray-project/ray/blob/master/rllib/examples/inference/policy_inference_after_training.py>`_
+In `config.env_runners()` you can specify - amongst many other things - the number of parallel
+:py:class:`~ray.rllib.env.env_runner.EnvRunner` workers to collect samples from the environment.
+
+You can also tweak RLlib's default `rl_module` config, and set up a separate config for the
+evaluation :py:class:`~ray.rllib.env.env_runner.EnvRunner` s through the `config.evaluation()` method.
+
+`See here <rllib-training.html#using-the-python-api>`_, if you want to learn more about the RLlib training APIs.
+Also, `see here <https://github.com/ray-project/ray/blob/master/rllib/examples/inference/policy_inference_after_training.py>`_ for a simple example on how to write an action inference loop after training.
 
 If you want to get a quick preview of which **algorithms** and **environments** RLlib supports,
-click on the dropdowns below:
+click the dropdowns below:
 
 .. dropdown:: **RLlib Algorithms**
     :animate: fade-in-slide-down
 
-    *  High-throughput architectures
+    * On-policy
+       -  |single_agent| |multi_agent| |new_stack| |old_stack| :ref:`PPO (Proximal Policy Optimization) <ppo>`
 
-       -  |pytorch| |tensorflow| :ref:`Importance Weighted Actor-Learner Architecture (IMPALA) <impala>`
+    * Off-policy
+       -  |single_agent| |multi_agent| |new_stack| |old_stack| :ref:`SAC (Soft Actor Critic) <sac>`
+       -  |single_agent| |multi_agent| |new_stack| |old_stack| :ref:`DQN/Rainbow (Deep Q Networks) <dqn>`
 
-       -  |pytorch| |tensorflow| :ref:`Asynchronous Proximal Policy Optimization (APPO) <appo>`
+    * High-throughput on- and off policy
+       -  |single_agent| |multi_agent| |old_stack| :ref:`IMPALA (Importance Weighted Actor-Learner Architecture) <impala>`
+       -  |single_agent| |multi_agent| |old_stack| :ref:`APPO (Asynchronous Proximal Policy Optimization) <appo>`
 
-    *  Gradient-based
+    *  Model-based RL
 
-       -  |pytorch| |tensorflow| :ref:`Deep Q Networks (DQN, Rainbow, Parametric DQN) <dqn>`
+       -  |single_agent| |new_stack| :ref:`DreamerV3 <dreamerv3>`
 
-       -  |pytorch| |tensorflow| :ref:`Proximal Policy Optimization (PPO) <ppo>`
-
-       -  |pytorch| |tensorflow| :ref:`Soft Actor Critic (SAC) <sac>`
-
-    *  Model-based / Meta-learning / Offline
-
-       -  |pytorch| :ref:`DreamerV3 <dreamerv3>`
-
-    *  Offline
-
-       -  |pytorch| |tensorflow| :ref:`Conservative Q-Learning (CQL) <cql>`
-       -  |pytorch| |tensorflow| :ref:`Advantage Re-Weighted Imitation Learning (MARWIL) <marwil>`
+    *  Offline RL and Imitation Learning
+       -  |single_agent| |new_stack| |old_stack| :ref:`BC (Behavior Cloning) <bc>`
+       -  |single_agent| |new_stack| |old_stack| :ref:`CQL (Conservative Q-Learning) <cql>`
+       -  |single_agent| |new_stack| |old_stack| :ref:`MARWIL (Advantage Re-Weighted Imitation Learning) <marwil>`
 
 
 .. dropdown:: **RLlib Environments**
@@ -193,7 +212,7 @@ Feature Overview
 
 
 The following is a summary of RLlib's most striking features.
-Click on the images below to see an example script for each of the listed features:
+Click the images below to see an example script for each of the listed features:
 
 .. include:: feature_overview.rst
 
@@ -204,13 +223,12 @@ Customizing RLlib
 RLlib provides simple APIs to customize all aspects of your training- and experimental workflows.
 For example, you may code your own `environments <rllib-env.html#configuring-environments>`__
 in python using Farama-Foundation's gymnasium or DeepMind's OpenSpiel, provide custom
-`TensorFlow/Keras- <rllib-models.html#tensorflow-models>`__ or ,
 `Torch models <rllib-models.html#torch-models>`_, write your own
 `policy- and loss definitions <rllib-concepts.html#policies>`__, or define
 custom `exploratory behavior <rllib-training.html#exploration-api>`_.
 
-Via mapping one or more agents in your environments to (one or more) policies, multi-agent
-RL (MARL) becomes an easy-to-use low-level primitive for our users.
+By mapping one or more agents in your environment to (one or more) policies, multi-agent
+RL (MARL) becomes an easy-to-use low-level primitive for RLlib users.
 
 .. figure:: images/rllib-stack.svg
     :align: left
@@ -218,18 +236,9 @@ RL (MARL) becomes an easy-to-use low-level primitive for our users.
 
     **RLlib's API stack:** Built on top of Ray, RLlib offers off-the-shelf, highly distributed
     algorithms, policies, loss functions, and default models (including the option to
-    auto-wrap a neural network with an LSTM or an attention net). Furthermore, our library
+    auto-wrap a neural network with an LSTM or an attention net). Furthermore, the library
     comes with a built-in Server/Client setup, allowing you to connect
-    hundreds of external simulators (clients) via the network to an RLlib server process,
-    which provides learning functionality and serves action queries. User customizations
-    are realized via sub-classing the existing abstractions and - by overriding certain
+    hundreds of external simulators (clients) through the network to an RLlib server process,
+    which provides learning capability and serves action queries. User customizations
+    are realized by sub-classing the existing abstractions and - by overriding certain
     methods in those sub-classes - define custom behavior.
-
-
-.. |tensorflow| image:: images/tensorflow.png
-    :class: inline-figure
-    :width: 16
-
-.. |pytorch| image:: images/pytorch.png
-    :class: inline-figure
-    :width: 16
