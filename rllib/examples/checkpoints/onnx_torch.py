@@ -1,86 +1,39 @@
 # @OldAPIStack
 
+from packaging.version import Version
 import numpy as np
-import onnxruntime
-
 import ray
 import ray.rllib.algorithms.ppo as ppo
-from ray.rllib.utils.framework import try_import_torch
-from ray.rllib.utils.test_utils import add_rllib_example_script_args, check
-from ray.rllib.utils.torch_utils import convert_to_torch_tensor
-
-torch, _ = try_import_torch()
-
-parser = add_rllib_example_script_args()
-parser.add_argument("--use-lstm", action="store_true")
-parser.set_defaults(num_env_runners=1)
-
-
-class ONNXCompatibleWrapper(torch.nn.Module):
-    def __init__(self, original_model):
-        super(ONNXCompatibleWrapper, self).__init__()
-        self.original_model = original_model
-
-    def forward(self, a, b0, b1, c):
-        # Convert the separate tensor inputs back into the list format
-        # expected by the original model's forward method.
-        b = [b0, b1]
-        ret = self.original_model({"obs": a}, b, c)
-        # results, state_out_0, state_out_1
-        return ret[0], ret[1][0], ret[1][1]
-
+import onnxruntime
+import os
+import shutil
+import torch
 
 if __name__ == "__main__":
-    args = parser.parse_args()
-
-    ray.init(local_mode=args.local_mode)
-
     # Configure our PPO Algorithm.
     config = (
         ppo.PPOConfig()
         # ONNX is not supported by RLModule API yet.
-        .api_stack(
-            enable_rl_module_and_learner=args.enable_new_api_stack,
-            enable_env_runner_and_connector_v2=args.enable_new_api_stack,
-        )
-        .environment("CartPole-v1")
-        .env_runners(num_env_runners=args.num_env_runners)
-        .training(model={"use_lstm": args.use_lstm})
+        .api_stack(enable_rl_module_and_learner=False)
+        .env_runners(num_env_runners=1)
+        .framework("torch")
     )
 
-    B = 3
-    T = 5
-    LSTM_CELL = 256
+    outdir = "export_torch"
+    if os.path.exists(outdir):
+        shutil.rmtree(outdir)
 
-    # Input data for a python inference forward call.
-    test_data_python = {
-        "obs": np.random.uniform(0, 1.0, size=(B*T, 4)).astype(np.float32),
+    np.random.seed(1234)
+
+    # We will run inference with this test batch
+    test_data = {
+        "obs": np.random.uniform(0, 1.0, size=(10, 4)).astype(np.float32),
         "state_ins": np.array([0.0], dtype=np.float32),
     }
-    # Input data for the ONNX session.
-    test_data_onnx = {
-        "obs": test_data_python["obs"],
-    }
 
-    if args.use_lstm:
-        test_data_python.update({
-            "state_ins": [
-                np.random.uniform(0, 1.0, size=(B, LSTM_CELL)).astype(np.float32),
-                np.random.uniform(0, 1.0, size=(B, LSTM_CELL)).astype(np.float32)
-            ],
-            "seq_lens": np.array([T] * B, np.float32),
-        })
-        test_data_onnx.update({
-            "state_in_0": test_data_python["state_ins"][0],
-            "state_in_1": test_data_python["state_ins"][1],
-            "seq_lens": test_data_python["seq_lens"],
-        })
-
-    # Input data for compiling the ONNX model.
-    test_data_onnx_input = convert_to_torch_tensor(test_data_onnx)
-
-    # Initialize a PPO Algorithm.
-    algo = config.build()
+    # Start Ray and initialize a PPO Algorithm.
+    ray.init()
+    algo = config.build(env="CartPole-v1")
 
     # You could train the model here
     # algo.train()
@@ -89,56 +42,36 @@ if __name__ == "__main__":
     policy = algo.get_policy()
     result_pytorch, _ = policy.model(
         {
-            "obs": torch.tensor(test_data_python["obs"]),
-        },
-        [
-            torch.tensor(test_data_python["state_ins"][0]),
-            torch.tensor(test_data_python["state_ins"][1]),
-        ] if args.use_lstm else [],
-        torch.tensor(test_data_python["seq_lens"]) if args.use_lstm else None,
+            "obs": torch.tensor(test_data["obs"]),
+        }
     )
 
     # Evaluate tensor to fetch numpy array
     result_pytorch = result_pytorch.detach().numpy()
 
     # This line will export the model to ONNX.
-    onnx_compatible = policy.model
-    if args.use_lstm:
-        onnx_compatible = ONNXCompatibleWrapper(onnx_compatible)
-    exported_model_file = "model.onnx"
-    input_names = [
-        "obs",
-        "state_in_0",
-        "state_in_1",
-        "seq_lens",
-    ] if args.use_lstm else ["obs"]
+    policy.export_model(outdir, onnx=11)
+    # Equivalent to:
+    # algo.export_policy_model(outdir, onnx=11)
 
-    torch.onnx.export(
-        onnx_compatible,
-        (
-            tuple(test_data_onnx_input[n] for n in input_names)
-            if args.use_lstm
-            else ({"obs": test_data_onnx_input["obs"]},)
-        ),
-        exported_model_file,
-        export_params=True,
-        opset_version=11,
-        do_constant_folding=True,
-        input_names=input_names,
-        output_names=[
-            "output",
-            "state_out_0",
-            "state_out_1",
-        ] if args.use_lstm else ["output"],
-        dynamic_axes={k: {0: "batch_size"} for k in input_names},
-    )
+    # Import ONNX model.
+    exported_model_file = os.path.join(outdir, "model.onnx")
+
     # Start an inference session for the ONNX model
     session = onnxruntime.InferenceSession(exported_model_file, None)
-    result_onnx = session.run(["output"], test_data_onnx)
+
+    # Pass the same test batch to the ONNX model
+    if Version(torch.__version__) < Version("1.9.0"):
+        # In torch < 1.9.0 the second input/output name gets mixed up
+        test_data["state_outs"] = test_data.pop("state_ins")
+
+    result_onnx = session.run(["output"], test_data)
 
     # These results should be equal!
     print("PYTORCH", result_pytorch)
-    print("ONNX", result_onnx[0])
+    print("ONNX", result_onnx)
 
-    check(result_pytorch, result_onnx[0])
+    assert np.allclose(
+        result_pytorch, result_onnx
+    ), "Model outputs are NOT equal. FAILED"
     print("Model outputs are equal. PASSED")
