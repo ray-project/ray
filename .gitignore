@@ -180,7 +180,6 @@ java/**/pom.xml
 # python virtual env
 venv
 .venv
-.venv*
 
 # pyenv version file
 .python-version
