@@ -55,7 +55,6 @@ def cluster_kill_gcs_wait(cluster):
     "ray_start_regular_with_external_redis",
     [
         generate_system_config_map(
-            gcs_failover_worker_reconnect_timeout=20,
             gcs_rpc_server_reconnect_timeout_s=60,
         )
     ],
@@ -87,7 +86,6 @@ def test_gcs_server_restart(ray_start_regular_with_external_redis):
     "ray_start_regular_with_external_redis",
     [
         generate_system_config_map(
-            gcs_failover_worker_reconnect_timeout=20,
             gcs_rpc_server_reconnect_timeout_s=60,
         )
     ],
@@ -124,7 +122,6 @@ def test_gcs_server_restart_during_actor_creation(
     "ray_start_cluster_head_with_external_redis",
     [
         generate_system_config_map(
-            gcs_failover_worker_reconnect_timeout=2,
             gcs_rpc_server_reconnect_timeout_s=60,
             health_check_initial_delay_ms=0,
             health_check_period_ms=1000,
@@ -164,7 +161,6 @@ def test_autoscaler_init(
     "ray_start_cluster_head_with_external_redis",
     [
         generate_system_config_map(
-            gcs_failover_worker_reconnect_timeout=2,
             gcs_rpc_server_reconnect_timeout_s=60,
             health_check_initial_delay_ms=0,
             health_check_period_ms=1000,
@@ -226,7 +222,6 @@ def test_node_failure_detector_when_gcs_server_restart(
     "ray_start_regular_with_external_redis",
     [
         generate_system_config_map(
-            gcs_failover_worker_reconnect_timeout=20,
             gcs_rpc_server_reconnect_timeout_s=60,
         )
     ],
@@ -267,7 +262,6 @@ def test_actor_raylet_resubscription(ray_start_regular_with_external_redis):
     "ray_start_regular_with_external_redis",
     [
         generate_system_config_map(
-            gcs_failover_worker_reconnect_timeout=20,
             gcs_rpc_server_reconnect_timeout_s=60,
         )
     ],
@@ -304,7 +298,6 @@ def test_del_actor_after_gcs_server_restart(ray_start_regular_with_external_redi
     "ray_start_regular_with_external_redis",
     [
         generate_system_config_map(
-            gcs_failover_worker_reconnect_timeout=20,
             gcs_rpc_server_reconnect_timeout_s=60,
         )
     ],
@@ -369,7 +362,6 @@ def test_worker_raylet_resubscription(tmp_path, ray_start_regular_with_external_
     "ray_start_regular_with_external_redis",
     [
         generate_system_config_map(
-            gcs_failover_worker_reconnect_timeout=20,
             gcs_rpc_server_reconnect_timeout_s=60,
         )
     ],
@@ -410,7 +402,6 @@ def test_core_worker_resubscription(tmp_path, ray_start_regular_with_external_re
     "ray_start_regular_with_external_redis",
     [
         generate_system_config_map(
-            gcs_failover_worker_reconnect_timeout=20,
             gcs_rpc_server_reconnect_timeout_s=60,
         )
     ],
@@ -518,7 +509,6 @@ def test_gcs_aio_client_reconnect(
     [
         {
             **generate_system_config_map(
-                gcs_failover_worker_reconnect_timeout=20,
                 gcs_rpc_server_reconnect_timeout_s=3600,
             ),
             "namespace": "actor",
@@ -588,7 +578,6 @@ assert ray.get(a.r.remote(10)) == 10
     [
         {
             **generate_system_config_map(
-                gcs_failover_worker_reconnect_timeout=20,
                 gcs_rpc_server_reconnect_timeout_s=3600,
                 gcs_server_request_timeout_seconds=10,
             ),
@@ -632,7 +621,6 @@ def test_named_actor_workloads(ray_start_regular_with_external_redis):
     [
         {
             **generate_system_config_map(
-                gcs_failover_worker_reconnect_timeout=20,
                 gcs_rpc_server_reconnect_timeout_s=3600,
             ),
             "namespace": "actor",
@@ -678,7 +666,6 @@ def test_pg_actor_workloads(ray_start_regular_with_external_redis):
     "ray_start_regular_with_external_redis",
     [
         generate_system_config_map(
-            gcs_failover_worker_reconnect_timeout=20,
             gcs_rpc_server_reconnect_timeout_s=60,
             gcs_server_request_timeout_seconds=10,
         )
@@ -708,7 +695,6 @@ def test_get_actor_when_gcs_is_down(ray_start_regular_with_external_redis):
     "ray_start_regular_with_external_redis",
     [
         generate_system_config_map(
-            gcs_failover_worker_reconnect_timeout=20,
             gcs_rpc_server_reconnect_timeout_s=60,
             gcs_server_request_timeout_seconds=10,
         )
@@ -752,7 +738,6 @@ def redis_replicas(monkeypatch):
     "ray_start_cluster_head_with_external_redis",
     [
         generate_system_config_map(
-            gcs_failover_worker_reconnect_timeout=20,
             gcs_rpc_server_reconnect_timeout_s=60,
             gcs_server_request_timeout_seconds=10,
             redis_db_connect_retries=50,
@@ -953,7 +938,6 @@ def test_session_name(ray_start_cluster):
     "ray_start_regular_with_external_redis",
     [
         generate_system_config_map(
-            gcs_failover_worker_reconnect_timeout=20,
             gcs_rpc_server_reconnect_timeout_s=60,
             gcs_server_request_timeout_seconds=10,
             raylet_liveness_self_check_interval_ms=3000,
@@ -1030,7 +1014,6 @@ def test_redis_logs(external_redis):
     "ray_start_cluster_head_with_external_redis",
     [
         generate_system_config_map(
-            gcs_failover_worker_reconnect_timeout=20,
             gcs_rpc_server_reconnect_timeout_s=2,
         )
     ],

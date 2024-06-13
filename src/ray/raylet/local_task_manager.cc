@@ -138,6 +138,108 @@ void LocalTaskManager::DispatchScheduledTasksToWorkers() {
     }
     auto &sched_cls_info = info_by_sched_cls_.at(scheduling_class);
 
+    // Fair scheduling is applied only when the total CPU requests exceed the node's
+    // capacity. This skips scheduling classes whose number of running tasks exceeds the
+    // average number of tasks per scheduling class.
+
+    // The purpose of fair scheduling is to ensure that each scheduling class has an
+    // equal chance of being selected for dispatch. For instance, in a pipeline with both
+    // data producers and consumers, we aim for consumers to have the same chance to be
+    // dispatched as producers. This prevents memory peak caused by dispatching all
+    // producer tasks first.
+    // A scheduling class is skipped from dispatching if its number of running tasks
+    // exceeds the fair_share, which is the average number of running tasks among all
+    // scheduling classes. For example, consider a scenario where we have 3 CPUs and 2
+    // scheduling classes, `f` and `g`, each with 4 tasks.
+    // Status 1: The queue init with [f, f, f, f, g, g, g, g], and 0 running tasks.
+    // Status 2: We dispatch 3 `f` tasks. Now the queue is [f, g, g, g, g],
+    //           with 3 `f` tasks running.
+    // Status 3: Suppose 1 `f` task finishes. When choosing the next task to dispatch,
+    //           the queue is [f, g, g, g, g], and there are 2 `f` tasks running.
+    //           We calculate fair_share as follows:
+    //           fair_share = number of running tasks / number of scheduling classes
+    //                       = 2 / 2 = 1.
+    //           Since the number of running `f` tasks (2) is greater than the
+    //           fair_share (1), we skip `f` and choose to dispatch `g`.
+    // Note 1: Fair_share is calculated as (total number of running tasks with >0 CPU)
+    //         / (number of scheduling classes in tasks_to_dispatch_).
+    // Note 2: The decision to skip a scheduling class happens when loop through the
+    //         scheduling classes (keys of tasks_to_dispatch_). This means we check for
+    //         fair dispatching when looping through the scheduling classes rather than
+    //         for each individual task, reducing the number of checks required.
+    //         This is why in Status 2 of the example, we dispatch 3 `f` tasks because
+    //         we chose `f` for dispatch,and we continue dispatching all `f`
+    //         tasks until resources are fully utilized.
+
+    // Currently, fair dispatching is implemented only for tasks that require CPU
+    // resources. CPU. For details, see https://github.com/ray-project/ray/pull/44733.
+
+    // Calculate the total CPU requests for all tasks in the tasks_to_dispatch queue.
+    double total_cpu_requests_ = 0.0;
+
+    // Count the number of scheduling classes that require CPU and sum their total CPU
+    // requests.
+    size_t num_classes_with_cpu = 0;
+    for (const auto &entry : tasks_to_dispatch_) {
+      const auto &dispatch_queue = entry.second;
+      for (const auto &work : dispatch_queue) {
+        const auto &task_spec = work->task.GetTaskSpecification();
+        auto cpu_request_ =
+            task_spec.GetRequiredResources().Get(scheduling::ResourceID::CPU()).Double();
+        if (cpu_request_ > 0) {
+          num_classes_with_cpu++;
+          total_cpu_requests_ += dispatch_queue.size() * cpu_request_;
+          break;
+        }
+      }
+    }
+    const auto &sched_cls_desc =
+        TaskSpecification::GetSchedulingClassDescriptor(scheduling_class);
+    double total_cpus =
+        cluster_resource_scheduler_->GetLocalResourceManager().GetNumCpus();
+
+    // Compare total CPU requests with the node's total CPU capacity. If the requests
+    // exceed the capacity, check if fair dispatching is needed.
+    if (sched_cls_desc.resource_set.Get(scheduling::ResourceID::CPU()).Double() > 0 &&
+        total_cpu_requests_ > total_cpus) {
+      RAY_LOG(DEBUG)
+          << "Applying fairness policy. Total CPU requests in tasks_to_dispatch_ ("
+          << total_cpu_requests_ << ") exceed total CPUs available (" << total_cpus
+          << ").";
+      // Get the total number of running tasks requires CPU.
+      size_t total_cpu_running_tasks = 0;
+      for (auto &entry : info_by_sched_cls_) {
+        // Only consider CPU requests
+        const auto &sched_cls_desc =
+            TaskSpecification::GetSchedulingClassDescriptor(entry.first);
+        if (sched_cls_desc.resource_set.Get(scheduling::ResourceID::CPU()).Double() > 0) {
+          total_cpu_running_tasks += entry.second.running_tasks.size();
+        }
+      }
+
+      // 1. We have confirmed that this is a scheduling class that requires CPU resources,
+      //    hence num_classes_with_cpu >= 1 (cannot be 0) as this scheduling class is in
+      //    tasks_to_dispatch_.
+      // 2. We will compute fair_share as the ideal distribution of tasks among all
+      //    scheduling classes in tasks_to_dispatch_. Then, we will check if the number of
+      //    running tasks for this scheduling class exceeds its ideal fair_share.
+      // 3. Note: We should get the num_classes_with_cpu from tasks_to_dispatch_
+      //    instead of the info_by_sched_cls_ although total_cpu_running_tasks gets from
+      //    the task running. First, info_by_sched_cls_ may not be initialized yet for
+      //    some scheduling classes (as we initialize it in the loop). Second, we expect
+      //    the number of running tasks for this scheduling class to not be much. However,
+      //    if no tasks of this scheduling class are running, it will not be skipped.
+
+      size_t fair_share = total_cpu_running_tasks / num_classes_with_cpu;
+      if (sched_cls_info.running_tasks.size() > fair_share) {
+        RAY_LOG(DEBUG) << "Skipping dispatch for scheduling class " << scheduling_class
+                       << ". Running tasks (" << sched_cls_info.running_tasks.size()
+                       << ") exceed fair share (" << fair_share << ").";
+        shapes_it++;
+        continue;
+      }
+    }
+
     /// We cap the maximum running tasks of a scheduling class to avoid
     /// scheduling too many tasks of a single type/depth, when there are
     /// deeper/other functions that should be run. We need to apply back
