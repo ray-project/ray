@@ -208,7 +208,7 @@ Status MutableObjectManager::WriteAcquire(const ObjectID &object_id,
   if (!channel) {
     return Status::IOError("Channel has not been registered");
   }
-  RAY_CHECK(!channel->written) << "You must call WriteAcquire() before WriteRelease()";
+  RAY_CHECK(!channel->written) << "You must call WriteRelease() before WriteAcquire()";
 
   std::unique_ptr<plasma::MutableObject> &object = channel->mutable_object;
   int64_t total_size = data_size + metadata_size;

@@ -141,7 +141,12 @@ class DAGNode(DAGNodeBase):
             enable_asyncio: Whether to enable asyncio for this DAG.
             async_max_queue_size: The max queue size for the async execution.
             max_buffered_results: The maximum number of execution results that
-                is allowed to be buffered.
+                are allowed to be buffered. Setting a higher value allows more
+                DAGs to be executed before `ray.get()` must be called but also
+                increases the memory usage. Note that if the number of ongoing
+                executions is beyond the DAG capacity, the new execution would
+                be blocked in the first place; therefore, this limit is only
+                enforced when it is smaller than the DAG capacity.
 
         Returns:
             A compiled DAG.

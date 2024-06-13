@@ -400,7 +400,12 @@ class CompiledDAG:
                 input queue is full, another asyncio task is reading from the
                 DAG output.
             max_buffered_results: The maximum number of execution results that
-                are allowed to be buffered.
+                are allowed to be buffered. Setting a higher value allows more
+                DAGs to be executed before `ray.get()` must be called but also
+                increases the memory usage. Note that if the number of ongoing
+                executions is beyond the DAG capacity, the new execution would
+                be blocked in the first place; therefore, this limit is only
+                enforced when it is smaller than the DAG capacity.
 
         Returns:
             Channel: A wrapper around ray.ObjectRef.

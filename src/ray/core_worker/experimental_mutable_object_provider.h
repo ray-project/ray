@@ -182,6 +182,8 @@ class MutableObjectProvider {
   // Threads that wait for local mutable object changes (one thread per mutable object)
   // and then send the changes to remote nodes via the network.
   std::vector<std::unique_ptr<std::thread>> io_threads_;
+
+  friend class MutableObjectProvider_MutableObjectBufferReadRelease_Test;
 };
 
 }  // namespace experimental

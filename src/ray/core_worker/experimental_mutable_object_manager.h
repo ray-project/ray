@@ -188,9 +188,9 @@ class MutableObjectManager : public std::enable_shared_from_this<MutableObjectMa
   /// an error on acquire.
   Status SetErrorAll();
 
- private:
   Channel *GetChannel(const ObjectID &object_id);
 
+ private:
   // Returns the plasma object header for the object.
   PlasmaObjectHeader *GetHeader(const ObjectID &object_id);
 
