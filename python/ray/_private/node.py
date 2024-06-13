@@ -459,7 +459,9 @@ class Node:
             )
             self._temp_dir = self._ray_params.temp_dir
         else:
-            if self._ray_params.temp_dir is None:
+            if self._ray_params.temp_dir is not None:
+                self._temp_dir = self._ray_params.temp_dir
+            elif self._head_os == sys.platform:
                 assert not self._default_worker
                 temp_dir = ray._private.utils.internal_kv_get_with_retry(
                     self.get_gcs_client(),
@@ -469,14 +471,18 @@ class Node:
                 )
                 self._temp_dir = ray._private.utils.decode(temp_dir)
             else:
+                self._ray_params.update_if_absent(
+                    temp_dir=ray._private.utils.get_ray_temp_dir()
+                )
                 self._temp_dir = self._ray_params.temp_dir
 
+        assert self._temp_dir is not None
         try_to_create_directory(self._temp_dir)
 
         if self.head:
             self._session_dir = os.path.join(self._temp_dir, self._session_name)
         else:
-            if self._temp_dir is None or self._session_name is None:
+            if self._session_name is None:
                 assert not self._default_worker
                 session_dir = ray._private.utils.internal_kv_get_with_retry(
                     self.get_gcs_client(),
@@ -484,7 +490,10 @@ class Node:
                     ray_constants.KV_NAMESPACE_SESSION,
                     num_retries=ray_constants.NUM_REDIS_GET_RETRIES,
                 )
-                self._session_dir = ray._private.utils.decode(session_dir)
+                if sys.platform == self._head_os:
+                    self._session_dir = ray._private.utils.decode(session_dir)
+                else:
+                    self._session_dir = os.path.join(self._temp_dir, os.path.basename(session_dir))
             else:
                 self._session_dir = os.path.join(self._temp_dir, self._session_name)
         session_symlink = os.path.join(self._temp_dir, ray_constants.SESSION_LATEST)
