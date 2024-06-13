@@ -57,10 +57,10 @@ steps:
     instance_type: medium
     commands:
       - bazel run //ci/ray_ci:build_in_docker -- docker --python-version {{matrix}}
-        --platform cu11.5.2 --platform cu11.6.2 --platform cu11.7.1
-        --platform cu11.8.0 --platform cu12.1.1 --platform cpu
-        --image-type ray
-        --upload
+        --platform cu11.7.1-cudnn8 --platform cu11.8.0-cudnn8
+        --platform cu12.1.1-cudnn8 --platform cu12.3.2-cudnn9
+        --platform cpu
+        --image-type ray --upload
     depends_on:
       - manylinux
       - forge
@@ -79,7 +79,7 @@ steps:
     instance_type: medium
     commands:
       - bazel run //ci/ray_ci:build_in_docker -- docker --python-version {{matrix}}
-        --platform cu11.8.0 --platform cpu --image-type ray-ml
+        --platform cu11.8.0-cudnn8 --platform cpu --image-type ray-ml
         --upload
     depends_on:
       - manylinux

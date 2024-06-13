@@ -1,4 +1,4 @@
-"""Example of using an env-task curriculum via implementing a custom callback.
+"""Example of using an env-task curriculum by implementing a custom callback.
 
 This example:
     - demonstrates how to define your own curriculum-capable environments using
@@ -89,7 +89,7 @@ parser.add_argument(
     "hardest task right away).",
 )
 
-
+# __curriculum_learning_example_env_options__
 ENV_OPTIONS = {
     "is_slippery": False,
     # Limit the number of steps the agent is allowed to make in the env to
@@ -133,9 +133,10 @@ ENV_MAPS = [
         "FHFFFFFG",
     ],
 ]
+# __END_curriculum_learning_example_env_options__
 
 
-# Simple function sent to an EnvRunner to change the map of all its gym.Envs from
+# Simple function sent to an EnvRunner to change the map of all its gym. Envs from
 # the current one to a new (tougher) one, in which the goal position is further away
 # from the starting position. Note that a map is a list of strings, each one
 # representing one row in the map. Each character in the strings represent a single
