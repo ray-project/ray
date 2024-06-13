@@ -9,7 +9,6 @@ import pytest
 
 import ray
 from ray._private.utils import get_or_create_event_loop
-import ray.remote_function
 from ray.util.placement_group import placement_group
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 import ray._private.gcs_utils as gcs_utils

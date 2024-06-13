@@ -54,6 +54,12 @@ class ClusterTaskManagerInterface {
           rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_INTENDED,
       const std::string &scheduling_failure_message = "") = 0;
 
+  /// Attempt to cancel all queued tasks that match the predicate.
+  ///
+  /// \param predicate: A function that returns true if a task needs to be cancelled.
+  /// \param failure_type: The reason for cancellation.
+  /// \param scheduling_failure_message: The reason message for cancellation.
+  /// \return True if any task was successfully cancelled.
   virtual bool CancelTasks(
       std::function<bool(const RayTask &)> predicate,
       rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type,

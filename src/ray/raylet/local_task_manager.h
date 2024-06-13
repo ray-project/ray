@@ -111,6 +111,12 @@ class LocalTaskManager : public ILocalTaskManager {
   /// \param task: Output parameter.
   void TaskFinished(std::shared_ptr<WorkerInterface> worker, RayTask *task);
 
+  /// Attempt to cancel all queued tasks that match the predicate.
+  ///
+  /// \param predicate: A function that returns true if a task needs to be cancelled.
+  /// \param failure_type: The reason for cancellation.
+  /// \param scheduling_failure_message: The reason message for cancellation.
+  /// \return True if any task was successfully cancelled.
   bool CancelTasks(std::function<bool(const RayTask &)> predicate,
                    rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type,
                    const std::string &scheduling_failure_message) override;
