@@ -940,7 +940,6 @@ def test_runtime_env_interface():
     # Test the interface related to container
     container_init = {
         "image": "anyscale/ray-ml:nightly-py38-cpu",
-        "worker_path": "/root/python/ray/_private/workers/default_worker.py",
         "run_options": ["--cap-drop SYS_ADMIN", "--log-level=debug"],
     }
     update_container = {"image": "test_modify"}
@@ -948,7 +947,6 @@ def test_runtime_env_interface():
     runtime_env_dict = runtime_env.to_dict()
     assert runtime_env.has_py_container()
     assert runtime_env.py_container_image() == container_init["image"]
-    assert runtime_env.py_container_worker_path() == container_init["worker_path"]
     assert runtime_env.py_container_run_options() == container_init["run_options"]
     runtime_env["container"].update(update_container)
     runtime_env_dict["container"].update(update_container)
@@ -957,7 +955,6 @@ def test_runtime_env_interface():
     assert runtime_env_dict == runtime_env.to_dict()
     assert runtime_env.has_py_container()
     assert runtime_env.py_container_image() == container_copy["image"]
-    assert runtime_env.py_container_worker_path() == container_copy["worker_path"]
     assert runtime_env.py_container_run_options() == container_copy["run_options"]
 
     runtime_env.pop("container")

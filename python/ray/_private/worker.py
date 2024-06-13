@@ -88,6 +88,7 @@ from ray.experimental.internal_kv import (
     _internal_kv_reset,
 )
 from ray.experimental import tqdm_ray
+from ray.experimental.compiled_dag_ref import CompiledDAGRef
 from ray.experimental.tqdm_ray import RAY_TQDM_MAGIC
 from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
 from ray.util.debug import log_once
@@ -2616,6 +2617,9 @@ def get(
         if isinstance(object_refs, ObjectRefGenerator):
             return object_refs
 
+        if isinstance(object_refs, CompiledDAGRef):
+            return object_refs.get()
+
         is_individual_id = isinstance(object_refs, ray.ObjectRef)
         if is_individual_id:
             object_refs = [object_refs]
@@ -2835,6 +2839,11 @@ def wait(
                 "wait() expected a list of ray.ObjectRef or "
                 "ray.ObjectRefGenerator, "
                 f"got list containing {type(ray_waitable)}"
+            )
+        if isinstance(ray_waitable, CompiledDAGRef):
+            raise TypeError(
+                "wait() does not support CompiledDAGRef. "
+                "Please call ray.get() on the CompiledDAGRef to get the result."
             )
     worker.check_connected()
 

@@ -38,7 +38,7 @@ from ray.data.datasource.path_util import (
     _has_file_extension,
     _resolve_paths_and_filesystem,
 )
-from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
+from ray.util.annotations import DeveloperAPI
 
 if TYPE_CHECKING:
     import pandas as pd
@@ -62,20 +62,6 @@ OPEN_FILE_RETRY_MAX_BACKOFF_SECONDS = 32
 
 # The max number of attempts for opening file.
 OPEN_FILE_MAX_ATTEMPTS = 10
-
-
-@Deprecated
-@PublicAPI(stability="beta")
-class FileExtensionFilter(PathPartitionFilter):
-    def __init__(
-        self,
-        file_extensions: Union[str, List[str]],
-        allow_if_no_extension: bool = False,
-    ):
-        raise DeprecationWarning(
-            "`FileExtensionFilter` is deprecated. Instead, set the `file_extensions` "
-            "parameter of `read_xxx()` APIs."
-        )
 
 
 @DeveloperAPI
@@ -371,6 +357,9 @@ class FileBasedDatasource(Datasource):
     @property
     def supports_distributed_reads(self) -> bool:
         return self._supports_distributed_reads
+
+    def input_files(self) -> Optional[List[str]]:
+        return self._paths()
 
 
 def _add_partitions(

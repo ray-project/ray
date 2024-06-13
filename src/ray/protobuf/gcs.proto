@@ -175,10 +175,6 @@ message ErrorTableData {
   double timestamp = 4;
 }
 
-message ScheduleData {
-  map<string, bytes> schedule_plan = 1;
-}
-
 message ProfileEventEntry {
   // The start timestamp of the event time.
   int64 start_time = 1;
@@ -293,6 +289,13 @@ message AvailableResources {
   bytes node_id = 1;
   // Resource capacity currently available on this node manager.
   map<string, double> resources_available = 2;
+}
+
+message TotalResources {
+  // Node id.
+  bytes node_id = 1;
+  // Resource capacity currently total on this node manager.
+  map<string, double> resources_total = 2;
 }
 
 // A snapshot of the state of a node.
