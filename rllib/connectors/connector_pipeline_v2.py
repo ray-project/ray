@@ -312,7 +312,7 @@ class ConnectorPipelineV2(ConnectorV2):
             obs_space = self.input_observation_space
             act_space = self.input_action_space
             for con in self.connectors:
-                con.input_observation_space = obs_space
                 con.input_action_space = act_space
+                con.input_observation_space = obs_space
                 obs_space = con.observation_space
                 act_space = con.action_space
