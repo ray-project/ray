@@ -31,7 +31,7 @@ class CompiledDAGRef(ray.ObjectRef):
         self._dag = dag
         self._execution_index = execution_index
         # Whether ray.get() was called on this CompiledDAGRef.
-        self._called = False
+        self._ray_get_called = False
         self._reader_refs = (
             dag.dag_output_channels._reader_ref
             if dag.has_single_output
@@ -42,7 +42,7 @@ class CompiledDAGRef(ray.ObjectRef):
         return (
             f"CompiledDAGRef(_dag={self._dag}, "
             f"_execution_index={self._execution_index}, "
-            f"_called={self._called}, "
+            f"_ray_get_called={self._ray_get_called}, "
             f"_reader_refs={self._reader_refs})"
         )
 
@@ -52,13 +52,16 @@ class CompiledDAGRef(ray.ObjectRef):
     def __deepcopy__(self, memo):
         raise ValueError("CompiledDAGRef cannot be deep copied.")
 
+    def __reduce__(self):
+        raise ValueError("CompiledDAGRef cannot be pickled.")
+
     def get(self):
-        if self._called:
+        if self._ray_get_called:
             raise ValueError(
                 "ray.get() can only be called once "
                 "on a CompiledDAGRef and it was already called."
             )
-        self._called = True
+        self._ray_get_called = True
         return self._dag._execute_until(self._execution_index)
 
 

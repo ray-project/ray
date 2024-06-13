@@ -3,6 +3,7 @@ import asyncio
 import copy
 import logging
 import os
+import pickle
 import random
 import sys
 import time
@@ -432,6 +433,9 @@ def test_dag_errors(ray_start_regular):
 
     with pytest.raises(ValueError, match="CompiledDAGRef cannot be deep copied."):
         copy.deepcopy(ref)
+
+    with pytest.raises(ValueError, match="CompiledDAGRef cannot be pickled."):
+        pickle.dumps(ref)
 
     with pytest.raises(
         TypeError, match="CompiledDAGRef cannot be used as Ray task/actor argument."

@@ -31,6 +31,7 @@ from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 MAX_BUFFER_SIZE = int(100 * 1e6)  # 100MB
 
+# The maximum total memory that can be used to buffer DAG execution results.
 MAX_BUFFER_TOTAL_MEMORY = int(10 * 1e9)  # 10GB
 
 MAX_BUFFER_COUNT = MAX_BUFFER_TOTAL_MEMORY // MAX_BUFFER_SIZE
@@ -161,7 +162,8 @@ def _exec_task(self, task: "ExecutableTask", idx: int) -> bool:
         output_val = method(*resolved_inputs)
         output_writer.write(output_val)
     except Exception as exc:
-        # TODO(rui): consider different ways of passing down the exception.
+        # TODO(rui): consider different ways of passing down the exception,
+        # e.g., wrapping with RayTaskError.
         output_writer.write(DAGExecutionError(exc))
 
     return False
