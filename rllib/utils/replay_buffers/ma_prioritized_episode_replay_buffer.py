@@ -46,7 +46,7 @@ class MultiAgentPrioritizedEpisodeReplayBuffer(
     batch).
 
     Each episode contains - in addition to the data tuples presented above - two further
-    elements in its ` extra_model_outputs`, namely `n_steps` and `weights`. The former
+    elements in its `extra_model_outputs`, namely `n_steps` and `weights`. The former
     holds the `n_step` used for the sampled timesteps in the episode and the latter the
     corresponding (importance sampling) weight for the transition.
 
@@ -397,6 +397,234 @@ class MultiAgentPrioritizedEpisodeReplayBuffer(
             j = len(self._indices)
 
     @override(MultiAgentEpisodeReplayBuffer)
+    def sample(
+        self,
+        num_items: Optional[int] = None,
+        *,
+        batch_size_B: Optional[int] = None,
+        batch_length_T: Optional[int] = None,
+        n_step: Optional[Union[int, Tuple]] = 1,
+        gamma: float = 0.99,
+        include_infos: bool = False,
+        include_extra_model_outputs: bool = False,
+        replay_mode: str = "independent",
+        modules_to_sample: Optional[List[ModuleID]] = None,
+        beta: float = 0.0,
+        **kwargs,
+    ) -> Union[List["MultiAgentEpisode"], List["SingleAgentEpisode"]]:
+        """Samples a list of episodes with multi-agent transitions.
+
+        This sampling method also adds (importance sampling) weights to the returned
+        batch. See for prioritized sampling Schaul et al. (2016).
+
+        Multi-agent transitions can be sampled either `"independent"` or
+        `"synchronized"` with the former sampling for each module independent agent
+        steps and the latter sampling agent transitions from the same environment step.
+
+        The n-step parameter can be either a single integer or a tuple of two integers.
+        In the former case, the n-step is fixed to the given integer and in the latter
+        case, the n-step is sampled uniformly from the given range. Large n-steps could
+        potentially lead to many retries because not all samples might have a full
+        n-step transition.
+
+        Sampling returns episode lists of size B (number of 'rows'), where each episode
+        holds a transition of the form
+
+        `(o_t, a_t, sum(r_t+1:t+n), o_t+n, terminated_t+n, truncated_t+n)`
+
+        where `o_t` is the observation in `t`, `a_t` the action chosen at observation
+        `o_t`, `o_t+n` is the observation `n` timesteps later and `sum(r_t+1:t+n)` is
+        the sum of all rewards collected over the time steps between `t+1` and `t+n`.
+        The `n`-step can be chosen freely when sampling and defaults to `1`. If `n_step`
+        is a tuple it is sampled uniformly across the interval defined by the tuple (for
+        each row in the batch), i.e. from the interval `[n_step[0], n_step[1]]`.
+
+        If requested, `info`s of a transition's first and  last timestep `t+n` and/or
+        `extra_model_outputs` from the first timestep (e.g. log-probabilities, etc.) are
+        added to the batch.
+
+        Each episode contains - in addition to the data tuples presented above - two
+        further entries in its `extra_model_outputs`, namely `n_steps` and `weigths`.
+        The former holds the `n_step` used for each transition and the latter the
+        (importance sampling) weight of `1.0` for each row in the batch. This weight
+        is used for weighted loss calculations in the training process.
+
+        Args:
+            num_items: The number of items to sample. If provided, `batch_size_B`
+                should be `None`.
+            batch_size_B: The batch size to sample. If provided, `num_items`
+                should be `None`.
+            batch_length_T: The length of the sampled batch. If not provided, the
+                default batch length is used. This feature is not yet implemented.
+            n_step: The n-step to sample. If the n-step is a tuple, the n-step is
+                sampled uniformly from the given range. If not provided, the default
+                n-step of `1` is used.
+            gamma: The discount factor for the n-step reward calculation.
+            include_infos: Whether to include the infos in the sampled episodes.
+            include_extra_model_outputs: Whether to include the extra model outputs
+                in the sampled episodes.
+            replay_mode: The replay mode to use for sampling. Either `"independent"`
+                or `"synchronized"`.
+            modules_to_sample: A list of module IDs to sample from. If not provided,
+                transitions for aall modules are sampled.
+            beta: The exponent of the importance sampling weight (see Schaul et
+                al. (2016)). A `beta=0.0` does not correct for the bias introduced
+                by prioritized replay and `beta=1.0` fully corrects for it.
+
+        Returns:
+            A list of 1-step long single-agent episodes containing all basic episode
+            data and if requested infos and extra model outputs. In addition extra model
+            outputs hold the (importance sampling) weights and the n-step used for each
+            transition.
+        """
+        assert beta >= 0.0
+
+        if num_items is not None:
+            assert batch_size_B is None, (
+                "Cannot call `sample()` with both `num_items` and `batch_size_B` "
+                "provided! Use either one."
+            )
+            batch_size_B = num_items
+
+        # Use our default values if no sizes/lengths provided.
+        batch_size_B = batch_size_B or self.batch_size_B
+        # TODO (simon): Implement trajectory sampling for RNNs.
+        batch_length_T = batch_length_T or self.batch_length_T
+
+        # Sample for each module independently.
+        if replay_mode == "independent":
+            return self._sample_independent(
+                batch_size_B=batch_size_B,
+                batch_length_T=batch_length_T,
+                n_step=n_step,
+                gamma=gamma,
+                include_infos=include_infos,
+                include_extra_model_outputs=include_extra_model_outputs,
+                modules_to_sample=modules_to_sample,
+                beta=beta,
+            )
+        # Otherwise, sample synchronized.
+        else:
+            return self._sample_synchonized(
+                batch_size_B=batch_size_B,
+                batch_length_T=batch_length_T,
+                n_step=n_step,
+                gamma=gamma,
+                include_infos=include_infos,
+                include_extra_model_outputs=include_extra_model_outputs,
+                modules_to_sample=modules_to_sample,
+            )
+
+    @override(PrioritizedEpisodeReplayBuffer)
+    def update_priorities(
+        self,
+        priorities: Union[NDArray, Dict[ModuleID, NDArray]],
+        module_id: ModuleID,
+    ) -> None:
+        """Update the priorities of items at corresponding indices.
+
+        Usually, incoming priorities are TD-errors.
+
+        Args:
+            priorities: Numpy array containing the new priorities to be used
+                in sampling for the items in the last sampled batch.
+        """
+
+        assert len(priorities) == len(self._module_to_last_sampled_indices[module_id])
+
+        for idx, priority in zip(
+            self._module_to_last_sampled_indices[module_id], priorities
+        ):
+            # sample_idx = self._module_to_tree_idx_to_sample_idx[module_id][idx]
+            # ma_episode_idx = (
+            #     self._module_to_indices[module_id][sample_idx][0]
+            #     - self._num_episodes_evicted
+            # )
+
+            # ma_episode_indices.append(ma_episode_idx)
+            # Note, TD-errors come in as absolute values or results from
+            # cross-entropy loss calculations.
+            # assert priority > 0, f"priority was {priority}"
+            priority = max(priority, 1e-12)
+            assert 0 <= idx < self._module_to_sum_segment[module_id].capacity
+            # TODO (simon): Create metrics.
+            # delta = priority**self._alpha - self._sum_segment[idx]
+            # Update the priorities in the segment trees.
+            self._module_to_sum_segment[module_id][idx] = priority**self._alpha
+            self._module_to_min_segment[module_id][idx] = priority**self._alpha
+            # Update the maximal priority.
+            self._module_to_max_priority[module_id] = max(
+                self._module_to_max_priority[module_id], priority
+            )
+        # Clear the corresponding index list for the module.
+        self._module_to_last_sampled_indices[module_id].clear()
+
+        # TODO (simon): Use this later for synchronized sampling.
+        # for ma_episode_idx in ma_episode_indices:
+        #     ma_episode_tree_idx = self._sample_idx_to_tree_idx(ma_episode_idx)
+        #     ma_episode_idx =
+
+        #     # Update the weights
+        # self._sum_segment[tree_idx] = sum(
+        #     self._module_to_sum_segment[module_id][idx]
+        #     for module_id, idx in self._tree_idx_to_sample_idx[tree_idx]
+        # )
+        # self._min_segment[tree_idx] = min(
+        #     self._module_to_min_segment[module_id][idx]
+        #     for module_id, idx in self._tree_idx_to_sample_idx[tree_idx]
+        # )
+
+    @override(MultiAgentEpisodeReplayBuffer)
+    def get_state(self):
+        return (
+            MultiAgentEpisodeReplayBuffer.get_state(self)
+            | PrioritizedEpisodeReplayBuffer.get_state(self)
+            | {
+                "_module_to_max_priority": list(self._module_to_max_priority.items()),
+                "_module_to_sum_segment": list(self._module_to_sum_segment.items()),
+                "_module_to_min_segment": list(self._module_to_min_segment.items()),
+                "_module_to_free_nodes": list(self._module_to_free_nodes.items()),
+                "_module_to_max_idx": list(self._module_to_max_idx.items()),
+                "_module_to_tree_idx_to_sample_idx": list(
+                    self._module_to_tree_idx_to_sample_idx.items()
+                ),
+                "_module_to_last_sampled_indices": list(
+                    self._module_to_last_sampled_indices.items()
+                ),
+            }
+        )
+
+    @override(MultiAgentEpisodeReplayBuffer)
+    def set_state(self, state) -> None:
+        MultiAgentEpisodeReplayBuffer.set_state(self, state)
+        PrioritizedEpisodeReplayBuffer.set_state(self, state)
+        self._module_to_max_priority = defaultdict(
+            lambda: 1.0, dict(state["_module_to_max_priority"])
+        )
+        tree_capacity = int(2 ** np.ceil(np.log2(self.capacity)))
+        self._module_to_sum_segment = defaultdict(
+            lambda: SumSegmentTree(2 * tree_capacity),
+            dict(state["_module_to_sum_segment"]),
+        )
+        self._module_to_min_segment = defaultdict(
+            lambda: SumSegmentTree(2 * tree_capacity),
+            dict(state["_module_to_min_segment"]),
+        )
+        self._module_to_free_nodes = defaultdict(
+            lambda: deque(list(range(2 * tree_capacity)), maxlen=2 * tree_capacity),
+            dict(state["_module_to_free_nodes"]),
+        )
+        self._module_to_max_idx = defaultdict(
+            lambda: 0, dict(state["_module_to_max_idx"])
+        )
+        self._module_to_tree_idx_to_sample_idx = defaultdict(
+            lambda: {}, dict(state["_module_to_tree_idx_to_sample_idx"])
+        )
+        self._module_to_last_sampled_indices = defaultdict(
+            lambda: [], dict(state["_module_to_last_sampled_indices"])
+        )
+
+    @override(MultiAgentEpisodeReplayBuffer)
     def _add_new_module_indices(
         self,
         ma_episode: MultiAgentEpisode,
@@ -517,124 +745,6 @@ class MultiAgentPrioritizedEpisodeReplayBuffer(
         # Return the index.
         return idx
 
-    def sample(
-        self,
-        num_items: Optional[int] = None,
-        *,
-        batch_size_B: Optional[int] = None,
-        batch_length_T: Optional[int] = None,
-        n_step: Optional[Union[int, Tuple]] = 1,
-        gamma: float = 0.99,
-        include_infos: bool = False,
-        include_extra_model_outputs: bool = False,
-        replay_mode: str = "independent",
-        modules_to_sample: Optional[List[ModuleID]] = None,
-        beta: float = 0.0,
-        **kwargs,
-    ) -> Union[List["MultiAgentEpisode"], List["SingleAgentEpisode"]]:
-        """Samples a list of episodes with multi-agent transitions.
-
-        This sampling method also adds (importance sampling) weights to the returned
-        batch. See for prioritized sampling Schaul et al. (2016).
-
-        Multi-agent transitions can be sampled either `"independent"` or
-        `"synchronized"` with the former sampling for each module independent agent
-        steps and the latter sampling agent transitions from the same environment step.
-
-        The n-step parameter can be either a single integer or a tuple of two integers.
-        In the former case, the n-step is fixed to the given integer and in the latter
-        case, the n-step is sampled uniformly from the given range. Large n-steps could
-        potentially lead to many retries because not all samples might have a full
-        n-step transition.
-
-        Sampling returns episode lists of size B (number of 'rows'), where each episode
-        holds a transition of the form
-
-        `(o_t, a_t, sum(r_t+1:t+n), o_t+n, terminated_t+n, truncated_t+n)`
-
-        where `o_t` is the observation in `t`, `a_t` the action chosen at observation
-        `o_t`, `o_t+n` is the observation `n` timesteps later and `sum(r_t+1:t+n)` is
-        the sum of all rewards collected over the time steps between `t+1` and `t+n`.
-        The `n`-step can be chosen freely when sampling and defaults to `1`. If `n_step`
-        is a tuple it is sampled uniformly across the interval defined by the tuple (for
-        each row in the batch), i.e. from the interval `[n_step[0], n_step[1]]`.
-
-        If requested, `info`s of a transition's first and  last timestep `t+n` and/or
-        `extra_model_outputs` from the first timestep (e.g. log-probabilities, etc.) are
-        added to the batch.
-
-        Each episode contains - in addition to the data tuples presented above - two
-        further entries in its `extra_model_outputs`, namely `n_steps` and `weigths`.
-        The former holds the `n_step` used for each transition and the latter the
-        (importance sampling) weight of `1.0` for each row in the batch. This weight
-        is used for weighted loss calculations in the training process.
-
-        Args:
-            num_items: The number of items to sample. If provided, `batch_size_B`
-                should be `None`.
-            batch_size_B: The batch size to sample. If provided, `num_items`
-                should be `None`.
-            batch_length_T: The length of the sampled batch. If not provided, the
-                default batch length is used. This feature is not yet implemented.
-            n_step: The n-step to sample. If the n-step is a tuple, the n-step is
-                sampled uniformly from the given range. If not provided, the default
-                n-step of `1` is used.
-            gamma: The discount factor for the n-step reward calculation.
-            include_infos: Whether to include the infos in the sampled episodes.
-            include_extra_model_outputs: Whether to include the extra model outputs
-                in the sampled episodes.
-            replay_mode: The replay mode to use for sampling. Either `"independent"`
-                or `"synchronized"`.
-            modules_to_sample: A list of module IDs to sample from. If not provided,
-                transitions for aall modules are sampled.
-            beta: The exponent of the importance sampling weight (see Schaul et
-                al. (2016)). A `beta=0.0` does not correct for the bias introduced
-                by prioritized replay and `beta=1.0` fully corrects for it.
-
-        Returns:
-            A list of 1-step long single-agent episodes containing all basic episode
-            data and if requested infos and extra model outputs. In addition extra model
-            outputs hold the (importance sampling) weights and the n-step used for each
-            transition.
-        """
-        assert beta >= 0.0
-
-        if num_items is not None:
-            assert batch_size_B is None, (
-                "Cannot call `sample()` with both `num_items` and `batch_size_B` "
-                "provided! Use either one."
-            )
-            batch_size_B = num_items
-
-        # Use our default values if no sizes/lengths provided.
-        batch_size_B = batch_size_B or self.batch_size_B
-        # TODO (simon): Implement trajectory sampling for RNNs.
-        batch_length_T = batch_length_T or self.batch_length_T
-
-        # Sample for each module independently.
-        if replay_mode == "independent":
-            return self._sample_independent(
-                batch_size_B=batch_size_B,
-                batch_length_T=batch_length_T,
-                n_step=n_step,
-                gamma=gamma,
-                include_infos=include_infos,
-                include_extra_model_outputs=include_extra_model_outputs,
-                modules_to_sample=modules_to_sample,
-                beta=beta,
-            )
-        # Otherwise, sample synchronized.
-        else:
-            return self._sample_synchonized(
-                batch_size_B=batch_size_B,
-                batch_length_T=batch_length_T,
-                n_step=n_step,
-                gamma=gamma,
-                include_infos=include_infos,
-                include_extra_model_outputs=include_extra_model_outputs,
-                modules_to_sample=modules_to_sample,
-            )
-
     @override(MultiAgentEpisodeReplayBuffer)
     def _sample_independent(
         self,
@@ -646,7 +756,7 @@ class MultiAgentPrioritizedEpisodeReplayBuffer(
         include_extra_model_outputs: bool,
         modules_to_sample: Optional[List[ModuleID]],
         beta: Optional[float],
-    ) -> Union[List["MultiAgentEpisode"], List["SingleAgentEpisode"]]:
+    ) -> List["SingleAgentEpisode"]:
         """Samples a single-agent episode list with independent transitions.
 
         Note, independent sampling means that each module samples its transitions
@@ -812,112 +922,3 @@ class MultiAgentPrioritizedEpisodeReplayBuffer(
         self.sampled_timesteps += batch_size_B
         # Return multi-agent dictionary.
         return sampled_episodes
-
-    @override(PrioritizedEpisodeReplayBuffer)
-    def update_priorities(
-        self,
-        priorities: Union[NDArray, Dict[ModuleID, NDArray]],
-        module_id: ModuleID,
-    ) -> None:
-        """Update the priorities of items at corresponding indices.
-
-        Usually, incoming priorities are TD-errors.
-
-        Args:
-            priorities: Numpy array containing the new priorities to be used
-                in sampling for the items in the last sampled batch.
-        """
-
-        assert len(priorities) == len(self._module_to_last_sampled_indices[module_id])
-
-        for idx, priority in zip(
-            self._module_to_last_sampled_indices[module_id], priorities
-        ):
-            # sample_idx = self._module_to_tree_idx_to_sample_idx[module_id][idx]
-            # ma_episode_idx = (
-            #     self._module_to_indices[module_id][sample_idx][0]
-            #     - self._num_episodes_evicted
-            # )
-
-            # ma_episode_indices.append(ma_episode_idx)
-            # Note, TD-errors come in as absolute values or results from
-            # cross-entropy loss calculations.
-            # assert priority > 0, f"priority was {priority}"
-            priority = max(priority, 1e-12)
-            assert 0 <= idx < self._module_to_sum_segment[module_id].capacity
-            # TODO (simon): Create metrics.
-            # delta = priority**self._alpha - self._sum_segment[idx]
-            # Update the priorities in the segment trees.
-            self._module_to_sum_segment[module_id][idx] = priority**self._alpha
-            self._module_to_min_segment[module_id][idx] = priority**self._alpha
-            # Update the maximal priority.
-            self._module_to_max_priority[module_id] = max(
-                self._module_to_max_priority[module_id], priority
-            )
-        # Clear the corresponding index list for the module.
-        self._module_to_last_sampled_indices[module_id].clear()
-
-        # TODO (simon): Use this later for synchronized sampling.
-        # for ma_episode_idx in ma_episode_indices:
-        #     ma_episode_tree_idx = self._sample_idx_to_tree_idx(ma_episode_idx)
-        #     ma_episode_idx =
-
-        #     # Update the weights
-        # self._sum_segment[tree_idx] = sum(
-        #     self._module_to_sum_segment[module_id][idx]
-        #     for module_id, idx in self._tree_idx_to_sample_idx[tree_idx]
-        # )
-        # self._min_segment[tree_idx] = min(
-        #     self._module_to_min_segment[module_id][idx]
-        #     for module_id, idx in self._tree_idx_to_sample_idx[tree_idx]
-        # )
-
-    @override(MultiAgentEpisodeReplayBuffer)
-    def get_state(self):
-        return (
-            MultiAgentEpisodeReplayBuffer.get_state(self)
-            | PrioritizedEpisodeReplayBuffer.get_state(self)
-            | {
-                "_module_to_max_priority": list(self._module_to_max_priority.items()),
-                "_module_to_sum_segment": list(self._module_to_sum_segment.items()),
-                "_module_to_min_segment": list(self._module_to_min_segment.items()),
-                "_module_to_free_nodes": list(self._module_to_free_nodes.items()),
-                "_module_to_max_idx": list(self._module_to_max_idx.items()),
-                "_module_to_tree_idx_to_sample_idx": list(
-                    self._module_to_tree_idx_to_sample_idx.items()
-                ),
-                "_module_to_last_sampled_indices": list(
-                    self._module_to_last_sampled_indices.items()
-                ),
-            }
-        )
-
-    @override(MultiAgentEpisodeReplayBuffer)
-    def set_state(self, state) -> None:
-        MultiAgentEpisodeReplayBuffer.set_state(self, state)
-        PrioritizedEpisodeReplayBuffer.set_state(self, state)
-        self._module_to_max_priority = defaultdict(
-            lambda: 1.0, dict(state["_module_to_max_priority"])
-        )
-        tree_capacity = int(2 ** np.ceil(np.log2(self.capacity)))
-        self._module_to_sum_segment = defaultdict(
-            lambda: SumSegmentTree(2 * tree_capacity),
-            dict(state["_module_to_sum_segment"]),
-        )
-        self._module_to_min_segment = defaultdict(
-            lambda: SumSegmentTree(2 * tree_capacity),
-            dict(state["_module_to_min_segment"]),
-        )
-        self._module_to_free_nodes = defaultdict(
-            lambda: deque(list(range(2 * tree_capacity)), maxlen=2 * tree_capacity),
-            dict(state["_module_to_free_nodes"]),
-        )
-        self._module_to_max_idx = defaultdict(
-            lambda: 0, dict(state["_module_to_max_idx"])
-        )
-        self._module_to_tree_idx_to_sample_idx = defaultdict(
-            lambda: {}, dict(state["_module_to_tree_idx_to_sample_idx"])
-        )
-        self._module_to_last_sampled_indices = defaultdict(
-            lambda: [], dict(state["_module_to_last_sampled_indices"])
-        )

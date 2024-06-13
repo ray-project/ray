@@ -42,7 +42,7 @@ class MultiAgentEpisodeReplayBuffer(EpisodeReplayBuffer):
     batch).
 
     Each episode contains - in addition to the data tuples presented above - two further
-    elements in its ` extra_model_outputs`, namely `n_steps` and `weights`. The former
+    elements in its `extra_model_outputs`, namely `n_steps` and `weights`. The former
     holds the `n_step` used for the sampled timesteps in the episode and the latter the
     corresponding (importance sampling) weight for the transition.
 
@@ -438,6 +438,7 @@ class MultiAgentEpisodeReplayBuffer(EpisodeReplayBuffer):
             else super().get_num_episodes()
         )
 
+    @override(EpisodeReplayBuffer)
     def get_num_episodes_evicted(self, module_id: Optional[ModuleID] = None) -> int:
         """Returns number of episodes evicted for a module in the buffer."""
         return (
@@ -446,6 +447,7 @@ class MultiAgentEpisodeReplayBuffer(EpisodeReplayBuffer):
             else super().get_num_episodes_evicted()
         )
 
+    @override(EpisodeReplayBuffer)
     def get_num_timesteps(self, module_id: Optional[ModuleID] = None) -> int:
         """Returns number of individual timesteps for a module stored in the buffer.
 
@@ -462,6 +464,7 @@ class MultiAgentEpisodeReplayBuffer(EpisodeReplayBuffer):
             else super().get_num_timesteps()
         )
 
+    @override(EpisodeReplayBuffer)
     def get_sampled_timesteps(self, module_id: Optional[ModuleID] = None) -> int:
         """Returns number of timesteps that have been sampled for a module.
 
@@ -478,6 +481,7 @@ class MultiAgentEpisodeReplayBuffer(EpisodeReplayBuffer):
             else super().get_sampled_timesteps()
         )
 
+    @override(EpisodeReplayBuffer)
     def get_added_timesteps(self, module_id: Optional[ModuleID] = None) -> int:
         """Returns number of timesteps that have been added in buffer's lifetime for a module.
 
@@ -578,7 +582,7 @@ class MultiAgentEpisodeReplayBuffer(EpisodeReplayBuffer):
         include_infos: bool,
         include_extra_model_outputs: bool,
         modules_to_sample: Optional[Set[ModuleID]],
-    ) -> SampleBatchType:
+    ) -> List["SingleAgentEpisode"]:
         """Samples a batch of independent multi-agent transitions."""
 
         actual_n_step = n_step or 1
