@@ -183,16 +183,15 @@ def _get_execution_dag(
 
 
 def _get_initial_stats_from_plan(plan: ExecutionPlan) -> DatasetStats:
-    if plan._snapshot_blocks is not None and not plan._snapshot_blocks.is_cleared():
+    if plan._snapshot_bundle is not None:
         return plan._snapshot_stats
-    # For Datasets created from "read_xxx", `plan._in_blocks` is a LazyBlockList,
-    # and `plan._in_stats` contains useless data.
+    # For Datasets created from "read_xxx", `plan._in_stats` contains useless data.
     # For Datasets created from "from_xxx", we need to use `plan._in_stats` as
     # the initial stats. Because the `FromXxx` logical operators will be translated to
     # "InputDataBuffer" physical operators, which will be ignored when generating
     # stats, see `StreamingExecutor._generate_stats`.
     # TODO(hchen): Unify the logic by saving the initial stats in `InputDataBuffer
-    if isinstance(plan._in_blocks, LazyBlockList):
+    if plan.has_lazy_input():
         return DatasetStats(metadata={}, parent=None)
     else:
         return plan._in_stats
