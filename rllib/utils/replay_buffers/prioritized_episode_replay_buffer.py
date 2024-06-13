@@ -31,8 +31,8 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
     the original episode. This way, episodes can be completed via subsequent `add`
     calls.
 
-    Sampling returns batches of size B (number of 'rows'), where each row is a tuple
-    of the form
+    Sampling returns a size `B` episode list (number of 'rows'), where each episode
+    holds a tuple tuple of the form
 
     `(o_t, a_t, sum(r_t+1:t+n), o_t+n)`
 
@@ -43,16 +43,16 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
     sampled uniformly across the interval defined by the tuple (for each row in the
     batch).
 
-    Each batch contains - in addition to the data tuples presented above - two further
-    columns, namely `n_steps` and `weigths`. The former holds the `n_step` used for each
-    row in the batch and the latter the corresponding (importance sampling) weight for
-    each row in the batch.
+    Each episode contains - in addition to the data tuples presented above - two further
+    elements in its ` extra_model_outputs`, namely `n_steps` and `weights`. The former
+    holds the `n_step` used for the sampled timesteps in the episode and the latter the
+    corresponding (importance sampling) weight for the transition.
 
-    After sampling priorities can be updated (for the last sampled batch) with
+    After sampling priorities can be updated (for the last sampled episode list) with
     `self.update_priorities`. This method assigns the new priorities automatically to
     the last sampled timesteps. Note, this implies that sampling timesteps and updating
     their corresponding priorities needs to alternate (e.g. sampling several times and
-    then updating the priorities would not work because tjhe buffer caches the last
+    then updating the priorities would not work because the buffer caches the last
     sampled timestep indices).
 
     .. testcode::
@@ -60,7 +60,7 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
         import gymnasium as gym
 
         from ray.rllib.env.single_agent_episode import SingleAgentEpisode
-        from ray.rllib.utils.replay_buffers.prioritized_episode_replay_buffer import (
+        from ray.rllib.utils.replay_buffers import (
             PrioritizedEpisodeReplayBuffer
         )
 
@@ -69,7 +69,7 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
 
         # Set up the loop variables
         terminated = False
-        trunctaed = False
+        truncated = False
         num_timesteps = 10000
         episodes = []
 
@@ -125,8 +125,8 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
         Args:
             capacity: The total number of timesteps to be storable in this buffer.
                 Will start ejecting old episodes once this limit is reached.
-            batch_size_B: The number of rows in a SampleBatch returned from `sample()`.
-            batch_length_T: The length of each row in a SampleBatch returned from
+            batch_size_B: The number of episodes returned from `sample()`.
+            batch_length_T: The length of each episode in the episode list returned from
                 `sample()`.
             alpha: The amount of prioritization to be used: `alpha=1.0` means full
                 prioritization, `alpha=0.0` means no prioritization.

@@ -22,6 +22,109 @@ from ray.rllib.execution.segment_tree import MinSegmentTree, SumSegmentTree
 class MultiAgentPrioritizedEpisodeReplayBuffer(
     MultiAgentEpisodeReplayBuffer, PrioritizedEpisodeReplayBuffer
 ):
+    """Multi-agent episode replay buffer that stores episodes by their IDs.
+
+    This class implements a replay buffer as used in "Prioritized Experience
+    Replay" (Schaul et al., 2016) for multi-agent reinforcement learning,
+
+    Each "row" (a slot in a deque) in the buffer is occupied by one episode. If an
+    incomplete episode is added to the buffer and then another chunk of that episode is
+    added at a later time, the buffer will automatically concatenate the new fragment to
+    the original episode. This way, episodes can be completed via subsequent `add`
+    calls.
+
+    Sampling returns a size `B` episode list (number of 'rows'), where each episode
+    holds a tuple tuple of the form
+
+    `(o_t, a_t, sum(r_t+1:t+n), o_t+n)`
+
+    where `o_t` is the observation in `t`, `a_t` the action chosen at observation `o_t`,
+    `o_t+n` is the observation `n` timesteps later and `sum(r_t+1:t+n)` is the sum of
+    all rewards collected over the time steps between `t+1` and `t+n`. The `n`-step can
+    be chosen freely when sampling and defaults to `1`. If `n_step` is a tuple it is
+    sampled uniformly across the interval defined by the tuple (for each row in the
+    batch).
+
+    Each episode contains - in addition to the data tuples presented above - two further
+    elements in its ` extra_model_outputs`, namely `n_steps` and `weights`. The former
+    holds the `n_step` used for the sampled timesteps in the episode and the latter the
+    corresponding (importance sampling) weight for the transition.
+
+    After sampling priorities can be updated (for the last sampled episode list) with
+    `self.update_priorities`. This method assigns the new priorities automatically to
+    the last sampled timesteps. Note, this implies that sampling timesteps and updating
+    their corresponding priorities needs to alternate (e.g. sampling several times and
+    then updating the priorities would not work because the buffer caches the last
+    sampled timestep indices).
+
+    .. testcode::
+        import gymnasium as gym
+
+        from ray.rllib.env.multi_agent_episode import MultiAgentEpisode
+        from ray.rllib.examples.envs.classes.multi_agent import MultiAgentCartPole
+        from ray.rllib.utils.replay_buffers import (
+            MultiAgentPrioritizedEpisodeReplayBuffer,
+        )
+
+
+        # Create the environment.
+        env = MultiAgentCartPole({"num_agents": 2})
+
+        # Set up the loop variables
+        agent_ids = env.get_agent_ids()
+        agent_ids.add("__all__")
+        terminateds = {aid: False for aid in agent_ids}
+        truncateds = {aid: False for aid in agent_ids}
+        num_timesteps = 10000
+        episodes = []
+
+        # Initialize the first episode entries.
+        eps = MultiAgentEpisode()
+        obs, infos = env.reset()
+        eps.add_env_reset(observations=obs, infos=infos)
+
+        # Sample 10,000 env timesteps.
+        for i in range(num_timesteps):
+            # If terminated we create a new episode.
+            if terminateds["__all__"] or truncateds["__all__"]:
+                episodes.append(eps.finalize())
+                eps = MultiAgentEpisode()
+                terminateds = {aid: False for aid in agent_ids}
+                truncateds = {aid: False for aid in agent_ids}
+                obs, infos = env.reset()
+                eps.add_env_reset(observations=obs, infos=infos)
+
+            # Note, `action_space_sample` samples an action for all agents not only the
+            # ones still alive, but the `MultiAgentEpisode.add_env_step` does not accept
+            # results for dead agents.
+            actions = {
+                aid: act
+                for aid, act in env.action_space_sample().items()
+                if aid not in (env.terminateds or env.truncateds)
+            }
+            obs, rewards, terminateds, truncateds, infos = env.step(actions)
+            eps.add_env_step(
+                obs,
+                actions,
+                rewards,
+                infos,
+                terminateds=terminateds,
+                truncateds=truncateds
+            )
+
+        # Add the last (truncated) episode to the list of episodes.
+        if not terminateds["__all__"] or truncateds["__all__"]:
+            episodes.append(eps)
+
+        # Create the buffer.
+        buffer = MultiAgentPrioritizedEpisodeReplayBuffer()
+        # Add the list of episodes sampled.
+        buffer.add(episodes)
+
+        # Pull a sample from the buffer using an `n-step` of 3.
+        sample = buffer.sample(num_items=256, gamma=0.95, n_step=3, beta=0.5)
+    """
+
     def __init__(
         self,
         capacity: int = 10000,
@@ -31,6 +134,18 @@ class MultiAgentPrioritizedEpisodeReplayBuffer(
         alpha: float = 1.0,
         **kwargs,
     ):
+        """Initializes a `MultiAgentPrioritizedEpisodeReplayBuffer` object
+
+        Args:
+            capacity: The total number of timesteps to be storable in this buffer.
+                Will start ejecting old episodes once this limit is reached.
+            batch_size_B: The number of episodes returned from `sample()`.
+            batch_length_T: The length of each episode in the episode list returned from
+                `sample()`.
+            alpha: The amount of prioritization to be used: `alpha=1.0` means full
+                prioritization, `alpha=0.0` means no prioritization.
+        """
+        # Initialize the parents.
         MultiAgentEpisodeReplayBuffer.__init__(
             self,
             capacity=capacity,
