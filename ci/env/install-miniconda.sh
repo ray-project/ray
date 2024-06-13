@@ -1,10 +1,5 @@
 #!/usr/bin/env bash
 
-set -exuo pipefail
-
-SCRIPT_DIR=$(builtin cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)
-WORKSPACE_DIR="${SCRIPT_DIR}/../.."
-
 install_miniconda() {
   if [ "${OSTYPE}" = msys ]; then
     # Windows is on GitHub Actions, whose built-in Python installations we added direct support for.
@@ -19,7 +14,7 @@ install_miniconda() {
 
   if [ ! -x "${conda}" ] || [ "${MINIMAL_INSTALL-}" = 1 ]; then  # If no conda is found, install it
     local miniconda_dir  # Keep directories user-independent, to help with Bazel caching
-    local miniconda_version="Miniconda3-py39_24.1.2-0"
+    local miniconda_version="Miniconda3-py311_24.4.0-0"
     local miniconda_platform=""
     local exe_suffix=".sh"
 
@@ -110,4 +105,11 @@ install_miniconda() {
   test -x "${CONDA_PYTHON_EXE}"  # make sure conda is activated
 }
 
-install_miniconda
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then 
+  set -exuo pipefail
+
+  SCRIPT_DIR=$(builtin cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)
+  WORKSPACE_DIR="${SCRIPT_DIR}/../.."
+  install_miniconda
+fi
+
