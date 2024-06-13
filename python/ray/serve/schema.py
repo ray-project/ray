@@ -1029,7 +1029,7 @@ class ServeInstanceDetails(BaseModel, extra=Extra.forbid):
     This is the response JSON schema for v2 REST API `GET /api/serve/applications`.
     """
 
-    controller_info: ServeActorDetails = Field(
+    controller_info: Optional[ServeActorDetails] = Field(
         description="Details about the Serve controller actor."
     )
     proxy_location: Optional[ProxyLocation] = Field(
@@ -1068,7 +1068,7 @@ class ServeInstanceDetails(BaseModel, extra=Extra.forbid):
 
         return {
             "deploy_mode": "MULTI_APP",
-            "controller_info": {},
+            "controller_info": None,
             "proxies": {},
             "applications": {},
             "target_capacity": None,
@@ -1119,3 +1119,21 @@ class ServeInstanceDetails(BaseModel, extra=Extra.forbid):
                     )
 
         return values
+
+    def _to_deploy_schema(self) -> Optional[ServeDeploySchema]:
+        # If there is no controller info, then Serve hasn't started
+        # so there is no deployed config to return
+        if self.controller_info is None:
+            return None
+
+        return ServeDeploySchema(
+            proxy_location=self.proxy_location,
+            http_options=self.http_options,
+            grpc_options=self.grpc_options,
+            applications=[
+                app.deployed_app_config
+                for app in self.applications.values()
+                if app.deployed_app_config is not None
+            ],
+            target_capacity=self.target_capacity,
+        )

@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+import json
 import os
 import pathlib
 import re
@@ -611,8 +612,8 @@ def run(
     required=False,
     type=str,
     help=(
-        "Name of an application. Only applies to multi-application mode. If set, this "
-        "will only fetch the config for the specified application."
+        "Name of an application. If set, this will only fetch the config "
+        "for the specified application."
     ),
 )
 def config(address: str, name: Optional[str]):
@@ -623,18 +624,16 @@ def config(address: str, name: Optional[str]):
     )
 
     # Fetch app configs for all live applications on the cluster
+    schema = serve_details._to_deploy_schema()
     if name is None:
-        print(
-            "\n---\n\n".join(
+        if schema:
+            print(
                 yaml.safe_dump(
-                    app.deployed_app_config.dict(exclude_unset=True),
+                    json.loads(schema.json(exclude_unset=True)),
                     sort_keys=False,
-                )
-                for app in serve_details.applications.values()
-                if app.deployed_app_config is not None
-            ),
-            end="",
-        )
+                ),
+                end="",
+            )
     # Fetch a specific app config by name.
     else:
         app = serve_details.applications.get(name)
