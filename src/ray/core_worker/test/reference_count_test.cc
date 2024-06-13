@@ -656,8 +656,7 @@ TEST_F(ReferenceCountTest, TestHandleObjectSpilled) {
                      absl::optional<NodeID>(node1));
   rc->HandleObjectSpilled(obj1, "url1", node1);
   rpc::WorkerObjectLocationsPubMessage object_info;
-  Status status = rc->FillObjectInformation(obj1, &object_info);
-  ASSERT_TRUE(status.ok());
+  rc->FillObjectInformation(obj1, &object_info);
   ASSERT_EQ(object_info.object_size(), object_size);
   ASSERT_EQ(object_info.spilled_url(), "url1");
   ASSERT_EQ(object_info.spilled_node_id(), node1.Binary());

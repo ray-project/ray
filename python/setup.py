@@ -27,7 +27,7 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
-SUPPORTED_PYTHONS = [(3, 8), (3, 9), (3, 10), (3, 11)]
+SUPPORTED_PYTHONS = [(3, 9), (3, 10), (3, 11), (3, 12)]
 # When the bazel version is updated, make sure to update it
 # in WORKSPACE file as well.
 
@@ -250,6 +250,7 @@ if setup_spec.type == SetupType.RAY:
             "prometheus_client >= 0.7.1",
             "smart_open",
             "virtualenv >=20.0.24, !=20.21.1",  # For pip runtime env.
+            "memray; sys_platform != 'win32'",
         ],
         "client": [
             # The Ray client needs a specific range of gRPC to work:
@@ -788,7 +789,7 @@ setuptools.setup(
         ]
     },
     package_data={
-        "ray": ["includes/*.pxd", "*.pxd"],
+        "ray": ["includes/*.pxd", "*.pxd", "data/_internal/logging.yaml"],
     },
     include_package_data=True,
     exclude_package_data={

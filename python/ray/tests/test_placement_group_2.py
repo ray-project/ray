@@ -9,7 +9,6 @@ import ray.cluster_utils
 from ray._private.test_utils import (
     convert_actor_state,
     generate_system_config_map,
-    get_error_message,
     get_other_nodes,
     kill_actor_and_wait_for_failure,
     placement_group_assert_no_leak,
@@ -563,19 +562,6 @@ def test_capture_child_tasks(ray_start_cluster, connect_to_client):
         assert not all(pgs)
 
 
-def test_ready_warning_suppressed(ray_start_regular, error_pubsub):
-    p = error_pubsub
-    # Create an infeasible pg.
-    pg = ray.util.placement_group([{"CPU": 2}] * 2, strategy="STRICT_PACK")
-    with pytest.raises(ray.exceptions.GetTimeoutError):
-        ray.get(pg.ready(), timeout=0.5)
-
-    errors = get_error_message(
-        p, 1, ray._private.ray_constants.INFEASIBLE_TASK_ERROR, timeout=0.1
-    )
-    assert len(errors) == 0
-
-
 def test_automatic_cleanup_job(ray_start_cluster):
     # Make sure the placement groups created by a
     # job, actor, and task are cleaned when the job is done.
@@ -743,7 +729,6 @@ ray.shutdown()
     "ray_start_cluster_head_with_external_redis",
     [
         generate_system_config_map(
-            gcs_failover_worker_reconnect_timeout=10,
             gcs_rpc_server_reconnect_timeout_s=60,
         )
     ],
@@ -786,7 +771,6 @@ def test_create_placement_group_after_gcs_server_restart(
     "ray_start_cluster_head_with_external_redis",
     [
         generate_system_config_map(
-            gcs_failover_worker_reconnect_timeout=10,
             gcs_rpc_server_reconnect_timeout_s=60,
         )
     ],
@@ -817,7 +801,6 @@ def test_create_actor_with_placement_group_after_gcs_server_restart(
     "ray_start_cluster_head_with_external_redis",
     [
         generate_system_config_map(
-            gcs_failover_worker_reconnect_timeout=10,
             gcs_rpc_server_reconnect_timeout_s=60,
         )
     ],

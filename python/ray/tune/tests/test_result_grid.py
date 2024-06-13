@@ -3,9 +3,8 @@ import pytest
 import ray
 from ray import train, tune
 from ray.train import Checkpoint, Result
-from ray.tune.result_grid import ResultGrid
-
 from ray.train.tests.util import create_dict_checkpoint, load_dict_checkpoint
+from ray.tune.result_grid import ResultGrid
 
 
 @pytest.fixture
@@ -98,8 +97,8 @@ def test_result_repr(ray_start_2_cpus):
     result_grid = tuner.fit()
     result = result_grid[0]
 
-    from ray.tune.result import AUTO_RESULT_KEYS
     from ray.tune.experimental.output import BLACKLISTED_KEYS
+    from ray.tune.result import AUTO_RESULT_KEYS
 
     representation = result.__repr__()
     assert not any(key in representation for key in AUTO_RESULT_KEYS)

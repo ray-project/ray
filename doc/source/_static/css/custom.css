@@ -386,3 +386,24 @@ table.autosummary tr > td:first-child > p > a > code > span {
 .query-param-ref-wrapper p {
   margin: 0;
 }
+
+/* Styles for tables in example pages */
+.table.example-table {
+  table-layout: fixed;
+}
+.table.example-table th:first-child {
+  width: 30%;
+}
+
+.bd-header-announcement {
+  color: var(--pst-color-light);
+}
+
+.bd-header-announcement::after {
+  background-color: var(--ray-blue);
+}
+
+.bd-header-announcement a {
+  color: var(--pst-color-light);
+  text-decoration: underline;
+}

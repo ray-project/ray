@@ -7,7 +7,7 @@ from ray.tune.logger import pretty_print
 
 algo = (
     PPOConfig()
-    .rollouts(num_rollout_workers=1)
+    .env_runners(num_env_runners=1)
     .resources(num_gpus=0)
     .environment(env="CartPole-v1")
     .build()
@@ -38,7 +38,7 @@ if False:
     tuner = tune.Tuner(
         "PPO",
         run_config=train.RunConfig(
-            stop={"episode_reward_mean": 150},
+            stop={"env_runners/episode_return_mean": 150},
         ),
         param_space=config,
     )
@@ -52,7 +52,7 @@ if False:
         "PPO",
         param_space=config,
         run_config=train.RunConfig(
-            stop={"episode_reward_mean": 150},
+            stop={"env_runners/episode_return_mean": 150},
             checkpoint_config=train.CheckpointConfig(checkpoint_at_end=True),
         ),
     )
@@ -60,7 +60,9 @@ if False:
     results = tuner.fit()
 
     # Get the best result based on a particular metric.
-    best_result = results.get_best_result(metric="episode_reward_mean", mode="max")
+    best_result = results.get_best_result(
+        metric="env_runners/episode_return_mean", mode="max"
+    )
 
     # Get the best checkpoint corresponding to the best result.
     best_checkpoint = best_result.checkpoint

@@ -1,7 +1,7 @@
 import inspect
 import logging
 import weakref
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Literal, Optional, Union
 
 import ray._private.ray_constants as ray_constants
 import ray._private.signature as signature
@@ -148,7 +148,7 @@ class ActorMethod:
         self,
         actor,
         method_name,
-        num_returns: Optional[Union[int, str]],
+        num_returns: Optional[Union[int, Literal["streaming"]]],
         max_task_retries: int,
         retry_exceptions: Union[bool, list, tuple],
         is_generator: bool,
@@ -237,6 +237,7 @@ class ActorMethod:
         _generator_backpressure_num_objects=None,
     ):
         from ray.dag.class_node import (
+            BIND_INDEX_KEY,
             PARENT_CLASS_NODE_KEY,
             PREV_CLASS_METHOD_CALL_KEY,
             ClassMethodNode,
@@ -259,7 +260,9 @@ class ActorMethod:
         other_args_to_resolve = {
             PARENT_CLASS_NODE_KEY: actor,
             PREV_CLASS_METHOD_CALL_KEY: None,
+            BIND_INDEX_KEY: actor._ray_dag_bind_index,
         }
+        actor._ray_dag_bind_index += 1
 
         node = ClassMethodNode(
             self._method_name,
@@ -494,7 +497,7 @@ class _ActorClassMetadata:
             See :ref:`accelerator types <accelerator_types>`.
         runtime_env: The runtime environment for this actor.
         scheduling_strategy: Strategy about how to schedule this actor.
-        last_export_session_and_job: A pair of the last exported session
+        last_export_cluster_and_job: A pair of the last exported cluster
             and job to help us to know whether this function was exported.
             This is an imperfect mechanism used to determine if we need to
             export the remote function again. It is imperfect in the sense that
@@ -538,7 +541,7 @@ class _ActorClassMetadata:
         self.runtime_env = runtime_env
         self.concurrency_groups = concurrency_groups
         self.scheduling_strategy = scheduling_strategy
-        self.last_export_session_and_job = None
+        self.last_export_cluster_and_job = None
         self.method_meta = _ActorClassMethodMetadata.create(
             modified_class, actor_creation_function_descriptor
         )
@@ -1025,12 +1028,12 @@ class ActorClass:
 
         # Export the actor.
         if not meta.is_cross_language and (
-            meta.last_export_session_and_job != worker.current_session_and_job
+            meta.last_export_cluster_and_job != worker.current_cluster_and_job
         ):
-            # If this actor class was not exported in this session and job,
+            # If this actor class was not exported in this cluster and job,
             # we need to export this function again, because current GCS
             # doesn't have it.
-            meta.last_export_session_and_job = worker.current_session_and_job
+
             # After serialize / deserialize modified class, the __module__
             # of modified class will be ray.cloudpickle.cloudpickle.
             # So, here pass actor_creation_function_descriptor to make
@@ -1040,6 +1043,7 @@ class ActorClass:
                 meta.actor_creation_function_descriptor,
                 meta.method_meta.methods.keys(),
             )
+            meta.last_export_cluster_and_job = worker.current_cluster_and_job
 
         resources = ray._private.utils.resources_from_ray_options(actor_options)
         # Set the actor's default resources if not already set. First three
@@ -1199,7 +1203,7 @@ class ActorClass:
             meta.method_meta.enable_task_events,
             actor_method_cpu,
             meta.actor_creation_function_descriptor,
-            worker.current_session_and_job,
+            worker.current_cluster_and_job,
             original_handle=True,
         )
 
@@ -1272,14 +1276,14 @@ class ActorHandle:
         method_is_generator: Dict[str, bool],
         method_decorators,
         method_signatures,
-        method_num_returns: Dict[str, int],
+        method_num_returns: Dict[str, Union[int, Literal["streaming"]]],
         method_max_task_retries: Dict[str, int],
         method_retry_exceptions: Dict[str, Union[bool, list, tuple]],
         method_generator_backpressure_num_objects: Dict[str, int],
         method_enable_task_events: Dict[str, bool],
         actor_method_cpus: int,
         actor_creation_function_descriptor,
-        session_and_job,
+        cluster_and_job,
         original_handle=False,
     ):
         self._ray_actor_language = language
@@ -1299,12 +1303,17 @@ class ActorHandle:
         )
         self._ray_method_enable_task_events = method_enable_task_events
         self._ray_actor_method_cpus = actor_method_cpus
-        self._ray_session_and_job = session_and_job
+        self._ray_cluster_and_job = cluster_and_job
         self._ray_is_cross_language = language != Language.PYTHON
         self._ray_actor_creation_function_descriptor = (
             actor_creation_function_descriptor
         )
         self._ray_function_descriptor = {}
+        # This is incremented each time `bind()` is called on an actor handle
+        # (in Ray DAGs), therefore capturing the bind order of the actor methods.
+        # TODO: this does not work properly if the caller has two copies of the
+        # same actor handle, and needs to be fixed.
+        self._ray_dag_bind_index = 0
 
         if not self._ray_is_cross_language:
             assert isinstance(
@@ -1358,7 +1367,7 @@ class ActorHandle:
         args: List[Any] = None,
         kwargs: Dict[str, Any] = None,
         name: str = "",
-        num_returns: Optional[int] = None,
+        num_returns: Optional[Union[int, Literal["streaming"]]] = None,
         max_task_retries: int = None,
         retry_exceptions: Union[bool, list, tuple] = None,
         concurrency_group_name: Optional[str] = None,
@@ -1582,6 +1591,7 @@ class ActorHandle:
             )
         else:
             # Local mode
+            assert worker.current_cluster_and_job == state["current_cluster_and_job"]
             return cls(
                 # TODO(swang): Accessing the worker's current task ID is not
                 # thread-safe.
@@ -1599,7 +1609,7 @@ class ActorHandle:
                 state["method_enable_task_events"],
                 state["actor_method_cpus"],
                 state["actor_creation_function_descriptor"],
-                worker.current_session_and_job,
+                state["current_cluster_and_job"],
             )
 
     def __reduce__(self):

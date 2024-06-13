@@ -4,8 +4,8 @@ from typing import Any, List, Optional
 import gymnasium as gym
 
 from ray.rllib.connectors.connector_v2 import ConnectorV2
+from ray.rllib.core.columns import Columns
 from ray.rllib.core.rl_module.rl_module import RLModule
-from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.spaces.space_utils import (
     clip_action,
@@ -75,7 +75,7 @@ class NormalizeAndClipActions(ConnectorV2):
         environment's action space and thus don't lead to an error.
         """
 
-        def _unsquash_or_clip(action_for_env, env_vector_idx, agent_id, module_id):
+        def _unsquash_or_clip(action_for_env, env_id, agent_id, module_id):
             if agent_id is not None:
                 struct = self._action_space_struct[agent_id]
             else:
@@ -90,10 +90,10 @@ class NormalizeAndClipActions(ConnectorV2):
         # computed/sampled actions intact.
         if self.normalize_actions or self.clip_actions:
             # Copy actions into separate column, just to go to the env.
-            data[SampleBatch.ACTIONS_FOR_ENV] = copy.deepcopy(data[SampleBatch.ACTIONS])
+            data[Columns.ACTIONS_FOR_ENV] = copy.deepcopy(data[Columns.ACTIONS])
             self.foreach_batch_item_change_in_place(
                 batch=data,
-                column=SampleBatch.ACTIONS_FOR_ENV,
+                column=Columns.ACTIONS_FOR_ENV,
                 func=_unsquash_or_clip,
             )
 

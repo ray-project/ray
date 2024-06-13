@@ -1,3 +1,7 @@
+---
+orphan: true
+---
+
 (serve-stable-diffusion-tutorial)=
 
 # Serve a Stable Diffusion Model

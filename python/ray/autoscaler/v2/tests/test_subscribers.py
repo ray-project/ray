@@ -40,12 +40,18 @@ class TestRayStopper:
 
     @pytest.mark.parametrize(
         "drain_accepted",
-        [True, False],
-        ids=["drain_accepted", "drain_rejected"],
+        [True, False, None],
+        ids=["drain_accepted", "drain_rejected", "drain_error"],
     )
     def test_idle_termination(self, drain_accepted):
         mock_gcs_client = mock.MagicMock()
-        mock_gcs_client.drain_node.return_value = drain_accepted
+        if drain_accepted is None:
+            mock_gcs_client.drain_node.side_effect = Exception("error")
+        else:
+            mock_gcs_client.drain_node.return_value = (
+                drain_accepted,
+                f"accepted={str(drain_accepted)}",
+            )
         error_queue = Queue()
         ray_stopper = RayStopper(gcs_client=mock_gcs_client, error_queue=error_queue)
 

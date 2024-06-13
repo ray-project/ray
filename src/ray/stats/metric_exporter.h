@@ -21,8 +21,8 @@
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/id.h"
 #include "ray/rpc/client_call.h"
+#include "ray/rpc/metrics_agent_client.h"
 #include "ray/stats/metric.h"
-#include "ray/stats/metric_exporter_client.h"
 #include "ray/util/logging.h"
 #include "ray/util/util.h"
 
@@ -33,69 +33,6 @@ namespace stats {
 /// opencensus data view, and sends it to the remote (for example
 /// sends metrics to dashboard agents through RPC). How to use it? Register metrics
 /// exporter after a main thread launched.
-class MetricPointExporter final : public opencensus::stats::StatsExporter::Handler {
- public:
-  explicit MetricPointExporter(
-      std::shared_ptr<MetricExporterClient> metric_exporter_client,
-      size_t report_batch_size = kDefaultBatchSize)
-      : metric_exporter_client_(metric_exporter_client),
-        report_batch_size_(report_batch_size) {}
-
-  ~MetricPointExporter() = default;
-
-  static void Register(std::shared_ptr<MetricExporterClient> metric_exporter_client,
-                       size_t report_batch_size) {
-    opencensus::stats::StatsExporter::RegisterPushHandler(
-        absl::make_unique<MetricPointExporter>(metric_exporter_client,
-                                               report_batch_size));
-  }
-
-  void ExportViewData(
-      const std::vector<std::pair<opencensus::stats::ViewDescriptor,
-                                  opencensus::stats::ViewData>> &data) override;
-
- protected:
-  void addGlobalTagsToGrpcMetric(MetricPoint &metric);
-
- private:
-  template <class DTYPE>
-  /// Extract raw data from view data, then metric exporter clients can use them
-  /// in points schema.
-  /// \param view_data, raw data in map
-  /// \param metric_name, metric name of view data
-  /// \param keys, metric tags map
-  /// \param points, memory metric vector instance
-  void ExportToPoints(const opencensus::stats::ViewData::DataMap<DTYPE> &view_data,
-                      const opencensus::stats::MeasureDescriptor &measure_descriptor,
-                      std::vector<std::string> &keys,
-                      std::vector<MetricPoint> &points) {
-    const auto &metric_name = measure_descriptor.name();
-    for (const auto &row : view_data) {
-      std::unordered_map<std::string, std::string> tags;
-      for (size_t i = 0; i < keys.size(); ++i) {
-        tags[keys[i]] = row.first[i];
-      }
-      // Current timestamp is used for point not view data time.
-      MetricPoint point{metric_name,
-                        current_sys_time_ms(),
-                        static_cast<double>(row.second),
-                        tags,
-                        measure_descriptor};
-      points.push_back(std::move(point));
-      if (points.size() >= report_batch_size_) {
-        metric_exporter_client_->ReportMetrics(points);
-        points.clear();
-      }
-    }
-  }
-
- private:
-  std::shared_ptr<MetricExporterClient> metric_exporter_client_;
-  /// Auto max minbatch size for reporting metrics to external components.
-  static constexpr size_t kDefaultBatchSize = 100;
-  size_t report_batch_size_;
-};
-
 class OpenCensusProtoExporter final : public opencensus::stats::StatsExporter::Handler {
  public:
   OpenCensusProtoExporter(const int port,

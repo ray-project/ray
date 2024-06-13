@@ -76,7 +76,7 @@ def test_to_arrow_refs(ray_start_regular_shared):
 
 
 def test_get_internal_block_refs(ray_start_regular_shared):
-    blocks = ray.data.range(10, parallelism=10).get_internal_block_refs()
+    blocks = ray.data.range(10, override_num_blocks=10).get_internal_block_refs()
     assert len(blocks) == 10
     out = []
     for b in ray.get(blocks):
@@ -106,7 +106,7 @@ def test_fsspec_filesystem(ray_start_regular_shared, tmp_path):
     ds = ray.data.read_parquet([path1, path2], filesystem=fs)
 
     # Test metadata-only parquet ops.
-    assert ds._plan.execute()._num_computed() == 0
+    assert not ds._plan.has_started_execution
     assert ds.count() == 6
 
     out_path = os.path.join(tmp_path, "out")
@@ -146,14 +146,14 @@ def test_read_example_data(ray_start_regular_shared, tmp_path):
 
 def test_write_datasink(ray_start_regular_shared):
     output = DummyOutputDatasink()
-    ds = ray.data.range(10, parallelism=2)
+    ds = ray.data.range(10, override_num_blocks=2)
     ds.write_datasink(output)
     assert output.num_ok == 1
     assert output.num_failed == 0
     assert ray.get(output.data_sink.get_rows_written.remote()) == 10
 
     output.enabled = False
-    ds = ray.data.range(10, parallelism=2)
+    ds = ray.data.range(10, override_num_blocks=2)
     with pytest.raises(ValueError):
         ds.write_datasink(output, ray_remote_args={"max_retries": 0})
     assert output.num_ok == 1
@@ -180,11 +180,12 @@ def test_from_tf(ray_start_regular_shared):
         tf.debugging.assert_equal(expected_label, actual_label)
 
 
-def test_from_torch(shutdown_only, tmp_path):
+@pytest.mark.parametrize("local_read", [True, False])
+def test_from_torch(shutdown_only, local_read, tmp_path):
     torch_dataset = torchvision.datasets.MNIST(tmp_path, download=True)
     expected_data = list(torch_dataset)
 
-    ray_dataset = ray.data.from_torch(torch_dataset)
+    ray_dataset = ray.data.from_torch(torch_dataset, local_read=local_read)
 
     actual_data = extract_values("item", list(ray_dataset.take_all()))
     assert actual_data == expected_data
@@ -274,7 +275,7 @@ def test_write_datasink_ray_remote_args(ray_start_cluster):
     bar_node_id = ray.get(get_node_id.options(resources={"bar": 1}).remote())
 
     output = NodeLoggerOutputDatasink()
-    ds = ray.data.range(100, parallelism=10)
+    ds = ray.data.range(100, override_num_blocks=10)
     # Pin write tasks to node with "bar" resource.
     ds.write_datasink(output, ray_remote_args={"resources": {"bar": 1}})
     assert output.num_ok == 1

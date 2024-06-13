@@ -50,6 +50,8 @@ import ray._private.services as services
 import ray._private.state
 import ray._private.storage as storage
 
+from ray._private.ray_logging.logging_config import LoggingConfig
+
 # Ray modules
 import ray.actor
 import ray.cloudpickle as pickle  # noqa
@@ -439,9 +441,6 @@ class Worker:
         # This event is checked regularly by all of the threads so that they
         # know when to exit.
         self.threads_stopped = threading.Event()
-        # Index of the current session. This number will
-        # increment every time when `ray.shutdown` is called.
-        self._session_index = 0
         # If this is set, the next .remote call should drop into the
         # debugger, at the specified breakpoint ID.
         self.debugger_breakpoint = b""
@@ -513,7 +512,7 @@ class Worker:
         return self.core_worker.get_current_task_id()
 
     @property
-    def current_node_id(self) -> ray.NodeID:
+    def current_node_id(self):
         return self.core_worker.get_current_node_id()
 
     @property
@@ -537,11 +536,11 @@ class Worker:
         return self.core_worker.should_capture_child_tasks_in_placement_group()
 
     @property
-    def current_session_and_job(self):
+    def current_cluster_and_job(self):
         """Get the current session index and job id as pair."""
-        assert isinstance(self._session_index, int)
+        assert isinstance(self.node.cluster_id, ray.ClusterID)
         assert isinstance(self.current_job_id, ray.JobID)
-        return self._session_index, self.current_job_id
+        return self.node.cluster_id, self.current_job_id
 
     @property
     def runtime_env(self):
@@ -934,7 +933,7 @@ class Worker:
 
     def get_accelerator_ids_for_accelerator_resource(
         self, resource_name: str, resource_regex: str
-    ) -> List[str]:
+    ) -> Union[List[str], List[int]]:
         """Get the accelerator IDs that are assigned to the given accelerator resource.
 
         Args:
@@ -942,7 +941,8 @@ class Worker:
             resource_regex: The regex of the resource.
 
         Returns:
-            (List[str]) The IDs that are assigned to the given resource.
+            (List[str]) The IDs that are assigned to the given resource pre-configured.
+            (List[int]) The IDs that are assigned to the given resource.
         """
         resource_ids = self.core_worker.resource_ids()
         assigned_ids = set()
@@ -975,12 +975,12 @@ class Worker:
                     )
                 if max_accelerators:
                     assigned_ids = original_ids[:max_accelerators]
-        return [str(assigned_id) for assigned_id in assigned_ids]
+        return list(assigned_ids)
 
 
 @PublicAPI
 @client_mode_hook
-def get_gpu_ids():
+def get_gpu_ids() -> Union[List[int], List[str]]:
     """Get the IDs of the GPUs that are available to the worker.
 
     If the CUDA_VISIBLE_DEVICES environment variable was set when the worker
@@ -993,12 +993,9 @@ def get_gpu_ids():
     """
     worker = global_worker
     worker.check_connected()
-    return [
-        int(i)
-        for i in worker.get_accelerator_ids_for_accelerator_resource(
-            ray_constants.GPU, f"^{ray_constants.GPU}_group_[0-9A-Za-z]+$"
-        )
-    ]
+    return worker.get_accelerator_ids_for_accelerator_resource(
+        ray_constants.GPU, f"^{ray_constants.GPU}_group_[0-9A-Za-z]+$"
+    )
 
 
 @Deprecated(
@@ -1233,6 +1230,7 @@ def init(
     configure_logging: bool = True,
     logging_level: int = ray_constants.LOGGER_LEVEL,
     logging_format: Optional[str] = None,
+    logging_config: Optional[LoggingConfig] = None,
     log_to_driver: bool = True,
     namespace: Optional[str] = None,
     runtime_env: Optional[Union[Dict[str, Any], "RuntimeEnv"]] = None,  # noqa: F821
@@ -1307,8 +1305,12 @@ def init(
             quantities for them available.
         labels: [Experimental] The key-value labels of the node.
         object_store_memory: The amount of memory (in bytes) to start the
-            object store with. By default, this is automatically set based on
-            available system memory.
+            object store with.
+            By default, this is 30%
+            (ray_constants.DEFAULT_OBJECT_STORE_MEMORY_PROPORTION)
+            of available system memory capped by
+            the shm size and 200G (ray_constants.DEFAULT_OBJECT_STORE_MAX_MEMORY_BYTES)
+            but can be set higher.
         local_mode: Deprecated: consider using the Ray Debugger instead.
         ignore_reinit_error: If true, Ray suppresses errors from calling
             ray.init() a second time. Ray won't be restarted.
@@ -1327,12 +1329,15 @@ def init(
         configure_logging: True (default) if configuration of logging is
             allowed here. Otherwise, the user may want to configure it
             separately.
-        logging_level: Logging level, defaults to logging.INFO. Ignored unless
+        logging_level: Logging level for the "ray" logger of the driver process,
+            defaults to logging.INFO. Ignored unless "configure_logging" is true.
+        logging_format: Logging format for the "ray" logger of the driver process,
+            defaults to a string containing a timestamp, filename, line number, and
+            message. See the source file ray_constants.py for details. Ignored unless
             "configure_logging" is true.
-        logging_format: Logging format, defaults to string containing a
-            timestamp, filename, line number, and message. See the source file
-            ray_constants.py for details. Ignored unless "configure_logging"
-            is true.
+        logging_config: [Experimental] Logging configuration will be applied to the
+            root loggers for both the driver process and all worker processes belonging
+            to the current job. See :class:`~ray.LoggingConfig` for details.
         log_to_driver: If true, the output from all of the worker
             processes on all nodes will be directed to the driver.
         namespace: A namespace is a logical grouping of jobs and named actors.
@@ -1385,10 +1390,16 @@ def init(
         Exception: An exception is raised if an inappropriate combination of
             arguments is passed in.
     """
+    # Configure the "ray" logger for the driver process.
     if configure_logging:
         setup_logger(logging_level, logging_format or ray_constants.LOGGER_FORMAT)
     else:
         logging.getLogger("ray").handlers.clear()
+
+    # Configure the logging settings for the driver process.
+    if logging_config:
+        dict_config = logging_config._get_dict_config()
+        logging.config.dictConfig(dict_config)
 
     # Parse the hidden options:
     _enable_object_reconstruction: bool = kwargs.pop(
@@ -1562,6 +1573,11 @@ def init(
             # Set runtime_env in job_config if passed in as part of ray.init()
             job_config.set_runtime_env(runtime_env)
 
+    # Pass the logging_config to job_config to configure loggers of all worker
+    # processes belonging to the job.
+    if logging_config:
+        job_config.set_py_logging_config(logging_config)
+
     redis_address, gcs_address = None, None
     bootstrap_address = services.canonicalize_bootstrap_address(address, _temp_dir)
     if bootstrap_address is not None:
@@ -1645,10 +1661,11 @@ def init(
         # handler. We still spawn a reaper process in case the atexit handler
         # isn't called.
         _global_node = ray._private.node.Node(
+            ray_params=ray_params,
             head=True,
             shutdown_at_exit=False,
             spawn_reaper=True,
-            ray_params=ray_params,
+            ray_init_cluster=True,
         )
     else:
         # In this case, we are connecting to an existing cluster.
@@ -2049,39 +2066,25 @@ def print_worker_logs(data: Dict[str, str], print_file: Any):
         pid = data.get("pid")
         lines = data.get("lines", [])
 
-    if data.get("ip") == data.get("localhost"):
-        for line in lines:
-            if RAY_TQDM_MAGIC in line:
-                process_tqdm(line)
+    ip = data.get("ip")
+    ip_prefix = "" if ip == data.get("localhost") else f", ip={ip}"
+    for line in lines:
+        if RAY_TQDM_MAGIC in line:
+            process_tqdm(line)
+        else:
+            hide_tqdm()
+            # If RAY_COLOR_PREFIX=0, do not wrap with any color codes
+            if os.getenv("RAY_COLOR_PREFIX") == "0":
+                color_pre = ""
+                color_post = ""
             else:
-                hide_tqdm()
-                print(
-                    "{}({}{}){} {}".format(
-                        color_for(data, line),
-                        prefix_for(data),
-                        pid,
-                        colorama.Style.RESET_ALL,
-                        message_for(data, line),
-                    ),
-                    file=print_file,
-                )
-    else:
-        for line in lines:
-            if RAY_TQDM_MAGIC in line:
-                process_tqdm(line)
-            else:
-                hide_tqdm()
-                print(
-                    "{}({}{}, ip={}){} {}".format(
-                        color_for(data, line),
-                        prefix_for(data),
-                        pid,
-                        data.get("ip"),
-                        colorama.Style.RESET_ALL,
-                        message_for(data, line),
-                    ),
-                    file=print_file,
-                )
+                color_pre = color_for(data, line)
+                color_post = colorama.Style.RESET_ALL
+            print(
+                f"{color_pre}({prefix_for(data)}{pid}{ip_prefix}){color_post} "
+                f"{message_for(data, line)}",
+                file=print_file,
+            )
     # Restore once at end of batch to avoid excess hiding/unhiding of tqdm.
     restore_tqdm()
 
@@ -2147,18 +2150,13 @@ def listen_error_messages(worker, threads_stopped):
                 continue
 
             error_message = error_data["error_message"]
-            if error_data["type"] == ray_constants.TASK_PUSH_ERROR:
-                # TODO(ekl) remove task push errors entirely now that we have
-                # the separate unhandled exception handler.
-                pass
-            else:
-                print_to_stdstream(
-                    {
-                        "lines": [error_message],
-                        "pid": "raylet",
-                        "is_err": False,
-                    }
-                )
+            print_to_stdstream(
+                {
+                    "lines": [error_message],
+                    "pid": "raylet",
+                    "is_err": False,
+                }
+            )
     except (OSError, ConnectionError) as e:
         logger.error(f"listen_error_messages: {e}")
 
@@ -2337,45 +2335,29 @@ def connect(
 
     if mode == SCRIPT_MODE:
         # Add the directory containing the script that is running to the Python
-        # paths of the workers. Also add the current directory. This is useful when the
-        # worker code references local libraries like `import local_lib`, *without*
-        # working_dir set and the worker and driver are on the same node, e.g. when the
-        # user is running on a single node cluster on their laptop.
-        #
-        # In production, This is not encouraged, and won't work if the driver and worker
-        # are on different nodes. In that case, the user should use `working_dir` to
-        # specify the code search path.
-        #
-        # Formally, the local path(s) should be added when all of these are true:
-        # (1) there's no working_dir (or code search path should be in working_dir),
-        # (2) it's not interactive mode, (there's no script file in interactive mode),
-        # (3) it's not in dashboard,
-        # (4) it's not client mode, (handled by client code)
-        # (5) the driver is at the same node (machine) as the worker.
-        #
-        # We only do the first 4 checks here. The (5) check is done in _raylet.pyx
-        # maybe_initialize_job_config.
-        if not any(
-            [
-                job_config._runtime_env_has_working_dir(),
-                interactive_mode,
-                namespace
-                and namespace == ray_constants.RAY_INTERNAL_DASHBOARD_NAMESPACE,
-                job_config._client_job,
-            ]
+        # paths of the workers. Also add the current directory. Note that this
+        # assumes that the directory structures on the machines in the clusters
+        # are the same.
+        # When using an interactive shell, there is no script directory.
+        # We also want to skip adding script directory when running from dashboard.
+        code_paths = []
+        if not interactive_mode and not (
+            namespace and namespace == ray_constants.RAY_INTERNAL_DASHBOARD_NAMESPACE
         ):
-            code_paths = set()
-            script_directory = os.path.dirname(os.path.realpath(driver_name))
+            script_directory = os.path.dirname(os.path.realpath(sys.argv[0]))
             # If driver's sys.path doesn't include the script directory
             # (e.g driver is started via `python -m`,
             # see https://peps.python.org/pep-0338/),
             # then we shouldn't add it to the workers.
             if script_directory in sys.path:
-                code_paths.add(script_directory)
+                code_paths.append(script_directory)
+        # In client mode, if we use runtime envs with "working_dir", then
+        # it'll be handled automatically.  Otherwise, add the current dir.
+        if not job_config._client_job and not job_config._runtime_env_has_working_dir():
             current_directory = os.path.abspath(os.path.curdir)
-            code_paths.add(current_directory)
-            if len(code_paths) != 0:
-                job_config._py_driver_sys_path.extend(code_paths)
+            code_paths.append(current_directory)
+        if len(code_paths) != 0:
+            job_config._py_driver_sys_path.extend(code_paths)
 
     serialized_job_config = job_config._serialize()
     if not node.should_redirect_logs():
@@ -2403,7 +2385,7 @@ def connect(
         runtime_env_hash,
         startup_token,
         session_name,
-        node.cluster_id,
+        node.cluster_id.hex(),
         "" if mode != SCRIPT_MODE else entrypoint,
         worker_launch_time_ms,
         worker_launched_time_ms,
@@ -2485,8 +2467,6 @@ def disconnect(exiting_interpreter=False):
             worker.logger_thread.join()
         worker.threads_stopped.clear()
 
-        worker._session_index += 1
-
         for leftover in stdout_deduplicator.flush():
             print_worker_logs(leftover, sys.stdout)
         for leftover in stderr_deduplicator.flush():
@@ -2501,19 +2481,6 @@ def disconnect(exiting_interpreter=False):
         ray_actor = None  # This can occur during program termination
     if ray_actor is not None:
         ray_actor._ActorClassMethodMetadata.reset_cache()
-
-
-def start_import_thread():
-    """Start the import thread if the worker is connected."""
-    worker = global_worker
-    worker.check_connected()
-
-    assert _mode() not in (
-        RESTORE_WORKER_MODE,
-        SPILL_WORKER_MODE,
-    ), "import thread can not be used in IO workers."
-    if worker.import_thread and ray._raylet.Config.start_python_importer_thread():
-        worker.import_thread.start()
 
 
 @contextmanager
@@ -2758,14 +2725,14 @@ blocking_wait_inside_async_warned = False
 @PublicAPI
 @client_mode_hook
 def wait(
-    ray_waitables: Union["ObjectRef[R]", "ObjectRefGenerator[R]"],
+    ray_waitables: List[Union[ObjectRef, ObjectRefGenerator]],
     *,
     num_returns: int = 1,
     timeout: Optional[float] = None,
     fetch_local: bool = True,
 ) -> Tuple[
-    List[Union["ObjectRef[R]", "ObjectRefGenerator[R]"]],
-    List[Union["ObjectRef[R]", "ObjectRefGenerator[R]"]],
+    List[Union[ObjectRef, ObjectRefGenerator]],
+    List[Union[ObjectRef, ObjectRefGenerator]],
 ]:
     """Return a list of IDs that are ready and a list of IDs that are not.
 
@@ -2774,8 +2741,8 @@ def wait(
     is not set, the function simply waits until that number of objects is ready
     and returns that exact number of object refs.
 
-    `ray_waitables` is a list of :class:`~ObjectRef` and
-    :class:`~ObjectRefGenerator`.
+    `ray_waitables` is a list of :class:`~ray.ObjectRef` and
+    :class:`~ray.ObjectRefGenerator`.
 
     The method returns two lists, ready and unready `ray_waitables`.
 
@@ -2923,7 +2890,7 @@ def get_actor(name: str, namespace: Optional[str] = None) -> "ray.actor.ActorHan
         ActorHandle to the actor.
 
     Raises:
-        ValueError if the named actor does not exist.
+        ValueError: if the named actor does not exist.
     """
     if not name:
         raise ValueError("Please supply a non-empty value to get_actor")
@@ -3229,7 +3196,7 @@ def remote(__t: type) -> Any:
 @overload
 def remote(
     *,
-    num_returns: Union[int, float] = Undefined,
+    num_returns: Union[int, Literal["streaming"]] = Undefined,
     num_cpus: Union[int, float] = Undefined,
     num_gpus: Union[int, float] = Undefined,
     resources: Dict[str, float] = Undefined,

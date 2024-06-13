@@ -12,7 +12,7 @@ from ray.rllib.evaluation.episode import Episode
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.policy_map import PolicyMap
 from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch, concat_samples
-from ray.rllib.utils.annotations import override, PublicAPI
+from ray.rllib.utils.annotations import OldAPIStack, override
 from ray.rllib.utils.debug import summarize
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.spaces.space_utils import get_dummy_batch_for_space
@@ -35,6 +35,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+@OldAPIStack
 class _PolicyCollector:
     """Collects already postprocessed (single agent) samples for one policy.
 
@@ -110,7 +111,7 @@ class _PolicyCollectorGroup:
         self.agent_steps = 0
 
 
-@PublicAPI
+@OldAPIStack
 class SimpleListCollector(SampleCollector):
     """Util to build SampleBatches for each policy in a multi-agent env.
 

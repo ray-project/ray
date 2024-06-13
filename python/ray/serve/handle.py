@@ -1,5 +1,6 @@
 import asyncio
 import concurrent.futures
+import logging
 import threading
 import time
 import warnings
@@ -9,7 +10,13 @@ from typing import Any, AsyncIterator, Dict, Iterator, Optional, Tuple, Union
 import ray
 from ray import serve
 from ray._raylet import GcsClient, ObjectRefGenerator
-from ray.serve._private.common import DeploymentID, RequestMetadata, RequestProtocol
+from ray.serve._private.common import (
+    DeploymentHandleSource,
+    DeploymentID,
+    RequestMetadata,
+    RequestProtocol,
+)
+from ray.serve._private.constants import SERVE_LOGGER_NAME
 from ray.serve._private.default_impl import create_cluster_node_info_cache
 from ray.serve._private.router import Router
 from ray.serve._private.usage import ServeUsageTag
@@ -27,6 +34,7 @@ from ray.util.annotations import DeveloperAPI, PublicAPI
 
 _global_async_loop = None
 _global_async_loop_creation_lock = threading.Lock()
+logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
 def _create_or_get_global_asyncio_event_loop_in_thread():
@@ -62,6 +70,7 @@ class _HandleOptions:
     stream: bool = False
     _prefer_local_routing: bool = False
     _request_protocol: str = RequestProtocol.UNDEFINED
+    _source: DeploymentHandleSource = DeploymentHandleSource.UNKNOWN
 
     def copy_and_update(
         self,
@@ -70,6 +79,7 @@ class _HandleOptions:
         stream: Union[bool, DEFAULT] = DEFAULT.VALUE,
         _prefer_local_routing: Union[bool, DEFAULT] = DEFAULT.VALUE,
         _request_protocol: Union[str, DEFAULT] = DEFAULT.VALUE,
+        _source: Union[DeploymentHandleSource, DEFAULT] = DEFAULT.VALUE,
     ) -> "_HandleOptions":
         return _HandleOptions(
             method_name=(
@@ -87,6 +97,7 @@ class _HandleOptions:
             _request_protocol=self._request_protocol
             if _request_protocol == DEFAULT.VALUE
             else _request_protocol,
+            _source=self._source if _source == DEFAULT.VALUE else _source,
         )
 
 
@@ -112,6 +123,11 @@ class _DeploymentHandleBase:
 
         self._router: Optional[Router] = _router
 
+        logger.info(
+            f"Created DeploymentHandle '{self.handle_id}' for {self.deployment_id}.",
+            extra={"log_to_stderr": False},
+        )
+
     def _record_telemetry_if_needed(self):
         # Record telemetry once per handle and not when used from the proxy
         # (detected via request protocol).
@@ -130,6 +146,7 @@ class _DeploymentHandleBase:
         )
 
     def _get_or_create_router(self) -> Union[Router, asyncio.AbstractEventLoop]:
+
         if self._router is None:
             node_id = ray.get_runtime_context().get_node_id()
             try:
@@ -148,6 +165,7 @@ class _DeploymentHandleBase:
                 node_id,
                 get_current_actor_id(),
                 availability_zone,
+                handle_source=self.handle_options._source,
                 event_loop=_create_or_get_global_asyncio_event_loop_in_thread(),
                 _prefer_local_node_routing=self.handle_options._prefer_local_routing,
             )
@@ -197,6 +215,7 @@ class _DeploymentHandleBase:
         multiplexed_model_id: Union[str, DEFAULT] = DEFAULT.VALUE,
         stream: Union[bool, DEFAULT] = DEFAULT.VALUE,
         _prefer_local_routing: Union[bool, DEFAULT] = DEFAULT.VALUE,
+        _source: Union[DeploymentHandleSource, DEFAULT] = DEFAULT.VALUE,
     ):
         if stream is True and inside_ray_client_context():
             raise RuntimeError(
@@ -209,6 +228,7 @@ class _DeploymentHandleBase:
             multiplexed_model_id=multiplexed_model_id,
             stream=stream,
             _prefer_local_routing=_prefer_local_routing,
+            _source=_source,
         )
 
         if self._router is None and _prefer_local_routing == DEFAULT.VALUE:
@@ -229,10 +249,13 @@ class _DeploymentHandleBase:
         self._record_telemetry_if_needed()
         _request_context = ray.serve.context._serve_request_context.get()
         request_metadata = RequestMetadata(
-            _request_context.request_id
+            request_id=_request_context.request_id
             if _request_context.request_id
             else generate_request_id(),
-            self.deployment_name,
+            internal_request_id=_request_context._internal_request_id
+            if _request_context._internal_request_id
+            else generate_request_id(),
+            endpoint=self.deployment_name,
             call_method=self.handle_options.method_name,
             route=_request_context.route,
             app_name=self.app_name,
@@ -287,6 +310,24 @@ class _DeploymentResponseBase:
         # The result of `object_ref_future` must be an ObjectRef or ObjectRefGenerator.
         self._object_ref_future = object_ref_future
 
+        # Cached result of the `object_ref_future`.
+        # This is guarded by the below locks for async and sync methods.
+        # It's not expected that user code can mix async and sync methods (sync methods
+        # raise an exception when running in an `asyncio` loop).
+        # The `asyncio` lock is lazily constructed because the constructor may run on
+        # a different `asyncio` loop than method calls (or not run on one at all).
+        self._object_ref_or_gen = None
+        self.__lazy_object_ref_or_gen_asyncio_lock = None
+        self._object_ref_or_gen_sync_lock = threading.Lock()
+
+    @property
+    def _object_ref_or_gen_asyncio_lock(self) -> asyncio.Lock:
+        """Lazy `asyncio.Lock` object."""
+        if self.__lazy_object_ref_or_gen_asyncio_lock is None:
+            self.__lazy_object_ref_or_gen_asyncio_lock = asyncio.Lock()
+
+        return self.__lazy_object_ref_or_gen_asyncio_lock
+
     def _should_resolve_gen_to_obj_ref(
         self, obj_ref_or_gen: Union[ray.ObjectRef, ray.ObjectRefGenerator]
     ) -> bool:
@@ -312,13 +353,22 @@ class _DeploymentResponseBase:
         if _record_telemetry:
             ServeUsageTag.DEPLOYMENT_HANDLE_TO_OBJECT_REF_API_USED.record("1")
 
-        # Use `asyncio.wrap_future` so `self._object_ref_future` can be awaited safely
-        # from any asyncio loop.
-        obj_ref_or_gen = await asyncio.wrap_future(self._object_ref_future)
-        if self._should_resolve_gen_to_obj_ref(obj_ref_or_gen):
-            obj_ref_or_gen = await obj_ref_or_gen.__anext__()
+        # NOTE(edoakes): this section needs to be guarded with a lock and the resulting
+        # object ref or generator cached in order to avoid calling `__anext__()` to
+        # resolve to the underlying object ref more than once.
+        #
+        # See: https://github.com/ray-project/ray/issues/43879.
+        async with self._object_ref_or_gen_asyncio_lock:
+            if self._object_ref_or_gen is None:
+                # Use `asyncio.wrap_future` so `self._object_ref_future` can be awaited
+                # safely from any asyncio loop.
+                obj_ref_or_gen = await asyncio.wrap_future(self._object_ref_future)
+                if self._should_resolve_gen_to_obj_ref(obj_ref_or_gen):
+                    obj_ref_or_gen = await obj_ref_or_gen.__anext__()
 
-        return obj_ref_or_gen
+                self._object_ref_or_gen = obj_ref_or_gen
+
+            return self._object_ref_or_gen
 
     def _to_object_ref_or_gen_sync(
         self,
@@ -337,24 +387,31 @@ class _DeploymentResponseBase:
             ServeUsageTag.DEPLOYMENT_HANDLE_TO_OBJECT_REF_API_USED.record("1")
 
         start_time_s = time.time()
+        # NOTE(edoakes): this section needs to be guarded with a lock and the resulting
+        # object ref or generator cached in order to avoid calling `__next__()` to
+        # resolve to the underlying object ref more than once.
+        #
+        # See: https://github.com/ray-project/ray/issues/43879.
+        with self._object_ref_or_gen_sync_lock:
+            if self._object_ref_or_gen is None:
+                try:
+                    obj_ref_or_gen = self._object_ref_future.result(timeout=_timeout_s)
+                except concurrent.futures.TimeoutError:
+                    raise TimeoutError("Timed out resolving to ObjectRef.") from None
 
-        try:
-            obj_ref_or_gen = self._object_ref_future.result(timeout=_timeout_s)
-        except concurrent.futures.TimeoutError:
-            raise TimeoutError("Timed out resolving to ObjectRef.") from None
+                if self._should_resolve_gen_to_obj_ref(obj_ref_or_gen):
+                    obj_ref_or_gen = obj_ref_or_gen._next_sync(
+                        timeout_s=calculate_remaining_timeout(
+                            timeout_s=_timeout_s,
+                            start_time_s=start_time_s,
+                            curr_time_s=time.time(),
+                        )
+                    )
+                    if obj_ref_or_gen.is_nil():
+                        raise TimeoutError("Timed out resolving to ObjectRef.")
+                self._object_ref_or_gen = obj_ref_or_gen
 
-        if self._should_resolve_gen_to_obj_ref(obj_ref_or_gen):
-            obj_ref_or_gen = obj_ref_or_gen._next_sync(
-                timeout_s=calculate_remaining_timeout(
-                    timeout_s=_timeout_s,
-                    start_time_s=start_time_s,
-                    curr_time_s=time.time(),
-                )
-            )
-            if obj_ref_or_gen.is_nil():
-                raise TimeoutError("Timed out resolving to ObjectRef.")
-
-        return obj_ref_or_gen
+        return self._object_ref_or_gen
 
     def cancel(self):
         """Attempt to cancel the `DeploymentHandle` call.
@@ -699,6 +756,7 @@ class DeploymentHandle(_DeploymentHandleBase):
         stream: Union[bool, DEFAULT] = DEFAULT.VALUE,
         use_new_handle_api: Union[bool, DEFAULT] = DEFAULT.VALUE,
         _prefer_local_routing: Union[bool, DEFAULT] = DEFAULT.VALUE,
+        _source: Union[bool, DEFAULT] = DEFAULT.VALUE,
     ) -> "DeploymentHandle":
         """Set options for this handle and return an updated copy of it.
 
@@ -722,6 +780,7 @@ class DeploymentHandle(_DeploymentHandleBase):
             multiplexed_model_id=multiplexed_model_id,
             stream=stream,
             _prefer_local_routing=_prefer_local_routing,
+            _source=_source,
         )
 
     def remote(

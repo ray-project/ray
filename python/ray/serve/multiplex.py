@@ -6,7 +6,7 @@ from collections import OrderedDict
 from typing import Any, Callable, List, Set
 
 from ray.serve import metrics
-from ray.serve._private.common import DeploymentID, MultiplexedReplicaInfo
+from ray.serve._private.common import MultiplexedReplicaInfo
 from ray.serve._private.constants import (
     DEFAULT_LATENCY_BUCKET_MS,
     PUSH_MULTIPLEXED_MODEL_IDS_INTERVAL_S,
@@ -94,12 +94,13 @@ class _ModelMultiplexWrapper:
         context = _get_internal_replica_context()
         if context is None:
             raise RuntimeError(
-                "Fail to retrieve serve replica context, the model multiplexer ",
-                "can only be used within `Deployment`.",
+                "`@serve.multiplex` can only be used within a deployment "
+                "(failed to retrieve Serve replica context)."
             )
+
         self._app_name: str = context.app_name
         self._deployment_name: str = context.deployment
-        self._replica_tag: str = context.replica_tag
+        self._replica_id: str = context.replica_id
 
         # Whether to push the multiplexed replica info to the controller.
         self._push_multiplexed_replica_info: bool = False
@@ -140,10 +141,7 @@ class _ModelMultiplexWrapper:
             if self._push_multiplexed_replica_info:
                 _get_global_client().record_multiplexed_replica_info(
                     MultiplexedReplicaInfo(
-                        DeploymentID(
-                            name=self._deployment_name, app_name=self._app_name
-                        ),
-                        self._replica_tag,
+                        self._replica_id,
                         self._get_loading_and_loaded_model_ids(),
                     )
                 )

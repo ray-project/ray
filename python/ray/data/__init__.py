@@ -10,6 +10,7 @@ from ray.data._internal.execution.interfaces import (
     ExecutionResources,
     NodeIdStr,
 )
+from ray.data._internal.logging import configure_logging
 from ray.data._internal.progress_bar import set_progress_bars
 from ray.data.context import DataContext, DatasetContext
 from ray.data.dataset import Dataset, Schema
@@ -25,6 +26,7 @@ from ray.data.preprocessor import Preprocessor
 from ray.data.read_api import (  # noqa: F401
     from_arrow,
     from_arrow_refs,
+    from_blocks,
     from_dask,
     from_huggingface,
     from_items,
@@ -39,6 +41,7 @@ from ray.data.read_api import (  # noqa: F401
     from_torch,
     range,
     range_tensor,
+    read_avro,
     read_bigquery,
     read_binary_files,
     read_csv,
@@ -46,6 +49,7 @@ from ray.data.read_api import (  # noqa: F401
     read_datasource,
     read_images,
     read_json,
+    read_lance,
     read_mongo,
     read_numpy,
     read_parquet,
@@ -61,6 +65,7 @@ from ray.data.read_api import (  # noqa: F401
 _cached_fn = None
 _cached_cls = None
 
+configure_logging()
 
 try:
     import pyarrow as pa
@@ -75,7 +80,16 @@ try:
         # anything.
         pass
     else:
-        if parse_version(pyarrow_version) >= parse_version("14.0.1"):
+        from ray._private.ray_constants import env_bool
+
+        RAY_DATA_AUTOLOAD_PYEXTENSIONTYPE = env_bool(
+            "RAY_DATA_AUTOLOAD_PYEXTENSIONTYPE", False
+        )
+
+        if (
+            parse_version(pyarrow_version) >= parse_version("14.0.1")
+            and RAY_DATA_AUTOLOAD_PYEXTENSIONTYPE
+        ):
             pa.PyExtensionType.set_auto_load(True)
         # Import these arrow extension types to ensure that they are registered.
         from ray.air.util.tensor_extensions.arrow import (  # noqa
@@ -118,12 +132,14 @@ __all__ = [
     "from_huggingface",
     "range",
     "range_tensor",
+    "read_avro",
     "read_text",
     "read_binary_files",
     "read_csv",
     "read_datasource",
     "read_images",
     "read_json",
+    "read_lance",
     "read_numpy",
     "read_mongo",
     "read_parquet",

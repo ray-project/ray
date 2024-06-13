@@ -10,9 +10,12 @@ from collections import defaultdict
 
 from serve_test_cluster_utils import NUM_CPU_PER_NODE
 from subprocess import PIPE
-from typing import Dict, List, Union
+from typing import Dict, List, Optional, Union
 
 logger = logging.getLogger(__file__)
+
+
+DEFAULT_RELEASE_OUTPUT_PATH = "/tmp/release_test_out.json"
 
 
 def is_smoke_test():
@@ -335,7 +338,12 @@ def run_wrk_on_all_nodes(
     return all_metrics, all_wrk_stdout
 
 
-def save_test_results(final_result, default_output_file="/tmp/release_test_out.json"):
-    test_output_json = os.environ.get("TEST_OUTPUT_JSON", default_output_file)
-    with open(test_output_json, "wt") as f:
-        json.dump(final_result, f)
+def save_test_results(
+    test_results: Dict,
+    output_path: Optional[str] = None,
+):
+    results_file_path = output_path or os.environ.get(
+        "TEST_OUTPUT_JSON", DEFAULT_RELEASE_OUTPUT_PATH
+    )
+    with open(results_file_path, "wt") as f:
+        json.dump(test_results, f)

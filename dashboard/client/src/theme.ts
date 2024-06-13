@@ -1,5 +1,5 @@
-import { blueGrey, grey, lightBlue } from "@material-ui/core/colors";
-import { createTheme, ThemeOptions } from "@material-ui/core/styles";
+import { blueGrey, grey, lightBlue } from "@mui/material/colors";
+import { createTheme, ThemeOptions } from "@mui/material/styles";
 
 const basicTheme: ThemeOptions = {
   typography: {
@@ -43,44 +43,59 @@ const basicTheme: ThemeOptions = {
       lineHeight: "16px",
     },
   },
-  props: {
-    MuiPaper: {
-      elevation: 0,
+  components: {
+    MuiAutocomplete: {
+      defaultProps: {
+        size: "small",
+      },
     },
-  },
-  overrides: {
+    MuiButton: {
+      defaultProps: {
+        size: "small",
+      },
+    },
     MuiCssBaseline: {
-      "@global": {
-        a: {
-          color: "#036DCF",
+      styleOverrides: {
+        "@global": {
+          a: {
+            color: "#036DCF",
+          },
         },
+      },
+    },
+    MuiTextField: {
+      defaultProps: {
+        size: "small",
       },
     },
     MuiTooltip: {
-      tooltip: {
-        fontSize: "0.75rem",
-        fontWeight: 400,
-        boxShadow: "0px 3px 14px 2px rgba(3, 28, 74, 0.12)",
-        padding: 8,
-      },
-      tooltipPlacementRight: {
-        margin: "0 8px",
-        "@media (min-width: 600px)": {
+      styleOverrides: {
+        tooltip: {
+          fontSize: "0.75rem",
+          fontWeight: 400,
+          boxShadow: "0px 3px 14px 2px rgba(3, 28, 74, 0.12)",
+          padding: 8,
+        },
+        tooltipPlacementRight: {
           margin: "0 8px",
+          "@media (min-width: 600px)": {
+            margin: "0 8px",
+          },
         },
       },
     },
     MuiPaper: {
-      outlined: {
-        borderColor: "#D2DCE6",
-        borderRadius: 8,
+      styleOverrides: {
+        outlined: {
+          borderColor: "#D2DCE6",
+          borderRadius: 8,
+        },
       },
     },
   },
 };
 
-export const lightTheme = createTheme({
-  ...basicTheme,
+export const lightTheme = createTheme(basicTheme, {
   palette: {
     primary: {
       main: "#036DCF",
@@ -105,8 +120,7 @@ export const lightTheme = createTheme({
   },
 });
 
-export const darkTheme = createTheme({
-  ...basicTheme,
+export const darkTheme = createTheme(basicTheme, {
   palette: {
     primary: {
       main: "#538DF9",

@@ -4,7 +4,7 @@ import numpy as np
 import tree  # pip install dm_tree
 
 from ray.rllib.connectors.connector_v2 import ConnectorV2
-from ray.rllib.core.models.base import STATE_OUT
+from ray.rllib.core.columns import Columns
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.typing import EpisodeType
@@ -27,7 +27,7 @@ class RemoveSingleTsTimeRankFromBatch(ConnectorV2):
             return data
 
         data = tree.map_structure_with_path(
-            lambda p, s: s if STATE_OUT in p else np.squeeze(s, axis=0),
+            lambda p, s: s if Columns.STATE_OUT in p else np.squeeze(s, axis=0),
             data,
         )
 

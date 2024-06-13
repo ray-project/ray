@@ -5,8 +5,8 @@ import gymnasium as gym
 import tree  # pip install dm_tree
 
 from ray.rllib.connectors.connector_v2 import ConnectorV2
+from ray.rllib.core.columns import Columns
 from ray.rllib.core.rl_module.rl_module import RLModule
-from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.typing import EpisodeType
 from ray.util.annotations import PublicAPI
@@ -93,7 +93,7 @@ class _FrameStacking(ConnectorV2):
                 # learning).
                 self.add_n_batch_items(
                     batch=data,
-                    column=SampleBatch.OBS,
+                    column=Columns.OBS,
                     items_to_add=tree.map_structure(
                         _map_fn,
                         sa_episode.get_observations(
@@ -123,7 +123,7 @@ class _FrameStacking(ConnectorV2):
                 )
                 self.add_batch_item(
                     batch=data,
-                    column=SampleBatch.OBS,
+                    column=Columns.OBS,
                     item_to_add=stacked_obs,
                     single_agent_episode=sa_episode,
                 )

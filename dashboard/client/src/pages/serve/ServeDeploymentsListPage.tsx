@@ -1,8 +1,8 @@
 import {
+  Alert,
   Box,
-  createStyles,
   InputAdornment,
-  makeStyles,
+  Pagination,
   Table,
   TableBody,
   TableCell,
@@ -11,16 +11,21 @@ import {
   TableRow,
   TextField,
   Typography,
-} from "@material-ui/core";
-import { Alert, Pagination } from "@material-ui/lab";
+} from "@mui/material";
+import createStyles from "@mui/styles/createStyles";
+import makeStyles from "@mui/styles/makeStyles";
 import React, { ReactElement } from "react";
 import { CollapsibleSection } from "../../common/CollapsibleSection";
+import { sliceToPage } from "../../common/util";
 import Loading from "../../components/Loading";
 import { HelpInfo } from "../../components/Tooltip";
 import { useServeDeployments } from "./hook/useServeApplications";
 import { ServeApplicationRows } from "./ServeApplicationRow";
 import { ServeEntityLogViewer } from "./ServeEntityLogViewer";
-import { ServeMetricsSection } from "./ServeMetricsSection";
+import {
+  APPS_METRICS_CONFIG,
+  ServeMetricsSection,
+} from "./ServeMetricsSection";
 import { ServeSystemPreview } from "./ServeSystemDetails";
 
 const useStyles = makeStyles((theme) =>
@@ -78,6 +83,12 @@ export const ServeDeploymentsListPage = () => {
     return <Loading loading={true} />;
   }
 
+  const {
+    items: list,
+    constrainedPage,
+    maxPage,
+  } = sliceToPage(serveApplications, page.pageNo, page.pageSize);
+
   return (
     <div className={classes.root}>
       {serveDetails.http_options === undefined ? (
@@ -113,8 +124,8 @@ export const ServeDeploymentsListPage = () => {
                 }}
               />
               <Pagination
-                count={Math.ceil(serveApplications.length / page.pageSize)}
-                page={page.pageNo}
+                count={maxPage}
+                page={constrainedPage}
                 onChange={(e, pageNo) => setPage("pageNo", pageNo)}
               />
               <Table className={classes.table}>
@@ -143,18 +154,13 @@ export const ServeDeploymentsListPage = () => {
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {serveApplications
-                    .slice(
-                      (page.pageNo - 1) * page.pageSize,
-                      page.pageNo * page.pageSize,
-                    )
-                    .map((application) => (
-                      <ServeApplicationRows
-                        key={`${application.name}`}
-                        application={application}
-                        startExpanded
-                      />
-                    ))}
+                  {list.map((application) => (
+                    <ServeApplicationRows
+                      key={`${application.name}`}
+                      application={application}
+                      startExpanded
+                    />
+                  ))}
                 </TableBody>
               </Table>
             </TableContainer>
@@ -172,7 +178,10 @@ export const ServeDeploymentsListPage = () => {
           </CollapsibleSection>
         </React.Fragment>
       )}
-      <ServeMetricsSection className={classes.section} />
+      <ServeMetricsSection
+        className={classes.section}
+        metricsConfig={APPS_METRICS_CONFIG}
+      />
     </div>
   );
 };

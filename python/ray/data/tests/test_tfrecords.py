@@ -499,10 +499,10 @@ def test_write_tfrecords(
     # The dataset we will write to a .tfrecords file.
     ds = ray.data.from_items(
         data_partial(with_tf_schema),
-        # Here, we specify `parallelism=1` to ensure that all rows end up in the same
-        # block, which is required for type inference involving
-        # partially missing columns.
-        parallelism=1,
+        # Here, we specify `override_num_blocks=1` to ensure that all rows end up in
+        # the same block, which is required for type inference involving partially
+        # missing columns.
+        override_num_blocks=1,
     )
 
     # The corresponding tf.train.Example that we would expect to read
@@ -602,10 +602,10 @@ def test_readback_tfrecords(
     """
 
     # The dataset we will write to a .tfrecords file.
-    # Here and in the read_tfrecords call below, we specify `parallelism=1`
+    # Here and in the read_tfrecords call below, we specify `override_num_blocks=1`
     # to ensure that all rows end up in the same block, which is required
     # for type inference involving partially missing columns.
-    ds = ray.data.from_items(data_partial(with_tf_schema), parallelism=1)
+    ds = ray.data.from_items(data_partial(with_tf_schema), override_num_blocks=1)
     expected_records = tf_records_partial()
 
     tf_schema = None
@@ -617,7 +617,7 @@ def test_readback_tfrecords(
     ds.write_tfrecords(tmp_path, tf_schema=tf_schema)
     # Read the TFRecords.
     readback_ds = read_tfrecords_with_tfx_read_override(
-        tmp_path, tf_schema=tf_schema, parallelism=1
+        tmp_path, tf_schema=tf_schema, override_num_blocks=1
     )
     _ds_eq_streaming(ds, readback_ds)
 
@@ -641,7 +641,7 @@ def test_readback_tfrecords_empty_features(
             # type inference on completely empty columns is ambiguous.
             ds.write_tfrecords(tmp_path)
     else:
-        ds = ray.data.from_items(data_empty(with_tf_schema), parallelism=1)
+        ds = ray.data.from_items(data_empty(with_tf_schema), override_num_blocks=1)
         expected_records = tf_records_empty()
 
         features = expected_records[0].features
@@ -654,7 +654,7 @@ def test_readback_tfrecords_empty_features(
         readback_ds = read_tfrecords_with_tfx_read_override(
             tmp_path,
             tf_schema=tf_schema,
-            parallelism=1,
+            override_num_blocks=1,
         )
         _ds_eq_streaming(ds, readback_ds)
 
@@ -691,7 +691,7 @@ def test_read_with_invalid_schema(
     from tensorflow_metadata.proto.v0 import schema_pb2
 
     # The dataset we will write to a .tfrecords file.
-    ds = ray.data.from_items(data_partial(True), parallelism=1)
+    ds = ray.data.from_items(data_partial(True), override_num_blocks=1)
     expected_records = tf_records_partial()
 
     # Build fake schema proto with missing/incorrect field name
@@ -740,7 +740,7 @@ def test_read_with_invalid_schema(
 
 @pytest.mark.parametrize("num_rows_per_file", [5, 10, 50])
 def test_write_num_rows_per_file(tmp_path, ray_start_regular_shared, num_rows_per_file):
-    ray.data.range(100, parallelism=20).write_tfrecords(
+    ray.data.range(100, override_num_blocks=20).write_tfrecords(
         tmp_path, num_rows_per_file=num_rows_per_file
     )
 

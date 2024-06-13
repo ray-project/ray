@@ -1,14 +1,12 @@
 import sys
 from typing import TYPE_CHECKING, Iterable, List, Optional, Union
 
-from ray.data._internal.dataset_logger import DatasetLogger
+from ray.air.util.tensor_extensions.arrow import pyarrow_table_from_pydict
 from ray.data._internal.util import _check_pyarrow_version
 from ray.data.block import Block, BlockAccessor, BlockMetadata
 from ray.data.dataset import Dataset
 from ray.data.datasource import Datasource, ReadTask
 from ray.util.annotations import DeveloperAPI
-
-logger = DatasetLogger(__name__)
 
 if TYPE_CHECKING:
     import datasets
@@ -155,7 +153,7 @@ class HuggingFaceDatasource(Datasource):
                 if isinstance(batch, np.ndarray):
                     batch = {"item": batch}
                 if isinstance(batch, dict):
-                    batch = pyarrow.Table.from_pydict(batch)
+                    batch = pyarrow_table_from_pydict(batch)
                 # Ensure that we return the default block type.
                 block = BlockAccessor.for_block(batch).to_default()
                 yield block

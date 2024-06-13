@@ -5,14 +5,14 @@ import gc
 
 import gymnasium as gym
 import torch
-from ray.rllib.utils.torch_utils import _dynamo_is_available
 
+from ray.rllib.core.columns import Columns
 from ray.rllib.core.rl_module.rl_module import RLModuleConfig
 from ray.rllib.core.rl_module.torch import TorchRLModule
 from ray.rllib.core.rl_module.torch.torch_compile_config import TorchCompileConfig
 from ray.rllib.core.testing.torch.bc_module import DiscreteBCTorchModule
-from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.test_utils import check
+from ray.rllib.utils.torch_utils import _dynamo_is_available
 
 
 class TestRLModule(unittest.TestCase):
@@ -49,9 +49,9 @@ class TestRLModule(unittest.TestCase):
         output = module.forward_train({"obs": obs})
 
         self.assertIsInstance(output, Mapping)
-        self.assertIn(SampleBatch.ACTION_DIST_INPUTS, output)
+        self.assertIn(Columns.ACTION_DIST_INPUTS, output)
 
-        action_dist_inputs = output[SampleBatch.ACTION_DIST_INPUTS]
+        action_dist_inputs = output[Columns.ACTION_DIST_INPUTS]
         action_dist_class = module.get_train_action_dist_cls()
         action_dist = action_dist_class.from_logits(action_dist_inputs)
 

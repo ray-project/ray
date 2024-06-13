@@ -27,6 +27,7 @@ from ray._private.test_utils import (
     wait_for_condition,
     async_wait_for_condition_async_predicate,
     find_free_port,
+    SignalActor,
 )
 from ray.cluster_utils import cluster_not_supported
 from ray._raylet import NodeID
@@ -2153,19 +2154,23 @@ def test_list_get_nodes(ray_start_cluster):
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=1, node_name="head_node")
     ray.init(address=cluster.address)
-    cluster.add_node(num_cpus=1, node_name="worker_node")
+    worker_node = cluster.add_node(num_cpus=1, node_name="worker_node")
+
+    cluster.remove_node(worker_node)
 
     def verify():
         nodes = list_nodes(detail=True)
         for node in nodes:
-            assert node["state"] == "ALIVE"
             assert is_hex(node["node_id"])
-            assert (
-                node["is_head_node"]
-                if node["node_name"] == "head_node"
-                else not node["is_head_node"]
-            )
             assert node["labels"] == {"ray.io/node_id": node["node_id"]}
+            if node["node_name"] == "head_node":
+                assert node["is_head_node"]
+                assert node["state"] == "ALIVE"
+                assert node["state_message"] is None
+            else:
+                assert not node["is_head_node"]
+                assert node["state"] == "DEAD"
+                assert node["state_message"] == "Expected termination: received SIGTERM"
 
         # Check with legacy API
         check_nodes = ray.nodes()
@@ -2340,9 +2345,14 @@ def test_list_get_tasks(shutdown_only):
     def impossible():
         pass
 
-    out = [f.options(name=f"f_{i}").remote() for i in range(2)]  # noqa
-    g_out = g.remote(f.remote())  # noqa
-    im = impossible.remote()  # noqa
+    f_refs = [f.options(name=f"f_{i}").remote() for i in range(2)]  # noqa
+    g_ref = g.remote(f.remote())  # noqa
+    im_ref = impossible.remote()  # noqa
+
+    def verify_task_from_objectref(task, job_id, tasks):
+        assert task["job_id"] == job_id
+        assert task["actor_id"] is None
+        assert any(task["task_id"] == t["task_id"] for t in tasks)
 
     def verify():
         tasks = list_tasks()
@@ -2351,6 +2361,12 @@ def test_list_get_tasks(shutdown_only):
             assert task["job_id"] == job_id
         for task in tasks:
             assert task["actor_id"] is None
+
+        # Test get_task by objectRef
+        for ref in f_refs:
+            verify_task_from_objectref(get_task(ref), job_id, tasks)
+        verify_task_from_objectref(get_task(g_ref), job_id, tasks)
+        verify_task_from_objectref(get_task(im_ref), job_id, tasks)
 
         waiting_for_execution = len(
             list(
@@ -3546,6 +3562,33 @@ def test_core_state_api_usage_tags(shutdown_only):
     assert set(result.keys()).issuperset(
         {TagKey.Name(tag).lower() for tag in expected_tags}
     )
+
+
+# Tests fix for https://github.com/ray-project/ray/issues/44459
+def test_job_info_is_running_task(shutdown_only):
+    ray.init()
+
+    # To reliably know a job has a long running task, we need to wait a SignalActor
+    # to know the task has started.
+    signal = SignalActor.remote()
+
+    @ray.remote
+    def f(signal):
+        ray.get(signal.send.remote())
+        import time
+
+        while True:
+            time.sleep(10000)
+
+    long_running = f.remote(signal)  # noqa: F841
+    ray.get(signal.wait.remote())
+
+    client = ray.worker.global_worker.gcs_client
+    job_id = ray.worker.global_worker.current_job_id.binary()
+    all_job_info = client.get_all_job_info()
+    assert len(all_job_info) == 1
+    assert job_id in all_job_info
+    assert client.get_all_job_info()[job_id].is_running_tasks is True
 
 
 if __name__ == "__main__":

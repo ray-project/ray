@@ -1,8 +1,17 @@
-import { createStyles, makeStyles } from "@material-ui/core";
+import { Box, Typography } from "@mui/material";
+import createStyles from "@mui/styles/createStyles";
+import makeStyles from "@mui/styles/makeStyles";
 import dayjs from "dayjs";
 import low from "lowlight";
-import React, { MutableRefObject, useEffect, useRef, useState } from "react";
+import React, {
+  MutableRefObject,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import { FixedSizeList as List } from "react-window";
+import DialogWithTitle from "../../common/DialogWithTitle";
 import "./darcula.css";
 import "./github.css";
 import "./index.css";
@@ -91,6 +100,65 @@ const useStyles = makeStyles((theme) =>
   }),
 );
 
+type LogLineDetailDialogProps = {
+  formattedLogLine: string;
+  onClose: () => void;
+};
+
+const LogLineDetailDialog = ({
+  formattedLogLine,
+  onClose,
+}: LogLineDetailDialogProps) => {
+  return (
+    <DialogWithTitle title="Log line details" handleClose={onClose}>
+      <Box
+        sx={{
+          display: "flex",
+          flexDirection: "row",
+          gap: 4,
+          alignItems: "stretch",
+        }}
+      >
+        <Box
+          sx={{
+            width: "100%",
+          }}
+        >
+          <Typography
+            variant="h5"
+            sx={{
+              marginBottom: 2,
+            }}
+          >
+            Raw log line
+          </Typography>
+          <Box
+            sx={(theme) => ({
+              padding: 1,
+              bgcolor: "#EEEEEE",
+              borderRadius: 1,
+              border: `1px solid ${theme.palette.divider}`,
+            })}
+          >
+            <Typography
+              component="pre"
+              variant="body2"
+              sx={{
+                whiteSpace: "pre",
+                overflow: "auto",
+                height: "600px",
+              }}
+              data-testid="raw-log-line"
+            >
+              {formattedLogLine}
+            </Typography>
+          </Box>
+        </Box>
+      </Box>
+    </DialogWithTitle>
+  );
+};
+
 const LogVirtualView: React.FC<LogVirtualViewProps> = ({
   content,
   width = "100%",
@@ -116,27 +184,59 @@ const LogVirtualView: React.FC<LogVirtualViewProps> = ({
   if (listRef) {
     listRef.current = outter.current;
   }
+  const [selectedLogLine, setSelectedLogLine] = useState<string>();
+  const handleLogLineClick = useCallback((logLine: string) => {
+    setSelectedLogLine(logLine);
+  }, []);
+
   const itemRenderer = ({ index, style }: { index: number; style: any }) => {
     const { i, origin } = logs[revert ? logs.length - 1 - index : index];
+
+    let message = origin;
+    let formattedLogLine = origin;
+    try {
+      const parsedOrigin = JSON.parse(origin);
+      // Iff the parsed origin has a message field, use it as the message.
+      if (parsedOrigin.message) {
+        message = parsedOrigin.message;
+        // If levelname exist on the structured logs, put it in front of the message.
+        if (parsedOrigin.levelname) {
+          message = `${parsedOrigin.levelname} ${message}`;
+        }
+        // If asctime exist on the structured logs, use it as the prefix of the message.
+        if (parsedOrigin.asctime) {
+          message = `${parsedOrigin.asctime}\t${message}`;
+        }
+      }
+      formattedLogLine = JSON.stringify(parsedOrigin, null, 2);
+    } catch (e) {
+      // Keep the `origin` as message and formattedLogLine, if json parsing failed.
+    }
+
     return (
-      <div
+      <Box
         key={`${index}list`}
-        style={{ ...style, overflowX: "visible", whiteSpace: "pre" }}
-      >
-        <span
-          style={{
-            marginRight: 4,
+        style={style}
+        sx={{
+          overflowX: "visible",
+          whiteSpace: "pre",
+          "&::before": {
+            content: `"${i + 1}"`,
+            marginRight: 0.5,
             width: `${logs.length}`.length * 6 + 4,
             color: "#999",
             display: "inline-block",
-          }}
-        >
-          {i + 1}
-        </span>
+          },
+        }}
+        onClick={() => {
+          handleLogLineClick(formattedLogLine);
+        }}
+      >
         {low
-          .highlight(language, origin)
+          .highlight(language, message)
           .value.map((v) => value2react(v, index.toString(), keywords))}
-      </div>
+        <br />
+      </Box>
     );
   };
 
@@ -229,6 +329,14 @@ const LogVirtualView: React.FC<LogVirtualViewProps> = ({
       >
         {itemRenderer}
       </List>
+      {selectedLogLine && (
+        <LogLineDetailDialog
+          formattedLogLine={selectedLogLine}
+          onClose={() => {
+            setSelectedLogLine(undefined);
+          }}
+        />
+      )}
     </div>
   );
 };

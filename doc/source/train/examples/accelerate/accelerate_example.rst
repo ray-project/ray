@@ -1,7 +1,5 @@
 :orphan:
 
-.. _accelerate_example:
-
 Distributed Training with Hugging Face Accelerate
 =================================================
 
@@ -21,4 +19,4 @@ See also
 
 * :ref:`Get Started with Hugging Face Accelerate <train-hf-accelerate>` for a tutorial on using Ray Train and HF Accelerate
 
-* :ref:`Ray Train Examples <train-examples>` for more use cases
+* :doc:`Ray Train Examples <../../examples>` for more use cases

@@ -22,6 +22,7 @@ from ray.includes.unique_ids cimport (
     CUniqueID,
     CWorkerID,
     CPlacementGroupID,
+    CClusterID,
 )
 
 
@@ -343,6 +344,21 @@ cdef class ActorClassID(UniqueID):
     cdef CActorClassID native(self):
         return <CActorClassID>self.data
 
+cdef class ClusterID(UniqueID):
+
+    def __init__(self, id):
+        check_id(id)
+        self.data = CClusterID.FromBinary(<c_string>id)
+
+    @classmethod
+    def from_hex(cls, hex_id):
+        binary_id = CClusterID.FromHex(<c_string>hex_id).Binary()
+        return cls(binary_id)
+
+    cdef CClusterID native(self):
+        return <CClusterID>self.data
+
+
 # This type alias is for backward compatibility.
 ObjectID = ObjectRef
 
@@ -399,4 +415,5 @@ _ID_TYPES = [
     TaskID,
     UniqueID,
     PlacementGroupID,
+    ClusterID,
 ]

@@ -1,12 +1,44 @@
-# Counters for sampling and training steps (env- and agent steps).
-NUM_ENV_STEPS_SAMPLED = "num_env_steps_sampled"
+# Algorithm ResultDict keys.
+EVALUATION_RESULTS = "evaluation"
+ENV_RUNNER_RESULTS = "env_runners"
+REPLAY_BUFFER_RESULTS = "replay_buffer"
+LEARNER_RESULTS = "learners"
+FAULT_TOLERANCE_STATS = "fault_tolerance"
+TIMERS = "timers"
+# ALGORITHM_RESULTS = "algorithm"
+
+# Counters for sampling, sampling (on eval workers) and
+# training steps (env- and agent steps).
 NUM_AGENT_STEPS_SAMPLED = "num_agent_steps_sampled"
-NUM_ENV_STEPS_SAMPLED_THIS_ITER = "num_env_steps_sampled_this_iter"
-NUM_AGENT_STEPS_SAMPLED_THIS_ITER = "num_agent_steps_sampled_this_iter"
-NUM_ENV_STEPS_TRAINED = "num_env_steps_trained"
+NUM_AGENT_STEPS_SAMPLED_LIFETIME = "num_agent_steps_sampled_lifetime"
+NUM_AGENT_STEPS_SAMPLED_THIS_ITER = "num_agent_steps_sampled_this_iter"  # @OldAPIStack
+NUM_ENV_STEPS_SAMPLED = "num_env_steps_sampled"
+NUM_ENV_STEPS_SAMPLED_LIFETIME = "num_env_steps_sampled_lifetime"
+NUM_ENV_STEPS_SAMPLED_THIS_ITER = "num_env_steps_sampled_this_iter"  # @OldAPIStack
+NUM_ENV_STEPS_SAMPLED_FOR_EVALUATION_THIS_ITER = (
+    "num_env_steps_sampled_for_evaluation_this_iter"
+)
+NUM_MODULE_STEPS_SAMPLED = "num_module_steps_sampled"
+NUM_MODULE_STEPS_SAMPLED_LIFETIME = "num_module_steps_sampled_lifetime"
+
+EPISODE_DURATION_SEC_MEAN = "episode_duration_sec_mean"
+EPISODE_LEN_MEAN = "episode_len_mean"
+EPISODE_LEN_MAX = "episode_len_max"
+EPISODE_LEN_MIN = "episode_len_min"
+EPISODE_RETURN_MEAN = "episode_return_mean"
+EPISODE_RETURN_MAX = "episode_return_max"
+EPISODE_RETURN_MIN = "episode_return_min"
+NUM_EPISODES = "num_episodes"
+NUM_EPISODES_LIFETIME = "num_episodes_lifetime"
+
 NUM_AGENT_STEPS_TRAINED = "num_agent_steps_trained"
-NUM_ENV_STEPS_TRAINED_THIS_ITER = "num_env_steps_trained_this_iter"
-NUM_AGENT_STEPS_TRAINED_THIS_ITER = "num_agent_steps_trained_this_iter"
+NUM_AGENT_STEPS_TRAINED_LIFETIME = "num_agent_steps_trained_lifetime"
+NUM_AGENT_STEPS_TRAINED_THIS_ITER = "num_agent_steps_trained_this_iter"  # @OldAPIStack
+NUM_ENV_STEPS_TRAINED = "num_env_steps_trained"
+NUM_ENV_STEPS_TRAINED_LIFETIME = "num_env_steps_trained_lifetime"
+NUM_ENV_STEPS_TRAINED_THIS_ITER = "num_env_steps_trained_this_iter"  # @OldAPIStack
+NUM_MODULE_STEPS_TRAINED = "num_module_steps_trained"
+NUM_MODULE_STEPS_TRAINED_LIFETIME = "num_module_steps_trained_lifetime"
 # Backward compatibility: Replace with num_env_steps_... or num_agent_steps_...
 STEPS_TRAINED_THIS_ITER_COUNTER = "num_steps_trained_this_iter"
 
@@ -29,18 +61,35 @@ LAST_TARGET_UPDATE_TS = "last_target_update_ts"
 NUM_TARGET_UPDATES = "num_target_updates"
 
 # Performance timers (keys for Algorithm._timers).
+# ------------------------------------------------
+# Duration of n `Algorithm.training_step()` calls making up one "iteration".
+# Note that n may be >1 if the user has set up a min time (sec) or timesteps per
+# iteration.
 TRAINING_ITERATION_TIMER = "training_iteration"
+# Duration of a `Algorithm.evaluate()` call.
+EVALUATION_ITERATION_TIMER = "evaluation_iteration"
+# Duration of a single `training_step()` call.
+TRAINING_STEP_TIMER = "training_step"
 APPLY_GRADS_TIMER = "apply_grad"
 COMPUTE_GRADS_TIMER = "compute_grads"
 GARBAGE_COLLECTION_TIMER = "garbage_collection"
+RESTORE_WORKERS_TIMER = "restore_workers"
+RESTORE_EVAL_WORKERS_TIMER = "restore_eval_workers"
 SYNCH_WORKER_WEIGHTS_TIMER = "synch_weights"
 SYNCH_ENV_CONNECTOR_STATES_TIMER = "synch_env_connectors"
+SYNCH_EVAL_ENV_CONNECTOR_STATES_TIMER = "synch_eval_env_connectors"
 GRAD_WAIT_TIMER = "grad_wait"
-SAMPLE_TIMER = "sample"
-LEARN_ON_BATCH_TIMER = "learn"
+SAMPLE_TIMER = "sample"  # @OldAPIStack
+ENV_RUNNER_SAMPLING_TIMER = "env_runner_sampling_timer"
+REPLAY_BUFFER_SAMPLE_TIMER = "replay_buffer_sampling_timer"
+REPLAY_BUFFER_UPDATE_PRIOS_TIMER = "replay_buffer_update_prios_timer"
+LEARNER_UPDATE_TIMER = "learner_update_timer"
+LEARNER_ADDITIONAL_UPDATE_TIMER = "learner_additional_update_timer"
+LEARN_ON_BATCH_TIMER = "learn"  # @OldAPIStack
 LOAD_BATCH_TIMER = "load"
 TARGET_NET_UPDATE_TIMER = "target_net_update"
 
-# learner
+# Learner.
 LEARNER_STATS_KEY = "learner_stats"
-ALL_MODULES = "__all__"
+ALL_MODULES = "__all_modules__"
+TD_ERROR_KEY = "td_error"

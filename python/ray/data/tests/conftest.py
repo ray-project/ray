@@ -218,7 +218,6 @@ def assert_base_partitioned_ds():
         num_input_files=2,
         num_rows=6,
         schema="{one: int64, two: string}",
-        num_computed=2,
         sorted_values=None,
         ds_take_transform_fn=lambda taken: [[s["one"], s["two"]] for s in taken],
         sorted_values_transform_fn=lambda sorted_values: sorted_values,
@@ -226,7 +225,7 @@ def assert_base_partitioned_ds():
         if sorted_values is None:
             sorted_values = [[1, "a"], [1, "b"], [1, "c"], [3, "e"], [3, "f"], [3, "g"]]
         # Test metadata ops.
-        assert ds._plan.execute()._num_computed() == 0
+        assert not ds._plan.has_started_execution
         assert ds.count() == count, f"{ds.count()} != {count}"
         assert ds.size_bytes() > 0, f"{ds.size_bytes()} <= 0"
         assert ds.schema() is not None
@@ -252,17 +251,8 @@ def assert_base_partitioned_ds():
             _remove_whitespace(schema),
         ) == _remove_whitespace(repr(ds)), ds
 
-        if num_computed is not None:
-            assert (
-                ds._plan.execute()._num_computed() == num_computed
-            ), f"{ds._plan.execute()._num_computed()} != {num_computed}"
-
         # Force a data read.
         values = ds_take_transform_fn(ds.take_all())
-        if num_computed is not None:
-            assert (
-                ds._plan.execute()._num_computed() == num_computed
-            ), f"{ds._plan.execute()._num_computed()} != {num_computed}"
         actual_sorted_values = sorted_values_transform_fn(sorted(values))
         assert (
             actual_sorted_values == sorted_values
@@ -409,6 +399,7 @@ def op_two_block():
         "max_rss_bytes": [1024 * 1024 * 2, 1024 * 1024 * 1],
         "wall_time": [5, 10],
         "cpu_time": [1.2, 3.4],
+        "udf_time": [1.1, 1.7],
         "node_id": ["a1", "b2"],
         "task_idx": [0, 1],
     }
@@ -424,6 +415,7 @@ def op_two_block():
         )
         block_exec_stats.wall_time_s = block_params["wall_time"][i]
         block_exec_stats.cpu_time_s = block_params["cpu_time"][i]
+        block_exec_stats.udf_time_s = block_params["udf_time"][i]
         block_exec_stats.node_id = block_params["node_id"][i]
         block_exec_stats.max_rss_bytes = block_params["max_rss_bytes"][i]
         block_exec_stats.task_idx = block_params["task_idx"][i]

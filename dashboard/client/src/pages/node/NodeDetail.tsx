@@ -1,11 +1,5 @@
-import {
-  Grid,
-  makeStyles,
-  Switch,
-  Tab,
-  TableContainer,
-  Tabs,
-} from "@material-ui/core";
+import { Grid, Switch, Tab, TableContainer, Tabs } from "@mui/material";
+import makeStyles from "@mui/styles/makeStyles";
 import React from "react";
 import { Link } from "react-router-dom";
 import { formatDateFromTimeMs } from "../../common/formatUtils";
@@ -98,7 +92,7 @@ const NodeDetailPage = () => {
         </Tabs>
         {nodeDetail && selectedTab === "info" && (
           <div className={classes.paper}>
-            <Grid container spacing={2}>
+            <Grid container>
               <Grid item xs>
                 <div className={classes.label}>Hostname</div>{" "}
                 {nodeDetail.hostname}
@@ -107,7 +101,7 @@ const NodeDetailPage = () => {
                 <div className={classes.label}>IP</div> {nodeDetail.ip}
               </Grid>
             </Grid>
-            <Grid container spacing={2}>
+            <Grid container>
               <Grid item xs>
                 {nodeDetail.cpus && (
                   <React.Fragment>
@@ -124,7 +118,7 @@ const NodeDetailPage = () => {
                     .join("/")}
               </Grid>
             </Grid>
-            <Grid container spacing={2}>
+            <Grid container>
               <Grid item xs>
                 <div className={classes.label}>Load per CPU (1/5/15min)</div>{" "}
                 {nodeDetail?.loadAvg[1] &&
@@ -137,7 +131,7 @@ const NodeDetailPage = () => {
                 {formatDateFromTimeMs(nodeDetail.bootTime * 1000)}
               </Grid>
             </Grid>
-            <Grid container spacing={2}>
+            <Grid container>
               <Grid item xs>
                 <div className={classes.label}>Sent Tps</div>{" "}
                 {memoryConverter(nodeDetail?.networkSpeed[0])}/s
@@ -147,7 +141,7 @@ const NodeDetailPage = () => {
                 {memoryConverter(nodeDetail?.networkSpeed[1])}/s
               </Grid>
             </Grid>
-            <Grid container spacing={2}>
+            <Grid container>
               <Grid item xs>
                 <div className={classes.label}>Memory</div>{" "}
                 {nodeDetail?.mem && (
@@ -167,7 +161,7 @@ const NodeDetailPage = () => {
                 </PercentageBar>
               </Grid>
             </Grid>
-            <Grid container spacing={2}>
+            <Grid container>
               {nodeDetail?.disk &&
                 Object.entries(nodeDetail?.disk).map(([path, obj]) => (
                   <Grid item xs={6} key={path}>
@@ -181,7 +175,7 @@ const NodeDetailPage = () => {
                   </Grid>
                 ))}
             </Grid>
-            <Grid container spacing={2}>
+            <Grid container>
               <Grid item xs>
                 <div className={classes.label}>Logs</div>{" "}
                 <Link
@@ -198,7 +192,7 @@ const NodeDetailPage = () => {
         {raylet && Object.keys(raylet).length > 0 && selectedTab === "raylet" && (
           <React.Fragment>
             <div className={classes.paper}>
-              <Grid container spacing={2}>
+              <Grid container>
                 <Grid item xs>
                   <div className={classes.label}>Command</div>
                   <br />
@@ -207,7 +201,7 @@ const NodeDetailPage = () => {
                   </div>
                 </Grid>
               </Grid>
-              <Grid container spacing={2}>
+              <Grid container>
                 <Grid item xs>
                   <div className={classes.label}>Pid</div> {raylet?.pid}
                 </Grid>

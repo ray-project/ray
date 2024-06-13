@@ -163,8 +163,10 @@ def test_max_ongoing_requests():
 
     assert v1 == v2
     assert hash(v1) == hash(v2)
+    assert not v1.requires_actor_reconfigure(v2)
     assert v1 != v3
     assert hash(v1) != hash(v3)
+    assert v1.requires_actor_reconfigure(v3)
 
 
 def test_health_check_period_s():

@@ -11,7 +11,8 @@ from ray.serve._private.config import (
     ReplicaConfig,
     handle_num_replicas_auto,
 )
-from ray.serve._private.constants import SERVE_LOGGER_NAME
+from ray.serve._private.constants import DEFAULT_MAX_ONGOING_REQUESTS, SERVE_LOGGER_NAME
+from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import DEFAULT, Default
 from ray.serve.config import AutoscalingConfig
 from ray.serve.context import _get_global_client
@@ -321,9 +322,9 @@ class Deployment:
         num_replicas: Default[Optional[Union[int, str]]] = DEFAULT.VALUE,
         route_prefix: Default[Union[str, None]] = DEFAULT.VALUE,
         ray_actor_options: Default[Optional[Dict]] = DEFAULT.VALUE,
-        placement_group_bundles: Optional[List[Dict[str, float]]] = DEFAULT.VALUE,
-        placement_group_strategy: Optional[str] = DEFAULT.VALUE,
-        max_replicas_per_node: Optional[int] = DEFAULT.VALUE,
+        placement_group_bundles: Default[List[Dict[str, float]]] = DEFAULT.VALUE,
+        placement_group_strategy: Default[str] = DEFAULT.VALUE,
+        max_replicas_per_node: Default[int] = DEFAULT.VALUE,
         user_config: Default[Optional[Any]] = DEFAULT.VALUE,
         max_concurrent_queries: Default[int] = DEFAULT.VALUE,
         max_ongoing_requests: Default[int] = DEFAULT.VALUE,
@@ -350,16 +351,20 @@ class Deployment:
 
         # Modify max_ongoing_requests and autoscaling_config if
         # `num_replicas="auto"`
-        max_ongoing_requests = (
-            max_ongoing_requests
-            if max_ongoing_requests is not DEFAULT.VALUE
-            else max_concurrent_queries
-        )
+        if max_ongoing_requests is None:
+            raise ValueError("`max_ongoing_requests` must be non-null, got None.")
+        elif max_ongoing_requests is DEFAULT.VALUE:
+            if max_concurrent_queries is None:
+                max_ongoing_requests = DEFAULT_MAX_ONGOING_REQUESTS
+            else:
+                max_ongoing_requests = max_concurrent_queries
         if num_replicas == "auto":
             num_replicas = None
             max_ongoing_requests, autoscaling_config = handle_num_replicas_auto(
                 max_ongoing_requests, autoscaling_config
             )
+
+            ServeUsageTag.AUTO_NUM_REPLICAS_USED.record("1")
 
         # NOTE: The user_configured_option_names should be the first thing that's
         # defined in this method. It depends on the locals() dictionary storing
@@ -459,6 +464,18 @@ class Deployment:
 
         if autoscaling_config is not DEFAULT.VALUE:
             new_deployment_config.autoscaling_config = autoscaling_config
+            if (
+                new_deployment_config.autoscaling_config
+                and "target_num_ongoing_requests_per_replica"
+                in new_deployment_config.autoscaling_config.dict(exclude_unset=True)
+            ):
+                logger.warning(
+                    "DeprecationWarning: `target_num_ongoing_requests_per_replica` in "
+                    "`autoscaling_config` has been deprecated and replaced by "
+                    "`target_ongoing_requests`. Note that "
+                    "`target_num_ongoing_requests_per_replica` will be removed in a "
+                    "future version."
+                )
 
         if graceful_shutdown_wait_loop_s is not DEFAULT.VALUE:
             new_deployment_config.graceful_shutdown_wait_loop_s = (
@@ -549,7 +566,7 @@ def deployment_to_schema(
         "num_replicas": None
         if d._deployment_config.autoscaling_config
         else d.num_replicas,
-        "max_concurrent_queries": d.max_concurrent_queries,
+        "max_concurrent_queries": d.max_ongoing_requests,
         "max_ongoing_requests": d.max_ongoing_requests,
         "max_queued_requests": d.max_queued_requests,
         "user_config": d.user_config,

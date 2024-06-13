@@ -1,21 +1,25 @@
-from typing import Dict, List, Tuple, Union
+from typing import Any, Dict, List, Tuple, Union
 
 from ray.rllib.algorithms.dqn.dqn_rainbow_rl_module import (
     DQNRainbowRLModule,
     ATOMS,
     QF_LOGITS,
+    QF_NEXT_PREDS,
+    QF_PREDS,
     QF_PROBS,
     QF_TARGET_NEXT_PREDS,
     QF_TARGET_NEXT_PROBS,
 )
-from ray.rllib.algorithms.sac.sac_rl_module import QF_PREDS
+from ray.rllib.algorithms.dqn.torch.dqn_rainbow_torch_noisy_net import (
+    TorchNoisyMLPEncoder,
+)
+from ray.rllib.core.columns import Columns
 from ray.rllib.core.models.base import Encoder, ENCODER_OUT, Model
 from ray.rllib.core.rl_module.torch.torch_rl_module import TorchRLModule
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.core.rl_module.rl_module_with_target_networks_interface import (
     RLModuleWithTargetNetworksInterface,
 )
-from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.typing import NetworkType, TensorType, TensorStructType
@@ -26,15 +30,54 @@ torch, nn = try_import_torch()
 class DQNRainbowTorchRLModule(TorchRLModule, DQNRainbowRLModule):
     framework: str = "torch"
 
+    @override(DQNRainbowRLModule)
+    def setup(self):
+        super().setup()
+
+        # If we use a noisy encoder. Note, only if the observation
+        # space is a flat space we can use a noisy encoder.
+        self.uses_noisy_encoder = isinstance(self.encoder, TorchNoisyMLPEncoder)
+        # If we have target networks we need to sync them.
+        if not self.inference_only:
+            # We do not want to train the target networks.
+            # AND sync all target nets with the actual (trained) ones.
+            self.target_encoder.requires_grad_(False)
+            self.target_encoder.load_state_dict(self.encoder.state_dict())
+
+            self.af_target.requires_grad_(False)
+            self.af_target.load_state_dict(self.af.state_dict())
+
+            if self.uses_dueling:
+                self.vf_target.requires_grad_(False)
+                self.vf_target.load_state_dict(self.vf.state_dict())
+
+            # Set the expected and unexpected keys for the inference-only module.
+            self._set_inference_only_state_dict_keys()
+
+    # TODO (simon): Refactor to parent method.
+    @override(TorchRLModule)
+    def get_state(self, inference_only: bool = False) -> Dict[str, Any]:
+        state_dict = self.state_dict()
+        # If this module is not for inference, but the state dict is.
+        if not self.inference_only and inference_only:
+            # Call the local hook to remove or rename the parameters.
+            return self._inference_only_get_state_hook(state_dict)
+        # Otherwise, the state dict is for checkpointing or saving the model.
+        else:
+            # Return the state dict as is.
+            return state_dict
+
     @override(RLModule)
     def _forward_inference(self, batch: Dict[str, TensorType]) -> Dict[str, TensorType]:
         output = {}
 
-        # Encoder forward pass.
-        encoder_outs = self.encoder(batch)
+        # Set the module into evaluation mode, if needed.
+        if self.uses_noisy and self.training:
+            # This sets the weigths and bias to their constant version.
+            self.eval()
 
-        # Q-head.
-        qf_outs = self._qf(encoder_outs[ENCODER_OUT])
+        # Q-network forward pass.
+        qf_outs = self._qf(batch)
 
         # Get action distribution.
         action_dist_cls = self.get_exploration_action_dist_cls()
@@ -44,17 +87,24 @@ class DQNRainbowTorchRLModule(TorchRLModule, DQNRainbowRLModule):
         exploit_actions = action_dist.to_deterministic().sample()
 
         # In inference we only need the exploitation actions.
-        output[SampleBatch.ACTIONS] = exploit_actions
+        output[Columns.ACTIONS] = exploit_actions
 
         return output
 
-    # TODO (simon): Implement the timestep for more complex exploration
-    # schedules with epsilon greedy.
     @override(RLModule)
     def _forward_exploration(
         self, batch: Dict[str, TensorType], t: int
     ) -> Dict[str, TensorType]:
         output = {}
+
+        # Resample the noise for the noisy layers, if needed.
+        if self.uses_noisy:
+            # We want to resample the noise everytime we step.
+            self._reset_noise(target=False)
+            if not self.training:
+                # Set the module into training mode. This sets
+                # the weigths and bias to their noisy version.
+                self.train(True)
 
         # Q-network forward pass.
         qf_outs = self._qf(batch)
@@ -70,24 +120,24 @@ class DQNRainbowTorchRLModule(TorchRLModule, DQNRainbowRLModule):
         # variation in exploration.
         if self.uses_noisy:
             # Use the exploitation action (coming from the noisy network).
-            output[SampleBatch.ACTIONS] = exploit_actions
+            output[Columns.ACTIONS] = exploit_actions
         # Otherwise we need epsilon greedy to support exploration.
         else:
             # TODO (simon): Implement sampling for nested spaces.
             # Update scheduler.
             self.epsilon_schedule.update(t)
             # Get the actual epsilon,
-            epsilon = self.epsilon_scheduler.get_current_value()
+            epsilon = self.epsilon_schedule.get_current_value()
             # Apply epsilon-greedy exploration.
             B = qf_outs[QF_PREDS].shape[0]
             random_actions = torch.squeeze(
                 torch.multinomial(
-                    (torch.nan_to_num(qf_outs[QF_PREDS], neginf=0.0) != 0).float(),
+                    (torch.nan_to_num(qf_outs[QF_PREDS], neginf=0.0) != 0.0).float(),
                     num_samples=1,
                 ),
                 dim=1,
             )
-            output[SampleBatch.ACTIONS] = torch.where(
+            output[Columns.ACTIONS] = torch.where(
                 torch.rand((B,)) < epsilon,
                 random_actions,
                 exploit_actions,
@@ -99,17 +149,42 @@ class DQNRainbowTorchRLModule(TorchRLModule, DQNRainbowRLModule):
     def _forward_train(
         self, batch: Dict[str, TensorType]
     ) -> Dict[str, TensorStructType]:
+        if self.inference_only:
+            raise RuntimeError(
+                "Trying to train a module that is not a learner module. Set the "
+                "flag `inference_only=False` when building the module."
+            )
         output = {}
 
-        # DQN needs the Q-values for the current and the next observation.
-        batch_curr = {SampleBatch.OBS: batch[SampleBatch.OBS]}
-        batch_next = {SampleBatch.OBS: batch[SampleBatch.NEXT_OBS]}
+        # Set module into training mode.
+        if self.uses_noisy and not self.training:
+            # This sets the weigths and bias to their noisy version.
+            self.train(True)
+
+        # If we use a double-Q setup.
+        if self.uses_double_q:
+            # Then we need to make a single forward pass with both,
+            # current and next observations.
+            batch_base = {
+                Columns.OBS: torch.concat(
+                    [batch[Columns.OBS], batch[Columns.NEXT_OBS]], dim=0
+                ),
+            }
+        # Otherwise we can just use the current observations.
+        else:
+            batch_base = {Columns.OBS: batch[Columns.OBS]}
+        batch_target = {Columns.OBS: batch[Columns.NEXT_OBS]}
 
         # Q-network forward passes.
-        qf_outs = self._qf(batch_curr)
-        output[QF_PREDS] = qf_outs[QF_PREDS]
+        qf_outs = self._qf(batch_base)
+        if self.uses_double_q:
+            output[QF_PREDS], output[QF_NEXT_PREDS] = torch.chunk(
+                qf_outs[QF_PREDS], chunks=2, dim=0
+            )
+        else:
+            output[QF_PREDS] = qf_outs[QF_PREDS]
         # The target Q-values for the next observations.
-        qf_target_next_outs = self._qf_target(batch_next)
+        qf_target_next_outs = self._qf_target(batch_target)
         output[QF_TARGET_NEXT_PREDS] = qf_target_next_outs[QF_PREDS]
         # We are learning a Q-value distribution.
         if self.num_atoms > 1:
@@ -118,7 +193,9 @@ class DQNRainbowTorchRLModule(TorchRLModule, DQNRainbowRLModule):
             output[ATOMS] = qf_target_next_outs[ATOMS]
             # Original logits from the Q-head.
             output[QF_LOGITS] = qf_outs[QF_LOGITS]
-            # Probabilities of the Q-value distribution of the next state.
+            # Probabilities of the Q-value distribution of the current state.
+            output[QF_PROBS] = qf_outs[QF_PROBS]
+            # Probabilities of the target Q-value distribution of the next state.
             output[QF_TARGET_NEXT_PROBS] = qf_target_next_outs[QF_PROBS]
 
         return output
@@ -127,7 +204,7 @@ class DQNRainbowTorchRLModule(TorchRLModule, DQNRainbowRLModule):
     def _qf(self, batch: Dict[str, TensorType]) -> Dict[str, TensorType]:
         """Computes Q-values.
 
-        Note, these can be accompanied with logits and pobabilities
+        Note, these can be accompanied by logits and probabilities
         in case of distributional Q-learning, i.e. `self.num_atoms > 1`.
 
         Args:
@@ -143,14 +220,14 @@ class DQNRainbowTorchRLModule(TorchRLModule, DQNRainbowRLModule):
         return self._qf_forward_helper(
             batch,
             self.encoder,
-            {"af": self.af, "vf": self.vf} if self.is_dueling else self.af,
+            {"af": self.af, "vf": self.vf} if self.uses_dueling else self.af,
         )
 
     @override(DQNRainbowRLModule)
     def _qf_target(self, batch: Dict[str, TensorType]) -> Dict[str, TensorType]:
         """Computes Q-values from the target network.
 
-        Note, these can be accompanied with logits and pobabilities
+        Note, these can be accompanied by logits and probabilities
         in case of distributional Q-learning, i.e. `self.num_atoms > 1`.
 
         Args:
@@ -166,9 +243,11 @@ class DQNRainbowTorchRLModule(TorchRLModule, DQNRainbowRLModule):
         return self._qf_forward_helper(
             batch,
             self.target_encoder,
-            {"af": self.af_target, "vf": self.vf_target}
-            if self.is_dueling
-            else self.af_target,
+            (
+                {"af": self.af_target, "vf": self.vf_target}
+                if self.uses_dueling
+                else self.af_target
+            ),
         )
 
     @override(DQNRainbowRLModule)
@@ -198,9 +277,9 @@ class DQNRainbowTorchRLModule(TorchRLModule, DQNRainbowRLModule):
         # Rescale the support.
         z = self.v_min + z * (self.v_max - self.v_min) / float(self.num_atoms - 1)
         # Reshape the action values.
+        # NOTE: Handcrafted action shape.
         logits_per_action_per_atom = torch.reshape(
-            batch,
-            shape=(-1, self.config.action_space.n, self.num_atoms),
+            batch, shape=(-1, self.config.action_space.n, self.num_atoms)
         )
         # Calculate the probability for each action value atom. Note,
         # the sum along action value atoms of a single action value
@@ -225,10 +304,12 @@ class DQNRainbowTorchRLModule(TorchRLModule, DQNRainbowRLModule):
             [
                 (self.vf_target, self.vf),
             ]
-            if self.is_dueling
+            if self.uses_dueling
             else []
         )
 
+    # TODO (simon): Test, if providing the function with a `return_probs`
+    # improves performance significantly.
     @override(DQNRainbowRLModule)
     def _qf_forward_helper(
         self,
@@ -262,7 +343,7 @@ class DQNRainbowTorchRLModule(TorchRLModule, DQNRainbowRLModule):
         encoder_outs = encoder(batch)
 
         # Do we have a dueling architecture.
-        if self.is_dueling:
+        if self.uses_dueling:
             # Head forward passes for advantage and value stream.
             qf_outs = head["af"](encoder_outs[ENCODER_OUT])
             vf_outs = head["vf"](encoder_outs[ENCODER_OUT])
@@ -292,11 +373,11 @@ class DQNRainbowTorchRLModule(TorchRLModule, DQNRainbowRLModule):
                 # b/c we backpropagate through these values. See for a discussion
                 # https://discuss.pytorch.org/t/gradient-computation-issue-due-to-
                 # inplace-operation-unsure-how-to-debug-for-custom-model/170133
+                # Has to be a mean for each batch element.
                 af_outs_mean = torch.unsqueeze(
                     torch.nan_to_num(qf_outs, neginf=torch.nan).nanmean(dim=1), dim=1
                 )
                 qf_outs = qf_outs - af_outs_mean
-                # TODO (simon): Check if unsqueeze is necessary.
                 # Add advantage and value stream. Note, we broadcast here.
                 output[QF_PREDS] = qf_outs + vf_outs
         # No dueling architecture.
@@ -324,3 +405,57 @@ class DQNRainbowTorchRLModule(TorchRLModule, DQNRainbowRLModule):
                 output[QF_PREDS] = qf_outs
 
         return output
+
+    @override(DQNRainbowRLModule)
+    def _reset_noise(self, target: bool = False) -> None:
+        """Reset the noise of all noisy layers.
+
+        Args:
+            target: Whether to reset the noise of the target networks.
+        """
+        if self.uses_noisy:
+            if self.uses_noisy_encoder:
+                self.encoder._reset_noise()
+            self.af._reset_noise()
+            # If we have a dueling architecture we need to reset the noise
+            # of the value stream, too.
+            if self.uses_dueling:
+                self.vf._reset_noise()
+            # Reset the noise of the target networks, if requested.
+            if target:
+                if self.uses_noisy_encoder:
+                    self.target_encoder._reset_noise()
+                self.af_target._reset_noise()
+                # If we have a dueling architecture we need to reset the noise
+                # of the value stream, too.
+                if self.uses_dueling:
+                    self.vf_target._reset_noise()
+
+    @override(TorchRLModule)
+    def _set_inference_only_state_dict_keys(self) -> None:
+        # Get the model parameters.
+        state_dict = self.state_dict()
+        # Note, these keys are only known to the learner module. Furthermore,
+        # we want this to be run once during setup and not for each worker.
+        # TODO (simon): Check, if we can also remove the value network.
+        self._inference_only_state_dict_keys["unexpected_keys"] = [
+            name for name in state_dict if "target" in name
+        ]
+
+    @override(TorchRLModule)
+    def _inference_only_get_state_hook(
+        self, state_dict: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        # If we have keys in the state dict to take care of.
+        if self._inference_only_state_dict_keys:
+            # If we have unexpected keys remove them.
+            if self._inference_only_state_dict_keys.get("unexpected_keys"):
+                for param in self._inference_only_state_dict_keys["unexpected_keys"]:
+                    del state_dict[param]
+            # If we have expected keys, rename.
+            if self._inference_only_state_dict_keys.get("expected_keys"):
+                for param in self._inference_only_state_dict_keys["expected_keys"]:
+                    state_dict[
+                        self._inference_only_state_dict_keys["expected_keys"][param]
+                    ] = state_dict.pop(param)
+        return state_dict

@@ -4,13 +4,12 @@ from ray.rllib.algorithms.ppo.ppo import (
     LEARNER_RESULTS_CURR_ENTROPY_COEFF_KEY,
     PPOConfig,
 )
+from ray.rllib.core.columns import Columns
 from ray.rllib.core.learner.learner import Learner
-from ray.rllib.core.learner.reduce_result_dict_fn import _reduce_mean_results
 from ray.rllib.evaluation.postprocessing import Postprocessing
 from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
 from ray.rllib.utils.annotations import override, OverrideToImplementCustomLogic
 from ray.rllib.utils.lambda_defaultdict import LambdaDefaultDict
-from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.postprocessing.value_predictions import compute_value_targets
 from ray.rllib.utils.postprocessing.episodes import (
@@ -45,7 +44,7 @@ class PPOLearner(Learner):
         # Note that the KL coeff is not controlled by a Scheduler, but seeks
         # to stay close to a given kl_target value in our implementation of
         # `self.additional_update_for_module()`.
-        self.curr_kl_coeffs_per_module: Dict[ModuleID, Scheduler] = LambdaDefaultDict(
+        self.curr_kl_coeffs_per_module: Dict[ModuleID, TensorType] = LambdaDefaultDict(
             lambda module_id: self._get_tensor_variable(
                 self.config.get_config_for_module(module_id).kl_coeff
             )
@@ -57,22 +56,19 @@ class PPOLearner(Learner):
         *,
         batch=None,
         episodes=None,
-        reduce_fn=_reduce_mean_results,
-        minibatch_size=None,
-        num_iters=1,
+        **kwargs,
     ):
         # First perform GAE computation on the entirety of the given train data (all
         # episodes).
-        if self.config.uses_new_env_runners:
+        if self.config.enable_env_runner_and_connector_v2:
             batch, episodes = self._compute_gae_from_episodes(episodes=episodes)
+
         # Now that GAE (advantages and value targets) have been added to the train
         # batch, we can proceed normally (calling super method) with the update step.
         return super()._update_from_batch_or_episodes(
             batch=batch,
             episodes=episodes,
-            reduce_fn=reduce_fn,
-            minibatch_size=minibatch_size,
-            num_iters=num_iters,
+            **kwargs,
         )
 
     def _compute_gae_from_episodes(
@@ -147,14 +143,14 @@ class PPOLearner(Learner):
             module_value_targets = compute_value_targets(
                 values=module_vf_preds,
                 rewards=unpad_data_if_necessary(
-                    episode_lens_plus_1, batch_for_vf[module_id][SampleBatch.REWARDS]
+                    episode_lens_plus_1, batch_for_vf[module_id][Columns.REWARDS]
                 ),
                 terminateds=unpad_data_if_necessary(
                     episode_lens_plus_1,
-                    batch_for_vf[module_id][SampleBatch.TERMINATEDS],
+                    batch_for_vf[module_id][Columns.TERMINATEDS],
                 ),
                 truncateds=unpad_data_if_necessary(
-                    episode_lens_plus_1, batch_for_vf[module_id][SampleBatch.TRUNCATEDS]
+                    episode_lens_plus_1, batch_for_vf[module_id][Columns.TRUNCATEDS]
                 ),
                 gamma=self.config.gamma,
                 lambda_=self.config.lambda_,
@@ -221,27 +217,27 @@ class PPOLearner(Learner):
         module_id: ModuleID,
         config: "PPOConfig",
         timestep: int,
-        sampled_kl_values: dict,
-    ) -> Dict[str, Any]:
-        results = super().additional_update_for_module(
+    ) -> None:
+        super().additional_update_for_module(
             module_id=module_id,
             config=config,
             timestep=timestep,
-            sampled_kl_values=sampled_kl_values,
         )
 
         # Update entropy coefficient via our Scheduler.
         new_entropy_coeff = self.entropy_coeff_schedulers_per_module[module_id].update(
             timestep=timestep
         )
-        results.update({LEARNER_RESULTS_CURR_ENTROPY_COEFF_KEY: new_entropy_coeff})
-
-        return results
+        self.metrics.log_value(
+            (module_id, LEARNER_RESULTS_CURR_ENTROPY_COEFF_KEY),
+            new_entropy_coeff,
+            window=1,
+        )
 
     @OverrideToImplementCustomLogic
     def _compute_values(
         self,
-        batch_for_vf: Union[MultiAgentBatch, NestedDict],
+        batch_for_vf: Dict[str, Any],
     ) -> Union[TensorType, Dict[str, Any]]:
         """Computes the value function predictions for the module being optimized.
 
@@ -250,8 +246,8 @@ class PPOLearner(Learner):
         (or independent multi-agent), there should be no need to override this method.
 
         Args:
-            batch_for_vf: The multi-agent batch to be used for value function
-                predictions.
+            batch_for_vf: The multi-agent batch (mapping ModuleIDs to module data) to
+                be used for value function predictions.
 
         Returns:
             A dictionary mapping module IDs to individual value function prediction
@@ -262,5 +258,5 @@ class PPOLearner(Learner):
                 module_batch, self._device
             )
             for module_id, module_batch in batch_for_vf.policy_batches.items()
-            if self.should_module_be_updated(module_id, module_batch)
+            if self.should_module_be_updated(module_id, batch_for_vf)
         }

@@ -17,7 +17,6 @@ from ray.serve.schema import (
     ServeApplicationSchema,
     ServeDeploySchema,
     ServeInstanceDetails,
-    _skip_validating_runtime_env_uris,
 )
 from ray.serve.tests.common.remote_uris import (
     TEST_DEPLOY_GROUP_PINNED_URI,
@@ -111,7 +110,6 @@ class TestRayActorOptionsSchema:
             "num_cpus": 0.2,
             "num_gpus": 50,
             "memory": 3,
-            "object_store_memory": 64,
             "resources": {"custom_asic": 12},
             "accelerator_type": NVIDIA_TESLA_V100,
         }
@@ -126,7 +124,7 @@ class TestRayActorOptionsSchema:
         # Ensure ValidationError is raised when any fields that must be greater
         # than zero is set to zero.
 
-        ge_zero_fields = ["num_cpus", "num_gpus", "memory", "object_store_memory"]
+        ge_zero_fields = ["num_cpus", "num_gpus", "memory"]
         for field in ge_zero_fields:
             with pytest.raises(ValidationError):
                 RayActorOptionsSchema.parse_obj({field: -1})
@@ -156,15 +154,6 @@ class TestRayActorOptionsSchema:
         with pytest.raises(ValueError):
             RayActorOptionsSchema.parse_obj(ray_actor_options_schema)
 
-        # Inside the context, runtime_envs with local URIs should not be rejected.
-        with _skip_validating_runtime_env_uris():
-            schema = RayActorOptionsSchema.parse_obj(ray_actor_options_schema)
-            assert schema.runtime_env == env
-
-        # Check that the validation state is reset outside of the context manager.
-        with pytest.raises(ValueError):
-            RayActorOptionsSchema.parse_obj(ray_actor_options_schema)
-
     def test_extra_fields_invalid_ray_actor_options(self):
         # Undefined fields should be forbidden in the schema
 
@@ -173,7 +162,6 @@ class TestRayActorOptionsSchema:
             "num_cpus": None,
             "num_gpus": None,
             "memory": None,
-            "object_store_memory": None,
             "resources": {},
             "accelerator_type": None,
         }
@@ -227,7 +215,6 @@ class TestDeploymentSchema:
                 "num_cpus": 3,
                 "num_gpus": 4.2,
                 "memory": 5,
-                "object_store_memory": 3,
                 "resources": {"custom_asic": 8},
                 "accelerator_type": NVIDIA_TESLA_P4,
             },
@@ -360,6 +347,30 @@ class TestDeploymentSchema:
         with pytest.raises(ValueError):
             DeploymentSchema.parse_obj(deployment_schema)
 
+    def test_mutually_exclusive_max_replicas_per_node_and_placement_group_bundles(self):
+        # max_replicas_per_node and placement_group_bundles
+        # cannot be set at the same time
+        deployment_schema = self.get_minimal_deployment_schema()
+
+        deployment_schema["max_replicas_per_node"] = 5
+        deployment_schema.pop("placement_group_bundles", None)
+        DeploymentSchema.parse_obj(deployment_schema)
+
+        deployment_schema.pop("max_replicas_per_node", None)
+        deployment_schema["placement_group_bundles"] = [{"GPU": 1}, {"GPU": 1}]
+        DeploymentSchema.parse_obj(deployment_schema)
+
+        deployment_schema["max_replicas_per_node"] = 5
+        deployment_schema["placement_group_bundles"] = [{"GPU": 1}, {"GPU": 1}]
+        with pytest.raises(
+            ValueError,
+            match=(
+                "Setting max_replicas_per_node is not allowed when "
+                "placement_group_bundles is provided."
+            ),
+        ):
+            DeploymentSchema.parse_obj(deployment_schema)
+
     def test_num_replicas_auto(self):
         deployment_schema = self.get_minimal_deployment_schema()
 
@@ -388,31 +399,43 @@ class TestDeploymentSchema:
         deployment_schema["extra_field"] = None
         DeploymentSchema.parse_obj(deployment_schema)
 
+    def test_user_config_nullable(self):
+        deployment_options = {"name": "test", "user_config": None}
+        DeploymentSchema.parse_obj(deployment_options)
+
+    def test_autoscaling_config_nullable(self):
+        deployment_options = {
+            "name": "test",
+            "autoscaling_config": None,
+            "num_replicas": 5,
+        }
+        DeploymentSchema.parse_obj(deployment_options)
+
+    def test_route_prefix_nullable(self):
+        deployment_options = {"name": "test", "route_prefix": None}
+        DeploymentSchema.parse_obj(deployment_options)
+
     @pytest.mark.parametrize(
-        "option",
-        [
-            "num_replicas",
-            "route_prefix",
-            "autoscaling_config",
-            "user_config",
-        ],
+        "use_target_ongoing_requests,use_target_num_ongoing_requests_per_replica",
+        [(True, True), (True, False), (False, True)],
     )
-    def test_nullable_options(self, option: str):
-        """Check that nullable options can be set to None."""
-
-        deployment_options = {"name": "test", option: None}
-
-        # One of "num_replicas" or "autoscaling_config" must be provided.
-        if option == "num_replicas":
-            deployment_options["autoscaling_config"] = {
+    def test_num_replicas_nullable(
+        self, use_target_ongoing_requests, use_target_num_ongoing_requests_per_replica
+    ):
+        deployment_options = {
+            "name": "test",
+            "num_replicas": None,
+            "autoscaling_config": {
                 "min_replicas": 1,
                 "max_replicas": 5,
-                "target_num_ongoing_requests_per_replica": 5,
-            }
-        elif option == "autoscaling_config":
-            deployment_options["num_replicas"] = 5
-
-        # Schema should be created without error.
+            },
+        }
+        if use_target_ongoing_requests:
+            deployment_options["autoscaling_config"]["target_ongoing_requests"] = 5
+        if use_target_num_ongoing_requests_per_replica:
+            deployment_options["autoscaling_config"][
+                "target_num_ongoing_requests_per_replica"
+            ] = 5
         DeploymentSchema.parse_obj(deployment_options)
 
 
@@ -441,7 +464,6 @@ class TestServeApplicationSchema:
                         "num_cpus": 3,
                         "num_gpus": 4.2,
                         "memory": 5,
-                        "object_store_memory": 3,
                         "resources": {"custom_asic": 8},
                         "accelerator_type": NVIDIA_TESLA_P4,
                     },
@@ -494,15 +516,6 @@ class TestServeApplicationSchema:
             ServeApplicationSchema.parse_obj(serve_application_schema)
 
         # By default, runtime_envs with local URIs should be rejected.
-        with pytest.raises(ValueError):
-            ServeApplicationSchema.parse_obj(serve_application_schema)
-
-        # Inside the context, runtime_envs with local URIs should not be rejected.
-        with _skip_validating_runtime_env_uris():
-            schema = ServeApplicationSchema.parse_obj(serve_application_schema)
-            assert schema.runtime_env == env
-
-        # Check that the validation was reset after the above call.
         with pytest.raises(ValueError):
             ServeApplicationSchema.parse_obj(serve_application_schema)
 

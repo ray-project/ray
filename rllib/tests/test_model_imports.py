@@ -201,7 +201,7 @@ class TestModelImport(unittest.TestCase):
             config=(
                 PPOConfig()
                 .environment("CartPole-v1")
-                .rollouts(num_rollout_workers=0)
+                .env_runners(num_env_runners=0)
                 # We need to diable the RLModule / Learner API here, since this test is
                 # overfitted to the ModelV2 API stack.
                 .training(

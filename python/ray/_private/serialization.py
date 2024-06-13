@@ -21,7 +21,9 @@ from ray._raylet import (
 )
 from ray.core.generated.common_pb2 import ErrorType, RayErrorInfo
 from ray.exceptions import (
+    ActorDiedError,
     ActorPlacementGroupRemoved,
+    ActorUnavailableError,
     ActorUnschedulableError,
     LocalRayletDiedError,
     NodeDiedError,
@@ -33,7 +35,6 @@ from ray.exceptions import (
     OutOfDiskError,
     OwnerDiedError,
     PlasmaObjectNotAvailable,
-    RayActorError,
     RayError,
     RaySystemError,
     RayTaskError,
@@ -247,7 +248,7 @@ class SerializationContext:
 
     def _deserialize_actor_died_error(self, data, metadata_fields):
         if not data:
-            return RayActorError()
+            return ActorDiedError()
         ray_error_info = self._deserialize_error_info(data, metadata_fields)
         assert ray_error_info.HasField("actor_died_error")
         if ray_error_info.actor_died_error.HasField("creation_task_failure_context"):
@@ -256,7 +257,7 @@ class SerializationContext:
             )
         else:
             assert ray_error_info.actor_died_error.HasField("actor_died_error_context")
-            return RayActorError(
+            return ActorDiedError(
                 cause=ray_error_info.actor_died_error.actor_died_error_context
             )
 
@@ -379,6 +380,13 @@ class SerializationContext:
                 return ActorUnschedulableError(error_info.error_message)
             elif error_type == ErrorType.Value("END_OF_STREAMING_GENERATOR"):
                 return ObjectRefStreamEndOfStreamError()
+            elif error_type == ErrorType.Value("ACTOR_UNAVAILABLE"):
+                error_info = self._deserialize_error_info(data, metadata_fields)
+                if error_info.HasField("actor_unavailable_error"):
+                    actor_id = error_info.actor_unavailable_error.actor_id
+                else:
+                    actor_id = None
+                return ActorUnavailableError(error_info.error_message, actor_id)
             else:
                 return RaySystemError("Unrecognized error type " + str(error_type))
         elif data:

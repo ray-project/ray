@@ -150,7 +150,7 @@ class ActorProxyWrapper(ProxyWrapper):
         except ValueError:
             logger.info(
                 f"Starting proxy on node '{node_id}' "
-                f"listening on '{config.host}:{port}'",
+                f"listening on '{config.host}:{port}'.",
                 extra={"log_to_stderr": False},
             )
 
@@ -350,6 +350,10 @@ class ProxyState:
         return self._actor_name
 
     @property
+    def actor_id(self) -> str:
+        return self._actor_proxy_wrapper.actor_id
+
+    @property
     def status(self) -> ProxyStatus:
         return self._status
 
@@ -486,18 +490,14 @@ class ProxyState:
                 return
             elif self._status == ProxyStatus.HEALTHY:
                 if draining:
-                    logger.info(
-                        f"Start draining the proxy actor on node {self._node_id}"
-                    )
+                    logger.info(f"Draining proxy on node '{self._node_id}'.")
                     assert self._last_drain_check_time is None
 
                     self._actor_proxy_wrapper.update_draining(draining=True)
                     self.try_update_status(ProxyStatus.DRAINING)
             elif self._status == ProxyStatus.DRAINING:
                 if not draining:
-                    logger.info(
-                        f"Stop draining the proxy actor on node {self._node_id}"
-                    )
+                    logger.info(f"No longer draining proxy on node '{self._node_id}'.")
                     self._last_drain_check_time = None
 
                     self._actor_proxy_wrapper.update_draining(draining=False)
@@ -569,7 +569,7 @@ class ProxyStateManager:
 
         assert isinstance(head_node_id, str)
 
-    def reconfiture_logging_config(self, logging_config: LoggingConfig):
+    def reconfigure_logging_config(self, logging_config: LoggingConfig):
         self.logging_config = logging_config
 
     def shutdown(self) -> None:
@@ -609,7 +609,10 @@ class ProxyStateManager:
             for node_id, state in self._proxy_states.items()
         }
 
-    def update(self, proxy_nodes: Set[NodeId] = None):
+    def get_alive_proxy_actor_ids(self) -> Set[str]:
+        return {state.actor_id for state in self._proxy_states.values()}
+
+    def update(self, proxy_nodes: Set[NodeId] = None) -> Set[str]:
         """Update the state of all proxies.
 
         Start proxies on all nodes if not already exist and stop the proxies on nodes

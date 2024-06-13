@@ -2,6 +2,7 @@ from typing import Tuple
 
 from ray.rllib.models.torch.misc import Reshape
 from ray.rllib.models.utils import get_activation_fn, get_initializer
+from ray.rllib.utils.annotations import OldAPIStack
 from ray.rllib.utils.framework import try_import_torch
 
 torch, nn = try_import_torch()
@@ -9,6 +10,7 @@ if torch:
     import torch.distributions as td
 
 
+@OldAPIStack
 class ConvTranspose2DStack(nn.Module):
     """ConvTranspose2D decoder generating an image distribution from a vector."""
 

@@ -1,6 +1,9 @@
 import numpy as np
 
+from ray.util.annotations import DeveloperAPI
 
+
+@DeveloperAPI
 def compute_value_targets(
     values,
     rewards,
@@ -11,7 +14,7 @@ def compute_value_targets(
 ):
     """Computes value function (vf) targets given vf predictions and rewards.
 
-    Note that advantages can then easily be computeed via the formula:
+    Note that advantages can then easily be computed via the formula:
     advantages = targets - vf_predictions
     """
     # Force-set all values at terminals (not at truncations!) to 0.0.

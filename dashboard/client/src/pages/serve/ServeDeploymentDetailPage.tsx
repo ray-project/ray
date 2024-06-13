@@ -1,8 +1,7 @@
 import {
+  Autocomplete,
   Box,
-  createStyles,
-  InputAdornment,
-  makeStyles,
+  Pagination,
   Table,
   TableBody,
   TableCell,
@@ -12,14 +11,16 @@ import {
   TextField,
   TextFieldProps,
   Typography,
-} from "@material-ui/core";
-import { Autocomplete, Pagination } from "@material-ui/lab";
+} from "@mui/material";
+import createStyles from "@mui/styles/createStyles";
+import makeStyles from "@mui/styles/makeStyles";
 import React, { ReactElement } from "react";
 import { Outlet, useParams } from "react-router-dom";
 import { CodeDialogButton } from "../../common/CodeDialogButton";
 import { CollapsibleSection } from "../../common/CollapsibleSection";
 import { DurationText } from "../../common/DurationText";
 import { formatDateFromTimeMs } from "../../common/formatUtils";
+import { sliceToPage } from "../../common/util";
 import Loading from "../../components/Loading";
 import { MetadataSection } from "../../components/MetadataSection";
 import { StatusChip } from "../../components/StatusChip";
@@ -82,6 +83,12 @@ export const ServeDeploymentDetailPage = () => {
       </Typography>
     );
   }
+
+  const {
+    items: list,
+    constrainedPage,
+    maxPage,
+  } = sliceToPage(filteredReplicas, page.pageNo, page.pageSize);
 
   return (
     <div className={classes.root}>
@@ -186,16 +193,13 @@ export const ServeDeploymentDetailPage = () => {
                 onChange: ({ target: { value } }) => {
                   setPage("pageSize", Math.min(Number(value), 500) || 10);
                 },
-                endAdornment: (
-                  <InputAdornment position="end">Per Page</InputAdornment>
-                ),
               }}
             />
           </div>
           <div style={{ display: "flex", alignItems: "center" }}>
             <Pagination
-              count={Math.ceil(filteredReplicas.length / page.pageSize)}
-              page={page.pageNo}
+              count={maxPage}
+              page={constrainedPage}
               onChange={(e, pageNo) => setPage("pageNo", pageNo)}
             />
           </div>
@@ -225,18 +229,13 @@ export const ServeDeploymentDetailPage = () => {
               </TableRow>
             </TableHead>
             <TableBody>
-              {filteredReplicas
-                .slice(
-                  (page.pageNo - 1) * page.pageSize,
-                  page.pageNo * page.pageSize,
-                )
-                .map((replica) => (
-                  <ServeReplicaRow
-                    key={replica.replica_id}
-                    deployment={deployment}
-                    replica={replica}
-                  />
-                ))}
+              {list.map((replica) => (
+                <ServeReplicaRow
+                  key={replica.replica_id}
+                  deployment={deployment}
+                  replica={replica}
+                />
+              ))}
             </TableBody>
           </Table>
         </TableContainer>

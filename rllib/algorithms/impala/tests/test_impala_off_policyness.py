@@ -23,19 +23,19 @@ class TestIMPALAOffPolicyNess(unittest.TestCase):
     def test_impala_off_policyness(self):
         config = (
             impala.ImpalaConfig()
-            .experimental(_enable_new_api_stack=True)
+            .api_stack(enable_rl_module_and_learner=True)
             .environment("CartPole-v1")
             .resources(num_gpus=0)
-            .rollouts(num_rollout_workers=4)
+            .env_runners(num_env_runners=4)
         )
         num_iterations = 3
         num_aggregation_workers_options = [0, 1]
 
         for num_aggregation_workers in num_aggregation_workers_options:
-            for _ in framework_iterator(config, frameworks=("tf2", "torch")):
+            for _ in framework_iterator(config, frameworks=("torch", "tf2")):
 
                 # We have to set exploration_config here manually because setting
-                # it through config.exploration() only deepupdates it
+                # it through config.env_runners() only deepupdates it
                 config.exploration_config = {}
                 config.num_aggregation_workers = num_aggregation_workers
                 print("aggregation-workers={}".format(config.num_aggregation_workers))

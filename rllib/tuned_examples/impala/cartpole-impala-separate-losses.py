@@ -1,9 +1,15 @@
+# @OldAPIStack
 from ray.rllib.algorithms.impala import ImpalaConfig
+from ray.rllib.utils.metrics import (
+    ENV_RUNNER_RESULTS,
+    EPISODE_RETURN_MEAN,
+    NUM_ENV_STEPS_SAMPLED_LIFETIME,
+)
 
 
 stop = {
-    "sampler_results/episode_reward_mean": 150,
-    "timesteps_total": 200000,
+    f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": 150,
+    f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}": 200000,
 }
 
 config = (
@@ -26,9 +32,9 @@ config = (
             "vf_share_layers": False,
         },
     )
-    .rollouts(
-        num_envs_per_worker=5,
-        num_rollout_workers=1,
+    .env_runners(
+        num_envs_per_env_runner=5,
+        num_env_runners=1,
         observation_filter="MeanStdFilter",
     )
     .resources(num_gpus=0)

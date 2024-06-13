@@ -3,8 +3,10 @@ from typing import List, Tuple
 import numpy as np
 
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode
+from ray.util.annotations import DeveloperAPI
 
 
+@DeveloperAPI
 def add_one_ts_to_episodes_and_truncate(episodes: List[SingleAgentEpisode]):
     """Adds an artificial timestep to an episode at the end.
 
@@ -57,6 +59,7 @@ def add_one_ts_to_episodes_and_truncate(episodes: List[SingleAgentEpisode]):
     return orig_truncateds
 
 
+@DeveloperAPI
 def remove_last_ts_from_data(
     episode_lens: List[int],
     *data: Tuple[np._typing.NDArray],
@@ -114,6 +117,7 @@ def remove_last_ts_from_data(
     return tuple(ret)
 
 
+@DeveloperAPI
 def remove_last_ts_from_episodes_and_restore_truncateds(
     episodes: List[SingleAgentEpisode],
     orig_truncateds: List[bool],

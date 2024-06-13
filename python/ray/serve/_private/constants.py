@@ -36,8 +36,13 @@ SERVE_DEFAULT_APP_NAME = "default"
 #: Max concurrency
 ASYNC_CONCURRENCY = int(1e6)
 
-# How often to call the control loop on the controller.
-CONTROL_LOOP_PERIOD_S = 0.1
+# How long to sleep between control loop cycles on the controller.
+CONTROL_LOOP_INTERVAL_S = float(os.getenv("RAY_SERVE_CONTROL_LOOP_INTERVAL_S", 0.1))
+assert CONTROL_LOOP_INTERVAL_S >= 0, (
+    f"Got unexpected value {CONTROL_LOOP_INTERVAL_S} for "
+    "RAY_SERVE_CONTROL_LOOP_INTERVAL_S environment variable. "
+    "RAY_SERVE_CONTROL_LOOP_INTERVAL_S cannot be negative."
+)
 
 #: Max time to wait for HTTP proxy in `serve.start()`.
 HTTP_PROXY_TIMEOUT = 60
@@ -135,7 +140,9 @@ CLIENT_POLLING_INTERVAL_S: float = 1
 CLIENT_CHECK_CREATION_POLLING_INTERVAL_S: float = 0.1
 
 # Handle metric push interval. (This interval will affect the cold start time period)
-HANDLE_METRIC_PUSH_INTERVAL_S = 10
+HANDLE_METRIC_PUSH_INTERVAL_S = float(
+    os.environ.get("RAY_SERVE_HANDLE_METRIC_PUSH_INTERVAL_S", "10")
+)
 
 # Timeout for GCS internal KV service
 RAY_SERVE_KV_TIMEOUT_S = float(os.environ.get("RAY_SERVE_KV_TIMEOUT_S", "0")) or None
@@ -168,6 +175,10 @@ RAY_SERVE_LOG_ENCODING = os.environ.get("RAY_SERVE_LOG_ENCODING", "TEXT")
 # future. Use RAY_SERVE_LOG_ENCODING or 'LoggingConfig' to enable json format.
 RAY_SERVE_ENABLE_JSON_LOGGING = os.environ.get("RAY_SERVE_ENABLE_JSON_LOGGING") == "1"
 
+# Setting RAY_SERVE_LOG_TO_STDERR=0 will disable logging to the stdout and stderr.
+# Also, redirect them to serve's log files.
+RAY_SERVE_LOG_TO_STDERR = os.environ.get("RAY_SERVE_LOG_TO_STDERR", "1") == "1"
+
 # Logging format attributes
 SERVE_LOG_REQUEST_ID = "request_id"
 SERVE_LOG_ROUTE = "route"
@@ -177,6 +188,8 @@ SERVE_LOG_REPLICA = "replica"
 SERVE_LOG_COMPONENT = "component_name"
 SERVE_LOG_COMPONENT_ID = "component_id"
 SERVE_LOG_MESSAGE = "message"
+SERVE_LOG_ACTOR_ID = "actor_id"
+SERVE_LOG_WORKER_ID = "worker_id"
 # This is a reserved for python logging module attribute, it should not be changed.
 SERVE_LOG_LEVEL_NAME = "levelname"
 SERVE_LOG_TIME = "asctime"
@@ -217,6 +230,9 @@ RAY_SERVE_CONTROLLER_CALLBACK_IMPORT_PATH = os.environ.get(
 
 # How often autoscaling metrics are recorded on Serve replicas.
 RAY_SERVE_REPLICA_AUTOSCALING_METRIC_RECORD_PERIOD_S = 0.5
+
+# How often autoscaling metrics are recorded on Serve handles.
+RAY_SERVE_HANDLE_AUTOSCALING_METRIC_RECORD_PERIOD_S = 0.5
 
 # Serve multiplexed matching timeout.
 # This is the timeout for the matching process of multiplexed requests. To avoid
@@ -285,9 +301,13 @@ RAY_SERVE_QUEUE_LENGTH_CACHE_TIMEOUT_S = float(
 DEFAULT_AUTOSCALING_POLICY = "ray.serve.autoscaling_policy:default_autoscaling_policy"
 
 # Feature flag to enable collecting all queued and ongoing request
-# metrics at handles instead of replicas. OFF by default.
+# metrics at handles instead of replicas. ON by default.
 RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE = (
-    os.environ.get("RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE", "0") == "1"
+    os.environ.get("RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE", "1") == "1"
+)
+
+RAY_SERVE_MIN_HANDLE_METRICS_TIMEOUT_S = float(
+    os.environ.get("RAY_SERVE_MIN_HANDLE_METRICS_TIMEOUT_S", 10.0)
 )
 
 # Feature flag to always run a proxy on the head node even if it has no replicas.

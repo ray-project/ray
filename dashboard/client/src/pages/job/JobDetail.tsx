@@ -1,4 +1,5 @@
-import { Box, makeStyles } from "@material-ui/core";
+import { Box } from "@mui/material";
+import makeStyles from "@mui/styles/makeStyles";
 import React, { useRef, useState } from "react";
 import useSWR from "swr";
 import { CollapsibleSection } from "../../common/CollapsibleSection";
@@ -54,12 +55,13 @@ export const JobDetailChartsPage = () => {
   const [actorListFilter, setActorListFilter] = useState<string>();
   const [actorTableExpanded, setActorTableExpanded] = useState(false);
   const actorTableRef = useRef<HTMLDivElement>(null);
-  const { cluster_status } = useRayStatus();
+  const { clusterStatus } = useRayStatus();
 
   const { data } = useSWR(
-    "useDataDatasets",
-    async () => {
-      const rsp = await getDataDatasets();
+    job?.job_id ? ["useDataDatasets", job.job_id] : null,
+    async ([_, jobId]) => {
+      // Only display details for Ray Datasets that belong to this job.
+      const rsp = await getDataDatasets(jobId);
 
       if (rsp) {
         return rsp.data;
@@ -174,16 +176,16 @@ export const JobDetailChartsPage = () => {
         <Box
           display="flex"
           flexDirection="row"
-          gridGap={24}
+          gap={3}
           alignItems="stretch"
           className={classes.autoscalerSection}
         >
           <NodeCountCard className={classes.nodeCountCard} />
           <Section flex="1 1 500px">
-            <NodeStatusCard cluster_status={cluster_status} />
+            <NodeStatusCard clusterStatus={clusterStatus} />
           </Section>
           <Section flex="1 1 500px">
-            <ResourceStatusCard cluster_status={cluster_status} />
+            <ResourceStatusCard clusterStatus={clusterStatus} />
           </Section>
         </Box>
       </CollapsibleSection>

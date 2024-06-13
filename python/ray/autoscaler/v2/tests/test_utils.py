@@ -40,7 +40,7 @@ class TestResourceRequestUtil:
 
         rqs = [
             ResourceRequestUtil.make({"CPU": 1}, [(AFFINITY, "1", "1")]),  # 1
-            ResourceRequestUtil.make({"CPU": 1, "GPU": 1}, [(AFFINITY, "1", "1")]),  # 1
+            ResourceRequestUtil.make({"CPU": 2}, [(AFFINITY, "1", "1")]),  # 1
             ResourceRequestUtil.make({"CPU": 1}, [(AFFINITY, "2", "2")]),  # 2
             ResourceRequestUtil.make({"CPU": 1}, [(AFFINITY, "2", "2")]),  # 2
             ResourceRequestUtil.make({"CPU": 1}, [(ANTI_AFFINITY, "2", "2")]),  # 3
@@ -54,7 +54,7 @@ class TestResourceRequestUtil:
         expected = [
             ResourceRequestUtil.to_dict(
                 ResourceRequestUtil.make(
-                    {"CPU": 2, "GPU": 1},  # Combined
+                    {"CPU": 3},  # Combined
                     [
                         (AFFINITY, "1", "1"),
                     ],

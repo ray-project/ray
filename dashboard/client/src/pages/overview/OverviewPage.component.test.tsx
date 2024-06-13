@@ -2,6 +2,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import React, { PropsWithChildren } from "react";
 import { MemoryRouter } from "react-router-dom";
 import { GlobalContext } from "../../App";
+import { STYLE_WRAPPER } from "../../util/test-utils";
 import { useJobList } from "../job/hook/useJobList";
 import { OverviewPage } from "./OverviewPage";
 
@@ -63,29 +64,31 @@ const Wrapper =
   (grafanaHostDisabled: boolean) =>
   ({ children }: PropsWithChildren<{}>) => {
     return (
-      <MemoryRouter>
-        <GlobalContext.Provider
-          value={{
-            metricsContextLoaded: true,
-            grafanaHost: grafanaHostDisabled
-              ? "DISABLED"
-              : "http://localhost:3000",
-            dashboardUids: {
-              default: "rayDefaultDashboard",
-              serve: "rayServeDashboard",
-              serveDeployment: "rayServeDeploymentDashboard",
-              data: "rayDataDashboard",
-            },
-            prometheusHealth: true,
-            sessionName: "session-name",
-            nodeMap: {},
-            nodeMapByIp: {},
-            namespaceMap: {},
-            dashboardDatasource: "Prometheus",
-          }}
-        >
-          {children}
-        </GlobalContext.Provider>
-      </MemoryRouter>
+      <STYLE_WRAPPER>
+        <MemoryRouter>
+          <GlobalContext.Provider
+            value={{
+              metricsContextLoaded: true,
+              grafanaHost: grafanaHostDisabled
+                ? "DISABLED"
+                : "http://localhost:3000",
+              dashboardUids: {
+                default: "rayDefaultDashboard",
+                serve: "rayServeDashboard",
+                serveDeployment: "rayServeDeploymentDashboard",
+                data: "rayDataDashboard",
+              },
+              prometheusHealth: true,
+              sessionName: "session-name",
+              nodeMap: {},
+              nodeMapByIp: {},
+              namespaceMap: {},
+              dashboardDatasource: "Prometheus",
+            }}
+          >
+            {children}
+          </GlobalContext.Provider>
+        </MemoryRouter>
+      </STYLE_WRAPPER>
     );
   };

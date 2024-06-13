@@ -2,6 +2,7 @@ import dataclasses
 import logging
 import os
 import re
+import time
 import traceback
 from dataclasses import dataclass
 from typing import Iterator, List, Optional, Any, Dict, Tuple, Union
@@ -69,45 +70,44 @@ def file_tail_iterator(path: str) -> Iterator[Optional[List[str]]]:
         logger.debug(f"Path {path} doesn't exist yet.")
         yield None
 
+    EOF = ""
+
     with open(path, "r") as f:
         lines = []
+
         chunk_char_count = 0
         curr_line = None
+
         while True:
-            if curr_line is None:
-                # Only read the next line in the file
-                # if there's no remaining "curr_line" to process
-                curr_line = f.readline()
-            new_chunk_char_count = chunk_char_count + len(curr_line)
-            if new_chunk_char_count > MAX_CHUNK_CHAR_LENGTH:
-                # Too many characters, return 20000 in this chunk, and then
-                # continue loop with remaining characters in curr_line
-                truncated_line = curr_line[0 : MAX_CHUNK_CHAR_LENGTH - chunk_char_count]
-                lines.append(truncated_line)
-                # Set remainder of current line to process next
-                curr_line = curr_line[MAX_CHUNK_CHAR_LENGTH - chunk_char_count :]
-                yield lines or None
-                lines = []
-                chunk_char_count = 0
-            elif len(lines) >= 9:
+            # We want to flush current chunk in following cases:
+            #   - We accumulated 10 lines
+            #   - We accumulated at least MAX_CHUNK_CHAR_LENGTH total chars
+            #   - We reached EOF
+            if (
+                len(lines) >= 10
+                or chunk_char_count > MAX_CHUNK_CHAR_LENGTH
+                or curr_line == EOF
+            ):
                 # Too many lines, return 10 lines in this chunk, and then
                 # continue reading the file.
-                lines.append(curr_line)
                 yield lines or None
+
                 lines = []
                 chunk_char_count = 0
-                curr_line = None
-            elif curr_line:
+
+            # Read next line
+            curr_line = f.readline()
+
+            # `readline` will return
+            #   - '' for EOF
+            #   - '\n' for an empty line in the file
+            if curr_line != EOF:
                 # Add line to current chunk
                 lines.append(curr_line)
-                chunk_char_count = new_chunk_char_count
-                curr_line = None
+                chunk_char_count += len(curr_line)
             else:
-                # readline() returns empty string when there's no new line.
-                yield lines or None
-                lines = []
-                chunk_char_count = 0
-                curr_line = None
+                # If EOF is reached sleep for 1s before continuing
+                time.sleep(1)
 
 
 async def parse_and_validate_request(

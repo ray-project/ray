@@ -6,8 +6,8 @@ from tensorflow.keras.datasets import mnist
 
 import ray
 from ray import train, tune
-from ray.tune.schedulers import AsyncHyperBandScheduler
 from ray.air.integrations.keras import ReportCheckpointCallback
+from ray.tune.schedulers import AsyncHyperBandScheduler
 
 
 def train_mnist(config):

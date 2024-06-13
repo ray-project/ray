@@ -1,17 +1,15 @@
 # Importing for Backward Compatibility
 from ray.air.constants import (  # noqa: F401
-    TIMESTAMP,
-    TIME_THIS_ITER_S,
-    TRAINING_ITERATION,
+    EXPR_ERROR_FILE,
+    EXPR_ERROR_PICKLE_FILE,
     EXPR_PARAM_FILE,
     EXPR_PARAM_PICKLE_FILE,
     EXPR_PROGRESS_FILE,
     EXPR_RESULT_FILE,
-    EXPR_ERROR_PICKLE_FILE,
-    EXPR_ERROR_FILE,
+    TIME_THIS_ITER_S,
+    TIMESTAMP,
+    TRAINING_ITERATION,
 )
-
-from ray.train.constants import _get_defaults_results_dir
 
 # fmt: off
 # __sphinx_doc_begin__
@@ -120,9 +118,6 @@ TRIAL_INFO = "__trial_info__"
 # to pass log file locations to the Trainable via the constructor.
 STDOUT_FILE = "__stdout_file__"
 STDERR_FILE = "__stderr_file__"
-
-# Where Tune writes result files by default
-DEFAULT_RESULTS_DIR = _get_defaults_results_dir()
 
 DEFAULT_EXPERIMENT_NAME = "default"
 

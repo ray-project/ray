@@ -12,7 +12,7 @@ import gymnasium as gym
 import numpy as np
 import tree  # pip install dm_tree
 
-from ray.rllib.core.models.base import STATE_IN, STATE_OUT
+from ray.rllib.core.columns import Columns
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.evaluation.episode import Episode
 from ray.rllib.models.catalog import ModelCatalog
@@ -29,11 +29,10 @@ from ray.rllib.policy.rnn_sequencing import pad_batch_to_sequences_of_same_size
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils import force_list
 from ray.rllib.utils.annotations import (
-    DeveloperAPI,
+    is_overridden,
+    OldAPIStack,
     OverrideToImplementCustomLogic,
     OverrideToImplementCustomLogic_CallToSuperRecommended,
-    is_overridden,
-    ExperimentalAPI,
     override,
 )
 from ray.rllib.utils.error import ERR_MSG_TF_POLICY_CANNOT_SAVE_KERAS_MODEL
@@ -60,7 +59,7 @@ tf1, tf, tfv = try_import_tf()
 logger = logging.getLogger(__name__)
 
 
-@DeveloperAPI
+@OldAPIStack
 class EagerTFPolicyV2(Policy):
     """A TF-eager / TF2 based tensorflow policy.
 
@@ -113,7 +112,7 @@ class EagerTFPolicyV2(Policy):
 
         # If using default make_model(), dist_class will get updated when
         # the model is created next.
-        if self.config.get("_enable_new_api_stack", False):
+        if self.config.get("enable_rl_module_and_learner", False):
             self.model = self.make_rl_module()
             self.dist_class = None
         else:
@@ -122,7 +121,7 @@ class EagerTFPolicyV2(Policy):
 
         self._init_view_requirements()
 
-        if self.config.get("_enable_new_api_stack", False):
+        if self.config.get("enable_rl_module_and_learner", False):
             self.exploration = None
         else:
             self.exploration = self._create_exploration()
@@ -149,7 +148,6 @@ class EagerTFPolicyV2(Policy):
         # traced function after that.
         self._re_trace_counter = 0
 
-    @DeveloperAPI
     @staticmethod
     def enable_eager_execution_if_necessary():
         # If this class runs as a @ray.remote actor, eager mode may not
@@ -157,14 +155,16 @@ class EagerTFPolicyV2(Policy):
         if tf1 and not tf1.executing_eagerly():
             tf1.enable_eager_execution()
 
-    @ExperimentalAPI
     @override(Policy)
     def maybe_remove_time_dimension(self, input_dict: Dict[str, TensorType]):
         assert self.config.get(
-            "_enable_new_api_stack", False
+            "enable_rl_module_and_learner", False
         ), "This is a helper method for the new learner API."
 
-        if self.config.get("_enable_new_api_stack", False) and self.model.is_stateful():
+        if (
+            self.config.get("enable_rl_module_and_learner", False)
+            and self.model.is_stateful()
+        ):
             # Note that this is a temporary workaround to fit the old sampling stack
             # to RL Modules.
             ret = {}
@@ -179,7 +179,7 @@ class EagerTFPolicyV2(Policy):
                 )
 
             for k, v in input_dict.items():
-                if k not in (STATE_IN, STATE_OUT):
+                if k not in (Columns.STATE_IN, Columns.STATE_OUT):
                     ret[k] = tree.map_structure(fold_mapping, v)
                 else:
                     # state in already has time dimension.
@@ -189,7 +189,6 @@ class EagerTFPolicyV2(Policy):
         else:
             return input_dict
 
-    @DeveloperAPI
     @OverrideToImplementCustomLogic
     def validate_spaces(
         self,
@@ -199,7 +198,6 @@ class EagerTFPolicyV2(Policy):
     ):
         return {}
 
-    @DeveloperAPI
     @OverrideToImplementCustomLogic
     @override(Policy)
     def loss(
@@ -218,22 +216,21 @@ class EagerTFPolicyV2(Policy):
         Returns:
             A single loss tensor or a list of loss tensors.
         """
-        # Under the new _enable_new_api_stack the loss function still gets called in
-        # order to initialize the view requirements of the sample batches that are
+        # Under the new enable_rl_module_and_learner the loss function still gets called
+        # in order to initialize the view requirements of the sample batches that are
         # returned by the sampler. In this case, we don't actually want to compute any
         # loss, however
         # if we access the keys that are needed for a forward_train pass, then the
         # sampler will include those keys in the sample batches it returns. This means
         # that the correct sample batch keys will be available when using the learner
         # group API.
-        if self.config.get("_enable_new_api_stack", False):
+        if self.config.get("enable_rl_module_and_learner", False):
             for k in model.input_specs_train():
                 train_batch[k]
             return None
         else:
             raise NotImplementedError
 
-    @DeveloperAPI
     @OverrideToImplementCustomLogic
     def stats_fn(self, train_batch: SampleBatch) -> Dict[str, TensorType]:
         """Stats function. Returns a dict of statistics.
@@ -246,7 +243,6 @@ class EagerTFPolicyV2(Policy):
         """
         return {}
 
-    @DeveloperAPI
     @OverrideToImplementCustomLogic
     def grad_stats_fn(
         self, train_batch: SampleBatch, grads: ModelGradients
@@ -261,7 +257,6 @@ class EagerTFPolicyV2(Policy):
         """
         return {}
 
-    @DeveloperAPI
     @OverrideToImplementCustomLogic
     def make_model(self) -> ModelV2:
         """Build underlying model for this Policy.
@@ -281,7 +276,6 @@ class EagerTFPolicyV2(Policy):
             framework=self.framework,
         )
 
-    @DeveloperAPI
     @OverrideToImplementCustomLogic
     def compute_gradients_fn(
         self, policy: Policy, optimizer: LocalOptimizer, loss: TensorType
@@ -302,7 +296,6 @@ class EagerTFPolicyV2(Policy):
         """
         return None
 
-    @DeveloperAPI
     @OverrideToImplementCustomLogic
     def apply_gradients_fn(
         self,
@@ -321,7 +314,6 @@ class EagerTFPolicyV2(Policy):
         """
         return None
 
-    @DeveloperAPI
     @OverrideToImplementCustomLogic
     def action_sampler_fn(
         self,
@@ -346,7 +338,6 @@ class EagerTFPolicyV2(Policy):
         """
         return None, None, None, None
 
-    @DeveloperAPI
     @OverrideToImplementCustomLogic
     def action_distribution_fn(
         self,
@@ -370,7 +361,6 @@ class EagerTFPolicyV2(Policy):
         """
         return None, None, None
 
-    @DeveloperAPI
     @OverrideToImplementCustomLogic
     def get_batch_divisibility_req(self) -> int:
         """Get batch divisibility request.
@@ -381,7 +371,6 @@ class EagerTFPolicyV2(Policy):
         # By default, any sized batch is ok, so simply return 1.
         return 1
 
-    @DeveloperAPI
     @OverrideToImplementCustomLogic_CallToSuperRecommended
     def extra_action_out_fn(self) -> Dict[str, TensorType]:
         """Extra values to fetch and return from compute_actions().
@@ -392,7 +381,6 @@ class EagerTFPolicyV2(Policy):
         """
         return {}
 
-    @DeveloperAPI
     @OverrideToImplementCustomLogic_CallToSuperRecommended
     def extra_learn_fetches_fn(self) -> Dict[str, TensorType]:
         """Extra stats to be reported after gradient computation.
@@ -457,7 +445,7 @@ class EagerTFPolicyV2(Policy):
             return dist_class
 
     def _init_view_requirements(self):
-        if self.config.get("_enable_new_api_stack", False):
+        if self.config.get("enable_rl_module_and_learner", False):
             # Maybe update view_requirements, e.g. for recurrent case.
             self.view_requirements = self.model.update_default_view_requirements(
                 self.view_requirements
@@ -473,7 +461,7 @@ class EagerTFPolicyV2(Policy):
             self.view_requirements[SampleBatch.INFOS].used_for_training = False
 
     def maybe_initialize_optimizer_and_loss(self):
-        if not self.config.get("_enable_new_api_stack", False):
+        if not self.config.get("enable_rl_module_and_learner", False):
             optimizers = force_list(self.optimizer())
             if self.exploration:
                 # Policies with RLModules don't have an exploration object.
@@ -524,7 +512,7 @@ class EagerTFPolicyV2(Policy):
                 timestep=timestep, explore=explore, tf_sess=self.get_session()
             )
 
-        if self.config.get("_enable_new_api_stack"):
+        if self.config.get("enable_rl_module_and_learner"):
             # For recurrent models, we need to add a time dimension.
             seq_lens = input_dict.get("seq_lens", None)
             if seq_lens is None:
@@ -642,7 +630,7 @@ class EagerTFPolicyV2(Policy):
             action_dist = self.dist_class(dist_inputs, self.model)
         # Default log-likelihood calculation.
         else:
-            if self.config.get("_enable_new_api_stack", False):
+            if self.config.get("enable_rl_module_and_learner", False):
                 if in_training:
                     output = self.model.forward_train(input_batch)
                     action_dist_cls = self.model.get_train_action_dist_cls()
@@ -798,7 +786,7 @@ class EagerTFPolicyV2(Policy):
         state["global_timestep"] = state["global_timestep"].numpy()
         # In the new Learner API stack, the optimizers live in the learner.
         state["_optimizer_variables"] = []
-        if not self.config.get("_enable_new_api_stack", False):
+        if not self.config.get("enable_rl_module_and_learner", False):
             if self._optimizer and len(self._optimizer.variables()) > 0:
                 state["_optimizer_variables"] = self._optimizer.variables()
 

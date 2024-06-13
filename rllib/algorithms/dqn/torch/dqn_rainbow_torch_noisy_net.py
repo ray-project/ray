@@ -5,6 +5,7 @@ from ray.rllib.algorithms.dqn.dqn_rainbow_noisy_net_configs import (
     NoisyMLPHeadConfig,
 )
 from ray.rllib.algorithms.dqn.torch.torch_noisy_linear import NoisyLinear
+from ray.rllib.core.columns import Columns
 from ray.rllib.core.models.base import Encoder, ENCODER_OUT, Model
 from ray.rllib.core.models.specs.specs_base import Spec
 from ray.rllib.core.models.specs.specs_base import TensorSpec
@@ -12,7 +13,6 @@ from ray.rllib.core.models.specs.specs_dict import SpecDict
 from ray.rllib.core.models.torch.base import TorchModel
 from ray.rllib.core.models.torch.heads import auto_fold_unfold_time
 from ray.rllib.models.utils import get_activation_fn, get_initializer_fn
-from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
 
@@ -56,7 +56,7 @@ class TorchNoisyMLPEncoder(TorchModel, Encoder):
     def get_input_specs(self) -> Optional[Spec]:
         return SpecDict(
             {
-                SampleBatch.OBS: TensorSpec(
+                Columns.OBS: TensorSpec(
                     "b, d", d=self.config.input_dims[0], framework="torch"
                 ),
             }
@@ -74,7 +74,11 @@ class TorchNoisyMLPEncoder(TorchModel, Encoder):
 
     @override(Model)
     def _forward(self, inputs: dict, **kwargs) -> dict:
-        return {ENCODER_OUT: self.net(inputs[SampleBatch.OBS])}
+        return {ENCODER_OUT: self.net(inputs[Columns.OBS])}
+
+    def _reset_noise(self):
+        # Reset the noise in the complete network.
+        self.net._reset_noise()
 
 
 class TorchNoisyMLPHead(TorchModel):
@@ -120,6 +124,10 @@ class TorchNoisyMLPHead(TorchModel):
     @auto_fold_unfold_time("input_specs")
     def _forward(self, inputs: torch.Tensor, **kwargs) -> torch.Tensor:
         return self.net(inputs)
+
+    def _reset_noise(self) -> None:
+        # Reset the noise in the complete network.
+        self.net._reset_noise()
 
 
 class TorchNoisyMLP(nn.Module):
@@ -293,3 +301,9 @@ class TorchNoisyMLP(nn.Module):
 
     def forward(self, x):
         return self.mlp(x.type(self.expected_input_dtype))
+
+    def _reset_noise(self):
+        # Reset the noise for all modules (layers).
+        for module in self.modules():
+            if hasattr(module, "reset_noise"):
+                module.reset_noise()

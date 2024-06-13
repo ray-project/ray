@@ -10,9 +10,19 @@ from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--image", type=str, help="The docker image to use for Ray worker")
+parser.add_argument(
+    "--use-image-uri-api",
+    action="store_true",
+    help="Whether to use the new `image_uri` API instead of the old `container` API.",
+)
 args = parser.parse_args()
+
 worker_pth = get_ray_default_worker_file_path()
 
+if args.use_image_uri_api:
+    runtime_env = {"image_uri": args.image}
+else:
+    runtime_env = {"container": {"image": args.image, "worker_path": worker_pth}}
 
 ray.init(num_cpus=1)
 
@@ -24,12 +34,12 @@ def get_worker_by_pid(pid, detail=True):
     assert False
 
 
-@ray.remote(runtime_env={"container": {"image": args.image, "worker_path": worker_pth}})
+@ray.remote(runtime_env=runtime_env)
 def f():
     return ray.get(g.remote())
 
 
-@ray.remote(runtime_env={"container": {"image": args.image, "worker_path": worker_pth}})
+@ray.remote(runtime_env=runtime_env)
 def g():
     return os.getpid()
 
@@ -54,7 +64,7 @@ ray.shutdown()
 
 @ray.remote(
     num_cpus=1,
-    runtime_env={"container": {"image": args.image, "worker_path": worker_pth}},
+    runtime_env=runtime_env,
 )
 class A:
     def __init__(self):
@@ -94,7 +104,7 @@ def verify_exit_by_pg_removed():
 wait_for_condition(verify_exit_by_pg_removed)
 
 
-@ray.remote(runtime_env={"container": {"image": args.image, "worker_path": worker_pth}})
+@ray.remote(runtime_env=runtime_env)
 class PidDB:
     def __init__(self):
         self.pid = None
@@ -109,7 +119,7 @@ class PidDB:
 p = PidDB.remote()
 
 
-@ray.remote(runtime_env={"container": {"image": args.image, "worker_path": worker_pth}})
+@ray.remote(runtime_env=runtime_env)
 class FaultyActor:
     def __init__(self):
         p.record_pid.remote(os.getpid())

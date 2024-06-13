@@ -38,7 +38,7 @@ def test_multiple_directories(tmp_path, shutdown_only):
             "params": {"directory_path": [str(directory) for directory in temp_dirs]},
         }
     )
-    address = ray.init(
+    ray_context = ray.init(
         object_store_memory=75 * 1024 * 1024,
         _system_config={
             "max_io_workers": 5,
@@ -59,9 +59,11 @@ def test_multiple_directories(tmp_path, shutdown_only):
 
     num_files = defaultdict(int)
     for temp_dir in temp_dirs:
-        temp_folder = temp_dir / ray._private.ray_constants.DEFAULT_OBJECT_PREFIX
-        for path in temp_folder.iterdir():
-            num_files[str(temp_folder)] += 1
+        # Under temp_dir there are spilled_objects_dir(s) with name pattern
+        # "ray_spilled_objects[_<node_id>]", each containing spilled object files.
+        for spilled_objects_dir in temp_folder.iterdir():
+            for path in spilled_objects_dir.iterdir():
+                num_files[str(temp_folder)] += 1
 
     for ref in object_refs:
         assert np.array_equal(ray.get(ref), arr)
@@ -79,14 +81,14 @@ def test_multiple_directories(tmp_path, shutdown_only):
     ref = ray.put(np.ones(5 * 1024 * 1024, dtype=np.uint8))
     for temp_dir in temp_dirs:
         temp_folder = temp_dir
-        wait_for_condition(lambda: is_dir_empty(temp_folder))
-    assert_no_thrashing(address["address"])
+        wait_for_condition(lambda: is_dir_empty(temp_folder, ray_context["node_id"]))
+    assert_no_thrashing(ray_context["address"])
 
     # Now kill ray and see all directories are deleted.
     print("Check directories are deleted...")
     ray.shutdown()
     for temp_dir in temp_dirs:
-        wait_for_condition(lambda: is_dir_empty(temp_dir, append_path=""))
+        wait_for_condition(lambda: is_dir_empty(temp_dir, ray_context["node_id"]))
 
 
 def _check_spilled(num_objects_spilled=0):
@@ -254,7 +256,7 @@ def test_pull_spilled_object_failure(object_spilling_config, ray_start_cluster):
 
 
 @pytest.mark.xfail(cluster_not_supported, reason="cluster not supported")
-def test_spill_dir_cleanup_on_raylet_start(fs_only_object_spilling_config):
+def test_spill_dir_cleanup_on_node_removal(fs_only_object_spilling_config):
     object_spilling_config, temp_folder = fs_only_object_spilling_config
     cluster = Cluster()
     cluster.add_node(
@@ -275,21 +277,17 @@ def test_spill_dir_cleanup_on_raylet_start(fs_only_object_spilling_config):
         return ids
 
     ids = ray.get(run_workload.remote())
-    assert not is_dir_empty(temp_folder)
+    node2_id = node2.node_id
+    assert not is_dir_empty(temp_folder, node2_id)
 
     # Kill node 2
     cluster.remove_node(node2)
 
-    # Verify that the spill folder is not empty
-    assert not is_dir_empty(temp_folder)
-
-    # Start a new node
-    cluster.add_node(num_cpus=1, object_store_memory=75 * 1024 * 1024)
-
-    # Verify that the spill folder is now cleaned up
-    assert is_dir_empty(temp_folder)
+    # Verify that the spill folder is cleaned up upon node removal
+    assert is_dir_empty(temp_folder, node2_id)
 
     # We hold the object refs to prevent them from being deleted
+    # due to out of scope.
     del ids
     ray.shutdown()
     cluster.shutdown()

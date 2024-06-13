@@ -60,7 +60,7 @@ class ClusterNodeInfoCache(ABC):
         """
         return self._cached_alive_nodes
 
-    def get_alive_node_resources(self) -> Dict[str, Dict]:
+    def get_total_resources_per_node(self) -> Dict[str, Dict]:
         """Get total resources for alive nodes."""
         return self._cached_total_resources_per_node
 

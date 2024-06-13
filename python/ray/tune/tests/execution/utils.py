@@ -5,17 +5,12 @@ from typing import Any, Callable, Dict, Optional, Tuple, Type, Union
 import ray
 from ray.air.execution import FixedResourceManager
 from ray.air.execution._internal import RayActorManager
-from ray.air.execution.resources import (
-    ResourceManager,
-    ResourceRequest,
-)
-
 from ray.air.execution._internal.tracked_actor import TrackedActor
+from ray.air.execution.resources import ResourceManager, ResourceRequest
+from ray.train.tests.util import mock_storage_context
 from ray.tune.execution.tune_controller import TuneController
 from ray.tune.experiment import Trial
 from ray.tune.utils.resource_updater import _ResourceUpdater
-
-from ray.train.tests.util import mock_storage_context
 
 
 class NoopClassCache:
@@ -104,6 +99,9 @@ class _FakeResourceUpdater(_ResourceUpdater):
 
     def get_num_gpus(self) -> int:
         return self._resource_manager._total_resources.get("GPU", 0)
+
+    def update_avail_resources(self, *args, **kwargs):
+        pass
 
 
 class TestingTrial(Trial):

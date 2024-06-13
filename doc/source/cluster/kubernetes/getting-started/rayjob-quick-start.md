@@ -6,7 +6,7 @@
 
 * KubeRay v0.6.0 or higher
   * KubeRay v0.6.0 or v1.0.0: Ray 1.10 or higher.
-  * KubeRay v1.1.0 is highly recommended: Ray 2.8.0 or higher. This document is mainly for KubeRay v1.1.0.
+  * KubeRay v1.1.1 is highly recommended: Ray 2.8.0 or higher. This document is mainly for KubeRay v1.1.1.
 
 ## What's a RayJob?
 
@@ -30,7 +30,20 @@ To understand the following content better, you should understand the difference
   * `rayClusterSpec` - Defines the **RayCluster** custom resource to run the Ray job on.
 * Ray job configuration
   * `entrypoint` - The submitter runs `ray job submit --address ... --submission-id ... -- $entrypoint` to submit a Ray job to the RayCluster.
-  * `runtimeEnvYAML` (Optional): A runtime environment that describes the dependencies the Ray job needs to run, including files, packages, environment variables, and more. Provide the configuration as a multi-line YAML string. See {ref}`Runtime Environments <runtime-environments>` for more details. _(New in KubeRay version 1.0.0)_
+  * `runtimeEnvYAML` (Optional): A runtime environment that describes the dependencies the Ray job needs to run, including files, packages, environment variables, and more. Provide the configuration as a multi-line YAML string.
+  Example:
+
+    ```yaml
+    spec:
+      runtimeEnvYAML: |
+        pip:
+          - requests==2.26.0
+          - pendulum==2.1.2
+        env_vars:
+          KEY: "VALUE"
+    ```
+
+  See {ref}`Runtime Environments <runtime-environments>` for more details. _(New in KubeRay version 1.0.0)_
   * `jobId` (Optional): Defines the submission ID for the Ray job. If not provided, KubeRay generates one automatically. See {ref}`Ray Jobs CLI API Reference <ray-job-submission-cli-ref>` for more details about the submission ID.
   * `metadata` (Optional): See {ref}`Ray Jobs CLI API Reference <ray-job-submission-cli-ref>` for more details about the `--metadata-json` option.
   * `entrypointNumCpus` / `entrypointNumGpus` / `entrypointResources` (Optional): See {ref}`Ray Jobs CLI API Reference <ray-job-submission-cli-ref>` for more details.
@@ -51,7 +64,7 @@ To understand the following content better, you should understand the difference
 ## Step 1: Create a Kubernetes cluster with Kind
 
 ```sh
-kind create cluster --image=kindest/node:v1.23.0
+kind create cluster --image=kindest/node:v1.26.0
 ```
 
 ## Step 2: Install the KubeRay operator
@@ -61,11 +74,7 @@ Follow the [RayCluster Quickstart](kuberay-operator-deploy) to install the lates
 ## Step 3: Install a RayJob
 
 ```sh
-# Step 3.1: Download `ray-job.sample.yaml`
-curl -LO https://raw.githubusercontent.com/ray-project/kuberay/ray-operator/v1.1.0-alpha.0/ray-operator/config/samples/ray-job.sample.yaml
-
-# Step 3.2: Create a RayJob
-kubectl apply -f ray-job.sample.yaml
+kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/v1.1.1/ray-operator/config/samples/ray-job.sample.yaml
 ```
 
 ## Step 4: Verify the Kubernetes cluster status
@@ -75,8 +84,8 @@ kubectl apply -f ray-job.sample.yaml
 kubectl get rayjob
 
 # [Example output]
-# NAME            AGE
-# rayjob-sample   7s
+# NAME            JOB STATUS   DEPLOYMENT STATUS   START TIME             END TIME   AGE
+# rayjob-sample                Running             2024-03-02T19:09:15Z              96s
 
 # Step 4.2: List all RayCluster custom resources in the `default` namespace.
 kubectl get raycluster
@@ -145,21 +154,19 @@ The Python script `sample_code.py` used by `entrypoint` is a simple Ray script t
 ## Step 6: Delete the RayJob
 
 ```sh
-kubectl delete -f ray-job.sample.yaml
+kubectl delete -f https://raw.githubusercontent.com/ray-project/kuberay/v1.1.1/ray-operator/config/samples/ray-job.sample.yaml
 ```
 
 ## Step 7: Create a RayJob with `shutdownAfterJobFinishes` set to true
 
 ```sh
-# Step 7.1: Download `ray-job.shutdown.yaml`
-curl -LO https://raw.githubusercontent.com/ray-project/kuberay/ray-operator/v1.1.0-alpha.0/ray-operator/config/samples/ray-job.shutdown.yaml
-
-# Step 7.2: Create a RayJob
-kubectl apply -f ray-job.shutdown.yaml
+kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/v1.1.1/ray-operator/config/samples/ray-job.shutdown.yaml
 ```
 
 The `ray-job.shutdown.yaml` defines a RayJob custom resource with `shutdownAfterJobFinishes: true` and `ttlSecondsAfterFinished: 10`.
-Hence, the KubeRay operator deletes the RayCluster and the submitter 10 seconds after the Ray job finishes.
+Hence, the KubeRay operator deletes the RayCluster 10 seconds after the Ray job finishes. Note that the submitter job is not deleted 
+because it contains the ray job logs and does not use any cluster resources once completed. In addition, the submitter job will always 
+be cleaned up when the RayJob is eventually deleted due to its owner reference back to the RayJob.
 
 ## Step 8: Check the RayJob status
 
@@ -169,20 +176,19 @@ kubectl get rayjobs.ray.io rayjob-sample-shutdown -o jsonpath='{.status.jobDeplo
 kubectl get rayjobs.ray.io rayjob-sample-shutdown -o jsonpath='{.status.jobStatus}'
 ```
 
-## Step 9: Check if the KubeRay operator deletes the RayCluster and the submitter
+## Step 9: Check if the KubeRay operator deletes the RayCluster
 
 ```sh
-# List the RayCluster custom resources in the `default` namespace. The RayCluster and the submitter Kubernetes 
-# Job associated with the RayJob `rayjob-sample-shutdown` should be deleted.
+# List the RayCluster custom resources in the `default` namespace. The RayCluster
+# associated with the RayJob `rayjob-sample-shutdown` should be deleted.
 kubectl get raycluster
-kubectl get jobs
 ```
 
 ## Step 10: Clean up
 
 ```sh
 # Step 10.1: Delete the RayJob
-kubectl delete -f ray-job.shutdown.yaml
+kubectl delete -f https://raw.githubusercontent.com/ray-project/kuberay/v1.1.1/ray-operator/config/samples/ray-job.shutdown.yaml
 
 # Step 10.2: Delete the KubeRay operator
 helm uninstall kuberay-operator

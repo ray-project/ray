@@ -175,10 +175,7 @@ def main(
     logger.info("Final aggregated metrics: ")
     for key, val in aggregated_metrics.items():
         logger.info(f"{key}: {val}")
-    save_test_results(
-        aggregated_metrics,
-        default_output_file="/tmp/multi_deployment_1k_noop_replica.json",
-    )
+    save_test_results(aggregated_metrics)
 
 
 if __name__ == "__main__":

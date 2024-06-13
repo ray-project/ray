@@ -1,5 +1,6 @@
 import {
   Box,
+  InputAdornment,
   Switch,
   Table,
   TableBody,
@@ -7,12 +8,14 @@ import {
   TableContainer,
   TableHead,
   TableRow,
+  TextField,
   Typography,
-} from "@material-ui/core";
-import { makeStyles } from "@material-ui/core/styles";
-import Pagination from "@material-ui/lab/Pagination";
+} from "@mui/material";
+import Pagination from "@mui/material/Pagination";
+import makeStyles from "@mui/styles/makeStyles";
 import React from "react";
 import { Outlet } from "react-router-dom";
+import { sliceToPage } from "../../common/util";
 import Loading from "../../components/Loading";
 import { SearchInput } from "../../components/SearchComponent";
 import TitleCard from "../../components/TitleCard";
@@ -71,6 +74,12 @@ const JobList = () => {
     setPage,
   } = useJobList();
 
+  const {
+    items: list,
+    constrainedPage,
+    maxPage,
+  } = sliceToPage(jobList, page.pageNo, page.pageSize);
+
   return (
     <div className={classes.root}>
       <Loading loading={isLoading} />
@@ -89,20 +98,37 @@ const JobList = () => {
       </TitleCard>
       <TitleCard title="Job List">
         <TableContainer>
-          <SearchInput
-            label="Job ID"
-            onChange={(value) => changeFilter("job_id", value)}
-          />
-          <SearchInput
-            label="Page Size"
-            onChange={(value) =>
-              setPage("pageSize", Math.min(Number(value), 500) || 10)
-            }
-          />
+          <Box
+            sx={{
+              display: "flex",
+              alignItems: "center",
+              gap: 2,
+              paddingTop: 1,
+            }}
+          >
+            <SearchInput
+              label="Job ID"
+              onChange={(value) => changeFilter("job_id", value)}
+            />
+            <TextField
+              sx={{ width: 120 }}
+              label="Page Size"
+              size="small"
+              defaultValue={10}
+              InputProps={{
+                onChange: ({ target: { value } }) => {
+                  setPage("pageSize", Math.min(Number(value), 500) || 10);
+                },
+                endAdornment: (
+                  <InputAdornment position="end">Per Page</InputAdornment>
+                ),
+              }}
+            />
+          </Box>
           <div>
             <Pagination
-              count={Math.ceil(jobList.length / page.pageSize)}
-              page={page.pageNo}
+              count={maxPage}
+              page={constrainedPage}
               onChange={(e, pageNo) => setPage("pageNo", pageNo)}
             />
           </div>
@@ -128,17 +154,12 @@ const JobList = () => {
               </TableRow>
             </TableHead>
             <TableBody>
-              {jobList
-                .slice(
-                  (page.pageNo - 1) * page.pageSize,
-                  page.pageNo * page.pageSize,
-                )
-                .map((job, index) => {
-                  const { job_id, submission_id } = job;
-                  return (
-                    <JobRow key={job_id ?? submission_id ?? index} job={job} />
-                  );
-                })}
+              {list.map((job, index) => {
+                const { job_id, submission_id } = job;
+                return (
+                  <JobRow key={job_id ?? submission_id ?? index} job={job} />
+                );
+              })}
             </TableBody>
           </Table>
         </TableContainer>

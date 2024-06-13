@@ -1,11 +1,6 @@
-import {
-  Box,
-  BoxProps,
-  createStyles,
-  makeStyles,
-  Paper,
-  Typography,
-} from "@material-ui/core";
+import { Box, BoxProps, Paper, Typography } from "@mui/material";
+import createStyles from "@mui/styles/createStyles";
+import makeStyles from "@mui/styles/makeStyles";
 import classNames from "classnames";
 import React, { PropsWithChildren } from "react";
 import { ClassNameProps } from "./props";

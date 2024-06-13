@@ -2,24 +2,24 @@
 
 import json
 import os
-from packaging.version import Version
+from unittest.mock import MagicMock, patch
 
 import pyarrow.fs
 import pytest
-from unittest.mock import MagicMock, patch
+from packaging.version import Version
 
 import ray
 from ray import train, tune
+from ray._private.usage.usage_lib import TagKey
 from ray.air._internal import usage as air_usage
 from ray.air._internal.usage import AirEntrypoint
-from ray.air.integrations import wandb, mlflow, comet
+from ray.air.integrations import comet, mlflow, wandb
 from ray.train._internal.storage import StorageContext
 from ray.tune.callback import Callback
 from ray.tune.experiment.experiment import Experiment
 from ray.tune.logger import LoggerCallback
 from ray.tune.logger.aim import AimLoggerCallback
 from ray.tune.utils.callback import DEFAULT_CALLBACK_CLASSES
-from ray._private.usage.usage_lib import TagKey
 
 
 def _mock_record_from_module(module, monkeypatch):

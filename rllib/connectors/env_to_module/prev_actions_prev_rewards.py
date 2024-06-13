@@ -5,8 +5,8 @@ from gymnasium.spaces import Box
 import numpy as np
 
 from ray.rllib.connectors.connector_v2 import ConnectorV2
+from ray.rllib.core.columns import Columns
 from ray.rllib.core.rl_module.rl_module import RLModule
-from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.spaces.space_utils import batch, flatten_to_single_ndarray
 from ray.rllib.utils.typing import EpisodeType
@@ -15,13 +15,13 @@ from ray.rllib.utils.typing import EpisodeType
 class PrevActionsPrevRewardsConnector(ConnectorV2):
     """A connector piece that adds previous rewards and actions to the input obs.
 
-    - Requires SampleBatch.OBS to be already a part of the batch.
-    - This connector makes the assumption that under the SampleBatch.OBS key in batch,
+    - Requires Columns.OBS to be already a part of the batch.
+    - This connector makes the assumption that under the Columns.OBS key in batch,
     there is either a list of individual env observations to be flattened (single-agent
     case) or a dict mapping (AgentID, ModuleID)-tuples to lists of data items to be
     flattened (multi-agent case).
-    - Converts SampleBatch.OBS data into a dict (or creates a sub-dict if obs are
-    already a dict), and adds SampleBatch.PREV_REWARDS and SampleBatch.PREV_ACTIONS
+    - Converts Columns.OBS data into a dict (or creates a sub-dict if obs are
+    already a dict), and adds "prev_rewards" and "prev_actions"
     to this dict. The original observations are stored under the self.ORIG_OBS_KEY in
     that dict.
     - If your RLModule does not handle dict inputs, you will have to plug in an
@@ -36,6 +36,8 @@ class PrevActionsPrevRewardsConnector(ConnectorV2):
     """
 
     ORIG_OBS_KEY = "_orig_obs"
+    PREV_ACTIONS_KEY = "prev_actions"
+    PREV_REWARDS_KEY = "prev_rewards"
 
     @override(ConnectorV2)
     def recompute_observation_space_from_input_spaces(self):
@@ -106,11 +108,11 @@ class PrevActionsPrevRewardsConnector(ConnectorV2):
         shared_data: Optional[dict] = None,
         **kwargs,
     ) -> Any:
-        observations = data.get(SampleBatch.OBS)
+        observations = data.get(Columns.OBS)
 
         if observations is None:
             raise ValueError(
-                f"`batch` must already have a column named {SampleBatch.OBS} in it "
+                f"`batch` must already have a column named {Columns.OBS} in it "
                 f"for this connector to work!"
             )
 
@@ -142,9 +144,9 @@ class PrevActionsPrevRewardsConnector(ConnectorV2):
 
             new_obs.append(
                 {
-                    "_obs": orig_obs,
-                    SampleBatch.PREV_ACTIONS: prev_n_actions,
-                    SampleBatch.PREV_REWARDS: prev_n_rewards,
+                    self.ORIG_OBS_KEY: orig_obs,
+                    self.PREV_ACTIONS_KEY: prev_n_actions,
+                    self.PREV_REWARDS_KEY: prev_n_rewards,
                 }
             )
 
@@ -152,7 +154,7 @@ class PrevActionsPrevRewardsConnector(ConnectorV2):
         # "_obs", "_prev_rewards", and "_prev_actions".
         self.foreach_batch_item_change_in_place(
             batch=data,
-            column=SampleBatch.OBS,
+            column=Columns.OBS,
             func=lambda orig_obs, eps_id, agent_id, module_id: new_obs.pop(0),
         )
 
@@ -163,10 +165,10 @@ class PrevActionsPrevRewardsConnector(ConnectorV2):
             {
                 self.ORIG_OBS_KEY: obs_space,
                 # Currently only works for Discrete action spaces.
-                SampleBatch.PREV_ACTIONS: Box(
+                self.PREV_ACTIONS_KEY: Box(
                     0.0, 1.0, (act_space.n * self.n_prev_actions,), np.float32
                 ),
-                SampleBatch.PREV_REWARDS: Box(
+                self.PREV_REWARDS_KEY: Box(
                     float("-inf"),
                     float("inf"),
                     (self.n_prev_rewards,),

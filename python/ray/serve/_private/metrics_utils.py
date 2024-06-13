@@ -3,7 +3,7 @@ import bisect
 import logging
 from collections import defaultdict
 from dataclasses import dataclass, field
-from typing import Callable, DefaultDict, Dict, List, Optional
+from typing import Callable, DefaultDict, Dict, Hashable, List, Optional
 
 from ray.serve._private.constants import (
     METRICS_PUSHER_GRACEFUL_SHUTDOWN_TIMEOUT_S,
@@ -61,13 +61,16 @@ class MetricsPusher:
             except Exception as e:
                 logger.exception(f"Failed to run metrics task '{name}': {e}")
 
+            sleep_task = asyncio.create_task(
+                self._async_sleep(self._tasks[name].interval_s)
+            )
             await asyncio.wait(
-                [
-                    wait_for_stop_event,
-                    self._async_sleep(self._tasks[name].interval_s),
-                ],
+                [sleep_task, wait_for_stop_event],
                 return_when=asyncio.FIRST_COMPLETED,
             )
+
+            if not sleep_task.done():
+                sleep_task.cancel()
 
     def register_or_update_task(
         self,
@@ -117,14 +120,14 @@ class InMemoryMetricsStore:
     """A very simple, in memory time series database"""
 
     def __init__(self):
-        self.data: DefaultDict[str, List[TimeStampedValue]] = defaultdict(list)
+        self.data: DefaultDict[Hashable, List[TimeStampedValue]] = defaultdict(list)
 
-    def add_metrics_point(self, data_points: Dict[str, float], timestamp: float):
+    def add_metrics_point(self, data_points: Dict[Hashable, float], timestamp: float):
         """Push new data points to the store.
 
         Args:
             data_points: dictionary containing the metrics values. The
-              key should be a string that uniquely identifies this time series
+              key should uniquely identify this time series
               and to be used to perform aggregation.
             timestamp: the unix epoch timestamp the metrics are
               collected at.
@@ -133,7 +136,23 @@ class InMemoryMetricsStore:
             # Using in-sort to insert while maintaining sorted ordering.
             bisect.insort(a=self.data[name], x=TimeStampedValue(timestamp, value))
 
-    def _get_datapoints(self, key: str, window_start_timestamp_s: float) -> List[float]:
+    def prune_keys_and_compact_data(self, start_timestamp_s: float):
+        """Prune keys and compact data that are outdated.
+
+        For keys that haven't had new data recorded after the timestamp,
+        remove them from the database.
+        For keys that have, compact the datapoints that were recorded
+        before the timestamp.
+        """
+        for key, datapoints in list(self.data.items()):
+            if len(datapoints) == 0 or datapoints[-1].timestamp < start_timestamp_s:
+                del self.data[key]
+            else:
+                self.data[key] = self._get_datapoints(key, start_timestamp_s)
+
+    def _get_datapoints(
+        self, key: Hashable, window_start_timestamp_s: float
+    ) -> List[float]:
         """Get all data points given key after window_start_timestamp_s"""
 
         datapoints = self.data[key]
@@ -147,7 +166,7 @@ class InMemoryMetricsStore:
         return datapoints[idx:]
 
     def window_average(
-        self, key: str, window_start_timestamp_s: float, do_compact: bool = True
+        self, key: Hashable, window_start_timestamp_s: float, do_compact: bool = True
     ) -> Optional[float]:
         """Perform a window average operation for metric `key`
 
@@ -172,7 +191,9 @@ class InMemoryMetricsStore:
             return
         return sum(point.value for point in points_after_idx) / len(points_after_idx)
 
-    def max(self, key: str, window_start_timestamp_s: float, do_compact: bool = True):
+    def max(
+        self, key: Hashable, window_start_timestamp_s: float, do_compact: bool = True
+    ):
         """Perform a max operation for metric `key`.
 
         Args:

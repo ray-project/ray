@@ -16,6 +16,10 @@ from typing import (
 import numpy as np
 
 from ray.air.constants import TENSOR_COLUMN_NAME
+from ray.data._internal.numpy_support import (
+    convert_udf_returns_to_numpy,
+    validate_numpy_batch,
+)
 from ray.data._internal.row import TableRow
 from ray.data._internal.table_block import TableBlockAccessor, TableBlockBuilder
 from ray.data._internal.util import find_partitions
@@ -24,6 +28,7 @@ from ray.data.block import (
     BlockAccessor,
     BlockExecStats,
     BlockMetadata,
+    BlockType,
     KeyType,
     U,
 )
@@ -142,6 +147,9 @@ class PandasBlockBuilder(TableBlockBuilder):
     def _empty_table() -> "pandas.DataFrame":
         pandas = lazy_import_pandas()
         return pandas.DataFrame()
+
+    def block_type(self) -> BlockType:
+        return BlockType.PANDAS
 
 
 # This is to be compatible with pyarrow.lib.schema
@@ -263,7 +271,22 @@ class PandasBlockAccessor(TableBlockAccessor):
     def to_arrow(self) -> "pyarrow.Table":
         import pyarrow
 
-        return pyarrow.table(self._table)
+        # Set `preserve_index=False` so that Arrow doesn't add a '__index_level_0__'
+        # column to the resulting table.
+        return pyarrow.Table.from_pandas(self._table, preserve_index=False)
+
+    @staticmethod
+    def numpy_to_block(
+        batch: Union[Dict[str, np.ndarray], Dict[str, list]],
+    ) -> "pandas.DataFrame":
+        validate_numpy_batch(batch)
+
+        batch = {
+            column_name: convert_udf_returns_to_numpy(column)
+            for column_name, column in batch.items()
+        }
+        block = PandasBlockBuilder._table_from_pydict(batch)
+        return block
 
     def num_rows(self) -> int:
         return self._table.shape[0]
@@ -486,12 +509,12 @@ class PandasBlockAccessor(TableBlockAccessor):
         if len(blocks) == 0:
             ret = PandasBlockAccessor._empty_table()
         else:
+            # Handle blocks of different types.
+            blocks = TableBlockAccessor.normalize_block_types(blocks, "pandas")
             ret = pd.concat(blocks, ignore_index=True)
             columns, ascending = sort_key.to_pandas_sort_args()
             ret = ret.sort_values(by=columns, ascending=ascending)
-        return ret, PandasBlockAccessor(ret).get_metadata(
-            None, exec_stats=stats.build()
-        )
+        return ret, PandasBlockAccessor(ret).get_metadata(exec_stats=stats.build())
 
     @staticmethod
     def aggregate_combined_blocks(
@@ -527,6 +550,9 @@ class PandasBlockAccessor(TableBlockAccessor):
             if key is not None
             else (lambda r: (0,))
         )
+
+        # Handle blocks of different types.
+        blocks = TableBlockAccessor.normalize_block_types(blocks, "pandas")
 
         iter = heapq.merge(
             *[
@@ -600,6 +626,37 @@ class PandasBlockAccessor(TableBlockAccessor):
                 break
 
         ret = builder.build()
-        return ret, PandasBlockAccessor(ret).get_metadata(
-            None, exec_stats=stats.build()
-        )
+        return ret, PandasBlockAccessor(ret).get_metadata(exec_stats=stats.build())
+
+    def block_type(self) -> BlockType:
+        return BlockType.PANDAS
+
+
+def _estimate_dataframe_size(df: "pandas.DataFrame") -> int:
+    """Estimate the size of a pandas DataFrame.
+
+    This function is necessary because `DataFrame.memory_usage` doesn't count values in
+    columns with `dtype=object`.
+
+    The runtime complexity is linear in the number of values, so don't use this in
+    performance-critical code.
+
+    Args:
+        df: The DataFrame to estimate the size of.
+
+    Returns:
+        The estimated size of the DataFrame in bytes.
+    """
+    size = 0
+    for column in df.columns:
+        if df[column].dtype == object:
+            for item in df[column]:
+                if isinstance(item, str):
+                    size += len(item)
+                elif isinstance(item, np.ndarray):
+                    size += item.nbytes
+                else:
+                    size += 8  # pandas assumes object values are 8 bytes.
+        else:
+            size += df[column].nbytes
+    return size

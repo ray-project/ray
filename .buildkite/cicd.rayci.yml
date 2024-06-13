@@ -1,15 +1,14 @@
-group: CI/CD infra
-depends_on:
-  - forge
+group: reef tests
 steps:
-  - label: "CI/CD: ray_ci tooling"
+  - label: ":coral: reef: ci+release tooling tests"
+    key: reef-tests
     commands:
-      # TODO(aslonnie): wrap this in a script, and upload test telemetry.
-      - bazel test --test_tag_filters=ci_unit //ci/ray_ci/...
+      - bazel run //ci/ray_ci:test_in_docker -- //ci/ray_ci/... //release/... ci
+          --only-tags=release_unit,ci_unit
+          --parallelism-per-worker 2
+          --build-name oss-ci-base_test
+          --build-type skip
     instance_type: small
-
-  - label: "CI/CD: release test infra"
-    commands:
-      # TODO(aslonnie): wrap this in a script, and upload test telemetry.
-      - bazel test --test_tag_filters=release_unit //release/...
-    instance_type: small
+    depends_on:
+      - oss-ci-base_test
+      - forge

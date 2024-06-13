@@ -1,5 +1,7 @@
 .. include:: /_includes/rllib/we_are_hiring.rst
 
+.. include:: /_includes/rllib/new_api_stack.rst
+
 .. _rllib-index:
 
 RLlib: Industry-Grade Reinforcement Learning
@@ -14,6 +16,7 @@ RLlib: Industry-Grade Reinforcement Learning
     rllib-algorithms
     user-guides
     rllib-examples
+    rllib-new-api-stack
     package_ref/index
 
 
@@ -94,7 +97,7 @@ You can also tweak RLlib's default `model` config,and set up a separate config f
 
 If you want to learn more about the RLlib training API,
 `you can learn more about it here <rllib-training.html#using-the-python-api>`_.
-Also, see `here for a simple example on how to write an action inference loop after training. <https://github.com/ray-project/ray/blob/master/rllib/examples/inference_and_serving/policy_inference_after_training.py>`_
+Also, see `here for a simple example on how to write an action inference loop after training. <https://github.com/ray-project/ray/blob/master/rllib/examples/inference/policy_inference_after_training.py>`_
 
 If you want to get a quick preview of which **algorithms** and **environments** RLlib supports,
 click on the dropdowns below:
@@ -164,7 +167,7 @@ Feature Overview
 
         **RLlib Algorithms**
         ^^^
-        Check out the many available RL algorithms of RLlib for model-free and model-based
+        See the many available RL algorithms of RLlib for model-free and model-based
         RL, on-policy and off-policy training, multi-agent RL, and more.
         +++
         .. button-ref:: rllib-algorithms-doc
