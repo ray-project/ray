@@ -142,7 +142,7 @@ export const ServeMetricsSection = ({
   const fromParam = from !== null ? `&from=${from}` : "";
   const toParam = to !== null ? `&to=${to}` : "";
   const timeRangeParams = `${fromParam}${toParam}`;
-  const refreshParams = refresh !== "" ? `&refresh=${refresh}` : "";
+  const refreshParams = refresh ? `&refresh=${refresh}` : "";
 
   return grafanaHost === undefined || !prometheusHealth ? null : (
     <CollapsibleSection className={className} title="Metrics" startExpanded>

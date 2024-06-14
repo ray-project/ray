@@ -121,7 +121,7 @@ export const ServeReplicaMetricsSection = ({
   const fromParam = from !== null ? `&from=${from}` : "";
   const toParam = to !== null ? `&to=${to}` : "";
   const timeRangeParams = `${fromParam}${toParam}`;
-  const refreshParams = refresh !== "" ? `&refresh=${refresh}` : "";
+  const refreshParams = refresh ? `&refresh=${refresh}` : "";
 
   const replicaButtonUrl = useViewServeDeploymentMetricsButtonUrl(
     deploymentName,
