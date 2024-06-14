@@ -1221,7 +1221,9 @@ class ReporterAgent(
         while True:
             try:
                 # Fetch autoscaler debug status
-                autoscaler_status_json_bytes: Optional[bytes] = await self._gcs_aio_client.internal_kv_get(
+                autoscaler_status_json_bytes: Optional[
+                    bytes
+                ] = await self._gcs_aio_client.internal_kv_get(
                     DEBUG_AUTOSCALING_STATUS.encode(),
                     None,
                     timeout=GCS_RPC_TIMEOUT_SECONDS,
@@ -1230,9 +1232,7 @@ class ReporterAgent(
                 # NOTE: Stats collection is executed inside the thread-pool
                 #       executor (TPE) to avoid blocking the Dashboard's event-loop
                 json_payload = await loop.run_in_executor(
-                    None,
-                    self._compose_stats_payload,
-                    autoscaler_status_json_bytes
+                    None, self._compose_stats_payload, autoscaler_status_json_bytes
                 )
 
                 await publisher.publish_resource_usage(self._key, json_payload)
@@ -1242,7 +1242,9 @@ class ReporterAgent(
 
             await asyncio.sleep(reporter_consts.REPORTER_UPDATE_INTERVAL_MS / 1000)
 
-    def _compose_stats_payload(self, cluster_autoscaling_stats_json: Optional[bytes]) -> str:
+    def _compose_stats_payload(
+        self, cluster_autoscaling_stats_json: Optional[bytes]
+    ) -> str:
         stats = self._collect_stats()
 
         # Report stats only when metrics collection is enabled.
