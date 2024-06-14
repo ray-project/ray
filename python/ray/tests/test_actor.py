@@ -935,6 +935,7 @@ def test_named_actor_cache(ray_start_regular_shared):
     a = Counter.options(name="hi").remote()
     first_get = ray.get_actor("hi")
     assert ray.get(first_get.inc_and_get.remote()) == 1
+
     second_get = ray.get_actor("hi")
     assert ray.get(second_get.inc_and_get.remote()) == 2
     ray.kill(a, no_restart=True)
