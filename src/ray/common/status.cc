@@ -153,10 +153,8 @@ StatusCode Status::StringToCode(const std::string &str) {
   // which is not an error. This means for code -> string -> code is not identity.
   auto it = kStrToCode.find(str);
   if (it == kStrToCode.end()) {
-    RAY_LOG(ERROR) << "Status::StringToCode: " << str << " -> not found (IOError)";
     return StatusCode::IOError;
   }
-  RAY_LOG(ERROR) << "Status::StringToCode: " << str << " -> " << int(it->second) << "\n";
   return it->second;
 }
 
