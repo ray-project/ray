@@ -368,12 +368,6 @@ class Test(dict):
         """
         return self.get("env") == "gce"
 
-    def is_byod_cluster(self) -> bool:
-        """
-        Returns whether this test is running on a BYOD cluster.
-        """
-        return self["cluster"].get("byod") is not None
-
     def is_high_impact(self) -> bool:
         # a test is high impact if it catches regressions frequently, this field is
         # populated by the determine_microcheck_tests.py script
@@ -403,16 +397,12 @@ class Test(dict):
         """
         Returns the type of the BYOD cluster.
         """
-        if not self.is_byod_cluster():
-            return None
         return self["cluster"]["byod"].get("type", "cpu")
 
     def get_byod_post_build_script(self) -> Optional[str]:
         """
         Returns the post-build script for the BYOD cluster.
         """
-        if not self.is_byod_cluster():
-            return None
         return self["cluster"]["byod"].get("post_build_script")
 
     def get_byod_runtime_env(self) -> Dict[str, str]:
@@ -432,8 +422,6 @@ class Test(dict):
         """
         Returns the list of pips for the BYOD cluster.
         """
-        if not self.is_byod_cluster():
-            return []
         return self["cluster"]["byod"].get("pip", [])
 
     def get_name(self) -> str:

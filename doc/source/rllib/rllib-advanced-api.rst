@@ -19,87 +19,31 @@ implement `custom training workflows (example) <https://github.com/ray-project/r
 Curriculum Learning
 ~~~~~~~~~~~~~~~~~~~
 
-In Curriculum learning, the environment can be set to different difficulties
-(or "tasks") to allow for learning to progress through controlled phases (from easy to
-more difficult). RLlib comes with a basic curriculum learning API utilizing the
-`TaskSettableEnv <https://github.com/ray-project/ray/blob/master/rllib/env/apis/task_settable_env.py>`__ environment API.
-Your environment only needs to implement the `set_task` and `get_task` methods
-for this to work. You can then define an `env_task_fn` in your config,
-which receives the last training results and returns a new task for the env to be set to:
+In curriculum learning, you can set the environment to different difficulties
+throughout the training process. This setting allows the algorithm to learn how to solve
+the actual and final problem incrementally, by interacting with and exploring in more and
+more difficult phases.
+Normally, such a curriculum starts with setting the environment to an easy level and
+then - as training progresses - transitions more toward a harder-to-solve difficulty.
+See the `Reverse Curriculum Generation for Reinforcement Learning Agents <https://bair.berkeley.edu/blog/2017/12/20/reverse-curriculum/>`_ blog post
+for another example of how you can do curriculum learning.
 
-.. TODO move to doc_code and make it use algo configs.
-.. code-block:: python
+RLlib's Algorithm and custom callbacks APIs allow for implementing any arbitrary
+curricula. This `example script <https://github.com/ray-project/ray/blob/master/rllib/examples/curriculum/curriculum_learning.py>`__ introduces
+the basic concepts you need to understand.
 
-    from ray.rllib.env.apis.task_settable_env import TaskSettableEnv
+First, define some env options. This example uses the `FrozenLake-v1` environment,
+a grid world, whose map is fully customizable.  Three tasks of different env difficulties
+are represented by slightly different maps that the agent has to navigate.
 
-    class MyEnv(TaskSettableEnv):
-        def get_task(self):
-            return self.current_difficulty
+.. literalinclude:: ../../../rllib/examples/curriculum/curriculum_learning.py
+   :language: python
+   :start-after: __curriculum_learning_example_env_options__
+   :end-before: __END_curriculum_learning_example_env_options__
 
-        def set_task(self, task):
-            self.current_difficulty = task
+Then, define the central piece controlling the curriculum, which is a custom callbacks class
+overriding the :py:meth:`~ray.rllib.algorithms.callbacks.Callbacks.on_train_result`.
 
-    def curriculum_fn(train_results, task_settable_env, env_ctx):
-        # Very simple curriculum function.
-        current_task = task_settable_env.get_task()
-        new_task = current_task + 1
-        return new_task
-
-    # Setup your Algorithm's config like so:
-    config = {
-        "env": MyEnv,
-        "env_task_fn": curriculum_fn,
-    }
-    # Train using `Tuner.fit()` or `Algorithm.train()` and the above config stub.
-    # ...
-
-There are two more ways to use the RLlib's other APIs to implement
-`curriculum learning <https://bair.berkeley.edu/blog/2017/12/20/reverse-curriculum/>`__.
-
-Use the Algorithm API and update the environment between calls to ``train()``.
-This example shows the algorithm being run inside a Tune function.
-This is basically the same as what the built-in `env_task_fn` API described above
-already does under the hood, but allows you to do even more customizations to your
-training loop.
-
-.. TODO move to doc_code and make it use algo configs.
-.. code-block:: python
-
-    import ray
-    from ray import train, tune
-    from ray.rllib.algorithms.ppo import PPO
-
-    def train_fn(config):
-        algo = PPO(config=config, env=YourEnv)
-        while True:
-            result = algo.train()
-            train.report(result)
-            if result["env_runners"]["episode_return_mean"] > 200:
-                task = 2
-            elif result["env_runners"]["episode_return_mean"] > 100:
-                task = 1
-            else:
-                task = 0
-            algo.workers.foreach_worker(
-                lambda ev: ev.foreach_env(
-                    lambda env: env.set_task(task)))
-
-    num_gpus = 0
-    num_env_runners = 2
-
-    ray.init()
-    tune.Tuner(
-        tune.with_resources(train_fn, resources=tune.PlacementGroupFactory(
-            [{"CPU": 1}, {"GPU": num_gpus}] + [{"CPU": 1}] * num_env_runners
-        ),)
-        param_space={
-            "num_gpus": num_gpus,
-            "num_env_runners": num_env_runners,
-        },
-    ).fit()
-
-You could also use RLlib's callbacks API to update the environment on new training
-results:
 
 .. TODO move to doc_code and make it use algo configs.
 .. code-block:: python

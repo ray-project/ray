@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, List, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Union
 
 if TYPE_CHECKING:
     import numpy as np
@@ -9,9 +9,30 @@ class _SerializationContext:
     def __init__(self):
         self.use_external_transport: bool = False
         self.tensors: List["torch.Tensor"] = []
+        # Buffer for transferring data between tasks in the same worker process.
+        # The key is the channel ID, and the value is the data. We don't use a
+        # lock when reading/writing the buffer because a DAG node actor will only
+        # execute one task at a time in `do_exec_tasks`. It will not execute multiple
+        # Ray tasks on a single actor simultaneously.
+        self.intra_process_channel_buffers: Dict[str, Any] = {}
 
     def set_use_external_transport(self, use_external_transport: bool) -> None:
         self.use_external_transport = use_external_transport
+
+    def set_data(self, channel_id: str, value: Any) -> None:
+        assert (
+            channel_id not in self.intra_process_channel_buffers
+        ), f"Channel {channel_id} already exists in the buffer."
+        self.intra_process_channel_buffers[channel_id] = value
+
+    def get_data(self, channel_id: str) -> Any:
+        assert (
+            channel_id in self.intra_process_channel_buffers
+        ), f"Channel {channel_id} does not exist in the buffer."
+        return self.intra_process_channel_buffers.pop(channel_id)
+
+    def reset_data(self, channel_id: str) -> None:
+        self.intra_process_channel_buffers.pop(channel_id, None)
 
     def reset_tensors(self, tensors: List["torch.Tensor"]) -> List["torch.Tensor"]:
         prev_tensors = self.tensors

@@ -648,7 +648,6 @@ def test_default_dashboard_agent_listen_port():
     [
         {
             **generate_system_config_map(
-                gcs_failover_worker_reconnect_timeout=20,
                 gcs_rpc_server_reconnect_timeout_s=3600,
                 gcs_server_request_timeout_seconds=3,
             ),

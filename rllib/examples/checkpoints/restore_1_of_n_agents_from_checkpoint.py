@@ -4,12 +4,13 @@ from checkpoint.
 This example:
     - Runs a multi-agent `Pendulum-v1` experiment with >= 2 policies.
     - Saves a checkpoint of the `MultiAgentRLModule` used every `--checkpoint-freq`
-        iterations.
-    - Stops the experiments after the agents reach a combined return of `-800`.
+       iterations.
+    - Stops the experiments after the agents reach a combined return of -800.
     - Picks the best checkpoint by combined return and restores policy 0 from it.
     - Runs a second experiment with the restored `RLModule` for policy 0 and
         a fresh `RLModule` for the other policies.
-    - Stops the second experiment after the agents reach a combined return of `-800`.
+    - Stops the second experiment after the agents reach a combined return of -800.
+
 
 How to run this script
 ----------------------
@@ -33,6 +34,7 @@ have the execution stop there for inspection and debugging.
 For logging to your WandB account, use:
 `--wandb-key=[your WandB API key] --wandb-project=[some project name]
 --wandb-run-name=[optional: WandB run name (within the defined project)]`
+
 
 Results to expect
 -----------------

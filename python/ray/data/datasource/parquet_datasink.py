@@ -6,7 +6,6 @@ from ray.data._internal.execution.interfaces import TaskContext
 from ray.data._internal.util import call_with_retry
 from ray.data.block import Block, BlockAccessor
 from ray.data.context import DataContext
-from ray.data.datasource.block_path_provider import BlockWritePathProvider
 from ray.data.datasource.file_datasink import _FileDatasink
 from ray.data.datasource.filename_provider import FilenameProvider
 
@@ -31,7 +30,6 @@ class _ParquetDatasink(_FileDatasink):
         try_create_dir: bool = True,
         open_stream_args: Optional[Dict[str, Any]] = None,
         filename_provider: Optional[FilenameProvider] = None,
-        block_path_provider: Optional[BlockWritePathProvider] = None,
         dataset_uuid: Optional[str] = None,
     ):
         if arrow_parquet_args is None:
@@ -47,7 +45,6 @@ class _ParquetDatasink(_FileDatasink):
             try_create_dir=try_create_dir,
             open_stream_args=open_stream_args,
             filename_provider=filename_provider,
-            block_path_provider=block_path_provider,
             dataset_uuid=dataset_uuid,
             file_format="parquet",
         )
