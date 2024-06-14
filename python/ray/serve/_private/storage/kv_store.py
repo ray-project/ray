@@ -65,6 +65,8 @@ class RayInternalKVStore(KVStoreBase):
             )
         except ray.exceptions.RpcError as e:
             raise KVStoreError(e.rpc_code)
+        except ray.exceptions.GetTimeoutError:
+            raise KVStoreError(ray._raylet.GRPC_STATUS_CODE_DEADLINE_EXCEEDED)
 
     def get(self, key: str) -> Optional[bytes]:
         """Get the value associated with the given key from the store.
@@ -86,6 +88,8 @@ class RayInternalKVStore(KVStoreBase):
             )
         except ray.exceptions.RpcError as e:
             raise KVStoreError(e.rpc_code)
+        except ray.exceptions.GetTimeoutError:
+            raise KVStoreError(ray._raylet.GRPC_STATUS_CODE_DEADLINE_EXCEEDED)
 
     def delete(self, key: str):
         """Delete the value associated with the given key from the store.
@@ -106,3 +110,5 @@ class RayInternalKVStore(KVStoreBase):
             )
         except ray.exceptions.RpcError as e:
             raise KVStoreError(e.rpc_code)
+        except ray.exceptions.GetTimeoutError:
+            raise KVStoreError(ray._raylet.GRPC_STATUS_CODE_DEADLINE_EXCEEDED)

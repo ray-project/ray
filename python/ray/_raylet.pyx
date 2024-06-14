@@ -227,6 +227,7 @@ OPTIMIZED = __OPTIMIZE__
 
 GRPC_STATUS_CODE_UNAVAILABLE = CGrpcStatusCode.UNAVAILABLE
 GRPC_STATUS_CODE_UNKNOWN = CGrpcStatusCode.UNKNOWN
+GRPC_STATUS_CODE_DEADLINE_EXCEEDED = CGrpcStatusCode.DEADLINE_EXCEEDED
 GRPC_STATUS_CODE_RESOURCE_EXHAUSTED = CGrpcStatusCode.RESOURCE_EXHAUSTED
 GRPC_STATUS_CODE_UNIMPLEMENTED = CGrpcStatusCode.UNIMPLEMENTED
 
@@ -561,6 +562,8 @@ cdef int check_status(const CRayStatus& status) nogil except -1:
     if status.IsObjectStoreFull():
         raise ObjectStoreFullError(message)
     elif status.IsInvalidArgument():
+        raise ValueError(message)
+    elif status.IsInvalid():
         raise ValueError(message)
     elif status.IsOutOfDisk():
         raise OutOfDiskError(message)

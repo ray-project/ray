@@ -366,7 +366,7 @@ void GcsAutoscalerStateManager::HandleDrainNode(
            << draining_deadline_timestamp_ms;
     auto msg = stream.str();
     RAY_LOG(WARNING) << msg;
-    send_reply_callback(Status::InvalidArgument(msg), nullptr, nullptr);
+    send_reply_callback(Status::Invalid(msg), nullptr, nullptr);
     return;
   }
 
