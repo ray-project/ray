@@ -118,7 +118,7 @@ if __name__ == "__main__":
         ],
         dynamic_axes={k: {0: "batch_size"} for k in input_names},
     )
-    # Start an inference session for the ONNX model
+    # Start an inference session for the ONNX model.
     session = onnxruntime.InferenceSession(exported_model_file, None)
     result_onnx = session.run(["output"], test_data_onnx)
 
