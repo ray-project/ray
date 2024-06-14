@@ -391,7 +391,7 @@ export const Metrics = () => {
   const grafanaDefaultDatasource = dashboardDatasource ?? "Prometheus";
 
   const [refreshOption, setRefreshOption] = useState<RefreshOptions>(
-    RefreshOptions.ONE_SECOND,
+    RefreshOptions.FIVE_SECONDS,
   );
 
   const [timeRangeOption, setTimeRangeOption] = useState<TimeRangeOptions>(

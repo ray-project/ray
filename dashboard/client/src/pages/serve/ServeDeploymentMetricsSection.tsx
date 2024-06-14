@@ -97,7 +97,7 @@ export const ServeReplicaMetricsSection = ({
     dashboardUids?.serveDeployment ?? "rayServeDashboard";
 
   const [refreshOption, setRefreshOption] = useState<RefreshOptions>(
-    RefreshOptions.ONE_SECOND,
+    RefreshOptions.FIVE_SECONDS,
   );
 
   const [timeRangeOption, setTimeRangeOption] = useState<TimeRangeOptions>(

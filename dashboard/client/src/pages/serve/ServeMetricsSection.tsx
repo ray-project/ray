@@ -121,7 +121,7 @@ export const ServeMetricsSection = ({
     useContext(GlobalContext);
   const grafanaServeDashboardUid = dashboardUids?.serve ?? "rayServeDashboard";
   const [refreshOption, setRefreshOption] = useState<RefreshOptions>(
-    RefreshOptions.ONE_SECOND,
+    RefreshOptions.FIVE_SECONDS,
   );
   const [timeRangeOption, setTimeRangeOption] = useState<TimeRangeOptions>(
     TimeRangeOptions.FIVE_MINS,
