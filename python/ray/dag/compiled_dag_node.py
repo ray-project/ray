@@ -496,11 +496,14 @@ class CompiledDAG:
             )
         ).remote()
 
-    def get_id(self):
+    def get_id(self) -> str:
         """
         Get the unique ID of the compiled DAG.
         """
         return self._dag_id
+
+    def __str__(self) -> str:
+        return f"CompiledDAG({self._dag_id})"
 
     def _add_node(self, node: "ray.dag.DAGNode") -> None:
         idx = self.counter
