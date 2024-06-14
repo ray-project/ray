@@ -10,7 +10,6 @@ import pytest
 import ray
 from ray.data import Dataset
 from ray.data._internal.arrow_block import ArrowBlockAccessor
-from ray.data._internal.lazy_block_list import LazyBlockList
 from ray.data.block import BlockMetadata
 from ray.data.datasource import Datasource
 from ray.data.datasource.csv_datasource import CSVDatasource
@@ -305,83 +304,6 @@ def test_filter(ray_start_regular_shared, target_max_block_size):
     assert ds._plan.initial_num_blocks() == num_blocks_per_task
 
 
-def test_lazy_block_list(shutdown_only, target_max_block_size):
-    # Test 10 tasks, each task returning 10 blocks, each block has 1 row and each
-    # row has 1024 bytes.
-    num_blocks_per_task = 10
-    block_size = 1024
-    num_tasks = 10
-
-    ds = ray.data.read_datasource(
-        RandomBytesDatasource(
-            num_tasks=num_tasks,
-            num_batches_per_task=num_blocks_per_task,
-            row_size=block_size,
-        ),
-        override_num_blocks=num_tasks,
-    )
-    block_list = ds._plan._in_blocks
-    block_list.ensure_metadata_for_first_block()
-
-    # Check internal states of LazyBlockList before execution
-    block_refs = block_list._block_partition_refs
-    cached_metadata = block_list._cached_metadata
-    metadata = block_list.get_metadata()
-
-    assert isinstance(block_list, LazyBlockList)
-    assert len(block_refs) == num_tasks
-    assert block_refs[0] is not None and all(
-        map(lambda ref: ref is None, block_refs[1:])
-    )
-    assert all(map(lambda ref: ref is None, block_list._block_partition_meta_refs))
-    assert len(cached_metadata) == num_tasks
-    for i, block_metadata in enumerate(cached_metadata):
-        if i == 0:
-            assert len(block_metadata) == num_blocks_per_task
-            for m in block_metadata:
-                assert m.num_rows == 1
-        else:
-            assert block_metadata is None
-    assert len(metadata) == num_tasks - 1 + num_blocks_per_task
-    for i, block_metadata in enumerate(metadata):
-        if i < num_blocks_per_task:
-            assert block_metadata.num_rows == 1
-            assert block_metadata.schema is not None
-        else:
-            assert block_metadata.num_rows == num_blocks_per_task
-            assert block_metadata.schema is None
-
-    # Check APIs of LazyBlockList
-    new_block_list = block_list.copy()
-    new_block_list.clear()
-    assert len(block_list._block_partition_refs) == num_tasks
-
-    output_blocks = block_list.get_blocks_with_metadata()
-    assert len(output_blocks) == num_tasks * num_blocks_per_task
-    for _, metadata in output_blocks:
-        assert metadata.num_rows == 1
-    for _, metadata in block_list.iter_blocks_with_metadata():
-        assert metadata.num_rows == 1
-
-    # Check internal states of LazyBlockList after execution
-    ds = ds.materialize()
-    metadata = block_list.get_metadata()
-
-    assert block_list._num_computed() == num_tasks
-    assert len(block_refs) == num_tasks
-    assert all(map(lambda ref: ref is not None, block_refs))
-    assert all(map(lambda ref: ref is None, block_list._block_partition_meta_refs))
-    assert len(cached_metadata) == num_tasks
-    for block_metadata in cached_metadata:
-        assert len(block_metadata) == num_blocks_per_task
-        for m in block_metadata:
-            assert m.num_rows == 1
-    assert len(metadata) == num_tasks * num_blocks_per_task
-    for block_metadata in metadata:
-        assert block_metadata.num_rows == 1
-        assert block_metadata.schema is not None
-
-
 @pytest.mark.skip("Needs zero-copy optimization for read->map_batches.")
 def test_read_large_data(ray_start_cluster):
     # Test 20G input with single task
@@ -606,13 +528,18 @@ def test_dynamic_block_split_deterministic(
 
     # ~800 bytes per block
     ds = ray.data.range(1000, override_num_blocks=10).map_batches(lambda x: x)
-    data = [ray.get(block) for block in ds.materialize()._plan._in_blocks._blocks]
+    data = [
+        ray.get(block) for block in ds.materialize()._plan._snapshot_bundle.block_refs
+    ]
     # Maps: first item of block -> block
     block_map = {block["id"][0]: block for block in data}
     # Iterate over multiple executions of the dataset,
     # and check that blocks were split in the same way
     for _ in range(TEST_ITERATIONS):
-        data = [ray.get(block) for block in ds.materialize()._plan._in_blocks._blocks]
+        data = [
+            ray.get(block)
+            for block in ds.materialize()._plan._snapshot_bundle.block_refs
+        ]
         for block in data:
             assert block_map[block["id"][0]] == block
 

@@ -79,7 +79,7 @@ install_miniconda() {
 
   if [ ! -x "${conda}" ] || [ "${MINIMAL_INSTALL-}" = 1 ]; then  # If no conda is found, install it
     local miniconda_dir  # Keep directories user-independent, to help with Bazel caching
-    local miniconda_version="Miniconda3-py39_24.1.2-0"
+    local miniconda_version="Miniconda3-py311_24.4.0-0"
     local miniconda_platform=""
     local exe_suffix=".sh"
 

@@ -5,6 +5,8 @@ from .operator import Operator
 if TYPE_CHECKING:
     import pyarrow
 
+    from ray.data._internal.execution.interfaces import RefBundle
+
 
 class LogicalOperator(Operator):
     """Abstract class for logical operators.
@@ -73,4 +75,8 @@ class LogicalOperator(Operator):
 
     def input_files(self) -> Optional[List[str]]:
         """The input files of this operator, or ``None`` if not known."""
+        return None
+
+    def output_data(self) -> Optional[List["RefBundle"]]:
+        """The output data of this operator, or ``None`` if not known."""
         return None

@@ -444,11 +444,11 @@ and 5 remote workers (responsible for sample collection).
 
 Since learning is most of the time done on the local worker, it may help to provide one or more GPUs
 to that worker via the ``num_gpus`` setting.
-Similarly, the resource allocation to remote workers can be controlled via ``num_cpus_per_env_runner``, ``num_gpus_per_env_runner``, and ``custom_resources_per_env_runner``.
+Similarly, you can control the resource allocation to remote workers with ``num_cpus_per_env_runner``, ``num_gpus_per_env_runner``, and ``custom_resources_per_env_runner``.
 
-The number of GPUs can be fractional quantities (e.g. 0.5) to allocate only a fraction
+The number of GPUs can be fractional quantities (for example, 0.5) to allocate only a fraction
 of a GPU. For example, with DQN you can pack five algorithms onto one GPU by setting
-``num_gpus: 0.2``. Check out `this fractional GPU example here <https://github.com/ray-project/ray/blob/master/rllib/examples/gpus/fractional_gpus.py>`__
+``num_gpus: 0.2``. See `this fractional GPU example here <https://github.com/ray-project/ray/blob/master/rllib/examples/gpus/fractional_gpus.py>`__
 as well that also demonstrates how environments (running on the remote workers) that
 require a GPU can benefit from the ``num_gpus_per_env_runner`` setting.
 
@@ -493,7 +493,7 @@ Here are some rules of thumb for scaling training with RLlib.
 
 2. If the environment is fast and the model is small (most models for RL are), use time-efficient algorithms such as :ref:`PPO <ppo>`, or :ref:`IMPALA <impala>`.
 These can be scaled by increasing ``num_env_runners`` to add rollout workers. It may also make sense to enable `vectorization <rllib-env.html#vectorized>`__ for
-inference. Make sure to set ``num_gpus: 1`` if you want to use a GPU. If the learner becomes a bottleneck, multiple GPUs can be used for learning by setting
+inference. Make sure to set ``num_gpus: 1`` if you want to use a GPU. If the learner becomes a bottleneck, you can use multiple GPUs for learning by setting
 ``num_gpus > 1``.
 
 3. If the model is compute intensive (e.g., a large deep residual network) and inference is the bottleneck, consider allocating GPUs to workers by setting ``num_gpus_per_env_runner: 1``. If you only have a single GPU, consider ``num_env_runners: 0`` to use the learner GPU for inference. For efficient use of GPU time, use a small number of GPU workers and a large number of `envs per worker <rllib-env.html#vectorized>`__.
