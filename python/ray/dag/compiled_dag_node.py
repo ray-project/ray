@@ -257,7 +257,7 @@ class DAGInputAdapter:
 
         def extractor(key: Union[int, str]):
             def extract_arg(args_tuple):
-                positional_args, kwargs = args_tuple
+                return args_tuple
                 if isinstance(key, int):
                     return positional_args[key]
                 else:
@@ -926,7 +926,7 @@ class CompiledDAG:
 
         self._get_or_compile()
 
-        inp = (args, kwargs)
+        inp = args[0]
         self._dag_submitter.write(inp)
 
         return self._dag_output_fetcher
@@ -952,7 +952,7 @@ class CompiledDAG:
 
         self._get_or_compile()
         async with self._dag_submission_lock:
-            inp = (args, kwargs)
+            inp = args[0]
             await self._dag_submitter.write(inp)
             # Allocate a future that the caller can use to get the result.
             fut = asyncio.Future()
