@@ -723,17 +723,14 @@ class TestCompositeChannel:
             dag = a.inc.bind(dag)
 
         compiled_dag = dag.experimental_compile()
-        output_channel = compiled_dag.execute(1)
-        result = output_channel.read()
-        assert result == 4
+        ref = compiled_dag.execute(1)
+        assert ray.get(ref) == 4
 
-        output_channel = compiled_dag.execute(2)
-        result = output_channel.read()
-        assert result == 24
+        ref = compiled_dag.execute(2)
+        assert ray.get(ref) == 24
 
-        output_channel = compiled_dag.execute(3)
-        result = output_channel.read()
-        assert result == 108
+        ref = compiled_dag.execute(3)
+        assert ray.get(ref) == 108
 
         compiled_dag.teardown()
 
@@ -758,19 +755,16 @@ class TestCompositeChannel:
 
         # a: 0+1 -> b: 100+1 -> a: 1+101
         compiled_dag = dag.experimental_compile()
-        output_channel = compiled_dag.execute(1)
-        result = output_channel.read()
-        assert result == 102
+        ref = compiled_dag.execute(1)
+        assert ray.get(ref) == 102
 
         # a: 102+2 -> b: 101+104 -> a: 104+205
-        output_channel = compiled_dag.execute(2)
-        result = output_channel.read()
-        assert result == 309
+        ref = compiled_dag.execute(2)
+        assert ray.get(ref) == 309
 
         # a: 309+3 -> b: 205+312 -> a: 312+517
-        output_channel = compiled_dag.execute(3)
-        result = output_channel.read()
-        assert result == 829
+        ref = compiled_dag.execute(3)
+        assert ray.get(ref) == 829
 
         compiled_dag.teardown()
 
@@ -793,13 +787,11 @@ class TestCompositeChannel:
             dag = MultiOutputNode([a.inc.bind(dag), b.inc.bind(dag)])
 
         compiled_dag = dag.experimental_compile()
-        output_channel = compiled_dag.execute(1)
-        result = output_channel.read()
-        assert result == [2, 101]
+        ref = compiled_dag.execute(1)
+        assert ray.get(ref) == [2, 101]
 
-        output_channel = compiled_dag.execute(3)
-        result = output_channel.read()
-        assert result == [10, 106]
+        ref = compiled_dag.execute(3)
+        assert ray.get(ref) == [10, 106]
 
         compiled_dag.teardown()
 
