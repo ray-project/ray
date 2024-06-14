@@ -680,6 +680,15 @@ py_test(
     deps = [":train_lib", ":conftest"],
 )
 
+### Ray Train V2 Tests
+py_test(
+    name = "test_controller",
+    size = "small",
+    srcs = ["v2/tests/test_controller.py"],
+    tags = ["exclusive", "team:ml", "train_v2"],
+    deps = [":train_lib", ":conftest"],
+)
+
 # This is a dummy test dependency that causes the above tests to be
 # re-run if any of these files changes.
 py_library(
