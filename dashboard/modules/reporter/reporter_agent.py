@@ -726,7 +726,7 @@ class ReporterAgent(
             return None
         return mem.shared
 
-    def _get_all_stats(self):
+    def _collect_stats(self):
         now = dashboard_utils.to_posix_time(datetime.datetime.utcnow())
         network_stats = self._get_network_stats()
         self._network_stats_hist.append((now, network_stats))
@@ -925,7 +925,7 @@ class ReporterAgent(
 
         return records
 
-    def _record_stats(self, stats, cluster_stats):
+    def _to_records(self, stats, cluster_stats) -> List[Record]:
         records_reported = []
         ip = stats["ip"]
 
@@ -1211,6 +1211,7 @@ class ReporterAgent(
                 network_receive_speed_record,
             ]
         )
+
         return records_reported
 
     async def _run_loop(self, publisher):
@@ -1219,39 +1220,52 @@ class ReporterAgent(
 
         while True:
             try:
-                # NOTE: Every iteration is executed inside the thread-pool
+                # Fetch autoscaler debug status
+                autoscaler_status_json_bytes: Optional[bytes] = await self._gcs_aio_client.internal_kv_get(
+                    DEBUG_AUTOSCALING_STATUS.encode(),
+                    None,
+                    timeout=GCS_RPC_TIMEOUT_SECONDS,
+                )
+
+                # NOTE: Stats collection is executed inside the thread-pool
                 #       executor (TPE) to avoid blocking the Dashboard's event-loop
-                await loop.run_in_executor(None, self._perform_iteration, publisher)
+                json_payload = await loop.run_in_executor(
+                    None,
+                    self._compose_stats_payload,
+                    autoscaler_status_json_bytes
+                )
+
+                await publisher.publish_resource_usage(self._key, json_payload)
 
             except Exception:
                 logger.exception("Error publishing node physical stats.")
 
             await asyncio.sleep(reporter_consts.REPORTER_UPDATE_INTERVAL_MS / 1000)
 
-    async def _perform_iteration(self, publisher):
-        formatted_status_string = await self._gcs_aio_client.internal_kv_get(
-            DEBUG_AUTOSCALING_STATUS.encode(),
-            None,
-            timeout=GCS_RPC_TIMEOUT_SECONDS,
-        )
-        stats = self._get_all_stats()
+    def _compose_stats_payload(self, cluster_autoscaling_stats_json: Optional[bytes]) -> str:
+        stats = self._collect_stats()
+
         # Report stats only when metrics collection is enabled.
         if not self._metrics_collection_disabled:
             cluster_stats = (
-                json.loads(formatted_status_string.decode())
-                if formatted_status_string
+                json.loads(cluster_autoscaling_stats_json.decode())
+                if cluster_autoscaling_stats_json
                 else {}
             )
-            records_reported = self._record_stats(stats, cluster_stats)
+
+            records = self._to_records(stats, cluster_stats)
+
             self._metrics_agent.record_and_export(
-                records_reported,
+                records,
                 global_tags={
                     "Version": ray.__version__,
                     "SessionName": self._session_name,
                 },
             )
+
             self._metrics_agent.clean_all_dead_worker_metrics()
-        await publisher.publish_resource_usage(self._key, jsonify_asdict(stats))
+
+        return jsonify_asdict(stats)
 
     async def run(self, server):
         if server:
