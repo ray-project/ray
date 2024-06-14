@@ -2,7 +2,6 @@ import json
 import logging
 import asyncio
 import aiohttp.web
-from concurrent.futures import ThreadPoolExecutor
 from typing import Optional, Tuple, List
 
 
@@ -639,8 +638,8 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
                 if key is None:
                     continue
 
-                # NOTE: Every iteration is executed inside the thread-pool executor (TPE)
-                #       to avoid blocking the Dashboard's event-loop
+                # NOTE: Every iteration is executed inside the thread-pool executor
+                #       (TPE) to avoid blocking the Dashboard's event-loop
                 parsed_data = await loop.run_in_executor(None, json.loads, data)
 
                 node_id = key.split(":")[-1]
