@@ -98,24 +98,6 @@ bazel --version
 # clear bazelrc
 echo > ~/.bazelrc
 
-if [[ "${TRAVIS-}" == true ]]; then
-  echo "build --config=ci-travis" >> ~/.bazelrc
-
-  # If we are in Travis, most of the compilation result will be cached.
-  # This means we are I/O bounded. By default, Bazel set the number of concurrent
-  # jobs to the the number cores on the machine, which are not efficient for
-  # network bounded cache downloading workload. Therefore we increase the number
-  # of jobs to 50
-  # NOTE: Normally --jobs should be under 'build:ci-travis' in .bazelrc, but we put
-  # it under 'build' here avoid conflicts with other --config options.
-  echo "build --jobs=50" >> ~/.bazelrc
-fi
-
-if [[ "${GITHUB_ACTIONS-}" == "true" ]]; then
-  echo "build --config=ci-github" >> ~/.bazelrc
-  echo "build --jobs="$(($(nproc)+2)) >> ~/.bazelrc
-fi
-
 if [[ "${CI-}" == "true" ]]; then
   # Ask bazel to anounounce the config it finds in bazelrcs, which makes
   # understanding how to reproduce bazel easier.
