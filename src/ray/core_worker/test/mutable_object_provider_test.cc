@@ -174,6 +174,41 @@ TEST(MutableObjectProvider, RegisterWriterChannel) {
   EXPECT_EQ(interface->pushed_objects().front(), object_id);
 }
 
+TEST(MutableObjectProvider, MutableObjectBufferReadRelease) {
+  ObjectID object_id = ObjectID::FromRandom();
+  auto plasma = std::make_shared<TestPlasma>();
+  MutableObjectProvider provider(plasma,
+                                 /*factory=*/nullptr);
+  provider.RegisterWriterChannel(object_id, nullptr);
+
+  std::shared_ptr<Buffer> data;
+  EXPECT_EQ(provider
+                .WriteAcquire(object_id,
+                              /*data_size=*/0,
+                              /*metadata=*/nullptr,
+                              /*metadata_size=*/0,
+                              /*num_readers=*/1,
+                              data)
+                .code(),
+            StatusCode::OK);
+  EXPECT_EQ(provider.WriteRelease(object_id).code(), StatusCode::OK);
+
+  provider.RegisterReaderChannel(object_id);
+
+  // `next_version_to_read` should be initialized to 1.
+  EXPECT_EQ(provider.object_manager_->GetChannel(object_id)->next_version_to_read, 1);
+  {
+    std::shared_ptr<RayObject> result;
+    EXPECT_EQ(provider.ReadAcquire(object_id, result).code(), StatusCode::OK);
+  }
+  // The result (RayObject) together with the underlying MutableObjectBuffer
+  // goes out of scope here, this will trigger the call to ReadRelease() in
+  // the destructor of MutableObjectBuffer. This is verified by checking
+  // `next_version_to_read` of the channel, which is only incremented inside
+  // ReadRelease().
+  EXPECT_EQ(provider.object_manager_->GetChannel(object_id)->next_version_to_read, 2);
+}
+
 TEST(MutableObjectProvider, HandlePushMutableObject) {
   ObjectID object_id = ObjectID::FromRandom();
   ObjectID local_object_id = ObjectID::FromRandom();

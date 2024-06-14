@@ -48,6 +48,7 @@ from ray.exceptions import (
     OutOfMemoryError,
     ObjectRefStreamEndOfStreamError,
 )
+from ray.experimental.compiled_dag_ref import CompiledDAGRef
 from ray.util import serialization_addons
 from ray.util import inspect_serializability
 
@@ -127,6 +128,11 @@ class SerializationContext:
             return _actor_handle_deserializer, (serialized,)
 
         self._register_cloudpickle_reducer(ray.actor.ActorHandle, actor_handle_reducer)
+
+        def compiled_dag_ref_reducer(obj):
+            raise TypeError("Serialization of CompiledDAGRef is not supported.")
+
+        self._register_cloudpickle_reducer(CompiledDAGRef, compiled_dag_ref_reducer)
 
         def object_ref_reducer(obj):
             worker = ray._private.worker.global_worker
