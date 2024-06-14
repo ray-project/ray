@@ -61,7 +61,7 @@ class ClusterTaskManagerInterface {
   /// \param scheduling_failure_message: The reason message for cancellation.
   /// \return True if any task was successfully cancelled.
   virtual bool CancelTasks(
-      std::function<bool(const RayTask &)> predicate,
+      std::function<bool(const std::shared_ptr<internal::Work> &)> predicate,
       rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type,
       const std::string &scheduling_failure_message) = 0;
 

@@ -685,8 +685,8 @@ void NodeManager::HandleReleaseUnusedBundles(rpc::ReleaseUnusedBundlesRequest re
 
   // Cancel lease requests related to unused bundles
   cluster_task_manager_->CancelTasks(
-      [&](const RayTask &task) {
-        const auto bundle_id = task.GetTaskSpecification().PlacementGroupBundleId();
+      [&](const std::shared_ptr<internal::Work> &work) {
+        const auto bundle_id = work->task.GetTaskSpecification().PlacementGroupBundleId();
         return !bundle_id.first.IsNil() && 0 == in_use_bundles.count(bundle_id);
       },
       rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_INTENDED,
@@ -1901,8 +1901,8 @@ void NodeManager::HandleCancelResourceReserve(
 
   // Cancel lease requests related to the placement group to be removed.
   cluster_task_manager_->CancelTasks(
-      [&](const RayTask &task) {
-        const auto bundle_id = task.GetTaskSpecification().PlacementGroupBundleId();
+      [&](const std::shared_ptr<internal::Work> &work) {
+        const auto bundle_id = work->task.GetTaskSpecification().PlacementGroupBundleId();
         return bundle_id.first == bundle_spec.PlacementGroupId();
       },
       rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_PLACEMENT_GROUP_REMOVED,

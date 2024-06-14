@@ -837,7 +837,7 @@ void LocalTaskManager::ReleaseTaskArgs(const TaskID &task_id) {
 }
 
 namespace {
-void ReplyCancelled(std::shared_ptr<internal::Work> &work,
+void ReplyCancelled(const std::shared_ptr<internal::Work> &work,
                     rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type,
                     const std::string &scheduling_failure_message) {
   auto reply = work->reply;
@@ -850,61 +850,52 @@ void ReplyCancelled(std::shared_ptr<internal::Work> &work,
 }  // namespace
 
 bool LocalTaskManager::CancelTasks(
-    std::function<bool(const RayTask &)> predicate,
+    std::function<bool(const std::shared_ptr<internal::Work> &)> predicate,
     rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type,
     const std::string &scheduling_failure_message) {
   bool tasks_cancelled = false;
-  for (auto shapes_it = tasks_to_dispatch_.begin();
-       shapes_it != tasks_to_dispatch_.end();) {
-    auto &work_queue = shapes_it->second;
-    for (auto work_it = work_queue.begin(); work_it != work_queue.end();) {
-      const auto &task = (*work_it)->task;
-      if (predicate(task)) {
-        const TaskID task_id = task.GetTaskSpecification().TaskId();
-        RAY_LOG(DEBUG) << "Canceling task " << task_id << " from dispatch queue.";
-        ReplyCancelled(*work_it, failure_type, scheduling_failure_message);
-        if ((*work_it)->GetState() == internal::WorkStatus::WAITING_FOR_WORKER) {
-          // We've already acquired resources so we need to release them.
-          cluster_resource_scheduler_->GetLocalResourceManager().ReleaseWorkerResources(
-              (*work_it)->allocated_instances);
-          // Release pinned task args.
-          ReleaseTaskArgs(task_id);
-        }
-        if (!task.GetTaskSpecification().GetDependencies().empty()) {
-          task_dependency_manager_.RemoveTaskDependencies(
-              task.GetTaskSpecification().TaskId());
-        }
-        RemoveFromRunningTasksIfExists(task);
-        (*work_it)->SetStateCancelled();
-        work_it = work_queue.erase(work_it);
-        tasks_cancelled = true;
-      } else {
-        ++work_it;
-      }
-    }
-    if (work_queue.empty()) {
-      tasks_to_dispatch_.erase(shapes_it++);
-    } else {
-      ++shapes_it;
-    }
-  }
 
-  for (auto work_it = waiting_task_queue_.begin();
-       work_it != waiting_task_queue_.end();) {
-    const auto &task = (*work_it)->task;
-    if (predicate(task)) {
-      ReplyCancelled(*work_it, failure_type, scheduling_failure_message);
-      if (!task.GetTaskSpecification().GetDependencies().empty()) {
-        task_dependency_manager_.RemoveTaskDependencies(
-            task.GetTaskSpecification().TaskId());
-      }
-      waiting_tasks_index_.erase(task.GetTaskSpecification().TaskId());
-      work_it = waiting_task_queue_.erase(work_it);
-      tasks_cancelled = true;
-    } else {
-      ++work_it;
-    }
-  }
+  ray::erase_if<SchedulingClass, std::shared_ptr<internal::Work>>(
+      tasks_to_dispatch_, [&](const std::shared_ptr<internal::Work> &work) {
+        if (predicate(work)) {
+          const TaskID task_id = work->task.GetTaskSpecification().TaskId();
+          RAY_LOG(DEBUG) << "Canceling task " << task_id << " from dispatch queue.";
+          ReplyCancelled(work, failure_type, scheduling_failure_message);
+          if (work->GetState() == internal::WorkStatus::WAITING_FOR_WORKER) {
+            // We've already acquired resources so we need to release them.
+            cluster_resource_scheduler_->GetLocalResourceManager().ReleaseWorkerResources(
+                work->allocated_instances);
+            // Release pinned task args.
+            ReleaseTaskArgs(task_id);
+          }
+          if (!work->task.GetTaskSpecification().GetDependencies().empty()) {
+            task_dependency_manager_.RemoveTaskDependencies(
+                work->task.GetTaskSpecification().TaskId());
+          }
+          RemoveFromRunningTasksIfExists(work->task);
+          work->SetStateCancelled();
+          tasks_cancelled = true;
+          return true;
+        } else {
+          return false;
+        }
+      });
+
+  ray::erase_if<std::shared_ptr<internal::Work>>(
+      waiting_task_queue_, [&](const std::shared_ptr<internal::Work> &work) {
+        if (predicate(work)) {
+          ReplyCancelled(work, failure_type, scheduling_failure_message);
+          if (!work->task.GetTaskSpecification().GetDependencies().empty()) {
+            task_dependency_manager_.RemoveTaskDependencies(
+                work->task.GetTaskSpecification().TaskId());
+          }
+          waiting_tasks_index_.erase(work->task.GetTaskSpecification().TaskId());
+          tasks_cancelled = true;
+          return true;
+        } else {
+          return false;
+        }
+      });
 
   return tasks_cancelled;
 }
@@ -914,8 +905,8 @@ bool LocalTaskManager::CancelTask(
     rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type,
     const std::string &scheduling_failure_message) {
   return CancelTasks(
-      [task_id](const RayTask &task) {
-        return task.GetTaskSpecification().TaskId() == task_id;
+      [task_id](const std::shared_ptr<internal::Work> &work) {
+        return work->task.GetTaskSpecification().TaskId() == task_id;
       },
       failure_type,
       scheduling_failure_message);

@@ -1238,7 +1238,7 @@ TEST_F(ClusterTaskManagerTest, TaskCancellationTest) {
   task_manager_.QueueAndScheduleTask(task4, false, false, &reply4, callback);
   pool_.TriggerCallbacks();
   ASSERT_TRUE(task_manager_.CancelTasks(
-      [](const RayTask &task) { return true; },
+      [](const std::shared_ptr<internal::Work> &work) { return true; },
       rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_INTENDED,
       ""));
   ASSERT_TRUE(reply3.canceled());

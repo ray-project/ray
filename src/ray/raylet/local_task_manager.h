@@ -117,7 +117,7 @@ class LocalTaskManager : public ILocalTaskManager {
   /// \param failure_type: The reason for cancellation.
   /// \param scheduling_failure_message: The reason message for cancellation.
   /// \return True if any task was successfully cancelled.
-  bool CancelTasks(std::function<bool(const RayTask &)> predicate,
+  bool CancelTasks(std::function<bool(const std::shared_ptr<internal::Work> &)> predicate,
                    rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type,
                    const std::string &scheduling_failure_message) override;
 

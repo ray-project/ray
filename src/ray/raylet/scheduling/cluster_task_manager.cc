@@ -78,53 +78,38 @@ void ReplyCancelled(const internal::Work &work,
 }  // namespace
 
 bool ClusterTaskManager::CancelTasks(
-    std::function<bool(const RayTask &)> predicate,
+    std::function<bool(const std::shared_ptr<internal::Work> &)> predicate,
     rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type,
     const std::string &scheduling_failure_message) {
   bool tasks_cancelled = false;
-  for (auto shapes_it = tasks_to_schedule_.begin();
-       shapes_it != tasks_to_schedule_.end();) {
-    auto &work_queue = shapes_it->second;
-    for (auto work_it = work_queue.begin(); work_it != work_queue.end();) {
-      const auto &task = (*work_it)->task;
-      if (predicate(task)) {
-        RAY_LOG(DEBUG) << "Canceling task " << task.GetTaskSpecification().TaskId()
-                       << " from schedule queue.";
-        ReplyCancelled(*(*work_it), failure_type, scheduling_failure_message);
-        work_it = work_queue.erase(work_it);
-        tasks_cancelled = true;
-      } else {
-        ++work_it;
-      }
-    }
-    if (work_queue.empty()) {
-      tasks_to_schedule_.erase(shapes_it++);
-    } else {
-      ++shapes_it;
-    }
-  }
 
-  for (auto shapes_it = infeasible_tasks_.begin();
-       shapes_it != infeasible_tasks_.end();) {
-    auto &work_queue = shapes_it->second;
-    for (auto work_it = work_queue.begin(); work_it != work_queue.end();) {
-      const auto &task = (*work_it)->task;
-      if (predicate(task)) {
-        RAY_LOG(DEBUG) << "Canceling task " << task.GetTaskSpecification().TaskId()
-                       << " from infeasible queue.";
-        ReplyCancelled(*(*work_it), failure_type, scheduling_failure_message);
-        work_it = work_queue.erase(work_it);
-        tasks_cancelled = true;
-      } else {
-        ++work_it;
-      }
-    }
-    if (work_queue.empty()) {
-      infeasible_tasks_.erase(shapes_it++);
-    } else {
-      ++shapes_it;
-    }
-  }
+  ray::erase_if<SchedulingClass, std::shared_ptr<internal::Work>>(
+      tasks_to_schedule_, [&](const std::shared_ptr<internal::Work> &work) {
+        if (predicate(work)) {
+          RAY_LOG(DEBUG) << "Canceling task "
+                         << work->task.GetTaskSpecification().TaskId()
+                         << " from schedule queue.";
+          ReplyCancelled(*work, failure_type, scheduling_failure_message);
+          tasks_cancelled = true;
+          return true;
+        } else {
+          return false;
+        }
+      });
+
+  ray::erase_if<SchedulingClass, std::shared_ptr<internal::Work>>(
+      infeasible_tasks_, [&](const std::shared_ptr<internal::Work> &work) {
+        if (predicate(work)) {
+          RAY_LOG(DEBUG) << "Canceling task "
+                         << work->task.GetTaskSpecification().TaskId()
+                         << " from infeasible queue.";
+          ReplyCancelled(*work, failure_type, scheduling_failure_message);
+          tasks_cancelled = true;
+          return true;
+        } else {
+          return false;
+        }
+      });
 
   if (local_task_manager_->CancelTasks(
           predicate, failure_type, scheduling_failure_message)) {
@@ -140,9 +125,9 @@ bool ClusterTaskManager::CancelAllTaskOwnedBy(
     const std::string &scheduling_failure_message) {
   // Only tasks and regular actors are canceled because their lifetime is
   // the same as the owner.
-  auto predicate = [worker_id](const RayTask &task) {
-    return !task.GetTaskSpecification().IsDetachedActor() &&
-           task.GetTaskSpecification().CallerWorkerId() == worker_id;
+  auto predicate = [worker_id](const std::shared_ptr<internal::Work> &work) {
+    return !work->task.GetTaskSpecification().IsDetachedActor() &&
+           work->task.GetTaskSpecification().CallerWorkerId() == worker_id;
   };
 
   return CancelTasks(predicate, failure_type, scheduling_failure_message);
@@ -289,8 +274,8 @@ bool ClusterTaskManager::CancelTask(
     const TaskID &task_id,
     rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type,
     const std::string &scheduling_failure_message) {
-  auto predicate = [task_id](const RayTask &task) {
-    return task.GetTaskSpecification().TaskId() == task_id;
+  auto predicate = [task_id](const std::shared_ptr<internal::Work> &work) {
+    return work->task.GetTaskSpecification().TaskId() == task_id;
   };
 
   return CancelTasks(predicate, failure_type, scheduling_failure_message);
