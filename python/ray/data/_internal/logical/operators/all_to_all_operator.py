@@ -35,9 +35,6 @@ class AbstractAllToAll(LogicalOperator):
         self._ray_remote_args = ray_remote_args or {}
         self._sub_progress_bar_names = sub_progress_bar_names
 
-    def supports_fusion(self):
-        return True
-
 
 class RandomizeBlocks(AbstractAllToAll):
     """Logical operator for randomize_block_order."""
