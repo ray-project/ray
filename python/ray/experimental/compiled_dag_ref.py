@@ -37,10 +37,9 @@ class CompiledDAGRef(ray.ObjectRef):
 
     def __str__(self):
         return (
-            f"CompiledDAGRef(_dag={self._dag}, "
-            f"_execution_index={self._execution_index}, "
-            f"_ray_get_called={self._ray_get_called}, "
-            f"_dag_output_channels={self._dag_output_channels})"
+            f"CompiledDAGRef(dag_output_channels={self._dag_output_channels}, "
+            f"execution_index={self._execution_index}, "
+            f"ray_get_called={self._ray_get_called})"
         )
 
     def __copy__(self):
