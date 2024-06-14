@@ -269,7 +269,11 @@ class FileBasedDatasource(Datasource):
                 file_sizes=file_sizes,
             )
 
-            read_task_fn = create_read_task_fn(read_paths, self._NUM_THREADS_PER_TASK)
+            num_threads = self._NUM_THREADS_PER_TASK
+            if ctx.override_num_file_reading_threads is not None:
+                num_threads = ctx.override_num_file_reading_threads
+
+            read_task_fn = create_read_task_fn(read_paths, num_threads)
 
             read_task = ReadTask(read_task_fn, meta)
 

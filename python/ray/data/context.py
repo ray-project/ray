@@ -132,6 +132,10 @@ DEFAULT_WAIT_FOR_MIN_ACTORS_S = env_integer(
     "RAY_DATA_DEFAULT_WAIT_FOR_MIN_ACTORS_S", 60 * 10
 )
 
+DEFAULT_OVERRIDE_NUM_FILE_READING_THREADS: Optional[int] = env_integer(
+    "RAY_OVERRIDE_NUM_FILE_READING_THREADS", None
+)
+
 
 def _execution_options_factory() -> "ExecutionOptions":
     # Lazily import to avoid circular dependencies.
@@ -230,6 +234,8 @@ class DataContext:
             call is made with a S3 URI.
         wait_for_min_actors_s: The default time to wait for minimum requested
             actors to start before raising a timeout, in seconds.
+        override_num_file_reading_threads: The number of threads to use for reading. If
+            not set, the number of threads is determined by the particular API.
     """
 
     target_max_block_size: int = DEFAULT_TARGET_MAX_BLOCK_SIZE
@@ -276,6 +282,9 @@ class DataContext:
     print_on_execution_start: bool = True
     s3_try_create_dir: bool = DEFAULT_S3_TRY_CREATE_DIR
     wait_for_min_actors_s: int = DEFAULT_WAIT_FOR_MIN_ACTORS_S
+    override_num_file_reading_threads: Optional[
+        int
+    ] = DEFAULT_OVERRIDE_NUM_FILE_READING_THREADS
 
     def __post_init__(self):
         # The additonal ray remote args that should be added to

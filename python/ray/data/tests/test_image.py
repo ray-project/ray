@@ -31,23 +31,17 @@ class TestReadImages:
         assert all(record["image"].shape == (32, 32, 3) for record in ds.take())
 
     @pytest.mark.parametrize("num_threads", [-1, 0, 1, 2, 4])
-    def test_multi_threading(self, ray_start_regular_shared, num_threads, monkeypatch):
-        monkeypatch.setattr(
-            ray.data.datasource.image_datasource.ImageDatasource,
-            "_NUM_THREADS_PER_TASK",
-            num_threads,
-        )
-        ds = ray.data.read_images(
-            "example://image-datasets/simple",
-            override_num_blocks=1,
-            include_paths=True,
-        )
+    def test_multi_threading(
+        self, ray_start_regular_shared, num_threads, restore_data_context
+    ):
+        ctx = ray.data.DataContext.get_current()
+        ctx.override_num_file_reading_threads = num_threads
+
+        ds = ray.data.read_images("example://image-datasets/simple", include_paths=True)
         paths = [item["path"][-len("image1.jpg") :] for item in ds.take_all()]
-        if num_threads > 1:
-            # If there are more than 1 threads, the order is not guaranteed.
-            paths = sorted(paths)
+
         expected_paths = ["image1.jpg", "image2.jpg", "image3.jpg"]
-        assert paths == expected_paths
+        assert sorted(paths) == expected_paths
 
     def test_multiple_paths(self, ray_start_regular_shared):
         ds = ray.data.read_images(
