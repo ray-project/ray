@@ -32,6 +32,10 @@ class ONNXCompatibleWrapper(torch.nn.Module):
 if __name__ == "__main__":
     args = parser.parse_args()
 
+    assert (
+        not args.enable_new_api_stack
+    ), "Must NOT set --enable-new-api-stack when running this script!"
+
     ray.init(local_mode=args.local_mode)
 
     # Configure our PPO Algorithm.
@@ -93,7 +97,8 @@ if __name__ == "__main__":
     # Evaluate tensor to fetch numpy array
     result_pytorch = result_pytorch.detach().numpy()
 
-    # This line will export the model to ONNX.
+    # Wrap the actual ModelV2 with the torch wrapper above to make this all work with
+    # LSTMs (extra `state` in- and outputs and `seq_lens` inputs).
     onnx_compatible = ONNXCompatibleWrapper(policy.model)
     exported_model_file = "model.onnx"
     input_names = [
@@ -103,6 +108,7 @@ if __name__ == "__main__":
         "seq_lens",
     ]
 
+    # This line will export the model to ONNX.
     torch.onnx.export(
         onnx_compatible,
         tuple(test_data_onnx_input[n] for n in input_names),
