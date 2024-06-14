@@ -485,6 +485,20 @@ def test_exceed_max_buffered_results(ray_start_regular):
     compiled_dag.teardown()
 
 
+def test_compiled_dag_ref_del(ray_start_regular):
+    a = Actor.remote(0)
+    with InputNode() as inp:
+        dag = a.inc.bind(inp)
+
+    compiled_dag = dag.experimental_compile()
+    # Test that when ref is deleted or goes out of scope, the corresponding
+    # execution result is retrieved and immediately discarded. This is confirmed
+    # when future execute() methods do not block.
+    for _ in range(10):
+        ref = compiled_dag.execute(1)
+        del ref
+
+
 def test_dag_fault_tolerance_chain(ray_start_regular_shared):
     actors = [
         Actor.remote(0, fail_after=100 if i == 0 else None, sys_exit=False)

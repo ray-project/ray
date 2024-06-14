@@ -52,6 +52,11 @@ class CompiledDAGRef(ray.ObjectRef):
     def __reduce__(self):
         raise ValueError("CompiledDAGRef cannot be pickled.")
 
+    def __del__(self):
+        # If not yet, get the result and discard to avoid execution result leak.
+        if not self._ray_get_called:
+            self.get()
+
     def get(self):
         if self._ray_get_called:
             raise ValueError(
