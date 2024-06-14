@@ -4,7 +4,7 @@ from typing import Any, Callable, Iterable, Iterator, List, Optional
 
 from ray.data.block import Block, BlockAccessor, BlockMetadata
 from ray.data.datasource.datasource import Datasource, ReadTask
-from ray.util.annotations import PublicAPI
+from ray.util.annotations import DeveloperAPI
 
 Connection = Any  # A Python DB API2-compliant `Connection` object.
 Cursor = Any  # A Python DB API2-compliant `Cursor` object.
@@ -72,7 +72,7 @@ def _connect(connection_factory: Callable[[], Connection]) -> Iterator[Cursor]:
         connection.close()
 
 
-@PublicAPI(stability="alpha")
+@DeveloperAPI
 class SQLDatasource(Datasource):
 
     NUM_SAMPLE_ROWS = 100

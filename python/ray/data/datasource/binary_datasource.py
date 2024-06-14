@@ -2,13 +2,13 @@ from typing import TYPE_CHECKING
 
 from ray.data._internal.arrow_block import ArrowBlockBuilder
 from ray.data.datasource.file_based_datasource import FileBasedDatasource
-from ray.util.annotations import PublicAPI
+from ray.util.annotations import DeveloperAPI
 
 if TYPE_CHECKING:
     import pyarrow
 
 
-@PublicAPI
+@DeveloperAPI
 class BinaryDatasource(FileBasedDatasource):
     """Binary datasource, for reading and writing binary files."""
 

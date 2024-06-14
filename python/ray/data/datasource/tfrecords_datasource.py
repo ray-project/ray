@@ -10,7 +10,7 @@ from ray.air.util.tensor_extensions.arrow import pyarrow_table_from_pydict
 from ray.data.aggregate import AggregateFn
 from ray.data.block import Block
 from ray.data.datasource.file_based_datasource import FileBasedDatasource
-from ray.util.annotations import PublicAPI
+from ray.util.annotations import DeveloperAPI, PublicAPI
 
 if TYPE_CHECKING:
     import pandas as pd
@@ -45,7 +45,7 @@ class TFXReadOptions:
     auto_infer_schema: bool = True
 
 
-@PublicAPI(stability="alpha")
+@DeveloperAPI
 class TFRecordDatasource(FileBasedDatasource):
     """TFRecord datasource, for reading and writing TFRecord files."""
 

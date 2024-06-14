@@ -5,13 +5,13 @@ import numpy as np
 
 from ray.data.block import Block, BlockAccessor
 from ray.data.datasource.file_based_datasource import FileBasedDatasource
-from ray.util.annotations import PublicAPI
+from ray.util.annotations import DeveloperAPI
 
 if TYPE_CHECKING:
     import pyarrow
 
 
-@PublicAPI
+@DeveloperAPI
 class NumpyDatasource(FileBasedDatasource):
     """Numpy datasource, for reading and writing Numpy files."""
 

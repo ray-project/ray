@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 from ray.air.util.tensor_extensions.arrow import pyarrow_table_from_pydict
 from ray.data.context import DataContext
 from ray.data.datasource.file_based_datasource import FileBasedDatasource
-from ray.util.annotations import PublicAPI
+from ray.util.annotations import DeveloperAPI
 
 if TYPE_CHECKING:
     import pyarrow
@@ -13,7 +13,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-@PublicAPI
+@DeveloperAPI
 class JSONDatasource(FileBasedDatasource):
     """JSON datasource, for reading and writing JSON and JSONL files."""
 

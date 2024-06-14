@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Union
 
 from ray.data.block import BlockAccessor
 from ray.data.datasource.file_based_datasource import FileBasedDatasource
-from ray.util.annotations import PublicAPI
+from ray.util.annotations import DeveloperAPI
 
 if TYPE_CHECKING:
     import pyarrow
@@ -300,7 +300,7 @@ def _make_iterable(block: BlockAccessor):
     return block.iter_rows(public_row_format=False)
 
 
-@PublicAPI(stability="alpha")
+@DeveloperAPI
 class WebDatasetDatasource(FileBasedDatasource):
     """A Datasource for WebDataset datasets (tar format with naming conventions)."""
 

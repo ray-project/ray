@@ -2,13 +2,13 @@ from typing import TYPE_CHECKING, Any, Dict, Iterator, List, Optional, Union
 
 from ray.data.block import Block
 from ray.data.datasource.file_based_datasource import FileBasedDatasource
-from ray.util.annotations import PublicAPI
+from ray.util.annotations import DeveloperAPI
 
 if TYPE_CHECKING:
     import pyarrow
 
 
-@PublicAPI
+@DeveloperAPI
 class CSVDatasource(FileBasedDatasource):
     """CSV datasource, for reading and writing CSV files."""
 

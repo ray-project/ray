@@ -39,7 +39,7 @@ from ray.data.datasource.path_util import (
     _has_file_extension,
     _resolve_paths_and_filesystem,
 )
-from ray.util.annotations import PublicAPI
+from ray.util.annotations import DeveloperAPI
 
 if TYPE_CHECKING:
     import pyarrow
@@ -143,7 +143,7 @@ def _check_for_legacy_tensor_type(schema):
             )
 
 
-@PublicAPI
+@DeveloperAPI
 class ParquetDatasource(Datasource):
     """Parquet datasource, for reading and writing Parquet files.
 
