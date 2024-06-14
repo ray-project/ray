@@ -8,6 +8,9 @@ from typing import Optional, List
 
 _SPHINX_AUTOSUMMARY_HEADER = ".. autosummary::"
 _SPHINX_AUTOCLASS_HEADER = ".. autoclass::"
+# This is a special character used in autosummary to render only the api shortname, for
+# example ~module.api_name will render only api_name
+_SPHINX_AUTODOC_SHORTNAME = "~"
 
 
 class AnnotationType(Enum):
@@ -61,9 +64,8 @@ class API:
                 # end of autosummary, \s means empty space, this line is checking if
                 # the line is not empty and not starting with empty space
                 break
-            api_name = (
-                f"{current_module}.{line.strip()}" if current_module else line.strip()
-            )
+            attribute = line.strip().removeprefix(_SPHINX_AUTODOC_SHORTNAME)
+            api_name = f"{current_module}.{attribute}" if current_module else attribute
             apis.append(
                 API(
                     name=api_name,
@@ -86,7 +88,11 @@ class API:
         doc = doc.strip()
         if not doc.startswith(_SPHINX_AUTOCLASS_HEADER):
             return None
-        cls = doc[len(_SPHINX_AUTOCLASS_HEADER) :].strip()
+        cls = (
+            doc[len(_SPHINX_AUTOCLASS_HEADER) :]
+            .strip()
+            .removeprefix(_SPHINX_AUTODOC_SHORTNAME)
+        )
         api_name = f"{current_module}.{cls}" if current_module else cls
 
         return API(
