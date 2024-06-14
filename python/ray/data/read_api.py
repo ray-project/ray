@@ -124,10 +124,7 @@ def from_blocks(blocks: List[Block]):
     from_blocks_op = FromBlocks(block_refs, metadata)
     logical_plan = LogicalPlan(from_blocks_op)
     return MaterializedDataset(
-        ExecutionPlan(
-            DatasetStats(metadata={"FromBlocks": metadata}, parent=None),
-            run_by_consumer=False,
-        ),
+        ExecutionPlan(DatasetStats(metadata={"FromBlocks": metadata}, parent=None)),
         logical_plan,
     )
 
@@ -207,10 +204,7 @@ def from_items(
     from_items_op = FromItems(blocks, metadata)
     logical_plan = LogicalPlan(from_items_op)
     return MaterializedDataset(
-        ExecutionPlan(
-            DatasetStats(metadata={"FromItems": metadata}, parent=None),
-            run_by_consumer=False,
-        ),
+        ExecutionPlan(DatasetStats(metadata={"FromItems": metadata}, parent=None)),
         logical_plan,
     )
 
@@ -441,7 +435,7 @@ def read_datasource(
     )
     logical_plan = LogicalPlan(read_op)
     return Dataset(
-        plan=ExecutionPlan(stats, run_by_consumer=False),
+        plan=ExecutionPlan(stats),
         logical_plan=logical_plan,
     )
 
@@ -2481,10 +2475,7 @@ def from_pandas_refs(
         metadata = ray.get([get_metadata.remote(df) for df in dfs])
         logical_plan = LogicalPlan(FromPandas(dfs, metadata))
         return MaterializedDataset(
-            ExecutionPlan(
-                DatasetStats(metadata={"FromPandas": metadata}, parent=None),
-                run_by_consumer=False,
-            ),
+            ExecutionPlan(DatasetStats(metadata={"FromPandas": metadata}, parent=None)),
             logical_plan,
         )
 
@@ -2496,8 +2487,7 @@ def from_pandas_refs(
     logical_plan = LogicalPlan(FromPandas(blocks, metadata))
     return MaterializedDataset(
         ExecutionPlan(
-            DatasetStats(metadata={"FromPandas": metadata}, parent=None),
-            run_by_consumer=False,
+            DatasetStats(metadata={"FromPandas": metadata}, parent=None)
         ),
         logical_plan,
     )
@@ -2582,8 +2572,7 @@ def from_numpy_refs(
 
     return MaterializedDataset(
         ExecutionPlan(
-            DatasetStats(metadata={"FromNumpy": metadata}, parent=None),
-            run_by_consumer=False,
+            DatasetStats(metadata={"FromNumpy": metadata}, parent=None)
         ),
         logical_plan,
     )
@@ -2661,8 +2650,7 @@ def from_arrow_refs(
 
     return MaterializedDataset(
         ExecutionPlan(
-            DatasetStats(metadata={"FromArrow": metadata}, parent=None),
-            run_by_consumer=False,
+            DatasetStats(metadata={"FromArrow": metadata}, parent=None)
         ),
         logical_plan,
     )

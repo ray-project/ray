@@ -58,7 +58,6 @@ class ExecutionPlan:
         self,
         stats: DatasetStats,
         *,
-        run_by_consumer: bool,
         data_context: Optional[DataContext] = None,
     ):
         """Create a plan with no transformation operators.
@@ -66,7 +65,6 @@ class ExecutionPlan:
         Args:
             stats: Stats for the base blocks.
             dataset_uuid: Dataset's UUID.
-            run_by_consumer: Whether this plan is invoked to run by the consumption
             APIs (e.g. .iter_batches()).
         """
         self._in_stats = stats
@@ -81,7 +79,6 @@ class ExecutionPlan:
         # Set when a Dataset is constructed with this plan
         self._dataset_uuid = None
 
-        self._run_by_consumer = run_by_consumer
         self._dataset_name = None
 
         self._has_started_execution = False
@@ -97,7 +94,6 @@ class ExecutionPlan:
         return (
             f"ExecutionPlan("
             f"dataset_uuid={self._dataset_uuid}, "
-            f"run_by_consumer={self._run_by_consumer}, "
             f"snapshot_operator={self._snapshot_operator}"
         )
 
@@ -163,9 +159,7 @@ class ExecutionPlan:
                     count = None
                 else:
                     assert len(sources) == 1
-                    plan = ExecutionPlan(
-                        DatasetStats(metadata={}, parent=None), run_by_consumer=False
-                    )
+                    plan = ExecutionPlan(DatasetStats(metadata={}, parent=None))
                     plan.link_logical_plan(LogicalPlan(sources[0]))
                     schema = plan.schema()
                     count = plan.meta_count()
@@ -292,7 +286,6 @@ class ExecutionPlan:
         """
         plan_copy = ExecutionPlan(
             self._in_stats,
-            run_by_consumer=self._run_by_consumer,
             data_context=self._context,
         )
         if self._snapshot_bundle is not None:
@@ -311,10 +304,7 @@ class ExecutionPlan:
         Returns:
             A deep copy of this execution plan.
         """
-        plan_copy = ExecutionPlan(
-            copy.copy(self._in_stats),
-            run_by_consumer=self._run_by_consumer,
-        )
+        plan_copy = ExecutionPlan(copy.copy(self._in_stats))
         if self._snapshot_bundle:
             # Copy over the existing snapshot.
             plan_copy._snapshot_bundle = copy.copy(self._snapshot_bundle)

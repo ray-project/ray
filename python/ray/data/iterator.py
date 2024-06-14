@@ -876,8 +876,7 @@ class DataIterator(abc.ABC):
         logical_plan = LogicalPlan(InputData(input_data=ref_bundles))
         return MaterializedDataset(
             ExecutionPlan(
-                stats,
-                run_by_consumer=owned_by_consumer,
+                stats
             ),
             logical_plan,
         )
