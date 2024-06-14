@@ -1,8 +1,8 @@
-"""Example of implementing and configuring a custom (torch) RLModule.
+"""Example of implementing and configuring a custom (torch) CNN containing RLModule.
 
 This example:
-    - demonstrates how you can subclass the TorchRLModule base class and setup your
-    own neural network architecture by overriding `setup()`.
+    - demonstrates how you can subclass the TorchRLModule base class and set up your
+    own CNN-stack architecture by overriding the `setup()` method.
     - how to override the 3 forward methods: `_forward_inference()`,
     `_forward_exploration()`, and `forward_train()` to implement your own custom forward
     logic(s). You will also learn, when each of these 3 methods is called by RLlib or
