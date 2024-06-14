@@ -2228,6 +2228,15 @@ py_test(
     srcs = ["examples/checkpoints/onnx_torch.py"],
 )
 
+#@OldAPIStack
+py_test(
+    name = "examples/checkpoints/onnx_torch_lstm",
+    main = "examples/checkpoints/onnx_torch_lstm.py",
+    tags = ["team:rllib", "exclusive", "examples", "no_main"],
+    size = "small",
+    srcs = ["examples/checkpoints/onnx_torch_lstm.py"],
+)
+
 # subdirectory: connectors/
 # ....................................
 # Framestacking examples only run in smoke-test mode (a few iters only).
