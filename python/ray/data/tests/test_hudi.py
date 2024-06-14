@@ -1,0 +1,108 @@
+import os
+import zipfile
+
+import pyarrow as pa
+import pytest
+from pytest_lazyfixture import lazy_fixture
+
+import ray
+from ray.data.datasource.path_util import (
+    _resolve_paths_and_filesystem,
+    _unwrap_protocol,
+)
+from ray.data.tests.conftest import *  # noqa
+from ray.data.tests.mock_http_server import *  # noqa
+from ray.tests.conftest import *  # noqa
+
+PYARROW_LE_8_0_0 = tuple(int(s) for s in pa.__version__.split(".") if s.isnumeric()) < (
+    8,
+    0,
+    0,
+)
+pytestmark = pytest.mark.skipif(
+    PYARROW_LE_8_0_0, reason="hudi only supported if pyarrow >= 8.0.0"
+)
+
+
+def _extract_testing_table(fixture_path: str, table_dir: str, target_dir: str) -> str:
+    with zipfile.ZipFile(fixture_path, "r") as zip_ref:
+        zip_ref.extractall(target_dir)
+    return os.path.join(target_dir, table_dir)
+
+
+@pytest.mark.parametrize(
+    "fs,data_path",
+    [
+        (None, lazy_fixture("local_path")),
+        (lazy_fixture("local_fs"), lazy_fixture("local_path")),
+    ],
+)
+def test_read_hudi_simple_cow_table(ray_start_regular_shared, fs, data_path):
+    setup_data_path = _unwrap_protocol(data_path)
+    target_testing_dir = os.path.join(setup_data_path, "test_hudi")
+    fixture_path, _ = _resolve_paths_and_filesystem(
+        "example://hudi-tables/0.x_cow_partitioned.zip", fs
+    )
+    target_table_path = _extract_testing_table(
+        fixture_path[0], "trips_table", target_testing_dir
+    )
+
+    ds = ray.data.read_hudi(target_table_path)
+
+    assert ds.schema().names == [
+        "_hoodie_commit_time",
+        "_hoodie_commit_seqno",
+        "_hoodie_record_key",
+        "_hoodie_partition_path",
+        "_hoodie_file_name",
+        "ts",
+        "uuid",
+        "rider",
+        "driver",
+        "fare",
+        "city",
+    ]
+    assert ds.count() == 5
+    rows = (
+        ds.select_columns(["_hoodie_commit_time", "ts", "uuid", "fare"])
+        .sort("ts")
+        .take_all()
+    )
+    assert rows == [
+        [
+            "20240402123035233",
+            1695046462179,
+            "9909a8b1-2d15-4d3d-8ec9-efc48c536a00",
+            33.9,
+        ],
+        [
+            "20240402123035233",
+            1695091554788,
+            "e96c4396-3fad-413a-a942-4cb36106d721",
+            27.7,
+        ],
+        [
+            "20240402123035233",
+            1695115999911,
+            "c8abbe79-8d89-47ea-b4ce-4d224bae5bfa",
+            17.85,
+        ],
+        [
+            "20240402123035233",
+            1695159649087,
+            "334e26e9-8355-45cc-97c6-c31daf0df330",
+            19.1,
+        ],
+        [
+            "20240402123035233",
+            1695516137016,
+            "e3cf430c-889d-4015-bc98-59bdce1e530c",
+            34.15,
+        ],
+    ]
+
+
+if __name__ == "__main__":
+    import sys
+
+    sys.exit(pytest.main(["-v", __file__]))
