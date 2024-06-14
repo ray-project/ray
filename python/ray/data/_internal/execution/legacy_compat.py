@@ -12,9 +12,6 @@ from ray.data._internal.execution.interfaces import (
     RefBundle,
 )
 from ray.data._internal.logical.optimizers import get_execution_plan
-from ray.data._internal.logical.rules.set_read_parallelism import (
-    compute_additional_split_factor,
-)
 from ray.data._internal.logical.util import record_operators_usage
 from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.stats import DatasetStats
