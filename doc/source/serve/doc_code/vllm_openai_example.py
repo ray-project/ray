@@ -18,7 +18,7 @@ from vllm.entrypoints.openai.protocol import (
 )
 from vllm.entrypoints.openai.serving_chat import OpenAIServingChat
 from vllm.entrypoints.openai.serving_engine import LoRAModulePath
-import importlib
+import torch
 
 logger = logging.getLogger("ray.serve")
 
@@ -101,6 +101,16 @@ def build_app(cli_args: Dict[str, str]) -> serve.Application:
 
     Supported engine arguments: https://docs.vllm.ai/en/latest/models/engine_args.html.
     """  # noqa: E501
+    if "device" in cli_args.keys():
+        device = cli_args.pop("device")
+    else:
+        try:
+            from habana_frameworks.torch.distributed.hccl import initialize_distributed_hpu
+            initialize_distributed_hpu()
+            torch.zeros(1).to("hpu")
+            device = "HPU"
+        except:
+            device = "GPU"
     parsed_args = parse_vllm_args(cli_args)
     engine_args = AsyncEngineArgs.from_cli_args(parsed_args)
     engine_args.worker_use_ray = True
@@ -109,9 +119,6 @@ def build_app(cli_args: Dict[str, str]) -> serve.Application:
     logger.info(f"Tensor parallelism = {tp}")
     pg_resources = []
     pg_resources.append({"CPU": 1})  # for the deployment replica
-
-    is_hpu = importlib.util.find_spec("habana_frameworks") is not None
-    device = "HPU" if is_hpu else "GPU"
     for i in range(tp):
         pg_resources.append({"CPU": 1, device: 1})  # for the vLLM actors
 
