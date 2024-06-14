@@ -97,33 +97,24 @@ def test_p2p(ray_start_cluster):
 
     compiled_dag = dag.experimental_compile()
     for i in range(3):
-        output_channel = compiled_dag.execute(
+        ref = compiled_dag.execute(
             i, shape=shape, dtype=dtype, send_as_dict=False
         )
-        # TODO(swang): Replace with fake ObjectRef.
-        result = output_channel.begin_read()
-        assert result == (i, shape, dtype)
-        output_channel.end_read()
+        assert ray.get(ref) == (i, shape, dtype)
 
     # Sending tensors of different shape also works.
     for i in range(3):
-        output_channel = compiled_dag.execute(
+        ref = compiled_dag.execute(
             i, shape=(20,), dtype=dtype, send_as_dict=False
         )
-        # TODO(swang): Replace with fake ObjectRef.
-        result = output_channel.begin_read()
-        assert result == (i, (20,), dtype)
-        output_channel.end_read()
+        assert ray.get(ref) == (i, (20,), dtype)
 
     # Sending tensors inside a dictionary also works.
     for i in range(3):
-        output_channel = compiled_dag.execute(
+        ref = compiled_dag.execute(
             i, shape=shape, dtype=dtype, send_as_dict=True
         )
-        # TODO(swang): Replace with fake ObjectRef.
-        result = output_channel.begin_read()
-        assert result == (i, shape, dtype)
-        output_channel.end_read()
+        assert ray.get(ref) == (i, shape, dtype)
 
     ray.kill(barrier1)
     ray.kill(barrier2)
@@ -168,11 +159,8 @@ def test_p2p_static_shape(ray_start_cluster):
 
     compiled_dag = dag.experimental_compile()
     for i in range(3):
-        output_channel = compiled_dag.execute(i, shape=shape, dtype=dtype)
-        # TODO(swang): Replace with fake ObjectRef.
-        result = output_channel.begin_read()
-        assert result == (i, shape, dtype)
-        output_channel.end_read()
+        ref = compiled_dag.execute(i, shape=shape, dtype=dtype)
+        assert ray.get(ref) == (i, shape, dtype)
 
     ray.kill(barrier1)
     ray.kill(barrier2)
@@ -217,21 +205,18 @@ def test_p2p_static_shape_error(ray_start_cluster):
 
     compiled_dag = dag.experimental_compile()
     for i in range(3):
-        output_channel = compiled_dag.execute(i, shape=shape, dtype=dtype)
-        # TODO(swang): Replace with fake ObjectRef.
-        result = output_channel.begin_read()
-        assert result == (i, shape, dtype)
-        output_channel.end_read()
+        ref = compiled_dag.execute(i, shape=shape, dtype=dtype)
+        assert ray.get(ref) == (i, shape, dtype)
 
     # Sending wrong shape errors.
-    output_channel = compiled_dag.execute(i, shape=(20,), dtype=dtype)
+    ref = compiled_dag.execute(i, shape=(20,), dtype=dtype)
     with pytest.raises(OSError, match="Channel closed"):
-        result = output_channel.begin_read()
+        ray.get(ref)
 
     # Sending correct shape still errors because the DAG has already been torn
     # down after the previous error.
     with pytest.raises(OSError, match="Channel closed"):
-        output_channel = compiled_dag.execute(i, shape=shape, dtype=dtype)
+        ref = compiled_dag.execute(i, shape=shape, dtype=dtype)
 
     ray.kill(barrier1)
     ray.kill(barrier2)
@@ -287,11 +272,8 @@ def test_p2p_static_non_tensor_data(ray_start_cluster):
             ("b", i, tensor_shape, dtype),
             ("c", i, tensor_shape, dtype),
         ]
-        output_channel = compiled_dag.execute(spec)
-        # TODO(swang): Replace with fake ObjectRef.
-        result = output_channel.begin_read()
-        assert result == spec
-        output_channel.end_read()
+        ref = compiled_dag.execute(spec)
+        assert ray.get(ref) == spec
 
     ray.kill(barrier1)
     ray.kill(barrier2)
@@ -347,26 +329,23 @@ def test_p2p_static_non_tensor_data_error(ray_start_cluster):
             ("b", i, tensor_shape, dtype),
             ("c", i, tensor_shape, dtype),
         ]
-        output_channel = compiled_dag.execute(spec)
-        # TODO(swang): Replace with fake ObjectRef.
-        result = output_channel.begin_read()
-        assert result == spec
-        output_channel.end_read()
+        ref = compiled_dag.execute(spec)
+        assert ray.get(ref) == spec
 
     # Test sending a dictionary with a different number of entries.
     spec = [
         ("a", 1, shape, dtype),
         ("b", 1, shape, dtype),
     ]
-    output_channel = compiled_dag.execute(spec)
+    ref = compiled_dag.execute(spec)
     with pytest.raises(OSError, match="Channel closed"):
-        result = output_channel.begin_read()
+        result = ray.get(ref)
 
     # Sending correct shape still errors because the DAG has already been torn
     # down after the previous error.
     spec.append(("c", 1, shape, dtype))
     with pytest.raises(OSError, match="Channel closed"):
-        output_channel = compiled_dag.execute(spec)
+        ref = compiled_dag.execute(spec)
 
     # TODO(swang): Ideally we would also check that sending a different value,
     # e.g., changing the keys of the dictionary or sending a list instead of a
