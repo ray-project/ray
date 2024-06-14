@@ -361,7 +361,7 @@ class Channel(ChannelInterface):
             self._reader_ref,
         )
 
-    def __str__(self) -> str:
+    def __repr__(self) -> str:
         return f"Channel(_reader_ref={self._reader_ref})"
 
     def _resize_channel_if_needed(self, serialized_value: str):
@@ -420,6 +420,9 @@ class Channel(ChannelInterface):
         )
 
     def read(self) -> Any:
+        return self.begin_read()
+
+    def begin_read(self) -> Any:
         self.ensure_registered_as_reader()
         ret = ray.get(self._reader_ref)
 
@@ -431,6 +434,10 @@ class Channel(ChannelInterface):
             ret = ray.get(self._reader_ref)
 
         return ret
+
+    def end_read(self):
+        self.ensure_registered_as_reader()
+        self._worker.core_worker.experimental_channel_read_release([self._reader_ref])
 
     def close(self) -> None:
         """
@@ -548,9 +555,17 @@ class CompositeChannel(ChannelInterface):
             channel.write(value)
 
     def read(self) -> Any:
+        return self.begin_read()
+
+    def begin_read(self) -> Any:
         self.ensure_registered_as_reader()
         actor_id = self._get_self_actor_id()
-        return self._channel_dict[actor_id].read()
+        return self._channel_dict[actor_id].begin_read()
+
+    def end_read(self):
+        self.ensure_registered_as_reader()
+        actor_id = self._get_self_actor_id()
+        return self._channel_dict[actor_id].end_read()
 
     def close(self) -> None:
         for channel in self._channels:

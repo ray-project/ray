@@ -598,7 +598,7 @@ def test_intra_process_channel(ray_start_cluster):
             self._chan = channel
 
         def read(self):
-            return self._chan.read()
+            return self._chan.begin_read()
 
         def write(self, value):
             self._chan.write(value)
@@ -654,7 +654,7 @@ def test_composite_channel_single_reader(ray_start_cluster):
             return self._chan
 
         def read(self):
-            return self._chan.read()
+            return self._chan.begin_read()
 
         def write(self, value):
             self._chan.write(value)
@@ -686,7 +686,7 @@ def test_composite_channel_single_reader(ray_start_cluster):
         actor2.create_composite_channel.remote(actor2, [create_driver_actor()])
     )
     ray.get(actor2.write.remote("world hello"))
-    assert actor2_to_driver_channel.read() == "world hello"
+    assert actor2_to_driver_channel.begin_read() == "world hello"
 
 
 @pytest.mark.skipif(
@@ -721,7 +721,10 @@ def test_composite_channel_multiple_readers(ray_start_cluster):
             return self._chan
 
         def read(self):
-            return self._chan.read()
+            return self._chan.begin_read()
+
+        def end_read(self):
+            return self._chan.end_read()
 
         def write(self, value):
             self._chan.write(value)

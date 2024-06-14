@@ -56,9 +56,12 @@ class IntraProcessChannel(ChannelInterface):
         ctx = ChannelContext.get_current().serialization_context
         ctx.set_data(self._channel_id, value)
 
-    def read(self) -> Any:
+    def begin_read(self) -> Any:
         ctx = ChannelContext.get_current().serialization_context
         return ctx.get_data(self._channel_id)
+
+    def end_read(self):
+        pass
 
     def close(self) -> None:
         ctx = ChannelContext.get_current().serialization_context
