@@ -46,6 +46,9 @@ class IntraProcessChannel(ChannelInterface):
             self._channel_id,
         )
 
+    def __repr__(self) -> str:
+        return f"IntraProcessChannel(channel_id={self._channel_id})"
+
     def write(self, value: Any):
         # Because both the reader and writer are in the same worker process,
         # we can directly store the data in the context instead of storing

@@ -33,18 +33,14 @@ class CompiledDAGRef(ray.ObjectRef):
         self._execution_index = execution_index
         # Whether ray.get() was called on this CompiledDAGRef.
         self._ray_get_called = False
-        self._reader_refs = (
-            dag.dag_output_channels._reader_ref
-            if dag.has_single_output
-            else [channel._reader_ref for channel in dag.dag_output_channels]
-        )
+        self._dag_output_channels = dag.dag_output_channels
 
     def __repr__(self):
         return (
             f"CompiledDAGRef(_dag={self._dag}, "
             f"_execution_index={self._execution_index}, "
             f"_ray_get_called={self._ray_get_called}, "
-            f"_reader_refs={self._reader_refs})"
+            f"_dag_output_channels={self._dag_output_channels})"
         )
 
     def __copy__(self):
