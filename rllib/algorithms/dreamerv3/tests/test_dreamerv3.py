@@ -45,6 +45,7 @@ class TestDreamerV3(unittest.TestCase):
         config = (
             dreamerv3.DreamerV3Config()
             .framework(eager_tracing=False)
+            .env_runners(num_env_runners=2)
             .training(
                 # Keep things simple. Especially the long dream rollouts seem
                 # to take an enormous amount of time (initially).

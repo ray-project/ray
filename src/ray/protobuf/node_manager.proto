@@ -138,12 +138,11 @@ message ReturnWorkerRequest {
 message ReturnWorkerReply {
 }
 
-message ReleaseUnusedWorkersRequest {
+message ReleaseUnusedActorWorkersRequest {
   repeated bytes worker_ids_in_use = 1;
 }
 
-message ReleaseUnusedWorkersReply {
-}
+message ReleaseUnusedActorWorkersReply {}
 
 message ShutdownRayletRequest {
   /// Whether the shutdown request is graceful or not.
@@ -383,8 +382,8 @@ service NodeManagerService {
   // that may be leaked. When GCS restarts, it doesn't know which workers it has leased
   // in the previous lifecycle. In this case, GCS will send a list of worker ids that
   // are still needed. And Raylet will release other leased workers.
-  rpc ReleaseUnusedWorkers(ReleaseUnusedWorkersRequest)
-      returns (ReleaseUnusedWorkersReply);
+  rpc ReleaseUnusedActorWorkers(ReleaseUnusedActorWorkersRequest)
+      returns (ReleaseUnusedActorWorkersReply);
   /// Shutdown the raylet (node manager).
   rpc ShutdownRaylet(ShutdownRayletRequest) returns (ShutdownRayletReply);
   // Request to drain the raylet.

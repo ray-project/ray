@@ -124,6 +124,12 @@ cdef class GlobalStateAccessor:
             result = self.inner.get().GetAllAvailableResources()
         return result
 
+    def get_all_total_resources(self):
+        cdef c_vector[c_string] result
+        with nogil:
+            result = self.inner.get().GetAllTotalResources()
+        return result
+
     def get_task_events(self):
         cdef c_vector[c_string] result
         with nogil:
