@@ -41,6 +41,7 @@ at the {ref}`introductory guide <kuberay-quickstart>` first.
 * {ref}`kuberay-config`
 * {ref}`kuberay-autoscaling`
 * {ref}`kuberay-gpu`
+* {ref}`kuberay-tpu`
 * {ref}`kuberay-gcs-ft`
 * {ref}`kuberay-logging`
 * {ref}`kuberay-dev-serve`

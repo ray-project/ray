@@ -49,4 +49,15 @@ For more details, see [GKE documentation](https://cloud.google.com/kubernetes-en
 
 ## Step 4: Install the TPU initialization webhook
 
-GKE provides a mutating webhook to handle TPU pod scheduling and bootstrap certain environment variables used for [JAX](https://github.com/google/jax) initialization. The Ray TPU webhook is installed once per cluster and requires a Kuberay operator version of at least v1.1.0. For instructions on installing the webhook, see the documentation [here](https://github.com/GoogleCloudPlatform/ai-on-gke/tree/main/ray-on-gke/guides/tpu#manually-installing-the-tpu-initialization-webhook).
+GKE provides a [mutating webhook](https://github.com/GoogleCloudPlatform/ai-on-gke/tree/main/applications/ray/kuberay-tpu-webhook) to handle TPU pod scheduling and bootstrap certain environment variables used for [JAX](https://github.com/google/jax) initialization. The Ray TPU webhook is installed once per cluster and requires a Kuberay operator version of at least v1.1.0. The webhook requires [cert-manager](https://github.com/cert-manager/cert-manager) to be installed in-cluster to handle TLS certificate injection. cert-manager can be installed in both GKE standard and autopilot clusters using the following helm commands:
+
+```
+helm repo add jetstack https://charts.jetstack.io
+helm repo update
+helm install --create-namespace --namespace cert-manager --set installCRDs=true --set global.leaderElection.namespace=cert-manager cert-manager jetstack/cert-manager
+```
+
+Installing the Ray TPU initialization webhook:
+1. `git clone https://github.com/GoogleCloudPlatform/ai-on-gke`
+2. `cd applications/ray/kuberay-tpu-webhook`
+3. `make deploy deploy-cert`
