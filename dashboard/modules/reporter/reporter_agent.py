@@ -1219,8 +1219,8 @@ class ReporterAgent(
 
         while True:
             try:
-                # NOTE: Every iteration is executed inside the thread-pool executor (TPE)
-                #       to avoid blocking the Dashboard's event-loop
+                # NOTE: Every iteration is executed inside the thread-pool
+                #       executor (TPE) to avoid blocking the Dashboard's event-loop
                 await loop.run_in_executor(None, self._perform_iteration, publisher)
 
             except Exception:
