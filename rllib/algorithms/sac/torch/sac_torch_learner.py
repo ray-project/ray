@@ -316,7 +316,7 @@ class SACTorchLearner(DQNRainbowTorchLearner, SACLearner):
                 # each component for a module operates on the same graph.
                 optim.zero_grad(set_to_none=True)
                 # Compute the gradients for the component and module.
-                self.metrics.peek(module_id, component + "_loss").backward(
+                self.metrics.peek((module_id, component + "_loss")).backward(
                     retain_graph=True
                 )
                 # Store the gradients for the component and module.

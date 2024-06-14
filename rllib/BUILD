@@ -1571,7 +1571,7 @@ py_test(
 )
 
 py_test(
-    name = "test_multi_agent_prioritized_episode_buffer",
+    name = "test_multi_agent_prio_episode_buffer",
     tags = ["team:rllib", "utils"],
     size = "small",
     srcs = ["utils/replay_buffers/tests/test_multi_agent_prio_episode_buffer.py"]
