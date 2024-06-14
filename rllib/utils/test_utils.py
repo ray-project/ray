@@ -1367,6 +1367,7 @@ def run_rllib_example_script_experiment(
     trainable: Optional[Type] = None,
     tune_callbacks: Optional[List] = None,
     keep_config: bool = False,
+    scheduler=None,
 ) -> Union[ResultDict, tune.result_grid.ResultGrid]:
     """Given an algorithm config and some command line args, runs an experiment.
 
@@ -1586,7 +1587,10 @@ def run_rllib_example_script_experiment(
             ),
             progress_reporter=progress_reporter,
         ),
-        tune_config=tune.TuneConfig(num_samples=args.num_samples),
+        tune_config=tune.TuneConfig(
+            num_samples = args.num_samples,
+            scheduler=scheduler,
+        ),
     ).fit()
     time_taken = time.time() - start_time
 
