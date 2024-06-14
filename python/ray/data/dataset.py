@@ -1521,9 +1521,7 @@ class Dataset:
             logical_plan = LogicalPlan(InputData(input_data=[bundle]))
             split_datasets.append(
                 MaterializedDataset(
-                    ExecutionPlan(
-                        stats
-                    ),
+                    ExecutionPlan(stats),
                     logical_plan,
                 )
             )
@@ -1597,9 +1595,7 @@ class Dataset:
 
             splits.append(
                 MaterializedDataset(
-                    ExecutionPlan(
-                        stats
-                    ),
+                    ExecutionPlan(stats),
                     logical_plan,
                 )
             )
@@ -4521,9 +4517,7 @@ class Dataset:
         ]
         logical_plan = LogicalPlan(InputData(input_data=ref_bundles))
         output = MaterializedDataset(
-            ExecutionPlan(
-                copy._plan.stats()
-            ),
+            ExecutionPlan(copy._plan.stats()),
             logical_plan,
         )
         # Metrics are tagged with `copy`s uuid, update the output uuid with

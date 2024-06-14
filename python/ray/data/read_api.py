@@ -2486,9 +2486,7 @@ def from_pandas_refs(
     metadata = ray.get(metadata)
     logical_plan = LogicalPlan(FromPandas(blocks, metadata))
     return MaterializedDataset(
-        ExecutionPlan(
-            DatasetStats(metadata={"FromPandas": metadata}, parent=None)
-        ),
+        ExecutionPlan(DatasetStats(metadata={"FromPandas": metadata}, parent=None)),
         logical_plan,
     )
 
@@ -2571,9 +2569,7 @@ def from_numpy_refs(
     logical_plan = LogicalPlan(FromNumpy(blocks, metadata))
 
     return MaterializedDataset(
-        ExecutionPlan(
-            DatasetStats(metadata={"FromNumpy": metadata}, parent=None)
-        ),
+        ExecutionPlan(DatasetStats(metadata={"FromNumpy": metadata}, parent=None)),
         logical_plan,
     )
 
@@ -2649,9 +2645,7 @@ def from_arrow_refs(
     logical_plan = LogicalPlan(FromArrow(tables, metadata))
 
     return MaterializedDataset(
-        ExecutionPlan(
-            DatasetStats(metadata={"FromArrow": metadata}, parent=None)
-        ),
+        ExecutionPlan(DatasetStats(metadata={"FromArrow": metadata}, parent=None)),
         logical_plan,
     )
 
