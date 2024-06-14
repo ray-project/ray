@@ -5,6 +5,7 @@ import sys
 import jsonpatch
 import pytest
 
+from collections import defaultdict
 from ray.autoscaler.batching_node_provider import NodeData
 from ray.autoscaler._private.kuberay.node_provider import (
     _worker_group_index,
@@ -160,6 +161,13 @@ def test_create_node_cap_at_max(
                     ip="10.4.0.6",
                     status="up-to-date",
                 ),
+                "raycluster-autoscaler-worker-fake-tpu-group-3rlvy": NodeData(
+                    kind="worker",
+                    type="fake-tpu-group",
+                    replica_index="fake-tpu-group-0",
+                    ip="10.4.3.6",
+                    status="up-to-date",
+                ),
                 "raycluster-autoscaler-worker-small-group-dkz2r": NodeData(
                     kind="worker",
                     type="small-group",
@@ -195,6 +203,7 @@ def test_get_node_data(podlist_file: str, expected_node_data):
     ), mock.patch.object(KubeRayNodeProvider, "_get", mock_get):
         kr_node_provider = KubeRayNodeProvider(provider_config={}, cluster_name="fake")
         kr_node_provider.cluster_name = "fake"
+        kr_node_provider.replicas_to_nodes = defaultdict(list)
         nodes = kr_node_provider.non_terminated_nodes({})
         assert kr_node_provider.node_data_dict == expected_node_data
         assert set(nodes) == set(expected_node_data.keys())

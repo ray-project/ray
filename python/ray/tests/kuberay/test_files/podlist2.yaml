@@ -412,6 +412,197 @@ items:
       key: value
       ray.io/ft-enabled: "false"
       ray.io/health-state: ""
+    creationTimestamp: "2022-11-14T23:13:47Z"
+    generateName: raycluster-autoscaler-worker-fake-tpu-group-
+    labels:
+      app.kubernetes.io/created-by: kuberay-operator
+      app.kubernetes.io/name: kuberay
+      key: value
+      ray.io/cluster: raycluster-autoscaler
+      ray.io/cluster-dashboard: raycluster-autoscaler-dashboard
+      ray.io/group: fake-tpu-group
+      ray.io/identifier: raycluster-autoscaler-worker
+      ray.io/is-ray-node: "yes"
+      ray.io/node-type: worker
+      replicaIndex: fake-tpu-group-0 # GKE set label for multi-host podslices
+    name: raycluster-autoscaler-worker-fake-tpu-group-3rlvy
+    namespace: default
+    ownerReferences:
+    - apiVersion: ray.io/v1alpha1
+      blockOwnerDeletion: true
+      controller: true
+      kind: RayCluster
+      name: raycluster-autoscaler
+      uid: ec79effb-0295-4f40-b08b-8633aa7f786a
+    resourceVersion: "5805"
+    uid: f1cadfb8-b76f-467d-9c2b-a1a5eb7d1d3f
+  spec:
+    containers:
+    - args:
+      - 'ulimit -n 65536; ray start  --address=raycluster-autoscaler-head-svc:6379  --metrics-export-port=8080  --num-cpus=1  --memory=536870912  --block  --resources="{\"Custom1\":
+        1, \"Custom2\": 5, \"TPU\": 4}" '
+      command:
+      - /bin/bash
+      - -c
+      - --
+      env:
+      - name: RAY_IP
+        value: raycluster-autoscaler-head-svc
+      - name: RAY_PORT
+        value: "6379"
+      - name: RAY_ADDRESS
+        value: raycluster-autoscaler-head-svc:6379
+      - name: REDIS_PASSWORD
+      image: gekho/ray
+      imagePullPolicy: Always
+      lifecycle:
+        preStop:
+          exec:
+            command:
+            - /bin/sh
+            - -c
+            - ray stop
+      name: machine-learning
+      ports:
+      - containerPort: 8080
+        name: metrics
+        protocol: TCP
+      resources:
+        limits:
+          cpu: "1"
+          memory: 512Mi
+        requests:
+          cpu: 500m
+          memory: 256Mi
+      terminationMessagePath: /dev/termination-log
+      terminationMessagePolicy: File
+      volumeMounts:
+      - mountPath: /dev/shm
+        name: shared-mem
+      - mountPath: /var/run/secrets/kubernetes.io/serviceaccount
+        name: kube-api-access-ghm2j
+        readOnly: true
+    dnsPolicy: ClusterFirst
+    enableServiceLinks: true
+    initContainers:
+    - command:
+      - sh
+      - -c
+      - until nslookup $RAY_IP.$(cat /var/run/secrets/kubernetes.io/serviceaccount/namespace).svc.cluster.local;
+        do echo waiting for myservice; sleep 2; done
+      env:
+      - name: RAY_IP
+        value: raycluster-autoscaler-head-svc
+      image: busybox:1.28
+      imagePullPolicy: IfNotPresent
+      name: init-myservice
+      resources: {}
+      terminationMessagePath: /dev/termination-log
+      terminationMessagePolicy: File
+      volumeMounts:
+      - mountPath: /var/run/secrets/kubernetes.io/serviceaccount
+        name: kube-api-access-ghm2j
+        readOnly: true
+    nodeName: gke-cluster-1-default-pool-a5503908-dpst
+    preemptionPolicy: PreemptLowerPriority
+    priority: 0
+    restartPolicy: Always
+    schedulerName: default-scheduler
+    securityContext: {}
+    serviceAccount: default
+    serviceAccountName: default
+    terminationGracePeriodSeconds: 30
+    tolerations:
+    - effect: NoExecute
+      key: node.kubernetes.io/not-ready
+      operator: Exists
+      tolerationSeconds: 300
+    - effect: NoExecute
+      key: node.kubernetes.io/unreachable
+      operator: Exists
+      tolerationSeconds: 300
+    volumes:
+    - emptyDir:
+        medium: Memory
+        sizeLimit: 256Mi
+      name: shared-mem
+    - name: kube-api-access-ghm2j
+      projected:
+        defaultMode: 420
+        sources:
+        - serviceAccountToken:
+            expirationSeconds: 3607
+            path: token
+        - configMap:
+            items:
+            - key: ca.crt
+              path: ca.crt
+            name: kube-root-ca.crt
+        - downwardAPI:
+            items:
+            - fieldRef:
+                apiVersion: v1
+                fieldPath: metadata.namespace
+              path: namespace
+  status:
+    conditions:
+    - lastProbeTime: null
+      lastTransitionTime: "2022-11-14T23:13:49Z"
+      status: "True"
+      type: Initialized
+    - lastProbeTime: null
+      lastTransitionTime: "2022-11-14T23:13:50Z"
+      status: "True"
+      type: Ready
+    - lastProbeTime: null
+      lastTransitionTime: "2022-11-14T23:13:50Z"
+      status: "True"
+      type: ContainersReady
+    - lastProbeTime: null
+      lastTransitionTime: "2022-11-14T23:13:47Z"
+      status: "True"
+      type: PodScheduled
+    containerStatuses:
+    - containerID: containerd://b6f4129ac590c62e41cc6db1a18fb051a29e3458fb47296086292a5765c36a6c
+      image: docker.io/gekho/ray:latest
+      imageID: docker.io/gekho/ray@sha256:7859a78d1a089bb88691864d5c4a2aad529f5353d7d9c82cc0274842fbda242b
+      lastState: {}
+      name: machine-learning
+      ready: true
+      restartCount: 0
+      started: true
+      state:
+        running:
+          startedAt: "2022-11-14T23:13:49Z"
+    hostIP: 10.128.0.31
+    initContainerStatuses:
+    - containerID: containerd://5c946a3d443f76d21a3c72244edb4f80fc420b13b223f3c6981e25e689d381cf
+      image: docker.io/library/busybox:1.28
+      imageID: docker.io/library/busybox@sha256:141c253bc4c3fd0a201d32dc1f493bcf3fff003b6df416dea4f41046e0f37d47
+      lastState: {}
+      name: init-myservice
+      ready: true
+      restartCount: 0
+      state:
+        terminated:
+          containerID: containerd://5c946a3d443f76d21a3c72244edb4f80fc420b13b223f3c6981e25e689d381cf
+          exitCode: 0
+          finishedAt: "2022-11-14T23:13:48Z"
+          reason: Completed
+          startedAt: "2022-11-14T23:13:48Z"
+    phase: Running
+    podIP: 10.4.3.6
+    podIPs:
+    - ip: 10.4.3.6
+    qosClass: Burstable
+    startTime: "2022-11-14T23:13:47Z"
+- apiVersion: v1
+  kind: Pod
+  metadata:
+    annotations:
+      key: value
+      ray.io/ft-enabled: "false"
+      ray.io/health-state: ""
     creationTimestamp: "2022-11-14T23:11:50Z"
     generateName: raycluster-autoscaler-worker-small-group-
     labels:

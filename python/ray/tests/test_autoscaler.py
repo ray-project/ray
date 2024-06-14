@@ -64,6 +64,7 @@ from ray.autoscaler.tags import (
     TAG_RAY_NODE_KIND,
     TAG_RAY_NODE_STATUS,
     TAG_RAY_USER_NODE_TYPE,
+    TAG_RAY_REPLICA_INDEX,
 )
 from ray.tests.test_batch_node_provider_unit import (
     MockBatchingNodeProvider,
@@ -316,8 +317,28 @@ TYPES_A = {
     },
 }
 
+TYPES_TPU = {
+    "empty_node": {
+        "node_config": {
+            "FooProperty": 42,
+            "TestProp": 1,
+        },
+        "resources": {},
+        "max_workers": 0,
+    },
+    "tpu-worker": {
+        "node_config": {},
+        "resources": {"CPU": 1, "TPU": 4},
+        "max_workers": 4,
+    },
+}
+
 MULTI_WORKER_CLUSTER = dict(
     SMALL_CLUSTER, **{"available_node_types": TYPES_A, "head_node_type": "empty_node"}
+)
+
+TPU_CLUSTER = dict(
+    SMALL_CLUSTER, **{"available_node_types": TYPES_TPU, "head_node_type": "empty_node"}
 )
 
 exc_info = None
@@ -3573,6 +3594,95 @@ class AutoscalingTest(unittest.TestCase):
                     status_log_found = True
                     break
             assert status_log_found is bool(status_log_enabled_env)
+
+    def testTerminateMultiHostReplica(self):
+        """Test multi-host replica deletion logic for KubeRay.
+
+        Tests manually deleting a node in a multi-host replica
+        and verifying that the entire replica is scaled down.
+        Nodes belonging to the same multi-host replica are identified
+        through a replicaIndex label set by a GKE webhook.
+        """
+        config = copy.deepcopy(TPU_CLUSTER)
+        config["available_node_types"]["tpu-worker"]["min_workers"] = 4
+        config["available_node_types"]["tpu-worker"]["max_workers"] = 4
+        config_path = self.write_config(config)
+        self.provider = MockProvider()
+        runner = MockProcessRunner()
+        runner.respond_to_call("json .Config.Env", ["[]" for i in range(5)])
+        lm = LoadMetrics()
+
+        get_or_create_head_node(
+            config,
+            printable_config_file=config_path,
+            no_restart=False,
+            restart_only=False,
+            yes=True,
+            override_cluster_name=None,
+            _provider=self.provider,
+            _runner=runner,
+        )
+        self.waitForNodes(1)
+        autoscaler = MockAutoscaler(
+            config_path,
+            lm,
+            MockGcsClient(),
+            max_failures=0,
+            max_concurrent_launches=13,
+            max_launch_batch=13,
+            process_runner=runner,
+            update_interval_s=0,
+        )
+        autoscaler.update()
+        self.waitForNodes(5)
+        assert autoscaler.pending_launches.value == 0
+        assert (
+            len(
+                self.provider.non_terminated_nodes(
+                    {TAG_RAY_NODE_KIND: NODE_KIND_WORKER}
+                )
+            )
+            == 4
+        )
+
+        fill_in_raylet_ids(self.provider, lm)
+        autoscaler.update()
+        self.waitFor(lambda: autoscaler.pending_launches.value == 0)
+        self.waitForNodes(4, tag_filters={TAG_RAY_NODE_KIND: NODE_KIND_WORKER})
+        assert autoscaler.pending_launches.value == 0
+
+        # Set replicaIndex node tag
+        for node_id in NonTerminatedNodes(self.provider).worker_ids:
+            self.provider.set_node_tags(
+                node_id, {TAG_RAY_REPLICA_INDEX: "tpu-group-0", **WORKER_FILTER}
+            )
+
+        # Manually delete one TPU worker
+        mock_logger = Mock(spec=logging.Logger(""))
+        worker_0 = NonTerminatedNodes(self.provider).worker_ids[0]
+        autoscaler.schedule_node_termination(
+            worker_0, "deleting TPU worker for test", mock_logger.info
+        )
+        autoscaler.update()
+        events = autoscaler.event_summarizer.summary()
+        assert (
+            "Removing 4 nodes of type tpu-worker (Node belongs to a replica being "
+            "deleted: tpu-group-0)."
+        ) in events
+
+        # We should not be starting/stopping empty_node at all.
+        for event in events:
+            assert "empty_node" not in event
+
+        # All nodes in the same replica index have been removed
+        assert (
+            len(
+                self.provider.non_terminated_nodes(
+                    {TAG_RAY_NODE_KIND: NODE_KIND_WORKER}
+                )
+            )
+            == 0
+        )
 
 
 def test_import():
