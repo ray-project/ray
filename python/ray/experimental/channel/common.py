@@ -175,9 +175,15 @@ class ChannelInterface:
         pass
 
     def ensure_registered_as_writer(self):
+        """
+        Check whether the process is a valid writer. This method must be idempotent.
+        """
         raise NotImplementedError
 
     def ensure_registered_as_reader(self):
+        """
+        Check whether the process is a valid reader. This method must be idempotent.
+        """
         raise NotImplementedError
 
     def write(self, value: Any) -> None:
