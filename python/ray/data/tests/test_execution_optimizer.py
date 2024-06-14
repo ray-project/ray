@@ -1549,7 +1549,7 @@ def test_schema_partial_execution(
     assert iris_schema == ray.data.dataset.Schema(pa.schema(fields))
     # Verify that ds.schema() executes only the first block, and not the
     # entire Dataset.
-    assert ds._plan._in_blocks._num_blocks == 1
+    assert not ds._plan.has_computed_output()
     assert str(ds._plan._logical_plan.dag) == (
         "Read[ReadParquet] -> MapBatches[MapBatches(<lambda>)]"
     )

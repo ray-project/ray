@@ -767,7 +767,7 @@ class EnvRunnerGroup:
 
         Raises:
             RayError: If any of the constructed remote workers is not up and running
-            properly.
+                properly.
         """
         old_num_workers = self._worker_manager.num_actors()
         new_workers = [

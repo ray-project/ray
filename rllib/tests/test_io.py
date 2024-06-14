@@ -263,9 +263,9 @@ class AgentIOTest(unittest.TestCase):
                 config.offline_data(input_config={"input_files": self.test_dir + fw})
                 algo = config.build()
                 result = algo.train()
-                self.assertEqual(result[f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}"], 4000)
+                self.assertEqual(result[NUM_ENV_STEPS_SAMPLED_LIFETIME], 4000)
                 self.assertTrue(
-                    np.isnan(result[f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}"])
+                    np.isnan(result[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN])
                 )
                 algo.stop()
 

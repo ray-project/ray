@@ -2342,7 +2342,7 @@ class Algorithm(Trainable, AlgorithmBase):
                 will raise a KeyError.
 
         Raises:
-            KeyError if `policy_id` cannot be found in this Algorithm.
+            KeyError: if `policy_id` cannot be found in this Algorithm.
 
         .. testcode::
 
@@ -2760,7 +2760,8 @@ class Algorithm(Trainable, AlgorithmBase):
             deprecation_warning(
                 "callbacks dict interface",
                 "a class extending rllib.algorithms.callbacks.DefaultCallbacks; "
-                "see `rllib/examples/custom_metrics_and_callbacks.py` for an example.",
+                "see `rllib/examples/metrics/custom_metrics_and_callbacks.py` for an "
+                "example.",
                 error=True,
             )
 
@@ -2790,7 +2791,7 @@ class Algorithm(Trainable, AlgorithmBase):
             env_context: The EnvContext to configure the environment.
 
         Raises:
-            Exception in case something is wrong with the given environment.
+            Exception: in case something is wrong with the given environment.
         """
         pass
 

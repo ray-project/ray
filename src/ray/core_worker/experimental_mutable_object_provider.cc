@@ -22,14 +22,16 @@ namespace experimental {
 
 MutableObjectProvider::MutableObjectProvider(
     std::shared_ptr<plasma::PlasmaClientInterface> plasma, RayletFactory factory)
-    : plasma_(plasma), raylet_client_factory_(factory) {}
+    : plasma_(plasma),
+      object_manager_(std::make_shared<ray::experimental::MutableObjectManager>()),
+      raylet_client_factory_(factory) {}
 
 MutableObjectProvider::~MutableObjectProvider() {
   for (std::unique_ptr<boost::asio::executor_work_guard<
            boost::asio::io_context::executor_type>> &io_work : io_works_) {
     io_work->reset();
   }
-  RAY_CHECK(object_manager_.SetErrorAll().code() == StatusCode::OK);
+  RAY_CHECK(object_manager_->SetErrorAll().code() == StatusCode::OK);
 
   for (std::unique_ptr<std::thread> &io_thread : io_threads_) {
     RAY_CHECK(io_thread->joinable());
@@ -43,7 +45,7 @@ void MutableObjectProvider::RegisterWriterChannel(const ObjectID &object_id,
     std::unique_ptr<plasma::MutableObject> object;
     RAY_CHECK_OK(plasma_->GetExperimentalMutableObject(object_id, &object));
     RAY_CHECK_OK(
-        object_manager_.RegisterChannel(object_id, std::move(object), /*reader=*/false));
+        object_manager_->RegisterChannel(object_id, std::move(object), /*reader=*/false));
     // `object` is now a nullptr.
   }
 
@@ -77,7 +79,7 @@ void MutableObjectProvider::RegisterReaderChannel(const ObjectID &object_id) {
   std::unique_ptr<plasma::MutableObject> object;
   RAY_CHECK_OK(plasma_->GetExperimentalMutableObject(object_id, &object));
   RAY_CHECK_OK(
-      object_manager_.RegisterChannel(object_id, std::move(object), /*reader=*/true));
+      object_manager_->RegisterChannel(object_id, std::move(object), /*reader=*/true));
   // `object` is now a nullptr.
 }
 
@@ -114,27 +116,27 @@ void MutableObjectProvider::HandlePushMutableObject(
   std::shared_ptr<Buffer> data;
   const uint8_t *metadata_ptr =
       reinterpret_cast<const uint8_t *>(request.data().data()) + request.data_size();
-  RAY_CHECK_OK(object_manager_.WriteAcquire(info.local_object_id,
-                                            data_size,
-                                            metadata_ptr,
-                                            metadata_size,
-                                            info.num_readers,
-                                            data));
+  RAY_CHECK_OK(object_manager_->WriteAcquire(info.local_object_id,
+                                             data_size,
+                                             metadata_ptr,
+                                             metadata_size,
+                                             info.num_readers,
+                                             data));
   RAY_CHECK(data);
 
   size_t total_size = data_size + metadata_size;
   // The buffer has the data immediately followed by the metadata. `WriteAcquire()`
   // above checks that the buffer size is at least `total_size`.
   memcpy(data->Data(), request.data().data(), total_size);
-  RAY_CHECK_OK(object_manager_.WriteRelease(info.local_object_id));
+  RAY_CHECK_OK(object_manager_->WriteRelease(info.local_object_id));
 }
 
 bool MutableObjectProvider::ReaderChannelRegistered(const ObjectID &object_id) {
-  return object_manager_.ReaderChannelRegistered(object_id);
+  return object_manager_->ReaderChannelRegistered(object_id);
 }
 
 bool MutableObjectProvider::WriterChannelRegistered(const ObjectID &object_id) {
-  return object_manager_.WriterChannelRegistered(object_id);
+  return object_manager_->WriterChannelRegistered(object_id);
 }
 
 Status MutableObjectProvider::WriteAcquire(const ObjectID &object_id,
@@ -143,25 +145,25 @@ Status MutableObjectProvider::WriteAcquire(const ObjectID &object_id,
                                            int64_t metadata_size,
                                            int64_t num_readers,
                                            std::shared_ptr<Buffer> &data) {
-  return object_manager_.WriteAcquire(
+  return object_manager_->WriteAcquire(
       object_id, data_size, metadata, metadata_size, num_readers, data);
 }
 
 Status MutableObjectProvider::WriteRelease(const ObjectID &object_id) {
-  return object_manager_.WriteRelease(object_id);
+  return object_manager_->WriteRelease(object_id);
 }
 
 Status MutableObjectProvider::ReadAcquire(const ObjectID &object_id,
                                           std::shared_ptr<RayObject> &result) {
-  return object_manager_.ReadAcquire(object_id, result);
+  return object_manager_->ReadAcquire(object_id, result);
 }
 
 Status MutableObjectProvider::ReadRelease(const ObjectID &object_id) {
-  return object_manager_.ReadRelease(object_id);
+  return object_manager_->ReadRelease(object_id);
 }
 
 Status MutableObjectProvider::SetError(const ObjectID &object_id) {
-  return object_manager_.SetError(object_id);
+  return object_manager_->SetError(object_id);
 }
 
 void MutableObjectProvider::PollWriterClosure(
@@ -169,7 +171,9 @@ void MutableObjectProvider::PollWriterClosure(
     const ObjectID &object_id,
     std::shared_ptr<MutableObjectReaderInterface> reader) {
   std::shared_ptr<RayObject> object;
-  Status status = object_manager_.ReadAcquire(object_id, object);
+  // The corresponding ReadRelease() will be automatically called when
+  // `object` goes out of scope.
+  Status status = object_manager_->ReadAcquire(object_id, object);
   // Check if the thread returned from ReadAcquire() because the process is exiting, not
   // because there is something to read.
   if (status.code() == StatusCode::IOError) {
@@ -188,8 +192,6 @@ void MutableObjectProvider::PollWriterClosure(
       object->GetData()->Data(),
       [this, &io_context, object_id, reader](const Status &status,
                                              const rpc::PushMutableObjectReply &reply) {
-        RAY_CHECK_OK(object_manager_.ReadRelease(object_id));
-
         io_context.post(
             [this, &io_context, object_id, reader]() {
               PollWriterClosure(io_context, object_id, reader);

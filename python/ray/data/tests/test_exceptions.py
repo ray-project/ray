@@ -41,10 +41,7 @@ def test_system_exception(caplog, propagate_logs, ray_start_regular_shared):
 
     with pytest.raises(FakeException) as exc_info:
         with patch(
-            (
-                "ray.data._internal.execution.legacy_compat."
-                "get_legacy_lazy_block_list_read_only"
-            ),
+            "ray.data._internal.plan.ExecutionPlan.has_computed_output",
             side_effect=FakeException(),
         ):
             ray.data.range(1).materialize()

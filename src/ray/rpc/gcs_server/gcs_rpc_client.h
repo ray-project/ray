@@ -362,6 +362,12 @@ class GcsRpcClient {
                              node_resource_info_grpc_client_,
                              /*method_timeout_ms*/ -1, )
 
+  /// Get total resources of all nodes from the GCS Service.
+  VOID_GCS_RPC_CLIENT_METHOD(NodeResourceInfoGcsService,
+                             GetAllTotalResources,
+                             node_resource_info_grpc_client_,
+                             /*method_timeout_ms*/ -1, )
+
   VOID_GCS_RPC_CLIENT_METHOD(NodeResourceInfoGcsService,
                              GetDrainingNodes,
                              node_resource_info_grpc_client_,
