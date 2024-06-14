@@ -443,5 +443,5 @@ class PhysicalOperator(Operator):
         return False
 
     def supports_fusion(self) -> bool:
-        """Return ```True``` if this operator can be fused with other operators."""
-        return True
+        """Returns ```True``` if this operator can be fused with other operators."""
+        return False
