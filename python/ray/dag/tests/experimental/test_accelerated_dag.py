@@ -724,19 +724,16 @@ class TestCompositeChannel:
 
         compiled_dag = dag.experimental_compile()
         output_channel = compiled_dag.execute(1)
-        result = output_channel.begin_read()
+        result = output_channel.read()
         assert result == 4
-        output_channel.end_read()
 
         output_channel = compiled_dag.execute(2)
-        result = output_channel.begin_read()
+        result = output_channel.read()
         assert result == 24
-        output_channel.end_read()
 
         output_channel = compiled_dag.execute(3)
-        result = output_channel.begin_read()
+        result = output_channel.read()
         assert result == 108
-        output_channel.end_read()
 
         compiled_dag.teardown()
 
@@ -762,21 +759,18 @@ class TestCompositeChannel:
         # a: 0+1 -> b: 100+1 -> a: 1+101
         compiled_dag = dag.experimental_compile()
         output_channel = compiled_dag.execute(1)
-        result = output_channel.begin_read()
+        result = output_channel.read()
         assert result == 102
-        output_channel.end_read()
 
         # a: 102+2 -> b: 101+104 -> a: 104+205
         output_channel = compiled_dag.execute(2)
-        result = output_channel.begin_read()
+        result = output_channel.read()
         assert result == 309
-        output_channel.end_read()
 
         # a: 309+3 -> b: 205+312 -> a: 312+517
         output_channel = compiled_dag.execute(3)
-        result = output_channel.begin_read()
+        result = output_channel.read()
         assert result == 829
-        output_channel.end_read()
 
         compiled_dag.teardown()
 
@@ -800,14 +794,12 @@ class TestCompositeChannel:
 
         compiled_dag = dag.experimental_compile()
         output_channel = compiled_dag.execute(1)
-        result = output_channel.begin_read()
+        result = output_channel.read()
         assert result == [2, 101]
-        output_channel.end_read()
 
         output_channel = compiled_dag.execute(3)
-        result = output_channel.begin_read()
+        result = output_channel.read()
         assert result == [10, 106]
-        output_channel.end_read()
 
         compiled_dag.teardown()
 

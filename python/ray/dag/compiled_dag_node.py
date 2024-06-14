@@ -142,7 +142,7 @@ def _exec_task(self, task: "ExecutableTask", idx: int) -> bool:
     output_writer = self._output_writers[idx]
     res = None
     try:
-        res = input_reader.begin_read()
+        res = input_reader.read()
     except IOError:
         # Channel closed. Exit the loop.
         return True
@@ -705,9 +705,8 @@ class CompiledDAG:
 
                     #     compiled_dag = dag.experimental_compile()
                     #     output_channel = compiled_dag.execute(1)
-                    #     result = output_channel.begin_read()
+                    #     result = output_channel.read()
                     #     print(result)
-                    #     output_channel.end_read()
 
                     #     compiled_dag.teardown()
                     reader_handles = [self._driver_actor]
@@ -968,7 +967,7 @@ class CompiledDAG:
             if self._max_execution_index + 1 == execution_index:
                 # Directly fetch and return without buffering
                 self._max_execution_index += 1
-                return self._dag_output_fetcher.begin_read()
+                return self._dag_output_fetcher.read()
             # Otherwise, buffer the result
             if len(self._result_buffer) >= self._max_buffered_results:
                 raise ValueError(
@@ -979,7 +978,7 @@ class CompiledDAG:
             self._max_execution_index += 1
             self._result_buffer[
                 self._max_execution_index
-            ] = self._dag_output_fetcher.begin_read()
+            ] = self._dag_output_fetcher.read()
 
         # CompiledDAGRef guarantees that the same execution index will not
         # be requested multiple times
