@@ -41,6 +41,7 @@ Note that it is also possible to configure the interval using the environment va
 To see collected/reported data, see `usage_stats.json` inside a temp
 folder (e.g., /tmp/ray/session_[id]/*).
 """
+
 import json
 import logging
 import threading
@@ -408,7 +409,7 @@ def _generate_cluster_metadata(*, ray_init_cluster: bool):
         "ray_version": ray_version,
         "python_version": python_version,
         "ray_init_cluster": ray_init_cluster,
-        "os": sys.platform, # This metadata is required for hyprid-os clusters (e.g. linux head and windows worker)
+        "os": sys.platform,  # This metadata is required for nodes of hyprid os.
     }
     # Additional metadata is recorded only when usage stats are enabled.
     if usage_stats_enabled():

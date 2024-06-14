@@ -493,7 +493,9 @@ class Node:
                 if sys.platform == self._head_os:
                     self._session_dir = ray._private.utils.decode(session_dir)
                 else:
-                    self._session_dir = os.path.join(self._temp_dir, os.path.basename(session_dir))
+                    self._session_dir = os.path.join(
+                        self._temp_dir, os.path.basename(session_dir)
+                    )
             else:
                 self._session_dir = os.path.join(self._temp_dir, self._session_name)
         session_symlink = os.path.join(self._temp_dir, ray_constants.SESSION_LATEST)
@@ -595,9 +597,11 @@ class Node:
                 self._ray_params.num_cpus if num_cpus is None else num_cpus,
                 self._ray_params.num_gpus if num_gpus is None else num_gpus,
                 self._ray_params.memory if memory is None else memory,
-                self._ray_params.object_store_memory
-                if object_store_memory is None
-                else object_store_memory,
+                (
+                    self._ray_params.object_store_memory
+                    if object_store_memory is None
+                    else object_store_memory
+                ),
                 resources,
                 self._ray_params.redis_max_memory,
             ).resolve(is_head=self.head, node_ip_address=self.node_ip_address)
