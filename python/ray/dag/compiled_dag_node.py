@@ -1,5 +1,5 @@
 import asyncio
-from collections import defaultdict
+from collections import defaultdict, deque
 from typing import Any, Dict, List, Tuple, Union, Optional, Set
 import logging
 import threading
@@ -682,9 +682,6 @@ class CompiledDAG:
                 # in the DAG.
                 readers = [self.idx_to_task[idx] for idx in task.downstream_node_idxs]
 
-                def _get_node_id(self):
-                    return ray.get_runtime_context().get_node_id()
-
                 if isinstance(readers[0].dag_node, MultiOutputNode):
                     assert len(readers) == 1
                     # This node is a multi-output node, which means that it will only be
@@ -745,6 +742,8 @@ class CompiledDAG:
 
             for idx in task.downstream_node_idxs:
                 frontier.append(idx)
+
+        assert self._verify_graph(), "The graph is not a DAG"
 
         # Validate input channels for tasks that have not been visited
         for node_idx, task in self.idx_to_task.items():
@@ -857,6 +856,68 @@ class CompiledDAG:
 
         self._dag_submitter.start()
         self._dag_output_fetcher.start()
+
+    def _verify_graph(self) -> bool:
+        """
+        Create a graph following the following rules:
+        1. Each node is a node
+        2. Add an edge from task_{x} to task_{x+1} on the same actor. Note that x is
+           the bind index.
+        3. Add an edge from writer to reader if the channel is not NCCL channel.
+        4. Add an edge from writer and reader of a NCCL channel to the node that has
+           next bind index on the same actor as the writer.
+
+        Use topological sort to verify whether the graph is a DAG.
+        """
+        class GraphNode:
+            def __init__(self):
+                self.in_degree = 0
+                self.out_edges = []
+
+        from ray.dag import ClassMethodNode
+
+        def _get_next_task(task: "CompiledTask") -> Optional["CompiledTask"]:
+            if not isinstance(task.dag_node, ClassMethodNode):
+                return None
+            actor_handle = task.dag_node._get_actor_handle()
+            bind_index = task.dag_node._get_bind_index()
+            for same_node_task in self.actor_to_tasks[actor_handle]:
+                if same_node_task.dag_node._get_bind_index() == bind_index + 1:
+                    return same_node_task
+            return None
+
+        graph = defaultdict(GraphNode)
+        total_edges = 0
+        for idx, task in self.idx_to_task.items():
+            next_task = _get_next_task(task)
+            # Add an edge from task_{x} to task_{x+1} on the same actor.
+            # Note that x is the bind index.
+            if next_task is not None:
+                graph[idx].out_edges.append(next_task.idx)
+                graph[next_task.idx].in_degree += 1
+                total_edges += 1
+            for downstream_idx in task.downstream_node_idxs:
+                if task.dag_node.type_hint.requires_nccl():
+                    graph[downstream_idx].out_edges.append(next_task.idx)
+                    graph[next_task.idx].in_degree += 1
+                else:
+                    graph[downstream_idx].in_degree += 1
+                    graph[idx].out_edges.append(downstream_idx)
+                total_edges += 1
+
+        zero_in_degree_nodes = deque()
+        for idx, node in graph.items():
+            if node.in_degree == 0:
+                zero_in_degree_nodes.append(idx)
+        removed_edges = 0
+        while zero_in_degree_nodes:
+            node = zero_in_degree_nodes.pop()
+            for out_node in graph[node].out_edges:
+                graph[out_node].in_degree -= 1
+                removed_edges += 1
+                if graph[out_node].in_degree == 0:
+                    zero_in_degree_nodes.append(out_node)
+        return removed_edges == total_edges
 
     def _monitor_failures(self):
         outer = self
