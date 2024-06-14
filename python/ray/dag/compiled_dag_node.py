@@ -498,7 +498,7 @@ class CompiledDAG:
 
     def get_id(self):
         """
-        Get the unique ID of the DAG.
+        Get the unique ID of the compiled DAG.
         """
         return self._dag_id
 
