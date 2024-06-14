@@ -3,6 +3,7 @@ from collections import defaultdict
 from typing import Any, Dict, List, Tuple, Union, Optional, Set
 import logging
 import threading
+import uuid
 
 import ray
 from ray.experimental.compiled_dag_ref import CompiledDAGRef, RayDAGTaskError
@@ -410,6 +411,7 @@ class CompiledDAG:
         Returns:
             Channel: A wrapper around ray.ObjectRef.
         """
+        self._dag_id = uuid.uuid4().hex
         self._buffer_size_bytes: Optional[int] = buffer_size_bytes
         if self._buffer_size_bytes is None:
             self._buffer_size_bytes = MAX_BUFFER_SIZE
@@ -493,6 +495,12 @@ class CompiledDAG:
                 ray.get_runtime_context().get_node_id(), soft=False
             )
         ).remote()
+
+    def get_id(self):
+        """
+        Get the unique ID of the DAG.
+        """
+        return self._dag_id
 
     def _add_node(self, node: "ray.dag.DAGNode") -> None:
         idx = self.counter

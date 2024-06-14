@@ -102,9 +102,11 @@ def test_basic(ray_start_regular):
         dag = a.inc.bind(i)
 
     compiled_dag = dag.experimental_compile()
+    dag_id = compiled_dag.get_id()
 
     for i in range(3):
         ref = compiled_dag.execute(1)
+        assert str(ref) == f"CompiledDAGRef({dag_id}, execution_index={i})"
         result = ray.get(ref)
         assert result == i + 1
 
