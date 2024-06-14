@@ -361,7 +361,7 @@ class Channel(ChannelInterface):
             self._reader_ref,
         )
 
-    def __repr__(self) -> str:
+    def __str__(self) -> str:
         return f"Channel(_reader_ref={self._reader_ref})"
 
     def _resize_channel_if_needed(self, serialized_value: str):
