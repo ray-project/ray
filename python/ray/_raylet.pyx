@@ -563,8 +563,6 @@ cdef int check_status(const CRayStatus& status) nogil except -1:
         raise ObjectStoreFullError(message)
     elif status.IsInvalidArgument():
         raise ValueError(message)
-    elif status.IsInvalid():
-        raise ValueError(message)
     elif status.IsOutOfDisk():
         raise OutOfDiskError(message)
     elif status.IsObjectRefEndOfStream():
@@ -3010,10 +3008,14 @@ cdef class GcsClient:
             c_bool is_accepted = False
             c_string rejection_reason_message
         with nogil:
-            check_status(self.inner.get().DrainNode(
+            status = self.inner.get().DrainNode(
                 node_id, reason, reason_message,
                 deadline_timestamp_ms, timeout_ms, is_accepted,
-                rejection_reason_message))
+                rejection_reason_message)
+            # Invalid arguments
+            if status.IsInvalid():
+                raise ValueError(status.message())
+            check_status(status)
 
         return (is_accepted, rejection_reason_message.decode())
 
