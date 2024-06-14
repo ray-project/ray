@@ -129,7 +129,7 @@ from ray._private.worker import (  # noqa: E402,F401
     wait,
 )
 
-from ray._private.structured_logging.logging_config import LoggingConfig  # noqa: E402
+from ray._private.ray_logging.logging_config import LoggingConfig  # noqa: E402
 
 # We import ray.actor because some code is run in actor.py which initializes
 # some functions in the worker.

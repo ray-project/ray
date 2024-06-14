@@ -1,6 +1,6 @@
 import logging
 import json
-from ray._private.structured_logging.constants import LogKey, LOGRECORD_STANDARD_ATTRS
+from ray._private.ray_logging.constants import LogKey, LOGRECORD_STANDARD_ATTRS
 from ray._private.ray_constants import LOGGER_FORMAT
 
 

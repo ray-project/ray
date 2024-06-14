@@ -77,22 +77,15 @@ def test_torch_tensor_p2p(ray_start_regular):
 
     compiled_dag = dag.experimental_compile()
     for i in range(3):
-        output_channel = compiled_dag.execute(i, shape=shape, dtype=dtype)
-        # TODO(swang): Replace with fake ObjectRef.
-        result = output_channel.begin_read()
-        assert result == (i, shape, dtype)
-        output_channel.end_read()
+        ref = compiled_dag.execute(i, shape=shape, dtype=dtype)
+        assert ray.get(ref) == (i, shape, dtype)
 
     # Passing tensors of different sizes is okay.
-    output_channel = compiled_dag.execute(i, shape=(20,), dtype=dtype)
-    result = output_channel.begin_read()
-    assert result == (i, (20,), dtype)
-    output_channel.end_read()
+    ref = compiled_dag.execute(i, shape=(20,), dtype=dtype)
+    assert ray.get(ref) == (i, (20,), dtype)
 
-    output_channel = compiled_dag.execute(i, shape=(5,), dtype=dtype)
-    result = output_channel.begin_read()
-    assert result == (i, (5,), dtype)
-    output_channel.end_read()
+    ref = compiled_dag.execute(i, shape=(5,), dtype=dtype)
+    assert ray.get(ref) == (i, (5,), dtype)
 
     compiled_dag.teardown()
 
@@ -118,22 +111,16 @@ def test_torch_tensor_as_dag_input(ray_start_regular):
 
     compiled_dag = dag.experimental_compile()
     for i in range(3):
-        output_channel = compiled_dag.execute(torch.ones(shape, dtype=dtype) * i)
-        # TODO(swang): Replace with fake ObjectRef.
-        result = output_channel.begin_read()
+        ref = compiled_dag.execute(torch.ones(shape, dtype=dtype) * i)
+        result = ray.get(ref)
         assert result == (i, shape, dtype)
-        output_channel.end_read()
 
     # Passing tensors of different sizes is okay.
-    output_channel = compiled_dag.execute(torch.ones((20,), dtype=dtype) * i)
-    result = output_channel.begin_read()
-    assert result == (i, (20,), dtype)
-    output_channel.end_read()
+    ref = compiled_dag.execute(torch.ones((20,), dtype=dtype) * i)
+    assert ray.get(ref) == (i, (20,), dtype)
 
-    output_channel = compiled_dag.execute(torch.ones((5,), dtype=dtype) * i)
-    result = output_channel.begin_read()
-    assert result == (i, (5,), dtype)
-    output_channel.end_read()
+    ref = compiled_dag.execute(torch.ones((5,), dtype=dtype) * i)
+    assert ray.get(ref) == (i, (5,), dtype)
 
     compiled_dag.teardown()
 
@@ -166,11 +153,8 @@ def test_torch_tensor_nccl(ray_start_regular):
     # Test that we can pass different shapes and data.
     for i in range(3):
         shape = (10 * (i + 1),)
-        output_channel = compiled_dag.execute(i, shape=shape, dtype=dtype)
-        # TODO(swang): Replace with fake ObjectRef.
-        result = output_channel.begin_read()
-        assert result == (i, shape, dtype)
-        output_channel.end_read()
+        ref = compiled_dag.execute(i, shape=shape, dtype=dtype)
+        assert ray.get(ref) == (i, shape, dtype)
 
     compiled_dag.teardown()
 
@@ -185,11 +169,8 @@ def test_torch_tensor_nccl(ray_start_regular):
     # Test that we can pass different shapes and data.
     for i in range(3):
         shape = (10 * (i + 1),)
-        output_channel = compiled_dag.execute(i, shape=shape, dtype=dtype)
-        # TODO(swang): Replace with fake ObjectRef.
-        result = output_channel.begin_read()
-        assert result == (i, shape, dtype)
-        output_channel.end_read()
+        ref = compiled_dag.execute(i, shape=shape, dtype=dtype)
+        assert ray.get(ref) == (i, shape, dtype)
 
     compiled_dag.teardown()
 
@@ -269,11 +250,8 @@ def test_torch_tensor_nccl_static_shape(ray_start_regular):
     shape = (10,)
     dtype = torch.float16
     for i in range(3):
-        output_channel = compiled_dag.execute(i, shape=shape, dtype=dtype)
-        # TODO(swang): Replace with fake ObjectRef.
-        result = output_channel.begin_read()
-        assert result == (i, shape, dtype)
-        output_channel.end_read()
+        ref = compiled_dag.execute(i, shape=shape, dtype=dtype)
+        assert ray.get(ref) == (i, shape, dtype)
 
     compiled_dag.teardown()
 
@@ -304,12 +282,8 @@ def test_torch_tensor_nccl_static_non_tensor_data(ray_start_regular):
     for i in range(3):
         shape = (10 * (i + 1),)
         dtype = torch.float16
-        output_channel = compiled_dag.execute(value=1, shape=shape, dtype=dtype)
-        # TODO(swang): Replace with fake ObjectRef.
-        result = output_channel.begin_read()
-        expected_result = {0: (0, shape, dtype)}
-        assert result == expected_result
-        output_channel.end_read()
+        ref = compiled_dag.execute(value=1, shape=shape, dtype=dtype)
+        assert ray.get(ref) == {0: (0, shape, dtype)}
 
     compiled_dag.teardown()
 
@@ -345,11 +319,8 @@ def test_torch_tensor_nccl_static_shape_and_non_tensor_data(ray_start_regular):
     dtype = torch.float16
 
     for i in range(3):
-        output_channel = compiled_dag.execute(value=i, shape=shape, dtype=dtype)
-        # TODO(swang): Replace with fake ObjectRef.
-        result = output_channel.begin_read()
-        assert result == (i, shape, dtype)
-        output_channel.end_read()
+        ref = compiled_dag.execute(value=i, shape=shape, dtype=dtype)
+        assert ray.get(ref) == (i, shape, dtype)
 
     compiled_dag.teardown()
 

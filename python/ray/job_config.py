@@ -2,7 +2,7 @@ import uuid
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
 import ray.cloudpickle as pickle
-from ray._private.structured_logging.logging_config import LoggingConfig
+from ray._private.ray_logging.logging_config import LoggingConfig
 from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
