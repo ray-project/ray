@@ -630,11 +630,12 @@ class StandardAutoscaler:
         tags = self.provider.node_tags(node_id)
         if TAG_RAY_REPLICA_INDEX in tags:
             replica_index = tags[TAG_RAY_REPLICA_INDEX]
-            self.replicas_to_delete.add(replica_index)
-            logger_method(
-                "StandardAutoscaler: "
-                f"Terminating nodes with replicaIndex {replica_index}."
-            )
+            if replica_index is not None:
+                self.replicas_to_delete.add(replica_index)
+                logger_method(
+                    "StandardAutoscaler: "
+                    f"Terminating nodes with replicaIndex {replica_index}."
+                )
 
     def terminate_scheduled_nodes(self):
         """Terminate scheduled nodes and clean associated autoscaler state."""
