@@ -15,6 +15,7 @@ from collections import defaultdict
 import ray
 import ray._private.services
 import ray._private.utils
+from ray._private import utils
 from ray.dashboard.consts import (
     GCS_RPC_TIMEOUT_SECONDS,
     COMPONENT_METRICS_TAG_KEYS,
@@ -1212,44 +1213,51 @@ class ReporterAgent(
         )
         return records_reported
 
-    async def _perform_iteration(self, publisher):
+    async def _run_loop(self, publisher):
         """Get any changes to the log files and push updates to kv."""
+        loop = utils.get_or_create_event_loop()
+
         while True:
             try:
-                formatted_status_string = await self._gcs_aio_client.internal_kv_get(
-                    DEBUG_AUTOSCALING_STATUS.encode(),
-                    None,
-                    timeout=GCS_RPC_TIMEOUT_SECONDS,
-                )
-
-                stats = self._get_all_stats()
-                # Report stats only when metrics collection is enabled.
-                if not self._metrics_collection_disabled:
-                    cluster_stats = (
-                        json.loads(formatted_status_string.decode())
-                        if formatted_status_string
-                        else {}
-                    )
-                    records_reported = self._record_stats(stats, cluster_stats)
-                    self._metrics_agent.record_and_export(
-                        records_reported,
-                        global_tags={
-                            "Version": ray.__version__,
-                            "SessionName": self._session_name,
-                        },
-                    )
-                    self._metrics_agent.clean_all_dead_worker_metrics()
-                await publisher.publish_resource_usage(self._key, jsonify_asdict(stats))
+                # NOTE: Every iteration is executed inside the thread-pool executor (TPE)
+                #       to avoid blocking the Dashboard's event-loop
+                await loop.run_in_executor(None, self._perform_iteration, publisher)
 
             except Exception:
                 logger.exception("Error publishing node physical stats.")
+
             await asyncio.sleep(reporter_consts.REPORTER_UPDATE_INTERVAL_MS / 1000)
+
+    async def _perform_iteration(self, publisher):
+        formatted_status_string = await self._gcs_aio_client.internal_kv_get(
+            DEBUG_AUTOSCALING_STATUS.encode(),
+            None,
+            timeout=GCS_RPC_TIMEOUT_SECONDS,
+        )
+        stats = self._get_all_stats()
+        # Report stats only when metrics collection is enabled.
+        if not self._metrics_collection_disabled:
+            cluster_stats = (
+                json.loads(formatted_status_string.decode())
+                if formatted_status_string
+                else {}
+            )
+            records_reported = self._record_stats(stats, cluster_stats)
+            self._metrics_agent.record_and_export(
+                records_reported,
+                global_tags={
+                    "Version": ray.__version__,
+                    "SessionName": self._session_name,
+                },
+            )
+            self._metrics_agent.clean_all_dead_worker_metrics()
+        await publisher.publish_resource_usage(self._key, jsonify_asdict(stats))
 
     async def run(self, server):
         if server:
             reporter_pb2_grpc.add_ReporterServiceServicer_to_server(self, server)
 
-        await self._perform_iteration(self._dashboard_agent.publisher)
+        await self._run_loop(self._dashboard_agent.publisher)
 
     @staticmethod
     def is_minimal_module():
