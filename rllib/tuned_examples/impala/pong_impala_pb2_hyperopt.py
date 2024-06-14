@@ -8,7 +8,6 @@ from ray.rllib.utils.metrics import (
     ENV_RUNNER_RESULTS,
     EPISODE_RETURN_MEAN,
     NUM_ENV_STEPS_SAMPLED_LIFETIME,
-
 )
 from ray.rllib.utils.test_utils import add_rllib_example_script_args
 from ray.tune.registry import register_env
@@ -21,10 +20,10 @@ parser.add_argument(
     "--use-tiny-cnn",
     action="store_true",
     help="Whether to use the old API stack's small CNN Atari architecture, stacking "
-         "3 CNN layers ([32, 4, 2, same], [64, 4, 2, same], [256, 11, 1, valid]) for the "
-         "base features and then a CNN pi-head with an output of [num-actions, 1, 1] and "
-         "a Linear(1) layer for the values. The actual RLModule class used can be found "
-         "here: ray.rllib.examples.rl_modules.classes.tiny_atari_cnn",
+    "3 CNN layers ([32, 4, 2, same], [64, 4, 2, same], [256, 11, 1, valid]) for the "
+    "base features and then a CNN pi-head with an output of [num-actions, 1, 1] and "
+    "a Linear(1) layer for the values. The actual RLModule class used can be found "
+    "here: ray.rllib.examples.rl_modules.classes.tiny_atari_cnn",
 )
 args = parser.parse_args()
 
@@ -76,7 +75,6 @@ config = (
     )
     .env_runners(
         num_envs_per_env_runner=5,
-
     )
     # .training(
     #    train_batch_size_per_learner=500,
@@ -88,7 +86,6 @@ config = (
     #    broadcast_interval=5,
     #    lr=0.009 * ((args.num_gpus or 1) ** 0.5),
     # )
-
     .training(
         train_batch_size_per_learner=tune.randint(256, 1024),
         grad_clip=tune.choice([10, 40, 100, 200]),
@@ -100,7 +97,6 @@ config = (
         broadcast_interval=tune.randint(2, 7),
         gamma=tune.uniform(0.95, 1.0),
     )
-
     .rl_module(
         rl_module_spec=(
             SingleAgentRLModuleSpec(module_class=TinyAtariCNN)
@@ -129,4 +125,6 @@ stop = {
 if __name__ == "__main__":
     from ray.rllib.utils.test_utils import run_rllib_example_script_experiment
 
-    run_rllib_example_script_experiment(config, args, stop=stop, scheduler=pb2_scheduler)
+    run_rllib_example_script_experiment(
+        config, args, stop=stop, scheduler=pb2_scheduler
+    )

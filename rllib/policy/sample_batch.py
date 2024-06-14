@@ -407,7 +407,7 @@ class SampleBatch(dict):
 
         for i in range(self.count):
             yield tree.map_structure_with_path(
-                lambda p, v: v[i] if p[0] != self.SEQ_LENS else seq_lens,
+                lambda p, v, i=i: v[i] if p[0] != self.SEQ_LENS else seq_lens,
                 self_as_dict,
             )
 

@@ -139,12 +139,6 @@ class ImpalaLearner(Learner):
 
         # Return all queued result dicts thus far (after reducing over them).
         results = {}
-        # TODO (sven): Super hack! Needs to be removed before(!) we merge.
-        #  We currently only return the very last `reduced` snapshot of our metrics
-        #  object (put in the output queue by the learner thread). However, this way,
-        #  any `clear_on_reduce` sums before this last snapshot (e.g.
-        #  num-env-steps-trained) are lost! Hence the way too low counts for steps
-        #  trained.
         ts_trained = 0
         try:
             while True:

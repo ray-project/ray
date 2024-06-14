@@ -1588,7 +1588,7 @@ def run_rllib_example_script_experiment(
             progress_reporter=progress_reporter,
         ),
         tune_config=tune.TuneConfig(
-            num_samples = args.num_samples,
+            num_samples=args.num_samples,
             scheduler=scheduler,
         ),
     ).fit()

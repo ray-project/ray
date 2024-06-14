@@ -490,7 +490,7 @@ class Algorithm(Trainable, AlgorithmBase):
                 NUM_ENV_STEPS_TRAINED_LIFETIME: 0,
                 NUM_AGENT_STEPS_TRAINED_LIFETIME: {DEFAULT_AGENT_ID: 0},
                 NUM_EPISODES_LIFETIME: 0,
-                f"{ENV_RUNNER_RESULTS}/episode_return_mean": np.nan,
+                f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": np.nan,
             },
             reduce="sum",
         )
@@ -2866,11 +2866,11 @@ class Algorithm(Trainable, AlgorithmBase):
             if hasattr(self, "workers"):
                 state["worker"] = self.workers.local_worker().get_state()
 
-            # Also store eval `policy_mapping_fn` (in case it's different from main one).
-            # Note, the new `EnvRunner API` has no policy mapping function.
+            # Also store eval `policy_mapping_fn` (in case it's different from main
+            # one). Note, the new `EnvRunner API` has no policy mapping function.
             if (
-                    hasattr(self, "evaluation_workers")
-                    and self.evaluation_workers is not None
+                hasattr(self, "evaluation_workers")
+                and self.evaluation_workers is not None
             ):
                 state[
                     "eval_policy_mapping_fn"
