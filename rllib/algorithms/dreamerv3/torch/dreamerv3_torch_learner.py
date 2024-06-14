@@ -160,14 +160,15 @@ class DreamerV3TorchLearner(DreamerV3Learner, TorchLearner):
             self.metrics.peek(
                 (DEFAULT_MODULE_ID, component.upper() + "_L_total")
             ).backward(retain_graph=True)
-            grads.update(
-                {
-                    pid: p.grad
-                    for pid, p in self.filter_param_dict_for_optimizer(
-                        self._params, optim
-                    ).items()
-                }
-            )
+            optim_grads = {
+                pid: p.grad
+                for pid, p in self.filter_param_dict_for_optimizer(
+                    self._params, optim
+                ).items()
+            }
+            for ref, grad in optim_grads.items():
+                assert ref not in grads
+                grads[ref] = grad
 
         # Now do the world model.
         component = "world_model"
@@ -177,14 +178,16 @@ class DreamerV3TorchLearner(DreamerV3Learner, TorchLearner):
         self.metrics.peek(
             (DEFAULT_MODULE_ID, component.upper() + "_L_total")
         ).backward()
-        grads.update(
-            {
-                pid: p.grad
-                for pid, p in self.filter_param_dict_for_optimizer(
-                    self._params, optim
-                ).items()
-            }
-        )
+        wm_grads = {
+            pid: p.grad
+            for pid, p in self.filter_param_dict_for_optimizer(
+                self._params, optim
+            ).items()
+        }
+        for ref, grad in wm_grads.items():
+            assert ref not in grads
+            grads[ref] = grad
+
         return grads
 
     @override(TorchLearner)

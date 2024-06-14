@@ -75,9 +75,10 @@ class MLP(nn.Module):
 
         self.output_layer = None
         if output_layer_size:
-            linear = nn.Linear(input_size, output_layer_size)
+            linear = nn.Linear(input_size, output_layer_size, bias=True)
             # Use same initializers as the Author in their JAX repo.
             dreamerv3_normal_initializer(linear.weight)
+            nn.init.zeros_(linear.bias)
             layers.append(linear)
             self.output_size = (output_layer_size,)
 
