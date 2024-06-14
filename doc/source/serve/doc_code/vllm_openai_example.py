@@ -105,11 +105,14 @@ def build_app(cli_args: Dict[str, str]) -> serve.Application:
         device = cli_args.pop("device")
     else:
         try:
-            from habana_frameworks.torch.distributed.hccl import initialize_distributed_hpu
+            from habana_frameworks.torch.distributed.hccl import (
+                initialize_distributed_hpu,
+            )
+
             initialize_distributed_hpu()
             torch.zeros(1).to("hpu")
             device = "HPU"
-        except:
+        except Exception:
             device = "GPU"
     parsed_args = parse_vllm_args(cli_args)
     engine_args = AsyncEngineArgs.from_cli_args(parsed_args)
