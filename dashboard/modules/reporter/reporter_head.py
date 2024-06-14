@@ -641,9 +641,7 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
 
                 # NOTE: Every iteration is executed inside the thread-pool executor (TPE)
                 #       to avoid blocking the Dashboard's event-loop
-                parsed_data = await loop.run_in_executor(
-                    None, json.loads, data
-                )
+                parsed_data = await loop.run_in_executor(None, json.loads, data)
 
                 node_id = key.split(":")[-1]
                 DataSource.node_physical_stats[node_id] = parsed_data
