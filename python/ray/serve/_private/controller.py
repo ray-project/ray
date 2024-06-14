@@ -264,7 +264,7 @@ class ServeController:
         )
 
     def record_handle_metrics(self, report: HandleMetricReport) -> None:
-        logger.info(
+        logger.debug(
             f"Received metrics from handle {report.handle_id} "
             f"for deployment {report.deployment_id}: "
             f"{report.queued_requests} queued requests "
@@ -273,7 +273,7 @@ class ServeController:
         self.autoscaling_state_manager.record_request_metrics_for_handle(report)
 
     def bulk_record_handle_metrics(self, reports: Sequence[HandleMetricReport]) -> None:
-        logger.info(f"Received {len(reports)} bulk handle metrics reports")
+        logger.debug(f"Received {len(reports)} bulk handle metrics reports")
         for report in reports:
             self.record_handle_metrics(report)
 

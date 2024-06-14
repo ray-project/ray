@@ -355,7 +355,7 @@ class SharedHandleMetricsPusher:
 
     def push_metrics(self) -> None:
         # TODO: gathering reports could block the event loop for a long time
-        logger.info("Pushing handle metrics to controller")
+        logger.debug("Pushing handle metrics to controller")
         self._controller_handler.bulk_record_handle_metrics.remote(
             [m.metrics_report() for m in self._router_metrics_managers]
         )
