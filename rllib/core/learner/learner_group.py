@@ -140,7 +140,7 @@ class LearnerGroup:
         else:
             backend_config = _get_backend_config(learner_class)
 
-            # TODO (sven): Cannot set both `num_cpus_per_learner`>1 and
+            # TODO (sven): Can't set both `num_cpus_per_learner`>1 and
             #  `num_gpus_per_learner`>0! Users must set one or the other due
             #  to issues with placement group fragmentation. See
             #  https://github.com/ray-project/ray/issues/35409 for more details.

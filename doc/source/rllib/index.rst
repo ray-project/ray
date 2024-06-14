@@ -167,7 +167,7 @@ Feature Overview
 
         **RLlib Algorithms**
         ^^^
-        Check out the many available RL algorithms of RLlib for model-free and model-based
+        See the many available RL algorithms of RLlib for model-free and model-based
         RL, on-policy and off-policy training, multi-agent RL, and more.
         +++
         .. button-ref:: rllib-algorithms-doc

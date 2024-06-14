@@ -21,9 +21,7 @@ import numpy as np
 import ray
 from ray._private.auto_init_hook import wrap_auto_init
 from ray.air.util.tensor_extensions.utils import _create_possibly_ragged_ndarray
-from ray.data._internal.block_list import BlockList
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
-from ray.data._internal.lazy_block_list import LazyBlockList
 from ray.data._internal.logical.operators.from_operators import (
     FromArrow,
     FromBlocks,
@@ -127,7 +125,6 @@ def from_blocks(blocks: List[Block]):
     logical_plan = LogicalPlan(from_blocks_op)
     return MaterializedDataset(
         ExecutionPlan(
-            BlockList(block_refs, metadata, owned_by_consumer=False),
             DatasetStats(metadata={"FromBlocks": metadata}, parent=None),
             run_by_consumer=False,
         ),
@@ -211,7 +208,6 @@ def from_items(
     logical_plan = LogicalPlan(from_items_op)
     return MaterializedDataset(
         ExecutionPlan(
-            BlockList(blocks, metadata, owned_by_consumer=False),
             DatasetStats(metadata={"FromItems": metadata}, parent=None),
             run_by_consumer=False,
         ),
@@ -426,31 +422,26 @@ def read_datasource(
     # TODO(hchen/chengsu): Remove the duplicated get_read_tasks call here after
     # removing LazyBlockList code path.
     read_tasks = datasource_or_legacy_reader.get_read_tasks(requested_parallelism)
+    import uuid
 
-    read_op_name = f"Read{datasource.get_name()}"
-
-    block_list = LazyBlockList(
-        read_tasks,
-        read_op_name=read_op_name,
-        ray_remote_args=ray_remote_args,
-        owned_by_consumer=False,
+    stats = DatasetStats(
+        metadata={"Read": [read_task.get_metadata() for read_task in read_tasks]},
+        parent=None,
+        needs_stats_actor=True,
+        stats_uuid=uuid.uuid4(),
     )
-    block_list._estimated_num_blocks = len(read_tasks) if read_tasks else 0
-
     read_op = Read(
         datasource,
         datasource_or_legacy_reader,
         parallelism,
         inmemory_size,
-        block_list._estimated_num_blocks,
+        len(read_tasks) if read_tasks else 0,
         ray_remote_args,
         concurrency,
     )
-
     logical_plan = LogicalPlan(read_op)
-
     return Dataset(
-        plan=ExecutionPlan(block_list, block_list.stats(), run_by_consumer=False),
+        plan=ExecutionPlan(stats, run_by_consumer=False),
         logical_plan=logical_plan,
     )
 
@@ -1310,7 +1301,7 @@ def read_csv(
 
         >>> ray.data.read_csv("s3://anonymous@ray-example-data/different-extensions/",
         ...     file_extensions=["csv"])
-        Dataset(num_rows=1, schema={a: int64, b: int64})
+        Dataset(num_rows=?, schema={a: int64, b: int64})
 
     Args:
         paths: A single file or directory, or a list of file or directory paths.
@@ -1741,7 +1732,7 @@ def read_tfrecords(
         >>> import ray
         >>> ray.data.read_tfrecords("s3://anonymous@ray-example-data/iris.tfrecords")
         Dataset(
-           num_rows=150,
+           num_rows=?,
            schema={...}
         )
 
@@ -1754,7 +1745,7 @@ def read_tfrecords(
         ...     arrow_open_stream_args={"compression": "gzip"},
         ... )
         Dataset(
-           num_rows=150,
+           num_rows=?,
            schema={...}
         )
 
@@ -2491,7 +2482,6 @@ def from_pandas_refs(
         logical_plan = LogicalPlan(FromPandas(dfs, metadata))
         return MaterializedDataset(
             ExecutionPlan(
-                BlockList(dfs, metadata, owned_by_consumer=False),
                 DatasetStats(metadata={"FromPandas": metadata}, parent=None),
                 run_by_consumer=False,
             ),
@@ -2506,7 +2496,6 @@ def from_pandas_refs(
     logical_plan = LogicalPlan(FromPandas(blocks, metadata))
     return MaterializedDataset(
         ExecutionPlan(
-            BlockList(blocks, metadata, owned_by_consumer=False),
             DatasetStats(metadata={"FromPandas": metadata}, parent=None),
             run_by_consumer=False,
         ),
@@ -2593,7 +2582,6 @@ def from_numpy_refs(
 
     return MaterializedDataset(
         ExecutionPlan(
-            BlockList(blocks, metadata, owned_by_consumer=False),
             DatasetStats(metadata={"FromNumpy": metadata}, parent=None),
             run_by_consumer=False,
         ),
@@ -2673,7 +2661,6 @@ def from_arrow_refs(
 
     return MaterializedDataset(
         ExecutionPlan(
-            BlockList(tables, metadata, owned_by_consumer=False),
             DatasetStats(metadata={"FromArrow": metadata}, parent=None),
             run_by_consumer=False,
         ),
