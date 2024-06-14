@@ -26,9 +26,9 @@ class ClusterNodeInfoCache(ABC):
         """
         nodes = self._gcs_client.get_all_node_info(timeout=RAY_GCS_RPC_TIMEOUT_S)
         alive_nodes = [
-            (ray.NodeID.from_binary(node_id).hex(), node["node_name"].decode("utf-8"))
+            (ray.NodeID.from_binary(node_id).hex(), node.node_name)
             for (node_id, node) in nodes.items()
-            if node["state"] == ray.core.generated.gcs_pb2.GcsNodeInfo.ALIVE
+            if node.state == ray.core.generated.gcs_pb2.GcsNodeInfo.ALIVE
         ]
 
         # Sort on NodeID to ensure the ordering is deterministic across the cluster.
