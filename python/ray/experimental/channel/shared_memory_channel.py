@@ -546,13 +546,16 @@ class CompositeChannel(ChannelInterface):
             self._channels,
         )
 
-    def __repr__(self) -> str:
+    def __str__(self) -> str:
         return f"CompositeChannel(_channels={self._channels})"
 
     def write(self, value: Any):
         self.ensure_registered_as_writer()
         for channel in self._channels:
             channel.write(value)
+
+    def read(self) -> Any:
+        return self.begin_read()
 
     def begin_read(self) -> Any:
         self.ensure_registered_as_reader()

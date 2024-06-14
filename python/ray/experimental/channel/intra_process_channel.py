@@ -46,7 +46,7 @@ class IntraProcessChannel(ChannelInterface):
             self._channel_id,
         )
 
-    def __repr__(self) -> str:
+    def __str__(self) -> str:
         return f"IntraProcessChannel(channel_id={self._channel_id})"
 
     def write(self, value: Any):
