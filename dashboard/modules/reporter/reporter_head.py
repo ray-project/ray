@@ -68,9 +68,6 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
         )
         self._gcs_aio_client = dashboard_head.gcs_aio_client
         self._state_api = None
-        self.thread_pool_executor = ThreadPoolExecutor(
-            max_workers=1, thread_name_prefix="reporter_head_worker"
-        )
 
     async def _update_stubs(self, change):
         if change.old:
@@ -643,7 +640,7 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
                 # blocking the event loop.
                 loop = get_or_create_event_loop()
                 parsed_data = await loop.run_in_executor(
-                    self.thread_pool_executor, json.loads, data
+                    None, json.loads, data
                 )
                 node_id = key.split(":")[-1]
                 DataSource.node_physical_stats[node_id] = parsed_data
