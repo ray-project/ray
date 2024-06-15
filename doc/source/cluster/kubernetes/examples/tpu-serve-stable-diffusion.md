@@ -34,10 +34,10 @@ git clone https://github.com/ray-project/serve_config_examples.git
 cd stable_diffusion/tpu
 ```
 
-Retrieve the name of the RayCluster head svc.
+Retrieve the name of the RayCluster Head service
 
 ```sh
-kubectl get pods
+kubectl get svc
 ```
 
 Then, port-forward the Ray dashboard. To view the dashboard, open http://localhost:8265/ on your local machine.
