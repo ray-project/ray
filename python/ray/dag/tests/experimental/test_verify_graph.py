@@ -13,7 +13,7 @@ from ray.dag import InputNode, MultiOutputNode
 
 INVALID_GRAPH = "Detect a deadlock in the graph. If this is a false positive, "
 "please disable the graph verification by setting the environment "
-"variable ENABLE_VERIFY_GRAPH to 0."
+"variable RAY_ADAG_ENABLE_VERIFY_GRAPH to 0."
 
 
 @ray.remote(num_cpus=0, num_gpus=1)

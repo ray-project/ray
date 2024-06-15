@@ -9,4 +9,6 @@ BIND_INDEX_KEY = "bind_index"
 DAGNODE_TYPE_KEY = "__dag_node_type__"
 
 # Feature flag to turn off the graph verification.
-ENABLE_VERIFY_GRAPH = os.environ.get("ENABLE_VERIFY_GRAPH", "1") == "1"
+RAY_ADAG_ENABLE_VERIFY_GRAPH = (
+    os.environ.get("RAY_ADAG_ENABLE_VERIFY_GRAPH", "1") == "1"
+)

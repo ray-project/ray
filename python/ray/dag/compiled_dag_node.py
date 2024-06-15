@@ -743,13 +743,13 @@ class CompiledDAG:
             for idx in task.downstream_node_idxs:
                 frontier.append(idx)
 
-        from ray.dag.constants import ENABLE_VERIFY_GRAPH
+        from ray.dag.constants import RAY_ADAG_ENABLE_VERIFY_GRAPH
 
-        if ENABLE_VERIFY_GRAPH:
+        if RAY_ADAG_ENABLE_VERIFY_GRAPH:
             assert self._verify_graph(), (
                 "Detect a deadlock in the graph. If this is a false positive, "
                 "please disable the graph verification by setting the environment "
-                "variable ENABLE_VERIFY_GRAPH to 0."
+                "variable RAY_ADAG_ENABLE_VERIFY_GRAPH to 0."
             )
 
         # Validate input channels for tasks that have not been visited
