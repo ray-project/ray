@@ -2895,7 +2895,7 @@ cdef class GcsClient:
         for serialized in serialized_node_infos:
             node_info = GcsNodeInfo()
             node_info.ParseFromString(serialized)
-            result[NodeID.from_binary(node_info.node_id)] = node_info
+            result[NodeID(node_info.node_id)] = node_info
         return result
 
     @_auto_reconnect
@@ -2917,7 +2917,7 @@ cdef class GcsClient:
         for serialized in serialized_job_infos:
             job_info = JobTableData()
             job_info.ParseFromString(serialized)
-            result[JobID.from_binary(job_info.job_id)] = job_info
+            result[JobID(job_info.job_id)] = job_info
         return result
 
     @_auto_reconnect
