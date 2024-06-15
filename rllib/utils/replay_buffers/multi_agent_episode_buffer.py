@@ -1,5 +1,5 @@
 import copy
-from collections import defaultdict
+from collections import defaultdict, deque
 from gymnasium.core import ActType, ObsType
 import numpy as np
 import scipy
@@ -17,7 +17,7 @@ from ray.rllib.utils.typing import AgentID, ModuleID, SampleBatchType
 
 @DeveloperAPI
 class MultiAgentEpisodeReplayBuffer(EpisodeReplayBuffer):
-    """Multi-agent episode replay buffer that stores episodes by theior IDs.
+    """Multi-agent episode replay buffer that stores episodes by their IDs.
 
     This class implements a replay buffer as used in "playing Atari with Deep
     Reinforcement Learning" (Mnih et al., 2013) for multi-agent reinforcement
@@ -29,8 +29,8 @@ class MultiAgentEpisodeReplayBuffer(EpisodeReplayBuffer):
     the original episode. This way, episodes can be completed via subsequent `add`
     calls.
 
-    Sampling returns batches of size B (number of 'rows'), where each row is a tuple
-    of the form
+    Sampling returns a size `B` episode list (number of 'rows'), where each episode
+    holds a tuple tuple of the form
 
     `(o_t, a_t, sum(r_t+1:t+n), o_t+n)`
 
@@ -41,10 +41,76 @@ class MultiAgentEpisodeReplayBuffer(EpisodeReplayBuffer):
     sampled uniformly across the interval defined by the tuple (for each row in the
     batch).
 
-    Each batch contains - in addition to the data tuples presented above - two further
-    columns, namely `n_steps` and `weigths`. The former holds the `n_step` used for each
-    row in the batch and the latter the (default) weight of `1.0` for each row in the
-    batch. The weight is used for weighted loss calculations in the training process.
+    Each episode contains - in addition to the data tuples presented above - two further
+    elements in its `extra_model_outputs`, namely `n_steps` and `weights`. The former
+    holds the `n_step` used for the sampled timesteps in the episode and the latter the
+    corresponding (importance sampling) weight for the transition.
+
+    .. testcode::
+
+        import gymnasium as gym
+
+        from ray.rllib.env.multi_agent_episode import MultiAgentEpisode
+        from ray.rllib.examples.envs.classes.multi_agent import MultiAgentCartPole
+        from ray.rllib.utils.replay_buffers import MultiAgentEpisodeReplayBuffer
+
+
+        # Create the environment.
+        env = MultiAgentCartPole({"num_agents": 2})
+
+        # Set up the loop variables
+        agent_ids = env.get_agent_ids()
+        agent_ids.add("__all__")
+        terminateds = {aid: False for aid in agent_ids}
+        truncateds = {aid: False for aid in agent_ids}
+        num_timesteps = 10000
+        episodes = []
+
+        # Initialize the first episode entries.
+        eps = MultiAgentEpisode()
+        obs, infos = env.reset()
+        eps.add_env_reset(observations=obs, infos=infos)
+
+        # Sample 10,000 env timesteps.
+        for i in range(num_timesteps):
+            # If terminated we create a new episode.
+            if eps.is_done:
+                episodes.append(eps.finalize())
+                eps = MultiAgentEpisode()
+                terminateds = {aid: False for aid in agent_ids}
+                truncateds = {aid: False for aid in agent_ids}
+                obs, infos = env.reset()
+                eps.add_env_reset(observations=obs, infos=infos)
+
+            # Note, `action_space_sample` samples an action for all agents not only the
+            # ones still alive, but the `MultiAgentEpisode.add_env_step` does not accept
+            # results for dead agents.
+            actions = {
+                aid: act
+                for aid, act in env.action_space_sample().items()
+                if aid not in (env.terminateds or env.truncateds)
+            }
+            obs, rewards, terminateds, truncateds, infos = env.step(actions)
+            eps.add_env_step(
+                obs,
+                actions,
+                rewards,
+                infos,
+                terminateds=terminateds,
+                truncateds=truncateds
+            )
+
+        # Add the last (truncated) episode to the list of episodes.
+        if not eps.is_done:
+            episodes.append(eps)
+
+        # Create the buffer.
+        buffer = MultiAgentEpisodeReplayBuffer()
+        # Add the list of episodes sampled.
+        buffer.add(episodes)
+
+        # Pull a sample from the buffer using an `n-step` of 3.
+        sample = buffer.sample(num_items=256, gamma=0.95, n_step=3)
     """
 
     def __init__(
@@ -52,17 +118,17 @@ class MultiAgentEpisodeReplayBuffer(EpisodeReplayBuffer):
         capacity: int = 10000,
         *,
         batch_size_B: int = 16,
-        batch_length_T: int = 64,
+        batch_length_T: int = 1,
         **kwargs,
     ):
         """Initializes a multi-agent episode replay buffer.
 
         Args:
-            capacity: The capacity of the replay buffer in number of timesteps.
-            batch_size_B: The batch size to sample from the replay buffer.
-            batch_length_T: The length of the sampled batch. This feature is not
-                yet implemented.
-            **kwargs: Additional arguments to pass to the base class.
+            capacity: The total number of timesteps to be storable in this buffer.
+                Will start ejecting old episodes once this limit is reached.
+            batch_size_B: The number of episodes returned from `sample()`.
+            batch_length_T: The length of each episode in the episode list returned from
+                `sample()`.
         """
         # Initialize the base episode replay buffer.
         super().__init__(
@@ -116,11 +182,11 @@ class MultiAgentEpisodeReplayBuffer(EpisodeReplayBuffer):
         not complete, this could lead to edge cases (e.g. with very small capacity
         or very long episode length) where the first part of an episode is evicted
         while the next part just comes in.
-        In such cases, we evict the complete episode, including the new chunk,
-        unless the episode is the last one in the buffer. In the latter case the
-        buffer will be allowed to overflow in a temporary fashion, i.e. during
-        the next addition of samples to the buffer an attempt is made to fall below
-        capacity again.
+        To defend against such case, the complete episode is evicted, including
+        the new chunk, unless the episode is the only one in the buffer. In the
+        latter case the buffer will be allowed to overflow in a temporary fashion,
+        i.e. during the next addition of samples to the buffer an attempt is made
+        to fall below capacity again.
 
         The user is advised to select a large enough buffer with regard to the maximum
         expected episode length.
@@ -241,7 +307,7 @@ class MultiAgentEpisodeReplayBuffer(EpisodeReplayBuffer):
         replay_mode: str = "independent",
         modules_to_sample: Optional[List[ModuleID]] = None,
         **kwargs,
-    ) -> SampleBatchType:
+    ) -> Union[List["MultiAgentEpisode"], List["SingleAgentEpisode"]]:
         """Samples a batch of multi-agent transitions.
 
         Multi-agent transitions can be sampled either `"independent"` or
@@ -352,7 +418,7 @@ class MultiAgentEpisodeReplayBuffer(EpisodeReplayBuffer):
         return self._num_agent_timesteps
 
     @override(EpisodeReplayBuffer)
-    def get_num_episodes(self, module_id: ModuleID = None) -> int:
+    def get_num_episodes(self, module_id: Optional[ModuleID] = None) -> int:
         """Returns number of episodes stored for a module in the buffer.
 
         Note, episodes could be either complete or truncated.
@@ -370,7 +436,17 @@ class MultiAgentEpisodeReplayBuffer(EpisodeReplayBuffer):
             else super().get_num_episodes()
         )
 
-    def get_num_timesteps(self, module_id: ModuleID = None) -> int:
+    @override(EpisodeReplayBuffer)
+    def get_num_episodes_evicted(self, module_id: Optional[ModuleID] = None) -> int:
+        """Returns number of episodes evicted for a module in the buffer."""
+        return (
+            self._num_module_episodes_evicted[module_id]
+            if module_id
+            else super().get_num_episodes_evicted()
+        )
+
+    @override(EpisodeReplayBuffer)
+    def get_num_timesteps(self, module_id: Optional[ModuleID] = None) -> int:
         """Returns number of individual timesteps for a module stored in the buffer.
 
         Args:
@@ -386,7 +462,8 @@ class MultiAgentEpisodeReplayBuffer(EpisodeReplayBuffer):
             else super().get_num_timesteps()
         )
 
-    def get_sampled_timesteps(self, module_id: ModuleID = None) -> int:
+    @override(EpisodeReplayBuffer)
+    def get_sampled_timesteps(self, module_id: Optional[ModuleID] = None) -> int:
         """Returns number of timesteps that have been sampled for a module.
 
         Args:
@@ -402,7 +479,8 @@ class MultiAgentEpisodeReplayBuffer(EpisodeReplayBuffer):
             else super().get_sampled_timesteps()
         )
 
-    def get_added_timesteps(self, module_id: ModuleID = None) -> int:
+    @override(EpisodeReplayBuffer)
+    def get_added_timesteps(self, module_id: Optional[ModuleID] = None) -> int:
         """Returns number of timesteps that have been added in buffer's lifetime for a module.
 
         Args:
@@ -420,6 +498,15 @@ class MultiAgentEpisodeReplayBuffer(EpisodeReplayBuffer):
 
     @override(EpisodeReplayBuffer)
     def get_state(self) -> Dict[str, Any]:
+        """Gets a pickable state of the buffer.
+
+        This is used for checkpointing the buffer's state. It is specifically helpful,
+        for example, when a trial is paused and resumed later on. The buffer's state
+        can be saved to disk and reloaded when the trial is resumed.
+
+        Returns:
+            A dict containing all necessary information to restore the buffer's state.
+        """
         return super().get_state() | {
             "_module_to_indices": list(self._module_to_indices.items()),
             "_num_agent_timesteps": self._num_agent_timesteps,
@@ -439,17 +526,50 @@ class MultiAgentEpisodeReplayBuffer(EpisodeReplayBuffer):
 
     @override(EpisodeReplayBuffer)
     def set_state(self, state) -> None:
+        """Sets the state of a buffer from a previously stored state.
+
+        See `get_state()` for more information on what is stored in the state. This
+        method is used to restore the buffer's state from a previously stored state.
+        It is specifically helpful, for example, when a trial is paused and resumed
+        later on. The buffer's state can be saved to disk and reloaded when the trial
+        is resumed.
+
+        Args:
+            state: The state to restore the buffer from.
+        """
+        # Set the episodes.
+        self._set_episodes(state)
         # Set the super's state.
         super().set_state(state)
         # Now set the remaining attributes.
-        self._module_to_indices = dict(state["_module_to_indices"])
+        self._module_to_indices = defaultdict(list, dict(state["_module_to_indices"]))
         self._num_agent_timesteps = state["_num_agent_timesteps"]
         self._num_agent_timesteps_added = state["_num_agent_timesteps_added"]
-        self._num_module_timesteps = dict(state["_num_module_timesteps"])
-        self._num_module_timesteps_added = dict(state["_num_module_timesteps_added"])
-        self._num_module_episodes = dict(state["_num_module_episodes"])
-        self._num_module_episodes_evicted = dict(state["_num_module_episodes_evicted"])
-        self.sampled_timesteps_per_module = dict(state["sampled_timesteps_per_module"])
+        self._num_module_timesteps = defaultdict(
+            int, dict(state["_num_module_timesteps"])
+        )
+        self._num_module_timesteps_added = defaultdict(
+            int, dict(state["_num_module_timesteps_added"])
+        )
+        self._num_module_episodes = defaultdict(
+            int, dict(state["_num_module_episodes"])
+        )
+        self._num_module_episodes_evicted = defaultdict(
+            int, dict(state["_num_module_episodes_evicted"])
+        )
+        self.sampled_timesteps_per_module = defaultdict(
+            list, dict(state["sampled_timesteps_per_module"])
+        )
+
+    def _set_episodes(self, state: Dict[str, Any]) -> None:
+        """Sets the episodes from the state."""
+        if not self.episodes:
+            self.episodes = deque(
+                [
+                    MultiAgentEpisode.from_state(eps_data)
+                    for eps_data in state["episodes"]
+                ]
+            )
 
     def _sample_independent(
         self,
@@ -460,7 +580,7 @@ class MultiAgentEpisodeReplayBuffer(EpisodeReplayBuffer):
         include_infos: bool,
         include_extra_model_outputs: bool,
         modules_to_sample: Optional[Set[ModuleID]],
-    ) -> SampleBatchType:
+    ) -> List["SingleAgentEpisode"]:
         """Samples a batch of independent multi-agent transitions."""
 
         actual_n_step = n_step or 1
@@ -500,8 +620,8 @@ class MultiAgentEpisodeReplayBuffer(EpisodeReplayBuffer):
                 if sa_episode_ts + actual_n_step > len(sa_episode):
                     continue
                 # Note, this will be the reward after executing action
-                # `a_(episode_ts)`. For `n_step>1` this will be the sum of
-                # all rewards that were collected over the last n steps.
+                # `a_(episode_ts)`. For `n_step>1` this will be the discounted sum
+                # of all rewards that were collected over the last n steps.
                 sa_raw_rewards = sa_episode.get_rewards(
                     slice(sa_episode_ts, sa_episode_ts + actual_n_step)
                 )
@@ -807,7 +927,7 @@ class MultiAgentEpisodeReplayBuffer(EpisodeReplayBuffer):
 
         # Note we need to take the agent ids from the evicted episode because
         # different episodes can have different agents and module mappings.
-        for agent_id in ma_episode.agent_ids:
+        for agent_id in ma_episode.agent_episodes:
             # Retrieve the corresponding module ID and module episode.
             module_id = ma_episode._agent_to_module_mapping[agent_id]
             module_eps = ma_episode.agent_episodes[agent_id]
@@ -831,8 +951,11 @@ class MultiAgentEpisodeReplayBuffer(EpisodeReplayBuffer):
                 module_id = ma_episode.module_for(agent_id)
                 self._num_module_timesteps[module_id] += agent_steps
                 self._num_module_timesteps_added[module_id] += agent_steps
-                # Also add to the module episode counter.
-                self._num_module_episodes[module_id] += 1
+                # if ma_episode.agent_episodes[agent_id].is_done:
+                #     # TODO (simon): Check, if we do not count the same episode
+                #     # multiple times.
+                #     # Also add to the module episode counter.
+                #     self._num_module_episodes[module_id] += 1
 
     def _add_new_module_indices(
         self,
@@ -854,9 +977,9 @@ class MultiAgentEpisodeReplayBuffer(EpisodeReplayBuffer):
                 self.episode_id_to_index[ma_episode.id_] - self._num_episodes_evicted
             ]
 
-        for agent_id in ma_episode.agent_ids:
-            existing_sa_eps_len = 0
-
+        # Note, we iterate through the agent episodes b/c we want to store records
+        # and some agents could not have entered the environment.
+        for agent_id in ma_episode.agent_episodes:
             # Get the corresponding module id.
             module_id = ma_episode.module_for(agent_id)
             # Get the module episode.
@@ -865,6 +988,10 @@ class MultiAgentEpisodeReplayBuffer(EpisodeReplayBuffer):
             # Is the agent episode already in the buffer's existing `ma_episode`?
             if ma_episode_exists and agent_id in existing_ma_episode.agent_episodes:
                 existing_sa_eps_len = len(existing_ma_episode.agent_episodes[agent_id])
+            # Otherwise, it is a new single-agent episode and we increase the counter.
+            else:
+                existing_sa_eps_len = 0
+                self._num_module_episodes[module_id] += 1
 
             # Add new module indices.
             self._module_to_indices[module_id].extend(

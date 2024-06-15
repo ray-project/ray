@@ -40,3 +40,11 @@ def mock_function():
     This function is used for testing purpose only. It should not be used in production.
     """
     pass
+
+
+@PublicAPI
+def mock_w00t():
+    """
+    This function is used for testing purpose only. It should not be used in production.
+    """
+    pass

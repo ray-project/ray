@@ -380,7 +380,10 @@ class TorchTensorNcclChannel(ChannelInterface):
 
     def begin_read(self) -> Union["torch.Tensor", List["torch.Tensor"]]:
         if self._meta_channel is not None:
-            meta = self._meta_channel.read()
+            meta = self._meta_channel.begin_read()
+            # It's safe to release the channel because shape and dtype should get
+            # copied during deserialization.
+            self._meta_channel.end_read()
         else:
             meta = self._typ
 
