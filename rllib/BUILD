@@ -303,6 +303,15 @@ py_test(
     args = ["--as-test", "--enable-new-api-stack"]
 )
 
+py_test(
+    name = "learning_tests_multi_agent_cartpole_dqn",
+    main = "tuned_examples/dqn/multi_agent_cartpole_dqn.py",
+    tags = ["team:rllib", "exclusive", "learning_tests", "torch_only", "learning_tests_cartpole", "learning_tests_discrete", "learning_tests_pytorch_use_all_core"],
+    size = "large",
+    srcs = ["tuned_examples/dqn/multi_agent_cartpole_dqn.py"],
+    args = ["--as-test", "--enable-new-api-stack", "--num-agents=2", "--num-cpus=4"]
+)
+
 #@OldAPIStack
 py_test(
     name = "learning_tests_cartpole_dqn_softq_old_api_stack",
@@ -452,6 +461,24 @@ py_test(
     args = ["--as-test", "--enable-new-api-stack"]
 )
 
+py_test(
+    name = "learning_tests_multi_agent_pendulum_sac",
+    main = "tuned_examples/sac/multi_agent_pendulum_sac.py",
+    tags = ["team:rllib", "exclusive", "learning_tests", "torch_only", "learning_tests_pendulum", "learning_tests_continuous"],
+    size = "large",
+    srcs = ["tuned_examples/sac/multi_agent_pendulum_sac.py"],
+    args = ["--as-test", "--enable-new-api-stack", "--num-agents=2", "--num-cpus=4"]
+)
+
+py_test(
+    name = "learning_tests_multi_agent_pendulum_sac_multi_gpu",
+    main = "tuned_examples/sac/multi_agent_pendulum_sac.py",
+    tags = ["team:rllib", "exclusive", "learning_tests", "torch_only", "learning_tests_pendulum", "learning_tests_continuous", "multi_gpu"],
+    size = "large",
+    srcs = ["tuned_examples/sac/multi_agent_pendulum_sac.py"],
+    args = ["--enable-new-api-stack", "--num-agents=2", "--num-gpus=2"]
+)
+
 #@OldAPIStack
 py_test(
     name = "learning_tests_cartpole_sac_old_api_stack",
@@ -462,25 +489,6 @@ py_test(
     data = ["tuned_examples/sac/cartpole-sac.yaml"],
     args = ["--dir=tuned_examples/sac"]
 )
-
-# TODO (simon): These tests are not learning, yet.
-# py_test(
-#     name = "learning_tests_multi_agent_pendulum_sac",
-#     main = "tuned_examples/sac/multi_agent_pendulum_sac.py",
-#     tags = ["team:rllib", "exclusive", "learning_tests", "torch_only", "learning_tests_pendulum", "learning_tests_continuous"],
-#     size = "large",
-#     srcs = ["tuned_examples/sac/multi_agent_pendulum_sac.py"],
-#     args = ["--enable-new-api-stack", "--num-agents=2"]
-# )
-
-# py_test(
-#     name = "learning_tests_multi_agent_pendulum_sac_multi_gpu",
-#     main = "tuned_examples/sac/multi_agent_pendulum_sac.py",
-#     tags = ["team:rllib", "exclusive", "learning_tests", "torch_only", "learning_tests_pendulum", "learning_tests_continuous", "multi_gpu"],
-#     size = "large",
-#     srcs = ["tuned_examples/sac/multi_agent_pendulum_sac.py"],
-#     args = ["--enable-new-api-stack", "--num-agents=2", "--num-gpus=2"]
-# )
 
 # --------------------------------------------------------------------
 # Algorithms (Compilation, Losses, simple functionality tests)
@@ -1549,10 +1557,10 @@ py_test(
 )
 
 py_test(
-    name = "test_multi_agent_episode_replay_buffer",
+    name = "test_multi_agent_episode_buffer",
     tags = ["team:rllib", "utils"],
     size = "small",
-    srcs = ["utils/replay_buffers/tests/test_multi_agent_episode_replay_buffer.py"]
+    srcs = ["utils/replay_buffers/tests/test_multi_agent_episode_buffer.py"]
 )
 
 py_test(
@@ -1560,6 +1568,13 @@ py_test(
     tags = ["team:rllib", "utils"],
     size = "small",
     srcs = ["utils/replay_buffers/tests/test_multi_agent_mixin_replay_buffer.py"]
+)
+
+py_test(
+    name = "test_multi_agent_prio_episode_buffer",
+    tags = ["team:rllib", "utils"],
+    size = "small",
+    srcs = ["utils/replay_buffers/tests/test_multi_agent_prio_episode_buffer.py"]
 )
 
 py_test(
@@ -1577,10 +1592,10 @@ py_test(
 )
 
 py_test(
-    name = "test_prioritized_episode_replay_buffer",
+    name = "test_prioritized_episode_buffer",
     tags = ["team::rllib", "utils"],
     size = "small",
-    srcs = ["utils/replay_buffers/tests/test_prioritized_episode_replay_buffer.py"]
+    srcs = ["utils/replay_buffers/tests/test_prioritized_episode_buffer.py"]
 )
 
 py_test(
@@ -2211,6 +2226,15 @@ py_test(
     tags = ["team:rllib", "exclusive", "examples", "no_main"],
     size = "small",
     srcs = ["examples/checkpoints/onnx_torch.py"],
+)
+
+#@OldAPIStack
+py_test(
+    name = "examples/checkpoints/onnx_torch_lstm",
+    main = "examples/checkpoints/onnx_torch_lstm.py",
+    tags = ["team:rllib", "exclusive", "examples", "no_main"],
+    size = "small",
+    srcs = ["examples/checkpoints/onnx_torch_lstm.py"],
 )
 
 # subdirectory: connectors/

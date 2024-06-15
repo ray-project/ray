@@ -299,10 +299,6 @@ class SACTorchLearner(DQNRainbowTorchLearner, SACLearner):
     def compute_gradients(
         self, loss_per_module: Dict[str, TensorType], **kwargs
     ) -> ParamDict:
-        # Set all grads to `None`.
-        for optim in self._optimizer_parameters:
-            optim.zero_grad(set_to_none=True)
-
         grads = {}
 
         for module_id in set(loss_per_module.keys()) - {ALL_MODULES}:
@@ -314,14 +310,23 @@ class SACTorchLearner(DQNRainbowTorchLearner, SACLearner):
             for component in (
                 ["qf", "policy", "alpha"] + ["qf_twin"] if config.twin_q else []
             ):
+                # Get the optimizer for the current component and module.
+                optim = self.get_optimizer(module_id, component)
+                # Zero the gradients. Note, we need to reset the gradients b/c
+                # each component for a module operates on the same graph.
+                optim.zero_grad(set_to_none=True)
+                # Compute the gradients for the component and module.
                 self.metrics.peek((module_id, component + "_loss")).backward(
                     retain_graph=True
                 )
+                # Store the gradients for the component and module.
+                # TODO (simon): Check another time the graph for overlapping
+                # gradients.
                 grads.update(
                     {
-                        pid: p.grad
+                        pid: p.grad.clone()
                         for pid, p in self.filter_param_dict_for_optimizer(
-                            self._params, self.get_optimizer(module_id, component)
+                            self._params, optim
                         ).items()
                     }
                 )
