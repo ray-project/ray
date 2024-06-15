@@ -2880,7 +2880,7 @@ cdef class GcsClient:
                 c_uri, expiration_s, timeout_ms))
 
     @_auto_reconnect
-    def get_all_node_info(self, timeout=None) -> Dict[bytes, GcsNodeInfo]:
+    def get_all_node_info(self, timeout=None) -> Dict[NodeID, GcsNodeInfo]:
         cdef:
             int64_t timeout_ms = round(1000 * timeout) if timeout else -1
             CGcsNodeInfo c_node_info
@@ -2895,11 +2895,11 @@ cdef class GcsClient:
         for serialized in serialized_node_infos:
             node_info = GcsNodeInfo()
             node_info.ParseFromString(serialized)
-            result[node_info.node_id] = node_info
+            result[NodeID.from_binary(node_info.node_id)] = node_info
         return result
 
     @_auto_reconnect
-    def get_all_job_info(self, timeout=None) -> Dict[bytes, JobTableData]:
+    def get_all_job_info(self, timeout=None) -> Dict[JobID, JobTableData]:
         # Ideally we should use json_format.MessageToDict(job_info),
         # but `job_info` is a cpp pb message not a python one.
         # Manually converting each and every protobuf field is out of question,
@@ -2917,7 +2917,7 @@ cdef class GcsClient:
         for serialized in serialized_job_infos:
             job_info = JobTableData()
             job_info.ParseFromString(serialized)
-            result[job_info.job_id] = job_info
+            result[JobID.from_binary(job_info.job_id)] = job_info
         return result
 
     @_auto_reconnect

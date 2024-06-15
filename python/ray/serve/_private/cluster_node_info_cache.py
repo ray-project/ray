@@ -26,7 +26,7 @@ class ClusterNodeInfoCache(ABC):
         """
         nodes = self._gcs_client.get_all_node_info(timeout=RAY_GCS_RPC_TIMEOUT_S)
         alive_nodes = [
-            (ray.NodeID.from_binary(node_id).hex(), node.node_name)
+            (node_id.hex(), node.node_name)
             for (node_id, node) in nodes.items()
             if node.state == ray.core.generated.gcs_pb2.GcsNodeInfo.ALIVE
         ]
@@ -35,16 +35,12 @@ class ClusterNodeInfoCache(ABC):
         sorted(alive_nodes)
         self._cached_alive_nodes = alive_nodes
         self._cached_node_labels = {
-            ray.NodeID.from_binary(node_id).hex(): {
-                label_name.decode("utf-8"): label_value.decode("utf-8")
-                for label_name, label_value in node["labels"].items()
-            }
-            for (node_id, node) in nodes.items()
+            node_id.hex(): dict(node.labels) for (node_id, node) in nodes.items()
         }
 
         # Node resources
         self._cached_total_resources_per_node = {
-            ray.NodeID.from_binary(node_id).hex(): node["resources"]
+            node_id.hex(): dict(node.resources_total)
             for (node_id, node) in nodes.items()
         }
 
