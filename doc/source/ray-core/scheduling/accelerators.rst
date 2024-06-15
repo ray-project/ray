@@ -85,7 +85,7 @@ If you need to, you can :ref:`override <specify-node-resources>` this.
             For example, ``NEURON_RT_VISIBLE_CORES=1,3 ray start --head --resources='{"neuron_cores": 2}'``
             lets Ray only see devices 1 and 3.
 
-            Amazon also maintains a very good documentation and examples gallery for getting started on Ray on Neuron with the help of EKS as a orchestration substrate. You can find that here: `https://awslabs.github.io/data-on-eks/docs/category/inference-on-eks` <https://awslabs.github.io/data-on-eks/docs/category/inference-on-eks>
+            See the `Amazon documentation<https://awslabs.github.io/data-on-eks/docs/category/inference-on-eks>` for more examples of Ray on Neuron with EKS as an orchestration substrate.
 
     .. tab-item:: Google TPU
         :sync: Google TPU
