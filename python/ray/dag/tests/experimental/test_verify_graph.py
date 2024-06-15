@@ -114,9 +114,9 @@ def test_invalid_graph_2_actors_2(ray_start_regular):
 @pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 2}], indirect=True)
 def test_invalid_graph_2_actors_3(ray_start_regular):
     """
-    The first a.no_op writes to the second a.no_op and the b.no_op via the NCCL channels.
-    However, the NCCL channel only supports synchronous communication and an actor can
-    only execute one task at a time, so the graph is deadlocked.
+    The first a.no_op writes to the second a.no_op and the b.no_op via the NCCL
+    channels. However, the NCCL channel only supports synchronous communication
+    and an actor can only execute one task at a time, so the graph is deadlocked.
     """
     a = MockedWorker.remote()
     b = MockedWorker.remote()
