@@ -10,3 +10,4 @@ flaky_tests:
   - windows://python/ray/tests:test_task_events_2
   # Flaky when keep starting many ray sessions on windows.
   - windows://python/ray/tests:test_task_events_3 
+  - //python/ray/dag:test_accelerated_dag
