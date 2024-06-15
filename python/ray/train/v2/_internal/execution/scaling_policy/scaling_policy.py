@@ -48,3 +48,11 @@ class ScalingPolicy(abc.ABC):
     ) -> ScalingDecision:
         """Makes a scaling decision when monitoring healthy, running workers."""
         raise NotImplementedError
+
+    def on_controller_run_start(self):
+        """Called when the control loop is started."""
+        pass
+
+    def on_controller_shutdown(self):
+        """Called when the controller shuts down."""
+        pass

@@ -11,6 +11,11 @@ _UNSUPPORTED_STR = "UNSUPPORTED"
 class ScalingConfig(ScalingConfigV1):
     num_workers: Union[int, Tuple[int, int]]
 
+    # TODO: Rewrite docstring, and possibly move this into an ElasticScalingConfig
+    # While the worker group is healthy, consider resizing the worker group
+    # every `elastic_resize_monitor_interval_s` seconds.
+    elastic_resize_monitor_interval_s: float = 60.0
+
     trainer_resources: Optional[dict] = _UNSUPPORTED_STR
 
     @property
@@ -46,6 +51,11 @@ class ScalingConfig(ScalingConfigV1):
         if not (is_fixed or is_elastic):
             raise ValueError(
                 "ScalingConfig(num_workers) must be an int or a tuple of two ints."
+            )
+
+        if self.elastic_resize_monitor_interval_s < 0:
+            raise ValueError(
+                "ScalingConfig(elastic_resize_monitor_interval_s) must be non-negative."
             )
 
 

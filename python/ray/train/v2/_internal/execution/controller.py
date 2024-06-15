@@ -140,6 +140,7 @@ class TrainController:
 
     def _shutdown(self):
         self._worker_group.shutdown()
+        self._scaling_policy.on_controller_shutdown()
 
     def get_worker_group(self) -> WorkerGroup:
         return self._worker_group
@@ -200,6 +201,8 @@ class TrainController:
 
     def run(self):
         """Run the main control loop. Exits when training is finished or errored."""
+        self._scaling_policy.on_controller_run_start()
+
         while self.get_state() not in (
             TrainControllerState.ERRORED,
             TrainControllerState.FINISHED,
