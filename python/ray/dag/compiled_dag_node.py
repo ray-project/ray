@@ -902,9 +902,7 @@ class CompiledDAG:
             return None
 
         def _add_edge(
-            graph: Dict[int, GraphNode],
-            from_idx: int,
-            to_idx: Optional[int]
+            graph: Dict[int, GraphNode], from_idx: int, to_idx: Optional[int]
         ):
             if to_idx is None:
                 return
