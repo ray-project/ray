@@ -72,7 +72,7 @@ py_test(
 
 py_test_module_list(
   files = [
-    "tests/experimental/test_accelerated_dag.py", 
+    "tests/experimental/test_accelerated_dag.py",
     "tests/experimental/test_torch_tensor_dag.py",
   ],
   size = "medium",
