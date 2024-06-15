@@ -11,7 +11,7 @@ RLlib works with several different types of environments, including `Farama-Foun
 
 .. tip::
 
-    Not all environments work with all algorithms. Check out the `algorithm overview <rllib-algorithms.html#available-algorithms-overview>`__ for more information.
+    Not all environments work with all algorithms. See the `algorithm overview <rllib-algorithms.html#available-algorithms-overview>`__ for more information.
 
 .. image:: images/rllib-envs.svg
 

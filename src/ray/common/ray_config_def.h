@@ -52,13 +52,6 @@ RAY_CONFIG(int64_t, handler_warning_timeout_ms, 1000)
 /// The duration between loads pulled by GCS
 RAY_CONFIG(uint64_t, gcs_pull_resource_loads_period_milliseconds, 1000)
 
-/// If GCS restarts, before the first heatbeat is sent,
-/// gcs_failover_worker_reconnect_timeout is used for the threshold
-/// of the raylet. This is very useful given that raylet might need
-/// a while to reconnect to the GCS, for example, when GCS is available
-/// but not reachable to raylet.
-RAY_CONFIG(int64_t, gcs_failover_worker_reconnect_timeout, 120)
-
 /// The duration between reporting resources sent by the raylets.
 RAY_CONFIG(uint64_t, raylet_report_resources_period_milliseconds, 100)
 

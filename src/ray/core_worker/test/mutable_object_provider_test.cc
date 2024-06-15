@@ -136,7 +136,9 @@ class TestInterface : public MutableObjectReaderInterface {
 };
 
 std::shared_ptr<MutableObjectReaderInterface> GetTestInterface(
-    std::shared_ptr<TestInterface> &interface, const NodeID &node_id) {
+    std::shared_ptr<TestInterface> &interface,
+    const NodeID &node_id,
+    rpc::ClientCallManager &client_call_manager) {
   return interface;
 }
 

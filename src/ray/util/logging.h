@@ -85,6 +85,19 @@ enum { ERROR = 0 };
 #endif
 
 namespace ray {
+/// Sync with ray._private.ray_logging.constants.LogKey
+constexpr std::string_view kLogKeyAsctime = "asctime";
+constexpr std::string_view kLogKeyLevelname = "levelname";
+constexpr std::string_view kLogKeyMessage = "message";
+constexpr std::string_view kLogKeyFilename = "filename";
+constexpr std::string_view kLogKeyLineno = "lineno";
+constexpr std::string_view kLogKeyComponent = "component";
+constexpr std::string_view kLogKeyJobID = "job_id";
+constexpr std::string_view kLogKeyWorkerID = "worker_id";
+constexpr std::string_view kLogKeyNodeID = "node_id";
+constexpr std::string_view kLogKeyActorID = "actor_id";
+constexpr std::string_view kLogKeyTaskID = "task_id";
+
 class StackTrace {
   /// This dumps the current stack trace information.
   friend std::ostream &operator<<(std::ostream &os, const StackTrace &stack_trace);
@@ -208,50 +221,24 @@ enum class RayLogLevel {
 // which hide the implementation into logging.cc file.
 // In logging.cc, we can choose different log libs using different macros.
 
-// This is also a null log which does not output anything.
-class RayLogBase {
- public:
-  virtual ~RayLogBase(){};
-
-  // By default, this class is a null log because it return false here.
-  virtual bool IsEnabled() const { return false; };
-
-  // This function to judge whether current log is fatal or not.
-  virtual bool IsFatal() const { return false; };
-
-  template <typename T>
-  RayLogBase &operator<<(const T &t) {
-    if (IsEnabled()) {
-      Stream() << t;
-    }
-    if (IsFatal()) {
-      ExposeStream() << t;
-    }
-    return *this;
-  }
-
- protected:
-  virtual std::ostream &Stream() { return std::cerr; };
-  virtual std::ostream &ExposeStream() { return std::cerr; };
-};
-
 /// Callback function which will be triggered to expose fatal log.
 /// The first argument: a string representing log type or label.
 /// The second argument: log content.
 using FatalLogCallback = std::function<void(const std::string &, const std::string &)>;
 
-class RayLog : public RayLogBase {
+class RayLog {
  public:
   RayLog(const char *file_name, int line_number, RayLogLevel severity);
 
-  virtual ~RayLog();
+  ~RayLog();
 
   /// Return whether or not current logging instance is enabled.
   ///
   /// \return True if logging is enabled and false otherwise.
-  virtual bool IsEnabled() const;
+  bool IsEnabled() const;
 
-  virtual bool IsFatal() const;
+  /// This function to judge whether current log is fatal or not.
+  bool IsFatal() const;
 
   /// The init function of ray log for a program which should be called only once.
   ///
@@ -296,9 +283,6 @@ class RayLog : public RayLogBase {
   /// To check failure signal handler enabled or not.
   static bool IsFailureSignalHandlerEnabled();
 
-  /// Get the log level from environment variable.
-  static RayLogLevel GetLogLevelFromEnv();
-
   static std::string GetLogFormatPattern();
 
   static std::string GetLoggerName();
@@ -307,35 +291,81 @@ class RayLog : public RayLogBase {
   static void AddFatalLogCallbacks(
       const std::vector<FatalLogCallback> &expose_log_callbacks);
 
+  template <typename T>
+  RayLog &operator<<(const T &t) {
+    if (IsEnabled()) {
+      msg_osstream_ << t;
+    }
+    if (IsFatal()) {
+      expose_fatal_osstream_ << t;
+    }
+    return *this;
+  }
+
+  /// Add log context to the log.
+  /// Caller should make sure key is not duplicated
+  /// and doesn't conflict with system keys like levelname.
+  template <typename T>
+  RayLog &WithField(std::string_view key, const T &value) {
+    if (log_format_json_) {
+      return WithFieldJsonFormat<T>(key, value);
+    } else {
+      return WithFieldTextFormat<T>(key, value);
+    }
+  }
+
  private:
   FRIEND_TEST(PrintLogTest, TestRayLogEveryNOrDebug);
   FRIEND_TEST(PrintLogTest, TestRayLogEveryN);
-  // Hide the implementation of log provider by void *.
-  // Otherwise, lib user may define the same macro to use the correct header file.
-  void *logging_provider_;
+
+  template <typename T>
+  RayLog &WithFieldTextFormat(std::string_view key, const T &value) {
+    context_osstream_ << " " << key << "=" << value;
+    return *this;
+  }
+
+  template <typename T>
+  RayLog &WithFieldJsonFormat(std::string_view key, const T &value) {
+    std::stringstream ss;
+    ss << value;
+    return WithFieldJsonFormat<std::string>(key, ss.str());
+  }
+
+  static void InitSeverityThreshold(RayLogLevel severity_threshold);
+  static void InitLogFormat();
+
   /// True if log messages should be logged and false if they should be ignored.
   bool is_enabled_;
   /// log level.
   RayLogLevel severity_;
   /// Whether current log is fatal or not.
   bool is_fatal_ = false;
-  /// String stream of exposed log content.
-  std::shared_ptr<std::ostringstream> expose_osstream_ = nullptr;
+  /// String stream of the log message
+  std::ostringstream msg_osstream_;
+  /// String stream of the log context: a list of key-value pairs.
+  std::ostringstream context_osstream_;
+  /// String stream of exposed fatal log content.
+  std::ostringstream expose_fatal_osstream_;
+
   /// Whether or not the log is initialized.
   static std::atomic<bool> initialized_;
   /// Callback functions which will be triggered to expose fatal log.
   static std::vector<FatalLogCallback> fatal_log_callbacks_;
   static RayLogLevel severity_threshold_;
-  // In InitGoogleLogging, it simply keeps the pointer.
-  // We need to make sure the app name passed to InitGoogleLogging exist.
   static std::string app_name_;
+  /// This is used when we log to stderr
+  /// to indicate which component generates the log.
+  /// This is empty if we log to file.
+  static std::string component_name_;
   /// The directory where the log files are stored.
   /// If this is empty, logs are printed to stdout.
   static std::string log_dir_;
   /// This flag is used to avoid calling UninstallSignalAction in ShutDownRayLog if
   /// InstallFailureSignalHandler was not called.
   static bool is_failure_signal_handler_installed_;
-  // Log format content.
+  /// Whether emit json logs.
+  static bool log_format_json_;
+  // Log format pattern.
   static std::string log_format_pattern_;
   // Log rotation file size limitation.
   static long log_rotation_max_size_;
@@ -345,9 +375,14 @@ class RayLog : public RayLogBase {
   static std::string logger_name_;
 
  protected:
-  virtual std::ostream &Stream();
-  virtual std::ostream &ExposeStream();
+  virtual std::ostream &Stream() { return msg_osstream_; }
 };
+
+template <>
+RayLog &RayLog::WithFieldJsonFormat<std::string>(std::string_view key,
+                                                 const std::string &value);
+template <>
+RayLog &RayLog::WithFieldJsonFormat<int>(std::string_view key, const int &value);
 
 // This class make RAY_CHECK compilation pass to change the << operator to void.
 class Voidify {
@@ -355,7 +390,7 @@ class Voidify {
   Voidify() {}
   // This has to be an operator with a precedence lower than << but
   // higher than ?:
-  void operator&(RayLogBase &) {}
+  void operator&(RayLog &) {}
 };
 
 }  // namespace ray

@@ -257,7 +257,7 @@ class ActorPool:
             The next result.
 
         Raises:
-            TimeoutError if the timeout is reached.
+            TimeoutError: if the timeout is reached.
 
         Examples:
             .. testcode::
@@ -320,7 +320,7 @@ class ActorPool:
             The next result.
 
         Raises:
-            TimeoutError if the timeout is reached.
+            TimeoutError: if the timeout is reached.
 
         Examples:
             .. testcode::

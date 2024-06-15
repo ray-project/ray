@@ -1,6 +1,7 @@
 # Algorithm ResultDict keys.
 EVALUATION_RESULTS = "evaluation"
 ENV_RUNNER_RESULTS = "env_runners"
+REPLAY_BUFFER_RESULTS = "replay_buffer"
 LEARNER_RESULTS = "learners"
 FAULT_TOLERANCE_STATS = "fault_tolerance"
 TIMERS = "timers"

@@ -9,7 +9,6 @@ from ray.data._internal.execution.interfaces import TaskContext
 from ray.data._internal.util import _is_local_scheme, call_with_retry
 from ray.data.block import Block, BlockAccessor
 from ray.data.context import DataContext
-from ray.data.datasource.block_path_provider import BlockWritePathProvider
 from ray.data.datasource.datasink import Datasink
 from ray.data.datasource.filename_provider import (
     FilenameProvider,
@@ -37,7 +36,6 @@ class _FileDatasink(Datasink):
         try_create_dir: bool = True,
         open_stream_args: Optional[Dict[str, Any]] = None,
         filename_provider: Optional[FilenameProvider] = None,
-        block_path_provider: Optional[BlockWritePathProvider] = None,
         dataset_uuid: Optional[str] = None,
         file_format: Optional[str] = None,
     ):
@@ -59,13 +57,6 @@ class _FileDatasink(Datasink):
         if open_stream_args is None:
             open_stream_args = {}
 
-        if block_path_provider is not None:
-            raise DeprecationWarning(
-                "`block_path_provider` has been deprecated in favor of "
-                "`filename_provider`. For more information, see "
-                "https://docs.ray.io/en/master/data/api/doc/ray.data.datasource.FilenameProvider.html",  # noqa: E501
-            )
-
         if filename_provider is None:
             filename_provider = _DefaultFilenameProvider(
                 dataset_uuid=dataset_uuid, file_format=file_format
@@ -79,7 +70,6 @@ class _FileDatasink(Datasink):
         self.try_create_dir = try_create_dir
         self.open_stream_args = open_stream_args
         self.filename_provider = filename_provider
-        self.block_path_provider = block_path_provider
         self.dataset_uuid = dataset_uuid
         self.file_format = file_format
 

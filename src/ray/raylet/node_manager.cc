@@ -284,7 +284,7 @@ NodeManager::NodeManager(
           RayConfig::instance().min_memory_free_bytes(),
           RayConfig::instance().memory_monitor_refresh_ms(),
           CreateMemoryUsageRefreshCallback())) {
-  RAY_LOG(INFO) << "Initializing NodeManager with ID " << self_node_id_;
+  RAY_LOG(INFO).WithField(kLogKeyNodeID, self_node_id_) << "Initializing NodeManager";
   cluster_resource_scheduler_ = std::make_shared<ClusterResourceScheduler>(
       io_service,
       scheduling::NodeID(self_node_id_.Binary()),
@@ -398,14 +398,13 @@ NodeManager::NodeManager(
 }
 
 std::shared_ptr<raylet::RayletClient> NodeManager::CreateRayletClient(
-    const NodeID &node_id) {
+    const NodeID &node_id, rpc::ClientCallManager &client_call_manager) {
   const rpc::GcsNodeInfo *node_info = gcs_client_->Nodes().Get(node_id);
   RAY_CHECK(node_info) << "No GCS info for node " << node_id;
   std::shared_ptr<ray::rpc::NodeManagerWorkerClient> grpc_client =
-      rpc::NodeManagerWorkerClient::make(
-          node_info->node_manager_address(),
-          node_info->node_manager_port(),
-          *mutable_object_provider_->client_call_manager());
+      rpc::NodeManagerWorkerClient::make(node_info->node_manager_address(),
+                                         node_info->node_manager_port(),
+                                         client_call_manager);
   return std::shared_ptr<raylet::RayletClient>(
       new raylet::RayletClient(std::move(grpc_client)));
 };
@@ -1974,11 +1973,8 @@ void NodeManager::HandleDrainRaylet(rpc::DrainRayletRequest request,
     const bool is_idle =
         cluster_resource_scheduler_->GetLocalResourceManager().IsLocalNodeIdle();
     if (is_idle) {
-      rpc::NodeDeathInfo node_death_info;
-      node_death_info.set_reason(rpc::NodeDeathInfo::AUTOSCALER_DRAIN_IDLE);
-      node_death_info.set_reason_message(request.reason_message());
       cluster_resource_scheduler_->GetLocalResourceManager().SetLocalNodeDraining(
-          request.deadline_timestamp_ms(), node_death_info);
+          request);
       reply->set_is_accepted(true);
     } else {
       reply->set_is_accepted(false);
@@ -1989,11 +1985,7 @@ void NodeManager::HandleDrainRaylet(rpc::DrainRayletRequest request,
     // Non-rejectable draining request.
     RAY_CHECK_EQ(request.reason(),
                  rpc::autoscaler::DrainNodeReason::DRAIN_NODE_REASON_PREEMPTION);
-    rpc::NodeDeathInfo node_death_info;
-    node_death_info.set_reason(rpc::NodeDeathInfo::AUTOSCALER_DRAIN_PREEMPTED);
-    node_death_info.set_reason_message(request.reason_message());
-    cluster_resource_scheduler_->GetLocalResourceManager().SetLocalNodeDraining(
-        request.deadline_timestamp_ms(), node_death_info);
+    cluster_resource_scheduler_->GetLocalResourceManager().SetLocalNodeDraining(request);
     reply->set_is_accepted(true);
   }
 
@@ -2028,25 +2020,31 @@ void NodeManager::HandleShutdownRaylet(rpc::ShutdownRayletRequest request,
   send_reply_callback(Status::OK(), shutdown_after_reply, shutdown_after_reply);
 }
 
-void NodeManager::HandleReleaseUnusedWorkers(rpc::ReleaseUnusedWorkersRequest request,
-                                             rpc::ReleaseUnusedWorkersReply *reply,
-                                             rpc::SendReplyCallback send_reply_callback) {
+void NodeManager::HandleReleaseUnusedActorWorkers(
+    rpc::ReleaseUnusedActorWorkersRequest request,
+    rpc::ReleaseUnusedActorWorkersReply *reply,
+    rpc::SendReplyCallback send_reply_callback) {
   std::unordered_set<WorkerID> in_use_worker_ids;
   for (int index = 0; index < request.worker_ids_in_use_size(); ++index) {
     auto worker_id = WorkerID::FromBinary(request.worker_ids_in_use(index));
     in_use_worker_ids.emplace(worker_id);
   }
 
-  std::vector<WorkerID> unused_worker_ids;
+  std::vector<std::shared_ptr<WorkerInterface>> unused_actor_workers;
   for (auto &iter : leased_workers_) {
-    // We need to exclude workers used by common tasks.
-    // Because they are not used by GCS.
+    // We only kill *actor* workers.
     if (!iter.second->GetActorId().IsNil() && !in_use_worker_ids.count(iter.first)) {
-      unused_worker_ids.emplace_back(iter.first);
+      unused_actor_workers.push_back(iter.second);
     }
   }
 
-  ReleaseWorkers(unused_worker_ids);
+  for (auto &worker : unused_actor_workers) {
+    RAY_LOG(DEBUG) << "GCS requested to release unused actor worker: "
+                   << worker->WorkerId();
+    DestroyWorker(worker,
+                  rpc::WorkerExitType::INTENDED_SYSTEM_EXIT,
+                  "Worker is no longer needed by the GCS.");
+  }
 
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }

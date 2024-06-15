@@ -28,7 +28,10 @@ grpc_extra_deps()
 load("@bazel_skylib//lib:versions.bzl", "versions")
 
 # Please keep this in sync with the .bazelversion file.
-versions.check(minimum_bazel_version = "5.4.1")
+versions.check(
+    maximum_bazel_version = "6.5.0",
+    minimum_bazel_version = "6.5.0",
+)
 
 # Tools to generate `compile_commands.json` to enable awesome tooling of the C language family.
 # Just run `bazel run @hedron_compile_commands//:refresh_all`

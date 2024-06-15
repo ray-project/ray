@@ -41,8 +41,7 @@ class PullBasedShuffleTaskScheduler(ExchangeTaskScheduler):
         # eagerly release the blocks' memory.
         input_blocks_list = []
         for ref_bundle in refs:
-            for block, _ in ref_bundle.blocks:
-                input_blocks_list.append(block)
+            input_blocks_list.extend(ref_bundle.block_refs)
         input_num_blocks = len(input_blocks_list)
         input_owned = all(b.owns_blocks for b in refs)
 

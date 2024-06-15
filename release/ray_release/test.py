@@ -198,24 +198,63 @@ class Test(dict):
         ]
 
     @classmethod
-    def gen_high_impact_tests(cls, prefix: str) -> Dict[str, List]:
+    def gen_microcheck_step_ids(cls, prefix: str, bazel_workspace_dir: str) -> Set[str]:
         """
-        Obtain the mapping from rayci step id to high impact tests with the given prefix
+        This function is used to get the buildkite step ids of the microcheck tests
+        with the given test prefix. This is used to determine the buildkite steps in
+        the microcheck pipeline.
+        """
+        step_ids = set()
+        test_targets = cls.gen_microcheck_tests(prefix, bazel_workspace_dir)
+        for test_target in test_targets:
+            test = cls.gen_from_name(f"{prefix}{test_target}")
+            if not test:
+                continue
+            recent_results = test.get_test_results()
+            if not recent_results:
+                continue
+            test_step_ids = {
+                result.rayci_step_id
+                for result in recent_results
+                if result.commit == recent_results[0].commit and result.rayci_step_id
+            }
+            if test_step_ids and not step_ids.intersection(test_step_ids):
+                step_ids.add(sorted(test_step_ids)[0])
+
+        return step_ids
+
+    @classmethod
+    def gen_microcheck_tests(
+        cls, prefix: str, bazel_workspace_dir: str, team: Optional[str] = None
+    ) -> Set[str]:
+        """
+        Obtain all microcheck tests with the given prefix
+        """
+        high_impact_tests = Test._gen_high_impact_tests(prefix, team)
+        changed_tests = Test._get_changed_tests(bazel_workspace_dir)
+        human_specified_tests = Test._get_human_specified_tests(bazel_workspace_dir)
+
+        return high_impact_tests.union(changed_tests, human_specified_tests)
+
+    @classmethod
+    def _gen_high_impact_tests(
+        cls, prefix: str, team: Optional[str] = None
+    ) -> Set[str]:
+        """
+        Obtain all high impact tests with the given prefix
         """
         high_impact_tests = [
             test for test in cls.gen_from_s3(prefix) if test.is_high_impact()
         ]
-        step_id_to_tests = {}
-        for test in high_impact_tests:
-            step_id = test.get_test_results(limit=1)[0].rayci_step_id
-            if not step_id:
-                continue
-            step_id_to_tests[step_id] = step_id_to_tests.get(step_id, []) + [test]
+        if team:
+            high_impact_tests = [
+                test for test in high_impact_tests if test.get_oncall() == team
+            ]
 
-        return step_id_to_tests
+        return {test.get_target() for test in high_impact_tests}
 
     @classmethod
-    def get_human_specified_tests(cls, bazel_workspace_dir: str) -> Set[str]:
+    def _get_human_specified_tests(cls, bazel_workspace_dir: str) -> Set[str]:
         """
         Get all test targets that are specified by humans
         """
@@ -238,7 +277,7 @@ class Test(dict):
         return tests
 
     @classmethod
-    def get_changed_tests(cls, bazel_workspace_dir: str) -> Set[str]:
+    def _get_changed_tests(cls, bazel_workspace_dir: str) -> Set[str]:
         """
         Get all changed tests in the current PR
         """
@@ -329,12 +368,6 @@ class Test(dict):
         """
         return self.get("env") == "gce"
 
-    def is_byod_cluster(self) -> bool:
-        """
-        Returns whether this test is running on a BYOD cluster.
-        """
-        return self["cluster"].get("byod") is not None
-
     def is_high_impact(self) -> bool:
         # a test is high impact if it catches regressions frequently, this field is
         # populated by the determine_microcheck_tests.py script
@@ -364,32 +397,31 @@ class Test(dict):
         """
         Returns the type of the BYOD cluster.
         """
-        if not self.is_byod_cluster():
-            return None
         return self["cluster"]["byod"].get("type", "cpu")
 
     def get_byod_post_build_script(self) -> Optional[str]:
         """
         Returns the post-build script for the BYOD cluster.
         """
-        if not self.is_byod_cluster():
-            return None
         return self["cluster"]["byod"].get("post_build_script")
 
     def get_byod_runtime_env(self) -> Dict[str, str]:
         """
         Returns the runtime environment variables for the BYOD cluster.
         """
-        if not self.is_byod_cluster():
-            return {}
-        return _convert_env_list_to_dict(self["cluster"]["byod"].get("runtime_env", []))
+        default = {
+            "RAY_BACKEND_LOG_JSON": "1",
+        }
+        default.update(
+            _convert_env_list_to_dict(self["cluster"]["byod"].get("runtime_env", []))
+        )
+
+        return default
 
     def get_byod_pips(self) -> List[str]:
         """
         Returns the list of pips for the BYOD cluster.
         """
-        if not self.is_byod_cluster():
-            return []
         return self["cluster"]["byod"].get("pip", [])
 
     def get_name(self) -> str:

@@ -52,6 +52,7 @@ class MapOperator(OneToOneOperator, ABC):
         name: str,
         target_max_block_size: Optional[int],
         min_rows_per_bundle: Optional[int],
+        supports_fusion: bool,
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]],
         ray_remote_args: Optional[Dict[str, Any]],
     ):
@@ -60,6 +61,7 @@ class MapOperator(OneToOneOperator, ABC):
         # NOTE: This constructor must be called by subclasses.
 
         self._map_transformer = map_transformer
+        self._supports_fusion = supports_fusion
         self._ray_remote_args = _canonicalize_ray_remote_args(ray_remote_args or {})
         self._ray_remote_args_fn = ray_remote_args_fn
         self._ray_remote_args_factory_actor_locality = None
@@ -113,6 +115,7 @@ class MapOperator(OneToOneOperator, ABC):
         # config and not contain implementation code.
         compute_strategy: Optional[ComputeStrategy] = None,
         min_rows_per_bundle: Optional[int] = None,
+        supports_fusion: bool = True,
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
     ) -> "MapOperator":
@@ -135,6 +138,7 @@ class MapOperator(OneToOneOperator, ABC):
                 transform_fn, or None to use the block size. Setting the batch size is
                 important for the performance of GPU-accelerated transform functions.
                 The actual rows passed may be less if the dataset is small.
+            supports_fusion: Whether this operator supports fusion with other operators.
             ray_remote_args_fn: A function that returns a dictionary of remote args
                 passed to each map worker. The purpose of this argument is to generate
                 dynamic arguments for each actor/task, and will be called each time
@@ -158,6 +162,7 @@ class MapOperator(OneToOneOperator, ABC):
                 target_max_block_size=target_max_block_size,
                 min_rows_per_bundle=min_rows_per_bundle,
                 concurrency=compute_strategy.size,
+                supports_fusion=supports_fusion,
                 ray_remote_args_fn=ray_remote_args_fn,
                 ray_remote_args=ray_remote_args,
             )
@@ -173,6 +178,7 @@ class MapOperator(OneToOneOperator, ABC):
                 compute_strategy=compute_strategy,
                 name=name,
                 min_rows_per_bundle=min_rows_per_bundle,
+                supports_fusion=supports_fusion,
                 ray_remote_args_fn=ray_remote_args_fn,
                 ray_remote_args=ray_remote_args,
             )
@@ -370,8 +376,7 @@ class MapOperator(OneToOneOperator, ABC):
         assert self._started
         bundle = self._output_queue.get_next()
         self._metrics.on_output_dequeued(bundle)
-        for _, meta in bundle.blocks:
-            self._output_metadata.append(meta)
+        self._output_metadata.extend(bundle.metadata)
         return bundle
 
     @abstractmethod
@@ -403,6 +408,12 @@ class MapOperator(OneToOneOperator, ABC):
     def incremental_resource_usage(self) -> ExecutionResources:
         raise NotImplementedError
 
+    def implements_accurate_memory_accounting(self) -> bool:
+        return True
+
+    def supports_fusion(self) -> bool:
+        return self._supports_fusion
+
 
 def _map_task(
     map_transformer: MapTransformer,
@@ -426,7 +437,7 @@ def _map_task(
     map_transformer.set_target_max_block_size(ctx.target_max_block_size)
     for b_out in map_transformer.apply_transform(iter(blocks), ctx):
         # TODO(Clark): Add input file propagation from input blocks.
-        m_out = BlockAccessor.for_block(b_out).get_metadata([], None)
+        m_out = BlockAccessor.for_block(b_out).get_metadata()
         m_out.exec_stats = stats.build()
         m_out.exec_stats.udf_time_s = map_transformer.udf_time()
         m_out.exec_stats.task_idx = ctx.task_idx

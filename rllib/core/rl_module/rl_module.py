@@ -2,7 +2,7 @@ import abc
 import datetime
 import json
 import pathlib
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Mapping, Any, TYPE_CHECKING, Optional, Type, Dict, Union
 
 import gymnasium as gym
@@ -203,7 +203,7 @@ class RLModuleConfig:
 
     observation_space: gym.Space = None
     action_space: gym.Space = None
-    model_config_dict: Dict[str, Any] = None
+    model_config_dict: Dict[str, Any] = field(default_factory=dict)
     catalog_class: Type["Catalog"] = None
 
     def get_catalog(self) -> "Catalog":
@@ -357,11 +357,11 @@ class RLModule(abc.ABC):
         config: The config for the RLModule.
 
     Abstract Methods:
-        :py:meth:`~_forward_train`: Forward pass during training.
+        ``~_forward_train``: Forward pass during training.
 
-        :py:meth:`~_forward_exploration`: Forward pass during training for exploration.
+        ``~_forward_exploration``: Forward pass during training for exploration.
 
-        :py:meth:`~_forward_inference`: Forward pass during inference.
+        ``~_forward_inference``: Forward pass during inference.
 
 
     Note:
@@ -456,7 +456,8 @@ class RLModule(abc.ABC):
 
         This is called automatically during the __init__ method of this class,
         therefore, the subclass should call super.__init__() in its constructor. This
-        abstraction can be used to create any component that your RLModule needs.
+        abstraction can be used to create any components (e.g. NN layers) that your
+        RLModule needs.
         """
         return None
 
@@ -464,14 +465,14 @@ class RLModule(abc.ABC):
     def get_train_action_dist_cls(self) -> Type[Distribution]:
         """Returns the action distribution class for this RLModule used for training.
 
-        This class is used to create action distributions from outputs of the
-        forward_train method. If the case that no action distribution class is needed,
+        This class is used to get the correct action distribution class to be used by
+        the training components. In case that no action distribution class is needed,
         this method can return None.
 
         Note that RLlib's distribution classes all implement the `Distribution`
         interface. This requires two special methods: `Distribution.from_logits()` and
-        `Distribution.to_deterministic()`. See the documentation for `Distribution`
-        for more detail.
+        `Distribution.to_deterministic()`. See the documentation of the
+        :py:class:`~ray.rllib.models.distributions.Distribution` class for more details.
         """
         raise NotImplementedError
 
@@ -485,8 +486,8 @@ class RLModule(abc.ABC):
 
         Note that RLlib's distribution classes all implement the `Distribution`
         interface. This requires two special methods: `Distribution.from_logits()` and
-        `Distribution.to_deterministic()`. See the documentation for `Distribution`
-        for more detail.
+        `Distribution.to_deterministic()`. See the documentation of the
+        :py:class:`~ray.rllib.models.distributions.Distribution` class for more details.
         """
         raise NotImplementedError
 
@@ -500,8 +501,8 @@ class RLModule(abc.ABC):
 
         Note that RLlib's distribution classes all implement the `Distribution`
         interface. This requires two special methods: `Distribution.from_logits()` and
-        `Distribution.to_deterministic()`. See the documentation for `Distribution`
-        for more detail.
+        `Distribution.to_deterministic()`. See the documentation of the
+        :py:class:`~ray.rllib.models.distributions.Distribution` class for more details.
         """
         raise NotImplementedError
 
@@ -596,9 +597,7 @@ class RLModule(abc.ABC):
         a dict that has `action_dist` key and its value is an instance of
         `Distribution`.
         """
-        # TODO (sven): We should probably change this to [ACTION_DIST_INPUTS], b/c this
-        #  is what most algos will do.
-        return {"action_dist": Distribution}
+        return [Columns.ACTION_DIST_INPUTS]
 
     @OverrideToImplementCustomLogic_CallToSuperRecommended
     def output_specs_exploration(self) -> SpecType:
@@ -609,9 +608,7 @@ class RLModule(abc.ABC):
         a dict that has `action_dist` key and its value is an instance of
         `Distribution`.
         """
-        # TODO (sven): We should probably change this to [ACTION_DIST_INPUTS], b/c this
-        #  is what most algos will do.
-        return {"action_dist": Distribution}
+        return [Columns.ACTION_DIST_INPUTS]
 
     def output_specs_train(self) -> SpecType:
         """Returns the output specs of the forward_train method."""

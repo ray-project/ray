@@ -33,6 +33,22 @@ class SACTorchRLModule(TorchRLModule, SACRLModule):
         # parameter names to be removed or renamed when syncing from the state dict
         # when synching.
         if not self.inference_only:
+            # We do not want to train the target networks. Instead, we sync them
+            # with the actual (trained) ones.
+            self.qf_target_encoder.requires_grad_(False)
+            self.qf_target_encoder.load_state_dict(self.qf_encoder.state_dict())
+            self.qf_target.requires_grad_(False)
+            self.qf_target.load_state_dict(self.qf.state_dict())
+
+            # If necessary, also synchronize the twin networks.
+            if self.twin_q:
+                self.qf_target_twin_encoder.requires_grad_(False)
+                self.qf_target_twin_encoder.load_state_dict(
+                    self.qf_twin_encoder.state_dict()
+                )
+                self.qf_target_twin.requires_grad_(False)
+                self.qf_target_twin.load_state_dict(self.qf_twin.state_dict())
+
             # Set the expected and unexpected keys for the inference-only module.
             self._set_inference_only_state_dict_keys()
 
