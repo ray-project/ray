@@ -271,7 +271,8 @@ TEST_F(TaskEventBufferTest, TestFailedFlush) {
       .Times(2)
       .WillOnce([&](std::unique_ptr<rpc::TaskEventData> actual_data,
                     ray::gcs::StatusCallback callback) {
-        callback(Status::GrpcUnknown("grpc error"));
+        callback(
+            Status::GrpcUnknown("grpc error", /*rpc_code=*/grpc::StatusCode::UNKNOWN));
         return Status::OK();
       })
       .WillOnce([&](std::unique_ptr<rpc::TaskEventData> actual_data,
