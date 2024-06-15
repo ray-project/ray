@@ -102,9 +102,11 @@ def test_basic(ray_start_regular):
         dag = a.inc.bind(i)
 
     compiled_dag = dag.experimental_compile()
+    dag_id = compiled_dag.get_id()
 
     for i in range(3):
         ref = compiled_dag.execute(1)
+        assert str(ref) == f"CompiledDAGRef({dag_id}, execution_index={i})"
         result = ray.get(ref)
         assert result == i + 1
 
@@ -485,6 +487,20 @@ def test_exceed_max_buffered_results(ray_start_regular):
     compiled_dag.teardown()
 
 
+def test_compiled_dag_ref_del(ray_start_regular):
+    a = Actor.remote(0)
+    with InputNode() as inp:
+        dag = a.inc.bind(inp)
+
+    compiled_dag = dag.experimental_compile()
+    # Test that when ref is deleted or goes out of scope, the corresponding
+    # execution result is retrieved and immediately discarded. This is confirmed
+    # when future execute() methods do not block.
+    for _ in range(10):
+        ref = compiled_dag.execute(1)
+        del ref
+
+
 def test_dag_fault_tolerance_chain(ray_start_regular_shared):
     actors = [
         Actor.remote(0, fail_after=100 if i == 0 else None, sys_exit=False)
@@ -697,6 +713,103 @@ def test_asyncio_exceptions(ray_start_regular_shared, max_queue_size):
     # Note: must teardown before starting a new Ray session, otherwise you'll get
     # a segfault from the dangling monitor thread upon the new Ray init.
     compiled_dag.teardown()
+
+
+class TestCompositeChannel:
+    def test_composite_channel_one_actor(self, ray_start_regular_shared):
+        """
+        In this test, there are three 'inc' tasks on the same Ray actor, chained
+        together. Therefore, the DAG will look like this:
+
+        Driver -> a.inc -> a.inc -> a.inc -> Driver
+
+        All communication between the driver and the actor will be done through remote
+        channels, i.e., shared memory channels. All communication between the actor
+        tasks will be conducted through local channels, i.e., IntraProcessChannel in
+        this case.
+
+        To elaborate, all output channels of the actor DAG nodes will be
+        CompositeChannel, and the first two will have a local channel, while the last
+        one will have a remote channel.
+        """
+        a = Actor.remote(0)
+        with InputNode() as inp:
+            dag = a.inc.bind(inp)
+            dag = a.inc.bind(dag)
+            dag = a.inc.bind(dag)
+
+        compiled_dag = dag.experimental_compile()
+        ref = compiled_dag.execute(1)
+        assert ray.get(ref) == 4
+
+        ref = compiled_dag.execute(2)
+        assert ray.get(ref) == 24
+
+        ref = compiled_dag.execute(3)
+        assert ray.get(ref) == 108
+
+        compiled_dag.teardown()
+
+    def test_composite_channel_two_actors(self, ray_start_regular_shared):
+        """
+        In this test, there are three 'inc' tasks on the two Ray actors, chained
+        together. Therefore, the DAG will look like this:
+
+        Driver -> a.inc -> b.inc -> a.inc -> Driver
+
+        All communication between the driver and actors will be done through remote
+        channels. Also, all communication between the actor tasks will be conducted
+        through remote channels, i.e., shared memory channel in this case because no
+        consecutive tasks are on the same actor.
+        """
+        a = Actor.remote(0)
+        b = Actor.remote(100)
+        with InputNode() as inp:
+            dag = a.inc.bind(inp)
+            dag = b.inc.bind(dag)
+            dag = a.inc.bind(dag)
+
+        # a: 0+1 -> b: 100+1 -> a: 1+101
+        compiled_dag = dag.experimental_compile()
+        ref = compiled_dag.execute(1)
+        assert ray.get(ref) == 102
+
+        # a: 102+2 -> b: 101+104 -> a: 104+205
+        ref = compiled_dag.execute(2)
+        assert ray.get(ref) == 309
+
+        # a: 309+3 -> b: 205+312 -> a: 312+517
+        ref = compiled_dag.execute(3)
+        assert ray.get(ref) == 829
+
+        compiled_dag.teardown()
+
+    def test_composite_channel_multi_output(self, ray_start_regular_shared):
+        """
+        Driver -> a.inc -> a.inc ---> Driver
+                        |         |
+                        -> b.inc -
+
+        All communication in this DAG will be done through CompositeChannel.
+        Under the hood, the communication between two `a.inc` tasks will
+        be done through a local channel, i.e., IntraProcessChannel in this
+        case, while the communication between `a.inc` and `b.inc` will be
+        done through a shared memory channel.
+        """
+        a = Actor.remote(0)
+        b = Actor.remote(100)
+        with InputNode() as inp:
+            dag = a.inc.bind(inp)
+            dag = MultiOutputNode([a.inc.bind(dag), b.inc.bind(dag)])
+
+        compiled_dag = dag.experimental_compile()
+        ref = compiled_dag.execute(1)
+        assert ray.get(ref) == [2, 101]
+
+        ref = compiled_dag.execute(3)
+        assert ray.get(ref) == [10, 106]
+
+        compiled_dag.teardown()
 
 
 if __name__ == "__main__":
