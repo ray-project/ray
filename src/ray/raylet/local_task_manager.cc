@@ -546,6 +546,14 @@ bool LocalTaskManager::PoppedWorkerHandler(
     not_detached_with_owner_failed = true;
   }
 
+  const auto &required_resource =
+      task.GetTaskSpecification().GetRequiredResources().GetResourceMap();
+  for (auto &entry : required_resource) {
+    // This is to make sure PG resource is not deleted during popping worker.
+    RAY_CHECK(cluster_resource_scheduler_->GetLocalResourceManager().ResourcesExist(
+        scheduling::ResourceID(entry.first)));
+  }
+
   auto erase_from_dispatch_queue_fn = [this](const std::shared_ptr<internal::Work> &work,
                                              const SchedulingClass &scheduling_class) {
     auto shapes_it = tasks_to_dispatch_.find(scheduling_class);

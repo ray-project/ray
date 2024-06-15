@@ -97,6 +97,8 @@ typename C::mapped_type &map_find_or_die(C &c, const typename C::key_type &k) {
       map_find_or_die(const_cast<const C &>(c), k));
 }
 
+// This is guaranteed that predicate is applied to each element exactly once,
+// so it can have side effect.
 template <typename K, typename V>
 void erase_if(absl::flat_hash_map<K, std::deque<V>> &map,
               std::function<bool(const V &)> predicate) {
