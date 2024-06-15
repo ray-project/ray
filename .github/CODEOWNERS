@@ -1,6 +1,6 @@
 # Every PR into runtime needs to get approval from one the below
 
-*  @jjyao @edoakes @raulchen
+*  @jjyao @edoakes @raulchen @matthewdeng @c21
 
 # Have codeowner protection because runtime CI scripts are written in a quick
 # and dirty way, and works different from ray OSS upstream.
