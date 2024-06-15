@@ -882,8 +882,12 @@ class CompiledDAG:
 
         class GraphNode:
             def __init__(self):
-                self.in_degree = 0
-                self.out_edges = []
+                self.in_edges = set()
+                self.out_edges = set()
+
+            @property
+            def in_degree(self) -> int:
+                return len(self.in_edges)
 
         from ray.dag import ClassMethodNode
 
@@ -897,22 +901,26 @@ class CompiledDAG:
                     return same_node_task.idx
             return None
 
+        def _add_edge(
+            graph: Dict[int, GraphNode],
+            from_idx: int,
+            to_idx: Optional[int]
+        ):
+            if to_idx is None:
+                return
+            graph[from_idx].out_edges.add(to_idx)
+            graph[to_idx].in_edges.add(from_idx)
+
         graph = defaultdict(GraphNode)
-        total_edges = 0
         for idx, task in self.idx_to_task.items():
             next_task_idx = _get_next_task_idx(task)
-            if next_task_idx is not None:
-                graph[idx].out_edges.append(next_task_idx)
-                graph[next_task_idx].in_degree += 1
-                total_edges += 1
+            _add_edge(graph, idx, next_task_idx)
             for downstream_idx in task.downstream_node_idxs:
                 if task.dag_node.type_hint.requires_nccl():
-                    graph[downstream_idx].out_edges.append(next_task_idx)
-                    graph[next_task_idx].in_degree += 1
+                    _add_edge(graph, downstream_idx, next_task_idx)
                 else:
-                    graph[downstream_idx].in_degree += 1
-                    graph[idx].out_edges.append(downstream_idx)
-                total_edges += 1
+                    _add_edge(graph, idx, downstream_idx)
+        total_edges = sum(node.in_degree for node in graph.values())
 
         zero_in_degree_nodes = deque()
         for idx, node in graph.items():
@@ -922,7 +930,7 @@ class CompiledDAG:
         while zero_in_degree_nodes:
             node = zero_in_degree_nodes.pop()
             for out_node in graph[node].out_edges:
-                graph[out_node].in_degree -= 1
+                graph[out_node].in_edges.remove(node)
                 removed_edges += 1
                 if graph[out_node].in_degree == 0:
                     zero_in_degree_nodes.append(out_node)
