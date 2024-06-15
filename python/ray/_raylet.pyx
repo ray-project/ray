@@ -892,9 +892,6 @@ cdef prepare_args_internal(
     total_inlined = 0
     rpc_inline_threshold = RayConfig.instance().task_rpc_inlined_bytes_limit()
     for arg in args:
-        from ray.experimental.compiled_dag_ref import CompiledDAGRef
-        if isinstance(arg, CompiledDAGRef):
-            raise TypeError("CompiledDAGRef cannot be used as Ray task/actor argument.")
         if isinstance(arg, ObjectRef):
             c_arg = (<ObjectRef>arg).native()
             op_status = CCoreWorkerProcess.GetCoreWorker().GetOwnerAddress(
