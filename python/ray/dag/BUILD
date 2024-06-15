@@ -72,12 +72,12 @@ py_test(
 
 py_test_module_list(
   files = [
-    # Commented out tests are flaky and not ready to be run in CI yet.
-    # "tests/experimental/test_accelerated_dag.py", 
-    # "tests/experimental/test_torch_tensor_dag.py",
+    "tests/experimental/test_accelerated_dag.py", 
+    "tests/experimental/test_torch_tensor_dag.py",
   ],
   size = "medium",
-  tags = ["exclusive", "accelerated_dag", "no_windows", "team:core"],
+  # Marking these as manual until they are deflaked.
+  tags = ["exclusive", "accelerated_dag", "no_windows", "team:core", "manual"],
   deps = ["//:ray_lib"],
 )
 
