@@ -1,5 +1,4 @@
 # coding: utf-8
-import logging
 import os
 import sys
 
@@ -12,7 +11,9 @@ from ray.experimental.channel.conftest import start_nccl_mock
 from ray.tests.conftest import *  # noqa
 from ray.dag import InputNode, MultiOutputNode
 
-logger = logging.getLogger(__name__)
+INVALID_GRAPH = "Detect a deadlock in the graph. If this is a false positive, "
+"please disable the graph verification by setting the environment "
+"variable ENABLE_VERIFY_GRAPH to 0."
 
 
 @ray.remote(num_cpus=0, num_gpus=1)
@@ -46,7 +47,7 @@ def test_invalid_graph_1_actor(ray_start_regular):
         dag.with_type_hint(TorchTensorType(transport="nccl"))
         dag = a.echo.bind(dag)
 
-    with pytest.raises(AssertionError, match="The graph is not a DAG"):
+    with pytest.raises(AssertionError, match=INVALID_GRAPH):
         dag.experimental_compile()
 
 
@@ -74,7 +75,7 @@ def test_invalid_graph_2_actors_1(ray_start_regular):
             ]
         )
 
-    with pytest.raises(AssertionError, match="The graph is not a DAG"):
+    with pytest.raises(AssertionError, match=INVALID_GRAPH):
         dag.experimental_compile()
 
 
@@ -103,7 +104,7 @@ def test_invalid_graph_2_actors_2(ray_start_regular):
             ]
         )
 
-    with pytest.raises(AssertionError, match="The graph is not a DAG"):
+    with pytest.raises(AssertionError, match=INVALID_GRAPH):
         dag.experimental_compile()
 
 
@@ -136,7 +137,7 @@ def test_invalid_graph_3_actors(ray_start_regular):
             ]
         )
 
-    with pytest.raises(AssertionError, match="The graph is not a DAG"):
+    with pytest.raises(AssertionError, match=INVALID_GRAPH):
         dag.experimental_compile()
 
 

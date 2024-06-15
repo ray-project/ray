@@ -743,7 +743,14 @@ class CompiledDAG:
             for idx in task.downstream_node_idxs:
                 frontier.append(idx)
 
-        assert self._verify_graph(), "The graph is not a DAG"
+        from ray.dag.constants import ENABLE_VERIFY_GRAPH
+
+        if ENABLE_VERIFY_GRAPH:
+            assert self._verify_graph(), (
+                "Detect a deadlock in the graph. If this is a false positive, "
+                "please disable the graph verification by setting the environment "
+                "variable ENABLE_VERIFY_GRAPH to 0."
+            )
 
         # Validate input channels for tasks that have not been visited
         for node_idx, task in self.idx_to_task.items():
@@ -870,6 +877,7 @@ class CompiledDAG:
            as the writer.
 
         Use topological sort to verify whether the graph is a DAG.
+        If not, the DAG will result in a deadlock.
         """
 
         class GraphNode:
