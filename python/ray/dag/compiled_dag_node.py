@@ -859,16 +859,19 @@ class CompiledDAG:
 
     def _verify_graph(self) -> bool:
         """
-        Create a graph following the following rules:
-        1. Each node is a node
-        2. Add an edge from task_{x} to task_{x+1} on the same actor. Note that x is
-           the bind index.
-        3. Add an edge from writer to reader if the channel is not NCCL channel.
-        4. Add an edge from writer and reader of a NCCL channel to the node that has
-           next bind index on the same actor as the writer.
+        Create a graph following these rules:
+
+        1. Add an edge from task_{bind_index} to task_{bind_index+1}
+           on the same actor.
+        2. Add an edge from the writer to the reader if the channel
+           isn't an NCCL channel.
+        3. Add an edge from the writer and reader of an NCCL channel
+           to the node that has the next bind index on the same actor
+           as the writer.
 
         Use topological sort to verify whether the graph is a DAG.
         """
+
         class GraphNode:
             def __init__(self):
                 self.in_degree = 0
@@ -876,30 +879,28 @@ class CompiledDAG:
 
         from ray.dag import ClassMethodNode
 
-        def _get_next_task(task: "CompiledTask") -> Optional["CompiledTask"]:
+        def _get_next_task_idx(task: "CompiledTask") -> Optional[int]:
             if not isinstance(task.dag_node, ClassMethodNode):
                 return None
             actor_handle = task.dag_node._get_actor_handle()
             bind_index = task.dag_node._get_bind_index()
             for same_node_task in self.actor_to_tasks[actor_handle]:
                 if same_node_task.dag_node._get_bind_index() == bind_index + 1:
-                    return same_node_task
+                    return same_node_task.idx
             return None
 
         graph = defaultdict(GraphNode)
         total_edges = 0
         for idx, task in self.idx_to_task.items():
-            next_task = _get_next_task(task)
-            # Add an edge from task_{x} to task_{x+1} on the same actor.
-            # Note that x is the bind index.
-            if next_task is not None:
-                graph[idx].out_edges.append(next_task.idx)
-                graph[next_task.idx].in_degree += 1
+            next_task_idx = _get_next_task_idx(task)
+            if next_task_idx is not None:
+                graph[idx].out_edges.append(next_task_idx)
+                graph[next_task_idx].in_degree += 1
                 total_edges += 1
             for downstream_idx in task.downstream_node_idxs:
                 if task.dag_node.type_hint.requires_nccl():
-                    graph[downstream_idx].out_edges.append(next_task.idx)
-                    graph[next_task.idx].in_degree += 1
+                    graph[downstream_idx].out_edges.append(next_task_idx)
+                    graph[next_task_idx].in_degree += 1
                 else:
                     graph[downstream_idx].in_degree += 1
                     graph[idx].out_edges.append(downstream_idx)
