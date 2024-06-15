@@ -67,10 +67,12 @@ def test_invalid_graph_2_actors_1(ray_start_regular):
         branch1.with_type_hint(TorchTensorType(transport="nccl"))
         branch2 = b.echo.bind(inp)
         branch2.with_type_hint(TorchTensorType(transport="nccl"))
-        dag = MultiOutputNode([
-            a.echo.bind(branch2),
-            b.echo.bind(branch1),
-        ])
+        dag = MultiOutputNode(
+            [
+                a.echo.bind(branch2),
+                b.echo.bind(branch1),
+            ]
+        )
 
     with pytest.raises(AssertionError, match="The graph is not a DAG"):
         dag.experimental_compile()
@@ -94,10 +96,12 @@ def test_invalid_graph_2_actors_2(ray_start_regular):
         branch1.with_type_hint(TorchTensorType(transport="nccl"))
         branch2 = b.echo.bind(inp)
         branch2.with_type_hint(TorchTensorType(transport="nccl"))
-        dag = MultiOutputNode([
-            a.echo.bind(branch1),
-            b.echo.bind(branch2),
-        ])
+        dag = MultiOutputNode(
+            [
+                a.echo.bind(branch1),
+                b.echo.bind(branch2),
+            ]
+        )
 
     with pytest.raises(AssertionError, match="The graph is not a DAG"):
         dag.experimental_compile()
@@ -124,11 +128,13 @@ def test_invalid_graph_3_actors(ray_start_regular):
         branch2.with_type_hint(TorchTensorType(transport="nccl"))
         branch3 = c.echo.bind(inp)
         branch3.with_type_hint(TorchTensorType(transport="nccl"))
-        dag = MultiOutputNode([
-            a.echo.bind(branch3),
-            b.echo.bind(branch1),
-            c.echo.bind(branch2),
-        ])
+        dag = MultiOutputNode(
+            [
+                a.echo.bind(branch3),
+                b.echo.bind(branch1),
+                c.echo.bind(branch2),
+            ]
+        )
 
     with pytest.raises(AssertionError, match="The graph is not a DAG"):
         dag.experimental_compile()
