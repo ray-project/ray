@@ -86,9 +86,11 @@ def test_torch_tensor_p2p(ray_start_regular):
 
     compiled_dag = dag.experimental_compile()
     for i in range(3):
-        ref = compiled_dag.execute(i)
-        result = ray.get(ref)
+        output_channel = compiled_dag.execute(i)
+        # TODO(swang): Replace with fake ObjectRef.
+        result = output_channel.begin_read()
         assert result == (i, shape, dtype)
+        output_channel.end_read()
 
     compiled_dag.teardown()
 
@@ -101,9 +103,11 @@ def test_torch_tensor_p2p(ray_start_regular):
         dag = receiver.recv.bind(dag)
     compiled_dag = dag.experimental_compile()
     for i in range(3):
-        ref = compiled_dag.execute(i)
-        result = ray.get(ref)
+        output_channel = compiled_dag.execute(i)
+        # TODO(swang): Replace with fake ObjectRef.
+        result = output_channel.begin_read()
         assert result == (i, shape, dtype)
+        output_channel.end_read()
     compiled_dag.teardown()
 
     # Passing a torch.tensor inside of other data is okay even if
@@ -121,8 +125,9 @@ def test_torch_tensor_p2p(ray_start_regular):
 
     compiled_dag = dag.experimental_compile()
 
-    ref = compiled_dag.execute((shape, dtype, 1))
-    ray.get(ref)
+    output_channel = compiled_dag.execute((shape, dtype, 1))
+    output_channel.begin_read()
+    output_channel.end_read()
     compiled_dag.teardown()
 
 
@@ -151,15 +156,19 @@ def test_torch_tensor_as_dag_input(ray_start_regular):
 
     compiled_dag = dag.experimental_compile()
     for i in range(3):
-        ref = compiled_dag.execute(torch.ones(shape, dtype=dtype) * i)
-        result = ray.get(ref)
+        output_channel = compiled_dag.execute(torch.ones(shape, dtype=dtype) * i)
+        # TODO(swang): Replace with fake ObjectRef.
+        result = output_channel.begin_read()
         assert result == (i, shape, dtype)
+        output_channel.end_read()
 
     # Passing tensors of a similar or smaller shape is okay.
     for i in range(3):
-        ref = compiled_dag.execute(torch.ones((20,), dtype=dtype) * i)
-        result = ray.get(ref)
+        output_channel = compiled_dag.execute(torch.ones((20,), dtype=dtype) * i)
+        # TODO(swang): Replace with fake ObjectRef.
+        result = output_channel.begin_read()
         assert result == (i, (20,), dtype)
+        output_channel.end_read()
 
     compiled_dag.teardown()
 
@@ -194,9 +203,11 @@ def test_torch_tensor_nccl(ray_start_regular):
     compiled_dag = dag.experimental_compile()
 
     for i in range(3):
-        ref = compiled_dag.execute(i)
-        result = ray.get(ref)
+        output_channel = compiled_dag.execute(i)
+        # TODO(swang): Replace with fake ObjectRef.
+        result = output_channel.begin_read()
         assert result == (i, shape, dtype)
+        output_channel.end_read()
 
     compiled_dag.teardown()
 
@@ -221,9 +232,11 @@ def test_torch_tensor_nccl(ray_start_regular):
 
     compiled_dag = dag.experimental_compile()
     for i in range(3):
-        ref = compiled_dag.execute(i)
-        result = ray.get(ref)
+        output_channel = compiled_dag.execute(i)
+        # TODO(swang): Replace with fake ObjectRef.
+        result = output_channel.begin_read()
         assert result == (i, shape, dtype)
+        output_channel.end_read()
     compiled_dag.teardown()
 
     # TODO(swang): Check that actors are still alive. Currently this fails due
@@ -259,9 +272,11 @@ def test_torch_tensor_nccl_dynamic(ray_start_regular):
         shape = (i * 10,)
         dtype = torch.float16
         args = (shape, dtype, i)
-        ref = compiled_dag.execute(args)
-        result = ray.get(ref)
+        output_channel = compiled_dag.execute(args)
+        # TODO(swang): Replace with fake ObjectRef.
+        result = output_channel.begin_read()
         assert result == (i, shape, dtype)
+        output_channel.end_read()
 
     compiled_dag.teardown()
 
@@ -297,9 +312,9 @@ def test_torch_tensor_nccl_wrong_shape(ray_start_regular):
 
     compiled_dag = dag.experimental_compile()
 
-    ref = compiled_dag.execute(1)
+    output_channel = compiled_dag.execute(1)
     with pytest.raises(OSError):
-        ray.get(ref)
+        output_channel.begin_read()
 
     compiled_dag.teardown()
 
@@ -341,10 +356,12 @@ def test_torch_tensor_nccl_nested(ray_start_regular):
     for i in range(3):
         args = (shape, dtype, 1)
 
-        ref = compiled_dag.execute(args)
-        result = ray.get(ref)
+        output_channel = compiled_dag.execute(args)
+        # TODO(swang): Replace with fake ObjectRef.
+        result = output_channel.begin_read()
         expected_result = {0: (0, shape, dtype)}
         assert result == expected_result
+        output_channel.end_read()
 
     compiled_dag.teardown()
 
@@ -381,10 +398,12 @@ def test_torch_tensor_nccl_nested_dynamic(ray_start_regular):
         dtype = torch.float16
         args = (shape, dtype, i)
 
-        ref = compiled_dag.execute(args)
-        result = ray.get(ref)
+        output_channel = compiled_dag.execute(args)
+        # TODO(swang): Replace with fake ObjectRef.
+        result = output_channel.begin_read()
         expected_result = {j: (j, shape, dtype) for j in range(i)}
         assert result == expected_result
+        output_channel.end_read()
 
     compiled_dag.teardown()
 
@@ -420,9 +439,9 @@ def test_torch_tensor_nccl_direct_return_error(ray_start_regular):
 
     compiled_dag = dag.experimental_compile()
 
-    ref = compiled_dag.execute((shape, dtype, 1))
+    output_channel = compiled_dag.execute((shape, dtype, 1))
     with pytest.raises(OSError):
-        ray.get(ref)
+        output_channel.begin_read()
 
     compiled_dag.teardown()
 
