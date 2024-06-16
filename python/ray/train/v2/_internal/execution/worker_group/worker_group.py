@@ -156,6 +156,9 @@ class WorkerGroup:
             sorted_workers.extend(workers)
         return sorted_workers
 
+    def has_started(self) -> bool:
+        return bool(self._workers)
+
     def shutdown(self, patience_s: float = 0.0):
         """Shutdown all the workers in this worker group.
 
@@ -357,9 +360,9 @@ class WorkerGroup:
         return ray.get(self.execute_async(fn, *fn_args, **fn_kwargs))
 
     def execute_single_async(
-        self, world_rank: int, fn: Callable[..., T], *fn_args, **fn_kwargs
+        self, rank: int, fn: Callable[..., T], *fn_args, **fn_kwargs
     ) -> ObjectRef:
-        """Execute ``func`` on worker with rank == ``world_rank`` and return futures.
+        """Execute ``func`` on worker with ``rank`` and return futures.
 
         Returns:
             (ObjectRef) An ObjectRef representing the output of func.
@@ -367,22 +370,22 @@ class WorkerGroup:
         """
         self._assert_workers_started()
 
-        if world_rank >= len(self._workers):
+        if rank >= len(self._workers):
             raise ValueError(
-                f"The provided {world_rank=} is "
+                f"The provided {rank=} is "
                 f"not valid for {len(self._workers)} workers."
             )
 
         return (
-            self._workers[world_rank]
+            self._workers[rank]
             .actor.execute.options(name=f"execute.{fn.__name__}")
             .remote(fn, *fn_args, **fn_kwargs)
         )
 
     def execute_single(
-        self, world_rank: int, fn: Callable[..., T], *fn_args, **fn_kwargs
+        self, rank: int, fn: Callable[..., T], *fn_args, **fn_kwargs
     ) -> T:
-        """Execute ``func`` on worker with rank ``world_rank``.
+        """Execute ``func`` on worker with ``rank``.
 
         Returns:
             (T) The output of func.
@@ -390,7 +393,7 @@ class WorkerGroup:
         """
         self._assert_workers_started()
 
-        return ray.get(self.execute_single_async(world_rank, fn, *fn_args, **fn_kwargs))
+        return ray.get(self.execute_single_async(rank, fn, *fn_args, **fn_kwargs))
 
     def __len__(self) -> int:
         return len(self._workers)

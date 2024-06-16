@@ -54,6 +54,9 @@ class DummyWorkerGroup(WorkerGroup):
         self._num_workers = 0
         self._worker_statuses = {}
 
+    def has_started(self) -> bool:
+        return self._num_workers > 0
+
     # === Test methods ===
     def error_worker(self, worker_index):
         status = self._worker_statuses[worker_index]

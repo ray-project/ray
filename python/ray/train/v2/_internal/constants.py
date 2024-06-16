@@ -1,3 +1,6 @@
+# Unsupported configs can use this value to detect if the user has set it.
+_UNSUPPORTED = "UNSUPPORTED"
+
 # Polling interval for the Train controller.
 # This determines how many seconds the controller will wait between
 # polling the worker group for its status.
