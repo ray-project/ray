@@ -15,6 +15,14 @@ py_test(
 )
 
 py_test(
+    name = "test_failure_policy",
+    size = "small",
+    srcs = ["tests/test_failure_policy.py"],
+    tags = ["exclusive", "team:ml", "train_v2"],
+    deps = ["//:ray_lib"],
+)
+
+py_test(
     name = "test_worker_group_v2",
     size = "small",
     srcs = ["tests/test_worker_group_v2.py"],

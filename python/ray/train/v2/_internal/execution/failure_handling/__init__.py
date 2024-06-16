@@ -1,3 +1,7 @@
+# isort: off
 from .failure_policy import FailureDecision, FailurePolicy
+from .default import DefaultFailurePolicy
 
-__all__ = ["FailureDecision", "FailurePolicy"]
+# isort: on
+
+__all__ = ["DefaultFailurePolicy", "FailureDecision", "FailurePolicy"]
