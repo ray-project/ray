@@ -13,10 +13,10 @@ py_library(
     srcs = ["tests/conftest.py"],
 )
 
-# Test without compact scheduling
+# Test compact scheduling
 py_test_module_list(
   name_suffix="_with_compact_scheduling",
-  env={"RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY": "0"},
+  env={"RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY": "1"},
   files = [
     "tests/test_deployment_scheduler.py",
     "tests/test_draining.py",
