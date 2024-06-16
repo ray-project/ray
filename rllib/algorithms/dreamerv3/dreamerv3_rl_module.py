@@ -8,16 +8,11 @@ from typing import Any, Dict
 import gymnasium as gym
 import numpy as np
 
-from ray.rllib.algorithms.dreamerv3.utils import do_symlog_obs
-from ray.rllib.algorithms.dreamerv3.tf.models.actor_network import ActorNetwork
-from ray.rllib.algorithms.dreamerv3.tf.models.critic_network import CriticNetwork
-from ray.rllib.algorithms.dreamerv3.tf.models.dreamer_model import DreamerModel
-from ray.rllib.algorithms.dreamerv3.tf.models.world_model import WorldModel
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.models.specs.specs_dict import SpecDict
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.policy.eager_tf_policy import _convert_to_tf
-from ray.rllib.utils.annotations import ExperimentalAPI, override
+from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.numpy import one_hot
@@ -26,7 +21,6 @@ from ray.rllib.utils.numpy import one_hot
 _, tf, _ = try_import_tf()
 
 
-@ExperimentalAPI
 class DreamerV3RLModule(RLModule, abc.ABC):
     @override(RLModule)
     def setup(self):
@@ -37,11 +31,6 @@ class DreamerV3RLModule(RLModule, abc.ABC):
         T = self.config.model_config_dict["batch_length_T"]
         horizon_H = self.config.model_config_dict["horizon_H"]
         gamma = self.config.model_config_dict["gamma"]
-        symlog_obs = do_symlog_obs(
-            self.config.observation_space,
-            self.config.model_config_dict.get("symlog_obs", "auto"),
-        )
-        model_size = self.config.model_config_dict["model_size"]
 
         if self.config.model_config_dict["use_float16"]:
             tf.compat.v1.keras.layers.enable_v2_dtype_behavior()
@@ -53,26 +42,17 @@ class DreamerV3RLModule(RLModule, abc.ABC):
         self.decoder = catalog.build_decoder(framework=self.framework)
 
         # Build the world model (containing encoder and decoder).
-        self.world_model = WorldModel(
-            model_size=model_size,
-            observation_space=self.config.observation_space,
-            action_space=self.config.action_space,
-            batch_length_T=T,
+        self.world_model = catalog.build_world_model(
+            framework=self.framework,
             encoder=self.encoder,
             decoder=self.decoder,
-            symlog_obs=symlog_obs,
         )
-        self.actor = ActorNetwork(
-            action_space=self.config.action_space,
-            model_size=model_size,
-        )
-        self.critic = CriticNetwork(
-            model_size=model_size,
-        )
+        self.actor = catalog.build_actor(framework=self.framework)
+        self.critic = catalog.build_critic(framework=self.framework)
+
         # Build the final dreamer model (containing the world model).
-        self.dreamer_model = DreamerModel(
-            model_size=self.config.model_config_dict["model_size"],
-            action_space=self.config.action_space,
+        self.dreamer_model = catalog.build_dreamer_model(
+            framework=self.framework,
             world_model=self.world_model,
             actor=self.actor,
             critic=self.critic,

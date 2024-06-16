@@ -326,7 +326,6 @@ def _report_obs(
             video sequence.
         symlog_obs: Whether to inverse-symlog the computed observations or not. Set this
             to True for environments, in which we should symlog the observations.
-
     """
     # Videos: Create summary, comparing computed images with actual sampled ones.
     # 4=[B, T, w, h] grayscale image; 5=[B, T, w, h, C] RGB image.

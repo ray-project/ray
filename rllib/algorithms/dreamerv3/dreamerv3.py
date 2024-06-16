@@ -8,7 +8,6 @@ D. Hafner, T. Lillicrap, M. Norouzi, J. Ba
 https://arxiv.org/pdf/2010.02193.pdf
 """
 
-import gc
 import logging
 from typing import Any, Dict, Optional, Union
 
@@ -35,7 +34,6 @@ from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.numpy import one_hot
 from ray.rllib.utils.metrics import (
     ENV_RUNNER_RESULTS,
-    GARBAGE_COLLECTION_TIMER,
     LEARN_ON_BATCH_TIMER,
     LEARNER_RESULTS,
     NUM_AGENT_STEPS_SAMPLED,
@@ -142,7 +140,7 @@ class DreamerV3Config(AlgorithmConfig):
         # Override some of AlgorithmConfig's default values with DreamerV3-specific
         # values.
         self.lr = None
-        self.framework_str = "tf2"
+        self.framework_str = "torch"
         self.gamma = 0.997  # [1] eq. 7.
         # Do not use! Set `batch_size_B` and `batch_length_T` instead.
         self.train_batch_size = None
@@ -427,7 +425,13 @@ class DreamerV3Config(AlgorithmConfig):
 
     @override(AlgorithmConfig)
     def get_default_learner_class(self):
-        if self.framework_str == "tf2":
+        if self.framework_str == "torch":
+            from ray.rllib.algorithms.dreamerv3.torch.dreamerv3_torch_learner import (
+                DreamerV3TorchLearner,
+            )
+
+            return DreamerV3TorchLearner
+        elif self.framework_str == "tf2":
             from ray.rllib.algorithms.dreamerv3.tf.dreamerv3_tf_learner import (
                 DreamerV3TfLearner,
             )
@@ -438,16 +442,22 @@ class DreamerV3Config(AlgorithmConfig):
 
     @override(AlgorithmConfig)
     def get_default_rl_module_spec(self) -> SingleAgentRLModuleSpec:
-        if self.framework_str == "tf2":
-            from ray.rllib.algorithms.dreamerv3.tf.dreamerv3_tf_rl_module import (
-                DreamerV3TfRLModule,
+        if self.framework_str == "torch":
+            from ray.rllib.algorithms.dreamerv3.torch.dreamerv3_torch_rl_module import (
+                DreamerV3TorchRLModule as module,
             )
 
-            return SingleAgentRLModuleSpec(
-                module_class=DreamerV3TfRLModule, catalog_class=DreamerV3Catalog
+        elif self.framework_str == "tf2":
+            from ray.rllib.algorithms.dreamerv3.tf.dreamerv3_tf_rl_module import (
+                DreamerV3TfRLModule as module,
             )
+
         else:
             raise ValueError(f"The framework {self.framework_str} is not supported.")
+
+        return SingleAgentRLModuleSpec(
+            module_class=module, catalog_class=DreamerV3Catalog
+        )
 
     @property
     def share_module_between_env_runner_and_learner(self) -> bool:
@@ -552,7 +562,7 @@ class DreamerV3(Algorithm):
                 self.metrics.merge_and_log_n_dicts(
                     env_runner_results, key=ENV_RUNNER_RESULTS
                 )
-                # Add ongoing and finished episodes into buffer. The buffer will
+                # Add episodes (ongoing and terminated) to the buffer. The buffer will
                 # automatically take care of properly concatenating (by episode IDs)
                 # the different chunks of the same episodes, even if they come in via
                 # separate `add()` calls.
@@ -710,14 +720,6 @@ class DreamerV3(Algorithm):
                     from_worker_or_learner_group=self.learner_group,
                     inference_only=True,
                 )
-
-        # Try trick from https://medium.com/dive-into-ml-ai/dealing-with-memory-leak-
-        # issue-in-keras-model-training-e703907a6501
-        if self.config.gc_frequency_train_steps and (
-            self.training_iteration % self.config.gc_frequency_train_steps == 0
-        ):
-            with self.metrics.log_time((TIMERS, GARBAGE_COLLECTION_TIMER)):
-                gc.collect()
 
         # Add train results and the actual training ratio to stats. The latter should
         # be close to the configured `training_ratio`.
