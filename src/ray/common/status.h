@@ -78,6 +78,7 @@ class error_code;
 
 namespace ray {
 
+// If you add to this list, please also update kCodeToStr in status.cc.
 enum class StatusCode : char {
   OK = 0,
   OutOfMemory = 1,
