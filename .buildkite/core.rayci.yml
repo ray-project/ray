@@ -280,9 +280,7 @@ steps:
   - label: ":ray: core: flaky tests"
     tags:
       - python
-      - skip-on-premerge
     instance_type: large
-    soft_fail: true
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //... core
         --run-flaky-tests  --build-type clang
@@ -292,9 +290,7 @@ steps:
     tags:
       - gpu
       - python
-      - skip-on-premerge
     instance_type: gpu-large
-    soft_fail: true
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //... core
         --run-flaky-tests  --build-type clang
