@@ -9,12 +9,14 @@ from ray.train.v2._internal.exceptions import (
     WorkerHealthCheckFailedError,
     WorkerHealthCheckMissedError,
 )
+from ray.train.v2._internal.execution.context import get_train_context
 from ray.train.v2._internal.execution.worker_group import (
     ActorMetadata,
     RayTrainWorker,
     Worker,
     WorkerGroup,
 )
+from ray.train.v2.api.config import RunConfig
 
 
 @pytest.fixture(scope="module")
@@ -240,6 +242,27 @@ def test_local_rank_assignment(ray_start_4_cpus):
     setup_and_check_worker_group(**cpu_workers_config)
     setup_and_check_worker_group(**gpu_workers_single_gpu_config)
     setup_and_check_worker_group(**gpu_workers_multiple_gpus_config)
+
+
+def test_setup_worker_group(ray_start_4_cpus, tmp_path):
+    num_workers = 4
+    worker_group = WorkerGroup(
+        run_config=RunConfig(name="test", storage_path=str(tmp_path))
+    )
+    worker_group.start(num_workers=num_workers, resources_per_worker={"CPU": 1})
+
+    def get_world_size():
+        return get_train_context().get_world_size()
+
+    def get_world_rank():
+        return get_train_context().get_world_rank()
+
+    def get_storage_context_name():
+        return get_train_context().get_storage().experiment_dir_name
+
+    assert worker_group.execute(get_world_size) == [num_workers] * num_workers
+    assert sorted(worker_group.execute(get_world_rank)) == list(range(num_workers))
+    assert worker_group.execute(get_storage_context_name) == ["test"] * num_workers
 
 
 if __name__ == "__main__":

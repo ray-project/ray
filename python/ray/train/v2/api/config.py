@@ -3,6 +3,7 @@ from typing import Optional, Tuple, Union
 
 from ray.train import RunConfig as RunConfigV1
 from ray.train import ScalingConfig as ScalingConfigV1
+from ray.tune.utils import date_str
 
 _UNSUPPORTED_STR = "UNSUPPORTED"
 
@@ -62,3 +63,5 @@ class ScalingConfig(ScalingConfigV1):
 class RunConfig(RunConfigV1):
     def __post_init__(self):
         super().__post_init__()
+        if not self.name:
+            self.name = f"train-experiment_{date_str()}"

@@ -1,10 +1,20 @@
 import os
 import socket
 from dataclasses import dataclass
+from queue import Queue
 from typing import Callable, List, Optional, TypeVar
 
 import ray
 from ray.actor import ActorHandle
+from ray.train.v2._internal.execution.checkpoint.sync_actor import SynchronizationActor
+from ray.train.v2._internal.execution.context import (
+    DistributedContext,
+    ExecutionContext,
+    TrainContext,
+    set_train_context,
+)
+from ray.train.v2._internal.execution.storage import StorageContext
+from ray.train.v2.api.config import RunConfig
 
 T = TypeVar("T")
 
@@ -49,3 +59,21 @@ class RayTrainWorker:
     def poll_status(self):
         # TODO: Implement checkpoint polling logic.
         pass
+
+    def init_train_context(
+        self,
+        run_config: RunConfig,
+        distributed_context: DistributedContext,
+        synchronization_actor: SynchronizationActor,
+        storage_context: StorageContext,
+    ):
+        context = TrainContext(
+            run_config=run_config,
+            distributed_context=distributed_context,
+            execution_context=ExecutionContext(
+                synchronization_actor=synchronization_actor,
+                result_queue=Queue(),
+            ),
+            storage_context=storage_context,
+        )
+        set_train_context(context)

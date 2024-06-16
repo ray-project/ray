@@ -73,7 +73,7 @@ class ElasticScalingPolicy(ScalingPolicy):
         # The latest restart time and the latest monitor time (whichever is later)
         # determine the time of the next resize consideration.
         latest_consideration_time = max(
-            worker_group_status.latest_restart_time, self._latest_monitor_time
+            worker_group_status.latest_start_time, self._latest_monitor_time
         )
 
         if (

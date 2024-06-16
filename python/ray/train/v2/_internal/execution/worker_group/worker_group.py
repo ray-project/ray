@@ -13,15 +13,21 @@ from ray.train.v2._internal.exceptions import (
     WorkerHealthCheckFailedError,
     WorkerHealthCheckMissedError,
 )
+from ray.train.v2._internal.execution.checkpoint.sync_actor import SynchronizationActor
+from ray.train.v2._internal.execution.context import DistributedContext, StorageContext
 from ray.train.v2._internal.execution.worker_group.worker import (
     RayTrainWorker,
     Worker,
     WorkerStatus,
 )
 from ray.train.v2._internal.util import bundle_to_remote_args, time_monotonic
+from ray.train.v2.api.config import RunConfig
 from ray.types import ObjectRef
 from ray.util.placement_group import placement_group, remove_placement_group
-from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
+from ray.util.scheduling_strategies import (
+    NodeAffinitySchedulingStrategy,
+    PlacementGroupSchedulingStrategy,
+)
 
 logger = logging.getLogger(__file__)
 
@@ -50,7 +56,18 @@ class WorkerGroupStatus:
 
 
 class WorkerGroup:
-    def __init__(self):
+    def __init__(
+        self,
+        run_config: Optional[RunConfig] = None,
+        storage_context: Optional[StorageContext] = None,
+    ):
+        self._run_config = run_config or RunConfig()
+        self._storage_context = storage_context or StorageContext(
+            storage_path=self._run_config.storage_path,
+            experiment_dir_name=self._run_config.name,
+            storage_filesystem=self._run_config.storage_filesystem,
+        )
+
         # List of workers in this worker group.
         # These should always be in sorted order by world rank.
         self._workers: List[Worker] = []
@@ -95,6 +112,16 @@ class WorkerGroup:
         actor_metadatas = ray.get([actor.get_metadata.remote() for actor in actors])
         workers = [Worker(actor, meta) for actor, meta in zip(actors, actor_metadatas)]
         self._workers = self._sort_workers_by_ip_and_gpu_id(workers)
+
+        # Initialize the synchronization actor on the driver node
+        self._sync_actor = SynchronizationActor.options(
+            scheduling_strategy=NodeAffinitySchedulingStrategy(
+                node_id=ray.get_runtime_context().get_node_id(),
+                soft=False,
+            )
+        ).remote()
+
+        self._init_train_context_on_workers()
 
     @classmethod
     def _sort_workers_by_ip_and_gpu_id(
@@ -187,6 +214,7 @@ class WorkerGroup:
                     ray.kill(worker.actor)
 
         remove_placement_group(self._pg)
+        ray.kill(self._sync_actor)
 
         logger.debug("Shutdown successful.")
         self._clear_state()
@@ -397,6 +425,48 @@ class WorkerGroup:
 
     def __len__(self) -> int:
         return len(self._workers)
+
+    def _set_worker_group_distributed_contexts(self) -> None:
+        node_ip_to_workers = collections.defaultdict(list)
+        for worker in self._workers:
+            node_ip_to_workers[worker.metadata.node_ip].append(worker)
+        node_ips = list(node_ip_to_workers.keys())
+
+        distributed_contexts = []
+        worker_info_str = ""
+        for world_rank, worker in enumerate(self._workers):
+            worker_distributed_context = DistributedContext(
+                local_rank=node_ip_to_workers[worker.metadata.node_ip].index(worker),
+                local_world_size=len(node_ip_to_workers[worker.metadata.node_ip]),
+                world_rank=world_rank,
+                world_size=len(self._workers),
+                node_rank=node_ips.index(worker.metadata.node_ip),
+            )
+            distributed_contexts.append(worker_distributed_context)
+
+            worker_info_str += (
+                f"\n- (ip={worker.metadata.node_ip}, pid={worker.metadata.pid}) "
+                f"world_rank={world_rank}, "
+                f"local_rank={worker_distributed_context.local_rank}, "
+                f"node_rank={worker_distributed_context.node_rank}"
+            )
+
+        self._distributed_contexts = distributed_contexts
+        logger.info(f"Started distributed worker group:{worker_info_str}")
+
+    def _init_train_context_on_workers(self):
+        # Set up worker group distributed contexts
+        self._set_worker_group_distributed_contexts()
+        context_init_tasks = [
+            worker.actor.init_train_context.remote(
+                run_config=self._run_config,
+                distributed_context=self._distributed_contexts[i],
+                synchronization_actor=self._sync_actor,
+                storage_context=self._storage_context,
+            )
+            for i, worker in enumerate(self._workers)
+        ]
+        ray.get(context_init_tasks)
 
     # Testing only
 

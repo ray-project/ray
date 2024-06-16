@@ -48,11 +48,11 @@ def patch_autoscaling_requester(monkeypatch):
 
 
 def _get_mock_worker_group_status(
-    num_workers: int, latest_restart_time: float
+    num_workers: int, latest_start_time: float
 ) -> WorkerGroupStatus:
     return WorkerGroupStatus(
         num_workers=num_workers,
-        latest_restart_time=latest_restart_time,
+        latest_start_time=latest_start_time,
         worker_statuses={
             i: WorkerStatus(running=True, error=None) for i in range(num_workers)
         },

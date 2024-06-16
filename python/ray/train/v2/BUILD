@@ -23,6 +23,22 @@ py_test(
 )
 
 py_test(
+    name = "test_storage",
+    size = "small",
+    srcs = ["tests/test_storage.py"],
+    tags = ["exclusive", "team:ml", "train_v2"],
+    deps = ["//:ray_lib"],
+)
+
+py_test(
+    name = "test_sync_actor",
+    size = "small",
+    srcs = ["tests/test_sync_actor.py"],
+    tags = ["exclusive", "team:ml", "train_v2"],
+    deps = ["//:ray_lib"],
+)
+
+py_test(
     name = "test_worker_group_v2",
     size = "small",
     srcs = ["tests/test_worker_group_v2.py"],
