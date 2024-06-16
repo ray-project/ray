@@ -90,7 +90,14 @@ class TestJSONFormatter:
         record = logging.makeLogRecord({})
         formatted = formatter.format(record)
         record_dict = json.loads(formatted)
-        should_exist = ["asctime", "levelname", "message", "filename", "lineno"]
+        should_exist = [
+            "asctime",
+            "levelname",
+            "message",
+            "filename",
+            "lineno",
+            "created",
+        ]
         for key in should_exist:
             assert key in record_dict
         assert len(record_dict) == len(should_exist)
@@ -112,6 +119,7 @@ class TestJSONFormatter:
             "filename",
             "lineno",
             "exc_text",
+            "created",
         ]
         for key in should_exist:
             assert key in record_dict
@@ -123,7 +131,15 @@ class TestJSONFormatter:
         record = logging.makeLogRecord({"user": "ray"})
         formatted = formatter.format(record)
         record_dict = json.loads(formatted)
-        should_exist = ["asctime", "levelname", "message", "filename", "lineno", "user"]
+        should_exist = [
+            "asctime",
+            "levelname",
+            "message",
+            "filename",
+            "lineno",
+            "user",
+            "created",
+        ]
         for key in should_exist:
             assert key in record_dict
         assert record_dict["user"] == "ray"
@@ -137,6 +153,7 @@ class TestTextFormatter:
         record = logging.makeLogRecord({"user": "ray"})
         formatted = formatter.format(record)
         assert "user=ray" in formatted
+        assert "created" in formatted
 
     def test_record_with_exception(self):
         formatter = TextFormatter()
@@ -150,7 +167,7 @@ class TestTextFormatter:
             exc_info=None,
         )
         formatted = formatter.format(record)
-        for s in ["INFO", "Test message", "test.py:1000", "--"]:
+        for s in ["INFO", "Test message", "test.py:1000", "--", "created"]:
             assert s in formatted
 
 
@@ -187,6 +204,7 @@ ray.get(obj_ref)
 """
         stderr = run_string_as_driver(script)
         should_exist = [
+            "created",
             "job_id",
             "worker_id",
             "node_id",
@@ -221,6 +239,7 @@ ray.get(actor_instance.print_message.remote())
 """
         stderr = run_string_as_driver(script)
         should_exist = [
+            "created",
             "job_id",
             "worker_id",
             "node_id",

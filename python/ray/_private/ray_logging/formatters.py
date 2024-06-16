@@ -19,6 +19,7 @@ def generate_record_format_attrs(
             LogKey.MESSAGE: record.getMessage(),
             LogKey.FILENAME: record.filename,
             LogKey.LINENO: record.lineno,
+            LogKey.CREATED: record.created,
         }
         if record.exc_info:
             if not record.exc_text:
@@ -27,7 +28,7 @@ def generate_record_format_attrs(
 
     for key, value in record.__dict__.items():
         # Both Ray and user-provided context are stored in `record_format`.
-        if key not in LOGRECORD_STANDARD_ATTRS:
+        if key not in LOGRECORD_STANDARD_ATTRS or key == LogKey.CREATED:
             record_format_attrs[key] = value
     return record_format_attrs
 
