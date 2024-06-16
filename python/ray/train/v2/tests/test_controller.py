@@ -2,7 +2,7 @@ from typing import Optional
 
 import pytest
 
-from ray.train.v2._internal.constants import RAY_TRAIN_HEALTH_CHECK_INTERVAL_S
+from ray.train.v2._internal.constants import HEALTH_CHECK_INTERVAL_S_ENV_VAR
 from ray.train.v2._internal.execution.controller import (
     TrainController,
     TrainControllerState,
@@ -30,7 +30,7 @@ class DummyWorkerGroup(WorkerGroup):
     def __init__(self):
         self._active = False
         self._num_workers = 0
-        self._latest_restart_time = float("-inf")
+        self._latest_start_time = float("-inf")
         self._worker_statuses = {}
 
     def run_train_fn(self, train_fn):
@@ -39,13 +39,13 @@ class DummyWorkerGroup(WorkerGroup):
     def poll_status(self, timeout: Optional[float] = None) -> WorkerGroupStatus:
         return WorkerGroupStatus(
             num_workers=self._num_workers,
-            latest_restart_time=self._latest_restart_time,
+            latest_start_time=self._latest_start_time,
             worker_statuses=self._worker_statuses,
         )
 
     def start(self, num_workers, resources_per_worker):
         self._num_workers = num_workers
-        self._latest_restart_time = time_monotonic()
+        self._latest_start_time = time_monotonic()
         self._worker_statuses = {
             i: WorkerStatus(running=True, error=None) for i in range(num_workers)
         }
@@ -109,7 +109,7 @@ class MockFailurePolicy(FailurePolicy):
 def patch_worker_group(monkeypatch):
     monkeypatch.setattr(TrainController, "worker_group_cls", DummyWorkerGroup)
     # Make polling interval 0 to speed up tests
-    monkeypatch.setenv(RAY_TRAIN_HEALTH_CHECK_INTERVAL_S, "0")
+    monkeypatch.setenv(HEALTH_CHECK_INTERVAL_S_ENV_VAR, "0")
     yield
 
 
@@ -193,7 +193,7 @@ def test_failure_handling():
 
 
 def test_poll_frequency(monkeypatch):
-    monkeypatch.setenv(RAY_TRAIN_HEALTH_CHECK_INTERVAL_S, "1")
+    monkeypatch.setenv(HEALTH_CHECK_INTERVAL_S_ENV_VAR, "1")
 
     sleep_calls = []
     monkeypatch.setattr("time.sleep", lambda t: sleep_calls.append(t))

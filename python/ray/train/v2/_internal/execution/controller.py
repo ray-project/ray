@@ -6,7 +6,7 @@ from typing import Any, Callable, Dict
 
 from ray.train.v2._internal.constants import (
     DEFAULT_HEALTH_CHECK_INTERVAL_S,
-    RAY_TRAIN_HEALTH_CHECK_INTERVAL_S,
+    HEALTH_CHECK_INTERVAL_S_ENV_VAR,
 )
 from ray.train.v2._internal.execution.failure_handling import (
     FailureDecision,
@@ -74,9 +74,7 @@ class TrainController:
 
         self._latest_poll_time = float("-inf")
         self._health_check_interval_s = float(
-            os.getenv(
-                RAY_TRAIN_HEALTH_CHECK_INTERVAL_S, DEFAULT_HEALTH_CHECK_INTERVAL_S
-            )
+            os.getenv(HEALTH_CHECK_INTERVAL_S_ENV_VAR, DEFAULT_HEALTH_CHECK_INTERVAL_S)
         )
 
     def _execute_scaling_decision(self, decision: ScalingDecision):

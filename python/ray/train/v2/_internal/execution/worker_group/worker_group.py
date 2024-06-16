@@ -1,14 +1,37 @@
-import abc
+import collections
+import logging
+import os
 from dataclasses import dataclass
-from typing import Dict, Optional
+from typing import Callable, Dict, List, Optional, Tuple, TypeVar
 
-from ray.train.v2._internal.execution.worker_group import WorkerStatus
+import ray
+from ray.train.v2._internal.constants import (
+    DEFAULT_MAX_CONSECUTIVE_HEALTH_CHECK_MISSES,
+    MAX_CONSECUTIVE_HEALTH_CHECK_MISSES_ENV_VAR,
+)
+from ray.train.v2._internal.exceptions import (
+    WorkerHealthCheckFailedError,
+    WorkerHealthCheckMissedError,
+)
+from ray.train.v2._internal.execution.worker_group.worker import (
+    RayTrainWorker,
+    Worker,
+    WorkerStatus,
+)
+from ray.train.v2._internal.util import bundle_to_remote_args, time_monotonic
+from ray.types import ObjectRef
+from ray.util.placement_group import placement_group, remove_placement_group
+from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
+
+logger = logging.getLogger(__file__)
+
+T = TypeVar("T")
 
 
 @dataclass
 class WorkerGroupStatus:
     num_workers: int
-    latest_restart_time: float
+    latest_start_time: float
     worker_statuses: Dict[int, WorkerStatus]
 
     @property
@@ -26,25 +49,353 @@ class WorkerGroupStatus:
         )
 
 
-class WorkerGroup(abc.ABC):
-    """A group of workers that runs a training function.
+class WorkerGroup:
+    def __init__(self):
+        # List of workers in this worker group.
+        # These should always be in sorted order by world rank.
+        self._workers: List[Worker] = []
 
-    Each worker should be assigned a unique world rank
-    which ranges from [0, num_workers).
-    """
+        self._latest_start_time = float("-inf")
+        self._pg = None
 
-    @abc.abstractmethod
+        # Long-running actor task refs that run the training function.
+        self._train_fn_tasks: List[ObjectRef] = []
+
+        # Maps world rank to the number of consecutive health check misses.
+        self._num_consecutive_poll_misses: Dict[int, int] = collections.defaultdict(int)
+        self._max_consecutive_poll_misses = int(
+            os.getenv(
+                MAX_CONSECUTIVE_HEALTH_CHECK_MISSES_ENV_VAR,
+                DEFAULT_MAX_CONSECUTIVE_HEALTH_CHECK_MISSES,
+            )
+        )
+
     def start(self, num_workers: int, resources_per_worker: dict):
-        raise NotImplementedError
+        """Start the a number of workers with the given resources.
 
-    @abc.abstractmethod
-    def shutdown(self):
-        raise NotImplementedError
+        This should also also handle rank assignment.
+        """
+        if self._workers:
+            raise ValueError("Workers already started.")
 
-    @abc.abstractmethod
-    def run_train_fn(self, train_fn):
-        raise NotImplementedError
+        remote_actor_cls = ray.remote(**bundle_to_remote_args(resources_per_worker))(
+            RayTrainWorker
+        )
+        pg = self._pg = placement_group([resources_per_worker] * num_workers)
 
-    @abc.abstractmethod
+        actors = [
+            remote_actor_cls.options(
+                max_concurrency=2,
+                scheduling_strategy=PlacementGroupSchedulingStrategy(
+                    placement_group=pg, placement_group_bundle_index=i
+                ),
+            ).remote()
+            for i in range(num_workers)
+        ]
+        actor_metadatas = ray.get([actor.get_metadata.remote() for actor in actors])
+        workers = [Worker(actor, meta) for actor, meta in zip(actors, actor_metadatas)]
+        self._workers = self._sort_workers_by_ip_and_gpu_id(workers)
+
+    @classmethod
+    def _sort_workers_by_ip_and_gpu_id(
+        cls, workers: List[Worker], _first_ip: Optional[str] = None
+    ) -> List[Worker]:
+        """Reorder the workers by their node ip and the lowest GPU id.
+
+        This sorted order should be used to assign world ranks to the workers.
+
+        Example:
+            Given workers with the following attributes:
+                worker_0: ip=1, gpu_ids=[1]
+                worker_1: ip=0, gpu_ids=[0]
+                worker_2: ip=1, gpu_ids=[0]
+                worker_3: ip=0, gpu_ids=[1]
+
+            The function will perform the following steps:
+                1. Group by node IP:
+                    ip=0: worker_1, worker_3
+                    ip=1: worker_0, worker_2
+
+                2. Sort each group by GPU ID:
+                    ip=0: worker_1 (gpu_id=0), worker_3 (gpu_id=1)
+                    ip=1: worker_2 (gpu_id=0), worker_0 (gpu_id=1)
+
+            Resulting in the order: [worker_1, worker_3, worker_2, worker_0]
+
+        Args:
+            _first_ip: The first IP to group by.
+        """
+        ip_to_workers = collections.defaultdict(list)
+
+        if _first_ip is not None:
+            ip_to_workers[_first_ip] = []
+
+        for worker in workers:
+            ip_to_workers[worker.metadata.node_ip].append(worker)
+
+        # Sort workers on the same node by the lowest GPU id
+        # More details: https://github.com/ray-project/ray/issues/40803
+        def get_lowest_gpu_id(worker) -> int:
+            gpu_ids = worker.metadata.accelerator_ids.get("GPU", [])
+            # If there are no GPU IDs, return 0 as a default
+            if not gpu_ids:
+                return 0
+
+            # Attempt to convert GPU IDs to integers and find the minimum ID.
+            # Fallback to return the minimum string-based ID
+            try:
+                return min(int(gpu_id) for gpu_id in gpu_ids)
+            except ValueError:
+                return min(gpu_ids)
+
+        for node_ip in ip_to_workers:
+            ip_to_workers[node_ip].sort(key=get_lowest_gpu_id)
+
+        sorted_workers = []
+        for workers in ip_to_workers.values():
+            sorted_workers.extend(workers)
+        return sorted_workers
+
+    def shutdown(self, patience_s: float = 0.0):
+        """Shutdown all the workers in this worker group.
+
+        Args:
+            patience_s: Attempt a graceful shutdown
+                of the workers for this many seconds. Fallback to force kill
+                if graceful shutdown is not complete after this time. If
+                this is less than or equal to 0, immediately force kill all
+                workers.
+        """
+        if not self._workers:
+            return
+
+        logger.debug(f"Shutting down {len(self._workers)} workers.")
+        if patience_s <= 0:
+            for worker in self._workers:
+                ray.kill(worker.actor)
+        else:
+            done_refs = [w.actor.__ray_terminate__.remote() for w in self._workers]
+            # Wait for actors to die gracefully.
+            _, not_done = ray.wait(done_refs, timeout=patience_s)
+            if not_done:
+                logger.debug("Graceful termination failed. Falling back to force kill.")
+                # If all actors are not able to die gracefully, then kill them.
+                for worker in self._workers:
+                    ray.kill(worker.actor)
+
+        remove_placement_group(self._pg)
+
+        logger.debug("Shutdown successful.")
+        self._clear_state()
+
+    def _clear_state(self):
+        self._workers = []
+        self._pg = None
+        self._train_fn_tasks = []
+        self._num_consecutive_poll_misses = collections.defaultdict(int)
+
+    def _assert_workers_started(self):
+        if not self._workers:
+            raise ValueError("Workers not started.")
+
+    def run_train_fn(self, train_fn: Callable):
+        self._assert_workers_started()
+
+        self._train_fn_tasks = [
+            worker.actor.run_train_fn.remote(train_fn) for worker in self._workers
+        ]
+
+        self._latest_start_time = time_monotonic()
+
+    def _poll_workers_and_collect_errors(
+        self, timeout: Optional[float]
+    ) -> Tuple[List, List[Optional[Exception]]]:
+        """Launch poll tasks on each worker and collect the results.
+
+        The poll task should involve very little computation and should
+        return almost immediately.
+        If a worker does not return the result of the poll task within
+        the timeout, it is considered as a missed health check.
+
+        The timeout is set to ~seconds, so a missed health check usually
+        means that something is wrong with the worker.
+        If a worker misses too many consecutive health checks, it is marked as dead
+        and a WorkerHealthCheckMissedError is propagated as the error in the
+        worker status, for the controller to handle.
+        If a worker's poll task fails, a WorkerHealthCheckFailedError is similarly
+        propagated in the worker status.
+
+        Returns:
+            poll_results: A list of poll results from each worker.
+            poll_errors: Poll task errors or None if the poll task succeeded.
+        """
+        poll_task_to_world_rank = {
+            worker.actor.poll_status.remote(): i
+            for i, worker in enumerate(self._workers)
+        }
+        done_polls, hanging_polls = ray.wait(
+            list(poll_task_to_world_rank),
+            num_returns=len(poll_task_to_world_rank),
+            timeout=timeout,
+        )
+
+        poll_task_to_result, poll_task_to_error = {}, {}
+
+        for hanging_poll in hanging_polls:
+            hanging_rank = poll_task_to_world_rank[hanging_poll]
+            self._num_consecutive_poll_misses[hanging_rank] += 1
+            total_misses = self._num_consecutive_poll_misses[hanging_rank]
+
+            if total_misses >= self._max_consecutive_poll_misses:
+                error_msg = (
+                    f"A worker has missed {total_misses} "
+                    "consecutive health checks. Marking the worker as dead.\n"
+                    f"Worker info: {self._workers[hanging_rank]}"
+                )
+                logger.error(error_msg)
+                poll_task_to_error[hanging_poll] = WorkerHealthCheckMissedError(
+                    error_msg
+                )
+
+        for done_poll in done_polls:
+            done_rank = poll_task_to_world_rank[done_poll]
+            try:
+                poll_result = ray.get(done_poll)
+                poll_task_to_result[done_poll] = poll_result
+                # Reset the consecutive poll misses for the worker.
+                self._num_consecutive_poll_misses[done_rank] = 0
+            except Exception as e:
+                error_msg = (
+                    "A worker health check failed.\n"
+                    f"Worker info: {self._workers[done_rank]}"
+                )
+                logger.exception(error_msg)
+                poll_task_to_error[done_poll] = WorkerHealthCheckFailedError(
+                    error_msg, e
+                )
+
+        results = [
+            poll_task_to_result.get(poll_task) for poll_task in poll_task_to_world_rank
+        ]
+        errors = [
+            poll_task_to_error.get(poll_task) for poll_task in poll_task_to_world_rank
+        ]
+        return results, errors
+
+    def _poll_train_tasks(self) -> Tuple[List[bool], List[Optional[Exception]]]:
+        assert self._train_fn_tasks
+
+        done_train_tasks, _ = ray.wait(
+            self._train_fn_tasks, num_returns=len(self._train_fn_tasks), timeout=0
+        )
+
+        train_task_to_error = {}
+        for train_task in done_train_tasks:
+            try:
+                ray.get(train_task)
+            except Exception as e:
+                train_task_to_error[train_task] = e
+
+        training_finished = [task in done_train_tasks for task in self._train_fn_tasks]
+        errors = [train_task_to_error.get(task) for task in self._train_fn_tasks]
+        return training_finished, errors
+
     def poll_status(self, timeout: Optional[float] = None) -> WorkerGroupStatus:
-        raise NotImplementedError
+        if not self._workers:
+            return WorkerGroupStatus(0, self._latest_start_time, {})
+
+        _, poll_errors = self._poll_workers_and_collect_errors(timeout)
+        training_finished, train_task_errors = self._poll_train_tasks()
+
+        # Populate the worker status errors with the errors raised from
+        # either of the poll or training tasks.
+        # The poll task error takes precedence if both tasks fail.
+        errors = [
+            poll_error or train_task_error
+            for poll_error, train_task_error in zip(poll_errors, train_task_errors)
+        ]
+
+        return WorkerGroupStatus(
+            len(self._workers),
+            self._latest_start_time,
+            {
+                world_rank: WorkerStatus(running=(not finished), error=error)
+                for world_rank, (finished, error) in enumerate(
+                    zip(training_finished, errors)
+                )
+            },
+        )
+
+    def execute_async(self, fn: Callable, *fn_args, **fn_kwargs) -> List[ObjectRef]:
+        """Execute ``func`` on each worker and return the futures.
+
+        Returns:
+            (List[ObjectRef]) A list of ``ObjectRef`` representing the
+                output of ``func`` from each worker. The order is the same
+                as ``self.workers``.
+
+        """
+        self._assert_workers_started()
+
+        return [
+            worker.actor.execute.options(name=f"execute.{fn.__name__}").remote(
+                fn, *fn_args, **fn_kwargs
+            )
+            for worker in self._workers
+        ]
+
+    def execute(self, fn: Callable[..., T], *fn_args, **fn_kwargs) -> List[T]:
+        """Execute ``func`` on each worker and return the outputs of ``func``.
+
+        Returns:
+            (List[T]) A list containing the output of ``func`` from each
+                worker. The order is the same as ``self.workers``.
+
+        """
+        self._assert_workers_started()
+
+        return ray.get(self.execute_async(fn, *fn_args, **fn_kwargs))
+
+    def execute_single_async(
+        self, world_rank: int, fn: Callable[..., T], *fn_args, **fn_kwargs
+    ) -> ObjectRef:
+        """Execute ``func`` on worker with rank == ``world_rank`` and return futures.
+
+        Returns:
+            (ObjectRef) An ObjectRef representing the output of func.
+
+        """
+        self._assert_workers_started()
+
+        if world_rank >= len(self._workers):
+            raise ValueError(
+                f"The provided {world_rank=} is "
+                f"not valid for {len(self._workers)} workers."
+            )
+
+        return (
+            self._workers[world_rank]
+            .actor.execute.options(name=f"execute.{fn.__name__}")
+            .remote(fn, *fn_args, **fn_kwargs)
+        )
+
+    def execute_single(
+        self, world_rank: int, fn: Callable[..., T], *fn_args, **fn_kwargs
+    ) -> T:
+        """Execute ``func`` on worker with rank ``world_rank``.
+
+        Returns:
+            (T) The output of func.
+
+        """
+        self._assert_workers_started()
+
+        return ray.get(self.execute_single_async(world_rank, fn, *fn_args, **fn_kwargs))
+
+    def __len__(self) -> int:
+        return len(self._workers)
+
+    # Testing only
+
+    def _get_train_fn_tasks(self) -> List[ObjectRef]:
+        return self._train_fn_tasks
