@@ -130,6 +130,7 @@ Status GcsClient::Connect(instrumented_io_context &io_service,
   placement_group_accessor_ = std::make_unique<PlacementGroupInfoAccessor>(this);
   internal_kv_accessor_ = std::make_unique<InternalKVAccessor>(this);
   task_accessor_ = std::make_unique<TaskInfoAccessor>(this);
+  runtime_env_accessor_ = std::make_unique<RuntimeEnvAccessor>(this);
 
   RAY_LOG(DEBUG) << "GcsClient connected " << options_.gcs_address_ << ":"
                  << options_.gcs_port_;

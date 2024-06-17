@@ -1294,5 +1294,20 @@ Status InternalKVAccessor::Exists(const std::string &ns,
   return ret_promise.get_future().get();
 }
 
+RuntimeEnvAccessor::RuntimeEnvAccessor(GcsClient *client_impl)
+    : client_impl_(client_impl) {}
+
+Status RuntimeEnvAccessor::PinRuntimeEnvUri(const std::string &uri,
+                                            int expiration_s,
+                                            int64_t timeout_ms) {
+  rpc::PinRuntimeEnvURIRequest request;
+  request.set_uri(uri);
+  request.set_expiration_s(expiration_s);
+  rpc::PinRuntimeEnvURIReply reply;
+  auto status =
+      client_impl_->GetGcsRpcClient().SyncPinRuntimeEnvURI(request, &reply, timeout_ms);
+  return status;
+}
+
 }  // namespace gcs
 }  // namespace ray

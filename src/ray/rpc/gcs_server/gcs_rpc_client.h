@@ -240,6 +240,9 @@ class GcsRpcClient {
     task_info_grpc_client_ =
         std::make_unique<GrpcClient<TaskInfoGcsService>>(channel_, client_call_manager);
 
+    runtime_env_grpc_client_ =
+        std::make_unique<GrpcClient<RuntimeEnvGcsService>>(channel_, client_call_manager);
+
     SetupCheckTimer();
   }
 
@@ -502,6 +505,12 @@ class GcsRpcClient {
                              internal_pubsub_grpc_client_,
                              /*method_timeout_ms*/ -1, )
 
+  /// Runtime Env GCS Service
+  VOID_GCS_RPC_CLIENT_METHOD(RuntimeEnvGcsService,
+                             PinRuntimeEnvURI,
+                             runtime_env_grpc_client_,
+                             /*method_timeout_ms*/ -1, )
+
   void Shutdown() {
     if (!shutdown_.exchange(true)) {
       // First call to shut down this GCS RPC client.
@@ -623,6 +632,7 @@ class GcsRpcClient {
   std::unique_ptr<GrpcClient<InternalPubSubGcsService>> internal_pubsub_grpc_client_;
 
   std::unique_ptr<GrpcClient<TaskInfoGcsService>> task_info_grpc_client_;
+  std::unique_ptr<GrpcClient<RuntimeEnvGcsService>> runtime_env_grpc_client_;
 
   std::shared_ptr<grpc::Channel> channel_;
   bool gcs_is_down_ = false;

@@ -184,8 +184,8 @@ class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient> {
   std::unique_ptr<WorkerInfoAccessor> worker_accessor_;
   std::unique_ptr<PlacementGroupInfoAccessor> placement_group_accessor_;
   std::unique_ptr<InternalKVAccessor> internal_kv_accessor_;
-
   std::unique_ptr<TaskInfoAccessor> task_accessor_;
+  std::unique_ptr<RuntimeEnvAccessor> runtime_env_accessor_;
 
  private:
   const UniqueID gcs_client_id_ = UniqueID::FromRandom();
