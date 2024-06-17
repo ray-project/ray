@@ -414,16 +414,7 @@ def test_delete_application(serve_instance):
 
 @pytest.mark.asyncio
 async def test_delete_while_initializing(serve_instance):
-    @ray.remote
-    class EventHolder:
-        def __init__(self):
-            self.event = asyncio.Event()
-
-        def set(self):
-            self.event.set()
-
-        async def wait(self):
-            await self.event.wait()
+    """Test that __del__ runs when a replica terminates while initializing."""
 
     @ray.remote
     class Counter:
@@ -436,15 +427,17 @@ async def test_delete_while_initializing(serve_instance):
         def get_count(self) -> int:
             return self.count
 
-    event_holder = EventHolder.remote()
+    signal = SignalActor.remote()
     counter = Counter.remote()
 
-    @serve.deployment
+    @serve.deployment(graceful_shutdown_timeout_s=0.01)
     class HangingStart:
-        async def __init__(self, event_holder: ray.actor.ActorHandle, counter: ray.actor.ActorHandle):
-            self.event_holder = event_holder
+        async def __init__(
+            self, signal: ray.actor.ActorHandle, counter: ray.actor.ActorHandle
+        ):
+            self.signal = signal
             self.counter = counter
-            await event_holder.set.remote()
+            await signal.send.remote()
             print("HangingStart set the EventHolder.")
             await asyncio.sleep(10000)
 
@@ -452,10 +445,10 @@ async def test_delete_while_initializing(serve_instance):
             print("Running __del__")
             await self.counter.incr.remote()
 
-    serve._run(HangingStart.bind(event_holder, counter), _blocking=False)
+    serve._run(HangingStart.bind(signal, counter), _blocking=False)
 
     print("Waiting for the deployment to start initialization.")
-    await event_holder.wait.remote()
+    await signal.wait.remote()
 
     print("Calling serve.delete().")
     serve.delete(name=SERVE_DEFAULT_APP_NAME)
