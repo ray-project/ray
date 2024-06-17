@@ -1189,10 +1189,9 @@ class Dataset:
         if fraction < 0 or fraction > 1:
             raise ValueError("Fraction must be between 0 and 1.")
 
-        if seed is not None:
-            random.seed(seed)
-
         def random_sample(batch):
+            if seed is not None:
+                random.seed(seed)
             if isinstance(batch, list):
                 return [row for row in batch if random.random() <= fraction]
             if isinstance(batch, pa.Table):
@@ -1208,7 +1207,13 @@ class Dataset:
                 )
             raise ValueError(f"Unsupported batch type: {type(batch)}")
 
-        return self.map_batches(random_sample, batch_format=None)
+        if seed is not None:
+            ds = self.materialize()
+            return self.map_batches(
+                random_sample, batch_size=ds.count(), batch_format=None
+            )
+        else:
+            return self.map_batches(random_sample, batch_format=None)
 
     @ConsumptionAPI
     def streaming_split(
