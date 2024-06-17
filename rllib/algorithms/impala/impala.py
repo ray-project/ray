@@ -27,11 +27,7 @@ from ray.rllib.utils.actor_manager import (
     RemoteCallResults,
 )
 from ray.rllib.utils.actors import create_colocated_actors
-from ray.rllib.utils.annotations import (
-    OldAPIStack,
-    override,
-    OverrideToImplementCustomLogic,
-)
+from ray.rllib.utils.annotations import OldAPIStack, override
 from ray.rllib.utils.metrics import (
     ALL_MODULES,
     ENV_RUNNER_RESULTS,
@@ -403,6 +399,14 @@ class ImpalaConfig(AlgorithmConfig):
 
         # Entropy coeff schedule checking.
         if self.enable_rl_module_and_learner:
+            if not self.enable_env_runner_and_connector_v2:
+                raise ValueError(
+                    "Setting `enable_rl_module_and_learner` to True and "
+                    "`enable_env_runner_and_connector_v2` to False ('hybrid API stack'"
+                    ") is not longer supported! Set both to True or both to False, "
+                    "instead."
+                )
+
             if self.entropy_coeff_schedule is not None:
                 raise ValueError(
                     "`entropy_coeff_schedule` is deprecated and must be None! Use the "
@@ -645,7 +649,7 @@ class Impala(Algorithm):
     def training_step(self) -> ResultDict:
         # Old- and hybrid API stacks.
         if not self.config.enable_rl_module_and_learner:
-            return self._training_step_old_and_hybrid_api_stacks()
+            return self._training_step_old_api_stack()
 
         do_async_updates = self.config.num_learner_workers > 0
 
@@ -930,15 +934,6 @@ class Impala(Algorithm):
 
         return list(waiting_processed_sample_batches.ignore_errors())
 
-    @OverrideToImplementCustomLogic
-    def _get_additional_update_kwargs(self, train_results: dict) -> dict:
-        """Returns the kwargs to `LearnerGroup.additional_update()`.
-
-        Should be overridden by subclasses to specify wanted/needed kwargs for
-        their own implementation of `Learner.additional_update_for_module()`.
-        """
-        return {}
-
     @classmethod
     @override(Algorithm)
     def default_resource_request(
@@ -1010,12 +1005,9 @@ class Impala(Algorithm):
         )
 
     @OldAPIStack
-    def _training_step_old_and_hybrid_api_stacks(self):
+    def _training_step_old_api_stack(self):
         # First, check, whether our learner thread is still healthy.
-        if (
-            not self.config.enable_rl_module_and_learner
-            and not self._learner_thread.is_alive()
-        ):
+        if not self._learner_thread.is_alive():
             raise RuntimeError("The learner thread died while training!")
 
         use_tree_aggregation = (
@@ -1052,50 +1044,18 @@ class Impala(Algorithm):
             self._counters[NUM_AGENT_STEPS_SAMPLED] += batch.agent_steps()
         # Concatenate single batches into batches of size `total_train_batch_size`.
         self._concatenate_batches_and_pre_queue(batches)
-        # Using the Learner API. Call `update()` on our LearnerGroup object with
-        # all collected batches.
-        if self.config.enable_rl_module_and_learner:
-            train_results = self._learn_on_processed_samples()
-            module_ids_to_update = set(train_results.keys()) - {ALL_MODULES}
-            # TODO (sven): Move to Learner._after_gradient_based_update().
-            additional_results = self.learner_group.additional_update(
-                module_ids_to_update=module_ids_to_update,
-                timestep=self._counters[
-                    NUM_ENV_STEPS_TRAINED
-                    if self.config.count_steps_by == "env_steps"
-                    else NUM_AGENT_STEPS_TRAINED
-                ],
-                # TODO (sven): Feels hacked, but solves the problem of algos inheriting
-                #  from IMPALA (like APPO). In the old stack, we didn't have this
-                #  problem b/c IMPALA didn't need to call any additional update methods
-                #  as the entropy- and lr-schedules were handled by
-                #  `Policy.on_global_var_update()`.
-                **self._get_additional_update_kwargs(train_results),
-            )
-            for key, res in additional_results.items():
-                if key in train_results:
-                    train_results[key].update(res)
-        else:
-            # Move train batches (of size `total_train_batch_size`) onto learner queue.
-            self._place_processed_samples_on_learner_thread_queue()
-            # Extract most recent train results from learner thread.
-            train_results = self._process_trained_results()
+        # Move train batches (of size `total_train_batch_size`) onto learner queue.
+        self._place_processed_samples_on_learner_thread_queue()
+        # Extract most recent train results from learner thread.
+        train_results = self._process_trained_results()
 
         # Sync worker weights (only those policies that were actually updated).
         with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
-            if self.config.enable_rl_module_and_learner:
-                if train_results:
-                    pids = list(set(train_results.keys()) - {ALL_MODULES})
-                    self._update_workers_hybrid_api_stack(
-                        workers_that_need_updates=workers_that_need_updates,
-                        policy_ids=pids,
-                    )
-            else:
-                pids = list(train_results.keys())
-                self._update_workers_old_api_stack(
-                    workers_that_need_updates=workers_that_need_updates,
-                    policy_ids=pids,
-                )
+            pids = list(train_results.keys())
+            self._update_workers_old_api_stack(
+                workers_that_need_updates=workers_that_need_updates,
+                policy_ids=pids,
+            )
 
         # With a training step done, try to bring any aggregators back to life
         # if necessary.
@@ -1106,16 +1066,7 @@ class Impala(Algorithm):
                 timeout_seconds=self.config.env_runner_health_probe_timeout_s,
             )
 
-        if self.config.enable_rl_module_and_learner:
-            if train_results:
-                # Store the most recent result and return it if no new result is
-                # available. This keeps backwards compatibility with the old
-                # training stack / results reporting stack. This is necessary
-                # any time we develop an asynchronous algorithm.
-                self._results = train_results
-            return self._results
-        else:
-            return train_results
+        return train_results
 
     @OldAPIStack
     def _get_samples_from_workers_old_and_hybrid_api_stack(
@@ -1356,11 +1307,7 @@ class Impala(Algorithm):
 
     @OldAPIStack
     def _place_processed_samples_on_learner_thread_queue(self) -> None:
-        """Place processed samples on the learner queue for training.
-
-        NOTE: This method is called if self.config.enable_rl_module_and_learner is
-        False.
-        """
+        """Place processed samples on the learner queue for training."""
         for i, batch in enumerate(self.data_to_place_on_learner):
             try:
                 self._learner_thread.inqueue.put(
@@ -1385,9 +1332,6 @@ class Impala(Algorithm):
     @OldAPIStack
     def _process_trained_results(self) -> ResultDict:
         """Process training results that are outputed by the learner thread.
-
-        NOTE: This method is called if self.config.enable_rl_module_and_learner is
-        False.
 
         Returns:
             Aggregated results from the learner thread after an update is completed.
@@ -1423,55 +1367,6 @@ class Impala(Algorithm):
         self._counters[NUM_AGENT_STEPS_TRAINED] += num_agent_steps_trained
 
         return final_learner_info
-
-    @OldAPIStack
-    def _update_workers_hybrid_api_stack(
-        self,
-        workers_that_need_updates: Set[int],
-        policy_ids: Optional[List[PolicyID]] = None,
-    ):
-        """Updates all RolloutWorkers that require updating.
-
-        Updates only if NUM_TRAINING_STEP_CALLS_SINCE_LAST_SYNCH_WORKER_WEIGHTS has been
-        reached and the worker has sent samples in this iteration. Also only updates
-        those policies, whose IDs are given via `policies` (if None, update all
-        policies).
-
-        Args:
-            workers_that_need_updates: Set of worker IDs that need to be updated.
-            policy_ids: Optional list of Policy IDs to update. If None, will update all
-                policies on the to-be-updated workers.
-        """
-        # Only need to update workers if there are remote workers.
-        self._counters[NUM_TRAINING_STEP_CALLS_SINCE_LAST_SYNCH_WORKER_WEIGHTS] += 1
-        if (
-            self._counters[NUM_TRAINING_STEP_CALLS_SINCE_LAST_SYNCH_WORKER_WEIGHTS]
-            >= self.config.broadcast_interval
-            and workers_that_need_updates
-        ):
-            self._counters[NUM_TRAINING_STEP_CALLS_SINCE_LAST_SYNCH_WORKER_WEIGHTS] = 0
-            self._counters[NUM_SYNCH_WORKER_WEIGHTS] += 1
-            weights = self.learner_group.get_weights(policy_ids)
-            # We only have a single (local) EnvRunner.
-            if self.config.num_env_runners == 0:
-                worker = self.workers.local_worker()
-                worker.set_weights(weights)
-            # We have remote EnvRunners and a local one.
-            else:
-                weights_ref = ray.put(weights)
-                self.workers.foreach_worker(
-                    func=lambda w: w.set_weights(ray.get(weights_ref)),
-                    local_worker=False,
-                    remote_worker_ids=list(workers_that_need_updates),
-                    timeout_seconds=0,  # Don't wait for the workers to finish.
-                )
-                # If we have a local worker that we sample from in addition to
-                # our remote workers, we need to update its weights as well.
-                # TODO (sven): This could be really dangerous, if users try to extract
-                #  their saved models from the local worker (instead of the
-                #  LearnerGroup) e.g. after checkpoint restoring. So do this now
-                #  regardless of an env being there or not.
-                self.workers.local_worker().set_weights(weights)
 
     @OldAPIStack
     def _update_workers_old_api_stack(

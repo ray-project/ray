@@ -143,14 +143,16 @@ class PPOLearner(Learner):
             module_value_targets = compute_value_targets(
                 values=module_vf_preds,
                 rewards=unpad_data_if_necessary(
-                    episode_lens_plus_1, batch_for_vf[module_id][Columns.REWARDS]
+                    episode_lens_plus_1,
+                    convert_to_numpy(batch_for_vf[module_id][Columns.REWARDS]),
                 ),
                 terminateds=unpad_data_if_necessary(
                     episode_lens_plus_1,
-                    batch_for_vf[module_id][Columns.TERMINATEDS],
+                    convert_to_numpy(batch_for_vf[module_id][Columns.TERMINATEDS]),
                 ),
                 truncateds=unpad_data_if_necessary(
-                    episode_lens_plus_1, batch_for_vf[module_id][Columns.TRUNCATEDS]
+                    episode_lens_plus_1,
+                    convert_to_numpy(batch_for_vf[module_id][Columns.TRUNCATEDS]),
                 ),
                 gamma=self.config.gamma,
                 lambda_=self.config.lambda_,

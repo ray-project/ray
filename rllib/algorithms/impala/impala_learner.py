@@ -8,10 +8,7 @@ from typing import Any, Dict, List, Optional
 import tree  # pip install dm_tree
 
 import ray
-from ray.rllib.algorithms.impala.impala import (
-    ImpalaConfig,
-    LEARNER_RESULTS_CURR_ENTROPY_COEFF_KEY,
-)
+from ray.rllib.algorithms.impala.impala import LEARNER_RESULTS_CURR_ENTROPY_COEFF_KEY
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.learner.learner import Learner
 from ray.rllib.connectors.learner import AddOneTsToEpisodesAndTruncate
@@ -149,40 +146,30 @@ class ImpalaLearner(Learner):
                 results[ALL_MODULES][NUM_ENV_STEPS_TRAINED].values = [ts_trained]
             return results
 
-    # TODO (sven): IMPALA does NOT call additional update anymore from its
-    #  `training_step()` method. Instead, we'll do this here (to avoid the extra
-    #  metrics.reduce() call -> we should only call this once per update round).
     def _before_update(self, timesteps: Optional[Dict[str, Any]] = None):
         timesteps = timesteps or {}
+
         for module_id in self.module.keys():
-            self.additional_update_for_module(
+            super().additional_update_for_module(
                 module_id=module_id,
                 config=self.config.get_config_for_module(module_id),
                 timestep=timesteps.get(NUM_ENV_STEPS_SAMPLED_LIFETIME, 0),
+            )
+
+            # Update entropy coefficient via our Scheduler.
+            new_entropy_coeff = self.entropy_coeff_schedulers_per_module[
+                module_id
+            ].update(timestep=timesteps.get(NUM_ENV_STEPS_SAMPLED_LIFETIME, 0))
+            self.metrics.log_value(
+                (module_id, LEARNER_RESULTS_CURR_ENTROPY_COEFF_KEY),
+                new_entropy_coeff,
+                window=1,
             )
 
     @override(Learner)
     def remove_module(self, module_id: str):
         super().remove_module(module_id)
         self.entropy_coeff_schedulers_per_module.pop(module_id)
-
-    @override(Learner)
-    def additional_update_for_module(
-        self, *, module_id: ModuleID, config: ImpalaConfig, timestep: int
-    ) -> None:
-        super().additional_update_for_module(
-            module_id=module_id, config=config, timestep=timestep
-        )
-
-        # Update entropy coefficient via our Scheduler.
-        new_entropy_coeff = self.entropy_coeff_schedulers_per_module[module_id].update(
-            timestep=timestep
-        )
-        self.metrics.log_value(
-            (module_id, LEARNER_RESULTS_CURR_ENTROPY_COEFF_KEY),
-            new_entropy_coeff,
-            window=1,
-        )
 
 
 class _GPULoaderThread(threading.Thread):

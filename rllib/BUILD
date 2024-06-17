@@ -2275,6 +2275,7 @@ py_test(
 )
 
 # Nested observation spaces (flattening).
+# PPO
 py_test(
     name = "examples/connectors/flatten_observations_dict_space_ppo",
     main = "examples/connectors/flatten_observations_dict_space.py",
@@ -2283,7 +2284,6 @@ py_test(
     srcs = ["examples/connectors/flatten_observations_dict_space.py"],
     args = ["--enable-new-api-stack", "--as-test", "--stop-reward=400.0", "--framework=torch", "--algo=PPO"]
 )
-
 py_test(
     name = "examples/connectors/flatten_observations_dict_space_multi_agent_ppo",
     main = "examples/connectors/flatten_observations_dict_space.py",
@@ -2291,6 +2291,23 @@ py_test(
     size = "medium",
     srcs = ["examples/connectors/flatten_observations_dict_space.py"],
     args = ["--enable-new-api-stack", "--num-agents=2", "--as-test", "--stop-reward=800.0", "--framework=torch", "--algo=PPO"]
+)
+# IMPALA
+py_test(
+    name = "examples/connectors/flatten_observations_dict_space_impala",
+    main = "examples/connectors/nested_observation_spaces.py",
+    tags = ["team:rllib", "exclusive", "examples"],
+    size = "medium",
+    srcs = ["examples/connectors/nested_observation_spaces.py"],
+    args = ["--enable-new-api-stack", "--as-test", "--stop-reward=400.0", "--framework=torch", "--algo=IMPALA"]
+)
+py_test(
+    name = "examples/connectors/flatten_observations_dict_space_multi_agent_impala",
+    main = "examples/connectors/nested_observation_spaces.py",
+    tags = ["team:rllib", "exclusive", "examples"],
+    size = "medium",
+    srcs = ["examples/connectors/nested_observation_spaces.py"],
+    args = ["--enable-new-api-stack", "--num-agents=2", "--as-test", "--stop-reward=800.0", "--framework=torch", "--algo=IMPALA"]
 )
 
 # Prev-r/prev actions + LSTM example.
@@ -3048,6 +3065,7 @@ py_test(
     srcs = ["examples/cartpole_lstm.py"],
     args = ["--run=IMPALA", "--as-test", "--framework=torch", "--stop-reward=28", "--num-cpus=4"]
 )
+
 py_test(
     name = "examples/cartpole_lstm_ppo_tf2",
     main = "examples/cartpole_lstm.py",
@@ -3057,8 +3075,6 @@ py_test(
     args = ["--run=PPO", "--as-test", "--framework=tf2", "--stop-reward=28", "--num-cpus=4"]
 )
 
-# Nested observation spaces (flattening).
-# PPO
 py_test(
     name = "examples/cartpole_lstm_ppo_torch",
     main = "examples/cartpole_lstm.py",
@@ -3067,6 +3083,7 @@ py_test(
     srcs = ["examples/cartpole_lstm.py"],
     args = ["--run=PPO", "--as-test", "--framework=torch", "--stop-reward=28", "--num-cpus=4"]
 )
+
 py_test(
     name = "examples/cartpole_lstm_ppo_torch_with_prev_a_and_r",
     main = "examples/cartpole_lstm.py",
@@ -3074,23 +3091,6 @@ py_test(
     size = "medium",
     srcs = ["examples/cartpole_lstm.py"],
     args = ["--run=PPO", "--as-test", "--framework=torch", "--stop-reward=28", "--num-cpus=4", "--use-prev-action",  "--use-prev-reward"]
-)
-# IMPALA
-py_test(
-    name = "examples/connectors/nested_observation_spaces_impala",
-    main = "examples/connectors/nested_observation_spaces.py",
-    tags = ["team:rllib", "exclusive", "examples"],
-    size = "medium",
-    srcs = ["examples/connectors/nested_observation_spaces.py"],
-    args = ["--enable-new-api-stack", "--as-test", "--stop-reward=400.0", "--framework=torch", "--algo=IMPALA"]
-)
-py_test(
-    name = "examples/connectors/nested_observation_spaces_multi_agent_impala",
-    main = "examples/connectors/nested_observation_spaces.py",
-    tags = ["team:rllib", "exclusive", "examples"],
-    size = "medium",
-    srcs = ["examples/connectors/nested_observation_spaces.py"],
-    args = ["--enable-new-api-stack", "--num-agents=2", "--as-test", "--stop-reward=800.0", "--framework=torch", "--algo=IMPALA"]
 )
 
 #@OldAPIStack
