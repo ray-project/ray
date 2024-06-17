@@ -160,11 +160,12 @@ export const ServeMetricsSection = ({
             className={classes.timeRangeButton}
             select
             size="small"
-            sx={{ width: 100 }}
+            sx={{ width: 80 }}
             value={refreshOption}
             onChange={({ target: { value } }) => {
               setRefreshOption(value as RefreshOptions);
             }}
+            variant="standard"
             InputProps={{
               startAdornment: (
                 <InputAdornment position="start">
@@ -183,11 +184,12 @@ export const ServeMetricsSection = ({
             className={classes.timeRangeButton}
             select
             size="small"
-            style={{ width: 120 }}
+            style={{ width: 140 }}
             value={timeRangeOption}
             onChange={({ target: { value } }) => {
               setTimeRangeOption(value as TimeRangeOptions);
             }}
+            variant="standard"
             InputProps={{
               startAdornment: (
                 <InputAdornment position="start">
