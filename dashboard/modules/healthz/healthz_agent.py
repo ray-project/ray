@@ -27,9 +27,6 @@ class HealthzAgent(dashboard_utils.DashboardAgentModule):
             alive = await self._health_checker.check_local_raylet_liveness()
             if alive is False:
                 return Response(status=503, text="Local Raylet failed")
-        except ray.exceptions.GetTimeoutError:
-            # See below for the reason of ignoring this error.
-            pass
         except ray.exceptions.RpcError as e:
             # We only consider the error other than GCS unreachable as raylet failure
             # to avoid false positive.
@@ -39,6 +36,7 @@ class HealthzAgent(dashboard_utils.DashboardAgentModule):
             if e.rpc_code not in (
                 ray._raylet.GRPC_STATUS_CODE_UNAVAILABLE,
                 ray._raylet.GRPC_STATUS_CODE_UNKNOWN,
+                ray._raylet.GRPC_STATUS_CODE_DEADLINE_EXCEEDED,
             ):
                 return Response(status=503, text=f"Health check failed due to: {e}")
 

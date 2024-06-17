@@ -91,16 +91,16 @@ def test_kv_timeout(ray_start_regular):
     assert gcs_client.internal_kv_put(b"A", b"", False, b"") == 1
 
     with stop_gcs_server():
-        with pytest.raises(ray.exceptions.GetTimeoutError, match="Deadline Exceeded"):
+        with pytest.raises(ray.exceptions.RpcError, match="Deadline Exceeded"):
             gcs_client.internal_kv_put(b"A", b"B", False, b"NS", timeout=2)
 
-        with pytest.raises(ray.exceptions.GetTimeoutError, match="Deadline Exceeded"):
+        with pytest.raises(ray.exceptions.RpcError, match="Deadline Exceeded"):
             gcs_client.internal_kv_get(b"A", b"NS", timeout=2)
 
-        with pytest.raises(ray.exceptions.GetTimeoutError, match="Deadline Exceeded"):
+        with pytest.raises(ray.exceptions.RpcError, match="Deadline Exceeded"):
             gcs_client.internal_kv_keys(b"A", b"NS", timeout=2)
 
-        with pytest.raises(ray.exceptions.GetTimeoutError, match="Deadline Exceeded"):
+        with pytest.raises(ray.exceptions.RpcError, match="Deadline Exceeded"):
             gcs_client.internal_kv_del(b"A", True, b"NS", timeout=2)
 
 
@@ -154,16 +154,16 @@ async def test_kv_timeout_aio(ray_start_regular):
     gcs_client = gcs_utils.GcsAioClient(address=gcs_address, nums_reconnect_retry=0)
 
     with stop_gcs_server():
-        with pytest.raises(ray.exceptions.GetTimeoutError, match="Deadline Exceeded"):
+        with pytest.raises(ray.exceptions.RpcError, match="Deadline Exceeded"):
             await gcs_client.internal_kv_put(b"A", b"B", False, b"NS", timeout=2)
 
-        with pytest.raises(ray.exceptions.GetTimeoutError, match="Deadline Exceeded"):
+        with pytest.raises(ray.exceptions.RpcError, match="Deadline Exceeded"):
             await gcs_client.internal_kv_get(b"A", b"NS", timeout=2)
 
-        with pytest.raises(ray.exceptions.GetTimeoutError, match="Deadline Exceeded"):
+        with pytest.raises(ray.exceptions.RpcError, match="Deadline Exceeded"):
             await gcs_client.internal_kv_keys(b"A", b"NS", timeout=2)
 
-        with pytest.raises(ray.exceptions.GetTimeoutError, match="Deadline Exceeded"):
+        with pytest.raises(ray.exceptions.RpcError, match="Deadline Exceeded"):
             await gcs_client.internal_kv_del(b"A", True, b"NS", timeout=2)
 
 

@@ -570,7 +570,7 @@ cdef int check_status(const CRayStatus& status) nogil except -1:
     elif status.IsInterrupted():
         raise KeyboardInterrupt()
     elif status.IsTimedOut():
-        raise GetTimeoutError(message)
+        raise RpcError(message, rpc_code=GRPC_STATUS_CODE_DEADLINE_EXCEEDED)
     elif status.IsNotFound():
         # Note: this should really be KeyError or LookupError, but we have too many call
         # sites Expecting ValueError. For example, the @PublicAPI ray.get_actor raises
@@ -3298,7 +3298,7 @@ def check_health(address: str, timeout=2, skip_version_check=False):
             check_status(PythonCheckGcsHealth(
                 c_gcs_address, c_gcs_port, timeout_ms, c_ray_version,
                 c_skip_version_check, c_is_healthy))
-    except (RpcError, GetTimeoutError):
+    except RpcError:
         traceback.print_exc()
     except RaySystemError as e:
         raise RuntimeError(str(e))
@@ -3508,7 +3508,12 @@ cdef class CoreWorker:
         with nogil:
             op_status = CCoreWorkerProcess.GetCoreWorker().Get(
                 c_object_ids, timeout_ms, results)
-        check_status(op_status)
+        try:
+            check_status(op_status)
+        except RpcError as e:
+            if e.code() == grpc.StatusCode.DEADLINE_EXCEEDED:
+                raise GetTimeoutError(e.message())
+            raise
 
         return RayObjectsToDataMetadataPairs(results)
 
