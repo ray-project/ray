@@ -10,6 +10,7 @@ from typing import (
     Optional,
     Set,
     Type,
+    TYPE_CHECKING,
     Union,
 )
 
@@ -17,7 +18,6 @@ import tree  # pip install dm_tree
 
 import ray
 from ray import ObjectRef
-from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.core.learner.learner import Learner
 from ray.rllib.core.rl_module.rl_module import (
     SingleAgentRLModuleSpec,
@@ -47,6 +47,9 @@ from ray.rllib.utils.typing import (
 from ray.train._internal.backend_executor import BackendExecutor
 from ray.tune.utils.file_transfer import sync_dir_between_nodes
 from ray.util.annotations import PublicAPI
+
+if TYPE_CHECKING:
+    from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 
 
 def _get_backend_config(learner_class: Type[Learner]) -> str:
@@ -78,7 +81,7 @@ class LearnerGroup:
     def __init__(
         self,
         *,
-        config: AlgorithmConfig,
+        config: "AlgorithmConfig",
         module_spec: Optional[RLModuleSpec] = None,
     ):
         """Initializes a LearnerGroup instance.
