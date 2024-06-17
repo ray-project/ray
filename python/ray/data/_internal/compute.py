@@ -3,7 +3,7 @@ from typing import Any, Callable, Iterable, Optional, TypeVar, Union
 
 from ray.data._internal.execution.interfaces import TaskContext
 from ray.data.block import Block, UserDefinedFunction
-from ray.util.annotations import DeveloperAPI, PublicAPI
+from ray.util.annotations import DeveloperAPI
 
 logger = logging.getLogger(__name__)
 
@@ -50,7 +50,6 @@ class TaskPoolStrategy(ComputeStrategy):
         )
 
 
-@PublicAPI
 class ActorPoolStrategy(ComputeStrategy):
     """Specify the compute strategy for a Dataset transform.
 
