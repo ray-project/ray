@@ -80,6 +80,7 @@ from asyncio import Future
 from typing import List
 from ray.includes.common cimport (
     CGcsClient,
+    CGetAllResourceUsageReply,
     ConnectToGcsStandalone,
     PyDefaultCallback,
     PyMultiItemCallback,
@@ -320,8 +321,34 @@ cdef class MyGcsClient:
             check_status(self.inner.get().Nodes().AsyncCheckAlive(c_node_ips, timeout_ms, cy_callback))
         return fut
 
+    def drain_nodes(self, node_ids: List[bytes], timeout: Optional[float] = None) -> List[bytes]:
+        """returns a list of node_ids that are successfully drained."""
+        cdef:
+            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
+            c_vector[CNodeID] c_node_ids
+            c_vector[c_string] results
+        for node_id in node_ids:
+            c_node_ids.push_back(CNodeID.FromBinary(node_id))
+        with nogil:
+            check_status(self.inner.get().Nodes().DrainNodes(c_node_ids, timeout_ms, results))
+        return [result for result in results]
+
     #############################################################
-    # Job async methods
+    # NodeResources methods
+    #############################################################
+    def get_all_resource_usage(self, timeout: Optional[float] = None) -> gcs_pb2.GetAllResourceUsageReply:
+        cdef int64_t timeout_ms = round(1000 * timeout) if timeout else -1
+        cdef CGetAllResourceUsageReply c_reply
+        cdef c_string serialized_reply
+        with nogil:
+            check_status(self.inner.get().NodeResources().GetAllResourceUsage(timeout_ms, c_reply))
+            serialized_reply = c_reply.SerializeAsString()
+        ret = gcs_pb2.GetAllResourceUsageReply()
+        ret.ParseFromString(serialized_reply)
+        return ret
+
+    #############################################################
+    # Job methods
     #############################################################
 
     def async_get_next_job_id(self) -> Future[JobID]:
@@ -347,6 +374,99 @@ cdef class MyGcsClient:
         with nogil:
             check_status(self.inner.get().Jobs().AsyncGetAll(timeout_ms, cy_callback))
         return fut
+
+    def get_all_job_info(self, timeout: Optional[float] = None) -> Dict[str, gcs_pb2.JobTableData]:
+        cdef int64_t timeout_ms = round(1000 * timeout) if timeout else -1
+        cdef c_vector[CJobTableData] reply
+        cdef c_vector[c_string] serialized_reply
+        with nogil:
+            check_status(self.inner.get().Jobs().GetAll(timeout_ms, reply))
+            for i in range(reply.size()):
+                serialized_reply.push_back(reply[i].SerializeAsString())
+        ret = {}
+        for serialized in serialized_reply:
+            proto = gcs_pb2.JobTableData()
+            proto.ParseFromString(serialized)
+            ret[proto.job_id] = proto
+        return ret
+
+    #############################################################
+    # Autoscaler sync methods
+    #############################################################
+
+
+    def request_cluster_resource_constraint(
+            self,
+            bundles: c_vector[unordered_map[c_string, double]],
+            count_array: c_vector[int64_t],
+            timeout_s=None):
+        cdef:
+            int64_t timeout_ms = round(1000 * timeout_s) if timeout_s else -1
+        with nogil:
+            check_status(self.inner.get().Autoscaler().RequestClusterResourceConstraint(
+                timeout_ms, bundles, count_array))
+
+
+    def get_cluster_resource_state(
+            self,
+            timeout_s=None):
+        cdef:
+            int64_t timeout_ms = round(1000 * timeout_s) if timeout_s else -1
+            c_string serialized_reply
+        with nogil:
+            check_status(self.inner.get().Autoscaler().GetClusterResourceState(timeout_ms,
+                         serialized_reply))
+
+        return serialized_reply
+
+
+    def get_cluster_status(
+            self,
+            timeout_s=None):
+        cdef:
+            int64_t timeout_ms = round(1000 * timeout_s) if timeout_s else -1
+            c_string serialized_reply
+        with nogil:
+            check_status(self.inner.get().Autoscaler().GetClusterStatus(timeout_ms,
+                         serialized_reply))
+
+        return serialized_reply
+
+
+    def report_autoscaling_state(
+        self,
+        serialzied_state: c_string,
+        timeout_s=None
+    ):
+        """Report autoscaling state to GCS"""
+        cdef:
+            int64_t timeout_ms = round(1000 * timeout_s) if timeout_s else -1
+        with nogil:
+            check_status(self.inner.get().Autoscaler().ReportAutoscalingState(
+                timeout_ms, serialzied_state))
+
+
+    def drain_node(
+            self,
+            node_id: c_string,
+            reason: int32_t,
+            reason_message: c_string,
+            deadline_timestamp_ms: int64_t):
+        """Send the DrainNode request to GCS.
+
+        This is only for testing.
+        """
+        cdef:
+            int64_t timeout_ms = -1
+            c_bool is_accepted = False
+            c_string rejection_reason_message
+        with nogil:
+            check_status(self.inner.get().Autoscaler().DrainNode(
+                node_id, reason, reason_message,
+                deadline_timestamp_ms, timeout_ms, is_accepted,
+                rejection_reason_message))
+
+        return (is_accepted, rejection_reason_message.decode())
 
 # Ideally we want to pass CRayStatus around. However it's not easy to wrap a
 # `ray::Status` to a `PythonObject*` so we marshall it to a 3-tuple like this. It can be

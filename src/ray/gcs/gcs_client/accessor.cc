@@ -121,6 +121,19 @@ Status JobInfoAccessor::AsyncGetAll(
   return Status::OK();
 }
 
+Status JobInfoAccessor::GetAll(int64_t timeout_ms,
+                               std::vector<rpc::JobTableData> &job_data_list) {
+  std::promise<Status> ret_promise;
+  RAY_RETURN_NOT_OK(
+      AsyncGetAll(timeout_ms,
+                  [&ret_promise, &job_data_list](
+                      const Status &status, const std::vector<rpc::JobTableData> &data) {
+                    job_data_list = data;
+                    ret_promise.set_value(status);
+                  }));
+  return ret_promise.get_future().get();
+}
+
 Status JobInfoAccessor::AsyncGetNextJobID(const ItemCallback<JobID> &callback) {
   RAY_LOG(DEBUG) << "Getting next job id";
   rpc::GetNextJobIDRequest request;
@@ -631,6 +644,25 @@ Status NodeInfoAccessor::CheckAlive(const std::vector<std::string> &raylet_addre
   return ret_promise.get_future().get();
 }
 
+Status NodeInfoAccessor::DrainNodes(const std::vector<NodeID> &node_ids,
+                                    int64_t timeout_ms,
+                                    std::vector<std::string> &drained_node_ids) {
+  RAY_LOG(DEBUG) << "Draining nodes, node id = " << debug_string(node_ids);
+  rpc::DrainNodeRequest request;
+  rpc::DrainNodeReply reply;
+  for (const auto &node_id : node_ids) {
+    auto draining_request = request.add_drain_node_data();
+    draining_request->set_node_id(node_id.Binary());
+  }
+  RAY_RETURN_NOT_OK(
+      client_impl_->GetGcsRpcClient().SyncDrainNode(request, &reply, timeout_ms));
+  drained_node_ids.clear();
+  for (const auto &s : reply.drain_node_status()) {
+    drained_node_ids.push_back(s.node_id());
+  }
+  return Status::OK();
+}
+
 bool NodeInfoAccessor::IsRemoved(const NodeID &node_id) const {
   return removed_nodes_.count(node_id) == 1;
 }
@@ -653,12 +685,12 @@ void NodeInfoAccessor::HandleNotification(const GcsNodeInfo &node_info) {
     // again. If the entry was in the cache and the node was deleted, we should check
     // that this new notification is not an insertion.
     // However, when a new node(node-B) registers with GCS, it subscribes to all node
-    // information. It will subscribe to redis and then get all node information from GCS
-    // through RPC. If node-A fails after GCS replies to node-B, GCS will send another
-    // message(node-A is dead) to node-B through redis publish. Because RPC and redis
-    // subscribe are two different sessions, node-B may process node-A dead message first
-    // and then node-A alive message. So we use `RAY_LOG` instead of `RAY_CHECK ` as a
-    // workaround.
+    // information. It will subscribe to redis and then get all node information from
+    // GCS through RPC. If node-A fails after GCS replies to node-B, GCS will send
+    // another message(node-A is dead) to node-B through redis publish. Because RPC and
+    // redis subscribe are two different sessions, node-B may process node-A dead
+    // message first and then node-A alive message. So we use `RAY_LOG` instead of
+    // `RAY_CHECK ` as a workaround.
     if (!was_alive && is_alive) {
       RAY_LOG(INFO) << "Notification for addition of a node that was already removed:"
                     << node_id;
@@ -789,6 +821,13 @@ Status NodeResourceInfoAccessor::AsyncGetAllResourceUsage(
                        << status;
       });
   return Status::OK();
+}
+
+Status NodeResourceInfoAccessor::GetAllResourceUsage(
+    int64_t timeout_ms, rpc::GetAllResourceUsageReply &reply) {
+  rpc::GetAllResourceUsageRequest request;
+  return client_impl_->GetGcsRpcClient().SyncGetAllResourceUsage(
+      request, &reply, timeout_ms);
 }
 
 Status TaskInfoAccessor::AsyncAddTaskEventData(

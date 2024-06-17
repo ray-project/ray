@@ -2724,13 +2724,26 @@ cdef class GcsClient:
 
     def __getattr__(self, name):
         my_gcs_client_methods = [
+            # Internal KV
             "internal_kv_get",
             "internal_kv_multi_get",
             "internal_kv_put",
             "internal_kv_del",
             "internal_kv_exists",
             "internal_kv_keys",
+            # Jobs
+            "get_all_job_info",
+            # Nodes
             "check_alive",
+            "drain_nodes",
+            # Node Resources
+            "get_all_resource_usage",
+            # Autoscaler
+            "request_cluster_resource_constraint",
+            "get_cluster_resource_state",
+            "get_cluster_status",
+            "report_autoscaling_state",
+            "drain_node"
         ]
         if name in my_gcs_client_methods:
             if "TEST_RAY_COLLECT_KV_FREQUENCY" in os.environ:
@@ -2769,138 +2782,6 @@ cdef class GcsClient:
             }
         return result
 
-    @_auto_reconnect
-    def get_all_job_info(self, timeout=None) -> Dict[bytes, JobTableData]:
-        # Ideally we should use json_format.MessageToDict(job_info),
-        # but `job_info` is a cpp pb message not a python one.
-        # Manually converting each and every protobuf field is out of question,
-        # so we serialize the pb to string to cross the FFI interface.
-        cdef:
-            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
-            CJobTableData c_job_info
-            c_vector[CJobTableData] c_job_infos
-            c_vector[c_string] serialized_job_infos
-        with nogil:
-            check_status(self.inner.get().GetAllJobInfo(timeout_ms, c_job_infos))
-            for c_job_info in c_job_infos:
-                serialized_job_infos.push_back(c_job_info.SerializeAsString())
-        result = {}
-        for serialized in serialized_job_infos:
-            job_info = JobTableData()
-            job_info.ParseFromString(serialized)
-            result[job_info.job_id] = job_info
-        return result
-
-    @_auto_reconnect
-    def get_all_resource_usage(self, timeout=None) -> GetAllResourceUsageReply:
-        cdef:
-            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
-            c_string serialized_reply
-
-        with nogil:
-            check_status(self.inner.get().GetAllResourceUsage(
-                timeout_ms, serialized_reply))
-
-        reply = GetAllResourceUsageReply()
-        reply.ParseFromString(serialized_reply)
-        return reply
-    ########################################################
-    # Interface for rpc::autoscaler::AutoscalerStateService
-    ########################################################
-
-    @_auto_reconnect
-    def request_cluster_resource_constraint(
-            self,
-            bundles: c_vector[unordered_map[c_string, double]],
-            count_array: c_vector[int64_t],
-            timeout_s=None):
-        cdef:
-            int64_t timeout_ms = round(1000 * timeout_s) if timeout_s else -1
-        with nogil:
-            check_status(self.inner.get().RequestClusterResourceConstraint(
-                timeout_ms, bundles, count_array))
-
-    @_auto_reconnect
-    def get_cluster_resource_state(
-            self,
-            timeout_s=None):
-        cdef:
-            int64_t timeout_ms = round(1000 * timeout_s) if timeout_s else -1
-            c_string serialized_reply
-        with nogil:
-            check_status(self.inner.get().GetClusterResourceState(timeout_ms,
-                         serialized_reply))
-
-        return serialized_reply
-
-    @_auto_reconnect
-    def get_cluster_status(
-            self,
-            timeout_s=None):
-        cdef:
-            int64_t timeout_ms = round(1000 * timeout_s) if timeout_s else -1
-            c_string serialized_reply
-        with nogil:
-            check_status(self.inner.get().GetClusterStatus(timeout_ms,
-                         serialized_reply))
-
-        return serialized_reply
-
-    @_auto_reconnect
-    def report_autoscaling_state(
-        self,
-        serialzied_state: c_string,
-        timeout_s=None
-    ):
-        """Report autoscaling state to GCS"""
-        cdef:
-            int64_t timeout_ms = round(1000 * timeout_s) if timeout_s else -1
-        with nogil:
-            check_status(self.inner.get().ReportAutoscalingState(
-                timeout_ms, serialzied_state))
-
-    @_auto_reconnect
-    def drain_node(
-            self,
-            node_id: c_string,
-            reason: int32_t,
-            reason_message: c_string,
-            deadline_timestamp_ms: int64_t):
-        """Send the DrainNode request to GCS.
-
-        This is only for testing.
-        """
-        cdef:
-            int64_t timeout_ms = -1
-            c_bool is_accepted = False
-            c_string rejection_reason_message
-        with nogil:
-            check_status(self.inner.get().DrainNode(
-                node_id, reason, reason_message,
-                deadline_timestamp_ms, timeout_ms, is_accepted,
-                rejection_reason_message))
-
-        return (is_accepted, rejection_reason_message.decode())
-
-    @_auto_reconnect
-    def drain_nodes(self, node_ids, timeout=None):
-        cdef:
-            c_vector[c_string] c_node_ids
-            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
-            c_vector[c_string] c_drained_node_ids
-        for node_id in node_ids:
-            c_node_ids.push_back(node_id)
-        with nogil:
-            check_status(self.inner.get().DrainNodes(
-                c_node_ids, timeout_ms, c_drained_node_ids))
-        result = []
-        for drain_node_id in c_drained_node_ids:
-            result.append(drain_node_id)
-        return result
-
-    #############################################################
-    # Interface for rpc::autoscaler::AutoscalerStateService ends
-    #############################################################
 cdef class GcsPublisher:
     """Cython wrapper class of C++ `ray::gcs::PythonGcsPublisher`."""
     cdef:

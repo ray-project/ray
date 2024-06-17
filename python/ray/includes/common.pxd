@@ -1,10 +1,10 @@
 from libcpp cimport bool as c_bool
 from libcpp.memory cimport shared_ptr, unique_ptr
-from libcpp.string cimport c_string as c_string
+from libcpp.string cimport string as c_string
 from libcpp.functional cimport function
 from libc.stdint cimport uint8_t, int32_t, uint64_t, int64_t, uint32_t
 from libcpp.unordered_map cimport unordered_map
-from libcpp.vector cimport c_vector as c_vector
+from libcpp.vector cimport vector as c_vector
 from libcpp.pair cimport pair as c_pair
 from ray.includes.optional cimport (
     optional,
@@ -392,6 +392,9 @@ cdef extern from "ray/gcs/gcs_client/accessor.h" nogil:
         CRayStatus AsyncGetAll(
             int64_t timeout_ms,
             const PyDefaultCallback &callback)
+        CRayStatus GetAll(
+            int64_t timeout_ms,
+            c_vector[CJobTableData] &result)
 
     cdef cppclass CNodeInfoAccessor "ray::gcs::NodeInfoAccessor":
         CRayStatus AsyncCheckAlive(
@@ -403,6 +406,16 @@ cdef extern from "ray/gcs/gcs_client/accessor.h" nogil:
             const c_vector[c_string] &raylet_addresses,
             int64_t timeout_ms,
             c_vector[c_bool] &result)
+
+        CRayStatus DrainNodes(
+            const c_vector[CNodeID] &node_ids,
+            int64_t timeout_ms,
+            c_vector[c_string] &drained_node_ids)
+
+    cdef cppclass CNodeResourceInfoAccessor "ray::gcs::NodeResourceInfoAccessor":
+        CRayStatus GetAllResourceUsage(
+            int64_t timeout_ms,
+            CGetAllResourceUsageReply &serialized_reply)
 
     cdef cppclass CInternalKVAccessor "ray::gcs::InternalKVAccessor":
         CRayStatus AsyncInternalKVKeys(
@@ -513,7 +526,7 @@ cdef extern from "ray/gcs/gcs_client/accessor.h" nogil:
             const c_string &reason_message,
             int64_t deadline_timestamp_ms,
             int64_t timeout_ms,
-            bool &is_accepted,
+            c_bool &is_accepted,
             c_string &rejection_reason_message
         )
 
@@ -539,6 +552,8 @@ cdef extern from "ray/gcs/gcs_client/gcs_client.h" nogil:
         CJobInfoAccessor& Jobs()
         CInternalKVAccessor& InternalKV()
         CNodeInfoAccessor& Nodes()
+        CNodeResourceInfoAccessor& NodeResources()
+        CAutoscalerStateAccessor& Autoscaler()
 
     shared_ptr[CGcsClient] ConnectToGcsStandalone(
         const CGcsClientOptions &options, const CClusterID &cluster_id)
@@ -693,7 +708,10 @@ cdef extern from "src/ray/protobuf/gcs.pb.h" nogil:
         c_string job_id() const
         c_bool is_dead() const
         CJobConfig config() const
-        const c_string &SerializeAsString()
+        const c_string &SerializeAsString() const
+
+    cdef cppclass CGetAllResourceUsageReply "ray::rpc::GetAllResourceUsageReply":
+        const c_string& SerializeAsString() const
 
     cdef cppclass CPythonFunction "ray::rpc::PythonFunction":
         void set_key(const c_string &key)

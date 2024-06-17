@@ -250,6 +250,14 @@ class JobInfoAccessor {
   virtual Status AsyncGetAll(int64_t timeout_ms,
                              const MultiItemCallback<rpc::JobTableData> &callback);
 
+  /// Get all job info from GCS synchronously.
+  ///
+  /// \param timeout_ms -1 means infinite.
+  /// \param[out] job_data_list The list of job data retrieved from GCS.
+  /// \return Status
+  virtual Status GetAll(int64_t timeout_ms,
+                        std::vector<rpc::JobTableData> &job_data_list);
+
   /// Reestablish subscription.
   /// This should be called when GCS server restarts from a failure.
   /// PubSub server restart will cause GCS server restart. In this case, we need to
@@ -392,6 +400,19 @@ class NodeInfoAccessor {
                             int64_t timeout_ms,
                             std::vector<bool> &nodes_alive);
 
+  /// Drain (remove the information of the nodes from the cluster) the specified nodes
+  /// from GCS synchronously.
+  ///
+  /// Check gcs_service.proto NodeInfoGcsService.DrainNode for the API spec.
+  ///
+  /// \param node_ids The IDs of nodes to be unregistered.
+  /// \param timeout_ms The timeout for this request.
+  /// \param drained_node_ids The IDs of nodes that are drained.
+  /// \return Status
+  virtual Status DrainNodes(const std::vector<NodeID> &node_ids,
+                            int64_t timeout_ms,
+                            std::vector<std::string> &drained_node_ids);
+
   /// Search the local cache to find out if the given node is removed.
   /// Non-thread safe.
   /// Note, the local cache is only available if `AsyncSubscribeToNodeChange`
@@ -489,7 +510,14 @@ class NodeResourceInfoAccessor {
   virtual Status AsyncGetAllResourceUsage(
       const ItemCallback<rpc::ResourceUsageBatchData> &callback);
 
- private:
+  /// Get newest resource usage of all nodes from GCS synchronously.
+  ///
+  /// \param timeout_ms -1 means infinite.
+  /// \param resource_usage_batch_data The resource usage of all nodes.
+  /// \return Status
+  virtual Status GetAllResourceUsage(int64_t timeout_ms,
+                                     rpc::GetAllResourceUsageReply &reply);
+
   /// Save the subscribe operation in this function, so we can call it again when PubSub
   /// server restarts from a failure.
   SubscribeOperation subscribe_resource_operation_;
