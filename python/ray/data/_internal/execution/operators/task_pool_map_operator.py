@@ -24,6 +24,7 @@ class TaskPoolMapOperator(MapOperator):
         name: str = "TaskPoolMap",
         min_rows_per_bundle: Optional[int] = None,
         concurrency: Optional[int] = None,
+        supports_fusion: bool = True,
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
     ):
@@ -41,6 +42,7 @@ class TaskPoolMapOperator(MapOperator):
                 The actual rows passed may be less if the dataset is small.
             concurrency: The maximum number of Ray tasks to use concurrently,
                 or None to use as many tasks as possible.
+            supports_fusion: Whether this operator supports fusion with other operators.
             ray_remote_args_fn: A function that returns a dictionary of remote args
                 passed to each map worker. The purpose of this argument is to generate
                 dynamic arguments for each actor/task, and will be called each time
@@ -55,6 +57,7 @@ class TaskPoolMapOperator(MapOperator):
             name,
             target_max_block_size,
             min_rows_per_bundle,
+            supports_fusion,
             ray_remote_args_fn,
             ray_remote_args,
         )
