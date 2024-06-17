@@ -284,7 +284,7 @@ def set_trace_context(trace_context: Dict[str, str]):
     CURRENT_TRACE_CONTEXT.set(trace_context)
 
 
-def get_trace_context():
+def get_trace_context() -> Optional[Dict[str, str]]:
     """Retrieve the current trace context."""
     trace_context = CURRENT_TRACE_CONTEXT.get()
     return trace_context if trace_context else None

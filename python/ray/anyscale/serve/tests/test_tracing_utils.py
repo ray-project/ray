@@ -21,9 +21,9 @@ from ray.anyscale.serve._private.tracing_utils import (
     _load_span_processors,
     _validate_tracing_exporter,
     _validate_tracing_exporter_processors,
-    get_trace_context,
     setup_tracing,
 )
+from ray.anyscale.serve.utils import get_trace_context
 from ray.serve._private.common import ServeComponentType
 from ray.serve._private.logging_utils import get_serve_logs_dir
 from ray.serve.config import gRPCOptions
