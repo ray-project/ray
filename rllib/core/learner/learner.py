@@ -8,6 +8,7 @@ import pathlib
 from typing import (
     Any,
     Callable,
+    Container,
     Dict,
     List,
     Hashable,
@@ -1223,6 +1224,7 @@ class Learner:
         components: Optional[Union[str, List[str]]] = None,
         *,
         inference_only: bool = False,
+        module_ids: Optional[Container[ModuleID]] = None,
     ) -> Dict[str, Any]:
         """Get (select components of) the state of this Learner.
 
@@ -1232,6 +1234,8 @@ class Learner:
             inference_only: Whether to return the inference-only weight set of the
                 underlying RLModule. Note that this setting only has an effect if
                 components is None or the string "rl_module" is in components.
+            module_ids: Optional container of ModuleIDs to be returned only within the
+                state dict. If None (default), all module IDs' weights are returned.
 
         Returns:
             The state (or select components thereof) of this Learner.
@@ -1244,7 +1248,9 @@ class Learner:
         ]
         state = {}
         if "rl_module" in components:
-            state["rl_module"] = self.get_module_state(inference_only=inference_only)
+            state["rl_module"] = self.get_module_state(
+                inference_only=inference_only, module_ids=module_ids
+            )
         if "optimizer" in components:
             state["optimizer"] = self.get_optimizer_state()
         if "modules_to_be_updated" in components:

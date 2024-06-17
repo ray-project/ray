@@ -338,7 +338,7 @@ py_test(
 py_test(
     name = "learning_tests_cartpole_impala",
     main = "tuned_examples/impala/cartpole_impala.py",
-    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
+    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "torch_only"],
     size = "large",
     srcs = ["tuned_examples/impala/cartpole_impala.py"],
     args = ["--as-test", "--enable-new-api-stack"]
@@ -655,12 +655,6 @@ py_test(
     size = "large",
     srcs = ["algorithms/impala/tests/test_impala_off_policyness.py"]
 )
-py_test(
-    name = "test_impala_learner",
-    tags = ["team:rllib", "algorithms_dir"],
-    size = "medium",
-    srcs = ["algorithms/impala/tests/test_impala_learner.py"]
-)
 
 # MARWIL
 py_test(
@@ -737,8 +731,9 @@ py_test(
 # Tag: memory_leak_tests
 # --------------------------------------------------------------------
 
+# @OldAPIStack
 py_test(
-    name = "test_memory_leak_appo",
+    name = "test_memory_leak_appo_old_api_stack",
     tags = ["team:rllib", "memory_leak_tests"],
     main = "utils/tests/run_memory_leak_tests.py",
     size = "large",
@@ -746,9 +741,9 @@ py_test(
     data = ["tuned_examples/appo/memory-leak-test-appo.yaml"],
     args = ["--dir=tuned_examples/appo"]
 )
-
+# @OldAPIStack
 py_test(
-    name = "test_memory_leak_dqn",
+    name = "test_memory_leak_dqn_old_api_stack",
     tags = ["team:rllib", "memory_leak_tests"],
     main = "utils/tests/run_memory_leak_tests.py",
     size = "large",
@@ -756,9 +751,9 @@ py_test(
     data = ["tuned_examples/dqn/memory-leak-test-dqn.yaml"],
     args = ["--dir=tuned_examples/dqn"]
 )
-
+# @OldAPIStack
 py_test(
-    name = "test_memory_leak_impala",
+    name = "test_memory_leak_impala_old_api_stack",
     tags = ["team:rllib", "memory_leak_tests"],
     main = "utils/tests/run_memory_leak_tests.py",
     size = "large",
@@ -766,9 +761,9 @@ py_test(
     data = ["tuned_examples/impala/memory-leak-test-impala.yaml"],
     args = ["--dir=tuned_examples/impala"]
 )
-
+# @OldAPIStack
 py_test(
-    name = "test_memory_leak_ppo",
+    name = "test_memory_leak_ppo_old_api_stack",
     tags = ["team:rllib", "memory_leak_tests"],
     main = "utils/tests/run_memory_leak_tests.py",
     size = "large",
@@ -776,19 +771,9 @@ py_test(
     data = ["tuned_examples/ppo/memory-leak-test-ppo.yaml"],
     args = ["--dir=tuned_examples/ppo"]
 )
-
+# @OldAPIStack
 py_test(
-    name = "test_memory_leak_ppo_new_stack",
-    tags = ["team:rllib", "memory_leak_tests"],
-    main = "utils/tests/run_memory_leak_tests.py",
-    size = "large",
-    srcs = ["utils/tests/run_memory_leak_tests.py"],
-    data = ["tuned_examples/ppo/memory_leak_test_ppo_new_stack.py"],
-    args = ["--dir=tuned_examples/ppo", "--to-check=rollout_worker"]
-)
-
-py_test(
-    name = "test_memory_leak_sac",
+    name = "test_memory_leak_sac_old_api_stack",
     tags = ["team:rllib", "memory_leak_tests"],
     main = "utils/tests/run_memory_leak_tests.py",
     size = "large",

@@ -4,6 +4,7 @@ import pathlib
 from typing import (
     Any,
     Callable,
+    Container,
     Dict,
     List,
     Optional,
@@ -766,22 +767,50 @@ class LearnerGroup:
             # raise errors if any
             self._get_results(results_or_errors)
 
-    def get_state(self) -> Dict[str, Any]:
+    def get_state(
+        self,
+        components: Optional[Container[str]] = None,
+        *,
+        inference_only: bool = False,
+        module_ids: Container[ModuleID] = None,
+    ) -> Dict[str, Any]:
         """Get the states of this LearnerGroup.
 
         Contains the Learners' state (which should be the same across Learners) and
         some other information.
 
+        Args:
+            components: An optional list of string keys to be included in the
+                returned state. This might be useful, if getting certain components
+                of the state is expensive (e.g. reading/compiling the weights of a large
+                NN) and at the same time, these components are not required by the
+                caller.
+            inference_only: Return weights with workers that keep inference-only
+                modules. This is needed for algorithms in the new stack that
+                use inference-only modules. In this case only a part of the
+                parameters are synced to the workers. Default is False.
+            module_ids: Optional container of ModuleIDs to be returned only within the
+                state dict. If None (default), all module IDs' weights are returned.
+
         Returns:
             The state dict mapping str keys to state information.
         """
         if self.is_local:
-            learner_state = self._learner.get_state()
+            learner_state = self._learner.get_state(
+                components=components,
+                inference_only=inference_only,
+                module_ids=module_ids,
+            )
         else:
             worker = self._worker_manager.healthy_actor_ids()[0]
             assert len(self._workers) == self._worker_manager.num_healthy_actors()
             results = self._worker_manager.foreach_actor(
-                lambda w: w.get_state(), remote_actor_ids=[worker]
+                lambda w: w.get_state(
+                    components=components,
+                    inference_only=inference_only,
+                    module_ids=module_ids,
+                ),
+                remote_actor_ids=[worker],
             )
             learner_state = self._get_results(results)[0]
 

@@ -20,6 +20,7 @@ from typing import (
 import ray
 from ray.actor import ActorHandle
 from ray.exceptions import RayActorError
+from ray.rllib.core.learner import LearnerGroup
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.utils.actor_manager import RemoteCallResults
@@ -52,7 +53,6 @@ from ray.util.annotations import DeveloperAPI
 
 if TYPE_CHECKING:
     from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
-    from ray.rllib.core.learner import LearnerGroup
 
 tf1, tf, tfv = try_import_tf()
 
@@ -574,7 +574,11 @@ class EnvRunnerGroup:
                     components="rl_module",
                     inference_only=inference_only,
                     module_ids=policies,
-                )["rl_module"]
+                )
+                if isinstance(weights_src, LearnerGroup):
+                    weights = weights["learner_state"]["rl_module"]
+                else:
+                    weights = weights["rl_module"]
             else:
                 weights = weights_src.get_weights(policies, inference_only)
 
