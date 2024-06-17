@@ -1,7 +1,7 @@
 .. _kuberay-tpu:
 
 Using TPUs with KubeRay
-==========
+=======================
 This document provides tips on TPU usage with KubeRay.
 
 TPUs are available on Google Kubernetes Engine (GKE). To use TPUs with Kubernetes, configure
@@ -12,7 +12,7 @@ Instructions for configuring a RayCluster with TPUs on GKE can be found here:
 
 
 Quickstart: Serve a Stable Diffusion model on GKE with TPUs
-___________________________________________________
+___________________________________________________________
 
 After setting up a GKE cluster with TPUs and the Ray TPU initialization webhook, you're ready to begin running
 workloads on Ray with TPUs. The :ref:`StableDiffusion example <kuberay-tpu-stable-diffusion-example>` shows how to
