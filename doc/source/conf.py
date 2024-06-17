@@ -34,7 +34,7 @@ sys.path.insert(0, os.path.abspath("../../python/"))
 # cross-reference to the Python function “filter”. The default is None, which doesn’t
 # reassign the default role.
 
-default_role = "py:obj"
+default_role = "code"
 
 sys.path.append(os.path.abspath("./_ext"))
 
@@ -91,6 +91,9 @@ myst_enable_extensions = [
 ]
 
 myst_heading_anchors = 3
+
+nitpicky = True
+nitpick_ignore_regex = [("py:class", ".*")]
 
 # Cache notebook outputs in _build/.jupyter_cache
 # To prevent notebook execution, set this to "off". To force re-execution, set this to
