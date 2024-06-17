@@ -17,6 +17,7 @@ user-guides/kuberay-gcs-ft
 user-guides/gke-gcs-bucket
 user-guides/logging
 user-guides/gpu
+user-guides/tpu
 user-guides/rayserve-dev-doc
 user-guides/pod-command
 user-guides/pod-security

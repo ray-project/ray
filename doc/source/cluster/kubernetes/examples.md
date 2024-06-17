@@ -8,6 +8,7 @@
 examples/ml-example
 examples/gpu-training-example
 examples/stable-diffusion-rayservice
+examples/kuberay-tpu-stable-diffusion-example
 examples/mobilenet-rayservice
 examples/text-summarizer-rayservice
 examples/rayjob-batch-inference-example
