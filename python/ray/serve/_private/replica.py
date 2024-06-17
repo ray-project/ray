@@ -731,9 +731,8 @@ class ReplicaActor:
         try:
             await self._user_callable_wrapper.call_destructor()
         except:
-            # We catch a blanket exception here because the constructor may
-            # still be running and may not have set some variables that the
-            # destructor uses.
+            # We catch a blanket exception since the constructor may still be
+            # running, so instance variables used by the destructor may not exist.
             if self._user_callable_initialized:
                 logger.exception(
                     "__del__ ran before replica finished initializing, and "
