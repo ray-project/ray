@@ -647,8 +647,9 @@ class Algorithm(Trainable, AlgorithmBase):
             logdir=self.logdir,
         )
 
-        # Ensure remote workers are initially in sync with the local worker.
-        self.workers.sync_weights(inference_only=True)
+        if not self.config.share_module_between_env_runner_and_learner:
+            # Ensure remote workers are initially in sync with the local worker.
+            self.workers.sync_weights(inference_only=True)
 
         # Compile, validate, and freeze an evaluation config.
         self.evaluation_config = self.config.get_evaluation_config_object()
@@ -788,12 +789,18 @@ class Algorithm(Trainable, AlgorithmBase):
                     lambda w: w.set_is_policy_to_train(policies_to_train),
                 )
 
-            # Sync the weights from the learner group to the rollout workers.
-            weights = self.learner_group.get_weights(
-                inference_only=self.config.enable_env_runner_and_connector_v2
-            )
-            local_worker.set_weights(weights)
-            self.workers.sync_weights(inference_only=True)
+            if self.config.share_module_between_env_runner_and_learner:
+                assert self.workers.local_worker().module is None
+                self.workers.local_worker().module = self.learner_group._learner.module[
+                    DEFAULT_MODULE_ID
+                ]
+            else:
+                # Sync the weights from the learner group to the rollout workers.
+                weights = self.learner_group.get_weights(
+                    inference_only=self.config.enable_env_runner_and_connector_v2
+                )
+                local_worker.set_weights(weights)
+                self.workers.sync_weights(inference_only=True)
 
         # Run `on_algorithm_init` callback after initialization is done.
         self.callbacks.on_algorithm_init(algorithm=self, metrics_logger=self.metrics)
@@ -1652,11 +1659,14 @@ class Algorithm(Trainable, AlgorithmBase):
         # Update weights - after learning on the local worker - on all
         # remote workers (only those RLModules that were actually trained).
         with self.metrics.log_time((TIMERS, SYNCH_WORKER_WEIGHTS_TIMER)):
-            self.workers.sync_weights(
-                from_worker_or_learner_group=self.learner_group,
-                policies=set(learner_results.keys()) - {ALL_MODULES},
-                inference_only=True,
-            )
+            # Only necessary if RLModule is not shared between (local) EnvRunner and
+            # (local) Learner.
+            if not self.config.share_module_between_env_runner_and_learner:
+                self.workers.sync_weights(
+                    from_worker_or_learner_group=self.learner_group,
+                    policies=set(learner_results.keys()) - {ALL_MODULES},
+                    inference_only=True,
+                )
 
         # Return reduced metrics (NestedDict).
         # Note that these training results will further be processed (e.g.

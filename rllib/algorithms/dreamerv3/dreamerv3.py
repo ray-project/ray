@@ -144,7 +144,7 @@ class DreamerV3Config(AlgorithmConfig):
         self.gamma = 0.997  # [1] eq. 7.
         # Do not use! Set `batch_size_B` and `batch_length_T` instead.
         self.train_batch_size = None
-        self.env_runner_cls = DreamerV3EnvRunner
+        #self.env_runner_cls = DreamerV3EnvRunner
         self.num_env_runners = 0
         self.rollout_fragment_length = 1
         # Dreamer only runs on the new API stack.
@@ -460,13 +460,6 @@ class DreamerV3Config(AlgorithmConfig):
         )
 
     @property
-    def share_module_between_env_runner_and_learner(self) -> bool:
-        # If we only have one local Learner (num_learners=0) and only
-        # one local EnvRunner (num_env_runners=0), share the RLModule
-        # between these two to avoid having to sync weights, ever.
-        return self.num_learners == 0 and self.num_env_runners == 0
-
-    @property
     @override(AlgorithmConfig)
     def _model_config_auto_includes(self) -> Dict[str, Any]:
         return super()._model_config_auto_includes | {
@@ -500,14 +493,6 @@ class DreamerV3(Algorithm):
     @override(Algorithm)
     def setup(self, config: AlgorithmConfig):
         super().setup(config)
-
-        # Share RLModule between EnvRunner and single (local) Learner instance.
-        # To avoid possibly expensive weight synching step.
-        if self.config.share_module_between_env_runner_and_learner:
-            assert self.workers.local_worker().module is None
-            self.workers.local_worker().module = self.learner_group._learner.module[
-                DEFAULT_MODULE_ID
-            ]
 
         # Summarize (single-agent) RLModule (only once) here.
         if self.config.framework_str == "tf2":

@@ -3129,6 +3129,13 @@ class AlgorithmConfig(_Config):
         return self._is_atari
 
     @property
+    def share_module_between_env_runner_and_learner(self) -> bool:
+        # If we only have one local Learner (num_learners=0) and only
+        # one local EnvRunner (num_env_runners=0), share the RLModule
+        # between these two to avoid having to sync weights, ever.
+        return self.num_learners == 0 and self.num_env_runners == 0
+
+    @property
     def total_train_batch_size(self):
         if self.train_batch_size_per_learner is not None:
             return self.train_batch_size_per_learner * (self.num_learners or 1)

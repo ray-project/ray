@@ -191,7 +191,7 @@ class BC(MARWIL):
                         global_vars=global_vars,
                     )
                 # Get weights from Learner to local worker.
-                else:
+                elif not self.config.shared_module_between_env_runner_and_learner:
                     self.workers.local_worker().set_weights(
                         self.learner_group.get_weights()
                     )

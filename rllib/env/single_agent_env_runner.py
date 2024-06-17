@@ -85,23 +85,31 @@ class SingleAgentEnvRunner(EnvRunner):
         # required in the learning step.
         self._cached_to_module = None
 
+        # Algorithm might set this to the local Learner's module if
+        policy_dict, _ = self.config.get_multi_agent_setup(env=self.env)
+        self.marl_module_spec = self.config.get_marl_module_spec(
+            policy_dict=policy_dict
+        )
+        # `share_module_between_env_runner_and_learner=True`.
+        self.module = None
         # Create our own instance of the (single-agent) `RLModule` (which
         # the needs to be weight-synched) each iteration.
-        try:
-            module_spec: SingleAgentRLModuleSpec = self.config.rl_module_spec
-            module_spec.observation_space = self._env_to_module.observation_space
-            module_spec.action_space = self.env.unwrapped.single_action_space
-            if module_spec.model_config_dict is None:
-                module_spec.model_config_dict = self.config.model_config
-            # Only load a light version of the module, if available. This is useful
-            # if the the module has target or critic networks not needed in sampling
-            # or inference.
-            # TODO (simon): Once we use `get_marl_module_spec` here, we can remove
-            # this line here as the function takes care of this flag.
-            module_spec.model_config_dict[INFERENCE_ONLY] = True
-            self.module: RLModule = module_spec.build()
-        except NotImplementedError:
-            self.module = None
+        if not self.config.share_module_between_env_runner_and_learner:
+            try:
+                module_spec: SingleAgentRLModuleSpec = self.config.rl_module_spec
+                module_spec.observation_space = self._env_to_module.observation_space
+                module_spec.action_space = self.env.unwrapped.single_action_space
+                if module_spec.model_config_dict is None:
+                    module_spec.model_config_dict = self.config.model_config
+                # Only load a light version of the module, if available. This is useful
+                # if the the module has target or critic networks not needed in sampling
+                # or inference.
+                # TODO (simon): Once we use `get_marl_module_spec` here, we can remove
+                #  this line here as the function takes care of this flag.
+                module_spec.model_config_dict[INFERENCE_ONLY] = True
+                self.module: RLModule = module_spec.build()
+            except NotImplementedError:
+                pass
 
         # Create the two connector pipelines: env-to-module and module-to-env.
         self._module_to_env = self.config.build_module_to_env_connector(self.env)
@@ -451,6 +459,9 @@ class SingleAgentEnvRunner(EnvRunner):
                 change wrt. the last call - will ignore the call to save on performance.
 
         """
+        if self.module is None:
+            assert self.config.share_module_between_env_runner_and_learner
+            return
 
         # Only update the weigths, if this is the first synchronization or
         # if the weights of this `EnvRunner` lacks behind the actual ones.
@@ -462,6 +473,9 @@ class SingleAgentEnvRunner(EnvRunner):
 
     def get_weights(self, modules=None, inference_only: bool = False):
         """Returns the weights of our (single-agent) RLModule."""
+        if self.module is None:
+            assert self.config.share_module_between_env_runner_and_learner
+            return {}
 
         return self.module.get_state(inference_only=inference_only)
 
