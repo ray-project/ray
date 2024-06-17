@@ -1,11 +1,7 @@
 from gymnasium.spaces import Dict, Tuple, Box, Discrete, MultiDiscrete
 
 from ray.tune.registry import register_env
-from ray.rllib.connectors.env_to_module import (
-    AddObservationsFromEpisodesToBatch,
-    FlattenObservations,
-    WriteObservationsToEpisodes,
-)
+from ray.rllib.connectors.env_to_module import FlattenObservations
 from ray.rllib.examples.envs.classes.multi_agent import (
     MultiAgentNestedSpaceRepeatAfterMeEnv,
 )
@@ -26,13 +22,13 @@ parser = add_rllib_example_script_args(default_timesteps=200000, default_reward=
 if __name__ == "__main__":
     args = parser.parse_args()
 
+    assert (
+        args.enable_new_api_stack
+    ), "Must set --enable-new-api-stack when running this script!"
+
     # Define env-to-module-connector pipeline for the new stack.
     def _env_to_module_pipeline(env):
-        return [
-            AddObservationsFromEpisodesToBatch(),
-            FlattenObservations(multi_agent=args.num_agents > 0),
-            WriteObservationsToEpisodes(),
-        ]
+        return FlattenObservations(multi_agent=args.num_agents > 0)
 
     # Register our environment with tune.
     if args.num_agents > 0:

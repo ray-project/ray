@@ -1,5 +1,4 @@
 import threading
-import warnings
 from typing import Any, List, Optional
 
 import ray
@@ -32,18 +31,10 @@ def set_progress_bars(enabled: bool) -> bool:
     Returns:
         Whether progress bars were previously enabled.
     """
-    from ray.data import DataContext
-
-    warnings.warn(
+    raise DeprecationWarning(
         "`set_progress_bars` is deprecated. Set "
         "`ray.data.DataContext.get_current().enable_progress_bars` instead.",
-        DeprecationWarning,
     )
-
-    ctx = DataContext.get_current()
-    old_value = ctx.enable_progress_bars
-    ctx.enable_progress_bars = enabled
-    return old_value
 
 
 class ProgressBar:
