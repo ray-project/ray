@@ -77,6 +77,8 @@ from ray.includes.common cimport (
     CObjectReference,
     CWorkerExitType,
     CRayObject,
+    StatusCode,
+    StatusCode_OK,
     CRayStatus,
     CActorTableData,
     CErrorTableData,
@@ -216,6 +218,7 @@ include "includes/ray_config.pxi"
 include "includes/function_descriptor.pxi"
 include "includes/buffer.pxi"
 include "includes/common.pxi"
+include "includes/gcs_client.pxi"
 include "includes/serialization.pxi"
 include "includes/libcoreworker.pxi"
 include "includes/global_state_accessor.pxi"
@@ -551,46 +554,6 @@ class ObjectRefGenerator:
 
 # For backward compatibility.
 StreamingObjectRefGenerator = ObjectRefGenerator
-
-cdef int check_status(const CRayStatus& status) nogil except -1:
-    if status.ok():
-        return 0
-
-    with gil:
-        message = status.message().decode()
-
-    if status.IsObjectStoreFull():
-        raise ObjectStoreFullError(message)
-    elif status.IsInvalidArgument():
-        raise ValueError(message)
-    elif status.IsOutOfDisk():
-        raise OutOfDiskError(message)
-    elif status.IsObjectRefEndOfStream():
-        raise ObjectRefStreamEndOfStreamError(message)
-    elif status.IsInterrupted():
-        raise KeyboardInterrupt()
-    elif status.IsTimedOut():
-        raise GetTimeoutError(message)
-    elif status.IsNotFound():
-        raise ValueError(message)
-    elif status.IsObjectNotFound():
-        raise ValueError(message)
-    elif status.IsObjectUnknownOwner():
-        raise ValueError(message)
-    elif status.IsIOError():
-        raise IOError(message)
-    elif status.IsRpcError():
-        raise RpcError(message, rpc_code=status.rpc_code())
-    elif status.IsIntentionalSystemExit():
-        with gil:
-            raise_sys_exit_with_custom_error_message(message)
-    elif status.IsUnexpectedSystemExit():
-        with gil:
-            raise_sys_exit_with_custom_error_message(
-                message, exit_code=1)
-    else:
-        raise RaySystemError(message)
-
 
 cdef c_bool is_plasma_object(shared_ptr[CRayObject] obj):
     """Return True if the given object is a plasma object."""
@@ -2716,11 +2679,13 @@ cdef class GcsClient:
         object address
         object _nums_reconnect_retry
         ClusterID cluster_id
+        MyGcsClient my_gcs_client
 
     def __cinit__(self, address,
                   nums_reconnect_retry=RayConfig.instance().nums_py_gcs_reconnect_retry(
                   ),
                   cluster_id: str = None):
+        self.my_gcs_client = MyGcsClient.standalone(address, cluster_id)
         cdef GcsClientOptions gcs_options = GcsClientOptions.from_gcs_address(address)
         self.inner.reset(new CPythonGcsClient(dereference(gcs_options.native())))
         self.address = address
@@ -2760,115 +2725,36 @@ cdef class GcsClient:
     def _nums_reconnect_retry(self):
         return self._nums_reconnect_retry
 
-    @_auto_reconnect
-    def check_alive(
-        self, node_ips: c_vector[c_string], timeout: Optional[float] = None
-    ):
-        cdef:
-            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
-            c_vector[c_bool] c_result
-        with nogil:
-            check_status(self.inner.get().CheckAlive(node_ips, timeout_ms, c_result))
-        result = []
-        for r in c_result:
-            result.append(r)
-        return result
+    def __getattr__(self, name):
+        my_gcs_client_methods = [
+            # Internal KV
+            "internal_kv_get",
+            "internal_kv_multi_get",
+            "internal_kv_put",
+            "internal_kv_del",
+            "internal_kv_exists",
+            "internal_kv_keys",
+            # Jobs
+            "get_all_job_info",
+            # Nodes
+            "check_alive",
+            "drain_nodes",
+            # Node Resources
+            "get_all_resource_usage",
+            # Autoscaler
+            "request_cluster_resource_constraint",
+            "get_cluster_resource_state",
+            "get_cluster_status",
+            "report_autoscaling_state",
+            "drain_node"
+        ]
+        if name in my_gcs_client_methods:
+            if "TEST_RAY_COLLECT_KV_FREQUENCY" in os.environ:
+                with ray._private.utils._CALLED_FREQ_LOCK:
+                    ray._private.utils._CALLED_FREQ[name] += 1
 
-    @_auto_reconnect
-    def internal_kv_get(self, c_string key, namespace=None, timeout=None):
-        cdef:
-            c_string ns = namespace or b""
-            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
-            c_string value
-            CRayStatus status
-        with nogil:
-            status = self.inner.get().InternalKVGet(ns, key, timeout_ms, value)
-        if status.IsKeyError():
-            return None
-        else:
-            check_status(status)
-            return value
-
-    @_auto_reconnect
-    def internal_kv_multi_get(self, keys, namespace=None, timeout=None):
-        cdef:
-            c_string ns = namespace or b""
-            c_vector[c_string] c_keys
-            c_string c_key
-            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
-            unordered_map[c_string, c_string] c_result
-            unordered_map[c_string, c_string].iterator it
-
-        for c_key in keys:
-            c_keys.push_back(c_key)
-        with nogil:
-            check_status(self.inner.get().InternalKVMultiGet(
-                ns, c_keys, timeout_ms, c_result))
-
-        result = {}
-        it = c_result.begin()
-        while it != c_result.end():
-            key = dereference(it).first
-            value = dereference(it).second
-            result[key] = value
-            postincrement(it)
-        return result
-
-    @_auto_reconnect
-    def internal_kv_put(self, c_string key, c_string value, c_bool overwrite=False,
-                        namespace=None, timeout=None):
-        cdef:
-            c_string ns = namespace or b""
-            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
-            int num_added = 0
-        with nogil:
-            check_status(self.inner.get().InternalKVPut(
-                ns, key, value, overwrite, timeout_ms, num_added))
-
-        return num_added
-
-    @_auto_reconnect
-    def internal_kv_del(self, c_string key, c_bool del_by_prefix,
-                        namespace=None, timeout=None):
-        cdef:
-            c_string ns = namespace or b""
-            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
-            int num_deleted = 0
-        with nogil:
-            check_status(self.inner.get().InternalKVDel(
-                ns, key, del_by_prefix, timeout_ms, num_deleted))
-
-        return num_deleted
-
-    @_auto_reconnect
-    def internal_kv_keys(self, c_string prefix, namespace=None, timeout=None):
-        cdef:
-            c_string ns = namespace or b""
-            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
-            c_vector[c_string] keys
-            c_string key
-
-        with nogil:
-            check_status(self.inner.get().InternalKVKeys(
-                ns, prefix, timeout_ms, keys))
-
-        result = []
-
-        for key in keys:
-            result.append(key)
-
-        return result
-
-    @_auto_reconnect
-    def internal_kv_exists(self, c_string key, namespace=None, timeout=None):
-        cdef:
-            c_string ns = namespace or b""
-            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
-            c_bool exists = False
-        with nogil:
-            check_status(self.inner.get().InternalKVExists(
-                ns, key, timeout_ms, exists))
-        return exists
+            return getattr(self.my_gcs_client, name)
+        raise AttributeError(f"'GcsClient' object has no attribute '{name}'")
 
     @_auto_reconnect
     def pin_runtime_env_uri(self, str uri, int expiration_s, timeout=None):
@@ -2899,138 +2785,6 @@ cdef class GcsClient:
             }
         return result
 
-    @_auto_reconnect
-    def get_all_job_info(self, timeout=None) -> Dict[bytes, JobTableData]:
-        # Ideally we should use json_format.MessageToDict(job_info),
-        # but `job_info` is a cpp pb message not a python one.
-        # Manually converting each and every protobuf field is out of question,
-        # so we serialize the pb to string to cross the FFI interface.
-        cdef:
-            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
-            CJobTableData c_job_info
-            c_vector[CJobTableData] c_job_infos
-            c_vector[c_string] serialized_job_infos
-        with nogil:
-            check_status(self.inner.get().GetAllJobInfo(timeout_ms, c_job_infos))
-            for c_job_info in c_job_infos:
-                serialized_job_infos.push_back(c_job_info.SerializeAsString())
-        result = {}
-        for serialized in serialized_job_infos:
-            job_info = JobTableData()
-            job_info.ParseFromString(serialized)
-            result[job_info.job_id] = job_info
-        return result
-
-    @_auto_reconnect
-    def get_all_resource_usage(self, timeout=None) -> GetAllResourceUsageReply:
-        cdef:
-            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
-            c_string serialized_reply
-
-        with nogil:
-            check_status(self.inner.get().GetAllResourceUsage(
-                timeout_ms, serialized_reply))
-
-        reply = GetAllResourceUsageReply()
-        reply.ParseFromString(serialized_reply)
-        return reply
-    ########################################################
-    # Interface for rpc::autoscaler::AutoscalerStateService
-    ########################################################
-
-    @_auto_reconnect
-    def request_cluster_resource_constraint(
-            self,
-            bundles: c_vector[unordered_map[c_string, double]],
-            count_array: c_vector[int64_t],
-            timeout_s=None):
-        cdef:
-            int64_t timeout_ms = round(1000 * timeout_s) if timeout_s else -1
-        with nogil:
-            check_status(self.inner.get().RequestClusterResourceConstraint(
-                timeout_ms, bundles, count_array))
-
-    @_auto_reconnect
-    def get_cluster_resource_state(
-            self,
-            timeout_s=None):
-        cdef:
-            int64_t timeout_ms = round(1000 * timeout_s) if timeout_s else -1
-            c_string serialized_reply
-        with nogil:
-            check_status(self.inner.get().GetClusterResourceState(timeout_ms,
-                         serialized_reply))
-
-        return serialized_reply
-
-    @_auto_reconnect
-    def get_cluster_status(
-            self,
-            timeout_s=None):
-        cdef:
-            int64_t timeout_ms = round(1000 * timeout_s) if timeout_s else -1
-            c_string serialized_reply
-        with nogil:
-            check_status(self.inner.get().GetClusterStatus(timeout_ms,
-                         serialized_reply))
-
-        return serialized_reply
-
-    @_auto_reconnect
-    def report_autoscaling_state(
-        self,
-        serialzied_state: c_string,
-        timeout_s=None
-    ):
-        """Report autoscaling state to GCS"""
-        cdef:
-            int64_t timeout_ms = round(1000 * timeout_s) if timeout_s else -1
-        with nogil:
-            check_status(self.inner.get().ReportAutoscalingState(
-                timeout_ms, serialzied_state))
-
-    @_auto_reconnect
-    def drain_node(
-            self,
-            node_id: c_string,
-            reason: int32_t,
-            reason_message: c_string,
-            deadline_timestamp_ms: int64_t):
-        """Send the DrainNode request to GCS.
-
-        This is only for testing.
-        """
-        cdef:
-            int64_t timeout_ms = -1
-            c_bool is_accepted = False
-            c_string rejection_reason_message
-        with nogil:
-            check_status(self.inner.get().DrainNode(
-                node_id, reason, reason_message,
-                deadline_timestamp_ms, timeout_ms, is_accepted,
-                rejection_reason_message))
-
-        return (is_accepted, rejection_reason_message.decode())
-
-    @_auto_reconnect
-    def drain_nodes(self, node_ids, timeout=None):
-        cdef:
-            c_vector[c_string] c_node_ids
-            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
-            c_vector[c_string] c_drained_node_ids
-        for node_id in node_ids:
-            c_node_ids.push_back(node_id)
-        with nogil:
-            check_status(self.inner.get().DrainNodes(
-                c_node_ids, timeout_ms, c_drained_node_ids))
-        result = []
-        for drain_node_id in c_drained_node_ids:
-            result.append(drain_node_id)
-        return result
-
-    #############################################################
-    # Interface for rpc::autoscaler::AutoscalerStateService ends
-    #############################################################
 cdef class GcsPublisher:
     """Cython wrapper class of C++ `ray::gcs::PythonGcsPublisher`."""
     cdef:

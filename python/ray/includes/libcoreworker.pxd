@@ -45,6 +45,7 @@ from ray.includes.common cimport (
     CConcurrencyGroup,
     CSchedulingStrategy,
     CWorkerExitType,
+    CGcsClient,
 )
 from ray.includes.function_descriptor cimport (
     CFunctionDescriptor,
@@ -186,6 +187,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
             const c_bool is_debugger_paused)
         int64_t GetCurrentTaskAttemptNumber()
         CNodeID GetCurrentNodeId()
+        shared_ptr[CGcsClient] GetGcsClient()
         int64_t GetTaskDepth()
         c_bool GetCurrentTaskRetryExceptions()
         CPlacementGroupID GetCurrentPlacementGroupId()

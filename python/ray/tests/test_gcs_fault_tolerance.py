@@ -483,6 +483,8 @@ def test_gcs_aio_client_reconnect(
                 )
                 await gcs_aio_client.internal_kv_get(b"a", None)
         else:
+            # TODO(ryw) DO NOT SUBMIT: nums_reconnect_retry is now ignored, need to do
+            # reconn on GCS unavailable
             gcs_aio_client = gcs_utils.GcsAioClient(
                 address=gcs_address, nums_reconnect_retry=20
             )

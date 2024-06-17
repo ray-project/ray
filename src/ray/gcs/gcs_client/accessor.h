@@ -244,9 +244,19 @@ class JobInfoAccessor {
 
   /// Get all job info from GCS asynchronously.
   ///
+  /// \param timeout_ms -1 means infinite.
   /// \param callback Callback that will be called after lookup finished.
   /// \return Status
-  virtual Status AsyncGetAll(const MultiItemCallback<rpc::JobTableData> &callback);
+  virtual Status AsyncGetAll(int64_t timeout_ms,
+                             const MultiItemCallback<rpc::JobTableData> &callback);
+
+  /// Get all job info from GCS synchronously.
+  ///
+  /// \param timeout_ms -1 means infinite.
+  /// \param[out] job_data_list The list of job data retrieved from GCS.
+  /// \return Status
+  virtual Status GetAll(int64_t timeout_ms,
+                        std::vector<rpc::JobTableData> &job_data_list);
 
   /// Reestablish subscription.
   /// This should be called when GCS server restarts from a failure.
@@ -390,6 +400,19 @@ class NodeInfoAccessor {
                             int64_t timeout_ms,
                             std::vector<bool> &nodes_alive);
 
+  /// Drain (remove the information of the nodes from the cluster) the specified nodes
+  /// from GCS synchronously.
+  ///
+  /// Check gcs_service.proto NodeInfoGcsService.DrainNode for the API spec.
+  ///
+  /// \param node_ids The IDs of nodes to be unregistered.
+  /// \param timeout_ms The timeout for this request.
+  /// \param drained_node_ids The IDs of nodes that are drained.
+  /// \return Status
+  virtual Status DrainNodes(const std::vector<NodeID> &node_ids,
+                            int64_t timeout_ms,
+                            std::vector<std::string> &drained_node_ids);
+
   /// Search the local cache to find out if the given node is removed.
   /// Non-thread safe.
   /// Note, the local cache is only available if `AsyncSubscribeToNodeChange`
@@ -487,7 +510,14 @@ class NodeResourceInfoAccessor {
   virtual Status AsyncGetAllResourceUsage(
       const ItemCallback<rpc::ResourceUsageBatchData> &callback);
 
- private:
+  /// Get newest resource usage of all nodes from GCS synchronously.
+  ///
+  /// \param timeout_ms -1 means infinite.
+  /// \param resource_usage_batch_data The resource usage of all nodes.
+  /// \return Status
+  virtual Status GetAllResourceUsage(int64_t timeout_ms,
+                                     rpc::GetAllResourceUsageReply &reply);
+
   /// Save the subscribe operation in this function, so we can call it again when PubSub
   /// server restarts from a failure.
   SubscribeOperation subscribe_resource_operation_;
@@ -743,8 +773,7 @@ class InternalKVAccessor {
       const std::string &ns,
       const std::vector<std::string> &keys,
       const int64_t timeout_ms,
-      const OptionalItemCallback<absl::flat_hash_map<std::string, std::string>>
-          &callback);
+      const OptionalItemCallback<std::unordered_map<std::string, std::string>> &callback);
 
   /// Asynchronously set the value for a given key.
   ///
@@ -848,7 +877,7 @@ class InternalKVAccessor {
   virtual Status MultiGet(const std::string &ns,
                           const std::vector<std::string> &keys,
                           const int64_t timeout_ms,
-                          absl::flat_hash_map<std::string, std::string> &values);
+                          std::unordered_map<std::string, std::string> &values);
 
   /// Delete the key
   ///
@@ -880,6 +909,41 @@ class InternalKVAccessor {
                         const std::string &key,
                         const int64_t timeout_ms,
                         bool &exists);
+
+ private:
+  GcsClient *client_impl_;
+};
+
+/// \class AutoscalerStateAccessor
+/// `AutoscalerStateAccessor` is a sub-interface of `GcsClient`.
+/// This class includes all the methods that are related to accessing
+/// autoscaler state information in the GCS.
+class AutoscalerStateAccessor {
+ public:
+  AutoscalerStateAccessor() = default;
+  explicit AutoscalerStateAccessor(GcsClient *client_impl);
+  virtual ~AutoscalerStateAccessor() = default;
+
+  virtual Status RequestClusterResourceConstraint(
+      int64_t timeout_ms,
+      const std::vector<std::unordered_map<std::string, double>> &bundles,
+      const std::vector<int64_t> &count_array);
+
+  virtual Status GetClusterResourceState(int64_t timeout_ms,
+                                         std::string &serialized_reply);
+
+  virtual Status GetClusterStatus(int64_t timeout_ms, std::string &serialized_reply);
+
+  virtual Status ReportAutoscalingState(int64_t timeout_ms,
+                                        const std::string &serialized_state);
+
+  virtual Status DrainNode(const std::string &node_id,
+                           int32_t reason,
+                           const std::string &reason_message,
+                           int64_t deadline_timestamp_ms,
+                           int64_t timeout_ms,
+                           bool &is_accepted,
+                           std::string &rejection_reason_message);
 
  private:
   GcsClient *client_impl_;

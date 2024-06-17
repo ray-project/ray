@@ -1,7 +1,7 @@
 from libcpp cimport bool as c_bool
 from libcpp.memory cimport shared_ptr, unique_ptr
 from libcpp.string cimport string as c_string
-
+from libcpp.functional cimport function
 from libc.stdint cimport uint8_t, int32_t, uint64_t, int64_t, uint32_t
 from libcpp.unordered_map cimport unordered_map
 from libcpp.vector cimport vector as c_vector
@@ -43,14 +43,27 @@ cdef extern from * namespace "polyfill" nogil:
     cdef T move[T](T)
 
 
-cdef extern from "ray/common/status.h" namespace "ray" nogil:
-    cdef cppclass StatusCode:
+cdef extern from "ray/common/status.h" nogil:
+    cdef cppclass StatusCode "ray::StatusCode":
         pass
+    cdef StatusCode StatusCode_OK "ray::StatusCode::OK"
+    cdef StatusCode StatusCode_OutOfMemory "ray::StatusCode::OutOfMemory"
+    cdef StatusCode StatusCode_KeyError "ray::StatusCode::KeyError"
+    cdef StatusCode StatusCode_TypeError "ray::StatusCode::TypeError"
+    cdef StatusCode StatusCode_Invalid "ray::StatusCode::Invalid"
+    cdef StatusCode StatusCode_IOError "ray::StatusCode::IOError"
+    cdef StatusCode StatusCode_UnknownError "ray::StatusCode::UnknownError"
+    cdef StatusCode StatusCode_NotImplemented "ray::StatusCode::NotImplemented"
+    cdef StatusCode StatusCode_RedisError "ray::StatusCode::RedisError"
 
+    bint operator==(StatusCode, StatusCode)
+
+cdef extern from "ray/common/status.h" namespace "ray" nogil:
     cdef cppclass CRayStatus "ray::Status":
-        RayStatus()
-        RayStatus(StatusCode code, const c_string &msg)
-        RayStatus(const CRayStatus &s)
+        CRayStatus()
+        CRayStatus(StatusCode code, const c_string &msg)
+        CRayStatus(StatusCode code, const c_string &msg, int rpc_code)
+        CRayStatus(const CRayStatus &s)
 
         @staticmethod
         CRayStatus OK()
@@ -140,19 +153,6 @@ cdef extern from "ray/common/status.h" namespace "ray" nogil:
     cdef CRayStatus RayStatus_OK "Status::OK"()
     cdef CRayStatus RayStatus_Invalid "Status::Invalid"()
     cdef CRayStatus RayStatus_NotImplemented "Status::NotImplemented"()
-
-
-cdef extern from "ray/common/status.h" namespace "ray::StatusCode" nogil:
-    cdef StatusCode StatusCode_OK "OK"
-    cdef StatusCode StatusCode_OutOfMemory "OutOfMemory"
-    cdef StatusCode StatusCode_KeyError "KeyError"
-    cdef StatusCode StatusCode_TypeError "TypeError"
-    cdef StatusCode StatusCode_Invalid "Invalid"
-    cdef StatusCode StatusCode_IOError "IOError"
-    cdef StatusCode StatusCode_UnknownError "UnknownError"
-    cdef StatusCode StatusCode_NotImplemented "NotImplemented"
-    cdef StatusCode StatusCode_RedisError "RedisError"
-
 
 cdef extern from "ray/common/id.h" namespace "ray" nogil:
     const CTaskID GenerateTaskId(const CJobID &job_id,
@@ -372,6 +372,164 @@ cdef extern from "ray/core_worker/common.h" nogil:
         const c_string &GetSpilledURL() const
         const CNodeID &GetSpilledNodeID() const
         const c_bool GetDidSpill() const
+cdef extern from "ray/gcs/gcs_client/python_callbacks.h" namespace "ray" nogil:
+    # Each type needs default constructors asked by cython.
+    cdef cppclass PyDefaultCallback:
+        PyDefaultCallback()
+        PyDefaultCallback(object py_callback)
+    cdef cppclass PyMultiItemCallback[Item]:
+        PyMultiItemCallback()
+        PyMultiItemCallback(object py_callback)
+    cdef cppclass BoolConverter:
+        pass
+cdef extern from "ray/gcs/gcs_client/accessor.h" nogil:
+    cdef cppclass CActorInfoAccessor "ray::gcs::ActorInfoAccessor":
+        pass
+
+    cdef cppclass CJobInfoAccessor "ray::gcs::JobInfoAccessor":
+        CRayStatus AsyncGetNextJobID(
+            const PyDefaultCallback &callback)
+        CRayStatus AsyncGetAll(
+            int64_t timeout_ms,
+            const PyDefaultCallback &callback)
+        CRayStatus GetAll(
+            int64_t timeout_ms,
+            c_vector[CJobTableData] &result)
+
+    cdef cppclass CNodeInfoAccessor "ray::gcs::NodeInfoAccessor":
+        CRayStatus AsyncCheckAlive(
+            const c_vector[c_string] &raylet_addresses,
+            int64_t timeout_ms,
+            const PyMultiItemCallback[BoolConverter] &callback)
+
+        CRayStatus CheckAlive(
+            const c_vector[c_string] &raylet_addresses,
+            int64_t timeout_ms,
+            c_vector[c_bool] &result)
+
+        CRayStatus DrainNodes(
+            const c_vector[CNodeID] &node_ids,
+            int64_t timeout_ms,
+            c_vector[c_string] &drained_node_ids)
+
+    cdef cppclass CNodeResourceInfoAccessor "ray::gcs::NodeResourceInfoAccessor":
+        CRayStatus GetAllResourceUsage(
+            int64_t timeout_ms,
+            CGetAllResourceUsageReply &serialized_reply)
+
+    cdef cppclass CInternalKVAccessor "ray::gcs::InternalKVAccessor":
+        CRayStatus AsyncInternalKVKeys(
+            const c_string &ns,
+            const c_string &prefix,
+            int64_t timeout_ms,
+            const PyDefaultCallback &callback)
+
+        CRayStatus AsyncInternalKVGet(
+            const c_string &ns,
+            const c_string &key,
+            int64_t timeout_ms,
+            const PyDefaultCallback &callback)
+
+
+        CRayStatus AsyncInternalKVMultiGet(
+            const c_string &ns,
+            const c_vector[c_string] &keys,
+            int64_t timeout_ms,
+            const PyDefaultCallback &callback)
+
+        CRayStatus AsyncInternalKVPut(
+            const c_string &ns,
+            const c_string &key,
+            const c_string &value,
+            c_bool overwrite,
+            int64_t timeout_ms,
+            const PyDefaultCallback &callback)
+
+        CRayStatus AsyncInternalKVExists(
+            const c_string &ns,
+            const c_string &key,
+            int64_t timeout_ms,
+            const PyDefaultCallback &callback)
+
+        CRayStatus AsyncInternalKVDel(
+            const c_string &ns,
+            const c_string &key,
+            c_bool del_by_prefix,
+            int64_t timeout_ms,
+            const PyDefaultCallback &callback)
+
+        CRayStatus Keys(
+            const c_string &ns,
+            const c_string &prefix,
+            int64_t timeout_ms,
+            c_vector[c_string] &value)
+
+        CRayStatus Put(
+            const c_string &ns,
+            const c_string &key,
+            const c_string &value,
+            c_bool overwrite,
+            int64_t timeout_ms,
+            c_bool &added)
+
+        CRayStatus Get(
+            const c_string &ns,
+            const c_string &key,
+            int64_t timeout_ms,
+            c_string &value)
+
+        CRayStatus MultiGet(
+            const c_string &ns,
+            const c_vector[c_string] &keys,
+            int64_t timeout_ms,
+            unordered_map[c_string, c_string] &values)
+
+        CRayStatus Del(
+            const c_string &ns,
+            const c_string &key,
+            c_bool del_by_prefix,
+            int64_t timeout_ms,
+            int& num_deleted)
+
+        CRayStatus Exists(
+            const c_string &ns,
+            const c_string &key,
+            int64_t timeout_ms,
+            c_bool &exists)
+
+    cdef cppclass CAutoscalerStateAccessor "ray::gcs::AutoscalerStateAccessor":
+
+        CRayStatus RequestClusterResourceConstraint(
+            int64_t timeout_ms,
+            const c_vector[unordered_map[c_string, double]] &bundles,
+            const c_vector[int64_t] &count_array
+        )
+
+        CRayStatus GetClusterResourceState(
+            int64_t timeout_ms,
+            c_string &serialized_reply
+        )
+
+        CRayStatus GetClusterStatus(
+            int64_t timeout_ms,
+            c_string &serialized_reply
+        )
+
+        CRayStatus ReportAutoscalingState(
+            int64_t timeout_ms,
+            const c_string &serialized_state
+        )
+
+        CRayStatus DrainNode(
+            const c_string &node_id,
+            int32_t reason,
+            const c_string &reason_message,
+            int64_t deadline_timestamp_ms,
+            int64_t timeout_ms,
+            c_bool &is_accepted,
+            c_string &rejection_reason_message
+        )
+
 
 cdef extern from "ray/gcs/gcs_client/gcs_client.h" nogil:
     cdef enum CGrpcStatusCode "grpc::StatusCode":
@@ -383,6 +541,22 @@ cdef extern from "ray/gcs/gcs_client/gcs_client.h" nogil:
 
     cdef cppclass CGcsClientOptions "ray::gcs::GcsClientOptions":
         CGcsClientOptions(const c_string &gcs_address, int port)
+
+    cdef cppclass CGcsClient "ray::gcs::GcsClient":
+        CGcsClient(const CGcsClientOptions &options)
+
+        c_pair[c_string, int] GetGcsServerAddress() const
+        CClusterID GetClusterId() const
+
+        CActorInfoAccessor& Actors()
+        CJobInfoAccessor& Jobs()
+        CInternalKVAccessor& InternalKV()
+        CNodeInfoAccessor& Nodes()
+        CNodeResourceInfoAccessor& NodeResources()
+        CAutoscalerStateAccessor& Autoscaler()
+
+    shared_ptr[CGcsClient] ConnectToGcsStandalone(
+        const CGcsClientOptions &options, const CClusterID &cluster_id)
 
     cdef cppclass CPythonGcsClient "ray::gcs::PythonGcsClient":
         CPythonGcsClient(const CGcsClientOptions &options)
@@ -534,7 +708,10 @@ cdef extern from "src/ray/protobuf/gcs.pb.h" nogil:
         c_string job_id() const
         c_bool is_dead() const
         CJobConfig config() const
-        const c_string &SerializeAsString()
+        const c_string &SerializeAsString() const
+
+    cdef cppclass CGetAllResourceUsageReply "ray::rpc::GetAllResourceUsageReply":
+        const c_string& SerializeAsString() const
 
     cdef cppclass CPythonFunction "ray::rpc::PythonFunction":
         void set_key(const c_string &key)

@@ -437,6 +437,7 @@ struct GcsServerMocker {
     }
 
     Status AsyncGetAll(
+        int64_t timeout_ms,
         const gcs::MultiItemCallback<rpc::GcsNodeInfo> &callback) override {
       if (callback) {
         callback(Status::OK(), {});

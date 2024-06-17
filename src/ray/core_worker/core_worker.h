@@ -374,6 +374,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   NodeID GetCurrentNodeId() const { return NodeID::FromBinary(rpc_address_.raylet_id()); }
 
+  std::shared_ptr<gcs::GcsClient> GetGcsClient() const { return gcs_client_; }
+
   /// Read the next index of a ObjectRefStream of generator_id.
   /// This API always return immediately.
   ///

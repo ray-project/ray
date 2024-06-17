@@ -96,6 +96,13 @@ class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient> {
 
   virtual std::pair<std::string, int> GetGcsServerAddress() const;
 
+  virtual ClusterID GetClusterId() const {
+    if (client_call_manager_) {
+      return client_call_manager_->GetClusterId();
+    }
+    return ClusterID::Nil();
+  }
+
   /// Return client information for debug.
   virtual std::string DebugString() const { return ""; }
 
@@ -160,6 +167,11 @@ class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient> {
     return *placement_group_accessor_;
   }
 
+  AutoscalerStateAccessor &Autoscaler() {
+    RAY_CHECK(autoscaler_state_accessor_ != nullptr);
+    return *autoscaler_state_accessor_;
+  }
+
   const ClusterID &GetClusterId() {
     RAY_CHECK(client_call_manager_) << "Cannot retrieve cluster ID before it is set.";
     return client_call_manager_->GetClusterId();
@@ -184,8 +196,8 @@ class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient> {
   std::unique_ptr<WorkerInfoAccessor> worker_accessor_;
   std::unique_ptr<PlacementGroupInfoAccessor> placement_group_accessor_;
   std::unique_ptr<InternalKVAccessor> internal_kv_accessor_;
-
   std::unique_ptr<TaskInfoAccessor> task_accessor_;
+  std::unique_ptr<AutoscalerStateAccessor> autoscaler_state_accessor_;
 
  private:
   const UniqueID gcs_client_id_ = UniqueID::FromRandom();
@@ -197,6 +209,13 @@ class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient> {
   std::unique_ptr<rpc::ClientCallManager> client_call_manager_;
   std::function<void()> resubscribe_func_;
 };
+
+// Creates a GcsClient that connects to an existing GCS server. The GcsClient listens
+// on a dedicated singleton io_context on a dedicated thread, that all GcsClients created
+// this way share. The io_context and the thread are lazily created when the first
+// GcsClient is created.
+std::shared_ptr<GcsClient> ConnectToGcsStandalone(
+    const GcsClientOptions &options, const ClusterID &cluster_id = ClusterID::Nil());
 
 // This client is only supposed to be used from Cython / Python
 class RAY_EXPORT PythonGcsClient {
