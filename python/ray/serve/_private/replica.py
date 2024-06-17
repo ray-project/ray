@@ -727,25 +727,22 @@ class ReplicaActor:
         # can skip the wait period.
         if self._user_callable_initialized:
             await self._drain_ongoing_requests()
+
+        try:
             await self._user_callable_wrapper.call_destructor()
-        else:
-            try:
-                await self._user_callable_wrapper.call_destructor()
-            except:
-                # We catch a blanket exception here because the constructor is
-                # still running and may not have set some variables that the
-                # destructor uses. As a result, the destructor may fail for
-                # many reasons.
+        except:
+            # We catch a blanket exception here because the constructor may
+            # still be running and may not have set some variables that the
+            # destructor uses.
+            if self._user_callable_initialized:
                 logger.exception(
                     "__del__ ran before replica finished initializing, and "
                     "raised an exception."
                 )
+            else:
+                logger.exception("__del__ raised an exception.")
 
         await self._metrics_manager.shutdown()
-
-        # We call the destructor last because the replica may not have
-        # been initialized yet. The destructor may depend on instance variables
-        # that haven't been set yet, so it may raise an error.
 
     async def check_health(self):
         await self._user_callable_wrapper.call_user_health_check()
