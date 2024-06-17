@@ -730,7 +730,7 @@ class ReplicaActor:
 
         try:
             await self._user_callable_wrapper.call_destructor()
-        except:
+        except:  # noqa: E722
             # We catch a blanket exception since the constructor may still be
             # running, so instance variables used by the destructor may not exist.
             if self._user_callable_initialized:
