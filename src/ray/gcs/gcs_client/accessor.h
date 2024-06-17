@@ -920,7 +920,6 @@ class AutoscalerStateAccessor {
  private:
   GcsClient *client_impl_;
 };
-;
 
 }  // namespace gcs
 
