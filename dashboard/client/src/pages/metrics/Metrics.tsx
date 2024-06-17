@@ -481,7 +481,7 @@ export const Metrics = () => {
               className={classes.timeRangeButton}
               select
               size="small"
-              style={{ width: 100 }}
+              sx={{ width: 100 }}
               value={refreshOption}
               onChange={({ target: { value } }) => {
                 setRefreshOption(value as RefreshOptions);
@@ -509,7 +509,6 @@ export const Metrics = () => {
               onChange={({ target: { value } }) => {
                 setTimeRangeOption(value as TimeRangeOptions);
               }}
-              variant="standard"
               InputProps={{
                 startAdornment: (
                   <InputAdornment position="start">
