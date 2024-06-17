@@ -35,13 +35,9 @@ TASK_SIZE_WARN_THRESHOLD_BYTES = 100000
 def execute_to_legacy_block_iterator(
     executor: Executor,
     plan: ExecutionPlan,
-    allow_clear_input_blocks: bool,
-    dataset_uuid: str,
 ) -> Iterator[Tuple[ObjectRef[Block], BlockMetadata]]:
     """Same as execute_to_legacy_bundle_iterator but returning blocks and metadata."""
-    bundle_iter = execute_to_legacy_bundle_iterator(
-        executor, plan, allow_clear_input_blocks, dataset_uuid
-    )
+    bundle_iter = execute_to_legacy_bundle_iterator(executor, plan)
     for bundle in bundle_iter:
         for block, metadata in bundle.blocks:
             yield block, metadata
@@ -50,8 +46,6 @@ def execute_to_legacy_block_iterator(
 def execute_to_legacy_bundle_iterator(
     executor: Executor,
     plan: ExecutionPlan,
-    allow_clear_input_blocks: bool,
-    dataset_uuid: str,
     dag_rewrite=None,
 ) -> Iterator[RefBundle]:
     """Execute a plan with the new executor and return a bundle iterator.
@@ -59,8 +53,6 @@ def execute_to_legacy_bundle_iterator(
     Args:
         executor: The executor to use.
         plan: The legacy plan to execute.
-        allow_clear_input_blocks: Whether the executor may consider clearing blocks.
-        dataset_uuid: UUID of the dataset for this execution.
         dag_rewrite: Callback that can be used to mutate the DAG prior to execution.
             This is currently used as a legacy hack to inject the OutputSplit operator
             for `Dataset.streaming_split()`.
@@ -83,7 +75,6 @@ def execute_to_legacy_bundle_iterator(
 def execute_to_legacy_block_list(
     executor: Executor,
     plan: ExecutionPlan,
-    allow_clear_input_blocks: bool,
     dataset_uuid: str,
     preserve_order: bool,
 ) -> BlockList:
@@ -92,7 +83,6 @@ def execute_to_legacy_block_list(
     Args:
         executor: The executor to use.
         plan: The legacy plan to execute.
-        allow_clear_input_blocks: Whether the executor may consider clearing blocks.
         dataset_uuid: UUID of the dataset for this execution.
         preserve_order: Whether to preserve order in execution.
 
@@ -206,23 +196,6 @@ def _bundles_to_block_list(bundles: Iterator[RefBundle]) -> BlockList:
         blocks.extend(ref_bundle.block_refs)
         metadata.extend(ref_bundle.metadata)
     return BlockList(blocks, metadata, owned_by_consumer=owns_blocks)
-
-
-def _block_list_to_bundles(blocks: BlockList, owns_blocks: bool) -> List[RefBundle]:
-    output = []
-    for block, meta in blocks.iter_blocks_with_metadata():
-        output.append(
-            RefBundle(
-                [
-                    (
-                        block,
-                        meta,
-                    )
-                ],
-                owns_blocks=owns_blocks,
-            )
-        )
-    return output
 
 
 def _set_stats_uuid_recursive(stats: DatasetStats, dataset_uuid: str) -> None:

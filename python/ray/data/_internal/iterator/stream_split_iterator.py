@@ -176,7 +176,6 @@ class SplitCoordinator:
                     executor,
                     dataset._plan,
                     True,
-                    dataset._plan._dataset_uuid,
                     dag_rewrite=add_split_op,
                 )
                 yield output_iterator

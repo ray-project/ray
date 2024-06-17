@@ -65,7 +65,6 @@ class ExecutionPlan:
         Args:
             stats: Stats for the base blocks.
             dataset_uuid: Dataset's UUID.
-            APIs (e.g. .iter_batches()).
         """
         self._in_stats = stats
         # A computed snapshot of some prefix of operators and their corresponding
@@ -387,7 +386,6 @@ class ExecutionPlan:
     @omit_traceback_stdout
     def execute_to_iterator(
         self,
-        allow_clear_input_blocks: bool = True,
     ) -> Tuple[
         Iterator[Tuple[ObjectRef[Block], BlockMetadata]],
         DatasetStats,
@@ -396,10 +394,6 @@ class ExecutionPlan:
         """Execute this plan, returning an iterator.
 
         This will use streaming execution to generate outputs.
-
-        Args:
-            allow_clear_input_blocks: Whether we should try to clear the input blocks
-                for each operator.
 
         Returns:
             Tuple of iterator over output blocks and the executor.
@@ -410,7 +404,7 @@ class ExecutionPlan:
         ctx = self._context
 
         if self.has_computed_output():
-            bundle = self.execute(allow_clear_input_blocks)
+            bundle = self.execute()
             return iter(bundle.blocks), self._snapshot_stats, None
 
         from ray.data._internal.execution.legacy_compat import (
@@ -423,7 +417,6 @@ class ExecutionPlan:
         block_iter = execute_to_legacy_block_iterator(
             executor,
             self,
-            allow_clear_input_blocks=allow_clear_input_blocks,
             dataset_uuid=self._dataset_uuid,
         )
         # Since the generator doesn't run any code until we try to fetch the first
@@ -439,14 +432,11 @@ class ExecutionPlan:
     @omit_traceback_stdout
     def execute(
         self,
-        allow_clear_input_blocks: bool = True,
         preserve_order: bool = False,
     ) -> RefBundle:
         """Execute this plan.
 
         Args:
-            allow_clear_input_blocks: Whether we should try to clear the input blocks
-                for each operator.
             preserve_order: Whether to preserve order in execution.
 
         Returns:
@@ -505,7 +495,6 @@ class ExecutionPlan:
                 blocks = execute_to_legacy_block_list(
                     executor,
                     self,
-                    allow_clear_input_blocks=allow_clear_input_blocks,
                     dataset_uuid=self._dataset_uuid,
                     preserve_order=preserve_order,
                 )
