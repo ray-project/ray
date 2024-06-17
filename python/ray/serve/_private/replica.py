@@ -1163,9 +1163,15 @@ class UserCallableWrapper:
     async def call_destructor(self):
         """Explicitly call the `__del__` method of the user callable.
 
-        Calling this multiple times has no effect; only the first call will actually
-        call the destructor.
+        Calling this multiple times has no effect; only the first call will
+        actually call the destructor.
         """
+        if self._callable is None:
+            logger.info(
+                "This replica has not yet started running user code. "
+                "Skipping __del__."
+            )
+            return
 
         # Only run the destructor once. This is safe because there is no `await` between
         # checking the flag here and flipping it to `True` below.
