@@ -1299,7 +1299,7 @@ Status InternalKVAccessor::Exists(const std::string &ns,
 AutoscalerStateAccessor::AutoscalerStateAccessor(GcsClient *client_impl)
     : client_impl_(client_impl) {}
 
-Status AutoscalerStateAccessor::SyncRequestClusterResourceConstraint(
+Status AutoscalerStateAccessor::RequestClusterResourceConstraint(
     int64_t timeout_ms,
     const std::vector<std::unordered_map<std::string, double>> &bundles,
     const std::vector<int64_t> &count_array) {
@@ -1322,8 +1322,8 @@ Status AutoscalerStateAccessor::SyncRequestClusterResourceConstraint(
       request, &reply, timeout_ms);
 }
 
-Status AutoscalerStateAccessor::SyncGetClusterResourceState(
-    int64_t timeout_ms, std::string &serialized_reply) {
+Status AutoscalerStateAccessor::GetClusterResourceState(int64_t timeout_ms,
+                                                        std::string &serialized_reply) {
   rpc::autoscaler::GetClusterResourceStateRequest request;
   rpc::autoscaler::GetClusterResourceStateReply reply;
 
@@ -1336,8 +1336,8 @@ Status AutoscalerStateAccessor::SyncGetClusterResourceState(
   return Status::OK();
 }
 
-Status AutoscalerStateAccessor::SyncGetClusterStatus(int64_t timeout_ms,
-                                                     std::string &serialized_reply) {
+Status AutoscalerStateAccessor::GetClusterStatus(int64_t timeout_ms,
+                                                 std::string &serialized_reply) {
   rpc::autoscaler::GetClusterStatusRequest request;
   rpc::autoscaler::GetClusterStatusReply reply;
 
@@ -1350,7 +1350,7 @@ Status AutoscalerStateAccessor::SyncGetClusterStatus(int64_t timeout_ms,
   return Status::OK();
 }
 
-Status AutoscalerStateAccessor::SyncReportAutoscalingState(
+Status AutoscalerStateAccessor::ReportAutoscalingState(
     int64_t timeout_ms, const std::string &serialized_state) {
   rpc::autoscaler::ReportAutoscalingStateRequest request;
   rpc::autoscaler::ReportAutoscalingStateReply reply;
@@ -1362,13 +1362,13 @@ Status AutoscalerStateAccessor::SyncReportAutoscalingState(
       request, &reply, timeout_ms);
 }
 
-Status AutoscalerStateAccessor::SyncDrainNode(const std::string &node_id,
-                                              int32_t reason,
-                                              const std::string &reason_message,
-                                              int64_t deadline_timestamp_ms,
-                                              int64_t timeout_ms,
-                                              bool &is_accepted,
-                                              std::string &rejection_reason_message) {
+Status AutoscalerStateAccessor::DrainNode(const std::string &node_id,
+                                          int32_t reason,
+                                          const std::string &reason_message,
+                                          int64_t deadline_timestamp_ms,
+                                          int64_t timeout_ms,
+                                          bool &is_accepted,
+                                          std::string &rejection_reason_message) {
   rpc::autoscaler::DrainNodeRequest request;
   request.set_node_id(NodeID::FromHex(node_id).Binary());
   request.set_reason(static_cast<rpc::autoscaler::DrainNodeReason>(reason));

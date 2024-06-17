@@ -896,26 +896,26 @@ class AutoscalerStateAccessor {
   explicit AutoscalerStateAccessor(GcsClient *client_impl);
   virtual ~AutoscalerStateAccessor() = default;
 
-  virtual Status SyncRequestClusterResourceConstraint(
+  virtual Status RequestClusterResourceConstraint(
       int64_t timeout_ms,
       const std::vector<std::unordered_map<std::string, double>> &bundles,
       const std::vector<int64_t> &count_array);
 
-  virtual Status SyncGetClusterResourceState(int64_t timeout_ms,
-                                             std::string &serialized_reply);
+  virtual Status GetClusterResourceState(int64_t timeout_ms,
+                                         std::string &serialized_reply);
 
-  virtual Status SyncGetClusterStatus(int64_t timeout_ms, std::string &serialized_reply);
+  virtual Status GetClusterStatus(int64_t timeout_ms, std::string &serialized_reply);
 
-  virtual Status SyncReportAutoscalingState(int64_t timeout_ms,
-                                            const std::string &serialized_state);
+  virtual Status ReportAutoscalingState(int64_t timeout_ms,
+                                        const std::string &serialized_state);
 
-  virtual Status SyncDrainNode(const std::string &node_id,
-                               int32_t reason,
-                               const std::string &reason_message,
-                               int64_t deadline_timestamp_ms,
-                               int64_t timeout_ms,
-                               bool &is_accepted,
-                               std::string &rejection_reason_message);
+  virtual Status DrainNode(const std::string &node_id,
+                           int32_t reason,
+                           const std::string &reason_message,
+                           int64_t deadline_timestamp_ms,
+                           int64_t timeout_ms,
+                           bool &is_accepted,
+                           std::string &rejection_reason_message);
 
  private:
   GcsClient *client_impl_;

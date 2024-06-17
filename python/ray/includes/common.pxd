@@ -486,28 +486,28 @@ cdef extern from "ray/gcs/gcs_client/accessor.h" nogil:
 
     cdef cppclass CAutoscalerStateAccessor "ray::gcs::AutoscalerStateAccessor":
 
-        CRayStatus SyncRequestClusterResourceConstraint(
+        CRayStatus RequestClusterResourceConstraint(
             int64_t timeout_ms,
             const c_vector[unordered_map[c_string, double]] &bundles,
             const c_vector[int64_t] &count_array
         )
 
-        CRayStatus SyncGetClusterResourceState(
+        CRayStatus GetClusterResourceState(
             int64_t timeout_ms,
             c_string &serialized_reply
         )
 
-        CRayStatus SyncGetClusterStatus(
+        CRayStatus GetClusterStatus(
             int64_t timeout_ms,
             c_string &serialized_reply
         )
 
-        CRayStatus SyncReportAutoscalingState(
+        CRayStatus ReportAutoscalingState(
             int64_t timeout_ms,
             const c_string &serialized_state
         )
 
-        CRayStatus SyncDrainNode(
+        CRayStatus DrainNode(
             const c_string &node_id,
             int32_t reason,
             const c_string &reason_message,
