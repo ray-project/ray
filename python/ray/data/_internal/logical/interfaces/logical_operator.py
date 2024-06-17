@@ -80,3 +80,7 @@ class LogicalOperator(Operator):
     def output_data(self) -> Optional[List["RefBundle"]]:
         """The output data of this operator, or ``None`` if not known."""
         return None
+
+    def is_read(self) -> bool:
+        """Returns whether this operator is a read operator."""
+        return False

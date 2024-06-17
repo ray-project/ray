@@ -1,5 +1,13 @@
 from typing import List
 
+from ray.anyscale.data._internal.logical.operators.expand_paths_operator import (
+    ExpandPaths,
+)
+from ray.anyscale.data._internal.logical.operators.read_files_operator import ReadFiles
+from ray.anyscale.data._internal.planner.plan_expand_paths_op import (
+    plan_expand_paths_op,
+)
+from ray.anyscale.data._internal.planner.plan_read_files_op import plan_read_files_op
 from ray.anyscale.data.logical_operators.streaming_aggregate import StreamingAggregate
 from ray.anyscale.data.physical_operators.streaming_hash_aggregate import (
     StreamingHashAggregate,
@@ -21,3 +29,5 @@ def _register_anyscale_plan_logical_op_fns():
         )
 
     register_plan_logical_op_fn(StreamingAggregate, plan_streaming_aggregate)
+    register_plan_logical_op_fn(ExpandPaths, plan_expand_paths_op)
+    register_plan_logical_op_fn(ReadFiles, plan_read_files_op)

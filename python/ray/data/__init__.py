@@ -156,6 +156,8 @@ from ray.anyscale.data.api import StreamingAggFn  # noqa: E402, isort:skip
 from ray.anyscale.data.apply_anyscale_patches import (  # noqa: E402, isort:skip
     apply_anyscale_patches,
 )
+from ray.anyscale.data.api.read_api import read_images  # noqa: E402, F811, isort:skip
+
 
 __all__ += [
     "StreamingAggFn",
