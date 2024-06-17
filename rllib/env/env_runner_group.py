@@ -448,7 +448,7 @@ class EnvRunnerGroup:
             }
         # Ignore states from remote EnvRunners (use the current `from_worker` states
         # only).
-        else:
+        elif hasattr(from_worker, "_env_to_module"):
             env_runner_states["connector_states"] = {
                 "env_to_module_states": from_worker._env_to_module.get_state(),
                 "module_to_env_states": from_worker._module_to_env.get_state(),
@@ -464,12 +464,13 @@ class EnvRunnerGroup:
 
         def _update(_env_runner: EnvRunner) -> Any:
             env_runner_states = ray.get(ref_env_runner_states)
-            _env_runner._env_to_module.set_state(
-                env_runner_states["connector_states"]["env_to_module_states"]
-            )
-            _env_runner._module_to_env.set_state(
-                env_runner_states["connector_states"]["module_to_env_states"]
-            )
+            if hasattr(_env_runner, "_env_to_module"):
+                _env_runner._env_to_module.set_state(
+                    env_runner_states["connector_states"]["env_to_module_states"]
+                )
+                _env_runner._module_to_env.set_state(
+                    env_runner_states["connector_states"]["module_to_env_states"]
+                )
             # Update the global number of environment steps for each worker.
             if "env_steps_sampled" in env_runner_states:
                 # _env_runner.global_num_env_steps_sampled =
@@ -726,7 +727,7 @@ class EnvRunnerGroup:
 
         Raises:
             RayError: If any of the constructed remote workers is not up and running
-            properly.
+                properly.
         """
         old_num_workers = self._worker_manager.num_actors()
         new_workers = [

@@ -72,7 +72,6 @@ class RuntimeEnvContext:
         # However, the path to default_worker.py inside the container
         # can be different. We need the user to specify the path to
         # default_worker.py inside the container.
-        # default_worker_path = self.container.get("worker_path")
         if self.override_worker_entrypoint:
             logger.debug(
                 f"Changing the worker entrypoint from {passthrough_args[0]} to "

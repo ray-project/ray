@@ -303,6 +303,15 @@ py_test(
     args = ["--as-test", "--enable-new-api-stack"]
 )
 
+py_test(
+    name = "learning_tests_multi_agent_cartpole_dqn",
+    main = "tuned_examples/dqn/multi_agent_cartpole_dqn.py",
+    tags = ["team:rllib", "exclusive", "learning_tests", "torch_only", "learning_tests_cartpole", "learning_tests_discrete", "learning_tests_pytorch_use_all_core"],
+    size = "large",
+    srcs = ["tuned_examples/dqn/multi_agent_cartpole_dqn.py"],
+    args = ["--as-test", "--enable-new-api-stack", "--num-agents=2", "--num-cpus=4"]
+)
+
 #@OldAPIStack
 py_test(
     name = "learning_tests_cartpole_dqn_softq_old_api_stack",
@@ -417,7 +426,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous", "torch_only"],
     size = "large", # bazel may complain about it being too long sometimes - large is on purpose as some frameworks take longer
     srcs = ["tuned_examples/ppo/multi_agent_pendulum_ppo.py"],
-    args = ["--as-test", "--enable-new-api-stack"]
+    args = ["--enable-new-api-stack", "--num-agents=2", "--as-test"]
 )
 
 #@OldAPIStack
@@ -452,6 +461,24 @@ py_test(
     args = ["--as-test", "--enable-new-api-stack"]
 )
 
+py_test(
+    name = "learning_tests_multi_agent_pendulum_sac",
+    main = "tuned_examples/sac/multi_agent_pendulum_sac.py",
+    tags = ["team:rllib", "exclusive", "learning_tests", "torch_only", "learning_tests_pendulum", "learning_tests_continuous"],
+    size = "large",
+    srcs = ["tuned_examples/sac/multi_agent_pendulum_sac.py"],
+    args = ["--as-test", "--enable-new-api-stack", "--num-agents=2", "--num-cpus=4"]
+)
+
+py_test(
+    name = "learning_tests_multi_agent_pendulum_sac_multi_gpu",
+    main = "tuned_examples/sac/multi_agent_pendulum_sac.py",
+    tags = ["team:rllib", "exclusive", "learning_tests", "torch_only", "learning_tests_pendulum", "learning_tests_continuous", "multi_gpu"],
+    size = "large",
+    srcs = ["tuned_examples/sac/multi_agent_pendulum_sac.py"],
+    args = ["--enable-new-api-stack", "--num-agents=2", "--num-gpus=2"]
+)
+
 #@OldAPIStack
 py_test(
     name = "learning_tests_cartpole_sac_old_api_stack",
@@ -462,25 +489,6 @@ py_test(
     data = ["tuned_examples/sac/cartpole-sac.yaml"],
     args = ["--dir=tuned_examples/sac"]
 )
-
-# TODO (simon): These tests are not learning, yet.
-# py_test(
-#     name = "learning_tests_multi_agent_pendulum_sac",
-#     main = "tuned_examples/sac/multi_agent_pendulum_sac.py",
-#     tags = ["team:rllib", "exclusive", "learning_tests", "torch_only", "learning_tests_pendulum", "learning_tests_continuous"],
-#     size = "large",
-#     srcs = ["tuned_examples/sac/multi_agent_pendulum_sac.py"],
-#     args = ["--enable-new-api-stack", "--num-agents=2"]
-# )
-
-# py_test(
-#     name = "learning_tests_multi_agent_pendulum_sac_multi_gpu",
-#     main = "tuned_examples/sac/multi_agent_pendulum_sac.py",
-#     tags = ["team:rllib", "exclusive", "learning_tests", "torch_only", "learning_tests_pendulum", "learning_tests_continuous", "multi_gpu"],
-#     size = "large",
-#     srcs = ["tuned_examples/sac/multi_agent_pendulum_sac.py"],
-#     args = ["--enable-new-api-stack", "--num-agents=2", "--num-gpus=2"]
-# )
 
 # --------------------------------------------------------------------
 # Algorithms (Compilation, Losses, simple functionality tests)
@@ -1549,10 +1557,10 @@ py_test(
 )
 
 py_test(
-    name = "test_multi_agent_episode_replay_buffer",
+    name = "test_multi_agent_episode_buffer",
     tags = ["team:rllib", "utils"],
     size = "small",
-    srcs = ["utils/replay_buffers/tests/test_multi_agent_episode_replay_buffer.py"]
+    srcs = ["utils/replay_buffers/tests/test_multi_agent_episode_buffer.py"]
 )
 
 py_test(
@@ -1560,6 +1568,13 @@ py_test(
     tags = ["team:rllib", "utils"],
     size = "small",
     srcs = ["utils/replay_buffers/tests/test_multi_agent_mixin_replay_buffer.py"]
+)
+
+py_test(
+    name = "test_multi_agent_prio_episode_buffer",
+    tags = ["team:rllib", "utils"],
+    size = "small",
+    srcs = ["utils/replay_buffers/tests/test_multi_agent_prio_episode_buffer.py"]
 )
 
 py_test(
@@ -1577,10 +1592,10 @@ py_test(
 )
 
 py_test(
-    name = "test_prioritized_episode_replay_buffer",
+    name = "test_prioritized_episode_buffer",
     tags = ["team::rllib", "utils"],
     size = "small",
-    srcs = ["utils/replay_buffers/tests/test_prioritized_episode_replay_buffer.py"]
+    srcs = ["utils/replay_buffers/tests/test_prioritized_episode_buffer.py"]
 )
 
 py_test(
@@ -2053,6 +2068,15 @@ py_test(
 )
 
 py_test(
+    name = "examples/_old_api_stack/connectors/run_connector_policy_w_lstm",
+    main = "examples/_old_api_stack/connectors/run_connector_policy.py",
+    tags = ["team:rllib", "exclusive", "examples", "old_api_stack"],
+    size = "small",
+    srcs = ["examples/_old_api_stack/connectors/run_connector_policy.py"],
+    args = ["--use-lstm"],
+)
+
+py_test(
     name = "examples/_old_api_stack/connectors/adapt_connector_policy",
     main = "examples/_old_api_stack/connectors/adapt_connector_policy.py",
     tags = ["team:rllib", "exclusive", "examples", "old_api_stack"],
@@ -2076,6 +2100,27 @@ py_test(
 # Note: This includes to-be-translated-to-new-API-stack examples
 # tagged by @OldAPIStack and/or @HybridAPIStack
 # ----------------------
+
+# subdirectory: actions/
+
+# Nested action spaces (flattening obs and learning w/ multi-action distribution).
+py_test(
+    name = "examples/actions/nested_action_spaces_ppo",
+    main = "examples/actions/nested_action_spaces.py",
+    tags = ["team:rllib", "exclusive", "examples"],
+    size = "large",
+    srcs = ["examples/actions/nested_action_spaces.py"],
+    args = ["--enable-new-api-stack", "--as-test", "--framework=torch", "--stop-reward=-500.0", "--algo=PPO"]
+)
+
+py_test(
+    name = "examples/actions/nested_action_spaces_multi_agent_ppo",
+    main = "examples/actions/nested_action_spaces.py",
+    tags = ["team:rllib", "exclusive", "examples"],
+    size = "large",
+    srcs = ["examples/actions/nested_action_spaces.py"],
+    args = ["--enable-new-api-stack", "--as-test", "--num-agents=2", "--framework=torch", "--stop-reward=-1000.0", "--algo=PPO"]
+)
 
 # subdirectory: algorithms/
 
@@ -2119,7 +2164,6 @@ py_test(
 
 # subdirectory: checkpoints/
 # ....................................
-
 py_test(
     name = "examples/checkpoints/checkpoint_by_custom_criteria",
     main = "examples/checkpoints/checkpoint_by_custom_criteria.py",
@@ -2184,6 +2228,15 @@ py_test(
     srcs = ["examples/checkpoints/onnx_torch.py"],
 )
 
+#@OldAPIStack
+py_test(
+    name = "examples/checkpoints/onnx_torch_lstm",
+    main = "examples/checkpoints/onnx_torch_lstm.py",
+    tags = ["team:rllib", "exclusive", "examples", "no_main"],
+    size = "small",
+    srcs = ["examples/checkpoints/onnx_torch_lstm.py"],
+)
+
 # subdirectory: connectors/
 # ....................................
 # Framestacking examples only run in smoke-test mode (a few iters only).
@@ -2205,41 +2258,22 @@ py_test(
     args = ["--enable-new-api-stack", "--num-agents=2", "--stop-iter=2", "--framework=torch", "--algo=PPO", "--num-env-runners=4", "--num-cpus=6"]
 )
 
-# Nested action spaces (flattening obs and learning w/ multi-action distribution).
-py_test(
-    name = "examples/connectors/nested_action_spaces_ppo",
-    main = "examples/connectors/nested_action_spaces.py",
-    tags = ["team:rllib", "exclusive", "examples"],
-    size = "large",
-    srcs = ["examples/connectors/nested_action_spaces.py"],
-    args = ["--enable-new-api-stack", "--as-test", "--framework=torch", "--stop-reward=-500.0", "--algo=PPO"]
-)
-
-py_test(
-    name = "examples/connectors/nested_action_spaces_multi_agent_ppo",
-    main = "examples/connectors/nested_action_spaces.py",
-    tags = ["team:rllib", "exclusive", "examples"],
-    size = "large",
-    srcs = ["examples/connectors/nested_action_spaces.py"],
-    args = ["--enable-new-api-stack", "--as-test", "--num-agents=2", "--framework=torch", "--stop-reward=-1000.0", "--algo=PPO"]
-)
-
 # Nested observation spaces (flattening).
 py_test(
-    name = "examples/connectors/nested_observation_spaces_ppo",
-    main = "examples/connectors/nested_observation_spaces.py",
+    name = "examples/connectors/flatten_observations_dict_space_ppo",
+    main = "examples/connectors/flatten_observations_dict_space.py",
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
-    srcs = ["examples/connectors/nested_observation_spaces.py"],
+    srcs = ["examples/connectors/flatten_observations_dict_space.py"],
     args = ["--enable-new-api-stack", "--as-test", "--stop-reward=400.0", "--framework=torch", "--algo=PPO"]
 )
 
 py_test(
-    name = "examples/connectors/nested_observation_spaces_multi_agent_ppo",
-    main = "examples/connectors/nested_observation_spaces.py",
+    name = "examples/connectors/flatten_observations_dict_space_multi_agent_ppo",
+    main = "examples/connectors/flatten_observations_dict_space.py",
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
-    srcs = ["examples/connectors/nested_observation_spaces.py"],
+    srcs = ["examples/connectors/flatten_observations_dict_space.py"],
     args = ["--enable-new-api-stack", "--num-agents=2", "--as-test", "--stop-reward=800.0", "--framework=torch", "--algo=PPO"]
 )
 
@@ -2283,7 +2317,6 @@ py_test(
 
 # subdirectory: curriculum/
 # ....................................
-
 py_test(
     name = "examples/curriculum/curriculum_learning",
     main = "examples/curriculum/curriculum_learning.py",
@@ -2295,7 +2328,6 @@ py_test(
 
 # subdirectory: debugging/
 # ....................................
-
 #@OldAPIStack
 py_test(
     name = "examples/debugging/deterministic_training_torch",
@@ -2308,7 +2340,6 @@ py_test(
 
 # subdirectory: envs/
 # ....................................
-
 py_test(
     name = "examples/envs/custom_gym_env",
     main = "examples/envs/custom_gym_env.py",
@@ -2449,7 +2480,6 @@ py_test(
 
 # subdirectory: gpus/
 # ....................................
-
 py_test(
     name = "examples/gpus/fractional_0.5_gpus_per_learner",
     main = "examples/gpus/fractional_gpus_per_learner.py",
@@ -2469,7 +2499,6 @@ py_test(
 
 # subdirectory: hierarchical/
 # ....................................
-
 #@OldAPIStack
 py_test(
     name = "examples/hierarchical/hierarchical_training_tf",
@@ -2492,25 +2521,22 @@ py_test(
 
 # subdirectory: inference/
 # ....................................
-
-#@OldAPIStack
 py_test(
-    name = "examples/inference/policy_inference_after_training_tf",
+    name = "examples/inference/policy_inference_after_training",
     main = "examples/inference/policy_inference_after_training.py",
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
     srcs = ["examples/inference/policy_inference_after_training.py"],
-    args = ["--stop-iters=3", "--framework=tf"]
+    args = ["--enable-new-api-stack", "--stop-reward=100.0"]
 )
 
-#@OldAPIStack
 py_test(
-    name = "examples/inference/policy_inference_after_training_torch",
-    main = "examples/inference/policy_inference_after_training.py",
+    name = "examples/inference/policy_inference_after_training_w_connector",
+    main = "examples/inference/policy_inference_after_training_w_connector.py",
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
-    srcs = ["examples/inference/policy_inference_after_training.py"],
-    args = ["--stop-iters=3", "--framework=torch"]
+    srcs = ["examples/inference/policy_inference_after_training_w_connector.py"],
+    args = ["--enable-new-api-stack", "--stop-reward=150.0"]
 )
 
 #@OldAPIStack
@@ -2905,6 +2931,15 @@ py_test(
 
 # subdirectory: rl_modules/
 # ....................................
+py_test(
+    name = "examples/rl_modules/custom_rl_module",
+    main = "examples/rl_modules/custom_rl_module.py",
+    tags = ["team:rllib", "examples"],
+    size = "medium",
+    srcs = ["examples/rl_modules/custom_rl_module.py"],
+    args = ["--enable-new-api-stack", "--stop-iters=3"],
+)
+
 #@OldAPIStack @HybridAPIStack
 py_test(
     name = "examples/rl_modules/classes/mobilenet_rlm_hybrid_api_stack",
@@ -2915,11 +2950,11 @@ py_test(
 )
 
 py_test(
-    name = "examples/rl_modules/pretraining_single_agent_training_multi_agent_rlm",
-    main = "examples/rl_modules/pretraining_single_agent_training_multi_agent_rlm.py",
+    name = "examples/rl_modules/pretraining_single_agent_training_multi_agent",
+    main = "examples/rl_modules/pretraining_single_agent_training_multi_agent.py",
     tags = ["team:rllib", "examples"],
     size = "medium",
-    srcs = ["examples/rl_modules/pretraining_single_agent_training_multi_agent_rlm.py"],
+    srcs = ["examples/rl_modules/pretraining_single_agent_training_multi_agent.py"],
     args = ["--enable-new-api-stack", "--num-agents=2", "--stop-iters-pretraining=5", "--stop-iters=20", "--stop-reward=150.0"],
 )
 
@@ -3049,11 +3084,11 @@ py_test(
 )
 
 py_test(
-    name = "examples/custom_metrics_and_callbacks",
-    main = "examples/custom_metrics_and_callbacks.py",
+    name = "examples/metrics/custom_metrics_and_callbacks",
+    main = "examples/metrics/custom_metrics_and_callbacks.py",
     tags = ["team:rllib", "exclusive", "examples"],
     size = "small",
-    srcs = ["examples/custom_metrics_and_callbacks.py"],
+    srcs = ["examples/metrics/custom_metrics_and_callbacks.py"],
     args = ["--stop-iters=2"]
 )
 

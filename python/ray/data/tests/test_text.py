@@ -156,7 +156,6 @@ def test_read_text_partitioned_with_filter(
         assert_base_partitioned_ds(
             ds,
             schema="{text: string}",
-            num_computed=None,
             sorted_values=["1 a", "1 b", "1 c", "3 e", "3 f", "3 g"],
             ds_take_transform_fn=_to_lines,
         )
