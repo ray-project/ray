@@ -19,6 +19,7 @@ import { RiExternalLinkLine } from "react-icons/ri";
 import { GlobalContext } from "../../App";
 import { CollapsibleSection } from "../../common/CollapsibleSection";
 import { ClassNameProps } from "../../common/props";
+import { HelpInfo } from "../../components/Tooltip";
 import { MainNavPageInfo } from "../layout/mainNavContext";
 import { MAIN_NAV_HEIGHT } from "../layout/MainNavLayout";
 
@@ -490,7 +491,7 @@ export const Metrics = () => {
               InputProps={{
                 startAdornment: (
                   <InputAdornment position="start">
-                    <BiRefresh style={{ fontSize: 22 }} />
+                    <BiRefresh style={{ fontSize: 25, paddingBottom: 5 }} />
                   </InputAdornment>
                 ),
               }}
@@ -501,6 +502,7 @@ export const Metrics = () => {
                 </MenuItem>
               ))}
             </TextField>
+            <HelpInfo>Auto-refresh interval</HelpInfo>
             <TextField
               className={classes.timeRangeButton}
               select
@@ -514,7 +516,7 @@ export const Metrics = () => {
               InputProps={{
                 startAdornment: (
                   <InputAdornment position="start">
-                    <BiTime style={{ fontSize: 22 }} />
+                    <BiTime style={{ fontSize: 22, paddingBottom: 5 }} />
                   </InputAdornment>
                 ),
               }}
@@ -525,6 +527,7 @@ export const Metrics = () => {
                 </MenuItem>
               ))}
             </TextField>
+            <HelpInfo>Time picker</HelpInfo>
           </Paper>
           <Alert severity="info">
             Tip: You can click on the legend to focus on a specific line in the

@@ -14,6 +14,7 @@ import { RiExternalLinkLine } from "react-icons/ri";
 import { GlobalContext } from "../../App";
 import { CollapsibleSection } from "../../common/CollapsibleSection";
 import { ClassNameProps } from "../../common/props";
+import { HelpInfo } from "../../components/Tooltip";
 import {
   MetricConfig,
   REFRESH_VALUE,
@@ -169,7 +170,7 @@ export const ServeMetricsSection = ({
             InputProps={{
               startAdornment: (
                 <InputAdornment position="start">
-                  <BiRefresh style={{ fontSize: 22 }} />
+                  <BiRefresh style={{ fontSize: 25, paddingBottom: 5 }} />
                 </InputAdornment>
               ),
             }}
@@ -180,6 +181,7 @@ export const ServeMetricsSection = ({
               </MenuItem>
             ))}
           </TextField>
+          <HelpInfo>Auto-refresh interval</HelpInfo>
           <TextField
             className={classes.timeRangeButton}
             select
@@ -193,7 +195,7 @@ export const ServeMetricsSection = ({
             InputProps={{
               startAdornment: (
                 <InputAdornment position="start">
-                  <BiTime style={{ fontSize: 22 }} />
+                  <BiTime style={{ fontSize: 22, paddingBottom: 5 }} />
                 </InputAdornment>
               ),
             }}
@@ -204,6 +206,7 @@ export const ServeMetricsSection = ({
               </MenuItem>
             ))}
           </TextField>
+          <HelpInfo>Time picker</HelpInfo>
         </Box>
         <div className={classes.grafanaEmbedsContainer}>
           {metricsConfig.map(({ title, pathParams }) => {
