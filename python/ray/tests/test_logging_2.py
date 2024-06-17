@@ -96,7 +96,7 @@ class TestJSONFormatter:
             "message",
             "filename",
             "lineno",
-            "created",
+            "timestamp_ns",
         ]
         for key in should_exist:
             assert key in record_dict
@@ -119,7 +119,7 @@ class TestJSONFormatter:
             "filename",
             "lineno",
             "exc_text",
-            "created",
+            "timestamp_ns",
         ]
         for key in should_exist:
             assert key in record_dict
@@ -138,7 +138,7 @@ class TestJSONFormatter:
             "filename",
             "lineno",
             "user",
-            "created",
+            "timestamp_ns",
         ]
         for key in should_exist:
             assert key in record_dict
@@ -153,7 +153,7 @@ class TestTextFormatter:
         record = logging.makeLogRecord({"user": "ray"})
         formatted = formatter.format(record)
         assert "user=ray" in formatted
-        assert "created" in formatted
+        assert "timestamp_ns" in formatted
 
     def test_record_with_exception(self):
         formatter = TextFormatter()
@@ -167,7 +167,7 @@ class TestTextFormatter:
             exc_info=None,
         )
         formatted = formatter.format(record)
-        for s in ["INFO", "Test message", "test.py:1000", "--", "created"]:
+        for s in ["INFO", "Test message", "test.py:1000", "--", "timestamp_ns"]:
             assert s in formatted
 
 
@@ -204,7 +204,7 @@ ray.get(obj_ref)
 """
         stderr = run_string_as_driver(script)
         should_exist = [
-            "created",
+            "timestamp_ns",
             "job_id",
             "worker_id",
             "node_id",
@@ -239,7 +239,7 @@ ray.get(actor_instance.print_message.remote())
 """
         stderr = run_string_as_driver(script)
         should_exist = [
-            "created",
+            "timestamp_ns",
             "job_id",
             "worker_id",
             "node_id",
