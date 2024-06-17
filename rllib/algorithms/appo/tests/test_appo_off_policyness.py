@@ -23,9 +23,8 @@ class TestAPPOOffPolicyNess(unittest.TestCase):
 
     def test_appo_off_policyness(self):
         config = (
-            appo.APPOConfig()
-            .environment("CartPole-v1")
-            .resources(num_gpus=1)
+            appo.APPOConfig().environment("CartPole-v1")
+            # .resources(num_gpus=1)
             .env_runners(num_env_runners=4)
         )
         num_iterations = 3

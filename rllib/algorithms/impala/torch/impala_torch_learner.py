@@ -61,27 +61,19 @@ class ImpalaTorchLearner(ImpalaLearner, TorchLearner):
             trajectory_len=rollout_frag_or_episode_len,
             recurrent_seq_len=recurrent_seq_len,
         )
-        if self.config.enable_env_runner_and_connector_v2:
-            assert Columns.VALUES_BOOTSTRAPPED not in batch
-            # Use as bootstrap values the vf-preds in the next "batch row", except
-            # for the very last row (which doesn't have a next row), for which the
-            # bootstrap value does not matter b/c it has a +1ts value at its end
-            # anyways. So we chose an arbitrary item (for simplicity of not having to
-            # move new data to the device).
-            bootstrap_values = torch.cat(
-                [
-                    values_time_major[0][1:],  # 0th ts values from "next row"
-                    values_time_major[0][0:1],  # <- can use any arbitrary value here
-                ],
-                dim=0,
-            )
-        else:
-            bootstrap_values_time_major = make_time_major(
-                batch[Columns.VALUES_BOOTSTRAPPED],
-                trajectory_len=rollout_frag_or_episode_len,
-                recurrent_seq_len=recurrent_seq_len,
-            )
-            bootstrap_values = bootstrap_values_time_major[-1]
+        assert Columns.VALUES_BOOTSTRAPPED not in batch
+        # Use as bootstrap values the vf-preds in the next "batch row", except
+        # for the very last row (which doesn't have a next row), for which the
+        # bootstrap value does not matter b/c it has a +1ts value at its end
+        # anyways. So we chose an arbitrary item (for simplicity of not having to
+        # move new data to the device).
+        bootstrap_values = torch.cat(
+            [
+                values_time_major[0][1:],  # 0th ts values from "next row"
+                values_time_major[0][0:1],  # <- can use any arbitrary value here
+            ],
+            dim=0,
+        )
 
         # TODO(Artur): In the old impala code, actions were unsqueezed if they were
         #  multi_discrete. Find out why and if we need to do the same here.

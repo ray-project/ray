@@ -1161,7 +1161,7 @@ class Impala(Algorithm):
 
         waiting_processed_sample_batches: RemoteCallResults = (
             self._aggregator_actor_manager.fetch_ready_async_reqs(
-                timeout_seconds=self._timeout_s_aggregator_manager,
+                timeout_seconds=self.config.timeout_s_aggregator_manager,
             )
         )
         _handle_remote_call_result_errors(

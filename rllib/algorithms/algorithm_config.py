@@ -3134,7 +3134,10 @@ class AlgorithmConfig(_Config):
 
     @property
     def total_train_batch_size(self):
-        if self.train_batch_size_per_learner is not None:
+        if (
+            self.train_batch_size_per_learner is not None
+            and self.enable_rl_module_and_learner
+        ):
             return self.train_batch_size_per_learner * (self.num_learners or 1)
         else:
             return self.train_batch_size

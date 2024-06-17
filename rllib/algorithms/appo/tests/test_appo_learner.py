@@ -29,9 +29,6 @@ FAKE_BATCH = {
         [False for _ in range(frag_length - 1)] + [True]
     ).astype(np.float32),
     Columns.VF_PREDS: np.array(list(reversed(range(frag_length))), dtype=np.float32),
-    Columns.VALUES_BOOTSTRAPPED: np.array(
-        list(reversed(range(frag_length))), dtype=np.float32
-    ),
     Columns.ACTION_LOGP: np.log(
         np.random.uniform(low=0, high=1, size=(frag_length,))
     ).astype(np.float32),
@@ -87,7 +84,6 @@ class TestAPPOTfLearner(unittest.TestCase):
         learner_group = algo_config.build_learner_group(
             env=algo.workers.local_worker().env
         )
-        learner_group.set_weights(algo.get_weights())
         learner_group.update_from_batch(batch=train_batch.as_multi_agent())
 
         algo.stop()
