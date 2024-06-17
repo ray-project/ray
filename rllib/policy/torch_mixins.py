@@ -35,18 +35,17 @@ class LearningRateSchedule:
     @override(Policy)
     def on_global_var_update(self, global_vars):
         super().on_global_var_update(global_vars)
-        if not self.config.get("enable_rl_module_and_learner", False):
-            if self._lr_schedule:
-                self.cur_lr = self._lr_schedule.value(global_vars["timestep"])
-                for opt in self._optimizers:
-                    for p in opt.param_groups:
-                        p["lr"] = self.cur_lr
-            if self._lr2_schedule:
-                assert len(self._optimizers) == 2
-                self.cur_lr2 = self._lr2_schedule.value(global_vars["timestep"])
-                opt = self._optimizers[1]
+        if self._lr_schedule:
+            self.cur_lr = self._lr_schedule.value(global_vars["timestep"])
+            for opt in self._optimizers:
                 for p in opt.param_groups:
-                    p["lr"] = self.cur_lr2
+                    p["lr"] = self.cur_lr
+        if self._lr2_schedule:
+            assert len(self._optimizers) == 2
+            self.cur_lr2 = self._lr2_schedule.value(global_vars["timestep"])
+            opt = self._optimizers[1]
+            for p in opt.param_groups:
+                p["lr"] = self.cur_lr2
 
 
 @OldAPIStack

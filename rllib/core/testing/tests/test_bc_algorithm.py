@@ -33,7 +33,10 @@ class TestLearner(unittest.TestCase):
 
         config = (
             BCConfigTest()
-            .api_stack(enable_rl_module_and_learner=True)
+            .api_stack(
+                enable_rl_module_and_learner=True,
+                enable_env_runner_and_connector_v2=True,
+            )
             .training(model={"fcnet_hiddens": [32, 32]})
         )
 
@@ -54,7 +57,10 @@ class TestLearner(unittest.TestCase):
         policies = {"policy_1", "policy_2"}
         config = (
             BCConfigTest()
-            .api_stack(enable_rl_module_and_learner=True)
+            .api_stack(
+                enable_rl_module_and_learner=True,
+                enable_env_runner_and_connector_v2=True,
+            )
             .training(model={"fcnet_hiddens": [32, 32]})
             .multi_agent(
                 policies=policies,
@@ -98,7 +104,10 @@ class TestLearner(unittest.TestCase):
 
             config = (
                 BCConfigTest()
-                .api_stack(enable_rl_module_and_learner=True)
+                .api_stack(
+                    enable_rl_module_and_learner=True,
+                    enable_env_runner_and_connector_v2=True,
+                )
                 .framework(fw)
                 .rl_module(rl_module_spec=spec)
                 .training(

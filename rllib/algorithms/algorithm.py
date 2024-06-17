@@ -41,7 +41,10 @@ from ray.rllib.algorithms.registry import ALGORITHMS_CLASS_TO_NAME as ALL_ALGORI
 from ray.rllib.connectors.agent.obs_preproc import ObsPreprocessorConnector
 from ray.rllib.core import DEFAULT_AGENT_ID, DEFAULT_MODULE_ID
 from ray.rllib.core.columns import Columns
-from ray.rllib.core.rl_module.marl_module import MultiAgentRLModuleSpec
+from ray.rllib.core.rl_module.marl_module import (
+    MultiAgentRLModule,
+    MultiAgentRLModuleSpec,
+)
 from ray.rllib.core.rl_module.rl_module import RLModule, SingleAgentRLModuleSpec
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.env_runner import EnvRunner
@@ -2002,7 +2005,11 @@ class Algorithm(Trainable, AlgorithmBase):
             The SingleAgentRLModule sitting under the ModuleID key inside the
             local worker's (EnvRunner's) MARLModule.
         """
-        return self.workers.local_worker().module[module_id]
+        module = self.workers.local_worker().module
+        if isinstance(module, MultiAgentRLModule):
+            return module[module_id]
+        else:
+            return module
 
     @PublicAPI
     def get_policy(self, policy_id: PolicyID = DEFAULT_POLICY_ID) -> Policy:

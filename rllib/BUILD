@@ -154,17 +154,6 @@ py_test(
 # APPO
 #@OldAPIStack
 py_test(
-    name = "learning_tests_cartpole_appo_hybrid_api_stack",
-    main = "tests/run_regression_tests.py",
-    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "no_tf_static_graph"],
-    size = "medium", # bazel may complain about it being too long sometimes - medium is on purpose as some frameworks take longer
-    srcs = ["tests/run_regression_tests.py"],
-    data = ["tuned_examples/appo/cartpole-appo-w-rl-modules-and-learner.yaml"],
-    args = ["--dir=tuned_examples/appo"]
-)
-
-#@OldAPIStack
-py_test(
     name = "learning_tests_cartpole_separate_losses_appo_old_api_stack",
     main = "tests/run_regression_tests.py",
     tags = ["team:rllib", "torch_only", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
@@ -335,17 +324,6 @@ py_test(
 )
 
 # IMPALA
-#@OldAPIStack
-# py_test(
-#    name = "learning_tests_cartpole_impala_old_api_stack",
-#    main = "tests/run_regression_tests.py",
-#    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
-#    size = "large",
-#    srcs = ["tests/run_regression_tests.py"],
-#    data = ["tuned_examples/impala/cartpole-impala.yaml"],
-#    args = ["--dir=tuned_examples/impala"]
-# )
-
 #@OldAPIStack
 py_test(
     name = "learning_tests_cartpole_separate_losses_impala_old_api_stack",
@@ -680,23 +658,10 @@ py_test(
 
 # PPO
 py_test(
-    name = "test_ppo_with_env_runner",
-    tags = ["team:rllib", "algorithms_dir"],
-    size = "medium",
-    srcs = ["algorithms/ppo/tests/test_ppo_with_env_runner.py"]
-)
-
-py_test(
     name = "test_ppo",
     tags = ["team:rllib", "algorithms_dir"],
-    size = "large",
+    size = "medium",
     srcs = ["algorithms/ppo/tests/test_ppo.py"]
-)
-py_test(
-    name = "test_ppo_with_rl_module",
-    tags = ["team:rllib", "algorithms_dir"],
-    size = "large",
-    srcs = ["algorithms/ppo/tests/test_ppo_with_rl_module.py"]
 )
 py_test(
     name = "test_ppo_rl_module",
@@ -715,6 +680,13 @@ py_test(
     tags = ["team:rllib", "algorithms_dir", "gpu"],
     size = "large",
     srcs = ["algorithms/ppo/tests/test_repro_ppo.py"]
+)
+# @OldAPIStack
+py_test(
+    name = "test_ppo_old_api_stack",
+    tags = ["team:rllib", "algorithms_dir"],
+    size = "large",
+    srcs = ["algorithms/ppo/tests/test_ppo_old_api_stack.py"]
 )
 
 # SAC

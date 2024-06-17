@@ -1,6 +1,5 @@
 # @OldAPIStack
 import numpy as np
-import tree
 from gymnasium.spaces import Box
 
 from ray.rllib.core.columns import Columns
@@ -11,7 +10,6 @@ from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.view_requirement import ViewRequirement
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.numpy import convert_to_numpy
 
 
 class StatefulRandomPolicy(RandomPolicy):
@@ -36,13 +34,6 @@ class StatefulRandomPolicy(RandomPolicy):
     @override(Policy)
     def is_recurrent(self):
         return True
-
-    def get_initial_state(self):
-        if self.config.get("enable_rl_module_and_learner", False):
-            # convert the tree of tensors to a tree to numpy arrays
-            return tree.map_structure(
-                lambda s: convert_to_numpy(s), self.model.get_initial_state()
-            )
 
     @override(Policy)
     def postprocess_trajectory(

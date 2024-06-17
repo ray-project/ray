@@ -51,7 +51,7 @@ class TestBC(unittest.TestCase):
         min_return_to_reach = 75.0
 
         # Test for RLModule API and ModelV2.
-        for rl_modules in [True, False]:
+        for rl_modules in [False]:
             config.api_stack(enable_rl_module_and_learner=rl_modules)
             # Old and new stack support different frameworks
             if rl_modules:

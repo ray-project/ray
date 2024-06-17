@@ -57,7 +57,10 @@ class TestAPPOTfLearner(unittest.TestCase):
         """Test that appo_policy_rlm loss matches the appo learner loss."""
         config = (
             appo.APPOConfig()
-            .api_stack(enable_rl_module_and_learner=True)
+            .api_stack(
+                enable_rl_module_and_learner=True,
+                enable_env_runner_and_connector_v2=True,
+            )
             .environment("CartPole-v1")
             .env_runners(
                 num_env_runners=0,
@@ -105,7 +108,10 @@ class TestAPPOTfLearner(unittest.TestCase):
         initial_kl_coeff = 0.01
         config = (
             appo.APPOConfig()
-            .api_stack(enable_rl_module_and_learner=True)
+            .api_stack(
+                enable_rl_module_and_learner=True,
+                enable_env_runner_and_connector_v2=True,
+            )
             .environment("CartPole-v1")
             # Asynchronous Algo, make sure we have some results after 1 iteration.
             .reporting(min_time_s_per_iteration=10)

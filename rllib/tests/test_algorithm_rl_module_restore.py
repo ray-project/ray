@@ -50,7 +50,10 @@ class TestAlgorithmRLModuleRestore(unittest.TestCase):
 
         config = (
             PPOConfig()
-            .api_stack(enable_rl_module_and_learner=True)
+            .api_stack(
+                enable_rl_module_and_learner=True,
+                enable_env_runner_and_connector_v2=True,
+            )
             .env_runners(rollout_fragment_length=4)
             .learners(**scaling_config)
             .environment(MultiAgentCartPole, env_config={"num_agents": num_agents})
@@ -89,7 +92,10 @@ class TestAlgorithmRLModuleRestore(unittest.TestCase):
                 module_specs=module_specs,
                 load_state_path=marl_checkpoint_path,
             )
-            config = config.api_stack(enable_rl_module_and_learner=True).rl_module(
+            config.api_stack(
+                enable_rl_module_and_learner=True,
+                enable_env_runner_and_connector_v2=True,
+            ).rl_module(
                 rl_module_spec=marl_module_spec_from_checkpoint,
             )
 
@@ -155,7 +161,10 @@ class TestAlgorithmRLModuleRestore(unittest.TestCase):
                 module_specs=module_specs,
                 load_state_path=marl_checkpoint_path,
             )
-            config = config.api_stack(enable_rl_module_and_learner=True).rl_module(
+            config = config.api_stack(
+                enable_rl_module_and_learner=True,
+                enable_env_runner_and_connector_v2=True,
+            ).rl_module(
                 rl_module_spec=marl_module_spec_from_checkpoint,
             )
 
@@ -188,7 +197,10 @@ class TestAlgorithmRLModuleRestore(unittest.TestCase):
 
         config = (
             PPOConfig()
-            .api_stack(enable_rl_module_and_learner=True)
+            .api_stack(
+                enable_rl_module_and_learner=True,
+                enable_env_runner_and_connector_v2=True,
+            )
             .env_runners(rollout_fragment_length=4)
             .learners(**scaling_config)
             .environment("CartPole-v1")
@@ -221,7 +233,10 @@ class TestAlgorithmRLModuleRestore(unittest.TestCase):
                 load_state_path=module_ckpt_path,
             )
 
-            config = config.api_stack(enable_rl_module_and_learner=True).rl_module(
+            config = config.api_stack(
+                enable_rl_module_and_learner=True,
+                enable_env_runner_and_connector_v2=True,
+            ).rl_module(
                 rl_module_spec=module_to_load_spec,
             )
 
@@ -300,7 +315,10 @@ class TestAlgorithmRLModuleRestore(unittest.TestCase):
                     "policy_0",
                 },
             )
-            config = config.api_stack(enable_rl_module_and_learner=True).rl_module(
+            config = config.api_stack(
+                enable_rl_module_and_learner=True,
+                enable_env_runner_and_connector_v2=True,
+            ).rl_module(
                 rl_module_spec=marl_module_spec_from_checkpoint,
             )
 

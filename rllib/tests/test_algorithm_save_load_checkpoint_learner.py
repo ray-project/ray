@@ -32,7 +32,10 @@ def save_and_train(algo_cfg: AlgorithmConfig, env: str, tmpdir):
         The learner stats after 2 iterations of training.
     """
     algo_cfg = (
-        algo_cfg.api_stack(enable_rl_module_and_learner=True)
+        algo_cfg.api_stack(
+            enable_rl_module_and_learner=True,
+            enable_env_runner_and_connector_v2=True,
+        )
         .env_runners(num_env_runners=0)
         # setting min_time_s_per_iteration=0 and min_sample_timesteps_per_iteration=1
         # to make sure that we get results as soon as sampling/training is done at
@@ -68,7 +71,10 @@ def load_and_train(algo_cfg: AlgorithmConfig, env: str, tmpdir):
 
     """
     algo_cfg = (
-        algo_cfg.api_stack(enable_rl_module_and_learner=True)
+        algo_cfg.api_stack(
+            enable_rl_module_and_learner=True,
+            enable_env_runner_and_connector_v2=True,
+        )
         .env_runners(num_env_runners=0)
         # setting min_time_s_per_iteration=0 and min_sample_timesteps_per_iteration=1
         # to make sure that we get results as soon as sampling/training is done at

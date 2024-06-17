@@ -86,12 +86,7 @@ class TorchPolicyV2(Policy):
         super().__init__(observation_space, action_space, config)
 
         # Create model.
-        if self.config.get("enable_rl_module_and_learner", False):
-            model = self.make_rl_module()
-
-            dist_class = None
-        else:
-            model, dist_class = self._init_model_and_dist_class()
+        model, dist_class = self._init_model_and_dist_class()
 
         # Create multi-GPU model towers, if necessary.
         # - The central main model will be stored under self.model, residing
