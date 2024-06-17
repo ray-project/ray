@@ -3512,7 +3512,7 @@ cdef class CoreWorker:
             check_status(op_status)
         except RpcError as e:
             if e.rpc_code == GRPC_STATUS_CODE_DEADLINE_EXCEEDED:
-                raise GetTimeoutError(e.message())
+                raise GetTimeoutError(e.message)
             raise
 
         return RayObjectsToDataMetadataPairs(results)
