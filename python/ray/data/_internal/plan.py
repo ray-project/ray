@@ -417,7 +417,6 @@ class ExecutionPlan:
         block_iter = execute_to_legacy_block_iterator(
             executor,
             self,
-            dataset_uuid=self._dataset_uuid,
         )
         # Since the generator doesn't run any code until we try to fetch the first
         # value, force execution of one bundle before we call get_stats().
