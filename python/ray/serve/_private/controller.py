@@ -256,7 +256,7 @@ class ServeController:
     def record_autoscaling_metrics(
         self, replica_id: str, window_avg: Optional[float], send_timestamp: float
     ):
-        logger.info(
+        logger.debug(
             f"Received metrics from replica {replica_id}: {window_avg} running requests"
         )
         self.autoscaling_state_manager.record_request_metrics_for_replica(

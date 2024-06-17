@@ -25,6 +25,9 @@ class HandleMetricReport:
     """Report from a deployment handle on queued and ongoing requests.
 
     Args:
+        deployment_id: The identifier for the deployment that the
+            handle targets.
+        handle_id: The unique identifier for the deployment handle.
         actor_id: If the deployment handle (from which this metric was
             sent) lives on an actor, the actor ID of that actor.
         handle_source: Describes what kind of entity holds this
