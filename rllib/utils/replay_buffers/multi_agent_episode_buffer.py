@@ -386,6 +386,10 @@ class MultiAgentEpisodeReplayBuffer(EpisodeReplayBuffer):
                 modules_to_sample=modules_to_sample,
             )
         else:
+            assert modules_to_sample is None, (
+                "When sampling `synchronized` `modules_to_sample` is ignored and "
+                "instead all modules will be sampled."
+            )
             return self._sample_synchronized(
                 batch_size_B=batch_size_B,
                 batch_length_T=batch_length_T,
@@ -771,6 +775,7 @@ class MultiAgentEpisodeReplayBuffer(EpisodeReplayBuffer):
                     [1], [1, -gamma], sa_raw_rewards[::-1], axis=0
                 )[-1]
 
+            # Build the single-step `MultiAgentEpisode`.
             sampled_ma_episode = MultiAgentEpisode(
                 id_=ma_episode.id_,
                 observations=ma_observations,
@@ -791,13 +796,16 @@ class MultiAgentEpisodeReplayBuffer(EpisodeReplayBuffer):
                 extra_model_outputs=(
                     [
                         {
+                            # Add for each agent that has a full transition
+                            # a weight of 1.0 and the `n_step` used.
                             aid: {
                                 "weights": 1.0,
                                 "n_step": actual_n_step,
                             }
-                            for aid in ma_observations[0]
+                            for aid in agents_with_full_transition  # ma_observations[0]
                         }
                     ]
+                    # Add also any existing `extra_model_output`s.
                     + (
                         ma_episode.get_extra_model_outputs(
                             # Get all keys.
@@ -827,7 +835,8 @@ class MultiAgentEpisodeReplayBuffer(EpisodeReplayBuffer):
             )
             # Append multi-agent episode to the list of sampled episodes.
             sampled_episodes.append(sampled_ma_episode)
-            # Increase counter for sampled module timesteps.
+            # Increase counter for sampled module timesteps for modules with
+            # complete transitions.
             for agent_id in agents_with_full_transition:
                 self.sampled_timesteps_per_module[ma_episode.module_for(agent_id)] += 1
             # Increasde the counter.
