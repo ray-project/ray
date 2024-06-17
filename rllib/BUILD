@@ -2295,18 +2295,18 @@ py_test(
 # IMPALA
 py_test(
     name = "examples/connectors/flatten_observations_dict_space_impala",
-    main = "examples/connectors/nested_observation_spaces.py",
+    main = "examples/connectors/flatten_observations_dict_space.py",
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
-    srcs = ["examples/connectors/nested_observation_spaces.py"],
+    srcs = ["examples/connectors/flatten_observations_dict_space.py"],
     args = ["--enable-new-api-stack", "--as-test", "--stop-reward=400.0", "--framework=torch", "--algo=IMPALA"]
 )
 py_test(
     name = "examples/connectors/flatten_observations_dict_space_multi_agent_impala",
-    main = "examples/connectors/nested_observation_spaces.py",
+    main = "examples/connectors/flatten_observations_dict_space.py",
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
-    srcs = ["examples/connectors/nested_observation_spaces.py"],
+    srcs = ["examples/connectors/flatten_observations_dict_space.py"],
     args = ["--enable-new-api-stack", "--num-agents=2", "--as-test", "--stop-reward=800.0", "--framework=torch", "--algo=IMPALA"]
 )
 
