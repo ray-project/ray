@@ -3511,7 +3511,7 @@ cdef class CoreWorker:
         try:
             check_status(op_status)
         except RpcError as e:
-            if e.code() == grpc.StatusCode.DEADLINE_EXCEEDED:
+            if e.rpc_code == GRPC_STATUS_CODE_DEADLINE_EXCEEDED:
                 raise GetTimeoutError(e.message())
             raise
 
