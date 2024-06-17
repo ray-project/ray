@@ -72,7 +72,7 @@ from ray.tune.registry import get_trainable_cls, register_env
 from ray import tune
 
 parser = add_rllib_example_script_args(default_reward=20.0)
-parser.set_defaults(env="ALE/Pong-v5")
+parser.set_defaults(env="ale_py:ALE/Pong-v5")
 
 
 class EnvRenderCallback(DefaultCallbacks):
@@ -230,7 +230,7 @@ if __name__ == "__main__":
     # Register our environment with tune.
     def _env_creator(cfg):
         cfg.update({"render_mode": "rgb_array"})
-        if args.env.startswith("ALE/"):
+        if args.env.startswith("ALE/") or args.env.startswith("ale_py:"):
             cfg.update(
                 {
                     # Make analogous to old v4 + NoFrameskip.

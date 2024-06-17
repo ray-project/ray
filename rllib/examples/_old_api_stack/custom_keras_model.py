@@ -127,7 +127,9 @@ if __name__ == "__main__":
     config = (
         get_trainable_cls(args.run)
         .get_default_config()
-        .environment("ALE/Breakout-v5" if args.use_vision_network else "CartPole-v1")
+        .environment(
+            "ale_py:ALE/Breakout-v5" if args.use_vision_network else "CartPole-v1"
+        )
         .framework("tf")
         .callbacks(MyCallbacks)
         .training(
