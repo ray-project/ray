@@ -433,7 +433,7 @@ async def test_delete_while_initializing(serve_instance):
         def incr(self):
             self.count += 1
 
-        def get_count(self):
+        def get_count(self) -> int:
             return self.count
 
     event_holder = EventHolder.remote()
@@ -441,7 +441,7 @@ async def test_delete_while_initializing(serve_instance):
 
     @serve.deployment
     class HangingStart:
-        async def __init__(self, event_holder, counter):
+        async def __init__(self, event_holder: ray.actor.ActorHandle, counter: ray.actor.ActorHandle):
             self.event_holder = event_holder
             self.counter = counter
             await event_holder.set.remote()
