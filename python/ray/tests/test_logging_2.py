@@ -11,6 +11,8 @@ from ray._private.ray_logging.formatters import JSONFormatter, TextFormatter
 from ray.job_config import LoggingConfig
 from ray._private.test_utils import run_string_as_driver
 
+from unittest.mock import patch
+
 
 class TestCoreContextFilter:
     def test_driver_process(self, shutdown_only):
@@ -88,7 +90,12 @@ class TestJSONFormatter:
     def test_empty_record(self, shutdown_only):
         formatter = JSONFormatter()
         record = logging.makeLogRecord({})
-        formatted = formatter.format(record)
+        import time
+
+        ct = time.time_ns()
+        with patch("time.time_ns") as patched_ns:
+            patched_ns.return_value = ct
+            formatted = formatter.format(record)
         record_dict = json.loads(formatted)
         should_exist = [
             "asctime",
@@ -100,6 +107,9 @@ class TestJSONFormatter:
         ]
         for key in should_exist:
             assert key in record_dict
+
+        assert isinstance(record_dict["timestamp_ns"], int)
+        assert record_dict["timestamp_ns"] == ct
         assert len(record_dict) == len(should_exist)
         assert "exc_text" not in record_dict
 
@@ -123,6 +133,7 @@ class TestJSONFormatter:
         ]
         for key in should_exist:
             assert key in record_dict
+        assert isinstance(record_dict["timestamp_ns"], int)
         assert "Traceback (most recent call last):" in record_dict["exc_text"]
         assert len(record_dict) == len(should_exist)
 
