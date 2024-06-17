@@ -94,7 +94,7 @@ class MinimalSessionManagerTest(unittest.TestCase):
             test=MockTest(
                 {
                     "name": f"unit_test__{self.__class__.__name__}",
-                    "cluster": {},
+                    "cluster": {"byod": {}},
                 }
             ),
         )
@@ -125,7 +125,7 @@ class MinimalSessionManagerTest(unittest.TestCase):
         sdk.returns["get_project"] = APIDict(result=APIDict(name="release_unit_tests"))
         sdk.returns["get_cloud"] = APIDict(result=APIDict(provider="AWS"))
         cluster_manager = self.cls(
-            test=MockTest({"name": "test", "cluster": {}}),
+            test=MockTest({"name": "test", "cluster": {"byod": {}}}),
             project_id=UNIT_TEST_PROJECT_ID,
             smoke_test=False,
             sdk=sdk,
@@ -134,7 +134,7 @@ class MinimalSessionManagerTest(unittest.TestCase):
         self.assertEqual(
             cluster_manager.cluster_env_name,
             "anyscale__env__"
-            "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+            "a6c9af504fb6e59b66895ce14682ae6d7d6690f5da5d93b9c31ddf67e0571023",
         )
 
     @patch("time.sleep", lambda *a, **kw: None)

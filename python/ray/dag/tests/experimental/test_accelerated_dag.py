@@ -646,6 +646,119 @@ def test_asyncio_exceptions(ray_start_regular_shared, max_queue_size):
     compiled_dag.teardown()
 
 
+class TestCompositeChannel:
+    def test_composite_channel_one_actor(self, ray_start_regular_shared):
+        """
+        In this test, there are three 'inc' tasks on the same Ray actor, chained
+        together. Therefore, the DAG will look like this:
+
+        Driver -> a.inc -> a.inc -> a.inc -> Driver
+
+        All communication between the driver and the actor will be done through remote
+        channels, i.e., shared memory channels. All communication between the actor
+        tasks will be conducted through local channels, i.e., IntraProcessChannel in
+        this case.
+
+        To elaborate, all output channels of the actor DAG nodes will be
+        CompositeChannel, and the first two will have a local channel, while the last
+        one will have a remote channel.
+        """
+        a = Actor.remote(0)
+        with InputNode() as inp:
+            dag = a.inc.bind(inp)
+            dag = a.inc.bind(dag)
+            dag = a.inc.bind(dag)
+
+        compiled_dag = dag.experimental_compile()
+        output_channel = compiled_dag.execute(1)
+        result = output_channel.begin_read()
+        assert result == 4
+        output_channel.end_read()
+
+        output_channel = compiled_dag.execute(2)
+        result = output_channel.begin_read()
+        assert result == 24
+        output_channel.end_read()
+
+        output_channel = compiled_dag.execute(3)
+        result = output_channel.begin_read()
+        assert result == 108
+        output_channel.end_read()
+
+        compiled_dag.teardown()
+
+    def test_composite_channel_two_actors(self, ray_start_regular_shared):
+        """
+        In this test, there are three 'inc' tasks on the two Ray actors, chained
+        together. Therefore, the DAG will look like this:
+
+        Driver -> a.inc -> b.inc -> a.inc -> Driver
+
+        All communication between the driver and actors will be done through remote
+        channels. Also, all communication between the actor tasks will be conducted
+        through remote channels, i.e., shared memory channel in this case because no
+        consecutive tasks are on the same actor.
+        """
+        a = Actor.remote(0)
+        b = Actor.remote(100)
+        with InputNode() as inp:
+            dag = a.inc.bind(inp)
+            dag = b.inc.bind(dag)
+            dag = a.inc.bind(dag)
+
+        # a: 0+1 -> b: 100+1 -> a: 1+101
+        compiled_dag = dag.experimental_compile()
+        output_channel = compiled_dag.execute(1)
+        result = output_channel.begin_read()
+        assert result == 102
+        output_channel.end_read()
+
+        # a: 102+2 -> b: 101+104 -> a: 104+205
+        output_channel = compiled_dag.execute(2)
+        result = output_channel.begin_read()
+        assert result == 309
+        output_channel.end_read()
+
+        # a: 309+3 -> b: 205+312 -> a: 312+517
+        output_channel = compiled_dag.execute(3)
+        result = output_channel.begin_read()
+        assert result == 829
+        output_channel.end_read()
+
+        compiled_dag.teardown()
+
+    def test_composite_channel_multi_output(self, ray_start_regular_shared):
+        """
+        Driver -> a.inc -> a.inc ---> Driver
+                        |         |
+                        -> b.inc -
+
+        All communication in this DAG will be done through CompositeChannel.
+        Under the hood, the communication between two `a.inc` tasks will
+        be done through a local channel, i.e., IntraProcessChannel in this
+        case, while the communication between `a.inc` and `b.inc` will be
+        done through a shared memory channel.
+        """
+        a = Actor.remote(0)
+        b = Actor.remote(100)
+        with InputNode() as inp:
+            dag = a.inc.bind(inp)
+            dag = MultiOutputNode([a.inc.bind(dag), b.inc.bind(dag)])
+
+        compiled_dag = dag.experimental_compile()
+        output_channel = compiled_dag.execute(1)
+        result = output_channel.begin_read()
+        assert result == [2, 101]
+        output_channel.end_read()
+
+        output_channel = compiled_dag.execute(3)
+        result = output_channel.begin_read()
+        assert result == [10, 106]
+        output_channel.end_read()
+
+        compiled_dag.teardown()
+
+
 if __name__ == "__main__":
     if os.environ.get("PARALLEL_CI"):
         sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
