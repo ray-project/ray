@@ -1207,13 +1207,7 @@ class Dataset:
                 )
             raise ValueError(f"Unsupported batch type: {type(batch)}")
 
-        if seed is not None:
-            ds = self.materialize()
-            return self.map_batches(
-                random_sample, batch_size=ds.count(), batch_format=None
-            )
-        else:
-            return self.map_batches(random_sample, batch_format=None)
+        return self.map_batches(random_sample, batch_format=None)
 
     @ConsumptionAPI
     def streaming_split(
