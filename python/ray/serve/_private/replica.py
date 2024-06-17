@@ -731,7 +731,7 @@ class ReplicaActor:
         await self._metrics_manager.shutdown()
 
         # We call the destructor last because the replica may not have
-        # initialized yet. The destructor may depend on instance variables
+        # been initialized yet. The destructor may depend on instance variables
         # that haven't been set yet, so it may raise an error.
         await self._user_callable_wrapper.call_destructor()
 
