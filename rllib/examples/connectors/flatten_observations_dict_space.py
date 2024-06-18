@@ -113,7 +113,7 @@ if __name__ == "__main__":
         register_env("env", lambda _: CartPoleWithDictObservationSpace())
 
     # Define the AlgorithmConfig used.
-    config = (
+    base_config = (
         get_trainable_cls(args.algo)
         .get_default_config()
         .environment("env")
@@ -122,9 +122,7 @@ if __name__ == "__main__":
             gamma=0.99,
             lr=0.0003,
         )
-    )
-    if args.enable_new_api_stack:
-        config = config.rl_module(
+        .rl_module(
             model_config_dict={
                 "fcnet_hiddens": [32],
                 "fcnet_activation": "linear",
@@ -132,26 +130,21 @@ if __name__ == "__main__":
                 "uses_new_env_runners": True,
             },
         )
-    else:
-        config = config.training(
-            model=dict(
-                fcnet_hiddens=[32], fcnet_activation="linear", vf_share_layers=True
-            )
-        )
+    )
 
     # Add a simple multi-agent setup.
     if args.num_agents > 0:
-        config = config.multi_agent(
+        base_config.multi_agent(
             policies={f"p{i}" for i in range(args.num_agents)},
             policy_mapping_fn=lambda aid, *a, **kw: f"p{aid}",
         )
 
     # Fix some PPO-specific settings.
     if args.algo == "PPO":
-        config = config.training(
+        base_config.training(
             num_sgd_iter=6,
             vf_loss_coeff=0.01,
         )
 
     # Run everything as configured.
-    run_rllib_example_script_experiment(config, args)
+    run_rllib_example_script_experiment(base_config, args)
