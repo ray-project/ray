@@ -832,5 +832,45 @@ def test_stream_to_logger():
         stream_to_logger.i_dont_exist
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
+@pytest.mark.parametrize(
+    "ray_instance",
+    [
+        {"RAY_SERVE_LOG_TO_STDERR": "0"},
+    ],
+    indirect=True,
+)
+def test_json_logging_with_unpickleable_exc_info(
+    serve_and_ray_shutdown, ray_instance, tmp_dir
+):
+    """Test the json logging with unpickleable exc_info.
+
+    exc_info field is often used to log the exception stack trace. However, we had issue
+    where deepcopy is applied to traceback object from exc_info which is not pickleable
+    and caused logging error.
+
+    See: https://github.com/ray-project/ray/issues/45912
+    """
+    logs_dir = Path(tmp_dir)
+    logging_config = LoggingConfig(encoding="JSON", logs_dir=str(logs_dir))
+    logger = logging.getLogger("ray.serve")
+
+    @serve.deployment(logging_config=logging_config)
+    class App:
+        def __call__(self):
+            try:
+                raise Exception("fake_exception")
+            except Exception as e:
+                logger.info("log message", exc_info=e)
+            return "foo"
+
+    serve.run(App.bind())
+    requests.get("http://127.0.0.1:8000/")
+    for log_file in os.listdir(logs_dir):
+        with open(logs_dir / log_file) as f:
+            assert "Logging error" not in f.read()
+            assert "cannot pickle" not in f.read()
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))

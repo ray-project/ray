@@ -100,7 +100,7 @@ class ServeJSONFormatter(logging.Formatter):
                 The formatted log record in json format.
         """
         record_format = copy.deepcopy(self.component_log_fmt)
-        record_attributes = copy.deepcopy(record.__dict__)
+        record_attributes = record.__dict__
         record_format[SERVE_LOG_LEVEL_NAME] = record.levelname
         record_format[SERVE_LOG_TIME] = self.asctime_formatter.format(record)
 
