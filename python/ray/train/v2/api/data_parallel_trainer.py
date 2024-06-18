@@ -6,6 +6,7 @@ from ray.train._internal.data_config import DataConfig
 from ray.train.base_trainer import GenDataset
 from ray.train.v2._internal.constants import _UNSUPPORTED
 from ray.train.v2._internal.execution.controller import TrainController
+from ray.train.v2._internal.execution.failure_handling import DefaultFailurePolicy
 from ray.train.v2._internal.execution.scaling_policy import FixedScalingPolicy
 from ray.train.v2._internal.util import construct_train_func
 from ray.train.v2.api.backend_setup import BackendSetupCallback
@@ -55,24 +56,16 @@ class DataParallelTrainer:
 
         callbacks = [BackendSetupCallback(self.backend_config)]
 
-        from ray.train.v2._internal.execution.failure_handling import (
-            FailureDecision,
-            FailurePolicy,
-        )
-
-        # TODO: Replace this with the DefaultFailurePolicy
-        class TemporaryFailurePolicy(FailurePolicy):
-            def make_decision(self, worker_group_status) -> FailureDecision:
-                return FailureDecision.RESTART
-
         controller = TrainController(
             train_fn=train_fn,
             scaling_policy=FixedScalingPolicy(self.scaling_config),
-            failure_policy=TemporaryFailurePolicy(self.run_config.failure_config),
+            failure_policy=DefaultFailurePolicy(self.run_config.failure_config),
             run_config=self.run_config,
             callbacks=callbacks,
         )
         controller.run()
+
+        return controller.get_result()
 
     @classmethod
     def restore(cls, *args, **kwargs):

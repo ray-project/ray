@@ -2,6 +2,7 @@ import logging
 import os
 import time
 from enum import Enum
+from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
 from ray.train._internal.checkpoint_manager import _CheckpointManager
@@ -9,6 +10,7 @@ from ray.train.v2._internal.constants import (
     DEFAULT_HEALTH_CHECK_INTERVAL_S,
     HEALTH_CHECK_INTERVAL_S_ENV_VAR,
 )
+from ray.train.v2._internal.exceptions import TrainingFailedError
 from ray.train.v2._internal.execution.callback import Callback, SystemCallback
 from ray.train.v2._internal.execution.checkpoint.checkpoint_handler import (
     CheckpointHandler,
@@ -17,11 +19,13 @@ from ray.train.v2._internal.execution.failure_handling import (
     FailureDecision,
     FailurePolicy,
 )
+from ray.train.v2._internal.execution.result import Result
 from ray.train.v2._internal.execution.scaling_policy import (
     ResizeDecision,
     ScalingDecision,
     ScalingPolicy,
 )
+from ray.train.v2._internal.execution.storage import get_fs_and_path
 from ray.train.v2._internal.execution.worker_group import WorkerGroup, WorkerGroupStatus
 from ray.train.v2._internal.util import time_monotonic
 from ray.train.v2.api.config import RunConfig
@@ -95,6 +99,7 @@ class TrainController:
         self._health_check_interval_s = float(
             os.getenv(HEALTH_CHECK_INTERVAL_S_ENV_VAR, DEFAULT_HEALTH_CHECK_INTERVAL_S)
         )
+        self._training_failed_error: Optional[TrainingFailedError] = None
 
     def _execute_scaling_decision(self, decision: ScalingDecision):
         """Executes scaling decisions."""
@@ -125,6 +130,10 @@ class TrainController:
                 + ("\n".join([str(e) for e in errors]))
             )
             self._set_state(TrainControllerState.ERRORED)
+            self._training_failed_error = TrainingFailedError(
+                "Training failed due to worker errors of user function",
+                worker_failures=worker_group_status.errors,
+            )
         elif failure_decision == FailureDecision.NOOP:
             assert self._state == TrainControllerState.RUNNING
         else:
@@ -146,6 +155,7 @@ class TrainController:
     def _restart_worker_group(self, num_workers: int, resources_per_worker: dict):
         """Restart the worker group and launch the train function."""
         self._maybe_shutdown_worker_group()
+        self._training_failed_error = None
 
         # If there's a latest checkpoint that's been committed,
         # use it to restore the worker group.
@@ -251,3 +261,49 @@ class TrainController:
             self._run_control_loop_iteration()
 
         self._shutdown()
+
+    def get_checkpoint_manager(self) -> _CheckpointManager:
+        return self._checkpoint_manager
+
+    def get_result(self) -> Result:
+        """Get the final training result from the TrainController."""
+
+        controller_state = self.get_state()
+        if controller_state not in (
+            TrainControllerState.FINISHED,
+            TrainControllerState.ERRORED,
+        ):
+            raise ValueError(
+                f"Cannot get result when controller is in state {controller_state}"
+            )
+
+        latest_checkpoint_result = self._checkpoint_manager.latest_checkpoint_result
+        latest_metrics = (
+            latest_checkpoint_result.metrics if latest_checkpoint_result else None
+        )
+        latest_checkpoint = (
+            latest_checkpoint_result.checkpoint if latest_checkpoint_result else None
+        )
+        best_checkpoints = [
+            (r.checkpoint, r.metrics)
+            for r in self._checkpoint_manager.best_checkpoint_results
+        ]
+        storage_filesystem, storage_fs_path = get_fs_and_path(
+            self._run_config.storage_path, self._run_config.storage_filesystem
+        )
+        experiment_fs_path = Path(storage_fs_path, self._run_config.name).as_posix()
+
+        errors = (
+            self._training_failed_error
+            if controller_state == TrainControllerState.ERRORED
+            else None
+        )
+
+        return Result(
+            metrics=latest_metrics,
+            checkpoint=latest_checkpoint,
+            error=errors,
+            path=experiment_fs_path,
+            best_checkpoints=best_checkpoints,
+            _storage_filesystem=storage_filesystem,
+        )

@@ -31,6 +31,14 @@ py_test(
 )
 
 py_test(
+    name = "test_result",
+    size = "small",
+    srcs = ["tests/test_result.py"],
+    tags = ["exclusive", "team:ml", "train_v2"],
+    deps = ["//:ray_lib"],
+)
+
+py_test(
     name = "test_storage",
     size = "small",
     srcs = ["tests/test_storage.py"],
