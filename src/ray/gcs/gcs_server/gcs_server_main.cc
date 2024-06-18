@@ -62,7 +62,6 @@ int main(int argc, char *argv[]) {
   gflags::ShutDownCommandLineFlags();
 
   RayConfig::instance().initialize(config_list);
-  ray::asio::testing::init();
 
   // IO Service for main loop.
   instrumented_io_context main_service;

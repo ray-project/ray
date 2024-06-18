@@ -470,9 +470,10 @@ class HangPlugin(RuntimeEnvPlugin):
     ) -> float:
         await asyncio.sleep(PLUGIN_TIMEOUT)
 
-    @staticmethod
-    def validate(runtime_env_dict: dict) -> str:
-        return 1
+
+@staticmethod
+def validate(runtime_env_dict: dict) -> str:
+    return 1
 
 
 @pytest.mark.parametrize(
