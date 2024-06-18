@@ -108,6 +108,12 @@ class FileReader(abc.ABC):
         if len(paths) < num_threads:
             num_threads = len(paths)
 
+        # TODO: We should refactor the code so that we can get the results in order even
+        # when using multiple threads.
+        ctx = DataContext.get_current()
+        if ctx.execution_options.preserve_order:
+            num_threads = 0
+
         def _read_paths(paths: List[str]):
             for path in paths:
                 partitions = {}
