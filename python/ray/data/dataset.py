@@ -1403,10 +1403,7 @@ class Dataset:
                 logical_plan = LogicalPlan(InputData(input_data=ref_bundles))
                 split_datasets.append(
                     MaterializedDataset(
-                        ExecutionPlan(
-                            stats,
-                            run_by_consumer=owned_by_consumer,
-                        ),
+                        ExecutionPlan(stats),
                         logical_plan,
                     )
                 )
@@ -1524,10 +1521,7 @@ class Dataset:
             logical_plan = LogicalPlan(InputData(input_data=[bundle]))
             split_datasets.append(
                 MaterializedDataset(
-                    ExecutionPlan(
-                        stats,
-                        run_by_consumer=owned_by_consumer,
-                    ),
+                    ExecutionPlan(stats),
                     logical_plan,
                 )
             )
@@ -1601,10 +1595,7 @@ class Dataset:
 
             splits.append(
                 MaterializedDataset(
-                    ExecutionPlan(
-                        stats,
-                        run_by_consumer=bundle.owns_blocks,
-                    ),
+                    ExecutionPlan(stats),
                     logical_plan,
                 )
             )
@@ -1793,7 +1784,7 @@ class Dataset:
         )
         stats.time_total_s = time.perf_counter() - start_time
         return Dataset(
-            ExecutionPlan(stats, run_by_consumer=False),
+            ExecutionPlan(stats),
             logical_plan,
         )
 
@@ -4526,10 +4517,7 @@ class Dataset:
         ]
         logical_plan = LogicalPlan(InputData(input_data=ref_bundles))
         output = MaterializedDataset(
-            ExecutionPlan(
-                copy._plan.stats(),
-                run_by_consumer=False,
-            ),
+            ExecutionPlan(copy._plan.stats()),
             logical_plan,
         )
         # Metrics are tagged with `copy`s uuid, update the output uuid with
