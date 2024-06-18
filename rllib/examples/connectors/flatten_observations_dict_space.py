@@ -139,11 +139,24 @@ if __name__ == "__main__":
             policy_mapping_fn=lambda aid, *a, **kw: f"p{aid}",
         )
 
-    # Fix some PPO-specific settings.
+    # PPO-specific settings (for better learning behavior only).
     if args.algo == "PPO":
         base_config.training(
             num_sgd_iter=6,
             vf_loss_coeff=0.01,
+        )
+    # IMPALA-specific settings (for better learning behavior only).
+    elif args.algo == "IMPALA":
+        base_config.training(
+            lr=0.0005,
+            vf_loss_coeff=0.05,
+            entropy_coeff=0.0,
+        )
+        base_config.rl_module(
+            model_config_dict={
+                "vf_share_layers": True,
+                "uses_new_env_runners": True,
+            }
         )
 
     # Run everything as configured.
