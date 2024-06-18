@@ -34,8 +34,8 @@ class NumpyToTensor(ConnectorV2):
             as_learner_connector: Whether this ConnectorV2 piece is used inside a
                 LearnerConnectorPipeline or not.
             pin_mempory: Whether to pin memory when creating (torch) tensors.
-                If None (default), pin memory if `as_learner_connector` is True,
-                otherwise, don't.
+                If None (default), pins memory if `as_learner_connector` is True,
+                otherwise doesn't pin memory.
             **kwargs:
         """
         super().__init__(

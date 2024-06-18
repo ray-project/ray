@@ -258,7 +258,7 @@ class PPOLearner(Learner):
         return {
             module_id: self.module[module_id]
             .unwrapped()
-            ._compute_values(module_batch, self._device)
+            ._compute_values(module_batch)
             for module_id, module_batch in batch_for_vf.policy_batches.items()
             if self.should_module_be_updated(module_id, batch_for_vf)
         }
