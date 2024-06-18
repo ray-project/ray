@@ -527,7 +527,7 @@ export const Metrics = () => {
                 </MenuItem>
               ))}
             </TextField>
-            <HelpInfo>Time picker</HelpInfo>
+            <HelpInfo>Time range picker</HelpInfo>
           </Paper>
           <Alert severity="info">
             Tip: You can click on the legend to focus on a specific line in the
