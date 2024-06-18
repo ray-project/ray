@@ -233,6 +233,11 @@ class FileBasedDatasource(Datasource):
             def read_task_fn():
                 nonlocal num_threads, read_paths
 
+                # TODO: We should refactor the code so that we can get the results in
+                # order even when using multiple threads.
+                if ctx.execution_options.preserve_order:
+                    num_threads = 0
+
                 if num_threads > 0:
                     if len(read_paths) < num_threads:
                         num_threads = len(read_paths)
