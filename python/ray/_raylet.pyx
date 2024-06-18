@@ -194,7 +194,7 @@ from ray.util.scheduling_strategies import (
 import ray._private.ray_constants as ray_constants
 import ray.cloudpickle as ray_pickle
 from ray.core.generated.common_pb2 import ActorDiedErrorContext
-from ray.core.generated.gcs_pb2 import JobTableData
+from ray.core.generated.gcs_pb2 import JobTableData, GcsNodeInfo
 from ray.core.generated.gcs_service_pb2 import GetAllResourceUsageReply
 from ray._private.async_compat import (
     sync_to_async,
@@ -892,6 +892,9 @@ cdef prepare_args_internal(
     total_inlined = 0
     rpc_inline_threshold = RayConfig.instance().task_rpc_inlined_bytes_limit()
     for arg in args:
+        from ray.experimental.compiled_dag_ref import CompiledDAGRef
+        if isinstance(arg, CompiledDAGRef):
+            raise TypeError("CompiledDAGRef cannot be used as Ray task/actor argument.")
         if isinstance(arg, ObjectRef):
             c_arg = (<ObjectRef>arg).native()
             op_status = CCoreWorkerProcess.GetCoreWorker().GetOwnerAddress(
@@ -2877,27 +2880,26 @@ cdef class GcsClient:
                 c_uri, expiration_s, timeout_ms))
 
     @_auto_reconnect
-    def get_all_node_info(self, timeout=None):
+    def get_all_node_info(self, timeout=None) -> Dict[NodeID, GcsNodeInfo]:
         cdef:
             int64_t timeout_ms = round(1000 * timeout) if timeout else -1
-            CGcsNodeInfo node_info
-            c_vector[CGcsNodeInfo] node_infos
+            CGcsNodeInfo c_node_info
+            c_vector[CGcsNodeInfo] c_node_infos
+            c_vector[c_string] serialized_node_infos
         with nogil:
-            check_status(self.inner.get().GetAllNodeInfo(timeout_ms, node_infos))
+            check_status(self.inner.get().GetAllNodeInfo(timeout_ms, c_node_infos))
+            for c_node_info in c_node_infos:
+                serialized_node_infos.push_back(c_node_info.SerializeAsString())
 
         result = {}
-        for node_info in node_infos:
-            c_resources = PythonGetResourcesTotal(node_info)
-            result[node_info.node_id()] = {
-                "node_name": node_info.node_name(),
-                "state": node_info.state(),
-                "labels": PythonGetNodeLabels(node_info),
-                "resources": {key.decode(): value for key, value in c_resources}
-            }
+        for serialized in serialized_node_infos:
+            node_info = GcsNodeInfo()
+            node_info.ParseFromString(serialized)
+            result[NodeID.from_binary(node_info.node_id)] = node_info
         return result
 
     @_auto_reconnect
-    def get_all_job_info(self, timeout=None) -> Dict[bytes, JobTableData]:
+    def get_all_job_info(self, timeout=None) -> Dict[JobID, JobTableData]:
         # Ideally we should use json_format.MessageToDict(job_info),
         # but `job_info` is a cpp pb message not a python one.
         # Manually converting each and every protobuf field is out of question,
@@ -2915,7 +2917,7 @@ cdef class GcsClient:
         for serialized in serialized_job_infos:
             job_info = JobTableData()
             job_info.ParseFromString(serialized)
-            result[job_info.job_id] = job_info
+            result[JobID.from_binary(job_info.job_id)] = job_info
         return result
 
     @_auto_reconnect
@@ -4363,7 +4365,8 @@ cdef class CoreWorker:
         CCoreWorkerProcess.GetCoreWorker().RemoveActorHandleReference(
             c_actor_id)
 
-    cdef make_actor_handle(self, ActorHandleSharedPtr c_actor_handle):
+    cdef make_actor_handle(self, ActorHandleSharedPtr c_actor_handle,
+                           c_bool weak_ref):
         worker = ray._private.worker.global_worker
         worker.check_connected()
         manager = worker.function_actor_manager
@@ -4401,7 +4404,8 @@ cdef class CoreWorker:
                                          method_meta.enable_task_events,
                                          actor_method_cpu,
                                          actor_creation_function_descriptor,
-                                         worker.current_cluster_and_job)
+                                         worker.current_cluster_and_job,
+                                         weak_ref=weak_ref)
         else:
             return ray.actor.ActorHandle(language, actor_id,
                                          0,   # max_task_retries,
@@ -4416,11 +4420,14 @@ cdef class CoreWorker:
                                          {},  # enable_task_events
                                          0,  # actor method cpu
                                          actor_creation_function_descriptor,
-                                         worker.current_cluster_and_job)
+                                         worker.current_cluster_and_job,
+                                         weak_ref=weak_ref,
+                                         )
 
     def deserialize_and_register_actor_handle(self, const c_string &bytes,
                                               ObjectRef
-                                              outer_object_ref):
+                                              outer_object_ref,
+                                              c_bool weak_ref):
         cdef:
             CObjectID c_outer_object_id = (outer_object_ref.native() if
                                            outer_object_ref else
@@ -4428,9 +4435,11 @@ cdef class CoreWorker:
         c_actor_id = (CCoreWorkerProcess
                       .GetCoreWorker()
                       .DeserializeAndRegisterActorHandle(
-                          bytes, c_outer_object_id))
+                          bytes, c_outer_object_id,
+                          add_local_ref=not weak_ref))
         return self.make_actor_handle(
-            CCoreWorkerProcess.GetCoreWorker().GetActorHandle(c_actor_id))
+            CCoreWorkerProcess.GetCoreWorker().GetActorHandle(c_actor_id),
+            weak_ref)
 
     def get_named_actor_handle(self, const c_string &name,
                                const c_string &ray_namespace):
@@ -4445,13 +4454,15 @@ cdef class CoreWorker:
                     name, ray_namespace))
         check_status(named_actor_handle_pair.second)
 
-        return self.make_actor_handle(named_actor_handle_pair.first)
+        return self.make_actor_handle(named_actor_handle_pair.first,
+                                      weak_ref=True)
 
     def get_actor_handle(self, ActorID actor_id):
         cdef:
             CActorID c_actor_id = actor_id.native()
         return self.make_actor_handle(
-            CCoreWorkerProcess.GetCoreWorker().GetActorHandle(c_actor_id))
+            CCoreWorkerProcess.GetCoreWorker().GetActorHandle(c_actor_id),
+            weak_ref=True)
 
     def list_named_actors(self, c_bool all_namespaces):
         """Returns (namespace, name) for named actors in the system.
