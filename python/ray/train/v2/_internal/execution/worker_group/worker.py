@@ -2,7 +2,7 @@ import os
 import socket
 from dataclasses import dataclass
 from queue import Queue
-from typing import Callable, List, Optional, TypeVar
+from typing import Callable, Dict, List, Optional, TypeVar, Union
 
 import ray
 from ray.actor import ActorHandle
@@ -35,7 +35,7 @@ class ActorMetadata:
     node_id: str
     node_ip: str
     pid: int
-    accelerator_ids: List[int]
+    accelerator_ids: Dict[str, List[Union[int, str]]]
 
 
 @dataclass

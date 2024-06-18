@@ -116,7 +116,7 @@ class WorkerGroup:
         ]
         actor_metadatas = ray.get([actor.get_metadata.remote() for actor in actors])
         workers = [Worker(actor, meta) for actor, meta in zip(actors, actor_metadatas)]
-        self._workers = self._sort_workers_by_ip_and_gpu_id(workers)
+        self._workers = self._sort_workers_by_node_id_and_gpu_id(workers)
 
         # Initialize the synchronization actor on the driver node
         self._sync_actor = SynchronizationActor.options(
@@ -129,41 +129,41 @@ class WorkerGroup:
         self._init_train_context_on_workers(checkpoint=checkpoint)
 
     @classmethod
-    def _sort_workers_by_ip_and_gpu_id(
-        cls, workers: List[Worker], _first_ip: Optional[str] = None
+    def _sort_workers_by_node_id_and_gpu_id(
+        cls, workers: List[Worker], _first_id: Optional[str] = None
     ) -> List[Worker]:
-        """Reorder the workers by their node ip and the lowest GPU id.
+        """Reorder the workers by their node id and the lowest GPU id.
 
         This sorted order should be used to assign world ranks to the workers.
 
         Example:
             Given workers with the following attributes:
-                worker_0: ip=1, gpu_ids=[1]
-                worker_1: ip=0, gpu_ids=[0]
-                worker_2: ip=1, gpu_ids=[0]
-                worker_3: ip=0, gpu_ids=[1]
+                worker_0: id=1, gpu_ids=[1]
+                worker_1: id=0, gpu_ids=[0]
+                worker_2: id=1, gpu_ids=[0]
+                worker_3: id=0, gpu_ids=[1]
 
             The function will perform the following steps:
                 1. Group by node IP:
-                    ip=0: worker_1, worker_3
-                    ip=1: worker_0, worker_2
+                    id=0: worker_1, worker_3
+                    id=1: worker_0, worker_2
 
                 2. Sort each group by GPU ID:
-                    ip=0: worker_1 (gpu_id=0), worker_3 (gpu_id=1)
-                    ip=1: worker_2 (gpu_id=0), worker_0 (gpu_id=1)
+                    id=0: worker_1 (gpu_id=0), worker_3 (gpu_id=1)
+                    id=1: worker_2 (gpu_id=0), worker_0 (gpu_id=1)
 
             Resulting in the order: [worker_1, worker_3, worker_2, worker_0]
 
         Args:
-            _first_ip: The first IP to group by.
+            _first_id: The first node id to group by.
         """
-        ip_to_workers = collections.defaultdict(list)
+        node_id_to_workers = collections.defaultdict(list)
 
-        if _first_ip is not None:
-            ip_to_workers[_first_ip] = []
+        if _first_id is not None:
+            node_id_to_workers[_first_id] = []
 
         for worker in workers:
-            ip_to_workers[worker.metadata.node_ip].append(worker)
+            node_id_to_workers[worker.metadata.node_id].append(worker)
 
         # Sort workers on the same node by the lowest GPU id
         # More details: https://github.com/ray-project/ray/issues/40803
@@ -180,11 +180,11 @@ class WorkerGroup:
             except ValueError:
                 return min(gpu_ids)
 
-        for node_ip in ip_to_workers:
-            ip_to_workers[node_ip].sort(key=get_lowest_gpu_id)
+        for node_id in node_id_to_workers:
+            node_id_to_workers[node_id].sort(key=get_lowest_gpu_id)
 
         sorted_workers = []
-        for workers in ip_to_workers.values():
+        for workers in node_id_to_workers.values():
             sorted_workers.extend(workers)
         return sorted_workers
 
@@ -433,6 +433,9 @@ class WorkerGroup:
 
     def __len__(self) -> int:
         return len(self._workers)
+
+    def get_workers(self) -> List[Worker]:
+        return self._workers
 
     def _set_worker_group_distributed_contexts(self) -> None:
         node_ip_to_workers = collections.defaultdict(list)

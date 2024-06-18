@@ -4,6 +4,7 @@ from typing import Any, Callable, Dict, Optional, Union
 from ray.train import BackendConfig, Checkpoint
 from ray.train._internal.data_config import DataConfig
 from ray.train.base_trainer import GenDataset
+from ray.train.v2._internal.accelerators import AcceleratorSetupCallback
 from ray.train.v2._internal.constants import _UNSUPPORTED
 from ray.train.v2._internal.execution.controller import TrainController
 from ray.train.v2._internal.execution.failure_handling import DefaultFailurePolicy
@@ -54,7 +55,11 @@ class DataParallelTrainer:
             fn_arg_name="train_loop_per_worker",
         )
 
-        callbacks = [BackendSetupCallback(self.backend_config)]
+        accelerator_setup_callback = AcceleratorSetupCallback(
+            self.backend_config, self.scaling_config
+        )
+        backend_setup_callback = BackendSetupCallback(self.backend_config)
+        callbacks = [accelerator_setup_callback, backend_setup_callback]
 
         controller = TrainController(
             train_fn=train_fn,

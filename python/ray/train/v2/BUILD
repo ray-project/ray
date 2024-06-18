@@ -1,4 +1,12 @@
 py_test(
+    name = "test_accelerator_utils",
+    size = "small",
+    srcs = ["tests/test_accelerator_utils.py"],
+    tags = ["exclusive", "team:ml", "train_v2"],
+    deps = ["//:ray_lib"],
+)
+
+py_test(
     name = "test_checkpoint_handler",
     size = "small",
     srcs = ["tests/test_checkpoint_handler.py"],
