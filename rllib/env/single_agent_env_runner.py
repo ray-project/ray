@@ -5,7 +5,6 @@ import logging
 from typing import Any, Container, DefaultDict, Dict, List, Optional
 
 import gymnasium as gym
-import tree  # pip install dm_tree
 
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
@@ -42,8 +41,7 @@ from ray.rllib.utils.metrics import (
 )
 from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
 from ray.rllib.utils.spaces.space_utils import unbatch
-from ray.rllib.utils.torch_utils import convert_to_torch_tensor
-from ray.rllib.utils.typing import EpisodeID, ModelWeights, ResultDict, TensorType
+from ray.rllib.utils.typing import EpisodeID, ModelWeights, ResultDict
 from ray.tune.registry import ENV_CREATOR, _global_registry
 from ray.util.annotations import PublicAPI
 
@@ -805,14 +803,6 @@ class SingleAgentEnvRunner(EnvRunner):
             env_index=idx,
         )
 
-    def _convert_to_tensor(self, struct) -> TensorType:
-        """Converts structs to a framework-specific tensor."""
-
-        if self.config.framework_str == "torch":
-            return convert_to_torch_tensor(struct)
-        else:
-            return tree.map_structure(tf.convert_to_tensor, struct)
-
     def _increase_sampled_metrics(self, num_steps):
         # Per sample cycle stats.
         self.metrics.log_value(
@@ -867,7 +857,10 @@ class SingleAgentEnvRunner(EnvRunner):
         self.metrics.log_value(EPISODE_LEN_MAX, length, reduce="max", window=win)
         self.metrics.log_value(EPISODE_RETURN_MAX, ret, reduce="max", window=win)
 
-    @Deprecated(new="get_state(components='rl_module')", error=False)
+    @Deprecated(
+        new="SingleAgentEnvRunner.get_state(components='rl_module')",
+        error=False,
+    )
     def get_weights(self, modules=None):
         return self.get_state(components="rl_module")["rl_module"]
 

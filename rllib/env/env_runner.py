@@ -1,14 +1,18 @@
 import abc
 from typing import Any, Container, Dict, Optional, TYPE_CHECKING
 
+import tree  # pip install dm_tree
+
 from ray.rllib.utils.actor_manager import FaultAwareApply
 from ray.rllib.utils.annotations import OldAPIStack
 from ray.rllib.utils.framework import try_import_tf
+from ray.rllib.utils.torch_utils import convert_to_torch_tensor
+from ray.rllib.utils.typing import TensorType
 
 if TYPE_CHECKING:
     from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 
-tf1, _, _ = try_import_tf()
+tf1, tf, _ = try_import_tf()
 
 
 @OldAPIStack
@@ -127,3 +131,11 @@ class EnvRunner(FaultAwareApply, metaclass=abc.ABCMeta):
     def __del__(self) -> None:
         """If this Actor is deleted, clears all resources used by it."""
         pass
+
+    def _convert_to_tensor(self, struct) -> TensorType:
+        """Converts structs to a framework-specific tensor."""
+
+        if self.config.framework_str == "torch":
+            return convert_to_torch_tensor(struct)
+        else:
+            return tree.map_structure(tf.convert_to_tensor, struct)
