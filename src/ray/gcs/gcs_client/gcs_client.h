@@ -160,6 +160,11 @@ class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient> {
     return *placement_group_accessor_;
   }
 
+  RuntimeEnvAccessor &RuntimeEnvs() {
+    RAY_CHECK_NE(runtime_env_accessor_, nullptr);
+    return *runtime_env_accessor_;
+  }
+
   const ClusterID &GetClusterId() {
     RAY_CHECK(client_call_manager_) << "Cannot retrieve cluster ID before it is set.";
     return client_call_manager_->GetClusterId();
