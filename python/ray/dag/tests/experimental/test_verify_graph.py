@@ -36,9 +36,9 @@ class MockedWorker:
 
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 1}], indirect=True)
-@pytest.mark.parametrize("tensor_transport", [
-    TorchTensorType.AUTO, TorchTensorType.NCCL
-])
+@pytest.mark.parametrize(
+    "tensor_transport", [TorchTensorType.AUTO, TorchTensorType.NCCL]
+)
 def test_invalid_graph_1_actor(ray_start_regular, tensor_transport):
     """
     If tensor_transport is TorchTensorType.AUTO, the shared memory channel will be
@@ -68,9 +68,9 @@ def test_invalid_graph_1_actor(ray_start_regular, tensor_transport):
 
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 2}], indirect=True)
-@pytest.mark.parametrize("tensor_transport", [
-    TorchTensorType.AUTO, TorchTensorType.NCCL
-])
+@pytest.mark.parametrize(
+    "tensor_transport", [TorchTensorType.AUTO, TorchTensorType.NCCL]
+)
 def test_invalid_graph_2_actors_1(ray_start_regular, tensor_transport):
     """
     If tensor_transport is TorchTensorType.AUTO, the shared memory channel will be
@@ -108,9 +108,9 @@ def test_invalid_graph_2_actors_1(ray_start_regular, tensor_transport):
 
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 2}], indirect=True)
-@pytest.mark.parametrize("tensor_transport", [
-    TorchTensorType.AUTO, TorchTensorType.NCCL
-])
+@pytest.mark.parametrize(
+    "tensor_transport", [TorchTensorType.AUTO, TorchTensorType.NCCL]
+)
 def test_invalid_graph_2_actors_2(ray_start_regular, tensor_transport):
     """
     If tensor_transport is TorchTensorType.AUTO, the shared memory channel will be
@@ -147,10 +147,11 @@ def test_invalid_graph_2_actors_2(ray_start_regular, tensor_transport):
         with pytest.raises(ValueError, match=INVALID_GRAPH):
             dag.experimental_compile()
 
+
 @pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 2}], indirect=True)
-@pytest.mark.parametrize("tensor_transport", [
-    TorchTensorType.AUTO, TorchTensorType.NCCL
-])
+@pytest.mark.parametrize(
+    "tensor_transport", [TorchTensorType.AUTO, TorchTensorType.NCCL]
+)
 def test_invalid_graph_2_actors_3(ray_start_regular, tensor_transport):
     """
     If tensor_transport is TorchTensorType.AUTO, the shared memory channel will be
@@ -186,9 +187,9 @@ def test_invalid_graph_2_actors_3(ray_start_regular, tensor_transport):
 
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 3}], indirect=True)
-@pytest.mark.parametrize("tensor_transport", [
-    TorchTensorType.AUTO, TorchTensorType.NCCL
-])
+@pytest.mark.parametrize(
+    "tensor_transport", [TorchTensorType.AUTO, TorchTensorType.NCCL]
+)
 def test_invalid_graph_3_actors(ray_start_regular, tensor_transport):
     """
     If tensor_transport is TorchTensorType.AUTO, the shared memory channel will be
