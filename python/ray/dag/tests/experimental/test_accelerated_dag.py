@@ -102,9 +102,11 @@ def test_basic(ray_start_regular):
         dag = a.inc.bind(i)
 
     compiled_dag = dag.experimental_compile()
+    dag_id = compiled_dag.get_id()
 
     for i in range(3):
         ref = compiled_dag.execute(1)
+        assert str(ref) == f"CompiledDAGRef({dag_id}, execution_index={i})"
         result = ray.get(ref)
         assert result == i + 1
 
@@ -485,6 +487,20 @@ def test_exceed_max_buffered_results(ray_start_regular):
     compiled_dag.teardown()
 
 
+def test_compiled_dag_ref_del(ray_start_regular):
+    a = Actor.remote(0)
+    with InputNode() as inp:
+        dag = a.inc.bind(inp)
+
+    compiled_dag = dag.experimental_compile()
+    # Test that when ref is deleted or goes out of scope, the corresponding
+    # execution result is retrieved and immediately discarded. This is confirmed
+    # when future execute() methods do not block.
+    for _ in range(10):
+        ref = compiled_dag.execute(1)
+        del ref
+
+
 def test_dag_fault_tolerance_chain(ray_start_regular_shared):
     actors = [
         Actor.remote(0, fail_after=100 if i == 0 else None, sys_exit=False)
@@ -723,20 +739,14 @@ class TestCompositeChannel:
             dag = a.inc.bind(dag)
 
         compiled_dag = dag.experimental_compile()
-        output_channel = compiled_dag.execute(1)
-        result = output_channel.begin_read()
-        assert result == 4
-        output_channel.end_read()
+        ref = compiled_dag.execute(1)
+        assert ray.get(ref) == 4
 
-        output_channel = compiled_dag.execute(2)
-        result = output_channel.begin_read()
-        assert result == 24
-        output_channel.end_read()
+        ref = compiled_dag.execute(2)
+        assert ray.get(ref) == 24
 
-        output_channel = compiled_dag.execute(3)
-        result = output_channel.begin_read()
-        assert result == 108
-        output_channel.end_read()
+        ref = compiled_dag.execute(3)
+        assert ray.get(ref) == 108
 
         compiled_dag.teardown()
 
@@ -761,22 +771,16 @@ class TestCompositeChannel:
 
         # a: 0+1 -> b: 100+1 -> a: 1+101
         compiled_dag = dag.experimental_compile()
-        output_channel = compiled_dag.execute(1)
-        result = output_channel.begin_read()
-        assert result == 102
-        output_channel.end_read()
+        ref = compiled_dag.execute(1)
+        assert ray.get(ref) == 102
 
         # a: 102+2 -> b: 101+104 -> a: 104+205
-        output_channel = compiled_dag.execute(2)
-        result = output_channel.begin_read()
-        assert result == 309
-        output_channel.end_read()
+        ref = compiled_dag.execute(2)
+        assert ray.get(ref) == 309
 
         # a: 309+3 -> b: 205+312 -> a: 312+517
-        output_channel = compiled_dag.execute(3)
-        result = output_channel.begin_read()
-        assert result == 829
-        output_channel.end_read()
+        ref = compiled_dag.execute(3)
+        assert ray.get(ref) == 829
 
         compiled_dag.teardown()
 
@@ -799,15 +803,11 @@ class TestCompositeChannel:
             dag = MultiOutputNode([a.inc.bind(dag), b.inc.bind(dag)])
 
         compiled_dag = dag.experimental_compile()
-        output_channel = compiled_dag.execute(1)
-        result = output_channel.begin_read()
-        assert result == [2, 101]
-        output_channel.end_read()
+        ref = compiled_dag.execute(1)
+        assert ray.get(ref) == [2, 101]
 
-        output_channel = compiled_dag.execute(3)
-        result = output_channel.begin_read()
-        assert result == [10, 106]
-        output_channel.end_read()
+        ref = compiled_dag.execute(3)
+        assert ray.get(ref) == [10, 106]
 
         compiled_dag.teardown()
 
