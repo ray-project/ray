@@ -32,62 +32,62 @@ MAX_PLUS_PENDING_GPUS = max_plus_pending(MAX_GPUS, PENDING_GPUS)
 # IMPORTANT: Please keep this in sync with Metrics.tsx and ray-metrics.rst
 # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 DEFAULT_GRAFANA_PANELS = [
-    Panel(
-        id=26,
-        title="Scheduler Task State",
-        description="Current number of tasks in a particular state.\n\nState: the task state, as described by rpc::TaskState proto in common.proto. Task resubmissions due to failures or object reconstruction are shown with (retry) in the label.",
-        unit="tasks",
-        targets=[
-            Target(
-                expr='sum(max_over_time(ray_tasks{{IsRetry="0",State=~"FINISHED|FAILED",{global_filters}}}[14d])) by (State) or clamp_min(sum(ray_tasks{{IsRetry="0",State!~"FINISHED|FAILED",{global_filters}}}) by (State), 0)',
-                legend="{{State}}",
-            ),
-            Target(
-                expr='sum(max_over_time(ray_tasks{{IsRetry!="0",State=~"FINISHED|FAILED",{global_filters}}}[14d])) by (State) or clamp_min(sum(ray_tasks{{IsRetry!="0",State!~"FINISHED|FAILED",{global_filters}}}) by (State), 0)',
-                legend="{{State}} (retry)",
-            ),
-        ],
-    ),
-    Panel(
-        id=35,
-        title="Active Tasks by Name",
-        description="Current number of (live) tasks with a particular name. Task resubmissions due to failures or object reconstruction are shown with (retry) in the label.",
-        unit="tasks",
-        targets=[
-            Target(
-                expr='sum(ray_tasks{{IsRetry="0",State!~"FINISHED|FAILED",{global_filters}}}) by (Name)',
-                legend="{{Name}}",
-            ),
-            Target(
-                expr='sum(ray_tasks{{IsRetry!="0",State!~"FINISHED|FAILED",{global_filters}}}) by (Name)',
-                legend="{{Name}} (retry)",
-            ),
-        ],
-    ),
-    Panel(
-        id=33,
-        title="Scheduler Actor State",
-        description="Current number of actors in a particular state.\n\nState: the actor state, as described by rpc::ActorTableData proto in gcs.proto.",
-        unit="actors",
-        targets=[
-            Target(
-                expr="sum(ray_actors{{{global_filters}}}) by (State)",
-                legend="{{State}}",
-            )
-        ],
-    ),
-    Panel(
-        id=36,
-        title="Active Actors by Name",
-        description="Current number of (live) actors with a particular name.",
-        unit="actors",
-        targets=[
-            Target(
-                expr='sum(ray_actors{{State!="DEAD",{global_filters}}}) by (Name)',
-                legend="{{Name}}",
-            )
-        ],
-    ),
+    # Panel(
+    #     id=26,
+    #     title="Scheduler Task State",
+    #     description="Current number of tasks in a particular state.\n\nState: the task state, as described by rpc::TaskState proto in common.proto. Task resubmissions due to failures or object reconstruction are shown with (retry) in the label.",
+    #     unit="tasks",
+    #     targets=[
+    #         Target(
+    #             expr='sum(max_over_time(ray_tasks{{IsRetry="0",State=~"FINISHED|FAILED",{global_filters}}}[14d])) by (State) or clamp_min(sum(ray_tasks{{IsRetry="0",State!~"FINISHED|FAILED",{global_filters}}}) by (State), 0)',
+    #             legend="{{State}}",
+    #         ),
+    #         Target(
+    #             expr='sum(max_over_time(ray_tasks{{IsRetry!="0",State=~"FINISHED|FAILED",{global_filters}}}[14d])) by (State) or clamp_min(sum(ray_tasks{{IsRetry!="0",State!~"FINISHED|FAILED",{global_filters}}}) by (State), 0)',
+    #             legend="{{State}} (retry)",
+    #         ),
+    #     ],
+    # ),
+    # Panel(
+    #     id=35,
+    #     title="Active Tasks by Name",
+    #     description="Current number of (live) tasks with a particular name. Task resubmissions due to failures or object reconstruction are shown with (retry) in the label.",
+    #     unit="tasks",
+    #     targets=[
+    #         Target(
+    #             expr='sum(ray_tasks{{IsRetry="0",State!~"FINISHED|FAILED",{global_filters}}}) by (Name)',
+    #             legend="{{Name}}",
+    #         ),
+    #         Target(
+    #             expr='sum(ray_tasks{{IsRetry!="0",State!~"FINISHED|FAILED",{global_filters}}}) by (Name)',
+    #             legend="{{Name}} (retry)",
+    #         ),
+    #     ],
+    # ),
+    # Panel(
+    #     id=33,
+    #     title="Scheduler Actor State",
+    #     description="Current number of actors in a particular state.\n\nState: the actor state, as described by rpc::ActorTableData proto in gcs.proto.",
+    #     unit="actors",
+    #     targets=[
+    #         Target(
+    #             expr="sum(ray_actors{{{global_filters}}}) by (State)",
+    #             legend="{{State}}",
+    #         )
+    #     ],
+    # ),
+    # Panel(
+    #     id=36,
+    #     title="Active Actors by Name",
+    #     description="Current number of (live) actors with a particular name.",
+    #     unit="actors",
+    #     targets=[
+    #         Target(
+    #             expr='sum(ray_actors{{State!="DEAD",{global_filters}}}) by (Name)',
+    #             legend="{{Name}}",
+    #         )
+    #     ],
+    # ),
     Panel(
         id=27,
         title="Scheduler CPUs (logical slots)",
@@ -110,31 +110,31 @@ DEFAULT_GRAFANA_PANELS = [
             ),
         ],
     ),
-    Panel(
-        id=29,
-        title="Object Store Memory",
-        description="Object store memory usage by location. The dotted line indicates the object store memory capacity.\n\nLocation: where the memory was allocated, which is MMAP_SHM or MMAP_DISK to indicate memory-mapped page, SPILLED to indicate spillage to disk, and WORKER_HEAP for objects small enough to be inlined in worker memory. Refer to metric_defs.cc for more information.",
-        unit="bytes",
-        targets=[
-            Target(
-                expr="sum(ray_object_store_memory{{{global_filters}}}) by (Location)",
-                legend="{{Location}}",
-            ),
-            Target(
-                expr='sum(ray_resources{{Name="object_store_memory",{global_filters}}})',
-                legend="MAX",
-            ),
-        ],
-    ),
+    # Panel(
+    #     id=29,
+    #     title="Object Store Memory",
+    #     description="Object store memory usage by location. The dotted line indicates the object store memory capacity.\n\nLocation: where the memory was allocated, which is MMAP_SHM or MMAP_DISK to indicate memory-mapped page, SPILLED to indicate spillage to disk, and WORKER_HEAP for objects small enough to be inlined in worker memory. Refer to metric_defs.cc for more information.",
+    #     unit="bytes",
+    #     targets=[
+    #         Target(
+    #             expr="sum(ray_object_store_memory{{{global_filters}}}) by (Location)",
+    #             legend="{{Location}}",
+    #         ),
+    #         Target(
+    #             expr='sum(ray_resources{{Name="object_store_memory",{global_filters}}})',
+    #             legend="MAX",
+    #         ),
+    #     ],
+    # ),
     Panel(
         id=28,
-        title="Scheduler GPUs (logical slots)",
-        description="Logical GPU usage of Ray. The dotted line indicates the total number of GPUs. The logical GPU is allocated by `num_gpus` arguments from tasks and actors. PENDING means the number of GPUs that will be available when new nodes are up after the autoscaler scales up.",
-        unit="GPUs",
+        title="Scheduler ACCs (logical slots)",
+        description="Logical ACC usage of Ray. The dotted line indicates the total number of ACCs. The logical ACC is allocated by `num_accs` arguments from tasks and actors. PENDING means the number of ACCs that will be available when new nodes are up after the autoscaler scales up.",
+        unit="ACCs",
         targets=[
             Target(
                 expr='ray_resources{{Name="GPU",State="USED",{global_filters}}}',
-                legend="GPU Usage: {{instance}}",
+                legend="ACC Usage: {{instance}}",
             ),
             Target(
                 expr='sum(ray_resources{{Name="GPU",{global_filters}}})',
@@ -148,18 +148,18 @@ DEFAULT_GRAFANA_PANELS = [
             ),
         ],
     ),
-    Panel(
-        id=40,
-        title="Scheduler Placement Groups",
-        description="Current number of placement groups in a particular state.\n\nState: the placement group state, as described by the rpc::PlacementGroupTable proto in gcs.proto.",
-        unit="placement groups",
-        targets=[
-            Target(
-                expr="sum(ray_placement_groups{{{global_filters}}}) by (State)",
-                legend="{{State}}",
-            )
-        ],
-    ),
+    # Panel(
+    #     id=40,
+    #     title="Scheduler Placement Groups",
+    #     description="Current number of placement groups in a particular state.\n\nState: the placement group state, as described by the rpc::PlacementGroupTable proto in gcs.proto.",
+    #     unit="placement groups",
+    #     targets=[
+    #         Target(
+    #             expr="sum(ray_placement_groups{{{global_filters}}}) by (State)",
+    #             legend="{{State}}",
+    #         )
+    #     ],
+    # ),
     Panel(
         id=2,
         title="Node CPU (hardware utilization)",
@@ -178,13 +178,13 @@ DEFAULT_GRAFANA_PANELS = [
     ),
     Panel(
         id=8,
-        title="Node GPU (hardware utilization)",
-        description="Node's physical (hardware) GPU usage. The dotted line means the total number of hardware GPUs from the cluster. ",
-        unit="GPUs",
+        title="Node ACC (hardware utilization)",
+        description="Node's physical (hardware) ACC usage. The dotted line means the total number of hardware ACCs from the cluster. ",
+        unit="ACCs",
         targets=[
             Target(
                 expr='ray_node_gpus_utilization{{instance=~"$Instance",{global_filters}}} / 100',
-                legend="GPU Usage: {{instance}}, gpu.{{GpuIndex}}, {{GpuDeviceName}}",
+                legend="ACC Usage: {{instance}}, gpu.{{GpuIndex}}, {{GpuDeviceName}}",
             ),
             Target(
                 expr="sum(ray_node_gpus_available{{{global_filters}}})",
@@ -240,64 +240,64 @@ DEFAULT_GRAFANA_PANELS = [
             ),
         ],
     ),
-    Panel(
-        id=44,
-        title="Node Out of Memory Failures by Name",
-        description="The number of tasks and actors killed by the Ray Out of Memory killer due to high memory pressure. Metrics are broken down by IP and the name. https://docs.ray.io/en/master/ray-core/scheduling/ray-oom-prevention.html.",
-        unit="failures",
-        targets=[
-            Target(
-                expr='ray_memory_manager_worker_eviction_total{{instance=~"$Instance",{global_filters}}}',
-                legend="OOM Killed: {{Name}}, {{instance}}",
-            ),
-        ],
-    ),
-    Panel(
-        id=34,
-        title="Node Memory by Component",
-        description="The physical (hardware) memory usage across the cluster, broken down by component. This reports the summed RSS-SHM per Ray component, which corresponds to an approximate memory usage per proc. Ray components consist of system components (e.g., raylet, gcs, dashboard, or agent) and the process (that contains method names) names of running tasks/actors.",
-        unit="bytes",
-        targets=[
-            Target(
-                expr="(sum(ray_component_rss_mb{{{global_filters}}} * 1e6) by (Component)) - (sum(ray_component_mem_shared_bytes{{{global_filters}}}) by (Component))",
-                legend="{{Component}}",
-            ),
-            Target(
-                expr="sum(ray_node_mem_shared_bytes{{{global_filters}}})",
-                legend="shared_memory",
-            ),
-            Target(
-                expr="sum(ray_node_mem_total{{{global_filters}}})",
-                legend="MAX",
-            ),
-        ],
-    ),
-    Panel(
-        id=37,
-        title="Node CPU by Component",
-        description="The physical (hardware) CPU usage across the cluster, broken down by component. This reports the summed CPU usage per Ray component. Ray components consist of system components (e.g., raylet, gcs, dashboard, or agent) and the process (that contains method names) names of running tasks/actors.",
-        unit="cores",
-        targets=[
-            Target(
-                # ray_component_cpu_percentage returns a percentage that can be > 100. It means that it uses more than 1 CPU.
-                expr="sum(ray_component_cpu_percentage{{{global_filters}}}) by (Component) / 100",
-                legend="{{Component}}",
-            ),
-            Target(
-                expr="sum(ray_node_cpu_count{{{global_filters}}})",
-                legend="MAX",
-            ),
-        ],
-    ),
+    # Panel(
+    #     id=44,
+    #     title="Node Out of Memory Failures by Name",
+    #     description="The number of tasks and actors killed by the Ray Out of Memory killer due to high memory pressure. Metrics are broken down by IP and the name. https://docs.ray.io/en/master/ray-core/scheduling/ray-oom-prevention.html.",
+    #     unit="failures",
+    #     targets=[
+    #         Target(
+    #             expr='ray_memory_manager_worker_eviction_total{{instance=~"$Instance",{global_filters}}}',
+    #             legend="OOM Killed: {{Name}}, {{instance}}",
+    #         ),
+    #     ],
+    # ),
+    # Panel(
+    #     id=34,
+    #     title="Node Memory by Component",
+    #     description="The physical (hardware) memory usage across the cluster, broken down by component. This reports the summed RSS-SHM per Ray component, which corresponds to an approximate memory usage per proc. Ray components consist of system components (e.g., raylet, gcs, dashboard, or agent) and the process (that contains method names) names of running tasks/actors.",
+    #     unit="bytes",
+    #     targets=[
+    #         Target(
+    #             expr="(sum(ray_component_rss_mb{{{global_filters}}} * 1e6) by (Component)) - (sum(ray_component_mem_shared_bytes{{{global_filters}}}) by (Component))",
+    #             legend="{{Component}}",
+    #         ),
+    #         Target(
+    #             expr="sum(ray_node_mem_shared_bytes{{{global_filters}}})",
+    #             legend="shared_memory",
+    #         ),
+    #         Target(
+    #             expr="sum(ray_node_mem_total{{{global_filters}}})",
+    #             legend="MAX",
+    #         ),
+    #     ],
+    # ),
+    # Panel(
+    #     id=37,
+    #     title="Node CPU by Component",
+    #     description="The physical (hardware) CPU usage across the cluster, broken down by component. This reports the summed CPU usage per Ray component. Ray components consist of system components (e.g., raylet, gcs, dashboard, or agent) and the process (that contains method names) names of running tasks/actors.",
+    #     unit="cores",
+    #     targets=[
+    #         Target(
+    #             # ray_component_cpu_percentage returns a percentage that can be > 100. It means that it uses more than 1 CPU.
+    #             expr="sum(ray_component_cpu_percentage{{{global_filters}}}) by (Component) / 100",
+    #             legend="{{Component}}",
+    #         ),
+    #         Target(
+    #             expr="sum(ray_node_cpu_count{{{global_filters}}})",
+    #             legend="MAX",
+    #         ),
+    #     ],
+    # ),
     Panel(
         id=18,
-        title="Node GPU Memory (GRAM)",
-        description="The physical (hardware) GPU memory usage for each node. The dotted line means the total amount of GPU memory from the cluster.",
+        title="Node ACC Memory (ACC-RAM)",
+        description="The physical (hardware) ACC memory usage for each node. The dotted line means the total amount of ACC memory from the cluster.",
         unit="bytes",
         targets=[
             Target(
                 expr='ray_node_gram_used{{instance=~"$Instance",{global_filters}}} * 1024 * 1024',
-                legend="Used GRAM: {{instance}}, gpu.{{GpuIndex}}, {{GpuDeviceName}}",
+                legend="Used ACC-RAM: {{instance}}, acc.{{GpuIndex}}",
             ),
             Target(
                 expr="(sum(ray_node_gram_available{{{global_filters}}}) + sum(ray_node_gram_used{{{global_filters}}})) * 1024 * 1024",
