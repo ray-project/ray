@@ -36,8 +36,16 @@ class MockedWorker:
 
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 1}], indirect=True)
-def test_invalid_graph_1_actor(ray_start_regular):
+@pytest.mark.parametrize("tensor_transport", [
+    TorchTensorType.AUTO, TorchTensorType.NCCL
+])
+def test_invalid_graph_1_actor(ray_start_regular, tensor_transport):
     """
+    If tensor_transport is TorchTensorType.AUTO, the shared memory channel will be
+    used, and the graph is valid. If tensor_transport is TorchTensorType.NCCL, the
+    NCCL channel will be used, and the graph is invalid.
+
+    [Case: TorchTensorType.NCCL]
     The first a.no_op writes to the second a.no_op via the NCCL channel. However,
     the NCCL channel only supports synchronous communication and an actor can
     only execute one task at a time, so the graph is deadlocked.
@@ -48,16 +56,28 @@ def test_invalid_graph_1_actor(ray_start_regular):
 
     with InputNode() as inp:
         dag = a.no_op.bind(inp)
-        dag.with_type_hint(TorchTensorType(transport="nccl"))
+        dag.with_type_hint(TorchTensorType(transport=tensor_transport))
         dag = a.no_op.bind(dag)
 
-    with pytest.raises(ValueError, match=INVALID_GRAPH):
-        dag.experimental_compile()
+    if tensor_transport == TorchTensorType.AUTO:
+        compiled_graph = dag.experimental_compile()
+        compiled_graph.teardown()
+    elif tensor_transport == TorchTensorType.NCCL:
+        with pytest.raises(ValueError, match=INVALID_GRAPH):
+            dag.experimental_compile()
 
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 2}], indirect=True)
-def test_invalid_graph_2_actors_1(ray_start_regular):
+@pytest.mark.parametrize("tensor_transport", [
+    TorchTensorType.AUTO, TorchTensorType.NCCL
+])
+def test_invalid_graph_2_actors_1(ray_start_regular, tensor_transport):
     """
+    If tensor_transport is TorchTensorType.AUTO, the shared memory channel will be
+    used, and the graph is valid. If tensor_transport is TorchTensorType.NCCL, the
+    NCCL channel will be used, and the graph is invalid.
+
+    [Case: TorchTensorType.NCCL]
     The first a.no_op writes to the second b.no_op via the NCCL channel, and the
     first b.no_op writes to the second a.no_op via the NCCL channel. However, the
     NCCL channel only supports synchronous communication, so the graph is deadlocked.
@@ -69,9 +89,9 @@ def test_invalid_graph_2_actors_1(ray_start_regular):
 
     with InputNode() as inp:
         branch1 = a.no_op.bind(inp)
-        branch1.with_type_hint(TorchTensorType(transport="nccl"))
+        branch1.with_type_hint(TorchTensorType(transport=tensor_transport))
         branch2 = b.no_op.bind(inp)
-        branch2.with_type_hint(TorchTensorType(transport="nccl"))
+        branch2.with_type_hint(TorchTensorType(transport=tensor_transport))
         dag = MultiOutputNode(
             [
                 a.no_op.bind(branch2),
@@ -79,13 +99,25 @@ def test_invalid_graph_2_actors_1(ray_start_regular):
             ]
         )
 
-    with pytest.raises(ValueError, match=INVALID_GRAPH):
-        dag.experimental_compile()
+    if tensor_transport == TorchTensorType.AUTO:
+        compiled_graph = dag.experimental_compile()
+        compiled_graph.teardown()
+    elif tensor_transport == TorchTensorType.NCCL:
+        with pytest.raises(ValueError, match=INVALID_GRAPH):
+            dag.experimental_compile()
 
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 2}], indirect=True)
-def test_invalid_graph_2_actors_2(ray_start_regular):
+@pytest.mark.parametrize("tensor_transport", [
+    TorchTensorType.AUTO, TorchTensorType.NCCL
+])
+def test_invalid_graph_2_actors_2(ray_start_regular, tensor_transport):
     """
+    If tensor_transport is TorchTensorType.AUTO, the shared memory channel will be
+    used, and the graph is valid. If tensor_transport is TorchTensorType.NCCL, the
+    NCCL channel will be used, and the graph is invalid.
+
+    [Case: TorchTensorType.NCCL]
     The first a.no_op writes to the second a.no_op via the NCCL channel, and the
     first b.no_op writes to the second b.no_op via the NCCL channel. However, the
     NCCL channel only supports synchronous communication and an actor can only
@@ -98,9 +130,9 @@ def test_invalid_graph_2_actors_2(ray_start_regular):
 
     with InputNode() as inp:
         branch1 = a.no_op.bind(inp)
-        branch1.with_type_hint(TorchTensorType(transport="nccl"))
+        branch1.with_type_hint(TorchTensorType(transport=tensor_transport))
         branch2 = b.no_op.bind(inp)
-        branch2.with_type_hint(TorchTensorType(transport="nccl"))
+        branch2.with_type_hint(TorchTensorType(transport=tensor_transport))
         dag = MultiOutputNode(
             [
                 a.no_op.bind(branch1),
@@ -108,13 +140,24 @@ def test_invalid_graph_2_actors_2(ray_start_regular):
             ]
         )
 
-    with pytest.raises(ValueError, match=INVALID_GRAPH):
-        dag.experimental_compile()
-
+    if tensor_transport == TorchTensorType.AUTO:
+        compiled_graph = dag.experimental_compile()
+        compiled_graph.teardown()
+    elif tensor_transport == TorchTensorType.NCCL:
+        with pytest.raises(ValueError, match=INVALID_GRAPH):
+            dag.experimental_compile()
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 2}], indirect=True)
-def test_invalid_graph_2_actors_3(ray_start_regular):
+@pytest.mark.parametrize("tensor_transport", [
+    TorchTensorType.AUTO, TorchTensorType.NCCL
+])
+def test_invalid_graph_2_actors_3(ray_start_regular, tensor_transport):
     """
+    If tensor_transport is TorchTensorType.AUTO, the shared memory channel will be
+    used, and the graph is valid. If tensor_transport is TorchTensorType.NCCL, the
+    NCCL channel will be used, and the graph is invalid.
+
+    [Case: TorchTensorType.NCCL]
     The first a.no_op writes to the second a.no_op and the b.no_op via the NCCL
     channels. However, the NCCL channel only supports synchronous communication
     and an actor can only execute one task at a time, so the graph is deadlocked.
@@ -126,7 +169,7 @@ def test_invalid_graph_2_actors_3(ray_start_regular):
 
     with InputNode() as inp:
         dag = a.no_op.bind(inp)
-        dag.with_type_hint(TorchTensorType(transport="nccl"))
+        dag.with_type_hint(TorchTensorType(transport=tensor_transport))
         dag = MultiOutputNode(
             [
                 a.no_op.bind(dag),
@@ -134,13 +177,25 @@ def test_invalid_graph_2_actors_3(ray_start_regular):
             ]
         )
 
-    with pytest.raises(ValueError, match=INVALID_GRAPH):
-        dag.experimental_compile()
+    if tensor_transport == TorchTensorType.AUTO:
+        compiled_graph = dag.experimental_compile()
+        compiled_graph.teardown()
+    elif tensor_transport == TorchTensorType.NCCL:
+        with pytest.raises(ValueError, match=INVALID_GRAPH):
+            dag.experimental_compile()
 
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 3}], indirect=True)
-def test_invalid_graph_3_actors(ray_start_regular):
+@pytest.mark.parametrize("tensor_transport", [
+    TorchTensorType.AUTO, TorchTensorType.NCCL
+])
+def test_invalid_graph_3_actors(ray_start_regular, tensor_transport):
     """
+    If tensor_transport is TorchTensorType.AUTO, the shared memory channel will be
+    used, and the graph is valid. If tensor_transport is TorchTensorType.NCCL, the
+    NCCL channel will be used, and the graph is invalid.
+
+    [Case: TorchTensorType.NCCL]
     The first a.no_op writes to the second b.no_op via the NCCL channel, the
     first b.no_op writes to the second c.no_op via the NCCL channel, and the
     first c.no_op writes to the second a.no_op via the NCCL channel.
@@ -154,11 +209,11 @@ def test_invalid_graph_3_actors(ray_start_regular):
 
     with InputNode() as inp:
         branch1 = a.no_op.bind(inp)
-        branch1.with_type_hint(TorchTensorType(transport="nccl"))
+        branch1.with_type_hint(TorchTensorType(transport=tensor_transport))
         branch2 = b.no_op.bind(inp)
-        branch2.with_type_hint(TorchTensorType(transport="nccl"))
+        branch2.with_type_hint(TorchTensorType(transport=tensor_transport))
         branch3 = c.no_op.bind(inp)
-        branch3.with_type_hint(TorchTensorType(transport="nccl"))
+        branch3.with_type_hint(TorchTensorType(transport=tensor_transport))
         dag = MultiOutputNode(
             [
                 a.no_op.bind(branch3),
@@ -167,8 +222,12 @@ def test_invalid_graph_3_actors(ray_start_regular):
             ]
         )
 
-    with pytest.raises(ValueError, match=INVALID_GRAPH):
-        dag.experimental_compile()
+    if tensor_transport == TorchTensorType.AUTO:
+        compiled_graph = dag.experimental_compile()
+        compiled_graph.teardown()
+    elif tensor_transport == TorchTensorType.NCCL:
+        with pytest.raises(ValueError, match=INVALID_GRAPH):
+            dag.experimental_compile()
 
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 2}], indirect=True)

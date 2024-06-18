@@ -747,9 +747,9 @@ class CompiledDAG:
 
         if RAY_ADAG_ENABLE_VERIFY_GRAPH and not self._verify_graph():
             raise ValueError(
-                "This DAG cannot be compiled because it will deadlock on NCCL"
-                "calls. If this is a false positive, please disable the graph"
-                "verification by setting the environment variable"
+                "This DAG cannot be compiled because it will deadlock on NCCL "
+                "calls. If this is a false positive, please disable the graph "
+                "verification by setting the environment variable "
                 "RAY_ADAG_ENABLE_VERIFY_GRAPH to 0."
             )
 
