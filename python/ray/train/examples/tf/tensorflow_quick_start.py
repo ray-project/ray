@@ -72,10 +72,10 @@ if __name__ == "__main__":
     from ray.train.tensorflow import TensorflowTrainer
     from ray.train import ScalingConfig
 
-    # For GPU Training, set `use_gpu` to True.
-    use_gpu = False
+    # For ACC Training, set `use_acc` to True.
+    use_acc = False
 
-    trainer = TensorflowTrainer(train_func_distributed, scaling_config=ScalingConfig(num_workers=4, use_gpu=use_gpu))
+    trainer = TensorflowTrainer(train_func_distributed, scaling_config=ScalingConfig(num_workers=4, use_acc=use_acc))
 
     trainer.fit()
     # __tf_trainer_end__

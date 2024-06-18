@@ -45,7 +45,7 @@ def chdir_tmpdir(tmpdir):
 class DummyTrainer(BaseTrainer):
     _scaling_config_allowed_keys = BaseTrainer._scaling_config_allowed_keys + [
         "num_workers",
-        "use_gpu",
+        "use_acc",
         "resources_per_worker",
         "placement_strategy",
     ]
@@ -217,7 +217,7 @@ class TunerTest(unittest.TestCase):
         """Test a successful run using torch trainer."""
         # The following two should be tunable.
         config = {"lr": 1e-2, "hidden_size": 1, "batch_size": 4, "epochs": 10}
-        scaling_config = ScalingConfig(num_workers=1, use_gpu=False)
+        scaling_config = ScalingConfig(num_workers=1, use_acc=False)
         trainer = TorchTrainer(
             train_loop_per_worker=linear_train_func,
             train_loop_config=config,

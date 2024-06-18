@@ -595,13 +595,13 @@ def test_read_map_batches_operator_fusion_compatible_remote_args(
     compatiple_remote_args_pairs = [
         # Empty remote args are compatible.
         ({}, {}),
-        # Test `num_cpus` and `num_gpus`.
+        # Test `num_cpus` and `num_accs`.
         ({"num_cpus": 2}, {"num_cpus": 2}),
-        ({"num_gpus": 2}, {"num_gpus": 2}),
-        # `num_cpus` defaults to 1, `num_gpus` defaults to 0.
+        ({"num_accs": 2}, {"num_accs": 2}),
+        # `num_cpus` defaults to 1, `num_accs` defaults to 0.
         # The following 2 should be compatible.
         ({"num_cpus": 1}, {}),
-        ({}, {"num_gpus": 0}),
+        ({}, {"num_accs": 0}),
         # Test specifying custom resources.
         ({"resources": {"custom": 1}}, {"resources": {"custom": 1}}),
         ({"resources": {"custom": 0}}, {"resources": {}}),
@@ -644,7 +644,7 @@ def test_read_map_batches_operator_fusion_incompatible_remote_args(
     # Test that map operators won't get fused if the remote args are incompatible.
     incompatiple_remote_args_pairs = [
         # Use different resources.
-        ({"num_cpus": 2}, {"num_gpus": 2}),
+        ({"num_cpus": 2}, {"num_accs": 2}),
         # Same resource, but different values.
         ({"num_cpus": 3}, {"num_cpus": 2}),
         # Incompatible custom resources.

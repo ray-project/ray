@@ -14,7 +14,7 @@ def main():
         head_node_args={"object_store_memory": 20 * 1024 * 1024 * 1024, "num_cpus": 16},
     )
     cluster.add_node(
-        object_store_memory=20 * 1024 * 1024 * 1024, num_gpus=1, num_cpus=16
+        object_store_memory=20 * 1024 * 1024 * 1024, num_accs=1, num_cpus=16
     )
 
     object_ref_list = []
@@ -22,7 +22,7 @@ def main():
         object_ref = ray.put(np.random.rand(1024 * 128, 1024))
         object_ref_list.append(object_ref)
 
-    @ray.remote(num_gpus=1)
+    @ray.remote(num_accs=1)
     def f(object_ref_list):
         diffs = []
         for object_ref in object_ref_list:

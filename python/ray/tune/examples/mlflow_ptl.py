@@ -13,7 +13,7 @@ from ray.tune.integration.pytorch_lightning import TuneReportCallback
 from ray.tune.examples.mnist_ptl_mini import LightningMNISTClassifier, MNISTDataModule
 
 
-def train_mnist_tune(config, data_dir=None, num_epochs=10, num_gpus=0):
+def train_mnist_tune(config, data_dir=None, num_epochs=10, num_accs=0):
     setup_mlflow(
         config,
         experiment_name=config.get("experiment_name", None),
@@ -28,7 +28,7 @@ def train_mnist_tune(config, data_dir=None, num_epochs=10, num_gpus=0):
     mlflow.pytorch.autolog()
     trainer = pl.Trainer(
         max_epochs=num_epochs,
-        gpus=num_gpus,
+        accs=num_accs,
         progress_bar_refresh_rate=0,
         callbacks=[TuneReportCallback(metrics, on="validation_end")],
     )
@@ -38,7 +38,7 @@ def train_mnist_tune(config, data_dir=None, num_epochs=10, num_gpus=0):
 def tune_mnist(
     num_samples=10,
     num_epochs=10,
-    gpus_per_trial=0,
+    accs_per_trial=0,
     tracking_uri=None,
     experiment_name="ptl_autologging_example",
 ):
@@ -65,11 +65,11 @@ def tune_mnist(
         train_mnist_tune,
         data_dir=data_dir,
         num_epochs=num_epochs,
-        num_gpus=gpus_per_trial,
+        num_accs=accs_per_trial,
     )
 
     tuner = tune.Tuner(
-        tune.with_resources(trainable, resources={"cpu": 1, "gpu": gpus_per_trial}),
+        tune.with_resources(trainable, resources={"cpu": 1, "acc": accs_per_trial}),
         tune_config=tune.TuneConfig(
             metric="loss",
             mode="min",
@@ -98,8 +98,8 @@ if __name__ == "__main__":
         tune_mnist(
             num_samples=1,
             num_epochs=1,
-            gpus_per_trial=0,
+            accs_per_trial=0,
             tracking_uri=os.path.join(tempfile.gettempdir(), "mlruns"),
         )
     else:
-        tune_mnist(num_samples=10, num_epochs=10, gpus_per_trial=0)
+        tune_mnist(num_samples=10, num_epochs=10, accs_per_trial=0)

@@ -96,8 +96,8 @@ class HorovodTrainer(DataParallelTrainer):
         from ray.train import Checkpoint, ScalingConfig
         from ray.train.horovod import HorovodTrainer
 
-        # If using GPUs, set this to True.
-        use_gpu = False
+        # If using ACCs, set this to True.
+        use_acc = False
 
         input_size = 1
         layer_size = 15
@@ -151,7 +151,7 @@ class HorovodTrainer(DataParallelTrainer):
                     )
 
         train_dataset = ray.data.from_items([{"x": x, "y": x + 1} for x in range(32)])
-        scaling_config = ScalingConfig(num_workers=3, use_gpu=use_gpu)
+        scaling_config = ScalingConfig(num_workers=3, use_acc=use_acc)
         trainer = HorovodTrainer(
             train_loop_per_worker=train_loop_per_worker,
             scaling_config=scaling_config,

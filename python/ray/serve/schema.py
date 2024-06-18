@@ -200,12 +200,12 @@ class RayActorOptionsSchema(BaseModel):
         ),
         ge=0,
     )
-    num_gpus: float = Field(
+    num_accs: float = Field(
         default=None,
         description=(
-            "The number of GPUs required by the deployment's "
+            "The number of ACCs required by the deployment's "
             "application per replica. This is the same as a ray "
-            "actor's num_gpus. Uses a default if null."
+            "actor's num_accs. Uses a default if null."
         ),
         ge=0,
     )

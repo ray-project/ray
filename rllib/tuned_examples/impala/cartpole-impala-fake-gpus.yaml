@@ -1,4 +1,4 @@
-cartpole-impala-fake-gpus:
+cartpole-impala-fake-accs:
     env: CartPole-v1
     run: IMPALA
     stop:
@@ -8,12 +8,12 @@ cartpole-impala-fake-gpus:
         # Works for both torch and tf.
         framework: torch
 
-        # Double batch size (2 GPUs).
+        # Double batch size (2 ACCs).
         train_batch_size: 1000
         # Test w/ LSTMs.
         model:
           use_lstm: true
 
-        # Fake 2 GPUs.
-        num_gpus: 2
-        _fake_gpus: true
+        # Fake 2 ACCs.
+        num_accs: 2
+        _fake_accs: true

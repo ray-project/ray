@@ -74,7 +74,7 @@ from ray.tune.execution.placement_groups import PlacementGroupFactory
 
 class TrainableFunctionApiTest(unittest.TestCase):
     def setUp(self):
-        ray.init(num_cpus=4, num_gpus=0, object_store_memory=150 * 1024 * 1024)
+        ray.init(num_cpus=4, num_accs=0, object_store_memory=150 * 1024 * 1024)
         self.tmpdir = tempfile.mkdtemp()
 
     def tearDown(self):
@@ -263,7 +263,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
             @classmethod
             def default_resource_request(cls, config):
                 return PlacementGroupFactory(
-                    [{"CPU": config["cpu"], "GPU": config["gpu"]}]
+                    [{"CPU": config["cpu"], "ACC": config["acc"]}]
                 )
 
             def step(self):
@@ -271,14 +271,14 @@ class TrainableFunctionApiTest(unittest.TestCase):
 
         register_trainable("B", B)
 
-        def f(cpus, gpus):
+        def f(cpus, accs):
             return run_experiments(
                 {
                     "foo": {
                         "run": "B",
                         "config": {
                             "cpu": cpus,
-                            "gpu": gpus,
+                            "acc": accs,
                         },
                     }
                 },
@@ -300,14 +300,14 @@ class TrainableFunctionApiTest(unittest.TestCase):
                 if self._step >= self.steps:
                     raise RuntimeError
 
-        def g(cpus, gpus):
+        def g(cpus, accs):
             return run_experiments(
                 {
                     "foo": {
                         "run": "B",
                         "config": {
                             "cpu": cpus,
-                            "gpu": gpus,
+                            "acc": accs,
                         },
                     }
                 },
@@ -1357,77 +1357,77 @@ class TrainableFunctionApiTest(unittest.TestCase):
 
 
 @pytest.fixture
-def ray_start_2_cpus_2_gpus():
-    address_info = ray.init(num_cpus=2, num_gpus=2)
+def ray_start_2_cpus_2_accs():
+    address_info = ray.init(num_cpus=2, num_accs=2)
     yield address_info
     # The code after the yield will run as teardown code.
     ray.shutdown()
 
 
-@pytest.mark.parametrize("num_gpus", [1, 2])
-def test_with_resources_dict(ray_start_2_cpus_2_gpus, num_gpus):
+@pytest.mark.parametrize("num_accs", [1, 2])
+def test_with_resources_dict(ray_start_2_cpus_2_accs, num_accs):
     def train_fn(config):
-        return len(ray.get_gpu_ids())
+        return len(ray.get_acc_ids())
 
     [trial] = tune.run(
-        tune.with_resources(train_fn, resources={"gpu": num_gpus})
+        tune.with_resources(train_fn, resources={"acc": num_accs})
     ).trials
 
-    assert trial.last_result["_metric"] == num_gpus
+    assert trial.last_result["_metric"] == num_accs
 
 
-@pytest.mark.parametrize("num_gpus", [1, 2])
-def test_with_resources_pgf(ray_start_2_cpus_2_gpus, num_gpus):
+@pytest.mark.parametrize("num_accs", [1, 2])
+def test_with_resources_pgf(ray_start_2_cpus_2_accs, num_accs):
     def train_fn(config):
-        return len(ray.get_gpu_ids())
+        return len(ray.get_acc_ids())
 
     [trial] = tune.run(
         tune.with_resources(
-            train_fn, resources=PlacementGroupFactory([{"GPU": num_gpus}])
+            train_fn, resources=PlacementGroupFactory([{"ACC": num_accs}])
         )
     ).trials
 
-    assert trial.last_result["_metric"] == num_gpus
+    assert trial.last_result["_metric"] == num_accs
 
 
-@pytest.mark.parametrize("num_gpus", [1, 2])
-def test_with_resources_scaling_config(ray_start_2_cpus_2_gpus, num_gpus):
+@pytest.mark.parametrize("num_accs", [1, 2])
+def test_with_resources_scaling_config(ray_start_2_cpus_2_accs, num_accs):
     def train_fn(config):
-        return len(ray.get_gpu_ids())
+        return len(ray.get_acc_ids())
 
     [trial] = tune.run(
         tune.with_resources(
             train_fn,
-            resources=ScalingConfig(trainer_resources={"GPU": num_gpus}, num_workers=0),
+            resources=ScalingConfig(trainer_resources={"ACC": num_accs}, num_workers=0),
         )
     ).trials
 
-    assert trial.last_result["_metric"] == num_gpus
+    assert trial.last_result["_metric"] == num_accs
 
 
-@pytest.mark.parametrize("num_gpus", [1, 2])
-def test_with_resources_fn(ray_start_2_cpus_2_gpus, num_gpus):
+@pytest.mark.parametrize("num_accs", [1, 2])
+def test_with_resources_fn(ray_start_2_cpus_2_accs, num_accs):
     def train_fn(config):
-        return len(ray.get_gpu_ids())
+        return len(ray.get_acc_ids())
 
     [trial] = tune.run(
         tune.with_resources(
             train_fn,
             resources=lambda config: PlacementGroupFactory(
-                [{"GPU": config["use_gpus"]}]
+                [{"ACC": config["use_accs"]}]
             ),
         ),
-        config={"use_gpus": num_gpus},
+        config={"use_accs": num_accs},
     ).trials
 
-    assert trial.last_result["_metric"] == num_gpus
+    assert trial.last_result["_metric"] == num_accs
 
 
-@pytest.mark.parametrize("num_gpus", [1, 2])
-def test_with_resources_class_fn(ray_start_2_cpus_2_gpus, num_gpus):
+@pytest.mark.parametrize("num_accs", [1, 2])
+def test_with_resources_class_fn(ray_start_2_cpus_2_accs, num_accs):
     class MyTrainable(tune.Trainable):
         def step(self):
-            return {"_metric": len(ray.get_gpu_ids()), "done": True}
+            return {"_metric": len(ray.get_acc_ids()), "done": True}
 
         def save_checkpoint(self, checkpoint_dir: str):
             pass
@@ -1438,26 +1438,26 @@ def test_with_resources_class_fn(ray_start_2_cpus_2_gpus, num_gpus):
         @classmethod
         def default_resource_request(cls, config):
             # This will be overwritten by tune.with_trainables()
-            return PlacementGroupFactory([{"CPU": 2, "GPU": 0}])
+            return PlacementGroupFactory([{"CPU": 2, "ACC": 0}])
 
     [trial] = tune.run(
         tune.with_resources(
             MyTrainable,
             resources=lambda config: PlacementGroupFactory(
-                [{"GPU": config["use_gpus"]}]
+                [{"ACC": config["use_accs"]}]
             ),
         ),
-        config={"use_gpus": num_gpus},
+        config={"use_accs": num_accs},
     ).trials
 
-    assert trial.last_result["_metric"] == num_gpus
+    assert trial.last_result["_metric"] == num_accs
 
 
-@pytest.mark.parametrize("num_gpus", [1, 2])
-def test_with_resources_class_method(ray_start_2_cpus_2_gpus, num_gpus):
+@pytest.mark.parametrize("num_accs", [1, 2])
+def test_with_resources_class_method(ray_start_2_cpus_2_accs, num_accs):
     class Worker:
         def train_fn(self, config):
-            return len(ray.get_gpu_ids())
+            return len(ray.get_acc_ids())
 
     worker = Worker()
 
@@ -1465,41 +1465,41 @@ def test_with_resources_class_method(ray_start_2_cpus_2_gpus, num_gpus):
         tune.with_resources(
             worker.train_fn,
             resources=lambda config: PlacementGroupFactory(
-                [{"GPU": config["use_gpus"]}]
+                [{"ACC": config["use_accs"]}]
             ),
         ),
-        config={"use_gpus": num_gpus},
+        config={"use_accs": num_accs},
     ).trials
 
-    assert trial.last_result["_metric"] == num_gpus
+    assert trial.last_result["_metric"] == num_accs
 
 
-@pytest.mark.parametrize("num_gpus", [1, 2])
-def test_with_resources_and_parameters_fn(ray_start_2_cpus_2_gpus, num_gpus):
+@pytest.mark.parametrize("num_accs", [1, 2])
+def test_with_resources_and_parameters_fn(ray_start_2_cpus_2_accs, num_accs):
     def train_fn(config, extra_param=None):
         assert extra_param is not None, "Missing extra parameter."
         print(ray.get_runtime_context().get_assigned_resources())
-        return {"num_gpus": len(ray.get_gpu_ids())}
+        return {"num_accs": len(ray.get_acc_ids())}
 
     # Nesting `tune.with_parameters` and `tune.with_resources` should respect
     # the resource specifications.
     trainable = tune.with_resources(
         tune.with_parameters(train_fn, extra_param="extra"),
-        {"gpu": num_gpus},
+        {"acc": num_accs},
     )
 
     tuner = tune.Tuner(trainable)
     results = tuner.fit()
     print(results[0].metrics)
-    assert results[0].metrics["num_gpus"] == num_gpus
+    assert results[0].metrics["num_accs"] == num_accs
 
     # The other order of nesting should work the same.
     trainable = tune.with_parameters(
-        tune.with_resources(train_fn, {"gpu": num_gpus}), extra_param="extra"
+        tune.with_resources(train_fn, {"acc": num_accs}), extra_param="extra"
     )
     tuner = tune.Tuner(trainable)
     results = tuner.fit()
-    assert results[0].metrics["num_gpus"] == num_gpus
+    assert results[0].metrics["num_accs"] == num_accs
 
 
 class SerializabilityTest(unittest.TestCase):
@@ -1595,7 +1595,7 @@ class ApiTestFast(unittest.TestCase):
     def setUpClass(cls):
         if ray.is_initialized():
             ray.shutdown()
-        ray.init(num_cpus=4, num_gpus=0, include_dashboard=False)
+        ray.init(num_cpus=4, num_accs=0, include_dashboard=False)
 
     @classmethod
     def tearDownClass(cls):
@@ -1767,7 +1767,7 @@ class ApiTestFast(unittest.TestCase):
 class MaxConcurrentTrialsTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        ray.init(num_cpus=4, num_gpus=0, local_mode=False, include_dashboard=False)
+        ray.init(num_cpus=4, num_accs=0, local_mode=False, include_dashboard=False)
 
     @classmethod
     def tearDownClass(cls):

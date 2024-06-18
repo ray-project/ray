@@ -53,11 +53,11 @@ auth:
 # The node config specifies the launch config and physical instance type.
 available_node_types:
     ray.head.default:
-        # The node type's CPU and GPU resources are auto-detected based on aliyun instance type.
-        # If desired, you can override the autodetected CPU and GPU resources advertised to the autoscaler.
+        # The node type's CPU and ACC resources are auto-detected based on aliyun instance type.
+        # If desired, you can override the autodetected CPU and ACC resources advertised to the autoscaler.
         # You can also set custom resources.
-        # For example, to mark a node type as having 1 CPU, 1 GPU, and 5 units of a resource called "custom", set
-        # resources: {"CPU": 1, "GPU": 1, "custom": 5}
+        # For example, to mark a node type as having 1 CPU, 1 ACC, and 5 units of a resource called "custom", set
+        # resources: {"CPU": 1, "ACC": 1, "custom": 5}
         resources: {"CPU": 2}
         # Provider-specific config for this node type, e.g. instance type. By default
         node_config:
@@ -73,11 +73,11 @@ available_node_types:
         # The minimum number of nodes of this type to launch.
         # This number should be >= 0.
         min_workers: 1
-        # The node type's CPU and GPU resources are auto-detected based on aliyun instance type.
-        # If desired, you can override the autodetected CPU and GPU resources advertised to the autoscaler.
+        # The node type's CPU and ACC resources are auto-detected based on aliyun instance type.
+        # If desired, you can override the autodetected CPU and ACC resources advertised to the autoscaler.
         # You can also set custom resources.
-        # For example, to mark a node type as having 1 CPU, 1 GPU, and 5 units of a resource called "custom", set
-        # resources: {"CPU": 1, "GPU": 1, "custom": 5}
+        # For example, to mark a node type as having 1 CPU, 1 ACC, and 5 units of a resource called "custom", set
+        # resources: {"CPU": 1, "ACC": 1, "custom": 5}
         resources: {"CPU": 8}
         # Provider-specific config for this node type, e.g. instance type. By default
         # Ray will auto-configure unspecified fields such as SubnetId.

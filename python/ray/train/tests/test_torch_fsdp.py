@@ -9,14 +9,14 @@ from ray.train.torch import TorchTrainer
 
 
 @pytest.fixture
-def ray_start_4_cpus_2_gpus():
-    address_info = ray.init(num_cpus=4, num_gpus=2)
+def ray_start_4_cpus_2_accs():
+    address_info = ray.init(num_cpus=4, num_accs=2)
     yield address_info
     # The code after the yield will run as teardown code.
     ray.shutdown()
 
 
-def test_torch_fsdp(ray_start_4_cpus_2_gpus):
+def test_torch_fsdp(ray_start_4_cpus_2_accs):
     """Tests if ``prepare_model`` correctly wraps in FSDP."""
 
     def train_fn():
@@ -32,7 +32,7 @@ def test_torch_fsdp(ray_start_4_cpus_2_gpus):
         assert next(model.parameters()).is_cuda
 
     trainer = TorchTrainer(
-        train_fn, scaling_config=ScalingConfig(num_workers=2, use_gpu=True)
+        train_fn, scaling_config=ScalingConfig(num_workers=2, use_acc=True)
     )
     trainer.fit()
 

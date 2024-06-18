@@ -55,15 +55,15 @@ def get_data_from_all_ranks(tmp_path: Path) -> Dict[int, Union[int, List, Dict]]
 
 
 @pytest.mark.parametrize("cuda_visible_devices", ["", "1,2"])
-@pytest.mark.parametrize("num_gpus_per_worker", [0.5, 1, 2])
+@pytest.mark.parametrize("num_accs_per_worker", [0.5, 1, 2])
 def test_torch_get_device(
-    shutdown_only, num_gpus_per_worker, cuda_visible_devices, monkeypatch, tmp_path
+    shutdown_only, num_accs_per_worker, cuda_visible_devices, monkeypatch, tmp_path
 ):
     if cuda_visible_devices:
         # Test if `get_device` is correct even with user specified env var.
         monkeypatch.setenv("CUDA_VISIBLE_DEVICES", cuda_visible_devices)
 
-    ray.init(num_cpus=4, num_gpus=2)
+    ray.init(num_cpus=4, num_accs=2)
 
     def train_fn():
         # Make sure environment variable is being set correctly.
@@ -73,7 +73,7 @@ def test_torch_get_device(
 
         devices = (
             sorted([device.index for device in train.torch.get_device()])
-            if num_gpus_per_worker > 1
+            if num_accs_per_worker > 1
             else train.torch.get_device().index
         )
         write_rank_data(tmp_path, devices)
@@ -81,9 +81,9 @@ def test_torch_get_device(
     trainer = TorchTrainer(
         train_fn,
         scaling_config=ScalingConfig(
-            num_workers=int(2 / num_gpus_per_worker),
-            use_gpu=True,
-            resources_per_worker={"GPU": num_gpus_per_worker},
+            num_workers=int(2 / num_accs_per_worker),
+            use_acc=True,
+            resources_per_worker={"ACC": num_accs_per_worker},
         ),
     )
     trainer.fit()
@@ -91,11 +91,11 @@ def test_torch_get_device(
     rank_data = get_data_from_all_ranks(tmp_path)
     devices = list(rank_data.values())
 
-    if num_gpus_per_worker == 0.5:
+    if num_accs_per_worker == 0.5:
         assert sorted(devices) == [0, 0, 1, 1]
-    elif num_gpus_per_worker == 1:
+    elif num_accs_per_worker == 1:
         assert sorted(devices) == [0, 1]
-    elif num_gpus_per_worker == 2:
+    elif num_accs_per_worker == 2:
         assert sorted(devices[0]) == [0, 1]
     else:
         raise RuntimeError(
@@ -104,13 +104,13 @@ def test_torch_get_device(
         )
 
 
-@pytest.mark.parametrize("num_gpus_per_worker", [0.5, 1, 2])
-def test_torch_get_device_dist(ray_2_node_2_gpu, num_gpus_per_worker, tmp_path):
+@pytest.mark.parametrize("num_accs_per_worker", [0.5, 1, 2])
+def test_torch_get_device_dist(ray_2_node_2_acc, num_accs_per_worker, tmp_path):
     @patch("torch.cuda.is_available", lambda: True)
     def train_fn():
         devices = (
             sorted([device.index for device in train.torch.get_device()])
-            if num_gpus_per_worker > 1
+            if num_accs_per_worker > 1
             else train.torch.get_device().index
         )
         write_rank_data(tmp_path, devices)
@@ -118,12 +118,12 @@ def test_torch_get_device_dist(ray_2_node_2_gpu, num_gpus_per_worker, tmp_path):
     trainer = TorchTrainer(
         train_fn,
         # use gloo instead of nccl, since nccl is not supported
-        # on this virtual gpu ray environment
+        # on this virtual acc ray environment
         torch_config=TorchConfig(backend="gloo"),
         scaling_config=ScalingConfig(
-            num_workers=int(4 / num_gpus_per_worker),
-            use_gpu=True,
-            resources_per_worker={"GPU": num_gpus_per_worker},
+            num_workers=int(4 / num_accs_per_worker),
+            use_acc=True,
+            resources_per_worker={"ACC": num_accs_per_worker},
         ),
     )
     trainer.fit()
@@ -131,23 +131,23 @@ def test_torch_get_device_dist(ray_2_node_2_gpu, num_gpus_per_worker, tmp_path):
     rank_data = get_data_from_all_ranks(tmp_path)
     devices = list(rank_data.values())
 
-    # cluster setups: 2 nodes, 2 gpus per node
+    # cluster setups: 2 nodes, 2 accs per node
     # `CUDA_VISIBLE_DEVICES` is set to "0,1" on node 1 and node 2
-    if num_gpus_per_worker == 0.5:
-        # worker gpu topology:
+    if num_accs_per_worker == 0.5:
+        # worker acc topology:
         # 4 workers on node 1, 4 workers on node 2
-        # `ray.get_gpu_ids()` returns [0], [0], [1], [1] on node 1
+        # `ray.get_acc_ids()` returns [0], [0], [1], [1] on node 1
         # and [0], [0], [1], [1] on node 2
         assert sorted(devices) == [0, 0, 0, 0, 1, 1, 1, 1]
-    elif num_gpus_per_worker == 1:
-        # worker gpu topology:
+    elif num_accs_per_worker == 1:
+        # worker acc topology:
         # 2 workers on node 1, 2 workers on node 2
-        # `ray.get_gpu_ids()` returns [0], [1] on node 1 and [0], [1] on node 2
+        # `ray.get_acc_ids()` returns [0], [1] on node 1 and [0], [1] on node 2
         assert sorted(devices) == [0, 0, 1, 1]
-    elif num_gpus_per_worker == 2:
-        # worker gpu topology:
+    elif num_accs_per_worker == 2:
+        # worker acc topology:
         # 1 workers on node 1, 1 workers on node 2
-        # `ray.get_gpu_ids()` returns {0, 1} on node 1 and {0, 1} on node 2
+        # `ray.get_acc_ids()` returns {0, 1} on node 1 and {0, 1} on node 2
         # and `device_id` returns the one index from each set.
         # So total count of devices should be 2.
         assert devices == [[0, 1], [0, 1]]
@@ -158,7 +158,7 @@ def test_torch_get_device_dist(ray_2_node_2_gpu, num_gpus_per_worker, tmp_path):
         )
 
 
-def test_torch_prepare_model(ray_start_4_cpus_2_gpus):
+def test_torch_prepare_model(ray_start_4_cpus_2_accs):
     """Tests if ``prepare_model`` correctly wraps in DDP."""
 
     def train_fn():
@@ -174,7 +174,7 @@ def test_torch_prepare_model(ray_start_4_cpus_2_gpus):
         assert next(model.parameters()).is_cuda
 
     trainer = TorchTrainer(
-        train_fn, scaling_config=ScalingConfig(num_workers=2, use_gpu=True)
+        train_fn, scaling_config=ScalingConfig(num_workers=2, use_acc=True)
     )
     trainer.fit()
 
@@ -191,12 +191,12 @@ def test_torch_prepare_model(ray_start_4_cpus_2_gpus):
         assert not next(model.parameters()).is_cuda
 
     trainer = TorchTrainer(
-        train_fn, scaling_config=ScalingConfig(num_workers=2, use_gpu=True)
+        train_fn, scaling_config=ScalingConfig(num_workers=2, use_acc=True)
     )
     trainer.fit()
 
 
-def test_torch_prepare_model_uses_device(ray_start_4_cpus_2_gpus):
+def test_torch_prepare_model_uses_device(ray_start_4_cpus_2_accs):
     """Tests if `prepare_model` uses the train.torch.get_device even if it does not
     match with the local rank."""
     # The below test should pass without errors.
@@ -217,7 +217,7 @@ def test_torch_prepare_model_uses_device(ray_start_4_cpus_2_gpus):
         model(data)
 
     trainer = TorchTrainer(
-        train_func, scaling_config=ScalingConfig(num_workers=2, use_gpu=True)
+        train_func, scaling_config=ScalingConfig(num_workers=2, use_acc=True)
     )
     trainer.fit()
 
@@ -225,7 +225,7 @@ def test_torch_prepare_model_uses_device(ray_start_4_cpus_2_gpus):
 @pytest.mark.parametrize(
     "dataset", (LinearDataset, LinearDatasetDict, NonTensorDataset)
 )
-def test_torch_prepare_dataloader(ray_start_4_cpus_2_gpus, dataset):
+def test_torch_prepare_dataloader(ray_start_4_cpus_2_accs, dataset):
     data_loader = DataLoader(dataset(a=1, b=2, size=10))
 
     def train_fn():
@@ -257,13 +257,13 @@ def test_torch_prepare_dataloader(ray_start_4_cpus_2_gpus, dataset):
                     assert x.is_cuda and y == 2
 
     trainer = TorchTrainer(
-        train_fn, scaling_config=ScalingConfig(num_workers=2, use_gpu=True)
+        train_fn, scaling_config=ScalingConfig(num_workers=2, use_acc=True)
     )
     trainer.fit()
 
 
 @pytest.mark.parametrize("data_loader_num_workers", (0, 2))
-def test_enable_reproducibility(ray_start_4_cpus_2_gpus, data_loader_num_workers):
+def test_enable_reproducibility(ray_start_4_cpus_2_accs, data_loader_num_workers):
     # NOTE: Reproducible results aren't guaranteed between seeded executions, even with
     # identical hardware and software dependencies. This test should be okay given that
     # it only runs for two epochs on a small dataset.
@@ -304,12 +304,12 @@ def test_enable_reproducibility(ray_start_4_cpus_2_gpus, data_loader_num_workers
         train.report(dict(loss=loss.item()))
 
     trainer = TorchTrainer(
-        train_func, scaling_config=ScalingConfig(num_workers=2, use_gpu=True)
+        train_func, scaling_config=ScalingConfig(num_workers=2, use_acc=True)
     )
     result1 = trainer.fit()
 
     trainer = TorchTrainer(
-        train_func, scaling_config=ScalingConfig(num_workers=2, use_gpu=True)
+        train_func, scaling_config=ScalingConfig(num_workers=2, use_acc=True)
     )
     result2 = trainer.fit()
 
@@ -317,8 +317,8 @@ def test_enable_reproducibility(ray_start_4_cpus_2_gpus, data_loader_num_workers
 
 
 @pytest.mark.parametrize("nccl_socket_ifname", ["", "ens3"])
-def test_torch_backend_nccl_socket_ifname(ray_start_4_cpus_2_gpus, nccl_socket_ifname):
-    worker_group = WorkerGroup(num_workers=2, num_gpus_per_worker=1)
+def test_torch_backend_nccl_socket_ifname(ray_start_4_cpus_2_accs, nccl_socket_ifname):
+    worker_group = WorkerGroup(num_workers=2, num_accs_per_worker=1)
 
     if nccl_socket_ifname:
 
@@ -337,7 +337,7 @@ def test_torch_backend_nccl_socket_ifname(ray_start_4_cpus_2_gpus, nccl_socket_i
     worker_group.execute(assert_env_var_set)
 
 
-def test_torch_fail_on_nccl_timeout(ray_start_4_cpus_2_gpus):
+def test_torch_fail_on_nccl_timeout(ray_start_4_cpus_2_accs):
     """Tests that TorchTrainer raises exception on NCCL timeouts."""
 
     def train_fn():
@@ -354,7 +354,7 @@ def test_torch_fail_on_nccl_timeout(ray_start_4_cpus_2_gpus):
 
     trainer = TorchTrainer(
         train_fn,
-        scaling_config=ScalingConfig(num_workers=2, use_gpu=True),
+        scaling_config=ScalingConfig(num_workers=2, use_acc=True),
         torch_config=TorchConfig(timeout_s=5),
     )
 

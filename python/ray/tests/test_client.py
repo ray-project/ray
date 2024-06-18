@@ -672,13 +672,13 @@ def test_dataclient_server_drop(call_ray_start_shared):
 
 
 @pytest.mark.parametrize("set_enable_auto_connect", [True], indirect=True)
-def test_client_gpu_ids(call_ray_start_shared, set_enable_auto_connect):
+def test_client_acc_ids(call_ray_start_shared, set_enable_auto_connect):
     import ray
 
     with enable_client_mode():
         # No client connection.
         with pytest.raises(Exception) as e:
-            ray.get_gpu_ids()
+            ray.get_acc_ids()
         assert (
             str(e.value) == "Ray Client is not connected."
             " Please connect by calling `ray.init`."
@@ -686,7 +686,7 @@ def test_client_gpu_ids(call_ray_start_shared, set_enable_auto_connect):
 
         with ray_start_client_server_for_address(call_ray_start_shared):
             # Now have a client connection.
-            assert ray.get_gpu_ids() == []
+            assert ray.get_acc_ids() == []
 
 
 @pytest.mark.parametrize("BaseModel", [BaseModelV1, BaseModelV2])

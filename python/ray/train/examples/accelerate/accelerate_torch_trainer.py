@@ -152,7 +152,7 @@ if __name__ == "__main__":
         train_loop_config=config,
         datasets=ray_datasets,
         dataset_config=DataConfig(datasets_to_split=["train", "validation"]),
-        scaling_config=ScalingConfig(num_workers=4, use_gpu=True),
+        scaling_config=ScalingConfig(num_workers=4, use_acc=True),
         # If running in a multi-node cluster, this is where you
         # should configure the run's persistent storage that is accessible
         # across all worker nodes.

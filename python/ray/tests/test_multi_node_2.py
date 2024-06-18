@@ -111,7 +111,7 @@ def verify_load_metrics(monitor, expected_resource_usage=None, timeout=30):
     request_resources(num_cpus=42)
 
     # add placement groups.
-    pg_demands = [{"GPU": 2}, {"extra_resource": 2}]
+    pg_demands = [{"ACC": 2}, {"extra_resource": 2}]
     strategy = "STRICT_PACK"
     pg = placement_group(pg_demands, strategy=strategy)
     pg.ready()

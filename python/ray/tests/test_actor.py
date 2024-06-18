@@ -641,13 +641,13 @@ def test_decorator_args(ray_start_regular_shared):
             pass
 
     # This is a valid way of using the decorator.
-    @ray.remote(num_gpus=1)  # noqa: F811
+    @ray.remote(num_accs=1)  # noqa: F811
     class Actor:  # noqa: F811
         def __init__(self):
             pass
 
     # This is a valid way of using the decorator.
-    @ray.remote(num_cpus=1, num_gpus=1)  # noqa: F811
+    @ray.remote(num_cpus=1, num_accs=1)  # noqa: F811
     class Actor:  # noqa: F811
         def __init__(self):
             pass

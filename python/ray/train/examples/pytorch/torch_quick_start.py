@@ -95,12 +95,12 @@ if __name__ == "__main__":
     from ray.train.torch import TorchTrainer
     from ray.train import ScalingConfig
 
-    # For GPU Training, set `use_gpu` to True.
-    use_gpu = False
+    # For ACC Training, set `use_acc` to True.
+    use_acc = False
 
     trainer = TorchTrainer(
         train_func_distributed,
-        scaling_config=ScalingConfig(num_workers=4, use_gpu=use_gpu)
+        scaling_config=ScalingConfig(num_workers=4, use_acc=use_acc)
     )
 
     results = trainer.fit()

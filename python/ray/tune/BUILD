@@ -739,7 +739,7 @@ py_test(
     args = ["--smoke-test"]
 )
 
-# Requires GPUs. Add smoke test?
+# Requires ACCs. Add smoke test?
 # py_test(
 #     name = "pbt_ppo_example",
 #     size = "medium",
@@ -760,7 +760,7 @@ py_test(
 # )
 
 
-# Requires GPUs. Add smoke test?
+# Requires ACCs. Add smoke test?
 # py_test(
 #     name = "pbt_tune_cifar10_with_keras",
 #     size = "medium",

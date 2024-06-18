@@ -41,7 +41,7 @@ def build_dummy_trainer(configs):
     trainer = TorchTrainer(
         train_loop_per_worker=worker_loop,
         train_loop_config=_PARAM_SPACE,
-        scaling_config=ScalingConfig(num_workers=2, use_gpu=False),
+        scaling_config=ScalingConfig(num_workers=2, use_acc=False),
         run_config=RunConfig(
             name=configs["EXP_NAME"],
             storage_path=configs["STORAGE_PATH"],

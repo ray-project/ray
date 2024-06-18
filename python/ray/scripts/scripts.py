@@ -379,7 +379,7 @@ def debug(address):
     "--num-cpus", required=False, type=int, help="the number of CPUs on this node"
 )
 @click.option(
-    "--num-gpus", required=False, type=int, help="the number of GPUs on this node"
+    "--num-accs", required=False, type=int, help="the number of ACCs on this node"
 )
 @click.option(
     "--resources",
@@ -563,7 +563,7 @@ def start(
     object_store_memory,
     redis_max_memory,
     num_cpus,
-    num_gpus,
+    num_accs,
     resources,
     head,
     include_dashboard,
@@ -655,7 +655,7 @@ def start(
         redis_password=redis_password,
         redirect_output=redirect_output,
         num_cpus=num_cpus,
-        num_gpus=num_gpus,
+        num_accs=num_accs,
         resources=resources,
         labels=labels_dict,
         autoscaling_config=autoscaling_config,

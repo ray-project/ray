@@ -26,8 +26,8 @@ class TensorflowPredictor(DLPredictor):
         preprocessor: A preprocessor used to transform data batches prior
             to prediction.
         model_weights: List of weights to use for the model.
-        use_gpu: If set, the model will be moved to GPU on instantiation and
-            prediction happens on GPU.
+        use_acc: If set, the model will be moved to ACC on instantiation and
+            prediction happens on ACC.
     """
 
     def __init__(
@@ -35,30 +35,30 @@ class TensorflowPredictor(DLPredictor):
         *,
         model: Optional[tf.keras.Model] = None,
         preprocessor: Optional["Preprocessor"] = None,
-        use_gpu: bool = False,
+        use_acc: bool = False,
     ):
-        self.use_gpu = use_gpu
+        self.use_acc = use_acc
         # TensorFlow model objects cannot be pickled, therefore we use
         # a callable that returns the model and initialize it here,
         # instead of having an initialized model object as an attribute.
         # Predictors are not serializable (see the implementation of __reduce__)
         # in the Predictor class, so we can safely store the initialized model
         # as an attribute.
-        if use_gpu:
-            # TODO (jiaodong): #26249 Use multiple GPU devices with sharded input
-            with tf.device("GPU:0"):
+        if use_acc:
+            # TODO (jiaodong): #26249 Use multiple ACC devices with sharded input
+            with tf.device("ACC:0"):
                 self._model = model
         else:
             self._model = model
-            gpu_devices = tf.config.list_physical_devices("GPU")
-            if len(gpu_devices) > 0 and log_once("tf_predictor_not_using_gpu"):
+            acc_devices = tf.config.list_physical_devices("ACC")
+            if len(acc_devices) > 0 and log_once("tf_predictor_not_using_acc"):
                 logger.warning(
-                    "You have `use_gpu` as False but there are "
-                    f"{len(gpu_devices)} GPUs detected on host where "
+                    "You have `use_acc` as False but there are "
+                    f"{len(acc_devices)} ACCs detected on host where "
                     "prediction will only use CPU. Please consider explicitly "
-                    "setting `TensorflowPredictor(use_gpu=True)` or "
-                    "`batch_predictor.predict(ds, num_gpus_per_worker=1)` to "
-                    "enable GPU prediction."
+                    "setting `TensorflowPredictor(use_acc=True)` or "
+                    "`batch_predictor.predict(ds, num_accs_per_worker=1)` to "
+                    "enable ACC prediction."
                 )
         super().__init__(preprocessor)
 
@@ -71,7 +71,7 @@ class TensorflowPredictor(DLPredictor):
             f"{self.__class__.__name__}("
             f"model={fn_name_str!r}, "
             f"preprocessor={self._preprocessor!r}, "
-            f"use_gpu={self.use_gpu!r})"
+            f"use_acc={self.use_acc!r})"
         )
 
     @classmethod
@@ -81,7 +81,7 @@ class TensorflowPredictor(DLPredictor):
         model_definition: Optional[
             Union[Callable[[], tf.keras.Model], Type[tf.keras.Model]]
         ] = None,
-        use_gpu: Optional[bool] = False,
+        use_acc: Optional[bool] = False,
     ) -> "TensorflowPredictor":
         """Instantiate the predictor from a TensorflowCheckpoint.
 
@@ -91,7 +91,7 @@ class TensorflowPredictor(DLPredictor):
                 to use. Model weights will be loaded from the checkpoint.
                 This is only needed if the `checkpoint` was created from
                 `TensorflowCheckpoint.from_model`.
-            use_gpu: Whether GPU should be used during prediction.
+            use_acc: Whether ACC should be used during prediction.
         """
         if model_definition:
             raise DeprecationWarning(
@@ -104,7 +104,7 @@ class TensorflowPredictor(DLPredictor):
         return cls(
             model=model,
             preprocessor=preprocessor,
-            use_gpu=use_gpu,
+            use_acc=use_acc,
         )
 
     @DeveloperAPI
@@ -151,8 +151,8 @@ class TensorflowPredictor(DLPredictor):
             The model outputs, either as a single tensor or a dictionary of tensors.
 
         """
-        if self.use_gpu:
-            with tf.device("GPU:0"):
+        if self.use_acc:
+            with tf.device("ACC:0"):
                 return self._model(inputs)
         else:
             return self._model(inputs)

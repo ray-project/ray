@@ -157,7 +157,7 @@ if __name__ == "__main__":
     trainer = TorchTrainer(
         train_func,
         train_loop_config=config,
-        scaling_config=ScalingConfig(num_workers=4, use_gpu=True),
+        scaling_config=ScalingConfig(num_workers=4, use_acc=True),
         # If running in a multi-node cluster, this is where you
         # should configure the run's persistent storage that is accessible
         # across all worker nodes.

@@ -19,7 +19,7 @@ tf1, tf, tfv = try_import_tf()
 
 
 class TestPolicyStateSwapping(unittest.TestCase):
-    """Tests, whether Policies' states can be swapped out via their state on a GPU."""
+    """Tests, whether Policies' states can be swapped out via their state on a ACC."""
 
     @classmethod
     def setUpClass(cls) -> None:
@@ -29,11 +29,11 @@ class TestPolicyStateSwapping(unittest.TestCase):
     def tearDownClass(cls) -> None:
         ray.shutdown()
 
-    def test_policy_swap_gpu(self):
+    def test_policy_swap_acc(self):
         config = (
             APPOConfig()
-            # Use a single GPU for this test.
-            .resources(num_gpus=1)
+            # Use a single ACC for this test.
+            .resources(num_accs=1)
             # Set eager tracing to True here, such that the framework_iterator loop
             # below skips tf2 w/o tracing (loops through tf, tf2+tracing, and torch).
             .framework("tf2")
@@ -107,7 +107,7 @@ class TestPolicyStateSwapping(unittest.TestCase):
                     logits[pid],
                 )
 
-            # Test, whether training (on the GPU) will affect the state swapping.
+            # Test, whether training (on the ACC) will affect the state swapping.
             for i in range(num_policies):
                 pid = f"pol{i % num_policies}"
                 pol = policy_map[pid]

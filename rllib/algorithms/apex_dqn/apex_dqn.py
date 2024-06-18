@@ -49,7 +49,7 @@ class ApexDQNConfig(DQNConfig):
         self.exploration_config = {
             "type": "PerWorkerEpsilonGreedy",
         }
-        self.num_gpus = 1
+        self.num_accs = 1
         self.min_time_s_per_iteration = 30
         self.min_sample_timesteps_per_iteration = 25000
 
@@ -79,8 +79,8 @@ class ApexDQNConfig(DQNConfig):
 
     @override(DQNConfig)
     def validate(self) -> None:
-        if self.num_gpus > 1:
-            raise ValueError("`num_gpus` > 1 not yet supported for APEX-DQN!")
+        if self.num_accs > 1:
+            raise ValueError("`num_accs` > 1 not yet supported for APEX-DQN!")
         # Call DQN's validation method.
         super().validate()
 

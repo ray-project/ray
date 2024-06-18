@@ -17,8 +17,8 @@ class ExecutionResources:
     # CPU usage in cores (Ray logical CPU slots).
     cpu: Optional[float] = None
 
-    # GPU usage in devices (Ray logical GPU slots).
-    gpu: Optional[float] = None
+    # ACC usage in devices (Ray logical ACC slots).
+    acc: Optional[float] = None
 
     # Object store memory usage in bytes.
     object_store_memory: Optional[int] = None
@@ -39,8 +39,8 @@ class ExecutionResources:
         total = ExecutionResources()
         if self.cpu is not None or other.cpu is not None:
             total.cpu = (self.cpu or 0.0) + (other.cpu or 0.0)
-        if self.gpu is not None or other.gpu is not None:
-            total.gpu = (self.gpu or 0.0) + (other.gpu or 0.0)
+        if self.acc is not None or other.acc is not None:
+            total.acc = (self.acc or 0.0) + (other.acc or 0.0)
         if (
             self.object_store_memory is not None
             or other.object_store_memory is not None
@@ -58,7 +58,7 @@ class ExecutionResources:
 
         if self.cpu is not None and limit.cpu is not None and self.cpu > limit.cpu:
             return False
-        if self.gpu is not None and limit.gpu is not None and self.gpu > limit.gpu:
+        if self.acc is not None and limit.acc is not None and self.acc > limit.acc:
             return False
         if (
             self.object_store_memory is not None
@@ -72,7 +72,7 @@ class ExecutionResources:
         """Return copy with all set values scaled by `f`."""
         return ExecutionResources(
             cpu=self.cpu * f if self.cpu is not None else None,
-            gpu=self.gpu * f if self.gpu is not None else None,
+            acc=self.acc * f if self.acc is not None else None,
             object_store_memory=self.object_store_memory * f
             if self.object_store_memory is not None
             else None,
@@ -113,7 +113,7 @@ class ExecutionOptions:
     resource_limits: ExecutionResources = field(default_factory=ExecutionResources)
 
     exclude_resources: ExecutionResources = field(
-        default_factory=lambda: ExecutionResources(cpu=0, gpu=0, object_store_memory=0)
+        default_factory=lambda: ExecutionResources(cpu=0, acc=0, object_store_memory=0)
     )
 
     locality_with_output: Union[bool, List[NodeIdStr]] = False
@@ -126,7 +126,7 @@ class ExecutionOptions:
 
     def validate(self) -> None:
         """Validate the options."""
-        for attr in ["cpu", "gpu", "object_store_memory"]:
+        for attr in ["cpu", "acc", "object_store_memory"]:
             if (
                 getattr(self.resource_limits, attr) is not None
                 and getattr(self.exclude_resources, attr, 0) > 0

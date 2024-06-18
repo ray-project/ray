@@ -35,7 +35,7 @@ from ray.tune.utils.mock_trainable import MyTrainableClass
 
 class TuneRestoreTest(unittest.TestCase):
     def setUp(self):
-        ray.init(num_cpus=1, num_gpus=0, local_mode=True)
+        ray.init(num_cpus=1, num_accs=0, local_mode=True)
         tmpdir = tempfile.mkdtemp()
         test_name = "TuneRestoreTest"
         tune.run(

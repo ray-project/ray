@@ -130,8 +130,8 @@ if __name__ == "__main__":
                 "custom_model": "keras_q_model" if args.run == "DQN" else "keras_model"
             }
         )
-        # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
-        .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
+        # Use ACCs iff `RLLIB_NUM_ACCS` env var set to > 0.
+        .resources(num_accs=int(os.environ.get("RLLIB_NUM_ACCS", "0")))
     )
 
     if args.run == "DQN":

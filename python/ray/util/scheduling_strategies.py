@@ -137,7 +137,7 @@ class NodeLabelSchedulingStrategy:
 
     scheduling_strategy=NodeLabelSchedulingStrategy({
           "region": In("us"),
-          "gpu_type": Exists()
+          "acc_type": Exists()
     })
     """
 

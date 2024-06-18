@@ -223,18 +223,18 @@ items:
       ray.io/ft-enabled: "false"
       ray.io/health-state: ""
     creationTimestamp: "2022-11-14T23:13:47Z"
-    generateName: raycluster-autoscaler-worker-fake-gpu-group-
+    generateName: raycluster-autoscaler-worker-fake-acc-group-
     labels:
       app.kubernetes.io/created-by: kuberay-operator
       app.kubernetes.io/name: kuberay
       key: value
       ray.io/cluster: raycluster-autoscaler
       ray.io/cluster-dashboard: raycluster-autoscaler-dashboard
-      ray.io/group: fake-gpu-group
+      ray.io/group: fake-acc-group
       ray.io/identifier: raycluster-autoscaler-worker
       ray.io/is-ray-node: "yes"
       ray.io/node-type: worker
-    name: raycluster-autoscaler-worker-fake-gpu-group-2qnhv
+    name: raycluster-autoscaler-worker-fake-acc-group-2qnhv
     namespace: default
     ownerReferences:
     - apiVersion: ray.io/v1alpha1
@@ -248,7 +248,7 @@ items:
   spec:
     containers:
     - args:
-      - 'ulimit -n 65536; ray start  --address=raycluster-autoscaler-head-svc:6379  --metrics-export-port=8080  --num-cpus=1  --memory=536870912  --block  --num-gpus=1  --resources="{\"Custom1\":
+      - 'ulimit -n 65536; ray start  --address=raycluster-autoscaler-head-svc:6379  --metrics-export-port=8080  --num-cpus=1  --memory=536870912  --block  --num-accs=1  --resources="{\"Custom1\":
         1, \"Custom2\": 5}" '
       command:
       - /bin/bash

@@ -454,7 +454,7 @@ class ReplicaConfig:
             "accelerator_type",
             "memory",
             "num_cpus",
-            "num_gpus",
+            "num_accs",
             "object_store_memory",
             "resources",
             # Other options
@@ -518,7 +518,7 @@ class ReplicaConfig:
             ):
                 raise ValueError(
                     "`placement_group_bundles` must be a non-empty list of resource "
-                    'dictionaries. For example: `[{"CPU": 1.0}, {"GPU": 1.0}]`.'
+                    'dictionaries. For example: `[{"CPU": 1.0}, {"ACC": 1.0}]`.'
                 )
 
             for i, bundle in enumerate(self.placement_group_bundles):
@@ -530,7 +530,7 @@ class ReplicaConfig:
                     raise ValueError(
                         "`placement_group_bundles` must be a non-empty list of "
                         "resource dictionaries. For example: "
-                        '`[{"CPU": 1.0}, {"GPU": 1.0}]`.'
+                        '`[{"CPU": 1.0}, {"ACC": 1.0}]`.'
                     )
 
                 # Validate that the replica actor fits in the first bundle.
@@ -547,16 +547,16 @@ class ReplicaConfig:
                             f"{bundle_cpu} `CPU` specified."
                         )
 
-                    bundle_gpu = bundle.get("GPU", 0)
-                    replica_actor_num_gpus = self.ray_actor_options.get("num_gpus", 0)
-                    if bundle_gpu < replica_actor_num_gpus:
+                    bundle_acc = bundle.get("ACC", 0)
+                    replica_actor_num_accs = self.ray_actor_options.get("num_accs", 0)
+                    if bundle_acc < replica_actor_num_accs:
                         raise ValueError(
                             "When using `placement_group_bundles`, the replica actor "
                             "will be placed in the first bundle, so the resource "
                             "requirements for the actor must be a subset of the first "
-                            "bundle. `num_gpus` for the actor is "
-                            f"{replica_actor_num_gpus} but the bundle only has "
-                            f"{bundle_gpu} `GPU` specified."
+                            "bundle. `num_accs` for the actor is "
+                            f"{replica_actor_num_accs} but the bundle only has "
+                            f"{bundle_acc} `ACC` specified."
                         )
 
                     replica_actor_resources = self.ray_actor_options.get(

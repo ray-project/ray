@@ -23,7 +23,7 @@ class PlacementGroupFactory(ResourceRequest):
             tune.with_resources(
                 train,
                 resources=tune.PlacementGroupFactory([
-                    {"CPU": 1, "GPU": 0.5, "custom_resource": 2}
+                    {"CPU": 1, "ACC": 0.5, "custom_resource": 2}
                 ])
             )
         )
@@ -42,7 +42,7 @@ class PlacementGroupFactory(ResourceRequest):
             tune.with_resources(
                 train,
                 resources=tune.PlacementGroupFactory([
-                    {"CPU": 1, "GPU": 0.5, "custom_resource": 2},
+                    {"CPU": 1, "ACC": 0.5, "custom_resource": 2},
                     {"CPU": 2},
                     {"CPU": 2},
                 ], strategy="PACK")
@@ -50,7 +50,7 @@ class PlacementGroupFactory(ResourceRequest):
         )
         tuner.fit()
 
-    The example above will reserve 1 CPU, 0.5 GPUs and 2 custom_resources
+    The example above will reserve 1 CPU, 0.5 ACCs and 2 custom_resources
     for the trainable itself, and reserve another 2 bundles of 2 CPUs each.
     The trial will only start when all these resources are available. This
     could be used e.g. if you had one learner running in the main trainable
@@ -109,7 +109,7 @@ def resource_dict_to_pg_factory(spec: Optional[Dict[str, float]] = None):
     spec = spec.copy()
 
     cpus = spec.pop("cpu", spec.pop("CPU", 0.0))
-    gpus = spec.pop("gpu", spec.pop("GPU", 0.0))
+    accs = spec.pop("acc", spec.pop("ACC", 0.0))
     memory = spec.pop("memory", 0.0)
 
     # If there is a custom_resources key, use as base for bundle
@@ -122,7 +122,7 @@ def resource_dict_to_pg_factory(spec: Optional[Dict[str, float]] = None):
     bundle.update(
         {
             "CPU": cpus,
-            "GPU": gpus,
+            "ACC": accs,
             "memory": memory,
         }
     )

@@ -1,4 +1,4 @@
-cartpole-dqn-fake-gpus:
+cartpole-dqn-fake-accs:
     env: CartPole-v1
     run: DQN
     stop:
@@ -11,9 +11,9 @@ cartpole-dqn-fake-gpus:
             fcnet_hiddens: [64]
             fcnet_activation: linear
         n_step: 3
-        # Double batch size (2 GPUs).
+        # Double batch size (2 ACCs).
         train_batch_size: 64
 
-        # Fake 2 GPUs.
-        num_gpus: 2
-        _fake_gpus: true
+        # Fake 2 ACCs.
+        num_accs: 2
+        _fake_accs: true

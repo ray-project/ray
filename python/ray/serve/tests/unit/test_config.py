@@ -145,7 +145,7 @@ class TestReplicaConfig:
             dict(),
             ray_actor_options={
                 "num_cpus": 1.0,
-                "num_gpus": 10,
+                "num_accs": 10,
                 "resources": {"abc": 1.0},
                 "memory": 1000000.0,
                 "object_store_memory": 1000000,
@@ -160,9 +160,9 @@ class TestReplicaConfig:
         with pytest.raises(ValueError):
             ReplicaConfig.create(Class, ray_actor_options={"num_cpus": -1})
         with pytest.raises(TypeError):
-            ReplicaConfig.create(Class, ray_actor_options={"num_gpus": "hello"})
+            ReplicaConfig.create(Class, ray_actor_options={"num_accs": "hello"})
         with pytest.raises(ValueError):
-            ReplicaConfig.create(Class, ray_actor_options={"num_gpus": -1})
+            ReplicaConfig.create(Class, ray_actor_options={"num_accs": -1})
         with pytest.raises(TypeError):
             ReplicaConfig.create(Class, ray_actor_options={"memory": "hello"})
         with pytest.raises(ValueError):
@@ -355,7 +355,7 @@ class TestReplicaConfig:
                 Class,
                 tuple(),
                 dict(),
-                ray_actor_options={"num_gpus": 1},
+                ray_actor_options={"num_accs": 1},
                 placement_group_bundles=[{"CPU": 1.0}],
             )
 

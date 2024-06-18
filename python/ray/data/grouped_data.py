@@ -305,7 +305,7 @@ class GroupedData:
             fn_args: Arguments to `fn`.
             fn_kwargs: Keyword arguments to `fn`.
             ray_remote_args: Additional resource requirements to request from
-                ray (e.g., num_gpus=1 to request GPUs for the map tasks).
+                ray (e.g., num_accs=1 to request ACCs for the map tasks).
 
         Returns:
             The return type is determined by the return type of ``fn``, and the return

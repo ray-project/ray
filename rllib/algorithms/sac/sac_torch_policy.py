@@ -34,7 +34,7 @@ from ray.rllib.utils.spaces.simplex import Simplex
 from ray.rllib.policy.torch_mixins import TargetNetworkMixin
 from ray.rllib.utils.torch_utils import (
     apply_grad_clipping,
-    concat_multi_gpu_td_errors,
+    concat_multi_acc_td_errors,
     huber_loss,
 )
 from ray.rllib.utils.typing import (
@@ -344,7 +344,7 @@ def actor_critic_loss(
         actor_loss = torch.mean(alpha.detach() * log_pis_t - q_t_det_policy)
 
     # Store values for stats function in model (tower), such that for
-    # multi-GPU, we do not override them during the parallel loss phase.
+    # multi-ACC, we do not override them during the parallel loss phase.
     model.tower_stats["q_t"] = q_t
     model.tower_stats["policy_t"] = policy_t
     model.tower_stats["log_pis_t"] = log_pis_t
@@ -477,7 +477,7 @@ def setup_late_mixins(
 ) -> None:
     """Call mixin classes' constructors after Policy initialization.
 
-    - Moves the target model(s) to the GPU, if necessary.
+    - Moves the target model(s) to the ACC, if necessary.
     - Adds the `compute_td_error` method to the given policy.
     Calling `compute_td_error` with batch data will re-calculate the loss
     on that batch AND return the per-batch-item TD-error for prioritized
@@ -511,7 +511,7 @@ SACTorchPolicy = build_policy_class(
     validate_spaces=validate_spaces,
     before_loss_init=setup_late_mixins,
     make_model_and_action_dist=build_sac_model_and_action_dist,
-    extra_learn_fetches_fn=concat_multi_gpu_td_errors,
+    extra_learn_fetches_fn=concat_multi_acc_td_errors,
     mixins=[TargetNetworkMixin, ComputeTDErrorMixin],
     action_distribution_fn=action_distribution_fn,
 )

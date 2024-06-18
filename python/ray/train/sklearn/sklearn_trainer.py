@@ -53,8 +53,8 @@ class SklearnTrainer(BaseTrainer):
     to match the number of CPUs assigned to the Ray Actor. This behavior can be
     disabled by setting ``set_estimator_cpus=False``.
 
-    If you wish to use GPU-enabled estimators (eg. cuML), make sure to
-    set ``"GPU": 1`` in ``scaling_config.trainer_resources``.
+    If you wish to use ACC-enabled estimators (eg. cuML), make sure to
+    set ``"ACC": 1`` in ``scaling_config.trainer_resources``.
 
     The results are reported all at once and not in an iterative fashion.
     No checkpointing is done during training. This may be changed
@@ -140,7 +140,7 @@ class SklearnTrainer(BaseTrainer):
             has any parallelism-related params (``n_jobs`` or ``thread_count``)
             and parallelize cross-validation if there are none.
             If False, will not parallelize cross-validation. Cannot be
-            set to True if there are any GPUs assigned to the trainer.
+            set to True if there are any ACCs assigned to the trainer.
             Ignored if ``cv`` is None.
         set_estimator_cpus: If set to True, will automatically set
             the values of all ``n_jobs`` and ``thread_count`` parameters
@@ -248,10 +248,10 @@ class SklearnTrainer(BaseTrainer):
         if (
             self.cv
             and self.parallelize_cv
-            and scaling_config.trainer_resources.get("GPU", 0)
+            and scaling_config.trainer_resources.get("ACC", 0)
         ):
             raise ValueError(
-                "`parallelize_cv` cannot be True if there are GPUs assigned to the "
+                "`parallelize_cv` cannot be True if there are ACCs assigned to the "
                 "trainer."
             )
 
@@ -348,10 +348,10 @@ class SklearnTrainer(BaseTrainer):
 
         return {"cv": {**cv_results, **cv_aggregates}}
 
-    def _get_cv_parallelism(self, has_gpus: bool) -> bool:
+    def _get_cv_parallelism(self, has_accs: bool) -> bool:
         parallelize_cv = False
 
-        assert not (has_gpus and self.parallelize_cv)
+        assert not (has_accs and self.parallelize_cv)
 
         estimator_has_parallelism_params = _has_cpu_params(self.estimator)
 
@@ -359,7 +359,7 @@ class SklearnTrainer(BaseTrainer):
             parallelize_cv = True
 
         if (
-            not has_gpus
+            not has_accs
             and self.cv
             and self.parallelize_cv is None
             and not estimator_has_parallelism_params
@@ -399,7 +399,7 @@ class SklearnTrainer(BaseTrainer):
         assert num_workers == 0  # num_workers is not in scaling config allowed_keys
 
         trainer_resources = scaling_config.trainer_resources or {"CPU": 1}
-        has_gpus = bool(trainer_resources.get("GPU", 0))
+        has_accs = bool(trainer_resources.get("ACC", 0))
         num_cpus = int(trainer_resources.get("CPU", 1))
 
         # see https://scikit-learn.org/stable/computing/parallelism.html
@@ -408,7 +408,7 @@ class SklearnTrainer(BaseTrainer):
         os.environ["OPENBLAS_NUM_THREADS"] = str(num_cpus)
         os.environ["BLIS_NUM_THREADS"] = str(num_cpus)
 
-        parallelize_cv = self._get_cv_parallelism(has_gpus)
+        parallelize_cv = self._get_cv_parallelism(has_accs)
         if self.set_estimator_cpus:
             num_estimator_cpus = 1 if parallelize_cv else num_cpus
             _set_cpu_params(self.estimator, num_estimator_cpus)

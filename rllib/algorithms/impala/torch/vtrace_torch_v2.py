@@ -131,7 +131,7 @@ def vtrace_torch(
         discount_t, c_t, delta_t = discounts_cpu[i], cs_cpu[i], deltas_cpu[i]
         vs_minus_v_xs_cpu.append(delta_t + discount_t * c_t * vs_minus_v_xs_cpu[-1])
     vs_minus_v_xs_cpu = torch.stack(vs_minus_v_xs_cpu[1:])
-    # Move results back to GPU - if applicable.
+    # Move results back to ACC - if applicable.
     vs_minus_v_xs = vs_minus_v_xs_cpu.to(deltas.device)
 
     # Reverse the results back to original order.

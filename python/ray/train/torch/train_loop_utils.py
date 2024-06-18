@@ -42,25 +42,25 @@ logger = logging.getLogger(__name__)
 def get_device() -> Union[torch.device, List[torch.device]]:
     """Gets the correct torch device configured for this process.
 
-    Returns a list of devices if more than 1 GPU per worker
+    Returns a list of devices if more than 1 ACC per worker
     is requested.
 
     Assumes that `CUDA_VISIBLE_DEVICES` is set and is a
-    superset of the `ray.get_gpu_ids()`.
+    superset of the `ray.get_acc_ids()`.
 
     Example:
         >>> # os.environ["CUDA_VISIBLE_DEVICES"] = "3,4"
-        >>> # ray.get_gpu_ids() == [3]
+        >>> # ray.get_acc_ids() == [3]
         >>> # torch.cuda.is_available() == True
         >>> # get_device() == torch.device("cuda:0")
 
         >>> # os.environ["CUDA_VISIBLE_DEVICES"] = "0,1,2,3,4"
-        >>> # ray.get_gpu_ids() == [4]
+        >>> # ray.get_acc_ids() == [4]
         >>> # torch.cuda.is_available() == True
         >>> # get_device() == torch.device("cuda:4")
 
         >>> # os.environ["CUDA_VISIBLE_DEVICES"] = "0,1,2,3,4,5"
-        >>> # ray.get_gpu_ids() == [4,5]
+        >>> # ray.get_acc_ids() == [4,5]
         >>> # torch.cuda.is_available() == True
         >>> # get_device() == torch.device("cuda:4")
     """
@@ -80,7 +80,7 @@ def prepare_model(
     """Prepares the model for distributed execution.
 
     This allows you to use the same exact code regardless of number of
-    workers or the device type being used (CPU, GPU).
+    workers or the device type being used (CPU, ACC).
 
     Args:
         model (torch.nn.Module): A torch model to prepare.
@@ -122,7 +122,7 @@ def prepare_data_loader(
     """Prepares DataLoader for distributed execution.
 
     This allows you to use the same exact code regardless of number of
-    workers or the device type being used (CPU, GPU).
+    workers or the device type being used (CPU, ACC).
 
     Args:
         data_loader (torch.utils.data.DataLoader): The DataLoader to
@@ -131,9 +131,9 @@ def prepare_data_loader(
             the provided DataLoader.
         move_to_device: If set, automatically move the data
             returned by the data loader to the correct device.
-        auto_transfer: If set and device is GPU, another CUDA stream
+        auto_transfer: If set and device is ACC, another CUDA stream
             is created to automatically copy data from host (CPU) memory
-            to device (GPU) memory (the default CUDA stream still runs the
+            to device (ACC) memory (the default CUDA stream still runs the
             training procedure). If device is CPU, it will be disabled
             regardless of the setting. This configuration will be ignored
             if ``move_to_device`` is False.
@@ -253,7 +253,7 @@ class _TorchAccelerator(Accelerator):
         """Prepares the model for distributed execution.
 
         This allows you to use the same exact code regardless of number of
-        workers or the device type being used (CPU, GPU).
+        workers or the device type being used (CPU, ACC).
 
         Args:
             model (torch.nn.Module): A torch model to prepare.
@@ -337,10 +337,10 @@ class _TorchAccelerator(Accelerator):
             else:
                 if not torch.cuda.is_available():
                     raise RuntimeError(
-                        "FSDP is only available with GPU-enabled "
+                        "FSDP is only available with ACC-enabled "
                         "training. Set "
-                        "`use_gpu=True` in your Trainer to train with "
-                        "GPUs."
+                        "`use_acc=True` in your Trainer to train with "
+                        "ACCs."
                     )
                 DataParallel = FullyShardedDataParallel
             if rank == 0:
@@ -361,7 +361,7 @@ class _TorchAccelerator(Accelerator):
         """Prepares DataLoader for distributed execution.
 
         This allows you to use the same exact code regardless of number of
-        workers or the device type being used (CPU, GPU).
+        workers or the device type being used (CPU, ACC).
 
         Args:
             data_loader (torch.utils.data.DataLoader): The DataLoader to
@@ -370,9 +370,9 @@ class _TorchAccelerator(Accelerator):
                 the provided DataLoader.
             move_to_device: If set, automatically move the data
                 returned by the data loader to the correct device.
-            auto_transfer: (Experimental) If set and device is GPU, another CUDA stream
+            auto_transfer: (Experimental) If set and device is ACC, another CUDA stream
                 is created to automatically copy data from host (CPU) memory
-                to device (GPU) memory (the default CUDA stream still runs the
+                to device (ACC) memory (the default CUDA stream still runs the
                 training procedure). If device is CPU, it will be disabled
                 regardless of the setting. This configuration will be ignored
                 if ``move_to_device`` is False.

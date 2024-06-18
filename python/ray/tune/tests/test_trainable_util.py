@@ -5,7 +5,7 @@ import sys
 import unittest
 from unittest.mock import patch
 
-from ray.tune.utils.util import wait_for_gpu
+from ray.tune.utils.util import wait_for_acc
 from ray.tune.utils.util import flatten_dict, unflatten_dict, unflatten_list_dict
 
 
@@ -120,8 +120,8 @@ class UnflattenDictTest(unittest.TestCase):
             unflatten_dict({"a/b": 2, "a/b/c": 3})
 
 
-class GPUUtilMock:
-    class GPU:
+class ACCUtilMock:
+    class ACC:
         def __init__(self, id, uuid, util=None):
             self.id = id
             self.uuid = uuid
@@ -133,46 +133,46 @@ class GPUUtilMock:
                 return self.util.pop(0)
             return 0
 
-    def __init__(self, gpus, gpu_uuids):
-        self.gpus = gpus
-        self.uuids = gpu_uuids
-        self.gpu_list = [
-            self.GPU(gpu, uuid) for gpu, uuid in zip(self.gpus, self.uuids)
+    def __init__(self, accs, acc_uuids):
+        self.accs = accs
+        self.uuids = acc_uuids
+        self.acc_list = [
+            self.ACC(acc, uuid) for acc, uuid in zip(self.accs, self.uuids)
         ]
 
-    def getGPUs(self):
-        return self.gpu_list
+    def getACCs(self):
+        return self.acc_list
 
 
-class GPUTest(unittest.TestCase):
+class ACCTest(unittest.TestCase):
     def setUp(self):
-        sys.modules["GPUtil"] = GPUUtilMock([0, 1], ["GPU-aaa", "GPU-bbb"])
+        sys.modules["ACCtil"] = ACCUtilMock([0, 1], ["ACC-aaa", "ACC-bbb"])
 
-    def testGPUWait1(self):
-        wait_for_gpu(0, delay_s=0)
+    def testACCWait1(self):
+        wait_for_acc(0, delay_s=0)
 
-    def testGPUWait2(self):
-        wait_for_gpu("1", delay_s=0)
+    def testACCWait2(self):
+        wait_for_acc("1", delay_s=0)
 
-    def testGPUWait3(self):
-        wait_for_gpu("GPU-aaa", delay_s=0)
+    def testACCWait3(self):
+        wait_for_acc("ACC-aaa", delay_s=0)
 
-    def testGPUWaitFail(self):
+    def testACCWaitFail(self):
         with self.assertRaises(ValueError):
-            wait_for_gpu(2, delay_s=0)
-
-        with self.assertRaises(ValueError):
-            wait_for_gpu("4", delay_s=0)
+            wait_for_acc(2, delay_s=0)
 
         with self.assertRaises(ValueError):
-            wait_for_gpu(1.23, delay_s=0)
+            wait_for_acc("4", delay_s=0)
 
-    @patch("ray.get_gpu_ids", lambda: ["0"])
-    def testDefaultGPU(self):
+        with self.assertRaises(ValueError):
+            wait_for_acc(1.23, delay_s=0)
+
+    @patch("ray.get_acc_ids", lambda: ["0"])
+    def testDefaultACC(self):
         import sys
 
-        sys.modules["GPUtil"] = GPUUtilMock([0], ["GPU-aaa"])
-        wait_for_gpu(delay_s=0)
+        sys.modules["ACCtil"] = ACCUtilMock([0], ["ACC-aaa"])
+        wait_for_acc(delay_s=0)
 
 
 if __name__ == "__main__":

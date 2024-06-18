@@ -20,7 +20,7 @@ from ray.rllib.algorithms.simple_q.simple_q_tf_policy import (
 )
 from ray.rllib.algorithms.simple_q.simple_q_torch_policy import SimpleQTorchPolicy
 from ray.rllib.execution.rollout_ops import synchronous_parallel_sample
-from ray.rllib.execution.train_ops import multi_gpu_train_one_step, train_one_step
+from ray.rllib.execution.train_ops import multi_acc_train_one_step, train_one_step
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils import deep_update
 from ray.rllib.utils.annotations import override
@@ -60,7 +60,7 @@ class SimpleQConfig(AlgorithmConfig):
         >>>     }
         >>> )
         >>> config.training(replay_buffer_config=replay_config)
-        ...       .resources(num_gpus=1)
+        ...       .resources(num_accs=1)
         ...       .rollouts(num_rollout_workers=3)
 
     Example:
@@ -359,11 +359,11 @@ class SimpleQ(Algorithm):
 
             # Learn on the training batch.
             # Use simple optimizer (only for multi-agent or tf-eager; all other
-            # cases should use the multi-GPU optimizer, even if only using 1 GPU)
+            # cases should use the multi-ACC optimizer, even if only using 1 ACC)
             if self.config.get("simple_optimizer") is True:
                 train_results = train_one_step(self, train_batch)
             else:
-                train_results = multi_gpu_train_one_step(self, train_batch)
+                train_results = multi_acc_train_one_step(self, train_batch)
 
             # Update replay buffer priorities.
             update_priorities_in_replay_buffer(

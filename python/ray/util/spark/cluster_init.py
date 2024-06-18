@@ -26,7 +26,7 @@ from .utils import (
     get_spark_session,
     get_spark_application_driver_host,
     is_in_databricks_runtime,
-    get_spark_task_assigned_physical_gpus,
+    get_spark_task_assigned_physical_accs,
     get_avail_mem_per_ray_worker_node,
     get_max_num_concurrent_tasks,
     gen_cmd_exec_failure_msg,
@@ -435,8 +435,8 @@ def _setup_ray_cluster(
     num_worker_nodes: int,
     num_cpus_worker_node: int,
     num_cpus_head_node: int,
-    num_gpus_worker_node: int,
-    num_gpus_head_node: int,
+    num_accs_worker_node: int,
+    num_accs_head_node: int,
     using_stage_scheduling: bool,
     heap_memory_worker_node: int,
     heap_memory_head_node: int,
@@ -566,7 +566,7 @@ def _setup_ray_cluster(
         autoscaling_cluster = AutoscalingCluster(
             head_resources={
                 "CPU": num_cpus_head_node,
-                "GPU": num_gpus_head_node,
+                "ACC": num_accs_head_node,
                 "memory": heap_memory_head_node,
                 "object_store_memory": object_store_memory_head_node,
             },
@@ -574,7 +574,7 @@ def _setup_ray_cluster(
                 "ray.worker": {
                     "resources": {
                         "CPU": num_cpus_worker_node,
-                        "GPU": num_gpus_worker_node,
+                        "ACC": num_accs_worker_node,
                         "memory": heap_memory_worker_node,
                         "object_store_memory": object_store_memory_worker_node,
                     },
@@ -623,7 +623,7 @@ def _setup_ray_cluster(
             f"--port={ray_head_port}",
             f"--ray-client-server-port={ray_client_server_port}",
             f"--num-cpus={num_cpus_head_node}",
-            f"--num-gpus={num_gpus_head_node}",
+            f"--num-accs={num_accs_head_node}",
             f"--memory={heap_memory_head_node}",
             f"--object-store-memory={object_store_memory_head_node}",
             f"--min-worker-port={worker_port_range_begin}",
@@ -698,7 +698,7 @@ def _setup_ray_cluster(
                     ray_head_port=ray_head_port,
                     ray_temp_dir=ray_temp_dir,
                     num_cpus_per_node=num_cpus_worker_node,
-                    num_gpus_per_node=num_gpus_worker_node,
+                    num_accs_per_node=num_accs_worker_node,
                     heap_memory_per_node=heap_memory_worker_node,
                     object_store_memory_per_node=object_store_memory_worker_node,
                     worker_node_options=worker_node_options,
@@ -759,13 +759,13 @@ _active_ray_cluster = None
 _active_ray_cluster_rwlock = threading.RLock()
 
 
-def _create_resource_profile(num_cpus_per_node, num_gpus_per_node):
+def _create_resource_profile(num_cpus_per_node, num_accs_per_node):
     from pyspark.resource.profile import ResourceProfileBuilder
     from pyspark.resource.requests import TaskResourceRequests
 
     task_res_req = TaskResourceRequests().cpus(num_cpus_per_node)
-    if num_gpus_per_node > 0:
-        task_res_req = task_res_req.resource("gpu", num_gpus_per_node)
+    if num_accs_per_node > 0:
+        task_res_req = task_res_req.resource("acc", num_accs_per_node)
     return ResourceProfileBuilder().require(task_res_req).build
 
 
@@ -777,7 +777,7 @@ _head_node_option_block_keys = {
     "node_ip_address": None,
     "port": None,
     "num_cpus": None,
-    "num_gpus": None,
+    "num_accs": None,
     "dashboard_host": None,
     "dashboard_agent_listen_port": None,
 }
@@ -788,7 +788,7 @@ _worker_node_option_block_keys = {
     "head": None,
     "address": None,
     "num_cpus": "num_cpus_worker_node",
-    "num_gpus": "num_gpus_worker_node",
+    "num_accs": "num_accs_worker_node",
     "memory": None,
     "object_store_memory": "object_store_memory_worker_node",
     "dashboard_agent_listen_port": None,
@@ -828,8 +828,8 @@ def setup_ray_cluster(
     *,
     num_cpus_worker_node: Optional[int] = None,
     num_cpus_head_node: Optional[int] = None,
-    num_gpus_worker_node: Optional[int] = None,
-    num_gpus_head_node: Optional[int] = None,
+    num_accs_worker_node: Optional[int] = None,
+    num_accs_head_node: Optional[int] = None,
     object_store_memory_worker_node: Optional[int] = None,
     object_store_memory_head_node: Optional[int] = None,
     head_node_options: Optional[Dict] = None,
@@ -876,17 +876,17 @@ def setup_ray_cluster(
         num_cpus_head_node: Number of cpus available to Ray head node, if not provide,
             use 0 instead. Number 0 means tasks requiring CPU resources are not
             scheduled to Ray head node.
-        num_gpus_worker_node: Number of gpus available to per-ray worker node, if not
+        num_accs_worker_node: Number of accs available to per-ray worker node, if not
             provided, use spark application configuration
-            'spark.task.resource.gpu.amount' instead.
+            'spark.task.resource.acc.amount' instead.
             This argument is only available on spark cluster that is configured with
-            'gpu' resources.
+            'acc' resources.
             **Limitation** Only spark version >= 3.4 or Databricks Runtime 12.x
             supports setting this argument.
-        num_gpus_head_node: Number of gpus available to Ray head node, if not provide,
+        num_accs_head_node: Number of accs available to Ray head node, if not provide,
             use 0 instead.
             This argument is only available on spark cluster which spark driver node
-            has GPUs.
+            has ACCs.
         object_store_memory_worker_node: Object store memory available to per-ray worker
             node, but it is capped by
             "dev_shm_available_size * 0.8 / num_tasks_per_spark_worker".
@@ -914,7 +914,7 @@ def setup_ray_cluster(
             "ray-{head_port}-{random_suffix}" beneath this path.
         strict_mode: Boolean flag to fast-fail initialization of the ray cluster if
             the available spark cluster does not have sufficient resources to fulfill
-            the resource allocation for memory, cpu and gpu. When set to true, if the
+            the resource allocation for memory, cpu and acc. When set to true, if the
             requested resources are not available for recommended minimum recommended
             functionality, an exception will be raised that details the inadequate
             spark cluster configuration settings. If overridden as `False`,
@@ -1028,16 +1028,16 @@ def setup_ray_cluster(
             DeprecationWarning,
         )
 
-    if "num_gpus_per_node" in kwargs:
-        if num_gpus_worker_node is not None:
+    if "num_accs_per_node" in kwargs:
+        if num_accs_worker_node is not None:
             raise ValueError(
-                "'num_gpus_per_node' and 'num_gpus_worker_node' arguments are "
-                "equivalent. Only set 'num_gpus_worker_node'."
+                "'num_accs_per_node' and 'num_accs_worker_node' arguments are "
+                "equivalent. Only set 'num_accs_worker_node'."
             )
-        num_gpus_worker_node = kwargs["num_gpus_per_node"]
+        num_accs_worker_node = kwargs["num_accs_per_node"]
         warnings.warn(
-            "'num_gpus_per_node' argument is deprecated, please use "
-            "'num_gpus_worker_node' argument instead.",
+            "'num_accs_per_node' argument is deprecated, please use "
+            "'num_accs_worker_node' argument instead.",
             DeprecationWarning,
         )
 
@@ -1056,37 +1056,37 @@ def setup_ray_cluster(
         )
 
     # Environment configurations within the Spark Session that dictate how many cpus
-    # and gpus to use for each submitted spark task.
+    # and accs to use for each submitted spark task.
     num_spark_task_cpus = int(spark.sparkContext.getConf().get("spark.task.cpus", "1"))
 
     if num_cpus_worker_node is not None and num_cpus_worker_node <= 0:
         raise ValueError("Argument `num_cpus_worker_node` value must be > 0.")
 
-    num_spark_task_gpus = int(
-        spark.sparkContext.getConf().get("spark.task.resource.gpu.amount", "0")
+    num_spark_task_accs = int(
+        spark.sparkContext.getConf().get("spark.task.resource.acc.amount", "0")
     )
 
-    if num_gpus_worker_node is not None and num_gpus_worker_node < 0:
-        raise ValueError("Argument `num_gpus_worker_node` value must be >= 0.")
+    if num_accs_worker_node is not None and num_accs_worker_node < 0:
+        raise ValueError("Argument `num_accs_worker_node` value must be >= 0.")
 
-    if num_cpus_worker_node is not None or num_gpus_worker_node is not None:
+    if num_cpus_worker_node is not None or num_accs_worker_node is not None:
         if support_stage_scheduling:
             num_cpus_worker_node = num_cpus_worker_node or num_spark_task_cpus
-            num_gpus_worker_node = num_gpus_worker_node or num_spark_task_gpus
+            num_accs_worker_node = num_accs_worker_node or num_spark_task_accs
 
             using_stage_scheduling = True
             res_profile = _create_resource_profile(
-                num_cpus_worker_node, num_gpus_worker_node
+                num_cpus_worker_node, num_accs_worker_node
             )
         else:
             raise ValueError(
                 "Current spark version does not support stage scheduling, so that "
                 "you cannot set the argument `num_cpus_worker_node` and "
-                "`num_gpus_worker_node` values. Without setting the 2 arguments, "
+                "`num_accs_worker_node` values. Without setting the 2 arguments, "
                 "per-Ray worker node will be assigned with number of "
                 f"'spark.task.cpus' (equals to {num_spark_task_cpus}) cpu cores "
-                "and number of 'spark.task.resource.gpu.amount' "
-                f"(equals to {num_spark_task_gpus}) GPUs. To enable spark stage "
+                "and number of 'spark.task.resource.acc.amount' "
+                f"(equals to {num_spark_task_accs}) ACCs. To enable spark stage "
                 "scheduling, you need to upgrade spark to 3.4 version or use "
                 "Databricks Runtime 12.x, and you cannot use spark local mode."
             )
@@ -1095,7 +1095,7 @@ def setup_ray_cluster(
         res_profile = None
 
         num_cpus_worker_node = num_spark_task_cpus
-        num_gpus_worker_node = num_spark_task_gpus
+        num_accs_worker_node = num_spark_task_accs
 
     (
         ray_worker_node_heap_mem_bytes,
@@ -1104,7 +1104,7 @@ def setup_ray_cluster(
         spark,
         object_store_memory_worker_node,
         num_cpus_worker_node,
-        num_gpus_worker_node,
+        num_accs_worker_node,
     )
 
     if num_worker_nodes == MAX_NUM_WORKER_NODES:
@@ -1175,21 +1175,21 @@ def setup_ray_cluster(
                 f"Current value is {num_cpus_head_node}."
             )
 
-    if num_gpus_head_node is None:
-        num_gpus_head_node = 0
+    if num_accs_head_node is None:
+        num_accs_head_node = 0
     else:
-        if num_gpus_head_node < 0:
+        if num_accs_head_node < 0:
             raise ValueError(
-                "Argument `num_gpus_head_node` value must be >= 0."
-                f"Current value is {num_gpus_head_node}."
+                "Argument `num_accs_head_node` value must be >= 0."
+                f"Current value is {num_accs_head_node}."
             )
 
     if (
         num_cpus_head_node == 0
-        and num_gpus_head_node == 0
+        and num_accs_head_node == 0
         and object_store_memory_head_node is None
     ):
-        # Because tasks that require CPU or GPU resources are not scheduled to Ray
+        # Because tasks that require CPU or ACC resources are not scheduled to Ray
         # head node, and user does not set `object_store_memory_head_node` explicitly,
         # limit the heap memory and object store memory allocation to the
         # head node, in order to save spark driver memory.
@@ -1205,8 +1205,8 @@ def setup_ray_cluster(
             num_worker_nodes=num_worker_nodes,
             num_cpus_worker_node=num_cpus_worker_node,
             num_cpus_head_node=num_cpus_head_node,
-            num_gpus_worker_node=num_gpus_worker_node,
-            num_gpus_head_node=num_gpus_head_node,
+            num_accs_worker_node=num_accs_worker_node,
+            num_accs_head_node=num_accs_head_node,
             using_stage_scheduling=using_stage_scheduling,
             heap_memory_worker_node=ray_worker_node_heap_mem_bytes,
             heap_memory_head_node=heap_memory_head_node,
@@ -1243,7 +1243,7 @@ def _start_ray_worker_nodes(
     ray_head_port,
     ray_temp_dir,
     num_cpus_per_node,
-    num_gpus_per_node,
+    num_accs_per_node,
     heap_memory_per_node,
     object_store_memory_per_node,
     worker_node_options,
@@ -1255,7 +1255,7 @@ def _start_ray_worker_nodes(
     # In order to start ray worker nodes on spark cluster worker machines,
     # We launch a background spark job:
     #  1. Each spark task launches one ray worker node. This design ensures all ray
-    #     worker nodes have the same shape (same cpus / gpus / memory configuration).
+    #     worker nodes have the same shape (same cpus / accs / memory configuration).
     #     If ray worker nodes have a non-uniform shape, the Ray cluster setup will
     #     be non-deterministic and could create issues with node sizing.
     #  2. A ray worker node is started via the `ray start` CLI. In each spark task,
@@ -1311,26 +1311,26 @@ def _start_ray_worker_nodes(
             "RAY_ENABLE_WINDOWS_OR_OSX_CLUSTER": "1",
         }
 
-        if num_gpus_per_node > 0:
+        if num_accs_per_node > 0:
             task_resources = context.resources()
 
-            if "gpu" not in task_resources:
+            if "acc" not in task_resources:
                 raise RuntimeError(
-                    "Couldn't get the gpu id, Please check the GPU resource "
+                    "Couldn't get the acc id, Please check the ACC resource "
                     "configuration"
                 )
-            gpu_addr_list = [
-                int(addr.strip()) for addr in task_resources["gpu"].addresses
+            acc_addr_list = [
+                int(addr.strip()) for addr in task_resources["acc"].addresses
             ]
 
-            available_physical_gpus = get_spark_task_assigned_physical_gpus(
-                gpu_addr_list
+            available_physical_accs = get_spark_task_assigned_physical_accs(
+                acc_addr_list
             )
             ray_worker_node_cmd.append(
-                f"--num-gpus={len(available_physical_gpus)}",
+                f"--num-accs={len(available_physical_accs)}",
             )
             ray_worker_node_extra_envs["CUDA_VISIBLE_DEVICES"] = ",".join(
-                [str(gpu_id) for gpu_id in available_physical_gpus]
+                [str(acc_id) for acc_id in available_physical_accs]
             )
 
         _worker_logger.info(
@@ -1405,7 +1405,7 @@ def _start_ray_worker_nodes(
     if using_stage_scheduling:
         resource_profile = _create_resource_profile(
             num_cpus_per_node,
-            num_gpus_per_node,
+            num_accs_per_node,
         )
         job_rdd = job_rdd.withResources(resource_profile)
 
@@ -1541,9 +1541,9 @@ class AutoscalingCluster:
             ray_head_node_cmd.append(
                 "--num-cpus={}".format(self._head_resources.pop("CPU"))
             )
-        if "GPU" in self._head_resources:
+        if "ACC" in self._head_resources:
             ray_head_node_cmd.append(
-                "--num-gpus={}".format(self._head_resources.pop("GPU"))
+                "--num-accs={}".format(self._head_resources.pop("ACC"))
             )
         if "memory" in self._head_resources:
             ray_head_node_cmd.append(

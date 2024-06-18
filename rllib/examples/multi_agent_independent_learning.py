@@ -10,10 +10,10 @@ from pettingzoo.sisl import waterworld_v4
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
-    "--num-gpus",
+    "--num-accs",
     type=int,
     default=1,
-    help="Number of GPUs to use for training.",
+    help="Number of ACCs to use for training.",
 )
 parser.add_argument(
     "--as-test",
@@ -34,7 +34,7 @@ if __name__ == "__main__":
     config = (
         PPOConfig()
         .environment("waterworld")
-        .resources(num_gpus=args.num_gpus)
+        .resources(num_accs=args.num_accs)
         .rollouts(num_rollout_workers=2)
         .multi_agent(
             policies=env.get_agent_ids(),

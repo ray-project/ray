@@ -14,8 +14,8 @@ https://arxiv.org/pdf/2010.02193.pdf
 from ray.rllib.algorithms.dreamerv3.dreamerv3 import DreamerV3Config
 
 
-# Number of GPUs to run on.
-num_gpus = 1
+# Number of ACCs to run on.
+num_accs = 1
 
 config = (
     DreamerV3Config()
@@ -37,18 +37,18 @@ config = (
         }
     )
     .resources(
-        num_learner_workers=0 if num_gpus == 1 else num_gpus,
-        num_gpus_per_learner_worker=1 if num_gpus else 0,
+        num_learner_workers=0 if num_accs == 1 else num_accs,
+        num_accs_per_learner_worker=1 if num_accs else 0,
         num_cpus_for_local_worker=1,
     )
     .rollouts(
-        # If we use >1 GPU and increase the batch size accordingly, we should also
+        # If we use >1 ACC and increase the batch size accordingly, we should also
         # increase the number of envs per worker.
-        num_envs_per_worker=(num_gpus or 1),
+        num_envs_per_worker=(num_accs or 1),
         remote_worker_envs=True,
     )
     .reporting(
-        metrics_num_episodes_for_smoothing=(num_gpus or 1),
+        metrics_num_episodes_for_smoothing=(num_accs or 1),
         report_images_and_videos=False,
         report_dream_data=False,
         report_individual_batch_item_stats=False,
@@ -57,6 +57,6 @@ config = (
     .training(
         model_size="S",
         training_ratio=1024,
-        batch_size_B=16 * (num_gpus or 1),
+        batch_size_B=16 * (num_accs or 1),
     )
 )

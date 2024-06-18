@@ -21,61 +21,61 @@ logger = logging.getLogger(__name__)
 
 
 @pytest.fixture
-def save_gpu_ids_shutdown_only():
+def save_acc_ids_shutdown_only():
     # Record the curent value of this environment variable so that we can
     # reset it after the test.
-    original_gpu_ids = os.environ.get("CUDA_VISIBLE_DEVICES", None)
+    original_acc_ids = os.environ.get("CUDA_VISIBLE_DEVICES", None)
 
     yield None
 
     # The code after the yield will run as teardown code.
     ray.shutdown()
     # Reset the environment variable.
-    if original_gpu_ids is not None:
-        os.environ["CUDA_VISIBLE_DEVICES"] = original_gpu_ids
+    if original_acc_ids is not None:
+        os.environ["CUDA_VISIBLE_DEVICES"] = original_acc_ids
     else:
         del os.environ["CUDA_VISIBLE_DEVICES"]
 
 
 @pytest.mark.skipif(platform.system() == "Windows", reason="Hangs on Windows")
-def test_specific_gpus(save_gpu_ids_shutdown_only):
-    allowed_gpu_ids = [4, 5, 6]
-    os.environ["CUDA_VISIBLE_DEVICES"] = ",".join([str(i) for i in allowed_gpu_ids])
-    ray.init(num_gpus=3)
+def test_specific_accs(save_acc_ids_shutdown_only):
+    allowed_acc_ids = [4, 5, 6]
+    os.environ["CUDA_VISIBLE_DEVICES"] = ",".join([str(i) for i in allowed_acc_ids])
+    ray.init(num_accs=3)
 
-    @ray.remote(num_gpus=1)
+    @ray.remote(num_accs=1)
     def f():
-        gpu_ids = ray.get_gpu_ids()
-        assert len(gpu_ids) == 1
-        assert int(gpu_ids[0]) in allowed_gpu_ids
+        acc_ids = ray.get_acc_ids()
+        assert len(acc_ids) == 1
+        assert int(acc_ids[0]) in allowed_acc_ids
 
-    @ray.remote(num_gpus=2)
+    @ray.remote(num_accs=2)
     def g():
-        gpu_ids = ray.get_gpu_ids()
-        assert len(gpu_ids) == 2
-        assert int(gpu_ids[0]) in allowed_gpu_ids
-        assert int(gpu_ids[1]) in allowed_gpu_ids
+        acc_ids = ray.get_acc_ids()
+        assert len(acc_ids) == 2
+        assert int(acc_ids[0]) in allowed_acc_ids
+        assert int(acc_ids[1]) in allowed_acc_ids
 
     ray.get([f.remote() for _ in range(100)])
     ray.get([g.remote() for _ in range(100)])
 
 
-def test_local_mode_gpus(save_gpu_ids_shutdown_only):
-    allowed_gpu_ids = [4, 5, 6, 7, 8]
-    os.environ["CUDA_VISIBLE_DEVICES"] = ",".join([str(i) for i in allowed_gpu_ids])
+def test_local_mode_accs(save_acc_ids_shutdown_only):
+    allowed_acc_ids = [4, 5, 6, 7, 8]
+    os.environ["CUDA_VISIBLE_DEVICES"] = ",".join([str(i) for i in allowed_acc_ids])
 
     from importlib import reload
 
     reload(ray._private.worker)
 
-    ray.init(num_gpus=3, local_mode=True)
+    ray.init(num_accs=3, local_mode=True)
 
     @ray.remote
     def f():
-        gpu_ids = ray.get_gpu_ids()
-        assert len(gpu_ids) == 3
-        for gpu in gpu_ids:
-            assert int(gpu) in allowed_gpu_ids
+        acc_ids = ray.get_acc_ids()
+        assert len(acc_ids) == 3
+        for acc in acc_ids:
+            assert int(acc) in allowed_acc_ids
 
     ray.get([f.remote() for _ in range(100)])
 
@@ -133,10 +133,10 @@ def test_max_call_tasks(ray_start_regular):
     wait_for_pid_to_exit(pid1)
 
 
-def test_max_call_set_for_gpu_tasks(shutdown_only):
-    ray.init(num_cpus=1, num_gpus=1)
+def test_max_call_set_for_acc_tasks(shutdown_only):
+    ray.init(num_cpus=1, num_accs=1)
 
-    @ray.remote(num_gpus=0.1)
+    @ray.remote(num_accs=0.1)
     def f():
         return os.getpid()
 

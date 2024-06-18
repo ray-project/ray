@@ -11,7 +11,7 @@ import ray.train as train
 from ray.train import ScalingConfig
 from ray.train.trainer import TrainingFailedError
 
-scaling_config = ScalingConfig(num_workers=2, use_gpu=False)
+scaling_config = ScalingConfig(num_workers=2, use_acc=False)
 
 
 def trainer_init_per_worker(config):

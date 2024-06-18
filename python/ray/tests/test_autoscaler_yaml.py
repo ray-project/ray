@@ -147,7 +147,7 @@ class AutoscalingConfigTest(unittest.TestCase):
         new_config["available_node_types"] = {
             "cpu_4_ondemand": new_config["available_node_types"]["cpu_4_ondemand"],
             "cpu_16_spot": new_config["available_node_types"]["cpu_16_spot"],
-            "gpu_8_ondemand": new_config["available_node_types"]["gpu_8_ondemand"],
+            "acc_8_ondemand": new_config["available_node_types"]["acc_8_ondemand"],
             "neuron_core_inf_1_ondemand": {
                 "node_config": {
                     "InstanceType": "inf2.xlarge",
@@ -165,10 +165,10 @@ class AutoscalingConfigTest(unittest.TestCase):
             "Custom1": 1,
             "is_spot": 1,
         }
-        expected_available_node_types["gpu_8_ondemand"]["resources"] = {
+        expected_available_node_types["acc_8_ondemand"]["resources"] = {
             "CPU": 32,
             "memory": 183395103539,
-            "GPU": 4,
+            "ACC": 4,
             "accelerator_type:V100": 1,
         }
         expected_available_node_types["neuron_core_inf_1_ondemand"]["resources"] = {
@@ -178,7 +178,7 @@ class AutoscalingConfigTest(unittest.TestCase):
             "accelerator_type:aws-neuron-core": 1,
         }
         expected_available_node_types["cpu_16_spot"]["min_workers"] = 0
-        expected_available_node_types["gpu_8_ondemand"]["min_workers"] = 0
+        expected_available_node_types["acc_8_ondemand"]["min_workers"] = 0
         expected_available_node_types["neuron_core_inf_1_ondemand"]["min_workers"] = 0
 
         boto3_dict = {

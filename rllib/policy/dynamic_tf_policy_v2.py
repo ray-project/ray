@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, Type, Union
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.tf.tf_action_dist import TFActionDistribution
-from ray.rllib.policy.dynamic_tf_policy import TFMultiGPUTowerStack
+from ray.rllib.policy.dynamic_tf_policy import TFMultiACCTowerStack
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_policy import TFPolicy
@@ -558,7 +558,7 @@ class DynamicTFPolicyV2(TFPolicy):
         self, timestep: Union[int, TensorType], explore: Union[bool, TensorType]
     ) -> Tuple[TensorType, TensorType, TensorType, type, Dict[str, TensorType]]:
         """Create action related fields for base Policy and loss initialization."""
-        # Multi-GPU towers do not need any action computing/exploration
+        # Multi-ACC towers do not need any action computing/exploration
         # graphs.
         sampled_action = None
         sampled_action_logp = None
@@ -658,7 +658,7 @@ class DynamicTFPolicyV2(TFPolicy):
         self._optimizer = optimizers[0]
 
     def maybe_initialize_optimizer_and_loss(self):
-        # We don't need to initialize loss calculation for MultiGPUTowerStack.
+        # We don't need to initialize loss calculation for MultiACCTowerStack.
         if self._is_tower:
             self.get_session().run(tf1.global_variables_initializer())
             return
@@ -667,17 +667,17 @@ class DynamicTFPolicyV2(TFPolicy):
         self._init_optimizers()
         self._initialize_loss_from_dummy_batch(auto_remove_unneeded_view_reqs=True)
 
-        # Create MultiGPUTowerStacks, if we have at least one actual
-        # GPU or >1 CPUs (fake GPUs).
-        if len(self.devices) > 1 or any("gpu" in d for d in self.devices):
-            # Per-GPU graph copies created here must share vars with the
+        # Create MultiACCTowerStacks, if we have at least one actual
+        # ACC or >1 CPUs (fake ACCs).
+        if len(self.devices) > 1 or any("acc" in d for d in self.devices):
+            # Per-ACC graph copies created here must share vars with the
             # policy. Therefore, `reuse` is set to tf1.AUTO_REUSE because
             # Adam nodes are created after all of the device copies are
             # created.
             with tf1.variable_scope("", reuse=tf1.AUTO_REUSE):
-                self.multi_gpu_tower_stacks = [
-                    TFMultiGPUTowerStack(policy=self)
-                    for _ in range(self.config.get("num_multi_gpu_tower_stacks", 1))
+                self.multi_acc_tower_stacks = [
+                    TFMultiACCTowerStack(policy=self)
+                    for _ in range(self.config.get("num_multi_acc_tower_stacks", 1))
                 ]
 
         # Initialize again after loss and tower init.
@@ -986,7 +986,7 @@ class DynamicTFPolicyV2(TFPolicy):
         inputs = [input_dict[k] for k in data_keys]
         state_inputs = [input_dict[k] for k in state_keys]
 
-        return self.multi_gpu_tower_stacks[buffer_index].load_data(
+        return self.multi_acc_tower_stacks[buffer_index].load_data(
             sess=self.get_session(),
             inputs=inputs,
             state_inputs=state_inputs,
@@ -1006,7 +1006,7 @@ class DynamicTFPolicyV2(TFPolicy):
                 else 0
             )
 
-        return self.multi_gpu_tower_stacks[buffer_index].num_tuples_loaded
+        return self.multi_acc_tower_stacks[buffer_index].num_tuples_loaded
 
     @override(Policy)
     @DeveloperAPI
@@ -1033,7 +1033,7 @@ class DynamicTFPolicyV2(TFPolicy):
                 )
             return self.learn_on_batch(sliced_batch)
 
-        tower_stack = self.multi_gpu_tower_stacks[buffer_index]
+        tower_stack = self.multi_acc_tower_stacks[buffer_index]
         results = tower_stack.optimize(self.get_session(), offset)
         self.num_grad_updates += 1
 

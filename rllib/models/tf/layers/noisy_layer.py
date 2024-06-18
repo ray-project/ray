@@ -39,10 +39,10 @@ class NoisyLayer(tf.keras.layers.Layer if tf else object):
         super().__init__()
         self.prefix = prefix
         self.out_size = out_size
-        # TF noise generation can be unreliable on GPU
+        # TF noise generation can be unreliable on ACC
         # If generating the noise on the CPU,
         # lowering sigma0 to 0.1 may be helpful
-        self.sigma0 = sigma0  # 0.5~GPU, 0.1~CPU
+        self.sigma0 = sigma0  # 0.5~ACC, 0.1~CPU
         self.activation = activation
         # Variables.
         self.w = None  # Weight matrix.

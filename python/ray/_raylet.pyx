@@ -2042,7 +2042,7 @@ cdef execute_task_with_cancellation_handler(
     task_name = name.decode("utf-8")
     title = f"ray::{task_name}"
 
-    # Automatically restrict the GPUs (CUDA), neuron_core, TPU accelerator
+    # Automatically restrict the ACCs (CUDA), neuron_core, TPU accelerator
     # runtime_ids to restrict availability to this task.
     # Once actor is created, users can change the visible accelerator ids within
     # an actor task and we don't want to reset it.

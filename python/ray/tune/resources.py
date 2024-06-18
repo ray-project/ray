@@ -23,11 +23,11 @@ class Resources(
         "Resources",
         [
             "cpu",
-            "gpu",
+            "acc",
             "memory",
             "object_store_memory",
             "extra_cpu",
-            "extra_gpu",
+            "extra_acc",
             "extra_memory",
             "extra_object_store_memory",
             "custom_resources",
@@ -41,11 +41,11 @@ class Resources(
     def __new__(
         cls,
         cpu: float,
-        gpu: float,
+        acc: float,
         memory: float = 0,
         object_store_memory: float = 0.0,
         extra_cpu: float = 0.0,
-        extra_gpu: float = 0.0,
+        extra_acc: float = 0.0,
         extra_memory: float = 0.0,
         extra_object_store_memory: float = 0.0,
         custom_resources: Optional[dict] = None,
@@ -65,10 +65,10 @@ def json_to_resources(data: Optional[str]) -> Optional[PlacementGroupFactory]:
         data = json.loads(data)
 
     for k in data:
-        if k in ["driver_cpu_limit", "driver_gpu_limit"]:
+        if k in ["driver_cpu_limit", "driver_acc_limit"]:
             raise TuneError(
                 "The field `{}` is no longer supported. Use `extra_cpu` "
-                "or `extra_gpu` instead.".format(k)
+                "or `extra_acc` instead.".format(k)
             )
         if k not in _Resources._fields:
             raise ValueError(
@@ -79,7 +79,7 @@ def json_to_resources(data: Optional[str]) -> Optional[PlacementGroupFactory]:
     resource_dict_to_pg_factory(
         dict(
             cpu=data.get("cpu", 1),
-            gpu=data.get("gpu", 0),
+            acc=data.get("acc", 0),
             memory=data.get("memory", 0),
             custom_resources=data.get("custom_resources"),
         )

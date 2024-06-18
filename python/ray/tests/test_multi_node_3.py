@@ -97,8 +97,8 @@ def test_calling_start_ray_head(call_ray_stop_only):
     check_call_ray(["start", "--head", "--num-cpus", "2", "--port", "0"])
     check_call_ray(["stop"])
 
-    # Test starting Ray with the number of GPUs specified.
-    check_call_ray(["start", "--head", "--num-gpus", "100", "--port", "0"])
+    # Test starting Ray with the number of ACCs specified.
+    check_call_ray(["start", "--head", "--num-accs", "100", "--port", "0"])
     check_call_ray(["stop"])
 
     # Test starting Ray with redis shard ports specified.
@@ -118,7 +118,7 @@ def test_calling_start_ray_head(call_ray_stop_only):
             "22345",
             "--num-cpus",
             "2",
-            "--num-gpus",
+            "--num-accs",
             "0",
             "--resources",
             '{"Custom": 1}',

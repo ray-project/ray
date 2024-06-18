@@ -179,7 +179,7 @@ class LoadMetrics:
             >>> from ray.autoscaler._private.load_metrics import LoadMetrics
             >>> metrics = LoadMetrics(...) # doctest: +SKIP
             >>> metrics.get_node_resources() # doctest: +SKIP
-            [{"CPU": 1}, {"CPU": 4, "GPU": 8}]  # for two different nodes
+            [{"CPU": 1}, {"CPU": 4, "ACC": 8}]  # for two different nodes
         """
         return self.static_resources_by_ip.values()
 
@@ -190,7 +190,7 @@ class LoadMetrics:
             >>> from ray.autoscaler._private.load_metrics import LoadMetrics
             >>> metrics = LoadMetrics(...)  # doctest: +SKIP
             >>> metrics.get_static_node_resources_by_ip()  # doctest: +SKIP
-            {127.0.0.1: {"CPU": 1}, 127.0.0.2: {"CPU": 4, "GPU": 8}}
+            {127.0.0.1: {"CPU": 1}, 127.0.0.2: {"CPU": 4, "ACC": 8}}
         """
         return self.static_resources_by_ip
 
@@ -235,7 +235,7 @@ class LoadMetrics:
     def resources_avail_summary(self) -> str:
         """Return a concise string of cluster size to report to event logs.
 
-        For example, "3 CPUs, 4 GPUs".
+        For example, "3 CPUs, 4 ACCs".
         """
         total_resources = (
             reduce(add_resources, self.static_resources_by_ip.values())
@@ -243,8 +243,8 @@ class LoadMetrics:
             else {}
         )
         out = "{} CPUs".format(int(total_resources.get("CPU", 0)))
-        if "GPU" in total_resources:
-            out += ", {} GPUs".format(int(total_resources["GPU"]))
+        if "ACC" in total_resources:
+            out += ", {} ACCs".format(int(total_resources["ACC"]))
         if "TPU" in total_resources:
             out += ", {} TPUs".format(int(total_resources["TPU"]))
         return out

@@ -75,7 +75,7 @@ def test_ray_dask_resources(ray_start_cluster, ray_enable_dask_on_ray):
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=1)
     cluster.add_node(num_cpus=1, resources={"other_pin": 1})
-    pinned_node = cluster.add_node(num_cpus=1, num_gpus=1, resources={"pin": 1})
+    pinned_node = cluster.add_node(num_cpus=1, num_accs=1, resources={"pin": 1})
 
     ray.init(address=cluster.address)
 
@@ -91,7 +91,7 @@ def test_ray_dask_resources(ray_start_cluster, ray_enable_dask_on_ray):
 
     # Test annotations on compute.
     c = dask.delayed(get_node_id)()
-    with dask.annotate(ray_remote_args=dict(num_gpus=1, resources={"pin": 0.01})):
+    with dask.annotate(ray_remote_args=dict(num_accs=1, resources={"pin": 0.01})):
         result = c.compute(optimize_graph=False)
 
     assert result == pinned_node.unique_id

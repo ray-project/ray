@@ -523,8 +523,8 @@ class TuneController:
         Only updating the pending ones.
         """
         assert resources
-        if isinstance(resources, dict) and "gpu" not in resources:
-            resources["gpu"] = 0
+        if isinstance(resources, dict) and "acc" not in resources:
+            resources["acc"] = 0
         for trial in self._trials:
             if trial.status == Trial.PENDING:
                 trial.update_resources(resources=resources)

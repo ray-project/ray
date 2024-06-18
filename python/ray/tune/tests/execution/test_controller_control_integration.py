@@ -17,8 +17,8 @@ STORAGE = mock_storage_context()
 
 
 @pytest.fixture(scope="function")
-def ray_start_4_cpus_2_gpus_extra():
-    address_info = ray.init(num_cpus=4, num_gpus=2, resources={"a": 2})
+def ray_start_4_cpus_2_accs_extra():
+    address_info = ray.init(num_cpus=4, num_accs=2, resources={"a": 2})
     yield address_info
     ray.shutdown()
 
@@ -26,7 +26,7 @@ def ray_start_4_cpus_2_gpus_extra():
 @pytest.mark.parametrize(
     "resource_manager_cls", [FixedResourceManager, PlacementGroupResourceManager]
 )
-def test_stop_trial(ray_start_4_cpus_2_gpus_extra, resource_manager_cls):
+def test_stop_trial(ray_start_4_cpus_2_accs_extra, resource_manager_cls):
     """Stopping a trial while RUNNING or PENDING should work.
 
     Legacy test: test_trial_runner_3.py::TrialRunnerTest::testStopTrial
@@ -36,7 +36,7 @@ def test_stop_trial(ray_start_4_cpus_2_gpus_extra, resource_manager_cls):
     )
     kwargs = {
         "stopping_criterion": {"training_iteration": 10},
-        "placement_group_factory": PlacementGroupFactory([{"CPU": 2, "GPU": 1}]),
+        "placement_group_factory": PlacementGroupFactory([{"CPU": 2, "ACC": 1}]),
         "config": {"sleep": 1},
         "storage": STORAGE,
     }
@@ -97,7 +97,7 @@ def test_stop_trial(ray_start_4_cpus_2_gpus_extra, resource_manager_cls):
 @pytest.mark.parametrize(
     "resource_manager_cls", [FixedResourceManager, PlacementGroupResourceManager]
 )
-def test_remove_actor_tracking(ray_start_4_cpus_2_gpus_extra, resource_manager_cls):
+def test_remove_actor_tracking(ray_start_4_cpus_2_accs_extra, resource_manager_cls):
     """When we reuse actors, actors that have been requested but not started
     should not be tracked in ``_stopping_actors``.
 
@@ -125,7 +125,7 @@ def test_remove_actor_tracking(ray_start_4_cpus_2_gpus_extra, resource_manager_c
     register_trainable("test_remove_actor_tracking", train_fn)
 
     kwargs = {
-        "placement_group_factory": PlacementGroupFactory([{"CPU": 4, "GPU": 2}]),
+        "placement_group_factory": PlacementGroupFactory([{"CPU": 4, "ACC": 2}]),
         "storage": STORAGE,
     }
     trials = [Trial("test_remove_actor_tracking", **kwargs) for i in range(4)]

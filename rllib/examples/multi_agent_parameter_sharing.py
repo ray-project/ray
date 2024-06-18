@@ -26,7 +26,7 @@ if __name__ == "__main__":
             # Enviroment specific.
             "env": "waterworld",
             # General
-            "num_gpus": 1,
+            "num_accs": 1,
             "num_workers": 2,
             "num_envs_per_worker": 8,
             "replay_buffer_config": {

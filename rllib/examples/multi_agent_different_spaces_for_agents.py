@@ -130,8 +130,8 @@ if __name__ == "__main__":
         .get_default_config()
         .environment(env=BasicMultiAgentMultiSpaces)
         .resources(
-            # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
-            num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")),
+            # Use ACCs iff `RLLIB_NUM_ACCS` env var set to > 0.
+            num_accs=int(os.environ.get("RLLIB_NUM_ACCS", "0")),
         )
         .training(train_batch_size=1024)
         .rollouts(num_rollout_workers=1, rollout_fragment_length="auto")

@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 class DummyTrainer(BaseTrainer):
     _scaling_config_allowed_keys = BaseTrainer._scaling_config_allowed_keys + [
         "num_workers",
-        "use_gpu",
+        "use_acc",
         "resources_per_worker",
         "placement_strategy",
     ]
@@ -95,7 +95,7 @@ def test_arg_override(ray_start_4_cpus):
     tune.run(trainer.as_trainable(), config=new_config)
 
 
-def test_reserved_cpu_warnings_no_cpu_usage(ray_start_1_cpu_1_gpu):
+def test_reserved_cpu_warnings_no_cpu_usage(ray_start_1_cpu_1_acc):
     """Ensure there is no divide by zero error if trial requires no CPUs."""
 
     def train_loop(config):
@@ -104,7 +104,7 @@ def test_reserved_cpu_warnings_no_cpu_usage(ray_start_1_cpu_1_gpu):
     trainer = DummyTrainer(
         train_loop,
         scaling_config=ScalingConfig(
-            num_workers=1, use_gpu=True, trainer_resources={"CPU": 0}
+            num_workers=1, use_acc=True, trainer_resources={"CPU": 0}
         ),
         datasets={"train": ray.data.range(10)},
     )

@@ -15,7 +15,7 @@ from ray.air.constants import MAX_REPR_LENGTH
     "config",
     [
         ScalingConfig(),
-        ScalingConfig(use_gpu=True),
+        ScalingConfig(use_acc=True),
         FailureConfig(),
         FailureConfig(max_failures=2),
         CheckpointConfig(),

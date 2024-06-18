@@ -22,8 +22,8 @@ STORAGE = mock_storage_context()
 
 
 @pytest.fixture(scope="function")
-def ray_start_4_cpus_2_gpus_extra():
-    address_info = ray.init(num_cpus=4, num_gpus=2, resources={"a": 2})
+def ray_start_4_cpus_2_accs_extra():
+    address_info = ray.init(num_cpus=4, num_accs=2, resources={"a": 2})
     yield address_info
     ray.shutdown()
 
@@ -31,7 +31,7 @@ def ray_start_4_cpus_2_gpus_extra():
 @pytest.mark.parametrize("trainable_type", ["class", "function", "data_parallel"])
 @pytest.mark.parametrize("patch_iter", [False, True])
 def test_checkpoint_freq_dir_name(
-    ray_start_4_cpus_2_gpus_extra, trainable_type, patch_iter, tmp_path
+    ray_start_4_cpus_2_accs_extra, trainable_type, patch_iter, tmp_path
 ):
     """Test that trial checkpoint IDs are correctly set across trainable types.
 

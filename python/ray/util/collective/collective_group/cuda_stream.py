@@ -6,16 +6,16 @@ from ray.util.collective.collective_group import nccl_util
 from ray.util.collective.const import ENV
 
 NCCL_STREAM_POOL_SIZE = 32
-MAX_GPU_PER_ACTOR = 16
+MAX_ACC_PER_ACTOR = 16
 
 logger = logging.getLogger(__name__)
 
 
 class StreamPool:
-    """The class that represents a stream pool associated with a GPU.
+    """The class that represents a stream pool associated with a ACC.
 
     When multistream is enabled, we will allocate a pool of streams for each
-    GPU, and get available stream from this pool when a collective kernel is
+    ACC, and get available stream from this pool when a collective kernel is
     initialized. This enables overlapping computation/communication kernels
     using multiple CUDA streams, given that the streams a appropriately
     synchronized. The class is thread-safe.
@@ -72,19 +72,19 @@ class StreamPool:
         self._init_flag = True
 
 
-# This is a map from GPU index to its stream pool.
+# This is a map from ACC index to its stream pool.
 # It is supposed to be READ-ONLY out of this file
 _device_stream_pool_map = dict()
 
 
 def _init_stream_pool():
     global _device_stream_pool_map
-    for i in range(MAX_GPU_PER_ACTOR):
+    for i in range(MAX_ACC_PER_ACTOR):
         _device_stream_pool_map[i] = StreamPool(i)
 
 
 def get_stream_pool(device_idx):
-    """Get the CUDA stream pool of a GPU device."""
+    """Get the CUDA stream pool of a ACC device."""
     # In case there will be multiple threads writing to the pool.
     lock = threading.Lock()
     lock.acquire()

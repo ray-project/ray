@@ -23,7 +23,7 @@ from ray.rllib.utils.torch_utils import convert_to_torch_tensor
 class TestSampleBatch(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        ray.init(num_gpus=1)
+        ray.init(num_accs=1)
 
     @classmethod
     def tearDownClass(cls) -> None:
@@ -375,7 +375,7 @@ class TestSampleBatch(unittest.TestCase):
         #   a float64 tensor with possibly wrong device (depends on if cuda available)
         #   repeated value object with np.array leaves (f)
 
-        cuda_available = int(os.environ.get("RLLIB_NUM_GPUS", "0")) > 0
+        cuda_available = int(os.environ.get("RLLIB_NUM_ACCS", "0")) > 0
         cuda_if_possible = torch.device("cuda:0" if cuda_available else "cpu")
         s = SampleBatch(
             {
@@ -545,7 +545,7 @@ class TestSampleBatch(unittest.TestCase):
             all(convert_to_torch_tensor(some_array) == batch[SampleBatch.OBS])
         )
 
-        # This test requires a GPU, otherwise we can't test whether we are
+        # This test requires a ACC, otherwise we can't test whether we are
         # moving between devices
         if not torch.cuda.is_available():
             raise ValueError("This test can only fail if cuda is available.")

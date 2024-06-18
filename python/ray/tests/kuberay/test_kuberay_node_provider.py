@@ -22,7 +22,7 @@ from typing import Set, List
 
 
 def _get_basic_ray_cr_workers_to_delete(
-    cpu_workers_to_delete: List[NodeID], gpu_workers_to_delete: List[NodeID]
+    cpu_workers_to_delete: List[NodeID], acc_workers_to_delete: List[NodeID]
 ):
     """Generate a Ray cluster with non-empty workersToDelete field."""
     raycluster = get_basic_ray_cr()
@@ -30,7 +30,7 @@ def _get_basic_ray_cr_workers_to_delete(
         "workersToDelete": cpu_workers_to_delete
     }
     raycluster["spec"]["workerGroupSpecs"][1]["scaleStrategy"] = {
-        "workersToDelete": gpu_workers_to_delete
+        "workersToDelete": acc_workers_to_delete
     }
     return raycluster
 
@@ -42,12 +42,12 @@ def _get_test_yaml(file_name):
 
 @pytest.mark.skipif(sys.platform.startswith("win"), reason="Not relevant on Windows.")
 @pytest.mark.parametrize(
-    "group_name,expected_index", [("small-group", 0), ("gpu-group", 1)]
+    "group_name,expected_index", [("small-group", 0), ("acc-group", 1)]
 )
 def test_worker_group_index(group_name, expected_index):
     """Basic unit test for _worker_group_index.
 
-    Uses a RayCluster CR with worker groups "small-group" and "gpu-group",
+    Uses a RayCluster CR with worker groups "small-group" and "acc-group",
     listed in that order.
     """
     raycluster_cr = get_basic_ray_cr()
@@ -136,9 +136,9 @@ def test_create_node_cap_at_max(
                 "raycluster-autoscaler-head-8zsc8": NodeData(
                     kind="head", type="head-group", ip="10.4.2.6", status="up-to-date"
                 ),
-                "raycluster-autoscaler-worker-fake-gpu-group-2qnhv": NodeData(
+                "raycluster-autoscaler-worker-fake-acc-group-2qnhv": NodeData(
                     kind="worker",
-                    type="fake-gpu-group",
+                    type="fake-acc-group",
                     ip="10.4.0.6",
                     status="up-to-date",
                 ),
@@ -189,9 +189,9 @@ def test_get_node_data(podlist_file: str, expected_node_data):
                 "raycluster-autoscaler-head-8zsc8": NodeData(
                     kind="head", type="head-group", ip="10.4.2.6", status="up-to-date"
                 ),
-                "raycluster-autoscaler-worker-fake-gpu-group-2qnhv": NodeData(
+                "raycluster-autoscaler-worker-fake-acc-group-2qnhv": NodeData(
                     kind="worker",
-                    type="fake-gpu-group",
+                    type="fake-acc-group",
                     ip="10.4.0.6",
                     status="up-to-date",
                 ),
@@ -211,7 +211,7 @@ def test_get_node_data(podlist_file: str, expected_node_data):
             ScaleRequest(
                 desired_num_workers={
                     "small-group": 1,  # Delete 1
-                    "gpu-group": 1,  # Don't touch
+                    "acc-group": 1,  # Don't touch
                     "blah-group": 5,  # Create 5
                 },
                 workers_to_delete={
@@ -257,19 +257,19 @@ def test_submit_scale_request(node_data_dict, scale_request, expected_patch_payl
 
 @pytest.mark.parametrize("node_set", [{"A", "B", "C", "D", "E"}])
 @pytest.mark.parametrize("cpu_workers_to_delete", ["A", "Z"])
-@pytest.mark.parametrize("gpu_workers_to_delete", ["B", "Y"])
+@pytest.mark.parametrize("acc_workers_to_delete", ["B", "Y"])
 @pytest.mark.skipif(sys.platform.startswith("win"), reason="Not relevant on Windows.")
 def test_safe_to_scale(
     node_set: Set[NodeID],
     cpu_workers_to_delete: List[NodeID],
-    gpu_workers_to_delete: List[NodeID],
+    acc_workers_to_delete: List[NodeID],
 ):
     # NodeData values unimportant for this test.
     mock_node_data = NodeData("-", "-", "-", "-")
     node_data_dict = {node_id: mock_node_data for node_id in node_set}
 
     raycluster = _get_basic_ray_cr_workers_to_delete(
-        cpu_workers_to_delete, gpu_workers_to_delete
+        cpu_workers_to_delete, acc_workers_to_delete
     )
 
     def mock_patch(kuberay_provider, path, patch_payload):
@@ -290,25 +290,25 @@ def test_safe_to_scale(
         cpu_worker_to_delete in node_set
         for cpu_worker_to_delete in cpu_workers_to_delete
     ) and not any(
-        gpu_worker_to_delete in node_set
-        for gpu_worker_to_delete in gpu_workers_to_delete
+        acc_worker_to_delete in node_set
+        for acc_worker_to_delete in acc_workers_to_delete
     )
     assert expected_safe is actual_safe
     patched_cpu_workers_to_delete = kr_node_provider._patched_raycluster["spec"][
         "workerGroupSpecs"
     ][0]["scaleStrategy"]["workersToDelete"]
-    patched_gpu_workers_to_delete = kr_node_provider._patched_raycluster["spec"][
+    patched_acc_workers_to_delete = kr_node_provider._patched_raycluster["spec"][
         "workerGroupSpecs"
     ][1]["scaleStrategy"]["workersToDelete"]
 
     if expected_safe:
         # Cleaned up workers to delete
         assert patched_cpu_workers_to_delete == []
-        assert patched_gpu_workers_to_delete == []
+        assert patched_acc_workers_to_delete == []
     else:
         # Did not clean up workers to delete
         assert patched_cpu_workers_to_delete == cpu_workers_to_delete
-        assert patched_gpu_workers_to_delete == gpu_workers_to_delete
+        assert patched_acc_workers_to_delete == acc_workers_to_delete
 
 
 if __name__ == "__main__":

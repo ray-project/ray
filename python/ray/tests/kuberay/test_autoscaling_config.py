@@ -19,7 +19,7 @@ AUTOSCALING_CONFIG_MODULE_PATH = "ray.autoscaler._private.kuberay.autoscaling_co
 
 def get_basic_ray_cr() -> dict:
     """Returns the example Ray CR included in the Ray documentation,
-    modified to include a GPU worker group.
+    modified to include a ACC worker group.
     """
     cr_path = str(
         Path(__file__).resolve().parents[2]
@@ -28,13 +28,13 @@ def get_basic_ray_cr() -> dict:
         / "ray-cluster.complete.yaml"
     )
     config = yaml.safe_load(open(cr_path).read())
-    gpu_group = copy.deepcopy(config["spec"]["workerGroupSpecs"][0])
-    gpu_group["groupName"] = "gpu-group"
-    gpu_group["template"]["spec"]["containers"][0]["resources"]["limits"].setdefault(
-        "nvidia.com/gpu", 3
+    acc_group = copy.deepcopy(config["spec"]["workerGroupSpecs"][0])
+    acc_group["groupName"] = "acc-group"
+    acc_group["template"]["spec"]["containers"][0]["resources"]["limits"].setdefault(
+        "nvidia.com/acc", 3
     )
-    gpu_group["maxReplicas"] = 200
-    config["spec"]["workerGroupSpecs"].append(gpu_group)
+    acc_group["maxReplicas"] = 200
+    config["spec"]["workerGroupSpecs"].append(acc_group)
     return config
 
 
@@ -74,9 +74,9 @@ def _get_basic_autoscaling_config() -> dict:
                     "Custom3": 1,
                 },
             },
-            # Same as "small-group" with a GPU resource entry added
+            # Same as "small-group" with a ACC resource entry added
             # and modified max_workers.
-            "gpu-group": {
+            "acc-group": {
                 "max_workers": 200,
                 "min_workers": 1,
                 "node_config": {},
@@ -85,7 +85,7 @@ def _get_basic_autoscaling_config() -> dict:
                     "memory": 536870912,
                     "Custom2": 5,
                     "Custom3": 1,
-                    "GPU": 3,
+                    "ACC": 3,
                 },
             },
         },
@@ -128,44 +128,44 @@ def _get_no_cpu_error() -> str:
 
 
 def _get_ray_cr_with_overrides() -> dict:
-    """CR with memory, cpu, and gpu overrides from rayStartParams."""
+    """CR with memory, cpu, and acc overrides from rayStartParams."""
     cr = get_basic_ray_cr()
     cr["spec"]["workerGroupSpecs"][0]["rayStartParams"]["memory"] = "300000000"
-    # num-gpus rayStartParam with no gpus in container limits
-    cr["spec"]["workerGroupSpecs"][0]["rayStartParams"]["num-gpus"] = "100"
-    # num-gpus rayStartParam overriding gpus in container limits
-    cr["spec"]["workerGroupSpecs"][1]["rayStartParams"]["num-gpus"] = "100"
+    # num-accs rayStartParam with no accs in container limits
+    cr["spec"]["workerGroupSpecs"][0]["rayStartParams"]["num-accs"] = "100"
+    # num-accs rayStartParam overriding accs in container limits
+    cr["spec"]["workerGroupSpecs"][1]["rayStartParams"]["num-accs"] = "100"
     cr["spec"]["workerGroupSpecs"][0]["rayStartParams"]["num-cpus"] = "100"
     return cr
 
 
 def _get_autoscaling_config_with_overrides() -> dict:
-    """Autoscaling config with memory and gpu annotations."""
+    """Autoscaling config with memory and acc annotations."""
     config = _get_basic_autoscaling_config()
     config["available_node_types"]["small-group"]["resources"]["memory"] = 300000000
-    config["available_node_types"]["small-group"]["resources"]["GPU"] = 100
+    config["available_node_types"]["small-group"]["resources"]["ACC"] = 100
     config["available_node_types"]["small-group"]["resources"]["CPU"] = 100
-    config["available_node_types"]["gpu-group"]["resources"]["GPU"] = 100
+    config["available_node_types"]["acc-group"]["resources"]["ACC"] = 100
     return config
 
 
-def _get_ray_cr_missing_gpu_arg() -> dict:
-    """CR with gpu present in K8s limits but not in Ray start params.
-    Should result in a warning that Ray doesn't see the GPUs.
+def _get_ray_cr_missing_acc_arg() -> dict:
+    """CR with acc present in K8s limits but not in Ray start params.
+    Should result in a warning that Ray doesn't see the ACCs.
     """
     cr = get_basic_ray_cr()
     cr["spec"]["workerGroupSpecs"][0]["template"]["spec"]["containers"][0]["resources"][
         "limits"
-    ]["nvidia.com/gpu"] = 1
+    ]["nvidia.com/acc"] = 1
     return cr
 
 
-def _get_gpu_complaint() -> str:
+def _get_acc_complaint() -> str:
     """The logger warning generated when processing the above CR."""
     return (
-        "Detected GPUs in container resources for group small-group."
-        "To ensure Ray and the autoscaler are aware of the GPUs,"
-        " set the `--num-gpus` rayStartParam."
+        "Detected ACCs in container resources for group small-group."
+        "To ensure Ray and the autoscaler are aware of the ACCs,"
+        " set the `--num-accs` rayStartParam."
     )
 
 
@@ -280,7 +280,7 @@ def test_cr_image_consistency():
     cr = get_basic_ray_cr()
 
     group_specs = [cr["spec"]["headGroupSpec"]] + cr["spec"]["workerGroupSpecs"]
-    # Head, CPU group, GPU group.
+    # Head, CPU group, ACC group.
     assert len(group_specs) == 3
 
     ray_containers = [

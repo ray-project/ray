@@ -123,9 +123,9 @@ py_test_module_list(
     "accelerators/test_neuron.py",
     "accelerators/test_npu.py",
     "accelerators/test_tpu.py",
-    "accelerators/test_nvidia_gpu.py",
+    "accelerators/test_nvidia_acc.py",
     "accelerators/test_hpu.py",
-    "accelerators/test_intel_gpu.py",
+    "accelerators/test_intel_acc.py",
     "test_log_dedup.py",
     "test_logging.py",
     "test_memory_scheduling.py",
@@ -645,7 +645,7 @@ py_test_module_list(
 py_test_module_list(
   files = [
     "spark/test_basic.py",
-    "spark/test_GPU.py",
+    "spark/test_ACC.py",
     "spark/test_multicores_per_task.py",
     "spark/test_utils.py",
     "spark/test_databricks_hook.py",
@@ -654,7 +654,7 @@ py_test_module_list(
   tags = ["exclusive", "spark_plugin_tests", "team:serverless"],
   deps = ["//:ray_lib", ":conftest"],
   data = [
-    "spark/discover_2_gpu.sh",
-    "spark/discover_4_gpu.sh"
+    "spark/discover_2_acc.sh",
+    "spark/discover_4_acc.sh"
   ],
 )

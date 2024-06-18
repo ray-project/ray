@@ -247,7 +247,7 @@ def _get_ray_resources_from_group_spec(
     group_name = _HEAD_GROUP_NAME if is_head else group_spec["groupName"]
 
     num_cpus = _get_num_cpus(ray_start_params, k8s_resource_limits, group_name)
-    num_gpus = _get_num_gpus(ray_start_params, k8s_resource_limits, group_name)
+    num_accs = _get_num_accs(ray_start_params, k8s_resource_limits, group_name)
     custom_resource_dict = _get_custom_resources(ray_start_params, group_name)
     memory = _get_memory(ray_start_params, k8s_resource_limits)
 
@@ -259,8 +259,8 @@ def _get_ray_resources_from_group_spec(
     assert isinstance(num_cpus, int)
     resources["CPU"] = num_cpus
 
-    if num_gpus is not None:
-        resources["GPU"] = num_gpus
+    if num_accs is not None:
+        resources["ACC"] = num_accs
 
     if memory is not None:
         resources["memory"] = memory
@@ -306,7 +306,7 @@ def _get_memory(
     return None
 
 
-def _get_num_gpus(
+def _get_num_accs(
     ray_start_params: Dict[str, str],
     k8s_resource_limits: Dict[str, Any],
     group_name: str,
@@ -315,21 +315,21 @@ def _get_num_gpus(
     with priority for ray_start_params.
     """
 
-    if "num-gpus" in ray_start_params:
-        return int(ray_start_params["num-gpus"])
+    if "num-accs" in ray_start_params:
+        return int(ray_start_params["num-accs"])
     else:
         for key in k8s_resource_limits:
-            # e.g. nvidia.com/gpu
-            if key.endswith("gpu"):
+            # e.g. nvidia.com/acc
+            if key.endswith("acc"):
                 # Typically, this is a string representing an interger, e.g. "1".
-                gpu_resource_quantity = k8s_resource_limits[key]
-                # Convert to int, making no assumptions on the gpu_resource_quantity,
+                acc_resource_quantity = k8s_resource_limits[key]
+                # Convert to int, making no assumptions on the acc_resource_quantity,
                 # besides that it's valid as a K8s resource quantity.
-                num_gpus = _round_up_k8s_quantity(gpu_resource_quantity)
-                if num_gpus > 0:
-                    # Only one GPU type supported for now, break out on first
-                    # "/gpu" match.
-                    return num_gpus
+                num_accs = _round_up_k8s_quantity(acc_resource_quantity)
+                if num_accs > 0:
+                    # Only one ACC type supported for now, break out on first
+                    # "/acc" match.
+                    return num_accs
     return None
 
 

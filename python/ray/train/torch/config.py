@@ -28,7 +28,7 @@ class TorchConfig(BackendConfig):
         backend: The backend to use for training.
             See ``torch.distributed.init_process_group`` for more info and
             valid values.
-            If set to None, nccl will be used if GPUs are requested, else gloo
+            If set to None, nccl will be used if ACCs are requested, else gloo
             will be used.
         init_method: The initialization method to use. Either "env"
             for environment variable initialization or "tcp" for TCP
@@ -152,7 +152,7 @@ class _TorchBackend(Backend):
         if dist.is_available():
             # Set the appropriate training backend.
             if backend_config.backend is None:
-                if worker_group.num_gpus_per_worker > 0:
+                if worker_group.num_accs_per_worker > 0:
                     backend = "nccl"
                 else:
                     backend = "gloo"

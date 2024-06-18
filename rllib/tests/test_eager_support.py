@@ -61,10 +61,10 @@ class TestEagerSupportPolicyGradient(unittest.TestCase):
         check_support("PPO", {"num_workers": 0})
 
     def test_appo(self):
-        check_support("APPO", {"num_workers": 1, "num_gpus": 0})
+        check_support("APPO", {"num_workers": 1, "num_accs": 0})
 
     def test_impala(self):
-        check_support("IMPALA", {"num_workers": 1, "num_gpus": 0}, test_eager=True)
+        check_support("IMPALA", {"num_workers": 1, "num_accs": 0}, test_eager=True)
 
 
 class TestEagerSupportOffPolicy(unittest.TestCase):

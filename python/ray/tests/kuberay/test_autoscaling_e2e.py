@@ -26,8 +26,8 @@ from ray.tests.kuberay.utils import (
 )
 
 from ray.tests.kuberay.scripts import (
-    gpu_actor_placement,
-    gpu_actor_validation,
+    acc_actor_placement,
+    acc_actor_validation,
     non_terminated_nodes_count,
 )
 
@@ -65,13 +65,13 @@ class KubeRayAutoscalingTest(unittest.TestCase):
     """
 
     def _get_ray_cr_config(
-        self, min_replicas=0, cpu_replicas=0, gpu_replicas=0
+        self, min_replicas=0, cpu_replicas=0, acc_replicas=0
     ) -> Dict[str, Any]:
         """Get Ray CR config yaml.
 
         - Use configurable replica fields for a CPU workerGroup.
 
-        - Add a GPU-annotated group for testing GPU upscaling.
+        - Add a ACC-annotated group for testing ACC upscaling.
 
         - Fill in Ray image, autoscaler image, and image pull policies from env
           variables.
@@ -97,16 +97,16 @@ class KubeRayAutoscalingTest(unittest.TestCase):
             "resources"
         ] = '"{\\"Custom1\\": 1, \\"Custom2\\": 5}"'
 
-        # Add a GPU-annotated group.
-        # (We're not using real GPUs, just adding a GPU annotation for the autoscaler
+        # Add a ACC-annotated group.
+        # (We're not using real ACCs, just adding a ACC annotation for the autoscaler
         # and Ray scheduler.)
-        gpu_group = copy.deepcopy(cpu_group)
-        gpu_group["rayStartParams"]["num-gpus"] = "1"
-        gpu_group["replicas"] = gpu_replicas
-        gpu_group["minReplicas"] = 0
-        gpu_group["maxReplicas"] = 1
-        gpu_group["groupName"] = "fake-gpu-group"
-        config["spec"]["workerGroupSpecs"].append(gpu_group)
+        acc_group = copy.deepcopy(cpu_group)
+        acc_group["rayStartParams"]["num-accs"] = "1"
+        acc_group["replicas"] = acc_replicas
+        acc_group["minReplicas"] = 0
+        acc_group["maxReplicas"] = 1
+        acc_group["groupName"] = "fake-acc-group"
+        config["spec"]["workerGroupSpecs"].append(acc_group)
 
         # Substitute images.
         for group_spec in config["spec"]["workerGroupSpecs"] + [
@@ -138,7 +138,7 @@ class KubeRayAutoscalingTest(unittest.TestCase):
         self,
         min_replicas=0,
         cpu_replicas=0,
-        gpu_replicas=0,
+        acc_replicas=0,
         validate_replicas: bool = False,
     ) -> None:
         """Apply Ray CR config yaml, with configurable replica fields for the cpu
@@ -146,7 +146,7 @@ class KubeRayAutoscalingTest(unittest.TestCase):
 
         If the CR does not yet exist, `replicas` can be set as desired.
         If the CR does already exist, the recommended usage is this:
-            (1) Set `cpu_replicas` and `gpu_replicas` to what we currently expect them
+            (1) Set `cpu_replicas` and `acc_replicas` to what we currently expect them
                 to be.
             (2) Set `validate_replicas` to True. We will then check that the replicas
             set on the CR coincides with `replicas`.
@@ -162,17 +162,17 @@ class KubeRayAutoscalingTest(unittest.TestCase):
                 )
                 assert (
                     raycluster["spec"]["workerGroupSpecs"][1]["replicas"]
-                    == gpu_replicas
+                    == acc_replicas
                 )
                 logger.info(
-                    f"Validated that cpu and gpu worker replicas for "
+                    f"Validated that cpu and acc worker replicas for "
                     f"{RAY_CLUSTER_NAME} are currently {cpu_replicas} and"
-                    f" {gpu_replicas}, respectively."
+                    f" {acc_replicas}, respectively."
                 )
             cr_config = self._get_ray_cr_config(
                 min_replicas=min_replicas,
                 cpu_replicas=cpu_replicas,
-                gpu_replicas=gpu_replicas,
+                acc_replicas=acc_replicas,
             )
             yaml.dump(cr_config, config_file)
             config_file.flush()
@@ -189,7 +189,7 @@ class KubeRayAutoscalingTest(unittest.TestCase):
         2. Scaling up Ray workers via autoscaler.sdk.request_resources()
         3. Scaling up by updating the CRD's minReplicas
         4. Scaling down by removing the resource request and reducing maxReplicas
-        5. Autoscaler recognizes GPU annotations and Ray custom resources.
+        5. Autoscaler recognizes ACC annotations and Ray custom resources.
         6. Autoscaler and operator ignore pods marked for deletion.
         7. Autoscaler logs work. Autoscaler events are piped to the driver.
         8. Ray utils show correct resource limits in the head container.
@@ -223,7 +223,7 @@ class KubeRayAutoscalingTest(unittest.TestCase):
 
         # Cluster creation
         logger.info("Creating a RayCluster with no worker pods.")
-        self._apply_ray_cr(min_replicas=0, cpu_replicas=0, gpu_replicas=0)
+        self._apply_ray_cr(min_replicas=0, cpu_replicas=0, acc_replicas=0)
 
         logger.info("Confirming presence of head.")
         wait_for_pods(goal_num_pods=1, namespace=RAY_CLUSTER_NAMESPACE)
@@ -276,46 +276,46 @@ class KubeRayAutoscalingTest(unittest.TestCase):
         self._apply_ray_cr(
             min_replicas=2,
             cpu_replicas=1,
-            gpu_replicas=0,
-            # Confirm CPU, GPU replicas set on the Ray CR by the autoscaler are 1, 0:
+            acc_replicas=0,
+            # Confirm CPU, ACC replicas set on the Ray CR by the autoscaler are 1, 0:
             validate_replicas=True,
         )
         logger.info("Confirming number of workers.")
         wait_for_pods(goal_num_pods=3, namespace=RAY_CLUSTER_NAMESPACE)
 
-        # GPU upscaling.
-        # 1. Check we haven't spuriously already started a fake GPU node.
+        # ACC upscaling.
+        # 1. Check we haven't spuriously already started a fake ACC node.
         assert not any(
-            "gpu" in pod_name
+            "acc" in pod_name
             for pod_name in get_pod_names(namespace=RAY_CLUSTER_NAMESPACE)
         )
-        # 2. Trigger GPU upscaling by requesting placement of a GPU actor.
-        logger.info("Scheduling an Actor with GPU demands.")
+        # 2. Trigger ACC upscaling by requesting placement of a ACC actor.
+        logger.info("Scheduling an Actor with ACC demands.")
         # Use Ray Client to validate that it works against KubeRay.
         with ray_client_port_forward(  # Interaction mode #2: Ray Client
-            head_service=HEAD_SERVICE, ray_namespace="gpu-test"
+            head_service=HEAD_SERVICE, ray_namespace="acc-test"
         ):
-            gpu_actor_placement.main()
-        # 3. Confirm new pod number and presence of fake GPU worker.
-        logger.info("Confirming fake GPU worker up-scaling.")
+            acc_actor_placement.main()
+        # 3. Confirm new pod number and presence of fake ACC worker.
+        logger.info("Confirming fake ACC worker up-scaling.")
         wait_for_pods(goal_num_pods=4, namespace=RAY_CLUSTER_NAMESPACE)
 
-        gpu_workers = [
+        acc_workers = [
             pod_name
             for pod_name in get_pod_names(namespace=RAY_CLUSTER_NAMESPACE)
-            if "gpu" in pod_name
+            if "acc" in pod_name
         ]
-        assert len(gpu_workers) == 1
-        # 4. Confirm that the GPU actor is up and that Ray believes
-        # the node the actor is on has a GPU.
-        logger.info("Confirming GPU actor placement.")
+        assert len(acc_workers) == 1
+        # 4. Confirm that the ACC actor is up and that Ray believes
+        # the node the actor is on has a ACC.
+        logger.info("Confirming ACC actor placement.")
         with ray_client_port_forward(
-            head_service=HEAD_SERVICE, ray_namespace="gpu-test"
+            head_service=HEAD_SERVICE, ray_namespace="acc-test"
         ):
-            out = gpu_actor_validation.main()
-        # Confirms the actor was placed on a GPU-annotated node.
-        # (See gpu_actor_validation.py for details.)
-        assert "on-a-gpu-node" in out
+            out = acc_actor_validation.main()
+        # Confirms the actor was placed on a ACC-annotated node.
+        # (See acc_actor_validation.py for details.)
+        assert "on-a-acc-node" in out
 
         # Scale-down
         logger.info("Reducing min workers to 0.")
@@ -323,8 +323,8 @@ class KubeRayAutoscalingTest(unittest.TestCase):
         self._apply_ray_cr(
             min_replicas=0,
             cpu_replicas=2,
-            gpu_replicas=1,
-            # Confirm CPU, GPU replicas set on the Ray CR by the autoscaler are 2, 1:
+            acc_replicas=1,
+            # Confirm CPU, ACC replicas set on the Ray CR by the autoscaler are 2, 1:
             validate_replicas=True,
         )
         logger.info("Removing resource demands.")
@@ -338,7 +338,7 @@ class KubeRayAutoscalingTest(unittest.TestCase):
         logger.info("Confirming workers are gone.")
         # Check that stdout autoscaler logging is working.
         logs = kubectl_logs(head_pod, namespace="default", container="autoscaler")
-        assert "Removing 1 nodes of type fake-gpu-group (idle)." in logs
+        assert "Removing 1 nodes of type fake-acc-group (idle)." in logs
         wait_for_pods(goal_num_pods=1, namespace=RAY_CLUSTER_NAMESPACE)
 
         # Check custom resource upscaling.

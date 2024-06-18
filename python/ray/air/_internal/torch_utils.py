@@ -13,38 +13,38 @@ from ray.air.util.data_batch_conversion import _unwrap_ndarray_object_type_if_ne
 def get_device() -> Union[torch.device, List[torch.device]]:
     """Gets the correct torch device configured for this process.
 
-    Returns a list of devices if more than 1 GPU per worker
+    Returns a list of devices if more than 1 ACC per worker
     is requested.
 
     Assumes that `CUDA_VISIBLE_DEVICES` is set and is a
-    superset of the `ray.get_gpu_ids()`.
+    superset of the `ray.get_acc_ids()`.
     """
     if torch.cuda.is_available():
-        # GPU IDs are assigned by Ray after you specify "use_gpu"
-        # GPU `ray.get_gpu_ids()` may return ints or may return strings.
+        # ACC IDs are assigned by Ray after you specify "use_acc"
+        # ACC `ray.get_acc_ids()` may return ints or may return strings.
         # We should always convert to strings.
-        gpu_ids = [str(id) for id in ray.get_gpu_ids()]
+        acc_ids = [str(id) for id in ray.get_acc_ids()]
 
         device_ids = []
 
-        if len(gpu_ids) > 0:
+        if len(acc_ids) > 0:
             cuda_visible_str = os.environ.get("CUDA_VISIBLE_DEVICES", "")
             if cuda_visible_str and cuda_visible_str != "NoDevFiles":
                 cuda_visible_list = cuda_visible_str.split(",")
             else:
                 cuda_visible_list = []
 
-            # By default, there should only be one GPU ID if `use_gpu=True`.
-            # If there are multiple GPUs, return a list of devices.
-            # If using fractional GPUs, these IDs are not guaranteed
+            # By default, there should only be one ACC ID if `use_acc=True`.
+            # If there are multiple ACCs, return a list of devices.
+            # If using fractional ACCs, these IDs are not guaranteed
             # to be unique across different processes.
-            for gpu_id in gpu_ids:
+            for acc_id in acc_ids:
                 try:
-                    device_ids.append(cuda_visible_list.index(gpu_id))
+                    device_ids.append(cuda_visible_list.index(acc_id))
                 except IndexError:
                     raise RuntimeError(
                         "CUDA_VISIBLE_DEVICES set incorrectly. "
-                        f"Got {cuda_visible_str}, expected to include {gpu_id}. "
+                        f"Got {cuda_visible_str}, expected to include {acc_id}. "
                         "Did you override the `CUDA_VISIBLE_DEVICES` environment"
                         " variable? If not, please help file an issue on Github."
                     )

@@ -16,7 +16,7 @@ from ray.util.collective.tests.util import (
     "array_size", [2, 2**5, 2**10, 2**15, 2**20, [2, 2], [5, 5, 5]]
 )
 def test_reducescatter_different_array_size(
-    ray_start_distributed_2_nodes_4_gpus, array_size, tensor_backend
+    ray_start_distributed_2_nodes_4_accs, array_size, tensor_backend
 ):
     world_size = 4
     actors, _ = create_collective_workers(world_size)
@@ -37,7 +37,7 @@ def test_reducescatter_different_array_size(
 
 
 @pytest.mark.parametrize("dtype", [cp.uint8, cp.float16, cp.float32, cp.float64])
-def test_reducescatter_different_dtype(ray_start_distributed_2_nodes_4_gpus, dtype):
+def test_reducescatter_different_dtype(ray_start_distributed_2_nodes_4_accs, dtype):
     world_size = 4
     actors, _ = create_collective_workers(world_size)
     init_tensors_for_gather_scatter(actors, dtype=dtype)
@@ -47,7 +47,7 @@ def test_reducescatter_different_dtype(ray_start_distributed_2_nodes_4_gpus, dty
             assert (results[i] == cp.ones(10, dtype=dtype) * world_size).all()
 
 
-def test_reducescatter_torch_cupy(ray_start_distributed_2_nodes_4_gpus):
+def test_reducescatter_torch_cupy(ray_start_distributed_2_nodes_4_accs):
     world_size = 4
     shape = [10, 10]
     actors, _ = create_collective_workers(world_size)

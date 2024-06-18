@@ -348,7 +348,7 @@ class ValueNetworkMixin:
         #    extra fetches every single time.
         # 2. for correctness. TF1 is special because the static graph may contain
         #    two logical graphs. One created by DynamicTFPolicy for action
-        #    computation, and one created by MultiGPUTower for GPU training.
+        #    computation, and one created by MultiACCTower for ACC training.
         #    Depending on which logical graph ran last time,
         #    self.model.value_function() will point to the output tensor
         #    of the specific logical graph, causing problem if we try to

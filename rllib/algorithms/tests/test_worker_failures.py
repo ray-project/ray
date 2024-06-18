@@ -378,7 +378,7 @@ class TestWorkerFailures(unittest.TestCase):
         self._do_test_fault_ignore(
             ImpalaConfig()
             .rollouts(env_runner_cls=ForwardHealthCheckToEnvWorker)
-            .resources(num_gpus=0)
+            .resources(num_accs=0)
         )
 
     def test_sync_replay(self):
@@ -388,7 +388,7 @@ class TestWorkerFailures(unittest.TestCase):
             .reporting(min_sample_timesteps_per_iteration=1)
         )
 
-    def test_multi_gpu(self):
+    def test_multi_acc(self):
         self._do_test_fault_ignore(
             PPOConfig()
             .rollouts(
@@ -687,7 +687,7 @@ class TestWorkerFailures(unittest.TestCase):
             # Must use off-policy algorithm since we are gonna have hanging workers.
             ImpalaConfig()
             .resources(
-                num_gpus=0,
+                num_accs=0,
             )
             .rollouts(
                 env_runner_cls=ForwardHealthCheckToEnvWorker,

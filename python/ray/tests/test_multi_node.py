@@ -353,7 +353,7 @@ ray.get([a.log.remote(), f.remote()])
 @pytest.mark.parametrize(
     "call_ray_start",
     [
-        "ray start --head --num-cpus=1 --num-gpus=1 "
+        "ray start --head --num-cpus=1 --num-accs=1 "
         + "--min-worker-port=0 --max-worker-port=0 --port 0"
     ],
     indirect=True,
@@ -372,11 +372,11 @@ ray.init(address="{}")
 def f(duration):
     time.sleep(duration)
 
-@ray.remote(num_gpus=1)
+@ray.remote(num_accs=1)
 def g(duration):
     time.sleep(duration)
 
-@ray.remote(num_gpus=1)
+@ray.remote(num_accs=1)
 class Foo:
     def __init__(self):
         pass

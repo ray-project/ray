@@ -28,10 +28,10 @@ def ray_start_4_cpus():
 
 
 @contextlib.contextmanager
-def ray_start_2_node_cluster(num_cpus_per_node: int, num_gpus_per_node: int):
+def ray_start_2_node_cluster(num_cpus_per_node: int, num_accs_per_node: int):
     cluster = Cluster()
     for _ in range(2):
-        cluster.add_node(num_cpus=num_cpus_per_node, num_gpus=num_gpus_per_node)
+        cluster.add_node(num_cpus=num_cpus_per_node, num_accs=num_accs_per_node)
 
     ray.init(address=cluster.address)
 
@@ -186,9 +186,9 @@ def test_single_worker_failure(ray_start_4_cpus):
     assert isinstance(exc_info.value.__cause__, RuntimeError)
 
 
-@pytest.mark.parametrize("num_gpus_per_worker", [0.5, 1, 2])
-def test_tune_torch_get_device_gpu(num_gpus_per_worker):
-    """Tests if GPU ids are set correctly when running train concurrently in nested actors
+@pytest.mark.parametrize("num_accs_per_worker", [0.5, 1, 2])
+def test_tune_torch_get_device_acc(num_accs_per_worker):
+    """Tests if ACC ids are set correctly when running train concurrently in nested actors
     (for example when used with Tune).
     """
     from ray.train import ScalingConfig
@@ -198,22 +198,22 @@ def test_tune_torch_get_device_gpu(num_gpus_per_worker):
 
     # We should have exactly enough resources in the cluster to run both samples
     # concurrently.
-    total_gpus_required = num_workers * num_gpus_per_worker * num_samples
+    total_accs_required = num_workers * num_accs_per_worker * num_samples
     # Divide by two because of a 2 node cluster.
-    gpus_per_node = total_gpus_required // 2
+    accs_per_node = total_accs_required // 2
 
     exception = None
-    # Use the same number of cpus per node as gpus per node.
+    # Use the same number of cpus per node as accs per node.
     with ray_start_2_node_cluster(
-        num_cpus_per_node=gpus_per_node, num_gpus_per_node=gpus_per_node
+        num_cpus_per_node=accs_per_node, num_accs_per_node=accs_per_node
     ):
 
         @patch("torch.cuda.is_available", lambda: True)
         def train_fn():
             # We use STRICT_SPREAD strategy to force multiple samples on the same node.
-            # For single or fractional GPU case, each worker has only 1 visible device (
+            # For single or fractional ACC case, each worker has only 1 visible device (
             # the other is taken by the other sample) so device index should be 0.
-            # For the multiple GPU case, each worker has 2 visible devices so device
+            # For the multiple ACC case, each worker has 2 visible devices so device
             # index should be either 0 or 1. It doesn't matter which.
             devices = train.torch.get_device()
             if isinstance(devices, list):
@@ -230,17 +230,17 @@ def test_tune_torch_get_device_gpu(num_gpus_per_worker):
                     run_config=RunConfig(
                         # Use a unique name to avoid using the same
                         # experiment directory
-                        name=f"test_tune_torch_get_device_gpu_{uuid.uuid4()}"
+                        name=f"test_tune_torch_get_device_acc_{uuid.uuid4()}"
                     ),
                     scaling_config=ScalingConfig(
                         num_workers=num_workers,
-                        use_gpu=True,
-                        resources_per_worker={"CPU": 1, "GPU": num_gpus_per_worker},
+                        use_acc=True,
+                        resources_per_worker={"CPU": 1, "ACC": num_accs_per_worker},
                         # Need to specify 0 trainer resources so STRICT_SPREAD
                         # will work.
                         trainer_resources={"CPU": 0},
                         placement_strategy="STRICT_SPREAD",
-                        # Each gpu worker will be spread onto separate nodes. This
+                        # Each acc worker will be spread onto separate nodes. This
                         # forces different samples to run concurrently on the same
                         # node.
                     ),

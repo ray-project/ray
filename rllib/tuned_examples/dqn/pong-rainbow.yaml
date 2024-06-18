@@ -26,7 +26,7 @@ pong-deterministic-rainbow:
           capacity: 50000
         num_steps_sampled_before_learning_starts: 10000
         n_step: 3
-        gpu: True
+        acc: True
         model:
           grayscale: True
           zero_mean: False

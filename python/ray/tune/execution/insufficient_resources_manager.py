@@ -18,10 +18,10 @@ def _get_cluster_resources_no_autoscaler() -> Dict:
     return ray.cluster_resources()
 
 
-def _get_trial_cpu_and_gpu(trial: Trial) -> Tuple[int, int]:
+def _get_trial_cpu_and_acc(trial: Trial) -> Tuple[int, int]:
     cpu = trial.placement_group_factory.required_resources.get("CPU", 0)
-    gpu = trial.placement_group_factory.required_resources.get("GPU", 0)
-    return cpu, gpu
+    acc = trial.placement_group_factory.required_resources.get("ACC", 0)
+    return cpu, acc
 
 
 def _can_fulfill_no_autoscaler(trial: Trial) -> bool:
@@ -30,11 +30,11 @@ def _can_fulfill_no_autoscaler(trial: Trial) -> bool:
     For no autoscaler case.
     """
     assert trial.status == Trial.PENDING
-    asked_cpus, asked_gpus = _get_trial_cpu_and_gpu(trial)
+    asked_cpus, asked_accs = _get_trial_cpu_and_acc(trial)
 
     return asked_cpus <= _get_cluster_resources_no_autoscaler().get(
         "CPU", 0
-    ) and asked_gpus <= _get_cluster_resources_no_autoscaler().get("GPU", 0)
+    ) and asked_accs <= _get_cluster_resources_no_autoscaler().get("ACC", 0)
 
 
 @lru_cache()
@@ -57,8 +57,8 @@ MSG_TRAIN_START = (
     "This could be due to the cluster not having enough resources available. "
 )
 MSG_TRAIN_INSUFFICIENT = (
-    "You asked for {asked_cpus} CPUs and {asked_gpus} GPUs, but the cluster only "
-    "has {cluster_cpus} CPUs and {cluster_gpus} GPUs available. "
+    "You asked for {asked_cpus} CPUs and {asked_accs} ACCs, but the cluster only "
+    "has {cluster_cpus} CPUs and {cluster_accs} ACCs available. "
 )
 MSG_TRAIN_END = (
     "Stop the training and adjust the required resources (e.g. via the "
@@ -72,8 +72,8 @@ MSG_TUNE_START = (
     "This could be due to the cluster not having enough resources available. "
 )
 MSG_TUNE_INSUFFICIENT = (
-    "You asked for {asked_cpus} CPUs and {asked_gpus} GPUs per trial, "
-    "but the cluster only has {cluster_cpus} CPUs and {cluster_gpus} GPUs available. "
+    "You asked for {asked_cpus} CPUs and {asked_accs} ACCs per trial, "
+    "but the cluster only has {cluster_cpus} CPUs and {cluster_accs} ACCs available. "
 )
 MSG_TUNE_END = (
     "Stop the tuning and adjust the required resources (e.g. via the "
@@ -101,14 +101,14 @@ def _get_insufficient_resources_warning_msg(
     msg += start.format(wait_time=_get_insufficient_resources_warning_threshold())
 
     if trial:
-        asked_cpus, asked_gpus = _get_trial_cpu_and_gpu(trial)
+        asked_cpus, asked_accs = _get_trial_cpu_and_acc(trial)
         cluster_resources = _get_cluster_resources_no_autoscaler()
 
         msg += insufficient.format(
             asked_cpus=asked_cpus,
-            asked_gpus=asked_gpus,
+            asked_accs=asked_accs,
             cluster_cpus=cluster_resources.get("CPU", 0),
-            cluster_gpus=cluster_resources.get("GPU", 0),
+            cluster_accs=cluster_resources.get("ACC", 0),
         )
 
     msg += end

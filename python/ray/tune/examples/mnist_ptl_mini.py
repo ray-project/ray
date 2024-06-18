@@ -114,7 +114,7 @@ class LightningMNISTClassifier(pl.LightningModule):
         self.log("ptl/val_accuracy", avg_acc)
 
 
-def train_mnist_tune(config, num_epochs=10, num_gpus=0):
+def train_mnist_tune(config, num_epochs=10, num_accs=0):
     data_dir = os.path.abspath("./data")
     model = LightningMNISTClassifier(config, data_dir)
     with FileLock(os.path.expanduser("~/.data.lock")):
@@ -122,8 +122,8 @@ def train_mnist_tune(config, num_epochs=10, num_gpus=0):
     metrics = {"loss": "ptl/val_loss", "acc": "ptl/val_accuracy"}
     trainer = pl.Trainer(
         max_epochs=num_epochs,
-        # If fractional GPUs passed in, convert to int.
-        gpus=math.ceil(num_gpus),
+        # If fractional ACCs passed in, convert to int.
+        accs=math.ceil(num_accs),
         enable_progress_bar=False,
         callbacks=[
             TuneReportCheckpointCallback(
@@ -134,7 +134,7 @@ def train_mnist_tune(config, num_epochs=10, num_gpus=0):
     trainer.fit(model, dm)
 
 
-def tune_mnist(num_samples=10, num_epochs=10, gpus_per_trial=0):
+def tune_mnist(num_samples=10, num_epochs=10, accs_per_trial=0):
     config = {
         "layer_1": tune.choice([32, 64, 128]),
         "layer_2": tune.choice([64, 128, 256]),
@@ -143,10 +143,10 @@ def tune_mnist(num_samples=10, num_epochs=10, gpus_per_trial=0):
     }
 
     trainable = tune.with_parameters(
-        train_mnist_tune, num_epochs=num_epochs, num_gpus=gpus_per_trial
+        train_mnist_tune, num_epochs=num_epochs, num_accs=accs_per_trial
     )
     tuner = tune.Tuner(
-        tune.with_resources(trainable, resources={"cpu": 1, "gpu": gpus_per_trial}),
+        tune.with_resources(trainable, resources={"cpu": 1, "acc": accs_per_trial}),
         tune_config=tune.TuneConfig(
             metric="loss",
             mode="min",
@@ -172,6 +172,6 @@ if __name__ == "__main__":
     args, _ = parser.parse_known_args()
 
     if args.smoke_test:
-        tune_mnist(num_samples=1, num_epochs=1, gpus_per_trial=0)
+        tune_mnist(num_samples=1, num_epochs=1, accs_per_trial=0)
     else:
-        tune_mnist(num_samples=10, num_epochs=10, gpus_per_trial=0)
+        tune_mnist(num_samples=10, num_epochs=10, accs_per_trial=0)

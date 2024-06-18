@@ -221,7 +221,7 @@ def test_best_model(config: Dict, checkpoint: "Checkpoint", smoke_test=False):
 # __test_acc_end__
 
 # __main_begin__
-def main(num_samples=10, max_num_epochs=10, gpus_per_trial=2, smoke_test=False):
+def main(num_samples=10, max_num_epochs=10, accs_per_trial=2, smoke_test=False):
     config = {
         "l1": tune.sample_from(lambda _: 2 ** np.random.randint(2, 9)),
         "l2": tune.sample_from(lambda _: 2 ** np.random.randint(2, 9)),
@@ -237,7 +237,7 @@ def main(num_samples=10, max_num_epochs=10, gpus_per_trial=2, smoke_test=False):
     tuner = tune.Tuner(
         tune.with_resources(
             tune.with_parameters(train_cifar),
-            resources={"cpu": 2, "gpu": gpus_per_trial},
+            resources={"cpu": 2, "acc": accs_per_trial},
         ),
         tune_config=tune.TuneConfig(
             metric="loss",
@@ -275,8 +275,8 @@ if __name__ == "__main__":
 
     if args.smoke_test:
         ray.init(num_cpus=2)
-        main(num_samples=1, max_num_epochs=1, gpus_per_trial=0, smoke_test=True)
+        main(num_samples=1, max_num_epochs=1, accs_per_trial=0, smoke_test=True)
     else:
         ray.init(args.ray_address)
-        # Change this to activate training on GPUs
-        main(num_samples=10, max_num_epochs=10, gpus_per_trial=0)
+        # Change this to activate training on ACCs
+        main(num_samples=10, max_num_epochs=10, accs_per_trial=0)

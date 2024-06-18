@@ -69,7 +69,7 @@ def test_train(ray_start_4_cpus):
         return local_rank
 
     setting = RayExecutor.create_settings(timeout_s=30)
-    hjob = RayExecutor(setting, num_workers=3, use_gpu=torch.cuda.is_available())
+    hjob = RayExecutor(setting, num_workers=3, use_acc=torch.cuda.is_available())
     hjob.start()
     result = hjob.execute(simple_fn)
     assert set(result) == {0, 1, 2}
@@ -87,7 +87,7 @@ def test_horovod_example(ray_start_4_cpus):
         "num_epochs": 1,
     }
 
-    main(num_workers=1, use_gpu=False, kwargs=kwargs)
+    main(num_workers=1, use_acc=False, kwargs=kwargs)
 
 
 if __name__ == "__main__":

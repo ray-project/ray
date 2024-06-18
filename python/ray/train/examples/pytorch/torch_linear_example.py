@@ -90,12 +90,12 @@ def train_func(config):
     return results
 
 
-def train_linear(num_workers=2, use_gpu=False, epochs=3, storage_path=None):
+def train_linear(num_workers=2, use_acc=False, epochs=3, storage_path=None):
     config = {"lr": 1e-2, "hidden_size": 1, "batch_size": 4, "epochs": epochs}
     trainer = TorchTrainer(
         train_loop_per_worker=train_func,
         train_loop_config=config,
-        scaling_config=ScalingConfig(num_workers=num_workers, use_gpu=use_gpu),
+        scaling_config=ScalingConfig(num_workers=num_workers, use_acc=use_acc),
         run_config=RunConfig(storage_path=storage_path),
     )
     result = trainer.fit()
@@ -117,7 +117,7 @@ if __name__ == "__main__":
         help="Sets number of workers for training.",
     )
     parser.add_argument(
-        "--use-gpu", action="store_true", help="Whether to use GPU for training."
+        "--use-acc", action="store_true", help="Whether to use ACC for training."
     )
     parser.add_argument(
         "--epochs", type=int, default=3, help="Number of epochs to train for."
@@ -140,5 +140,5 @@ if __name__ == "__main__":
     else:
         ray.init(address=args.address)
         train_linear(
-            num_workers=args.num_workers, use_gpu=args.use_gpu, epochs=args.epochs
+            num_workers=args.num_workers, use_acc=args.use_acc, epochs=args.epochs
         )

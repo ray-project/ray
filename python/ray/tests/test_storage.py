@@ -71,7 +71,7 @@ def test_get_filesystem_invalid(shutdown_only, tmp_path):
 
 def test_get_filesystem_remote_workers(shutdown_only, tmp_path):
     path = os.path.join(str(tmp_path), "foo/bar")
-    ray.init(storage=path, num_gpus=1)
+    ray.init(storage=path, num_accs=1)
 
     @ray.remote
     def check():
@@ -82,7 +82,7 @@ def test_get_filesystem_remote_workers(shutdown_only, tmp_path):
     assert ray.get(check.remote()) == "ok"
     os.unlink(os.path.join(path, "_valid"))
 
-    @ray.remote(num_gpus=1)  # Force a new worker.
+    @ray.remote(num_accs=1)  # Force a new worker.
     def check():
         storage.get_filesystem()  # Crash since the valid file is deleted.
 
@@ -93,7 +93,7 @@ def test_get_filesystem_remote_workers(shutdown_only, tmp_path):
 @pytest.mark.parametrize("storage_type", ["s3", "fs"])
 def test_put_get(shutdown_only, tmp_path, storage_type):
     with simulate_storage(storage_type) as storage_uri:
-        ray.init(storage=storage_uri, num_gpus=1)
+        ray.init(storage=storage_uri, num_accs=1)
         client = storage.get_client("ns")
         client2 = storage.get_client("ns2")
         assert client.get("foo/bar") is None
@@ -126,7 +126,7 @@ def test_put_get(shutdown_only, tmp_path, storage_type):
 @pytest.mark.parametrize("storage_type", ["s3", "fs"])
 def test_directory_traversal_attack(shutdown_only, storage_type):
     with simulate_storage(storage_type) as storage_uri:
-        ray.init(storage=storage_uri, num_gpus=1)
+        ray.init(storage=storage_uri, num_accs=1)
         client = storage.get_client("foo")
         client.put("data", b"hello")
         client2 = storage.get_client("foo/bar")
@@ -138,7 +138,7 @@ def test_directory_traversal_attack(shutdown_only, storage_type):
 @pytest.mark.parametrize("storage_type", ["s3", "fs"])
 def test_list_basic(shutdown_only, storage_type):
     with simulate_storage(storage_type) as storage_uri:
-        ray.init(storage=storage_uri, num_gpus=1)
+        ray.init(storage=storage_uri, num_accs=1)
         client = storage.get_client("ns")
         client.put("foo/bar1", b"hello")
         client.put("foo/bar2", b"hello")
@@ -156,7 +156,7 @@ def test_list_basic(shutdown_only, storage_type):
 @pytest.mark.parametrize("storage_type", ["s3", "fs"])
 def test_get_info_basic(shutdown_only, storage_type):
     with simulate_storage(storage_type) as storage_uri:
-        ray.init(storage=storage_uri, num_gpus=1)
+        ray.init(storage=storage_uri, num_accs=1)
         client = storage.get_client("ns")
         client.put("foo/bar1", b"hello")
         assert client.get_info("foo/bar1").base_name == "bar1"

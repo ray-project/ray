@@ -24,7 +24,7 @@ from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.evaluation.worker_set import handle_remote_call_result_errors
 from ray.rllib.execution.buffers.mixin_replay_buffer import MixInMultiAgentReplayBuffer
 from ray.rllib.execution.learner_thread import LearnerThread
-from ray.rllib.execution.multi_gpu_learner_thread import MultiGPULearnerThread
+from ray.rllib.execution.multi_acc_learner_thread import MultiACCLearnerThread
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import concat_samples
 from ray.rllib.utils.actor_manager import (
@@ -73,7 +73,7 @@ class ImpalaConfig(AlgorithmConfig):
         from ray.rllib.algorithms.impala import ImpalaConfig
         config = ImpalaConfig()
         config = config.training(lr=0.0003, train_batch_size=512)
-        config = config.resources(num_gpus=0)
+        config = config.resources(num_accs=0)
         config = config.rollouts(num_rollout_workers=1)
         # Build a Algorithm object from the config and run 1 training iteration.
         algo = config.build(env="CartPole-v1")
@@ -91,7 +91,7 @@ class ImpalaConfig(AlgorithmConfig):
         config = config.training(
             lr=tune.grid_search([0.0001, ]), grad_clip=20.0
         )
-        config = config.resources(num_gpus=0)
+        config = config.resources(num_accs=0)
         config = config.rollouts(num_rollout_workers=1)
         # Set the config object's env.
         config = config.environment(env="CartPole-v1")
@@ -120,7 +120,7 @@ class ImpalaConfig(AlgorithmConfig):
         self.vtrace = True
         self.vtrace_clip_rho_threshold = 1.0
         self.vtrace_clip_pg_rho_threshold = 1.0
-        self.num_multi_gpu_tower_stacks = 1
+        self.num_multi_acc_tower_stacks = 1
         self.minibatch_buffer_size = 1
         self.num_sgd_iter = 1
         self.replay_proportion = 0.0
@@ -156,7 +156,7 @@ class ImpalaConfig(AlgorithmConfig):
         self.train_batch_size = 500
         self._minibatch_size = "auto"
         self.num_rollout_workers = 2
-        self.num_gpus = 1
+        self.num_accs = 1
         self.lr = 0.0005
         self.min_time_s_per_iteration = 10
         self._tf_policy_handles_more_than_one_loss = True
@@ -184,7 +184,7 @@ class ImpalaConfig(AlgorithmConfig):
         vtrace_clip_rho_threshold: Optional[float] = NotProvided,
         vtrace_clip_pg_rho_threshold: Optional[float] = NotProvided,
         gamma: Optional[float] = NotProvided,
-        num_multi_gpu_tower_stacks: Optional[int] = NotProvided,
+        num_multi_acc_tower_stacks: Optional[int] = NotProvided,
         minibatch_buffer_size: Optional[int] = NotProvided,
         minibatch_size: Optional[Union[int, str]] = NotProvided,
         num_sgd_iter: Optional[int] = NotProvided,
@@ -220,16 +220,16 @@ class ImpalaConfig(AlgorithmConfig):
             vtrace_clip_rho_threshold:
             vtrace_clip_pg_rho_threshold:
             gamma: Float specifying the discount factor of the Markov Decision process.
-            num_multi_gpu_tower_stacks: For each stack of multi-GPU towers, how many
+            num_multi_acc_tower_stacks: For each stack of multi-ACC towers, how many
                 slots should we reserve for parallel data loading? Set this to >1 to
-                load data into GPUs in parallel. This will increase GPU memory usage
+                load data into ACCs in parallel. This will increase ACC memory usage
                 proportionally with the number of stacks.
                 Example:
-                2 GPUs and `num_multi_gpu_tower_stacks=3`:
-                - One tower stack consists of 2 GPUs, each with a copy of the
+                2 ACCs and `num_multi_acc_tower_stacks=3`:
+                - One tower stack consists of 2 ACCs, each with a copy of the
                 model/graph.
                 - Each of the stacks will create 3 slots for batch data on each of its
-                GPUs, increasing memory requirements on each GPU by 3x.
+                ACCs, increasing memory requirements on each ACC by 3x.
                 - This enables us to preload data into these stacks while another stack
                 is performing gradient calculations.
             minibatch_buffer_size: How many train batches should be retained for
@@ -312,8 +312,8 @@ class ImpalaConfig(AlgorithmConfig):
             self.vtrace_clip_rho_threshold = vtrace_clip_rho_threshold
         if vtrace_clip_pg_rho_threshold is not NotProvided:
             self.vtrace_clip_pg_rho_threshold = vtrace_clip_pg_rho_threshold
-        if num_multi_gpu_tower_stacks is not NotProvided:
-            self.num_multi_gpu_tower_stacks = num_multi_gpu_tower_stacks
+        if num_multi_acc_tower_stacks is not NotProvided:
+            self.num_multi_acc_tower_stacks = num_multi_acc_tower_stacks
         if minibatch_buffer_size is not NotProvided:
             self.minibatch_buffer_size = minibatch_buffer_size
         if num_sgd_iter is not NotProvided:
@@ -376,7 +376,7 @@ class ImpalaConfig(AlgorithmConfig):
 
         if self.num_data_loader_buffers != DEPRECATED_VALUE:
             deprecation_warning(
-                "num_data_loader_buffers", "num_multi_gpu_tower_stacks", error=True
+                "num_data_loader_buffers", "num_multi_acc_tower_stacks", error=True
             )
 
         # Entropy coeff schedule checking.
@@ -518,16 +518,16 @@ class ImpalaConfig(AlgorithmConfig):
 def make_learner_thread(local_worker, config):
     if not config["simple_optimizer"]:
         logger.info(
-            "Enabling multi-GPU mode, {} GPUs, {} parallel tower-stacks".format(
-                config["num_gpus"], config["num_multi_gpu_tower_stacks"]
+            "Enabling multi-ACC mode, {} ACCs, {} parallel tower-stacks".format(
+                config["num_accs"], config["num_multi_acc_tower_stacks"]
             )
         )
-        num_stacks = config["num_multi_gpu_tower_stacks"]
+        num_stacks = config["num_multi_acc_tower_stacks"]
         buffer_size = config["minibatch_buffer_size"]
         if num_stacks < buffer_size:
             logger.warning(
-                "In multi-GPU mode you should have at least as many "
-                "multi-GPU tower stacks (to load data into on one device) as "
+                "In multi-ACC mode you should have at least as many "
+                "multi-ACC tower stacks (to load data into on one device) as "
                 "you have stack-index slots in the buffer! You have "
                 f"configured {num_stacks} stacks and a buffer of size "
                 f"{buffer_size}. Setting "
@@ -535,12 +535,12 @@ def make_learner_thread(local_worker, config):
             )
             config["minibatch_buffer_size"] = num_stacks
 
-        learner_thread = MultiGPULearnerThread(
+        learner_thread = MultiACCLearnerThread(
             local_worker,
-            num_gpus=config["num_gpus"],
+            num_accs=config["num_accs"],
             lr=config["lr"],
             train_batch_size=config["train_batch_size"],
-            num_multi_gpu_tower_stacks=config["num_multi_gpu_tower_stacks"],
+            num_multi_acc_tower_stacks=config["num_multi_acc_tower_stacks"],
             num_sgd_iter=config["num_sgd_iter"],
             learner_queue_size=config["learner_queue_size"],
             learner_queue_timeout=config["learner_queue_timeout"],
@@ -566,7 +566,7 @@ class Impala(Algorithm):
        `rollout_fragment_length * num_envs_per_worker`.
     3. If enabled, the minibatch ring buffer stores and replays batches of
        size `train_batch_size` up to `num_sgd_iter` times per batch.
-    4. The learner thread executes data parallel SGD across `num_gpus` GPUs
+    4. The learner thread executes data parallel SGD across `num_accs` ACCs
        on batches of size `train_batch_size`.
     """
 
@@ -817,14 +817,14 @@ class Impala(Algorithm):
                     # aggregation workers, where m < n) and always use 1 CPU
                     # each.
                     "CPU": cf.num_cpus_for_local_worker + cf.num_aggregation_workers,
-                    "GPU": 0 if cf._fake_gpus else cf.num_gpus,
+                    "ACC": 0 if cf._fake_accs else cf.num_accs,
                 }
             ]
             + [
                 {
                     # RolloutWorkers.
                     "CPU": cf.num_cpus_per_worker,
-                    "GPU": cf.num_gpus_per_worker,
+                    "ACC": cf.num_accs_per_worker,
                     **cf.custom_resources_per_worker,
                 }
                 for _ in range(cf.num_rollout_workers)
@@ -836,7 +836,7 @@ class Impala(Algorithm):
                         # Note: The local eval worker is located on the driver
                         # CPU or not even created iff >0 eval workers.
                         "CPU": eval_config.num_cpus_per_worker,
-                        "GPU": eval_config.num_gpus_per_worker,
+                        "ACC": eval_config.num_accs_per_worker,
                         **eval_config.custom_resources_per_worker,
                     }
                     for _ in range(cf.evaluation_num_workers)
@@ -993,7 +993,7 @@ class Impala(Algorithm):
             batch = self.batches_to_place_on_learner[0]
             try:
                 # Setting block = True prevents the learner thread,
-                # the main thread, and the gpu loader threads from
+                # the main thread, and the acc loader threads from
                 # thrashing when there are more samples than the
                 # learner can reasonable process.
                 # see https://github.com/ray-project/ray/pull/26581#issuecomment-1187877674  # noqa

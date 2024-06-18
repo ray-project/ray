@@ -203,7 +203,7 @@ class DNCMemory(TorchModelV2, nn.Module):
             cell_size=self.cfg["cell_size"],
             nr_cells=self.cfg["nr_cells"],
             nonlinearity=self.cfg["nonlinearity"],
-            gpu_id=device_idx,
+            acc_id=device_idx,
         )
 
     def forward(
@@ -224,8 +224,8 @@ class DNCMemory(TorchModelV2, nn.Module):
 
         # First run
         if self.dnc is None:
-            gpu_id = flat.device.index if flat.device.index is not None else -1
-            self.build_dnc(gpu_id)
+            acc_id = flat.device.index if flat.device.index is not None else -1
+            self.build_dnc(acc_id)
             hidden = (None, None, None)
 
         else:

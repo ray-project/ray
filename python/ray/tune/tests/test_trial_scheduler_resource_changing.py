@@ -25,7 +25,7 @@ class TestUniformResourceAllocation(unittest.TestCase):
     def setUp(self):
         self.tmpdir = tempfile.mkdtemp()
         self.tune_controller, *_ = create_execution_test_objects(
-            resources={"CPU": 8, "GPU": 8},
+            resources={"CPU": 8, "ACC": 8},
             reuse_actors=False,
             tune_controller_cls=MockTuneController,
             storage=mock_storage_context(),
@@ -72,7 +72,7 @@ class TestUniformResourceAllocation(unittest.TestCase):
             resources_allocation_function=DistributeResources(add_bundles=False)
         )
 
-        base_pgf = PlacementGroupFactory([{"CPU": 1, "GPU": 0}])
+        base_pgf = PlacementGroupFactory([{"CPU": 1, "ACC": 0}])
         trial1, trial2, trial3, trial4 = self._prepareTrials(scheduler, base_pgf)
 
         self._allocateAndAssertNewResources(
@@ -103,11 +103,11 @@ class TestUniformResourceAllocation(unittest.TestCase):
     def testAllocateFreeResourcesWithIncreaseBy(self):
         scheduler = ResourceChangingScheduler(
             resources_allocation_function=DistributeResources(
-                add_bundles=False, increase_by={"CPU": 2, "GPU": 2}
+                add_bundles=False, increase_by={"CPU": 2, "ACC": 2}
             )
         )
 
-        base_pgf = PlacementGroupFactory([{"CPU": 2, "GPU": 2}])
+        base_pgf = PlacementGroupFactory([{"CPU": 2, "ACC": 2}])
         trial1, trial2, trial3, trial4 = self._prepareTrials(scheduler, base_pgf)
 
         decision = scheduler.on_trial_result(
@@ -118,29 +118,29 @@ class TestUniformResourceAllocation(unittest.TestCase):
         trial4.status = Trial.TERMINATED
 
         self._allocateAndAssertNewResources(
-            trial1, scheduler, PlacementGroupFactory([{"CPU": 4, "GPU": 4}])
+            trial1, scheduler, PlacementGroupFactory([{"CPU": 4, "ACC": 4}])
         )
 
         trial3.status = Trial.TERMINATED
 
         self._allocateAndAssertNewResources(
-            trial2, scheduler, PlacementGroupFactory([{"CPU": 4, "GPU": 4}])
+            trial2, scheduler, PlacementGroupFactory([{"CPU": 4, "ACC": 4}])
         )
 
         trial2.status = Trial.TERMINATED
 
         self._allocateAndAssertNewResources(
-            trial1, scheduler, PlacementGroupFactory([{"CPU": 8, "GPU": 8}])
+            trial1, scheduler, PlacementGroupFactory([{"CPU": 8, "ACC": 8}])
         )
 
     def testAllocateFreeResourcesWithIncreaseByTimes(self):
         scheduler = ResourceChangingScheduler(
             resources_allocation_function=DistributeResources(
-                add_bundles=False, increase_by={"GPU": 2}, increase_by_times=2
+                add_bundles=False, increase_by={"ACC": 2}, increase_by_times=2
             )
         )
 
-        base_pgf = PlacementGroupFactory([{"CPU": 1, "GPU": 2}])
+        base_pgf = PlacementGroupFactory([{"CPU": 1, "ACC": 2}])
         trial1, trial2, trial3, trial4 = self._prepareTrials(scheduler, base_pgf)
 
         decision = scheduler.on_trial_result(
@@ -151,35 +151,35 @@ class TestUniformResourceAllocation(unittest.TestCase):
         trial4.status = Trial.TERMINATED
 
         self._allocateAndAssertNewResources(
-            trial1, scheduler, PlacementGroupFactory([{"CPU": 1, "GPU": 4}])
+            trial1, scheduler, PlacementGroupFactory([{"CPU": 1, "ACC": 4}])
         )
 
         trial3.status = Trial.TERMINATED
 
         self._allocateAndAssertNewResources(
-            trial2, scheduler, PlacementGroupFactory([{"CPU": 1, "GPU": 4}])
+            trial2, scheduler, PlacementGroupFactory([{"CPU": 1, "ACC": 4}])
         )
 
         trial2.status = Trial.TERMINATED
 
         self._allocateAndAssertNewResources(
-            trial1, scheduler, PlacementGroupFactory([{"CPU": 1, "GPU": 6}])
+            trial1, scheduler, PlacementGroupFactory([{"CPU": 1, "ACC": 6}])
         )
 
     def testDeallocateResources(self):
         scheduler = ResourceChangingScheduler(
             resources_allocation_function=DistributeResources(
-                add_bundles=False, increase_by={"GPU": 2}
+                add_bundles=False, increase_by={"ACC": 2}
             )
         )
 
-        base_pgf = PlacementGroupFactory([{"CPU": 1, "GPU": 2}])
+        base_pgf = PlacementGroupFactory([{"CPU": 1, "ACC": 2}])
         trial1, trial2, trial3, trial4 = self._prepareTrials(scheduler, base_pgf)
-        trial1.placement_group_factory = PlacementGroupFactory([{"CPU": 1, "GPU": 4}])
+        trial1.placement_group_factory = PlacementGroupFactory([{"CPU": 1, "ACC": 4}])
         trial4.status = Trial.PENDING
 
         self._allocateAndAssertNewResources(
-            trial1, scheduler, PlacementGroupFactory([{"CPU": 1, "GPU": 2}])
+            trial1, scheduler, PlacementGroupFactory([{"CPU": 1, "ACC": 2}])
         )
 
 
@@ -189,7 +189,7 @@ class TestUniformResourceAllocationAddBundles(TestUniformResourceAllocation):
             resources_allocation_function=DistributeResources(add_bundles=True)
         )
 
-        base_pgf = PlacementGroupFactory([{"CPU": 1, "GPU": 0}])
+        base_pgf = PlacementGroupFactory([{"CPU": 1, "ACC": 0}])
         trial1, trial2, trial3, trial4 = self._prepareTrials(scheduler, base_pgf)
 
         self._allocateAndAssertNewResources(
@@ -220,11 +220,11 @@ class TestUniformResourceAllocationAddBundles(TestUniformResourceAllocation):
     def testAllocateFreeResourcesWithIncreaseBy(self):
         scheduler = ResourceChangingScheduler(
             resources_allocation_function=DistributeResources(
-                add_bundles=True, increase_by={"CPU": 2, "GPU": 2}
+                add_bundles=True, increase_by={"CPU": 2, "ACC": 2}
             )
         )
 
-        base_pgf = PlacementGroupFactory([{}, {"CPU": 2, "GPU": 2}])
+        base_pgf = PlacementGroupFactory([{}, {"CPU": 2, "ACC": 2}])
         trial1, trial2, trial3, trial4 = self._prepareTrials(scheduler, base_pgf)
 
         decision = scheduler.on_trial_result(
@@ -235,29 +235,29 @@ class TestUniformResourceAllocationAddBundles(TestUniformResourceAllocation):
         trial4.status = Trial.TERMINATED
 
         self._allocateAndAssertNewResources(
-            trial1, scheduler, PlacementGroupFactory([{}] + [{"CPU": 2, "GPU": 2}] * 2)
+            trial1, scheduler, PlacementGroupFactory([{}] + [{"CPU": 2, "ACC": 2}] * 2)
         )
 
         trial3.status = Trial.TERMINATED
 
         self._allocateAndAssertNewResources(
-            trial2, scheduler, PlacementGroupFactory([{}] + [{"CPU": 2, "GPU": 2}] * 2)
+            trial2, scheduler, PlacementGroupFactory([{}] + [{"CPU": 2, "ACC": 2}] * 2)
         )
 
         trial2.status = Trial.TERMINATED
 
         self._allocateAndAssertNewResources(
-            trial1, scheduler, PlacementGroupFactory([{}] + [{"CPU": 2, "GPU": 2}] * 4)
+            trial1, scheduler, PlacementGroupFactory([{}] + [{"CPU": 2, "ACC": 2}] * 4)
         )
 
     def testAllocateFreeResourcesWithIncreaseByTimes(self):
         scheduler = ResourceChangingScheduler(
             resources_allocation_function=DistributeResources(
-                add_bundles=True, increase_by={"GPU": 2}, increase_by_times=2
+                add_bundles=True, increase_by={"ACC": 2}, increase_by_times=2
             )
         )
 
-        base_pgf = PlacementGroupFactory([{"CPU": 1}, {"GPU": 2}])
+        base_pgf = PlacementGroupFactory([{"CPU": 1}, {"ACC": 2}])
         trial1, trial2, trial3, trial4 = self._prepareTrials(scheduler, base_pgf)
 
         decision = scheduler.on_trial_result(
@@ -268,37 +268,37 @@ class TestUniformResourceAllocationAddBundles(TestUniformResourceAllocation):
         trial4.status = Trial.TERMINATED
 
         self._allocateAndAssertNewResources(
-            trial1, scheduler, PlacementGroupFactory([{"CPU": 1}] + [{"GPU": 2}] * 2)
+            trial1, scheduler, PlacementGroupFactory([{"CPU": 1}] + [{"ACC": 2}] * 2)
         )
 
         trial3.status = Trial.TERMINATED
 
         self._allocateAndAssertNewResources(
-            trial2, scheduler, PlacementGroupFactory([{"CPU": 1}] + [{"GPU": 2}] * 2)
+            trial2, scheduler, PlacementGroupFactory([{"CPU": 1}] + [{"ACC": 2}] * 2)
         )
 
         trial2.status = Trial.TERMINATED
 
         self._allocateAndAssertNewResources(
-            trial1, scheduler, PlacementGroupFactory([{"CPU": 1}] + [{"GPU": 2}] * 3)
+            trial1, scheduler, PlacementGroupFactory([{"CPU": 1}] + [{"ACC": 2}] * 3)
         )
 
     def testDeallocateResources(self):
         scheduler = ResourceChangingScheduler(
             resources_allocation_function=DistributeResources(
-                add_bundles=True, increase_by={"GPU": 2}
+                add_bundles=True, increase_by={"ACC": 2}
             )
         )
 
-        base_pgf = PlacementGroupFactory([{"CPU": 1}, {"GPU": 2}])
+        base_pgf = PlacementGroupFactory([{"CPU": 1}, {"ACC": 2}])
         trial1, trial2, trial3, trial4 = self._prepareTrials(scheduler, base_pgf)
         trial1.placement_group_factory = PlacementGroupFactory(
-            [{"CPU": 1}] + [{"GPU": 2}] * 2
+            [{"CPU": 1}] + [{"ACC": 2}] * 2
         )
         trial4.status = Trial.PENDING
 
         self._allocateAndAssertNewResources(
-            trial1, scheduler, PlacementGroupFactory([{"CPU": 1}, {"GPU": 2}])
+            trial1, scheduler, PlacementGroupFactory([{"CPU": 1}, {"ACC": 2}])
         )
 
 
@@ -318,7 +318,7 @@ class TestTopJobResourceAllocation(TestUniformResourceAllocation):
             )
         )
 
-        base_pgf = PlacementGroupFactory([{"CPU": 1, "GPU": 0}])
+        base_pgf = PlacementGroupFactory([{"CPU": 1, "ACC": 0}])
         trial1, trial2, trial3, trial4 = self._prepareTrials(scheduler, base_pgf)
 
         decision = scheduler.on_trial_result(
@@ -354,13 +354,13 @@ class TestTopJobResourceAllocation(TestUniformResourceAllocation):
         scheduler = ResourceChangingScheduler(
             resources_allocation_function=DistributeResourcesToTopJob(
                 add_bundles=False,
-                increase_by={"CPU": 2, "GPU": 2},
+                increase_by={"CPU": 2, "ACC": 2},
                 metric="metric",
                 mode="max",
             )
         )
 
-        base_pgf = PlacementGroupFactory([{"CPU": 2, "GPU": 2}])
+        base_pgf = PlacementGroupFactory([{"CPU": 2, "ACC": 2}])
         trial1, trial2, trial3, trial4 = self._prepareTrials(scheduler, base_pgf)
 
         decision = scheduler.on_trial_result(
@@ -376,7 +376,7 @@ class TestTopJobResourceAllocation(TestUniformResourceAllocation):
         trial4.status = Trial.TERMINATED
 
         self._allocateAndAssertNewResources(
-            trial1, scheduler, PlacementGroupFactory([{"CPU": 4, "GPU": 4}])
+            trial1, scheduler, PlacementGroupFactory([{"CPU": 4, "ACC": 4}])
         )
         decision = scheduler.on_trial_result(
             self.tune_controller, trial2, {"metric": 1.1, "training_iteration": 4}
@@ -385,26 +385,26 @@ class TestTopJobResourceAllocation(TestUniformResourceAllocation):
         trial3.status = Trial.TERMINATED
 
         self._allocateAndAssertNewResources(
-            trial2, scheduler, PlacementGroupFactory([{"CPU": 4, "GPU": 4}]), metric=1.1
+            trial2, scheduler, PlacementGroupFactory([{"CPU": 4, "ACC": 4}]), metric=1.1
         )
         trial2.status = Trial.TERMINATED
 
         self._allocateAndAssertNewResources(
-            trial1, scheduler, PlacementGroupFactory([{"CPU": 8, "GPU": 8}]), metric=1.2
+            trial1, scheduler, PlacementGroupFactory([{"CPU": 8, "ACC": 8}]), metric=1.2
         )
 
     def testAllocateFreeResourcesWithIncreaseByTimes(self):
         scheduler = ResourceChangingScheduler(
             resources_allocation_function=DistributeResourcesToTopJob(
                 add_bundles=False,
-                increase_by={"GPU": 2},
+                increase_by={"ACC": 2},
                 increase_by_times=2,
                 metric="metric",
                 mode="max",
             )
         )
 
-        base_pgf = PlacementGroupFactory([{"CPU": 1, "GPU": 2}])
+        base_pgf = PlacementGroupFactory([{"CPU": 1, "ACC": 2}])
         trial1, trial2, trial3, trial4 = self._prepareTrials(scheduler, base_pgf)
 
         decision = scheduler.on_trial_result(
@@ -420,7 +420,7 @@ class TestTopJobResourceAllocation(TestUniformResourceAllocation):
         trial4.status = Trial.TERMINATED
 
         self._allocateAndAssertNewResources(
-            trial1, scheduler, PlacementGroupFactory([{"CPU": 1, "GPU": 4}])
+            trial1, scheduler, PlacementGroupFactory([{"CPU": 1, "ACC": 4}])
         )
         decision = scheduler.on_trial_result(
             self.tune_controller, trial2, {"metric": 1.1, "training_iteration": 4}
@@ -429,28 +429,28 @@ class TestTopJobResourceAllocation(TestUniformResourceAllocation):
         trial3.status = Trial.TERMINATED
 
         self._allocateAndAssertNewResources(
-            trial2, scheduler, PlacementGroupFactory([{"CPU": 1, "GPU": 4}]), metric=1.1
+            trial2, scheduler, PlacementGroupFactory([{"CPU": 1, "ACC": 4}]), metric=1.1
         )
         trial2.status = Trial.TERMINATED
 
         self._allocateAndAssertNewResources(
-            trial1, scheduler, PlacementGroupFactory([{"CPU": 1, "GPU": 6}]), metric=1.2
+            trial1, scheduler, PlacementGroupFactory([{"CPU": 1, "ACC": 6}]), metric=1.2
         )
 
     def testDeallocateResources(self):
         scheduler = ResourceChangingScheduler(
             resources_allocation_function=DistributeResourcesToTopJob(
-                add_bundles=False, increase_by={"GPU": 2}, metric="metric", mode="max"
+                add_bundles=False, increase_by={"ACC": 2}, metric="metric", mode="max"
             )
         )
 
-        base_pgf = PlacementGroupFactory([{"CPU": 1, "GPU": 2}])
+        base_pgf = PlacementGroupFactory([{"CPU": 1, "ACC": 2}])
         trial1, trial2, trial3, trial4 = self._prepareTrials(scheduler, base_pgf)
-        trial1.placement_group_factory = PlacementGroupFactory([{"CPU": 1, "GPU": 4}])
+        trial1.placement_group_factory = PlacementGroupFactory([{"CPU": 1, "ACC": 4}])
         trial4.status = Trial.PENDING
 
         self._allocateAndAssertNewResources(
-            trial1, scheduler, PlacementGroupFactory([{"CPU": 1, "GPU": 2}])
+            trial1, scheduler, PlacementGroupFactory([{"CPU": 1, "ACC": 2}])
         )
 
 
@@ -462,7 +462,7 @@ class TestTopJobResourceAllocationAddBundles(TestTopJobResourceAllocation):
             )
         )
 
-        base_pgf = PlacementGroupFactory([{"CPU": 1, "GPU": 0}])
+        base_pgf = PlacementGroupFactory([{"CPU": 1, "ACC": 0}])
         trial1, trial2, trial3, trial4 = self._prepareTrials(scheduler, base_pgf)
 
         decision = scheduler.on_trial_result(
@@ -498,13 +498,13 @@ class TestTopJobResourceAllocationAddBundles(TestTopJobResourceAllocation):
         scheduler = ResourceChangingScheduler(
             resources_allocation_function=DistributeResourcesToTopJob(
                 add_bundles=True,
-                increase_by={"CPU": 2, "GPU": 2},
+                increase_by={"CPU": 2, "ACC": 2},
                 metric="metric",
                 mode="max",
             )
         )
 
-        base_pgf = PlacementGroupFactory([{}, {"CPU": 2, "GPU": 2}])
+        base_pgf = PlacementGroupFactory([{}, {"CPU": 2, "ACC": 2}])
         trial1, trial2, trial3, trial4 = self._prepareTrials(scheduler, base_pgf)
 
         decision = scheduler.on_trial_result(
@@ -520,7 +520,7 @@ class TestTopJobResourceAllocationAddBundles(TestTopJobResourceAllocation):
         trial4.status = Trial.TERMINATED
 
         self._allocateAndAssertNewResources(
-            trial1, scheduler, PlacementGroupFactory([{}] + [{"CPU": 2, "GPU": 2}] * 2)
+            trial1, scheduler, PlacementGroupFactory([{}] + [{"CPU": 2, "ACC": 2}] * 2)
         )
         decision = scheduler.on_trial_result(
             self.tune_controller, trial2, {"metric": 1.1, "training_iteration": 4}
@@ -531,7 +531,7 @@ class TestTopJobResourceAllocationAddBundles(TestTopJobResourceAllocation):
         self._allocateAndAssertNewResources(
             trial2,
             scheduler,
-            PlacementGroupFactory([{}] + [{"CPU": 2, "GPU": 2}] * 2),
+            PlacementGroupFactory([{}] + [{"CPU": 2, "ACC": 2}] * 2),
             metric=1.1,
         )
         trial2.status = Trial.TERMINATED
@@ -539,7 +539,7 @@ class TestTopJobResourceAllocationAddBundles(TestTopJobResourceAllocation):
         self._allocateAndAssertNewResources(
             trial1,
             scheduler,
-            PlacementGroupFactory([{}] + [{"CPU": 2, "GPU": 2}] * 4),
+            PlacementGroupFactory([{}] + [{"CPU": 2, "ACC": 2}] * 4),
             metric=1.2,
         )
 
@@ -547,14 +547,14 @@ class TestTopJobResourceAllocationAddBundles(TestTopJobResourceAllocation):
         scheduler = ResourceChangingScheduler(
             resources_allocation_function=DistributeResourcesToTopJob(
                 add_bundles=True,
-                increase_by={"GPU": 2},
+                increase_by={"ACC": 2},
                 increase_by_times=2,
                 metric="metric",
                 mode="max",
             )
         )
 
-        base_pgf = PlacementGroupFactory([{"CPU": 1}, {"GPU": 2}])
+        base_pgf = PlacementGroupFactory([{"CPU": 1}, {"ACC": 2}])
         trial1, trial2, trial3, trial4 = self._prepareTrials(scheduler, base_pgf)
 
         decision = scheduler.on_trial_result(
@@ -570,7 +570,7 @@ class TestTopJobResourceAllocationAddBundles(TestTopJobResourceAllocation):
         trial4.status = Trial.TERMINATED
 
         self._allocateAndAssertNewResources(
-            trial1, scheduler, PlacementGroupFactory([{"CPU": 1}] + [{"GPU": 2}] * 2)
+            trial1, scheduler, PlacementGroupFactory([{"CPU": 1}] + [{"ACC": 2}] * 2)
         )
         decision = scheduler.on_trial_result(
             self.tune_controller, trial2, {"metric": 1.1, "training_iteration": 4}
@@ -581,7 +581,7 @@ class TestTopJobResourceAllocationAddBundles(TestTopJobResourceAllocation):
         self._allocateAndAssertNewResources(
             trial2,
             scheduler,
-            PlacementGroupFactory([{"CPU": 1}] + [{"GPU": 2}] * 2),
+            PlacementGroupFactory([{"CPU": 1}] + [{"ACC": 2}] * 2),
             metric=1.1,
         )
         trial2.status = Trial.TERMINATED
@@ -589,26 +589,26 @@ class TestTopJobResourceAllocationAddBundles(TestTopJobResourceAllocation):
         self._allocateAndAssertNewResources(
             trial1,
             scheduler,
-            PlacementGroupFactory([{"CPU": 1}] + [{"GPU": 2}] * 3),
+            PlacementGroupFactory([{"CPU": 1}] + [{"ACC": 2}] * 3),
             metric=1.2,
         )
 
     def testDeallocateResources(self):
         scheduler = ResourceChangingScheduler(
             resources_allocation_function=DistributeResourcesToTopJob(
-                add_bundles=True, increase_by={"GPU": 2}, metric="metric", mode="max"
+                add_bundles=True, increase_by={"ACC": 2}, metric="metric", mode="max"
             )
         )
 
-        base_pgf = PlacementGroupFactory([{"CPU": 1}, {"GPU": 2}])
+        base_pgf = PlacementGroupFactory([{"CPU": 1}, {"ACC": 2}])
         trial1, trial2, trial3, trial4 = self._prepareTrials(scheduler, base_pgf)
         trial1.placement_group_factory = PlacementGroupFactory(
-            [{"CPU": 1}] + [{"GPU": 2}] * 2
+            [{"CPU": 1}] + [{"ACC": 2}] * 2
         )
         trial4.status = Trial.PENDING
 
         self._allocateAndAssertNewResources(
-            trial1, scheduler, PlacementGroupFactory([{"CPU": 1}, {"GPU": 2}])
+            trial1, scheduler, PlacementGroupFactory([{"CPU": 1}, {"ACC": 2}])
         )
 
 

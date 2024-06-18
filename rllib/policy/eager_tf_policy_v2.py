@@ -46,7 +46,7 @@ from ray.rllib.utils.metrics import (
 from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
 from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.spaces.space_utils import normalize_action
-from ray.rllib.utils.tf_utils import get_gpu_devices
+from ray.rllib.utils.tf_utils import get_acc_devices
 from ray.rllib.utils.threading import with_lock
 from ray.rllib.utils.typing import (
     AlgorithmConfigDict,
@@ -79,7 +79,7 @@ class EagerTFPolicyV2(Policy):
         # Log device.
         logger.info(
             "Creating TF-eager policy running on {}.".format(
-                "GPU" if get_gpu_devices() else "CPU"
+                "ACC" if get_acc_devices() else "CPU"
             )
         )
 
@@ -93,10 +93,10 @@ class EagerTFPolicyV2(Policy):
         )
 
         # Log device and worker index.
-        num_gpus = self._get_num_gpus_for_policy()
-        if num_gpus > 0:
-            gpu_ids = get_gpu_devices()
-            logger.info(f"Found {len(gpu_ids)} visible cuda devices.")
+        num_accs = self._get_num_accs_for_policy()
+        if num_accs > 0:
+            acc_ids = get_acc_devices()
+            logger.info(f"Found {len(acc_ids)} visible cuda devices.")
 
         self._is_training = False
 

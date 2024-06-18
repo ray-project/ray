@@ -185,7 +185,7 @@ if __name__ == "__main__":
         help="Finish quickly for testing.",
     )
     parser.add_argument(
-        "--use-gpu", action="store_true", default=False, help="Enables GPU training."
+        "--use-acc", action="store_true", default=False, help="Enables ACC training."
     )
     parser.add_argument(
         "--data-dir",
@@ -207,7 +207,7 @@ if __name__ == "__main__":
     trainer = TorchTrainer(
         train_func,
         scaling_config=ScalingConfig(
-            num_workers=args.num_workers, use_gpu=args.use_gpu
+            num_workers=args.num_workers, use_acc=args.use_acc
         ),
     )
     pbt_scheduler = PopulationBasedTraining(

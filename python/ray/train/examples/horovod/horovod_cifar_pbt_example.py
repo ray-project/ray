@@ -31,7 +31,7 @@ from ray.tune.utils.release_test_util import ProgressCallback
 # progress. The PBT scheduler also applies perturbation and mutation,
 # which also involves pausing and restoring.
 # The intention is to stress test the pausing and restoring of trials,
-# especially that there should be no GPU memory leak.
+# especially that there should be no ACC memory leak.
 
 # TODO(ml-team): This test is very low signal at the moment.
 #  We should further trim it down.
@@ -162,7 +162,7 @@ if __name__ == "__main__":
     horovod_trainer = HorovodTrainer(
         train_loop_per_worker=train_loop_per_worker,
         scaling_config=ScalingConfig(
-            use_gpu=False if args.smoke_test else True,
+            use_acc=False if args.smoke_test else True,
             num_workers=2,
         ),
         train_loop_config={"batch_size": 64, "data": ray.put(dataset)},

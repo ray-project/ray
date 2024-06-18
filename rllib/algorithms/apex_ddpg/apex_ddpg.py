@@ -27,7 +27,7 @@ class ApexDDPGConfig(DDPGConfig):
         self.timeout_s_replay_manager = 0.0
         self.n_step = 3
         self.exploration_config = {"type": "PerWorkerOrnsteinUhlenbeckNoise"}
-        self.num_gpus = 0
+        self.num_accs = 0
         self.num_rollout_workers = 32
         self.min_sample_timesteps_per_iteration = 25000
         self.min_time_s_per_iteration = 30

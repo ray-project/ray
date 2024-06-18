@@ -57,7 +57,7 @@ def tune_mnist(num_training_iterations):
     )
 
     tuner = tune.Tuner(
-        tune.with_resources(train_mnist, resources={"cpu": 2, "gpu": 0}),
+        tune.with_resources(train_mnist, resources={"cpu": 2, "acc": 0}),
         run_config=train.RunConfig(
             name="exp",
             stop={"mean_accuracy": 0.99, "training_iteration": num_training_iterations},

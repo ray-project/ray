@@ -25,7 +25,7 @@ class ActorWrapper:
 @dataclass
 class ActorConfig:
     num_cpus: float
-    num_gpus: float
+    num_accs: float
     resources: Optional[Dict[str, float]]
     init_args: Tuple
     init_kwargs: Dict
@@ -75,12 +75,12 @@ class ActorGroup:
             launch. Defaults to 1.
         num_cpus_per_actor: The number of CPUs to reserve for each
             actor. Fractional values are allowed. Defaults to 1.
-        num_gpus_per_actor: The number of GPUs to reserve for each
+        num_accs_per_actor: The number of ACCs to reserve for each
             actor. Fractional values are allowed. Defaults to 0.
         resources_per_actor (Optional[Dict[str, float]]):
             Dictionary specifying the resources that will be
             requested for each actor in addition to ``num_cpus_per_actor``
-            and ``num_gpus_per_actor``.
+            and ``num_accs_per_actor``.
         init_args, init_kwargs: If ``actor_cls`` is provided,
             these args will be used for the actor initialization.
 
@@ -91,7 +91,7 @@ class ActorGroup:
         actor_cls: Type,
         num_actors: int = 1,
         num_cpus_per_actor: float = 1,
-        num_gpus_per_actor: float = 0,
+        num_accs_per_actor: float = 0,
         resources_per_actor: Optional[Dict[str, float]] = None,
         init_args: Optional[Tuple] = None,
         init_kwargs: Optional[Dict] = None,
@@ -106,12 +106,12 @@ class ActorGroup:
                 f"than 0. Received num_actors={num_actors} "
                 f"instead."
             )
-        if num_cpus_per_actor < 0 or num_gpus_per_actor < 0:
+        if num_cpus_per_actor < 0 or num_accs_per_actor < 0:
             raise ValueError(
-                "The number of CPUs and GPUs per actor must "
+                "The number of CPUs and ACCs per actor must "
                 "not be negative. Received "
                 f"num_cpus_per_actor={num_cpus_per_actor} and "
-                f"num_gpus_per_actor={num_gpus_per_actor}."
+                f"num_accs_per_actor={num_accs_per_actor}."
             )
 
         self.actors = []
@@ -120,7 +120,7 @@ class ActorGroup:
 
         self.actor_config = ActorConfig(
             num_cpus=num_cpus_per_actor,
-            num_gpus=num_gpus_per_actor,
+            num_accs=num_accs_per_actor,
             resources=resources_per_actor,
             init_args=init_args or (),
             init_kwargs=init_kwargs or {},
@@ -128,7 +128,7 @@ class ActorGroup:
 
         self._remote_cls = ray.remote(
             num_cpus=self.actor_config.num_cpus,
-            num_gpus=self.actor_config.num_gpus,
+            num_accs=self.actor_config.num_accs,
             resources=self.actor_config.resources,
         )(actor_cls)
 

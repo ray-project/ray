@@ -1,4 +1,4 @@
-# On a single GPU, this achieves maximum reward in ~15-20 minutes.
+# On a single ACC, this achieves maximum reward in ~15-20 minutes.
 #
 # $ python train.py -f tuned_configs/pong-ppo.yaml
 #
@@ -27,7 +27,7 @@ pong-ppo:
         num_envs_per_worker: 5
         batch_mode: truncate_episodes
         observation_filter: NoFilter
-        num_gpus: 1
+        num_accs: 1
         model:
             dim: 42
             vf_share_layers: true

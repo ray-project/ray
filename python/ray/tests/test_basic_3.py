@@ -65,7 +65,7 @@ def test_auto_global_gc(shutdown_only):
     reason=("Currently not passing for Python 3.10"),
 )
 def test_many_fractional_resources(shutdown_only):
-    ray.init(num_cpus=2, num_gpus=2, resources={"Custom": 2})
+    ray.init(num_cpus=2, num_accs=2, resources={"Custom": 2})
 
     @ray.remote
     def g():
@@ -93,9 +93,9 @@ def test_many_fractional_resources(shutdown_only):
             f._remote([False, resource_set], num_cpus=resource_set["CPU"])
         )
 
-        resource_set = {"CPU": 1, "GPU": int(rand1 * 10000) / 10000}
+        resource_set = {"CPU": 1, "ACC": int(rand1 * 10000) / 10000}
         result_ids.append(
-            f._remote([False, resource_set], num_gpus=resource_set["GPU"])
+            f._remote([False, resource_set], num_accs=resource_set["ACC"])
         )
 
         resource_set = {"CPU": 1, "Custom": int(rand1 * 10000) / 10000}
@@ -107,14 +107,14 @@ def test_many_fractional_resources(shutdown_only):
 
         resource_set = {
             "CPU": int(rand1 * 10000) / 10000,
-            "GPU": int(rand2 * 10000) / 10000,
+            "ACC": int(rand2 * 10000) / 10000,
             "Custom": int(rand3 * 10000) / 10000,
         }
         result_ids.append(
             f._remote(
                 [False, resource_set],
                 num_cpus=resource_set["CPU"],
-                num_gpus=resource_set["GPU"],
+                num_accs=resource_set["ACC"],
                 resources={"Custom": resource_set["Custom"]},
             )
         )
@@ -122,7 +122,7 @@ def test_many_fractional_resources(shutdown_only):
             f._remote(
                 [True, resource_set],
                 num_cpus=resource_set["CPU"],
-                num_gpus=resource_set["GPU"],
+                num_accs=resource_set["ACC"],
                 resources={"Custom": resource_set["Custom"]},
             )
         )
@@ -137,8 +137,8 @@ def test_many_fractional_resources(shutdown_only):
         if (
             "CPU" in available_resources
             and ray.available_resources()["CPU"] == 2.0
-            and "GPU" in available_resources
-            and ray.available_resources()["GPU"] == 2.0
+            and "ACC" in available_resources
+            and ray.available_resources()["ACC"] == 2.0
             and "Custom" in available_resources
             and ray.available_resources()["Custom"] == 2.0
         ):

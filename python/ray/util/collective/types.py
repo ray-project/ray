@@ -70,7 +70,7 @@ class BarrierOptions:
 class ReduceOptions:
     reduceOp = ReduceOp.SUM
     root_rank = 0
-    root_tensor = 0  # index for multi-gpu reduce operations
+    root_tensor = 0  # index for multi-acc reduce operations
     timeout_ms = unset_timeout_ms
 
 
@@ -102,7 +102,7 @@ class ReduceScatterOptions:
 @dataclass
 class SendOptions:
     dst_rank = 0
-    dst_gpu_index = 0
+    dst_acc_index = 0
     n_elements = 0
     timeout_ms = unset_timeout_ms
 
@@ -110,6 +110,6 @@ class SendOptions:
 @dataclass
 class RecvOptions:
     src_rank = 0
-    src_gpu_index = 0
+    src_acc_index = 0
     n_elements = 0
     unset_timeout_ms = unset_timeout_ms

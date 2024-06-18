@@ -43,7 +43,7 @@ class TestAlgorithmRLModuleRestore(unittest.TestCase):
 
         scaling_config = {
             "num_learner_workers": 0,
-            "num_gpus_per_learner_worker": 0,
+            "num_accs_per_learner_worker": 0,
         }
 
         policies = {f"policy_{i}" for i in range(num_agents)}
@@ -175,7 +175,7 @@ class TestAlgorithmRLModuleRestore(unittest.TestCase):
         """Test if we can train a PPO algorithm with a cpkt RL module e2e."""
         scaling_config = {
             "num_learner_workers": 0,
-            "num_gpus_per_learner_worker": 0,
+            "num_accs_per_learner_worker": 0,
         }
 
         config = (

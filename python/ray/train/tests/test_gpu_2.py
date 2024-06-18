@@ -34,8 +34,8 @@ class TorchTrainerPatchedMultipleReturns(TorchTrainer):
             tune.report(results=results)
 
 
-@pytest.mark.parametrize("use_gpu", (True, False))
-def test_torch_iter_torch_batches_auto_device(ray_start_4_cpus_2_gpus, use_gpu):
+@pytest.mark.parametrize("use_acc", (True, False))
+def test_torch_iter_torch_batches_auto_device(ray_start_4_cpus_2_accs, use_acc):
     """
     Tests that iter_torch_batches in TorchTrainer worker function uses the
     default device.
@@ -57,7 +57,7 @@ def test_torch_iter_torch_batches_auto_device(ray_start_4_cpus_2_gpus, use_gpu):
 
     trainer = TorchTrainer(
         train_fn,
-        scaling_config=ScalingConfig(num_workers=2, use_gpu=use_gpu),
+        scaling_config=ScalingConfig(num_workers=2, use_acc=use_acc),
         datasets={"train": dataset},
     )
     trainer.fit()

@@ -85,7 +85,7 @@ class XGBoostTrainer(GBDTTrainer):
     _default_ray_params: Dict[str, Any] = {
         "num_actors": 1,
         "cpus_per_actor": 1,
-        "gpus_per_actor": 0,
+        "accs_per_actor": 0,
     }
     _init_model_arg_name: str = "xgb_model"
 

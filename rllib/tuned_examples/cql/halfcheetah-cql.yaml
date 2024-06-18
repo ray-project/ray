@@ -36,7 +36,7 @@ halfcheetah_cql:
             critic_learning_rate: 0.0003
             entropy_learning_rate: 0.0001
         num_workers: 0
-        num_gpus: 1
+        num_accs: 1
         metrics_num_episodes_for_smoothing: 5
         # CQL Configs
         min_q_weight: 5.0

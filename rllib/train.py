@@ -153,7 +153,7 @@ def file(
     ray_address: Optional[str] = cli.RayAddress,
     ray_ui: bool = cli.RayUi,
     ray_num_cpus: Optional[int] = cli.RayNumCpus,
-    ray_num_gpus: Optional[int] = cli.RayNumGpus,
+    ray_num_accs: Optional[int] = cli.RayNumGpus,
     ray_num_nodes: Optional[int] = cli.RayNumNodes,
     ray_object_store_memory: Optional[int] = cli.RayObjectStoreMemory,
     # Ray scheduling options.
@@ -227,7 +227,7 @@ def file(
         trace=trace,
         ray_num_nodes=ray_num_nodes,
         ray_num_cpus=ray_num_cpus,
-        ray_num_gpus=ray_num_gpus,
+        ray_num_accs=ray_num_accs,
         ray_object_store_memory=ray_object_store_memory,
         ray_ui=ray_ui,
         ray_address=ray_address,
@@ -269,7 +269,7 @@ def run(
     ray_address: str = cli.RayAddress,
     ray_ui: bool = cli.RayUi,
     ray_num_cpus: int = cli.RayNumCpus,
-    ray_num_gpus: int = cli.RayNumGpus,
+    ray_num_accs: int = cli.RayNumGpus,
     ray_num_nodes: int = cli.RayNumNodes,
     ray_object_store_memory: int = cli.RayObjectStoreMemory,
     # Ray scheduling options.
@@ -329,7 +329,7 @@ def run(
             trace=trace,
             ray_num_nodes=ray_num_nodes,
             ray_num_cpus=ray_num_cpus,
-            ray_num_gpus=ray_num_gpus,
+            ray_num_accs=ray_num_accs,
             ray_object_store_memory=ray_object_store_memory,
             ray_ui=ray_ui,
             ray_address=ray_address,
@@ -349,7 +349,7 @@ def run_rllib_experiments(
     trace: cli.Trace,
     ray_num_nodes: cli.RayNumNodes,
     ray_num_cpus: cli.RayNumCpus,
-    ray_num_gpus: cli.RayNumGpus,
+    ray_num_accs: cli.RayNumGpus,
     ray_object_store_memory: cli.RayObjectStoreMemory,
     ray_ui: cli.RayUi,
     ray_address: cli.RayAddress,
@@ -402,7 +402,7 @@ def run_rllib_experiments(
         for _ in range(ray_num_nodes):
             cluster.add_node(
                 num_cpus=ray_num_cpus or 1,
-                num_gpus=ray_num_gpus or 0,
+                num_accs=ray_num_accs or 0,
                 object_store_memory=ray_object_store_memory,
             )
         ray.init(address=cluster.address)
@@ -412,7 +412,7 @@ def run_rllib_experiments(
             address=ray_address,
             object_store_memory=ray_object_store_memory,
             num_cpus=ray_num_cpus,
-            num_gpus=ray_num_gpus,
+            num_accs=ray_num_accs,
             local_mode=local_mode,
         )
 

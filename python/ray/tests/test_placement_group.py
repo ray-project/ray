@@ -186,7 +186,7 @@ def test_placement_group_pack(
             name="name",
             strategy="PACK",
             bundles=[
-                {"CPU": 2, "GPU": 0},  # Test 0 resource spec doesn't break tests.
+                {"CPU": 2, "ACC": 0},  # Test 0 resource spec doesn't break tests.
                 {"CPU": 2},
             ],
         )
@@ -543,7 +543,7 @@ def test_placement_group_scheduling_warning(ray_start_regular_shared):
         name="bar",
         strategy="PACK",
         bundles=[
-            {"CPU": 1, "GPU": 0},
+            {"CPU": 1, "ACC": 0},
         ],
     )
     ray.get(pg.ready())

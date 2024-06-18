@@ -186,7 +186,7 @@ if __name__ == "__main__":
         .environment(CustomCartPole)
         .framework(args.framework)
         .callbacks(MyCallbacks)
-        .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
+        .resources(num_accs=int(os.environ.get("RLLIB_NUM_ACCS", "0")))
         .rollouts(enable_connectors=False)
         .reporting(keep_per_episode_custom_metrics=True)
     )

@@ -34,18 +34,18 @@ def test_placement_group_bin_packing_priority(
                 scheduling_strategy=PlacementGroupSchedulingStrategy(
                     placement_group=pg, placement_group_bundle_index=index
                 ),
-                num_gpus=1,
+                num_accs=1,
             ).remote()
 
     def add_nodes_to_cluster(cluster):
         cluster.add_node(num_cpus=1)
         cluster.add_node(num_cpus=2)
-        cluster.add_node(num_gpus=1)
+        cluster.add_node(num_accs=1)
 
     default_bundles = [
         {"CPU": 1},
         {"CPU": 2},
-        {"CPU": 1, "GPU": 1},
+        {"CPU": 1, "ACC": 1},
     ]
 
     default_num_nodes = len(default_bundles)

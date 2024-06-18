@@ -1,4 +1,4 @@
-pendulum-sac-fake-gpus:
+pendulum-sac-fake-accs:
       env: Pendulum-v1
       run: SAC
       stop:
@@ -27,13 +27,13 @@ pendulum-sac-fake-gpus:
           num_workers: 0
           metrics_num_episodes_for_smoothing: 5
 
-          # 1x batch size (despite 2 GPUs).
+          # 1x batch size (despite 2 ACCs).
           # train_batch_size: 256
           optimization:
             actor_learning_rate: 0.001
             critic_learning_rate: 0.001
             entropy_learning_rate: 0.001
 
-          # Fake 2 GPUs.
-          num_gpus: 2
-          _fake_gpus: true
+          # Fake 2 ACCs.
+          num_accs: 2
+          _fake_accs: true

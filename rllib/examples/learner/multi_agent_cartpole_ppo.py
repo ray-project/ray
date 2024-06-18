@@ -36,10 +36,10 @@ parser.add_argument(
 )
 
 parser.add_argument(
-    "--num-gpus",
+    "--num-accs",
     type=int,
-    default=int(os.environ.get("RLLIB_NUM_GPUS", "0")),
-    help="Number of GPUs to use for training.",
+    default=int(os.environ.get("RLLIB_NUM_ACCS", "0")),
+    help="Number of ACCs to use for training.",
 )
 
 parser.add_argument(
@@ -89,8 +89,8 @@ if __name__ == "__main__":
         return pol_id
 
     scaling_config = {
-        "num_learner_workers": args.num_gpus,
-        "num_gpus_per_learner_worker": int(args.num_gpus > 0),
+        "num_learner_workers": args.num_accs,
+        "num_accs_per_learner_worker": int(args.num_accs > 0),
     }
 
     config = (

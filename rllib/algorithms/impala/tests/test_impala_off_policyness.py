@@ -25,7 +25,7 @@ class TestIMPALAOffPolicyNess(unittest.TestCase):
             impala.ImpalaConfig()
             .experimental(_enable_new_api_stack=True)
             .environment("CartPole-v1")
-            .resources(num_gpus=0)
+            .resources(num_accs=0)
             .rollouts(num_rollout_workers=4)
         )
         num_iterations = 3

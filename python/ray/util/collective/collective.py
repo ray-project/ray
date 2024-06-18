@@ -273,21 +273,21 @@ def allreduce(tensor, group_name: str = "default", op=types.ReduceOp.SUM):
     g.allreduce([tensor], opts)
 
 
-def allreduce_multigpu(
+def allreduce_multiacc(
     tensor_list: list, group_name: str = "default", op=types.ReduceOp.SUM
 ):
     """Collective allreduce a list of tensors across the group.
 
     Args:
         tensor_list (List[tensor]): list of tensors to be allreduced,
-            each on a GPU.
+            each on a ACC.
         group_name: the collective group name to perform allreduce.
 
     Returns:
         None
     """
     if not types.cupy_available():
-        raise RuntimeError("Multigpu calls requires NCCL and Cupy.")
+        raise RuntimeError("Multiacc calls requires NCCL and Cupy.")
     _check_tensor_list_input(tensor_list)
     g = _check_and_get_group(group_name)
     opts = types.AllReduceOptions
@@ -334,7 +334,7 @@ def reduce(
     g.reduce([tensor], opts)
 
 
-def reduce_multigpu(
+def reduce_multiacc(
     tensor_list: list,
     dst_rank: int = 0,
     dst_tensor: int = 0,
@@ -346,9 +346,9 @@ def reduce_multigpu(
 
     Args:
         tensor_list: the list of tensors to be reduced on this process;
-            each tensor located on a GPU.
+            each tensor located on a ACC.
         dst_rank: the rank of the destination process.
-        dst_tensor: the index of GPU at the destination.
+        dst_tensor: the index of ACC at the destination.
         group_name: the collective group name to perform reduce.
         op: The reduce operation.
 
@@ -356,7 +356,7 @@ def reduce_multigpu(
         None
     """
     if not types.cupy_available():
-        raise RuntimeError("Multigpu calls requires NCCL and Cupy.")
+        raise RuntimeError("Multiacc calls requires NCCL and Cupy.")
     _check_tensor_list_input(tensor_list)
     g = _check_and_get_group(group_name)
 
@@ -392,22 +392,22 @@ def broadcast(tensor, src_rank: int = 0, group_name: str = "default"):
     g.broadcast([tensor], opts)
 
 
-def broadcast_multigpu(
+def broadcast_multiacc(
     tensor_list, src_rank: int = 0, src_tensor: int = 0, group_name: str = "default"
 ):
-    """Broadcast the tensor from a source GPU to all other GPUs.
+    """Broadcast the tensor from a source ACC to all other ACCs.
 
     Args:
         tensor_list: the tensors to broadcast (src) or receive (dst).
         src_rank: the rank of the source process.
-        src_tensor: the index of the source GPU on the source process.
+        src_tensor: the index of the source ACC on the source process.
         group_name: the collective group name to perform broadcast.
 
     Returns:
         None
     """
     if not types.cupy_available():
-        raise RuntimeError("Multigpu calls requires NCCL and Cupy.")
+        raise RuntimeError("Multiacc calls requires NCCL and Cupy.")
     _check_tensor_list_input(tensor_list)
     g = _check_and_get_group(group_name)
 
@@ -445,23 +445,23 @@ def allgather(tensor_list: list, tensor, group_name: str = "default"):
     g.allgather([tensor_list], [tensor], opts)
 
 
-def allgather_multigpu(
+def allgather_multiacc(
     output_tensor_lists: list, input_tensor_list: list, group_name: str = "default"
 ):
-    """Allgather tensors from each gpus of the group into lists.
+    """Allgather tensors from each accs of the group into lists.
 
     Args:
         output_tensor_lists (List[List[tensor]]): gathered results, with shape
-            must be num_gpus * world_size * shape(tensor).
+            must be num_accs * world_size * shape(tensor).
         input_tensor_list: (List[tensor]): a list of tensors, with shape
-            num_gpus * shape(tensor).
+            num_accs * shape(tensor).
         group_name: the name of the collective group.
 
     Returns:
         None
     """
     if not types.cupy_available():
-        raise RuntimeError("Multigpu calls requires NCCL and Cupy.")
+        raise RuntimeError("Multiacc calls requires NCCL and Cupy.")
     _check_tensor_lists_input(output_tensor_lists)
     _check_tensor_list_input(input_tensor_list)
     g = _check_and_get_group(group_name)
@@ -499,19 +499,19 @@ def reducescatter(
     g.reducescatter([tensor], [tensor_list], opts)
 
 
-def reducescatter_multigpu(
+def reducescatter_multiacc(
     output_tensor_list,
     input_tensor_lists,
     group_name: str = "default",
     op=types.ReduceOp.SUM,
 ):
-    """Reducescatter a list of tensors across all GPUs.
+    """Reducescatter a list of tensors across all ACCs.
 
     Args:
         output_tensor_list: the resulted list of tensors, with
-            shape: num_gpus * shape(tensor).
+            shape: num_accs * shape(tensor).
         input_tensor_lists: the original tensors, with shape:
-            num_gpus * world_size * shape(tensor).
+            num_accs * world_size * shape(tensor).
         group_name: the name of the collective group.
         op: The reduce operation.
 
@@ -519,7 +519,7 @@ def reducescatter_multigpu(
         None.
     """
     if not types.cupy_available():
-        raise RuntimeError("Multigpu calls requires NCCL and Cupy.")
+        raise RuntimeError("Multiacc calls requires NCCL and Cupy.")
     _check_tensor_lists_input(input_tensor_lists)
     _check_tensor_list_input(output_tensor_list)
     g = _check_and_get_group(group_name)
@@ -549,22 +549,22 @@ def send(tensor, dst_rank: int, group_name: str = "default"):
     g.send([tensor], opts)
 
 
-def send_multigpu(
+def send_multiacc(
     tensor,
     dst_rank: int,
-    dst_gpu_index: int,
+    dst_acc_index: int,
     group_name: str = "default",
     n_elements: int = 0,
 ):
-    """Send a tensor to a remote GPU synchronously.
+    """Send a tensor to a remote ACC synchronously.
 
-    The function asssume each process owns >1 GPUs, and the sender
-    process and receiver process has equal nubmer of GPUs.
+    The function asssume each process owns >1 ACCs, and the sender
+    process and receiver process has equal nubmer of ACCs.
 
     Args:
-        tensor: the tensor to send, located on a GPU.
+        tensor: the tensor to send, located on a ACC.
         dst_rank: the rank of the destination process.
-        dst_gpu_index: the destination gpu index.
+        dst_acc_index: the destination acc index.
         group_name: the name of the collective group.
         n_elements: if specified, send the next n elements
             from the starting address of tensor.
@@ -573,20 +573,20 @@ def send_multigpu(
         None
     """
     if not types.cupy_available():
-        raise RuntimeError("send_multigpu call requires NCCL.")
+        raise RuntimeError("send_multiacc call requires NCCL.")
     _check_single_tensor_input(tensor)
     g = _check_and_get_group(group_name)
     _check_rank_valid(g, dst_rank)
     if dst_rank == g.rank:
         raise RuntimeError(
             "The dst_rank '{}' is self. Considering "
-            "doing GPU to GPU memcpy instead?".format(dst_rank)
+            "doing ACC to ACC memcpy instead?".format(dst_rank)
         )
     if n_elements < 0:
         raise RuntimeError("The n_elements '{}' should >= 0.".format(n_elements))
     opts = types.SendOptions()
     opts.dst_rank = dst_rank
-    opts.dst_gpu_index = dst_gpu_index
+    opts.dst_acc_index = dst_acc_index
     opts.n_elements = n_elements
     g.send([tensor], opts)
 
@@ -612,51 +612,51 @@ def recv(tensor, src_rank: int, group_name: str = "default"):
     g.recv([tensor], opts)
 
 
-def recv_multigpu(
+def recv_multiacc(
     tensor,
     src_rank: int,
-    src_gpu_index: int,
+    src_acc_index: int,
     group_name: str = "default",
     n_elements: int = 0,
 ):
-    """Receive a tensor from a remote GPU synchronously.
+    """Receive a tensor from a remote ACC synchronously.
 
-    The function asssume each process owns >1 GPUs, and the sender
-    process and receiver process has equal nubmer of GPUs.
+    The function asssume each process owns >1 ACCs, and the sender
+    process and receiver process has equal nubmer of ACCs.
 
     Args:
-        tensor: the received tensor, located on a GPU.
+        tensor: the received tensor, located on a ACC.
         src_rank: the rank of the source process.
-        src_gpu_index (int)： the index of the source gpu on the src process.
+        src_acc_index (int)： the index of the source acc on the src process.
         group_name: the name of the collective group.
 
     Returns:
         None
     """
     if not types.cupy_available():
-        raise RuntimeError("recv_multigpu call requires NCCL.")
+        raise RuntimeError("recv_multiacc call requires NCCL.")
     _check_single_tensor_input(tensor)
     g = _check_and_get_group(group_name)
     _check_rank_valid(g, src_rank)
     if src_rank == g.rank:
         raise RuntimeError(
             "The dst_rank '{}' is self. Considering "
-            "doing GPU to GPU memcpy instead?".format(src_rank)
+            "doing ACC to ACC memcpy instead?".format(src_rank)
         )
     if n_elements < 0:
         raise RuntimeError("The n_elements '{}' should be >= 0.".format(n_elements))
     opts = types.RecvOptions()
     opts.src_rank = src_rank
-    opts.src_gpu_index = src_gpu_index
+    opts.src_acc_index = src_acc_index
     opts.n_elements = n_elements
     g.recv([tensor], opts)
 
 
-def synchronize(gpu_id: int):
+def synchronize(acc_id: int):
     """Synchronize the current process to a give device.
 
     Args:
-        gpu_id: the GPU device id to synchronize.
+        acc_id: the ACC device id to synchronize.
 
     Returns:
         None
@@ -665,7 +665,7 @@ def synchronize(gpu_id: int):
         raise RuntimeError("synchronize call requires CUDA and NCCL.")
     import cupy as cp
 
-    cp.cuda.Device(gpu_id).synchronize()
+    cp.cuda.Device(acc_id).synchronize()
 
 
 def _check_and_get_group(group_name):
@@ -784,6 +784,6 @@ def _check_root_tensor_valid(length, root_tensor):
         raise ValueError("root_tensor '{}' is negative.".format(root_tensor))
     if root_tensor >= length:
         raise ValueError(
-            "root_tensor '{}' is greater than the number of GPUs: "
+            "root_tensor '{}' is greater than the number of ACCs: "
             "'{}'".format(root_tensor, length)
         )

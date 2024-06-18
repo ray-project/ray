@@ -114,7 +114,7 @@ if __name__ == "__main__":
             "log_level": "INFO",
             "seed": args.seed,
             "kl_coeff": 1.0,
-            "num_gpus": 0,
+            "num_accs": 0,
             "horizon": horizon,
             "observation_filter": "MeanStdFilter",
             "model": {

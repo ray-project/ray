@@ -130,7 +130,7 @@ def test_validation(ray_start_4_cpus):
     with pytest.raises(ValueError, match="parallelize_cv"):
         SklearnTrainer(
             estimator=RandomForestClassifier(),
-            scaling_config=ScalingConfig(trainer_resources={"GPU": 1}),
+            scaling_config=ScalingConfig(trainer_resources={"ACC": 1}),
             label_column="target",
             cv=5,
             parallelize_cv=True,

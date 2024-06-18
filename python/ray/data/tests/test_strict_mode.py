@@ -229,12 +229,12 @@ def test_use_raw_dicts(ray_start_regular_shared):
     ray.data.range(10).map(checker).show()
 
 
-def test_strict_require_batch_size_for_gpu():
+def test_strict_require_batch_size_for_acc():
     ray.shutdown()
-    ray.init(num_cpus=4, num_gpus=1)
+    ray.init(num_cpus=4, num_accs=1)
     ds = ray.data.range(1)
     with pytest.raises(ValueError):
-        ds.map_batches(lambda x: x, num_gpus=1)
+        ds.map_batches(lambda x: x, num_accs=1)
 
 
 if __name__ == "__main__":

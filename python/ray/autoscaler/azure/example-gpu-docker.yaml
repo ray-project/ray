@@ -1,5 +1,5 @@
 # An unique identifier for the head node and workers of this cluster.
-cluster_name: gpu-docker
+cluster_name: acc-docker
 
 # The maximum number of workers nodes to launch in addition to the head
 # node.
@@ -15,12 +15,12 @@ upscaling_speed: 1.0
 # and opens all the necessary ports to support the Ray cluster.
 # Empty string means disabled.
 docker:
-    image: "rayproject/ray-ml:latest-gpu"
-    # image: rayproject/ray:latest-gpu   # use this one if you don't need ML dependencies, it's faster to pull
+    image: "rayproject/ray-ml:latest-acc"
+    # image: rayproject/ray:latest-acc   # use this one if you don't need ML dependencies, it's faster to pull
     container_name: "ray_nvidia_docker"
 
-    # # Example of running a GPU head with CPU workers
-    # head_image: "rayproject/ray-ml:latest-gpu"
+    # # Example of running a ACC head with CPU workers
+    # head_image: "rayproject/ray-ml:latest-acc"
 
     # worker_image: "rayproject/ray-ml:latest"
 
@@ -53,9 +53,9 @@ auth:
 # The key is the name of the node type, which is just for debugging purposes.
 # The node config specifies the launch config and physical instance type.
 available_node_types:
-    ray.head.gpu:
+    ray.head.acc:
         # The resources provided by this node type.
-        resources: {"CPU": 6, "GPU": 1}
+        resources: {"CPU": 6, "ACC": 1}
         # Provider-specific config, e.g. instance type.
         node_config:
             azure_arm_parameters:
@@ -66,7 +66,7 @@ available_node_types:
                 imageSku: 1804-gen2
                 imageVersion: latest
 
-    ray.worker.gpu:
+    ray.worker.acc:
         # The minimum number of nodes of this type to launch.
         # This number should be >= 0.
         min_workers: 0
@@ -74,7 +74,7 @@ available_node_types:
         # This takes precedence over min_workers.
         max_workers: 2
         # The resources provided by this node type.
-        resources: {"CPU": 6, "GPU": 1}
+        resources: {"CPU": 6, "ACC": 1}
         # Provider-specific config, e.g. instance type.
         node_config:
             azure_arm_parameters:
@@ -91,7 +91,7 @@ available_node_types:
                 #     maxPrice: -1
 
 # Specify the node type of the head node (as configured above).
-head_node_type: ray.head.gpu
+head_node_type: ray.head.acc
 
 # Files or directories to copy to the head and worker nodes. The format is a
 # dictionary from REMOTE_PATH: LOCAL_PATH, e.g.

@@ -119,7 +119,7 @@ def train_mnist(config):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="PyTorch MNIST Example")
     parser.add_argument(
-        "--cuda", action="store_true", default=False, help="Enables GPU training"
+        "--cuda", action="store_true", default=False, help="Enables ACC training"
     )
     parser.add_argument(
         "--smoke-test", action="store_true", help="Finish quickly for testing"
@@ -131,7 +131,7 @@ if __name__ == "__main__":
     # for early stopping
     sched = AsyncHyperBandScheduler()
 
-    resources_per_trial = {"cpu": 2, "gpu": int(args.cuda)}  # set this for GPUs
+    resources_per_trial = {"cpu": 2, "acc": int(args.cuda)}  # set this for ACCs
     tuner = tune.Tuner(
         tune.with_resources(train_mnist, resources=resources_per_trial),
         tune_config=tune.TuneConfig(

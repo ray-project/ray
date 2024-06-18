@@ -13,4 +13,4 @@ class SyclDevice:
 
     @property
     def name(self):
-        return "Intel(R) Data Center GPU Max 1100"
+        return "Intel(R) Data Center ACC Max 1100"

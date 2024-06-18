@@ -34,7 +34,7 @@ from ray.rllib.utils.typing import LocalOptimizer, TensorType, AlgorithmConfigDi
 from ray.rllib.utils.torch_utils import (
     apply_grad_clipping,
     convert_to_torch_tensor,
-    concat_multi_gpu_td_errors,
+    concat_multi_acc_td_errors,
 )
 
 torch, nn = try_import_torch()
@@ -280,7 +280,7 @@ def cql_loss(
             policy.critic_optims[1].step()
 
     # Store values for stats function in model (tower), such that for
-    # multi-GPU, we do not override them during the parallel loss phase.
+    # multi-ACC, we do not override them during the parallel loss phase.
     # SAC stats.
     model.tower_stats["q_t"] = q_t_selected
     model.tower_stats["policy_t"] = policy_t
@@ -398,7 +398,7 @@ CQLTorchPolicy = build_policy_class(
     validate_spaces=validate_spaces,
     before_loss_init=cql_setup_late_mixins,
     make_model_and_action_dist=build_sac_model_and_action_dist,
-    extra_learn_fetches_fn=concat_multi_gpu_td_errors,
+    extra_learn_fetches_fn=concat_multi_acc_td_errors,
     mixins=[TargetNetworkMixin, ComputeTDErrorMixin],
     action_distribution_fn=action_distribution_fn,
     compute_gradients_fn=compute_gradients_fn,

@@ -27,8 +27,8 @@ AUTOSCALER_STATUS_LOG = env_integer("RAY_ENABLE_CLUSTER_STATUS_LOG", 1)
 # The name of the environment variable for plugging in a utilization scorer.
 AUTOSCALER_UTILIZATION_SCORER_KEY = "RAY_AUTOSCALER_UTILIZATION_SCORER"
 
-# Whether to avoid launching GPU nodes for CPU only tasks.
-AUTOSCALER_CONSERVE_GPU_NODES = env_integer("AUTOSCALER_CONSERVE_GPU_NODES", 1)
+# Whether to avoid launching ACC nodes for CPU only tasks.
+AUTOSCALER_CONSERVE_ACC_NODES = env_integer("AUTOSCALER_CONSERVE_ACC_NODES", 1)
 
 # How long to wait for a node to start, in seconds.
 AUTOSCALER_NODE_START_WAIT_S = env_integer("AUTOSCALER_NODE_START_WAIT_S", 900)

@@ -9,7 +9,7 @@ from ray.util.collective.tests.util import create_collective_workers
 
 @pytest.mark.parametrize("group_name", ["default", "test", "123?34!"])
 @pytest.mark.parametrize("dst_rank", [0, 1])
-def test_reduce_different_name(ray_start_single_node_2_gpus, group_name, dst_rank):
+def test_reduce_different_name(ray_start_single_node_2_accs, group_name, dst_rank):
     world_size = 2
     actors, _ = create_collective_workers(num_workers=world_size, group_name=group_name)
     results = ray.get([a.do_reduce.remote(group_name, dst_rank) for a in actors])
@@ -23,7 +23,7 @@ def test_reduce_different_name(ray_start_single_node_2_gpus, group_name, dst_ran
 @pytest.mark.parametrize("array_size", [2, 2**5, 2**10, 2**15, 2**20])
 @pytest.mark.parametrize("dst_rank", [0, 1])
 def test_reduce_different_array_size(
-    ray_start_single_node_2_gpus, array_size, dst_rank
+    ray_start_single_node_2_accs, array_size, dst_rank
 ):
     world_size = 2
     actors, _ = create_collective_workers(world_size)
@@ -41,7 +41,7 @@ def test_reduce_different_array_size(
 
 
 @pytest.mark.parametrize("dst_rank", [0, 1])
-def test_reduce_multiple_group(ray_start_single_node_2_gpus, dst_rank, num_groups=5):
+def test_reduce_multiple_group(ray_start_single_node_2_accs, dst_rank, num_groups=5):
     world_size = 2
     actors, _ = create_collective_workers(world_size)
     for group_name in range(1, num_groups):
@@ -67,7 +67,7 @@ def test_reduce_multiple_group(ray_start_single_node_2_gpus, dst_rank, num_group
 
 
 @pytest.mark.parametrize("dst_rank", [0, 1])
-def test_reduce_different_op(ray_start_single_node_2_gpus, dst_rank):
+def test_reduce_different_op(ray_start_single_node_2_accs, dst_rank):
     world_size = 2
     actors, _ = create_collective_workers(world_size)
 
@@ -121,7 +121,7 @@ def test_reduce_different_op(ray_start_single_node_2_gpus, dst_rank):
 
 
 @pytest.mark.parametrize("dst_rank", [0, 1])
-def test_reduce_torch_cupy(ray_start_single_node_2_gpus, dst_rank):
+def test_reduce_torch_cupy(ray_start_single_node_2_accs, dst_rank):
     import torch
 
     world_size = 2
@@ -144,7 +144,7 @@ def test_reduce_torch_cupy(ray_start_single_node_2_gpus, dst_rank):
         assert (results[1] == torch.ones((10,)).cuda() * world_size).all()
 
 
-def test_reduce_invalid_rank(ray_start_single_node_2_gpus, dst_rank=3):
+def test_reduce_invalid_rank(ray_start_single_node_2_accs, dst_rank=3):
     world_size = 2
     actors, _ = create_collective_workers(world_size)
     with pytest.raises(ValueError):

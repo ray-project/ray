@@ -46,7 +46,7 @@ if __name__ == "__main__":
     config = algo_cls.get_default_config()
 
     config.environment(env=StatelessCartPole).resources(
-        num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0"))
+        num_accs=int(os.environ.get("RLLIB_NUM_ACCS", "0"))
     ).framework(args.framework).reporting(min_time_s_per_iteration=0.1).training(
         model={
             "use_lstm": True,
@@ -61,7 +61,7 @@ if __name__ == "__main__":
         config.model["vf_share_layers"] = True
     elif args.run == "IMPALA":
         config.rollouts(num_rollout_workers=2)
-        config.resources(num_gpus=0)
+        config.resources(num_accs=0)
         config.training(vf_loss_coeff=0.01)
 
     stop = {

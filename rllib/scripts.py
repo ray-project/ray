@@ -41,7 +41,7 @@ def list(
 ):
     """List all available RLlib examples that can be run from the command line.
     Note that many of these examples require specific hardware (e.g. a certain number
-    of GPUs) to work.\n\n
+    of ACCs) to work.\n\n
 
     Example usage: `rllib example list --filter=cartpole`
     """
@@ -117,7 +117,7 @@ def run(example_id: str = typer.Argument(..., help="Example ID to run.")):
         ray_address=None,
         ray_ui=False,
         ray_num_cpus=None,
-        ray_num_gpus=None,
+        ray_num_accs=None,
         ray_num_nodes=None,
         ray_object_store_memory=None,
         resume=False,

@@ -130,7 +130,7 @@ class WorkerSet:
         self._remote_config = config
         self._remote_args = {
             "num_cpus": self._remote_config.num_cpus_per_worker,
-            "num_gpus": self._remote_config.num_gpus_per_worker,
+            "num_accs": self._remote_config.num_accs_per_worker,
             "resources": self._remote_config.custom_resources_per_worker,
             "max_restarts": config.max_num_worker_restarts,
         }

@@ -37,11 +37,11 @@ def test_torch_process_group_gloo():
 
 
 def test_torch_process_group_nccl():
-    @ray.remote(num_gpus=2)
+    @ray.remote(num_accs=2)
     class TestWorker(TorchDistributedWorker):
         def __init__(self):
             super().__init__()
-            self.dev = f"cuda:{ray.get_gpu_ids()[0]}"
+            self.dev = f"cuda:{ray.get_acc_ids()[0]}"
 
         def run(self):
             tensor = torch.tensor([1.0]).to(self.dev)

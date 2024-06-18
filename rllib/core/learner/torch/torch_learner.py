@@ -283,7 +283,7 @@ class TorchLearner(Learner):
         """Builds the TorchLearner.
 
         This method is specific to TorchLearner. Before running super() it will
-        initialze the device properly based on the `_use_gpu` and `_distributed`
+        initialze the device properly based on the `_use_acc` and `_distributed`
         flags, so that `_make_module()` can place the created module on the correct
         device. After running super() it will wrap the module in a TorchDDPRLModule
         if `_distributed` is True.
@@ -291,23 +291,23 @@ class TorchLearner(Learner):
         # TODO (Kourosh): How do we handle model parallelism?
         # TODO (Kourosh): Instead of using _TorchAccelerator, we should use the public
         #  API in ray.train but allow for session to be None without any errors raised.
-        if self._use_gpu:
+        if self._use_acc:
             # get_device() returns the 0th device if
             # it is called from outside of a Ray Train session. Its necessary to give
-            # the user the option to run on the gpu of their choice, so we enable that
-            # option here via the local gpu id scaling config parameter.
+            # the user the option to run on the acc of their choice, so we enable that
+            # option here via the local acc id scaling config parameter.
             if self._distributed:
                 self._device = get_device()
             else:
-                assert self._local_gpu_idx < torch.cuda.device_count(), (
-                    f"local_gpu_idx {self._local_gpu_idx} is not a valid GPU id or is "
+                assert self._local_acc_idx < torch.cuda.device_count(), (
+                    f"local_acc_idx {self._local_acc_idx} is not a valid ACC id or is "
                     " not available."
                 )
                 # this is an index into the available cuda devices. For example if
                 # os.environ["CUDA_VISIBLE_DEVICES"] = "1" then
                 # torch.cuda.device_count() = 1 and torch.device(0) will actuall map to
-                # the gpu with id 1 on the node.
-                self._device = torch.device(self._local_gpu_idx)
+                # the acc with id 1 on the node.
+                self._device = torch.device(self._local_acc_idx)
         else:
             self._device = torch.device("cpu")
 

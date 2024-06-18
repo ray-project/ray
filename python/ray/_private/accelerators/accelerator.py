@@ -12,7 +12,7 @@ class AcceleratorManager(ABC):
         """Get the name of the resource representing this accelerator family.
 
         Returns:
-            The resource name: e.g., the resource name for Nvidia GPUs is "GPU"
+            The resource name: e.g., the resource name for Nvidia ACCs is "ACC"
         """
 
     @staticmethod
@@ -22,7 +22,7 @@ class AcceleratorManager(ABC):
 
         Returns:
             The env var for setting visible accelerator ids: e.g.,
-                CUDA_VISIBLE_DEVICES for Nvidia GPUs.
+                CUDA_VISIBLE_DEVICES for Nvidia ACCs.
         """
 
     @staticmethod
@@ -46,7 +46,7 @@ class AcceleratorManager(ABC):
         The result should only be used when get_current_node_num_accelerators() > 0.
 
         Returns:
-            The detected accelerator type of this family: e.g., H100 for Nvidia GPU.
+            The detected accelerator type of this family: e.g., H100 for Nvidia ACC.
             Return None if it's unknown or the node doesn't have
             accelerators of this family.
         """

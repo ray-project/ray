@@ -9,7 +9,7 @@ cartpole-appo-vtrace:
         framework: torch
         num_envs_per_worker: 5
         num_workers: 4
-        num_gpus: 0
+        num_accs: 0
         observation_filter: MeanStdFilter
         num_sgd_iter: 1
         vf_loss_coeff: 0.01

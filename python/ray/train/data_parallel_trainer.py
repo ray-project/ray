@@ -211,7 +211,7 @@ class DataParallelTrainer(BaseTrainer):
     _scaling_config_allowed_keys = BaseTrainer._scaling_config_allowed_keys + [
         "num_workers",
         "resources_per_worker",
-        "use_gpu",
+        "use_acc",
         "placement_strategy",
     ]
 
@@ -267,7 +267,7 @@ class DataParallelTrainer(BaseTrainer):
         train_total_resources = self.scaling_config.total_resources
         self._data_config.set_train_total_resources(
             train_total_resources.get("CPU", 0),
-            train_total_resources.get("GPU", 0),
+            train_total_resources.get("ACC", 0),
         )
 
     @PublicAPI(stability="beta")
@@ -340,11 +340,11 @@ class DataParallelTrainer(BaseTrainer):
 
         # This validation happens after the scaling config is updated from
         # its specification in the Tuner `param_space`
-        if not scaling_config.use_gpu and "GPU" in ray.available_resources():
+        if not scaling_config.use_acc and "ACC" in ray.available_resources():
             logger.info(
-                "GPUs are detected in your Ray cluster, but GPU "
+                "ACCs are detected in your Ray cluster, but ACC "
                 "training is not enabled for this trainer. To enable "
-                "GPU training, make sure to set `use_gpu` to True "
+                "ACC training, make sure to set `use_acc` to True "
                 "in your scaling config."
             )
 
@@ -455,7 +455,7 @@ class DataParallelTrainer(BaseTrainer):
             trial_info=trial_info,
             num_workers=scaling_config.num_workers,
             num_cpus_per_worker=scaling_config.num_cpus_per_worker,
-            num_gpus_per_worker=scaling_config.num_gpus_per_worker,
+            num_accs_per_worker=scaling_config.num_accs_per_worker,
             additional_resources_per_worker=additional_resources_per_worker,
             max_retries=0,
         )

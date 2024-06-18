@@ -37,11 +37,11 @@ def test_cluster_status_parser_cluster_resource_state():
                     "ray_node_type_name": "head_node",
                     "available_resources": {
                         "CPU": 0.5,
-                        "GPU": 2.0,
+                        "ACC": 2.0,
                     },
                     "total_resources": {
                         "CPU": 1,
-                        "GPU": 2.0,
+                        "ACC": 2.0,
                     },
                     "status": "RUNNING",
                     "node_ip_address": "10.10.10.10",
@@ -54,7 +54,7 @@ def test_cluster_status_parser_cluster_resource_state():
                     "available_resources": {},
                     "total_resources": {
                         "CPU": 1,
-                        "GPU": 2.0,
+                        "ACC": 2.0,
                     },
                     "status": "DEAD",
                     "node_ip_address": "22.22.22.22",
@@ -66,11 +66,11 @@ def test_cluster_status_parser_cluster_resource_state():
                     "ray_node_type_name": "worker_node",
                     "available_resources": {
                         "CPU": 1.0,
-                        "GPU": 2.0,
+                        "ACC": 2.0,
                     },
                     "total_resources": {
                         "CPU": 1,
-                        "GPU": 2.0,
+                        "ACC": 2.0,
                     },
                     "idle_duration_ms": 100,
                     "status": "IDLE",
@@ -82,7 +82,7 @@ def test_cluster_status_parser_cluster_resource_state():
                 {
                     "requests": [
                         {
-                            "resources_bundle": {"CPU": 1, "GPU": 1},
+                            "resources_bundle": {"CPU": 1, "ACC": 1},
                             "placement_constraints": [
                                 {
                                     "anti_affinity": {
@@ -98,7 +98,7 @@ def test_cluster_status_parser_cluster_resource_state():
                 {
                     "requests": [
                         {
-                            "resources_bundle": {"GPU": 2},
+                            "resources_bundle": {"ACC": 2},
                             "placement_constraints": [
                                 {
                                     "affinity": {
@@ -115,7 +115,7 @@ def test_cluster_status_parser_cluster_resource_state():
             "pending_resource_requests": [
                 {
                     "request": {
-                        "resources_bundle": {"CPU": 1, "GPU": 1},
+                        "resources_bundle": {"CPU": 1, "ACC": 1},
                         "placement_constraints": [],
                     },
                     "count": 1,
@@ -126,7 +126,7 @@ def test_cluster_status_parser_cluster_resource_state():
                     "min_bundles": [
                         {
                             "request": {
-                                "resources_bundle": {"GPU": 2, "CPU": 100},
+                                "resources_bundle": {"ACC": 2, "CPU": 100},
                                 "placement_constraints": [],
                             },
                             "count": 1,
@@ -152,7 +152,7 @@ def test_cluster_status_parser_cluster_resource_state():
     assert cluster_status.active_nodes[0].resource_usage == NodeUsage(
         usage=[
             ResourceUsage(resource_name="CPU", total=1.0, used=0.5),
-            ResourceUsage(resource_name="GPU", total=2.0, used=0.0),
+            ResourceUsage(resource_name="ACC", total=2.0, used=0.0),
         ],
         idle_time_ms=0,
     )
@@ -165,7 +165,7 @@ def test_cluster_status_parser_cluster_resource_state():
     assert cluster_status.idle_nodes[0].resource_usage == NodeUsage(
         usage=[
             ResourceUsage(resource_name="CPU", total=1.0, used=0.0),
-            ResourceUsage(resource_name="GPU", total=2.0, used=0.0),
+            ResourceUsage(resource_name="ACC", total=2.0, used=0.0),
         ],
         idle_time_ms=100,
     )
@@ -182,7 +182,7 @@ def test_cluster_status_parser_cluster_resource_state():
         0
     ].bundles_by_count == [
         ResourceRequestByCount(
-            bundle={"CPU": 1, "GPU": 1},
+            bundle={"CPU": 1, "ACC": 1},
             count=1,
         )
     ]
@@ -194,7 +194,7 @@ def test_cluster_status_parser_cluster_resource_state():
     ) == [
         PlacementGroupResourceDemand(
             bundles_by_count=[
-                ResourceRequestByCount(bundle={"CPU": 1, "GPU": 1}, count=1)
+                ResourceRequestByCount(bundle={"CPU": 1, "ACC": 1}, count=1)
             ],
             strategy="STRICT_SPREAD",
             pg_id="1x1x",
@@ -202,7 +202,7 @@ def test_cluster_status_parser_cluster_resource_state():
             details="1x1x:STRICT_SPREAD|PENDING",
         ),
         PlacementGroupResourceDemand(
-            bundles_by_count=[ResourceRequestByCount(bundle={"GPU": 2}, count=1)],
+            bundles_by_count=[ResourceRequestByCount(bundle={"ACC": 2}, count=1)],
             strategy="STRICT_PACK",
             pg_id="2x2x",
             state="PENDING",
@@ -215,7 +215,7 @@ def test_cluster_status_parser_cluster_resource_state():
     assert cluster_status.resource_demands.cluster_constraint_demand[
         0
     ].bundles_by_count == [
-        ResourceRequestByCount(bundle={"GPU": 2, "CPU": 100}, count=1)
+        ResourceRequestByCount(bundle={"ACC": 2, "CPU": 100}, count=1)
     ]
 
     # Assert on the cluster_resource_usage
@@ -223,7 +223,7 @@ def test_cluster_status_parser_cluster_resource_state():
         cluster_status.cluster_resource_usage, key=lambda x: x.resource_name
     ) == [
         ResourceUsage(resource_name="CPU", total=2.0, used=0.5),
-        ResourceUsage(resource_name="GPU", total=4.0, used=0.0),
+        ResourceUsage(resource_name="ACC", total=4.0, used=0.0),
     ]
 
     # Assert on the node stats
@@ -321,7 +321,7 @@ def test_cluster_status_formatter():
                 resource_usage=NodeUsage(
                     usage=[
                         ResourceUsage(resource_name="CPU", total=1.0, used=0.5),
-                        ResourceUsage(resource_name="GPU", total=2.0, used=0.0),
+                        ResourceUsage(resource_name="ACC", total=2.0, used=0.0),
                         ResourceUsage(
                             resource_name="object_store_memory",
                             total=10282.0,
@@ -341,7 +341,7 @@ def test_cluster_status_formatter():
                 resource_usage=NodeUsage(
                     usage=[
                         ResourceUsage(resource_name="CPU", total=1.0, used=0),
-                        ResourceUsage(resource_name="GPU", total=2.0, used=0),
+                        ResourceUsage(resource_name="ACC", total=2.0, used=0),
                     ],
                     idle_time_ms=0,
                 ),
@@ -372,7 +372,7 @@ def test_cluster_status_formatter():
             LaunchRequest(
                 instance_type_name="g5n.large",
                 count=1,
-                ray_node_type_name="worker_node_gpu",
+                ray_node_type_name="worker_node_acc",
                 state=LaunchRequest.Status.PENDING,
                 request_ts_s=20000,
             ),
@@ -408,7 +408,7 @@ def test_cluster_status_formatter():
         ],
         cluster_resource_usage=[
             ResourceUsage(resource_name="CPU", total=3.0, used=0.5),
-            ResourceUsage(resource_name="GPU", total=4.0, used=0.0),
+            ResourceUsage(resource_name="ACC", total=4.0, used=0.0),
             ResourceUsage(
                 resource_name="object_store_memory", total=10282.0, used=5555.0
             ),
@@ -421,7 +421,7 @@ def test_cluster_status_formatter():
                     state="PENDING",
                     details="1x1x:STRICT_SPREAD|PENDING",
                     bundles_by_count=[
-                        ResourceRequestByCount(bundle={"CPU": 1, "GPU": 1}, count=1)
+                        ResourceRequestByCount(bundle={"CPU": 1, "ACC": 1}, count=1)
                     ],
                 ),
                 PlacementGroupResourceDemand(
@@ -430,7 +430,7 @@ def test_cluster_status_formatter():
                     state="PENDING",
                     details="2x2x:STRICT_PACK|PENDING",
                     bundles_by_count=[
-                        ResourceRequestByCount(bundle={"GPU": 2}, count=1)
+                        ResourceRequestByCount(bundle={"ACC": 2}, count=1)
                     ],
                 ),
                 PlacementGroupResourceDemand(
@@ -439,26 +439,26 @@ def test_cluster_status_formatter():
                     state="PENDING",
                     details="3x3x:STRICT_PACK|PENDING",
                     bundles_by_count=[
-                        ResourceRequestByCount(bundle={"GPU": 2}, count=1)
+                        ResourceRequestByCount(bundle={"ACC": 2}, count=1)
                     ],
                 ),
             ],
             ray_task_actor_demand=[
                 RayTaskActorDemand(
                     bundles_by_count=[
-                        ResourceRequestByCount(bundle={"CPU": 1, "GPU": 1}, count=1)
+                        ResourceRequestByCount(bundle={"CPU": 1, "ACC": 1}, count=1)
                     ]
                 ),
                 RayTaskActorDemand(
                     bundles_by_count=[
-                        ResourceRequestByCount(bundle={"CPU": 1, "GPU": 1}, count=10)
+                        ResourceRequestByCount(bundle={"CPU": 1, "ACC": 1}, count=10)
                     ]
                 ),
             ],
             cluster_constraint_demand=[
                 ClusterConstraintDemand(
                     bundles_by_count=[
-                        ResourceRequestByCount(bundle={"GPU": 2, "CPU": 100}, count=2)
+                        ResourceRequestByCount(bundle={"ACC": 2, "CPU": 100}, count=2)
                     ]
                 ),
             ],
@@ -488,7 +488,7 @@ Idle:
  2 worker_node
 Pending:
  worker_node, 1 launching
- worker_node_gpu, 1 launching
+ worker_node_acc, 1 launching
  127.0.0.3: worker_node, starting ray
 Recent failures:
  worker_node: LaunchFailed (latest_attempt: 02:46:40) - Insufficient capacity
@@ -498,25 +498,25 @@ Resources
 --------------------------------------------------------
 Total Usage:
  0.5/3.0 CPU
- 0.0/4.0 GPU
+ 0.0/4.0 ACC
  5.42KiB/10.04KiB object_store_memory
 
 Total Demands:
- {'CPU': 1, 'GPU': 1}: 11+ pending tasks/actors
- {'CPU': 1, 'GPU': 1} * 1 (STRICT_SPREAD): 1+ pending placement groups
- {'GPU': 2} * 1 (STRICT_PACK): 2+ pending placement groups
- {'GPU': 2, 'CPU': 100}: 2+ from request_resources()
+ {'CPU': 1, 'ACC': 1}: 11+ pending tasks/actors
+ {'CPU': 1, 'ACC': 1} * 1 (STRICT_SPREAD): 1+ pending placement groups
+ {'ACC': 2} * 1 (STRICT_PACK): 2+ pending placement groups
+ {'ACC': 2, 'CPU': 100}: 2+ from request_resources()
 
 Node: fffffffffffffffffffffffffffffffffffffffffffffffffff00001
  Usage:
   0.5/1.0 CPU
-  0.0/2.0 GPU
+  0.0/2.0 ACC
   5.42KiB/10.04KiB object_store_memory
 
 Node: fffffffffffffffffffffffffffffffffffffffffffffffffff00002
  Usage:
   0/1.0 CPU
-  0/2.0 GPU
+  0/2.0 ACC
 
 Node: fffffffffffffffffffffffffffffffffffffffffffffffffff00003
  Usage:

@@ -41,9 +41,9 @@ def _convert_scaling_config_to_ray_params(
     if not cpus_per_actor:
         cpus_per_actor = default_ray_params.get("cpus_per_actor", 0)
 
-    gpus_per_actor = resources.pop("GPU", int(scaling_config.use_gpu))
-    if not gpus_per_actor:
-        gpus_per_actor = default_ray_params.get("gpus_per_actor", 0)
+    accs_per_actor = resources.pop("ACC", int(scaling_config.use_acc))
+    if not accs_per_actor:
+        accs_per_actor = default_ray_params.get("accs_per_actor", 0)
 
     resources_per_actor = resources
     if not resources_per_actor:
@@ -58,7 +58,7 @@ def _convert_scaling_config_to_ray_params(
     ray_params_kwargs.update(
         {
             "cpus_per_actor": int(cpus_per_actor),
-            "gpus_per_actor": int(gpus_per_actor),
+            "accs_per_actor": int(accs_per_actor),
             "resources_per_actor": resources_per_actor,
             "num_actors": int(num_actors),
         }
@@ -126,7 +126,7 @@ class GBDTTrainer(BaseTrainer):
     _scaling_config_allowed_keys = BaseTrainer._scaling_config_allowed_keys + [
         "num_workers",
         "resources_per_worker",
-        "use_gpu",
+        "use_acc",
         "placement_strategy",
     ]
     _handles_checkpoint_freq = True

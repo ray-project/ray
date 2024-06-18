@@ -79,7 +79,7 @@ def train_func(config: dict):
 
 def train_tensorflow_mnist(
     num_workers: int = 2,
-    use_gpu: bool = False,
+    use_acc: bool = False,
     epochs: int = 4,
     storage_path: str = None,
 ) -> Result:
@@ -87,7 +87,7 @@ def train_tensorflow_mnist(
     trainer = TensorflowTrainer(
         train_loop_per_worker=train_func,
         train_loop_config=config,
-        scaling_config=ScalingConfig(num_workers=num_workers, use_gpu=use_gpu),
+        scaling_config=ScalingConfig(num_workers=num_workers, use_acc=use_acc),
         run_config=RunConfig(storage_path=storage_path),
     )
     results = trainer.fit()
@@ -107,7 +107,7 @@ if __name__ == "__main__":
         help="Sets number of workers for training.",
     )
     parser.add_argument(
-        "--use-gpu", action="store_true", default=False, help="Enables GPU training"
+        "--use-acc", action="store_true", default=False, help="Enables ACC training"
     )
     parser.add_argument(
         "--epochs", type=int, default=3, help="Number of epochs to train for."
@@ -125,11 +125,11 @@ if __name__ == "__main__":
 
     if args.smoke_test:
         # 2 workers, 1 for trainer, 1 for datasets
-        num_gpus = args.num_workers if args.use_gpu else 0
-        ray.init(num_cpus=4, num_gpus=num_gpus)
-        train_tensorflow_mnist(num_workers=2, use_gpu=args.use_gpu)
+        num_accs = args.num_workers if args.use_acc else 0
+        ray.init(num_cpus=4, num_accs=num_accs)
+        train_tensorflow_mnist(num_workers=2, use_acc=args.use_acc)
     else:
         ray.init(address=args.address)
         train_tensorflow_mnist(
-            num_workers=args.num_workers, use_gpu=args.use_gpu, epochs=args.epochs
+            num_workers=args.num_workers, use_acc=args.use_acc, epochs=args.epochs
         )

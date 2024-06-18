@@ -278,7 +278,7 @@ def _calc_mem_per_ray_node(
 # you should set them via setting spark config of
 # `spark.executorEnv.[EnvironmentVariableName]`
 RAY_ON_SPARK_WORKER_CPU_CORES = "RAY_ON_SPARK_WORKER_CPU_CORES"
-RAY_ON_SPARK_WORKER_GPU_NUM = "RAY_ON_SPARK_WORKER_GPU_NUM"
+RAY_ON_SPARK_WORKER_ACC_NUM = "RAY_ON_SPARK_WORKER_ACC_NUM"
 RAY_ON_SPARK_WORKER_PHYSICAL_MEMORY_BYTES = "RAY_ON_SPARK_WORKER_PHYSICAL_MEMORY_BYTES"
 RAY_ON_SPARK_WORKER_SHARED_MEMORY_BYTES = "RAY_ON_SPARK_WORKER_SHARED_MEMORY_BYTES"
 
@@ -302,18 +302,18 @@ def _get_cpu_cores():
     return multiprocessing.cpu_count()
 
 
-def _get_num_physical_gpus():
-    if RAY_ON_SPARK_WORKER_GPU_NUM in os.environ:
+def _get_num_physical_accs():
+    if RAY_ON_SPARK_WORKER_ACC_NUM in os.environ:
         # In some cases, spark standalone cluster might configure part of physical
-        # GPUs for spark worker,
+        # ACCs for spark worker,
         # but we cannot easily get related configuration,
         # as a workaround, we provide an environmental variable config
         # `RAY_ON_SPARK_WORKER_CPU_CORES` for user.
-        return int(os.environ[RAY_ON_SPARK_WORKER_GPU_NUM])
+        return int(os.environ[RAY_ON_SPARK_WORKER_ACC_NUM])
 
     try:
         completed_proc = subprocess.run(
-            "nvidia-smi --query-gpu=name --format=csv,noheader",
+            "nvidia-smi --query-acc=name --format=csv,noheader",
             shell=True,
             check=True,
             text=True,
@@ -321,23 +321,23 @@ def _get_num_physical_gpus():
         )
     except Exception as e:
         raise RuntimeError(
-            "Running command `nvidia-smi` for inferring GPU devices list failed."
+            "Running command `nvidia-smi` for inferring ACC devices list failed."
         ) from e
     return len(completed_proc.stdout.strip().split("\n"))
 
 
 def _get_avail_mem_per_ray_worker_node(
     num_cpus_per_node,
-    num_gpus_per_node,
+    num_accs_per_node,
     object_store_memory_per_node,
 ):
     num_cpus = _get_cpu_cores()
     num_task_slots = num_cpus // num_cpus_per_node
 
-    if num_gpus_per_node > 0:
-        num_gpus = _get_num_physical_gpus()
-        if num_task_slots > num_gpus // num_gpus_per_node:
-            num_task_slots = num_gpus // num_gpus_per_node
+    if num_accs_per_node > 0:
+        num_accs = _get_num_physical_accs()
+        if num_task_slots > num_accs // num_accs_per_node:
+            num_task_slots = num_accs // num_accs_per_node
 
     physical_mem_bytes = _get_spark_worker_total_physical_memory()
     shared_mem_bytes = _get_spark_worker_total_shared_memory()
@@ -364,7 +364,7 @@ def get_avail_mem_per_ray_worker_node(
     spark,
     object_store_memory_per_node,
     num_cpus_per_node,
-    num_gpus_per_node,
+    num_accs_per_node,
 ):
     """
     Return the available heap memory and object store memory for each ray worker,
@@ -379,7 +379,7 @@ def get_avail_mem_per_ray_worker_node(
         try:
             return _get_avail_mem_per_ray_worker_node(
                 num_cpus_per_node,
-                num_gpus_per_node,
+                num_accs_per_node,
                 object_store_memory_per_node,
             )
         except Exception as e:
@@ -405,7 +405,7 @@ def get_avail_mem_per_ray_worker_node(
             f"Inferring ray worker node available memory failed, error: {err}. "
             "You can bypass this error by setting following spark configs: "
             "spark.executorEnv.RAY_ON_SPARK_WORKER_CPU_CORES, "
-            "spark.executorEnv.RAY_ON_SPARK_WORKER_GPU_NUM, "
+            "spark.executorEnv.RAY_ON_SPARK_WORKER_ACC_NUM, "
             "spark.executorEnv.RAY_ON_SPARK_WORKER_PHYSICAL_MEMORY_BYTES, "
             "spark.executorEnv.RAY_ON_SPARK_WORKER_SHARED_MEMORY_BYTES."
         )
@@ -417,11 +417,11 @@ def get_avail_mem_per_ray_worker_node(
     )
 
 
-def get_spark_task_assigned_physical_gpus(gpu_addr_list):
+def get_spark_task_assigned_physical_accs(acc_addr_list):
     if "CUDA_VISIBLE_DEVICES" in os.environ:
         visible_cuda_dev_list = [
             int(dev.strip()) for dev in os.environ["CUDA_VISIBLE_DEVICES"].split(",")
         ]
-        return [visible_cuda_dev_list[addr] for addr in gpu_addr_list]
+        return [visible_cuda_dev_list[addr] for addr in acc_addr_list]
     else:
-        return gpu_addr_list
+        return acc_addr_list

@@ -10,7 +10,7 @@ from ray.train import Checkpoint, ScalingConfig
 from ray.train.torch.torch_trainer import TorchTrainer
 
 
-def test_torch_amp_performance(ray_start_4_cpus_2_gpus):
+def test_torch_amp_performance(ray_start_4_cpus_2_accs):
     def train_func(config):
         train.torch.accelerate(amp=config["amp"])
 
@@ -46,7 +46,7 @@ def test_torch_amp_performance(ray_start_4_cpus_2_gpus):
         trainer = TorchTrainer(
             train_func,
             train_loop_config={"amp": amp},
-            scaling_config=ScalingConfig(num_workers=2, use_gpu=True),
+            scaling_config=ScalingConfig(num_workers=2, use_acc=True),
         )
         results = trainer.fit()
         return results.metrics["latency"]
@@ -55,7 +55,7 @@ def test_torch_amp_performance(ray_start_4_cpus_2_gpus):
     assert 1.05 * latency(amp=True) < latency(amp=False)
 
 
-def test_checkpoint_torch_model_with_amp(ray_start_4_cpus_2_gpus):
+def test_checkpoint_torch_model_with_amp(ray_start_4_cpus_2_accs):
     """Test that model with AMP is serializable."""
 
     def train_func():
@@ -69,7 +69,7 @@ def test_checkpoint_torch_model_with_amp(ray_start_4_cpus_2_gpus):
             train.report({}, checkpoint=Checkpoint.from_directory(tmpdir))
 
     trainer = TorchTrainer(
-        train_func, scaling_config=ScalingConfig(num_workers=2, use_gpu=True)
+        train_func, scaling_config=ScalingConfig(num_workers=2, use_acc=True)
     )
     results = trainer.fit()
     assert results.checkpoint

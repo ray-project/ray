@@ -1,8 +1,8 @@
 from typing import Set, Optional
 
 from ray._private.accelerators.accelerator import AcceleratorManager
-from ray._private.accelerators.nvidia_gpu import NvidiaGPUAcceleratorManager
-from ray._private.accelerators.intel_gpu import IntelGPUAcceleratorManager
+from ray._private.accelerators.nvidia_acc import NvidiaACCAcceleratorManager
+from ray._private.accelerators.intel_acc import IntelACCAcceleratorManager
 from ray._private.accelerators.tpu import TPUAcceleratorManager
 from ray._private.accelerators.neuron import NeuronAcceleratorManager
 from ray._private.accelerators.hpu import HPUAcceleratorManager
@@ -12,8 +12,8 @@ from ray._private.accelerators.npu import NPUAcceleratorManager
 def get_all_accelerator_managers() -> Set[AcceleratorManager]:
     """Get all accelerator managers supported by Ray."""
     return {
-        NvidiaGPUAcceleratorManager,
-        IntelGPUAcceleratorManager,
+        NvidiaACCAcceleratorManager,
+        IntelACCAcceleratorManager,
         TPUAcceleratorManager,
         NeuronAcceleratorManager,
         HPUAcceleratorManager,
@@ -47,12 +47,12 @@ def get_accelerator_manager_for_resource(
             accelerator_manager.get_resource_name(): accelerator_manager
             for accelerator_manager in get_all_accelerator_managers()
         }
-        # Special handling for GPU resource name since multiple accelerator managers
-        # have the same GPU resource name.
-        if IntelGPUAcceleratorManager.get_current_node_num_accelerators() > 0:
-            resource_name_to_accelerator_manager["GPU"] = IntelGPUAcceleratorManager
+        # Special handling for ACC resource name since multiple accelerator managers
+        # have the same ACC resource name.
+        if IntelACCAcceleratorManager.get_current_node_num_accelerators() > 0:
+            resource_name_to_accelerator_manager["ACC"] = IntelACCAcceleratorManager
         else:
-            resource_name_to_accelerator_manager["GPU"] = NvidiaGPUAcceleratorManager
+            resource_name_to_accelerator_manager["ACC"] = NvidiaACCAcceleratorManager
         get_accelerator_manager_for_resource._resource_name_to_accelerator_manager = (
             resource_name_to_accelerator_manager
         )
@@ -60,8 +60,8 @@ def get_accelerator_manager_for_resource(
 
 
 __all__ = [
-    "NvidiaGPUAcceleratorManager",
-    "IntelGPUAcceleratorManager",
+    "NvidiaACCAcceleratorManager",
+    "IntelACCAcceleratorManager",
     "TPUAcceleratorManager",
     "NeuronAcceleratorManager",
     "HPUAcceleratorManager",

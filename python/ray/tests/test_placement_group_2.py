@@ -81,7 +81,7 @@ def test_pending_placement_group_wait(ray_start_cluster, connect_to_client):
             bundles=[
                 {"CPU": 2},
                 {"CPU": 2},
-                {"GPU": 2},
+                {"ACC": 2},
             ],
         )
         ready, unready = ray.wait([placement_group.ready()], timeout=0.1)
@@ -145,7 +145,7 @@ def test_schedule_placement_group_when_node_add(ray_start_cluster, connect_to_cl
 
     with connect_to_client_or_not(connect_to_client):
         # Creating a placement group that cannot be satisfied yet.
-        placement_group = ray.util.placement_group([{"GPU": 2}, {"CPU": 2}])
+        placement_group = ray.util.placement_group([{"ACC": 2}, {"CPU": 2}])
 
         def is_placement_group_created():
             table = ray.util.placement_group_table(placement_group)
@@ -153,8 +153,8 @@ def test_schedule_placement_group_when_node_add(ray_start_cluster, connect_to_cl
                 return False
             return table["state"] == "CREATED"
 
-        # Add a node that has GPU.
-        cluster.add_node(num_cpus=4, num_gpus=4)
+        # Add a node that has ACC.
+        cluster.add_node(num_cpus=4, num_accs=4)
 
         # Make sure the placement group is created.
         wait_for_condition(is_placement_group_created)
@@ -278,22 +278,22 @@ def test_atomic_creation(ray_start_cluster, connect_to_client):
 
 @pytest.mark.parametrize("connect_to_client", [False, True])
 def test_mini_integration(ray_start_cluster, connect_to_client):
-    # Create bundles as many as number of gpus in the cluster.
+    # Create bundles as many as number of accs in the cluster.
     # Do some random work and make sure all resources are properly recovered.
 
     cluster = ray_start_cluster
 
     num_nodes = 5
-    per_bundle_gpus = 2
-    gpu_per_node = 4
-    total_gpus = num_nodes * per_bundle_gpus * gpu_per_node
-    per_node_gpus = per_bundle_gpus * gpu_per_node
+    per_bundle_accs = 2
+    acc_per_node = 4
+    total_accs = num_nodes * per_bundle_accs * acc_per_node
+    per_node_accs = per_bundle_accs * acc_per_node
 
     bundles_per_pg = 2
-    total_num_pg = total_gpus // (bundles_per_pg * per_bundle_gpus)
+    total_num_pg = total_accs // (bundles_per_pg * per_bundle_accs)
 
     [
-        cluster.add_node(num_cpus=2, num_gpus=per_bundle_gpus * gpu_per_node)
+        cluster.add_node(num_cpus=2, num_accs=per_bundle_accs * acc_per_node)
         for _ in range(num_nodes)
     ]
     cluster.wait_for_nodes()
@@ -301,7 +301,7 @@ def test_mini_integration(ray_start_cluster, connect_to_client):
 
     with connect_to_client_or_not(connect_to_client):
 
-        @ray.remote(num_cpus=0, num_gpus=1)
+        @ray.remote(num_cpus=0, num_accs=1)
         def random_tasks():
             import random
             import time
@@ -312,14 +312,14 @@ def test_mini_integration(ray_start_cluster, connect_to_client):
 
         pgs = []
         pg_tasks = []
-        # total bundle gpu usage = bundles_per_pg*total_num_pg*per_bundle_gpus
+        # total bundle acc usage = bundles_per_pg*total_num_pg*per_bundle_accs
         # Note this is half of total
         for index in range(total_num_pg):
             pgs.append(
                 ray.util.placement_group(
                     name=f"name{index}",
                     strategy="PACK",
-                    bundles=[{"GPU": per_bundle_gpus} for _ in range(bundles_per_pg)],
+                    bundles=[{"ACC": per_bundle_accs} for _ in range(bundles_per_pg)],
                 )
             )
 
@@ -348,7 +348,7 @@ def test_mini_integration(ray_start_cluster, connect_to_client):
             ray.util.remove_placement_group(pg)
             num_removed_pg += 1
 
-        @ray.remote(num_cpus=2, num_gpus=per_node_gpus)
+        @ray.remote(num_cpus=2, num_accs=per_node_accs)
         class A:
             def ping(self):
                 return True
@@ -488,7 +488,7 @@ def test_capture_child_tasks(ray_start_cluster, connect_to_client):
     cluster = ray_start_cluster
     total_num_tasks = 4
     for _ in range(2):
-        cluster.add_node(num_cpus=total_num_tasks, num_gpus=total_num_tasks)
+        cluster.add_node(num_cpus=total_num_tasks, num_accs=total_num_tasks)
     ray.init(address=cluster.address)
 
     with connect_to_client_or_not(connect_to_client):
@@ -496,11 +496,11 @@ def test_capture_child_tasks(ray_start_cluster, connect_to_client):
             [
                 {
                     "CPU": 2,
-                    "GPU": 2,
+                    "ACC": 2,
                 },
                 {
                     "CPU": 2,
-                    "GPU": 2,
+                    "ACC": 2,
                 },
             ],
             strategy="STRICT_PACK",
@@ -517,11 +517,11 @@ def test_capture_child_tasks(ray_start_cluster, connect_to_client):
             return get_current_placement_group()
 
         @ray.remote
-        def create_nested_task(child_cpu, child_gpu, set_none=False):
+        def create_nested_task(child_cpu, child_acc, set_none=False):
             assert get_current_placement_group() is not None
             kwargs = {
                 "num_cpus": child_cpu,
-                "num_gpus": child_gpu,
+                "num_accs": child_acc,
             }
             if set_none:
                 kwargs["placement_group"] = None
@@ -529,7 +529,7 @@ def test_capture_child_tasks(ray_start_cluster, connect_to_client):
 
         t = create_nested_task.options(
             num_cpus=1,
-            num_gpus=0,
+            num_accs=0,
             scheduling_strategy=PlacementGroupSchedulingStrategy(
                 placement_group=pg, placement_group_capture_child_tasks=True
             ),
@@ -541,7 +541,7 @@ def test_capture_child_tasks(ray_start_cluster, connect_to_client):
 
         t1 = create_nested_task.options(
             num_cpus=1,
-            num_gpus=0,
+            num_accs=0,
             scheduling_strategy=PlacementGroupSchedulingStrategy(
                 placement_group=pg, placement_group_capture_child_tasks=True
             ),
@@ -554,7 +554,7 @@ def test_capture_child_tasks(ray_start_cluster, connect_to_client):
         # Test if tasks don't capture child tasks when the option is off.
         t2 = create_nested_task.options(
             num_cpus=0,
-            num_gpus=1,
+            num_accs=1,
             scheduling_strategy=PlacementGroupSchedulingStrategy(placement_group=pg),
         ).remote(0, 1)
         pgs = ray.get(t2)

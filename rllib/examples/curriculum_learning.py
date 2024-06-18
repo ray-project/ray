@@ -114,8 +114,8 @@ if __name__ == "__main__":
         )
         .framework(args.framework)
         .rollouts(num_rollout_workers=2, num_envs_per_worker=5)
-        # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
-        .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
+        # Use ACCs iff `RLLIB_NUM_ACCS` env var set to > 0.
+        .resources(num_accs=int(os.environ.get("RLLIB_NUM_ACCS", "0")))
     )
 
     stop = {

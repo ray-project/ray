@@ -187,10 +187,10 @@ def with_resources(
         from ray.tune.tuner import Tuner
 
         def train_fn(config):
-            return len(ray.get_gpu_ids())  # Returns 2
+            return len(ray.get_acc_ids())  # Returns 2
 
         tuner = Tuner(
-            tune.with_resources(train_fn, resources={"gpu": 2}),
+            tune.with_resources(train_fn, resources={"acc": 2}),
             # ...
         )
         results = tuner.fit()

@@ -139,7 +139,7 @@ class TestOPE(unittest.TestCase):
                     "dr_fqe": {"type": DoublyRobust, "epsilon_greedy": 0.1},
                 },
             )
-            .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", 0)))
+            .resources(num_accs=int(os.environ.get("RLLIB_NUM_ACCS", 0)))
         )
 
         num_rollout_workers = 4

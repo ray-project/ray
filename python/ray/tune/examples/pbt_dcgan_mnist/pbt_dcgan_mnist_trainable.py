@@ -26,7 +26,7 @@ from common import Discriminator, Generator, Net
 # __Trainable_begin__
 class PytorchTrainable(tune.Trainable):
     def setup(self, config):
-        use_cuda = config.get("use_gpu") and torch.cuda.is_available()
+        use_cuda = config.get("use_acc") and torch.cuda.is_available()
         self.device = torch.device("cuda" if use_cuda else "cpu")
         self.netD = Discriminator().to(self.device)
         self.netD.apply(weights_init)

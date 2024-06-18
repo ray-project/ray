@@ -83,13 +83,13 @@ def train_one_step(algorithm, train_batch, policies_to_train=None) -> Dict:
 
 
 @DeveloperAPI
-def multi_gpu_train_one_step(algorithm, train_batch) -> Dict:
-    """Multi-GPU version of train_one_step.
+def multi_acc_train_one_step(algorithm, train_batch) -> Dict:
+    """Multi-ACC version of train_one_step.
 
     Uses the policies' `load_batch_into_buffer` and `learn_on_loaded_batch` methods
-    to be more efficient wrt CPU/GPU data transfers. For example, when doing multiple
+    to be more efficient wrt CPU/ACC data transfers. For example, when doing multiple
     passes through a train batch (e.g. for PPO) using `config.num_sgd_iter`, the
-    actual train batch is only split once and loaded once into the GPU(s).
+    actual train batch is only split once and loaded once into the ACC(s).
 
     .. testcode::
         :skipif: True
@@ -98,7 +98,7 @@ def multi_gpu_train_one_step(algorithm, train_batch) -> Dict:
         algo = [...]
         train_batch = synchronous_parallel_sample(algo.workers)
         # This trains the policy on one batch.
-        print(multi_gpu_train_one_step(algo, train_batch)))
+        print(multi_acc_train_one_step(algo, train_batch)))
 
     .. testoutput::
 
@@ -107,9 +107,9 @@ def multi_gpu_train_one_step(algorithm, train_batch) -> Dict:
     Updates the NUM_ENV_STEPS_TRAINED and NUM_AGENT_STEPS_TRAINED counters as well as
     the LOAD_BATCH_TIMER and LEARN_ON_BATCH_TIMER timers of the Algorithm instance.
     """
-    if log_once("mulit_gpu_train_one_step_deprecation_warning"):
+    if log_once("mulit_acc_train_one_step_deprecation_warning"):
         deprecation_warning(
-            old=("ray.rllib.execution.train_ops." "multi_gpu_train_one_step")
+            old=("ray.rllib.execution.train_ops." "multi_acc_train_one_step")
         )
     config = algorithm.config
     workers = algorithm.workers
@@ -117,8 +117,8 @@ def multi_gpu_train_one_step(algorithm, train_batch) -> Dict:
     num_sgd_iter = config.get("num_sgd_iter", 1)
     sgd_minibatch_size = config.get("sgd_minibatch_size", config["train_batch_size"])
 
-    # Determine the number of devices (GPUs or 1 CPU) we use.
-    num_devices = int(math.ceil(config["num_gpus"] or 1))
+    # Determine the number of devices (ACCs or 1 CPU) we use.
+    num_devices = int(math.ceil(config["num_accs"] or 1))
 
     # Make sure total batch size is dividable by the number of devices.
     # Batch size per tower.
@@ -131,7 +131,7 @@ def multi_gpu_train_one_step(algorithm, train_batch) -> Dict:
     # Handle everything as if multi-agent.
     train_batch = train_batch.as_multi_agent()
 
-    # Load data into GPUs.
+    # Load data into ACCs.
     load_timer = algorithm._timers[LOAD_BATCH_TIMER]
     with load_timer:
         num_loaded_samples = {}
@@ -159,7 +159,7 @@ def multi_gpu_train_one_step(algorithm, train_batch) -> Dict:
         # Use LearnerInfoBuilder as a unified way to build the final
         # results dict from `learn_on_loaded_batch` call(s).
         # This makes sure results dicts always have the same structure
-        # no matter the setup (multi-GPU, multi-agent, minibatch SGD,
+        # no matter the setup (multi-ACC, multi-agent, minibatch SGD,
         # tf vs torch).
         learner_info_builder = LearnerInfoBuilder(num_devices=num_devices)
 

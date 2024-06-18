@@ -21,8 +21,8 @@ parser.add_argument("--framework", choices=["tf2", "tf", "torch"], default="torc
 parser.add_argument("--seed", type=int, default=42)
 parser.add_argument("--as-test", action="store_true")
 parser.add_argument("--stop-iters", type=int, default=2)
-parser.add_argument("--num-gpus", type=float, default=0)
-parser.add_argument("--num-gpus-per-worker", type=float, default=0)
+parser.add_argument("--num-accs", type=float, default=0)
+parser.add_argument("--num-accs-per-worker", type=float, default=0)
 
 if __name__ == "__main__":
     args = parser.parse_args()
@@ -43,12 +43,12 @@ if __name__ == "__main__":
             rollout_fragment_length=50,
         )
         .resources(
-            num_gpus_per_worker=args.num_gpus_per_worker,
-            # Old gpu-training API
-            num_gpus=args.num_gpus,
+            num_accs_per_worker=args.num_accs_per_worker,
+            # Old acc-training API
+            num_accs=args.num_accs,
             # The new Learner API
-            num_learner_workers=int(args.num_gpus),
-            num_gpus_per_learner_worker=int(args.num_gpus > 0),
+            num_learner_workers=int(args.num_accs),
+            num_accs_per_learner_worker=int(args.num_accs > 0),
         )
         # Make sure every environment gets a fixed seed.
         .debugging(seed=args.seed)

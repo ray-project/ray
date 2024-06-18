@@ -26,7 +26,7 @@ class DummyTrainer(DataParallelTrainer):
     It prints out as much debugging statistics as possible.
 
     This is useful for debugging data ingest problem. This trainer supports normal
-    scaling options same as any other Trainer (e.g., num_workers, use_gpu).
+    scaling options same as any other Trainer (e.g., num_workers, use_acc).
 
     Args:
         scaling_config: Configuration for how to scale training. This is the same
@@ -183,7 +183,7 @@ if __name__ == "__main__":
     # Setup the dummy trainer that prints ingest stats.
     # Run and print ingest stats.
     trainer = DummyTrainer(
-        scaling_config=ScalingConfig(num_workers=1, use_gpu=False),
+        scaling_config=ScalingConfig(num_workers=1, use_acc=False),
         datasets={"train": ds},
         num_epochs=args.num_epochs,
         prefetch_batches=args.prefetch_batches,

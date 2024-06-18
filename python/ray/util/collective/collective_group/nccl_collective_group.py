@@ -90,7 +90,7 @@ class Rendezvous:
                 "Unable to meet other processes "
                 "at the rendezvous store. If you are using "
                 "P2P communication, please check if tensors "
-                "are put in the correct GPU. "
+                "are put in the correct ACC. "
             )
 
     @property
@@ -134,8 +134,8 @@ class NCCLGroup(BaseGroup):
         self._dev_comm_map = {}
         self._dev_streams_map = {}
 
-        # record the used GPU IDs.
-        self._used_gpu_indices = set()
+        # record the used ACC IDs.
+        self._used_acc_indices = set()
 
         # TODO(Fu): might need an event map
         self._dev_event_map = {}
@@ -177,7 +177,7 @@ class NCCLGroup(BaseGroup):
 
         Args:
             tensors: the list of tensors to be reduced. Each tensor must
-                            reside on one GPU of the current process.
+                            reside on one ACC of the current process.
             allreduce_options: allreduce options.
 
         Returns:
@@ -206,10 +206,10 @@ class NCCLGroup(BaseGroup):
             None
         """
         # Get the device list.
-        if self._used_gpu_indices:
-            devices = list(self._used_gpu_indices)
+        if self._used_acc_indices:
+            devices = list(self._used_acc_indices)
         else:
-            devices = list(range(nccl_util.get_num_gpus()))
+            devices = list(range(nccl_util.get_num_accs()))
         barrier_tensors = [None] * len(devices)
         for i, d in enumerate(devices):
             with nccl_util.Device(d):
@@ -217,11 +217,11 @@ class NCCLGroup(BaseGroup):
         self.allreduce(barrier_tensors)
 
     def reduce(self, tensors, reduce_options=ReduceOptions()):
-        """Reduce tensors to a destination gpu following options.
+        """Reduce tensors to a destination acc following options.
 
         Args:
             tensors: the list of tensors to be reduced, each tensor
-                            must reside on one gpu of the current process.
+                            must reside on one acc of the current process.
             reduce_options: reduce options.
 
         Returns:
@@ -243,7 +243,7 @@ class NCCLGroup(BaseGroup):
         self._collective(tensors, tensors, collective_fn)
 
     def broadcast(self, tensors, broadcast_options=BroadcastOptions()):
-        """Broadcast tensors to all other gpus following options.
+        """Broadcast tensors to all other accs following options.
 
         Args:
             tensors: tensors to be broadcast or received.
@@ -269,12 +269,12 @@ class NCCLGroup(BaseGroup):
         self._collective(tensors, tensors, collective_fn)
 
     def allgather(self, tensor_lists, tensors, allgather_options=AllGatherOptions()):
-        """Allgather tensors across gpus into a list of tensors.
+        """Allgather tensors across accs into a list of tensors.
 
         Args:
             tensor_lists (List[List[Tensor]]): allgathered tensors.
             tensors: the list of tensors to allgather across the group.
-                     Each tensor must lolcate on a GPU of the process.
+                     Each tensor must lolcate on a ACC of the process.
             allgather_options: allgather options.
 
         Returns:
@@ -313,7 +313,7 @@ class NCCLGroup(BaseGroup):
 
         Args:
             tensors: the output tensors (could be unspecified), each
-                            located on a GPU of the current process.
+                            located on a ACC of the current process.
             tensor_lists (List[List]): the list of tensors to be reduced then
                                        scattered.
             reducescatter_options: reduce-scatter options.
@@ -348,7 +348,7 @@ class NCCLGroup(BaseGroup):
         )
 
     def send(self, tensors, send_options=SendOptions()):
-        """Send a tensor to a destination gpu in the group.
+        """Send a tensor to a destination acc in the group.
 
         Args:
             tensors: the tensor to send.
@@ -370,11 +370,11 @@ class NCCLGroup(BaseGroup):
             )
 
         self._point2point(
-            tensors, p2p_fn, send_options.dst_rank, send_options.dst_gpu_index
+            tensors, p2p_fn, send_options.dst_rank, send_options.dst_acc_index
         )
 
     def recv(self, tensors, recv_options=RecvOptions()):
-        """Receive a tensor from a source gpu in the group.
+        """Receive a tensor from a source acc in the group.
 
         Args:
             tensors: the received tensor.
@@ -396,7 +396,7 @@ class NCCLGroup(BaseGroup):
             )
 
         self._point2point(
-            tensors, p2p_fn, recv_options.src_rank, recv_options.src_gpu_index
+            tensors, p2p_fn, recv_options.src_rank, recv_options.src_acc_index
         )
 
     def _get_nccl_collective_communicator(self, comm_key, device_list):
@@ -408,7 +408,7 @@ class NCCLGroup(BaseGroup):
 
         Args:
             comm_key: the key to query the communicator cache.
-            device_list: a list of GPU devices of the current process
+            device_list: a list of ACC devices of the current process
                                 that participates into the collective.
 
         Returns:
@@ -417,7 +417,7 @@ class NCCLGroup(BaseGroup):
         if not comm_key:
             raise RuntimeError("Got empty communicator key.")
         for d in device_list:
-            self._used_gpu_indices.add(d)
+            self._used_acc_indices.add(d)
 
         # TODO(Hao): lock the _dev_comm_map here.
         if comm_key in self._dev_comm_map:
@@ -465,16 +465,16 @@ class NCCLGroup(BaseGroup):
                     events[i].record(cupy.cuda.get_current_stream())
                     streams[i].wait_event(events[i])
 
-    def _get_nccl_p2p_communicator(self, comm_key, my_gpu_idx, peer_rank, peer_gpu_idx):
+    def _get_nccl_p2p_communicator(self, comm_key, my_acc_idx, peer_rank, peer_acc_idx):
         """Create or retrieve an NCCL communicator for p2p tasks.
 
         Note(Hao): this function is not thread-safe now.
 
         Args:
             comm_key: communicator key.
-            my_gpu_idx: the gpu index on the current process.
+            my_acc_idx: the acc index on the current process.
             peer_rank: the rank of the destination process.
-            peer_gpu_idx: the gpu index on the peer process.
+            peer_acc_idx: the acc index on the peer process.
         Returns:
             communicator
         """
@@ -490,9 +490,9 @@ class NCCLGroup(BaseGroup):
         # Case 1: src_rank != dst_rank, hence the send and recv happen on
         # different process (actors/tasks); each process makes independent
         # collective calls and manages corresponding communicators.
-        # Case 2: src_rank == dst_rank, src_gpu_idx == dst_gpu_idx; for
+        # Case 2: src_rank == dst_rank, src_acc_idx == dst_acc_idx; for
         # this case, we simply throw a RuntimeError;
-        # Case 3: src_rank == dst_rank, src_gpu_idx != dst_gpu_idx, which
+        # Case 3: src_rank == dst_rank, src_acc_idx != dst_acc_idx, which
         # means the send and recv will be called on the same process. We
         # DO NOT support this case for now. We need to properly scope:
         # (1) communicators creation, and
@@ -506,7 +506,7 @@ class NCCLGroup(BaseGroup):
             raise RuntimeError(
                 "Send and recv happens on the same process! "
                 "ray.util.collective does not support this case as of now. "
-                "Alternatively, consider doing GPU to GPU memcpy?"
+                "Alternatively, consider doing ACC to ACC memcpy?"
             )
 
         group_key = self._generate_group_key(comm_key)
@@ -518,9 +518,9 @@ class NCCLGroup(BaseGroup):
             nccl_uid = rendezvous.get_nccl_id()
 
         # create the p2p communicators
-        with nccl_util.Device(my_gpu_idx):
+        with nccl_util.Device(my_acc_idx):
             comm = nccl_util.create_nccl_communicator(2, nccl_uid, my_p2p_rank)
-            stream = get_stream_pool(my_gpu_idx).get_stream()
+            stream = get_stream_pool(my_acc_idx).get_stream()
             event = cupy.cuda.Event()
 
         # TODO(Fu): lock and might need to add event
@@ -596,8 +596,8 @@ class NCCLGroup(BaseGroup):
         Returns:
             None
         """
-        _check_gpu_tensors(input_tensors)
-        _check_gpu_tensors(output_tensors)
+        _check_acc_tensors(input_tensors)
+        _check_acc_tensors(output_tensors)
 
         devices = nccl_util.get_tensor_device_list(input_tensors)
         key = _get_comm_key_from_devices(devices)
@@ -626,14 +626,14 @@ class NCCLGroup(BaseGroup):
         if postprocess_fn:
             postprocess_fn(streams)
 
-    def _point2point(self, tensors, p2p_fn, peer_rank: int, peer_gpu_idx: int):
+    def _point2point(self, tensors, p2p_fn, peer_rank: int, peer_acc_idx: int):
         """A method to encapsulate all peer-to-peer calls (i.e., send/recv).
 
         Args:
             tensors: the tensor to send or receive.
             p2p_fn: the p2p function call.
             peer_rank: the rank of the peer process.
-            peer_gpu_idx: the index of the gpu on the peer process.
+            peer_acc_idx: the index of the acc on the peer process.
 
         Returns:
             None
@@ -644,22 +644,22 @@ class NCCLGroup(BaseGroup):
                 "P2p send/recv requires NCCL >= 2.7.4. "
                 "Got '{}'.".format(nccl_util.get_nccl_runtime_version())
             )
-        _check_gpu_tensors(tensors)
+        _check_acc_tensors(tensors)
 
         # we currently only support single device to single device send/recv.
         assert len(tensors) == 1
-        my_gpu_idx = nccl_util.get_tensor_device(tensors[0])
+        my_acc_idx = nccl_util.get_tensor_device(tensors[0])
         comm_key = _get_comm_key_send_recv(
-            self.rank, my_gpu_idx, peer_rank, peer_gpu_idx
+            self.rank, my_acc_idx, peer_rank, peer_acc_idx
         )
         comms = self._get_nccl_p2p_communicator(
-            comm_key, my_gpu_idx, peer_rank, peer_gpu_idx
+            comm_key, my_acc_idx, peer_rank, peer_acc_idx
         )
         streams = self._dev_streams_map[comm_key]
         events = self._dev_event_map[comm_key]
 
         # TODO(Hao): sync streams and events
-        self._sync_streams([my_gpu_idx], events, streams)
+        self._sync_streams([my_acc_idx], events, streams)
 
         # We have made sure that self.rank != peer_rank during API check.
         peer_p2p_rank = 0 if self.rank > peer_rank else 1
@@ -736,15 +736,15 @@ def _check_inputs_compatibility_for_scatter_gather(tensors, tensor_lists):
                 )
 
 
-def _check_gpu_tensors(tensors):
-    """Check all tensors are distributed on different GPUs."""
+def _check_acc_tensors(tensors):
+    """Check all tensors are distributed on different ACCs."""
     if not tensors or not isinstance(tensors, list):
         raise RuntimeError("'tensors' must be a nonempty list.")
-    if len(tensors) > nccl_util.get_num_gpus():
+    if len(tensors) > nccl_util.get_num_accs():
         raise RuntimeError(
             "Tensor list cannot be larger than the number"
-            "of available GPUs. Got {} > {}.".format(
-                len(tensors), nccl_util.get_num_gpus()
+            "of available ACCs. Got {} > {}.".format(
+                len(tensors), nccl_util.get_num_accs()
             )
         )
     t0 = tensors[0]
@@ -758,7 +758,7 @@ def _check_gpu_tensors(tensors):
         # (1) tensor is cuda (already checked during API)
         # (2) tensor dtype
         # (3) tensor shape match
-        # (4) each tensor is on a different GPU
+        # (4) each tensor is on a different ACC
         dtype = nccl_util.get_nccl_tensor_dtype(t)
         if dt != dtype:
             raise RuntimeError(
@@ -771,17 +771,17 @@ def _check_gpu_tensors(tensors):
             )
         device = nccl_util.get_tensor_device(t)
         if device == d:
-            raise RuntimeError("Tensor must be on distinct GPUs.")
+            raise RuntimeError("Tensor must be on distinct ACCs.")
 
 
 def _get_comm_key_from_devices(devices):
     """Return a key from a list of devices for collective calls.
 
-    For example, if the tensors are on gpus 0, 1, 2, 3,
+    For example, if the tensors are on accs 0, 1, 2, 3,
     then the key would be "0,1,2,3".
 
     Args:
-        devices: a list of GPU device indices
+        devices: a list of ACC device indices
 
     Returns:
         str: a string represents the key to query the communicator cache.
@@ -790,32 +790,32 @@ def _get_comm_key_from_devices(devices):
     return ",".join([str(d) for d in devices])
 
 
-def _get_comm_key_send_recv(my_rank, my_gpu_idx, peer_rank, peer_gpu_idx):
+def _get_comm_key_send_recv(my_rank, my_acc_idx, peer_rank, peer_acc_idx):
     """Return a key given source and destination ranks for p2p tasks.
 
     The p2p key is in the following form:
-                [min_rank]_[gpu_index]:[max_rank]_[gpu_index].
+                [min_rank]_[acc_index]:[max_rank]_[acc_index].
 
     Args:
         my_rank: the rank of the source process.
-        my_gpu_idx: the source gpu index on the process.
+        my_acc_idx: the source acc index on the process.
         peer_rank: the rank of the destination process.
-        peer_gpu_idx: the destination gpu index on the process.
+        peer_acc_idx: the destination acc index on the process.
 
     Returns:
         comm_key: a string key to query the communication cache.
     """
     if my_rank < peer_rank:
-        lower_key = str(my_rank) + "_" + str(my_gpu_idx)
-        higher_key = str(peer_rank) + "_" + str(peer_gpu_idx)
+        lower_key = str(my_rank) + "_" + str(my_acc_idx)
+        higher_key = str(peer_rank) + "_" + str(peer_acc_idx)
     elif my_rank > peer_rank:
-        lower_key = str(peer_rank) + "_" + str(peer_gpu_idx)
-        higher_key = str(my_rank) + "_" + str(my_gpu_idx)
+        lower_key = str(peer_rank) + "_" + str(peer_acc_idx)
+        higher_key = str(my_rank) + "_" + str(my_acc_idx)
     else:
         raise RuntimeError(
             "Send and recv happens on the same process. ray.util.collective "
             "does not support this case as of now. Alternatively, consider "
-            "doing GPU to GPU memcpy?"
+            "doing ACC to ACC memcpy?"
         )
     comm_key = lower_key + ":" + higher_key
     return comm_key

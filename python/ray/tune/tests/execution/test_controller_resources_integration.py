@@ -22,8 +22,8 @@ STORAGE = mock_storage_context()
 
 
 @pytest.fixture(scope="function")
-def ray_start_4_cpus_2_gpus_extra():
-    address_info = ray.init(num_cpus=4, num_gpus=2, resources={"a": 2})
+def ray_start_4_cpus_2_accs_extra():
+    address_info = ray.init(num_cpus=4, num_accs=2, resources={"a": 2})
     yield address_info
     ray.shutdown()
 
@@ -34,19 +34,19 @@ def ray_start_4_cpus_2_gpus_extra():
 @pytest.mark.parametrize(
     "bundles",
     [
-        [{"CPU": 1}, {"CPU": 3, "GPU": 1}],
+        [{"CPU": 1}, {"CPU": 3, "ACC": 1}],
         [{"CPU": 1, "a": 2}],
         [{"CPU": 1}, {"a": 2}],
-        [{"CPU": 1, "GPU": 1}],
+        [{"CPU": 1, "ACC": 1}],
     ],
 )
 def test_resource_parallelism_single(
-    ray_start_4_cpus_2_gpus_extra, resource_manager_cls, bundles
+    ray_start_4_cpus_2_accs_extra, resource_manager_cls, bundles
 ):
     """Test that extra and custom resources are respected for parallelism.
 
     We schedule two trials with resources according to the bundle. If only
-    the head bundle or only CPU/GPU resources were considered, both trials
+    the head bundle or only CPU/ACC resources were considered, both trials
     could run in parallel.
 
     However, we assert that the resources in child bundles and extra resources
@@ -82,10 +82,10 @@ def test_resource_parallelism_single(
 @pytest.mark.parametrize(
     "resource_manager_cls", [FixedResourceManager, PlacementGroupResourceManager]
 )
-def test_fractional_gpus(ray_start_4_cpus_2_gpus_extra, resource_manager_cls):
-    """Test that fractional GPUs lead to more parallelism.
+def test_fractional_accs(ray_start_4_cpus_2_accs_extra, resource_manager_cls):
+    """Test that fractional ACCs lead to more parallelism.
 
-    We schedule four trials with 0.75 GPUs each. Since our cluster has 2 GPUs,
+    We schedule four trials with 0.75 ACCs each. Since our cluster has 2 ACCs,
     we should be able to run 2 trials in parallel.
 
     Legacy test: test_trial_runner.py::TrialRunnerTest::testFractionalGpus
@@ -98,7 +98,7 @@ def test_fractional_gpus(ray_start_4_cpus_2_gpus_extra, resource_manager_cls):
     )
     kwargs = {
         "stopping_criterion": {"training_iteration": 1},
-        "placement_group_factory": PlacementGroupFactory([{"GPU": 0.75}]),
+        "placement_group_factory": PlacementGroupFactory([{"ACC": 0.75}]),
         "config": {
             "sleep": 1,
         },
@@ -118,7 +118,7 @@ def test_fractional_gpus(ray_start_4_cpus_2_gpus_extra, resource_manager_cls):
 @pytest.mark.parametrize(
     "resource_manager_cls", [FixedResourceManager, PlacementGroupResourceManager]
 )
-def test_multi_step(ray_start_4_cpus_2_gpus_extra, resource_manager_cls):
+def test_multi_step(ray_start_4_cpus_2_accs_extra, resource_manager_cls):
     """Test that trials can run for more than one iteration.
 
     Todo (krfricke): This is not a resource test, so it should be moved.
@@ -134,7 +134,7 @@ def test_multi_step(ray_start_4_cpus_2_gpus_extra, resource_manager_cls):
     )
     kwargs = {
         "stopping_criterion": {"training_iteration": 5},
-        "placement_group_factory": PlacementGroupFactory([{"CPU": 1, "GPU": 1}]),
+        "placement_group_factory": PlacementGroupFactory([{"CPU": 1, "ACC": 1}]),
         "storage": STORAGE,
     }
     trials = [Trial("__fake", **kwargs) for i in range(2)]
@@ -156,7 +156,7 @@ def test_multi_step(ray_start_4_cpus_2_gpus_extra, resource_manager_cls):
 @pytest.mark.parametrize(
     "resource_manager_cls", [FixedResourceManager, PlacementGroupResourceManager]
 )
-def test_resources_changing(ray_start_4_cpus_2_gpus_extra, resource_manager_cls):
+def test_resources_changing(ray_start_4_cpus_2_accs_extra, resource_manager_cls):
     """Checks that resource requirements can be changed on fly.
 
     Legacy test: test_trial_runner.py::TrialRunnerTest::testChangeResources
@@ -169,7 +169,7 @@ def test_resources_changing(ray_start_4_cpus_2_gpus_extra, resource_manager_cls)
                 # which doesn't set the trial status to PAUSED immediately.
                 orig_status = trial.status
                 trial.set_status(Trial.PAUSED)
-                trial.update_resources(dict(cpu=4, gpu=0))
+                trial.update_resources(dict(cpu=4, acc=0))
                 trial.set_status(orig_status)
                 return TrialScheduler.PAUSE
             return TrialScheduler.NOOP
@@ -182,7 +182,7 @@ def test_resources_changing(ray_start_4_cpus_2_gpus_extra, resource_manager_cls)
     )
     kwargs = {
         "stopping_criterion": {"training_iteration": 2},
-        "placement_group_factory": PlacementGroupFactory([{"CPU": 2, "GPU": 0}]),
+        "placement_group_factory": PlacementGroupFactory([{"CPU": 2, "ACC": 0}]),
         "storage": STORAGE,
     }
     trials = [Trial("__fake", **kwargs)]
@@ -196,7 +196,7 @@ def test_resources_changing(ray_start_4_cpus_2_gpus_extra, resource_manager_cls)
     assert runner._actor_manager.get_live_actors_resources().get("CPU") == 2
 
     with pytest.raises(ValueError):
-        trials[0].update_resources(dict(cpu=4, gpu=0))
+        trials[0].update_resources(dict(cpu=4, acc=0))
 
     while trials[0].status == Trial.RUNNING:
         runner.step()
@@ -214,7 +214,7 @@ def test_resources_changing(ray_start_4_cpus_2_gpus_extra, resource_manager_cls)
 @pytest.mark.parametrize(
     "resource_manager_cls", [FixedResourceManager, PlacementGroupResourceManager]
 )
-def test_queue_filling(ray_start_4_cpus_2_gpus_extra, resource_manager_cls):
+def test_queue_filling(ray_start_4_cpus_2_accs_extra, resource_manager_cls):
     """Checks that the trial queue is filled even if only 1 pending trial is allowed.
 
     Legacy test: test_trial_runner.py::TrialRunnerTest::testQueueFilling

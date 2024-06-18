@@ -90,7 +90,7 @@ def tune_xgboost(use_cv: bool = False):
     tuner = tune.Tuner(
         tune.with_resources(
             train_breast_cancer if not use_cv else train_breast_cancer_cv,
-            # You can add "gpu": 0.1 to allocate GPUs
+            # You can add "acc": 0.1 to allocate ACCs
             resources={"cpu": 1},
         ),
         tune_config=tune.TuneConfig(

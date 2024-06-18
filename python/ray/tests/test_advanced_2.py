@@ -17,31 +17,31 @@ from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 logger = logging.getLogger(__name__)
 
 
-def test_gpu_ids(shutdown_only):
-    num_gpus = 3
-    ray.init(num_cpus=num_gpus, num_gpus=num_gpus)
+def test_acc_ids(shutdown_only):
+    num_accs = 3
+    ray.init(num_cpus=num_accs, num_accs=num_accs)
 
-    def get_gpu_ids(num_gpus_per_worker):
-        gpu_ids = ray.get_gpu_ids()
-        assert len(gpu_ids) == num_gpus_per_worker
+    def get_acc_ids(num_accs_per_worker):
+        acc_ids = ray.get_acc_ids()
+        assert len(acc_ids) == num_accs_per_worker
         neuron_core_ids = ray.get_runtime_context().get_accelerator_ids()[
             "neuron_cores"
         ]
-        gpu_ids_from_runtime_context = ray.get_runtime_context().get_accelerator_ids()[
-            "GPU"
+        acc_ids_from_runtime_context = ray.get_runtime_context().get_accelerator_ids()[
+            "ACC"
         ]
-        assert len(gpu_ids) == len(gpu_ids_from_runtime_context)
+        assert len(acc_ids) == len(acc_ids_from_runtime_context)
         assert len(neuron_core_ids) == 0
         assert os.environ["CUDA_VISIBLE_DEVICES"] == ",".join(
-            [str(i) for i in gpu_ids]  # noqa
+            [str(i) for i in acc_ids]  # noqa
         )
-        for gpu_id in gpu_ids:
-            assert gpu_id in range(num_gpus)
-        return gpu_ids
+        for acc_id in acc_ids:
+            assert acc_id in range(num_accs)
+        return acc_ids
 
-    f0 = ray.remote(num_gpus=0)(lambda: get_gpu_ids(0))
-    f1 = ray.remote(num_gpus=1)(lambda: get_gpu_ids(1))
-    f2 = ray.remote(num_gpus=2)(lambda: get_gpu_ids(2))
+    f0 = ray.remote(num_accs=0)(lambda: get_acc_ids(0))
+    f1 = ray.remote(num_accs=1)(lambda: get_acc_ids(1))
+    f2 = ray.remote(num_accs=2)(lambda: get_acc_ids(2))
 
     # Wait for all workers to start up.
     @ray.remote
@@ -51,8 +51,8 @@ def test_gpu_ids(shutdown_only):
 
     start_time = time.time()
     while True:
-        num_workers_started = len(set(ray.get([f.remote() for _ in range(num_gpus)])))
-        if num_workers_started == num_gpus:
+        num_workers_started = len(set(ray.get([f.remote() for _ in range(num_accs)])))
+        if num_workers_started == num_accs:
             break
         if time.time() > start_time + 10:
             raise RayTestTimeoutException(
@@ -69,38 +69,38 @@ def test_gpu_ids(shutdown_only):
     @ray.remote
     class Actor0:
         def __init__(self):
-            gpu_ids = ray.get_gpu_ids()
-            assert len(gpu_ids) == 0
+            acc_ids = ray.get_acc_ids()
+            assert len(acc_ids) == 0
             assert os.environ["CUDA_VISIBLE_DEVICES"] == ",".join(
-                [str(i) for i in gpu_ids]  # noqa
+                [str(i) for i in acc_ids]  # noqa
             )
             # Set self.x to make sure that we got here.
             self.x = 1
 
         def test(self):
-            gpu_ids = ray.get_gpu_ids()
-            assert len(gpu_ids) == 0
+            acc_ids = ray.get_acc_ids()
+            assert len(acc_ids) == 0
             assert os.environ["CUDA_VISIBLE_DEVICES"] == ",".join(
-                [str(i) for i in gpu_ids]
+                [str(i) for i in acc_ids]
             )
             return self.x
 
-    @ray.remote(num_gpus=1)
+    @ray.remote(num_accs=1)
     class Actor1:
         def __init__(self):
-            gpu_ids = ray.get_gpu_ids()
-            assert len(gpu_ids) == 1
+            acc_ids = ray.get_acc_ids()
+            assert len(acc_ids) == 1
             assert os.environ["CUDA_VISIBLE_DEVICES"] == ",".join(
-                [str(i) for i in gpu_ids]
+                [str(i) for i in acc_ids]
             )
             # Set self.x to make sure that we got here.
             self.x = 1
 
         def test(self):
-            gpu_ids = ray.get_gpu_ids()
-            assert len(gpu_ids) == 1
+            acc_ids = ray.get_acc_ids()
+            assert len(acc_ids) == 1
             assert os.environ["CUDA_VISIBLE_DEVICES"] == ",".join(
-                [str(i) for i in gpu_ids]
+                [str(i) for i in acc_ids]
             )
             return self.x
 
@@ -149,19 +149,19 @@ def test_zero_cpus_actor(ray_start_cluster):
 
 
 def test_fractional_resources(shutdown_only):
-    ray.init(num_cpus=6, num_gpus=3, resources={"Custom": 3, "Custom2": 3, "TPU": 3})
+    ray.init(num_cpus=6, num_accs=3, resources={"Custom": 3, "Custom2": 3, "TPU": 3})
 
-    @ray.remote(num_gpus=0.5)
+    @ray.remote(num_accs=0.5)
     class Foo1:
         def method(self):
-            gpu_ids = ray.get_gpu_ids()
-            assert len(gpu_ids) == 1
-            return gpu_ids[0]
+            acc_ids = ray.get_acc_ids()
+            assert len(acc_ids) == 1
+            return acc_ids[0]
 
     foos = [Foo1.remote() for _ in range(6)]
-    gpu_ids = ray.get([f.method.remote() for f in foos])
+    acc_ids = ray.get([f.method.remote() for f in foos])
     for i in range(3):
-        assert gpu_ids.count(i) == 2
+        assert acc_ids.count(i) == 2
     del foos
 
     @ray.remote
@@ -193,14 +193,14 @@ def test_fractional_resources(shutdown_only):
 
     assert ray.get(test_frac_cpu.remote())
 
-    # Unit instance resources (GPU, TPU, neuron_core) throw exceptions
+    # Unit instance resources (ACC, TPU, neuron_core) throw exceptions
     # for fractional number of resources greater than 1.
-    @ray.remote(num_gpus=1.5)
-    def test_frac_gpu():
+    @ray.remote(num_accs=1.5)
+    def test_frac_acc():
         pass
 
     with pytest.raises(ValueError):
-        test_frac_gpu.remote()
+        test_frac_acc.remote()
 
     with pytest.raises(ValueError):
         Foo2._remote([], {}, resources={"TPU": 2.5})
@@ -228,9 +228,9 @@ def test_multiple_raylets(ray_start_cluster):
     # specific raylets, and we will check that they are assigned
     # to the correct raylets.
     cluster = ray_start_cluster
-    cluster.add_node(num_cpus=11, num_gpus=0)
-    cluster.add_node(num_cpus=5, num_gpus=5)
-    cluster.add_node(num_cpus=10, num_gpus=1)
+    cluster.add_node(num_cpus=11, num_accs=0)
+    cluster.add_node(num_cpus=5, num_accs=5)
+    cluster.add_node(num_cpus=10, num_accs=1)
     ray.init(address=cluster.address)
     cluster.wait_for_nodes()
 
@@ -245,22 +245,22 @@ def test_multiple_raylets(ray_start_cluster):
         return ray._private.worker.global_worker.node.plasma_store_socket_name
 
     # This must be run on the first raylet.
-    @ray.remote(num_gpus=2)
+    @ray.remote(num_accs=2)
     def run_on_1():
         return ray._private.worker.global_worker.node.plasma_store_socket_name
 
     # This must be run on the second raylet.
-    @ray.remote(num_cpus=6, num_gpus=1)
+    @ray.remote(num_cpus=6, num_accs=1)
     def run_on_2():
         return ray._private.worker.global_worker.node.plasma_store_socket_name
 
     # This can be run anywhere.
-    @ray.remote(num_cpus=0, num_gpus=0)
+    @ray.remote(num_cpus=0, num_accs=0)
     def run_on_0_1_2():
         return ray._private.worker.global_worker.node.plasma_store_socket_name
 
     # This must be run on the first or second raylet.
-    @ray.remote(num_gpus=1)
+    @ray.remote(num_accs=1)
     def run_on_1_2():
         return ray._private.worker.global_worker.node.plasma_store_socket_name
 
@@ -299,17 +299,17 @@ def test_multiple_raylets(ray_start_cluster):
     store_names += [
         client["ObjectStoreSocketName"]
         for client in client_table
-        if client["Resources"].get("GPU", 0) == 0
+        if client["Resources"].get("ACC", 0) == 0
     ]
     store_names += [
         client["ObjectStoreSocketName"]
         for client in client_table
-        if client["Resources"].get("GPU", 0) == 5
+        if client["Resources"].get("ACC", 0) == 5
     ]
     store_names += [
         client["ObjectStoreSocketName"]
         for client in client_table
-        if client["Resources"].get("GPU", 0) == 1
+        if client["Resources"].get("ACC", 0) == 1
     ]
     assert len(store_names) == 3
 
@@ -504,9 +504,9 @@ def test_neuron_core_ids(shutdown_only):
         neuron_core_ids = ray.get_runtime_context().get_accelerator_ids()[
             "neuron_cores"
         ]
-        gpu_ids = ray.get_gpu_ids()
+        acc_ids = ray.get_acc_ids()
         assert len(neuron_core_ids) == neuron_cores_per_worker
-        assert len(gpu_ids) == 0
+        assert len(acc_ids) == 0
         cores = os.environ.get("NEURON_RT_VISIBLE_CORES")
         if cores is not None:
             assert cores == ",".join([str(i) for i in neuron_core_ids])  # noqa
@@ -653,25 +653,25 @@ def test_neuron_core_with_placement_group(shutdown_only):
     ray.get(actor.ready.remote(), timeout=10)
 
 
-def test_gpu_and_neuron_cores(shutdown_only):
-    num_gpus = 2
+def test_acc_and_neuron_cores(shutdown_only):
+    num_accs = 2
     num_nc = 2
-    ray.init(num_cpus=2, num_gpus=num_gpus, resources={"neuron_cores": num_nc})
+    ray.init(num_cpus=2, num_accs=num_accs, resources={"neuron_cores": num_nc})
 
-    def get_gpu_ids(num_gpus_per_worker):
-        gpu_ids = ray.get_gpu_ids()
-        assert len(gpu_ids) == num_gpus_per_worker
+    def get_acc_ids(num_accs_per_worker):
+        acc_ids = ray.get_acc_ids()
+        assert len(acc_ids) == num_accs_per_worker
         assert os.environ["CUDA_VISIBLE_DEVICES"] == ",".join(
-            [str(i) for i in gpu_ids]  # noqa
+            [str(i) for i in acc_ids]  # noqa
         )
-        for gpu_id in gpu_ids:
-            assert gpu_id in range(num_gpus)
-        gpu_ids_from_runtime_context = ray.get_runtime_context().get_accelerator_ids()[
-            "GPU"
+        for acc_id in acc_ids:
+            assert acc_id in range(num_accs)
+        acc_ids_from_runtime_context = ray.get_runtime_context().get_accelerator_ids()[
+            "ACC"
         ]
-        for gpu_id in gpu_ids_from_runtime_context:
-            assert gpu_id in [str(i) for i in range(num_gpus)]
-        return len(gpu_ids)
+        for acc_id in acc_ids_from_runtime_context:
+            assert acc_id in [str(i) for i in range(num_accs)]
+        return len(acc_ids)
 
     def get_neuron_core_ids(neuron_cores_per_worker):
         neuron_core_ids = ray.get_runtime_context().get_accelerator_ids()[
@@ -685,8 +685,8 @@ def test_gpu_and_neuron_cores(shutdown_only):
             assert neuron_core_id in [str(i) for i in range(num_nc)]
         return len(neuron_core_ids)
 
-    gpu_f = ray.remote(num_gpus=2)(lambda: get_gpu_ids(2))
-    assert ray.get(gpu_f.remote()) == 2
+    acc_f = ray.remote(num_accs=2)(lambda: get_acc_ids(2))
+    assert ray.get(acc_f.remote()) == 2
     nc_f = ray.remote(resources={"neuron_cores": 2})(lambda: get_neuron_core_ids(2))
     assert ray.get(nc_f.remote()) == 2
 
@@ -694,7 +694,7 @@ def test_gpu_and_neuron_cores(shutdown_only):
 # TODO: 5 retry attempts may be too little for Travis and we may need to
 # increase it if this test begins to be flaky on Travis.
 def test_zero_capacity_deletion_semantics(shutdown_only):
-    ray.init(num_cpus=2, num_gpus=1, resources={"test_resource": 1})
+    ray.init(num_cpus=2, num_accs=1, resources={"test_resource": 1})
 
     def delete_miscellaneous_item(resources):
         del resources["memory"]
@@ -726,7 +726,7 @@ def test_zero_capacity_deletion_semantics(shutdown_only):
 
         return resources
 
-    function = ray.remote(num_cpus=2, num_gpus=1, resources={"test_resource": 1})(test)
+    function = ray.remote(num_cpus=2, num_accs=1, resources={"test_resource": 1})(test)
     cluster_resources = ray.get(function.remote())
 
     # All cluster resources should be utilized and

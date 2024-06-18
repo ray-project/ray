@@ -257,12 +257,12 @@ def test_request_cluster_resources_basic(shutdown_only):
     wait_for_condition(verify)
 
     # Request another overrides the previous request
-    request_cluster_resources(gcs_address, [{"CPU": 2, "GPU": 1}, {"CPU": 1}])
+    request_cluster_resources(gcs_address, [{"CPU": 2, "ACC": 1}, {"CPU": 1}])
 
     def verify():
         state = get_cluster_resource_state(stub)
         assert_cluster_resource_constraints(
-            state, [{"CPU": 2, "GPU": 1}, {"CPU": 1}], [1, 1]
+            state, [{"CPU": 2, "ACC": 1}, {"CPU": 1}], [1, 1]
         )
         return True
 
@@ -644,7 +644,7 @@ def test_get_cluster_status_resources(ray_start_cluster):
 
     # Request resources through SDK
     request_cluster_resources(
-        gcs_address=cluster.address, to_request=[{"GPU": 1, "CPU": 2}]
+        gcs_address=cluster.address, to_request=[{"ACC": 1, "CPU": 2}]
     )
 
     def verify_cluster_constraint_demand():
@@ -652,7 +652,7 @@ def test_get_cluster_status_resources(ray_start_cluster):
         assert len(resource_demands.cluster_constraint_demand) == 1
         assert resource_demands.cluster_constraint_demand[0].bundles_by_count == [
             ResourceRequestByCount(
-                bundle={"GPU": 1.0, "CPU": 2.0},
+                bundle={"ACC": 1.0, "CPU": 2.0},
                 count=1,
             )
         ]

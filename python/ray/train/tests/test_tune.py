@@ -52,10 +52,10 @@ class TestBackend(Backend):
         pass
 
 
-def torch_fashion_mnist(num_workers, use_gpu, num_samples):
+def torch_fashion_mnist(num_workers, use_acc, num_samples):
     trainer = TorchTrainer(
         fashion_mnist_train_func,
-        scaling_config=ScalingConfig(num_workers=num_workers, use_gpu=use_gpu),
+        scaling_config=ScalingConfig(num_workers=num_workers, use_acc=use_acc),
     )
     tuner = Tuner(
         trainer,
@@ -78,13 +78,13 @@ def torch_fashion_mnist(num_workers, use_gpu, num_samples):
 
 
 def test_tune_torch_fashion_mnist(ray_start_8_cpus):
-    torch_fashion_mnist(num_workers=2, use_gpu=False, num_samples=2)
+    torch_fashion_mnist(num_workers=2, use_acc=False, num_samples=2)
 
 
-def tune_tensorflow_mnist(num_workers, use_gpu, num_samples):
+def tune_tensorflow_mnist(num_workers, use_acc, num_samples):
     trainer = TensorflowTrainer(
         tensorflow_mnist_train_func,
-        scaling_config=ScalingConfig(num_workers=num_workers, use_gpu=use_gpu),
+        scaling_config=ScalingConfig(num_workers=num_workers, use_acc=use_acc),
     )
     tuner = Tuner(
         trainer,
@@ -107,7 +107,7 @@ def tune_tensorflow_mnist(num_workers, use_gpu, num_samples):
 
 
 def test_tune_tensorflow_mnist(ray_start_8_cpus):
-    tune_tensorflow_mnist(num_workers=2, use_gpu=False, num_samples=2)
+    tune_tensorflow_mnist(num_workers=2, use_acc=False, num_samples=2)
 
 
 def test_tune_error(ray_start_4_cpus):

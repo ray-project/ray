@@ -43,16 +43,16 @@ class LearnerGroupConfig:
         self.learner_hyperparameters = LearnerHyperparameters()
 
         # `self.resources()`
-        self.num_gpus_per_learner_worker = 0
+        self.num_accs_per_learner_worker = 0
         self.num_cpus_per_learner_worker = 1
         self.num_learner_workers = 1
 
         # TODO (Avnishn): We should come back and revise how to specify algorithm
         # resources this is a stop gap solution for now so that users can specify the
-        # local gpu id to use when training with gpu and local mode. I doubt this will
-        # be used much since users who have multiple gpus will probably be fine with
-        # using the 0th gpu or will use multi gpu training.
-        self.local_gpu_idx = 0
+        # local acc id to use when training with acc and local mode. I doubt this will
+        # be used much since users who have multiple accs will probably be fine with
+        # using the 0th acc or will use multi acc training.
+        self.local_acc_idx = 0
 
         # `self.framework()`
         self.eager_tracing = True
@@ -79,9 +79,9 @@ class LearnerGroupConfig:
 
         scaling_config = LearnerGroupScalingConfig(
             num_workers=self.num_learner_workers,
-            num_gpus_per_worker=self.num_gpus_per_learner_worker,
+            num_accs_per_worker=self.num_accs_per_learner_worker,
             num_cpus_per_worker=self.num_cpus_per_learner_worker,
-            local_gpu_idx=self.local_gpu_idx,
+            local_acc_idx=self.local_acc_idx,
         )
 
         framework_hps = FrameworkHyperparameters(
@@ -137,19 +137,19 @@ class LearnerGroupConfig:
         self,
         *,
         num_learner_workers: Optional[int] = NotProvided,
-        num_gpus_per_learner_worker: Optional[int] = NotProvided,
+        num_accs_per_learner_worker: Optional[int] = NotProvided,
         num_cpus_per_learner_worker: Optional[Union[float, int]] = NotProvided,
-        local_gpu_idx: Optional[int] = NotProvided,
+        local_acc_idx: Optional[int] = NotProvided,
     ) -> "LearnerGroupConfig":
 
         if num_learner_workers is not NotProvided:
             self.num_learner_workers = num_learner_workers
-        if num_gpus_per_learner_worker is not NotProvided:
-            self.num_gpus_per_learner_worker = num_gpus_per_learner_worker
+        if num_accs_per_learner_worker is not NotProvided:
+            self.num_accs_per_learner_worker = num_accs_per_learner_worker
         if num_cpus_per_learner_worker is not NotProvided:
             self.num_cpus_per_learner_worker = num_cpus_per_learner_worker
-        if local_gpu_idx is not NotProvided:
-            self.local_gpu_idx = local_gpu_idx
+        if local_acc_idx is not NotProvided:
+            self.local_acc_idx = local_acc_idx
 
         return self
 

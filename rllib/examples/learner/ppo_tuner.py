@@ -6,13 +6,13 @@ from ray.rllib.algorithms.ppo import PPOConfig
 
 RESOURCE_CONFIG = {
     "remote-cpu": {"num_learner_workers": 1},
-    "remote-gpu": {"num_learner_workers": 1, "num_gpus_per_learner_worker": 1},
-    "multi-gpu-ddp": {
+    "remote-acc": {"num_learner_workers": 1, "num_accs_per_learner_worker": 1},
+    "multi-acc-ddp": {
         "num_learner_workers": 2,
-        "num_gpus_per_learner_worker": 1,
+        "num_accs_per_learner_worker": 1,
     },
     "local-cpu": {},
-    "local-gpu": {"num_gpus_per_learner_worker": 1},
+    "local-acc": {"num_accs_per_learner_worker": 1},
 }
 
 

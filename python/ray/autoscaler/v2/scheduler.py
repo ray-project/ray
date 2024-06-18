@@ -205,12 +205,12 @@ class SchedulingNode:
         current scheduled resource requests.
 
         The score is a tuple of 4 values:
-            1. Whether this node is a GPU node and the current resource request has
-                GPU requirements:
-                    0: if this node is a GPU node and the current resource request
-                    placed onto the node has no GPU requirements.
-                    1: if this node is not a GPU node or the current resource request
-                    placed onto the node has GPU requirements.
+            1. Whether this node is a ACC node and the current resource request has
+                ACC requirements:
+                    0: if this node is a ACC node and the current resource request
+                    placed onto the node has no ACC requirements.
+                    1: if this node is not a ACC node or the current resource request
+                    placed onto the node has ACC requirements.
             2. The number of resource types being scheduled.
             3. The minimum utilization rate across all resource types.
             4. The average utilization rate across all resource types.

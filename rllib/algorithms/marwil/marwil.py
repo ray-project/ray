@@ -6,7 +6,7 @@ from ray.rllib.execution.rollout_ops import (
     synchronous_parallel_sample,
 )
 from ray.rllib.execution.train_ops import (
-    multi_gpu_train_one_step,
+    multi_acc_train_one_step,
     train_one_step,
 )
 from ray.rllib.policy.policy import Policy
@@ -248,7 +248,7 @@ class MARWIL(Algorithm):
         if self.config.simple_optimizer:
             train_results = train_one_step(self, train_batch)
         else:
-            train_results = multi_gpu_train_one_step(self, train_batch)
+            train_results = multi_acc_train_one_step(self, train_batch)
 
         # TODO: Move training steps counter update outside of `train_one_step()` method.
         # # Update train step counters.

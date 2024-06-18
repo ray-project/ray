@@ -13,8 +13,8 @@ from ray.train.tests.util import mock_storage_context
 
 
 @pytest.fixture(scope="function")
-def ray_start_4_cpus_2_gpus_extra():
-    address_info = ray.init(num_cpus=4, num_gpus=2, resources={"a": 2})
+def ray_start_4_cpus_2_accs_extra():
+    address_info = ray.init(num_cpus=4, num_accs=2, resources={"a": 2})
     yield address_info
     ray.shutdown()
 
@@ -39,7 +39,7 @@ class StatefulCallback(Callback):
     "resource_manager_cls", [FixedResourceManager, PlacementGroupResourceManager]
 )
 def test_callback_save_restore(
-    ray_start_4_cpus_2_gpus_extra, resource_manager_cls, tmpdir
+    ray_start_4_cpus_2_accs_extra, resource_manager_cls, tmpdir
 ):
     """Check that callback state is restored correctly.
 

@@ -21,7 +21,7 @@ class DeviceHandleMock(dict):
         self.update(kwargs)
 
 
-# pnvml mock for gpu resources
+# pnvml mock for acc resources
 class PyNVMLMock:
     def __init__(self, mock_data, driver_version="535.104.12"):
         self._mock_data = mock_data

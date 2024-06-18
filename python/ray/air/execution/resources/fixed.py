@@ -28,12 +28,12 @@ class FixedAcquiredResources(AcquiredResources):
     ) -> RemoteRayEntity:
         bundle = bundle.copy()
         num_cpus = bundle.pop("CPU", 0)
-        num_gpus = bundle.pop("GPU", 0)
+        num_accs = bundle.pop("ACC", 0)
         memory = bundle.pop("memory", 0.0)
 
         return entity.options(
             num_cpus=num_cpus,
-            num_gpus=num_gpus,
+            num_accs=num_accs,
             memory=memory,
             resources=bundle,
         )

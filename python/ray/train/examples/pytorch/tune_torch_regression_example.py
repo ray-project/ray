@@ -10,7 +10,7 @@ from ray.tune.tune_config import TuneConfig
 from ray.tune.tuner import Tuner
 
 
-def tune_linear(num_workers, num_samples, use_gpu):
+def tune_linear(num_workers, num_samples, use_acc):
     train_dataset, val_dataset = get_datasets()
 
     config = {"lr": 1e-2, "hidden_size": 1, "batch_size": 4, "epochs": 3}
@@ -18,7 +18,7 @@ def tune_linear(num_workers, num_samples, use_gpu):
     trainer = TorchTrainer(
         train_loop_per_worker=train_func,
         train_loop_config=config,
-        scaling_config=ScalingConfig(num_workers=num_workers, use_gpu=use_gpu),
+        scaling_config=ScalingConfig(num_workers=num_workers, use_acc=use_acc),
         datasets={"train": train_dataset, "validation": val_dataset},
         dataset_config=DataConfig(datasets_to_split=["train"]),
     )
@@ -65,7 +65,7 @@ if __name__ == "__main__":
         help="Sets number of samples for training.",
     )
     parser.add_argument(
-        "--use-gpu", action="store_true", default=False, help="Use GPU for training."
+        "--use-acc", action="store_true", default=False, help="Use ACC for training."
     )
 
     args = parser.parse_args()
@@ -73,11 +73,11 @@ if __name__ == "__main__":
     if args.smoke_test:
         # 2 workers, 1 for trainer, 1 for datasets
         ray.init(num_cpus=4)
-        tune_linear(num_workers=2, num_samples=1, use_gpu=False)
+        tune_linear(num_workers=2, num_samples=1, use_acc=False)
     else:
         ray.init(address=args.address)
         tune_linear(
             num_workers=args.num_workers,
-            use_gpu=args.use_gpu,
+            use_acc=args.use_acc,
             num_samples=args.num_samples,
         )

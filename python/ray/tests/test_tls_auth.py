@@ -89,7 +89,7 @@ def test_submit_with_tls(use_tls):
     run_string_as_driver(
         """
 import ray
-ray.init(num_cpus=2, num_gpus=1, resources={"Custom": 1})
+ray.init(num_cpus=2, num_accs=1, resources={"Custom": 1})
 
 @ray.remote
 def f(n):
@@ -108,7 +108,7 @@ class Actor:
         return self.x, self.y, a, b
 
 a = Actor._remote(
-    args=[0], kwargs={"y": 1}, num_gpus=1, resources={"Custom": 1})
+    args=[0], kwargs={"y": 1}, num_accs=1, resources={"Custom": 1})
 
 id1, id2, id3, id4 = a.method._remote(
     args=["test"], kwargs={"b": 2}, num_returns=4)

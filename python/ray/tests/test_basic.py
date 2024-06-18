@@ -71,10 +71,10 @@ def test_release_resources_race(shutdown_only):
 
 # https://github.com/ray-project/ray/issues/22504
 def test_worker_isolation_by_resources(shutdown_only):
-    ray.init(num_cpus=1, num_gpus=1)
+    ray.init(num_cpus=1, num_accs=1)
 
-    @ray.remote(num_gpus=1)
-    def gpu():
+    @ray.remote(num_accs=1)
+    def acc():
         return os.getpid()
 
     @ray.remote
@@ -82,25 +82,25 @@ def test_worker_isolation_by_resources(shutdown_only):
         return os.getpid()
 
     pid1 = ray.get(cpu.remote())
-    pid2 = ray.get(gpu.remote())
+    pid2 = ray.get(acc.remote())
     assert pid1 != pid2, (pid1, pid2)
 
 
 # https://github.com/ray-project/ray/issues/10960
 def test_max_calls_releases_resources(shutdown_only):
-    ray.init(num_cpus=2, num_gpus=1)
+    ray.init(num_cpus=2, num_accs=1)
 
     @ray.remote(num_cpus=0)
     def g():
         return 0
 
-    @ray.remote(num_cpus=1, num_gpus=1, max_calls=1, max_retries=0)
+    @ray.remote(num_cpus=1, num_accs=1, max_calls=1, max_retries=0)
     def f():
         return [g.remote()]
 
     for i in range(10):
         print(i)
-        ray.get(f.remote())  # This will hang if GPU resources aren't released.
+        ray.get(f.remote())  # This will hang if ACC resources aren't released.
 
 
 # https://github.com/ray-project/ray/issues/7263
@@ -249,7 +249,7 @@ def test_omp_threads_set(ray_start_cluster, monkeypatch):
 
 
 def test_submit_api(shutdown_only):
-    ray.init(num_cpus=2, num_gpus=1, resources={"Custom": 1})
+    ray.init(num_cpus=2, num_accs=1, resources={"Custom": 1})
 
     @ray.remote
     def f(n):
@@ -257,7 +257,7 @@ def test_submit_api(shutdown_only):
 
     @ray.remote
     def g():
-        return ray.get_gpu_ids()
+        return ray.get_acc_ids()
 
     assert f._remote([0], num_returns=0) is None
     id1 = f._remote(args=[1], num_returns=1)
@@ -267,7 +267,7 @@ def test_submit_api(shutdown_only):
     id1, id2, id3 = f._remote(args=[3], num_returns=3)
     assert ray.get([id1, id2, id3]) == [0, 1, 2]
     assert ray.get(
-        g._remote(args=[], num_cpus=1, num_gpus=1, resources={"Custom": 1})
+        g._remote(args=[], num_cpus=1, num_accs=1, resources={"Custom": 1})
     ) == [0]
     infeasible_id = g._remote(args=[], resources={"NonexistentCustom": 1})
     assert ray.get(g._remote()) == []
@@ -290,8 +290,8 @@ def test_submit_api(shutdown_only):
         def method(self, a, b=0):
             return self.x, self.y, a, b
 
-        def gpu_ids(self):
-            return ray.get_gpu_ids()
+        def acc_ids(self):
+            return ray.get_acc_ids()
 
     @ray.remote
     class Actor2:
@@ -301,7 +301,7 @@ def test_submit_api(shutdown_only):
         def method(self):
             pass
 
-    a = Actor._remote(args=[0], kwargs={"y": 1}, num_gpus=1, resources={"Custom": 1})
+    a = Actor._remote(args=[0], kwargs={"y": 1}, num_accs=1, resources={"Custom": 1})
 
     a2 = Actor2._remote()
     ray.get(a2.method._remote())
@@ -385,11 +385,11 @@ def test_invalid_arguments():
     with pytest.raises(
         ValueError,
         match=(
-            "The precision of the fractional quantity of resource num_gpus"
+            "The precision of the fractional quantity of resource num_accs"
             " cannot go beyond 0.0001"
         ),
     ):
-        ray.remote(num_gpus=0.0000001)(f)
+        ray.remote(num_accs=0.0000001)(f)
 
     with pytest.raises(
         ValueError,
@@ -496,17 +496,17 @@ def test_options():
             return f
 
     @mock_options(a=1, b=2)
-    @ray.remote(num_gpus=2)
+    @ray.remote(num_accs=2)
     def foo():
         pass
 
     assert foo._default_options == {
         "_metadata": {"namespace": {"a": 1, "b": 2}},
         "max_calls": 1,
-        "num_gpus": 2,
+        "num_accs": 2,
     }
 
-    f2 = foo.options(num_cpus=1, num_gpus=1, **mock_options(a=11, c=3))
+    f2 = foo.options(num_cpus=1, num_accs=1, **mock_options(a=11, c=3))
 
     # TODO(suquark): The current implementation of `.options()` is so bad that we
     # cannot even access its options from outside. Here we hack the closures to
@@ -514,19 +514,19 @@ def test_options():
     assert f2.remote.__closure__[1].cell_contents == {
         "_metadata": {"namespace": {"a": 11, "b": 2, "c": 3}},
         "num_cpus": 1,
-        "num_gpus": 1,
+        "num_accs": 1,
     }
 
     class mock_options2(mock_options):
         def __init__(self, **options):
             self.options = {"_metadata": {namespace + "2": options}}
 
-    f3 = foo.options(num_cpus=1, num_gpus=1, **mock_options2(a=11, c=3))
+    f3 = foo.options(num_cpus=1, num_accs=1, **mock_options2(a=11, c=3))
 
     assert f3.remote.__closure__[1].cell_contents == {
         "_metadata": {"namespace": {"a": 1, "b": 2}, "namespace2": {"a": 11, "c": 3}},
         "num_cpus": 1,
-        "num_gpus": 1,
+        "num_accs": 1,
     }
 
     with pytest.raises(TypeError):
@@ -534,7 +534,7 @@ def test_options():
         # Otherwise it would be confusing.
         foo.options(
             num_cpus=1,
-            num_gpus=1,
+            num_accs=1,
             **mock_options(a=11, c=3),
             **mock_options2(a=11, c=3),
         )
@@ -624,14 +624,14 @@ def test_function_descriptor():
 
 
 def test_ray_options(shutdown_only):
-    ray.init(num_cpus=10, num_gpus=10, resources={"custom1": 2})
+    ray.init(num_cpus=10, num_accs=10, resources={"custom1": 2})
 
-    @ray.remote(num_cpus=2, num_gpus=3, memory=150 * 2**20, resources={"custom1": 1})
+    @ray.remote(num_cpus=2, num_accs=3, memory=150 * 2**20, resources={"custom1": 1})
     def foo(expected_resources):
         # Possibly wait until the available resources have been updated
         # (there might be a delay due to heartbeats)
         retries = 10
-        keys = ["CPU", "GPU", "custom1"]
+        keys = ["CPU", "ACC", "custom1"]
         while retries >= 0:
             resources = ray.available_resources()
             do_return = True
@@ -646,15 +646,15 @@ def test_ray_options(shutdown_only):
             retries -= 1
         raise RuntimeError("Number of retries exceeded")
 
-    expected_resources_without_options = {"CPU": 8.0, "GPU": 7.0, "custom1": 1.0}
+    expected_resources_without_options = {"CPU": 8.0, "ACC": 7.0, "custom1": 1.0}
     memory_available_without_options = ray.get(
         foo.remote(expected_resources_without_options)
     )
 
-    expected_resources_with_options = {"CPU": 7.0, "GPU": 6.0, "custom1": 1.5}
+    expected_resources_with_options = {"CPU": 7.0, "ACC": 6.0, "custom1": 1.5}
     memory_available_with_options = ray.get(
         foo.options(
-            num_cpus=3, num_gpus=4, memory=50 * 2**20, resources={"custom1": 0.5}
+            num_cpus=3, num_accs=4, memory=50 * 2**20, resources={"custom1": 0.5}
         ).remote(expected_resources_with_options)
     )
 

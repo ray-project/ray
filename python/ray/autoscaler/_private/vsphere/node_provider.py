@@ -23,12 +23,12 @@ from ray.autoscaler._private.vsphere.config import (
     bootstrap_vsphere,
     is_dynamic_passthrough,
 )
-from ray.autoscaler._private.vsphere.gpu_utils import (
-    add_gpus_to_vm,
-    get_gpu_cards_from_vm,
-    get_vm_2_gpu_cards_map,
-    set_gpu_placeholder,
-    split_vm_2_gpu_cards_map,
+from ray.autoscaler._private.vsphere.acc_utils import (
+    add_accs_to_vm,
+    get_acc_cards_from_vm,
+    get_vm_2_acc_cards_map,
+    set_acc_placeholder,
+    split_vm_2_acc_cards_map,
 )
 from ray.autoscaler._private.vsphere.pyvmomi_sdk_provider import PyvmomiSdkProvider
 from ray.autoscaler._private.vsphere.scheduler import SchedulerFactory
@@ -212,7 +212,7 @@ class VsphereNodeProvider(NodeProvider):
             )
             if matched_tags:
                 # If the node is not powered on but has the creating tag, then it could
-                # be under reconfiguration, such as plugging the GPU. In this case we
+                # be under reconfiguration, such as plugging the ACC. In this case we
                 # should consider the node is not terminated, it will be turned on later
                 return False
         return True
@@ -356,7 +356,7 @@ class VsphereNodeProvider(NodeProvider):
         vm_name_target,
         node_config,
         tags,
-        gpu_cards_map,
+        acc_cards_map,
     ):
         # If resource pool is not provided in the config yaml, then the resource pool
         # of the frozen VM will also be the resource pool of the new VM.
@@ -385,26 +385,26 @@ class VsphereNodeProvider(NodeProvider):
             name=vm_name_target, location=vm_relocate_spec
         )
 
-        to_be_plugged_gpu = []
+        to_be_plugged_acc = []
         parent_vm = None
 
-        requested_gpu_num = resources.get("GPU", 0)
-        if requested_gpu_num > 0:
-            # If the Ray node requires GPU, we will select the frozen VM to do instant
-            # clone based on GPU availability
-            if not gpu_cards_map:
+        requested_acc_num = resources.get("ACC", 0)
+        if requested_acc_num > 0:
+            # If the Ray node requires ACC, we will select the frozen VM to do instant
+            # clone based on ACC availability
+            if not acc_cards_map:
                 raise ValueError(
-                    f"No available GPU card to assigned to node {vm_name_target}"
+                    f"No available ACC card to assigned to node {vm_name_target}"
                 )
 
-            for vm_name in gpu_cards_map:
-                # the gpu_cards_map has helped you to stored which GPUs should bind and
+            for vm_name in acc_cards_map:
+                # the acc_cards_map has helped you to stored which ACCs should bind and
                 # which frozen VM should be cloned. There is only one k,v pair in this
                 # map
                 parent_vm = self.get_pyvmomi_sdk_provider().get_pyvmomi_obj(
                     [vim.VirtualMachine], vm_name
                 )
-                to_be_plugged_gpu = gpu_cards_map[vm_name]
+                to_be_plugged_acc = acc_cards_map[vm_name]
                 break
         else:
             parent_vm = source_vm
@@ -440,12 +440,12 @@ class VsphereNodeProvider(NodeProvider):
                 vm.vm, update_spec
             )
 
-        if to_be_plugged_gpu:
+        if to_be_plugged_acc:
             is_dynamic = is_dynamic_passthrough(node_config)
-            add_gpus_to_vm(
+            add_accs_to_vm(
                 self.get_pyvmomi_sdk_provider(),
                 cloned_vm.name,
-                to_be_plugged_gpu,
+                to_be_plugged_acc,
                 is_dynamic,
             )
 
@@ -703,53 +703,53 @@ class VsphereNodeProvider(NodeProvider):
             for _ in range(count)
         ]
 
-        requested_gpu_num = 0
+        requested_acc_num = 0
         if "resources" in node_config:
             resources = node_config["resources"]
-            requested_gpu_num = resources.get("GPU", 0)
-        vm_2_gpu_cards_map = {}
-        gpu_cards_map_array = []
+            requested_acc_num = resources.get("ACC", 0)
+        vm_2_acc_cards_map = {}
+        acc_cards_map_array = []
 
         is_dynamic = is_dynamic_passthrough(node_config)
 
-        if requested_gpu_num > 0:
-            # Fetch all available frozen-vm + gpu-cards info into
-            # `get_vm_2_gpu_cards_map`
+        if requested_acc_num > 0:
+            # Fetch all available frozen-vm + acc-cards info into
+            # `get_vm_2_acc_cards_map`
             if "resource_pool" in node_config["frozen_vm"]:
                 # This means that we have multiple frozen_vms, and we need to gather
-                # the information of the GPUs of each frozen VM's ESXi host.
-                vm_2_gpu_cards_map = get_vm_2_gpu_cards_map(
+                # the information of the ACCs of each frozen VM's ESXi host.
+                vm_2_acc_cards_map = get_vm_2_acc_cards_map(
                     self.get_pyvmomi_sdk_provider(),
                     node_config["frozen_vm"]["resource_pool"],
-                    requested_gpu_num,
+                    requested_acc_num,
                     is_dynamic,
                 )
             else:
                 # This means that we have only one frozen VM, we just need to put the
-                # information of the only ESXi host's GPU info into the map
-                gpu_cards = get_gpu_cards_from_vm(
-                    frozen_vm_obj, requested_gpu_num, is_dynamic
+                # information of the only ESXi host's ACC info into the map
+                acc_cards = get_acc_cards_from_vm(
+                    frozen_vm_obj, requested_acc_num, is_dynamic
                 )
-                vm_2_gpu_cards_map[frozen_vm_obj.name] = gpu_cards
+                vm_2_acc_cards_map[frozen_vm_obj.name] = acc_cards
 
-            # Split `vm_2_gpu_ids_map` for nodes, check the comments inside function
-            # split_vm_2_gpu_ids_map to get to know why we need do this.
-            gpu_cards_map_array = split_vm_2_gpu_cards_map(
-                vm_2_gpu_cards_map, requested_gpu_num
+            # Split `vm_2_acc_ids_map` for nodes, check the comments inside function
+            # split_vm_2_acc_ids_map to get to know why we need do this.
+            acc_cards_map_array = split_vm_2_acc_cards_map(
+                vm_2_acc_cards_map, requested_acc_num
             )
-            if len(gpu_cards_map_array) < count:
+            if len(acc_cards_map_array) < count:
                 logger.warning(
-                    f"The GPU card number cannot fulfill {count} Ray nodes, "
-                    f"but can fulfill {len(gpu_cards_map_array)} Ray nodes. "
-                    f"gpu_cards_map_array: {gpu_cards_map_array}"
+                    f"The ACC card number cannot fulfill {count} Ray nodes, "
+                    f"but can fulfill {len(acc_cards_map_array)} Ray nodes. "
+                    f"acc_cards_map_array: {acc_cards_map_array}"
                 )
-                # Avoid invalid index when accessing gpu_cards_map_array[i]
-                set_gpu_placeholder(
-                    gpu_cards_map_array, count - len(gpu_cards_map_array)
+                # Avoid invalid index when accessing acc_cards_map_array[i]
+                set_acc_placeholder(
+                    acc_cards_map_array, count - len(acc_cards_map_array)
                 )
         else:
-            # CPU node: Avoid invalid index when accessing gpu_cards_map_array[i]
-            set_gpu_placeholder(gpu_cards_map_array, count)
+            # CPU node: Avoid invalid index when accessing acc_cards_map_array[i]
+            set_acc_placeholder(acc_cards_map_array, count)
 
         def get_frozen_vm_obj():
             if self.frozen_vm_scheduler:
@@ -765,7 +765,7 @@ class VsphereNodeProvider(NodeProvider):
                     vm_names[i],
                     node_config,
                     tags,
-                    gpu_cards_map_array[i],
+                    acc_cards_map_array[i],
                 )
                 for i in range(count)
             ]

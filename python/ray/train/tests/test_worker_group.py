@@ -17,8 +17,8 @@ def ray_start_2_cpus():
 
 
 @pytest.fixture
-def ray_start_2_cpus_and_gpus():
-    address_info = ray.init(num_cpus=2, num_gpus=2)
+def ray_start_2_cpus_and_accs():
+    address_info = ray.init(num_cpus=2, num_accs=2)
     yield address_info
     # The code after the yield will run as teardown code.
     ray.shutdown()
@@ -77,19 +77,19 @@ def test_worker_restart(ray_start_2_cpus):
     wg.execute(lambda: 1)
 
 
-def test_worker_with_gpu_ids(ray_start_2_cpus_and_gpus):
-    num_gpus = 2
-    wg = WorkerGroup(num_workers=2, num_gpus_per_worker=1)
+def test_worker_with_acc_ids(ray_start_2_cpus_and_accs):
+    num_accs = 2
+    wg = WorkerGroup(num_workers=2, num_accs_per_worker=1)
     assert len(wg.workers) == 2
     time.sleep(1)
-    assert ray_constants.GPU not in ray.available_resources()
+    assert ray_constants.ACC not in ray.available_resources()
     wg.execute(lambda: 1)
     assert len(wg.workers) == 2
     for w in wg.workers:
         resource_ids = w.metadata.resource_ids
-        gpu_ids = resource_ids[ray_constants.GPU]
-        for gpu_id in gpu_ids:
-            assert gpu_id in [str(i) for i in range(num_gpus)]
+        acc_ids = resource_ids[ray_constants.ACC]
+        for acc_id in acc_ids:
+            assert acc_id in [str(i) for i in range(num_accs)]
         assert len(resource_ids[ray_constants.NEURON_CORES]) == 0
 
 
@@ -107,7 +107,7 @@ def test_worker_with_neuron_core_accelerator_ids(
     assert len(wg.workers) == 2
     for w in wg.workers:
         resource_ids = w.metadata.resource_ids
-        assert len(resource_ids[ray_constants.GPU]) == 0
+        assert len(resource_ids[ray_constants.ACC]) == 0
         neuron_core_ids = resource_ids[ray_constants.NEURON_CORES]
         for neuron_core_id in neuron_core_ids:
             assert neuron_core_id in [str(i) for i in range(num_nc)]
@@ -154,7 +154,7 @@ def test_group_workers_by_ip(ray_start_2_cpus):
         return wg
 
     wg = create_worker_group(["2", "3", "1", "4", "2", "1", "3", "3", "4", "2"])
-    wg.sort_workers_by_ip_and_gpu_id()
+    wg.sort_workers_by_ip_and_acc_id()
     expected = ["2", "2", "2", "3", "3", "3", "1", "1", "4", "4"]
     ips = [w.metadata.node_ip for w in wg.workers]
     assert ips == expected, (
@@ -163,7 +163,7 @@ def test_group_workers_by_ip(ray_start_2_cpus):
     )
 
     wg = create_worker_group(["2", "3", "1", "4", "2", "1", "3", "3", "4", "2"])
-    wg.sort_workers_by_ip_and_gpu_id(_first_ip="1")
+    wg.sort_workers_by_ip_and_acc_id(_first_ip="1")
     expected = ["1", "1", "2", "2", "2", "3", "3", "3", "4", "4"]
     ips = [w.metadata.node_ip for w in wg.workers]
     assert (
@@ -171,8 +171,8 @@ def test_group_workers_by_ip(ray_start_2_cpus):
     ), "Workers should be grouped by IP, with the first IP being 1."
 
 
-def test_sort_local_workers_by_gpu_id(ray_start_2_cpus):
-    def create_worker_group(pids, ips, gpu_ids):
+def test_sort_local_workers_by_acc_id(ray_start_2_cpus):
+    def create_worker_group(pids, ips, acc_ids):
         wg = WorkerGroup(num_workers=2)
         wg.workers = [
             Worker(
@@ -181,27 +181,27 @@ def test_sort_local_workers_by_gpu_id(ray_start_2_cpus):
                     node_id="dummy",
                     node_ip=ip,
                     hostname="dummy",
-                    resource_ids={"GPU": gpu_id.split() if gpu_id else []},
+                    resource_ids={"ACC": acc_id.split() if acc_id else []},
                     pid=pid,
                 ),
             )
-            for pid, ip, gpu_id in zip(pids, ips, gpu_ids)
+            for pid, ip, acc_id in zip(pids, ips, acc_ids)
         ]
         return wg
 
-    def setup_and_check_worker_group(pids, ips, gpu_ids, expected_local_ranks):
+    def setup_and_check_worker_group(pids, ips, acc_ids, expected_local_ranks):
         """
         Create a worker group, group workers by IP, and check local ranks assignment.
 
         Args:
             pids: List of unique process IDs.
             ips: List of IP addresses corresponding to each PID.
-            gpu_ids: List of GPU IDs or None for each PID.
+            acc_ids: List of ACC IDs or None for each PID.
             expected_local_ranks: Dictionary mapping PID to the
                 expected local rank.
         """
-        wg = create_worker_group(pids=pids, ips=ips, gpu_ids=gpu_ids)
-        wg.sort_workers_by_ip_and_gpu_id()
+        wg = create_worker_group(pids=pids, ips=ips, acc_ids=acc_ids)
+        wg.sort_workers_by_ip_and_acc_id()
 
         # Build local ranks according to the logics in
         # `BackendExecutor._create_rank_world_size_mappings()`
@@ -219,33 +219,33 @@ def test_sort_local_workers_by_gpu_id(ray_start_2_cpus):
         f"Expect: {expected_local_ranks}\nGot: {local_ranks}"
 
     # Define the worker configurations for different scenarios
-    # For workers without GPU resources, their original order will be preserved
+    # For workers without ACC resources, their original order will be preserved
     cpu_workers_config = {
         "pids": [0, 1, 2, 3, 4, 5, 6, 7],
         "ips": ["2", "2", "1", "1", "2", "1", "1", "2"],
-        "gpu_ids": [None] * 8,
+        "acc_ids": [None] * 8,
         "expected_local_ranks": [0, 1, 0, 1, 2, 2, 3, 3],
     }
 
-    gpu_workers_single_gpu_config = {
+    acc_workers_single_acc_config = {
         "pids": [0, 1, 2, 3, 4, 5, 6, 7],
         "ips": ["2", "2", "1", "1", "2", "1", "1", "2"],
-        "gpu_ids": ["1", "0", "3", "2", "2", "0", "1", "3"],
+        "acc_ids": ["1", "0", "3", "2", "2", "0", "1", "3"],
         "expected_local_ranks": [1, 0, 3, 2, 2, 0, 1, 3],
     }
 
-    # For workers with multiple gpus, sort by their lowest gpu id
-    gpu_workers_multiple_gpus_config = {
+    # For workers with multiple accs, sort by their lowest acc id
+    acc_workers_multiple_accs_config = {
         "pids": [0, 1, 2, 3],
         "ips": ["2", "1", "1", "2"],
-        "gpu_ids": ["1,3", "2,1", "0,3", "0,2"],
+        "acc_ids": ["1,3", "2,1", "0,3", "0,2"],
         "expected_local_ranks": [1, 1, 0, 0],
     }
 
     # Setup and check worker groups for each configuration
     setup_and_check_worker_group(**cpu_workers_config)
-    setup_and_check_worker_group(**gpu_workers_single_gpu_config)
-    setup_and_check_worker_group(**gpu_workers_multiple_gpus_config)
+    setup_and_check_worker_group(**acc_workers_single_acc_config)
+    setup_and_check_worker_group(**acc_workers_multiple_accs_config)
 
 
 def test_execute_single(ray_start_2_cpus):
@@ -274,7 +274,7 @@ def test_bad_resources(ray_start_2_cpus):
         WorkerGroup(num_cpus_per_worker=-1)
 
     with pytest.raises(ValueError):
-        WorkerGroup(num_gpus_per_worker=-1)
+        WorkerGroup(num_accs_per_worker=-1)
 
 
 def test_placement_group(ray_start_2_cpus):

@@ -136,7 +136,7 @@ if __name__ == "__main__":
         },
         "scheduler": {"type": "WarmupLR", "params": {"warmup_num_steps": 100}},
         "fp16": {"enabled": True},
-        "bf16": {"enabled": False},  # Turn this on if using AMPERE GPUs.
+        "bf16": {"enabled": False},  # Turn this on if using AMPERE ACCs.
         "zero_optimization": {
             "stage": 3,
             "offload_optimizer": {
@@ -149,7 +149,7 @@ if __name__ == "__main__":
         "gradient_accumulation_steps": 1,
         "gradient_clipping": True,
         "steps_per_print": 10,
-        "train_micro_batch_size_per_gpu": 16,
+        "train_micro_batch_size_per_acc": 16,
         "wall_clock_breakdown": False,
     }
 
@@ -163,7 +163,7 @@ if __name__ == "__main__":
     trainer = TorchTrainer(
         train_func,
         train_loop_config=training_config,
-        scaling_config=ScalingConfig(num_workers=4, use_gpu=True),
+        scaling_config=ScalingConfig(num_workers=4, use_acc=True),
         # If running in a multi-node cluster, this is where you
         # should configure the run's persistent storage that is accessible
         # across all worker nodes.

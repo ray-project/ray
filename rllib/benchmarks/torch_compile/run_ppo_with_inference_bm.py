@@ -5,7 +5,7 @@ from ray.rllib.algorithms.ppo import PPOConfig
 
 # Note:
 # To run this benchmark you need to have a ray cluster of at least
-# 129 CPUs (2x64 + 1) and 2 GPUs
+# 129 CPUs (2x64 + 1) and 2 ACCs
 # For smoke test, you can use 3 CPUs
 
 
@@ -65,7 +65,7 @@ def main(pargs):
         )
         .resources(
             num_learner_workers=1,
-            num_gpus_per_learner_worker=0 if pargs.smoke_test else 1,
+            num_accs_per_learner_worker=0 if pargs.smoke_test else 1,
         )
     )
 

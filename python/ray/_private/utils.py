@@ -357,9 +357,9 @@ def resources_from_ray_options(options_dict: Dict[str, Any]) -> Dict[str, Any]:
     """
     resources = (options_dict.get("resources") or {}).copy()
 
-    if "CPU" in resources or "GPU" in resources:
+    if "CPU" in resources or "ACC" in resources:
         raise ValueError(
-            "The resources dictionary must not contain the key 'CPU' or 'GPU'"
+            "The resources dictionary must not contain the key 'CPU' or 'ACC'"
         )
     elif "memory" in resources or "object_store_memory" in resources:
         raise ValueError(
@@ -368,15 +368,15 @@ def resources_from_ray_options(options_dict: Dict[str, Any]) -> Dict[str, Any]:
         )
 
     num_cpus = options_dict.get("num_cpus")
-    num_gpus = options_dict.get("num_gpus")
+    num_accs = options_dict.get("num_accs")
     memory = options_dict.get("memory")
     object_store_memory = options_dict.get("object_store_memory")
     accelerator_type = options_dict.get("accelerator_type")
 
     if num_cpus is not None:
         resources["CPU"] = num_cpus
-    if num_gpus is not None:
-        resources["GPU"] = num_gpus
+    if num_accs is not None:
+        resources["ACC"] = num_accs
     if memory is not None:
         resources["memory"] = int(memory)
     if object_store_memory is not None:
@@ -1935,7 +1935,7 @@ def parse_node_labels_json(
             "Valid values look like this: `{}`",
             cf.bold(f"{command_arg}={labels_json}"),
             str(e),
-            cf.bold(f'{command_arg}=\'{{"gpu_type": "A100", "region": "us"}}\''),
+            cf.bold(f'{command_arg}=\'{{"acc_type": "A100", "region": "us"}}\''),
         )
     return labels
 

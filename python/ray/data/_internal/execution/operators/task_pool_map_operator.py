@@ -35,7 +35,7 @@ class TaskPoolMapOperator(MapOperator):
                 include in an output block.
             min_rows_per_bundle: The number of rows to gather per batch passed to the
                 transform_fn, or None to use the block size. Setting the batch size is
-                important for the performance of GPU-accelerated transform functions.
+                important for the performance of ACC-accelerated transform functions.
                 The actual rows passed may be less if the dataset is small.
             ray_remote_args: Customize the ray remote args for this op's tasks.
         """
@@ -94,13 +94,13 @@ class TaskPoolMapOperator(MapOperator):
         num_active_workers = self.num_active_tasks()
         return ExecutionResources(
             cpu=self._ray_remote_args.get("num_cpus", 0) * num_active_workers,
-            gpu=self._ray_remote_args.get("num_gpus", 0) * num_active_workers,
+            acc=self._ray_remote_args.get("num_accs", 0) * num_active_workers,
             object_store_memory=self.metrics.obj_store_mem_cur,
         )
 
     def incremental_resource_usage(self) -> ExecutionResources:
         return ExecutionResources(
             cpu=self._ray_remote_args.get("num_cpus", 0),
-            gpu=self._ray_remote_args.get("num_gpus", 0),
+            acc=self._ray_remote_args.get("num_accs", 0),
             object_store_memory=self._metrics.average_bytes_outputs_per_task,
         )

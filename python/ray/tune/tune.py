@@ -138,17 +138,17 @@ def _check_mixin(run_identifier: Union[Experiment, str, Type, Callable]) -> bool
     )
 
 
-def _check_gpus_in_resources(
+def _check_accs_in_resources(
     resources: Optional[Union[Dict, PlacementGroupFactory]]
 ) -> bool:
     if not resources:
         return False
 
     if isinstance(resources, PlacementGroupFactory):
-        return bool(resources.required_resources.get("GPU", None))
+        return bool(resources.required_resources.get("ACC", None))
 
     if isinstance(resources, dict):
-        return bool(resources.get("gpu", None))
+        return bool(resources.get("acc", None))
 
 
 def _report_progress(
@@ -349,9 +349,9 @@ def run(
             generation (e.g. env, hyperparams). Defaults to empty dict.
             Custom search algorithms may ignore this.
         resources_per_trial: Machine resources
-            to allocate per trial, e.g. ``{"cpu": 64, "gpu": 8}``.
-            Note that GPUs will not be assigned unless you specify them here.
-            Defaults to 1 CPU and 0 GPUs in
+            to allocate per trial, e.g. ``{"cpu": 64, "acc": 8}``.
+            Note that ACCs will not be assigned unless you specify them here.
+            Defaults to 1 CPU and 0 ACCs in
             ``Trainable.default_resource_request()``. This can also
             be a PlacementGroupFactory object wrapping arguments to create a
             per-trial placement group.
@@ -721,11 +721,11 @@ def run(
                 and isinstance(scheduler, ResourceChangingScheduler)
             )
             and not (
-                # If GPUs are requested we could run into problems with device memory
-                _check_gpus_in_resources(resources_per_trial)
+                # If ACCs are requested we could run into problems with device memory
+                _check_accs_in_resources(resources_per_trial)
             )
             and not (
-                # If the resource request is overridden, we don't know if GPUs
+                # If the resource request is overridden, we don't know if ACCs
                 # will be requested, yet, so default to False
                 _check_default_resources_override(trainable)
             )
@@ -889,22 +889,22 @@ def run(
         progress_metrics=progress_metrics,
     )
 
-    # User Warning for GPUs
-    if ray.cluster_resources().get("GPU", 0):
-        if _check_gpus_in_resources(resources=resources_per_trial):
-            # "gpu" is manually set.
+    # User Warning for ACCs
+    if ray.cluster_resources().get("ACC", 0):
+        if _check_accs_in_resources(resources=resources_per_trial):
+            # "acc" is manually set.
             pass
         elif _check_default_resources_override(experiments[0].run_identifier):
             # "default_resources" is manually overridden.
             pass
         else:
             logger.warning(
-                "Tune detects GPUs, but no trials are using GPUs. "
-                "To enable trials to use GPUs, wrap `train_func` with "
-                "`tune.with_resources(train_func, resources_per_trial={'gpu': 1})` "
-                "which allows Tune to expose 1 GPU to each trial. "
-                "For Ray Train Trainers, you can specify GPU resources "
-                "through `ScalingConfig(use_gpu=True)`. "
+                "Tune detects ACCs, but no trials are using ACCs. "
+                "To enable trials to use ACCs, wrap `train_func` with "
+                "`tune.with_resources(train_func, resources_per_trial={'acc': 1})` "
+                "which allows Tune to expose 1 ACC to each trial. "
+                "For Ray Train Trainers, you can specify ACC resources "
+                "through `ScalingConfig(use_acc=True)`. "
                 "You can also override "
                 "`Trainable.default_resource_request` if using the "
                 "Trainable API."

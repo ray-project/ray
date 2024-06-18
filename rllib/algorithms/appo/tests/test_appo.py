@@ -102,7 +102,7 @@ class TestAPPO(unittest.TestCase):
                 batch_mode="truncate_episodes",
                 rollout_fragment_length=10,
             )
-            .resources(num_gpus=0)
+            .resources(num_accs=0)
             .training(
                 train_batch_size=20,
                 entropy_coeff=0.01,
@@ -157,7 +157,7 @@ class TestAPPO(unittest.TestCase):
                 batch_mode="truncate_episodes",
                 rollout_fragment_length=10,
             )
-            .resources(num_gpus=0)
+            .resources(num_accs=0)
             .training(
                 train_batch_size=20,
                 entropy_coeff=0.01,
@@ -204,7 +204,7 @@ class TestAPPO(unittest.TestCase):
                 batch_mode="truncate_episodes",
                 rollout_fragment_length=10,
             )
-            .resources(num_gpus=0)
+            .resources(num_accs=0)
             .training(
                 train_batch_size=20,
             )

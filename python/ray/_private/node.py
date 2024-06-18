@@ -506,7 +506,7 @@ class Node:
             conflict.
             """
             num_cpus = env_dict.pop("CPU", None)
-            num_gpus = env_dict.pop("GPU", None)
+            num_accs = env_dict.pop("ACC", None)
             memory = env_dict.pop("memory", None)
             object_store_memory = env_dict.pop("object_store_memory", None)
 
@@ -519,7 +519,7 @@ class Node:
                         "Autoscaler is overriding your resource:"
                         f"{key}: {params_dict[key]} with {env_dict[key]}."
                     )
-            return num_cpus, num_gpus, memory, object_store_memory, result
+            return num_cpus, num_accs, memory, object_store_memory, result
 
         if not self._resource_spec:
             env_resources = {}
@@ -533,14 +533,14 @@ class Node:
                 logger.debug(f"Autoscaler overriding resources: {env_resources}.")
             (
                 num_cpus,
-                num_gpus,
+                num_accs,
                 memory,
                 object_store_memory,
                 resources,
             ) = merge_resources(env_resources, self._ray_params.resources)
             self._resource_spec = ResourceSpec(
                 self._ray_params.num_cpus if num_cpus is None else num_cpus,
-                self._ray_params.num_gpus if num_gpus is None else num_gpus,
+                self._ray_params.num_accs if num_accs is None else num_accs,
                 self._ray_params.memory if memory is None else memory,
                 self._ray_params.object_store_memory
                 if object_store_memory is None

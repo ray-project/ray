@@ -35,7 +35,7 @@ def evaluate_test(algo, env="CartPole-v1", test_episode_rollout=False):
             "TEST_TMPDIR='{}' python {}/train.py --local-dir={} --run={} "
             "--checkpoint-freq=1 ".format(tmp_dir, rllib_dir, tmp_dir, algo)
             + "--config='{"
-            + '"num_workers": 1, "num_gpus": 0{}{}'.format(fw_, extra_config)
+            + '"num_workers": 1, "num_accs": 0{}{}'.format(fw_, extra_config)
             + ', "min_sample_timesteps_per_iteration": 5,'
             '"min_time_s_per_iteration": 0.1, '
             '"model": {"fcnet_hiddens": [10]}'
@@ -107,7 +107,7 @@ def learn_test_plus_evaluate(algo: str, env="CartPole-v1"):
             "--checkpoint-freq=1 --checkpoint-at-end ".format(
                 tmp_dir, rllib_dir, tmp_dir, algo
             )
-            + '--config="{\\"num_gpus\\": 0, \\"num_workers\\": 1'
+            + '--config="{\\"num_accs\\": 0, \\"num_workers\\": 1'
             + eval_
             + fw_
             + '}" '
@@ -188,7 +188,7 @@ def learn_test_multi_agent_plus_evaluate(algo: str):
                 policies={"pol0", "pol1"},
                 policy_mapping_fn=policy_fn,
             )
-            .resources(num_gpus=0)
+            .resources(num_accs=0)
             .evaluation(evaluation_config=AlgorithmConfig.overrides(explore=True))
             .evaluation(evaluation_config=AlgorithmConfig.overrides(explore=True))
             .rl_module(

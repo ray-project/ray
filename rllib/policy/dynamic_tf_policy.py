@@ -294,7 +294,7 @@ class DynamicTFPolicy(TFPolicy):
         # Placeholder for `is_training` flag.
         self._input_dict.set_training(self._get_is_training_placeholder())
 
-        # Multi-GPU towers do not need any action computing/exploration
+        # Multi-ACC towers do not need any action computing/exploration
         # graphs.
         sampled_action = None
         sampled_action_logp = None
@@ -463,17 +463,17 @@ class DynamicTFPolicy(TFPolicy):
         if not self._is_tower:
             self._initialize_loss_from_dummy_batch(auto_remove_unneeded_view_reqs=True)
 
-            # Create MultiGPUTowerStacks, if we have at least one actual
-            # GPU or >1 CPUs (fake GPUs).
-            if len(self.devices) > 1 or any("gpu" in d for d in self.devices):
-                # Per-GPU graph copies created here must share vars with the
+            # Create MultiACCTowerStacks, if we have at least one actual
+            # ACC or >1 CPUs (fake ACCs).
+            if len(self.devices) > 1 or any("acc" in d for d in self.devices):
+                # Per-ACC graph copies created here must share vars with the
                 # policy. Therefore, `reuse` is set to tf1.AUTO_REUSE because
                 # Adam nodes are created after all of the device copies are
                 # created.
                 with tf1.variable_scope("", reuse=tf1.AUTO_REUSE):
-                    self.multi_gpu_tower_stacks = [
-                        TFMultiGPUTowerStack(policy=self)
-                        for i in range(self.config.get("num_multi_gpu_tower_stacks", 1))
+                    self.multi_acc_tower_stacks = [
+                        TFMultiACCTowerStack(policy=self)
+                        for i in range(self.config.get("num_multi_acc_tower_stacks", 1))
                     ]
 
             # Initialize again after loss and tower init.
@@ -587,7 +587,7 @@ class DynamicTFPolicy(TFPolicy):
         inputs = [input_dict[k] for k in data_keys]
         state_inputs = [input_dict[k] for k in state_keys]
 
-        return self.multi_gpu_tower_stacks[buffer_index].load_data(
+        return self.multi_acc_tower_stacks[buffer_index].load_data(
             sess=self.get_session(),
             inputs=inputs,
             state_inputs=state_inputs,
@@ -607,7 +607,7 @@ class DynamicTFPolicy(TFPolicy):
                 else 0
             )
 
-        return self.multi_gpu_tower_stacks[buffer_index].num_tuples_loaded
+        return self.multi_acc_tower_stacks[buffer_index].num_tuples_loaded
 
     @override(Policy)
     @DeveloperAPI
@@ -634,7 +634,7 @@ class DynamicTFPolicy(TFPolicy):
                 )
             return self.learn_on_batch(sliced_batch)
 
-        tower_stack = self.multi_gpu_tower_stacks[buffer_index]
+        tower_stack = self.multi_acc_tower_stacks[buffer_index]
         results = tower_stack.optimize(self.get_session(), offset)
         self.num_grad_updates += 1
 
@@ -921,11 +921,11 @@ class DynamicTFPolicy(TFPolicy):
 
 
 @DeveloperAPI
-class TFMultiGPUTowerStack:
+class TFMultiACCTowerStack:
     """Optimizer that runs in parallel across multiple local devices.
 
-    TFMultiGPUTowerStack automatically splits up and loads training data
-    onto specified local devices (e.g. GPUs) with `load_data()`. During a call
+    TFMultiACCTowerStack automatically splits up and loads training data
+    onto specified local devices (e.g. ACCs) with `load_data()`. During a call
     to `optimize()`, the devices compute gradients over slices of the data in
     parallel. The gradients are then averaged and applied to the shared
     weights.
@@ -953,7 +953,7 @@ class TFMultiGPUTowerStack:
         # Use only `policy` argument from here on.
         policy: TFPolicy = None,
     ):
-        """Initializes a TFMultiGPUTowerStack instance.
+        """Initializes a TFMultiACCTowerStack instance.
 
         Args:
             policy: The TFPolicy object that this tower stack
@@ -962,8 +962,8 @@ class TFMultiGPUTowerStack:
         # Obsoleted usage, use only `policy` arg from here on.
         if policy is None:
             deprecation_warning(
-                old="TFMultiGPUTowerStack(...)",
-                new="TFMultiGPUTowerStack(policy=[Policy])",
+                old="TFMultiACCTowerStack(...)",
+                new="TFMultiACCTowerStack(policy=[Policy])",
                 error=True,
             )
             self.policy = None
@@ -988,7 +988,7 @@ class TFMultiGPUTowerStack:
             grad_norm_clipping = self.policy.config.get("grad_clip")
             self.policy_copy = self.policy.copy
 
-        assert len(self.devices) > 1 or "gpu" in self.devices[0]
+        assert len(self.devices) > 1 or "acc" in self.devices[0]
         self.loss_inputs = input_placeholders + rnn_inputs
 
         shared_ops = tf1.get_collection(
@@ -1011,7 +1011,7 @@ class TFMultiGPUTowerStack:
         device_placeholders = [[] for _ in range(len(self.devices))]
 
         for t in tree.flatten(self.loss_inputs):
-            # Split on the CPU in case the data doesn't fit in GPU memory.
+            # Split on the CPU in case the data doesn't fit in ACC memory.
             with tf.device("/cpu:0"):
                 splits = tf.split(t, len(self.devices))
             for i, d in enumerate(self.devices):
@@ -1043,7 +1043,7 @@ class TFMultiGPUTowerStack:
             # Gather update ops for any batch norm layers.
             # TODO(ekl) here we
             #  will use all the ops found which won't work for DQN / DDPG, but
-            #  those aren't supported with multi-gpu right now anyways.
+            #  those aren't supported with multi-acc right now anyways.
             self._update_ops = tf1.get_collection(
                 tf1.GraphKeys.UPDATE_OPS, scope=tf1.get_variable_scope().name
             )
@@ -1071,7 +1071,7 @@ class TFMultiGPUTowerStack:
             # Gather update ops for any batch norm layers.
             # TODO(ekl) here we
             #  will use all the ops found which won't work for DQN / DDPG, but
-            #  those aren't supported with multi-gpu right now anyways.
+            #  those aren't supported with multi-acc right now anyways.
             self._update_ops = tf1.get_collection(
                 tf1.GraphKeys.UPDATE_OPS, scope=tf1.get_variable_scope().name
             )
@@ -1086,7 +1086,7 @@ class TFMultiGPUTowerStack:
                 self._train_op = self.optimizers[0].apply_gradients(avg)
 
         # The lifetime number of gradient updates that the policy having sent
-        # some data (SampleBatchType) into this tower stack's GPU buffer(s) has already
+        # some data (SampleBatchType) into this tower stack's ACC buffer(s) has already
         # undergone.
         self.num_grad_updates = 0
 
@@ -1334,7 +1334,7 @@ def _average_gradients(tower_grads):
     average_grads = []
     for grad_and_vars in zip(*tower_grads):
         # Note that each grad_and_vars looks like the following:
-        #   ((grad0_gpu0, var0_gpu0), ... , (grad0_gpuN, var0_gpuN))
+        #   ((grad0_acc0, var0_acc0), ... , (grad0_accN, var0_accN))
         grads = []
         for g, _ in grad_and_vars:
             if g is not None:

@@ -185,7 +185,7 @@ def debug_status(
 def request_resources(
     num_cpus: Optional[int] = None, bundles: Optional[List[dict]] = None
 ) -> None:
-    """Remotely request some CPU or GPU resources from the autoscaler.
+    """Remotely request some CPU or ACC resources from the autoscaler.
 
     This function is to be called e.g. on a node before submitting a bunch of
     ray.remote calls to ensure that resources rapidly become available.

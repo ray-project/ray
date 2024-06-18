@@ -275,7 +275,7 @@ def test_ray_debugger_public_multi_node(shutdown_only, ray_debugger_external):
         connect=True,
         head_node_args={
             "num_cpus": 0,
-            "num_gpus": 1,
+            "num_accs": 1,
             "ray_debugger_external": ray_debugger_external,
         },
     )
@@ -286,8 +286,8 @@ def test_ray_debugger_public_multi_node(shutdown_only, ray_debugger_external):
         ray.util.pdb.set_trace()
         return 1
 
-    # num_gpus=1 forces the task onto the head node.
-    head_node_result = f.options(num_cpus=0, num_gpus=1).remote()
+    # num_accs=1 forces the task onto the head node.
+    head_node_result = f.options(num_cpus=0, num_accs=1).remote()
 
     # num_cpus=1 forces the task onto the worker node.
     worker_node_result = f.options(num_cpus=1).remote()

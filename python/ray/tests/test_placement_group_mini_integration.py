@@ -34,7 +34,7 @@ def run_mini_integration_test(cluster, pg_removal=True, num_pgs=999):
     for _ in range(num_nodes):
         nodes.append(
             cluster.add_node(
-                num_cpus=3, num_gpus=resource_quantity, resources=custom_resources
+                num_cpus=3, num_accs=resource_quantity, resources=custom_resources
             )
         )
     cluster.wait_for_nodes()
@@ -43,9 +43,9 @@ def run_mini_integration_test(cluster, pg_removal=True, num_pgs=999):
     ray.init(address=cluster.address)
     while not ray.is_initialized():
         time.sleep(0.1)
-    bundles = [{"GPU": 1, "pg_custom": 1}] * num_nodes
+    bundles = [{"ACC": 1, "pg_custom": 1}] * num_nodes
 
-    @ray.remote(num_cpus=0, num_gpus=1, max_calls=0)
+    @ray.remote(num_cpus=0, num_accs=1, max_calls=0)
     def mock_task():
         time.sleep(0.1)
         return True

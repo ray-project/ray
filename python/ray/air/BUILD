@@ -168,7 +168,7 @@ py_test(
     name = "test_util_torch_dist",
     size = "small",
     srcs = ["tests/test_util_torch_dist.py"],
-    tags = ["team:ml", "gpu", "exclusive"],
+    tags = ["team:ml", "acc", "exclusive"],
     deps = [":ml_lib"]
 )
 

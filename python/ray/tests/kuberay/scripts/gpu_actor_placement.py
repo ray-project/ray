@@ -2,17 +2,17 @@ import ray
 
 
 def main():
-    """Requests placement of a GPU actor."""
+    """Requests placement of a ACC actor."""
 
-    @ray.remote(num_gpus=1, num_cpus=1)
-    class GPUActor:
+    @ray.remote(num_accs=1, num_cpus=1)
+    class ACCActor:
         def where_am_i(self):
-            assert len(ray.get_gpu_ids()) == 1
-            return "on-a-gpu-node"
+            assert len(ray.get_acc_ids()) == 1
+            return "on-a-acc-node"
 
-    GPUActor.options(name="gpu_actor", lifetime="detached").remote()
+    ACCActor.options(name="acc_actor", lifetime="detached").remote()
 
 
 if __name__ == "__main__":
-    ray.init("auto", namespace="gpu-test")
+    ray.init("auto", namespace="acc-test")
     main()

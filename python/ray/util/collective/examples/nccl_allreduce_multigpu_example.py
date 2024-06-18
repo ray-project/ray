@@ -5,7 +5,7 @@ import ray.util.collective as collective
 from cupy.cuda import Device
 
 
-@ray.remote(num_gpus=2)
+@ray.remote(num_accs=2)
 class Worker:
     def __init__(self):
         with Device(0):
@@ -20,7 +20,7 @@ class Worker:
         return True
 
     def compute(self):
-        collective.allreduce_multigpu([self.send1, self.send2], "177")
+        collective.allreduce_multiacc([self.send1, self.send2], "177")
         return [self.send1, self.send2], self.send1.device, self.send2.device
 
     def destroy(self):

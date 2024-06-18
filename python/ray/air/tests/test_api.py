@@ -142,30 +142,30 @@ def test_scaling_config_validate_config_bad_allowed_keys():
 
 
 @pytest.mark.parametrize(
-    "trainer_resources", [None, {}, {"CPU": 1}, {"CPU": 2, "GPU": 1}, {"CPU": 0}]
+    "trainer_resources", [None, {}, {"CPU": 1}, {"CPU": 2, "ACC": 1}, {"CPU": 0}]
 )
 @pytest.mark.parametrize("num_workers", [None, 1, 2])
 @pytest.mark.parametrize(
-    "resources_per_worker_and_use_gpu",
+    "resources_per_worker_and_use_acc",
     [
         (None, False),
         (None, True),
         ({}, False),
         ({"CPU": 1}, False),
-        ({"CPU": 2, "GPU": 1}, True),
+        ({"CPU": 2, "ACC": 1}, True),
         ({"CPU": 0}, False),
     ],
 )
 @pytest.mark.parametrize("placement_strategy", ["PACK", "SPREAD"])
 def test_scaling_config_pgf_equivalance(
-    trainer_resources, resources_per_worker_and_use_gpu, num_workers, placement_strategy
+    trainer_resources, resources_per_worker_and_use_acc, num_workers, placement_strategy
 ):
-    resources_per_worker, use_gpu = resources_per_worker_and_use_gpu
+    resources_per_worker, use_acc = resources_per_worker_and_use_acc
     scaling_config = ScalingConfig(
         trainer_resources=trainer_resources,
         num_workers=num_workers,
         resources_per_worker=resources_per_worker,
-        use_gpu=use_gpu,
+        use_acc=use_acc,
         placement_strategy=placement_strategy,
     )
     try:

@@ -86,7 +86,7 @@ class Experiment:
             },
             resources_per_trial={
                 "cpu": 1,
-                "gpu": 0
+                "acc": 0
             },
             num_samples=10,
             local_dir="~/ray_results",

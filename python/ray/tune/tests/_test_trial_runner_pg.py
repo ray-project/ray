@@ -21,7 +21,7 @@ class TrialRunnerPlacementGroupTest(unittest.TestCase):
         os.environ["TUNE_GLOBAL_CHECKPOINT_S"] = "10000"
         os.environ["TUNE_MAX_PENDING_TRIALS_PG"] = "auto"  # Reset default
         self.head_cpus = 8
-        self.head_gpus = 4
+        self.head_accs = 4
         self.head_custom = 16
 
         self.cluster = Cluster(
@@ -30,7 +30,7 @@ class TrialRunnerPlacementGroupTest(unittest.TestCase):
             head_node_args={
                 "include_dashboard": False,
                 "num_cpus": self.head_cpus,
-                "num_gpus": self.head_gpus,
+                "num_accs": self.head_accs,
                 "resources": {"custom": self.head_custom},
                 "_system_config": {
                     "health_check_initial_delay_ms": 0,
@@ -79,7 +79,7 @@ class TrialRunnerPlacementGroupTest(unittest.TestCase):
             now = time.time()
             tune.report(end=now - config["start_time"])
 
-        head_bundle = {"CPU": 4, "GPU": 0, "custom": 0}
+        head_bundle = {"CPU": 4, "ACC": 0, "custom": 0}
         child_bundle = {"custom": 1}
         # Manually calculated number of parallel trials
         max_num_parallel = 2
@@ -186,7 +186,7 @@ class TrialRunnerPlacementGroupTest(unittest.TestCase):
         Each trial requests 4 CPUs and starts 4 remote training workers.
         """
 
-        head_bundle = {"CPU": 1, "GPU": 0, "custom": 0}
+        head_bundle = {"CPU": 1, "ACC": 0, "custom": 0}
         child_bundle = {"CPU": 1}
 
         placement_group_factory = PlacementGroupFactory(
@@ -300,9 +300,9 @@ class TrialRunnerPlacementGroupHeterogeneousTest(unittest.TestCase):
 
 
 def test_placement_group_no_cpu_trainer():
-    """Bundles with only GPU:1 but no CPU should work"""
-    ray.init(num_gpus=1, num_cpus=1)
-    pgf = PlacementGroupFactory([{"GPU": 1, "CPU": 0}, {"CPU": 1}])
+    """Bundles with only ACC:1 but no CPU should work"""
+    ray.init(num_accs=1, num_cpus=1)
+    pgf = PlacementGroupFactory([{"ACC": 1, "CPU": 0}, {"CPU": 1}])
 
     def train_fn(config):
         time.sleep(1)

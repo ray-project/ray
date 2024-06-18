@@ -54,7 +54,7 @@ def setup(config):
     torch.manual_seed(seed)
 
     if use_cuda:
-        # Horovod: pin GPU to local rank.
+        # Horovod: pin ACC to local rank.
         torch.cuda.set_device(hvd.local_rank())
         torch.cuda.manual_seed(seed)
 
@@ -86,9 +86,9 @@ def setup(config):
     lr_scaler = hvd.size() if not use_adasum else 1
 
     if use_cuda:
-        # Move model to GPU.
+        # Move model to ACC.
         model.cuda()
-        # If using GPU Adasum allreduce, scale learning rate by local_size.
+        # If using ACC Adasum allreduce, scale learning rate by local_size.
         if use_adasum and hvd.nccl_built():
             lr_scaler = hvd.local_size()
 
@@ -152,11 +152,11 @@ def train_func(config):
         train.report(dict(loss=loss))
 
 
-def main(num_workers, use_gpu, kwargs):
+def main(num_workers, use_acc, kwargs):
     trainer = HorovodTrainer(
         train_func,
         train_loop_config=kwargs,
-        scaling_config=ScalingConfig(use_gpu=use_gpu, num_workers=num_workers),
+        scaling_config=ScalingConfig(use_acc=use_acc, num_workers=num_workers),
     )
     results = trainer.fit()
     print(results.metrics)
@@ -225,7 +225,7 @@ if __name__ == "__main__":
         help="SGD momentum (default: 0.5)",
     )
     parser.add_argument(
-        "--use-gpu", action="store_true", default=False, help="enables CUDA training"
+        "--use-acc", action="store_true", default=False, help="enables CUDA training"
     )
     parser.add_argument(
         "--seed", type=int, default=42, metavar="S", help="random seed (default: 42)"
@@ -269,7 +269,7 @@ if __name__ == "__main__":
     else:
         ray.init()
 
-    use_cuda = args.use_gpu if args.use_gpu is not None else False
+    use_cuda = args.use_acc if args.use_acc is not None else False
 
     kwargs = {
         "data_dir": args.data_dir,
@@ -283,4 +283,4 @@ if __name__ == "__main__":
         "log_interval": args.log_interval,
     }
 
-    main(num_workers=args.num_workers, use_gpu=use_cuda, kwargs=kwargs)
+    main(num_workers=args.num_workers, use_acc=use_cuda, kwargs=kwargs)

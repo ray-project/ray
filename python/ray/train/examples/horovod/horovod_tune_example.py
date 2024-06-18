@@ -90,10 +90,10 @@ def train_loop_per_worker(config):
     print(f"Took {total:0.3f} s. Avg: {total / num_steps:0.3f} s.")
 
 
-def tune_horovod(num_workers, num_samples, use_gpu, mode="square", x_max=1.0):
+def tune_horovod(num_workers, num_samples, use_acc, mode="square", x_max=1.0):
     horovod_trainer = HorovodTrainer(
         train_loop_per_worker=train_loop_per_worker,
-        scaling_config=ScalingConfig(num_workers=num_workers, use_gpu=use_gpu),
+        scaling_config=ScalingConfig(num_workers=num_workers, use_acc=use_acc),
         train_loop_config={"mode": mode, "x_max": x_max},
     )
 
@@ -120,7 +120,7 @@ if __name__ == "__main__":
         "--learning_rate", type=float, default=0.1, dest="learning_rate"
     )
     parser.add_argument("--x_max", type=float, default=1.0, dest="x_max")
-    parser.add_argument("--gpu", action="store_true")
+    parser.add_argument("--acc", action="store_true")
     parser.add_argument(
         "--smoke-test", action="store_true", help=("Finish quickly for testing.")
     )
@@ -133,7 +133,7 @@ if __name__ == "__main__":
     tune_horovod(
         num_workers=args.num_workers,
         num_samples=2 if args.smoke_test else 10,
-        use_gpu=args.gpu,
+        use_acc=args.acc,
         mode=args.mode,
         x_max=args.x_max,
     )

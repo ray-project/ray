@@ -7,7 +7,7 @@ config = (
     # TODO: Switch over to new stack once it supports LSTMs.
     .experimental(_enable_new_api_stack=False)
     .environment(StatelessCartPole)
-    .resources(num_gpus=0)
+    .resources(num_accs=0)
     .rollouts(num_rollout_workers=1, observation_filter="MeanStdFilter")
     .training(
         lr=0.0003,

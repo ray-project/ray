@@ -189,7 +189,7 @@ def test_remove_pending_placement_group(ray_start_cluster, connect_to_client):
 
     with connect_to_client_or_not(connect_to_client):
         # Create a placement group that cannot be scheduled now.
-        placement_group = ray.util.placement_group([{"GPU": 2}, {"CPU": 2}])
+        placement_group = ray.util.placement_group([{"ACC": 2}, {"CPU": 2}])
         ray.util.remove_placement_group(placement_group)
 
         # TODO(sang): Add state check here.
@@ -225,7 +225,7 @@ def test_placement_group_table(ray_start_cluster, connect_to_client):
         # there are no resources.
         name = "name"
         strategy = "PACK"
-        bundles = [{"CPU": 2, "GPU": 1}, {"CPU": 2}]
+        bundles = [{"CPU": 2, "ACC": 1}, {"CPU": 2}]
         placement_group = ray.util.placement_group(
             name=name, strategy=strategy, bundles=bundles
         )
@@ -238,7 +238,7 @@ def test_placement_group_table(ray_start_cluster, connect_to_client):
         assert result["state"] == "PENDING"
 
         # Now the placement group should be scheduled.
-        cluster.add_node(num_cpus=5, num_gpus=1)
+        cluster.add_node(num_cpus=5, num_accs=1)
         cluster.wait_for_nodes()
 
         actor_1 = Actor.options(
@@ -282,11 +282,11 @@ def test_placement_group_stats(ray_start_cluster):
     cluster = ray_start_cluster
     num_nodes = 1
     for _ in range(num_nodes):
-        cluster.add_node(num_cpus=4, num_gpus=1)
+        cluster.add_node(num_cpus=4, num_accs=1)
     ray.init(address=cluster.address)
 
     # Test createable pgs.
-    pg = ray.util.placement_group(bundles=[{"CPU": 4, "GPU": 1}])
+    pg = ray.util.placement_group(bundles=[{"CPU": 4, "ACC": 1}])
     ray.get(pg.ready())
     stats = ray.util.placement_group_table(pg)["stats"]
     assert stats["scheduling_attempt"] == 1
@@ -294,7 +294,7 @@ def test_placement_group_stats(ray_start_cluster):
     assert stats["end_to_end_creation_latency_ms"] != 0
 
     # Create a pending pg.
-    pg2 = ray.util.placement_group(bundles=[{"CPU": 4, "GPU": 1}])
+    pg2 = ray.util.placement_group(bundles=[{"CPU": 4, "ACC": 1}])
 
     def assert_scheduling_state():
         stats = ray.util.placement_group_table(pg2)["stats"]
@@ -349,18 +349,18 @@ def test_placement_group_stats(ray_start_cluster):
 
 @pytest.mark.parametrize("connect_to_client", [False, True])
 def test_cuda_visible_devices(ray_start_cluster, connect_to_client):
-    @ray.remote(num_gpus=1)
+    @ray.remote(num_accs=1)
     def f():
         return os.environ["CUDA_VISIBLE_DEVICES"]
 
     cluster = ray_start_cluster
     num_nodes = 1
     for _ in range(num_nodes):
-        cluster.add_node(num_gpus=1)
+        cluster.add_node(num_accs=1)
     ray.init(address=cluster.address)
 
     with connect_to_client_or_not(connect_to_client):
-        g1 = ray.util.placement_group([{"CPU": 1, "GPU": 1}])
+        g1 = ray.util.placement_group([{"CPU": 1, "ACC": 1}])
         o1 = f.options(
             scheduling_strategy=PlacementGroupSchedulingStrategy(placement_group=g1)
         ).remote()
@@ -454,7 +454,7 @@ def test_infeasible_pg(ray_start_cluster):
     cluster.add_node(num_cpus=2)
     ray.init("auto")
 
-    bundle = {"CPU": 4, "GPU": 1}
+    bundle = {"CPU": 4, "ACC": 1}
     pg = ray.util.placement_group([bundle], name="worker_1", strategy="STRICT_PACK")
 
     # Placement group is infeasible.
@@ -465,7 +465,7 @@ def test_infeasible_pg(ray_start_cluster):
     assert state == "INFEASIBLE"
 
     # Add a new node. PG can now be scheduled.
-    cluster.add_node(num_cpus=4, num_gpus=1)
+    cluster.add_node(num_cpus=4, num_accs=1)
     assert ray.get(pg.ready(), timeout=10)
 
 

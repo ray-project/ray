@@ -49,13 +49,13 @@ def train_func(config: dict):
     return results
 
 
-def train_tensorflow_regression(num_workers: int = 2, use_gpu: bool = False) -> Result:
+def train_tensorflow_regression(num_workers: int = 2, use_acc: bool = False) -> Result:
     dataset = ray.data.read_csv("s3://anonymous@air-example-data/regression.csv")
     preprocessor = Concatenator(exclude=["", "y"], output_column_name="x")
     dataset = preprocessor.fit_transform(dataset)
 
     config = {"lr": 1e-3, "batch_size": 32, "epochs": 4}
-    scaling_config = ScalingConfig(num_workers=num_workers, use_gpu=use_gpu)
+    scaling_config = ScalingConfig(num_workers=num_workers, use_acc=use_acc)
     trainer = TensorflowTrainer(
         train_loop_per_worker=train_func,
         train_loop_config=config,
@@ -80,7 +80,7 @@ if __name__ == "__main__":
         help="Sets number of workers for training.",
     )
     parser.add_argument(
-        "--use-gpu", action="store_true", default=False, help="Enables GPU training"
+        "--use-acc", action="store_true", default=False, help="Enables ACC training"
     )
     parser.add_argument(
         "--smoke-test",
@@ -93,12 +93,12 @@ if __name__ == "__main__":
 
     if args.smoke_test:
         # 2 workers, 1 for trainer, 1 for datasets
-        num_gpus = args.num_workers if args.use_gpu else 0
-        ray.init(num_cpus=4, num_gpus=num_gpus)
-        result = train_tensorflow_regression(num_workers=2, use_gpu=args.use_gpu)
+        num_accs = args.num_workers if args.use_acc else 0
+        ray.init(num_cpus=4, num_accs=num_accs)
+        result = train_tensorflow_regression(num_workers=2, use_acc=args.use_acc)
     else:
         ray.init(address=args.address)
         result = train_tensorflow_regression(
-            num_workers=args.num_workers, use_gpu=args.use_gpu
+            num_workers=args.num_workers, use_acc=args.use_acc
         )
     print(result)

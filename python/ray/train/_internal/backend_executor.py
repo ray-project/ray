@@ -50,7 +50,7 @@ class ResourceConfig:
 
     Args:
         resource_name: The name of the resource to configure
-         (Example: "neuron_cores" or "gpu").
+         (Example: "neuron_cores" or "acc").
         resource_enable_sharing_env_var: The environment variable to
          check if the resource should be shared.
         share_resource_ids_env_var: The environment variable to configure for
@@ -74,11 +74,11 @@ class BackendExecutor:
             specific backend.
         num_workers: Number of workers to use for training.
         num_cpus_per_worker: Number of CPUs to use per worker.
-        num_gpus_per_worker: Number of GPUs to use per worker.
+        num_accs_per_worker: Number of ACCs to use per worker.
         additional_resources_per_worker (Optional[Dict[str, float]]):
             Dictionary specifying the extra resources that will be
             requested for each worker in addition to ``num_cpus_per_worker``
-            and ``num_gpus_per_worker``.
+            and ``num_accs_per_worker``.
         max_retries: Number of retries when Ray actors fail.
             Defaults to 3. Set to -1 for unlimited retries.
     """
@@ -90,7 +90,7 @@ class BackendExecutor:
         trial_info: Optional[TrialInfo] = None,
         num_workers: int = 1,
         num_cpus_per_worker: float = 1,
-        num_gpus_per_worker: float = 0,
+        num_accs_per_worker: float = 0,
         additional_resources_per_worker: Optional[Dict[str, float]] = None,
         max_retries: int = 3,
     ):
@@ -98,7 +98,7 @@ class BackendExecutor:
         self._backend = backend_config.backend_cls()
         self._num_workers = num_workers
         self._num_cpus_per_worker = num_cpus_per_worker
-        self._num_gpus_per_worker = num_gpus_per_worker
+        self._num_accs_per_worker = num_accs_per_worker
         self._additional_resources_per_worker = additional_resources_per_worker
         self._max_failures = max_retries
         if self._max_failures < 0:
@@ -134,7 +134,7 @@ class BackendExecutor:
         self.worker_group = WorkerGroup(
             num_workers=self._num_workers,
             num_cpus_per_worker=self._num_cpus_per_worker,
-            num_gpus_per_worker=self._num_gpus_per_worker,
+            num_accs_per_worker=self._num_accs_per_worker,
             additional_resources_per_worker=self._additional_resources_per_worker,
             actor_cls=train_cls,
             actor_cls_args=train_cls_args,
@@ -150,7 +150,7 @@ class BackendExecutor:
         # TODO remove passing in trial_driver_ip.
 
         trial_driver_ip = self._trial_info.driver_ip if self._trial_info else None
-        self.worker_group.sort_workers_by_ip_and_gpu_id(trial_driver_ip)
+        self.worker_group.sort_workers_by_ip_and_acc_id(trial_driver_ip)
 
         try:
             if initialization_hook:
@@ -175,7 +175,7 @@ class BackendExecutor:
                 )
             )
 
-            if self._num_gpus_per_worker > 0 and share_cuda_visible_devices_enabled:
+            if self._num_accs_per_worker > 0 and share_cuda_visible_devices_enabled:
                 self._share_cuda_visible_devices()
             elif self._additional_resources_per_worker:
                 for resource_config in self._resource_configs:
@@ -203,7 +203,7 @@ class BackendExecutor:
         If a placement group is already detected (Tune) this will be a no-op.
 
         By default the placement group will be created with PACK strategy.
-        This is optimized for colocating GPUs on a minimal number of nodes.
+        This is optimized for colocating ACCs on a minimal number of nodes.
         This behavior can be overridden to use the SPREAD strategy by defining
         ``TRAIN_ENABLE_WORKER_SPREAD_ENV``
 
@@ -226,7 +226,7 @@ class BackendExecutor:
             )
             bundle = {
                 "CPU": self._num_cpus_per_worker,
-                "GPU": self._num_gpus_per_worker,
+                "ACC": self._num_accs_per_worker,
                 **additional_resources_per_worker,
             }
             bundles = [bundle.copy() for _ in range(self._num_workers)]
@@ -258,10 +258,10 @@ class BackendExecutor:
     def _share_cuda_visible_devices(self):
         """Sets CUDA_VISIBLE_DEVICES on all workers.
 
-        For each worker, CUDA_VISIBLE_DEVICES will be set to the GPU IDs
+        For each worker, CUDA_VISIBLE_DEVICES will be set to the ACC IDs
         visible to all workers on that worker's node.
 
-        This allows GPU workers on the same node to communicate with one
+        This allows ACC workers on the same node to communicate with one
         another.
 
         Example:
@@ -280,7 +280,7 @@ class BackendExecutor:
 
         """
         self._share_resource_ids(
-            ray_constants.GPU, ray_constants.CUDA_VISIBLE_DEVICES_ENV_VAR
+            ray_constants.ACC, ray_constants.CUDA_VISIBLE_DEVICES_ENV_VAR
         )
 
     def _share_resource_ids(self, resource: str, env_var: str):

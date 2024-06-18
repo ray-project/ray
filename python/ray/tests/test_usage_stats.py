@@ -26,7 +26,7 @@ from ray.autoscaler._private.cli_logger import cli_logger
 from ray.util.placement_group import (
     placement_group,
 )
-from ray._private.accelerators import NvidiaGPUAcceleratorManager
+from ray._private.accelerators import NvidiaACCAcceleratorManager
 
 schema = {
     "$schema": "http://json-schema.org/draft-07/schema#",
@@ -51,7 +51,7 @@ schema = {
             "items": {"type": "string"},
         },
         "total_num_cpus": {"type": ["null", "integer"]},
-        "total_num_gpus": {"type": ["null", "integer"]},
+        "total_num_accs": {"type": ["null", "integer"]},
         "total_memory_gb": {"type": ["null", "number"]},
         "total_object_store_memory_gb": {"type": ["null", "number"]},
         "library_usages": {
@@ -708,13 +708,13 @@ def test_usage_stats_enabled_endpoint(
 
 def test_hardware_usages(shutdown_only, reset_usage_stats):
     with patch.object(
-        NvidiaGPUAcceleratorManager,
+        NvidiaACCAcceleratorManager,
         "get_current_node_accelerator_type",
         return_value="TestAccelerator",
     ), patch.object(
         ray._private.utils, "get_current_node_cpu_model_name", return_value="TestCPU"
     ):
-        ray.init(num_gpus=4)
+        ray.init(num_accs=4)
         assert set(
             ray_usage_lib.get_hardware_usages_to_report(
                 ray.experimental.internal_kv.internal_kv_get_gcs_client()
@@ -863,7 +863,7 @@ def test_usage_lib_get_cluster_status_to_report(
 ):
     ray.init(
         num_cpus=3,
-        num_gpus=1,
+        num_accs=1,
         object_store_memory=2**30,
         _system_config={"enable_autoscaler_v2": enable_v2},
     )
@@ -879,7 +879,7 @@ def test_usage_lib_get_cluster_status_to_report(
         ray.experimental.internal_kv.internal_kv_get_gcs_client()
     )
     assert cluster_status_to_report.total_num_cpus == 3
-    assert cluster_status_to_report.total_num_gpus == 1
+    assert cluster_status_to_report.total_num_accs == 1
     assert cluster_status_to_report.total_memory_gb > 0
     assert cluster_status_to_report.total_object_store_memory_gb == 1.0
 
@@ -1205,7 +1205,7 @@ provider:
         assert payload["head_node_instance_type"] is None
         assert payload["worker_node_instance_types"] is None
         assert payload["total_num_cpus"] == 3
-        assert payload["total_num_gpus"] is None
+        assert payload["total_num_accs"] is None
         assert payload["total_memory_gb"] > 0
         assert payload["total_object_store_memory_gb"] > 0
         assert int(payload["extra_usage_tags"]["actor_num_created"]) >= 0

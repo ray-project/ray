@@ -18,8 +18,8 @@ from ray.tune.schedulers.resource_changing_scheduler import (
 
 
 @pytest.fixture
-def ray_start_6_cpus_2_gpus():
-    address_info = ray.init(num_cpus=6, num_gpus=2)
+def ray_start_6_cpus_2_accs():
+    address_info = ray.init(num_cpus=6, num_accs=2)
     yield address_info
     # The code after the yield will run as teardown code.
     ray.shutdown()
@@ -47,7 +47,7 @@ MAX_STEPS = MAX_EPOCHS * STEPS_PER_EPOCH
 
 # Transformers Traienr Configurations
 CONFIGURATIONS = {
-    "epoch_gpu": {
+    "epoch_acc": {
         "evaluation_strategy": "epoch",
         "save_strategy": "epoch",
         "logging_strategy": "epoch",
@@ -56,7 +56,7 @@ CONFIGURATIONS = {
         "logging_steps": None,
         "no_cuda": False,
     },
-    "steps_gpu": {
+    "steps_acc": {
         "evaluation_strategy": "steps",
         "save_strategy": "steps",
         "logging_strategy": "steps",
@@ -134,8 +134,8 @@ def train_func(config):
     trainer.train()
 
 
-@pytest.mark.parametrize("config_id", ["epoch_gpu", "steps_gpu", "steps_cpu"])
-def test_e2e_hf_data(ray_start_6_cpus_2_gpus, config_id):
+@pytest.mark.parametrize("config_id", ["epoch_acc", "steps_acc", "steps_cpu"])
+def test_e2e_hf_data(ray_start_6_cpus_2_accs, config_id):
     train_loop_config = CONFIGURATIONS[config_id]
 
     # Specify `num_train_epochs` for Map-style Dataset
@@ -148,12 +148,12 @@ def test_e2e_hf_data(ray_start_6_cpus_2_gpus, config_id):
     else:
         num_iterations = MAX_EPOCHS
 
-    use_gpu = not train_loop_config["no_cuda"]
+    use_acc = not train_loop_config["no_cuda"]
 
     trainer = TorchTrainer(
         train_func,
         train_loop_config=train_loop_config,
-        scaling_config=ScalingConfig(num_workers=NUM_WORKERS, use_gpu=use_gpu),
+        scaling_config=ScalingConfig(num_workers=NUM_WORKERS, use_acc=use_acc),
     )
     result = trainer.fit()
 
@@ -166,8 +166,8 @@ def test_e2e_hf_data(ray_start_6_cpus_2_gpus, config_id):
     assert "eval_loss" in result.metrics
 
 
-@pytest.mark.parametrize("config_id", ["steps_gpu", "steps_cpu"])
-def test_e2e_ray_data(ray_start_6_cpus_2_gpus, config_id):
+@pytest.mark.parametrize("config_id", ["steps_acc", "steps_cpu"])
+def test_e2e_ray_data(ray_start_6_cpus_2_accs, config_id):
     train_loop_config = CONFIGURATIONS[config_id]
 
     # Must specify `max_steps` for Iterable Dataset
@@ -183,12 +183,12 @@ def test_e2e_ray_data(ray_start_6_cpus_2_gpus, config_id):
     ray_train_ds = ray.data.from_pandas(train_df)
     ray_eval_ds = ray.data.from_pandas(validation_df)
 
-    use_gpu = not train_loop_config["no_cuda"]
+    use_acc = not train_loop_config["no_cuda"]
 
     trainer = TorchTrainer(
         train_func,
         train_loop_config=train_loop_config,
-        scaling_config=ScalingConfig(num_workers=NUM_WORKERS, use_gpu=use_gpu),
+        scaling_config=ScalingConfig(num_workers=NUM_WORKERS, use_acc=use_acc),
         datasets={"train": ray_train_ds, "eval": ray_eval_ds},
     )
     result = trainer.fit()
@@ -206,11 +206,11 @@ def test_tune(ray_start_8_cpus):
     train_loop_config = CONFIGURATIONS["steps_cpu"]
     train_loop_config["use_ray_data"] = False
 
-    use_gpu = not train_loop_config["no_cuda"]
+    use_acc = not train_loop_config["no_cuda"]
     trainer = TorchTrainer(
         train_func,
         train_loop_config=train_loop_config,
-        scaling_config=ScalingConfig(num_workers=NUM_WORKERS, use_gpu=use_gpu),
+        scaling_config=ScalingConfig(num_workers=NUM_WORKERS, use_acc=use_acc),
     )
 
     tuner = Tuner(

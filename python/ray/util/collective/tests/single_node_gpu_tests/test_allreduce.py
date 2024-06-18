@@ -8,7 +8,7 @@ from ray.util.collective.types import ReduceOp
 
 
 @pytest.mark.parametrize("group_name", ["default", "test", "123?34!"])
-def test_allreduce_different_name(ray_start_single_node_2_gpus, group_name):
+def test_allreduce_different_name(ray_start_single_node_2_accs, group_name):
     world_size = 2
     actors, _ = create_collective_workers(num_workers=world_size, group_name=group_name)
     results = ray.get([a.do_allreduce.remote(group_name) for a in actors])
@@ -17,7 +17,7 @@ def test_allreduce_different_name(ray_start_single_node_2_gpus, group_name):
 
 
 @pytest.mark.parametrize("array_size", [2, 2**5, 2**10, 2**15, 2**20])
-def test_allreduce_different_array_size(ray_start_single_node_2_gpus, array_size):
+def test_allreduce_different_array_size(ray_start_single_node_2_accs, array_size):
     world_size = 2
     actors, _ = create_collective_workers(world_size)
     ray.wait(
@@ -29,7 +29,7 @@ def test_allreduce_different_array_size(ray_start_single_node_2_gpus, array_size
 
 
 def test_allreduce_destroy(
-    ray_start_single_node_2_gpus, backend="nccl", group_name="default"
+    ray_start_single_node_2_accs, backend="nccl", group_name="default"
 ):
     world_size = 2
     actors, _ = create_collective_workers(world_size)
@@ -56,7 +56,7 @@ def test_allreduce_destroy(
 
 
 def test_allreduce_multiple_group(
-    ray_start_single_node_2_gpus, backend="nccl", num_groups=5
+    ray_start_single_node_2_accs, backend="nccl", num_groups=5
 ):
     world_size = 2
     actors, _ = create_collective_workers(world_size)
@@ -75,7 +75,7 @@ def test_allreduce_multiple_group(
         ).all()
 
 
-def test_allreduce_different_op(ray_start_single_node_2_gpus):
+def test_allreduce_different_op(ray_start_single_node_2_accs):
     world_size = 2
     actors, _ = create_collective_workers(world_size)
 
@@ -114,7 +114,7 @@ def test_allreduce_different_op(ray_start_single_node_2_gpus):
 
 
 @pytest.mark.parametrize("dtype", [cp.uint8, cp.float16, cp.float32, cp.float64])
-def test_allreduce_different_dtype(ray_start_single_node_2_gpus, dtype):
+def test_allreduce_different_dtype(ray_start_single_node_2_accs, dtype):
     world_size = 2
     actors, _ = create_collective_workers(world_size)
     ray.wait([a.set_buffer.remote(cp.ones(10, dtype=dtype)) for a in actors])
@@ -123,7 +123,7 @@ def test_allreduce_different_dtype(ray_start_single_node_2_gpus, dtype):
     assert (results[1] == cp.ones((10,), dtype=dtype) * world_size).all()
 
 
-def test_allreduce_torch_cupy(ray_start_single_node_2_gpus):
+def test_allreduce_torch_cupy(ray_start_single_node_2_accs):
     # import torch
     world_size = 2
     actors, _ = create_collective_workers(world_size)

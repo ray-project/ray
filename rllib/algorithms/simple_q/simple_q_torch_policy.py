@@ -16,7 +16,7 @@ from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
 from ray.rllib.utils.numpy import convert_to_numpy
-from ray.rllib.utils.torch_utils import concat_multi_gpu_td_errors, huber_loss
+from ray.rllib.utils.torch_utils import concat_multi_acc_td_errors, huber_loss
 from ray.rllib.utils.typing import TensorStructType, TensorType
 
 torch, nn = try_import_torch()
@@ -148,7 +148,7 @@ class SimpleQTorchPolicy(
         loss = torch.mean(huber_loss(td_error))
 
         # Store values for stats function in model (tower), such that for
-        # multi-GPU, we do not override them during the parallel loss phase.
+        # multi-ACC, we do not override them during the parallel loss phase.
         model.tower_stats["loss"] = loss
         # TD-error tensor in final stats
         # will be concatenated and retrieved for each individual batch item.
@@ -158,7 +158,7 @@ class SimpleQTorchPolicy(
 
     @override(TorchPolicyV2)
     def extra_compute_grad_fetches(self) -> Dict[str, Any]:
-        fetches = convert_to_numpy(concat_multi_gpu_td_errors(self))
+        fetches = convert_to_numpy(concat_multi_acc_td_errors(self))
         # Auto-add empty learner stats dict if needed.
         return dict({LEARNER_STATS_KEY: {}}, **fetches)
 

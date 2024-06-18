@@ -1599,7 +1599,7 @@ def start_raylet(
         1, min(multiprocessing.cpu_count(), num_cpus_static)
     )
 
-    # Format the resource argument in a form like 'CPU,1.0,GPU,0,Custom,3'.
+    # Format the resource argument in a form like 'CPU,1.0,ACC,0,Custom,3'.
     resource_argument = ",".join(
         ["{},{}".format(*kv) for kv in static_resources.items()]
     )

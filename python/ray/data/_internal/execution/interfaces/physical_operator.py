@@ -390,8 +390,8 @@ class PhysicalOperator(Operator):
     def base_resource_usage(self) -> ExecutionResources:
         """Returns the minimum amount of resources required for execution.
 
-        For example, an operator that creates an actor pool requiring 8 GPUs could
-        return ExecutionResources(gpu=8) as its base usage.
+        For example, an operator that creates an actor pool requiring 8 ACCs could
+        return ExecutionResources(acc=8) as its base usage.
         """
         return ExecutionResources()
 

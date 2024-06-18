@@ -5,8 +5,8 @@ from unittest import mock
 
 
 def test_resources_numerical_error():
-    resource = _Resources(cpu=0.99, gpu=0.99, custom_resources={"a": 0.99})
-    small_resource = _Resources(cpu=0.33, gpu=0.33, custom_resources={"a": 0.33})
+    resource = _Resources(cpu=0.99, acc=0.99, custom_resources={"a": 0.99})
+    small_resource = _Resources(cpu=0.33, acc=0.33, custom_resources={"a": 0.33})
     for i in range(3):
         resource = _Resources.subtract(resource, small_resource)
     assert resource.is_nonnegative()
@@ -31,9 +31,9 @@ def test_resources_subtraction():
     )
     new_res = _Resources.subtract(resource_1, resource_2)
     assert new_res.cpu == 0
-    assert new_res.gpu == 0
+    assert new_res.acc == 0
     assert new_res.extra_cpu == 0
-    assert new_res.extra_gpu == 0
+    assert new_res.extra_acc == 0
 
     assert all(k == 0 for k in new_res.custom_resources.values())
     assert all(k == 0 for k in new_res.extra_custom_resources.values())
@@ -47,9 +47,9 @@ def test_resources_different():
     assert "b" in new_res.custom_resources
 
     assert new_res.cpu == 0
-    assert new_res.gpu == 0
+    assert new_res.acc == 0
     assert new_res.extra_cpu == 0
-    assert new_res.extra_gpu == 0
+    assert new_res.extra_acc == 0
     assert new_res.get("a") == 0
 
 
@@ -59,31 +59,31 @@ def test_resource_updater(ray_start_cluster):
     resource_updater = _ResourceUpdater(refresh_period=100)
     # Before intialization, all resources are 0.
     assert resource_updater.get_num_cpus() == 0
-    assert resource_updater.get_num_gpus() == 0
+    assert resource_updater.get_num_accs() == 0
 
-    cluster.add_node(num_cpus=1, num_gpus=2)
+    cluster.add_node(num_cpus=1, num_accs=2)
     cluster.wait_for_nodes()
     ray.init(address=cluster.address)
 
     # Resource updater will update resource immediately
     # after ray is initialized for the first time.
     assert resource_updater.get_num_cpus() == 1
-    assert resource_updater.get_num_gpus() == 2
+    assert resource_updater.get_num_accs() == 2
 
     # It will not update the resource before "refresh_period".
-    cluster.add_node(num_cpus=1, num_gpus=1)
+    cluster.add_node(num_cpus=1, num_accs=1)
     cluster.wait_for_nodes()
     assert resource_updater.get_num_cpus() == 1
-    assert resource_updater.get_num_gpus() == 2
+    assert resource_updater.get_num_accs() == 2
 
     resource_updater = _ResourceUpdater(refresh_period=0)
     assert resource_updater.get_num_cpus() == 2
-    assert resource_updater.get_num_gpus() == 3
+    assert resource_updater.get_num_accs() == 3
 
-    cluster.add_node(num_cpus=1, num_gpus=1)
+    cluster.add_node(num_cpus=1, num_accs=1)
     cluster.wait_for_nodes()
     assert resource_updater.get_num_cpus() == 3
-    assert resource_updater.get_num_gpus() == 4
+    assert resource_updater.get_num_accs() == 4
 
 
 def test_resource_updater_automatic():
@@ -91,14 +91,14 @@ def test_resource_updater_automatic():
 
     We instantiate a resource updater. When the reported resources are less than
     what is available, we don't force an update.
-    However, if any of the resources (cpu, gpu, or custom) are higher than what
+    However, if any of the resources (cpu, acc, or custom) are higher than what
     the updater currently think is available, we force an update from the
     Ray cluster.
     """
     resource_updater = _ResourceUpdater()
     resource_updater._avail_resources = _Resources(
         cpu=2,
-        gpu=1,
+        acc=1,
         memory=1,
         object_store_memory=1,
         custom_resources={"a": 4},
@@ -113,31 +113,31 @@ def test_resource_updater_automatic():
     ) as upd:
         # No update
         assert "2/2 CPUs" in resource_updater.debug_string(
-            total_allocated_resources={"CPU": 2, "GPU": 1, "a": 4}
+            total_allocated_resources={"CPU": 2, "ACC": 1, "a": 4}
         )
         assert upd.call_count == 0
 
         # Too many CPUs
         assert "4/2 CPUs" in resource_updater.debug_string(
-            total_allocated_resources={"CPU": 4, "GPU": 1, "a": 0}
+            total_allocated_resources={"CPU": 4, "ACC": 1, "a": 0}
         )
         assert upd.call_count == 1
 
-        # Too many GPUs
-        assert "8/1 GPUs" in resource_updater.debug_string(
-            total_allocated_resources={"CPU": 2, "GPU": 8, "a": 0}
+        # Too many ACCs
+        assert "8/1 ACCs" in resource_updater.debug_string(
+            total_allocated_resources={"CPU": 2, "ACC": 8, "a": 0}
         )
         assert upd.call_count == 2
 
         # Too many `a`
         assert "6/4 a" in resource_updater.debug_string(
-            total_allocated_resources={"CPU": 2, "GPU": 1, "a": 6}
+            total_allocated_resources={"CPU": 2, "ACC": 1, "a": 6}
         )
         assert upd.call_count == 3
 
         # No update again
         assert "2/2 CPUs" in resource_updater.debug_string(
-            total_allocated_resources={"CPU": 2, "GPU": 1, "a": 4}
+            total_allocated_resources={"CPU": 2, "ACC": 1, "a": 4}
         )
         assert upd.call_count == 3
 

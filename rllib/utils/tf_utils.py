@@ -203,13 +203,13 @@ def flatten_inputs_to_1d_tensor(
 
 
 @PublicAPI
-def get_gpu_devices() -> List[str]:
-    """Returns a list of GPU device names, e.g. ["/gpu:0", "/gpu:1"].
+def get_acc_devices() -> List[str]:
+    """Returns a list of ACC device names, e.g. ["/acc:0", "/acc:1"].
 
     Supports both tf1.x and tf2.x.
 
     Returns:
-        List of GPU device names (str).
+        List of ACC device names (str).
     """
     if tfv == 1:
         from tensorflow.python.client import device_lib
@@ -221,8 +221,8 @@ def get_gpu_devices() -> List[str]:
         except Exception:
             devices = tf.config.experimental.list_physical_devices()
 
-    # Expect "GPU", but also stuff like: "XLA_GPU".
-    return [d.name for d in devices if "GPU" in d.device_type]
+    # Expect "ACC", but also stuff like: "XLA_ACC".
+    return [d.name for d in devices if "ACC" in d.device_type]
 
 
 @PublicAPI

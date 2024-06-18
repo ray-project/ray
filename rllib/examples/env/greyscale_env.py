@@ -102,7 +102,7 @@ config = (
         train_batch_size=5000 if not args.as_test else 1000,
         model={"vf_share_layers": True},
     )
-    .resources(num_gpus=1 if not args.as_test else 0)
+    .resources(num_accs=1 if not args.as_test else 0)
     .reporting(min_time_s_per_iteration=30)
 )
 

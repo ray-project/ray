@@ -475,7 +475,7 @@ def test_map_operator_output_unbundling(
 @pytest.mark.parametrize("use_actors", [False, True])
 def test_map_operator_ray_args(shutdown_only, use_actors):
     ray.shutdown()
-    ray.init(num_cpus=0, num_gpus=1)
+    ray.init(num_cpus=0, num_accs=1)
     # Create with inputs.
     input_op = InputDataBuffer(make_ref_bundles([[i] for i in range(10)]))
     compute_strategy = ActorPoolStrategy(size=1) if use_actors else TaskPoolStrategy()
@@ -484,7 +484,7 @@ def test_map_operator_ray_args(shutdown_only, use_actors):
         input_op=input_op,
         name="TestMapper",
         compute_strategy=compute_strategy,
-        ray_remote_args={"num_cpus": 0, "num_gpus": 1},
+        ray_remote_args={"num_cpus": 0, "num_accs": 1},
     )
 
     # Feed data and block on exec.
@@ -494,7 +494,7 @@ def test_map_operator_ray_args(shutdown_only, use_actors):
     op.all_inputs_done()
     run_op_tasks_sync(op)
 
-    # Check we don't hang and complete with num_gpus=1.
+    # Check we don't hang and complete with num_accs=1.
     assert _take_outputs(op) == [[i * 2] for i in range(10)]
     assert op.completed()
 
@@ -502,7 +502,7 @@ def test_map_operator_ray_args(shutdown_only, use_actors):
 @pytest.mark.parametrize("use_actors", [False, True])
 def test_map_operator_shutdown(shutdown_only, use_actors):
     ray.shutdown()
-    ray.init(num_cpus=0, num_gpus=1)
+    ray.init(num_cpus=0, num_accs=1)
 
     def _sleep(block_iter: Iterable[Block]) -> Iterable[Block]:
         time.sleep(999)
@@ -515,7 +515,7 @@ def test_map_operator_shutdown(shutdown_only, use_actors):
         input_op=input_op,
         name="TestMapper",
         compute_strategy=compute_strategy,
-        ray_remote_args={"num_cpus": 0, "num_gpus": 1},
+        ray_remote_args={"num_cpus": 0, "num_accs": 1},
     )
 
     # Start one task and then cancel.
@@ -525,7 +525,7 @@ def test_map_operator_shutdown(shutdown_only, use_actors):
     op.shutdown()
 
     # Tasks/actors should be cancelled/killed.
-    wait_for_condition(lambda: (ray.available_resources().get("GPU", 0) == 1.0))
+    wait_for_condition(lambda: (ray.available_resources().get("ACC", 0) == 1.0))
 
 
 def test_actor_pool_map_operator_init(ray_start_regular_shared):

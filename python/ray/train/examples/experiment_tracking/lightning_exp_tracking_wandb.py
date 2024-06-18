@@ -31,7 +31,7 @@ def train_func(config):
         wandb.finish()
 
 
-scaling_config = ScalingConfig(num_workers=2, use_gpu=False)
+scaling_config = ScalingConfig(num_workers=2, use_acc=False)
 
 assert (
     "WANDB_API_KEY" in os.environ

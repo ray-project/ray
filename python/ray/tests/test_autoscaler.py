@@ -306,12 +306,12 @@ TYPES_A = {
     },
     "p2.xlarge": {
         "node_config": {},
-        "resources": {"CPU": 16, "GPU": 1},
+        "resources": {"CPU": 16, "ACC": 1},
         "max_workers": 10,
     },
     "p2.8xlarge": {
         "node_config": {},
-        "resources": {"CPU": 32, "GPU": 8},
+        "resources": {"CPU": 32, "ACC": 8},
         "max_workers": 4,
     },
 }
@@ -341,7 +341,7 @@ class LoadMetricsTest(unittest.TestCase):
         lm = LoadMetrics()
         lm.update("1.1.1.1", mock_raylet_id(), {"CPU": 2}, {"CPU": 0})
         lm.update(
-            "2.2.2.2", mock_raylet_id(), {"CPU": 2, "GPU": 16}, {"CPU": 2, "GPU": 2}
+            "2.2.2.2", mock_raylet_id(), {"CPU": 2, "ACC": 16}, {"CPU": 2, "ACC": 2}
         )
         lm.update(
             "3.3.3.3",
@@ -357,7 +357,7 @@ class LoadMetricsTest(unittest.TestCase):
         )
         debug = lm.info_string()
         assert (
-            "ResourceUsage: 2.0/4.0 CPU, 14.0/16.0 GPU, "
+            "ResourceUsage: 2.0/4.0 CPU, 14.0/16.0 ACC, "
             "1.05 GiB/1.05 GiB memory, "
             "1.05 GiB/2.1 GiB object_store_memory"
         ) in debug

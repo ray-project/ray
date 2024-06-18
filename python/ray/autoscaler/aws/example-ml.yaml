@@ -31,8 +31,8 @@ docker:
     pull_before_run: True
     run_options: []  # Extra options to pass into "docker run"
 
-    # Example of running a GPU head with CPU workers
-    # head_image: "rayproject/ray-ml:latest-gpu"
+    # Example of running a ACC head with CPU workers
+    # head_image: "rayproject/ray-ml:latest-acc"
 
     # worker_image: "rayproject/ray-ml:latest"
 

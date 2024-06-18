@@ -385,11 +385,11 @@ def test_placement_group_synchronous_registration(ray_start_cluster, connect_to_
 
 
 @pytest.mark.parametrize("connect_to_client", [False, True])
-def test_placement_group_gpu_set(ray_start_cluster, connect_to_client):
+def test_placement_group_acc_set(ray_start_cluster, connect_to_client):
     cluster = ray_start_cluster
     # One node which only has one CPU.
-    cluster.add_node(num_cpus=1, num_gpus=1)
-    cluster.add_node(num_cpus=1, num_gpus=1)
+    cluster.add_node(num_cpus=1, num_accs=1)
+    cluster.add_node(num_cpus=1, num_accs=1)
     cluster.wait_for_nodes()
     ray.init(address=cluster.address)
 
@@ -397,14 +397,14 @@ def test_placement_group_gpu_set(ray_start_cluster, connect_to_client):
         placement_group = ray.util.placement_group(
             name="name",
             strategy="PACK",
-            bundles=[{"CPU": 1, "GPU": 1}, {"CPU": 1, "GPU": 1}],
+            bundles=[{"CPU": 1, "ACC": 1}, {"CPU": 1, "ACC": 1}],
         )
 
-        @ray.remote(num_gpus=1)
-        def get_gpus():
-            return ray.get_gpu_ids()
+        @ray.remote(num_accs=1)
+        def get_accs():
+            return ray.get_acc_ids()
 
-        result = get_gpus.options(
+        result = get_accs.options(
             scheduling_strategy=PlacementGroupSchedulingStrategy(
                 placement_group=placement_group, placement_group_bundle_index=0
             )
@@ -412,7 +412,7 @@ def test_placement_group_gpu_set(ray_start_cluster, connect_to_client):
         result = ray.get(result)
         assert result == [0]
 
-        result = get_gpus.options(
+        result = get_accs.options(
             scheduling_strategy=PlacementGroupSchedulingStrategy(
                 placement_group=placement_group, placement_group_bundle_index=1
             )
@@ -422,26 +422,26 @@ def test_placement_group_gpu_set(ray_start_cluster, connect_to_client):
 
 
 @pytest.mark.parametrize("connect_to_client", [False, True])
-def test_placement_group_gpu_assigned(ray_start_cluster, connect_to_client):
+def test_placement_group_acc_assigned(ray_start_cluster, connect_to_client):
     cluster = ray_start_cluster
-    cluster.add_node(num_gpus=2)
+    cluster.add_node(num_accs=2)
     ray.init(address=cluster.address)
-    gpu_ids_res = set()
+    acc_ids_res = set()
 
-    @ray.remote(num_gpus=1, num_cpus=0)
+    @ray.remote(num_accs=1, num_cpus=0)
     def f():
         import os
 
         return os.environ["CUDA_VISIBLE_DEVICES"]
 
     with connect_to_client_or_not(connect_to_client):
-        pg1 = ray.util.placement_group([{"GPU": 1}])
-        pg2 = ray.util.placement_group([{"GPU": 1}])
+        pg1 = ray.util.placement_group([{"ACC": 1}])
+        pg2 = ray.util.placement_group([{"ACC": 1}])
 
         assert pg1.wait(10)
         assert pg2.wait(10)
 
-        gpu_ids_res.add(
+        acc_ids_res.add(
             ray.get(
                 f.options(
                     scheduling_strategy=PlacementGroupSchedulingStrategy(
@@ -450,7 +450,7 @@ def test_placement_group_gpu_assigned(ray_start_cluster, connect_to_client):
                 ).remote()
             )
         )
-        gpu_ids_res.add(
+        acc_ids_res.add(
             ray.get(
                 f.options(
                     scheduling_strategy=PlacementGroupSchedulingStrategy(
@@ -460,7 +460,7 @@ def test_placement_group_gpu_assigned(ray_start_cluster, connect_to_client):
             )
         )
 
-        assert len(gpu_ids_res) == 2
+        assert len(acc_ids_res) == 2
 
 
 @pytest.mark.repeat(3)
@@ -522,23 +522,23 @@ def test_actor_scheduling_not_block_with_placement_group(ray_start_cluster):
 
 
 @pytest.mark.parametrize("connect_to_client", [False, True])
-def test_placement_group_gpu_unique_assigned(ray_start_cluster, connect_to_client):
+def test_placement_group_acc_unique_assigned(ray_start_cluster, connect_to_client):
     cluster = ray_start_cluster
-    cluster.add_node(num_gpus=4, num_cpus=4)
+    cluster.add_node(num_accs=4, num_cpus=4)
     ray.init(address=cluster.address)
-    gpu_ids_res = set()
+    acc_ids_res = set()
 
-    # Create placement group with 4 bundles using 1 GPU each.
-    num_gpus = 4
-    bundles = [{"GPU": 1, "CPU": 1} for _ in range(num_gpus)]
+    # Create placement group with 4 bundles using 1 ACC each.
+    num_accs = 4
+    bundles = [{"ACC": 1, "CPU": 1} for _ in range(num_accs)]
     pg = placement_group(bundles)
     ray.get(pg.ready())
 
-    # Actor using 1 GPU that has a method to get
+    # Actor using 1 ACC that has a method to get
     #  $CUDA_VISIBLE_DEVICES env variable.
-    @ray.remote(num_gpus=1, num_cpus=1)
+    @ray.remote(num_accs=1, num_cpus=1)
     class Actor:
-        def get_gpu(self):
+        def get_acc(self):
             import os
 
             return os.environ["CUDA_VISIBLE_DEVICES"]
@@ -575,11 +575,11 @@ def test_placement_group_gpu_unique_assigned(ray_start_cluster, connect_to_clien
     )
 
     for actor in actors:
-        gpu_ids = ray.get(actor.get_gpu.remote())
-        assert len(gpu_ids) == 1
-        gpu_ids_res.add(gpu_ids)
+        acc_ids = ray.get(actor.get_acc.remote())
+        assert len(acc_ids) == 1
+        acc_ids_res.add(acc_ids)
 
-    assert len(gpu_ids_res) == 4
+    assert len(acc_ids_res) == 4
 
 
 @pytest.mark.parametrize("enable_v2", [True, False])
@@ -671,7 +671,7 @@ def test_placement_group_removal_leak_regression(ray_start_cluster):
     ray.init(address=cluster.address)
 
     TOTAL_CPUS = 8
-    bundles = [{"CPU": 1, "GPU": 1}]
+    bundles = [{"CPU": 1, "ACC": 1}]
     bundles += [{"CPU": 1} for _ in range(TOTAL_CPUS - 1)]
 
     pg = placement_group(bundles, strategy="PACK")
@@ -683,7 +683,7 @@ def test_placement_group_removal_leak_regression(ray_start_cluster):
     o = pg.ready()
     # Add an artificial delay until the new node is up.
     time.sleep(3)
-    cluster.add_node(num_cpus=5, num_gpus=1)
+    cluster.add_node(num_cpus=5, num_accs=1)
     ray.get(o)
     bundle_resource_name = f"bundle_group_{pg.id.hex()}"
     expected_bundle_wildcard_val = TOTAL_CPUS * 1000
@@ -712,10 +712,10 @@ def test_placement_group_local_resource_view(monkeypatch, ray_start_cluster):
         # We need to init here so that we can make sure it's connecting to
         # the raylet where it only has cpu resources.
         # This is a hacky way to prevent scheduling hanging which will
-        # schedule <CPU:1> job to the node with GPU and for <GPU:1, CPU:1> task
+        # schedule <CPU:1> job to the node with ACC and for <ACC:1, CPU:1> task
         # there is no node has this resource.
         ray.init(address="auto")
-        cluster.add_node(num_cpus=16, num_gpus=1)
+        cluster.add_node(num_cpus=16, num_accs=1)
         cluster.wait_for_nodes()
         NUM_CPU_BUNDLES = 30
 
@@ -728,7 +728,7 @@ def test_placement_group_local_resource_view(monkeypatch, ray_start_cluster):
                 time.sleep(0.1)
                 print("work ", self.i)
 
-        @ray.remote(num_cpus=1, num_gpus=1)
+        @ray.remote(num_cpus=1, num_accs=1)
         class Trainer(object):
             def __init__(self, i):
                 self.i = i
@@ -737,7 +737,7 @@ def test_placement_group_local_resource_view(monkeypatch, ray_start_cluster):
                 time.sleep(0.2)
                 print("train ", self.i)
 
-        bundles = [{"CPU": 1, "GPU": 1}]
+        bundles = [{"CPU": 1, "ACC": 1}]
         bundles += [{"CPU": 1} for _ in range(NUM_CPU_BUNDLES)]
         pg = placement_group(bundles, strategy="PACK")
         ray.get(pg.ready())

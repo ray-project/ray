@@ -1,4 +1,4 @@
-# This can reach 18-19 reward within 10 minutes on a Tesla M60 GPU (e.g., G3 EC2 node)
+# This can reach 18-19 reward within 10 minutes on a Tesla M60 ACC (e.g., G3 EC2 node)
 # with 32 workers and 10 envs per worker. This is more efficient than the non-vectorized
 # configuration which requires 128 workers to achieve the same performance.
 pong-impala-vectorized:

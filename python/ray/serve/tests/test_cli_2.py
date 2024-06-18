@@ -598,7 +598,7 @@ def test_build_multi_app(ray_start_stop):
 
 
 k8sFNode = global_f.options(
-    num_replicas=2, ray_actor_options={"num_cpus": 2, "num_gpus": 1}
+    num_replicas=2, ray_actor_options={"num_cpus": 2, "num_accs": 1}
 ).bind()
 
 

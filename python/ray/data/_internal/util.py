@@ -206,7 +206,7 @@ def _estimate_avail_cpus(cur_pg: Optional["PlacementGroup"]) -> int:
         cur_pg: The current placement group, if any.
     """
     cluster_cpus = int(ray.cluster_resources().get("CPU", 1))
-    cluster_gpus = int(ray.cluster_resources().get("GPU", 0))
+    cluster_accs = int(ray.cluster_resources().get("ACC", 0))
 
     # If we're in a placement group, we shouldn't assume the entire cluster's
     # resources are available for us to use. Estimate an upper bound on what's
@@ -218,8 +218,8 @@ def _estimate_avail_cpus(cur_pg: Optional["PlacementGroup"]) -> int:
             # Then scale our cluster_cpus proportionally to avoid over-parallelizing
             # if there are many parallel Tune trials using the cluster.
             cpu_fraction = bundle.get("CPU", 0) / max(1, cluster_cpus)
-            gpu_fraction = bundle.get("GPU", 0) / max(1, cluster_gpus)
-            max_fraction = max(cpu_fraction, gpu_fraction)
+            acc_fraction = bundle.get("ACC", 0) / max(1, cluster_accs)
+            max_fraction = max(cpu_fraction, acc_fraction)
             # Over-parallelize by up to a factor of 2, but no more than that. It's
             # preferrable to over-estimate than under-estimate.
             pg_cpus += 2 * int(max_fraction * cluster_cpus)

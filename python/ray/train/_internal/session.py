@@ -914,7 +914,7 @@ def get_local_rank() -> int:
         train_dataset = ray.data.read_csv("s3://anonymous@ray-example-data/iris.csv")
         trainer = TorchTrainer(
             train_loop_per_worker,
-            scaling_config=ScalingConfig(num_workers=2, use_gpu=True),
+            scaling_config=ScalingConfig(num_workers=2, use_acc=True),
             datasets={"train": train_dataset}
         )
         trainer.fit()

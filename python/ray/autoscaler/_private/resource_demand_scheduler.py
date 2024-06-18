@@ -18,7 +18,7 @@ from typing import Callable, Dict, List, Optional, Tuple
 import ray
 from ray._private.gcs_utils import PlacementGroupTableData
 from ray.autoscaler._private.constants import (
-    AUTOSCALER_CONSERVE_GPU_NODES,
+    AUTOSCALER_CONSERVE_ACC_NODES,
     AUTOSCALER_UTILIZATION_SCORER_KEY,
 )
 from ray.autoscaler._private.loader import load_function_or_class
@@ -369,7 +369,7 @@ class ResourceDemandScheduler:
             if runtime_resources:
                 runtime_resources = copy.deepcopy(runtime_resources)
                 resources = self.node_types[node_type].get("resources", {})
-                for key in ["CPU", "GPU", "memory", "object_store_memory"]:
+                for key in ["CPU", "ACC", "memory", "object_store_memory"]:
                     if key in runtime_resources:
                         resources[key] = runtime_resources[key]
                 self.node_types[node_type]["resources"] = resources
@@ -489,7 +489,7 @@ class ResourceDemandScheduler:
              pending_nodes: Pending nodes.
         Returns:
              node_resources: a list of running + pending resources.
-                 E.g., [{"CPU": 4}, {"GPU": 2}].
+                 E.g., [{"CPU": 4}, {"ACC": 2}].
              node_type_counts: running + pending workers per node type.
         """
 
@@ -836,21 +836,21 @@ def _resource_based_utilization_scorer(
     if not util_by_resources:
         return None
 
-    # Prefer not to launch a GPU node if there aren't any GPU requirements in the
+    # Prefer not to launch a ACC node if there aren't any ACC requirements in the
     # resource bundle.
-    gpu_ok = True
-    if AUTOSCALER_CONSERVE_GPU_NODES:
-        is_gpu_node = "GPU" in node_resources and node_resources["GPU"] > 0
-        any_gpu_task = any("GPU" in r for r in resources)
-        if is_gpu_node and not any_gpu_task:
-            gpu_ok = False
+    acc_ok = True
+    if AUTOSCALER_CONSERVE_ACC_NODES:
+        is_acc_node = "ACC" in node_resources and node_resources["ACC"] > 0
+        any_acc_task = any("ACC" in r for r in resources)
+        if is_acc_node and not any_acc_task:
+            acc_ok = False
 
-    # Prioritize avoiding gpu nodes for non-gpu workloads first,
+    # Prioritize avoiding acc nodes for non-acc workloads first,
     # then prioritize matching multiple resource types,
     # then prioritize using all resources,
     # then prioritize overall balance of multiple resources.
     return (
-        gpu_ok,
+        acc_ok,
         num_matching_resource_types,
         min(util_by_resources),
         # util_by_resources should be non empty
@@ -946,7 +946,7 @@ def _inplace_subtract(node: ResourceDict, resources: ResourceDict) -> None:
     for k, v in resources.items():
         if v == 0:
             # This is an edge case since some reasonable programs/computers can
-            # do `ray.autoscaler.sdk.request_resources({"GPU": 0}"})`.
+            # do `ray.autoscaler.sdk.request_resources({"ACC": 0}"})`.
             continue
         if k not in node:
             assert k.startswith(ray._raylet.IMPLICIT_RESOURCE_PREFIX), (k, node)

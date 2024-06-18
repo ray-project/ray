@@ -538,22 +538,22 @@ def test_pull_manager_at_capacity_reports(ray_start_cluster):
 @pytest.mark.xfail(
     ray.cluster_utils.cluster_not_supported, reason="cluster not supported"
 )
-def build_cluster(num_cpu_nodes, num_gpu_nodes):
+def build_cluster(num_cpu_nodes, num_acc_nodes):
     cluster = ray.cluster_utils.Cluster()
-    gpu_ids = [
-        cluster.add_node(num_cpus=2, num_gpus=1).unique_id for _ in range(num_gpu_nodes)
+    acc_ids = [
+        cluster.add_node(num_cpus=2, num_accs=1).unique_id for _ in range(num_acc_nodes)
     ]
     cpu_ids = [cluster.add_node(num_cpus=1).unique_id for _ in range(num_cpu_nodes)]
     cluster.wait_for_nodes()
-    return cluster, cpu_ids, gpu_ids
+    return cluster, cpu_ids, acc_ids
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Fails on windows")
-def test_gpu(monkeypatch):
-    monkeypatch.setenv("RAY_scheduler_avoid_gpu_nodes", "1")
+def test_acc(monkeypatch):
+    monkeypatch.setenv("RAY_scheduler_avoid_acc_nodes", "1")
     n = 5
 
-    cluster, cpu_node_ids, gpu_node_ids = build_cluster(n, n)
+    cluster, cpu_node_ids, acc_node_ids = build_cluster(n, n)
     try:
         ray.init(address=cluster.address)
 
@@ -570,7 +570,7 @@ def test_gpu(monkeypatch):
             time.sleep(10)
             return ray._private.worker.global_worker.node.unique_id
 
-        @ray.remote(num_returns=2, num_gpus=0.5)
+        @ray.remote(num_returns=2, num_accs=0.5)
         def launcher():
             a = Actor1.remote()
             # Leave one cpu for the actor.
@@ -586,13 +586,13 @@ def test_gpu(monkeypatch):
         ids, launcher_id = ray.get(r)
 
         assert (
-            launcher_id in gpu_node_ids
-        ), "expected launcher task to be scheduled on GPU nodes"
+            launcher_id in acc_node_ids
+        ), "expected launcher task to be scheduled on ACC nodes"
 
         for node_id in ids:
             assert (
                 node_id in cpu_node_ids
-            ), "expected non-GPU tasks/actors to be scheduled on non-GPU nodes."
+            ), "expected non-ACC tasks/actors to be scheduled on non-ACC nodes."
     finally:
         ray.shutdown()
         cluster.shutdown()
@@ -643,13 +643,13 @@ def test_head_node_without_cpu(ray_start_cluster):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Fails on windows")
-def test_gpu_scheduling_liveness(ray_start_cluster):
-    """Check if the GPU scheduling is in progress when
+def test_acc_scheduling_liveness(ray_start_cluster):
+    """Check if the ACC scheduling is in progress when
     it is used with the placement group
     Issue: https://github.com/ray-project/ray/issues/19130
     """
     cluster = ray_start_cluster
-    # Start a node without a gpu.
+    # Start a node without a acc.
     cluster.add_node(num_cpus=6)
     ray.init(address=cluster.address)
 
@@ -664,7 +664,7 @@ def test_gpu_scheduling_liveness(ray_start_cluster):
             time.sleep(0.1)
             print("work ", self.i)
 
-    @ray.remote(num_cpus=1, num_gpus=1)
+    @ray.remote(num_cpus=1, num_accs=1)
     class Trainer(object):
         def __init__(self, i):
             self.i = i
@@ -673,7 +673,7 @@ def test_gpu_scheduling_liveness(ray_start_cluster):
             time.sleep(0.2)
             print("train ", self.i)
 
-    bundles = [{"CPU": 1, "GPU": 1}]
+    bundles = [{"CPU": 1, "ACC": 1}]
     bundles += [{"CPU": 1} for _ in range(NUM_CPU_BUNDLES)]
 
     pg = ray.util.placement_group(bundles, strategy="PACK")
@@ -681,7 +681,7 @@ def test_gpu_scheduling_liveness(ray_start_cluster):
     # Artificial delay to simulate the real world workload.
     time.sleep(3)
     print("Scaling up.")
-    cluster.add_node(num_cpus=6, num_gpus=1)
+    cluster.add_node(num_cpus=6, num_accs=1)
     ray.get(o)
 
     workers = [
@@ -694,7 +694,7 @@ def test_gpu_scheduling_liveness(ray_start_cluster):
         scheduling_strategy=PlacementGroupSchedulingStrategy(placement_group=pg)
     ).remote(0)
 
-    # If the gpu scheduling doesn't properly work, the below
+    # If the acc scheduling doesn't properly work, the below
     # code will hang.
     ray.get([workers[i].work.remote() for i in range(NUM_CPU_BUNDLES)], timeout=30)
     ray.get(trainer.train.remote(), timeout=30)

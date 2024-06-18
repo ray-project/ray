@@ -30,7 +30,7 @@ from ray.rllib.utils.exploration.parameter_noise import ParameterNoise
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.torch_utils import (
     apply_grad_clipping,
-    concat_multi_gpu_td_errors,
+    concat_multi_acc_td_errors,
     FLOAT_MIN,
     huber_loss,
     l2_loss,
@@ -360,7 +360,7 @@ def build_q_losses(policy: Policy, model, _, train_batch: SampleBatch) -> Tensor
     )
 
     # Store values for stats function in model (tower), such that for
-    # multi-GPU, we do not override them during the parallel loss phase.
+    # multi-ACC, we do not override them during the parallel loss phase.
     model.tower_stats["td_error"] = q_loss.td_error
     # TD-error tensor in final stats
     # will be concatenated and retrieved for each individual batch item.
@@ -373,7 +373,7 @@ def adam_optimizer(
     policy: Policy, config: AlgorithmConfigDict
 ) -> "torch.optim.Optimizer":
 
-    # By this time, the models have been moved to the GPU - if any - and we
+    # By this time, the models have been moved to the ACC - if any - and we
     # can define our optimizers using the correct CUDA variables.
     if not hasattr(policy, "q_func_vars"):
         policy.q_func_vars = policy.model.variables()
@@ -385,12 +385,12 @@ def adam_optimizer(
 
 def build_q_stats(policy: Policy, batch) -> Dict[str, TensorType]:
     stats = {}
-    for stats_key in policy.model_gpu_towers[0].tower_stats["q_loss"].stats.keys():
+    for stats_key in policy.model_acc_towers[0].tower_stats["q_loss"].stats.keys():
         stats[stats_key] = torch.mean(
             torch.stack(
                 [
                     t.tower_stats["q_loss"].stats[stats_key].to(policy.device)
-                    for t in policy.model_gpu_towers
+                    for t in policy.model_acc_towers
                     if "q_loss" in t.tower_stats
                 ]
             )
@@ -494,7 +494,7 @@ DQNTorchPolicy = build_policy_class(
     postprocess_fn=postprocess_nstep_and_prio,
     optimizer_fn=adam_optimizer,
     extra_grad_process_fn=grad_process_and_td_error_fn,
-    extra_learn_fetches_fn=concat_multi_gpu_td_errors,
+    extra_learn_fetches_fn=concat_multi_acc_td_errors,
     extra_action_out_fn=extra_action_out_fn,
     before_init=setup_early_mixins,
     before_loss_init=before_loss_init,

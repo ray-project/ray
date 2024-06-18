@@ -105,7 +105,7 @@ available_node_types:
       # OS-bypass capabilities and communicate directly with the device. See:
       # https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/efa.html
       # In this case, we'll use EFA with NCCL on the latest Ubuntu Deep Learning
-      # AMI and a supported network-optimized GPU instance type.
+      # AMI and a supported network-optimized ACC instance type.
       # See: https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/efa-start-nccl-dlami.html
       ImageId: latest_dlami
       InstanceType: p3dn.24xlarge

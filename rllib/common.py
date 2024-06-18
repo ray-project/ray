@@ -140,7 +140,7 @@ train_help = dict(
     "of starting a new one.",
     ray_ui="Whether to enable the Ray web UI.",
     ray_num_cpus="The '--num-cpus' argument to use if starting a new cluster.",
-    ray_num_gpus="The '--num-gpus' argument to use if starting a new cluster.",
+    ray_num_accs="The '--num-accs' argument to use if starting a new cluster.",
     ray_num_nodes="Emulate multiple cluster nodes for debugging.",
     ray_object_store_memory="--object-store-memory to use if starting a new cluster.",
     upload_dir="Optional URI to sync training results to (e.g. s3://bucket).",
@@ -244,7 +244,7 @@ class CLIArguments:
     RayAddress = typer.Option(None, help=train_help.get("ray_address"))
     RayUi = typer.Option(False, help=train_help.get("ray_ui"))
     RayNumCpus = typer.Option(None, help=train_help.get("ray_num_cpus"))
-    RayNumGpus = typer.Option(None, help=train_help.get("ray_num_gpus"))
+    RayNumGpus = typer.Option(None, help=train_help.get("ray_num_accs"))
     RayNumNodes = typer.Option(None, help=train_help.get("ray_num_nodes"))
     RayObjectStoreMemory = typer.Option(
         None, help=train_help.get("ray_object_store_memory")

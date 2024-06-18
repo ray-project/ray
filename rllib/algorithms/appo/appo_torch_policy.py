@@ -301,7 +301,7 @@ class APPOTorchPolicy(
             total_loss += mean_vf_loss * self.config["vf_loss_coeff"]
 
         # Store values for stats function in model (tower), such that for
-        # multi-GPU, we do not override them during the parallel loss phase.
+        # multi-ACC, we do not override them during the parallel loss phase.
         model.tower_stats["total_loss"] = total_loss
         model.tower_stats["mean_policy_loss"] = mean_policy_loss
         model.tower_stats["mean_kl_loss"] = mean_kl_loss

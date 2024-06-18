@@ -69,14 +69,14 @@ from ray.rllib.utils import check_env, force_list
 from ray.rllib.utils.annotations import DeveloperAPI, override
 from ray.rllib.utils.debug import summarize, update_global_seed_if_necessary
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE, deprecation_warning
-from ray.rllib.utils.error import ERR_MSG_NO_GPUS, HOWTO_CHANGE_CONFIG
+from ray.rllib.utils.error import ERR_MSG_NO_ACCS, HOWTO_CHANGE_CONFIG
 from ray.rllib.utils.filter import Filter, NoFilter, get_filter
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.from_config import from_config
 from ray.rllib.utils.policy import create_policy_for_framework, validate_policy_id
 from ray.rllib.utils.sgd import do_minibatch_sgd
 from ray.rllib.utils.tf_run_builder import _TFRunBuilder
-from ray.rllib.utils.tf_utils import get_gpu_devices as get_tf_gpu_devices
+from ray.rllib.utils.tf_utils import get_acc_devices as get_tf_acc_devices
 from ray.rllib.utils.tf_utils import get_tf_eager_cls_if_necessary
 from ray.rllib.utils.typing import (
     AgentID,
@@ -487,44 +487,44 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
         # TODO(jungong) : clean up after non-connector env_runner is fully deprecated.
         self.preprocessors: Dict[PolicyID, Preprocessor] = None
 
-        # Check available number of GPUs.
-        num_gpus = (
-            self.config.num_gpus
+        # Check available number of ACCs.
+        num_accs = (
+            self.config.num_accs
             if self.worker_index == 0
-            else self.config.num_gpus_per_worker
+            else self.config.num_accs_per_worker
         )
 
         # This is only for the old API where local_worker was responsible for learning
         if not self.config._enable_new_api_stack:
-            # Error if we don't find enough GPUs.
+            # Error if we don't find enough ACCs.
             if (
                 ray.is_initialized()
                 and ray._private.worker._mode() != ray._private.worker.LOCAL_MODE
-                and not config._fake_gpus
+                and not config._fake_accs
             ):
                 devices = []
                 if self.config.framework_str in ["tf2", "tf"]:
-                    devices = get_tf_gpu_devices()
+                    devices = get_tf_acc_devices()
                 elif self.config.framework_str == "torch":
                     devices = list(range(torch.cuda.device_count()))
 
-                if len(devices) < num_gpus:
+                if len(devices) < num_accs:
                     raise RuntimeError(
-                        ERR_MSG_NO_GPUS.format(len(devices), devices)
+                        ERR_MSG_NO_ACCS.format(len(devices), devices)
                         + HOWTO_CHANGE_CONFIG
                     )
-            # Warn, if running in local-mode and actual GPUs (not faked) are
+            # Warn, if running in local-mode and actual ACCs (not faked) are
             # requested.
             elif (
                 ray.is_initialized()
                 and ray._private.worker._mode() == ray._private.worker.LOCAL_MODE
-                and num_gpus > 0
-                and not self.config._fake_gpus
+                and num_accs > 0
+                and not self.config._fake_accs
             ):
                 logger.warning(
                     "You are running ray with `local_mode=True`, but have "
-                    f"configured {num_gpus} GPUs to be used! In local mode, "
-                    f"Policies are placed on the CPU and the `num_gpus` setting "
+                    f"configured {num_accs} ACCs to be used! In local mode, "
+                    f"Policies are placed on the CPU and the `num_accs` setting "
                     f"is ignored."
                 )
 

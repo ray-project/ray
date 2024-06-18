@@ -657,7 +657,7 @@ class TestAutoscalingPolicy:
                 UDFClass,
                 batch_size=1,
                 compute=ray.data.ActorPoolStrategy(size=5),
-                num_gpus=100,
+                num_accs=100,
             ).take_all()
         actor_pool_map_operator.DEFAULT_WAIT_FOR_MIN_ACTORS_SEC = original_timeout
 

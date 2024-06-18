@@ -1,4 +1,4 @@
-# This can reach 9k reward in 2 hours on a Titan XP GPU
+# This can reach 9k reward in 2 hours on a Titan XP ACC
 # with 16 workers and 8 envs per worker.
 halfcheetah-appo:
     env: HalfCheetah-v2
@@ -14,10 +14,10 @@ halfcheetah-appo:
         rollout_fragment_length: 512
         train_batch_size: 4096
         num_workers: 16
-        num_gpus: 1
+        num_accs: 1
         broadcast_interval: 1
         max_sample_requests_in_flight_per_worker: 1
-        num_multi_gpu_tower_stacks: 1
+        num_multi_acc_tower_stacks: 1
         num_envs_per_worker: 32
         minibatch_buffer_size: 16
         num_sgd_iter: 32

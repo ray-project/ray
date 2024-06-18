@@ -1,4 +1,4 @@
-# You can expect ~20 reward within 1.1m timesteps / 2.1 hours on a K80 GPU
+# You can expect ~20 reward within 1.1m timesteps / 2.1 hours on a K80 ACC
 pong-deterministic-dqn:
     env: ALE/Pong-v5
     run: DQN
@@ -13,7 +13,7 @@ pong-deterministic-dqn:
             frameskip: 1
             full_action_space: false
             repeat_action_probability: 0.0
-        num_gpus: 1
+        num_accs: 1
         gamma: 0.99
         lr: .0001
         replay_buffer_config:

@@ -1,12 +1,12 @@
 # These requirements are used for the CI and CPU-only Docker images so we install CPU only versions of torch.
-# For GPU Docker images, you should install dl-gpu-requirements.txt afterwards.
+# For ACC Docker images, you should install dl-acc-requirements.txt afterwards.
 
 tensorflow==2.11.0; sys_platform != 'darwin' or platform_machine != 'arm64'
 tensorflow-macos==2.11.0; sys_platform == 'darwin' and platform_machine == 'arm64'
 tensorflow-probability==0.19.0
 tensorflow-datasets
 
-# If you make changes below this line, please also make the corresponding changes to `dl-gpu-requirements.txt`
+# If you make changes below this line, please also make the corresponding changes to `dl-acc-requirements.txt`
 # and to `install-dependencies.sh`!
 
 --extra-index-url https://download.pytorch.org/whl/cpu  # for CPU versions of torch, torchvision

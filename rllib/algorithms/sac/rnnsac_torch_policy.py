@@ -461,7 +461,7 @@ def actor_critic_loss(
         actor_loss = reduce_mean_valid(alpha.detach() * log_pis_t - q_t_det_policy)
 
     # Store values for stats function in model (tower), such that for
-    # multi-GPU, we do not override them during the parallel loss phase.
+    # multi-ACC, we do not override them during the parallel loss phase.
     model.tower_stats["q_t"] = q_t * seq_mask[..., None]
     model.tower_stats["policy_t"] = policy_t * seq_mask[..., None]
     model.tower_stats["log_pis_t"] = log_pis_t * seq_mask[..., None]

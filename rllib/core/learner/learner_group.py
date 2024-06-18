@@ -105,7 +105,7 @@ class LearnerGroup:
                 backend_config=backend_config,
                 num_workers=scaling_config.num_workers,
                 num_cpus_per_worker=scaling_config.num_cpus_per_worker,
-                num_gpus_per_worker=scaling_config.num_gpus_per_worker,
+                num_accs_per_worker=scaling_config.num_accs_per_worker,
                 max_retries=0,
             )
             backend_executor.start(

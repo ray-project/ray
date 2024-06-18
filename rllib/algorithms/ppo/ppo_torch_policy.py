@@ -159,7 +159,7 @@ class PPOTorchPolicy(
             total_loss += self.kl_coeff * mean_kl_loss
 
         # Store values for stats function in model (tower), such that for
-        # multi-GPU, we do not override them during the parallel loss phase.
+        # multi-ACC, we do not override them during the parallel loss phase.
         model.tower_stats["total_loss"] = total_loss
         model.tower_stats["mean_policy_loss"] = reduce_mean_valid(-surrogate_loss)
         model.tower_stats["mean_vf_loss"] = mean_vf_loss

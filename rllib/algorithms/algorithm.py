@@ -50,7 +50,7 @@ from ray.rllib.evaluation.postprocessing_v2 import postprocess_episodes_to_sampl
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.execution.rollout_ops import synchronous_parallel_sample
-from ray.rllib.execution.train_ops import multi_gpu_train_one_step, train_one_step
+from ray.rllib.execution.train_ops import multi_acc_train_one_step, train_one_step
 from ray.rllib.offline import get_dataset_and_shards
 from ray.rllib.offline.estimators import (
     OffPolicyEstimator,
@@ -147,9 +147,9 @@ except ImportError:
                 A list of resource bundles for the learner workers.
             """
             if cf.num_learner_workers > 0:
-                if cf.num_gpus_per_learner_worker:
+                if cf.num_accs_per_learner_worker:
                     learner_bundles = [
-                        {"GPU": cf.num_learner_workers * cf.num_gpus_per_learner_worker}
+                        {"ACC": cf.num_learner_workers * cf.num_accs_per_learner_worker}
                     ]
                 elif cf.num_cpus_per_learner_worker:
                     learner_bundles = [
@@ -166,7 +166,7 @@ except ImportError:
                         "CPU": max(
                             cf.num_cpus_per_learner_worker, cf.num_cpus_for_local_worker
                         ),
-                        "GPU": cf.num_gpus_per_learner_worker,
+                        "ACC": cf.num_accs_per_learner_worker,
                     }
                 ]
             return learner_bundles
@@ -1598,7 +1598,7 @@ class Algorithm(Trainable, AlgorithmBase):
         - Concatenate collected SampleBatches into one train batch.
         - Note that we may have more than one policy in the multi-agent case:
           Call the different policies' `learn_on_batch` (simple optimizer) OR
-          `load_batch_into_buffer` + `learn_on_loaded_batch` (multi-GPU
+          `load_batch_into_buffer` + `learn_on_loaded_batch` (multi-ACC
           optimizer) methods to calculate loss and update the model(s).
         - Return all collected metrics for the iteration.
 
@@ -1627,8 +1627,8 @@ class Algorithm(Trainable, AlgorithmBase):
         train_results = {}
         if train_batch.agent_steps() > 0:
             # Use simple optimizer (only for multi-agent or tf-eager; all other
-            # cases should use the multi-GPU optimizer, even if only using 1 GPU).
-            # TODO: (sven) rename MultiGPUOptimizer into something more
+            # cases should use the multi-ACC optimizer, even if only using 1 ACC).
+            # TODO: (sven) rename MultiACCOptimizer into something more
             #  meaningful.
             if self.config._enable_new_api_stack:
                 is_module_trainable = self.workers.local_worker().is_policy_to_train
@@ -1637,7 +1637,7 @@ class Algorithm(Trainable, AlgorithmBase):
             elif self.config.get("simple_optimizer") is True:
                 train_results = train_one_step(self, train_batch)
             else:
-                train_results = multi_gpu_train_one_step(self, train_batch)
+                train_results = multi_acc_train_one_step(self, train_batch)
         else:
             # Wait 1 sec before probing again via weight syncing.
             time.sleep(1)
@@ -2374,9 +2374,9 @@ class Algorithm(Trainable, AlgorithmBase):
 
         # Default logic for RLlib Algorithms:
         # Create one bundle per individual worker (local or remote).
-        # Use `num_cpus_for_local_worker` and `num_gpus` for the local worker and
-        # `num_cpus_per_worker` and `num_gpus_per_worker` for the remote
-        # workers to determine their CPU/GPU resource needs.
+        # Use `num_cpus_for_local_worker` and `num_accs` for the local worker and
+        # `num_cpus_per_worker` and `num_accs_per_worker` for the remote
+        # workers to determine their CPU/ACC resource needs.
 
         # Convenience config handles.
         cf = cls.get_default_config().update_from_dict(config)
@@ -2397,18 +2397,18 @@ class Algorithm(Trainable, AlgorithmBase):
             else:
                 # in this case local_worker only does sampling and training is done on
                 # remote learner workers
-                driver = {"CPU": cf.num_cpus_for_local_worker, "GPU": 0}
+                driver = {"CPU": cf.num_cpus_for_local_worker, "ACC": 0}
         else:
             driver = {
                 "CPU": cf.num_cpus_for_local_worker,
-                "GPU": 0 if cf._fake_gpus else cf.num_gpus,
+                "ACC": 0 if cf._fake_accs else cf.num_accs,
             }
 
         # resources for remote rollout env samplers
         rollout_bundles = [
             {
                 "CPU": cf.num_cpus_per_worker,
-                "GPU": cf.num_gpus_per_worker,
+                "ACC": cf.num_accs_per_worker,
                 **cf.custom_resources_per_worker,
             }
             for _ in range(cf.num_rollout_workers)
@@ -2421,7 +2421,7 @@ class Algorithm(Trainable, AlgorithmBase):
             evaluation_bundles = [
                 {
                     "CPU": eval_cf.num_cpus_per_worker,
-                    "GPU": eval_cf.num_gpus_per_worker,
+                    "ACC": eval_cf.num_accs_per_worker,
                     **eval_cf.custom_resources_per_worker,
                 }
                 for _ in range(eval_cf.evaluation_num_workers)
@@ -2600,7 +2600,7 @@ class Algorithm(Trainable, AlgorithmBase):
         return (
             "\n\nYou can adjust the resource requests of RLlib Algorithms by calling "
             "`AlgorithmConfig.resources("
-            "num_gpus=.., num_cpus_per_worker=.., num_gpus_per_worker=.., ..)` or "
+            "num_accs=.., num_cpus_per_worker=.., num_accs_per_worker=.., ..)` or "
             "`AgorithmConfig.rollouts(num_rollout_workers=..)`. See "
             "the `ray.rllib.algorithms.algorithm_config.AlgorithmConfig` classes "
             "(each Algorithm has its own subclass of this class) for more info.\n\n"

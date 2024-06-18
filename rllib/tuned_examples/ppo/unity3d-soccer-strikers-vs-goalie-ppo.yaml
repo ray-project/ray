@@ -2,7 +2,7 @@
 #       which currently cannot be done in yaml.
 
 # This setup should learn a decent (not perfect) policy within 100k timesteps
-# on a single GPU machine (16 CPUS) using 10 workers (collecting data from
+# on a single ACC machine (16 CPUS) using 10 workers (collecting data from
 # 10 compiled game binaries in parallel).
 # Reported rewards will be the sum of both strikers (+1 if goal) plus the
 # goalie's reward (-1 if goal) across all within-scene parallelized playing

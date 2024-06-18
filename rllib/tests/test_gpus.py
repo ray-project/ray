@@ -10,46 +10,46 @@ from ray import tune
 torch, _ = try_import_torch()
 
 
-class TestGPUs(unittest.TestCase):
-    def test_gpus_in_non_local_mode(self):
+class TestACCs(unittest.TestCase):
+    def test_accs_in_non_local_mode(self):
         # Non-local mode.
         ray.init()
 
-        actual_gpus = torch.cuda.device_count()
-        print(f"Actual GPUs found (by torch): {actual_gpus}")
+        actual_accs = torch.cuda.device_count()
+        print(f"Actual ACCs found (by torch): {actual_accs}")
 
         config = PPOConfig().rollouts(num_rollout_workers=2).environment("CartPole-v1")
 
-        # Expect errors when we run a config w/ num_gpus>0 w/o a GPU
-        # and _fake_gpus=False.
-        for num_gpus in [0, 0.1, 1, actual_gpus + 4]:
-            # Only allow possible num_gpus_per_worker (so test would not
+        # Expect errors when we run a config w/ num_accs>0 w/o a ACC
+        # and _fake_accs=False.
+        for num_accs in [0, 0.1, 1, actual_accs + 4]:
+            # Only allow possible num_accs_per_worker (so test would not
             # block infinitely due to a down worker).
             per_worker = (
-                [0] if actual_gpus == 0 or actual_gpus < num_gpus else [0, 0.5, 1]
+                [0] if actual_accs == 0 or actual_accs < num_accs else [0, 0.5, 1]
             )
-            for num_gpus_per_worker in per_worker:
-                for fake_gpus in [False] + ([] if num_gpus == 0 else [True]):
+            for num_accs_per_worker in per_worker:
+                for fake_accs in [False] + ([] if num_accs == 0 else [True]):
                     config.resources(
-                        num_gpus=num_gpus,
-                        num_gpus_per_worker=num_gpus_per_worker,
-                        _fake_gpus=fake_gpus,
+                        num_accs=num_accs,
+                        num_accs_per_worker=num_accs_per_worker,
+                        _fake_accs=fake_accs,
                     )
 
                     print(
-                        f"\n------------\nnum_gpus={num_gpus} "
-                        f"num_gpus_per_worker={num_gpus_per_worker} "
-                        f"_fake_gpus={fake_gpus}"
+                        f"\n------------\nnum_accs={num_accs} "
+                        f"num_accs_per_worker={num_accs_per_worker} "
+                        f"_fake_accs={fake_accs}"
                     )
 
                     frameworks = (
-                        ("tf", "torch") if num_gpus > 1 else ("tf2", "tf", "torch")
+                        ("tf", "torch") if num_accs > 1 else ("tf2", "tf", "torch")
                     )
                     for _ in framework_iterator(config, frameworks=frameworks):
-                        # Expect that Algorithm creation causes a num_gpu error.
+                        # Expect that Algorithm creation causes a num_acc error.
                         if (
-                            actual_gpus < num_gpus + 2 * num_gpus_per_worker
-                            and not fake_gpus
+                            actual_accs < num_accs + 2 * num_accs_per_worker
+                            and not fake_accs
                         ):
                             # "Direct" RLlib (create Algorithm on the driver).
                             # Cannot run through ray.tune.Tuner().fit() as it would
@@ -58,20 +58,20 @@ class TestGPUs(unittest.TestCase):
                             print("direct RLlib")
                             self.assertRaisesRegex(
                                 RuntimeError,
-                                "Found 0 GPUs on your machine",
+                                "Found 0 ACCs on your machine",
                                 lambda: config.build(),
                             )
-                        # If actual_gpus >= num_gpus or faked,
+                        # If actual_accs >= num_accs or faked,
                         # expect no error.
                         else:
                             print("direct RLlib")
                             algo = config.build()
                             algo.stop()
-                            # Cannot run through ray.tune.Tuner().fit() w/ fake GPUs
+                            # Cannot run through ray.tune.Tuner().fit() w/ fake ACCs
                             # as it would simply wait infinitely for the
                             # resources to become available (even though, we
                             # wouldn't really need them).
-                            if num_gpus == 0:
+                            if num_accs == 0:
                                 print("via ray.tune.Tuner().fit()")
                                 tune.Tuner(
                                     "PPO",
@@ -82,21 +82,21 @@ class TestGPUs(unittest.TestCase):
                                 ).fit()
         ray.shutdown()
 
-    def test_gpus_in_local_mode(self):
+    def test_accs_in_local_mode(self):
         # Local mode.
         ray.init(local_mode=True)
 
-        actual_gpus_available = torch.cuda.device_count()
+        actual_accs_available = torch.cuda.device_count()
 
         config = PPOConfig().rollouts(num_rollout_workers=2).environment("CartPole-v1")
 
         # Expect no errors in local mode.
-        for num_gpus in [0, 0.1, 1, actual_gpus_available + 4]:
-            print(f"num_gpus={num_gpus}")
-            for fake_gpus in [False, True]:
-                print(f"_fake_gpus={fake_gpus}")
-                config.resources(num_gpus=num_gpus, _fake_gpus=fake_gpus)
-                frameworks = ("tf", "torch") if num_gpus > 1 else ("tf2", "tf", "torch")
+        for num_accs in [0, 0.1, 1, actual_accs_available + 4]:
+            print(f"num_accs={num_accs}")
+            for fake_accs in [False, True]:
+                print(f"_fake_accs={fake_accs}")
+                config.resources(num_accs=num_accs, _fake_accs=fake_accs)
+                frameworks = ("tf", "torch") if num_accs > 1 else ("tf2", "tf", "torch")
                 for _ in framework_iterator(config, frameworks=frameworks):
                     print("direct RLlib")
                     algo = config.build()

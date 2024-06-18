@@ -209,7 +209,7 @@ if __name__ == "__main__":
     elif args.run == "IMPALA":
         config.update_from_dict(
             {
-                "num_gpus": 0,
+                "num_accs": 0,
                 "model": {"use_lstm": args.use_lstm},
             }
         )

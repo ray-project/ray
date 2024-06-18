@@ -123,11 +123,11 @@ if __name__ == "__main__":
             # `num_envs_per_worker`)?
             num_rollout_workers=args.num_workers,
             # This setting should not really matter as it does not affect the
-            # number of GPUs reserved for each worker.
+            # number of ACCs reserved for each worker.
             num_envs_per_worker=args.num_envs_per_worker,
         )
-        # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
-        .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
+        # Use ACCs iff `RLLIB_NUM_ACCS` env var set to > 0.
+        .resources(num_accs=int(os.environ.get("RLLIB_NUM_ACCS", "0")))
     )
 
     stop = {

@@ -121,8 +121,8 @@ def run_heuristic_vs_learned(args, use_lstm=False, algorithm_config=None):
             policies_to_train=["learned"],
         )
         .reporting(metrics_num_episodes_for_smoothing=200)
-        # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
-        .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
+        # Use ACCs iff `RLLIB_NUM_ACCS` env var set to > 0.
+        .resources(num_accs=int(os.environ.get("RLLIB_NUM_ACCS", "0")))
     )
 
     algo = config.build()

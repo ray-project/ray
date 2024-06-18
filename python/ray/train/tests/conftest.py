@@ -21,15 +21,15 @@ def ray_start_4_cpus():
 
 
 @pytest.fixture
-def ray_start_1_cpu_1_gpu():
-    address_info = ray.init(num_cpus=1, num_gpus=1)
+def ray_start_1_cpu_1_acc():
+    address_info = ray.init(num_cpus=1, num_accs=1)
     yield address_info
     ray.shutdown()
 
 
 @pytest.fixture
-def ray_start_4_cpus_2_gpus():
-    address_info = ray.init(num_cpus=4, num_gpus=2)
+def ray_start_4_cpus_2_accs():
+    address_info = ray.init(num_cpus=4, num_accs=2)
     yield address_info
     # The code after the yield will run as teardown code.
     ray.shutdown()
@@ -42,10 +42,10 @@ def shutdown_only():
 
 
 @pytest.fixture
-def ray_2_node_2_gpu():
+def ray_2_node_2_acc():
     cluster = Cluster()
     for _ in range(2):
-        cluster.add_node(num_cpus=4, num_gpus=2)
+        cluster.add_node(num_cpus=4, num_accs=2)
 
     ray.init(address=cluster.address)
 
@@ -92,10 +92,10 @@ def ray_4_node_4_cpu():
 
 
 @pytest.fixture
-def ray_2_node_4_gpu():
+def ray_2_node_4_acc():
     cluster = Cluster()
     for _ in range(2):
-        cluster.add_node(num_cpus=2, num_gpus=4)
+        cluster.add_node(num_cpus=2, num_accs=4)
 
     ray.init(address=cluster.address)
 

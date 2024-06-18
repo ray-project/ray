@@ -34,7 +34,7 @@ from ray.tune.examples.pbt_dcgan_mnist.common import (
 
 # __Train_begin__
 def dcgan_train(config):
-    use_cuda = config.get("use_gpu") and torch.cuda.is_available()
+    use_cuda = config.get("use_acc") and torch.cuda.is_available()
     device = torch.device("cuda" if use_cuda else "cpu")
     netD = Discriminator().to(device)
     netD.apply(weights_init)

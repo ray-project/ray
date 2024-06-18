@@ -5,7 +5,7 @@ import ray.util.collective as collective
 from cupy.cuda import Device
 
 
-@ray.remote(num_gpus=2)
+@ray.remote(num_accs=2)
 class Worker:
     def __init__(self):
         with Device(0):
@@ -27,10 +27,10 @@ class Worker:
     def compute(self):
         if self.rank == 0:
             with Device(0):
-                collective.send_multigpu(self.send1 * 2, 1, 1, "8")
+                collective.send_multiacc(self.send1 * 2, 1, 1, "8")
         else:
             # with Device(1):
-            collective.recv_multigpu(self.recv2, 0, 0, "8")
+            collective.recv_multiacc(self.recv2, 0, 0, "8")
         return self.recv2
 
     def destroy(self):

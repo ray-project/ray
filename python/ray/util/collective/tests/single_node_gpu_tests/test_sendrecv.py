@@ -12,7 +12,7 @@ from ray.util.collective.tests.util import create_collective_workers
     "array_size", [2, 2**5, 2**10, 2**15, 2**20, [2, 2], [5, 9, 10, 85]]
 )
 def test_reduce_different_name(
-    ray_start_single_node_2_gpus, group_name, array_size, dst_rank
+    ray_start_single_node_2_accs, group_name, array_size, dst_rank
 ):
     world_size = 2
     actors, _ = create_collective_workers(num_workers=world_size, group_name=group_name)
@@ -38,7 +38,7 @@ def test_reduce_different_name(
 
 
 @pytest.mark.parametrize("dst_rank", [0, 1])
-def test_sendrecv_torch_cupy(ray_start_single_node_2_gpus, dst_rank):
+def test_sendrecv_torch_cupy(ray_start_single_node_2_accs, dst_rank):
     import torch
 
     world_size = 2
@@ -71,7 +71,7 @@ def test_sendrecv_torch_cupy(ray_start_single_node_2_gpus, dst_rank):
         assert (results[1] == torch.ones((10,)).cuda()).all()
 
 
-def test_sendrecv_invalid_rank(ray_start_single_node_2_gpus, dst_rank=3):
+def test_sendrecv_invalid_rank(ray_start_single_node_2_accs, dst_rank=3):
     world_size = 2
     actors, _ = create_collective_workers(world_size)
     with pytest.raises(ValueError):

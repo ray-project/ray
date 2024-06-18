@@ -32,8 +32,8 @@ STORAGE = mock_storage_context()
 
 
 @pytest.fixture(scope="function")
-def ray_start_4_cpus_2_gpus_extra():
-    address_info = ray.init(num_cpus=4, num_gpus=2, resources={"a": 2})
+def ray_start_4_cpus_2_accs_extra():
+    address_info = ray.init(num_cpus=4, num_accs=2, resources={"a": 2})
     yield address_info
     ray.shutdown()
 
@@ -61,7 +61,7 @@ def create_mock_components():
     "resource_manager_cls", [FixedResourceManager, PlacementGroupResourceManager]
 )
 def test_checkpoint_save_restore(
-    ray_start_4_cpus_2_gpus_extra, resource_manager_cls, tmpdir
+    ray_start_4_cpus_2_accs_extra, resource_manager_cls, tmpdir
 ):
     """Test that a checkpoint is saved and can be used to restore a trainable.
 
@@ -77,7 +77,7 @@ def test_checkpoint_save_restore(
     )
     kwargs = {
         "stopping_criterion": {"training_iteration": 1},
-        "placement_group_factory": PlacementGroupFactory([{"CPU": 1, "GPU": 1}]),
+        "placement_group_factory": PlacementGroupFactory([{"CPU": 1, "ACC": 1}]),
         "checkpoint_config": CheckpointConfig(checkpoint_frequency=1),
         "storage": STORAGE,
     }
@@ -128,7 +128,7 @@ def test_checkpoint_save_restore(
 @pytest.mark.parametrize(
     "resource_manager_cls", [FixedResourceManager, PlacementGroupResourceManager]
 )
-def test_checkpoint_at_end(ray_start_4_cpus_2_gpus_extra, resource_manager_cls, tmpdir):
+def test_checkpoint_at_end(ray_start_4_cpus_2_accs_extra, resource_manager_cls, tmpdir):
     """Test that a checkpoint is saved at end for class trainables with that config.
 
     Legacy test: test_trial_runner_2.py::TrialRunnerTest::testCheckpointingAtEnd
@@ -141,7 +141,7 @@ def test_checkpoint_at_end(ray_start_4_cpus_2_gpus_extra, resource_manager_cls, 
     kwargs = {
         "stopping_criterion": {"training_iteration": 2},
         "checkpoint_config": CheckpointConfig(checkpoint_at_end=True),
-        "placement_group_factory": PlacementGroupFactory([{"CPU": 1, "GPU": 1}]),
+        "placement_group_factory": PlacementGroupFactory([{"CPU": 1, "ACC": 1}]),
         "storage": STORAGE,
     }
     runner.add_trial(Trial("__fake", **kwargs))
@@ -158,7 +158,7 @@ def test_checkpoint_at_end(ray_start_4_cpus_2_gpus_extra, resource_manager_cls, 
     "resource_manager_cls", [FixedResourceManager, PlacementGroupResourceManager]
 )
 def test_pause_resume_trial(
-    ray_start_4_cpus_2_gpus_extra, resource_manager_cls, tmpdir
+    ray_start_4_cpus_2_accs_extra, resource_manager_cls, tmpdir
 ):
     """Test that trial that is paused and resumed picks up its last checkpoint.
 
@@ -170,7 +170,7 @@ def test_pause_resume_trial(
     )
     kwargs = {
         "stopping_criterion": {"training_iteration": 2},
-        "placement_group_factory": PlacementGroupFactory([{"CPU": 1, "GPU": 1}]),
+        "placement_group_factory": PlacementGroupFactory([{"CPU": 1, "ACC": 1}]),
         "checkpoint_config": CheckpointConfig(checkpoint_frequency=1),
         "storage": STORAGE,
     }
@@ -212,7 +212,7 @@ def test_pause_resume_trial(
     "resource_manager_cls", [FixedResourceManager, PlacementGroupResourceManager]
 )
 def test_checkpoint_num_to_keep(
-    ray_start_4_cpus_2_gpus_extra, resource_manager_cls, tmp_path
+    ray_start_4_cpus_2_accs_extra, resource_manager_cls, tmp_path
 ):
     """Test that only num_to_keep checkpoints are kept.
 
@@ -305,7 +305,7 @@ def test_checkpoint_num_to_keep(
     "resource_manager_cls", [FixedResourceManager, PlacementGroupResourceManager]
 )
 def test_checkpoint_freq_buffered(
-    ray_start_4_cpus_2_gpus_extra, resource_manager_cls, tmp_path
+    ray_start_4_cpus_2_accs_extra, resource_manager_cls, tmp_path
 ):
     """Test that trial checkpoints are a lower bound for buffered training iterations.
 
@@ -356,7 +356,7 @@ def test_checkpoint_freq_buffered(
     "resource_manager_cls", [FixedResourceManager, PlacementGroupResourceManager]
 )
 def test_checkpoint_at_end_not_buffered(
-    ray_start_4_cpus_2_gpus_extra, resource_manager_cls, tmp_path
+    ray_start_4_cpus_2_accs_extra, resource_manager_cls, tmp_path
 ):
     """Test that trials with `checkpoint_at_end=True` are never buffered.
 
@@ -422,7 +422,7 @@ def test_checkpoint_at_end_not_buffered(
     "resource_manager_cls", [FixedResourceManager, PlacementGroupResourceManager]
 )
 def test_checkpoint_user_checkpoint(
-    ray_start_4_cpus_2_gpus_extra, resource_manager_cls, tmp_path
+    ray_start_4_cpus_2_accs_extra, resource_manager_cls, tmp_path
 ):
     """Test that user checkpoint freq is respected.
 
@@ -474,7 +474,7 @@ def test_checkpoint_user_checkpoint(
     "resource_manager_cls", [FixedResourceManager, PlacementGroupResourceManager]
 )
 def test_checkpoint_user_checkpoint_buffered(
-    ray_start_4_cpus_2_gpus_extra, resource_manager_cls, tmp_path
+    ray_start_4_cpus_2_accs_extra, resource_manager_cls, tmp_path
 ):
     """Test that user checkpoint freq is respected with buffered training.
 
@@ -540,7 +540,7 @@ def test_checkpoint_user_checkpoint_buffered(
     "resource_manager_cls", [FixedResourceManager, PlacementGroupResourceManager]
 )
 def test_checkpoint_auto_period(
-    ray_start_4_cpus_2_gpus_extra, resource_manager_cls, tmp_path
+    ray_start_4_cpus_2_accs_extra, resource_manager_cls, tmp_path
 ):
     """Test that the checkpoint auto period is adjusted when syncing takes a long time.
 
@@ -573,7 +573,7 @@ def test_checkpoint_auto_period(
     "resource_manager_cls", [FixedResourceManager, PlacementGroupResourceManager]
 )
 def test_checkpoint_force_with_num_to_keep(
-    ray_start_4_cpus_2_gpus_extra, resource_manager_cls, tmp_path
+    ray_start_4_cpus_2_accs_extra, resource_manager_cls, tmp_path
 ):
     """Test that cloud syncing is forced if one of the trials has made more
     than num_to_keep checkpoints since last sync.
@@ -639,7 +639,7 @@ def test_checkpoint_force_with_num_to_keep(
     "resource_manager_cls", [FixedResourceManager, PlacementGroupResourceManager]
 )
 def test_checkpoint_forced_cloud_sync_timeout(
-    ray_start_4_cpus_2_gpus_extra, resource_manager_cls, tmp_path
+    ray_start_4_cpus_2_accs_extra, resource_manager_cls, tmp_path
 ):
     """Test that trial runner experiment checkpointing with forced cloud syncing
     times out correctly when the sync process hangs.
@@ -683,7 +683,7 @@ def test_checkpoint_forced_cloud_sync_timeout(
     "resource_manager_cls", [FixedResourceManager, PlacementGroupResourceManager]
 )
 def test_checkpoint_periodic_cloud_sync_timeout(
-    ray_start_4_cpus_2_gpus_extra, resource_manager_cls, tmp_path
+    ray_start_4_cpus_2_accs_extra, resource_manager_cls, tmp_path
 ):
     """Test that trial runner experiment checkpointing with the default periodic
     cloud syncing times out and retries correctly when the sync process hangs.

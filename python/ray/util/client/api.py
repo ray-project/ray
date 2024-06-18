@@ -285,8 +285,8 @@ class _ClientAPI:
         """
         return _ClientWorkerPropertyAPI(self.worker).build_runtime_context()
 
-    # Client process isn't assigned any GPUs.
-    def get_gpu_ids(self) -> list:
+    # Client process isn't assigned any ACCs.
+    def get_acc_ids(self) -> list:
         return []
 
     def timeline(self, filename: Optional[str] = None) -> Optional[List[Any]]:

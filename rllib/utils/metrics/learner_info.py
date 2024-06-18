@@ -41,7 +41,7 @@ class LearnerInfoBuilder:
         # No towers: Single CPU.
         if "tower_0" not in results:
             self.results_all_towers[policy_id].append(results)
-        # Multi-GPU case:
+        # Multi-ACC case:
         else:
             self.results_all_towers[policy_id].append(
                 tree.map_structure_with_path(

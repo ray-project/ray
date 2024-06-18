@@ -46,7 +46,7 @@ def test_fastapi_detected(manage_ray_with_telemetry):
         assert ServeUsageTag.API_VERSION.get_value_from_report(report) == "v2"
         assert int(ServeUsageTag.NUM_APPS.get_value_from_report(report)) == 1
         assert int(ServeUsageTag.NUM_DEPLOYMENTS.get_value_from_report(report)) == 1
-        assert int(ServeUsageTag.NUM_GPU_DEPLOYMENTS.get_value_from_report(report)) == 0
+        assert int(ServeUsageTag.NUM_ACC_DEPLOYMENTS.get_value_from_report(report)) == 0
         return True
 
     wait_for_condition(check_report_before_fastapi)
@@ -87,7 +87,7 @@ def test_fastapi_detected(manage_ray_with_telemetry):
     assert ServeUsageTag.API_VERSION.get_value_from_report(report) == "v2"
     assert int(ServeUsageTag.NUM_APPS.get_value_from_report(report)) == 2
     assert int(ServeUsageTag.NUM_DEPLOYMENTS.get_value_from_report(report)) == 2
-    assert int(ServeUsageTag.NUM_GPU_DEPLOYMENTS.get_value_from_report(report)) == 0
+    assert int(ServeUsageTag.NUM_ACC_DEPLOYMENTS.get_value_from_report(report)) == 0
 
     # Check that Serve telemetry not relevant to the running apps is omitted.
     assert ServeUsageTag.DAG_DRIVER_USED.get_value_from_report(report) is None
@@ -176,7 +176,7 @@ def test_rest_api(manage_ray_with_telemetry, tmp_dir):
     # Check all telemetry relevant to the Serve apps on this cluster
     assert ServeUsageTag.REST_API_VERSION.get_value_from_report(report) == "v2"
     assert ServeUsageTag.API_VERSION.get_value_from_report(report) == "v2"
-    assert int(ServeUsageTag.NUM_GPU_DEPLOYMENTS.get_value_from_report(report)) == 0
+    assert int(ServeUsageTag.NUM_ACC_DEPLOYMENTS.get_value_from_report(report)) == 0
 
     # Assert num of deployments from controller.
     assert len(client.get_all_deployment_statuses()) == 2

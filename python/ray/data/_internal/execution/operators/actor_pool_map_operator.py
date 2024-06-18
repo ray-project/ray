@@ -68,7 +68,7 @@ class ActorPoolMapOperator(MapOperator):
                 include in an output block.
             min_rows_per_bundle: The number of rows to gather per batch passed to the
                 transform_fn, or None to use the block size. Setting the batch size is
-                important for the performance of GPU-accelerated transform functions.
+                important for the performance of ACC-accelerated transform functions.
                 The actual rows passed may be less if the dataset is small.
             ray_remote_args: Customize the ray remote args for this op's tasks.
         """
@@ -299,7 +299,7 @@ class ActorPoolMapOperator(MapOperator):
         min_workers = self._autoscaling_policy.min_workers
         return ExecutionResources(
             cpu=self._ray_remote_args.get("num_cpus", 0) * min_workers,
-            gpu=self._ray_remote_args.get("num_gpus", 0) * min_workers,
+            acc=self._ray_remote_args.get("num_accs", 0) * min_workers,
         )
 
     def current_resource_usage(self) -> ExecutionResources:
@@ -307,12 +307,12 @@ class ActorPoolMapOperator(MapOperator):
         num_active_workers = self._actor_pool.num_total_actors()
         return ExecutionResources(
             cpu=self._ray_remote_args.get("num_cpus", 0) * num_active_workers,
-            gpu=self._ray_remote_args.get("num_gpus", 0) * num_active_workers,
+            acc=self._ray_remote_args.get("num_accs", 0) * num_active_workers,
             object_store_memory=self.metrics.obj_store_mem_cur,
         )
 
     def incremental_resource_usage(self) -> ExecutionResources:
-        # We would only have nonzero incremental CPU/GPU resources if a new task would
+        # We would only have nonzero incremental CPU/ACC resources if a new task would
         # require scale-up to run.
         if self._autoscaling_policy.should_scale_up(
             num_total_workers=self._actor_pool.num_total_actors(),
@@ -321,15 +321,15 @@ class ActorPoolMapOperator(MapOperator):
             # A new task would trigger scale-up, so we include the actor resouce
             # requests in the incremental resources.
             num_cpus = self._ray_remote_args.get("num_cpus", 0)
-            num_gpus = self._ray_remote_args.get("num_gpus", 0)
+            num_accs = self._ray_remote_args.get("num_accs", 0)
         else:
             # A new task wouldn't trigger scale-up, so we consider the incremental
             # compute resources to be 0.
             num_cpus = 0
-            num_gpus = 0
+            num_accs = 0
         return ExecutionResources(
             cpu=num_cpus,
-            gpu=num_gpus,
+            acc=num_accs,
             object_store_memory=self._metrics.average_bytes_outputs_per_task,
         )
 

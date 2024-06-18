@@ -49,17 +49,17 @@ class DataConfig:
         )
 
         self._num_train_cpus = 0.0
-        self._num_train_gpus = 0.0
+        self._num_train_accs = 0.0
 
-    def set_train_total_resources(self, num_train_cpus: float, num_train_gpus: float):
-        """Set the total number of CPUs and GPUs used by training.
+    def set_train_total_resources(self, num_train_cpus: float, num_train_accs: float):
+        """Set the total number of CPUs and ACCs used by training.
 
-        If CPU or GPU resource limits are not set, they will be set to the
+        If CPU or ACC resource limits are not set, they will be set to the
         total cluster resources minus the resources used by training.
         """
-        # TODO: We may also include other resources besides CPU and GPU.
+        # TODO: We may also include other resources besides CPU and ACC.
         self._num_train_cpus = num_train_cpus
-        self._num_train_gpus = num_train_gpus
+        self._num_train_accs = num_train_accs
 
     @DeveloperAPI
     def configure(
@@ -99,7 +99,7 @@ class DataConfig:
             ds.context.execution_options.exclude_resources = (
                 ds.context.execution_options.exclude_resources.add(
                     ExecutionResources(
-                        cpu=self._num_train_cpus, gpu=self._num_train_gpus
+                        cpu=self._num_train_cpus, acc=self._num_train_accs
                     )
                 )
             )

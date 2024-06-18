@@ -34,7 +34,7 @@ hopper_cql:
           critic_learning_rate: 0.0003
           entropy_learning_rate: 0.0001
         num_workers: 0
-        num_gpus: 1
+        num_accs: 1
         clip_actions: false
         normalize_actions: true
         evaluation_interval: 1

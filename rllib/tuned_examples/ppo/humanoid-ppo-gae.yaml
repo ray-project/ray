@@ -18,6 +18,6 @@ humanoid-ppo-gae:
         model:
             free_log_std: true
         num_workers: 64
-        num_gpus: 4
+        num_accs: 4
         batch_mode: complete_episodes
         observation_filter: MeanStdFilter

@@ -26,11 +26,11 @@ class NotSerializable(Exception):
 # Error messages
 # -------
 
-# Message explaining there are no GPUs available for the
-# num_gpus=n or num_gpus_per_worker=m settings.
-ERR_MSG_NO_GPUS = """Found {} GPUs on your machine (GPU devices found: {})! If your
-    machine does not have any GPUs, you should set the config keys `num_gpus` and
-    `num_gpus_per_worker` to 0 (they may be set to 1 by default for your
+# Message explaining there are no ACCs available for the
+# num_accs=n or num_accs_per_worker=m settings.
+ERR_MSG_NO_ACCS = """Found {} ACCs on your machine (ACC devices found: {})! If your
+    machine does not have any ACCs, you should set the config keys `num_accs` and
+    `num_accs_per_worker` to 0 (they may be set to 1 by default for your
     particular RL algorithm)."""
 
 ERR_MSG_INVALID_ENV_DESCRIPTOR = """The env string you provided ('{}') is:

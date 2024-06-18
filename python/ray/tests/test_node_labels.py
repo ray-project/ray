@@ -19,14 +19,14 @@ def add_default_labels(node_info, labels):
 
 @pytest.mark.parametrize(
     "call_ray_start",
-    ['ray start --head --labels={"gpu_type":"A100","region":"us"}'],
+    ['ray start --head --labels={"acc_type":"A100","region":"us"}'],
     indirect=True,
 )
 def test_ray_start_set_node_labels(call_ray_start):
     ray.init(address=call_ray_start)
     node_info = ray.nodes()[0]
     assert node_info["Labels"] == add_default_labels(
-        node_info, {"gpu_type": "A100", "region": "us"}
+        node_info, {"acc_type": "A100", "region": "us"}
     )
 
 
@@ -44,7 +44,7 @@ def test_ray_start_set_empty_node_labels(call_ray_start):
 
 
 def test_ray_init_set_node_labels(shutdown_only):
-    labels = {"gpu_type": "A100", "region": "us"}
+    labels = {"acc_type": "A100", "region": "us"}
     ray.init(labels=labels)
     node_info = ray.nodes()[0]
     assert node_info["Labels"] == add_default_labels(node_info, labels)
@@ -73,18 +73,18 @@ def test_ray_init_set_node_labels_value_error(ray_start_cluster):
 
     cluster.add_node(num_cpus=1)
     with pytest.raises(ValueError, match="labels must not be provided"):
-        ray.init(address=cluster.address, labels={"gpu_type": "A100"})
+        ray.init(address=cluster.address, labels={"acc_type": "A100"})
 
     with pytest.raises(ValueError, match="labels must not be provided"):
-        ray.init(labels={"gpu_type": "A100"})
+        ray.init(labels={"acc_type": "A100"})
 
 
 def test_ray_start_set_node_labels_value_error():
     out = check_cmd_stderr(["ray", "start", "--head", "--labels=xxx"])
     assert "is not a valid JSON string, detail error" in out
 
-    out = check_cmd_stderr(["ray", "start", "--head", '--labels={"gpu_type":1}'])
-    assert 'The value of the "gpu_type" is not string type' in out
+    out = check_cmd_stderr(["ray", "start", "--head", '--labels={"acc_type":1}'])
+    assert 'The value of the "acc_type" is not string type' in out
 
     out = check_cmd_stderr(
         ["ray", "start", "--head", '--labels={"ray.io/node_id":"111"}']
@@ -98,7 +98,7 @@ def test_ray_start_set_node_labels_value_error():
 
 
 def test_cluster_add_node_with_labels(ray_start_cluster):
-    labels = {"gpu_type": "A100", "region": "us"}
+    labels = {"acc_type": "A100", "region": "us"}
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=1, labels=labels)
     cluster.wait_for_nodes()

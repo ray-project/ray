@@ -141,7 +141,7 @@ def test_auto_parallelism_basic(shutdown_only):
 
 
 def test_auto_parallelism_placement_group(shutdown_only):
-    ray.init(num_cpus=16, num_gpus=8)
+    ray.init(num_cpus=16, num_accs=8)
 
     @ray.remote
     def run():
@@ -169,7 +169,7 @@ def test_auto_parallelism_placement_group(shutdown_only):
     assert num_blocks == 8, num_blocks
 
     # 1/8 * 4 * 16 = 8
-    pg = ray.util.placement_group([{"CPU": 1, "GPU": 1}])
+    pg = ray.util.placement_group([{"CPU": 1, "ACC": 1}])
     num_blocks = ray.get(
         run.options(
             scheduling_strategy=PlacementGroupSchedulingStrategy(placement_group=pg)

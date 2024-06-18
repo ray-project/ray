@@ -52,7 +52,7 @@ class RemoteFunction:
         _function_name: The module and function name.
         _num_cpus: The default number of CPUs to use for invocations of this
             remote function.
-        _num_gpus: The default number of GPUs to use for invocations of this
+        _num_accs: The default number of ACCs to use for invocations of this
             remote function.
         _memory: The heap memory request in bytes for this task/actor,
             rounded down to the nearest integer.
@@ -100,13 +100,13 @@ class RemoteFunction:
             )
         self._default_options = task_options
 
-        # When gpu is used, set the task non-recyclable by default.
+        # When acc is used, set the task non-recyclable by default.
         # https://github.com/ray-project/ray/issues/29624 for more context.
         # Note: Ray task worker process is not being reused when nsight
         # profiler is running, as nsight generate report once the process exit.
-        num_gpus = self._default_options.get("num_gpus") or 0
+        num_accs = self._default_options.get("num_accs") or 0
         if (
-            num_gpus > 0 and self._default_options.get("max_calls", None) is None
+            num_accs > 0 and self._default_options.get("max_calls", None) is None
         ) or "nsight" in (self._default_options.get("runtime_env") or {}):
             self._default_options["max_calls"] = 1
 
@@ -168,7 +168,7 @@ class RemoteFunction:
                 the remote function invocation.
             num_cpus: The quantity of CPU cores to reserve
                 for this task or for the lifetime of the actor.
-            num_gpus: The quantity of GPUs to reserve
+            num_accs: The quantity of ACCs to reserve
                 for this task or for the lifetime of the actor.
             resources (Dict[str, float]): The quantity of various custom resources
                 to reserve for this task or for the lifetime of the actor.
@@ -184,9 +184,9 @@ class RemoteFunction:
                 the given remote function before it must exit
                 (this can be used to address memory leaks in third-party
                 libraries or to reclaim resources that cannot easily be
-                released, e.g., GPU memory that was acquired by TensorFlow).
-                By default this is infinite for CPU tasks and 1 for GPU tasks
-                (to force GPU tasks to release resources after finishing).
+                released, e.g., ACC memory that was acquired by TensorFlow).
+                By default this is infinite for CPU tasks and 1 for ACC tasks
+                (to force ACC tasks to release resources after finishing).
             max_retries: This specifies the maximum number of times that the remote
                 function should be rerun when the worker process executing it
                 crashes unexpectedly. The minimum valid value is 0,
@@ -218,11 +218,11 @@ class RemoteFunction:
 
         .. code-block:: python
 
-            @ray.remote(num_gpus=1, max_calls=1, num_returns=2)
+            @ray.remote(num_accs=1, max_calls=1, num_returns=2)
             def f():
                return 1, 2
-            # Task g will require 2 gpus instead of 1.
-            g = f.options(num_gpus=2)
+            # Task g will require 2 accs instead of 1.
+            g = f.options(num_accs=2)
         """
 
         func_cls = self

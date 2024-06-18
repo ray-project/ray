@@ -15,8 +15,8 @@ multi-agent-cartpole-appo:
 
         num_envs_per_worker: 5
         num_workers: 4
-        num_gpus: 1
-        _fake_gpus: true
+        num_accs: 1
+        _fake_accs: true
 
         observation_filter: MeanStdFilter
         num_sgd_iter: 1

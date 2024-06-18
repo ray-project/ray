@@ -140,7 +140,7 @@ class OpRuntimeMetrics:
         result.extend(
             [
                 ("cpu_usage", resource_usage.cpu or 0),
-                ("gpu_usage", resource_usage.gpu or 0),
+                ("acc_usage", resource_usage.acc or 0),
             ]
         )
         result.extend(self._extra_metrics.items())
@@ -151,7 +151,7 @@ class OpRuntimeMetrics:
         """Return a list of metric keys."""
         return [
             f.name for f in fields(cls) if f.metadata.get("export_metric", False)
-        ] + ["cpu_usage", "gpu_usage"]
+        ] + ["cpu_usage", "acc_usage"]
 
     @property
     def average_num_outputs_per_task(self) -> Optional[float]:

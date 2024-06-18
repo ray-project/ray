@@ -45,7 +45,7 @@ class WorkerMetadata:
         node_ip: IP address of the node this worker is on.
         hostname: Hostname that this worker is on.
         resource_ids: Map of accelerator resources
-        ("GPU", "neuron_cores", ..) to their IDs.
+        ("ACC", "neuron_cores", ..) to their IDs.
         pid: Process ID of this worker.
     """
 
@@ -114,12 +114,12 @@ class WorkerGroup:
             Defaults to 1.
         num_cpus_per_worker: The number of CPUs to reserve for each
             worker. Fractional values are allowed. Defaults to 1.
-        num_gpus_per_worker: The number of GPUs to reserve for each
+        num_accs_per_worker: The number of ACCs to reserve for each
             worker. Fractional values are allowed. Defaults to 0.
         additional_resources_per_worker (Optional[Dict[str, float]]):
             Dictionary specifying the extra resources that will be
             requested for each worker in addition to ``num_cpus_per_worker``
-            and ``num_gpus_per_worker``.
+            and ``num_accs_per_worker``.
         actor_cls (Optional[Type]): If specified use this class as the
             remote actors.
         remote_cls_args, remote_cls_kwargs: If ``remote_cls`` is provided,
@@ -143,7 +143,7 @@ class WorkerGroup:
         self,
         num_workers: int = 1,
         num_cpus_per_worker: float = 1,
-        num_gpus_per_worker: float = 0,
+        num_accs_per_worker: float = 0,
         additional_resources_per_worker: Optional[Dict[str, float]] = None,
         actor_cls: Type = None,
         actor_cls_args: Optional[Tuple] = None,
@@ -156,12 +156,12 @@ class WorkerGroup:
                 f"than 0. Received num_workers={num_workers} "
                 f"instead."
             )
-        if num_cpus_per_worker < 0 or num_gpus_per_worker < 0:
+        if num_cpus_per_worker < 0 or num_accs_per_worker < 0:
             raise ValueError(
-                "The number of CPUs and GPUs per worker must "
+                "The number of CPUs and ACCs per worker must "
                 "not be negative. Received "
                 f"num_cpus_per_worker={num_cpus_per_worker} and "
-                f"num_gpus_per_worker={num_gpus_per_worker}."
+                f"num_accs_per_worker={num_accs_per_worker}."
             )
 
         if (actor_cls_args or actor_cls_kwargs) and not actor_cls:
@@ -172,7 +172,7 @@ class WorkerGroup:
 
         self.num_workers = num_workers
         self.num_cpus_per_worker = num_cpus_per_worker
-        self.num_gpus_per_worker = num_gpus_per_worker
+        self.num_accs_per_worker = num_accs_per_worker
         self.additional_resources_per_worker = additional_resources_per_worker
         self.workers = []
         self._base_cls = create_executable_class(actor_cls)
@@ -187,7 +187,7 @@ class WorkerGroup:
         #  handle the request, rather than hang indefinitely.
         self._remote_cls = ray.remote(
             num_cpus=self.num_cpus_per_worker,
-            num_gpus=self.num_gpus_per_worker,
+            num_accs=self.num_accs_per_worker,
             resources=self.additional_resources_per_worker,
         )(self._base_cls)
         self.start()
@@ -362,26 +362,26 @@ class WorkerGroup:
         for i in range(len(new_actors)):
             self.workers.append(Worker(actor=new_actors[i], metadata=metadata[i]))
 
-    def sort_workers_by_ip_and_gpu_id(self, _first_ip: Optional[str] = None):
-        """Reorder the workers by their node ip and the lowest GPU id.
+    def sort_workers_by_ip_and_acc_id(self, _first_ip: Optional[str] = None):
+        """Reorder the workers by their node ip and the lowest ACC id.
 
         This is useful for collocating workers on the same node.
 
         Example:
             Given workers with the following attributes:
-                worker_0: ip=1, gpu_ids=[1]
-                worker_1: ip=0, gpu_ids=[0]
-                worker_2: ip=1, gpu_ids=[0]
-                worker_3: ip=0, gpu_ids=[1]
+                worker_0: ip=1, acc_ids=[1]
+                worker_1: ip=0, acc_ids=[0]
+                worker_2: ip=1, acc_ids=[0]
+                worker_3: ip=0, acc_ids=[1]
 
             The function will perform the following steps:
                 1. Group by node IP:
                     ip=0: worker_1, worker_3
                     ip=1: worker_0, worker_2
 
-                2. Sort each group by GPU ID:
-                    ip=0: worker_1 (gpu_id=0), worker_3 (gpu_id=1)
-                    ip=1: worker_2 (gpu_id=0), worker_0 (gpu_id=1)
+                2. Sort each group by ACC ID:
+                    ip=0: worker_1 (acc_id=0), worker_3 (acc_id=1)
+                    ip=1: worker_2 (acc_id=0), worker_0 (acc_id=1)
 
             Resulting in the order: [worker_1, worker_3, worker_2, worker_0]
 
@@ -403,23 +403,23 @@ class WorkerGroup:
         for worker in self.workers:
             ip_to_workers[worker.metadata.node_ip].append(worker)
 
-        # Sort workers on the same node by the lowest GPU id
+        # Sort workers on the same node by the lowest ACC id
         # More details: https://github.com/ray-project/ray/issues/40803
-        def get_lowest_gpu_id(worker) -> int:
-            gpu_ids = worker.metadata.resource_ids.get("GPU", [])
-            # If there are no GPU IDs, return 0 as a default
-            if not gpu_ids:
+        def get_lowest_acc_id(worker) -> int:
+            acc_ids = worker.metadata.resource_ids.get("ACC", [])
+            # If there are no ACC IDs, return 0 as a default
+            if not acc_ids:
                 return 0
 
-            # Attempt to convert GPU IDs to integers and find the minimum ID.
+            # Attempt to convert ACC IDs to integers and find the minimum ID.
             # Fallback to return the minimum string-based ID
             try:
-                return min(int(gpu_id) for gpu_id in gpu_ids)
+                return min(int(acc_id) for acc_id in acc_ids)
             except ValueError:
-                return min(gpu_ids)
+                return min(acc_ids)
 
         for node_ip in ip_to_workers:
-            ip_to_workers[node_ip].sort(key=get_lowest_gpu_id)
+            ip_to_workers[node_ip].sort(key=get_lowest_acc_id)
 
         sorted_workers = []
         for workers in ip_to_workers.values():

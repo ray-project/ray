@@ -19,7 +19,7 @@ class ConvergenceTest(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls) -> None:
-        ray.init(local_mode=False, num_cpus=1, num_gpus=0)
+        ray.init(local_mode=False, num_cpus=1, num_accs=0)
 
     @classmethod
     def tearDownClass(cls) -> None:
@@ -29,7 +29,7 @@ class ConvergenceTest(unittest.TestCase):
         # This is the space of parameters to explore
         space = {"x": tune.uniform(0, 20)}
 
-        resources_per_trial = {"cpu": 1, "gpu": 0}
+        resources_per_trial = {"cpu": 1, "acc": 0}
 
         analysis = tune.run(
             loss,

@@ -32,12 +32,12 @@ from ray._private.dict import (  # noqa: F401
 logger = logging.getLogger(__name__)
 
 
-def _import_gputil():
+def _import_acctil():
     try:
-        import GPUtil
+        import ACCtil
     except ImportError:
-        GPUtil = None
-    return GPUtil
+        ACCtil = None
+    return ACCtil
 
 
 START_OF_TIME = time.time()
@@ -47,28 +47,28 @@ START_OF_TIME = time.time()
 class UtilMonitor(Thread):
     """Class for system usage utilization monitoring.
 
-    It keeps track of CPU, RAM, GPU, VRAM usage (each gpu separately) by
+    It keeps track of CPU, RAM, ACC, VRAM usage (each acc separately) by
     pinging for information every x seconds in a separate thread.
 
-    Requires psutil and GPUtil to be installed. Can be enabled with
+    Requires psutil and ACCtil to be installed. Can be enabled with
     Tuner(param_space={"log_sys_usage": True}).
     """
 
     def __init__(self, start=True, delay=0.7):
         self.stopped = True
-        GPUtil = _import_gputil()
-        self.GPUtil = GPUtil
-        if GPUtil is None and start:
-            logger.warning("Install gputil for GPU system monitoring.")
+        ACCtil = _import_acctil()
+        self.ACCtil = ACCtil
+        if ACCtil is None and start:
+            logger.warning("Install acctil for ACC system monitoring.")
 
         if psutil is None and start:
             logger.warning("Install psutil to monitor system performance.")
 
-        if GPUtil is None and psutil is None:
+        if ACCtil is None and psutil is None:
             return
 
         super(UtilMonitor, self).__init__()
-        self.delay = delay  # Time between calls to GPUtil
+        self.delay = delay  # Time between calls to ACCtil
         self.values = defaultdict(list)
         self.lock = threading.Lock()
         self.daemon = True
@@ -84,18 +84,18 @@ class UtilMonitor(Thread):
                 self.values["ram_util_percent"].append(
                     float(getattr(psutil.virtual_memory(), "percent"))
                 )
-            if self.GPUtil is not None:
-                gpu_list = []
+            if self.ACCtil is not None:
+                acc_list = []
                 try:
-                    gpu_list = self.GPUtil.getGPUs()
+                    acc_list = self.ACCtil.getACCs()
                 except Exception:
-                    logger.debug("GPUtil failed to retrieve GPUs.")
-                for gpu in gpu_list:
-                    self.values["gpu_util_percent" + str(gpu.id)].append(
-                        float(gpu.load)
+                    logger.debug("ACCtil failed to retrieve ACCs.")
+                for acc in acc_list:
+                    self.values["acc_util_percent" + str(acc.id)].append(
+                        float(acc.load)
                     )
-                    self.values["vram_util_percent" + str(gpu.id)].append(
-                        float(gpu.memoryUtil)
+                    self.values["vram_util_percent" + str(acc.id)].append(
+                        float(acc.memoryUtil)
                     )
 
     def get_data(self):
@@ -442,24 +442,24 @@ def _load_newest_checkpoint(dirpath: str, ckpt_pattern: str) -> Optional[Dict]:
 
 
 @PublicAPI(stability="beta")
-def wait_for_gpu(
-    gpu_id: Optional[Union[int, str]] = None,
+def wait_for_acc(
+    acc_id: Optional[Union[int, str]] = None,
     target_util: float = 0.01,
     retry: int = 20,
     delay_s: int = 5,
-    gpu_memory_limit: Optional[float] = None,
+    acc_memory_limit: Optional[float] = None,
 ):
-    """Checks if a given GPU has freed memory.
+    """Checks if a given ACC has freed memory.
 
-    Requires ``gputil`` to be installed: ``pip install gputil``.
+    Requires ``acctil`` to be installed: ``pip install acctil``.
 
     Args:
-        gpu_id: GPU id or uuid to check.
-            Must be found within GPUtil.getGPUs(). If none, resorts to
-            the first item returned from `ray.get_gpu_ids()`.
+        acc_id: ACC id or uuid to check.
+            Must be found within ACCtil.getACCs(). If none, resorts to
+            the first item returned from `ray.get_acc_ids()`.
         target_util: The utilization threshold to reach to unblock.
-            Set this to 0 to block until the GPU is completely free.
-        retry: Number of times to check GPU limit. Sleeps `delay_s`
+            Set this to 0 to block until the ACC is completely free.
+        retry: Number of times to check ACC limit. Sleeps `delay_s`
             seconds between checks.
         delay_s: Seconds to wait before check.
 
@@ -467,7 +467,7 @@ def wait_for_gpu(
         bool: True if free.
 
     Raises:
-        RuntimeError: If GPUtil is not found, if no GPUs are detected
+        RuntimeError: If ACCtil is not found, if no ACCs are detected
             or if the check fails.
 
     Example:
@@ -475,92 +475,92 @@ def wait_for_gpu(
     .. code-block:: python
 
         def tune_func(config):
-            tune.util.wait_for_gpu()
+            tune.util.wait_for_acc()
             train()
 
         tuner = tune.Tuner(
             tune.with_resources(
                 tune_func,
-                resources={"gpu": 1}
+                resources={"acc": 1}
             ),
             tune_config=tune.TuneConfig(num_samples=10)
         )
         tuner.fit()
 
     """
-    GPUtil = _import_gputil()
+    ACCtil = _import_acctil()
 
-    if GPUtil is None:
-        raise RuntimeError("GPUtil must be installed if calling `wait_for_gpu`.")
+    if ACCtil is None:
+        raise RuntimeError("ACCtil must be installed if calling `wait_for_acc`.")
 
-    if gpu_id is None:
-        gpu_id_list = ray.get_gpu_ids()
-        if not gpu_id_list:
+    if acc_id is None:
+        acc_id_list = ray.get_acc_ids()
+        if not acc_id_list:
             raise RuntimeError(
-                "No GPU ids found from `ray.get_gpu_ids()`. "
+                "No ACC ids found from `ray.get_acc_ids()`. "
                 "Did you set Tune resources correctly?"
             )
-        gpu_id = gpu_id_list[0]
+        acc_id = acc_id_list[0]
 
-    gpu_attr = "id"
-    if isinstance(gpu_id, str):
-        if gpu_id.isdigit():
-            # GPU ID returned from `ray.get_gpu_ids()` is a str representation
-            # of the int GPU ID
-            gpu_id = int(gpu_id)
+    acc_attr = "id"
+    if isinstance(acc_id, str):
+        if acc_id.isdigit():
+            # ACC ID returned from `ray.get_acc_ids()` is a str representation
+            # of the int ACC ID
+            acc_id = int(acc_id)
         else:
-            # Could not coerce gpu_id to int, so assume UUID
+            # Could not coerce acc_id to int, so assume UUID
             # and compare against `uuid` attribute e.g.,
-            # 'GPU-04546190-b68d-65ac-101b-035f8faed77d'
-            gpu_attr = "uuid"
-    elif not isinstance(gpu_id, int):
-        raise ValueError(f"gpu_id ({type(gpu_id)}) must be type str/int.")
+            # 'ACC-04546190-b68d-65ac-101b-035f8faed77d'
+            acc_attr = "uuid"
+    elif not isinstance(acc_id, int):
+        raise ValueError(f"acc_id ({type(acc_id)}) must be type str/int.")
 
-    def gpu_id_fn(g):
+    def acc_id_fn(g):
         # Returns either `g.id` or `g.uuid` depending on
-        # the format of the input `gpu_id`
-        return getattr(g, gpu_attr)
+        # the format of the input `acc_id`
+        return getattr(g, acc_attr)
 
-    gpu_ids = {gpu_id_fn(g) for g in GPUtil.getGPUs()}
-    if gpu_id not in gpu_ids:
+    acc_ids = {acc_id_fn(g) for g in ACCtil.getACCs()}
+    if acc_id not in acc_ids:
         raise ValueError(
-            f"{gpu_id} not found in set of available GPUs: {gpu_ids}. "
-            "`wait_for_gpu` takes either GPU ordinal ID (e.g., '0') or "
-            "UUID (e.g., 'GPU-04546190-b68d-65ac-101b-035f8faed77d')."
+            f"{acc_id} not found in set of available ACCs: {acc_ids}. "
+            "`wait_for_acc` takes either ACC ordinal ID (e.g., '0') or "
+            "UUID (e.g., 'ACC-04546190-b68d-65ac-101b-035f8faed77d')."
         )
 
     for i in range(int(retry)):
-        gpu_object = next(g for g in GPUtil.getGPUs() if gpu_id_fn(g) == gpu_id)
-        if gpu_object.memoryUtil > target_util:
+        acc_object = next(g for g in ACCtil.getACCs() if acc_id_fn(g) == acc_id)
+        if acc_object.memoryUtil > target_util:
             logger.info(
-                f"Waiting for GPU util to reach {target_util}. "
-                f"Util: {gpu_object.memoryUtil:0.3f}"
+                f"Waiting for ACC util to reach {target_util}. "
+                f"Util: {acc_object.memoryUtil:0.3f}"
             )
             time.sleep(delay_s)
         else:
             return True
-    raise RuntimeError("GPU memory was not freed.")
+    raise RuntimeError("ACC memory was not freed.")
 
 
 @DeveloperAPI
 def validate_save_restore(
     trainable_cls: Type,
     config: Optional[Dict] = None,
-    num_gpus: int = 0,
+    num_accs: int = 0,
 ):
     """Helper method to check if your Trainable class will resume correctly.
 
     Args:
         trainable_cls: Trainable class for evaluation.
         config: Config to pass to Trainable when testing.
-        num_gpus: GPU resources to allocate when testing.
+        num_accs: ACC resources to allocate when testing.
         use_object_store: Whether to save and restore to Ray's object
             store. Recommended to set this to True if planning to use
             algorithms that pause training (i.e., PBT, HyperBand).
     """
     assert ray.is_initialized(), "Need Ray to be initialized."
 
-    remote_cls = ray.remote(num_gpus=num_gpus)(trainable_cls)
+    remote_cls = ray.remote(num_accs=num_accs)(trainable_cls)
     trainable_1 = remote_cls.remote(config=config)
     trainable_2 = remote_cls.remote(config=config)
 

@@ -109,14 +109,14 @@ def train_func(config):
     return results
 
 
-def train_regression(num_workers=2, use_gpu=False):
+def train_regression(num_workers=2, use_acc=False):
     train_dataset, val_dataset = get_datasets()
     config = {"lr": 1e-2, "hidden_size": 20, "batch_size": 4, "epochs": 3}
 
     trainer = TorchTrainer(
         train_loop_per_worker=train_func,
         train_loop_config=config,
-        scaling_config=ScalingConfig(num_workers=num_workers, use_gpu=use_gpu),
+        scaling_config=ScalingConfig(num_workers=num_workers, use_acc=use_acc),
         datasets={"train": train_dataset, "validation": val_dataset},
         dataset_config=DataConfig(datasets_to_split=["train"]),
     )
@@ -145,7 +145,7 @@ if __name__ == "__main__":
         help="Finish quickly for testing.",
     )
     parser.add_argument(
-        "--use-gpu", action="store_true", default=False, help="Use GPU for training."
+        "--use-acc", action="store_true", default=False, help="Use ACC for training."
     )
 
     args, _ = parser.parse_known_args()
@@ -156,5 +156,5 @@ if __name__ == "__main__":
         result = train_regression()
     else:
         ray.init(address=args.address)
-        result = train_regression(num_workers=args.num_workers, use_gpu=args.use_gpu)
+        result = train_regression(num_workers=args.num_workers, use_acc=args.use_acc)
     print(result)

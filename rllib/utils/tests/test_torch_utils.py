@@ -74,7 +74,7 @@ class TestTorchUtils(unittest.TestCase):
         self.assertTrue(all(copied_nested_structure["a"] == tensor))
         self.assertTrue(all(copied_nested_structure["b"] == tensor_2))
 
-        # if gpu is available test moving tensor from cpu to gpu and vice versa
+        # if acc is available test moving tensor from cpu to acc and vice versa
         if torch.cuda.is_available():
             tensor = torch.from_numpy(array).to("cpu")
             copied_tensor = copy_torch_tensors(tensor, "cuda:0")

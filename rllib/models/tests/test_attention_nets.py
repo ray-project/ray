@@ -115,7 +115,7 @@ class TestAttentionNets(unittest.TestCase):
         # config = dict(
         #    self.config, **{
         #        "num_workers": 4,
-        #        "num_gpus": 0,
+        #        "num_accs": 0,
         #        "entropy_coeff": 0.01,
         #        "vf_loss_coeff": 0.001,
         #        "lr": 0.0008,

@@ -72,8 +72,8 @@ if __name__ == "__main__":
         .rollouts(num_rollout_workers=0, num_envs_per_worker=20)
         # No history in Env (bandit problem).
         .training(gamma=0.0, lr=0.0005)
-        # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
-        .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
+        # Use ACCs iff `RLLIB_NUM_ACCS` env var set to > 0.
+        .resources(num_accs=int(os.environ.get("RLLIB_NUM_ACCS", "0")))
     )
 
     if args.run == "PPO":

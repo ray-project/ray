@@ -5,8 +5,8 @@
 The model comes from: https://zhuanlan.zhihu.com/p/29214791,
 and it gets to about 87% validation accuracy in 100 epochs.
 
-Note that the script requires a machine with 4 GPUs. You
-can set {"gpu": 0} to use CPUs for training, although
+Note that the script requires a machine with 4 ACCs. You
+can set {"acc": 0} to use CPUs for training, although
 it is less efficient.
 """
 
@@ -210,7 +210,7 @@ if __name__ == "__main__":
     tuner = tune.Tuner(
         tune.with_resources(
             Cifar10Model,
-            resources={"cpu": 1, "gpu": 1},
+            resources={"cpu": 1, "acc": 1},
         ),
         run_config=train.RunConfig(
             name="pbt_cifar10",

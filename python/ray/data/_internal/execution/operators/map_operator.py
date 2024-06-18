@@ -134,7 +134,7 @@ class MapOperator(OneToOneOperator, ABC):
                 include in an output block.
             min_rows_per_bundle: The number of rows to gather per batch passed to the
                 transform_fn, or None to use the block size. Setting the batch size is
-                important for the performance of GPU-accelerated transform functions.
+                important for the performance of ACC-accelerated transform functions.
                 The actual rows passed may be less if the dataset is small.
             ray_remote_args: Customize the ray remote args for this op's tasks.
         """
@@ -595,21 +595,21 @@ class _UnorderedOutputQueue(_OutputQueue):
 def _canonicalize_ray_remote_args(ray_remote_args: Dict[str, Any]) -> Dict[str, Any]:
     """Enforce rules on ray remote args for map tasks.
 
-    Namely, args must explicitly specify either CPU or GPU, not both. Disallowing
+    Namely, args must explicitly specify either CPU or ACC, not both. Disallowing
     mixed resources avoids potential starvation and deadlock issues during scheduling,
     and should not be a serious limitation for users.
     """
     ray_remote_args = ray_remote_args.copy()
-    if "num_cpus" not in ray_remote_args and "num_gpus" not in ray_remote_args:
+    if "num_cpus" not in ray_remote_args and "num_accs" not in ray_remote_args:
         ray_remote_args["num_cpus"] = 1
-    if ray_remote_args.get("num_gpus", 0) > 0:
+    if ray_remote_args.get("num_accs", 0) > 0:
         if ray_remote_args.get("num_cpus", 0) != 0:
             raise ValueError(
-                "It is not allowed to specify both num_cpus and num_gpus for map tasks."
+                "It is not allowed to specify both num_cpus and num_accs for map tasks."
             )
     elif ray_remote_args.get("num_cpus", 0) > 0:
-        if ray_remote_args.get("num_gpus", 0) != 0:
+        if ray_remote_args.get("num_accs", 0) != 0:
             raise ValueError(
-                "It is not allowed to specify both num_cpus and num_gpus for map tasks."
+                "It is not allowed to specify both num_cpus and num_accs for map tasks."
             )
     return ray_remote_args

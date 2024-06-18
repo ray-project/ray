@@ -108,11 +108,11 @@ def test_default_scheduling_strategy(ray_start_cluster, connect_to_client):
         resources={"head": 1},
         _system_config={"scheduler_spread_threshold": 1},
     )
-    cluster.add_node(num_cpus=8, num_gpus=8, resources={"worker": 1})
+    cluster.add_node(num_cpus=8, num_accs=8, resources={"worker": 1})
     cluster.wait_for_nodes()
 
     ray.init(address=cluster.address)
-    pg = ray.util.placement_group(bundles=[{"CPU": 1, "GPU": 1}, {"CPU": 1, "GPU": 1}])
+    pg = ray.util.placement_group(bundles=[{"CPU": 1, "ACC": 1}, {"CPU": 1, "ACC": 1}])
     ray.get(pg.ready())
     ray.get(pg.ready())
 
@@ -174,11 +174,11 @@ def test_default_scheduling_strategy(ray_start_cluster, connect_to_client):
 def test_placement_group_scheduling_strategy(ray_start_cluster, connect_to_client):
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=8, resources={"head": 1})
-    cluster.add_node(num_cpus=8, num_gpus=8, resources={"worker": 1})
+    cluster.add_node(num_cpus=8, num_accs=8, resources={"worker": 1})
     cluster.wait_for_nodes()
 
     ray.init(address=cluster.address)
-    pg = ray.util.placement_group(bundles=[{"CPU": 1, "GPU": 1}, {"CPU": 1, "GPU": 1}])
+    pg = ray.util.placement_group(bundles=[{"CPU": 1, "ACC": 1}, {"CPU": 1, "ACC": 1}])
     ray.get(pg.ready())
 
     with connect_to_client_or_not(connect_to_client):
@@ -615,7 +615,7 @@ def test_demand_report_for_node_affinity_scheduling_strategy(
     # This is reported since there is no feasible node and soft is True.
     tasks.append(
         f.options(
-            num_gpus=1,
+            num_accs=1,
             scheduling_strategy=NodeAffinitySchedulingStrategy(
                 ray.NodeID.from_random().hex(), soft=True
             ),
@@ -638,7 +638,7 @@ def test_demand_report_for_node_affinity_scheduling_strategy(
         if aggregate_resource_load[0].num_infeasible_requests_queued != 1:
             return False
 
-        if aggregate_resource_load[0].shape != {"CPU": 1.0, "GPU": 1.0}:
+        if aggregate_resource_load[0].shape != {"CPU": 1.0, "ACC": 1.0}:
             return False
 
         return True

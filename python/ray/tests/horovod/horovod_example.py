@@ -54,7 +54,7 @@ def train_fn(
     torch.manual_seed(seed)
 
     if use_cuda:
-        # Horovod: pin GPU to local rank.
+        # Horovod: pin ACC to local rank.
         torch.cuda.set_device(hvd.local_rank())
         torch.cuda.manual_seed(seed)
 
@@ -86,9 +86,9 @@ def train_fn(
     lr_scaler = hvd.size() if not use_adasum else 1
 
     if use_cuda:
-        # Move model to GPU.
+        # Move model to ACC.
         model.cuda()
-        # If using GPU Adasum allreduce, scale learning rate by local_size.
+        # If using ACC Adasum allreduce, scale learning rate by local_size.
         if use_adasum and hvd.nccl_built():
             lr_scaler = hvd.local_size()
 
@@ -129,15 +129,15 @@ def train_fn(
 
 
 def main(
-    num_workers, use_gpu, timeout_s=30, placement_group_timeout_s=100, kwargs=None
+    num_workers, use_acc, timeout_s=30, placement_group_timeout_s=100, kwargs=None
 ):
     kwargs = kwargs or {}
-    if use_gpu:
+    if use_acc:
         kwargs["use_cuda"] = True
     settings = RayExecutor.create_settings(
         timeout_s=timeout_s, placement_group_timeout_s=placement_group_timeout_s
     )
-    executor = RayExecutor(settings, use_gpu=use_gpu, num_workers=num_workers)
+    executor = RayExecutor(settings, use_acc=use_acc, num_workers=num_workers)
     executor.start()
     executor.run(train_fn, kwargs=kwargs)
 
@@ -237,6 +237,6 @@ if __name__ == "__main__":
 
     main(
         num_workers=args.num_workers,
-        use_gpu=args.use_cuda if args.use_cuda else False,
+        use_acc=args.use_cuda if args.use_cuda else False,
         kwargs=kwargs,
     )

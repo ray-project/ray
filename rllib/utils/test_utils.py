@@ -767,7 +767,7 @@ def run_learning_tests_from_yaml(
             elif "frameworks" in e:
                 frameworks = e["frameworks"]
             else:
-                # By default we don't run tf2, because tf2's multi-gpu support
+                # By default we don't run tf2, because tf2's multi-acc support
                 # isn't complete yet.
                 frameworks = ["tf", "torch"]
             # Pop frameworks key to not confuse Tune.
@@ -1080,7 +1080,7 @@ def check_reproducibilty(
     """Check if the algorithm is reproducible across different testing conditions:
 
         frameworks: all input frameworks
-        num_gpus: int(os.environ.get("RLLIB_NUM_GPUS", "0"))
+        num_accs: int(os.environ.get("RLLIB_NUM_ACCS", "0"))
         num_workers: 0 (only local workers) or
                      4 ((1) local workers + (4) remote workers)
         num_envs_per_worker: 2
@@ -1110,9 +1110,9 @@ def check_reproducibilty(
             algo_config.debugging(seed=42)
             .resources(
                 # old API
-                num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")),
+                num_accs=int(os.environ.get("RLLIB_NUM_ACCS", "0")),
                 # new API
-                num_gpus_per_learner_worker=int(os.environ.get("RLLIB_NUM_GPUS", "0")),
+                num_accs_per_learner_worker=int(os.environ.get("RLLIB_NUM_ACCS", "0")),
             )
             .rollouts(num_rollout_workers=num_workers, num_envs_per_worker=2)
         )
@@ -1416,7 +1416,7 @@ def check_supported_spaces(
     train: bool = True,
     check_bounds: bool = False,
     frameworks: Optional[Tuple[str]] = None,
-    use_gpu: bool = False,
+    use_acc: bool = False,
 ):
     """Checks whether the given algorithm supports different action and obs spaces.
 
@@ -1432,7 +1432,7 @@ def check_supported_spaces(
         train: Whether to train the algorithm for a few iterations.
         check_bounds: Whether to check the bounds of the action space.
         frameworks: The frameworks to test the algorithm with.
-        use_gpu: Whether to check support for training on a gpu.
+        use_acc: Whether to check support for training on a acc.
 
 
     """
@@ -1597,7 +1597,7 @@ def check_supported_spaces(
         )
 
     _do_check_remote = ray.remote(_do_check)
-    _do_check_remote = _do_check_remote.options(num_gpus=1 if use_gpu else 0)
+    _do_check_remote = _do_check_remote.options(num_accs=1 if use_acc else 0)
     for _ in framework_iterator(config, frameworks=frameworks):
         # Test all action spaces first.
         for a_name in action_spaces_to_test.keys():

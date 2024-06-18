@@ -26,8 +26,8 @@ def ray_start_4_cpus():
 
 
 @pytest.fixture
-def ray_start_4_cpus_4_gpus_4_extra():
-    address_info = ray.init(num_cpus=4, num_gpus=4, resources={"extra": 4})
+def ray_start_4_cpus_4_accs_4_extra():
+    address_info = ray.init(num_cpus=4, num_accs=4, resources={"extra": 4})
     yield address_info
     # The code after the yield will run as teardown code.
     ray.shutdown()
@@ -278,7 +278,7 @@ def test_world_rank(ray_start_4_cpus, tmp_path):
     assert {int(file.name) for file in created_files} == {0, 1}
 
 
-def test_gpu_requests(ray_start_4_cpus_4_gpus_4_extra, tmp_path):
+def test_acc_requests(ray_start_4_cpus_4_accs_4_extra, tmp_path):
     def get_visible_devices_for_workers():
         return [file.read_text() for file in tmp_path.glob("*")]
 
@@ -296,20 +296,20 @@ def test_gpu_requests(ray_start_4_cpus_4_gpus_4_extra, tmp_path):
         (tmp_path / f"{world_rank}").write_text(cuda_visible_devices)
         train.report(dict(devices=cuda_visible_devices))
 
-    # 0 GPUs will be requested and should not raise an error.
+    # 0 ACCs will be requested and should not raise an error.
     trainer = DataParallelTrainer(
         get_resources,
         backend_config=CudaTestConfig(),
-        scaling_config=ScalingConfig(num_workers=2, use_gpu=False),
+        scaling_config=ScalingConfig(num_workers=2, use_acc=False),
     )
     trainer.fit()
     assert get_visible_devices_for_workers() == ["", ""]
 
-    # 1 GPU will be requested and should not raise an error.
+    # 1 ACC will be requested and should not raise an error.
     trainer = DataParallelTrainer(
         get_resources,
         backend_config=CudaTestConfig(),
-        scaling_config=ScalingConfig(num_workers=2, use_gpu=True),
+        scaling_config=ScalingConfig(num_workers=2, use_acc=True),
     )
     trainer.fit()
     visible_devices = get_visible_devices_for_workers()
@@ -317,24 +317,24 @@ def test_gpu_requests(ray_start_4_cpus_4_gpus_4_extra, tmp_path):
     visible_devices = [",".join(sorted(r.split(","))) for r in visible_devices]
     assert visible_devices == ["0,1", "0,1"]
 
-    # Partial GPUs should not raise an error.
+    # Partial ACCs should not raise an error.
     trainer = DataParallelTrainer(
         get_resources,
         backend_config=CudaTestConfig(),
         scaling_config=ScalingConfig(
-            num_workers=2, use_gpu=True, resources_per_worker={"GPU": 0.1}
+            num_workers=2, use_acc=True, resources_per_worker={"ACC": 0.1}
         ),
     )
     trainer.fit()
     visible_devices = get_visible_devices_for_workers()
     assert visible_devices == ["0", "0"]
 
-    # Multiple GPUs should not raise an error.
+    # Multiple ACCs should not raise an error.
     trainer = DataParallelTrainer(
         get_resources,
         backend_config=CudaTestConfig(),
         scaling_config=ScalingConfig(
-            num_workers=2, use_gpu=True, resources_per_worker={"GPU": 2}
+            num_workers=2, use_acc=True, resources_per_worker={"ACC": 2}
         ),
     )
     trainer.fit()

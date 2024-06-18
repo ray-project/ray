@@ -44,7 +44,7 @@ DEEPSPEED_CONFIG = {
     "gradient_clipping": "auto",
     "steps_per_print": 2000,
     "train_batch_size": "auto",
-    "train_micro_batch_size_per_gpu": "auto",
+    "train_micro_batch_size_per_acc": "auto",
     "wall_clock_breakdown": False,
 }
 
@@ -146,10 +146,10 @@ def linear_train_func(accelerator: Accelerator, config):
     return results
 
 
-@pytest.mark.parametrize("use_gpu", [True, False])
-def test_accelerate_base(ray_2_node_2_gpu, use_gpu):
+@pytest.mark.parametrize("use_acc", [True, False])
+def test_accelerate_base(ray_2_node_2_acc, use_acc):
     def train_func(config):
-        accelerator = Accelerator(cpu=not use_gpu)
+        accelerator = Accelerator(cpu=not use_acc)
         assert accelerator.device == train.torch.get_device()
         assert accelerator.process_index == train.get_context().get_world_rank()
         if accelerator.device.type != "cpu":
@@ -161,7 +161,7 @@ def test_accelerate_base(ray_2_node_2_gpu, use_gpu):
         assert result[-1]["loss"] < result[0]["loss"]
 
     epochs = 3
-    scaling_config = ScalingConfig(num_workers=2, use_gpu=use_gpu)
+    scaling_config = ScalingConfig(num_workers=2, use_acc=use_acc)
     config = {"lr": 1e-2, "hidden_size": 1, "batch_size": 4, "epochs": epochs}
 
     trainer = TorchTrainer(
@@ -172,7 +172,7 @@ def test_accelerate_base(ray_2_node_2_gpu, use_gpu):
     trainer.fit()
 
 
-def test_accelerate_deepspeed(ray_2_node_2_gpu):
+def test_accelerate_deepspeed(ray_2_node_2_acc):
     from accelerate import DeepSpeedPlugin
 
     def train_func(config):
@@ -187,7 +187,7 @@ def test_accelerate_deepspeed(ray_2_node_2_gpu):
         assert result[-1]["loss"] < result[0]["loss"]
 
     epochs = 3
-    scaling_config = ScalingConfig(num_workers=2, use_gpu=True)
+    scaling_config = ScalingConfig(num_workers=2, use_acc=True)
     config = {"lr": 1e-2, "hidden_size": 1, "batch_size": 4, "epochs": epochs}
 
     trainer = TorchTrainer(

@@ -13,7 +13,7 @@ from ray.util.collective.tests.util import create_collective_workers
     "array_size", [2**10, 2**15, 2**20, [2, 2], [5, 9, 10, 85]]
 )
 def test_sendrecv(
-    ray_start_distributed_2_nodes_4_gpus, group_name, array_size, src_rank, dst_rank
+    ray_start_distributed_2_nodes_4_accs, group_name, array_size, src_rank, dst_rank
 ):
     if src_rank == dst_rank:
         return

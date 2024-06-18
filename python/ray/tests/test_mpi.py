@@ -84,7 +84,7 @@ def test_mpi_actor_pi(change_test_dir, ray_start_regular):
     assert "3.14" == "%.2f" % (ray.get(actor.calc_pi.remote()))
 
 
-def check_gpu_setup():
+def check_acc_setup():
     from mpi4py import MPI
     import os
 
@@ -97,20 +97,20 @@ def check_gpu_setup():
 
 
 @pytest.mark.skipif(sys.platform != "linux", reason="Only test MPI on linux.")
-@pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 4}], indirect=True)
-def test_gpu_set(change_test_dir, ray_start_regular):
+@pytest.mark.parametrize("ray_start_regular", [{"num_accs": 4}], indirect=True)
+def test_acc_set(change_test_dir, ray_start_regular):
     @ray.remote(
         runtime_env={
             "mpi": {
                 "args": ["-n", "4"],
-                "worker_entry": "test_mpi.check_gpu_setup",
+                "worker_entry": "test_mpi.check_acc_setup",
             },
         }
     )
     def f():
-        check_gpu_setup()
+        check_acc_setup()
 
-    ray.get(f.options(num_gpus=2).remote())
+    ray.get(f.options(num_accs=2).remote())
 
 
 if __name__ == "__main__":

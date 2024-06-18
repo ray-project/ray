@@ -2,17 +2,17 @@ import os
 import sys
 import pytest
 
-from ray._private.accelerators import NvidiaGPUAcceleratorManager
+from ray._private.accelerators import NvidiaACCAcceleratorManager
 from ray.tests.accelerators.mock_pynvml import (
     DeviceHandleMock,
     PyNVMLMock,
     patch_mock_pynvml,
 )
 
-GPU_MOCK_DATA = [
+ACC_MOCK_DATA = [
     DeviceHandleMock(
         "Ampere A100-SXM4-40GB",
-        "GPU-8eaaebb8-bb64-8489-fda2-62256e821983",
+        "ACC-8eaaebb8-bb64-8489-fda2-62256e821983",
         mig_devices=[
             DeviceHandleMock(
                 "Ampere A100-SXM4-40GB MIG 1g.5gb",
@@ -30,7 +30,7 @@ GPU_MOCK_DATA = [
     ),
     DeviceHandleMock(
         "Ampere A100-SXM4-40GB",
-        "GPU-8eaaebb8-bb64-8489-fda2-62256e821983",
+        "ACC-8eaaebb8-bb64-8489-fda2-62256e821983",
         mig_devices=[
             DeviceHandleMock(
                 "Ampere A100-SXM4-40GB MIG 1g.5gb",
@@ -41,26 +41,26 @@ GPU_MOCK_DATA = [
         ],
     ),
     DeviceHandleMock(
-        "Tesla V100-SXM2-16GB", "GPU-8eaaebb8-bb64-8489-fda2-62256e821983"
+        "Tesla V100-SXM2-16GB", "ACC-8eaaebb8-bb64-8489-fda2-62256e821983"
     ),
 ]
 
-mock_nvml = PyNVMLMock(GPU_MOCK_DATA)
+mock_nvml = PyNVMLMock(ACC_MOCK_DATA)
 
 patch_mock_pynvml = patch_mock_pynvml  # avoid format error
 
 
 @pytest.mark.parametrize("mock_nvml", [mock_nvml])
-def test_num_gpus_parsing(patch_mock_pynvml):
+def test_num_accs_parsing(patch_mock_pynvml):
     # without mig instance
-    assert NvidiaGPUAcceleratorManager.get_current_node_num_accelerators() == len(
-        GPU_MOCK_DATA
+    assert NvidiaACCAcceleratorManager.get_current_node_num_accelerators() == len(
+        ACC_MOCK_DATA
     )
 
 
 @pytest.mark.parametrize("mock_nvml", [mock_nvml])
-def test_gpu_info_parsing(patch_mock_pynvml):
-    assert NvidiaGPUAcceleratorManager.get_current_node_accelerator_type() == "A100"
+def test_acc_info_parsing(patch_mock_pynvml):
+    assert NvidiaACCAcceleratorManager.get_current_node_accelerator_type() == "A100"
 
 
 if __name__ == "__main__":

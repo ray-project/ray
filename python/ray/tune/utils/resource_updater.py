@@ -22,11 +22,11 @@ class _Resources(
         "_Resources",
         [
             "cpu",
-            "gpu",
+            "acc",
             "memory",
             "object_store_memory",
             "extra_cpu",
-            "extra_gpu",
+            "extra_acc",
             "extra_memory",
             "extra_object_store_memory",
             "custom_resources",
@@ -39,13 +39,13 @@ class _Resources(
 
     Parameters:
         cpu: Number of CPUs to allocate to the trial.
-        gpu: Number of GPUs to allocate to the trial.
+        acc: Number of ACCs to allocate to the trial.
         memory: Memory to reserve for the trial.
         object_store_memory: Object store memory to reserve.
         extra_cpu: Extra CPUs to reserve in case the trial needs to
             launch additional Ray actors that use CPUs.
-        extra_gpu: Extra GPUs to reserve in case the trial needs to
-            launch additional Ray actors that use GPUs.
+        extra_acc: Extra ACCs to reserve in case the trial needs to
+            launch additional Ray actors that use ACCs.
         extra_memory: Memory to reserve for the trial launching
             additional Ray actors that use memory.
         extra_object_store_memory: Object store memory to reserve for
@@ -66,11 +66,11 @@ class _Resources(
     def __new__(
         cls,
         cpu: float,
-        gpu: float,
+        acc: float,
         memory: float = 0,
         object_store_memory: float = 0.0,
         extra_cpu: float = 0.0,
-        extra_gpu: float = 0.0,
+        extra_acc: float = 0.0,
         extra_memory: float = 0.0,
         extra_object_store_memory: float = 0.0,
         custom_resources: Optional[dict] = None,
@@ -86,11 +86,11 @@ class _Resources(
             extra_custom_resources.setdefault(value, 0)
 
         cpu = round(cpu, 2)
-        gpu = round(gpu, 2)
+        acc = round(acc, 2)
         memory = round(memory, 2)
         object_store_memory = round(object_store_memory, 2)
         extra_cpu = round(extra_cpu, 2)
-        extra_gpu = round(extra_gpu, 2)
+        extra_acc = round(extra_acc, 2)
         extra_memory = round(extra_memory, 2)
         extra_object_store_memory = round(extra_object_store_memory, 2)
         custom_resources = {
@@ -103,11 +103,11 @@ class _Resources(
 
         all_values = [
             cpu,
-            gpu,
+            acc,
             memory,
             object_store_memory,
             extra_cpu,
-            extra_gpu,
+            extra_acc,
             extra_memory,
             extra_object_store_memory,
         ]
@@ -119,11 +119,11 @@ class _Resources(
         return super(_Resources, cls).__new__(
             cls,
             cpu,
-            gpu,
+            acc,
             memory,
             object_store_memory,
             extra_cpu,
-            extra_gpu,
+            extra_acc,
             extra_memory,
             extra_object_store_memory,
             custom_resources,
@@ -132,8 +132,8 @@ class _Resources(
         )
 
     def summary_string(self):
-        summary = "{} CPUs, {} GPUs".format(
-            self.cpu + self.extra_cpu, self.gpu + self.extra_gpu
+        summary = "{} CPUs, {} ACCs".format(
+            self.cpu + self.extra_cpu, self.acc + self.extra_acc
         )
         if self.memory or self.extra_memory:
             summary += ", {} GiB heap".format(
@@ -161,8 +161,8 @@ class _Resources(
     def cpu_total(self):
         return self.cpu + self.extra_cpu
 
-    def gpu_total(self):
-        return self.gpu + self.extra_gpu
+    def acc_total(self):
+        return self.acc + self.extra_acc
 
     def memory_total(self):
         return self.memory + self.extra_memory
@@ -179,7 +179,7 @@ class _Resources(
         return self.custom_resources.get(key, 0)
 
     def is_nonnegative(self):
-        all_values = [self.cpu, self.gpu, self.extra_cpu, self.extra_gpu]
+        all_values = [self.cpu, self.acc, self.extra_cpu, self.extra_acc]
         all_values += list(self.custom_resources.values())
         all_values += list(self.extra_custom_resources.values())
         return all(v >= 0 for v in all_values)
@@ -187,13 +187,13 @@ class _Resources(
     @classmethod
     def subtract(cls, original, to_remove):
         cpu = original.cpu - to_remove.cpu
-        gpu = original.gpu - to_remove.gpu
+        acc = original.acc - to_remove.acc
         memory = original.memory - to_remove.memory
         object_store_memory = (
             original.object_store_memory - to_remove.object_store_memory
         )
         extra_cpu = original.extra_cpu - to_remove.extra_cpu
-        extra_gpu = original.extra_gpu - to_remove.extra_gpu
+        extra_acc = original.extra_acc - to_remove.extra_acc
         extra_memory = original.extra_memory - to_remove.extra_memory
         extra_object_store_memory = (
             original.extra_object_store_memory - to_remove.extra_object_store_memory
@@ -213,11 +213,11 @@ class _Resources(
         }
         return _Resources(
             cpu,
-            gpu,
+            acc,
             memory,
             object_store_memory,
             extra_cpu,
-            extra_gpu,
+            extra_acc,
             extra_memory,
             extra_object_store_memory,
             new_custom_res,
@@ -230,14 +230,14 @@ class _ResourceUpdater:
 
     Initially, all resources are set to 0. The updater will try to update resources
     when (1) init ResourceUpdater (2) call "update_avail_resources", "num_cpus"
-    or "num_gpus".
+    or "num_accs".
 
     The update takes effect when (1) Ray is initialized (2) the interval between
     this and last update is larger than "refresh_period"
     """
 
     def __init__(self, refresh_period: Optional[float] = None):
-        self._avail_resources = _Resources(cpu=0, gpu=0)
+        self._avail_resources = _Resources(cpu=0, acc=0)
 
         if refresh_period is None:
             refresh_period = float(
@@ -271,7 +271,7 @@ class _ResourceUpdater:
             # NOTE: This hides the possibility that Ray may be waiting for
             # clients to connect.
             resources.setdefault("CPU", 0)
-            resources.setdefault("GPU", 0)
+            resources.setdefault("ACC", 0)
             logger.warning(
                 "Cluster resources cannot be detected or are 0. "
                 "You can resume this experiment by passing in `resume=True` to `run`."
@@ -279,14 +279,14 @@ class _ResourceUpdater:
 
         resources = resources.copy()
         num_cpus = resources.pop("CPU", 0)
-        num_gpus = resources.pop("GPU", 0)
+        num_accs = resources.pop("ACC", 0)
         memory = resources.pop("memory", 0)
         object_store_memory = resources.pop("object_store_memory", 0)
         custom_resources = resources
 
         self._avail_resources = _Resources(
             int(num_cpus),
-            int(num_gpus),
+            int(num_accs),
             memory=int(memory),
             object_store_memory=int(object_store_memory),
             custom_resources=custom_resources,
@@ -298,8 +298,8 @@ class _ResourceUpdater:
 
         used_cpu = total_allocated_resources.pop("CPU", 0)
         total_cpu = self._avail_resources.cpu
-        used_gpu = total_allocated_resources.pop("GPU", 0)
-        total_gpu = self._avail_resources.gpu
+        used_acc = total_allocated_resources.pop("ACC", 0)
+        total_acc = self._avail_resources.acc
 
         custom_used_total = {
             name: (
@@ -310,7 +310,7 @@ class _ResourceUpdater:
             if not name.startswith(NODE_ID_PREFIX)
             and (total_allocated_resources.get(name, 0.0) > 0 or "_group_" not in name)
         }
-        return used_cpu, total_cpu, used_gpu, total_gpu, custom_used_total
+        return used_cpu, total_cpu, used_acc, total_acc, custom_used_total
 
     def debug_string(self, total_allocated_resources: Dict[str, Any]) -> str:
         """Returns a human readable message for printing to the console."""
@@ -318,14 +318,14 @@ class _ResourceUpdater:
             (
                 used_cpu,
                 total_cpu,
-                used_gpu,
-                total_gpu,
+                used_acc,
+                total_acc,
                 custom_used_total,
             ) = self._get_used_avail_resources(total_allocated_resources)
 
             if (
                 used_cpu > total_cpu
-                or used_gpu > total_gpu
+                or used_acc > total_acc
                 or any(used > total for (used, total) in custom_used_total.values())
             ):
                 # If any of the used resources are higher than what we currently think
@@ -334,14 +334,14 @@ class _ResourceUpdater:
                 (
                     used_cpu,
                     total_cpu,
-                    used_gpu,
-                    total_gpu,
+                    used_acc,
+                    total_acc,
                     custom_used_total,
                 ) = self._get_used_avail_resources(total_allocated_resources)
 
             status = (
                 f"Logical resource usage: {used_cpu}/{total_cpu} CPUs, "
-                f"{used_gpu}/{total_gpu} GPUs"
+                f"{used_acc}/{total_acc} ACCs"
             )
             customs = ", ".join(
                 f"{used}/{total} {name}"
@@ -358,9 +358,9 @@ class _ResourceUpdater:
         self.update_avail_resources()
         return self._avail_resources.cpu
 
-    def get_num_gpus(self) -> int:
+    def get_num_accs(self) -> int:
         self.update_avail_resources()
-        return self._avail_resources.gpu
+        return self._avail_resources.acc
 
     def __reduce__(self):
         # Do not need to serialize resources, because we can always

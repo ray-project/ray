@@ -20,7 +20,7 @@ def test_errors_before_initializing_ray(set_enable_auto_connect):
         lambda: ray.cancel(None),  # Not valid API usage.
         lambda: ray.get([]),
         lambda: ray.get_actor("name"),
-        ray.get_gpu_ids,
+        ray.get_acc_ids,
         lambda: ray.kill(None),  # Not valid API usage.
         ray.nodes,
         lambda: ray.put(1),

@@ -79,11 +79,11 @@ def test_standalone_actor_outside_serve(shutdown_ray_and_serve):
 def test_memory_omitted_option(shutdown_ray_and_serve):
     """Ensure that omitting memory doesn't break the deployment."""
 
-    @serve.deployment(ray_actor_options={"num_cpus": 1, "num_gpus": 1})
+    @serve.deployment(ray_actor_options={"num_cpus": 1, "num_accs": 1})
     def hello(*args, **kwargs):
         return "world"
 
-    ray.init(num_gpus=3, namespace="serve")
+    ray.init(num_accs=3, namespace="serve")
     handle = serve.run(hello.bind())
 
     assert handle.remote().result() == "world"

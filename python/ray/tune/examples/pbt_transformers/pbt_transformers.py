@@ -24,7 +24,7 @@ from transformers import (
 )
 
 
-def tune_transformer(num_samples=8, gpus_per_trial=0, smoke_test=False):
+def tune_transformer(num_samples=8, accs_per_trial=0, smoke_test=False):
     data_dir_name = "./data" if not smoke_test else "./test_data"
     data_dir = os.path.abspath(os.path.join(os.getcwd(), data_dir_name))
     if not os.path.exists(data_dir):
@@ -78,7 +78,7 @@ def tune_transformer(num_samples=8, gpus_per_trial=0, smoke_test=False):
         learning_rate=1e-5,  # config
         do_train=True,
         do_eval=True,
-        no_cuda=gpus_per_trial <= 0,
+        no_cuda=accs_per_trial <= 0,
         evaluation_strategy="epoch",
         save_strategy="epoch",
         load_best_model_at_end=True,
@@ -124,7 +124,7 @@ def tune_transformer(num_samples=8, gpus_per_trial=0, smoke_test=False):
         parameter_columns={
             "weight_decay": "w_decay",
             "learning_rate": "lr",
-            "per_device_train_batch_size": "train_bs/gpu",
+            "per_device_train_batch_size": "train_bs/acc",
             "num_train_epochs": "num_epochs",
         },
         metric_columns=["eval_acc", "eval_loss", "epoch", "training_iteration"],
@@ -134,7 +134,7 @@ def tune_transformer(num_samples=8, gpus_per_trial=0, smoke_test=False):
         hp_space=lambda _: tune_config,
         backend="ray",
         n_trials=num_samples,
-        resources_per_trial={"cpu": 1, "gpu": gpus_per_trial},
+        resources_per_trial={"cpu": 1, "acc": accs_per_trial},
         scheduler=scheduler,
         checkpoint_config=CheckpointConfig(
             num_to_keep=1,
@@ -158,7 +158,7 @@ if __name__ == "__main__":
     args, _ = parser.parse_known_args()
 
     if args.smoke_test:
-        tune_transformer(num_samples=1, gpus_per_trial=0, smoke_test=True)
+        tune_transformer(num_samples=1, accs_per_trial=0, smoke_test=True)
     else:
-        # You can change the number of GPUs here:
-        tune_transformer(num_samples=8, gpus_per_trial=1)
+        # You can change the number of ACCs here:
+        tune_transformer(num_samples=8, accs_per_trial=1)

@@ -56,7 +56,7 @@ def gen_expected_metrics(
             f"""'obj_store_mem_spilled': {"N" if spilled else "Z"}""",
             "'block_generation_time': N",
             "'cpu_usage': Z",
-            "'gpu_usage': Z",
+            "'acc_usage': Z",
         ]
     else:
         metrics = [
@@ -65,7 +65,7 @@ def gen_expected_metrics(
             "'num_outputs_taken': N",
             "'bytes_outputs_taken': N",
             "'cpu_usage': Z",
-            "'gpu_usage': Z",
+            "'acc_usage': Z",
         ]
     if extra_metrics:
         metrics.extend(extra_metrics)
@@ -546,7 +546,7 @@ def test_dataset__repr__(ray_start_regular_shared):
         "      obj_store_mem_spilled: Z,\n"
         "      block_generation_time: N,\n"
         "      cpu_usage: Z,\n"
-        "      gpu_usage: Z,\n"
+        "      acc_usage: Z,\n"
         "      ray_remote_args: {'num_cpus': N, 'scheduling_strategy': 'SPREAD'},\n"
         "   },\n"
         "   stage_stats=[\n"

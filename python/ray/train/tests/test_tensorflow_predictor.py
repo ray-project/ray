@@ -104,9 +104,9 @@ def test_tensorflow_checkpoint():
         assert checkpoint_preprocessor == preprocessor
 
 
-@pytest.mark.parametrize("use_gpu", [False, True])
-def test_predict_array(use_gpu):
-    predictor = TensorflowPredictor(model=build_model(), use_gpu=use_gpu)
+@pytest.mark.parametrize("use_acc", [False, True])
+def test_predict_array(use_acc):
+    predictor = TensorflowPredictor(model=build_model(), use_acc=use_acc)
 
     data_batch = np.asarray([1, 2, 3])
     predictions = predictor.predict(data_batch)
@@ -118,13 +118,13 @@ def test_predict_array(use_gpu):
     )
 
 
-@pytest.mark.parametrize("use_gpu", [False, True])
-def test_predict_array_with_preprocessor(use_gpu):
+@pytest.mark.parametrize("use_acc", [False, True])
+def test_predict_array_with_preprocessor(use_acc):
     preprocessor = DummyPreprocessor()
     predictor = TensorflowPredictor(
         model=build_model(),
         preprocessor=preprocessor,
-        use_gpu=use_gpu,
+        use_acc=use_acc,
     )
 
     data_batch = np.array([1, 2, 3])
@@ -151,9 +151,9 @@ def test_predict(batch_type):
     assert predictions.to_numpy().flatten().tolist() == [1.0, 2.0, 3.0]
 
 
-@pytest.mark.parametrize("use_gpu", [False, True])
-def test_predict_dataframe(use_gpu):
-    predictor = TensorflowPredictor(model=build_model_multi_input(), use_gpu=use_gpu)
+@pytest.mark.parametrize("use_acc", [False, True])
+def test_predict_dataframe(use_acc):
+    predictor = TensorflowPredictor(model=build_model_multi_input(), use_acc=use_acc)
 
     data_batch = pd.DataFrame({"A": [0.0, 0.0, 0.0], "B": [1.0, 2.0, 3.0]})
     predictions = predictor.predict(data_batch)
@@ -162,9 +162,9 @@ def test_predict_dataframe(use_gpu):
     assert predictions.to_numpy().flatten().tolist() == [1.0, 2.0, 3.0]
 
 
-@pytest.mark.parametrize("use_gpu", [False, True])
-def test_predict_multi_output(use_gpu):
-    predictor = TensorflowPredictor(model=build_model_multi_output(), use_gpu=use_gpu)
+@pytest.mark.parametrize("use_acc", [False, True])
+def test_predict_multi_output(use_acc):
+    predictor = TensorflowPredictor(model=build_model_multi_output(), use_acc=use_acc)
 
     data_batch = np.array([1, 2, 3])
     predictions = predictor.predict(data_batch)

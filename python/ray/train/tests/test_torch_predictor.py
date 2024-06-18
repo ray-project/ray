@@ -72,9 +72,9 @@ def test_init(model, preprocessor):
     assert checkpoint_predictor.get_preprocessor() == predictor.get_preprocessor()
 
 
-@pytest.mark.parametrize("use_gpu", [False, True])
-def test_predict_model_not_training(model, use_gpu):
-    predictor = TorchPredictor(model=model, use_gpu=use_gpu)
+@pytest.mark.parametrize("use_acc", [False, True])
+def test_predict_model_not_training(model, use_acc):
+    predictor = TorchPredictor(model=model, use_acc=use_acc)
 
     data_batch = np.array([1])
     predictor.predict(data_batch)
@@ -95,9 +95,9 @@ def test_predict(batch_type):
     assert predictions.to_numpy().flatten().tolist() == [1.0, 2.0, 3.0]
 
 
-@pytest.mark.parametrize("use_gpu", [False, True])
-def test_predict_array(model, use_gpu):
-    predictor = TorchPredictor(model=model, use_gpu=use_gpu)
+@pytest.mark.parametrize("use_acc", [False, True])
+def test_predict_array(model, use_acc):
+    predictor = TorchPredictor(model=model, use_acc=use_acc)
 
     data_batch = np.asarray([1, 2, 3])
     predictions = predictor.predict(data_batch)
@@ -106,9 +106,9 @@ def test_predict_array(model, use_gpu):
     np.testing.assert_array_equal(predictions["predictions"], np.asarray([2, 4, 6]))
 
 
-@pytest.mark.parametrize("use_gpu", [False, True])
-def test_predict_array_with_preprocessor(model, preprocessor, use_gpu):
-    predictor = TorchPredictor(model=model, preprocessor=preprocessor, use_gpu=use_gpu)
+@pytest.mark.parametrize("use_acc", [False, True])
+def test_predict_array_with_preprocessor(model, preprocessor, use_acc):
+    predictor = TorchPredictor(model=model, preprocessor=preprocessor, use_acc=use_acc)
 
     data_batch = np.array([1, 2, 3])
     predictions = predictor.predict(data_batch)
@@ -118,9 +118,9 @@ def test_predict_array_with_preprocessor(model, preprocessor, use_gpu):
     assert predictor.get_preprocessor().has_preprocessed
 
 
-@pytest.mark.parametrize("use_gpu", [False, True])
-def test_predict_dataframe(use_gpu):
-    predictor = TorchPredictor(model=DummyModelMultiInput(), use_gpu=use_gpu)
+@pytest.mark.parametrize("use_acc", [False, True])
+def test_predict_dataframe(use_acc):
+    predictor = TorchPredictor(model=DummyModelMultiInput(), use_acc=use_acc)
 
     data_batch = pd.DataFrame({"X0": [0.0, 0.0, 0.0], "X1": [1.0, 2.0, 3.0]})
     predictions = predictor.predict(data_batch, dtype=torch.float)
@@ -129,9 +129,9 @@ def test_predict_dataframe(use_gpu):
     assert predictions.to_numpy().flatten().tolist() == [1.0, 2.0, 3.0]
 
 
-@pytest.mark.parametrize("use_gpu", [False, True])
-def test_predict_multi_output(use_gpu):
-    predictor = TorchPredictor(model=DummyModelMultiOutput(), use_gpu=use_gpu)
+@pytest.mark.parametrize("use_acc", [False, True])
+def test_predict_multi_output(use_acc):
+    predictor = TorchPredictor(model=DummyModelMultiOutput(), use_acc=use_acc)
 
     data_batch = np.array([1, 2, 3])
     predictions = predictor.predict(data_batch)
@@ -169,7 +169,7 @@ def test_predict_unsupported_output():
         assert v.flatten().tolist() == [1, 2, 3]
 
 
-@pytest.mark.parametrize("use_gpu", [False, True])
+@pytest.mark.parametrize("use_acc", [False, True])
 @pytest.mark.parametrize(
     ("input_dtype", "expected_output_dtype"),
     (
@@ -180,9 +180,9 @@ def test_predict_unsupported_output():
     ),
 )
 def test_predict_array_with_different_dtypes(
-    model, input_dtype, expected_output_dtype, use_gpu
+    model, input_dtype, expected_output_dtype, use_acc
 ):
-    predictor = TorchPredictor(model=model, use_gpu=use_gpu)
+    predictor = TorchPredictor(model=model, use_acc=use_acc)
 
     data_batch = np.array([1, 2, 3])
     predictions = predictor.predict(data_batch, dtype=input_dtype)
@@ -190,10 +190,10 @@ def test_predict_array_with_different_dtypes(
     assert predictions["predictions"].dtype == expected_output_dtype
 
 
-@pytest.mark.parametrize("use_gpu", [False, True])
-def test_predict_array_no_training(model, use_gpu):
+@pytest.mark.parametrize("use_acc", [False, True])
+def test_predict_array_no_training(model, use_acc):
     checkpoint = TorchCheckpoint.from_model(model)
-    predictor = TorchPredictor.from_checkpoint(checkpoint, use_gpu=use_gpu)
+    predictor = TorchPredictor.from_checkpoint(checkpoint, use_acc=use_acc)
 
     data_batch = np.array([1, 2, 3])
     predictions = predictor.predict(data_batch)
@@ -202,10 +202,10 @@ def test_predict_array_no_training(model, use_gpu):
     np.testing.assert_array_equal(predictions["predictions"], np.asarray([2, 4, 6]))
 
 
-@pytest.mark.parametrize("use_gpu", [False, True])
-def test_array_real_model(use_gpu):
+@pytest.mark.parametrize("use_acc", [False, True])
+def test_array_real_model(use_acc):
     model = torch.nn.Linear(2, 1)
-    predictor = TorchPredictor(model=model, use_gpu=use_gpu)
+    predictor = TorchPredictor(model=model, use_acc=use_acc)
 
     data = np.array([[1, 2], [3, 4]])
     predictions = predictor.predict(data, dtype=torch.float)
@@ -213,8 +213,8 @@ def test_array_real_model(use_gpu):
     assert len(predictions["predictions"]) == 2
 
 
-@pytest.mark.parametrize("use_gpu", [False, True])
-def test_multi_modal_real_model(use_gpu):
+@pytest.mark.parametrize("use_acc", [False, True])
+def test_multi_modal_real_model(use_acc):
     class CustomModule(torch.nn.Module):
         def __init__(self):
             super().__init__()
@@ -229,20 +229,20 @@ def test_multi_modal_real_model(use_gpu):
             out2 = self.linear2(input_dict["B"])
             return out1 + out2
 
-    predictor = TorchPredictor(model=CustomModule(), use_gpu=use_gpu)
+    predictor = TorchPredictor(model=CustomModule(), use_acc=use_acc)
 
     data = pd.DataFrame([[1, 2], [3, 4]], columns=["A", "B"])
 
     predictions = predictor.predict(data, dtype=torch.float)
     assert len(predictions) == 2
-    if use_gpu:
+    if use_acc:
         assert next(
             predictor.model.parameters()
-        ).is_cuda, "Model should be moved to GPU if use_gpu is True"
+        ).is_cuda, "Model should be moved to ACC if use_acc is True"
     else:
         assert not next(
             predictor.model.parameters()
-        ).is_cuda, "Model should not be on GPU if use_gpu is False"
+        ).is_cuda, "Model should not be on ACC if use_acc is False"
 
 
 if __name__ == "__main__":

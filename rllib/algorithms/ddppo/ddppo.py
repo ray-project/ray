@@ -19,8 +19,8 @@ class DDPPOConfig(PPOConfig):
         self.sgd_minibatch_size = 50
         self.num_sgd_iter = 10
         self.framework_str = "torch"
-        self.num_gpus = 0
-        self.num_gpus_per_worker = 1
+        self.num_accs = 0
+        self.num_accs_per_worker = 1
         self.train_batch_size = 500
         self.kl_coeff = 0.0
         self.kl_target = 0.0

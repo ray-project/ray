@@ -202,7 +202,7 @@ def tune_xgboost(use_class_trainable=True):
 
         # default values if resources_per_trial is unspecified
         if base_trial_resource is None:
-            base_trial_resource = PlacementGroupFactory([{"CPU": 1, "GPU": 0}])
+            base_trial_resource = PlacementGroupFactory([{"CPU": 1, "ACC": 0}])
 
         # Assume that the number of CPUs cannot go below what was
         # specified in ``Tuner.fit()``.
@@ -217,7 +217,7 @@ def tune_xgboost(use_class_trainable=True):
         )
 
         # Assign new CPUs to the trial in a PlacementGroupFactory
-        return PlacementGroupFactory([{"CPU": cpu_to_use, "GPU": 0}])
+        return PlacementGroupFactory([{"CPU": cpu_to_use, "ACC": 0}])
 
     # You can either define your own resources_allocation_function, or
     # use the default one - DistributeResources
@@ -238,7 +238,7 @@ def tune_xgboost(use_class_trainable=True):
 
     tuner = tune.Tuner(
         tune.with_resources(
-            fn, resources=PlacementGroupFactory([{"CPU": 1, "GPU": 0}])
+            fn, resources=PlacementGroupFactory([{"CPU": 1, "ACC": 0}])
         ),
         tune_config=tune.TuneConfig(
             metric="eval-logloss",

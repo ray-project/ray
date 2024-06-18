@@ -6,14 +6,14 @@ from ray.util.collective.tests.util import Worker, create_collective_workers
 
 
 @pytest.mark.parametrize("group_name", ["default", "test", "123?34!"])
-def test_init_two_actors(ray_start_single_node_2_gpus, group_name):
+def test_init_two_actors(ray_start_single_node_2_accs, group_name):
     world_size = 2
     actors, results = create_collective_workers(world_size, group_name)
     for i in range(world_size):
         assert results[i]
 
 
-def test_init_multiple_groups(ray_start_single_node_2_gpus):
+def test_init_multiple_groups(ray_start_single_node_2_accs):
     world_size = 2
     num_groups = 10
     actors = [Worker.remote() for i in range(world_size)]
@@ -29,7 +29,7 @@ def test_init_multiple_groups(ray_start_single_node_2_gpus):
             assert init_results[j]
 
 
-def test_get_rank(ray_start_single_node_2_gpus):
+def test_get_rank(ray_start_single_node_2_accs):
     world_size = 2
     actors, _ = create_collective_workers(world_size)
     actor0_rank = ray.get(actors[0].report_rank.remote())
@@ -54,7 +54,7 @@ def test_get_rank(ray_start_single_node_2_gpus):
     assert actor1_rank == 0
 
 
-def test_get_collective_group_size(ray_start_single_node_2_gpus):
+def test_get_collective_group_size(ray_start_single_node_2_accs):
     world_size = 2
     actors, _ = create_collective_workers(world_size)
     actor0_world_size = ray.get(actors[0].report_world_size.remote())
@@ -62,7 +62,7 @@ def test_get_collective_group_size(ray_start_single_node_2_gpus):
     assert actor0_world_size == actor1_world_size == world_size
 
 
-def test_is_group_initialized(ray_start_single_node_2_gpus):
+def test_is_group_initialized(ray_start_single_node_2_accs):
     world_size = 2
     actors, _ = create_collective_workers(world_size)
     # check group is_init
@@ -78,7 +78,7 @@ def test_is_group_initialized(ray_start_single_node_2_gpus):
     assert not actor1_is_init
 
 
-def test_destroy_group(ray_start_single_node_2_gpus):
+def test_destroy_group(ray_start_single_node_2_accs):
     world_size = 2
     actors, _ = create_collective_workers(world_size)
     # Now destroy the group at actor0

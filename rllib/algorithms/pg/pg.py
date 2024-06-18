@@ -12,7 +12,7 @@ class PGConfig(AlgorithmConfig):
 
     Example:
         >>> from ray.rllib.algorithms.pg import PGConfig
-        >>> config = PGConfig().training(lr=0.01).resources(num_gpus=1)
+        >>> config = PGConfig().training(lr=0.01).resources(num_accs=1)
         >>> print(config.to_dict())  # doctest: +SKIP
         >>> # Build a Algorithm object from the config and run 1 training iteration.
         >>> algo = config.build(env="CartPole-v1")  # doctest: +SKIP

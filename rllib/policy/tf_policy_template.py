@@ -343,7 +343,7 @@ def build_tf_policy(
                 #  Hence, things like td_error are returned by the stats_fn
                 #  and end up under the LEARNER_STATS_KEY. We should
                 #  change tf to do this as well. However, this will confilct
-                #  the handling of LEARNER_STATS_KEY inside the multi-GPU
+                #  the handling of LEARNER_STATS_KEY inside the multi-ACC
                 #  train op.
                 # Auto-add empty learner stats dict if needed.
                 return dict({LEARNER_STATS_KEY: {}}, **extra_learn_fetches_fn(self))

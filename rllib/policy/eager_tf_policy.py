@@ -32,7 +32,7 @@ from ray.rllib.utils.metrics import (
 from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.spaces.space_utils import normalize_action
-from ray.rllib.utils.tf_utils import get_gpu_devices
+from ray.rllib.utils.tf_utils import get_acc_devices
 from ray.rllib.utils.threading import with_lock
 from ray.rllib.utils.typing import (
     LocalOptimizer,
@@ -367,10 +367,10 @@ def _build_eager_tf_policy(
             )
 
             # Log device and worker index.
-            num_gpus = self._get_num_gpus_for_policy()
-            if num_gpus > 0:
-                gpu_ids = get_gpu_devices()
-                logger.info(f"Found {len(gpu_ids)} visible cuda devices.")
+            num_accs = self._get_num_accs_for_policy()
+            if num_accs > 0:
+                acc_ids = get_acc_devices()
+                logger.info(f"Found {len(acc_ids)} visible cuda devices.")
 
             self._is_training = False
 

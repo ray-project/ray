@@ -361,13 +361,13 @@ class TestSetOptions:
         f.set_options(
             num_replicas=9,
             version="efgh",
-            ray_actor_options={"num_gpus": 3},
+            ray_actor_options={"num_accs": 3},
         )
 
         assert f.num_replicas == 9
         assert f.max_concurrent_queries == 3
         assert f.version == "efgh"
-        assert f.ray_actor_options == {"num_cpus": 1, "num_gpus": 3}
+        assert f.ray_actor_options == {"num_cpus": 1, "num_accs": 3}
         assert f._deployment_config.health_check_timeout_s == 17
 
     def test_set_options_validation(self):

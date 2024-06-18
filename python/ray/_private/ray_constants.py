@@ -181,7 +181,7 @@ RAYLET_CONNECTION_ERROR = "raylet_connection_error"
 DETACHED_ACTOR_ANONYMOUS_NAMESPACE_ERROR = "detached_actor_anonymous_namespace"
 EXCESS_QUEUEING_WARNING = "excess_queueing_warning"
 
-# Used in gpu detection
+# Used in acc detection
 RESOURCE_CONSTRAINT_PREFIX = "accelerator_type:"
 
 # Used by autoscaler to set the node custom resources and labels
@@ -414,7 +414,7 @@ NEURON_RT_VISIBLE_CORES_ENV_VAR = "NEURON_RT_VISIBLE_CORES"
 TPU_VISIBLE_CHIPS_ENV_VAR = "TPU_VISIBLE_CHIPS"
 
 NEURON_CORES = "neuron_cores"
-GPU = "GPU"
+ACC = "ACC"
 TPU = "TPU"
 
 
@@ -437,7 +437,7 @@ def gcs_actor_scheduling_enabled():
     return os.environ.get("RAY_gcs_actor_scheduling_enabled") == "true"
 
 
-DEFAULT_RESOURCES = {"CPU", "GPU", "memory", "object_store_memory"}
+DEFAULT_RESOURCES = {"CPU", "ACC", "memory", "object_store_memory"}
 
 # Supported Python versions for runtime env's "conda" field. Ray downloads
 # Ray wheels into the conda environment, so the Ray wheels for these Python

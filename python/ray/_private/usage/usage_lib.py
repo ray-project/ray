@@ -83,7 +83,7 @@ class ClusterConfigToReport:
 @dataclass(init=True)
 class ClusterStatusToReport:
     total_num_cpus: Optional[int] = None
-    total_num_gpus: Optional[int] = None
+    total_num_accs: Optional[int] = None
     total_memory_gb: Optional[float] = None
     total_object_store_memory_gb: Optional[float] = None
 
@@ -122,8 +122,8 @@ class UsageStatsToReport:
     worker_node_instance_types: Optional[List[str]]
     #: The total num of cpus in the cluster.
     total_num_cpus: Optional[int]
-    #: The total num of gpus in the cluster.
-    total_num_gpus: Optional[int]
+    #: The total num of accs in the cluster.
+    total_num_accs: Optional[int]
     #: The total size of memory in the cluster.
     total_memory_gb: Optional[float]
     #: The total size of object store memory in the cluster.
@@ -614,7 +614,7 @@ def _get_cluster_status_to_report_v2(gcs_client) -> ClusterStatusToReport:
         cluster_status = get_cluster_status(gcs_client.address)
         total_resources = cluster_status.total_resources()
         result.total_num_cpus = total_resources.get("CPU", 0)
-        result.total_num_gpus = total_resources.get("GPU", 0)
+        result.total_num_accs = total_resources.get("ACC", 0)
 
         to_GiB = 1 / 2**30
         result.total_memory_gb = total_resources.get("memory", 0) * to_GiB
@@ -665,8 +665,8 @@ def get_cluster_status_to_report(gcs_client) -> ClusterStatusToReport:
         # usage is a map from resource to (used, total) pair
         if "CPU" in usage:
             result.total_num_cpus = int(usage["CPU"][1])
-        if "GPU" in usage:
-            result.total_num_gpus = int(usage["GPU"][1])
+        if "ACC" in usage:
+            result.total_num_accs = int(usage["ACC"][1])
         if "memory" in usage:
             result.total_memory_gb = usage["memory"][1] * to_GiB
         if "object_store_memory" in usage:
@@ -831,7 +831,7 @@ def generate_report_data(
         head_node_instance_type=cluster_config_to_report.head_node_instance_type,
         worker_node_instance_types=cluster_config_to_report.worker_node_instance_types,
         total_num_cpus=cluster_status_to_report.total_num_cpus,
-        total_num_gpus=cluster_status_to_report.total_num_gpus,
+        total_num_accs=cluster_status_to_report.total_num_accs,
         total_memory_gb=cluster_status_to_report.total_memory_gb,
         total_object_store_memory_gb=cluster_status_to_report.total_object_store_memory_gb,  # noqa: E501
         library_usages=get_library_usages_to_report(gcs_client),

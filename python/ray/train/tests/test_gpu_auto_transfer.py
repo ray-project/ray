@@ -22,7 +22,7 @@ from ray.train.torch import TorchTrainer
     ],
 )
 def test_auto_transfer_data_from_host_to_device(
-    ray_start_1_cpu_1_gpu, device_choice, auto_transfer
+    ray_start_1_cpu_1_acc, device_choice, auto_transfer
 ):
     import numpy as np
     import torch
@@ -64,18 +64,18 @@ def test_auto_transfer_data_from_host_to_device(
         assert compute_average_runtime(host_to_device) >= with_auto_transfer
 
 
-def test_auto_transfer_correct_device(ray_start_4_cpus_2_gpus):
+def test_auto_transfer_correct_device(ray_start_4_cpus_2_accs):
     """Tests that auto_transfer uses the right device for the cuda stream."""
     import pynvml
 
     pynvml.nvmlInit()
 
-    def get_gpu_used_mem(i):
+    def get_acc_used_mem(i):
         handle = pynvml.nvmlDeviceGetHandleByIndex(i)
         info = pynvml.nvmlDeviceGetMemoryInfo(handle)
         return info.used
 
-    start_gpu_memory = get_gpu_used_mem(1)
+    start_acc_memory = get_acc_used_mem(1)
 
     device = torch.device("cuda:1")
     small_dataloader = [(torch.randn((1024 * 4, 1024 * 4)),) for _ in range(10)]
@@ -85,22 +85,22 @@ def test_auto_transfer_correct_device(ray_start_4_cpus_2_gpus):
         )
     )
 
-    end_gpu_memory = get_gpu_used_mem(1)
+    end_acc_memory = get_acc_used_mem(1)
 
-    # Verify GPU memory usage increases on the right cuda device
-    assert end_gpu_memory > start_gpu_memory
+    # Verify ACC memory usage increases on the right cuda device
+    assert end_acc_memory > start_acc_memory
 
 
 @patch.dict(os.environ, {"CUDA_VISIBLE_DEVICES": ""})
-def test_torch_auto_gpu_to_cpu(ray_start_4_cpus_2_gpus):
-    """Tests if GPU tensors are auto converted to CPU on driver."""
+def test_torch_auto_acc_to_cpu(ray_start_4_cpus_2_accs):
+    """Tests if ACC tensors are auto converted to CPU on driver."""
     num_workers = 2
     assert os.environ["CUDA_VISIBLE_DEVICES"] == ""
 
     def train_func():
         model = torch.nn.Linear(1, 1)
 
-        # Move to GPU device.
+        # Move to ACC device.
         model = ray.train.torch.prepare_model(model)
 
         assert next(model.parameters()).is_cuda
@@ -113,7 +113,7 @@ def test_torch_auto_gpu_to_cpu(ray_start_4_cpus_2_gpus):
             train.report({}, checkpoint=Checkpoint.from_directory(tmpdir))
 
     trainer = TorchTrainer(
-        train_func, scaling_config=ScalingConfig(num_workers=num_workers, use_gpu=True)
+        train_func, scaling_config=ScalingConfig(num_workers=num_workers, use_acc=True)
     )
     results = trainer.fit()
 
@@ -129,7 +129,7 @@ def test_torch_auto_gpu_to_cpu(ray_start_4_cpus_2_gpus):
     def train_func():
         model = torch.nn.Linear(1, 1)
 
-        # Move to GPU device.
+        # Move to ACC device.
         model = ray.train.torch.prepare_model(model)
 
         assert next(model.parameters()).is_cuda
@@ -144,7 +144,7 @@ def test_torch_auto_gpu_to_cpu(ray_start_4_cpus_2_gpus):
             train.report({}, checkpoint=Checkpoint.from_directory(tmpdir))
 
     trainer = TorchTrainer(
-        train_func, scaling_config=ScalingConfig(num_workers=num_workers, use_gpu=True)
+        train_func, scaling_config=ScalingConfig(num_workers=num_workers, use_acc=True)
     )
     results = trainer.fit()
 

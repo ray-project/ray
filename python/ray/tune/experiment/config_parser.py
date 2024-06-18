@@ -56,7 +56,7 @@ def _make_parser(parser_creator=None, **kwargs):
         default=None,
         type=json_to_resources,
         help="Override the machine resources to allocate per trial, e.g. "
-        '\'{"cpu": 64, "gpu": 8}\'. Note that GPUs will not be assigned '
+        '\'{"cpu": 64, "acc": 8}\'. Note that ACCs will not be assigned '
         "unless you specify them here. For RLlib, you probably want to "
         "leave this alone and use RLlib configs to control parallelism.",
     )

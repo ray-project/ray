@@ -1,5 +1,5 @@
 # Adapted from https://github.com/pyg-team/pytorch_geometric/blob/2.1.0
-# /examples/multi_gpu/distributed_sampling.py
+# /examples/multi_acc/distributed_sampling.py
 
 import argparse
 import os
@@ -165,7 +165,7 @@ def gen_reddit_dataset():
 
 
 def train_gnn(
-    num_workers=2, use_gpu=False, epochs=3, global_batch_size=32, dataset="reddit"
+    num_workers=2, use_acc=False, epochs=3, global_batch_size=32, dataset="reddit"
 ):
 
     per_worker_batch_size = global_batch_size // num_workers
@@ -179,7 +179,7 @@ def train_gnn(
             if dataset == "reddit"
             else gen_fake_dataset(),
         },
-        scaling_config=ScalingConfig(num_workers=num_workers, use_gpu=use_gpu),
+        scaling_config=ScalingConfig(num_workers=num_workers, use_acc=use_acc),
     )
     result = trainer.fit()
     print(result.metrics)
@@ -198,7 +198,7 @@ if __name__ == "__main__":
         help="Sets number of workers for training.",
     )
     parser.add_argument(
-        "--use-gpu", action="store_true", help="Whether to use GPU for training."
+        "--use-acc", action="store_true", help="Whether to use ACC for training."
     )
     parser.add_argument(
         "--epochs", type=int, default=3, help="Number of epochs to train for."
@@ -223,7 +223,7 @@ if __name__ == "__main__":
 
     train_gnn(
         num_workers=args.num_workers,
-        use_gpu=args.use_gpu,
+        use_acc=args.use_acc,
         epochs=args.epochs,
         global_batch_size=args.global_batch_size,
         dataset=args.dataset,

@@ -93,7 +93,7 @@ class TestExplorations(unittest.TestCase):
             impala.ImpalaConfig()
             .environment("CartPole-v1")
             .rollouts(num_rollout_workers=0)
-            .resources(num_gpus=0)
+            .resources(num_accs=0)
         )
         do_test_explorations(
             config,

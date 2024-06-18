@@ -14,12 +14,12 @@ def test_request_same():
     )
 
     # multiple resources work
-    assert ResourceRequest([{"CPU": 1, "GPU": 1}]) == ResourceRequest(
-        [{"CPU": 1, "GPU": 1}]
+    assert ResourceRequest([{"CPU": 1, "ACC": 1}]) == ResourceRequest(
+        [{"CPU": 1, "ACC": 1}]
     )
 
     # 0 resources are ignored
-    assert ResourceRequest([{"CPU": 0, "GPU": 1}]) == ResourceRequest([{"GPU": 1}])
+    assert ResourceRequest([{"CPU": 0, "ACC": 1}]) == ResourceRequest([{"ACC": 1}])
 
     # PACK is implicit
     assert ResourceRequest([{"CPU": 1}], strategy="PACK") == ResourceRequest(

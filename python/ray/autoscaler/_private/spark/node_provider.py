@@ -176,7 +176,7 @@ class SparkNodeProvider(NodeProvider):
             conf = self.provider_config.copy()
 
             num_cpus_per_node = resources.pop("CPU")
-            num_gpus_per_node = resources.pop("GPU")
+            num_accs_per_node = resources.pop("ACC")
             heap_memory_per_node = resources.pop("memory")
             object_store_memory_per_node = resources.pop("object_store_memory")
 
@@ -197,7 +197,7 @@ class SparkNodeProvider(NodeProvider):
                     "ray_head_port": self.ray_head_port,
                     "ray_temp_dir": conf["ray_temp_dir"],
                     "num_cpus_per_node": num_cpus_per_node,
-                    "num_gpus_per_node": num_gpus_per_node,
+                    "num_accs_per_node": num_accs_per_node,
                     "heap_memory_per_node": heap_memory_per_node,
                     "object_store_memory_per_node": object_store_memory_per_node,
                     "worker_node_options": conf["worker_node_options"],

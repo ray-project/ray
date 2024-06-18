@@ -30,24 +30,24 @@ from ray.util.timer import _Timer
 
 REMOTE_SCALING_CONFIGS = {
     "remote-cpu": LearnerGroupScalingConfig(num_workers=1),
-    "remote-gpu": LearnerGroupScalingConfig(num_workers=1, num_gpus_per_worker=1),
-    "multi-gpu-ddp": LearnerGroupScalingConfig(num_workers=2, num_gpus_per_worker=1),
+    "remote-acc": LearnerGroupScalingConfig(num_workers=1, num_accs_per_worker=1),
+    "multi-acc-ddp": LearnerGroupScalingConfig(num_workers=2, num_accs_per_worker=1),
     "multi-cpu-ddp": LearnerGroupScalingConfig(num_workers=2, num_cpus_per_worker=2),
-    # "multi-gpu-ddp-pipeline": LearnerGroupScalingConfig(
-    #     num_workers=2, num_gpus_per_worker=2
+    # "multi-acc-ddp-pipeline": LearnerGroupScalingConfig(
+    #     num_workers=2, num_accs_per_worker=2
     # ),
 }
 
 
 LOCAL_SCALING_CONFIGS = {
-    "local-cpu": LearnerGroupScalingConfig(num_workers=0, num_gpus_per_worker=0),
-    "local-gpu": LearnerGroupScalingConfig(num_workers=0, num_gpus_per_worker=1),
+    "local-cpu": LearnerGroupScalingConfig(num_workers=0, num_accs_per_worker=0),
+    "local-acc": LearnerGroupScalingConfig(num_workers=0, num_accs_per_worker=1),
 }
 
 
 # TODO(avnishn) Make this a ray task later. Currently thats not possible because the
 # task is not dying after the test is done. This is a bug with ray core.
-@ray.remote(num_gpus=1)
+@ray.remote(num_accs=1)
 class RemoteTrainingHelper:
     def local_training_helper(self, fw, scaling_mode) -> None:
         if fw == "torch":
@@ -121,16 +121,16 @@ class TestLearnerGroupSyncUpdate(unittest.TestCase):
         test_iterator = itertools.product(fws, LOCAL_SCALING_CONFIGS)
 
         # run the logic of this test inside of a ray actor because we want tensorflow
-        # resources to be gracefully released. Tensorflow blocks the gpu resources
-        # otherwise between test cases, causing a gpu oom error.
+        # resources to be gracefully released. Tensorflow blocks the acc resources
+        # otherwise between test cases, causing a acc oom error.
         for fw, scaling_mode in test_iterator:
             print(f"Testing framework: {fw}, scaling mode: {scaling_mode}")
             training_helper = RemoteTrainingHelper.remote()
             ray.get(training_helper.local_training_helper.remote(fw, scaling_mode))
 
-    def test_update_multigpu(self):
+    def test_update_multiacc(self):
         fws = ["torch", "tf2"]
-        scaling_modes = ["multi-gpu-ddp", "remote-gpu"]
+        scaling_modes = ["multi-acc-ddp", "remote-acc"]
         test_iterator = itertools.product(fws, scaling_modes)
 
         for fw, scaling_mode in test_iterator:
@@ -181,7 +181,7 @@ class TestLearnerGroupSyncUpdate(unittest.TestCase):
 
     def test_add_remove_module(self):
         fws = ["torch", "tf2"]
-        scaling_modes = ["multi-gpu-ddp"]
+        scaling_modes = ["multi-acc-ddp"]
         test_iterator = itertools.product(fws, scaling_modes)
 
         for fw, scaling_mode in test_iterator:
@@ -253,7 +253,7 @@ class TestLearnerGroupCheckpointRestore(unittest.TestCase):
         """Test that module state can be loaded from a checkpoint."""
         fws = ["torch", "tf2"]
         # this is expanded to more scaling modes on the release ci.
-        scaling_modes = ["local-cpu", "multi-gpu-ddp"]
+        scaling_modes = ["local-cpu", "multi-acc-ddp"]
 
         test_iterator = itertools.product(fws, scaling_modes)
         for fw, scaling_mode in test_iterator:
@@ -392,7 +392,7 @@ class TestLearnerGroupSaveLoadState(unittest.TestCase):
         """Check that saving and loading learner group state works."""
         fws = ["torch", "tf2"]
         # this is expanded to more scaling modes on the release ci.
-        scaling_modes = ["multi-gpu-ddp", "local-cpu"]
+        scaling_modes = ["multi-acc-ddp", "local-cpu"]
         test_iterator = itertools.product(fws, scaling_modes)
         batch = SampleBatch(FAKE_BATCH)
         for fw, scaling_mode in test_iterator:
@@ -461,8 +461,8 @@ class TestLearnerGroupAsyncUpdate(unittest.TestCase):
         """Test that async style updates converge to the same result as sync."""
         fws = ["torch", "tf2"]
         # async_update only needs to be tested for the most complex case.
-        # so we'll only test it for multi-gpu-ddp.
-        scaling_modes = ["multi-gpu-ddp", "remote-gpu"]
+        # so we'll only test it for multi-acc-ddp.
+        scaling_modes = ["multi-acc-ddp", "remote-acc"]
         test_iterator = itertools.product(fws, scaling_modes)
 
         for fw, scaling_mode in test_iterator:

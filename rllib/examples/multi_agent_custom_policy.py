@@ -87,8 +87,8 @@ if __name__ == "__main__":
             # it's good practice to define this list here either way.
             policies_to_train=["learnable_policy"],
         )
-        # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
-        .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
+        # Use ACCs iff `RLLIB_NUM_ACCS` env var set to > 0.
+        .resources(num_accs=int(os.environ.get("RLLIB_NUM_ACCS", "0")))
         .rl_module(
             rl_module_spec=MultiAgentRLModuleSpec(
                 module_specs={

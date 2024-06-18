@@ -43,7 +43,7 @@ class APPOConfig(ImpalaConfig):
 
         from ray.rllib.algorithms.appo import APPOConfig
         config = APPOConfig().training(lr=0.01, grad_clip=30.0, train_batch_size=50)
-        config = config.resources(num_gpus=0)
+        config = config.resources(num_accs=0)
         config = config.rollouts(num_rollout_workers=1)
         config = config.environment("CartPole-v1")
 
@@ -101,8 +101,8 @@ class APPOConfig(ImpalaConfig):
         self.rollout_fragment_length = 50
         self.train_batch_size = 500
         self.min_time_s_per_iteration = 10
-        self.num_gpus = 0
-        self.num_multi_gpu_tower_stacks = 1
+        self.num_accs = 0
+        self.num_multi_acc_tower_stacks = 1
         self.minibatch_buffer_size = 1
         self.num_sgd_iter = 1
         self.target_update_frequency = 1

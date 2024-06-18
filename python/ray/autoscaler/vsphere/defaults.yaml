@@ -62,9 +62,9 @@ provider:
             # Will take effect only when "frozen_vm.library_item" is set. If "frozen_vm.resource_pool" is also set,
             # this datastore must be a shared datastore among the ESXi hosts.
             datastore:
-        # The GPU related configurations
-        gpu_config:
-            # If using dynamic PCI passthrough to bind the physical GPU on an ESXi host to a Ray node VM.
+        # The ACC related configurations
+        acc_config:
+            # If using dynamic PCI passthrough to bind the physical ACC on an ESXi host to a Ray node VM.
             # Dynamic PCI passthrough can support vSphere DRS, otherwise using regular PCI passthrough will not support
             # vSphere DRS.
             dynamic_pci_passthrough: False
@@ -83,7 +83,7 @@ auth:
 available_node_types:
     ray.head.default:
         # The node type's CPU and Memory resources are by default the same as the frozen VM.
-        # You can override the resources here. Adding GPU to the head node is not recommended.
+        # You can override the resources here. Adding ACC to the head node is not recommended.
         # resources: { "CPU": 2, "Memory": 4096}
         resources: {"CPU": 2}
         node_config:
@@ -98,11 +98,11 @@ available_node_types:
         # This number should be >= 0.
         min_workers: 0
         # The node type's CPU and Memory resources are by default the same as the frozen VM.
-        # You can override the resources here. For GPU, currently only Nvidia GPU is supported. If no ESXi host can
+        # You can override the resources here. For ACC, currently only Nvidia ACC is supported. If no ESXi host can
         # fulfill the requirement, the Ray node creation will fail. The number of created nodes may not meet the desired
-        # minimum number. The vSphere node provider will not distinguish the GPU type. It will just count the quantity:
-        # mount the first k random available Nvidia GPU to the VM, if the user set {"GPU": k}.
-        # resources: {"CPU": 2, "Memory": 4096, "GPU": 1}
+        # minimum number. The vSphere node provider will not distinguish the ACC type. It will just count the quantity:
+        # mount the first k random available Nvidia ACC to the VM, if the user set {"ACC": k}.
+        # resources: {"CPU": 2, "Memory": 4096, "ACC": 1}
         resources: {"CPU": 2}
         node_config:
             # The resource pool where the worker node should live, if unset, will be

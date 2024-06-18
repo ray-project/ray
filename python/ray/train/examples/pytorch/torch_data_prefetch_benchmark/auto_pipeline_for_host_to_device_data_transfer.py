@@ -106,7 +106,7 @@ def train_linear(num_workers=1, num_hidden_layers=1, use_auto_transfer=True, epo
     trainer = TorchTrainer(
         train_func,
         train_loop_config=config,
-        scaling_config=ScalingConfig(use_gpu=True, num_workers=num_workers),
+        scaling_config=ScalingConfig(use_acc=True, num_workers=num_workers),
     )
     results = trainer.fit()
 
@@ -136,7 +136,7 @@ if __name__ == "__main__":
     ray.init(address=args.address)
 
     if not torch.cuda.is_available():
-        warnings.warn("GPU is not available. Skip the test using auto pipeline.")
+        warnings.warn("ACC is not available. Skip the test using auto pipeline.")
     else:
         train_linear(
             num_workers=1,

@@ -25,7 +25,7 @@ def train_func(config):
     ptl_trainer.fit(model, train_dataloaders=dataloader)
 
 
-scaling_config = ScalingConfig(num_workers=2, use_gpu=False)
+scaling_config = ScalingConfig(num_workers=2, use_acc=False)
 
 assert (
     "COMET_API_KEY" in os.environ

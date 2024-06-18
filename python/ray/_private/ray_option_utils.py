@@ -77,7 +77,7 @@ def _validate_resource_quantity(name, quantity):
             f"The precision of the fractional quantity of resource {name}"
             " cannot go beyond 0.0001"
         )
-    resource_name = "GPU" if name == "num_gpus" else name
+    resource_name = "ACC" if name == "num_accs" else name
     if resource_name in ray._private.accelerators.get_all_accelerator_resource_names():
         (
             valid,
@@ -105,9 +105,9 @@ def _validate_resources(resources: Optional[Dict[str, float]]) -> Optional[str]:
     if resources is None:
         return None
 
-    if "CPU" in resources or "GPU" in resources:
+    if "CPU" in resources or "ACC" in resources:
         return (
-            "Use the 'num_cpus' and 'num_gpus' keyword instead of 'CPU' and 'GPU' "
+            "Use the 'num_cpus' and 'num_accs' keyword instead of 'CPU' and 'ACC' "
             "in 'resources' keyword"
         )
 
@@ -124,7 +124,7 @@ _common_options = {
     "memory": _resource_option("memory"),
     "name": Option((str, type(None))),
     "num_cpus": _resource_option("num_cpus"),
-    "num_gpus": _resource_option("num_gpus"),
+    "num_accs": _resource_option("num_accs"),
     "object_store_memory": _counting_option("object_store_memory", False),
     # TODO(suquark): "placement_group", "placement_group_bundle_index"
     # and "placement_group_capture_child_tasks" are deprecated,

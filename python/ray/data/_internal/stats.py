@@ -185,9 +185,9 @@ class _StatsActor:
             description="CPUs allocated to dataset operators",
             tag_keys=op_tags_keys,
         )
-        self.gpu_usage = Gauge(
-            "data_gpu_usage_cores",
-            description="GPUs allocated to dataset operators",
+        self.acc_usage = Gauge(
+            "data_acc_usage_cores",
+            description="ACCs allocated to dataset operators",
             tag_keys=op_tags_keys,
         )
         self.bytes_outputted = Gauge(
@@ -280,7 +280,7 @@ class _StatsActor:
             self.bytes_outputted.set(stats.get("bytes_outputs_generated", 0), tags)
             self.rows_outputted.set(stats.get("rows_outputs_generated", 0), tags)
             self.cpu_usage.set(stats.get("cpu_usage", 0), tags)
-            self.gpu_usage.set(stats.get("gpu_usage", 0), tags)
+            self.acc_usage.set(stats.get("acc_usage", 0), tags)
             self.block_generation_time.set(stats.get("block_generation_time", 0), tags)
 
         # This update is called from a dataset's executor,
@@ -306,7 +306,7 @@ class _StatsActor:
             self.bytes_outputted.set(0, tags)
             self.rows_outputted.set(0, tags)
             self.cpu_usage.set(0, tags)
-            self.gpu_usage.set(0, tags)
+            self.acc_usage.set(0, tags)
             self.block_generation_time.set(0, tags)
 
     def clear_iteration_metrics(self, dataset_tag: str):

@@ -270,7 +270,7 @@ class Dataset:
         fn_constructor_args: Optional[Iterable[Any]] = None,
         fn_constructor_kwargs: Optional[Dict[str, Any]] = None,
         num_cpus: Optional[float] = None,
-        num_gpus: Optional[float] = None,
+        num_accs: Optional[float] = None,
         concurrency: Optional[Union[int, Tuple[int, int]]] = None,
         **ray_remote_args,
     ) -> "Dataset":
@@ -332,8 +332,8 @@ class Dataset:
                 This can only be provided if ``fn`` is a callable class. These arguments
                 are top-level arguments in the underlying Ray actor construction task.
             num_cpus: The number of CPUs to reserve for each parallel map worker.
-            num_gpus: The number of GPUs to reserve for each parallel map worker. For
-                example, specify `num_gpus=1` to request 1 GPU for each parallel map
+            num_accs: The number of ACCs to reserve for each parallel map worker. For
+                example, specify `num_accs=1` to request 1 ACC for each parallel map
                 worker.
             concurrency: The number of Ray workers to use concurrently. For a fixed-sized
                 worker pool of size ``n``, specify ``concurrency=n``. For an autoscaling
@@ -365,8 +365,8 @@ class Dataset:
         if num_cpus is not None:
             ray_remote_args["num_cpus"] = num_cpus
 
-        if num_gpus is not None:
-            ray_remote_args["num_gpus"] = num_gpus
+        if num_accs is not None:
+            ray_remote_args["num_accs"] = num_accs
 
         plan = self._plan.with_stage(
             OneToOneStage(
@@ -422,7 +422,7 @@ class Dataset:
         fn_constructor_args: Optional[Iterable[Any]] = None,
         fn_constructor_kwargs: Optional[Dict[str, Any]] = None,
         num_cpus: Optional[float] = None,
-        num_gpus: Optional[float] = None,
+        num_accs: Optional[float] = None,
         concurrency: Optional[Union[int, Tuple[int, int]]] = None,
         **ray_remote_args,
     ) -> "Dataset":
@@ -513,11 +513,11 @@ class Dataset:
                     ray.data.from_numpy(np.ones((32, 100)))
                     .map_batches(
                         TorchPredictor,
-                        # Two workers with one GPU each
+                        # Two workers with one ACC each
                         concurrency=2,
-                        # Batch size is required if you're using GPUs.
+                        # Batch size is required if you're using ACCs.
                         batch_size=4,
-                        num_gpus=1
+                        num_accs=1
                     )
                 )
 
@@ -557,8 +557,8 @@ class Dataset:
                 This can only be provided if ``fn`` is a callable class. These arguments
                 are top-level arguments in the underlying Ray actor construction task.
             num_cpus: The number of CPUs to reserve for each parallel map worker.
-            num_gpus: The number of GPUs to reserve for each parallel map worker. For
-                example, specify `num_gpus=1` to request 1 GPU for each parallel map worker.
+            num_accs: The number of ACCs to reserve for each parallel map worker. For
+                example, specify `num_accs=1` to request 1 ACC for each parallel map worker.
             concurrency: The number of Ray workers to use concurrently. For a fixed-sized
                 worker pool of size ``n``, specify ``concurrency=n``. For an autoscaling
                 worker pool from ``m`` to ``n`` workers, specify ``concurrency=(m, n)``.
@@ -595,8 +595,8 @@ class Dataset:
         if num_cpus is not None:
             ray_remote_args["num_cpus"] = num_cpus
 
-        if num_gpus is not None:
-            ray_remote_args["num_gpus"] = num_gpus
+        if num_accs is not None:
+            ray_remote_args["num_accs"] = num_accs
 
         batch_format = _apply_strict_mode_batch_format(batch_format)
         if batch_format == "native":
@@ -610,7 +610,7 @@ class Dataset:
             min_rows_per_block = batch_size
 
         batch_size = _apply_strict_mode_batch_size(
-            batch_size, use_gpu="num_gpus" in ray_remote_args
+            batch_size, use_acc="num_accs" in ray_remote_args
         )
 
         if batch_format not in VALID_BATCH_FORMATS:
@@ -720,7 +720,7 @@ class Dataset:
                 an autoscaling worker pool from ``m`` to ``n`` workers, specify
                 ``concurrency=(m, n)``.
             ray_remote_args: Additional resource requirements to request from
-                ray (e.g., num_gpus=1 to request GPUs for the map tasks).
+                ray (e.g., num_accs=1 to request ACCs for the map tasks).
         """
         compute = get_compute_strategy(
             fn,
@@ -783,7 +783,7 @@ class Dataset:
                 worker pool of size ``n``, specify ``concurrency=n``. For an autoscaling
                 worker pool from ``m`` to ``n`` workers, specify ``concurrency=(m, n)``.
             ray_remote_args: Additional resource requirements to request from
-                ray (e.g., num_gpus=1 to request GPUs for the map tasks).
+                ray (e.g., num_accs=1 to request ACCs for the map tasks).
         """  # noqa: E501
 
         def fn(batch):
@@ -842,7 +842,7 @@ class Dataset:
                 worker pool of size ``n``, specify ``concurrency=n``. For an autoscaling
                 worker pool from ``m`` to ``n`` workers, specify ``concurrency=(m, n)``.
             ray_remote_args: Additional resource requirements to request from
-                ray (e.g., num_gpus=1 to request GPUs for the map tasks).
+                ray (e.g., num_accs=1 to request ACCs for the map tasks).
         """  # noqa: E501
 
         def fn(batch):
@@ -871,7 +871,7 @@ class Dataset:
         fn_constructor_args: Optional[Iterable[Any]] = None,
         fn_constructor_kwargs: Optional[Dict[str, Any]] = None,
         num_cpus: Optional[float] = None,
-        num_gpus: Optional[float] = None,
+        num_accs: Optional[float] = None,
         concurrency: Optional[Union[int, Tuple[int, int]]] = None,
         **ray_remote_args,
     ) -> "Dataset":
@@ -927,8 +927,8 @@ class Dataset:
                 This can only be provided if ``fn`` is a callable class. These arguments
                 are top-level arguments in the underlying Ray actor construction task.
             num_cpus: The number of CPUs to reserve for each parallel map worker.
-            num_gpus: The number of GPUs to reserve for each parallel map worker. For
-                example, specify `num_gpus=1` to request 1 GPU for each parallel map
+            num_accs: The number of ACCs to reserve for each parallel map worker. For
+                example, specify `num_accs=1` to request 1 ACC for each parallel map
                 worker.
             concurrency: The number of Ray workers to use concurrently. For a
                 fixed-sized worker pool of size ``n``, specify ``concurrency=n``.
@@ -959,8 +959,8 @@ class Dataset:
         if num_cpus is not None:
             ray_remote_args["num_cpus"] = num_cpus
 
-        if num_gpus is not None:
-            ray_remote_args["num_gpus"] = num_gpus
+        if num_accs is not None:
+            ray_remote_args["num_accs"] = num_accs
 
         plan = self._plan.with_stage(
             OneToOneStage(
@@ -1029,7 +1029,7 @@ class Dataset:
                 For an autoscaling worker pool from ``m`` to ``n`` workers, specify
                 ``concurrency=(m, n)``.
             ray_remote_args: Additional resource requirements to request from
-                ray (e.g., num_gpus=1 to request GPUs for the map tasks).
+                ray (e.g., num_accs=1 to request ACCs for the map tasks).
         """
         compute = get_compute_strategy(
             fn,
@@ -4612,7 +4612,7 @@ class Dataset:
 
         Windowing execution allows for output to be read sooner without
         waiting for all transformations to fully execute, and can also improve
-        efficiency if transforms use different resources (e.g., GPUs).
+        efficiency if transforms use different resources (e.g., ACCs).
 
         Without windowing::
 

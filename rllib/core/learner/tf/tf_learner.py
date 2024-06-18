@@ -370,16 +370,16 @@ class TfLearner(Learner):
         """
         if self._distributed:
             strategy = tf.distribute.MultiWorkerMirroredStrategy()
-        elif self._use_gpu:
-            # mirrored strategy is typically used for multi-gpu training
-            # on a single machine, however we can use it for single-gpu
-            devices = tf.config.list_logical_devices("GPU")
-            assert self._local_gpu_idx < len(devices), (
-                f"local_gpu_idx {self._local_gpu_idx} is not a valid GPU id or is "
+        elif self._use_acc:
+            # mirrored strategy is typically used for multi-acc training
+            # on a single machine, however we can use it for single-acc
+            devices = tf.config.list_logical_devices("ACC")
+            assert self._local_acc_idx < len(devices), (
+                f"local_acc_idx {self._local_acc_idx} is not a valid ACC id or is "
                 "not available."
             )
-            local_gpu = [devices[self._local_gpu_idx].name]
-            strategy = tf.distribute.MirroredStrategy(devices=local_gpu)
+            local_acc = [devices[self._local_acc_idx].name]
+            strategy = tf.distribute.MirroredStrategy(devices=local_acc)
         else:
             # the default strategy is a no-op that can be used in the local mode
             # cpu only case, build will override this if needed.

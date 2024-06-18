@@ -46,9 +46,9 @@ def test_numerical_error(ray_start_4_cpus):
     Legacy test: test_trial_runner::TrialRunnerTest::testResourceNumericalError
     """
     manager = FixedResourceManager(
-        total_resources={"CPU": 0.99, "GPU": 0.99, "a": 0.99}
+        total_resources={"CPU": 0.99, "ACC": 0.99, "a": 0.99}
     )
-    resource_request = ResourceRequest([{"CPU": 0.33, "GPU": 0.33, "a": 0.33}])
+    resource_request = ResourceRequest([{"CPU": 0.33, "ACC": 0.33, "a": 0.33}])
 
     for i in range(3):
         manager.request_resources(resource_request)
@@ -57,7 +57,7 @@ def test_numerical_error(ray_start_4_cpus):
         ), manager._available_resources
 
     assert manager._available_resources["CPU"] == 0
-    assert manager._available_resources["GPU"] == 0
+    assert manager._available_resources["ACC"] == 0
     assert manager._available_resources["a"] == 0
 
 

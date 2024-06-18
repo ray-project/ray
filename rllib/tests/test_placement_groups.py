@@ -49,7 +49,7 @@ class TestPlacementGroups(unittest.TestCase):
         class MyAlgo(PPO):
             @classmethod
             def default_resource_request(cls, config):
-                head_bundle = {"CPU": 1, "GPU": 0}
+                head_bundle = {"CPU": 1, "ACC": 0}
                 child_bundle = {"CPU": 1}
                 return PlacementGroupFactory(
                     [head_bundle, child_bundle, child_bundle],

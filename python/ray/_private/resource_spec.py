@@ -21,7 +21,7 @@ class ResourceSpec(
         "ResourceSpec",
         [
             "num_cpus",
-            "num_gpus",
+            "num_accs",
             "memory",
             "object_store_memory",
             "resources",
@@ -37,7 +37,7 @@ class ResourceSpec(
 
     Attributes:
         num_cpus: The CPUs allocated for this raylet.
-        num_gpus: The GPUs allocated for this raylet.
+        num_accs: The ACCs allocated for this raylet.
         memory: The memory allocated for this raylet.
         object_store_memory: The object store memory allocated for this raylet.
             Note that when calling to_resource_dict(), this will be scaled down
@@ -53,7 +53,7 @@ class ResourceSpec(
     def __new__(
         cls,
         num_cpus=None,
-        num_gpus=None,
+        num_accs=None,
         memory=None,
         object_store_memory=None,
         resources=None,
@@ -62,7 +62,7 @@ class ResourceSpec(
         return super(ResourceSpec, cls).__new__(
             cls,
             num_cpus,
-            num_gpus,
+            num_accs,
             memory,
             object_store_memory,
             resources,
@@ -79,7 +79,7 @@ class ResourceSpec(
     def to_resource_dict(self):
         """Returns a dict suitable to pass to raylet initialization.
 
-        This renames num_cpus / num_gpus to "CPU" / "GPU",
+        This renames num_cpus / num_accs to "CPU" / "ACC",
         translates memory from bytes into 100MB memory units, and checks types.
         """
         assert self.resolved()
@@ -87,7 +87,7 @@ class ResourceSpec(
         resources = dict(
             self.resources,
             CPU=self.num_cpus,
-            GPU=self.num_gpus,
+            ACC=self.num_accs,
             memory=int(self.memory),
             object_store_memory=int(self.object_store_memory),
         )
@@ -139,7 +139,7 @@ class ResourceSpec(
 
         resources = (self.resources or {}).copy()
         assert "CPU" not in resources, resources
-        assert "GPU" not in resources, resources
+        assert "ACC" not in resources, resources
         assert "memory" not in resources, resources
         assert "object_store_memory" not in resources, resources
 
@@ -164,7 +164,7 @@ class ResourceSpec(
         if num_cpus is None:
             num_cpus = ray._private.utils.get_num_cpus()
 
-        num_gpus = 0
+        num_accs = 0
         for (
             accelerator_resource_name
         ) in ray._private.accelerators.get_all_accelerator_resource_names():
@@ -174,8 +174,8 @@ class ResourceSpec(
                 )
             )
             num_accelerators = None
-            if accelerator_resource_name == "GPU":
-                num_accelerators = self.num_gpus
+            if accelerator_resource_name == "ACC":
+                num_accelerators = self.num_accs
             else:
                 num_accelerators = resources.get(accelerator_resource_name, None)
             visible_accelerator_ids = (
@@ -206,8 +206,8 @@ class ResourceSpec(
                     )
 
             if num_accelerators:
-                if accelerator_resource_name == "GPU":
-                    num_gpus = num_accelerators
+                if accelerator_resource_name == "ACC":
+                    num_accs = num_accelerators
                 else:
                     resources[accelerator_resource_name] = num_accelerators
 
@@ -300,7 +300,7 @@ class ResourceSpec(
 
         spec = ResourceSpec(
             num_cpus,
-            num_gpus,
+            num_accs,
             memory,
             object_store_memory,
             resources,

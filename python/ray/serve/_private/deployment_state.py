@@ -2675,7 +2675,7 @@ class DeploymentStateManager:
     def _record_deployment_usage(self):
         ServeUsageTag.NUM_DEPLOYMENTS.record(str(len(self._deployment_states)))
 
-        num_gpu_deployments = 0
+        num_acc_deployments = 0
         for deployment_state in self._deployment_states.values():
             if (
                 deployment_state.target_info is not None
@@ -2684,13 +2684,13 @@ class DeploymentStateManager:
                 is not None
                 and (
                     deployment_state.target_info.replica_config.ray_actor_options.get(
-                        "num_gpus", 0
+                        "num_accs", 0
                     )
                     > 0
                 )
             ):
-                num_gpu_deployments += 1
-        ServeUsageTag.NUM_GPU_DEPLOYMENTS.record(str(num_gpu_deployments))
+                num_acc_deployments += 1
+        ServeUsageTag.NUM_ACC_DEPLOYMENTS.record(str(num_acc_deployments))
 
     def record_multiplexed_replica_info(self, info: MultiplexedReplicaInfo):
         """

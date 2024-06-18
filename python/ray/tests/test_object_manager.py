@@ -281,8 +281,8 @@ def test_many_small_transfers(ray_start_cluster_with_resource):
 #     successfuly pull the remote object.
 def test_pull_request_retry(ray_start_cluster):
     cluster = ray_start_cluster
-    cluster.add_node(num_cpus=0, num_gpus=1, object_store_memory=100 * 2**20)
-    cluster.add_node(num_cpus=1, num_gpus=0, object_store_memory=100 * 2**20)
+    cluster.add_node(num_cpus=0, num_accs=1, object_store_memory=100 * 2**20)
+    cluster.add_node(num_cpus=1, num_accs=0, object_store_memory=100 * 2**20)
     cluster.wait_for_nodes()
     ray.init(address=cluster.address)
 
@@ -290,7 +290,7 @@ def test_pull_request_retry(ray_start_cluster):
     def put():
         return np.zeros(64 * 2**20, dtype=np.int8)
 
-    @ray.remote(num_cpus=0, num_gpus=1)
+    @ray.remote(num_cpus=0, num_accs=1)
     def driver():
         local_ref = ray.put(np.zeros(64 * 2**20, dtype=np.int8))
 
@@ -305,7 +305,7 @@ def test_pull_request_retry(ray_start_cluster):
         ready, _ = ray.wait([remote_ref], timeout=20)
         assert len(ready) > 0
 
-    # Pretend the GPU node is the driver. We do this to force the placement of
+    # Pretend the ACC node is the driver. We do this to force the placement of
     # the driver and `put` task on different nodes.
     ray.get(driver.remote())
 

@@ -197,7 +197,7 @@ def test_graceful_shutdown_wait_loop_s():
 def test_ray_actor_options():
     v1 = DeploymentVersion("1", DeploymentConfig(), {"num_cpus": 0.1})
     v2 = DeploymentVersion("1", DeploymentConfig(), {"num_cpus": 0.1})
-    v3 = DeploymentVersion("1", DeploymentConfig(), {"num_gpus": 0.1})
+    v3 = DeploymentVersion("1", DeploymentConfig(), {"num_accs": 0.1})
 
     assert v1 == v2
     assert hash(v1) == hash(v2)
@@ -257,7 +257,7 @@ def test_placement_group_options():
         "1",
         DeploymentConfig(),
         {"num_cpus": 0.1},
-        placement_group_bundles=[{"GPU": 0.1}],
+        placement_group_bundles=[{"ACC": 0.1}],
     )
 
     assert v1 != v2

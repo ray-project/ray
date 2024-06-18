@@ -22,8 +22,8 @@ STORAGE = mock_storage_context()
 
 
 @pytest.fixture(scope="function")
-def ray_start_4_cpus_2_gpus_extra():
-    address_info = ray.init(num_cpus=4, num_gpus=2, resources={"a": 2})
+def ray_start_4_cpus_2_accs_extra():
+    address_info = ray.init(num_cpus=4, num_accs=2, resources={"a": 2})
     yield address_info
     ray.shutdown()
 
@@ -50,7 +50,7 @@ def create_mock_components():
 @pytest.mark.parametrize(
     "resource_manager_cls", [FixedResourceManager, PlacementGroupResourceManager]
 )
-def test_invalid_trainable(ray_start_4_cpus_2_gpus_extra, resource_manager_cls):
+def test_invalid_trainable(ray_start_4_cpus_2_accs_extra, resource_manager_cls):
     """An invalid trainable should make the trial fail on startup.
 
     The controller itself should continue. Other trials should run.
@@ -62,7 +62,7 @@ def test_invalid_trainable(ray_start_4_cpus_2_gpus_extra, resource_manager_cls):
     )
     kwargs = {
         "stopping_criterion": {"training_iteration": 1},
-        "placement_group_factory": PlacementGroupFactory([{"CPU": 1, "GPU": 1}]),
+        "placement_group_factory": PlacementGroupFactory([{"CPU": 1, "ACC": 1}]),
         "storage": STORAGE,
     }
     _global_registry.register(TRAINABLE_CLASS, "asdf", None)
@@ -76,7 +76,7 @@ def test_invalid_trainable(ray_start_4_cpus_2_gpus_extra, resource_manager_cls):
     assert trials[1].status == Trial.RUNNING
 
 
-def test_overstep(ray_start_4_cpus_2_gpus_extra):
+def test_overstep(ray_start_4_cpus_2_accs_extra):
     """Stepping when trials are finished should raise a TuneError.
 
     Legacy test: test_trial_runner_2.py::TrialRunnerTest::testThrowOnOverstep
@@ -96,7 +96,7 @@ def test_overstep(ray_start_4_cpus_2_gpus_extra):
 )
 @pytest.mark.parametrize("max_failures_persistent", [(0, False), (1, False), (2, True)])
 def test_failure_recovery(
-    ray_start_4_cpus_2_gpus_extra, resource_manager_cls, max_failures_persistent
+    ray_start_4_cpus_2_accs_extra, resource_manager_cls, max_failures_persistent
 ):
     """Test failure recover with `max_failures`.
 
@@ -116,7 +116,7 @@ def test_failure_recovery(
         storage=STORAGE,
     )
     kwargs = {
-        "placement_group_factory": PlacementGroupFactory([{"CPU": 1, "GPU": 1}]),
+        "placement_group_factory": PlacementGroupFactory([{"CPU": 1, "ACC": 1}]),
         "stopping_criterion": {"training_iteration": 2},
         "checkpoint_config": CheckpointConfig(checkpoint_frequency=1),
         "max_failures": max_failures,
@@ -151,7 +151,7 @@ def test_failure_recovery(
     "resource_manager_cls", [FixedResourceManager, PlacementGroupResourceManager]
 )
 @pytest.mark.parametrize("fail_fast", [True, TuneController.RAISE])
-def test_fail_fast(ray_start_4_cpus_2_gpus_extra, resource_manager_cls, fail_fast):
+def test_fail_fast(ray_start_4_cpus_2_accs_extra, resource_manager_cls, fail_fast):
     """Test fail_fast feature.
 
     If fail_fast=True, after the first failure, all other trials should be terminated
@@ -169,7 +169,7 @@ def test_fail_fast(ray_start_4_cpus_2_gpus_extra, resource_manager_cls, fail_fas
         storage=STORAGE,
     )
     kwargs = {
-        "placement_group_factory": PlacementGroupFactory([{"CPU": 1, "GPU": 1}]),
+        "placement_group_factory": PlacementGroupFactory([{"CPU": 1, "ACC": 1}]),
         "checkpoint_config": CheckpointConfig(checkpoint_frequency=1),
         "max_failures": 0,
         "config": {

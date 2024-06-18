@@ -106,7 +106,7 @@ class TestRayActorOptionsSchema:
                 "working_dir": TEST_MODULE_PINNED_URI,
             },
             "num_cpus": 0.2,
-            "num_gpus": 50,
+            "num_accs": 50,
             "memory": 3,
             "object_store_memory": 64,
             "resources": {"custom_asic": 12},
@@ -123,7 +123,7 @@ class TestRayActorOptionsSchema:
         # Ensure ValidationError is raised when any fields that must be greater
         # than zero is set to zero.
 
-        ge_zero_fields = ["num_cpus", "num_gpus", "memory", "object_store_memory"]
+        ge_zero_fields = ["num_cpus", "num_accs", "memory", "object_store_memory"]
         for field in ge_zero_fields:
             with pytest.raises(ValidationError):
                 RayActorOptionsSchema.parse_obj({field: -1})
@@ -157,7 +157,7 @@ class TestRayActorOptionsSchema:
         ray_actor_options_schema = {
             "runtime_env": {},
             "num_cpus": None,
-            "num_gpus": None,
+            "num_accs": None,
             "memory": None,
             "object_store_memory": None,
             "resources": {},
@@ -207,7 +207,7 @@ class TestDeploymentSchema:
                     "py_modules": [TEST_DEPLOY_GROUP_PINNED_URI],
                 },
                 "num_cpus": 3,
-                "num_gpus": 4.2,
+                "num_accs": 4.2,
                 "memory": 5,
                 "object_store_memory": 3,
                 "resources": {"custom_asic": 8},
@@ -365,7 +365,7 @@ class TestServeApplicationSchema:
                             "py_modules": [TEST_DEPLOY_GROUP_PINNED_URI],
                         },
                         "num_cpus": 3,
-                        "num_gpus": 4.2,
+                        "num_accs": 4.2,
                         "memory": 5,
                         "object_store_memory": 3,
                         "resources": {"custom_asic": 8},

@@ -280,7 +280,7 @@ def compute_bootstrap_value(sample_batch: SampleBatch, policy: Policy) -> Sample
             # TODO (Kourosh): Another thing we need to figure out is which end point
             #  to call here (why forward_exploration)? What if this method is getting
             #  called inside the learner loop or via another abstraction like
-            #  RLSampler.postprocess_trajectory() which is non-batched cpu/gpu task
+            #  RLSampler.postprocess_trajectory() which is non-batched cpu/acc task
             #  running across different processes for different trajectories?
             #  This implementation right now will compute even the action_dist which
             #  will not be needed but takes time to compute.

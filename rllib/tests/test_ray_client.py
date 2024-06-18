@@ -25,8 +25,8 @@ class TestRayClient(unittest.TestCase):
                 # Special flag signalling `my_train_fn` how many iters to do.
                 "train-iterations": 2,
                 "lr": 0.01,
-                # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
-                "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
+                # Use ACCs iff `RLLIB_NUM_ACCS` env var set to > 0.
+                "num_accs": int(os.environ.get("RLLIB_NUM_ACCS", "0")),
                 "num_workers": 0,
                 "framework": "tf",
             }

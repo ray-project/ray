@@ -180,7 +180,7 @@ import time
 
 ray.init()
 
-@ray.remote(num_gpus=1)
+@ray.remote(num_accs=1)
 def foo():
     pass
 
@@ -765,7 +765,7 @@ run_experiments(
             "config": {
                 "framework": "torch",
                 "num_workers": 1,
-                "num_gpus": 0,
+                "num_accs": 0,
                 "num_sgd_iter": 1,
             },
             "stop": {

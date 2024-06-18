@@ -286,7 +286,7 @@ def test_ids(ray_start_regular):
         name="bar",
         strategy="PACK",
         bundles=[
-            {"CPU": 1, "GPU": 0},
+            {"CPU": 1, "ACC": 0},
         ],
     )
     ray.get(pg.ready())

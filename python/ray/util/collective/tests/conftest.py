@@ -45,9 +45,9 @@ def clean_up():
 
 
 @pytest.fixture
-def ray_start_single_node_2_gpus():
-    # Please start this fixture in a cluster with 2 GPUs.
-    address_info = ray.init(num_gpus=2)
+def ray_start_single_node_2_accs():
+    # Please start this fixture in a cluster with 2 ACCs.
+    address_info = ray.init(num_accs=2)
     yield address_info
     ray.shutdown()
 
@@ -56,9 +56,9 @@ def ray_start_single_node_2_gpus():
 # I use a bash script to start a ray cluster on
 # my own on-premise cluster before run this fixture.
 @pytest.fixture
-def ray_start_distributed_2_nodes_4_gpus():
+def ray_start_distributed_2_nodes_4_accs():
     # The cluster has a setup of 2 nodes, each node with 2
-    # GPUs. Each actor will be allocated 1 GPU.
+    # ACCs. Each actor will be allocated 1 ACC.
     ray.init("auto")
     yield
     clean_up()
@@ -66,9 +66,9 @@ def ray_start_distributed_2_nodes_4_gpus():
 
 
 @pytest.fixture
-def ray_start_distributed_multigpu_2_nodes_4_gpus():
+def ray_start_distributed_multiacc_2_nodes_4_accs():
     # The cluster has a setup of 2 nodes, each node with 2
-    # GPUs. Each actor will be allocated 2 GPUs.
+    # ACCs. Each actor will be allocated 2 ACCs.
     ray.init("auto")
     yield
     clean_up()
@@ -85,7 +85,7 @@ def ray_start_single_node():
 @pytest.fixture
 def ray_start_distributed_2_nodes():
     # The cluster has a setup of 2 nodes.
-    # no GPUs!
+    # no ACCs!
     ray.init("auto")
     yield
     ray.shutdown()

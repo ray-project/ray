@@ -24,7 +24,7 @@ TEST_SIZE = 256
 # Training settings
 parser = argparse.ArgumentParser(description="PyTorch MNIST Example")
 parser.add_argument(
-    "--use-gpu", action="store_true", default=False, help="enables CUDA training"
+    "--use-acc", action="store_true", default=False, help="enables CUDA training"
 )
 parser.add_argument("--ray-address", type=str, help="The Redis address of the cluster.")
 parser.add_argument(
@@ -37,7 +37,7 @@ parser.add_argument(
 # __trainable_example_begin__
 class TrainMNIST(tune.Trainable):
     def setup(self, config):
-        use_cuda = config.get("use_gpu") and torch.cuda.is_available()
+        use_cuda = config.get("use_acc") and torch.cuda.is_available()
         self.device = torch.device("cuda" if use_cuda else "cpu")
         self.train_loader, self.test_loader = get_data_loaders()
         self.model = ConvNet().to(self.device)
@@ -70,7 +70,7 @@ if __name__ == "__main__":
     sched = ASHAScheduler()
 
     tuner = tune.Tuner(
-        tune.with_resources(TrainMNIST, resources={"cpu": 3, "gpu": int(args.use_gpu)}),
+        tune.with_resources(TrainMNIST, resources={"cpu": 3, "acc": int(args.use_acc)}),
         run_config=train.RunConfig(
             stop={
                 "mean_accuracy": 0.95,

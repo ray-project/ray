@@ -29,7 +29,7 @@ class MultiNodeSyncTest(unittest.TestCase):
         """Sanity check that multinode tests with autoscaling are working"""
         self.cluster.update_config(
             {
-                "provider": {"head_resources": {"CPU": 4, "GPU": 0}},
+                "provider": {"head_resources": {"CPU": 4, "ACC": 0}},
             }
         )
         self.cluster.start()
@@ -38,9 +38,9 @@ class MultiNodeSyncTest(unittest.TestCase):
         self.assertGreater(ray.cluster_resources().get("CPU", 0), 0)
 
         # Trigger autoscaling
-        pg = ray.util.placement_group([{"CPU": 1, "GPU": 1}] * 2)
+        pg = ray.util.placement_group([{"CPU": 1, "ACC": 1}] * 2)
         timeout = time.monotonic() + 120
-        while ray.cluster_resources().get("GPU", 0) < 2:
+        while ray.cluster_resources().get("ACC", 0) < 2:
             if time.monotonic() > timeout:
                 raise RuntimeError("Autoscaling failed or too slow.")
             time.sleep(1)
@@ -51,7 +51,7 @@ class MultiNodeSyncTest(unittest.TestCase):
             ray.get(
                 remote_task.options(
                     num_cpus=1,
-                    num_gpus=1,
+                    num_accs=1,
                     scheduling_strategy=PlacementGroupSchedulingStrategy(
                         placement_group=pg
                     ),
@@ -65,8 +65,8 @@ class MultiNodeSyncTest(unittest.TestCase):
         time.sleep(2)  # Give some time so nodes.json is updated
 
         self.cluster.kill_node(num=2)
-        print("Killed GPU node.")
-        pg = ray.util.placement_group([{"CPU": 1, "GPU": 1}] * 2)
+        print("Killed ACC node.")
+        pg = ray.util.placement_group([{"CPU": 1, "ACC": 1}] * 2)
 
         table = ray.util.placement_group_table(pg)
         assert table["state"] == "PENDING"
@@ -84,16 +84,16 @@ class MultiNodeSyncTest(unittest.TestCase):
         """Test that newly added nodes from autoscaling are not stale."""
         self.cluster.update_config(
             {
-                "provider": {"head_resources": {"CPU": 4, "GPU": 0}},
+                "provider": {"head_resources": {"CPU": 4, "ACC": 0}},
                 "available_node_types": {
                     "ray.worker.cpu": {
                         "resources": {"CPU": 4},
                         "min_workers": 0,  # No minimum nodes
                         "max_workers": 2,
                     },
-                    "ray.worker.gpu": {
+                    "ray.worker.acc": {
                         "min_workers": 0,
-                        "max_workers": 0,  # No GPU nodes
+                        "max_workers": 0,  # No ACC nodes
                     },
                 },
             }
@@ -119,16 +119,16 @@ class MultiNodeSyncTest(unittest.TestCase):
         """
         self.cluster.update_config(
             {
-                "provider": {"head_resources": {"CPU": 4, "GPU": 0}},
+                "provider": {"head_resources": {"CPU": 4, "ACC": 0}},
                 "available_node_types": {
                     "ray.worker.cpu": {
                         "resources": {"CPU": 4},
                         "min_workers": 0,  # No minimum nodes
                         "max_workers": 2,
                     },
-                    "ray.worker.gpu": {
+                    "ray.worker.acc": {
                         "min_workers": 0,
-                        "max_workers": 0,  # No GPU nodes
+                        "max_workers": 0,  # No ACC nodes
                     },
                 },
             }
@@ -168,16 +168,16 @@ class MultiNodeSyncTest(unittest.TestCase):
         num_cpu_per_node = 4
         self.cluster.update_config(
             {
-                "provider": {"head_resources": {"CPU": num_cpu_per_node, "GPU": 0}},
+                "provider": {"head_resources": {"CPU": num_cpu_per_node, "ACC": 0}},
                 "available_node_types": {
                     "ray.worker.cpu": {
                         "resources": {"CPU": num_cpu_per_node},
                         "min_workers": num_workers,
                         "max_workers": num_workers,
                     },
-                    "ray.worker.gpu": {
+                    "ray.worker.acc": {
                         "min_workers": 0,
-                        "max_workers": 0,  # No GPU nodes
+                        "max_workers": 0,  # No ACC nodes
                     },
                 },
             }

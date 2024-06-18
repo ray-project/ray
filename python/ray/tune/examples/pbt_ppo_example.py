@@ -1,11 +1,11 @@
 #!/usr/bin/env python
 """Example of using PBT with RLlib.
 
-Note that this requires a cluster with at least 8 GPUs in order for all trials
+Note that this requires a cluster with at least 8 ACCs in order for all trials
 to run concurrently, otherwise PBT will round-robin train the trials which
-is less efficient (or you can set {"gpu": 0} to use CPUs for SGD instead).
+is less efficient (or you can set {"acc": 0} to use CPUs for SGD instead).
 
-Note that Tune in general does not need 8 GPUs, and this is just a more
+Note that Tune in general does not need 8 ACCs, and this is just a more
 computationally demanding example.
 """
 
@@ -59,7 +59,7 @@ if __name__ == "__main__":
             "env": "Humanoid-v1",
             "kl_coeff": 1.0,
             "num_workers": 8,
-            "num_gpus": 1,
+            "num_accs": 1,
             "model": {"free_log_std": True},
             # These params are tuned from a fixed starting value.
             "lambda": 0.95,

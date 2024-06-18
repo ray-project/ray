@@ -85,7 +85,7 @@ class LearnerThread(threading.Thread):
             # Use LearnerInfoBuilder as a unified way to build the final
             # results dict from `learn_on_loaded_batch` call(s).
             # This makes sure results dicts always have the same structure
-            # no matter the setup (multi-GPU, multi-agent, minibatch SGD,
+            # no matter the setup (multi-ACC, multi-agent, minibatch SGD,
             # tf vs torch).
             learner_info_builder = LearnerInfoBuilder(num_devices=1)
             if self.local_worker.config.policy_states_are_swappable:

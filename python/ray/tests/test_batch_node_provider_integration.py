@@ -138,10 +138,10 @@ def test_fake_batching_autoscaler_e2e(shutdown_only):
                 "min_workers": 0,
                 "max_workers": 2,
             },
-            "gpu_node": {
+            "acc_node": {
                 "resources": {
                     "CPU": 2,
-                    "GPU": 1,
+                    "ACC": 1,
                     "object_store_memory": 1024 * 1024 * 1024,
                 },
                 "node_config": {},
@@ -155,10 +155,10 @@ def test_fake_batching_autoscaler_e2e(shutdown_only):
         cluster.start()
         ray.init("auto")
 
-        # Triggers the addition of a GPU node.
-        @ray.remote(num_gpus=1)
+        # Triggers the addition of a ACC node.
+        @ray.remote(num_accs=1)
         def f():
-            print("gpu ok")
+            print("acc ok")
 
         # Triggers the addition of a CPU node.
         @ray.remote(num_cpus=3)

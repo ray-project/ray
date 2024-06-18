@@ -274,9 +274,9 @@ class TestBasicSparkCluster(RayOnSparkCPUClusterTestBase):
     @classmethod
     def setup_class(cls):
         cls.num_total_cpus = 2
-        cls.num_total_gpus = 0
+        cls.num_total_accs = 0
         cls.num_cpus_per_spark_task = 1
-        cls.num_gpus_per_spark_task = 0
+        cls.num_accs_per_spark_task = 0
         cls.max_spark_tasks = 2
         os.environ["SPARK_WORKER_CORES"] = "2"
         cls.spark = (
@@ -330,7 +330,7 @@ class TestSparkLocalCluster:
         setup_ray_cluster(
             num_worker_nodes=1,
             num_cpus_head_node=3,
-            num_gpus_head_node=2,
+            num_accs_head_node=2,
             object_store_memory_head_node=256 * 1024 * 1024,
             head_node_options={"include_dashboard": False},
             autoscale=autoscale,
@@ -343,7 +343,7 @@ class TestSparkLocalCluster:
                 head_resources_list.append(node["Resources"])
         assert len(head_resources_list) == 1
         head_resources = head_resources_list[0]
-        assert head_resources.get("GPU", 0) == 2
+        assert head_resources.get("ACC", 0) == 2
 
         shutdown_ray_cluster()
 
@@ -353,7 +353,7 @@ class TestSparkLocalCluster:
         autoscaling_cluster = AutoscalingCluster(
             head_resources={
                 "CPU": 3,
-                "GPU": 4,
+                "ACC": 4,
                 "memory": 10000000,
                 "object_store_memory": 20000000,
             },
@@ -361,7 +361,7 @@ class TestSparkLocalCluster:
                 "ray.worker": {
                     "resources": {
                         "CPU": 5,
-                        "GPU": 6,
+                        "ACC": 6,
                         "memory": 30000000,
                         "object_store_memory": 40000000,
                     },
@@ -385,7 +385,7 @@ class TestSparkLocalCluster:
         assert config["available_node_types"]["ray.head.default"] == {
             "resources": {
                 "CPU": 3,
-                "GPU": 4,
+                "ACC": 4,
                 "memory": 10000000,
                 "object_store_memory": 20000000,
             },
@@ -395,7 +395,7 @@ class TestSparkLocalCluster:
         assert config["available_node_types"]["ray.worker"] == {
             "resources": {
                 "CPU": 5,
-                "GPU": 6,
+                "ACC": 6,
                 "memory": 30000000,
                 "object_store_memory": 40000000,
             },

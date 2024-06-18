@@ -4,32 +4,32 @@ import cupy as cp
 import ray
 from ray.util.collective.types import ReduceOp
 
-from ray.util.collective.tests.util import create_collective_multigpu_workers
+from ray.util.collective.tests.util import create_collective_multiacc_workers
 
 
 @pytest.mark.parametrize("group_name", ["default", "test", "123?34!"])
 @pytest.mark.parametrize("dst_rank", [0, 1])
-@pytest.mark.parametrize("dst_gpu_index", [0, 1])
+@pytest.mark.parametrize("dst_acc_index", [0, 1])
 def test_reduce_different_name(
-    ray_start_distributed_multigpu_2_nodes_4_gpus, group_name, dst_rank, dst_gpu_index
+    ray_start_distributed_multiacc_2_nodes_4_accs, group_name, dst_rank, dst_acc_index
 ):
     world_size = 2
-    num_gpu_per_worker = 2
-    actual_world_size = world_size * num_gpu_per_worker
-    actors, _ = create_collective_multigpu_workers(
+    num_acc_per_worker = 2
+    actual_world_size = world_size * num_acc_per_worker
+    actors, _ = create_collective_multiacc_workers(
         num_workers=world_size, group_name=group_name
     )
     results = ray.get(
         [
-            a.do_reduce_multigpu.remote(
-                group_name, dst_rank=dst_rank, dst_gpu_index=dst_gpu_index
+            a.do_reduce_multiacc.remote(
+                group_name, dst_rank=dst_rank, dst_acc_index=dst_acc_index
             )
             for a in actors
         ]
     )
     for i in range(world_size):
-        for j in range(num_gpu_per_worker):
-            if i == dst_rank and j == dst_gpu_index:
+        for j in range(num_acc_per_worker):
+            if i == dst_rank and j == dst_acc_index:
                 assert (
                     results[i][j]
                     == cp.ones((10,), dtype=cp.float32) * actual_world_size
@@ -40,26 +40,26 @@ def test_reduce_different_name(
 
 @pytest.mark.parametrize("array_size", [2, 2**5, 2**10, 2**15, 2**20])
 @pytest.mark.parametrize("dst_rank", [0, 1])
-@pytest.mark.parametrize("dst_gpu_index", [0, 1])
+@pytest.mark.parametrize("dst_acc_index", [0, 1])
 def test_reduce_different_array_size(
-    ray_start_distributed_multigpu_2_nodes_4_gpus, array_size, dst_rank, dst_gpu_index
+    ray_start_distributed_multiacc_2_nodes_4_accs, array_size, dst_rank, dst_acc_index
 ):
     world_size = 2
-    num_gpu_per_worker = 2
-    actual_world_size = world_size * num_gpu_per_worker
-    actors, _ = create_collective_multigpu_workers(num_workers=world_size)
+    num_acc_per_worker = 2
+    actual_world_size = world_size * num_acc_per_worker
+    actors, _ = create_collective_multiacc_workers(num_workers=world_size)
 
     ray.get(actors[0].set_buffer.remote(array_size))
     ray.get(actors[1].set_buffer.remote(array_size))
     results = ray.get(
         [
-            a.do_reduce_multigpu.remote(dst_rank=dst_rank, dst_gpu_index=dst_gpu_index)
+            a.do_reduce_multiacc.remote(dst_rank=dst_rank, dst_acc_index=dst_acc_index)
             for a in actors
         ]
     )
     for i in range(world_size):
-        for j in range(num_gpu_per_worker):
-            if i == dst_rank and j == dst_gpu_index:
+        for j in range(num_acc_per_worker):
+            if i == dst_rank and j == dst_acc_index:
                 assert (
                     results[i][j]
                     == cp.ones((array_size,), dtype=cp.float32) * actual_world_size
@@ -69,28 +69,28 @@ def test_reduce_different_array_size(
 
 
 @pytest.mark.parametrize("dst_rank", [0, 1])
-@pytest.mark.parametrize("dst_gpu_index", [0, 1])
+@pytest.mark.parametrize("dst_acc_index", [0, 1])
 def test_reduce_different_op(
-    ray_start_distributed_multigpu_2_nodes_4_gpus, dst_rank, dst_gpu_index
+    ray_start_distributed_multiacc_2_nodes_4_accs, dst_rank, dst_acc_index
 ):
     world_size = 2
-    num_gpu_per_worker = 2
-    actors, _ = create_collective_multigpu_workers(world_size)
+    num_acc_per_worker = 2
+    actors, _ = create_collective_multiacc_workers(world_size)
 
     # check product
     ray.get(actors[0].set_buffer.remote([10], value0=2, value1=3))
     ray.get(actors[1].set_buffer.remote([10], value0=4, value1=5))
     results = ray.get(
         [
-            a.do_reduce_multigpu.remote(
-                dst_rank=dst_rank, dst_gpu_index=dst_gpu_index, op=ReduceOp.PRODUCT
+            a.do_reduce_multiacc.remote(
+                dst_rank=dst_rank, dst_acc_index=dst_acc_index, op=ReduceOp.PRODUCT
             )
             for a in actors
         ]
     )
     for i in range(world_size):
-        for j in range(num_gpu_per_worker):
-            if i == dst_rank and j == dst_gpu_index:
+        for j in range(num_acc_per_worker):
+            if i == dst_rank and j == dst_acc_index:
                 assert (results[i][j] == cp.ones((10,), dtype=cp.float32) * 120).all()
             else:
                 val = (i + 1) * 2 + j
@@ -101,15 +101,15 @@ def test_reduce_different_op(
     ray.get(actors[1].set_buffer.remote([10], value0=4, value1=5))
     results = ray.get(
         [
-            a.do_reduce_multigpu.remote(
-                dst_rank=dst_rank, dst_gpu_index=dst_gpu_index, op=ReduceOp.MIN
+            a.do_reduce_multiacc.remote(
+                dst_rank=dst_rank, dst_acc_index=dst_acc_index, op=ReduceOp.MIN
             )
             for a in actors
         ]
     )
     for i in range(world_size):
-        for j in range(num_gpu_per_worker):
-            if i == dst_rank and j == dst_gpu_index:
+        for j in range(num_acc_per_worker):
+            if i == dst_rank and j == dst_acc_index:
                 assert (results[i][j] == cp.ones((10,), dtype=cp.float32) * 2).all()
             else:
                 val = (i + 1) * 2 + j
@@ -120,15 +120,15 @@ def test_reduce_different_op(
     ray.get(actors[1].set_buffer.remote([10], value0=4, value1=5))
     results = ray.get(
         [
-            a.do_reduce_multigpu.remote(
-                dst_rank=dst_rank, dst_gpu_index=dst_gpu_index, op=ReduceOp.MAX
+            a.do_reduce_multiacc.remote(
+                dst_rank=dst_rank, dst_acc_index=dst_acc_index, op=ReduceOp.MAX
             )
             for a in actors
         ]
     )
     for i in range(world_size):
-        for j in range(num_gpu_per_worker):
-            if i == dst_rank and j == dst_gpu_index:
+        for j in range(num_acc_per_worker):
+            if i == dst_rank and j == dst_acc_index:
                 assert (results[i][j] == cp.ones((10,), dtype=cp.float32) * 5).all()
             else:
                 val = (i + 1) * 2 + j
@@ -136,15 +136,15 @@ def test_reduce_different_op(
 
 
 @pytest.mark.parametrize("dst_rank", [0, 1])
-@pytest.mark.parametrize("dst_gpu_index", [0, 1])
+@pytest.mark.parametrize("dst_acc_index", [0, 1])
 def test_reduce_torch_cupy(
-    ray_start_distributed_multigpu_2_nodes_4_gpus, dst_rank, dst_gpu_index
+    ray_start_distributed_multiacc_2_nodes_4_accs, dst_rank, dst_acc_index
 ):
     import torch
 
     world_size = 2
-    num_gpu_per_worker = 2
-    actors, _ = create_collective_multigpu_workers(world_size)
+    num_acc_per_worker = 2
+    actors, _ = create_collective_multiacc_workers(world_size)
     ray.get(actors[0].set_buffer.remote([10], value0=2, value1=3))
     ray.get(
         actors[1].set_buffer.remote(
@@ -154,15 +154,15 @@ def test_reduce_torch_cupy(
 
     results = ray.get(
         [
-            a.do_reduce_multigpu.remote(dst_rank=dst_rank, dst_gpu_index=dst_gpu_index)
+            a.do_reduce_multiacc.remote(dst_rank=dst_rank, dst_acc_index=dst_acc_index)
             for a in actors
         ]
     )
 
     for i in range(world_size):
-        for j in range(num_gpu_per_worker):
+        for j in range(num_acc_per_worker):
             val = (i + 1) * 2 + j
-            if dst_rank == i and dst_gpu_index == j:
+            if dst_rank == i and dst_acc_index == j:
                 if i == 0:
                     assert (results[i][j] == cp.ones([10], dtype=cp.float32) * 14).all()
                 else:
@@ -177,17 +177,17 @@ def test_reduce_torch_cupy(
 
 
 @pytest.mark.parametrize("dst_rank", [3, 4])
-@pytest.mark.parametrize("dst_gpu_index", [2, 3])
+@pytest.mark.parametrize("dst_acc_index", [2, 3])
 def test_reduce_invalid_rank(
-    ray_start_distributed_multigpu_2_nodes_4_gpus, dst_rank, dst_gpu_index
+    ray_start_distributed_multiacc_2_nodes_4_accs, dst_rank, dst_acc_index
 ):
     world_size = 2
-    actors, _ = create_collective_multigpu_workers(world_size)
+    actors, _ = create_collective_multiacc_workers(world_size)
     with pytest.raises(ValueError):
         _ = ray.get(
             [
-                a.do_reduce_multigpu.remote(
-                    dst_rank=dst_rank, dst_gpu_index=dst_gpu_index
+                a.do_reduce_multiacc.remote(
+                    dst_rank=dst_rank, dst_acc_index=dst_acc_index
                 )
                 for a in actors
             ]

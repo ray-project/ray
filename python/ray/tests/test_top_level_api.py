@@ -22,7 +22,7 @@ def test_api_functions():
         "kill",
         "cancel",
         "get_actor",
-        "get_gpu_ids",
+        "get_acc_ids",
         "shutdown",
         "method",
         "nodes",

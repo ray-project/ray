@@ -13,9 +13,9 @@ atari-impala:
             repeat_action_probability: 0.0
         rollout_fragment_length: 50
         train_batch_size: 4000
-        num_gpus: 4
+        num_accs: 4
         num_workers: 31
-        num_gpus_per_worker: 0  # works also for partial GPUs (<1.0) per worker
+        num_accs_per_worker: 0  # works also for partial ACCs (<1.0) per worker
         num_envs_per_worker: 5
         clip_rewards: True
         lr_schedule: [

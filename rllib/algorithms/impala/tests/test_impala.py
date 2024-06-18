@@ -29,7 +29,7 @@ class TestIMPALA(unittest.TestCase):
         config = (
             impala.ImpalaConfig()
             .environment("CartPole-v1")
-            .resources(num_gpus=0)
+            .resources(num_accs=0)
             .rollouts(num_rollout_workers=2)
             .training(
                 model={
@@ -69,7 +69,7 @@ class TestIMPALA(unittest.TestCase):
         # The first lr should be 0.05.
         config = (
             impala.ImpalaConfig()
-            .resources(num_gpus=0)
+            .resources(num_accs=0)
             .training(
                 lr=0.1,
                 lr_schedule=[

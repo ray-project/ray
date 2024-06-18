@@ -44,7 +44,7 @@ class ResourceRequest:
 
     Args:
         bundles: A list of bundles which represent the resources requirements.
-            E.g. ``[{"CPU": 1, "GPU": 1}]``.
+            E.g. ``[{"CPU": 1, "ACC": 1}]``.
         strategy: The scheduling strategy to acquire the bundles.
 
          - "PACK": Packs Bundles into as few nodes as possible.

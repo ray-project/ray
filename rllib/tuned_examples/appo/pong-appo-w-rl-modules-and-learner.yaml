@@ -1,4 +1,4 @@
-# This can reach 18.0 reward in ~10 minutes on 4x M60 GPUs
+# This can reach 18.0 reward in ~10 minutes on 4x M60 ACCs
 # with 30 rollout workers, 4 learning workers, and 8 envs per rollout worker.
 appo-pongnoframeskip-v5:
     env: ALE/Pong-v5
@@ -39,10 +39,10 @@ appo-pongnoframeskip-v5:
             # for the policy.
             post_fcnet_hiddens: [256]
 
-        # Use N Learner worker on the GPU
+        # Use N Learner worker on the ACC
         num_learner_workers: 4
-        num_gpus_per_learner_worker: 1
-        num_gpus: 0  # No GPU needed for driver.
+        num_accs_per_learner_worker: 1
+        num_accs: 0  # No ACC needed for driver.
         # Since we are using learner workers, the driver process does not need
         # a CPU in particular.
         num_cpus_for_local_worker: 1

@@ -43,7 +43,7 @@ def resources_by_state(info) -> dict:
 
 
 def test_resources_metrics(shutdown_only):
-    info = ray.init(num_cpus=4, num_gpus=2, resources={"a": 3}, **METRIC_CONFIG)
+    info = ray.init(num_cpus=4, num_accs=2, resources={"a": 3}, **METRIC_CONFIG)
 
     driver = """
 import ray
@@ -51,7 +51,7 @@ import time
 
 ray.init("auto")
 
-@ray.remote(num_gpus=1, num_cpus=1, resources={"a": 1})
+@ray.remote(num_accs=1, num_cpus=1, resources={"a": 1})
 def f():
     time.sleep(999)
 
@@ -88,8 +88,8 @@ ray.get([f.remote() for _ in range(2)])"""
         assert state[("CPU", "AVAILABLE")] == 1.0
         # 2 tasks + 1 pg
         assert state[("CPU", "USED")] == 3.0
-        assert ("GPU", "AVAILABLE") not in state  # since it is 0
-        assert state[("GPU", "USED")] == 2.0
+        assert ("ACC", "AVAILABLE") not in state  # since it is 0
+        assert state[("ACC", "USED")] == 2.0
 
         # Verify custom resources
         assert state[("a", "AVAILABLE")] == 1.0

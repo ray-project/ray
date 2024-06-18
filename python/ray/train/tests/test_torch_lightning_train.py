@@ -20,26 +20,26 @@ pl = import_lightning()
 
 
 @pytest.fixture
-def ray_start_6_cpus_2_gpus():
-    address_info = ray.init(num_cpus=6, num_gpus=2)
+def ray_start_6_cpus_2_accs():
+    address_info = ray.init(num_cpus=6, num_accs=2)
     yield address_info
     # The code after the yield will run as teardown code.
     ray.shutdown()
 
 
 @pytest.fixture
-def ray_start_6_cpus_4_gpus():
-    address_info = ray.init(num_cpus=6, num_gpus=4)
+def ray_start_6_cpus_4_accs():
+    address_info = ray.init(num_cpus=6, num_accs=4)
     yield address_info
     # The code after the yield will run as teardown code.
     ray.shutdown()
 
 
 @pytest.mark.parametrize("strategy_name", ["ddp", "fsdp"])
-@pytest.mark.parametrize("accelerator", ["cpu", "gpu"])
+@pytest.mark.parametrize("accelerator", ["cpu", "acc"])
 @pytest.mark.parametrize("datasource", ["dataloader", "datamodule"])
 def test_trainer_with_native_dataloader(
-    ray_start_6_cpus_2_gpus, strategy_name, accelerator, datasource
+    ray_start_6_cpus_2_accs, strategy_name, accelerator, datasource
 ):
     """Test basic ddp and fsdp training with dataloader and datamodule."""
 
@@ -80,7 +80,7 @@ def test_trainer_with_native_dataloader(
 
     trainer = TorchTrainer(
         train_loop_per_worker=train_loop,
-        scaling_config=ScalingConfig(num_workers=2, use_gpu=(accelerator == "gpu")),
+        scaling_config=ScalingConfig(num_workers=2, use_acc=(accelerator == "acc")),
     )
 
     results = trainer.fit()
@@ -93,8 +93,8 @@ def test_trainer_with_native_dataloader(
 
 
 @pytest.mark.parametrize("strategy_name", ["ddp", "fsdp"])
-@pytest.mark.parametrize("accelerator", ["cpu", "gpu"])
-def test_trainer_with_ray_data(ray_start_6_cpus_2_gpus, strategy_name, accelerator):
+@pytest.mark.parametrize("accelerator", ["cpu", "acc"])
+def test_trainer_with_ray_data(ray_start_6_cpus_2_accs, strategy_name, accelerator):
     """Test Data integration with ddp and fsdp."""
 
     if accelerator == "cpu" and strategy_name == "fsdp":
@@ -140,7 +140,7 @@ def test_trainer_with_ray_data(ray_start_6_cpus_2_gpus, strategy_name, accelerat
 
     trainer = TorchTrainer(
         train_loop_per_worker=train_loop,
-        scaling_config=ScalingConfig(num_workers=2, use_gpu=(accelerator == "gpu")),
+        scaling_config=ScalingConfig(num_workers=2, use_acc=(accelerator == "acc")),
         datasets={"train": train_dataset, "val": val_dataset},
     )
 
@@ -154,7 +154,7 @@ def test_trainer_with_ray_data(ray_start_6_cpus_2_gpus, strategy_name, accelerat
 
 
 @pytest.mark.parametrize("stage", [1, 2, 3])
-def test_deepspeed_zero_stages(ray_start_6_cpus_4_gpus, tmpdir, stage):
+def test_deepspeed_zero_stages(ray_start_6_cpus_4_accs, tmpdir, stage):
     num_epochs = 5
     batch_size = 8
     num_workers = 4
@@ -168,7 +168,7 @@ def test_deepspeed_zero_stages(ray_start_6_cpus_4_gpus, tmpdir, stage):
         trainer = pl.Trainer(
             max_epochs=num_epochs,
             devices="auto",
-            accelerator="gpu",
+            accelerator="acc",
             strategy=strategy,
             plugins=[RayLightningEnvironment()],
             callbacks=[RayTrainReportCallback()],
@@ -179,7 +179,7 @@ def test_deepspeed_zero_stages(ray_start_6_cpus_4_gpus, tmpdir, stage):
 
     trainer = TorchTrainer(
         train_loop_per_worker=train_loop,
-        scaling_config=ScalingConfig(num_workers=num_workers, use_gpu=True),
+        scaling_config=ScalingConfig(num_workers=num_workers, use_acc=True),
     )
 
     result = trainer.fit()

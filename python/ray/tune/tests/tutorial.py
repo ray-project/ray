@@ -181,9 +181,9 @@ tuner = tune.Tuner(
 )
 results = tuner.fit()
 
-# To enable GPUs, use this instead:
+# To enable ACCs, use this instead:
 # analysis = tune.run(
-#     train_mnist, config=search_space, resources_per_trial={'gpu': 1})
+#     train_mnist, config=search_space, resources_per_trial={'acc': 1})
 
 # __run_searchalg_end__
 

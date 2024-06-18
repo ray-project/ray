@@ -5,7 +5,7 @@ import sys
 
 import pytest
 from ray.util.spark.utils import (
-    get_spark_task_assigned_physical_gpus,
+    get_spark_task_assigned_physical_accs,
     _calc_mem_per_ray_worker_node,
     _get_avail_mem_per_ray_worker_node,
 )
@@ -21,13 +21,13 @@ pytestmark = pytest.mark.skipif(
 )
 
 
-def test_get_spark_task_assigned_physical_gpus():
+def test_get_spark_task_assigned_physical_accs():
     with patch.dict(os.environ, {}, clear=True):
-        assert get_spark_task_assigned_physical_gpus([2, 5]) == [2, 5]
+        assert get_spark_task_assigned_physical_accs([2, 5]) == [2, 5]
 
     with patch.dict(os.environ, {"CUDA_VISIBLE_DEVICES": "2,3,6"}, clear=True):
-        assert get_spark_task_assigned_physical_gpus([0, 1]) == [2, 3]
-        assert get_spark_task_assigned_physical_gpus([0, 2]) == [2, 6]
+        assert get_spark_task_assigned_physical_accs([0, 1]) == [2, 3]
+        assert get_spark_task_assigned_physical_accs([0, 2]) == [2, 6]
 
 
 @patch("ray._private.ray_constants.OBJECT_STORE_MINIMUM_MEMORY_BYTES", 1)
@@ -57,37 +57,37 @@ def test_calc_mem_per_ray_worker_node():
 @patch("ray._private.ray_constants.OBJECT_STORE_MINIMUM_MEMORY_BYTES", 1)
 def test_get_avail_mem_per_ray_worker_node(monkeypatch):
     monkeypatch.setenv("RAY_ON_SPARK_WORKER_CPU_CORES", "4")
-    monkeypatch.setenv("RAY_ON_SPARK_WORKER_GPU_NUM", "8")
+    monkeypatch.setenv("RAY_ON_SPARK_WORKER_ACC_NUM", "8")
     monkeypatch.setenv("RAY_ON_SPARK_WORKER_PHYSICAL_MEMORY_BYTES", "1000000")
     monkeypatch.setenv("RAY_ON_SPARK_WORKER_SHARED_MEMORY_BYTES", "500000")
 
     assert _get_avail_mem_per_ray_worker_node(
         num_cpus_per_node=1,
-        num_gpus_per_node=2,
+        num_accs_per_node=2,
         object_store_memory_per_node=None,
     ) == (140000, 60000, None, None)
 
     assert _get_avail_mem_per_ray_worker_node(
         num_cpus_per_node=1,
-        num_gpus_per_node=2,
+        num_accs_per_node=2,
         object_store_memory_per_node=80000,
     ) == (120000, 80000, None, None)
 
     assert _get_avail_mem_per_ray_worker_node(
         num_cpus_per_node=1,
-        num_gpus_per_node=2,
+        num_accs_per_node=2,
         object_store_memory_per_node=120000,
     ) == (100000, 100000, None, None)
 
     assert _get_avail_mem_per_ray_worker_node(
         num_cpus_per_node=2,
-        num_gpus_per_node=2,
+        num_accs_per_node=2,
         object_store_memory_per_node=None,
     ) == (280000, 120000, None, None)
 
     assert _get_avail_mem_per_ray_worker_node(
         num_cpus_per_node=1,
-        num_gpus_per_node=4,
+        num_accs_per_node=4,
         object_store_memory_per_node=None,
     ) == (280000, 120000, None, None)
 

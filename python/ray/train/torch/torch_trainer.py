@@ -44,8 +44,8 @@ class TorchTrainer(DataParallelTrainer):
             from ray.train import Checkpoint, CheckpointConfig, RunConfig, ScalingConfig
             from ray.train.torch import TorchTrainer
 
-            # If using GPUs, set this to True.
-            use_gpu = False
+            # If using ACCs, set this to True.
+            use_acc = False
             # Number of processes to run training on.
             num_workers = 4
 
@@ -111,7 +111,7 @@ class TorchTrainer(DataParallelTrainer):
 
             # Define configurations.
             train_loop_config = {"num_epochs": 20, "lr": 0.01, "batch_size": 32}
-            scaling_config = ScalingConfig(num_workers=num_workers, use_gpu=use_gpu)
+            scaling_config = ScalingConfig(num_workers=num_workers, use_acc=use_acc)
             run_config = RunConfig(checkpoint_config=CheckpointConfig(num_to_keep=1))
 
             # Define datasets.
@@ -152,10 +152,10 @@ class TorchTrainer(DataParallelTrainer):
             This is typically used for specifying hyperparameters.
         torch_config: The configuration for setting up the PyTorch Distributed backend.
             If set to None, a default configuration will be used in which
-            GPU training uses NCCL and CPU training uses Gloo.
+            ACC training uses NCCL and CPU training uses Gloo.
         scaling_config: The configuration for how to scale data parallel training.
             ``num_workers`` determines how many Python processes are used for training,
-            and ``use_gpu`` determines whether or not each process should use GPUs.
+            and ``use_acc`` determines whether or not each process should use ACCs.
             See :class:`~ray.train.ScalingConfig` for more info.
         run_config: The configuration for the execution of the training run.
             See :class:`~ray.train.RunConfig` for more info.

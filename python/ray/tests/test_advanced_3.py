@@ -22,10 +22,10 @@ logger = logging.getLogger(__name__)
 
 def test_global_state_api(shutdown_only):
 
-    ray.init(num_cpus=5, num_gpus=3, resources={"CustomResource": 1})
+    ray.init(num_cpus=5, num_accs=3, resources={"CustomResource": 1})
 
     assert ray.cluster_resources()["CPU"] == 5
-    assert ray.cluster_resources()["GPU"] == 3
+    assert ray.cluster_resources()["ACC"] == 3
     assert ray.cluster_resources()["CustomResource"] == 1
 
     job_id = ray._private.utils.compute_job_id_from_driver(

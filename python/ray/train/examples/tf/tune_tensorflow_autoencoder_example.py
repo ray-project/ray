@@ -9,9 +9,9 @@ from ray.tune.tuner import Tuner
 
 
 def tune_tensorflow_mnist(
-    num_workers: int = 2, num_samples: int = 2, use_gpu: bool = False
+    num_workers: int = 2, num_samples: int = 2, use_acc: bool = False
 ):
-    scaling_config = dict(num_workers=num_workers, use_gpu=use_gpu)
+    scaling_config = dict(num_workers=num_workers, use_acc=use_acc)
     trainer = TensorflowTrainer(
         train_loop_per_worker=train_func,
         scaling_config=scaling_config,
@@ -58,19 +58,19 @@ if __name__ == "__main__":
         help="Sets number of samples for training.",
     )
     parser.add_argument(
-        "--use-gpu", action="store_true", default=False, help="Enables GPU training"
+        "--use-acc", action="store_true", default=False, help="Enables ACC training"
     )
 
     args = parser.parse_args()
 
     if args.smoke_test:
-        num_gpus = args.num_workers if args.use_gpu else 0
-        ray.init(num_cpus=8, num_gpus=num_gpus)
-        tune_tensorflow_mnist(num_workers=2, num_samples=2, use_gpu=args.use_gpu)
+        num_accs = args.num_workers if args.use_acc else 0
+        ray.init(num_cpus=8, num_accs=num_accs)
+        tune_tensorflow_mnist(num_workers=2, num_samples=2, use_acc=args.use_acc)
     else:
         ray.init(address=args.address)
         tune_tensorflow_mnist(
             num_workers=args.num_workers,
             num_samples=args.num_samples,
-            use_gpu=args.use_gpu,
+            use_acc=args.use_acc,
         )

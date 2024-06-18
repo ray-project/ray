@@ -4,25 +4,25 @@ import pytest
 from unittest.mock import patch
 
 import ray
-from ray._private.accelerators import IntelGPUAcceleratorManager as Accelerator
+from ray._private.accelerators import IntelACCAcceleratorManager as Accelerator
 from ray._private.accelerators import get_accelerator_manager_for_resource
 from ray.util.accelerators import INTEL_MAX_1550, INTEL_MAX_1100
 
 
-def test_visible_intel_gpu_ids(shutdown_only):
+def test_visible_intel_acc_ids(shutdown_only):
     with patch.object(Accelerator, "get_current_node_num_accelerators", return_value=4):
         os.environ["ONEAPI_DEVICE_SELECTOR"] = "level_zero:0,1,2"
         # Delete the cache so it can be re-populated the next time
         # we call get_accelerator_manager_for_resource
         del get_accelerator_manager_for_resource._resource_name_to_accelerator_manager
         ray.init()
-        manager = get_accelerator_manager_for_resource("GPU")
+        manager = get_accelerator_manager_for_resource("ACC")
         assert manager.get_current_node_num_accelerators() == 4
-        assert manager.__name__ == "IntelGPUAcceleratorManager"
-        assert ray.available_resources()["GPU"] == 3
+        assert manager.__name__ == "IntelACCAcceleratorManager"
+        assert ray.available_resources()["ACC"] == 3
 
 
-def test_visible_intel_gpu_type(shutdown_only):
+def test_visible_intel_acc_type(shutdown_only):
     with patch.object(
         Accelerator, "get_current_node_num_accelerators", return_value=4
     ), patch.object(
@@ -31,7 +31,7 @@ def test_visible_intel_gpu_type(shutdown_only):
         os.environ["ONEAPI_DEVICE_SELECTOR"] = "level_zero:0,1,2"
         del get_accelerator_manager_for_resource._resource_name_to_accelerator_manager
         ray.init()
-        manager = get_accelerator_manager_for_resource("GPU")
+        manager = get_accelerator_manager_for_resource("ACC")
         assert manager.get_current_node_accelerator_type() == INTEL_MAX_1550
 
 
@@ -67,8 +67,8 @@ def test_get_current_node_accelerator_type():
         sys.modules["dpctl"] = old_dpctl
 
 
-def test_intel_gpu_accelerator_manager_api():
-    assert Accelerator.get_resource_name() == "GPU"
+def test_intel_acc_accelerator_manager_api():
+    assert Accelerator.get_resource_name() == "ACC"
     assert Accelerator.get_visible_accelerator_ids_env_var() == "ONEAPI_DEVICE_SELECTOR"
     assert Accelerator.validate_resource_request_quantity(0.1) == (True, None)
 

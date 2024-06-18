@@ -52,7 +52,7 @@ class BaseTestingLearner(Learner):
             loss_per_module=loss_per_module,
             metrics_per_module=metrics_per_module,
         )
-        # This is to check if in the multi-gpu case, the weights across workers are
+        # This is to check if in the multi-acc case, the weights across workers are
         # the same. It is really only needed during testing.
         if self.hps.report_mean_weights:
             mean_ws = {}

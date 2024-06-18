@@ -52,7 +52,7 @@ class TestDreamerV3(unittest.TestCase):
             .resources(
                 num_learner_workers=2,  # Try with 2 Learners.
                 num_cpus_per_learner_worker=1,
-                num_gpus_per_learner_worker=0,
+                num_accs_per_learner_worker=0,
             )
         )
 

@@ -84,7 +84,7 @@ class CometLoggerCallback(LoggerCallback):
         "log_git_metadata",
         "log_git_patch",
         "log_env_cpu",
-        "log_env_gpu",
+        "log_env_acc",
     ]
 
     # Do not log these metrics.

@@ -95,73 +95,73 @@ class TorchPolicyV2(Policy):
         else:
             model, dist_class = self._init_model_and_dist_class()
 
-        # Create multi-GPU model towers, if necessary.
+        # Create multi-ACC model towers, if necessary.
         # - The central main model will be stored under self.model, residing
         #   on self.device (normally, a CPU).
-        # - Each GPU will have a copy of that model under
-        #   self.model_gpu_towers, matching the devices in self.devices.
+        # - Each ACC will have a copy of that model under
+        #   self.model_acc_towers, matching the devices in self.devices.
         # - Parallelization is done by splitting the train batch and passing
         #   it through the model copies in parallel, then averaging over the
         #   resulting gradients, applying these averages on the main model and
         #   updating all towers' weights from the main model.
-        # - In case of just one device (1 (fake or real) GPU or 1 CPU), no
+        # - In case of just one device (1 (fake or real) ACC or 1 CPU), no
         #   parallelization will be done.
 
         # Get devices to build the graph on.
-        num_gpus = self._get_num_gpus_for_policy()
-        gpu_ids = list(range(torch.cuda.device_count()))
-        logger.info(f"Found {len(gpu_ids)} visible cuda devices.")
+        num_accs = self._get_num_accs_for_policy()
+        acc_ids = list(range(torch.cuda.device_count()))
+        logger.info(f"Found {len(acc_ids)} visible cuda devices.")
 
         # Place on one or more CPU(s) when either:
-        # - Fake GPU mode.
-        # - num_gpus=0 (either set by user or we are in local_mode=True).
-        # - No GPUs available.
-        if config["_fake_gpus"] or num_gpus == 0 or not gpu_ids:
+        # - Fake ACC mode.
+        # - num_accs=0 (either set by user or we are in local_mode=True).
+        # - No ACCs available.
+        if config["_fake_accs"] or num_accs == 0 or not acc_ids:
             self.device = torch.device("cpu")
-            self.devices = [self.device for _ in range(int(math.ceil(num_gpus)) or 1)]
-            self.model_gpu_towers = [
+            self.devices = [self.device for _ in range(int(math.ceil(num_accs)) or 1)]
+            self.model_acc_towers = [
                 model if i == 0 else copy.deepcopy(model)
-                for i in range(int(math.ceil(num_gpus)) or 1)
+                for i in range(int(math.ceil(num_accs)) or 1)
             ]
             if hasattr(self, "target_model"):
                 self.target_models = {
-                    m: self.target_model for m in self.model_gpu_towers
+                    m: self.target_model for m in self.model_acc_towers
                 }
             self.model = model
-        # Place on one or more actual GPU(s), when:
-        # - num_gpus > 0 (set by user) AND
+        # Place on one or more actual ACC(s), when:
+        # - num_accs > 0 (set by user) AND
         # - local_mode=False AND
-        # - actual GPUs available AND
-        # - non-fake GPU mode.
+        # - actual ACCs available AND
+        # - non-fake ACC mode.
         else:
             # We are a remote worker (WORKER_MODE=1):
-            # GPUs should be assigned to us by ray.
+            # ACCs should be assigned to us by ray.
             if ray._private.worker._mode() == ray._private.worker.WORKER_MODE:
-                gpu_ids = ray.get_gpu_ids()
+                acc_ids = ray.get_acc_ids()
 
-            if len(gpu_ids) < num_gpus:
+            if len(acc_ids) < num_accs:
                 raise ValueError(
-                    "TorchPolicy was not able to find enough GPU IDs! Found "
-                    f"{gpu_ids}, but num_gpus={num_gpus}."
+                    "TorchPolicy was not able to find enough ACC IDs! Found "
+                    f"{acc_ids}, but num_accs={num_accs}."
                 )
 
             self.devices = [
                 torch.device("cuda:{}".format(i))
-                for i, id_ in enumerate(gpu_ids)
-                if i < num_gpus
+                for i, id_ in enumerate(acc_ids)
+                if i < num_accs
             ]
             self.device = self.devices[0]
-            ids = [id_ for i, id_ in enumerate(gpu_ids) if i < num_gpus]
-            self.model_gpu_towers = []
+            ids = [id_ for i, id_ in enumerate(acc_ids) if i < num_accs]
+            self.model_acc_towers = []
             for i, _ in enumerate(ids):
                 model_copy = copy.deepcopy(model)
-                self.model_gpu_towers.append(model_copy.to(self.devices[i]))
+                self.model_acc_towers.append(model_copy.to(self.devices[i]))
             if hasattr(self, "target_model"):
                 self.target_models = {
                     m: copy.deepcopy(self.target_model).to(self.devices[i])
-                    for i, m in enumerate(self.model_gpu_towers)
+                    for i, m in enumerate(self.model_acc_towers)
                 }
-            self.model = self.model_gpu_towers[0]
+            self.model = self.model_acc_towers[0]
 
         self.dist_class = dist_class
         self.unwrapped_model = model  # used to support DistributedDataParallel
@@ -204,18 +204,18 @@ class TorchPolicyV2(Policy):
             # Store, which params (by index within the model's list of
             # parameters) should be updated per optimizer.
             # Maps optimizer idx to set or param indices.
-            self.multi_gpu_param_groups: List[Set[int]] = []
+            self.multi_acc_param_groups: List[Set[int]] = []
             main_params = {p: i for i, p in enumerate(self.model.parameters())}
             for o in self._optimizers:
                 param_indices = []
                 for pg_idx, pg in enumerate(o.param_groups):
                     for p in pg["params"]:
                         param_indices.append(main_params[p])
-                self.multi_gpu_param_groups.append(set(param_indices))
+                self.multi_acc_param_groups.append(set(param_indices))
 
-            # Create n sample-batch buffers (num_multi_gpu_tower_stacks), each
-            # one with m towers (num_gpus).
-            num_buffers = self.config.get("num_multi_gpu_tower_stacks", 1)
+            # Create n sample-batch buffers (num_multi_acc_tower_stacks), each
+            # one with m towers (num_accs).
+            num_buffers = self.config.get("num_multi_acc_tower_stacks", 1)
             self._loaded_batches = [[] for _ in range(num_buffers)]
 
         # If set, means we are using distributed allreduce during learning.
@@ -228,7 +228,7 @@ class TorchPolicyV2(Policy):
         # self.tower_state[model] -> dict for each tower.
         self.tower_stats = {}
         if not hasattr(self.model, "tower_stats"):
-            for model in self.model_gpu_towers:
+            for model in self.model_acc_towers:
                 self.tower_stats[model] = {}
 
     def loss_initialized(self):
@@ -785,7 +785,7 @@ class TorchPolicyV2(Policy):
         # Batch (len=28, seq-lens=[4, 7, 4, 10, 3]):
         # 0123 0123456 0123 0123456789ABC
 
-        # 1) split into n per-GPU sub batches (n=2).
+        # 1) split into n per-ACC sub batches (n=2).
         # [0123 0123456] [012] [3 0123456789 ABC]
         # (len=14, 14 seq-lens=[4, 7, 3] [1, 10, 3])
         slices = batch.timeslices(num_slices=len(self.devices))
@@ -806,7 +806,7 @@ class TorchPolicyV2(Policy):
                 else "zero",
             )
 
-        # 3) Load splits into the given buffer (consisting of n GPUs).
+        # 3) Load splits into the given buffer (consisting of n ACCs).
         slices = [slice.to_device(self.devices[i]) for i, slice in enumerate(slices)]
         self._loaded_batches[buffer_index] = slices
 
@@ -836,8 +836,8 @@ class TorchPolicyV2(Policy):
         ) // len(self.devices)
 
         # Set Model to train mode.
-        if self.model_gpu_towers:
-            for t in self.model_gpu_towers:
+        if self.model_acc_towers:
+            for t in self.model_acc_towers:
                 t.train()
 
         # Shortcut for 1 CPU only: Batch should already be stored in
@@ -855,8 +855,8 @@ class TorchPolicyV2(Policy):
             # Copy weights of main model (tower-0) to all other towers.
             state_dict = self.model.state_dict()
             # Just making sure tower-0 is really the same as self.model.
-            assert self.model_gpu_towers[0] is self.model
-            for tower in self.model_gpu_towers[1:]:
+            assert self.model_acc_towers[0] is self.model
+            for tower in self.model_acc_towers[1:]:
                 tower.load_state_dict(state_dict)
 
         if device_batch_size >= sum(len(s) for s in self._loaded_batches[buffer_index]):
@@ -877,9 +877,9 @@ class TorchPolicyV2(Policy):
             batch_fetches[f"tower_{i}"] = {"custom_metrics": custom_metrics}
 
         # Do the (maybe parallelized) gradient calculation step.
-        tower_outputs = self._multi_gpu_parallel_grad_calc(device_batches)
+        tower_outputs = self._multi_acc_parallel_grad_calc(device_batches)
 
-        # Mean-reduce gradients over GPU-towers (do this on CPU: self.device).
+        # Mean-reduce gradients over ACC-towers (do this on CPU: self.device).
         all_grads = []
         for i in range(len(tower_outputs[0][0])):
             if tower_outputs[0][0][i] is not None:
@@ -899,7 +899,7 @@ class TorchPolicyV2(Policy):
 
         self.num_grad_updates += 1
 
-        for i, (model, batch) in enumerate(zip(self.model_gpu_towers, device_batches)):
+        for i, (model, batch) in enumerate(zip(self.model_acc_towers, device_batches)):
             batch_fetches[f"tower_{i}"].update(
                 {
                     LEARNER_STATS_KEY: self.stats_fn(batch),
@@ -943,7 +943,7 @@ class TorchPolicyV2(Policy):
         self._lazy_tensor_dict(postprocessed_batch, device=self.devices[0])
 
         # Do the (maybe parallelized) gradient calculation step.
-        tower_outputs = self._multi_gpu_parallel_grad_calc([postprocessed_batch])
+        tower_outputs = self._multi_acc_parallel_grad_calc([postprocessed_batch])
 
         all_grads, grad_info = tower_outputs[0]
 
@@ -989,7 +989,7 @@ class TorchPolicyV2(Policy):
             of the tower's `tower_stats` dicts.
         """
         data = []
-        for model in self.model_gpu_towers:
+        for model in self.model_acc_towers:
             if self.tower_stats:
                 tower_stats = self.tower_stats[model]
             else:
@@ -1004,7 +1004,7 @@ class TorchPolicyV2(Policy):
 
         assert len(data) > 0, (
             f"Stats `{stats_name}` not found in any of the towers (you have "
-            f"{len(self.model_gpu_towers)} towers in total)! Make "
+            f"{len(self.model_acc_towers)} towers in total)! Make "
             "sure you call the loss function on at least one of the towers."
         )
         return data
@@ -1336,7 +1336,7 @@ class TorchPolicyV2(Policy):
         )
         return postprocessed_batch
 
-    def _multi_gpu_parallel_grad_calc(
+    def _multi_acc_parallel_grad_calc(
         self, sample_batches: List[SampleBatch]
     ) -> List[Tuple[List[TensorType], GradInfoDict]]:
         """Performs a parallelized loss and gradient calculation over the batch.
@@ -1344,7 +1344,7 @@ class TorchPolicyV2(Policy):
         Splits up the given train batch into n shards (n=number of this
         Policy's devices) and passes each data shard (in parallel) through
         the loss function using the individual devices' models
-        (self.model_gpu_towers). Then returns each tower's outputs.
+        (self.model_acc_towers). Then returns each tower's outputs.
 
         Args:
             sample_batches: A list of SampleBatch shards to
@@ -1354,7 +1354,7 @@ class TorchPolicyV2(Policy):
             A list (one item per device) of 2-tuples, each with 1) gradient
             list and 2) grad info dict.
         """
-        assert len(self.model_gpu_towers) == len(sample_batches)
+        assert len(self.model_acc_towers) == len(sample_batches)
         lock = threading.Lock()
         results = {}
         grad_enabled = torch.is_grad_enabled()
@@ -1384,7 +1384,7 @@ class TorchPolicyV2(Policy):
                     for opt_idx, opt in enumerate(self._optimizers):
                         # Erase gradients in all vars of the tower that this
                         # optimizer would affect.
-                        param_indices = self.multi_gpu_param_groups[opt_idx]
+                        param_indices = self.multi_acc_param_groups[opt_idx]
                         for param_idx, param in enumerate(parameters):
                             if param_idx in param_indices and param.grad is not None:
                                 param.grad.data.zero_()
@@ -1441,25 +1441,25 @@ class TorchPolicyV2(Policy):
                         e,
                     )
 
-        # Single device (GPU) or fake-GPU case (serialize for better
+        # Single device (ACC) or fake-ACC case (serialize for better
         # debugging).
-        if len(self.devices) == 1 or self.config["_fake_gpus"]:
+        if len(self.devices) == 1 or self.config["_fake_accs"]:
             for shard_idx, (model, sample_batch, device) in enumerate(
-                zip(self.model_gpu_towers, sample_batches, self.devices)
+                zip(self.model_acc_towers, sample_batches, self.devices)
             ):
                 _worker(shard_idx, model, sample_batch, device)
                 # Raise errors right away for better debugging.
                 last_result = results[len(results) - 1]
                 if isinstance(last_result[0], ValueError):
                     raise last_result[0] from last_result[1]
-        # Multi device (GPU) case: Parallelize via threads.
+        # Multi device (ACC) case: Parallelize via threads.
         else:
             threads = [
                 threading.Thread(
                     target=_worker, args=(shard_idx, model, sample_batch, device)
                 )
                 for shard_idx, (model, sample_batch, device) in enumerate(
-                    zip(self.model_gpu_towers, sample_batches, self.devices)
+                    zip(self.model_acc_towers, sample_batches, self.devices)
                 )
             ]
 

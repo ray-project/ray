@@ -99,7 +99,7 @@ def mock_add_workers(self, num_workers):
             node_id=0,
             node_ip=str(i % 2),
             hostname=0,
-            resource_ids={"GPU": ["0"]},
+            resource_ids={"ACC": ["0"]},
             pid=0,
         )
         worker.metadata = metadata
@@ -308,7 +308,7 @@ def test_torch_start_shutdown(ray_start_2_cpus, init_method):
         (4, [[0, 1]] * 4),
     ],
 )
-def test_cuda_visible_devices(ray_2_node_2_gpu, worker_results):
+def test_cuda_visible_devices(ray_2_node_2_acc, worker_results):
     config = TestConfig()
 
     def get_resources():
@@ -323,7 +323,7 @@ def test_cuda_visible_devices(ray_2_node_2_gpu, worker_results):
 
     os.environ[ENABLE_SHARE_CUDA_VISIBLE_DEVICES_ENV] = "1"
     e = BackendExecutor(
-        config, num_workers=num_workers, num_cpus_per_worker=0, num_gpus_per_worker=1
+        config, num_workers=num_workers, num_cpus_per_worker=0, num_accs_per_worker=1
     )
     e.start()
     _start_training(e, get_resources)
@@ -348,7 +348,7 @@ def test_cuda_visible_devices(ray_2_node_2_gpu, worker_results):
         (8, [[0, 1]] * 8),
     ],
 )
-def test_cuda_visible_devices_fractional(ray_2_node_2_gpu, worker_results):
+def test_cuda_visible_devices_fractional(ray_2_node_2_acc, worker_results):
     config = TestConfig()
 
     if worker_results[0] != len(worker_results[1]):
@@ -369,7 +369,7 @@ def test_cuda_visible_devices_fractional(ray_2_node_2_gpu, worker_results):
 
     os.environ[ENABLE_SHARE_CUDA_VISIBLE_DEVICES_ENV] = "1"
     e = BackendExecutor(
-        config, num_workers=num_workers, num_cpus_per_worker=0, num_gpus_per_worker=0.5
+        config, num_workers=num_workers, num_cpus_per_worker=0, num_accs_per_worker=0.5
     )
     e.start()
     _start_training(e, get_resources)
@@ -387,7 +387,7 @@ def test_cuda_visible_devices_fractional(ray_2_node_2_gpu, worker_results):
         (4, [[0, 1, 2, 3]] * 4),
     ],
 )
-def test_cuda_visible_devices_multiple(ray_2_node_4_gpu, worker_results):
+def test_cuda_visible_devices_multiple(ray_2_node_4_acc, worker_results):
     config = TestConfig()
 
     def get_resources():
@@ -408,7 +408,7 @@ def test_cuda_visible_devices_multiple(ray_2_node_4_gpu, worker_results):
 
     os.environ[ENABLE_SHARE_CUDA_VISIBLE_DEVICES_ENV] = "1"
     e = BackendExecutor(
-        config, num_workers=num_workers, num_cpus_per_worker=0, num_gpus_per_worker=2
+        config, num_workers=num_workers, num_cpus_per_worker=0, num_accs_per_worker=2
     )
     e.start()
     _start_training(e, get_resources)

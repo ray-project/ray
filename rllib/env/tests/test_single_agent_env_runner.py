@@ -54,7 +54,7 @@ class TestSingleAgentEnvRunner(unittest.TestCase):
     def test_distributed_env_runner(self):
         """Tests, whether SingleAgentGymEnvRunner can be distributed."""
 
-        remote_class = ray.remote(num_cpus=1, num_gpus=0)(SingleAgentEnvRunner)
+        remote_class = ray.remote(num_cpus=1, num_accs=0)(SingleAgentEnvRunner)
 
         # Test with both parallelized sub-envs and w/o.
         remote_worker_envs = [False, True]

@@ -837,9 +837,9 @@ class Policy(metaclass=ABCMeta):
 
         Args:
             batch: The SampleBatch to load.
-            buffer_index: The index of the buffer (a MultiGPUTowerStack) to use
+            buffer_index: The index of the buffer (a MultiACCTowerStack) to use
                 on the devices. The number of buffers on each device depends
-                on the value of the `num_multi_gpu_tower_stacks` config key.
+                on the value of the `num_multi_acc_tower_stacks` config key.
 
         Returns:
             The number of tuples loaded per device.
@@ -851,9 +851,9 @@ class Policy(metaclass=ABCMeta):
         """Returns the number of currently loaded samples in the given buffer.
 
         Args:
-            buffer_index: The index of the buffer (a MultiGPUTowerStack)
+            buffer_index: The index of the buffer (a MultiACCTowerStack)
                 to use on the devices. The number of buffers on each device
-                depends on the value of the `num_multi_gpu_tower_stacks` config
+                depends on the value of the `num_multi_acc_tower_stacks` config
                 key.
 
         Returns:
@@ -875,10 +875,10 @@ class Policy(metaclass=ABCMeta):
             offset: Offset into the preloaded data. Used for pre-loading
                 a train-batch once to a device, then iterating over
                 (subsampling through) this batch n times doing minibatch SGD.
-            buffer_index: The index of the buffer (a MultiGPUTowerStack)
+            buffer_index: The index of the buffer (a MultiACCTowerStack)
                 to take the already pre-loaded data from. The number of buffers
                 on each device depends on the value of the
-                `num_multi_gpu_tower_stacks` config key.
+                `num_multi_acc_tower_stacks` config key.
 
         Returns:
             The outputs of extra_ops evaluated over the batch.
@@ -1269,39 +1269,39 @@ class Policy(metaclass=ABCMeta):
         """
         return platform.node()
 
-    def _get_num_gpus_for_policy(self) -> int:
-        """Decide on the number of CPU/GPU nodes this policy should run on.
+    def _get_num_accs_for_policy(self) -> int:
+        """Decide on the number of CPU/ACC nodes this policy should run on.
 
         Return:
             0 if policy should run on CPU. >0 if policy should run on 1 or
-            more GPUs.
+            more ACCs.
         """
         worker_idx = self.config.get("worker_index", 0)
-        fake_gpus = self.config.get("_fake_gpus", False)
+        fake_accs = self.config.get("_fake_accs", False)
 
         if (
             ray._private.worker._mode() == ray._private.worker.LOCAL_MODE
-            and not fake_gpus
+            and not fake_accs
         ):
-            # If in local debugging mode, and _fake_gpus is not on.
-            num_gpus = 0
+            # If in local debugging mode, and _fake_accs is not on.
+            num_accs = 0
         elif worker_idx == 0:
-            # If we are on the new RLModule/Learner stack, `num_gpus` is deprecated.
-            # so use `num_gpus_per_worker` for policy sampling
+            # If we are on the new RLModule/Learner stack, `num_accs` is deprecated.
+            # so use `num_accs_per_worker` for policy sampling
             # we need this .get() syntax here to ensure backwards compatibility.
             if self.config.get("_enable_new_api_stack", False):
-                num_gpus = self.config["num_gpus_per_worker"]
+                num_accs = self.config["num_accs_per_worker"]
             else:
-                # If head node, take num_gpus.
-                num_gpus = self.config["num_gpus"]
+                # If head node, take num_accs.
+                num_accs = self.config["num_accs"]
         else:
-            # If worker node, take num_gpus_per_worker
-            num_gpus = self.config["num_gpus_per_worker"]
+            # If worker node, take num_accs_per_worker
+            num_accs = self.config["num_accs_per_worker"]
 
-        if num_gpus == 0:
+        if num_accs == 0:
             dev = "CPU"
         else:
-            dev = "{} {}".format(num_gpus, "fake-GPUs" if fake_gpus else "GPUs")
+            dev = "{} {}".format(num_accs, "fake-ACCs" if fake_accs else "ACCs")
 
         logger.info(
             "Policy (worker={}) running on {}.".format(
@@ -1309,7 +1309,7 @@ class Policy(metaclass=ABCMeta):
             )
         )
 
-        return num_gpus
+        return num_accs
 
     def _create_exploration(self) -> Exploration:
         """Creates the Policy's Exploration object.

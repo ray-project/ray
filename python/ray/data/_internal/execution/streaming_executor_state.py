@@ -627,8 +627,8 @@ def _try_to_scale_up_cluster(topology: Topology, execution_id: str):
         req = {}
         if resource.cpu:
             req["CPU"] = math.ceil(resource.cpu)
-        if resource.gpu:
-            req["GPU"] = math.ceil(resource.gpu)
+        if resource.acc:
+            req["ACC"] = math.ceil(resource.acc)
         return req
 
     for op, state in topology.items():
@@ -654,7 +654,7 @@ def _execution_allowed(
 ) -> bool:
     """Return whether an operator is allowed to execute given resource usage.
 
-    Operators are throttled globally based on CPU and GPU limits for the stream.
+    Operators are throttled globally based on CPU and ACC limits for the stream.
 
     For an N operator DAG, we only throttle the kth operator (in the source-to-sink
     ordering) on object store utilization if the cumulative object store utilization
@@ -680,22 +680,22 @@ def _execution_allowed(
     # allows operators with non-integral requests to slightly overshoot the limit.
     global_floored = ExecutionResources(
         cpu=math.floor(global_usage.overall.cpu or 0),
-        gpu=math.floor(global_usage.overall.gpu or 0),
+        acc=math.floor(global_usage.overall.acc or 0),
         object_store_memory=global_usage.overall.object_store_memory,
     )
     inc = op.incremental_resource_usage()
-    if inc.cpu and inc.gpu:
+    if inc.cpu and inc.acc:
         raise NotImplementedError(
             "Operator incremental resource usage cannot specify both CPU "
-            "and GPU at the same time, since it may cause deadlock."
+            "and ACC at the same time, since it may cause deadlock."
         )
 
-    # Ignore the scale of CPU and GPU requests, i.e., treating them as either 1 or 0.
+    # Ignore the scale of CPU and ACC requests, i.e., treating them as either 1 or 0.
     # This ensures operators don't get starved due to the shape of their resource
     # requests.
     inc_indicator = ExecutionResources(
         cpu=1 if inc.cpu else 0,
-        gpu=1 if inc.gpu else 0,
+        acc=1 if inc.acc else 0,
         object_store_memory=inc.object_store_memory
         if DataContext.get_current().use_runtime_metrics_scheduling
         else None,
@@ -711,7 +711,7 @@ def _execution_allowed(
     # stalling the execution for memory bottlenecks that occur upstream.
     # See for more context: https://github.com/ray-project/ray/pull/32673
     global_limits_sans_memory = ExecutionResources(
-        cpu=global_limits.cpu, gpu=global_limits.gpu
+        cpu=global_limits.cpu, acc=global_limits.acc
     )
     global_ok_sans_memory = new_usage.satisfies_limit(global_limits_sans_memory)
     downstream_usage = global_usage.downstream_memory_usage[op]

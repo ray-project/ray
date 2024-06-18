@@ -340,7 +340,7 @@ class TestWandbLogger:
         rllib_result = {
             "env": "simple_spread",
             "framework": "torch",
-            "num_gpus": 1,
+            "num_accs": 1,
             "num_workers": 20,
             "num_envs_per_worker": 1,
             "compress_observations": True,

@@ -18,8 +18,8 @@ class TestErrors(unittest.TestCase):
     def tearDownClass(cls) -> None:
         ray.shutdown()
 
-    def test_no_gpus_error(self):
-        """Tests errors related to no-GPU/too-few GPUs/etc.
+    def test_no_accs_error(self):
+        """Tests errors related to no-ACC/too-few ACCs/etc.
 
         This test will only work ok on a CPU-only machine.
         """
@@ -30,7 +30,7 @@ class TestErrors(unittest.TestCase):
             self.assertRaisesRegex(
                 RuntimeError,
                 # (?s): "dot matches all" (also newlines).
-                "(?s)Found 0 GPUs on your machine.+To change the config",
+                "(?s)Found 0 ACCs on your machine.+To change the config",
                 lambda: config.build(),
             )
 

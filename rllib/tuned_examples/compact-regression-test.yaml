@@ -23,7 +23,7 @@ atari-impala:
             [0, 0.0005],
             [20000000, 0.000000000001],
         ]
-        num_gpus: 1
+        num_accs: 1
 atari-ppo-tf:
     env: ALE/Breakout-v5
     run: PPO
@@ -49,7 +49,7 @@ atari-ppo-tf:
         observation_filter: NoFilter
         model:
             vf_share_layers: true
-        num_gpus: 1
+        num_accs: 1
 atari-ppo-torch:
     env: ALE/Breakout-v5
     run: PPO
@@ -76,7 +76,7 @@ atari-ppo-torch:
         observation_filter: NoFilter
         model:
             vf_share_layers: true
-        num_gpus: 1
+        num_accs: 1
 apex:
     env: ALE/Breakout-v5
     run: APEX
@@ -101,7 +101,7 @@ apex:
           type: MultiAgentPrioritizedReplayBuffer
           prioritized_replay_alpha: 0.5
           capacity: 1000000
-        num_gpus: 1
+        num_accs: 1
         num_workers: 8
         num_envs_per_worker: 8
         rollout_fragment_length: 20
@@ -121,7 +121,7 @@ atari-a2c:
         clip_rewards: True
         num_workers: 5
         num_envs_per_worker: 5
-        num_gpus: 1
+        num_accs: 1
         lr_schedule: [
             [0, 0.0007],
             [20000000, 0.000000000001],
@@ -153,5 +153,5 @@ atari-basic-dqn:
         exploration_config:
           epsilon_timesteps: 200000
           final_epsilon: 0.01
-        num_gpus: 0.2
+        num_accs: 0.2
         min_sample_timesteps_per_iteration: 10000

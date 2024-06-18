@@ -27,7 +27,7 @@ class TestSupportedSpacesIMPALA(unittest.TestCase):
             "IMPALA",
             (
                 ImpalaConfig()
-                .resources(num_gpus=0)
+                .resources(num_accs=0)
                 .training(model={"fcnet_hiddens": [10]})
             ),
         )
@@ -45,7 +45,7 @@ class TestSupportedSpacesAPPO(unittest.TestCase):
     def test_appo(self):
         config = (
             APPOConfig()
-            .resources(num_gpus=0)
+            .resources(num_accs=0)
             .training(vtrace=False, model={"fcnet_hiddens": [10]})
         )
         config.training(vtrace=True)
@@ -87,16 +87,16 @@ class TestSupportedSpacesPPO(unittest.TestCase):
         check_supported_spaces("PPO", config, check_bounds=True)
 
 
-class TestSupportedSpacesPPONoPreprocessorGPU(unittest.TestCase):
+class TestSupportedSpacesPPONoPreprocessorACC(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        ray.init(num_gpus=1)
+        ray.init(num_accs=1)
 
     @classmethod
     def tearDownClass(cls) -> None:
         ray.shutdown()
 
-    def test_ppo_no_preprocessors_gpu(self):
+    def test_ppo_no_preprocessors_acc(self):
         # Same test as test_ppo, but also test if we are able to move models and tensors
         # on the same device when not using preprocessors.
         # (Artur) This covers a superposition of these edge cases that can lead to
@@ -113,7 +113,7 @@ class TestSupportedSpacesPPONoPreprocessorGPU(unittest.TestCase):
                 },
             )
             .experimental(_disable_preprocessor_api=True)
-            .resources(num_gpus=1)
+            .resources(num_accs=1)
         )
 
         # (Artur): This test only works under the old ModelV2 API because we
@@ -126,7 +126,7 @@ class TestSupportedSpacesPPONoPreprocessorGPU(unittest.TestCase):
             config,
             check_bounds=True,
             frameworks=["torch", "tf"],
-            use_gpu=True,
+            use_acc=True,
         )
 
 

@@ -934,8 +934,8 @@ class Worker:
             assigned_ids = {str(original_ids[i]) for i in assigned_ids}
             # Give all accelerator ids in local_mode.
             if self.mode == LOCAL_MODE:
-                if resource_name == ray_constants.GPU:
-                    max_accelerators = self.node.get_resource_spec().num_gpus
+                if resource_name == ray_constants.ACC:
+                    max_accelerators = self.node.get_resource_spec().num_accs
                 else:
                     max_accelerators = self.node.get_resource_spec().resources.get(
                         resource_name, None
@@ -947,23 +947,23 @@ class Worker:
 
 @PublicAPI
 @client_mode_hook
-def get_gpu_ids():
-    """Get the IDs of the GPUs that are available to the worker.
+def get_acc_ids():
+    """Get the IDs of the ACCs that are available to the worker.
 
     If the CUDA_VISIBLE_DEVICES environment variable was set when the worker
     started up, then the IDs returned by this method will be a subset of the
     IDs in CUDA_VISIBLE_DEVICES. If not, the IDs will fall in the range
-    [0, NUM_GPUS - 1], where NUM_GPUS is the number of GPUs that the node has.
+    [0, NUM_ACCS - 1], where NUM_ACCS is the number of ACCs that the node has.
 
     Returns:
-        A list of GPU IDs.
+        A list of ACC IDs.
     """
     worker = global_worker
     worker.check_connected()
     return [
         int(i)
         for i in worker.get_accelerator_ids_for_accelerator_resource(
-            ray_constants.GPU, f"^{ray_constants.GPU}_group_[0-9A-Za-z]+$"
+            ray_constants.ACC, f"^{ray_constants.ACC}_group_[0-9A-Za-z]+$"
         )
     ]
 
@@ -1191,7 +1191,7 @@ def init(
     address: Optional[str] = None,
     *,
     num_cpus: Optional[int] = None,
-    num_gpus: Optional[int] = None,
+    num_accs: Optional[int] = None,
     resources: Optional[Dict[str, float]] = None,
     labels: Optional[Dict[str, str]] = None,
     object_store_memory: Optional[int] = None,
@@ -1272,8 +1272,8 @@ def init(
             instance, even if there is already an existing local Ray instance.
         num_cpus: Number of CPUs the user wishes to assign to each
             raylet. By default, this is set based on virtual cores.
-        num_gpus: Number of GPUs the user wishes to assign to each
-            raylet. By default, this is set based on detected GPUs.
+        num_accs: Number of ACCs the user wishes to assign to each
+            raylet. By default, this is set based on detected ACCs.
         resources: A dictionary mapping the names of custom resources to the
             quantities for them available.
         labels: [Experimental] The key-value labels of the node.
@@ -1588,7 +1588,7 @@ def init(
             driver_mode=driver_mode,
             redirect_output=None,
             num_cpus=num_cpus,
-            num_gpus=num_gpus,
+            num_accs=num_accs,
             resources=resources,
             labels=labels,
             num_redis_shards=None,
@@ -1623,10 +1623,10 @@ def init(
         )
     else:
         # In this case, we are connecting to an existing cluster.
-        if num_cpus is not None or num_gpus is not None:
+        if num_cpus is not None or num_accs is not None:
             raise ValueError(
                 "When connecting to an existing cluster, num_cpus "
-                "and num_gpus must not be provided."
+                "and num_accs must not be provided."
             )
         if resources is not None:
             raise ValueError(
@@ -3184,7 +3184,7 @@ def remote(
     *,
     num_returns: Union[int, float] = Undefined,
     num_cpus: Union[int, float] = Undefined,
-    num_gpus: Union[int, float] = Undefined,
+    num_accs: Union[int, float] = Undefined,
     resources: Dict[str, float] = Undefined,
     accelerator_type: str = Undefined,
     memory: Union[int, float] = Undefined,
@@ -3264,7 +3264,7 @@ def remote(
 
     .. testcode::
 
-        @ray.remote(num_gpus=1, max_calls=1, num_returns=2)
+        @ray.remote(num_accs=1, max_calls=1, num_returns=2)
         def f():
             return 1, 2
 
@@ -3282,16 +3282,16 @@ def remote(
 
         ray.shutdown()
 
-        ray.init(num_cpus=5, num_gpus=5)
+        ray.init(num_cpus=5, num_accs=5)
 
     .. testcode::
 
-        @ray.remote(num_gpus=1, max_calls=1, num_returns=2)
+        @ray.remote(num_accs=1, max_calls=1, num_returns=2)
         def f():
             return 1, 2
 
-        f_with_2_gpus = f.options(num_gpus=2)
-        object_refs = f_with_2_gpus.remote()
+        f_with_2_accs = f.options(num_accs=2)
+        object_refs = f_with_2_accs.remote()
         assert ray.get(object_refs) == [1, 2]
 
         @ray.remote(num_cpus=2, resources={"CustomResource": 1})
@@ -3343,10 +3343,10 @@ def remote(
             they are required for both scheduling and running.)
             See :ref:`specifying resource requirements <resource-requirements>`
             for more details.
-        num_gpus: The quantity of GPU resources to reserve
+        num_accs: The quantity of ACC resources to reserve
             for this task or for the lifetime of the actor.
             The default value is 0.
-            See :ref:`Ray GPU support <gpu-support>` for more details.
+            See :ref:`Ray ACC support <acc-support>` for more details.
         resources (Dict[str, float]): The quantity of various
             :ref:`custom resources <custom-resources>`
             to reserve for this task or for the lifetime of the actor.
@@ -3360,11 +3360,11 @@ def remote(
         max_calls: Only for *remote functions*. This specifies the
             maximum number of times that a given worker can execute
             the given remote function before it must exit
-            (this can be used to address :ref:`memory leaks <gpu-leak>` in third-party
+            (this can be used to address :ref:`memory leaks <acc-leak>` in third-party
             libraries or to reclaim resources that cannot easily be
-            released, e.g., GPU memory that was acquired by TensorFlow).
-            By default this is infinite for CPU tasks and 1 for GPU tasks
-            (to force GPU tasks to release resources after finishing).
+            released, e.g., ACC memory that was acquired by TensorFlow).
+            By default this is infinite for CPU tasks and 1 for ACC tasks
+            (to force ACC tasks to release resources after finishing).
         max_restarts: Only for *actors*. This specifies the maximum
             number of times that the actor should be restarted when it dies
             unexpectedly. The minimum valid value is 0 (default),

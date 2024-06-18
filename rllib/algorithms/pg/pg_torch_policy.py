@@ -82,7 +82,7 @@ class PGTorchPolicy(LearningRateSchedule, TorchPolicyV2):
         policy_loss = -torch.mean(log_probs * train_batch[Postprocessing.ADVANTAGES])
 
         # Store values for stats function in model (tower), such that for
-        # multi-GPU, we do not override them during the parallel loss phase.
+        # multi-ACC, we do not override them during the parallel loss phase.
         model.tower_stats["policy_loss"] = policy_loss
 
         return policy_loss

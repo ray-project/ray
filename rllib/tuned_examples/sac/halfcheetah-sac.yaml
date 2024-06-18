@@ -28,7 +28,7 @@ halfcheetah_sac:
           critic_learning_rate: 0.0003
           entropy_learning_rate: 0.0003
         num_workers: 0
-        num_gpus: 0
+        num_accs: 0
         clip_actions: false
         normalize_actions: true
         evaluation_interval: 1

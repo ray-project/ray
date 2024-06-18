@@ -174,10 +174,10 @@ def clip_gradients(
 
 
 @PublicAPI
-def concat_multi_gpu_td_errors(
+def concat_multi_acc_td_errors(
     policy: Union["TorchPolicy", "TorchPolicyV2"]
 ) -> Dict[str, TensorType]:
-    """Concatenates multi-GPU (per-tower) TD error tensors given TorchPolicy.
+    """Concatenates multi-ACC (per-tower) TD error tensors given TorchPolicy.
 
     TD-errors are extracted from the TorchPolicy via its tower_stats property.
 
@@ -191,7 +191,7 @@ def concat_multi_gpu_td_errors(
     td_error = torch.cat(
         [
             t.tower_stats.get("td_error", torch.tensor([0.0])).to(policy.device)
-            for t in policy.model_gpu_towers
+            for t in policy.model_acc_towers
         ],
         dim=0,
     )
@@ -432,42 +432,42 @@ def flatten_inputs_to_1d_tensor(
 def get_device(config):
     """Returns a torch device edepending on a config and current worker index."""
 
-    # Figure out the number of GPUs to use on the local side (index=0) or on
+    # Figure out the number of ACCs to use on the local side (index=0) or on
     # the remote workers (index > 0).
     worker_idx = config.get("worker_index", 0)
     if (
-        not config["_fake_gpus"]
+        not config["_fake_accs"]
         and ray._private.worker._mode() == ray._private.worker.LOCAL_MODE
     ):
-        num_gpus = 0
+        num_accs = 0
     elif worker_idx == 0:
-        num_gpus = config["num_gpus"]
+        num_accs = config["num_accs"]
     else:
-        num_gpus = config["num_gpus_per_worker"]
-    # All GPU IDs, if any.
-    gpu_ids = list(range(torch.cuda.device_count()))
+        num_accs = config["num_accs_per_worker"]
+    # All ACC IDs, if any.
+    acc_ids = list(range(torch.cuda.device_count()))
 
     # Place on one or more CPU(s) when either:
-    # - Fake GPU mode.
-    # - num_gpus=0 (either set by user or we are in local_mode=True).
-    # - No GPUs available.
-    if config["_fake_gpus"] or num_gpus == 0 or not gpu_ids:
+    # - Fake ACC mode.
+    # - num_accs=0 (either set by user or we are in local_mode=True).
+    # - No ACCs available.
+    if config["_fake_accs"] or num_accs == 0 or not acc_ids:
         return torch.device("cpu")
-    # Place on one or more actual GPU(s), when:
-    # - num_gpus > 0 (set by user) AND
+    # Place on one or more actual ACC(s), when:
+    # - num_accs > 0 (set by user) AND
     # - local_mode=False AND
-    # - actual GPUs available AND
-    # - non-fake GPU mode.
+    # - actual ACCs available AND
+    # - non-fake ACC mode.
     else:
         # We are a remote worker (WORKER_MODE=1):
-        # GPUs should be assigned to us by ray.
+        # ACCs should be assigned to us by ray.
         if ray._private.worker._mode() == ray._private.worker.WORKER_MODE:
-            gpu_ids = ray.get_gpu_ids()
+            acc_ids = ray.get_acc_ids()
 
-        if len(gpu_ids) < num_gpus:
+        if len(acc_ids) < num_accs:
             raise ValueError(
-                "TorchPolicy was not able to find enough GPU IDs! Found "
-                f"{gpu_ids}, but num_gpus={num_gpus}."
+                "TorchPolicy was not able to find enough ACC IDs! Found "
+                f"{acc_ids}, but num_accs={num_accs}."
             )
         return torch.device("cuda")
 

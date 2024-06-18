@@ -108,14 +108,14 @@ class ScalingConfig:
             Each worker will reserve 1 CPU by default. The number of CPUs
             reserved by each worker can be overridden with the
             ``resources_per_worker`` argument.
-        use_gpu: If True, training will be done on GPUs (1 per worker).
-            Defaults to False. The number of GPUs reserved by each
+        use_acc: If True, training will be done on ACCs (1 per worker).
+            Defaults to False. The number of ACCs reserved by each
             worker can be overridden with the ``resources_per_worker``
             argument.
         resources_per_worker: If specified, the resources
             defined in this Dict is reserved for each worker.
-            Define the ``"CPU"`` and ``"GPU"`` keys (case-sensitive) to
-            override the number of CPU or GPUs used by each worker.
+            Define the ``"CPU"`` and ``"ACC"`` keys (case-sensitive) to
+            override the number of CPU or ACCs used by each worker.
         placement_strategy: The placement strategy to use for the
             placement group of the Ray actors. See :ref:`Placement Group
             Strategies <pgroup-strategy>` for the possible options.
@@ -128,8 +128,8 @@ class ScalingConfig:
             scaling_config = ScalingConfig(
                 # Number of distributed workers.
                 num_workers=2,
-                # Turn on/off GPU.
-                use_gpu=True,
+                # Turn on/off ACC.
+                use_acc=True,
                 # Specify resources used for trainer.
                 trainer_resources={"CPU": 1},
                 # Try to schedule workers on different nodes.
@@ -142,24 +142,24 @@ class ScalingConfig:
     # ray.train.gbdt_trainer._convert_scaling_config_to_ray_params
     trainer_resources: Optional[Union[Dict, SampleRange]] = None
     num_workers: Optional[Union[int, SampleRange]] = None
-    use_gpu: Union[bool, SampleRange] = False
+    use_acc: Union[bool, SampleRange] = False
     resources_per_worker: Optional[Union[Dict, SampleRange]] = None
     placement_strategy: Union[str, SampleRange] = "PACK"
 
     def __post_init__(self):
         if self.resources_per_worker:
-            if not self.use_gpu and self.num_gpus_per_worker > 0:
+            if not self.use_acc and self.num_accs_per_worker > 0:
                 raise ValueError(
-                    "`use_gpu` is False but `GPU` was found in "
-                    "`resources_per_worker`. Either set `use_gpu` to True or "
-                    "remove `GPU` from `resources_per_worker."
+                    "`use_acc` is False but `ACC` was found in "
+                    "`resources_per_worker`. Either set `use_acc` to True or "
+                    "remove `ACC` from `resources_per_worker."
                 )
 
-            if self.use_gpu and self.num_gpus_per_worker == 0:
+            if self.use_acc and self.num_accs_per_worker == 0:
                 raise ValueError(
-                    "`use_gpu` is True but `GPU` is set to 0 in "
-                    "`resources_per_worker`. Either set `use_gpu` to False or "
-                    "request a positive number of `GPU` in "
+                    "`use_acc` is True but `ACC` is set to 0 in "
+                    "`resources_per_worker`. Either set `use_acc` to False or "
+                    "request a positive number of `ACC` in "
                     "`resources_per_worker."
                 )
 
@@ -177,17 +177,17 @@ class ScalingConfig:
     @property
     def _resources_per_worker_not_none(self):
         if self.resources_per_worker is None:
-            if self.use_gpu:
+            if self.use_acc:
                 # Note that we don't request any CPUs, which avoids possible
                 # scheduling contention. Generally nodes have many more CPUs than
-                # GPUs, so not requesting a CPU does not lead to oversubscription.
-                return {"GPU": 1}
+                # ACCs, so not requesting a CPU does not lead to oversubscription.
+                return {"ACC": 1}
             else:
                 return {"CPU": 1}
         resources_per_worker = {
             k: v for k, v in self.resources_per_worker.items() if v != 0
         }
-        resources_per_worker.setdefault("GPU", int(self.use_gpu))
+        resources_per_worker.setdefault("ACC", int(self.use_acc))
         return resources_per_worker
 
     @property
@@ -229,17 +229,17 @@ class ScalingConfig:
         return self._resources_per_worker_not_none.get("CPU", 0)
 
     @property
-    def num_gpus_per_worker(self):
-        """The number of GPUs to set per worker."""
-        return self._resources_per_worker_not_none.get("GPU", 0)
+    def num_accs_per_worker(self):
+        """The number of ACCs to set per worker."""
+        return self._resources_per_worker_not_none.get("ACC", 0)
 
     @property
     def additional_resources_per_worker(self):
-        """Resources per worker, not including CPU or GPU resources."""
+        """Resources per worker, not including CPU or ACC resources."""
         return {
             k: v
             for k, v in self._resources_per_worker_not_none.items()
-            if k not in ["CPU", "GPU"]
+            if k not in ["CPU", "ACC"]
         }
 
     def as_placement_group_factory(self) -> "PlacementGroupFactory":
@@ -250,7 +250,7 @@ class ScalingConfig:
         trainer_bundle = [trainer_resources]
         worker_resources = {
             "CPU": self.num_cpus_per_worker,
-            "GPU": self.num_gpus_per_worker,
+            "ACC": self.num_accs_per_worker,
         }
         worker_resources_extra = (
             {} if self.resources_per_worker is None else self.resources_per_worker
@@ -274,7 +274,7 @@ class ScalingConfig:
             trainer_resources = pgf.bundles[0]
             worker_bundles = pgf.bundles[1:]
 
-        use_gpu = False
+        use_acc = False
         placement_strategy = pgf.strategy
         resources_per_worker = None
         num_workers = None
@@ -286,14 +286,14 @@ class ScalingConfig:
                     "All worker bundles (any other than the first one) "
                     "must be equal to each other."
                 )
-            use_gpu = bool(first_bundle.get("GPU"))
+            use_acc = bool(first_bundle.get("ACC"))
             num_workers = len(worker_bundles)
             resources_per_worker = first_bundle
 
         return ScalingConfig(
             trainer_resources=trainer_resources,
             num_workers=num_workers,
-            use_gpu=use_gpu,
+            use_acc=use_acc,
             resources_per_worker=resources_per_worker,
             placement_strategy=placement_strategy,
         )

@@ -425,8 +425,8 @@ def _canonicalize(remote_args: dict) -> dict:
     remote_args = remote_args.copy()
     if "num_cpus" not in remote_args or remote_args["num_cpus"] is None:
         remote_args["num_cpus"] = 1
-    if "num_gpus" not in remote_args or remote_args["num_gpus"] is None:
-        remote_args["num_gpus"] = 0
+    if "num_accs" not in remote_args or remote_args["num_accs"] is None:
+        remote_args["num_accs"] = 0
     resources = remote_args.get("resources", {})
     for k, v in list(resources.items()):
         if v is None or v == 0.0:

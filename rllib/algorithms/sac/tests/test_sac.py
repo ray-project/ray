@@ -277,7 +277,7 @@ class TestSAC(unittest.TestCase):
                 assert fw == "torch"  # Then transfer that to torch Model.
                 model_dict = self._translate_weights_to_torch(weights_dict, map_)
                 # Have to add this here (not a parameter in tf, but must be
-                # one in torch, so it gets properly copied to the GPU(s)).
+                # one in torch, so it gets properly copied to the ACC(s)).
                 model_dict["target_entropy"] = policy.model.target_entropy
                 policy.model.load_state_dict(model_dict)
                 policy.target_model.load_state_dict(model_dict)

@@ -4,7 +4,7 @@ import ray
 import ray.util.collective as collective
 
 
-@ray.remote(num_gpus=1)
+@ray.remote(num_accs=1)
 class Worker:
     def __init__(self):
         self.send = cp.ones((4,), dtype=cp.float32)
@@ -15,7 +15,7 @@ class Worker:
 
 
 if __name__ == "__main__":
-    ray.init(num_gpus=2)
+    ray.init(num_accs=2)
 
     num_workers = 2
     workers = []

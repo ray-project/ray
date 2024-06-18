@@ -15,7 +15,7 @@
 #    actions vs continuous actions.
 # -- "crashing_cartpole" and "stateless_cartpole" to distinguish between
 #    simple CartPole and more advanced variants of it.
-# -- "fake_gpus": Tests that run using 2 fake GPUs.
+# -- "fake_accs": Tests that run using 2 fake ACCs.
 # -- "ray_data": Tests that rely on ray_data.
 # -- "learning_tests_with_ray_data": Learning tests that rely on ray_data.
 
@@ -42,17 +42,17 @@
 # Additional tags are:
 # - "team:rllib": Indicating that all tests in this file are the responsibility of
 #   the RLlib Team.
-# - "needs_gpu": Indicating that a test needs to have a GPU in order to run.
-# - "gpu": Indicating that a test may (but doesn't have to) be run in the GPU
-#   pipeline, defined in .buildkite/pipeline.gpu.yml.
-# - "multi_gpu": Indicating that a test will definitely be run in the Large GPU
-#   pipeline, defined in .buildkite/pipeline.gpu.large.yml.
-# - "no_gpu": Indicating that a test should not be run in the GPU pipeline due
+# - "needs_acc": Indicating that a test needs to have a ACC in order to run.
+# - "acc": Indicating that a test may (but doesn't have to) be run in the ACC
+#   pipeline, defined in .buildkite/pipeline.acc.yml.
+# - "multi_acc": Indicating that a test will definitely be run in the Large ACC
+#   pipeline, defined in .buildkite/pipeline.acc.large.yml.
+# - "no_acc": Indicating that a test should not be run in the ACC pipeline due
 #   to certain incompatibilities.
 # - "no_tf_eager_tracing": Exclude this test from tf-eager tracing tests.
 # - "torch_only": Only run this test case with framework=torch.
 
-# Our .buildkite/pipeline.yml and .buildkite/pipeline.gpu.yml files execute all
+# Our .buildkite/pipeline.yml and .buildkite/pipeline.acc.yml files execute all
 # these tests in n different jobs.
 
 load("//bazel:python.bzl", "py_test_module_list")
@@ -203,12 +203,12 @@ py_test(
 )
 
 py_test(
-    name = "learning_tests_cartpole_appo_fake_gpus",
+    name = "learning_tests_cartpole_appo_fake_accs",
     main = "tests/run_regression_tests.py",
-    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "fake_gpus"],
+    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "fake_accs"],
     size = "medium",
     srcs = ["tests/run_regression_tests.py"],
-    data = ["tuned_examples/appo/cartpole-appo-vtrace-fake-gpus.yaml"],
+    data = ["tuned_examples/appo/cartpole-appo-vtrace-fake-accs.yaml"],
     args = ["--dir=tuned_examples/appo"]
 )
 
@@ -259,12 +259,12 @@ py_test(
 )
 
 py_test(
-    name = "learning_tests_cartpole_dqn_fake_gpus",
+    name = "learning_tests_cartpole_dqn_fake_accs",
     main = "tests/run_regression_tests.py",
-    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "fake_gpus"],
+    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "fake_accs"],
     size = "large",
     srcs = ["tests/run_regression_tests.py"],
-    data = ["tuned_examples/dqn/cartpole-dqn-fake-gpus.yaml"],
+    data = ["tuned_examples/dqn/cartpole-dqn-fake-accs.yaml"],
     args = ["--dir=tuned_examples/dqn"]
 )
 
@@ -302,12 +302,12 @@ py_test(
 )
 
 py_test(
-    name = "learning_tests_cartpole_impala_fake_gpus",
+    name = "learning_tests_cartpole_impala_fake_accs",
     main = "tests/run_regression_tests.py",
-    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "fake_gpus"],
+    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "fake_accs"],
     size = "large",
     srcs = ["tests/run_regression_tests.py"],
-    data = ["tuned_examples/impala/cartpole-impala-fake-gpus.yaml"],
+    data = ["tuned_examples/impala/cartpole-impala-fake-accs.yaml"],
     args = ["--dir=tuned_examples/impala"]
 )
 
@@ -386,12 +386,12 @@ py_test(
 )
 
 py_test(
-    name = "learning_tests_cartpole_ppo_fake_gpus",
+    name = "learning_tests_cartpole_ppo_fake_accs",
     main = "tests/run_regression_tests.py",
-    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "fake_gpus"],
+    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "fake_accs"],
     size = "large",
     srcs = ["tests/run_regression_tests.py"],
-    data = ["tuned_examples/ppo/cartpole-ppo-fake-gpus.yaml"],
+    data = ["tuned_examples/ppo/cartpole-ppo-fake-accs.yaml"],
     args = ["--dir=tuned_examples/ppo"]
 )
 
@@ -484,7 +484,7 @@ py_test(
 )
 py_test(
     name = "test_appo_off_policyness",
-    tags = ["team:rllib", "algorithms_dir", "multi_gpu", "exclusive"],
+    tags = ["team:rllib", "algorithms_dir", "multi_acc", "exclusive"],
     size = "large",
     srcs = ["algorithms/appo/tests/test_appo_off_policyness.py"]
 )
@@ -523,7 +523,7 @@ py_test(
 )
 py_test(
     name = "test_repro_dqn",
-    tags = ["team:rllib", "algorithms_dir", "gpu"],
+    tags = ["team:rllib", "algorithms_dir", "acc"],
     size = "large",
     srcs = ["algorithms/dqn/tests/test_repro_dqn.py"]
 )
@@ -616,7 +616,7 @@ py_test(
 )
 py_test(
     name = "test_repro_ppo",
-    tags = ["team:rllib", "algorithms_dir", "gpu"],
+    tags = ["team:rllib", "algorithms_dir", "acc"],
     size = "large",
     srcs = ["algorithms/ppo/tests/test_repro_ppo.py"]
 )
@@ -1027,14 +1027,14 @@ py_test(
     args = ["TestRLModule"],
 )
 
-# TODO(Artur): Comment this back in as soon as we can test with GPU
+# TODO(Artur): Comment this back in as soon as we can test with ACC
 # py_test(
-#    name = "test_torch_rl_module_gpu",
+#    name = "test_torch_rl_module_acc",
 #    main = "core/rl_module/torch/tests/test_torch_rl_module.py",
-#    tags = ["team:rllib", "core", "gpu", "exclusive"],
+#    tags = ["team:rllib", "core", "acc", "exclusive"],
 #    size = "medium",
 #    srcs = ["core/rl_module/torch/tests/test_torch_rl_module.py"],
-#    args = ["TestRLModuleGPU"],
+#    args = ["TestRLModuleACC"],
 # )
 
 py_test(
@@ -1062,7 +1062,7 @@ py_test(
 py_test(
     name = "TestLearnerGroupSyncUpdate",
     main = "core/learner/tests/test_learner_group.py",
-    tags = ["team:rllib", "multi_gpu", "exclusive"],
+    tags = ["team:rllib", "multi_acc", "exclusive"],
     size = "large",
     srcs = ["core/learner/tests/test_learner_group.py"],
     args = ["TestLearnerGroupSyncUpdate"]
@@ -1071,7 +1071,7 @@ py_test(
 py_test(
     name = "TestLearnerGroupCheckpointRestore",
     main = "core/learner/tests/test_learner_group.py",
-    tags = ["team:rllib", "multi_gpu", "exclusive"],
+    tags = ["team:rllib", "multi_acc", "exclusive"],
     size = "large",
     srcs = ["core/learner/tests/test_learner_group.py"],
     args = ["TestLearnerGroupCheckpointRestore"]
@@ -1080,7 +1080,7 @@ py_test(
 py_test(
     name = "TestLearnerGroupAsyncUpdate",
     main = "core/learner/tests/test_learner_group.py",
-    tags = ["team:rllib", "multi_gpu", "exclusive"],
+    tags = ["team:rllib", "multi_acc", "exclusive"],
     size = "large",
     srcs = ["core/learner/tests/test_learner_group.py"],
     args = ["TestLearnerGroupAsyncUpdate"]
@@ -1089,7 +1089,7 @@ py_test(
 py_test(
     name = "TestLearnerGroupSaveLoadState",
     main = "core/learner/tests/test_learner_group.py",
-    tags = ["team:rllib", "multi_gpu", "exclusive"],
+    tags = ["team:rllib", "multi_acc", "exclusive"],
     size = "large",
     srcs = ["core/learner/tests/test_learner_group.py"],
     args = ["TestLearnerGroupSaveLoadState"]
@@ -1308,7 +1308,7 @@ py_test(
 
 py_test(
     name = "policy/tests/test_policy_state_swapping",
-    tags = ["team:rllib", "policy", "gpu"],
+    tags = ["team:rllib", "policy", "acc"],
     size = "medium",
     srcs = ["policy/tests/test_policy_state_swapping.py"]
 )
@@ -1322,7 +1322,7 @@ py_test(
 
 py_test(
     name = "policy/tests/test_sample_batch",
-    tags = ["team:rllib", "policy", "multi_gpu"],
+    tags = ["team:rllib", "policy", "multi_acc"],
     size = "small",
     srcs = ["policy/tests/test_sample_batch.py"]
 )
@@ -1400,7 +1400,7 @@ py_test(
 
 py_test(
     name = "utils/tests/test_torch_utils",
-    tags = ["team:rllib", "utils", "gpu"],
+    tags = ["team:rllib", "utils", "acc"],
     size = "medium",
     srcs = ["utils/tests/test_torch_utils.py"]
 )
@@ -1571,9 +1571,9 @@ py_test(
 
 
 py_test(
-    name = "tests/test_checkpoint_restore_ppo_gpu",
+    name = "tests/test_checkpoint_restore_ppo_acc",
     main = "tests/test_algorithm_checkpoint_restore.py",
-    tags = ["team:rllib", "tests_dir", "gpu"],
+    tags = ["team:rllib", "tests_dir", "acc"],
     size = "large",
     srcs = ["tests/test_algorithm_checkpoint_restore.py"],
     args = ["TestCheckpointRestorePPO"]
@@ -1590,9 +1590,9 @@ py_test(
 
 
 py_test(
-    name = "tests/test_checkpoint_restore_off_policy_gpu",
+    name = "tests/test_checkpoint_restore_off_policy_acc",
     main = "tests/test_algorithm_checkpoint_restore.py",
-    tags = ["team:rllib", "tests_dir", "gpu"],
+    tags = ["team:rllib", "tests_dir", "acc"],
     size = "large",
     srcs = ["tests/test_algorithm_checkpoint_restore.py"],
     args = ["TestCheckpointRestoreOffPolicy"]
@@ -1656,10 +1656,10 @@ py_test(
 )
 
 py_test(
-    name = "tests/test_gpus",
+    name = "tests/test_accs",
     tags = ["team:rllib", "tests_dir"],
     size = "large",
-    srcs = ["tests/test_gpus.py"]
+    srcs = ["tests/test_accs.py"]
 )
 
 py_test(
@@ -1786,12 +1786,12 @@ py_test(
 )
 
 py_test(
-    name = "tests/test_supported_multi_agent_multi_gpu",
+    name = "tests/test_supported_multi_agent_multi_acc",
     main = "tests/test_supported_multi_agent.py",
-    tags = ["team:rllib", "tests_dir", "multi_gpu"],
+    tags = ["team:rllib", "tests_dir", "multi_acc"],
     size = "medium",
     srcs = ["tests/test_supported_multi_agent.py"],
-    args = ["TestSupportedMultiAgentMultiGPU"]
+    args = ["TestSupportedMultiAgentMultiACC"]
 )
 
 
@@ -1850,12 +1850,12 @@ py_test(
 )
 
 py_test(
-     name = "tests/test_supported_spaces_ppo_no_preprocessor_gpu",
+     name = "tests/test_supported_spaces_ppo_no_preprocessor_acc",
      main = "tests/test_supported_spaces.py",
-     tags = ["team:rllib", "gpu", "no_cpu"],
+     tags = ["team:rllib", "acc", "no_cpu"],
      size = "large",
      srcs = ["tests/test_supported_spaces.py"],
-     args = ["TestSupportedSpacesPPONoPreprocessorGPU"]
+     args = ["TestSupportedSpacesPPONoPreprocessorACC"]
  )
 
 py_test(
@@ -2226,28 +2226,28 @@ py_test(
 py_test(
     name = "examples/deterministic_training_tf",
     main = "examples/deterministic_training.py",
-    tags = ["team:rllib", "exclusive", "multi_gpu", "examples"],
+    tags = ["team:rllib", "exclusive", "multi_acc", "examples"],
     size = "medium",
     srcs = ["examples/deterministic_training.py"],
-    args = ["--as-test", "--stop-iters=1", "--framework=tf", "--num-gpus=1", "--num-gpus-per-worker=1"]
+    args = ["--as-test", "--stop-iters=1", "--framework=tf", "--num-accs=1", "--num-accs-per-worker=1"]
 )
 
 py_test(
     name = "examples/deterministic_training_tf2",
     main = "examples/deterministic_training.py",
-    tags = ["team:rllib", "exclusive", "multi_gpu", "examples"],
+    tags = ["team:rllib", "exclusive", "multi_acc", "examples"],
     size = "medium",
     srcs = ["examples/deterministic_training.py"],
-    args = ["--as-test", "--stop-iters=1", "--framework=tf2", "--num-gpus=1", "--num-gpus-per-worker=1"]
+    args = ["--as-test", "--stop-iters=1", "--framework=tf2", "--num-accs=1", "--num-accs-per-worker=1"]
 )
 
 py_test(
     name = "examples/deterministic_training_torch",
     main = "examples/deterministic_training.py",
-    tags = ["team:rllib", "exclusive", "multi_gpu", "examples"],
+    tags = ["team:rllib", "exclusive", "multi_acc", "examples"],
     size = "medium",
     srcs = ["examples/deterministic_training.py"],
-    args = ["--as-test", "--stop-iters=1", "--framework=torch", "--num-gpus=1", "--num-gpus-per-worker=1"]
+    args = ["--as-test", "--stop-iters=1", "--framework=torch", "--num-accs=1", "--num-accs-per-worker=1"]
 )
 
 py_test(
@@ -2293,12 +2293,12 @@ py_test(
 )
 
 py_test(
-    name = "examples/fractional_gpus",
-    main = "examples/fractional_gpus.py",
+    name = "examples/fractional_accs",
+    main = "examples/fractional_accs.py",
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
-    srcs = ["examples/fractional_gpus.py"],
-    args = ["--as-test", "--stop-reward=40.0", "--num-gpus=0", "--num-workers=0"]
+    srcs = ["examples/fractional_accs.py"],
+    args = ["--as-test", "--stop-reward=40.0", "--num-accs=0", "--num-workers=0"]
 )
 
 py_test(
@@ -2433,7 +2433,7 @@ py_test(
     tags = ["team:rllib", "examples"],
     size = "medium",
     srcs = ["examples/multi_agent_independent_learning.py"],
-    args = ["--num-gpus=0", "--as-test"]
+    args = ["--num-accs=0", "--as-test"]
 )
 
 py_test(
@@ -2752,7 +2752,7 @@ py_test(
 # examples/learner directory
 #
 #
-# Description: These are RLlib tests for the new multi-gpu enabled
+# Description: These are RLlib tests for the new multi-acc enabled
 # training stack via Learners.
 #
 # NOTE: Add tests alphabetically to this list.
@@ -2764,26 +2764,26 @@ py_test(
     tags = ["team:rllib", "examples"],
     size = "medium",
     srcs = ["examples/learner/multi_agent_cartpole_ppo.py"],
-    args = ["--as-test", "--framework=torch", "--num-gpus=0"]
+    args = ["--as-test", "--framework=torch", "--num-accs=0"]
 )
 
 py_test(
-    name = "examples/learner/multi_agent_cartpole_ppo_torch_gpu",
+    name = "examples/learner/multi_agent_cartpole_ppo_torch_acc",
     main = "examples/learner/multi_agent_cartpole_ppo.py",
-    tags = ["team:rllib", "exclusive", "examples", "gpu"],
+    tags = ["team:rllib", "exclusive", "examples", "acc"],
     size = "medium",
     srcs = ["examples/learner/multi_agent_cartpole_ppo.py"],
-    args = ["--as-test", "--framework=torch", "--num-gpus=1"]
+    args = ["--as-test", "--framework=torch", "--num-accs=1"]
 )
 
 
 py_test(
-    name = "examples/learner/multi_agent_cartpole_ppo_torch_multi_gpu",
+    name = "examples/learner/multi_agent_cartpole_ppo_torch_multi_acc",
     main = "examples/learner/multi_agent_cartpole_ppo.py",
-    tags = ["team:rllib", "exclusive", "examples", "multi_gpu"],
+    tags = ["team:rllib", "exclusive", "examples", "multi_acc"],
     size = "medium",
     srcs = ["examples/learner/multi_agent_cartpole_ppo.py"],
-    args = ["--as-test", "--framework=torch", "--num-gpus=2"]
+    args = ["--as-test", "--framework=torch", "--num-accs=2"]
 )
 
 py_test(
@@ -2805,21 +2805,21 @@ py_test(
 )
 
 py_test(
-    name = "examples/learner/ppo_tuner_local_gpu_torch",
+    name = "examples/learner/ppo_tuner_local_acc_torch",
     main = "examples/learner/ppo_tuner.py",
-    tags = ["team:rllib", "examples", "gpu"],
+    tags = ["team:rllib", "examples", "acc"],
     size = "medium",
     srcs = ["examples/learner/ppo_tuner.py"],
-    args = ["--framework=torch", "--config=local-gpu"]
+    args = ["--framework=torch", "--config=local-acc"]
 )
 
 py_test(
-    name = "examples/learner/ppo_tuner_local_gpu_tf2",
+    name = "examples/learner/ppo_tuner_local_acc_tf2",
     main = "examples/learner/ppo_tuner.py",
-    tags = ["team:rllib", "examples", "gpu", "exclusive"],
+    tags = ["team:rllib", "examples", "acc", "exclusive"],
     size = "medium",
     srcs = ["examples/learner/ppo_tuner.py"],
-    args = ["--framework=tf2", "--config=local-gpu"]
+    args = ["--framework=tf2", "--config=local-acc"]
 )
 
 py_test(
@@ -2841,39 +2841,39 @@ py_test(
 )
 
 py_test(
-    name = "examples/learner/ppo_tuner_remote_gpu_torch",
+    name = "examples/learner/ppo_tuner_remote_acc_torch",
     main = "examples/learner/ppo_tuner.py",
-    tags = ["team:rllib", "examples", "gpu", "exclusive"],
+    tags = ["team:rllib", "examples", "acc", "exclusive"],
     size = "medium",
     srcs = ["examples/learner/ppo_tuner.py"],
-    args = ["--framework=torch", "--config=remote-gpu"]
+    args = ["--framework=torch", "--config=remote-acc"]
 )
 
 py_test(
-    name = "examples/learner/ppo_tuner_remote_gpu_tf2",
+    name = "examples/learner/ppo_tuner_remote_acc_tf2",
     main = "examples/learner/ppo_tuner.py",
-    tags = ["team:rllib", "examples", "gpu", "exclusive"],
+    tags = ["team:rllib", "examples", "acc", "exclusive"],
     size = "medium",
     srcs = ["examples/learner/ppo_tuner.py"],
-    args = ["--framework=tf2", "--config=remote-gpu"]
+    args = ["--framework=tf2", "--config=remote-acc"]
 )
 
 py_test(
-    name = "examples/learner/ppo_tuner_multi_gpu_torch",
+    name = "examples/learner/ppo_tuner_multi_acc_torch",
     main = "examples/learner/ppo_tuner.py",
-    tags = ["team:rllib", "examples", "multi_gpu", "exclusive"],
+    tags = ["team:rllib", "examples", "multi_acc", "exclusive"],
     size = "medium",
     srcs = ["examples/learner/ppo_tuner.py"],
-    args = ["--framework=torch", "--config=multi-gpu-ddp"]
+    args = ["--framework=torch", "--config=multi-acc-ddp"]
 )
 
 py_test(
-    name = "examples/learner/ppo_tuner_multi_gpu_tf2",
+    name = "examples/learner/ppo_tuner_multi_acc_tf2",
     main = "examples/learner/ppo_tuner.py",
-    tags = ["team:rllib", "examples", "multi_gpu", "exclusive"],
+    tags = ["team:rllib", "examples", "multi_acc", "exclusive"],
     size = "medium",
     srcs = ["examples/learner/ppo_tuner.py"],
-    args = ["--framework=tf2", "--config=multi-gpu-ddp"]
+    args = ["--framework=tf2", "--config=multi-acc-ddp"]
 )
 
 py_test(

@@ -266,7 +266,7 @@ def test_load_report(shutdown_only, max_shapes):
 
 def test_placement_group_load_report(ray_start_cluster):
     cluster = ray_start_cluster
-    # Add a head node that doesn't have gpu resource.
+    # Add a head node that doesn't have acc resource.
     cluster.add_node(num_cpus=4)
 
     global_state_accessor = make_global_state_accessor(

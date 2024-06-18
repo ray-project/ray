@@ -37,8 +37,8 @@ class _MyCallbacks(DefaultCallbacks):
 
 
 @pytest.fixture(scope="function")
-def ray_start_4_cpus_2_gpus_extra():
-    address_info = ray.init(num_cpus=4, num_gpus=2, resources={"a": 2})
+def ray_start_4_cpus_2_accs_extra():
+    address_info = ray.init(num_cpus=4, num_accs=2, resources={"a": 2})
     yield address_info
     ray.shutdown()
 
@@ -47,7 +47,7 @@ def ray_start_4_cpus_2_gpus_extra():
     "resource_manager_cls", [FixedResourceManager, PlacementGroupResourceManager]
 )
 def test_controller_restore_dataset_references(
-    ray_start_4_cpus_2_gpus_extra, resource_manager_cls
+    ray_start_4_cpus_2_accs_extra, resource_manager_cls
 ):
     """Check that references to Ray Datasets are replaced on resume.
 
@@ -123,7 +123,7 @@ def test_controller_restore_dataset_references(
     "resource_manager_cls", [FixedResourceManager, PlacementGroupResourceManager]
 )
 def test_controller_restore_no_error_resume(
-    ray_start_4_cpus_2_gpus_extra, resource_manager_cls
+    ray_start_4_cpus_2_accs_extra, resource_manager_cls
 ):
     """Check that `resume=True` does not resume errored trials.
 
@@ -136,7 +136,7 @@ def test_controller_restore_no_error_resume(
 
     kwargs = {
         "stopping_criterion": {"training_iteration": 4},
-        "placement_group_factory": PlacementGroupFactory([{"CPU": 1, "GPU": 0}]),
+        "placement_group_factory": PlacementGroupFactory([{"CPU": 1, "ACC": 0}]),
         "storage": STORAGE,
     }
     trials = [
@@ -169,7 +169,7 @@ def test_controller_restore_no_error_resume(
     "resource_manager_cls", [FixedResourceManager, PlacementGroupResourceManager]
 )
 def test_controller_restore_error_only_resume(
-    ray_start_4_cpus_2_gpus_extra, resource_manager_cls
+    ray_start_4_cpus_2_accs_extra, resource_manager_cls
 ):
     """Check that `resume=ERRORED_ONLY` only resumes errored trials.
 
@@ -181,7 +181,7 @@ def test_controller_restore_error_only_resume(
     )
     kwargs = {
         "stopping_criterion": {"training_iteration": 4},
-        "placement_group_factory": PlacementGroupFactory([{"CPU": 1, "GPU": 0}]),
+        "placement_group_factory": PlacementGroupFactory([{"CPU": 1, "ACC": 0}]),
         "storage": STORAGE,
     }
     trials = [
@@ -225,7 +225,7 @@ def test_controller_restore_error_only_resume(
     "resource_manager_cls", [FixedResourceManager, PlacementGroupResourceManager]
 )
 def test_controller_restore_trial_save_restore(
-    ray_start_4_cpus_2_gpus_extra, resource_manager_cls
+    ray_start_4_cpus_2_accs_extra, resource_manager_cls
 ):
     """Creates different trials to test runner.checkpoint/restore.
 
@@ -303,7 +303,7 @@ def test_controller_restore_trial_save_restore(
     "resource_manager_cls", [FixedResourceManager, PlacementGroupResourceManager]
 )
 def test_controller_restore_trial_no_checkpoint_save(
-    ray_start_4_cpus_2_gpus_extra, resource_manager_cls
+    ray_start_4_cpus_2_accs_extra, resource_manager_cls
 ):
     """Check that non-checkpointing trials *are* saved.
 
@@ -374,7 +374,7 @@ def test_controller_restore_trial_no_checkpoint_save(
     "resource_manager_cls", [FixedResourceManager, PlacementGroupResourceManager]
 )
 def test_controller_restore_rllib_callbacks(
-    ray_start_4_cpus_2_gpus_extra, resource_manager_cls
+    ray_start_4_cpus_2_accs_extra, resource_manager_cls
 ):
     """Check that rllib callbacks are serialized and restored correctly.
 
@@ -409,7 +409,7 @@ def test_controller_restore_rllib_callbacks(
     "resource_manager_cls", [FixedResourceManager, PlacementGroupResourceManager]
 )
 def test_controller_restore_checkpoint_overwrite(
-    ray_start_4_cpus_2_gpus_extra, resource_manager_cls
+    ray_start_4_cpus_2_accs_extra, resource_manager_cls
 ):
     """Check that experiment state checkpoint are not overwritten on continue.
 
@@ -466,7 +466,7 @@ def test_controller_restore_checkpoint_overwrite(
     "resource_manager_cls", [FixedResourceManager, PlacementGroupResourceManager]
 )
 def test_controller_restore_with_dataset(
-    ray_start_4_cpus_2_gpus_extra, resource_manager_cls
+    ray_start_4_cpus_2_accs_extra, resource_manager_cls
 ):
     """Test trial runner checkpointing where trials contain Datasets.
     When possible, a dataset plan should be saved (for read_* APIs).

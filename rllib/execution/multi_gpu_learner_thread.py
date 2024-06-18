@@ -19,13 +19,13 @@ logger = logging.getLogger(__name__)
 
 # TODO (sven): Deprecate once all algos are only available via the new API stack
 #  (learner API).
-class MultiGPULearnerThread(LearnerThread):
-    """Learner that can use multiple GPUs and parallel loading.
+class MultiACCLearnerThread(LearnerThread):
+    """Learner that can use multiple ACCs and parallel loading.
 
     This class is used for async sampling algorithms.
 
-    Example workflow: 2 GPUs and 3 multi-GPU tower stacks.
-    -> On each GPU, there are 3 slots for batches, indexed 0, 1, and 2.
+    Example workflow: 2 ACCs and 3 multi-ACC tower stacks.
+    -> On each ACC, there are 3 slots for batches, indexed 0, 1, and 2.
 
     Workers collect data from env and push it into inqueue:
     Workers -> (data) -> self.inqueue
@@ -37,9 +37,9 @@ class MultiGPULearnerThread(LearnerThread):
 
     `ready_tower_stacks` is managed by `ready_tower_stacks_buffer` for
     possible minibatch-SGD iterations per loaded batch (this avoids a reload
-    from CPU to GPU for each SGD iter).
+    from CPU to ACC for each SGD iter).
 
-    n _MultiGPULoaderThreads: self.inqueue -get()->
+    n _MultiACCLoaderThreads: self.inqueue -get()->
     policy.load_batch_into_buffer() -> ready_stacks = [0 ...]
 
     This thread: self.ready_tower_stacks_buffer -get()->
@@ -50,43 +50,43 @@ class MultiGPULearnerThread(LearnerThread):
     def __init__(
         self,
         local_worker: RolloutWorker,
-        num_gpus: int = 1,
+        num_accs: int = 1,
         lr=None,  # deprecated.
         train_batch_size: int = 500,
-        num_multi_gpu_tower_stacks: int = 1,
+        num_multi_acc_tower_stacks: int = 1,
         num_sgd_iter: int = 1,
         learner_queue_size: int = 16,
         learner_queue_timeout: int = 300,
         num_data_load_threads: int = 16,
-        _fake_gpus: bool = False,
+        _fake_accs: bool = False,
         # Deprecated arg, use
         minibatch_buffer_size=None,
     ):
-        """Initializes a MultiGPULearnerThread instance.
+        """Initializes a MultiACCLearnerThread instance.
 
         Args:
             local_worker: Local RolloutWorker holding
                 policies this thread will call `load_batch_into_buffer` and
                 `learn_on_loaded_batch` on.
-            num_gpus: Number of GPUs to use for data-parallel SGD.
+            num_accs: Number of ACCs to use for data-parallel SGD.
             train_batch_size: Size of batches (minibatches if
                 `num_sgd_iter` > 1) to learn on.
-            num_multi_gpu_tower_stacks: Number of buffers to parallelly
+            num_multi_acc_tower_stacks: Number of buffers to parallelly
                 load data into on one device. Each buffer is of size of
-                `train_batch_size` and hence increases GPU memory usage
+                `train_batch_size` and hence increases ACC memory usage
                 accordingly.
             num_sgd_iter: Number of passes to learn on per train batch
                 (minibatch if `num_sgd_iter` > 1).
             learner_queue_size: Max size of queue of inbound
                 train batches to this thread.
             num_data_load_threads: Number of threads to use to load
-                data into GPU memory in parallel.
+                data into ACC memory in parallel.
         """
         # Deprecated: No need to specify as we don't need the actual
         # minibatch-buffer anyways.
         if minibatch_buffer_size:
             deprecation_warning(
-                old="MultiGPULearnerThread.minibatch_buffer_size",
+                old="MultiACCLearnerThread.minibatch_buffer_size",
                 error=True,
             )
         super().__init__(
@@ -97,9 +97,9 @@ class MultiGPULearnerThread(LearnerThread):
             learner_queue_timeout=learner_queue_timeout,
         )
         # Delete reference to parent's minibatch_buffer, which is not needed.
-        # Instead, in multi-GPU mode, we pull tower stack indices from the
+        # Instead, in multi-ACC mode, we pull tower stack indices from the
         # `self.ready_tower_stacks_buffer` buffer, whose size is exactly
-        # `num_multi_gpu_tower_stacks`.
+        # `num_multi_acc_tower_stacks`.
         self.minibatch_buffer = None
 
         self.train_batch_size = train_batch_size
@@ -107,11 +107,11 @@ class MultiGPULearnerThread(LearnerThread):
         self.policy_map = self.local_worker.policy_map
         self.devices = next(iter(self.policy_map.values())).devices
 
-        logger.info("MultiGPULearnerThread devices {}".format(self.devices))
+        logger.info("MultiACCLearnerThread devices {}".format(self.devices))
         assert self.train_batch_size % len(self.devices) == 0
         assert self.train_batch_size >= len(self.devices), "batch too small"
 
-        self.tower_stack_indices = list(range(num_multi_gpu_tower_stacks))
+        self.tower_stack_indices = list(range(num_multi_acc_tower_stacks))
 
         # Two queues for tower stacks:
         # a) Those that are loaded with data ("ready")
@@ -125,7 +125,7 @@ class MultiGPULearnerThread(LearnerThread):
         # Start n threads that are responsible for loading data into the
         # different (idle) stacks.
         for i in range(num_data_load_threads):
-            self.loader_thread = _MultiGPULoaderThread(self, share_stats=(i == 0))
+            self.loader_thread = _MultiACCLoaderThread(self, share_stats=(i == 0))
             self.loader_thread.start()
 
         # Create a buffer that holds stack indices that are "ready"
@@ -133,7 +133,7 @@ class MultiGPULearnerThread(LearnerThread):
         # "learn_on_loaded_batch" on.
         self.ready_tower_stacks_buffer = MinibatchBuffer(
             self.ready_tower_stacks,
-            num_multi_gpu_tower_stacks,
+            num_multi_acc_tower_stacks,
             learner_queue_timeout,
             num_sgd_iter,
         )
@@ -149,7 +149,7 @@ class MultiGPULearnerThread(LearnerThread):
             # Use LearnerInfoBuilder as a unified way to build the final
             # results dict from `learn_on_loaded_batch` call(s).
             # This makes sure results dicts always have the same structure
-            # no matter the setup (multi-GPU, multi-agent, minibatch SGD,
+            # no matter the setup (multi-ACC, multi-agent, minibatch SGD,
             # tf vs torch).
             learner_info_builder = LearnerInfoBuilder(num_devices=len(self.devices))
 
@@ -188,16 +188,16 @@ class MultiGPULearnerThread(LearnerThread):
         self.learner_queue_size.push(self.inqueue.qsize())
 
 
-class _MultiGPULoaderThread(threading.Thread):
+class _MultiACCLoaderThread(threading.Thread):
     def __init__(
-        self, multi_gpu_learner_thread: MultiGPULearnerThread, share_stats: bool
+        self, multi_acc_learner_thread: MultiACCLearnerThread, share_stats: bool
     ):
         threading.Thread.__init__(self)
-        self.multi_gpu_learner_thread = multi_gpu_learner_thread
+        self.multi_acc_learner_thread = multi_acc_learner_thread
         self.daemon = True
         if share_stats:
-            self.queue_timer = multi_gpu_learner_thread.queue_timer
-            self.load_timer = multi_gpu_learner_thread.load_timer
+            self.queue_timer = multi_acc_learner_thread.queue_timer
+            self.load_timer = multi_acc_learner_thread.load_timer
         else:
             self.queue_timer = _Timer()
             self.load_timer = _Timer()
@@ -207,7 +207,7 @@ class _MultiGPULoaderThread(threading.Thread):
             self._step()
 
     def _step(self) -> None:
-        s = self.multi_gpu_learner_thread
+        s = self.multi_acc_learner_thread
         policy_map = s.policy_map
 
         # Get a new batch from the data (inqueue).

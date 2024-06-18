@@ -93,7 +93,7 @@ class MosaicTrainer(TorchTrainer):
                 **config
             )
 
-        scaling_config = ScalingConfig(num_workers=2, use_gpu=True)
+        scaling_config = ScalingConfig(num_workers=2, use_acc=True)
         trainer_init_config = {
             "max_duration": "1ba",
             "algorithms": [LabelSmoothing()],

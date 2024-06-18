@@ -54,7 +54,7 @@ class InvalidValuesTest(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        ray.init(num_cpus=4, num_gpus=0, include_dashboard=False)
+        ray.init(num_cpus=4, num_accs=0, include_dashboard=False)
 
     @classmethod
     def tearDownClass(cls):
@@ -296,7 +296,7 @@ class AddEvaluatedPointTest(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        ray.init(num_cpus=4, num_gpus=0, include_dashboard=False)
+        ray.init(num_cpus=4, num_accs=0, include_dashboard=False)
 
     @classmethod
     def tearDownClass(cls):
@@ -460,7 +460,7 @@ class SaveRestoreCheckpointTest(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        ray.init(num_cpus=4, num_gpus=0, include_dashboard=False)
+        ray.init(num_cpus=4, num_accs=0, include_dashboard=False)
 
     @classmethod
     def tearDownClass(cls):
@@ -633,7 +633,7 @@ class MultiObjectiveTest(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        ray.init(num_cpus=4, num_gpus=0, include_dashboard=False)
+        ray.init(num_cpus=4, num_accs=0, include_dashboard=False)
 
     @classmethod
     def tearDownClass(cls):

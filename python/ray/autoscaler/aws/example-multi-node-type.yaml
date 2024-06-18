@@ -23,7 +23,7 @@ available_node_types:
             InstanceType: m4.xlarge
             ImageId: latest_dlami
         # For AWS instances, autoscaler will automatically add the available
-        # CPUs/GPUs/accelerator_type ({"CPU": 4} for m4.xlarge) in "resources".
+        # CPUs/ACCs/accelerator_type ({"CPU": 4} for m4.xlarge) in "resources".
         # resources: {"CPU": 4}
         min_workers: 1
         max_workers: 5
@@ -36,24 +36,24 @@ available_node_types:
         # Autoscaler will auto fill the CPU resources below.
         resources: {"Custom1": 1, "is_spot": 1}
         max_workers: 10
-    gpu_1_ondemand:
+    acc_1_ondemand:
         node_config:
             InstanceType: p2.xlarge
             ImageId: latest_dlami
-        # Autoscaler will auto fill the CPU/GPU resources below.
+        # Autoscaler will auto fill the CPU/ACC resources below.
         resources: {"Custom2": 2}
         max_workers: 4
         worker_setup_commands:
-            - pip install tensorflow-gpu  # Example command.
-    gpu_8_ondemand:
+            - pip install tensorflow-acc  # Example command.
+    acc_8_ondemand:
         node_config:
             InstanceType: p3.8xlarge
             ImageId: latest_dlami
         # Autoscaler autofills the "resources" below.
-        # resources: {"CPU": 32, "GPU": 4, "accelerator_type:V100": 1}
+        # resources: {"CPU": 32, "ACC": 4, "accelerator_type:V100": 1}
         max_workers: 2
         worker_setup_commands:
-            - pip install tensorflow-gpu  # Example command.
+            - pip install tensorflow-acc  # Example command.
 
 # Specify the node type of the head node (as configured above).
 head_node_type: cpu_4_ondemand

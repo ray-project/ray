@@ -55,7 +55,7 @@ NodeKind = str
 # e.g., {"resources": ..., "max_workers": ...}.
 NodeTypeConfigDict = Dict[str, Any]
 
-# e.g., {"GPU": 1}.
+# e.g., {"ACC": 1}.
 ResourceDict = Dict[str, Real]
 
 # e.g., "node-1".
@@ -92,7 +92,7 @@ class LoadMetricsSummary:
     # Map of resource name (e.g. "memory") to pair of (Used, Available) numbers
     usage: Usage
     # Counts of demand bundles from task/actor demand.
-    # e.g. [({"CPU": 1}, 5), ({"GPU":1}, 2)]
+    # e.g. [({"CPU": 1}, 5), ({"ACC":1}, 2)]
     resource_demand: List[DictCount]
     # Counts of pending placement groups
     pg_demand: List[DictCount]

@@ -92,34 +92,34 @@ def test_util_score():
         is None
     )
     assert _resource_based_utilization_scorer(
-        {"GPU": 4}, [{"GPU": 2}], node_availability_summary=EMPTY_AVAILABILITY_SUMMARY
+        {"ACC": 4}, [{"ACC": 2}], node_availability_summary=EMPTY_AVAILABILITY_SUMMARY
     ) == (True, 1, 0.5, 0.5)
     assert _resource_based_utilization_scorer(
-        {"GPU": 4},
-        [{"GPU": 1}, {"GPU": 1}],
+        {"ACC": 4},
+        [{"ACC": 1}, {"ACC": 1}],
         node_availability_summary=EMPTY_AVAILABILITY_SUMMARY,
     ) == (True, 1, 0.5, 0.5)
     assert _resource_based_utilization_scorer(
-        {"GPU": 2}, [{"GPU": 2}], node_availability_summary=EMPTY_AVAILABILITY_SUMMARY
+        {"ACC": 2}, [{"ACC": 2}], node_availability_summary=EMPTY_AVAILABILITY_SUMMARY
     ) == (True, 1, 2, 2)
     assert _resource_based_utilization_scorer(
-        {"GPU": 2},
-        [{"GPU": 1}, {"GPU": 1}],
+        {"ACC": 2},
+        [{"ACC": 1}, {"ACC": 1}],
         node_availability_summary=EMPTY_AVAILABILITY_SUMMARY,
     ) == (True, 1, 2, 2)
     assert _resource_based_utilization_scorer(
-        {"GPU": 1},
-        [{"GPU": 1, "CPU": 1}, {"GPU": 1}],
+        {"ACC": 1},
+        [{"ACC": 1, "CPU": 1}, {"ACC": 1}],
         node_availability_summary=EMPTY_AVAILABILITY_SUMMARY,
     ) == (True, 1, 1, 1)
     assert _resource_based_utilization_scorer(
-        {"GPU": 1, "CPU": 1},
-        [{"GPU": 1, "CPU": 1}, {"GPU": 1}],
+        {"ACC": 1, "CPU": 1},
+        [{"ACC": 1, "CPU": 1}, {"ACC": 1}],
         node_availability_summary=EMPTY_AVAILABILITY_SUMMARY,
     ) == (True, 2, 1, 1)
     assert _resource_based_utilization_scorer(
-        {"GPU": 2, "TPU": 1},
-        [{"GPU": 2}],
+        {"ACC": 2, "TPU": 1},
+        [{"ACC": 2}],
         node_availability_summary=EMPTY_AVAILABILITY_SUMMARY,
     ) == (True, 1, 0, 1)
     assert _resource_based_utilization_scorer(
@@ -135,23 +135,23 @@ def test_util_score():
     ) == (True, 1, 8, 8)
 
 
-def test_gpu_node_util_score():
-    # Avoid scheduling CPU tasks on GPU node.
+def test_acc_node_util_score():
+    # Avoid scheduling CPU tasks on ACC node.
     utilization_score = _resource_based_utilization_scorer(
-        {"GPU": 1, "CPU": 1},
+        {"ACC": 1, "CPU": 1},
         [{"CPU": 1}],
         node_availability_summary=EMPTY_AVAILABILITY_SUMMARY,
     )
-    gpu_ok = utilization_score[0]
-    assert gpu_ok is False
+    acc_ok = utilization_score[0]
+    assert acc_ok is False
     assert _resource_based_utilization_scorer(
-        {"GPU": 1, "CPU": 1},
-        [{"CPU": 1, "GPU": 1}],
+        {"ACC": 1, "CPU": 1},
+        [{"CPU": 1, "ACC": 1}],
         node_availability_summary=EMPTY_AVAILABILITY_SUMMARY,
     ) == (True, 2, 1.0, 1.0)
     assert _resource_based_utilization_scorer(
-        {"GPU": 1, "CPU": 1},
-        [{"GPU": 1}],
+        {"ACC": 1, "CPU": 1},
+        [{"ACC": 1}],
         node_availability_summary=EMPTY_AVAILABILITY_SUMMARY,
     ) == (True, 1, 0.0, 0.5)
 
@@ -175,26 +175,26 @@ def test_zero_resource():
 
 
 def test_bin_pack():
-    assert get_bin_pack_residual([], [{"GPU": 2}, {"GPU": 2}])[0] == [
-        {"GPU": 2},
-        {"GPU": 2},
+    assert get_bin_pack_residual([], [{"ACC": 2}, {"ACC": 2}])[0] == [
+        {"ACC": 2},
+        {"ACC": 2},
     ]
-    assert get_bin_pack_residual([{"GPU": 2}], [{"GPU": 2}, {"GPU": 2}])[0] == [
-        {"GPU": 2}
+    assert get_bin_pack_residual([{"ACC": 2}], [{"ACC": 2}, {"ACC": 2}])[0] == [
+        {"ACC": 2}
     ]
-    assert get_bin_pack_residual([{"GPU": 4}], [{"GPU": 2}, {"GPU": 2}])[0] == []
-    arg = [{"GPU": 2}, {"GPU": 2, "CPU": 2}]
-    assert get_bin_pack_residual(arg, [{"GPU": 2}, {"GPU": 2}])[0] == []
-    arg = [{"CPU": 2}, {"GPU": 2}]
-    assert get_bin_pack_residual(arg, [{"GPU": 2}, {"GPU": 2}])[0] == [{"GPU": 2}]
-    arg = [{"GPU": 3}]
+    assert get_bin_pack_residual([{"ACC": 4}], [{"ACC": 2}, {"ACC": 2}])[0] == []
+    arg = [{"ACC": 2}, {"ACC": 2, "CPU": 2}]
+    assert get_bin_pack_residual(arg, [{"ACC": 2}, {"ACC": 2}])[0] == []
+    arg = [{"CPU": 2}, {"ACC": 2}]
+    assert get_bin_pack_residual(arg, [{"ACC": 2}, {"ACC": 2}])[0] == [{"ACC": 2}]
+    arg = [{"ACC": 3}]
     assert (
-        get_bin_pack_residual(arg, [{"GPU": 1}, {"GPU": 1}], strict_spread=False)[0]
+        get_bin_pack_residual(arg, [{"ACC": 1}, {"ACC": 1}], strict_spread=False)[0]
         == []
     )
-    assert get_bin_pack_residual(arg, [{"GPU": 1}, {"GPU": 1}], strict_spread=True) == (
-        [{"GPU": 1}],
-        [{"GPU": 2}],
+    assert get_bin_pack_residual(arg, [{"ACC": 1}, {"ACC": 1}], strict_spread=True) == (
+        [{"ACC": 1}],
+        [{"ACC": 2}],
     )
 
     implicit_resource = ray._raylet.IMPLICIT_RESOURCE_PREFIX + "a"
@@ -210,20 +210,20 @@ def test_bin_pack():
 
 
 def test_get_nodes_packing_heuristic():
-    assert get_nodes_for(TYPES_A, {}, "empty_node", 9999, [{"GPU": 8}]) == {
+    assert get_nodes_for(TYPES_A, {}, "empty_node", 9999, [{"ACC": 8}]) == {
         "p2.8xlarge": 1
     }
-    assert get_nodes_for(TYPES_A, {}, "empty_node", 9999, [{"GPU": 1}] * 6) == {
+    assert get_nodes_for(TYPES_A, {}, "empty_node", 9999, [{"ACC": 1}] * 6) == {
         "p2.8xlarge": 1
     }
-    assert get_nodes_for(TYPES_A, {}, "empty_node", 9999, [{"GPU": 1}] * 4) == {
+    assert get_nodes_for(TYPES_A, {}, "empty_node", 9999, [{"ACC": 1}] * 4) == {
         "p2.xlarge": 4
     }
     assert get_nodes_for(
-        TYPES_A, {}, "empty_node", 9999, [{"CPU": 32, "GPU": 1}] * 3
+        TYPES_A, {}, "empty_node", 9999, [{"CPU": 32, "ACC": 1}] * 3
     ) == {"p2.8xlarge": 3}
     assert (
-        get_nodes_for(TYPES_A, {}, "empty_node", 9999, [{"CPU": 64, "GPU": 1}] * 3)
+        get_nodes_for(TYPES_A, {}, "empty_node", 9999, [{"CPU": 64, "ACC": 1}] * 3)
         == {}
     )
     assert get_nodes_for(TYPES_A, {}, "empty_node", 9999, [{"CPU": 64}] * 3) == {
@@ -250,22 +250,22 @@ def test_get_nodes_packing_heuristic():
     }
 
     assert get_nodes_for(
-        TYPES_A, {}, "empty_node", 9999, [{"GPU": 1}] + ([{"CPU": 1}] * 64)
+        TYPES_A, {}, "empty_node", 9999, [{"ACC": 1}] + ([{"CPU": 1}] * 64)
     ) == {"m4.16xlarge": 1, "p2.xlarge": 1}
 
     assert get_nodes_for(
-        TYPES_A, {}, "empty_node", 9999, ([{"GPU": 1}] * 8) + ([{"CPU": 1}] * 64)
+        TYPES_A, {}, "empty_node", 9999, ([{"ACC": 1}] * 8) + ([{"CPU": 1}] * 64)
     ) == {"m4.4xlarge": 2, "p2.8xlarge": 1}
 
     assert get_nodes_for(
-        TYPES_A, {}, "empty_node", 9999, [{"GPU": 1}] * 8, strict_spread=False
+        TYPES_A, {}, "empty_node", 9999, [{"ACC": 1}] * 8, strict_spread=False
     ) == {"p2.8xlarge": 1}
     assert get_nodes_for(
-        TYPES_A, {}, "empty_node", 9999, [{"GPU": 1}] * 8, strict_spread=True
+        TYPES_A, {}, "empty_node", 9999, [{"ACC": 1}] * 8, strict_spread=True
     ) == {"p2.xlarge": 8}
 
 
-def test_node_packing_gpu_cpu_bundles():
+def test_node_packing_acc_cpu_bundles():
     TYPES = {
         "cpu": {
             "resources": {
@@ -273,10 +273,10 @@ def test_node_packing_gpu_cpu_bundles():
             },
             "max_workers": 10,
         },
-        "gpu": {
+        "acc": {
             "resources": {
                 "CPU": 16,
-                "GPU": 1,
+                "ACC": 1,
             },
             "max_workers": 10,
         },
@@ -286,38 +286,38 @@ def test_node_packing_gpu_cpu_bundles():
         {},
         "cpu",
         9999,
-        ([{"CPU": 1}] * 30 + [{"GPU": 1, "CPU": 1}]),
+        ([{"CPU": 1}] * 30 + [{"ACC": 1, "CPU": 1}]),
     )
-    assert nodes == {"gpu": 1, "cpu": 1}
+    assert nodes == {"acc": 1, "cpu": 1}
 
     nodes = get_nodes_for(
         TYPES,
         {},
         "cpu",
         9999,
-        ([{"GPU": 1, "CPU": 1}] + [{"CPU": 1}] * 30),
+        ([{"ACC": 1, "CPU": 1}] + [{"CPU": 1}] * 30),
     )
-    assert nodes == {"gpu": 1, "cpu": 1}
+    assert nodes == {"acc": 1, "cpu": 1}
 
     nodes = get_nodes_for(
         TYPES,
         {},
         "cpu",
         9999,
-        ([{"GPU": 1, "CPU": 1}] + [{"CPU": 1}] * 15),
+        ([{"ACC": 1, "CPU": 1}] + [{"CPU": 1}] * 15),
     )
-    assert nodes == {"gpu": 1}
+    assert nodes == {"acc": 1}
 
 
-def test_gpu_node_avoid_cpu_task():
+def test_acc_node_avoid_cpu_task():
     types = {
         "cpu": {
             "resources": {"CPU": 1},
             "max_workers": 10,
         },
-        "gpu": {
+        "acc": {
             "resources": {
-                "GPU": 1,
+                "ACC": 1,
                 "CPU": 100,
             },
             "max_workers": 10,
@@ -333,30 +333,30 @@ def test_gpu_node_avoid_cpu_task():
         r1,
     ) == {"cpu": 10}
     # max_to_add eleven nodes allowed. First ten chosen to be "cpu",
-    # last chosen to be "gpu" due max_workers constraint on "cpu".
+    # last chosen to be "acc" due max_workers constraint on "cpu".
     assert get_nodes_for(
         types,
         {},
         "empty_node",
         11,
         r1,
-    ) == {"cpu": 10, "gpu": 1}
-    r2 = [{"GPU": 1}] + [{"CPU": 1}] * 100
+    ) == {"cpu": 10, "acc": 1}
+    r2 = [{"ACC": 1}] + [{"CPU": 1}] * 100
     assert get_nodes_for(
         types,
         {},
         "empty_node",
         100,
         r2,
-    ) == {"gpu": 1}
-    r3 = [{"GPU": 1}] * 4 + [{"CPU": 1}] * 404
+    ) == {"acc": 1}
+    r3 = [{"ACC": 1}] * 4 + [{"CPU": 1}] * 404
     assert get_nodes_for(
         types,
         {},
         "empty_node",
         100,
         r3,
-    ) == {"gpu": 4, "cpu": 4}
+    ) == {"acc": 4, "cpu": 4}
 
 
 def test_get_nodes_respects_max_limit():
@@ -365,8 +365,8 @@ def test_get_nodes_respects_max_limit():
             "resources": {"CPU": 2},
             "max_workers": 10,
         },
-        "gpu": {
-            "resources": {"GPU": 1},
+        "acc": {
+            "resources": {"ACC": 1},
             "max_workers": 99999,
         },
     }
@@ -422,13 +422,13 @@ def test_add_min_workers_nodes():
             "min_workers": 0,
             "max_workers": 10,
         },
-        "gpu": {
-            "resources": {"GPU": 1},
+        "acc": {
+            "resources": {"ACC": 1},
             "min_workers": 99999,
             "max_workers": 99999,
         },
-        "gpubla": {
-            "resources": {"GPU": 1},
+        "accbla": {
+            "resources": {"ACC": 1},
             "min_workers": 10,
             "max_workers": 0,
         },
@@ -446,9 +446,9 @@ def test_add_min_workers_nodes():
         None,
         utilization_scorer=utilization_scorer,
     ) == (
-            [{"CPU": 2}]*50+[{"GPU": 1}]*99999,
-            {"m2.large": 50, "gpu": 99999},
-            {"m2.large": 50, "gpu": 99999}
+            [{"CPU": 2}]*50+[{"ACC": 1}]*99999,
+            {"m2.large": 50, "acc": 99999},
+            {"m2.large": 50, "acc": 99999}
          )
 
     assert _add_min_workers_nodes(
@@ -460,9 +460,9 @@ def test_add_min_workers_nodes():
         None,
         utilization_scorer=utilization_scorer,
     ) == (
-        [{"CPU": 2}]*50+[{"GPU": 1}]*99999,
-        {"m2.large": 50, "gpu": 99999},
-        {"m2.large": 45, "gpu": 99999}
+        [{"CPU": 2}]*50+[{"ACC": 1}]*99999,
+        {"m2.large": 50, "acc": 99999},
+        {"m2.large": 45, "acc": 99999}
     )
 
     assert _add_min_workers_nodes(
@@ -474,44 +474,44 @@ def test_add_min_workers_nodes():
         None,
         utilization_scorer=utilization_scorer,
     ) == (
-        [{"CPU": 2}]*60+[{"GPU": 1}]*99999,
-        {"m2.large": 60, "gpu": 99999},
-        {"gpu": 99999}
+        [{"CPU": 2}]*60+[{"ACC": 1}]*99999,
+        {"m2.large": 60, "acc": 99999},
+        {"acc": 99999}
     )
 
     assert _add_min_workers_nodes(
-        [{"CPU": 2}] * 50 + [{"GPU": 1}] * 99999,
-        {"m2.large": 50, "gpu": 99999},
+        [{"CPU": 2}] * 50 + [{"ACC": 1}] * 99999,
+        {"m2.large": 50, "acc": 99999},
         types,
         None,
         None,
         None,
         utilization_scorer=utilization_scorer,
     ) == (
-        [{"CPU": 2}] * 50 + [{"GPU": 1}] * 99999,
-        {"m2.large": 50, "gpu": 99999}, {}
+        [{"CPU": 2}] * 50 + [{"ACC": 1}] * 99999,
+        {"m2.large": 50, "acc": 99999}, {}
     )
 
     assert _add_min_workers_nodes(
         [],
         {},
-        {"gpubla": types["gpubla"]},
+        {"accbla": types["accbla"]},
         None,
         None,
         None,
         utilization_scorer=utilization_scorer,
     ) == ([], {}, {})
 
-    types["gpubla"]["max_workers"] = 10
+    types["accbla"]["max_workers"] = 10
     assert _add_min_workers_nodes(
         [],
         {},
-        {"gpubla": types["gpubla"]},
+        {"accbla": types["accbla"]},
         None,
         None,
         None,
         utilization_scorer=utilization_scorer,
-    ) == ([{"GPU": 1}] * 10, {"gpubla": 10}, {"gpubla": 10})
+    ) == ([{"ACC": 1}] * 10, {"accbla": 10}, {"accbla": 10})
     # fmt: on
 
 
@@ -540,12 +540,12 @@ def test_get_nodes_to_launch_with_min_workers():
     nodes = provider.non_terminated_nodes({})
 
     ips = provider.non_terminated_node_ips({})
-    utilizations = {ip: {"GPU": 8} for ip in ips}
+    utilizations = {ip: {"ACC": 8} for ip in ips}
 
     to_launch, rem = scheduler.get_nodes_to_launch(
         nodes,
         {},
-        [{"GPU": 8}],
+        [{"ACC": 8}],
         utilizations,
         [],
         {},
@@ -558,7 +558,7 @@ def test_get_nodes_to_launch_with_min_workers():
     to_launch, rem = scheduler.get_nodes_to_launch(
         nodes,
         {},
-        [{"GPU": 8}] * 6,
+        [{"ACC": 8}] * 6,
         utilizations,
         [],
         {},
@@ -566,7 +566,7 @@ def test_get_nodes_to_launch_with_min_workers():
         EMPTY_AVAILABILITY_SUMMARY,
     )
     assert to_launch == {"p2.8xlarge": 3}
-    assert rem == [{"GPU": 8}, {"GPU": 8}]
+    assert rem == [{"ACC": 8}, {"ACC": 8}]
 
 
 def test_get_nodes_to_launch_with_min_workers_and_bin_packing():
@@ -599,11 +599,11 @@ def test_get_nodes_to_launch_with_min_workers_and_bin_packing():
 
     ips = provider.non_terminated_node_ips({})
     # 1 free p2.8xls
-    utilizations = {ip: {"GPU": 8} for ip in ips}
+    utilizations = {ip: {"ACC": 8} for ip in ips}
     # 1 more on the way
     pending_nodes = {"p2.8xlarge": 1}
     # requires 3 p2.8xls (only 2 are in cluster/pending) and 1 p2.xlarge
-    demands = [{"GPU": 8}] * (len(utilizations) + 1) + [{"GPU": 1}]
+    demands = [{"ACC": 8}] * (len(utilizations) + 1) + [{"ACC": 1}]
     to_launch, rem = scheduler.get_nodes_to_launch(
         nodes,
         pending_nodes,
@@ -662,12 +662,12 @@ def test_get_nodes_to_launch_limits():
     nodes = provider.non_terminated_nodes({})
 
     ips = provider.non_terminated_node_ips({})
-    utilizations = {ip: {"GPU": 8} for ip in ips}
+    utilizations = {ip: {"ACC": 8} for ip in ips}
 
     to_launch, rem = scheduler.get_nodes_to_launch(
         nodes,
         {"p2.8xlarge": 1},
-        [{"GPU": 8}] * 2,
+        [{"ACC": 8}] * 2,
         utilizations,
         [],
         {},
@@ -680,7 +680,7 @@ def test_get_nodes_to_launch_limits():
     to_launch, rem = scheduler.get_nodes_to_launch(
         nodes,
         {"p2.8xlarge": 1},
-        [{"GPU": 8}] * 20,
+        [{"ACC": 8}] * 20,
         utilizations,
         [],
         {},
@@ -688,7 +688,7 @@ def test_get_nodes_to_launch_limits():
         EMPTY_AVAILABILITY_SUMMARY,
     )
     assert to_launch == {"p2.8xlarge": 1}
-    assert rem == [{"GPU": 8}] * 16
+    assert rem == [{"ACC": 8}] * 16
 
 
 def test_calculate_node_resources():
@@ -711,11 +711,11 @@ def test_calculate_node_resources():
 
     ips = provider.non_terminated_node_ips({})
     # 2 free p2.8xls
-    utilizations = {ip: {"GPU": 8} for ip in ips}
+    utilizations = {ip: {"ACC": 8} for ip in ips}
     # 1 more on the way
     pending_nodes = {"p2.8xlarge": 1}
     # requires 4 p2.8xls (only 3 are in cluster/pending)
-    demands = [{"GPU": 8}] * (len(utilizations) + 2)
+    demands = [{"ACC": 8}] * (len(utilizations) + 2)
     to_launch, rem = scheduler.get_nodes_to_launch(
         nodes,
         pending_nodes,
@@ -731,7 +731,7 @@ def test_calculate_node_resources():
     assert not rem
 
 
-def test_request_resources_gpu_no_gpu_nodes():
+def test_request_resources_acc_no_acc_nodes():
     provider = MockProvider()
     TYPES = {
         "m5.8xlarge": {
@@ -766,7 +766,7 @@ def test_request_resources_gpu_no_gpu_nodes():
     avail_by_ip = {ip: {} for ip in node_ips}
     max_by_ip = {ip: {"CPU": 32} for ip in node_ips}
     # There aren't any nodes that can satisfy this demand, but we still shouldn't crash.
-    demands = [{"CPU": 1, "GPU": 1}] * 1
+    demands = [{"CPU": 1, "ACC": 1}] * 1
     to_launch, rem = scheduler.get_nodes_to_launch(
         all_nodes,
         {},
@@ -780,7 +780,7 @@ def test_request_resources_gpu_no_gpu_nodes():
     assert len(to_launch) == 0, to_launch
     assert not rem
 
-    demands = [{"CPU": 1, "GPU": 0}] * 33
+    demands = [{"CPU": 1, "ACC": 0}] * 33
     to_launch, rem = scheduler.get_nodes_to_launch(
         all_nodes,
         {},
@@ -800,7 +800,7 @@ def test_request_resources_existing_usage():
     TYPES = {
         "p2.8xlarge": {
             "node_config": {},
-            "resources": {"CPU": 32, "GPU": 8},
+            "resources": {"CPU": 32, "ACC": 8},
             "max_workers": 40,
         },
     }
@@ -812,7 +812,7 @@ def test_request_resources_existing_usage():
         upscaling_speed=1,
     )
 
-    # 5 nodes with 32 CPU and 8 GPU each
+    # 5 nodes with 32 CPU and 8 ACC each
     provider.create_node(
         {},
         {
@@ -828,7 +828,7 @@ def test_request_resources_existing_usage():
 
     # Fully utilized, no requests.
     avail_by_ip = {ip: {} for ip in node_ips}
-    max_by_ip = {ip: {"GPU": 8, "CPU": 32} for ip in node_ips}
+    max_by_ip = {ip: {"ACC": 8, "CPU": 32} for ip in node_ips}
     demands = []
     to_launch, rem = scheduler.get_nodes_to_launch(
         all_nodes,
@@ -845,7 +845,7 @@ def test_request_resources_existing_usage():
 
     # Fully utilized, resource requests exactly equal.
     avail_by_ip = {ip: {} for ip in node_ips}
-    demands = [{"GPU": 4}] * 4
+    demands = [{"ACC": 4}] * 4
     to_launch, rem = scheduler.get_nodes_to_launch(
         all_nodes,
         {},
@@ -861,7 +861,7 @@ def test_request_resources_existing_usage():
 
     # Fully utilized, resource requests in excess.
     avail_by_ip = {ip: {} for ip in node_ips}
-    demands = [{"GPU": 4}] * 7
+    demands = [{"ACC": 4}] * 7
     to_launch, rem = scheduler.get_nodes_to_launch(
         all_nodes,
         {},
@@ -876,7 +876,7 @@ def test_request_resources_existing_usage():
     assert not rem
 
     # Not utilized, no requests.
-    avail_by_ip = {ip: {"GPU": 4, "CPU": 32} for ip in node_ips}
+    avail_by_ip = {ip: {"ACC": 4, "CPU": 32} for ip in node_ips}
     demands = []
     to_launch, rem = scheduler.get_nodes_to_launch(
         all_nodes,
@@ -892,8 +892,8 @@ def test_request_resources_existing_usage():
     assert not rem
 
     # Not utilized, resource requests exactly equal.
-    avail_by_ip = {ip: {"GPU": 4, "CPU": 32} for ip in node_ips}
-    demands = [{"GPU": 4}] * 4
+    avail_by_ip = {ip: {"ACC": 4, "CPU": 32} for ip in node_ips}
+    demands = [{"ACC": 4}] * 4
     to_launch, rem = scheduler.get_nodes_to_launch(
         all_nodes,
         {},
@@ -908,8 +908,8 @@ def test_request_resources_existing_usage():
     assert not rem
 
     # Not utilized, resource requests in excess.
-    avail_by_ip = {ip: {"GPU": 4, "CPU": 32} for ip in node_ips}
-    demands = [{"GPU": 4}] * 7
+    avail_by_ip = {ip: {"ACC": 4, "CPU": 32} for ip in node_ips}
+    demands = [{"ACC": 4}] * 7
     to_launch, rem = scheduler.get_nodes_to_launch(
         all_nodes,
         {},
@@ -924,8 +924,8 @@ def test_request_resources_existing_usage():
     assert not rem
 
     # Not utilized, resource requests hugely in excess.
-    avail_by_ip = {ip: {"GPU": 4, "CPU": 32} for ip in node_ips}
-    demands = [{"GPU": 4}] * 70
+    avail_by_ip = {ip: {"ACC": 4, "CPU": 32} for ip in node_ips}
+    demands = [{"ACC": 4}] * 70
     to_launch, rem = scheduler.get_nodes_to_launch(
         all_nodes,
         {},
@@ -980,13 +980,13 @@ def test_backlog_queue_impact_on_binpacking_time():
         # p2.8xlarge instances.
         all_nodes = provider.non_terminated_nodes({})
         all_ips = provider.non_terminated_node_ips({})
-        gpu_ips = [ip for ip in all_ips if ip not in cpu_ips]
+        acc_ips = [ip for ip in all_ips if ip not in cpu_ips]
         usage_by_ip = {}
         # 2x<num_available_nodes> free nodes (<num_available_nodes> m4.16xlarge
         # and <num_available_nodes> p2.8xlarge instances).
         for i in range(num_available_nodes):
             usage_by_ip[cpu_ips[i]] = {"CPU": 64}
-            usage_by_ip[gpu_ips[i]] = {"GPU": 8, "CPU": 32}
+            usage_by_ip[acc_ips[i]] = {"ACC": 8, "CPU": 32}
         demands = demand_request_shape * AUTOSCALER_MAX_RESOURCE_DEMAND_VECTOR_SIZE
         t1 = time.time()
         to_launch, rem = scheduler.get_nodes_to_launch(
@@ -1019,7 +1019,7 @@ def test_backlog_queue_impact_on_binpacking_time():
     to_launch = test_backlog_queue_impact_on_binpacking_time_aux(
         num_available_nodes=0,
         time_to_assert=10,  # real time 0.2s.
-        demand_request_shape=[{"GPU": 1}, {"CPU": 1}],
+        demand_request_shape=[{"ACC": 1}, {"CPU": 1}],
     )
     # If not for the max launch concurrency the next assert should be:
     # {'m4.16xlarge': 1, 'p2.8xlarge': 125, 'p2.xlarge': 1}
@@ -1030,7 +1030,7 @@ def test_backlog_queue_impact_on_binpacking_time():
     to_launch = test_backlog_queue_impact_on_binpacking_time_aux(
         num_available_nodes=50,
         time_to_assert=10,  # real time 0.075s.
-        demand_request_shape=[{"GPU": 1}, {"CPU": 2}],
+        demand_request_shape=[{"ACC": 1}, {"CPU": 2}],
     )
     # If not for the max launch concurrency the next assert should be:
     # {'p2.8xlarge': 75}.
@@ -1041,7 +1041,7 @@ def test_backlog_queue_impact_on_binpacking_time():
     to_launch = test_backlog_queue_impact_on_binpacking_time_aux(
         num_available_nodes=125,
         time_to_assert=10,  # real time 0.06s.
-        demand_request_shape=[{"GPU": 1}, {"CPU": 1}],
+        demand_request_shape=[{"ACC": 1}, {"CPU": 1}],
     )
     assert to_launch == {}
 
@@ -1050,7 +1050,7 @@ def test_backlog_queue_impact_on_binpacking_time():
     to_launch = test_backlog_queue_impact_on_binpacking_time_aux(
         num_available_nodes=500,
         time_to_assert=10,  # real time 1.32s.
-        demand_request_shape=[{"GPU": 8}, {"CPU": 64}],
+        demand_request_shape=[{"ACC": 8}, {"CPU": 64}],
     )
     assert to_launch == {"m4.16xlarge": 500, "p2.8xlarge": 500}
 
@@ -1067,41 +1067,41 @@ class TestPlacementGroupScaling:
         )
 
         provider.create_node({}, {TAG_RAY_USER_NODE_TYPE: "p2.8xlarge"}, 2)
-        # At this point our cluster has 2 p2.8xlarge instances (16 GPUs) and is
+        # At this point our cluster has 2 p2.8xlarge instances (16 ACCs) and is
         # fully idle.
         nodes = provider.non_terminated_nodes({})
 
-        resource_demands = [{"GPU": 4}] * 2
+        resource_demands = [{"ACC": 4}] * 2
         pending_placement_groups = [
-            # Requires a new node (only uses 2 GPUs on it though).
+            # Requires a new node (only uses 2 ACCs on it though).
             PlacementGroupTableData(
                 state=PlacementGroupTableData.PENDING,
                 strategy=PlacementStrategy.STRICT_SPREAD,
                 bundles=[
-                    Bundle(unit_resources={"GPU": 2}),
-                    Bundle(unit_resources={"GPU": 2}),
-                    Bundle(unit_resources={"GPU": 2}),
+                    Bundle(unit_resources={"ACC": 2}),
+                    Bundle(unit_resources={"ACC": 2}),
+                    Bundle(unit_resources={"ACC": 2}),
                 ],
             ),
             # Requires a new node (uses the whole node).
             PlacementGroupTableData(
                 state=PlacementGroupTableData.PENDING,
                 strategy=PlacementStrategy.STRICT_PACK,
-                bundles=([Bundle(unit_resources={"GPU": 2})] * 4),
+                bundles=([Bundle(unit_resources={"ACC": 2})] * 4),
             ),
             # Fits across the machines that strict spread.
             PlacementGroupTableData(
                 # runs on.
                 state=PlacementGroupTableData.PENDING,
                 strategy=PlacementStrategy.PACK,
-                bundles=([Bundle(unit_resources={"GPU": 2})] * 2),
+                bundles=([Bundle(unit_resources={"ACC": 2})] * 2),
             ),
             # Fits across the machines that strict spread.
             PlacementGroupTableData(
                 # runs on.
                 state=PlacementGroupTableData.PENDING,
                 strategy=PlacementStrategy.SPREAD,
-                bundles=([Bundle(unit_resources={"GPU": 2})] * 2),
+                bundles=([Bundle(unit_resources={"ACC": 2})] * 2),
             ),
         ]
         to_launch, rem = scheduler.get_nodes_to_launch(
@@ -1128,20 +1128,20 @@ class TestPlacementGroupScaling:
         )
 
         provider.create_node({}, {TAG_RAY_USER_NODE_TYPE: "p2.8xlarge"}, 2)
-        # At this point our cluster has 2 p2.8xlarge instances (16 GPUs) and is
+        # At this point our cluster has 2 p2.8xlarge instances (16 ACCs) and is
         # fully idle.
         nodes = provider.non_terminated_nodes({})
 
-        resource_demands = [{"GPU": 1}] * 6
+        resource_demands = [{"ACC": 1}] * 6
         pending_placement_groups = [
-            # Requires a new node (only uses 2 GPUs on it though).
+            # Requires a new node (only uses 2 ACCs on it though).
             PlacementGroupTableData(
                 state=PlacementGroupTableData.PENDING,
                 strategy=PlacementStrategy.STRICT_SPREAD,
-                bundles=[Bundle(unit_resources={"GPU": 2})] * 3,
+                bundles=[Bundle(unit_resources={"ACC": 2})] * 3,
             ),
         ]
-        # Each placement group will take up 2 GPUs per node, but the distinct
+        # Each placement group will take up 2 ACCs per node, but the distinct
         # placement groups should still reuse the same nodes.
         pending_placement_groups = pending_placement_groups * 3
         to_launch, rem = scheduler.get_nodes_to_launch(
@@ -1168,20 +1168,20 @@ class TestPlacementGroupScaling:
         )
 
         provider.create_node({}, {TAG_RAY_USER_NODE_TYPE: "p2.8xlarge"}, 1)
-        # At this point our cluster has 1 p2.8xlarge instances (8 GPUs) and is
+        # At this point our cluster has 1 p2.8xlarge instances (8 ACCs) and is
         # fully idle.
         nodes = provider.non_terminated_nodes({})
 
-        resource_demands = [{"GPU": 1}] * 2
+        resource_demands = [{"ACC": 1}] * 2
         pending_placement_groups = [
             PlacementGroupTableData(
                 state=PlacementGroupTableData.PENDING,
                 strategy=PlacementStrategy.STRICT_PACK,
-                bundles=[Bundle(unit_resources={"GPU": 2})] * 3,
+                bundles=[Bundle(unit_resources={"ACC": 2})] * 3,
             ),
         ]
-        # The 2 resource demand gpus should still be packed onto the same node
-        # as the 6 GPU placement group.
+        # The 2 resource demand accs should still be packed onto the same node
+        # as the 6 ACC placement group.
         to_launch, rem = scheduler.get_nodes_to_launch(
             nodes,
             {},
@@ -1244,8 +1244,8 @@ def test_get_concurrent_resource_demand_to_launch():
     updated_to_launch = scheduler._get_concurrent_resource_demand_to_launch(
         to_launch, connected_nodes, non_terminated_nodes, pending_launches_nodes, {}, {}
     )
-    # Note: we have 2 pending/launching gpus, 3 pending/launching cpus,
-    # 0 running gpu, and 0 running cpus.
+    # Note: we have 2 pending/launching accs, 3 pending/launching cpus,
+    # 0 running acc, and 0 running cpus.
     assert updated_to_launch == {"p2.8xlarge": 3, "m4.large": 2}
 
     # Test min_workers bypass max launch limit.
@@ -1288,8 +1288,8 @@ def test_get_concurrent_resource_demand_to_launch():
     updated_to_launch = scheduler._get_concurrent_resource_demand_to_launch(
         to_launch, connected_nodes, non_terminated_nodes, pending_launches_nodes, {}, {}
     )
-    # Note that here we have 1 launching gpu, 1 launching cpu,
-    # 1 running gpu, and 2 running cpus.
+    # Note that here we have 1 launching acc, 1 launching cpu,
+    # 1 running acc, and 2 running cpus.
     assert updated_to_launch == {"p2.8xlarge": 4, "m4.large": 4}
 
     # Launch the nodes. Note, after create_node the node is pending.
@@ -1312,7 +1312,7 @@ def test_get_concurrent_resource_demand_to_launch():
 
     # Continue scaling.
     non_terminated_nodes = provider.non_terminated_nodes({})
-    to_launch = {"m4.large": 36}  # No more gpus are necessary
+    to_launch = {"m4.large": 36}  # No more accs are necessary
     pending_launches_nodes = {}  # No pending launches
     updated_to_launch = scheduler._get_concurrent_resource_demand_to_launch(
         to_launch, connected_nodes, non_terminated_nodes, pending_launches_nodes, {}, {}
@@ -1466,7 +1466,7 @@ def test_get_nodes_to_launch_max_launch_concurrency_placement_groups():
         PlacementGroupTableData(
             state=PlacementGroupTableData.RESCHEDULING,
             strategy=PlacementStrategy.PACK,
-            bundles=([Bundle(unit_resources={"GPU": 8})] * 25),
+            bundles=([Bundle(unit_resources={"ACC": 8})] * 25),
         )
     ]
     # placement groups should bypass max launch limit.
@@ -1489,13 +1489,13 @@ def test_get_nodes_to_launch_max_launch_concurrency_placement_groups():
         PlacementGroupTableData(
             state=PlacementGroupTableData.RESCHEDULING,
             strategy=PlacementStrategy.STRICT_SPREAD,
-            bundles=([Bundle(unit_resources={"GPU": 2})] * 25),
+            bundles=([Bundle(unit_resources={"ACC": 2})] * 25),
         ),
         # Requires 5 additional nodes (total 30).
         PlacementGroupTableData(
             state=PlacementGroupTableData.RESCHEDULING,
             strategy=PlacementStrategy.PACK,
-            bundles=([Bundle(unit_resources={"GPU": 6})] * 30),
+            bundles=([Bundle(unit_resources={"ACC": 6})] * 30),
         ),
     ]
 
@@ -1519,13 +1519,13 @@ def test_get_nodes_to_launch_max_launch_concurrency_placement_groups():
         PlacementGroupTableData(
             state=PlacementGroupTableData.RESCHEDULING,
             strategy=PlacementStrategy.STRICT_SPREAD,
-            bundles=([Bundle(unit_resources={"GPU": 2})] * 25),
+            bundles=([Bundle(unit_resources={"ACC": 2})] * 25),
         ),
         # Requires 35 additional nodes (total 60).
         PlacementGroupTableData(
             state=PlacementGroupTableData.RESCHEDULING,
             strategy=PlacementStrategy.PACK,
-            bundles=([Bundle(unit_resources={"GPU": 6})] * 60),
+            bundles=([Bundle(unit_resources={"ACC": 6})] * 60),
         ),
     ]
 
@@ -1541,7 +1541,7 @@ def test_get_nodes_to_launch_max_launch_concurrency_placement_groups():
     )
     # make sure it still respects max_workers of p2.8xlarge.
     assert to_launch == {"p2.8xlarge": 40}
-    assert rem == [{"GPU": 6.0}] * 20
+    assert rem == [{"ACC": 6.0}] * 20
 
     scheduler.node_types["p2.8xlarge"]["max_workers"] = 60
     to_launch, rem = scheduler.get_nodes_to_launch(
@@ -1557,7 +1557,7 @@ def test_get_nodes_to_launch_max_launch_concurrency_placement_groups():
     # make sure it still respects global max_workers constraint.
     # 50 + 1 is global max_workers + head node.ß
     assert to_launch == {"p2.8xlarge": 51}
-    assert rem == [{"GPU": 6.0}] * 9
+    assert rem == [{"ACC": 6.0}] * 9
 
 
 def test_get_nodes_to_launch_max_launch_concurrency():
@@ -1600,10 +1600,10 @@ def test_get_nodes_to_launch_max_launch_concurrency():
     # Trying to force here that the node shows in nodes but not connected yet
     # and hence does not show up in LoadMetrics (or utilizations).
     ips = provider.non_terminated_node_ips({TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE})
-    utilizations = {ip: {"GPU": 8} for ip in ips}
+    utilizations = {ip: {"ACC": 8} for ip in ips}
     launching_nodes = {"p2.8xlarge": 1}
     # requires 41 p2.8xls (currently 1 pending, 1 launching, 0 running}
-    demands = [{"GPU": 8}] * (len(utilizations) + 40)
+    demands = [{"ACC": 8}] * (len(utilizations) + 40)
     to_launch, rem = scheduler.get_nodes_to_launch(
         nodes,
         launching_nodes,
@@ -1616,7 +1616,7 @@ def test_get_nodes_to_launch_max_launch_concurrency():
     )
     # Enforces max launch to 5 when < 5 running. 2 are pending/launching.
     assert to_launch == {"p2.8xlarge": 3}
-    assert rem == [{"GPU": 8}] * 9
+    assert rem == [{"ACC": 8}] * 9
 
     provider.create_node(
         {},
@@ -1625,10 +1625,10 @@ def test_get_nodes_to_launch_max_launch_concurrency():
     )
     nodes = provider.non_terminated_nodes({})
     ips = provider.non_terminated_node_ips({TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE})
-    utilizations = {ip: {"GPU": 8} for ip in ips}
+    utilizations = {ip: {"ACC": 8} for ip in ips}
     launching_nodes = {"p2.8xlarge": 1}
     # Requires additional 17 p2.8xls (now 1 pending, 1 launching, 8 running}
-    demands = [{"GPU": 8}] * (len(utilizations) + 15)
+    demands = [{"ACC": 8}] * (len(utilizations) + 15)
     to_launch, rem = scheduler.get_nodes_to_launch(
         nodes,
         launching_nodes,
@@ -1653,10 +1653,10 @@ class LoadMetricsTest(unittest.TestCase):
             mock_raylet_id(),
             {"CPU": 2},
             {"CPU": 1},
-            waiting_bundles=[{"GPU": 1}],
+            waiting_bundles=[{"ACC": 1}],
             infeasible_bundles=[{"CPU": 16}],
         )
-        assert same_elements(lm.get_resource_demand_vector(), [{"CPU": 16}, {"GPU": 1}])
+        assert same_elements(lm.get_resource_demand_vector(), [{"CPU": 16}, {"ACC": 1}])
 
     def testPlacementGroupLoad(self):
         lm = LoadMetrics()
@@ -1664,12 +1664,12 @@ class LoadMetricsTest(unittest.TestCase):
             PlacementGroupTableData(
                 state=PlacementGroupTableData.RESCHEDULING,
                 strategy=PlacementStrategy.PACK,
-                bundles=([Bundle(unit_resources={"GPU": 2})] * 2),
+                bundles=([Bundle(unit_resources={"ACC": 2})] * 2),
             ),
             PlacementGroupTableData(
                 state=PlacementGroupTableData.RESCHEDULING,
                 strategy=PlacementStrategy.SPREAD,
-                bundles=([Bundle(unit_resources={"GPU": 2})] * 2),
+                bundles=([Bundle(unit_resources={"ACC": 2})] * 2),
             ),
         ]
         lm.update(
@@ -1688,12 +1688,12 @@ class LoadMetricsTest(unittest.TestCase):
             PlacementGroupTableData(
                 state=PlacementGroupTableData.RESCHEDULING,
                 strategy=PlacementStrategy.PACK,
-                bundles=([Bundle(unit_resources={"GPU": 2})] * 2),
+                bundles=([Bundle(unit_resources={"ACC": 2})] * 2),
             ),
             PlacementGroupTableData(
                 state=PlacementGroupTableData.RESCHEDULING,
                 strategy=PlacementStrategy.PACK,
-                bundles=([Bundle(unit_resources={"GPU": 2})] * 2),
+                bundles=([Bundle(unit_resources={"ACC": 2})] * 2),
             ),
         ]
         lm.update(
@@ -1715,55 +1715,55 @@ class LoadMetricsTest(unittest.TestCase):
             mock_raylet_id(),
             {
                 "CPU": 64,
-                "GPU": 8,
+                "ACC": 8,
                 "accelerator_type:V100": 1,
             },
             {
                 "CPU": 0,
-                "GPU": 1,
+                "ACC": 1,
                 "accelerator_type:V100": 1,
             },
         )
         lm.update(
             "1.1.1.3",
             mock_raylet_id(),
-            {"CPU": 64, "GPU": 8, "accelerator_type:V100": 1},
-            {"CPU": 0, "GPU": 0, "accelerator_type:V100": 0.92},
+            {"CPU": 64, "ACC": 8, "accelerator_type:V100": 1},
+            {"CPU": 0, "ACC": 0, "accelerator_type:V100": 0.92},
         )
         lm.update(
             "1.1.1.4",
             mock_raylet_id(),
             {"CPU": 2},
             {"CPU": 2},
-            waiting_bundles=[{"GPU": 2}] * 10,
-            infeasible_bundles=[{"CPU": 16}, {"GPU": 2}, {"CPU": 16, "GPU": 2}],
+            waiting_bundles=[{"ACC": 2}] * 10,
+            infeasible_bundles=[{"CPU": 16}, {"ACC": 2}, {"CPU": 16, "ACC": 2}],
             pending_placement_groups=pending_placement_groups,
         )
 
-        lm.set_resource_requests([{"CPU": 64}, {"GPU": 8}, {"GPU": 8}])
+        lm.set_resource_requests([{"CPU": 64}, {"ACC": 8}, {"ACC": 8}])
 
         summary = lm.summary()
 
         assert summary.usage["CPU"] == (190, 194)
-        assert summary.usage["GPU"] == (15, 16)
+        assert summary.usage["ACC"] == (15, 16)
         assert summary.usage["memory"] == (500 * 2**20, 1000 * 2**20)
         assert summary.usage["object_store_memory"] == (1000 * 2**20, 2000 * 2**20)
         assert (
             summary.usage["accelerator_type:V100"][1] == 2
         ), "Not comparing the usage value due to floating point error."
 
-        assert ({"GPU": 2}, 11) in summary.resource_demand
+        assert ({"ACC": 2}, 11) in summary.resource_demand
         assert ({"CPU": 16}, 1) in summary.resource_demand
-        assert ({"CPU": 16, "GPU": 2}, 1) in summary.resource_demand
+        assert ({"CPU": 16, "ACC": 2}, 1) in summary.resource_demand
         assert len(summary.resource_demand) == 3
 
         assert (
-            {"bundles": [({"GPU": 2}, 2)], "strategy": "PACK"},
+            {"bundles": [({"ACC": 2}, 2)], "strategy": "PACK"},
             2,
         ) in summary.pg_demand
         assert len(summary.pg_demand) == 1
 
-        assert ({"GPU": 8}, 2) in summary.request_demand
+        assert ({"ACC": 8}, 2) in summary.request_demand
         assert ({"CPU": 64}, 1) in summary.request_demand
         assert len(summary.request_demand) == 2
 
@@ -1775,7 +1775,7 @@ class LoadMetricsTest(unittest.TestCase):
         # Ensure correct dict-conversion
         summary_dict = asdict(summary)
         assert summary_dict["usage"]["CPU"] == (190, 194)
-        assert summary_dict["usage"]["GPU"] == (15, 16)
+        assert summary_dict["usage"]["ACC"] == (15, 16)
         assert summary_dict["usage"]["memory"] == (500 * 2**20, 1000 * 2**20)
         assert summary_dict["usage"]["object_store_memory"] == (
             1000 * 2**20,
@@ -1785,17 +1785,17 @@ class LoadMetricsTest(unittest.TestCase):
             summary_dict["usage"]["accelerator_type:V100"][1] == 2
         ), "Not comparing the usage value due to floating point error."
 
-        assert ({"GPU": 2}, 11) in summary_dict["resource_demand"]
+        assert ({"ACC": 2}, 11) in summary_dict["resource_demand"]
         assert ({"CPU": 16}, 1) in summary_dict["resource_demand"]
-        assert ({"CPU": 16, "GPU": 2}, 1) in summary_dict["resource_demand"]
+        assert ({"CPU": 16, "ACC": 2}, 1) in summary_dict["resource_demand"]
         assert len(summary_dict["resource_demand"]) == 3
 
-        assert ({"bundles": [({"GPU": 2}, 2)], "strategy": "PACK"}, 2) in summary_dict[
+        assert ({"bundles": [({"ACC": 2}, 2)], "strategy": "PACK"}, 2) in summary_dict[
             "pg_demand"
         ]
         assert len(summary_dict["pg_demand"]) == 1
 
-        assert ({"GPU": 8}, 2) in summary_dict["request_demand"]
+        assert ({"ACC": 8}, 2) in summary_dict["request_demand"]
         assert ({"CPU": 64}, 1) in summary_dict["request_demand"]
         assert len(summary_dict["request_demand"]) == 2
 
@@ -1970,7 +1970,7 @@ class AutoscalingTest(unittest.TestCase):
             mock_raylet_id(),
             {"CPU": 16},
             {"CPU": 1},
-            waiting_bundles=[{"GPU": 1}],
+            waiting_bundles=[{"ACC": 1}],
         )
 
         autoscaler.update()
@@ -1999,7 +1999,7 @@ class AutoscalingTest(unittest.TestCase):
         assert summary.failed_nodes == [("172.0.0.4", "m4.4xlarge")]
 
         assert summary.pending_resources == {
-            "GPU": 1,
+            "ACC": 1,
             "CPU": 144,
         }, summary.pending_resources
 
@@ -2129,12 +2129,12 @@ class AutoscalingTest(unittest.TestCase):
             PlacementGroupTableData(
                 state=PlacementGroupTableData.RESCHEDULING,
                 strategy=PlacementStrategy.STRICT_SPREAD,
-                bundles=[Bundle(unit_resources={"GPU": 2})] * 3,
+                bundles=[Bundle(unit_resources={"ACC": 2})] * 3,
             ),
             PlacementGroupTableData(
                 state=PlacementGroupTableData.RESCHEDULING,
                 strategy=PlacementStrategy.PACK,
-                bundles=([Bundle(unit_resources={"GPU": 2})] * 5),
+                bundles=([Bundle(unit_resources={"ACC": 2})] * 5),
             ),
         ]
         # Since placement groups are implemented with custom resources, this is
@@ -2143,8 +2143,8 @@ class AutoscalingTest(unittest.TestCase):
         # should still handle the other infeasible/waiting bundles.
         placement_group_resource_demands = [
             {
-                "GPU_group_0_6c2506ac733bc37496295b02c4fad446": 0.0101,
-                "GPU_group_6c2506ac733bc37496295b02c4fad446": 0.0101,
+                "ACC_group_0_6c2506ac733bc37496295b02c4fad446": 0.0101,
+                "ACC_group_6c2506ac733bc37496295b02c4fad446": 0.0101,
             }
         ]
         lm.update(
@@ -2153,7 +2153,7 @@ class AutoscalingTest(unittest.TestCase):
             {"CPU": 16},
             {"CPU": 16},
             infeasible_bundles=placement_group_resource_demands,
-            waiting_bundles=[{"GPU": 8}],
+            waiting_bundles=[{"ACC": 8}],
             pending_placement_groups=pending_placement_groups,
         )
         autoscaler.update()
@@ -2166,12 +2166,12 @@ class AutoscalingTest(unittest.TestCase):
             PlacementGroupTableData(
                 state=PlacementGroupTableData.RESCHEDULING,
                 strategy=PlacementStrategy.STRICT_PACK,
-                bundles=([Bundle(unit_resources={"GPU": 2})] * 4),
+                bundles=([Bundle(unit_resources={"ACC": 2})] * 4),
             ),
             PlacementGroupTableData(
                 state=PlacementGroupTableData.RESCHEDULING,
                 strategy=PlacementStrategy.SPREAD,
-                bundles=([Bundle(unit_resources={"GPU": 2})] * 2),
+                bundles=([Bundle(unit_resources={"ACC": 2})] * 2),
             ),
         ]
 
@@ -2285,15 +2285,15 @@ class AutoscalingTest(unittest.TestCase):
         )
         autoscaler.update()
         self.waitForNodes(1)
-        lm.update(head_ip, mock_raylet_id(), {"CPU": 4, "GPU": 1}, {})
+        lm.update(head_ip, mock_raylet_id(), {"CPU": 4, "ACC": 1}, {})
         self.waitForNodes(1)
 
         lm.update(
             head_ip,
             mock_raylet_id(),
-            {"CPU": 4, "GPU": 1},
-            {"GPU": 0},
-            waiting_bundles=[{"GPU": 1}],
+            {"CPU": 4, "ACC": 1},
+            {"ACC": 0},
+            waiting_bundles=[{"ACC": 1}],
         )
         autoscaler.update()
         self.waitForNodes(2)
@@ -2334,12 +2334,12 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler.update()
         self.waitForNodes(1)
         assert len(self.provider.mock_nodes) == 1
-        autoscaler.load_metrics.set_resource_requests([{"GPU": 8}])
+        autoscaler.load_metrics.set_resource_requests([{"ACC": 8}])
         autoscaler.update()
         self.waitForNodes(1)
 
         # This request requires an additional worker node.
-        autoscaler.load_metrics.set_resource_requests([{"GPU": 8}] * 2)
+        autoscaler.load_metrics.set_resource_requests([{"ACC": 8}] * 2)
         autoscaler.update()
         self.waitForNodes(2)
         assert self.provider.mock_nodes["1"].node_type == "p2.8xlarge"
@@ -2376,7 +2376,7 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler.update()
         self.waitForNodes(2)
         assert self.provider.mock_nodes["1"].node_type == "m4.large"
-        autoscaler.load_metrics.set_resource_requests([{"GPU": 8}])
+        autoscaler.load_metrics.set_resource_requests([{"ACC": 8}])
         autoscaler.update()
         self.waitForNodes(3)
         assert self.provider.mock_nodes["2"].node_type == "p2.8xlarge"
@@ -2419,7 +2419,7 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler.update()
         self.waitForNodes(1, tag_filters={TAG_RAY_NODE_KIND: NODE_KIND_WORKER})
         assert self.provider.mock_nodes["1"].node_type == "m4.large"
-        autoscaler.load_metrics.set_resource_requests([{"GPU": 8}])
+        autoscaler.load_metrics.set_resource_requests([{"ACC": 8}])
         autoscaler.update()
         self.waitForNodes(2, tag_filters={TAG_RAY_NODE_KIND: NODE_KIND_WORKER})
         assert self.provider.mock_nodes["2"].node_type == "p2.8xlarge"
@@ -2437,7 +2437,7 @@ class AutoscalingTest(unittest.TestCase):
         runner.assert_has_call("172.0.0.1", '"CPU":2')
         runner.assert_has_call("172.0.0.2", "RAY_OVERRIDE_RESOURCES=")
         runner.assert_has_call("172.0.0.2", '"CPU":32')
-        runner.assert_has_call("172.0.0.2", '"GPU":8')
+        runner.assert_has_call("172.0.0.2", '"ACC":8')
 
     def testScaleUpLoadMetrics(self):
         config = copy.deepcopy(MULTI_WORKER_CLUSTER)
@@ -2473,7 +2473,7 @@ class AutoscalingTest(unittest.TestCase):
             mock_raylet_id(),
             {},
             {},
-            waiting_bundles=[{"GPU": 1}],
+            waiting_bundles=[{"ACC": 1}],
             infeasible_bundles=[{"CPU": 16}],
         )
         autoscaler.update()
@@ -2526,11 +2526,11 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler.update()
         self.waitForNodes(2)
         assert self.provider.mock_nodes["1"].node_type == "m4.large"
-        autoscaler.load_metrics.set_resource_requests([{"GPU": 8}])
+        autoscaler.load_metrics.set_resource_requests([{"ACC": 8}])
         autoscaler.update()
         self.waitForNodes(3)
         assert self.provider.mock_nodes["2"].node_type == "p2.8xlarge"
-        autoscaler.load_metrics.set_resource_requests([{"GPU": 1}] * 9)
+        autoscaler.load_metrics.set_resource_requests([{"ACC": 1}] * 9)
         autoscaler.update()
         self.waitForNodes(4)
         assert self.provider.mock_nodes["3"].node_type == "p2.xlarge"
@@ -2597,11 +2597,11 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler.update()
         self.waitForNodes(2)
         assert self.provider.mock_nodes["1"].node_type == "m4.large"
-        autoscaler.load_metrics.set_resource_requests([{"GPU": 8}])
+        autoscaler.load_metrics.set_resource_requests([{"ACC": 8}])
         autoscaler.update()
         self.waitForNodes(3)
         assert self.provider.mock_nodes["2"].node_type == "p2.8xlarge"
-        autoscaler.load_metrics.set_resource_requests([{"GPU": 1}] * 9)
+        autoscaler.load_metrics.set_resource_requests([{"ACC": 1}] * 9)
         autoscaler.update()
         self.waitForNodes(4)
         assert self.provider.mock_nodes["3"].node_type == "p2.xlarge"
@@ -2726,7 +2726,7 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler.update()
         self.waitForNodes(2)
         assert self.provider.mock_nodes["1"].node_type == "m4.large"
-        autoscaler.load_metrics.set_resource_requests([{"GPU": 8}])
+        autoscaler.load_metrics.set_resource_requests([{"ACC": 8}])
         autoscaler.update()
         self.waitForNodes(3)
         assert self.provider.mock_nodes["2"].node_type == "p2.8xlarge"
@@ -2997,12 +2997,12 @@ class AutoscalingTest(unittest.TestCase):
             {
                 "empty_node": {
                     "node_config": {},
-                    "resources": {"CPU": 2, "GPU": 1},
+                    "resources": {"CPU": 2, "ACC": 1},
                     "max_workers": 1,
                 },
                 "def_worker": {
                     "node_config": {},
-                    "resources": {"CPU": 2, "GPU": 1, "WORKER": 1},
+                    "resources": {"CPU": 2, "ACC": 1, "WORKER": 1},
                     "max_workers": 3,
                 },
             }
@@ -3035,18 +3035,18 @@ class AutoscalingTest(unittest.TestCase):
         lm.update(
             "127.0.0.0",
             mock_raylet_id(),
-            {"CPU": 2, "GPU": 1},
+            {"CPU": 2, "ACC": 1},
             {"CPU": 2},
             waiting_bundles=[{"CPU": 2}],
         )
-        autoscaler.load_metrics.set_resource_requests([{"CPU": 2, "GPU": 1}] * 2)
+        autoscaler.load_metrics.set_resource_requests([{"CPU": 2, "ACC": 1}] * 2)
         autoscaler.update()
         # 1 head, 1 worker.
         self.waitForNodes(2)
         lm.update(
             "127.0.0.0",
             mock_raylet_id(),
-            {"CPU": 2, "GPU": 1},
+            {"CPU": 2, "ACC": 1},
             {"CPU": 2},
             waiting_bundles=[{"CPU": 2}],
         )
@@ -3095,7 +3095,7 @@ def test_info_string():
     lm_summary = LoadMetricsSummary(
         usage={
             "CPU": (530.0, 544.0),
-            "GPU": (2, 2),
+            "ACC": (2, 2),
             "AcceleratorType:V100": (0, 2),
             "memory": (2 * 2**30, 2**33),
             "object_store_memory": (3.14 * 2**30, 2**34),
@@ -3138,7 +3138,7 @@ Resources
 Usage:
  0/2 AcceleratorType:V100
  530.0/544.0 CPU
- 2/2 GPU
+ 2/2 ACC
  2.00GiB/8.00GiB memory
  3.14GiB/16.00GiB object_store_memory
 
@@ -3160,7 +3160,7 @@ def test_info_string_verbose():
     lm_summary = LoadMetricsSummary(
         usage={
             "CPU": (530.0, 544.0),
-            "GPU": (2, 2),
+            "ACC": (2, 2),
             "accelerator_type:V100": (1, 2),
             "memory": (2 * 2**30, 2**33),
             "object_store_memory": (3.14 * 2**30, 2**34),
@@ -3172,14 +3172,14 @@ def test_info_string_verbose():
         usage_by_node={
             "192.168.1.1": {
                 "CPU": (5.0, 20.0),
-                "GPU": (0.7, 1),
+                "ACC": (0.7, 1),
                 "accelerator_type:V100": (0.1, 1),
                 "memory": (2**30, 2**32),
                 "object_store_memory": (3.14 * 2**30, 2**32),
             },
             "192.168.1.2": {
                 "CPU": (15.0, 20.0),
-                "GPU": (0.3, 1),
+                "ACC": (0.3, 1),
                 "accelerator_type:V100": (0.9, 1),
                 "memory": (2**30, 1.5 * 2**33),
                 "object_store_memory": (0, 2**32),
@@ -3198,9 +3198,9 @@ def test_info_string_verbose():
         node_activities={
             "192.168.1.1": (
                 "m4.4xlarge",
-                ["CPU in use.", "GPU in use.", "Active workers."],
+                ["CPU in use.", "ACC in use.", "Active workers."],
             ),
-            "192.168.1.2": ("m4.4xlarge", ["GPU in use.", "Active workers."]),
+            "192.168.1.2": ("m4.4xlarge", ["ACC in use.", "Active workers."]),
         },
     )
 
@@ -3227,7 +3227,7 @@ Resources
 --------------------------------------------------------
 Total Usage:
  530.0/544.0 CPU
- 2/2 GPU
+ 2/2 ACC
  1/2 accelerator_type:V100
  2.00GiB/8.00GiB memory
  3.14GiB/16.00GiB object_store_memory
@@ -3240,24 +3240,24 @@ Total Demands:
 Node: 192.168.1.1
  Usage:
   5.0/20.0 CPU
-  0.7/1 GPU
+  0.7/1 ACC
   0.1/1 accelerator_type:V100
   1.00GiB/4.00GiB memory
   3.14GiB/4.00GiB object_store_memory
  Activity:
   CPU in use.
-  GPU in use.
+  ACC in use.
   Active workers.
 
 Node: 192.168.1.2
  Usage:
   15.0/20.0 CPU
-  0.3/1 GPU
+  0.3/1 ACC
   0.9/1 accelerator_type:V100
   1.00GiB/12.00GiB memory
   0B/4.00GiB object_store_memory
  Activity:
-  GPU in use.
+  ACC in use.
   Active workers.
 """.strip()
     actual = format_info_string(
@@ -3276,7 +3276,7 @@ def test_info_string_verbose_node_types():
     lm_summary = LoadMetricsSummary(
         usage={
             "CPU": (530.0, 544.0),
-            "GPU": (2, 2),
+            "ACC": (2, 2),
             "accelerator_type:V100": (1, 2),
             "memory": (2 * 2**30, 2**33),
             "object_store_memory": (3.14 * 2**30, 2**34),
@@ -3288,14 +3288,14 @@ def test_info_string_verbose_node_types():
         usage_by_node={
             "192.168.1.1": {
                 "CPU": (5.0, 20.0),
-                "GPU": (0.7, 1),
+                "ACC": (0.7, 1),
                 "accelerator_type:V100": (0.1, 1),
                 "memory": (2**30, 2**32),
                 "object_store_memory": (3.14 * 2**30, 2**32),
             },
             "192.168.1.2": {
                 "CPU": (15.0, 20.0),
-                "GPU": (0.3, 1),
+                "ACC": (0.3, 1),
                 "accelerator_type:V100": (0.9, 1),
                 "memory": (2**30, 1.5 * 2**33),
                 "object_store_memory": (0, 2**32),
@@ -3313,7 +3313,7 @@ def test_info_string_verbose_node_types():
         failed_nodes=[("1.2.3.6", "p3.2xlarge")],
         node_type_mapping={
             "192.168.1.1": "head-node",
-            "192.168.1.2": "gpu-worker",
+            "192.168.1.2": "acc-worker",
         },
     )
 
@@ -3341,7 +3341,7 @@ Resources
 --------------------------------------------------------
 Total Usage:
  530.0/544.0 CPU
- 2/2 GPU
+ 2/2 ACC
  1/2 accelerator_type:V100
  2.00GiB/8.00GiB memory
  3.14GiB/16.00GiB object_store_memory
@@ -3354,15 +3354,15 @@ Total Demands:
 Node: 192.168.1.1 (head-node)
  Usage:
   5.0/20.0 CPU
-  0.7/1 GPU
+  0.7/1 ACC
   0.1/1 accelerator_type:V100
   1.00GiB/4.00GiB memory
   3.14GiB/4.00GiB object_store_memory
 
-Node: 192.168.1.2 (gpu-worker)
+Node: 192.168.1.2 (acc-worker)
  Usage:
   15.0/20.0 CPU
-  0.3/1 GPU
+  0.3/1 ACC
   0.9/1 accelerator_type:V100
   1.00GiB/12.00GiB memory
   0B/4.00GiB object_store_memory
@@ -3387,7 +3387,7 @@ def test_info_string_verbose_no_breakdown():
     lm_summary = LoadMetricsSummary(
         usage={
             "CPU": (530.0, 544.0),
-            "GPU": (2, 2),
+            "ACC": (2, 2),
             "AcceleratorType:V100": (1, 2),
             "memory": (2 * 2**30, 2**33),
             "object_store_memory": (3.14 * 2**30, 2**34),
@@ -3433,7 +3433,7 @@ Resources
 Total Usage:
  1/2 AcceleratorType:V100
  530.0/544.0 CPU
- 2/2 GPU
+ 2/2 ACC
  2.00GiB/8.00GiB memory
  3.14GiB/16.00GiB object_store_memory
 
@@ -3458,7 +3458,7 @@ def test_info_string_with_launch_failures():
     lm_summary = LoadMetricsSummary(
         usage={
             "CPU": (530.0, 544.0),
-            "GPU": (2, 2),
+            "ACC": (2, 2),
             "AcceleratorType:V100": (0, 2),
             "memory": (2 * 2**30, 2**33),
             "object_store_memory": (3.14 * 2**30, 2**34),
@@ -3527,7 +3527,7 @@ Resources
 Usage:
  0/2 AcceleratorType:V100
  530.0/544.0 CPU
- 2/2 GPU
+ 2/2 ACC
  2.00GiB/8.00GiB memory
  3.14GiB/16.00GiB object_store_memory
 
@@ -3549,7 +3549,7 @@ def test_info_string_with_launch_failures_verbose():
     lm_summary = LoadMetricsSummary(
         usage={
             "CPU": (530.0, 544.0),
-            "GPU": (2, 2),
+            "ACC": (2, 2),
             "AcceleratorType:V100": (0, 2),
             "memory": (2 * 2**30, 2**33),
             "object_store_memory": (3.14 * 2**30, 2**34),
@@ -3619,7 +3619,7 @@ Resources
 Total Usage:
  0/2 AcceleratorType:V100
  530.0/544.0 CPU
- 2/2 GPU
+ 2/2 ACC
  2.00GiB/8.00GiB memory
  3.14GiB/16.00GiB object_store_memory
 
@@ -3642,7 +3642,7 @@ def test_info_string_failed_node_cap():
     lm_summary = LoadMetricsSummary(
         usage={
             "CPU": (530.0, 544.0),
-            "GPU": (2, 2),
+            "ACC": (2, 2),
             "AcceleratorType:V100": (0, 2),
             "memory": (2 * 2**30, 2**33),
             "object_store_memory": (3.14 * 2**30, 2**34),
@@ -3651,7 +3651,7 @@ def test_info_string_failed_node_cap():
         resource_demand=[
             ({"CPU": 2.0}, 150),
             ({"CPU_group_4a82a217aadd8326a3a49f02700ac5c2": 2.0}, 3),
-            ({"GPU_group_0_4a82a2add8326a3a49f02700ac5c2": 0.5}, 100),
+            ({"ACC_group_0_4a82a2add8326a3a49f02700ac5c2": 0.5}, 100),
         ],
         pg_demand=[({"bundles": [({"CPU": 4}, 5)], "strategy": "PACK"}, 420)],
         request_demand=[({"CPU": 16}, 100)],
@@ -3707,13 +3707,13 @@ Resources
 Usage:
  0/2 AcceleratorType:V100
  530.0/544.0 CPU (2.0 used of 2.0 reserved in placement groups)
- 2/2 GPU
+ 2/2 ACC
  2.00GiB/8.00GiB memory
  3.14GiB/16.00GiB object_store_memory
 
 Demands:
  {'CPU': 2.0}: 153+ pending tasks/actors (3+ using placement groups)
- {'GPU': 0.5}: 100+ pending tasks/actors (100+ using placement groups)
+ {'ACC': 0.5}: 100+ pending tasks/actors (100+ using placement groups)
  {'CPU': 4} * 5 (PACK): 420+ pending placement groups
  {'CPU': 16}: 100+ from request_resources()
 """
@@ -3741,7 +3741,7 @@ def test_placement_group_match_string():
         is True
     )
     assert is_placement_group_resource("CPU") is False
-    assert is_placement_group_resource("GPU") is False
+    assert is_placement_group_resource("ACC") is False
     assert is_placement_group_resource("custom_resource") is False
     assert is_placement_group_resource("ip:192.168.1.1") is False
 
@@ -3768,7 +3768,7 @@ def test_placement_group_match_string():
     nodes = provider.non_terminated_nodes({})
     ips = provider.non_terminated_node_ips({})
 
-    utilizations = {ip: {"GPU": 8} for ip in ips}
+    utilizations = {ip: {"ACC": 8} for ip in ips}
 
     with mock.patch(
         "ray.autoscaler._private.resource_demand_scheduler.logger"
@@ -3856,12 +3856,12 @@ def test_utilization_score_plugin_1(launch_nothing_utilization_score_plugin):
     nodes = provider.non_terminated_nodes({})
 
     ips = provider.non_terminated_node_ips({})
-    utilizations = {ip: {"GPU": 8} for ip in ips}
+    utilizations = {ip: {"ACC": 8} for ip in ips}
 
     to_launch, rem = scheduler.get_nodes_to_launch(
         nodes,
         {},
-        [{"GPU": 8}] * 2,
+        [{"ACC": 8}] * 2,
         utilizations,
         [],
         {},
@@ -3930,12 +3930,12 @@ def test_utilization_score_plugin_2(lexical_score_plugin):
     nodes = provider.non_terminated_nodes({})
 
     ips = provider.non_terminated_node_ips({})
-    utilizations = {ip: {"GPU": 8} for ip in ips}
+    utilizations = {ip: {"ACC": 8} for ip in ips}
 
     to_launch, rem = scheduler.get_nodes_to_launch(
         nodes,
         {},
-        [{"GPU": 8}] * 2,
+        [{"ACC": 8}] * 2,
         utilizations,
         [],
         {},

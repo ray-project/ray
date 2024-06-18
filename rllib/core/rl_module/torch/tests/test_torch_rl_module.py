@@ -127,9 +127,9 @@ class TestRLModule(unittest.TestCase):
         self.assertNotEqual(id(module), id(new_module))
 
 
-class TestRLModuleGPU(unittest.TestCase):
+class TestRLModuleACC(unittest.TestCase):
     @unittest.skipIf(not _dynamo_is_available(), "torch._dynamo not available")
-    def test_torch_compile_no_memory_leak_gpu(self):
+    def test_torch_compile_no_memory_leak_acc(self):
         assert torch.cuda.is_available()
 
         def get_memory_usage_cuda():

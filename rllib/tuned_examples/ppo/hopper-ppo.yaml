@@ -11,6 +11,6 @@ hopper-ppo:
         sgd_minibatch_size: 32768
         train_batch_size: 160000
         num_workers: 64
-        num_gpus: 4
+        num_accs: 4
         batch_mode: complete_episodes
         observation_filter: MeanStdFilter

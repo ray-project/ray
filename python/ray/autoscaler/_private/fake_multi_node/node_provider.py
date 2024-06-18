@@ -74,7 +74,7 @@ DOCKER_HEAD_CMD = (
     "--autoscaling-config=~/ray_bootstrap_config.yaml "
     "--object-manager-port=8076 "
     "--num-cpus {num_cpus} "
-    "--num-gpus {num_gpus} "
+    "--num-accs {num_accs} "
     # "--resources='{resources}' "
     '--block"'
 )
@@ -94,7 +94,7 @@ DOCKER_WORKER_CMD = (
     f"ray start --address={FAKE_HEAD_NODE_ID}:6379 "
     "--object-manager-port=8076 "
     "--num-cpus {num_cpus} "
-    "--num-gpus {num_gpus} "
+    "--num-accs {num_accs} "
     # "--resources='{resources}' "
     '--block"'
 )
@@ -123,7 +123,7 @@ def create_node_spec(
     mounted_cluster_dir: str,
     mounted_node_dir: str,
     num_cpus: int = 2,
-    num_gpus: int = 0,
+    num_accs: int = 0,
     resources: Optional[Dict] = None,
     env_vars: Optional[Dict] = None,
     host_gcs_port: int = 16379,
@@ -157,7 +157,7 @@ def create_node_spec(
     cmd_kwargs = dict(
         ensure_ssh=ensure_ssh,
         num_cpus=num_cpus,
-        num_gpus=num_gpus,
+        num_accs=num_accs,
         resources=json.dumps(resources, indent=None),
         volume_dir=volume_dir,
         autoscaling_config=bootstrap_cfg_path_on_container,
@@ -314,7 +314,7 @@ class FakeMultiNodeProvider(NodeProvider):
                 max_worker_port=0,
                 dashboard_port=None,
                 num_cpus=resources.pop("CPU", 0),
-                num_gpus=resources.pop("GPU", 0),
+                num_accs=resources.pop("ACC", 0),
                 object_store_memory=resources.pop("object_store_memory", None),
                 resources=resources,
                 labels=labels,
@@ -470,7 +470,7 @@ class FakeMultiNodeDockerProvider(FakeMultiNodeProvider):
             mounted_cluster_dir=self._mounted_cluster_dir,
             mounted_node_dir=node_dir,
             num_cpus=resources.pop("CPU", 0),
-            num_gpus=resources.pop("GPU", 0),
+            num_accs=resources.pop("ACC", 0),
             host_gcs_port=self._host_gcs_port,
             host_object_manager_port=self._host_object_manager_port,
             host_client_port=self._host_client_port,

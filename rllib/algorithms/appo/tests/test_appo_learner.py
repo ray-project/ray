@@ -64,7 +64,7 @@ class TestAPPOTfLearner(unittest.TestCase):
                 num_rollout_workers=0,
                 rollout_fragment_length=frag_length,
             )
-            .resources(num_gpus=0)
+            .resources(num_accs=0)
             .training(
                 gamma=0.99,
                 model=dict(
@@ -123,7 +123,7 @@ class TestAPPOTfLearner(unittest.TestCase):
                 num_rollout_workers=0,
                 rollout_fragment_length=frag_length,
             )
-            .resources(num_gpus=0)
+            .resources(num_accs=0)
             .training(
                 gamma=0.99,
                 model=dict(

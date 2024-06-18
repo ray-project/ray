@@ -173,14 +173,14 @@ def test_nested_args(shared_ray_instance):
 
 
 def test_dag_options(shared_ray_instance):
-    @ray.remote(num_gpus=100)
+    @ray.remote(num_accs=100)
     def foo():
         pass
 
-    assert foo.bind().get_options() == {"max_calls": 1, "num_gpus": 100}
-    assert foo.options(num_gpus=300).bind().get_options() == {"num_gpus": 300}
+    assert foo.bind().get_options() == {"max_calls": 1, "num_accs": 100}
+    assert foo.options(num_accs=300).bind().get_options() == {"num_accs": 300}
     assert foo.options(num_cpus=500).bind().get_options() == {
-        "num_gpus": 100,
+        "num_accs": 100,
         "num_cpus": 500,
     }
 
@@ -189,16 +189,16 @@ def test_dag_options(shared_ray_instance):
         pass
 
     assert bar.bind().get_options() == {}
-    assert bar.options(num_gpus=100).bind().get_options() == {"num_gpus": 100}
+    assert bar.options(num_accs=100).bind().get_options() == {"num_accs": 100}
 
-    @ray.remote(num_gpus=100)
+    @ray.remote(num_accs=100)
     class Foo:
         pass
 
-    assert Foo.bind().get_options() == {"num_gpus": 100}
-    assert Foo.options(num_gpus=300).bind().get_options() == {"num_gpus": 300}
+    assert Foo.bind().get_options() == {"num_accs": 100}
+    assert Foo.options(num_accs=300).bind().get_options() == {"num_accs": 300}
     assert Foo.options(num_cpus=500).bind().get_options() == {
-        "num_gpus": 100,
+        "num_accs": 100,
         "num_cpus": 500,
     }
 

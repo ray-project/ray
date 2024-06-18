@@ -3,7 +3,7 @@ This script demonstrates how one can specify n (vectorized) envs
 as ray remote (actors), such that stepping through these occurs in parallel.
 Also, actions for each env step will be calculated on the "main" node.
 
-This can be useful if the "main" node is a GPU machine and we would like to
+This can be useful if the "main" node is a ACC machine and we would like to
 speed up batched action calculations, similar to DeepMind's SEED
 architecture, described here:
 
@@ -102,8 +102,8 @@ class PPORemoteInference(PPO):
                     # Single CPU for the local worker. This CPU will host the
                     # main model in this example (num_workers=0).
                     "CPU": 1,
-                    # Possibly add n GPUs to this.
-                    "GPU": cf.num_gpus,
+                    # Possibly add n ACCs to this.
+                    "ACC": cf.num_accs,
                 },
                 {
                     # Different bundle (meaning: possibly different node)
@@ -131,13 +131,13 @@ if __name__ == "__main__":
             num_envs_per_worker=args.num_envs_per_worker,
             # Use a single worker (however, with n parallelized remote envs, maybe
             # even running on another node).
-            # Action computations will occur on the "main" (GPU?) node, while
+            # Action computations will occur on the "main" (ACC?) node, while
             # the envs run on one or more CPU node(s).
             num_rollout_workers=0,
         )
         .resources(
-            # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
-            num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")),
+            # Use ACCs iff `RLLIB_NUM_ACCS` env var set to > 0.
+            num_accs=int(os.environ.get("RLLIB_NUM_ACCS", "0")),
             # Set the number of CPUs used by the (local) worker, aka "driver"
             # to match the number of ray remote envs.
             num_cpus_for_local_worker=args.num_envs_per_worker + 1,

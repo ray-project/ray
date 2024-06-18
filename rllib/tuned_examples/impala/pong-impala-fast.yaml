@@ -18,7 +18,7 @@ pong-impala-fast:
         num_envs_per_worker: 5
         broadcast_interval: 5
         max_sample_requests_in_flight_per_worker: 1
-        num_multi_gpu_tower_stacks: 4
-        num_gpus: 2
+        num_multi_acc_tower_stacks: 4
+        num_accs: 2
         model:
           dim: 42

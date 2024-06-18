@@ -325,7 +325,7 @@ def test_task_status(ray_start_regular):
         ray.get(sema.acquire.remote())
         return
 
-    @ray.remote(num_gpus=1)
+    @ray.remote(num_accs=1)
     def impossible():
         pass
 

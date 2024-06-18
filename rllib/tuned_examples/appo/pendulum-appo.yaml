@@ -8,7 +8,7 @@ pendulum-appo-vtrace:
         # Works for both torch and tf.
         framework: torch
         vtrace: true
-        num_gpus: 0
+        num_accs: 0
         num_workers: 1
         lambda: 0.1
         gamma: 0.95

@@ -7,7 +7,7 @@ An RLlib-based implementation of the
 [DreamerV3 model-based reinforcement learning algorithm](https://arxiv.org/pdf/2301.04104v1.pdf)
 by D. Hafner et al. (Google DeepMind) 2023, in TensorFlow/Keras. 
 
-This implementation allows scaling up training by using multi-GPU machines for
+This implementation allows scaling up training by using multi-ACC machines for
 neural network updates (see below for tips and tricks, example configs, and command lines).
 
 DreamerV3 trains a world model in supervised fashion using real environment
@@ -122,10 +122,10 @@ Great! Now, let's run this experiment:
 $ python flappy_bird.py
 ```
 
-This should be it. Feel free to try out running this on multiple GPUs using these
+This should be it. Feel free to try out running this on multiple ACCs using these
 more advanced config examples [here (Atari100k)](../../tuned_examples/dreamerv3/atari_100k.py) and
 [here (DM Control Suite)](../../tuned_examples/dreamerv3/dm_control_suite_vision.py).
-Also see the notes below on good recipes for running on multiple GPUs.
+Also see the notes below on good recipes for running on multiple ACCs.
 
 <b>IMPORTANT:</b> DreamerV3 out-of-the-box only supports image observation spaces of
 shape 64x64x3 as well as any vector observations (1D float32 Box spaces).
@@ -147,38 +147,38 @@ config.rl_module(
 ```
 
 
-## Note on multi-GPU Training with DreamerV3
-We found that when using multiple GPUs for DreamerV3 training, the following simple
+## Note on multi-ACC Training with DreamerV3
+We found that when using multiple ACCs for DreamerV3 training, the following simple
 adjustments should be made on top of the default config.
 
-- Multiply the batch size (default `B=16`) by the number of GPUs you are using.
-  Use the `DreamerV3Config.training(batch_size_B=..)` API for this. For example, for 2 GPUs,
+- Multiply the batch size (default `B=16`) by the number of ACCs you are using.
+  Use the `DreamerV3Config.training(batch_size_B=..)` API for this. For example, for 2 ACCs,
   use a batch size of `B=32`.
-- Multiply the number of environments you sample from in parallel by the number of GPUs you are using.
+- Multiply the number of environments you sample from in parallel by the number of ACCs you are using.
   Use the `DreamerV3Config.rollouts(num_envs_per_worker=..)` for this.
-  For example, for 4 GPUs and a default environment count of 8 (the single-GPU default for
+  For example, for 4 ACCs and a default environment count of 8 (the single-ACC default for
   this setting depends on the benchmark you are running), use 32
   parallel environments instead.
-- Roughly use learning rates that are the default values multiplied by the square root of the number of GPUs.
-  For example, when using 4 GPUs, multiply all default learning rates (for world model, critic, and actor) by 2.
+- Roughly use learning rates that are the default values multiplied by the square root of the number of ACCs.
+  For example, when using 4 ACCs, multiply all default learning rates (for world model, critic, and actor) by 2.
   - Additionally, a "priming"-style warmup schedule might help. Thereby, increase the learning rates from 0.0
     to the final value(s) over the first ~10% of total env steps needed for the experiment.
   - For examples on how to set such schedules within your `DreamerV3Config`, see below.
-  - [See here](https://aws.amazon.com/blogs/machine-learning/the-importance-of-hyperparameter-tuning-for-scaling-deep-learning-training-to-multiple-gpus/) for more details on learning rate "priming".
+  - [See here](https://aws.amazon.com/blogs/machine-learning/the-importance-of-hyperparameter-tuning-for-scaling-deep-learning-training-to-multiple-accs/) for more details on learning rate "priming".
 
 
 ## Results
 Our results on the Atari 100k and (visual) DeepMind Control Suite benchmarks match those
 reported in the paper.
 
-### Pong-v5 (100k) 1GPU vs 2GPUs vs 4GPUs
-<img src="../../../doc/source/rllib/images/dreamerv3/pong_1_2_and_4gpus.svg" style="display:block;">
+### Pong-v5 (100k) 1ACC vs 2ACCs vs 4ACCs
+<img src="../../../doc/source/rllib/images/dreamerv3/pong_1_2_and_4accs.svg" style="display:block;">
 
 ### Atari 100k
-<img src="../../../doc/source/rllib/images/dreamerv3/atari100k_1_vs_4gpus.svg" style="display:block;">
+<img src="../../../doc/source/rllib/images/dreamerv3/atari100k_1_vs_4accs.svg" style="display:block;">
 
 ### DeepMind Control Suite (vision)
-<img src="../../../doc/source/rllib/images/dreamerv3/dmc_1_vs_4gpus.svg" style="display:block;">
+<img src="../../../doc/source/rllib/images/dreamerv3/dmc_1_vs_4accs.svg" style="display:block;">
 
 
 ## Running Action Inference after Training

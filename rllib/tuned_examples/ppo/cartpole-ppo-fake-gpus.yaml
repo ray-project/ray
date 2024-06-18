@@ -1,4 +1,4 @@
-cartpole-ppo-fake-gpus:
+cartpole-ppo-fake-accs:
     env: CartPole-v1
     run: PPO
     stop:
@@ -14,7 +14,7 @@ cartpole-ppo-fake-gpus:
         num_sgd_iter: 6
         vf_loss_coeff: 0.01
 
-        # Double batch size (2 GPUs).
+        # Double batch size (2 ACCs).
         train_batch_size: 8000
 
         model:
@@ -24,6 +24,6 @@ cartpole-ppo-fake-gpus:
             fcnet_activation: linear
             vf_share_layers: true
 
-        # Fake 2 GPUs.
-        num_gpus: 2
-        _fake_gpus: true
+        # Fake 2 ACCs.
+        num_accs: 2
+        _fake_accs: true

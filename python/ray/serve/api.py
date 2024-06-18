@@ -303,7 +303,7 @@ def deployment(
             through `serve.run()`.
         ray_actor_options: Options to pass to the Ray Actor decorator, such as
             resource requirements. Valid options are: `accelerator_type`, `memory`,
-            `num_cpus`, `num_gpus`, `object_store_memory`, `resources`,
+            `num_cpus`, `num_accs`, `object_store_memory`, `resources`,
             and `runtime_env`.
         placement_group_bundles: Defines a set of placement group bundles to be
             scheduled *for each replica* of this deployment. The replica actor will

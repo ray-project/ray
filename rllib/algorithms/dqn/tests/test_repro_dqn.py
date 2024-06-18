@@ -26,11 +26,11 @@ class TestReproDQN(unittest.TestCase):
         config = dqn.DQNConfig().environment(
             env="DeterministicCartPole-v1", env_config={"seed": 42}
         )
-        # tf-gpu is excluded for determinism
+        # tf-acc is excluded for determinism
         # reason: https://github.com/tensorflow/tensorflow/issues/2732
         # https://github.com/tensorflow/tensorflow/issues/2652
         frameworks = ["torch"]
-        if int(os.environ.get("RLLIB_NUM_GPUS", 0)) == 0:
+        if int(os.environ.get("RLLIB_NUM_ACCS", 0)) == 0:
             frameworks.append("tf")
 
         check_reproducibilty(

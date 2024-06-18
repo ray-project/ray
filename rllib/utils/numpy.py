@@ -36,7 +36,7 @@ MAX_LOG_NN_OUTPUT = 2
 def aligned_array(size: int, dtype, align: int = 64) -> np.ndarray:
     """Returns an array of a given size that is 64-byte aligned.
 
-    The returned array can be efficiently copied into GPU memory by TensorFlow.
+    The returned array can be efficiently copied into ACC memory by TensorFlow.
 
     Args:
         size: The size (total number of items) of the array. For example,

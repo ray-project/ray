@@ -340,9 +340,9 @@ class StreamingExecutor(Executor, threading.Thread):
         cpu = base.cpu
         if cpu is None:
             cpu = cluster.get("CPU", 0.0) - (exclude.cpu or 0.0)
-        gpu = base.gpu
-        if gpu is None:
-            gpu = cluster.get("GPU", 0.0) - (exclude.gpu or 0.0)
+        acc = base.acc
+        if acc is None:
+            acc = cluster.get("ACC", 0.0) - (exclude.acc or 0.0)
         object_store_memory = base.object_store_memory
         if object_store_memory is None:
             object_store_memory = round(
@@ -352,7 +352,7 @@ class StreamingExecutor(Executor, threading.Thread):
 
         return ExecutionResources(
             cpu=cpu,
-            gpu=gpu,
+            acc=acc,
             object_store_memory=object_store_memory,
         )
 
@@ -362,7 +362,7 @@ class StreamingExecutor(Executor, threading.Thread):
         resources_status = (
             "Running: "
             f"{cur_usage.overall.cpu}/{limits.cpu} CPU, "
-            f"{cur_usage.overall.gpu}/{limits.gpu} GPU, "
+            f"{cur_usage.overall.acc}/{limits.acc} ACC, "
             f"{cur_usage.overall.object_store_memory_str()}/"
             f"{limits.object_store_memory_str()} object_store_memory"
         )
@@ -441,13 +441,13 @@ def _validate_dag(dag: PhysicalOperator, limits: ExecutionResources) -> None:
                 f"only has {limits.cpu}.\n"
             )
         if (
-            base_usage.gpu is not None
-            and limits.gpu is not None
-            and base_usage.gpu > limits.gpu
+            base_usage.acc is not None
+            and limits.acc is not None
+            and base_usage.acc > limits.acc
         ):
             error_message += (
-                f"- Your application needs {base_usage.gpu} GPU(s), but your cluster "
-                f"only has {limits.gpu}.\n"
+                f"- Your application needs {base_usage.acc} ACC(s), but your cluster "
+                f"only has {limits.acc}.\n"
             )
         if (
             base_usage.object_store_memory is not None

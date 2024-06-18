@@ -16,7 +16,7 @@ from ray.util.collective.tests.util import (
     "array_size", [2, 2**5, 2**10, 2**15, 2**20, [2, 2], [5, 5, 5]]
 )
 def test_allgather_different_array_size(
-    ray_start_distributed_2_nodes_4_gpus, array_size, tensor_backend
+    ray_start_distributed_2_nodes_4_accs, array_size, tensor_backend
 ):
     world_size = 4
     actors, _ = create_collective_workers(world_size)
@@ -38,7 +38,7 @@ def test_allgather_different_array_size(
 
 
 @pytest.mark.parametrize("dtype", [cp.uint8, cp.float16, cp.float32, cp.float64])
-def test_allgather_different_dtype(ray_start_distributed_2_nodes_4_gpus, dtype):
+def test_allgather_different_dtype(ray_start_distributed_2_nodes_4_accs, dtype):
     world_size = 4
     actors, _ = create_collective_workers(world_size)
     init_tensors_for_gather_scatter(actors, dtype=dtype)
@@ -49,7 +49,7 @@ def test_allgather_different_dtype(ray_start_distributed_2_nodes_4_gpus, dtype):
 
 
 @pytest.mark.parametrize("length", [0, 1, 3, 4, 7, 8])
-def test_unmatched_tensor_list_length(ray_start_distributed_2_nodes_4_gpus, length):
+def test_unmatched_tensor_list_length(ray_start_distributed_2_nodes_4_accs, length):
     world_size = 4
     actors, _ = create_collective_workers(world_size)
     list_buffer = [cp.ones(10, dtype=cp.float32) for _ in range(length)]
@@ -62,7 +62,7 @@ def test_unmatched_tensor_list_length(ray_start_distributed_2_nodes_4_gpus, leng
 
 
 @pytest.mark.parametrize("shape", [10, 20, [4, 5], [1, 3, 5, 7]])
-def test_unmatched_tensor_shape(ray_start_distributed_2_nodes_4_gpus, shape):
+def test_unmatched_tensor_shape(ray_start_distributed_2_nodes_4_accs, shape):
     world_size = 4
     actors, _ = create_collective_workers(world_size)
     init_tensors_for_gather_scatter(actors, array_size=10)
@@ -75,7 +75,7 @@ def test_unmatched_tensor_shape(ray_start_distributed_2_nodes_4_gpus, shape):
         ray.get([a.do_allgather.remote() for a in actors])
 
 
-def test_allgather_torch_cupy(ray_start_distributed_2_nodes_4_gpus):
+def test_allgather_torch_cupy(ray_start_distributed_2_nodes_4_accs):
     world_size = 4
     shape = [10, 10]
     actors, _ = create_collective_workers(world_size)

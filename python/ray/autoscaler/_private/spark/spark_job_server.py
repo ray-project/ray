@@ -35,7 +35,7 @@ class SparkJobServerRequestHandler(BaseHTTPRequestHandler):
             ray_head_port = data["ray_head_port"]
             ray_temp_dir = data["ray_temp_dir"]
             num_cpus_per_node = data["num_cpus_per_node"]
-            num_gpus_per_node = data["num_gpus_per_node"]
+            num_accs_per_node = data["num_accs_per_node"]
             heap_memory_per_node = data["heap_memory_per_node"]
             object_store_memory_per_node = data["object_store_memory_per_node"]
             worker_node_options = data["worker_node_options"]
@@ -53,7 +53,7 @@ class SparkJobServerRequestHandler(BaseHTTPRequestHandler):
                         ray_head_port=ray_head_port,
                         ray_temp_dir=ray_temp_dir,
                         num_cpus_per_node=num_cpus_per_node,
-                        num_gpus_per_node=num_gpus_per_node,
+                        num_accs_per_node=num_accs_per_node,
                         heap_memory_per_node=heap_memory_per_node,
                         object_store_memory_per_node=object_store_memory_per_node,
                         worker_node_options=worker_node_options,

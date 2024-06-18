@@ -25,22 +25,22 @@ class TorchPredictor(DLPredictor):
         model: The torch module to use for predictions.
         preprocessor: A preprocessor used to transform data batches prior
             to prediction.
-        use_gpu: If set, the model will be moved to GPU on instantiation and
-            prediction happens on GPU.
+        use_acc: If set, the model will be moved to ACC on instantiation and
+            prediction happens on ACC.
     """
 
     def __init__(
         self,
         model: torch.nn.Module,
         preprocessor: Optional["Preprocessor"] = None,
-        use_gpu: bool = False,
+        use_acc: bool = False,
     ):
         self.model = model
         self.model.eval()
-        self.use_gpu = use_gpu
+        self.use_acc = use_acc
 
-        if use_gpu:
-            # TODO (jiaodong): #26249 Use multiple GPU devices with sharded input
+        if use_acc:
+            # TODO (jiaodong): #26249 Use multiple ACC devices with sharded input
             self.device = torch.device("cuda")
         else:
             self.device = torch.device("cpu")
@@ -49,17 +49,17 @@ class TorchPredictor(DLPredictor):
         self.model.to(self.device)
 
         if (
-            not use_gpu
+            not use_acc
             and torch.cuda.device_count() > 0
-            and log_once("torch_predictor_not_using_gpu")
+            and log_once("torch_predictor_not_using_acc")
         ):
             logger.warning(
-                "You have `use_gpu` as False but there are "
-                f"{torch.cuda.device_count()} GPUs detected on host where "
+                "You have `use_acc` as False but there are "
+                f"{torch.cuda.device_count()} ACCs detected on host where "
                 "prediction will only use CPU. Please consider explicitly "
-                "setting `TorchPredictor(use_gpu=True)` or "
-                "`batch_predictor.predict(ds, num_gpus_per_worker=1)` to "
-                "enable GPU prediction."
+                "setting `TorchPredictor(use_acc=True)` or "
+                "`batch_predictor.predict(ds, num_accs_per_worker=1)` to "
+                "enable ACC prediction."
             )
 
         super().__init__(preprocessor)
@@ -67,7 +67,7 @@ class TorchPredictor(DLPredictor):
     def __repr__(self):
         return (
             f"{self.__class__.__name__}(model={self.model!r}, "
-            f"preprocessor={self._preprocessor!r}, use_gpu={self.use_gpu!r})"
+            f"preprocessor={self._preprocessor!r}, use_acc={self.use_acc!r})"
         )
 
     @classmethod
@@ -75,7 +75,7 @@ class TorchPredictor(DLPredictor):
         cls,
         checkpoint: TorchCheckpoint,
         model: Optional[torch.nn.Module] = None,
-        use_gpu: bool = False,
+        use_acc: bool = False,
     ) -> "TorchPredictor":
         """Instantiate the predictor from a TorchCheckpoint.
 
@@ -85,12 +85,12 @@ class TorchPredictor(DLPredictor):
                 the model itself, then the state dict will be loaded to this
                 ``model``. If the checkpoint already contains the model itself,
                 this model argument will be discarded.
-            use_gpu: If set, the model will be moved to GPU on instantiation and
-                prediction happens on GPU.
+            use_acc: If set, the model will be moved to ACC on instantiation and
+                prediction happens on ACC.
         """
         model = checkpoint.get_model(model)
         preprocessor = checkpoint.get_preprocessor()
-        return cls(model=model, preprocessor=preprocessor, use_gpu=use_gpu)
+        return cls(model=model, preprocessor=preprocessor, use_acc=use_acc)
 
     @DeveloperAPI
     def call_model(

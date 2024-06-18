@@ -147,9 +147,9 @@ def test_chaos_defer(monkeypatch, ray_start_cluster):
         cluster = ray_start_cluster
         cluster.add_node(num_cpus=1, object_store_memory=1e9)
         cluster.wait_for_nodes()
-        ray.init(address="auto")  # this will connect to gpu nodes
-        cluster.add_node(num_cpus=0, num_gpus=1)
-        bundle = [{"GPU": 1}, {"CPU": 1}]
+        ray.init(address="auto")  # this will connect to acc nodes
+        cluster.add_node(num_cpus=0, num_accs=1)
+        bundle = [{"ACC": 1}, {"CPU": 1}]
         pg = placement_group(bundle)
         # PG will not be ready within 3s
         with pytest.raises(ray.exceptions.GetTimeoutError):

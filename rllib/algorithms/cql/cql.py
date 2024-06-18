@@ -12,7 +12,7 @@ from ray.rllib.execution.rollout_ops import (
     synchronous_parallel_sample,
 )
 from ray.rllib.execution.train_ops import (
-    multi_gpu_train_one_step,
+    multi_acc_train_one_step,
     train_one_step,
 )
 from ray.rllib.policy.policy import Policy
@@ -48,7 +48,7 @@ class CQLConfig(SACConfig):
 
         from ray.rllib.algorithms.cql import CQLConfig
         config = CQLConfig().training(gamma=0.9, lr=0.01)
-        config = config.resources(num_gpus=0)
+        config = config.resources(num_accs=0)
         config = config.rollouts(num_rollout_workers=4)
         print(config.to_dict())
         # Build a Algorithm object from the config and run 1 training iteration.
@@ -136,7 +136,7 @@ class CQLConfig(SACConfig):
         super().validate()
 
         # CQL-torch performs the optimizer steps inside the loss function.
-        # Using the multi-GPU optimizer will therefore not work (see multi-GPU
+        # Using the multi-ACC optimizer will therefore not work (see multi-ACC
         # check above) and we must use the simple optimizer for now.
         if self.simple_optimizer is not True and self.framework_str == "torch":
             self.simple_optimizer = True
@@ -184,11 +184,11 @@ class CQL(SAC):
 
         # Learn on training batch.
         # Use simple optimizer (only for multi-agent or tf-eager; all other
-        # cases should use the multi-GPU optimizer, even if only using 1 GPU)
+        # cases should use the multi-ACC optimizer, even if only using 1 ACC)
         if self.config.get("simple_optimizer") is True:
             train_results = train_one_step(self, train_batch)
         else:
-            train_results = multi_gpu_train_one_step(self, train_batch)
+            train_results = multi_acc_train_one_step(self, train_batch)
 
         # Update target network every `target_network_update_freq` training steps.
         cur_ts = self._counters[

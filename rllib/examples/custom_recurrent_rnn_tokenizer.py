@@ -178,8 +178,8 @@ if __name__ == "__main__":
         .rl_module(
             rl_module_spec=SingleAgentRLModuleSpec(catalog_class=CustomPPOCatalog)
         )
-        # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
-        .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
+        # Use ACCs iff `RLLIB_NUM_ACCS` env var set to > 0.
+        .resources(num_accs=int(os.environ.get("RLLIB_NUM_ACCS", "0")))
     )
 
     stop = {

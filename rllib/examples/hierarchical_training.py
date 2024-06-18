@@ -117,8 +117,8 @@ if __name__ == "__main__":
                 },
                 policy_mapping_fn=policy_mapping_fn,
             )
-            # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
-            .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
+            # Use ACCs iff `RLLIB_NUM_ACCS` env var set to > 0.
+            .resources(num_accs=int(os.environ.get("RLLIB_NUM_ACCS", "0")))
         )
 
         results = tune.Tuner(

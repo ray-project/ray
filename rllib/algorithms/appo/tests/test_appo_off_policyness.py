@@ -15,7 +15,7 @@ tf1, tf, tfv = try_import_tf()
 class TestAPPOOffPolicyNess(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        ray.init(num_gpus=1)
+        ray.init(num_accs=1)
 
     @classmethod
     def tearDownClass(cls) -> None:
@@ -25,7 +25,7 @@ class TestAPPOOffPolicyNess(unittest.TestCase):
         config = (
             appo.APPOConfig()
             .environment("CartPole-v1")
-            .resources(num_gpus=1)
+            .resources(num_accs=1)
             .rollouts(num_rollout_workers=4)
         )
         num_iterations = 3

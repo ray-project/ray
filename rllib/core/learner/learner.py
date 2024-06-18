@@ -381,9 +381,9 @@ class Learner:
             learner_group_scaling_config or LearnerGroupScalingConfig()
         )
         self._distributed = self._learner_group_scaling_config.num_workers > 1
-        self._use_gpu = self._learner_group_scaling_config.num_gpus_per_worker > 0
-        # if we are using gpu but we are not distributed, use this gpu for training
-        self._local_gpu_idx = self._learner_group_scaling_config.local_gpu_idx
+        self._use_acc = self._learner_group_scaling_config.num_accs_per_worker > 0
+        # if we are using acc but we are not distributed, use this acc for training
+        self._local_acc_idx = self._learner_group_scaling_config.local_acc_idx
 
         self._framework_hyperparameters = (
             framework_hyperparameters or FrameworkHyperparameters()
@@ -1287,7 +1287,7 @@ class Learner:
 
         results = []
         # Convert input batch into a tensor batch (MultiAgentBatch) on the correct
-        # device (e.g. GPU). We move the batch already here to avoid having to move
+        # device (e.g. ACC). We move the batch already here to avoid having to move
         # every single minibatch that is created in the `batch_iter` below.
         batch = self._convert_batch_type(batch)
         batch = self._set_slicing_by_batch_id(batch, value=True)

@@ -29,7 +29,7 @@ def run_torch():
         get_device()
 
     trainer = TorchTrainer(
-        train_func, scaling_config=ScalingConfig(num_workers=2, use_gpu=False)
+        train_func, scaling_config=ScalingConfig(num_workers=2, use_acc=False)
     )
     trainer.fit()
 
@@ -64,7 +64,7 @@ def run_lightning():
         trainer = prepare_trainer(trainer)
 
     trainer = TorchTrainer(
-        train_func, scaling_config=ScalingConfig(num_workers=2, use_gpu=False)
+        train_func, scaling_config=ScalingConfig(num_workers=2, use_acc=False)
     )
 
     trainer.fit()
@@ -92,7 +92,7 @@ def run_transformers():
         trainer = prepare_trainer(trainer)
 
     trainer = TorchTrainer(
-        train_func, scaling_config=ScalingConfig(num_workers=2, use_gpu=False)
+        train_func, scaling_config=ScalingConfig(num_workers=2, use_acc=False)
     )
 
     trainer.fit()

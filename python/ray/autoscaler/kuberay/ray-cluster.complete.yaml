@@ -37,8 +37,8 @@ spec:
       # Use `resources` to optionally specify custom resource annotations for the Ray node.
       # The value of `resources` is a string-integer mapping.
       # Currently, `resources` must be provided in the unfortunate format demonstrated below.
-      # Moreover, "CPU" and "GPU" should NOT be included in the `resources` arg.
-      # (Use `num-cpus` and `num-gpus` rayStartParams instead.)
+      # Moreover, "CPU" and "ACC" should NOT be included in the `resources` arg.
+      # (Use `num-cpus` and `num-accs` rayStartParams instead.)
       resources: '"{\"Custom1\": 1, \"Custom2\": 5}"'
     #pod template
     template:
@@ -128,8 +128,8 @@ spec:
       # Use `resources` to optionally specify custom resource annotations for the Ray node.
       # The value of `resources` is a string-integer mapping.
       # Currently, `resources` must be provided in the unfortunate format demonstrated below.
-      # Moreover, "CPU" and "GPU" should NOT be included in the `resources` arg.
-      # (Use `num-cpus` and `num-gpus` rayStartParams instead.)
+      # Moreover, "CPU" and "ACC" should NOT be included in the `resources` arg.
+      # (Use `num-cpus` and `num-accs` rayStartParams instead.)
       resources: '"{\"Custom2\": 5, \"Custom3\": 1}"'
     #pod template
     template:

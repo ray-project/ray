@@ -57,7 +57,7 @@ class TestSupportedMultiAgentPolicyGradient(unittest.TestCase):
         ray.shutdown()
 
     def test_impala_multiagent(self):
-        check_support_multiagent("IMPALA", ImpalaConfig().resources(num_gpus=0))
+        check_support_multiagent("IMPALA", ImpalaConfig().resources(num_accs=0))
 
     def test_ppo_multiagent(self):
         check_support_multiagent(
@@ -101,7 +101,7 @@ class TestSupportedMultiAgentOffPolicy(unittest.TestCase):
         )
 
 
-class TestSupportedMultiAgentMultiGPU(unittest.TestCase):
+class TestSupportedMultiAgentMultiACC(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         ray.init()
@@ -110,8 +110,8 @@ class TestSupportedMultiAgentMultiGPU(unittest.TestCase):
     def tearDownClass(cls) -> None:
         ray.shutdown()
 
-    def test_impala_multiagent_multi_gpu(self):
-        check_support_multiagent("IMPALA", ImpalaConfig().resources(num_gpus=2))
+    def test_impala_multiagent_multi_acc(self):
+        check_support_multiagent("IMPALA", ImpalaConfig().resources(num_accs=2))
 
 
 if __name__ == "__main__":

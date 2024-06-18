@@ -324,16 +324,16 @@ ray.init(address='{call_ray_start}')
 import os
 import time
 @ray.remote(num_cpus=3)
-def use_gpu():
+def use_acc():
     time.sleep(1)
 
-@ray.remote(num_gpus=10)
+@ray.remote(num_accs=10)
 class A:
     pass
 
 A.options(name="a", lifetime="detached").remote()
 
-print(ray.get([use_gpu.remote(), use_gpu.remote()]))
+print(ray.get([use_acc.remote(), use_acc.remote()]))
 """
 
     proc = run_string_as_driver_nonblocking(script)

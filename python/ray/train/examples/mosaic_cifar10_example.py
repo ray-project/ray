@@ -78,7 +78,7 @@ def trainer_init_per_worker(config):
     )
 
 
-def train_mosaic_cifar10(num_workers=2, use_gpu=False, max_duration="5ep"):
+def train_mosaic_cifar10(num_workers=2, use_acc=False, max_duration="5ep"):
     from composer.algorithms import LabelSmoothing
 
     from ray.train.mosaic import MosaicTrainer
@@ -92,7 +92,7 @@ def train_mosaic_cifar10(num_workers=2, use_gpu=False, max_duration="5ep"):
     trainer = MosaicTrainer(
         trainer_init_per_worker=trainer_init_per_worker,
         trainer_init_config=trainer_init_config,
-        scaling_config=ScalingConfig(num_workers=num_workers, use_gpu=use_gpu),
+        scaling_config=ScalingConfig(num_workers=num_workers, use_acc=use_acc),
     )
     result = trainer.fit()
     print(f"Results: {result.metrics}")
@@ -113,11 +113,11 @@ if __name__ == "__main__":
         help="Sets number of workers for training.",
     )
     parser.add_argument(
-        "--use-gpu", action="store_true", default=False, help="Enables GPU training"
+        "--use-acc", action="store_true", default=False, help="Enables ACC training"
     )
 
     args, _ = parser.parse_known_args()
 
     runtime_env = {"pip": ["mosaicml==0.12.1"]}
     ray.init(address=args.address, runtime_env=runtime_env)
-    train_mosaic_cifar10(num_workers=args.num_workers, use_gpu=args.use_gpu)
+    train_mosaic_cifar10(num_workers=args.num_workers, use_acc=args.use_acc)

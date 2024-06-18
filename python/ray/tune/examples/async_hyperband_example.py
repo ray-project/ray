@@ -37,7 +37,7 @@ if __name__ == "__main__":
     stopping_criteria = {"training_iteration": 1 if args.smoke_test else 9999}
 
     tuner = tune.Tuner(
-        tune.with_resources(easy_objective, {"cpu": 1, "gpu": 0}),
+        tune.with_resources(easy_objective, {"cpu": 1, "acc": 0}),
         run_config=train.RunConfig(
             name="asynchyperband_test",
             stop=stopping_criteria,

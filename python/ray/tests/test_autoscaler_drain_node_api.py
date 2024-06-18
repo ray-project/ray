@@ -61,10 +61,10 @@ def test_drain_api(shutdown_only):
     cluster = MockAutoscalingCluster(
         head_resources={"CPU": 1},
         worker_node_types={
-            "gpu_node": {
+            "acc_node": {
                 "resources": {
                     "CPU": 1,
-                    "GPU": 1,
+                    "ACC": 1,
                     "object_store_memory": 1024 * 1024 * 1024,
                 },
                 "node_config": {},
@@ -78,20 +78,20 @@ def test_drain_api(shutdown_only):
         cluster.start()
         ray.init("auto")
 
-        # Triggers the addition of a GPU node.
-        @ray.remote(num_gpus=1)
+        # Triggers the addition of a ACC node.
+        @ray.remote(num_accs=1)
         def f():
-            print("gpu ok")
+            print("acc ok")
 
         ray.get(f.remote())
 
         # Verify scale-up
-        wait_for_condition(lambda: ray.cluster_resources().get("GPU", 0) == 1)
+        wait_for_condition(lambda: ray.cluster_resources().get("ACC", 0) == 1)
         # Sleep for double the idle timeout of 6 seconds.
         time.sleep(12)
 
         # Verify scale-down
-        wait_for_condition(lambda: ray.cluster_resources().get("GPU", 0) == 0)
+        wait_for_condition(lambda: ray.cluster_resources().get("ACC", 0) == 0)
 
         # Check that no errors were raised while draining nodes.
         # (Logic copied from test_failure4::test_gcs_drain.)

@@ -26,14 +26,14 @@ class TestTuneController(TuneController):
 
 @pytest.fixture(scope="function")
 def ray_start_8_cpus():
-    address_info = ray.init(num_cpus=8, num_gpus=0)
+    address_info = ray.init(num_cpus=8, num_accs=0)
     yield address_info
     ray.shutdown()
 
 
 @pytest.fixture(scope="function")
-def ray_start_4_cpus_2_gpus_extra():
-    address_info = ray.init(num_cpus=4, num_gpus=2, resources={"a": 2})
+def ray_start_4_cpus_2_accs_extra():
+    address_info = ray.init(num_cpus=4, num_accs=2, resources={"a": 2})
     yield address_info
     ray.shutdown()
 
@@ -41,7 +41,7 @@ def ray_start_4_cpus_2_gpus_extra():
 @pytest.mark.parametrize(
     "resource_manager_cls", [FixedResourceManager, PlacementGroupResourceManager]
 )
-def test_search_alg_notification(ray_start_4_cpus_2_gpus_extra, resource_manager_cls):
+def test_search_alg_notification(ray_start_4_cpus_2_accs_extra, resource_manager_cls):
     """Check that the searchers gets notified of trial results + completions.
 
     Also check that the searcher is "finished" before the runner, i.e. the runner
@@ -90,7 +90,7 @@ def test_search_alg_notification(ray_start_4_cpus_2_gpus_extra, resource_manager
 @pytest.mark.parametrize(
     "resource_manager_cls", [FixedResourceManager, PlacementGroupResourceManager]
 )
-def test_search_alg_scheduler_stop(ray_start_4_cpus_2_gpus_extra, resource_manager_cls):
+def test_search_alg_scheduler_stop(ray_start_4_cpus_2_accs_extra, resource_manager_cls):
     """Check that a scheduler-issued stop also notifies the search algorithm.
 
     Legacy test: test_trial_runner_3.py::TrialRunnerTest::testSearchAlgSchedulerInteraction  # noqa
@@ -128,7 +128,7 @@ def test_search_alg_scheduler_stop(ray_start_4_cpus_2_gpus_extra, resource_manag
 @pytest.mark.parametrize(
     "resource_manager_cls", [FixedResourceManager, PlacementGroupResourceManager]
 )
-def test_search_alg_stalled(ray_start_4_cpus_2_gpus_extra, resource_manager_cls):
+def test_search_alg_stalled(ray_start_4_cpus_2_accs_extra, resource_manager_cls):
     """Checks that runner and searcher state is maintained when stalled.
 
     We use a concurrency limit of 1, meaning each trial is added one-by-one
@@ -209,7 +209,7 @@ def test_search_alg_stalled(ray_start_4_cpus_2_gpus_extra, resource_manager_cls)
 @pytest.mark.parametrize(
     "resource_manager_cls", [FixedResourceManager, PlacementGroupResourceManager]
 )
-def test_search_alg_finishes(ray_start_4_cpus_2_gpus_extra, resource_manager_cls):
+def test_search_alg_finishes(ray_start_4_cpus_2_accs_extra, resource_manager_cls):
     """Empty SearchAlg changing state in `next_trials` does not crash.
 
     The search algorithm changes to ``finished`` mid-run. This should not

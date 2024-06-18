@@ -883,7 +883,7 @@ class TuneReporterBase(ProgressReporter):
         result.append(self._get_overall_trial_progress_str(trials))
         # Current time: 2023-02-24 12:35:39 (running for 00:00:37.40)
         result.append(self._time_heartbeat_str)
-        # Logical resource usage: 8.0/64 CPUs, 0/0 GPUs
+        # Logical resource usage: 8.0/64 CPUs, 0/0 ACCs
         result.extend(sys_args)
         # Current best trial: TRIAL NAME, metrics: {...}, parameters: {...}
         current_best_trial, metric = _current_best_trial(

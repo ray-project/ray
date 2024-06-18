@@ -102,8 +102,8 @@ class _FakeResourceUpdater(_ResourceUpdater):
     def get_num_cpus(self):
         return self._resource_manager._total_resources.get("CPU", 0)
 
-    def get_num_gpus(self) -> int:
-        return self._resource_manager._total_resources.get("GPU", 0)
+    def get_num_accs(self) -> int:
+        return self._resource_manager._total_resources.get("ACC", 0)
 
 
 class TestingTrial(Trial):

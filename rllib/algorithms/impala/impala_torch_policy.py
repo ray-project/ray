@@ -107,7 +107,7 @@ class VTraceLoss:
             clip_rho_threshold=clip_rho_threshold,
             clip_pg_rho_threshold=clip_pg_rho_threshold,
         )
-        # Move v-trace results back to GPU for actual loss computing.
+        # Move v-trace results back to ACC for actual loss computing.
         self.value_targets = self.vtrace_returns.vs.to(device)
 
         # The policy gradients loss.
@@ -344,7 +344,7 @@ class ImpalaTorchPolicy(
         )
 
         # Store values for stats function in model (tower), such that for
-        # multi-GPU, we do not override them during the parallel loss phase.
+        # multi-ACC, we do not override them during the parallel loss phase.
         model.tower_stats["pi_loss"] = loss.pi_loss
         model.tower_stats["vf_loss"] = loss.vf_loss
         model.tower_stats["entropy"] = loss.entropy

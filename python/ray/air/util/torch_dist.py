@@ -46,7 +46,7 @@ def _init_torch_distributed(
     local_world_size: int,
     master_addr: str,
     master_port: str,
-    gpu_ids: List[int],
+    acc_ids: List[int],
 ):
     """Initialize torch distributed backend"""
     if init_method == "env":
@@ -66,8 +66,8 @@ def _init_torch_distributed(
         # Same as in Ray Train
         os.environ["NCCL_ASYNC_ERROR_HANDLING"] = "1"
         # All workers on a same node should share the same set of
-        # visible GPUs. Otherwise they can't talk among themselves.
-        os.environ["CUDA_VISIBLE_DEVICES"] = ",".join(str(gid) for gid in gpu_ids)
+        # visible ACCs. Otherwise they can't talk among themselves.
+        os.environ["CUDA_VISIBLE_DEVICES"] = ",".join(str(gid) for gid in acc_ids)
         if "NCCL_SOCKET_IFNAME" not in os.environ:
             os.environ["NCCL_SOCKET_IFNAME"] = DEFAULT_NCCL_SOCKET_IFNAME
 
@@ -85,11 +85,11 @@ def _init_torch_distributed(
     os.environ["LOCAL_WORLD_SIZE"] = str(local_world_size)
 
 
-def _get_node_and_gpu_ids():
-    """Returns the node_id and gpu_ids for this worker."""
+def _get_node_and_acc_ids():
+    """Returns the node_id and acc_ids for this worker."""
     node_id = ray.get_runtime_context().get_node_id()
-    gpu_ids = ray.get_gpu_ids()
-    return node_id, gpu_ids
+    acc_ids = ray.get_acc_ids()
+    return node_id, acc_ids
 
 
 def init_torch_dist_process_group(
@@ -116,21 +116,21 @@ def init_torch_dist_process_group(
         raise RuntimeError("Distributed torch is not available.")
 
     # Build a map from node_id to workers on that node.
-    node_and_gpu_ids = ray.get(
-        [w.execute.remote(_get_node_and_gpu_ids) for w in workers]
+    node_and_acc_ids = ray.get(
+        [w.execute.remote(_get_node_and_acc_ids) for w in workers]
     )
     # All the workers on a specific node.
     node_to_workers = defaultdict(list)
-    # All the gpu ids visible to all the workers on a specific node.
-    node_to_gpu_ids = defaultdict(set)
-    for i, (node_id, gpu_ids) in enumerate(node_and_gpu_ids):
+    # All the acc ids visible to all the workers on a specific node.
+    node_to_acc_ids = defaultdict(set)
+    for i, (node_id, acc_ids) in enumerate(node_and_acc_ids):
         node_to_workers[node_id].append(i)
         # Force list.
-        if not isinstance(gpu_ids, list):
-            gpu_ids = [gpu_ids]
-        # It is possible for a worker to have access to multiple GPUs.
-        for gpu_id in gpu_ids:
-            node_to_gpu_ids[node_id].add(gpu_id)
+        if not isinstance(acc_ids, list):
+            acc_ids = [acc_ids]
+        # It is possible for a worker to have access to multiple ACCs.
+        for acc_id in acc_ids:
+            node_to_acc_ids[node_id].add(acc_id)
 
     # Assume the first worker is the master.
     master_addr, master_port = ray.get(workers[0].execute.remote(get_address_and_port))
@@ -139,7 +139,7 @@ def init_torch_dist_process_group(
     world_size = len(workers)
     local_ranks = []
     for rank, worker in enumerate(workers):
-        node_id = node_and_gpu_ids[rank][0]
+        node_id = node_and_acc_ids[rank][0]
         local_rank = node_to_workers[node_id].index(rank)
         local_world_size = len(node_to_workers[node_id])
         setup_futures.append(
@@ -153,9 +153,9 @@ def init_torch_dist_process_group(
                 local_world_size=local_world_size,
                 master_addr=master_addr,
                 master_port=master_port,
-                # list(set) will sort the gpu ids, so VISIBLE_CUDA_DEVICES
+                # list(set) will sort the acc ids, so VISIBLE_CUDA_DEVICES
                 # is always sorted.
-                gpu_ids=list(node_to_gpu_ids[node_id]),
+                acc_ids=list(node_to_acc_ids[node_id]),
             )
         )
         local_ranks.append(local_rank)

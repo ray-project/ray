@@ -126,7 +126,7 @@ class AlgorithmConfig(_Config):
         # sub-categories, e.g. "training".
         config = (PPOConfig().training(gamma=0.9, lr=0.01)
                 .environment(env="CartPole-v1")
-                .resources(num_gpus=0)
+                .resources(num_accs=0)
                 .rollouts(num_rollout_workers=0)
                 .callbacks(MemoryTrackingCallbacks)
             )
@@ -251,15 +251,15 @@ class AlgorithmConfig(_Config):
         self.extra_python_environs_for_worker = {}
 
         # `self.resources()`
-        self.num_gpus = 0
+        self.num_accs = 0
         self.num_cpus_per_worker = 1
-        self.num_gpus_per_worker = 0
-        self._fake_gpus = False
+        self.num_accs_per_worker = 0
+        self._fake_accs = False
         self.num_cpus_for_local_worker = 1
         self.num_learner_workers = 0
-        self.num_gpus_per_learner_worker = 0
+        self.num_accs_per_learner_worker = 0
         self.num_cpus_per_learner_worker = 1
-        self.local_gpu_idx = 0
+        self.local_acc_idx = 0
         self.custom_resources_per_worker = {}
         self.placement_strategy = "PACK"
 
@@ -271,12 +271,12 @@ class AlgorithmConfig(_Config):
             # note: overridden by `local_tf_session_args`
             "intra_op_parallelism_threads": 2,
             "inter_op_parallelism_threads": 2,
-            "gpu_options": {
+            "acc_options": {
                 "allow_growth": True,
             },
             "log_device_placement": False,
             "device_count": {"CPU": 1},
-            # Required by multi-GPU (num_gpus > 1).
+            # Required by multi-ACC (num_accs > 1).
             "allow_soft_placement": True,
         }
         self.local_tf_session_args = {
@@ -940,11 +940,11 @@ class AlgorithmConfig(_Config):
         # Remove this once we are able to specify placement group bundle index in RLlib
         if (
             self.num_cpus_per_learner_worker > 1
-            and self.num_gpus_per_learner_worker > 0
+            and self.num_accs_per_learner_worker > 0
         ):
             raise ValueError(
                 "Cannot set both `num_cpus_per_learner_worker` and "
-                " `num_gpus_per_learner_worker` > 0! Users must set one"
+                " `num_accs_per_learner_worker` > 0! Users must set one"
                 " or the other due to issues with placement group"
                 " fragmentation. See "
                 "https://github.com/ray-project/ray/issues/35409 for more details."
@@ -966,33 +966,33 @@ class AlgorithmConfig(_Config):
             )
 
         # TODO: Deprecate self.simple_optimizer!
-        # Multi-GPU settings.
+        # Multi-ACC settings.
         if self.simple_optimizer is True:
             pass
-        # Multi-GPU setting: Must use MultiGPUTrainOneStep.
-        elif not self._enable_new_api_stack and self.num_gpus > 1:
-            # TODO: AlphaStar uses >1 GPUs differently (1 per policy actor), so this is
+        # Multi-ACC setting: Must use MultiACCTrainOneStep.
+        elif not self._enable_new_api_stack and self.num_accs > 1:
+            # TODO: AlphaStar uses >1 ACCs differently (1 per policy actor), so this is
             #  ok for tf2 here.
             #  Remove this hacky check, once we have fully moved to the Learner API.
             if self.framework_str == "tf2" and type(self).__name__ != "AlphaStar":
                 raise ValueError(
-                    "`num_gpus` > 1 not supported yet for "
+                    "`num_accs` > 1 not supported yet for "
                     f"framework={self.framework_str}!"
                 )
             elif self.simple_optimizer is True:
                 raise ValueError(
-                    "Cannot use `simple_optimizer` if `num_gpus` > 1! "
+                    "Cannot use `simple_optimizer` if `num_accs` > 1! "
                     "Consider not setting `simple_optimizer` in your config."
                 )
             self.simple_optimizer = False
         # Auto-setting: Use simple-optimizer for tf-eager or multiagent,
-        # otherwise: MultiGPUTrainOneStep (if supported by the algo's execution
+        # otherwise: MultiACCTrainOneStep (if supported by the algo's execution
         # plan).
         elif self.simple_optimizer == DEPRECATED_VALUE:
             # tf-eager: Must use simple optimizer.
             if self.framework_str not in ["tf", "torch"]:
                 self.simple_optimizer = True
-            # Multi-agent case: Try using MultiGPU optimizer (only
+            # Multi-agent case: Try using MultiACC optimizer (only
             # if all policies used are DynamicTFPolicies or TorchPolicies).
             elif self.is_multi_agent():
                 from ray.rllib.policy.dynamic_tf_policy import DynamicTFPolicy
@@ -1093,9 +1093,9 @@ class AlgorithmConfig(_Config):
                 )
 
         # make sure the resource requirements for learner_group is valid
-        if self.num_learner_workers == 0 and self.num_gpus_per_worker > 1:
+        if self.num_learner_workers == 0 and self.num_accs_per_worker > 1:
             raise ValueError(
-                "num_gpus_per_worker must be 0 (cpu) or 1 (gpu) when using local mode "
+                "num_accs_per_worker must be 0 (cpu) or 1 (acc) when using local mode "
                 "(i.e. num_learner_workers = 0)"
             )
 
@@ -1165,53 +1165,53 @@ class AlgorithmConfig(_Config):
     def resources(
         self,
         *,
-        num_gpus: Optional[Union[float, int]] = NotProvided,
-        _fake_gpus: Optional[bool] = NotProvided,
+        num_accs: Optional[Union[float, int]] = NotProvided,
+        _fake_accs: Optional[bool] = NotProvided,
         num_cpus_per_worker: Optional[Union[float, int]] = NotProvided,
-        num_gpus_per_worker: Optional[Union[float, int]] = NotProvided,
+        num_accs_per_worker: Optional[Union[float, int]] = NotProvided,
         num_cpus_for_local_worker: Optional[int] = NotProvided,
         num_learner_workers: Optional[int] = NotProvided,
         num_cpus_per_learner_worker: Optional[Union[float, int]] = NotProvided,
-        num_gpus_per_learner_worker: Optional[Union[float, int]] = NotProvided,
-        local_gpu_idx: Optional[int] = NotProvided,
+        num_accs_per_learner_worker: Optional[Union[float, int]] = NotProvided,
+        local_acc_idx: Optional[int] = NotProvided,
         custom_resources_per_worker: Optional[dict] = NotProvided,
         placement_strategy: Optional[str] = NotProvided,
     ) -> "AlgorithmConfig":
         """Specifies resources allocated for an Algorithm and its ray actors/workers.
 
         Args:
-            num_gpus: Number of GPUs to allocate to the algorithm process.
-                Note that not all algorithms can take advantage of GPUs.
-                Support for multi-GPU is currently only available for
-                tf-[PPO/IMPALA/DQN/PG]. This can be fractional (e.g., 0.3 GPUs).
-            _fake_gpus: Set to True for debugging (multi-)?GPU funcitonality on a
-                CPU machine. GPU towers will be simulated by graphs located on
-                CPUs in this case. Use `num_gpus` to test for different numbers of
-                fake GPUs.
+            num_accs: Number of ACCs to allocate to the algorithm process.
+                Note that not all algorithms can take advantage of ACCs.
+                Support for multi-ACC is currently only available for
+                tf-[PPO/IMPALA/DQN/PG]. This can be fractional (e.g., 0.3 ACCs).
+            _fake_accs: Set to True for debugging (multi-)?ACC funcitonality on a
+                CPU machine. ACC towers will be simulated by graphs located on
+                CPUs in this case. Use `num_accs` to test for different numbers of
+                fake ACCs.
             num_cpus_per_worker: Number of CPUs to allocate per worker.
-            num_gpus_per_worker: Number of GPUs to allocate per worker. This can be
+            num_accs_per_worker: Number of ACCs to allocate per worker. This can be
                 fractional. This is usually needed only if your env itself requires a
-                GPU (i.e., it is a GPU-intensive video game), or model inference is
+                ACC (i.e., it is a ACC-intensive video game), or model inference is
                 unusually expensive.
             num_learner_workers: Number of workers used for training. A value of 0
                 means training will take place on a local worker on head node CPUs or 1
-                GPU (determined by `num_gpus_per_learner_worker`). For multi-gpu
+                ACC (determined by `num_accs_per_learner_worker`). For multi-acc
                 training, set number of workers greater than 1 and set
-                `num_gpus_per_learner_worker` accordingly (e.g. 4 GPUs total, and model
-                needs 2 GPUs: `num_learner_workers = 2` and
-                `num_gpus_per_learner_worker = 2`)
+                `num_accs_per_learner_worker` accordingly (e.g. 4 ACCs total, and model
+                needs 2 ACCs: `num_learner_workers = 2` and
+                `num_accs_per_learner_worker = 2`)
             num_cpus_per_learner_worker: Number of CPUs allocated per Learner worker.
                 Only necessary for custom processing pipeline inside each Learner
                 requiring multiple CPU cores. Ignored if `num_learner_workers = 0`.
-            num_gpus_per_learner_worker: Number of GPUs allocated per worker. If
+            num_accs_per_learner_worker: Number of ACCs allocated per worker. If
                 `num_learner_workers = 0`, any value greater than 0 will run the
-                training on a single GPU on the head node, while a value of 0 will run
-                the training on head node CPU cores. If num_gpus_per_learner_worker is
+                training on a single ACC on the head node, while a value of 0 will run
+                the training on head node CPU cores. If num_accs_per_learner_worker is
                 set, then num_cpus_per_learner_worker cannot be set.
-            local_gpu_idx: if num_gpus_per_worker > 0, and num_workers<2, then this gpu
+            local_acc_idx: if num_accs_per_worker > 0, and num_workers<2, then this acc
                 index will be used for training. This is an index into the available
                 cuda devices. For example if os.environ["CUDA_VISIBLE_DEVICES"] = "1"
-                then a local_gpu_idx of 0 will use the gpu with id 1 on the node.
+                then a local_acc_idx of 0 will use the acc with id 1 on the node.
             custom_resources_per_worker: Any custom Ray resources to allocate per
                 worker.
             num_cpus_for_local_worker: Number of CPUs to allocate for the algorithm.
@@ -1223,8 +1223,8 @@ class AlgorithmConfig(_Config):
                 `Algorithm.default_resource_request()`. A PlacementGroup defines, which
                 devices (resources) should always be co-located on the same node.
                 For example, an Algorithm with 2 rollout workers, running with
-                num_gpus=1 will request a placement group with the bundles:
-                [{"gpu": 1, "cpu": 1}, {"cpu": 1}, {"cpu": 1}], where the first bundle
+                num_accs=1 will request a placement group with the bundles:
+                [{"acc": 1, "cpu": 1}, {"cpu": 1}, {"cpu": 1}], where the first bundle
                 is for the driver and the other 2 bundles are for the two workers.
                 These bundles can now be "placed" on the same or different
                 nodes depending on the value of `placement_strategy`:
@@ -1237,14 +1237,14 @@ class AlgorithmConfig(_Config):
         Returns:
             This updated AlgorithmConfig object.
         """
-        if num_gpus is not NotProvided:
-            self.num_gpus = num_gpus
-        if _fake_gpus is not NotProvided:
-            self._fake_gpus = _fake_gpus
+        if num_accs is not NotProvided:
+            self.num_accs = num_accs
+        if _fake_accs is not NotProvided:
+            self._fake_accs = _fake_accs
         if num_cpus_per_worker is not NotProvided:
             self.num_cpus_per_worker = num_cpus_per_worker
-        if num_gpus_per_worker is not NotProvided:
-            self.num_gpus_per_worker = num_gpus_per_worker
+        if num_accs_per_worker is not NotProvided:
+            self.num_accs_per_worker = num_accs_per_worker
         if num_cpus_for_local_worker is not NotProvided:
             self.num_cpus_for_local_worker = num_cpus_for_local_worker
         if custom_resources_per_worker is not NotProvided:
@@ -1256,10 +1256,10 @@ class AlgorithmConfig(_Config):
             self.num_learner_workers = num_learner_workers
         if num_cpus_per_learner_worker is not NotProvided:
             self.num_cpus_per_learner_worker = num_cpus_per_learner_worker
-        if num_gpus_per_learner_worker is not NotProvided:
-            self.num_gpus_per_learner_worker = num_gpus_per_learner_worker
-        if local_gpu_idx is not NotProvided:
-            self.local_gpu_idx = local_gpu_idx
+        if num_accs_per_learner_worker is not NotProvided:
+            self.num_accs_per_learner_worker = num_accs_per_learner_worker
+        if local_acc_idx is not NotProvided:
+            self.local_acc_idx = local_acc_idx
 
         return self
 
@@ -2472,7 +2472,7 @@ class AlgorithmConfig(_Config):
                 the `rllib train` command, you can also use the `-v` and `-vv` flags as
                 shorthand for INFO and DEBUG.
             log_sys_usage: Log system resource metrics to results. This requires
-                `psutil` to be installed for sys stats, and `gputil` for GPU metrics.
+                `psutil` to be installed for sys stats, and `acctil` for ACC metrics.
             fake_sampler: Use fake (infinite speed) sampler. For testing only.
             seed: This argument, in conjunction with worker_index, sets the random
                 seed of each worker, so that identically configured trials will have
@@ -2604,7 +2604,7 @@ class AlgorithmConfig(_Config):
 
         Args:
             _enable_new_api_stack: Enables the new API stack, which will use RLModule
-                (instead of ModelV2) as well as the multi-GPU capable Learner API
+                (instead of ModelV2) as well as the multi-ACC capable Learner API
                 (instead of using Policy to compute loss and update the model).
             _tf_policy_handles_more_than_one_loss: Experimental flag.
                 If True, TFPolicy will handle more than one loss/optimizer.
@@ -3419,11 +3419,11 @@ class AlgorithmConfig(_Config):
                 num_learner_workers=self.num_learner_workers,
                 num_cpus_per_learner_worker=(
                     self.num_cpus_per_learner_worker
-                    if not self.num_gpus_per_learner_worker
+                    if not self.num_accs_per_learner_worker
                     else 0
                 ),
-                num_gpus_per_learner_worker=self.num_gpus_per_learner_worker,
-                local_gpu_idx=self.local_gpu_idx,
+                num_accs_per_learner_worker=self.num_accs_per_learner_worker,
+                local_acc_idx=self.local_acc_idx,
             )
         )
 

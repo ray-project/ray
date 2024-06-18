@@ -26,7 +26,7 @@ from ray.rllib.utils.metrics import (
 from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
 from ray.rllib.utils.spaces.space_utils import normalize_action
 from ray.rllib.utils.tf_run_builder import _TFRunBuilder
-from ray.rllib.utils.tf_utils import get_gpu_devices
+from ray.rllib.utils.tf_utils import get_acc_devices
 from ray.rllib.utils.typing import (
     AlgorithmConfigDict,
     LocalOptimizer,
@@ -52,7 +52,7 @@ class TFPolicy(Policy):
     to generate your custom tf (graph-mode or eager) Policy classes.
 
     Extending this class enables RLlib to perform TensorFlow specific
-    optimizations on the policy, e.g., parallelization across gpus or
+    optimizations on the policy, e.g., parallelization across accs or
     fusing multiple graphs together in the multi-agent setting.
 
     Input tensors are typically shaped like [BATCH_SIZE, ...].
@@ -173,34 +173,34 @@ class TFPolicy(Policy):
         super().__init__(observation_space, action_space, config)
 
         # Get devices to build the graph on.
-        num_gpus = self._get_num_gpus_for_policy()
-        gpu_ids = get_gpu_devices()
-        logger.info(f"Found {len(gpu_ids)} visible cuda devices.")
+        num_accs = self._get_num_accs_for_policy()
+        acc_ids = get_acc_devices()
+        logger.info(f"Found {len(acc_ids)} visible cuda devices.")
 
         # Place on one or more CPU(s) when either:
-        # - Fake GPU mode.
-        # - num_gpus=0 (either set by user or we are in local_mode=True).
-        # - no GPUs available.
-        if config["_fake_gpus"] or num_gpus == 0 or not gpu_ids:
-            self.devices = ["/cpu:0" for _ in range(int(math.ceil(num_gpus)) or 1)]
-        # Place on one or more actual GPU(s), when:
-        # - num_gpus > 0 (set by user) AND
+        # - Fake ACC mode.
+        # - num_accs=0 (either set by user or we are in local_mode=True).
+        # - no ACCs available.
+        if config["_fake_accs"] or num_accs == 0 or not acc_ids:
+            self.devices = ["/cpu:0" for _ in range(int(math.ceil(num_accs)) or 1)]
+        # Place on one or more actual ACC(s), when:
+        # - num_accs > 0 (set by user) AND
         # - local_mode=False AND
-        # - actual GPUs available AND
-        # - non-fake GPU mode.
+        # - actual ACCs available AND
+        # - non-fake ACC mode.
         else:
             # We are a remote worker (WORKER_MODE=1):
-            # GPUs should be assigned to us by ray.
+            # ACCs should be assigned to us by ray.
             if ray._private.worker._mode() == ray._private.worker.WORKER_MODE:
-                gpu_ids = ray.get_gpu_ids()
+                acc_ids = ray.get_acc_ids()
 
-            if len(gpu_ids) < num_gpus:
+            if len(acc_ids) < num_accs:
                 raise ValueError(
-                    "TFPolicy was not able to find enough GPU IDs! Found "
-                    f"{gpu_ids}, but num_gpus={num_gpus}."
+                    "TFPolicy was not able to find enough ACC IDs! Found "
+                    f"{acc_ids}, but num_accs={num_accs}."
                 )
 
-            self.devices = [f"/gpu:{i}" for i, _ in enumerate(gpu_ids) if i < num_gpus]
+            self.devices = [f"/acc:{i}" for i, _ in enumerate(acc_ids) if i < num_accs]
 
         # Disable env-info placeholder.
         if SampleBatch.INFOS in self.view_requirements:
@@ -802,7 +802,7 @@ class TFPolicy(Policy):
     def copy(self, existing_inputs: List[Tuple[str, "tf1.placeholder"]]) -> "TFPolicy":
         """Creates a copy of self using existing input placeholders.
 
-        Optional: Only required to work with the multi-GPU optimizer.
+        Optional: Only required to work with the multi-ACC optimizer.
 
         Args:
             existing_inputs (List[Tuple[str, tf1.placeholder]]): Dict mapping

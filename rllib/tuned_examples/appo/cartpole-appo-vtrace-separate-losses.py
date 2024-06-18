@@ -30,5 +30,5 @@ config = (
         num_rollout_workers=1,
         observation_filter="MeanStdFilter",
     )
-    .resources(num_gpus=0)
+    .resources(num_accs=0)
 )

@@ -294,7 +294,7 @@ def test_validate_dag():
     )
     _validate_dag(o3, ExecutionResources())
     _validate_dag(o3, ExecutionResources(cpu=20))
-    _validate_dag(o3, ExecutionResources(gpu=0))
+    _validate_dag(o3, ExecutionResources(acc=0))
     with pytest.raises(ValueError):
         _validate_dag(o3, ExecutionResources(cpu=10))
 
@@ -314,46 +314,46 @@ def test_execution_allowed():
         op, stub(ExecutionResources(cpu=2)), ExecutionResources(cpu=2)
     )
     assert _execution_allowed(
-        op, stub(ExecutionResources(cpu=2)), ExecutionResources(gpu=2)
+        op, stub(ExecutionResources(cpu=2)), ExecutionResources(acc=2)
     )
 
-    # GPU.
+    # ACC.
     op.incremental_resource_usage = MagicMock(
-        return_value=ExecutionResources(cpu=0, gpu=1)
+        return_value=ExecutionResources(cpu=0, acc=1)
     )
     assert _execution_allowed(
-        op, stub(ExecutionResources(gpu=1)), ExecutionResources(gpu=2)
+        op, stub(ExecutionResources(acc=1)), ExecutionResources(acc=2)
     )
     assert not _execution_allowed(
-        op, stub(ExecutionResources(gpu=2)), ExecutionResources(gpu=2)
-    )
-
-    # Test conversion to indicator (0/1).
-    op.incremental_resource_usage = MagicMock(
-        return_value=ExecutionResources(cpu=0, gpu=100)
-    )
-    assert _execution_allowed(
-        op, stub(ExecutionResources(gpu=1)), ExecutionResources(gpu=2)
-    )
-    assert _execution_allowed(
-        op, stub(ExecutionResources(gpu=1.5)), ExecutionResources(gpu=2)
-    )
-    assert not _execution_allowed(
-        op, stub(ExecutionResources(gpu=2)), ExecutionResources(gpu=2)
+        op, stub(ExecutionResources(acc=2)), ExecutionResources(acc=2)
     )
 
     # Test conversion to indicator (0/1).
     op.incremental_resource_usage = MagicMock(
-        return_value=ExecutionResources(cpu=0, gpu=0.1)
+        return_value=ExecutionResources(cpu=0, acc=100)
     )
     assert _execution_allowed(
-        op, stub(ExecutionResources(gpu=1)), ExecutionResources(gpu=2)
+        op, stub(ExecutionResources(acc=1)), ExecutionResources(acc=2)
     )
     assert _execution_allowed(
-        op, stub(ExecutionResources(gpu=1.5)), ExecutionResources(gpu=2)
+        op, stub(ExecutionResources(acc=1.5)), ExecutionResources(acc=2)
     )
     assert not _execution_allowed(
-        op, stub(ExecutionResources(gpu=2)), ExecutionResources(gpu=2)
+        op, stub(ExecutionResources(acc=2)), ExecutionResources(acc=2)
+    )
+
+    # Test conversion to indicator (0/1).
+    op.incremental_resource_usage = MagicMock(
+        return_value=ExecutionResources(cpu=0, acc=0.1)
+    )
+    assert _execution_allowed(
+        op, stub(ExecutionResources(acc=1)), ExecutionResources(acc=2)
+    )
+    assert _execution_allowed(
+        op, stub(ExecutionResources(acc=1.5)), ExecutionResources(acc=2)
+    )
+    assert not _execution_allowed(
+        op, stub(ExecutionResources(acc=2)), ExecutionResources(acc=2)
     )
 
 
@@ -378,7 +378,7 @@ def test_resource_constrained_triggers_autoscaling(monkeypatch):
     )
 
     ray.shutdown()
-    ray.init(num_cpus=3, num_gpus=1)
+    ray.init(num_cpus=3, num_accs=1)
 
     def run_execution(
         execution_id: str, incremental_cpu: int = 1, autoscaling_state=None
@@ -402,11 +402,11 @@ def test_resource_constrained_triggers_autoscaling(monkeypatch):
             make_map_transformer(lambda block: [b * 3 for b in block]),
             o3,
             compute_strategy=ray.data.ActorPoolStrategy(min_size=1, max_size=2),
-            ray_remote_args={"num_gpus": incremental_cpu},
+            ray_remote_args={"num_accs": incremental_cpu},
         )
         o4.num_active_tasks = MagicMock(return_value=1)
         o4.incremental_resource_usage = MagicMock(
-            return_value=ExecutionResources(gpu=1)
+            return_value=ExecutionResources(acc=1)
         )
         topo = build_streaming_topology(o4, opt)[0]
         # Make sure only two operator's inqueues has data.
@@ -415,10 +415,10 @@ def test_resource_constrained_triggers_autoscaling(monkeypatch):
         selected_op = select_operator_to_run(
             topo,
             TopologyResourceUsage(
-                ExecutionResources(cpu=2, gpu=1, object_store_memory=1000),
+                ExecutionResources(cpu=2, acc=1, object_store_memory=1000),
                 EMPTY_DOWNSTREAM_USAGE,
             ),
-            ExecutionResources(cpu=2, gpu=1, object_store_memory=1000),
+            ExecutionResources(cpu=2, acc=1, object_store_memory=1000),
             [],
             True,
             execution_id,
@@ -437,8 +437,8 @@ def test_resource_constrained_triggers_autoscaling(monkeypatch):
         {"CPU": 1},
         {"CPU": 1},
         {"CPU": 1},
-        {"GPU": 1},
-        {"GPU": 1},
+        {"ACC": 1},
+        {"ACC": 1},
         {"CPU": 1},
     ]
 
@@ -448,8 +448,8 @@ def test_resource_constrained_triggers_autoscaling(monkeypatch):
         {"CPU": 1},
         {"CPU": 1},
         {"CPU": 1},
-        {"GPU": 1},
-        {"GPU": 1},
+        {"ACC": 1},
+        {"ACC": 1},
         {"CPU": 1},
     ]
 
@@ -459,13 +459,13 @@ def test_resource_constrained_triggers_autoscaling(monkeypatch):
         {"CPU": 1},
         {"CPU": 1},
         {"CPU": 1},
-        {"GPU": 1},
-        {"GPU": 1},
+        {"ACC": 1},
+        {"ACC": 1},
         {"CPU": 1},
         {"CPU": 1},
         {"CPU": 1},
-        {"GPU": 1},
-        {"GPU": 1},
+        {"ACC": 1},
+        {"ACC": 1},
     ]
 
     # Requesting for existing execution again, so no change in resource bundles.
@@ -474,13 +474,13 @@ def test_resource_constrained_triggers_autoscaling(monkeypatch):
         {"CPU": 1},
         {"CPU": 1},
         {"CPU": 1},
-        {"GPU": 1},
-        {"GPU": 1},
+        {"ACC": 1},
+        {"ACC": 1},
         {"CPU": 1},
         {"CPU": 1},
         {"CPU": 1},
-        {"GPU": 1},
-        {"GPU": 1},
+        {"ACC": 1},
+        {"ACC": 1},
     ]
 
     # After the timeout, all requests should have been purged.
@@ -497,8 +497,8 @@ def test_resource_constrained_triggers_autoscaling(monkeypatch):
         {"CPU": 1},
         {"CPU": 1},
         {"CPU": 1},
-        {"GPU": 1},
-        {"GPU": 1},
+        {"ACC": 1},
+        {"ACC": 1},
         {"CPU": 1},
     ]
 
@@ -702,7 +702,7 @@ def test_execution_allowed_nothrottle():
 
 
 def test_resource_limits():
-    cluster_resources = {"CPU": 10, "GPU": 5, "object_store_memory": 1000}
+    cluster_resources = {"CPU": 10, "ACC": 5, "object_store_memory": 1000}
     default_object_store_memory_limit = math.ceil(
         cluster_resources["object_store_memory"]
         * DEFAULT_OBJECT_STORE_MEMORY_LIMIT_FRACTION
@@ -711,13 +711,13 @@ def test_resource_limits():
     with patch("ray.cluster_resources", return_value=cluster_resources):
         # Test default resource limits.
         # When no resource limits are set, the resource limits should default to
-        # the cluster resources for CPU/GPU, and
+        # the cluster resources for CPU/ACC, and
         # DEFAULT_OBJECT_STORE_MEMORY_LIMIT_FRACTION of cluster object store memory.
         options = ExecutionOptions()
         executor = StreamingExecutor(options, "")
         expected = ExecutionResources(
             cpu=cluster_resources["CPU"],
-            gpu=cluster_resources["GPU"],
+            acc=cluster_resources["ACC"],
             object_store_memory=default_object_store_memory_limit,
         )
         assert executor._get_or_refresh_resource_limits() == expected
@@ -725,12 +725,12 @@ def test_resource_limits():
         # Test setting resource_limits
         options = ExecutionOptions()
         options.resource_limits = ExecutionResources(
-            cpu=1, gpu=2, object_store_memory=100
+            cpu=1, acc=2, object_store_memory=100
         )
         executor = StreamingExecutor(options, "")
         expected = ExecutionResources(
             cpu=1,
-            gpu=2,
+            acc=2,
             object_store_memory=100,
         )
         assert executor._get_or_refresh_resource_limits() == expected
@@ -739,12 +739,12 @@ def test_resource_limits():
         # The actual limit should be the default limit minus the excluded resources.
         options = ExecutionOptions()
         options.exclude_resources = ExecutionResources(
-            cpu=1, gpu=2, object_store_memory=100
+            cpu=1, acc=2, object_store_memory=100
         )
         executor = StreamingExecutor(options, "")
         expected = ExecutionResources(
             cpu=cluster_resources["CPU"] - 1,
-            gpu=cluster_resources["GPU"] - 2,
+            acc=cluster_resources["ACC"] - 2,
             object_store_memory=default_object_store_memory_limit - 100,
         )
         assert executor._get_or_refresh_resource_limits() == expected

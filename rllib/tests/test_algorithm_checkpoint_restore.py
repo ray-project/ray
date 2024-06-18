@@ -21,7 +21,7 @@ algorithms_and_configs = {
         DQNConfig()
         .exploration(explore=False)
         .training(num_steps_sampled_before_learning_starts=0)
-        .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
+        .resources(num_accs=int(os.environ.get("RLLIB_NUM_ACCS", "0")))
     ),
     "PPO": (
         # See the comment before the `algorithms_and_configs` dict.
@@ -29,7 +29,7 @@ algorithms_and_configs = {
         PPOConfig()
         .training(num_sgd_iter=5, train_batch_size=1000)
         .rollouts(num_rollout_workers=2)
-        .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
+        .resources(num_accs=int(os.environ.get("RLLIB_NUM_ACCS", "0")))
         .evaluation(
             evaluation_num_workers=1,
             evaluation_interval=1,
@@ -49,7 +49,7 @@ algorithms_and_configs = {
         SACConfig()
         .exploration(explore=False)
         .training(num_steps_sampled_before_learning_starts=0)
-        .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
+        .resources(num_accs=int(os.environ.get("RLLIB_NUM_ACCS", "0")))
     ),
 }
 
