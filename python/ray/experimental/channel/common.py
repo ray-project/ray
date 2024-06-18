@@ -219,6 +219,12 @@ class ChannelInterface:
         """
         raise NotImplementedError
 
+    def capacity(self) -> int:
+        """
+        Return the maximum number of items that can be held in the channel.
+        """
+        raise NotImplementedError
+
 
 # Interfaces for channel I/O.
 @DeveloperAPI

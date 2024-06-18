@@ -442,6 +442,10 @@ class Channel(ChannelInterface):
             self.ensure_registered_as_reader()
         self._worker.core_worker.experimental_channel_set_error(self._reader_ref)
 
+    def capacity(self) -> int:
+        # Shared memory channel can buffer at most one object in shared memory.
+        return 1
+
 
 @PublicAPI(stability="alpha")
 class CompositeChannel(ChannelInterface):
@@ -555,3 +559,8 @@ class CompositeChannel(ChannelInterface):
     def close(self) -> None:
         for channel in self._channels:
             channel.close()
+
+    def capacity(self) -> int:
+        # Because the underlying shared memory channel or the intra-process channel
+        # has a capacity of 1
+        return 1

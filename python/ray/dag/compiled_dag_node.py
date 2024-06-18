@@ -1,6 +1,7 @@
 import asyncio
 from collections import defaultdict
 from typing import Any, Dict, List, Tuple, Union, Optional, Set
+import heapq
 import logging
 import threading
 import uuid
@@ -162,6 +163,9 @@ def _exec_task(self, task: "ExecutableTask", idx: int) -> bool:
     try:
         output_val = method(*resolved_inputs)
         output_writer.write(output_val)
+    except IOError:
+        # Channel closed. Exit the loop.
+        return True
     except Exception as exc:
         # TODO(rui): consider different ways of passing down the exception,
         # e.g., wrapping with RayTaskError.
@@ -383,6 +387,7 @@ class CompiledDAG:
         enable_asyncio: bool = False,
         async_max_queue_size: Optional[int] = None,
         max_buffered_results: Optional[int] = None,
+        info_level_when_execution_may_block: Optional[str] = None,
     ):
         """
         Args:
@@ -407,6 +412,11 @@ class CompiledDAG:
                 executions is beyond the DAG capacity, the new execution would
                 be blocked in the first place; therefore, this limit is only
                 enforced when it is smaller than the DAG capacity.
+            info_level_when_execution_may_block: The level of information to
+                print when the execution may be blocked due to DAG is at its
+                capacity. `None` means no information will be printed, "WARN"
+                means a warning message will be printed, and "ERROR" means an
+                exception will be thrown.
 
         Returns:
             Channel: A wrapper around ray.ObjectRef.
@@ -431,6 +441,7 @@ class CompiledDAG:
         self._max_buffered_results: Optional[int] = max_buffered_results
         if self._max_buffered_results is None:
             self._max_buffered_results = MAX_BUFFER_COUNT
+        self._info_level_when_execution_may_block = info_level_when_execution_may_block
         # Used to ensure that the future returned to the
         # caller corresponds to the correct DAG output. I.e.
         # order of futures added to fut_queue should match the
@@ -867,6 +878,76 @@ class CompiledDAG:
 
         self._dag_submitter.start()
         self._dag_output_fetcher.start()
+        self._capacity = self._compute_capacity()
+        print(f"Capacity of the DAG: {self._capacity}")
+
+    @property
+    def capacity(self) -> int:
+        return self._capacity
+
+    def _compute_capacity(self):
+        """
+        Compute the capacity of the DAG. The capacity is the number of inputs
+        the DAG could start processing without blocking when none of the outputs
+        is consumed.
+
+        Returns:
+            The capacity of the DAG.
+
+        NOTE: The DAG can hold intermediate results in either the intermediate
+        channels or the actors, specifically:
+        - Channel capacity: either 1 or 0 depending on the channel type.
+        - Actor capacity: capacity is 1 because the actor can fetch and hold one
+            object from each input channel during execution. For an actor with
+            multiple methods, the capacity is still 1 because the current method
+            needs to finish (which flushes the held object) before the next method
+            can start.
+
+        This method performs a modified Dijkstra's algorithm to compute the
+        capacity of the DAG.
+        """
+        capa = {idx: float("inf") for idx in self.idx_to_task}
+        pq = []
+
+        # Initial capacity is 1 as input channel has capacity 1.
+        capa[self.input_task_idx] = 1
+        heapq.heappush(pq, (1, self.input_task_idx, set()))
+
+        while pq:
+            cur_capa, cur_idx, cur_actors = heapq.heappop(pq)
+            if cur_idx == self.output_task_idx:
+                return cur_capa
+
+            chan_capa = self.idx_to_task[cur_idx].output_channel.capacity()
+
+            for downstream_idx, actor in self.idx_to_task[
+                cur_idx
+            ].downstream_node_idxs.items():
+                if actor is not None and actor not in cur_actors:
+                    # If the actor is not used in the current path, its method
+                    # can be executed, therefore 1 object can be buffered at
+                    # this actor, and chan_capa can be buffered at the output channel.
+                    actor_capa = 1
+                    downstream_capa = cur_capa + actor_capa + chan_capa
+                else:
+                    # If the actor is already used in the path, its method
+                    # will block, so neither the actor nor the output channel
+                    # can buffer any object.
+                    downstream_capa = cur_capa
+                if downstream_capa < capa[downstream_idx]:
+                    capa[downstream_idx] = downstream_capa
+                    new_actors = cur_actors.copy()
+                    if actor is not None:
+                        new_actors.add(actor)
+                    logger.info(
+                        f"curr_idx = {cur_idx}, downstream_idx = {downstream_idx},"
+                        f" curr_idx_task = {self.idx_to_task[cur_idx].dag_node}"
+                        " downstream_idx_task = "
+                        f"{self.idx_to_task[downstream_idx].dag_node}"
+                        f" downstream_capa = {downstream_capa}"
+                        f" new_actors = {new_actors}"
+                    )
+                    heapq.heappush(pq, (downstream_capa, downstream_idx, new_actors))
 
     def _monitor_failures(self):
         outer = self
@@ -1016,6 +1097,20 @@ class CompiledDAG:
 
         self._get_or_compile()
 
+        if self._execution_index - self._max_execution_index > self._capacity:
+            if self._info_level_when_execution_may_block == "ERROR":
+                raise ValueError(
+                    "Execution may be blocked due to DAG is at its capacity "
+                    f"({self._capacity}). Please call ray.get() on previous "
+                    "CompiledDAGRefs to retrieve and release results from the DAG."
+                )
+            elif self._info_level_when_execution_may_block == "WARN":
+                logger.warn(
+                    "Execution may be blocked due to DAG is at its capacity "
+                    f"({self._capacity}). Please call ray.get() on previous "
+                    "CompiledDAGRefs to retrieve and release results from the DAG."
+                )
+
         inp = (args, kwargs)
         self._dag_submitter.write(inp)
 
@@ -1077,12 +1172,14 @@ def build_compiled_dag_from_ray_dag(
     enable_asyncio: bool = False,
     async_max_queue_size: Optional[int] = None,
     max_buffered_results: Optional[int] = None,
+    info_level_when_execution_may_block: Optional[str] = None,
 ) -> "CompiledDAG":
     compiled_dag = CompiledDAG(
         buffer_size_bytes,
         enable_asyncio,
         async_max_queue_size,
         max_buffered_results,
+        info_level_when_execution_may_block,
     )
 
     def _build_compiled_dag(node):

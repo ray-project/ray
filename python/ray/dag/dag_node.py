@@ -132,6 +132,7 @@ class DAGNode(DAGNodeBase):
         enable_asyncio: bool = False,
         async_max_queue_size: Optional[int] = None,
         max_buffered_results: Optional[int] = None,
+        info_level_when_execution_may_block: Optional[str] = None,
     ) -> "ray.dag.CompiledDAG":
         """Compile an accelerated execution path for this DAG.
 
@@ -147,16 +148,28 @@ class DAGNode(DAGNodeBase):
                 executions is beyond the DAG capacity, the new execution would
                 be blocked in the first place; therefore, this limit is only
                 enforced when it is smaller than the DAG capacity.
+            info_level_when_execution_may_block: The level of information to
+                print when the execution may be blocked due to DAG is at its
+                capacity. `None` means no information will be printed, "WARN"
+                means a warning message will be printed, and "ERROR" means an
+                exception will be thrown.
 
         Returns:
             A compiled DAG.
         """
+        if info_level_when_execution_may_block not in [None, "WARN", "ERROR"]:
+            raise ValueError(
+                "info_level_when_execution_may_block must be one of "
+                "None, 'WARN', or 'ERROR'."
+            )
+
         return build_compiled_dag_from_ray_dag(
             self,
             buffer_size_bytes,
             enable_asyncio,
             async_max_queue_size,
             max_buffered_results,
+            info_level_when_execution_may_block,
         )
 
     def execute(

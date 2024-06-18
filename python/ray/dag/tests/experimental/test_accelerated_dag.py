@@ -328,6 +328,217 @@ def test_multi_args_and_kwargs(ray_start_regular):
     compiled_dag.teardown()
 
 
+def test_dag_capacity(ray_start_regular):
+    """
+    Test the capacity of a CompiledDAG and exceptions when the capacity is exceeded.
+
+    This test checks a series of linear and branched DAGs. For each DAG, its structure
+    and capacity of internal components are illustrated with a simple ASCII diagram.
+    A number in a parenthesis indicates the Nth intermediate object, an 'x' indicates
+    the actor or channel is blocked to hold any objects.
+    """
+    # Linear: basic case
+    a = Actor.remote(0)
+    with InputNode() as i:
+        dag = a.inc.bind(i)
+    compiled_dag = dag.experimental_compile(info_level_when_execution_may_block="ERROR")
+    # driver -(3)-> a.inc (2) -(1)-> driver
+    assert compiled_dag.capacity == 3
+    refs = []
+    for i in range(3):
+        ref = compiled_dag.execute(1)
+        refs.append(ref)
+    # No blocking when capacity is not exceeded.
+    result = ray.get(ref)
+    assert result == 3
+    # Throws an error when capacity is exceeded.
+    refs = []
+    for i in range(3):
+        ref = compiled_dag.execute(1)
+        refs.append(ref)
+    with pytest.raises(
+        ValueError,
+        match=(
+            "Execution may be blocked due to DAG is at its capacity \(3\). "
+            "Please call ray.get\(\) on previous CompiledDAGRefs to retrieve"
+            " and release them from the DAG."
+        ),
+    ):
+        compiled_dag.execute(1)
+    compiled_dag.teardown()
+
+    # Linear: multiple actors
+    a1 = Actor.remote(0)
+    a2 = Actor.remote(0)
+    with InputNode() as i:
+        dag = a1.inc.bind(i)
+        dag = a2.inc.bind(dag)
+    compiled_dag = dag.experimental_compile(info_level_when_execution_may_block="ERROR")
+    # driver -(5)-> a1.inc (4) -(3)-> a2.inc (2) -(1)-> driver
+    assert compiled_dag.capacity == 5
+    refs = []
+    for i in range(5):
+        ref = compiled_dag.execute(1)
+        refs.append(ref)
+    # No blocking when capacity is not exceeded.
+    result = ray.get(ref)
+    assert result == 15
+    # Throws an error when capacity is exceeded.
+    refs = []
+    for i in range(5):
+        ref = compiled_dag.execute(1)
+        refs.append(ref)
+    with pytest.raises(
+        ValueError,
+        match=(
+            "Execution may be blocked due to DAG is at its capacity \(5\). "
+            "Please call ray.get\(\) on previous CompiledDAGRefs to retrieve"
+            " and release them from the DAG."
+        ),
+    ):
+        compiled_dag.execute(1)
+    compiled_dag.teardown()
+
+    # Linear: single actor multiple methods
+    a = Actor.remote(0)
+    with InputNode() as inp:
+        dag = a.inc.bind(inp)
+        dag = a.echo.bind(dag)
+    compiled_dag = dag.experimental_compile(info_level_when_execution_may_block="ERROR")
+    # driver -(3)-> a.inc (x) -(x)-> a.echo (2) -(1)-> driver
+    assert compiled_dag.capacity == 3
+    refs = []
+    for i in range(3):
+        ref = compiled_dag.execute(1)
+        refs.append(ref)
+    # No blocking when capacity is not exceeded.
+    result = ray.get(ref)
+    assert result == 3
+    # Throws an error when capacity is exceeded.
+    refs = []
+    for i in range(3):
+        ref = compiled_dag.execute(1)
+        refs.append(ref)
+    with pytest.raises(
+        ValueError,
+        match=(
+            "Execution may be blocked due to DAG is at its capacity \(3\). "
+            "Please call ray.get\(\) on previous CompiledDAGRefs to retrieve"
+            " and release them from the DAG."
+        ),
+    ):
+        compiled_dag.execute(1)
+    compiled_dag.teardown()
+
+    # Linear: single actor repeated methods
+    a = Actor.remote(0)
+    with InputNode() as inp:
+        dag = a.inc.bind(inp)
+        dag = a.inc.bind(dag)
+    compiled_dag = dag.experimental_compile(info_level_when_execution_may_block="ERROR")
+    # driver -(3)-> a.inc (x) -(x)-> a.inc (2) -(1)-> driver
+    assert compiled_dag.capacity == 3
+    refs = []
+    for i in range(3):
+        ref = compiled_dag.execute(1)
+        refs.append(ref)
+    # No blocking when capacity is not exceeded.
+    result = ray.get(ref)
+    assert result == 14
+    # Throws an error when capacity is exceeded.
+    refs = []
+    for i in range(3):
+        ref = compiled_dag.execute(1)
+        refs.append(ref)
+    with pytest.raises(
+        ValueError,
+        match=(
+            "Execution may be blocked due to DAG is at its capacity \(3\). "
+            "Please call ray.get\(\) on previous CompiledDAGRefs to retrieve"
+            " and release them from the DAG."
+        ),
+    ):
+        compiled_dag.execute(1)
+
+    # Linear: long chain
+    actors = [Actor.options(num_cpus=0).remote(0) for _ in range(10)]
+    with InputNode() as inp:
+        dag = inp
+        for a in actors:
+            dag = a.inc.bind(dag)
+    compiled_dag = dag.experimental_compile()
+    # driver -(21)-> a0.inc (20) -(19)-> ... a9.inc (2) -(1)-> driver
+    # 10 (actors) + 10 (output channels of actors) + 1 (input channel)
+    assert compiled_dag.capacity == 21
+
+    # Branches: multiple actors
+    a = Actor.remote(0)
+    c = Collector.remote()
+    with InputNode() as i:
+        branch = a.inc.bind(i[0])
+        dag = c.collect_two.bind(branch, i[1])
+    compiled_dag = dag.experimental_compile(info_level_when_execution_may_block="ERROR")
+    # driver -(x)-> a.inc (3) -> c.collect_two (2) -(1)-> driver
+    #    \                           ^
+    #     \ -----------(3)----------/
+    assert compiled_dag.capacity == 3
+    refs = []
+    for i in range(3):
+        ref = compiled_dag.execute(0, 1)
+        refs.append(ref)
+    # No blocking when capacity is not exceeded.
+    result = ray.get(ref)
+    assert result == [0, 1, 0, 1, 0, 1]
+    # Throws an error when capacity is exceeded.
+    refs = []
+    for i in range(3):
+        ref = compiled_dag.execute(0, 1)
+        refs.append(ref)
+    with pytest.raises(
+        ValueError,
+        match=(
+            "Execution may be blocked due to DAG is at its capacity \(3\). "
+            "Please call ray.get\(\) on previous CompiledDAGRefs to retrieve"
+            " and release them from the DAG."
+        ),
+    ):
+        compiled_dag.execute(1)
+    compiled_dag.teardown()
+
+    # Branches: MultiOutputNode
+    actors = [Actor.remote(0) for _ in range(3)]
+    with InputNode() as i:
+        out = [a.inc.bind(i) for a in actors]
+        dag = MultiOutputNode(out)
+    compiled_dag = dag.experimental_compile(info_level_when_execution_may_block="ERROR")
+    # driver -(3)-> a0.inc (2) -(1)-> driver
+    #  \------(3)-> a1.inc (2) -(1)---/
+    #   \-----(3)-> a2.inc (2) -(1)--/
+    assert compiled_dag.capacity == 3
+    refs = []
+    for i in range(3):
+        ref = compiled_dag.execute(1)
+        refs.append(ref)
+    # No blocking when capacity is not exceeded.
+    result = ray.get(ref)
+    assert result == [3, 3, 3]
+    # Throws an error when capacity is exceeded.
+    refs = []
+    for i in range(3):
+        ref = compiled_dag.execute(1)
+        refs.append(ref)
+    with pytest.raises(
+        ValueError,
+        match=(
+            "Execution may be blocked due to DAG is at its capacity \(3\). "
+            "Please call ray.get\(\) on previous CompiledDAGRefs to retrieve"
+            " and release them from the DAG."
+        ),
+    ):
+        compiled_dag.execute(1)
+    compiled_dag.teardown()
+
+
 @pytest.mark.parametrize("num_actors", [1, 4])
 def test_scatter_gather_dag(ray_start_regular, num_actors):
     actors = [Actor.remote(0) for _ in range(num_actors)]
@@ -739,6 +950,10 @@ class TestCompositeChannel:
             dag = a.inc.bind(dag)
 
         compiled_dag = dag.experimental_compile()
+        # See doc string of test_dag_capacity for explanation of the ASCII diagram.
+        # driver -(3)-> a.inc(x) -(x)-> a.inc(x) -(x)-> a.inc(2) -(1)-> driver
+        assert compiled_dag.capacity == 3
+
         ref = compiled_dag.execute(1)
         assert ray.get(ref) == 4
 
@@ -771,6 +986,10 @@ class TestCompositeChannel:
 
         # a: 0+1 -> b: 100+1 -> a: 1+101
         compiled_dag = dag.experimental_compile()
+        # See doc string of test_dag_capacity for explanation of the ASCII diagram.
+        # driver -(5)-> a.inc(x) -(x)-> b.inc(4) -(3)-> a.inc(2) -(1)-> driver
+        assert compiled_dag.capacity == 5
+
         ref = compiled_dag.execute(1)
         assert ray.get(ref) == 102
 
@@ -803,6 +1022,12 @@ class TestCompositeChannel:
             dag = MultiOutputNode([a.inc.bind(dag), b.inc.bind(dag)])
 
         compiled_dag = dag.experimental_compile()
+        # See doc string of test_dag_capacity for explanation of the ASCII diagram.
+        # driver -(3)-> a.inc (x) -(x)-> a.inc(2) -(1)-> driver
+        #                   \                            ^
+        #                    -------- b.inc (2) --------/
+        assert compiled_dag.capacity == 3
+
         ref = compiled_dag.execute(1)
         assert ray.get(ref) == [2, 101]
 
