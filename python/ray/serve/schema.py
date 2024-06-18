@@ -99,12 +99,12 @@ class LoggingConfig(BaseModel):
             from ray import serve
             from ray.serve.schema import LoggingConfig
             # Set log level for the deployment.
-            @serve.deployment(LoggingConfig(log_level="DEBUG")
+            @serve.deployment(LoggingConfig(log_level="DEBUG"))
             class MyDeployment:
                 def __call__(self) -> str:
                     return "Hello world!"
             # Set log directory for the deployment.
-            @serve.deployment(LoggingConfig(logs_dir="/my_dir")
+            @serve.deployment(LoggingConfig(logs_dir="/my_dir"))
             class MyDeployment:
                 def __call__(self) -> str:
                     return "Hello world!"
