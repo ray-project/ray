@@ -1012,7 +1012,12 @@ class AlgorithmConfig(_Config):
 
         return pipeline
 
-    def build_learner_connector(self, input_observation_space, input_action_space):
+    def build_learner_connector(
+        self,
+        input_observation_space,
+        input_action_space,
+        device=None,
+    ):
         from ray.rllib.connectors.learner import (
             AddColumnsFromEpisodesToTrainBatch,
             AddObservationsFromEpisodesToBatch,
@@ -1027,7 +1032,11 @@ class AlgorithmConfig(_Config):
         # Create a learner connector pipeline (including RLlib's default
         # learner connector piece) and return it.
         if self._learner_connector is not None:
-            val_ = self._learner_connector(input_observation_space, input_action_space)
+            val_ = self._learner_connector(
+                input_observation_space,
+                input_action_space,
+                # device,  # TODO (sven): Also pass device into custom builder.
+            )
 
             from ray.rllib.connectors.connector_v2 import ConnectorV2
 
@@ -1078,7 +1087,7 @@ class AlgorithmConfig(_Config):
             # Batch all data.
             pipeline.append(BatchIndividualItems(multi_agent=self.is_multi_agent()))
             # Convert to Tensors.
-            pipeline.append(NumpyToTensor(as_learner_connector=True))
+            pipeline.append(NumpyToTensor(as_learner_connector=True, device=device))
         return pipeline
 
     def build_learner_group(

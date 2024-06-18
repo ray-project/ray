@@ -26,6 +26,7 @@ class NumpyToTensor(ConnectorV2):
         *,
         as_learner_connector: bool = False,
         pin_mempory: Optional[bool] = None,
+        device: Optional[str] = None,
         **kwargs,
     ):
         """Initializes a NumpyToTensor instance.
@@ -47,6 +48,7 @@ class NumpyToTensor(ConnectorV2):
         self._pin_memory = (
             pin_mempory if pin_mempory is not None else self._as_learner_connector
         )
+        self._device = device
 
     @override(ConnectorV2)
     def __call__(
@@ -71,7 +73,7 @@ class NumpyToTensor(ConnectorV2):
             infos = module_data.pop(Columns.INFOS, None)
             if rl_module.framework == "torch":
                 module_data = convert_to_torch_tensor(
-                    module_data, pin_memory=self._pin_memory
+                    module_data, pin_memory=self._pin_memory, device=self._device
                 )
             else:
                 raise ValueError(

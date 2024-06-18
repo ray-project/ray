@@ -317,6 +317,7 @@ class Learner:
             self._learner_connector = self.config.build_learner_connector(
                 input_observation_space=None,
                 input_action_space=None,
+                device=self._device,
             )
 
         # Build the module to be trained by this learner.

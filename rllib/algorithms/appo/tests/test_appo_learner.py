@@ -11,7 +11,7 @@ from ray.rllib.algorithms.appo.tf.appo_tf_learner import (
 from ray.rllib.core import DEFAULT_MODULE_ID
 from ray.rllib.core.columns import Columns
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.utils.metrics.learner_info import LEARNER_INFO
+from ray.rllib.utils.metrics import LEARNER_RESULTS
 from ray.rllib.utils.torch_utils import convert_to_torch_tensor
 
 
@@ -121,9 +121,10 @@ class TestAPPOTfLearner(unittest.TestCase):
         # a asynchronous algorithm and results are returned asynchronously.
         while True:
             results = algo.train()
-            if results.get("info", {}).get(LEARNER_INFO, {}).get(DEFAULT_MODULE_ID):
+            print(results)
+            if results.get(LEARNER_RESULTS, {}).get(DEFAULT_MODULE_ID):
                 break
-        curr_kl_coeff = results["info"][LEARNER_INFO][DEFAULT_MODULE_ID][
+        curr_kl_coeff = results[LEARNER_RESULTS][DEFAULT_MODULE_ID][
             LEARNER_RESULTS_CURR_KL_COEFF_KEY
         ]
         self.assertNotEqual(curr_kl_coeff, initial_kl_coeff)
