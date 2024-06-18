@@ -120,7 +120,6 @@ def read_files(
     return Dataset(
         plan=ExecutionPlan(
             DatasetStats(metadata={"ReadFiles": []}, parent=None),
-            run_by_consumer=False,
         ),
         logical_plan=logical_plan,
     )
