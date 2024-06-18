@@ -1899,11 +1899,14 @@ void NodeManager::HandleCancelResourceReserve(
   RAY_LOG(DEBUG) << "Request to cancel reserved resource is received, "
                  << bundle_spec.DebugString();
 
-  // Cancel lease requests related to the placement group to be removed.
-  cluster_task_manager_->CancelTasks(
+  // Cancel lease requests that are waiting for workers
+  // to free the acquired pg bundle resources
+  // so that pg bundle can be returned.
+  local_task_manager_->CancelTasks(
       [&](const std::shared_ptr<internal::Work> &work) {
         const auto bundle_id = work->task.GetTaskSpecification().PlacementGroupBundleId();
-        return bundle_id.first == bundle_spec.PlacementGroupId();
+        return (bundle_id.first == bundle_spec.PlacementGroupId()) &&
+               (work->GetState() == internal::WorkStatus::WAITING_FOR_WORKER);
       },
       rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_PLACEMENT_GROUP_REMOVED,
       absl::StrCat("Required placement group ",
