@@ -17,12 +17,15 @@ from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
 from ray.rllib.algorithms.dreamerv3.dreamerv3_catalog import DreamerV3Catalog
 from ray.rllib.algorithms.dreamerv3.utils import do_symlog_obs
-from ray.rllib.algorithms.dreamerv3.utils.env_runner import DreamerV3EnvRunner
+from ray.rllib.algorithms.dreamerv3.utils.add_is_firsts_to_batch import (
+    AddIsFirstsToBatch
+)
 from ray.rllib.algorithms.dreamerv3.utils.summaries import (
     report_dreamed_eval_trajectory_vs_samples,
     report_predicted_vs_sampled_obs,
     report_sampling_and_replay_buffer,
 )
+from ray.rllib.connectors.common import AddStatesFromEpisodesToBatch
 from ray.rllib.core import DEFAULT_MODULE_ID
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
@@ -158,6 +161,21 @@ class DreamerV3Config(AlgorithmConfig):
         self.use_worker_filter_stats = False
         # __sphinx_doc_end__
         # fmt: on
+
+    @override(AlgorithmConfig)
+    def build_env_to_module_connector(self, env):
+        connector = super().build_env_to_module_connector(env)
+
+        # Prepend the "is_first" connector such that the RSSM knows, when to insert
+        # its (learned) internal state into the batch.
+        # We have to do this before the `AddStatesFromEpisodesToBatch` piece
+        # such that the column is properly batched/time-ranked.
+        if self.add_default_connectors_to_learner_pipeline:
+            connector.insert_before(
+                AddStatesFromEpisodesToBatch,
+                AddIsFirstsToBatch(),
+            )
+        return connector
 
     @property
     def batch_size_B_per_learner(self):

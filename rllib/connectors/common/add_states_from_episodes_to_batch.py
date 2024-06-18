@@ -329,7 +329,7 @@ class AddStatesFromEpisodesToBatch(ConnectorV2):
 
                 # Episode just started -> Get initial state from our RLModule.
                 if sa_episode.t_started == 0 and len(sa_episode) == 0:
-                    state = sa_module.get_initial_state()
+                    state = convert_to_numpy(sa_module.get_initial_state())
                 # Episode is already ongoing -> Use most recent STATE_OUT.
                 else:
                     state = sa_episode.get_extra_model_outputs(
