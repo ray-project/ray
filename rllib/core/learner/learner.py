@@ -1389,9 +1389,9 @@ class Learner:
         for tensor_minibatch in batch_iter(batch, minibatch_size, num_iters):
             # Make the actual in-graph/traced `_update` call. This should return
             # all tensor values (no numpy).
-            nested_tensor_minibatch = NestedDict(tensor_minibatch.policy_batches)
+            #nested_tensor_minibatch = NestedDict(tensor_minibatch.policy_batches)
             fwd_out, loss_per_module, tensor_metrics = self._update(
-                nested_tensor_minibatch
+                tensor_minibatch.policy_batches #nested_tensor_minibatch
             )
 
             # Convert logged tensor metrics (logged during tensor-mode of MetricsLogger)

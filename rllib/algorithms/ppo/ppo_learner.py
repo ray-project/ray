@@ -7,7 +7,6 @@ from ray.rllib.algorithms.ppo.ppo import (
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.learner.learner import Learner
 from ray.rllib.evaluation.postprocessing import Postprocessing
-from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
 from ray.rllib.utils.annotations import override, OverrideToImplementCustomLogic
 from ray.rllib.utils.lambda_defaultdict import LambdaDefaultDict
 from ray.rllib.utils.numpy import convert_to_numpy
@@ -75,7 +74,7 @@ class PPOLearner(Learner):
         self,
         *,
         episodes: Optional[List[EpisodeType]] = None,
-    ) -> Tuple[Optional[MultiAgentBatch], Optional[List[EpisodeType]]]:
+    ) -> Tuple[Optional[Dict[str, Any]], Optional[List[EpisodeType]]]:
         """Computes GAE advantages (and value targets) given a list of episodes.
 
         Note that the episodes may be SingleAgent- or MultiAgentEpisodes and may be
