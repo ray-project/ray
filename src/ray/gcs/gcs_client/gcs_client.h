@@ -161,7 +161,7 @@ class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient> {
   }
 
   RuntimeEnvAccessor &RuntimeEnvs() {
-    RAY_CHECK_NE(runtime_env_accessor_, nullptr);
+    RAY_CHECK(runtime_env_accessor_ != nullptr);
     return *runtime_env_accessor_;
   }
 
