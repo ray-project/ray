@@ -1906,7 +1906,9 @@ void NodeManager::HandleCancelResourceReserve(
         return bundle_id.first == bundle_spec.PlacementGroupId();
       },
       rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_PLACEMENT_GROUP_REMOVED,
-      "");
+      absl::StrCat("Required placement group ",
+                   bundle_spec.PlacementGroupId().Hex(),
+                   " is removed."));
 
   // Kill all workers that are currently associated with the placement group.
   // NOTE: We can't traverse directly with `leased_workers_`, because `DestroyWorker` will
