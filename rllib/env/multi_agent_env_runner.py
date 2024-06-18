@@ -585,7 +585,7 @@ class MultiAgentEnvRunner(EnvRunner):
             episode_length = len(eps)
             agent_steps = defaultdict(
                 int,
-                {aid: len(sa_eps) for aid, sa_eps in eps.agent_episodes.items()},
+                {str(aid): len(sa_eps) for aid, sa_eps in eps.agent_episodes.items()},
             )
             episode_return = eps.get_return()
             episode_duration_s = eps.get_duration_s()
