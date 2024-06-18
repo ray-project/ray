@@ -2,10 +2,6 @@ from ray.data.datasource.avro_datasource import AvroDatasource
 from ray.data.datasource.bigquery_datasink import _BigQueryDatasink
 from ray.data.datasource.bigquery_datasource import BigQueryDatasource
 from ray.data.datasource.binary_datasource import BinaryDatasource
-from ray.data.datasource.block_path_provider import (
-    BlockWritePathProvider,
-    DefaultBlockWritePathProvider,
-)
 from ray.data.datasource.csv_datasink import _CSVDatasink
 from ray.data.datasource.csv_datasource import CSVDatasource
 from ray.data.datasource.datasink import Datasink, DummyOutputDatasink
@@ -17,7 +13,6 @@ from ray.data.datasource.datasource import (
 )
 from ray.data.datasource.file_based_datasource import (
     FileBasedDatasource,
-    FileExtensionFilter,
     _S3FileSystemWrapper,
 )
 from ray.data.datasource.file_datasink import (
@@ -27,10 +22,8 @@ from ray.data.datasource.file_datasink import (
 from ray.data.datasource.file_meta_provider import (
     BaseFileMetadataProvider,
     DefaultFileMetadataProvider,
-    DefaultParquetMetadataProvider,
     FastFileMetadataProvider,
     FileMetadataProvider,
-    ParquetMetadataProvider,
 )
 from ray.data.datasource.filename_provider import FilenameProvider
 from ray.data.datasource.image_datasink import _ImageDatasink
@@ -42,9 +35,10 @@ from ray.data.datasource.mongo_datasink import _MongoDatasink
 from ray.data.datasource.mongo_datasource import MongoDatasource
 from ray.data.datasource.numpy_datasink import _NumpyDatasink
 from ray.data.datasource.numpy_datasource import NumpyDatasource
-from ray.data.datasource.parquet_base_datasource import ParquetBaseDatasource
+from ray.data.datasource.parquet_bulk_datasource import ParquetBulkDatasource
 from ray.data.datasource.parquet_datasink import _ParquetDatasink
 from ray.data.datasource.parquet_datasource import ParquetDatasource
+from ray.data.datasource.parquet_meta_provider import ParquetMetadataProvider
 from ray.data.datasource.partitioning import (
     Partitioning,
     PartitionStyle,
@@ -71,7 +65,6 @@ __all__ = [
     "_BigQueryDatasink",
     "BigQueryDatasource",
     "BlockBasedFileDatasink",
-    "BlockWritePathProvider",
     "Connection",
     "_CSVDatasink",
     "CSVDatasource",
@@ -79,13 +72,10 @@ __all__ = [
     "Datasource",
     "_SQLDatasink",
     "SQLDatasource",
-    "DefaultBlockWritePathProvider",
     "DefaultFileMetadataProvider",
-    "DefaultParquetMetadataProvider",
     "DummyOutputDatasink",
     "FastFileMetadataProvider",
     "FileBasedDatasource",
-    "FileExtensionFilter",
     "FileMetadataProvider",
     "FilenameProvider",
     "_ImageDatasink",
@@ -95,7 +85,7 @@ __all__ = [
     "LanceDatasource",
     "_NumpyDatasink",
     "NumpyDatasource",
-    "ParquetBaseDatasource",
+    "ParquetBulkDatasource",
     "_ParquetDatasink",
     "ParquetDatasource",
     "ParquetMetadataProvider",

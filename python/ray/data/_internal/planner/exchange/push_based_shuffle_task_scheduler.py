@@ -815,14 +815,13 @@ class PushBasedShuffleTaskScheduler(ExchangeTaskScheduler):
 
 
 def _get_num_cpus_per_node_map() -> Dict[str, int]:
-    nodes = ray.nodes()
+    total_resources_by_node = ray.state.total_resources_per_node()
     # Map from per-node resource name to number of CPUs available on that
     # node.
     num_cpus_per_node_map = {}
-    for node in nodes:
-        resources = node["Resources"]
+    for node_id, resources in total_resources_by_node.items():
         num_cpus = int(resources.get("CPU", 0))
         if num_cpus == 0:
             continue
-        num_cpus_per_node_map[node["NodeID"]] = num_cpus
+        num_cpus_per_node_map[node_id] = num_cpus
     return num_cpus_per_node_map

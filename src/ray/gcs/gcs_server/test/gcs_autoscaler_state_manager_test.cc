@@ -752,6 +752,38 @@ TEST_F(GcsAutoscalerStateManagerTest, TestDrainingStatus) {
   }
 }
 
+TEST_F(GcsAutoscalerStateManagerTest, TestDrainNodeRaceCondition) {
+  auto node = Mocker::GenNodeInfo();
+
+  // Adding a node.
+  node->mutable_resources_total()->insert({"CPU", 2});
+  node->mutable_resources_total()->insert({"GPU", 1});
+  node->set_instance_id("instance_1");
+  AddNode(node);
+
+  rpc::autoscaler::DrainNodeRequest request;
+  request.set_node_id(node->node_id());
+  request.set_reason(rpc::autoscaler::DrainNodeReason::DRAIN_NODE_REASON_PREEMPTION);
+  request.set_reason_message("preemption");
+  request.set_deadline_timestamp_ms(std::numeric_limits<int64_t>::max());
+  rpc::autoscaler::DrainNodeReply reply;
+  auto send_reply_callback =
+      [](ray::Status status, std::function<void()> f1, std::function<void()> f2) {};
+  gcs_autoscaler_state_manager_->HandleDrainNode(request, &reply, send_reply_callback);
+
+  // At this point, the GCS request is not accepted yet since ralyet has not replied.
+  ASSERT_FALSE(reply.is_accepted());
+
+  // Inject a race condition on GCS: remove the node before raylet accepts the request.
+  RemoveNode(node);
+
+  // Simulates raylet accepts the drain request and replies to GCS.
+  ASSERT_TRUE(raylet_client_->ReplyDrainRaylet());
+
+  // The GCS request is accepted now.
+  ASSERT_TRUE(reply.is_accepted());
+}
+
 TEST_F(GcsAutoscalerStateManagerTest, TestIdleTime) {
   auto node = Mocker::GenNodeInfo();
 

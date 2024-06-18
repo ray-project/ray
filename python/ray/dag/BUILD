@@ -76,7 +76,8 @@ py_test_module_list(
     "tests/experimental/test_torch_tensor_dag.py",
   ],
   size = "medium",
-  tags = ["exclusive", "accelerated_dag", "no_windows", "team:core"],
+  # Marking these as manual until they are deflaked.
+  tags = ["exclusive", "accelerated_dag", "no_windows", "team:core", "manual"],
   deps = ["//:ray_lib"],
 )
 

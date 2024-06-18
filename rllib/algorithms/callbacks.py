@@ -245,19 +245,22 @@ class DefaultCallbacks(metaclass=_CallbackMeta):
         """Callback run when a new episode is created (but has not started yet!).
 
         This method gets called after a new Episode(V2) (old stack) or
-        SingleAgentEpisode/MultiAgentEpisode instance has been created.
+        MultiAgentEpisode instance has been created.
         This happens before the respective sub-environment's (usually a gym.Env)
         `reset()` is called by RLlib.
 
-        1) Episode(V2)/Single-/MultiAgentEpisode created: This callback is called.
+        Note, at the moment this callback does not get called in the new API stack
+        and single-agent mode.
+
+        1) Episode(V2)/MultiAgentEpisode created: This callback is called.
         2) Respective sub-environment (gym.Env) is `reset()`.
         3) Callback `on_episode_start` is called.
         4) Stepping through sub-environment/episode commences.
 
         Args:
             episode: The newly created episode. On the new API stack, this will be a
-                SingleAgentEpisode or MultiAgentEpisode object. On the old API stack,
-                this will be a Episode or EpisodeV2 object.
+                MultiAgentEpisode object. On the old API stack, this will be a
+                Episode or EpisodeV2 object.
                 This is the episode that is about to be started with an upcoming
                 `env.reset()`. Only after this reset call, the `on_episode_start`
                 callback will be called.

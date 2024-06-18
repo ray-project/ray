@@ -55,7 +55,7 @@ export const JobDetailChartsPage = () => {
   const [actorListFilter, setActorListFilter] = useState<string>();
   const [actorTableExpanded, setActorTableExpanded] = useState(false);
   const actorTableRef = useRef<HTMLDivElement>(null);
-  const { cluster_status } = useRayStatus();
+  const { clusterStatus } = useRayStatus();
 
   const { data } = useSWR(
     job?.job_id ? ["useDataDatasets", job.job_id] : null,
@@ -182,10 +182,10 @@ export const JobDetailChartsPage = () => {
         >
           <NodeCountCard className={classes.nodeCountCard} />
           <Section flex="1 1 500px">
-            <NodeStatusCard cluster_status={cluster_status} />
+            <NodeStatusCard clusterStatus={clusterStatus} />
           </Section>
           <Section flex="1 1 500px">
-            <ResourceStatusCard cluster_status={cluster_status} />
+            <ResourceStatusCard clusterStatus={clusterStatus} />
           </Section>
         </Box>
       </CollapsibleSection>

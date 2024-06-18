@@ -73,6 +73,16 @@ examples:
       - computer vision
       - generative ai
     link: examples/pytorch/dreambooth_finetuning
+  - title: Finetune Stable Diffusion and generate images with Intel Gaudi
+    skill_level: intermediate
+    frameworks:
+      - accelerate
+      - transformers
+    use_cases:
+      - computer vision
+      - generative ai
+    contributor: community
+    link: examples/intel_gaudi/sd
   - title: Train a text classifier with PyTorch Lightning and Ray Data
     frameworks:
       - lightning
@@ -87,6 +97,16 @@ examples:
     use_cases:
       - natural language processing
     link: examples/transformers/huggingface_text_classification
+  - title: "Fine-tune Llama-2-7b and Llama-2-70b with Intel Gaudi"
+    frameworks:
+      - accelerate
+      - transformers
+    skill_level: intermediate
+    use_cases:
+      - natural language processing
+      - large language models
+    contributor: community
+    link: examples/intel_gaudi/llama
 
   - title: Fine-tune a Llama-2 text generation models with DeepSpeed and Hugging Face Accelerate
     frameworks:

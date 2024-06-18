@@ -728,13 +728,16 @@ void CoreWorkerDirectTaskSubmitter::HandleGetTaskFailureCause(
                      << " ip: " << addr.ip_address();
     task_error_type = rpc::ErrorType::NODE_DIED;
     std::stringstream buffer;
-    buffer << "Task failed due to the node dying.\n\nThe node (IP: " << addr.ip_address()
-           << ", node ID: " << NodeID::FromBinary(addr.raylet_id())
-           << ") where this task was running crashed unexpectedly. "
-           << "This can happen if: (1) the instance where the node was running failed, "
-              "(2) raylet crashes unexpectedly (OOM, preempted node, etc).\n\n"
-           << "To see more information about the crash, use `ray logs raylet.out -ip "
-           << addr.ip_address() << "`";
+    buffer << "Task failed due to the node (where this task was running) "
+           << " was dead or unavailable.\n\nThe node IP: " << addr.ip_address()
+           << ", node ID: " << NodeID::FromBinary(addr.raylet_id()) << "\n\n"
+           << "This can happen if the instance where the node was running failed, "
+           << "the node was preempted, or raylet crashed unexpectedly "
+           << "(e.g., due to OOM) etc.\n\n"
+           << "To see node death information, use `ray list nodes --filter \"node_id="
+           << NodeID::FromBinary(addr.raylet_id()) << "\"`, "
+           << "or check Ray dashboard cluster page, or search the node ID in GCS log, "
+           << "or use `ray logs raylet.out -ip " << addr.ip_address() << "`";
     error_info = std::make_unique<rpc::RayErrorInfo>();
     error_info->set_error_message(buffer.str());
     error_info->set_error_type(rpc::ErrorType::NODE_DIED);

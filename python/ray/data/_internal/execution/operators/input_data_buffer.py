@@ -18,7 +18,7 @@ class InputDataBuffer(PhysicalOperator):
     def __init__(
         self,
         input_data: Optional[List[RefBundle]] = None,
-        input_data_factory: Callable[[int], List[RefBundle]] = None,
+        input_data_factory: Optional[Callable[[int], List[RefBundle]]] = None,
         num_output_blocks: Optional[int] = None,
     ):
         """Create an InputDataBuffer.
@@ -84,3 +84,6 @@ class InputDataBuffer(PhysicalOperator):
         self._stats = {
             "input": block_metadata,
         }
+
+    def implements_accurate_memory_accounting(self) -> bool:
+        return True
