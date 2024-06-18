@@ -55,7 +55,7 @@ class DeltaSharingDatasource(Datasource):
     def estimate_inmemory_data_size(self) -> Optional[int]:
         return None
 
-    def _read_files(files, converters):
+    def _read_files(self, files, converters):
         """Read files with Delta Sharing."""
         from delta_sharing.reader import DeltaSharingReader
 
@@ -64,7 +64,7 @@ class DeltaSharingDatasource(Datasource):
                 action=file, converters=converters, for_cdf=False, limit=None
             )
 
-    def setup_delta_sharing_connections(url: str):
+    def setup_delta_sharing_connections(self, url: str):
         """
         Set up delta sharing connections based on the url.
 
