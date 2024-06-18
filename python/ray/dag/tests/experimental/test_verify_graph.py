@@ -11,8 +11,9 @@ from ray.experimental.channel.conftest import start_nccl_mock
 from ray.tests.conftest import *  # noqa
 from ray.dag import InputNode, MultiOutputNode
 
-INVALID_GRAPH = "Detect a deadlock in the graph. If this is a false positive, "
-"please disable the graph verification by setting the environment "
+INVALID_GRAPH = "This DAG cannot be compiled because it will "
+"deadlock on NCCL calls. If this is a false positive, please "
+"disable the graph verification by setting the environment "
 "variable RAY_ADAG_ENABLE_VERIFY_GRAPH to 0."
 
 
@@ -50,7 +51,7 @@ def test_invalid_graph_1_actor(ray_start_regular):
         dag.with_type_hint(TorchTensorType(transport="nccl"))
         dag = a.no_op.bind(dag)
 
-    with pytest.raises(AssertionError, match=INVALID_GRAPH):
+    with pytest.raises(ValueError, match=INVALID_GRAPH):
         dag.experimental_compile()
 
 
@@ -78,7 +79,7 @@ def test_invalid_graph_2_actors_1(ray_start_regular):
             ]
         )
 
-    with pytest.raises(AssertionError, match=INVALID_GRAPH):
+    with pytest.raises(ValueError, match=INVALID_GRAPH):
         dag.experimental_compile()
 
 
@@ -107,7 +108,7 @@ def test_invalid_graph_2_actors_2(ray_start_regular):
             ]
         )
 
-    with pytest.raises(AssertionError, match=INVALID_GRAPH):
+    with pytest.raises(ValueError, match=INVALID_GRAPH):
         dag.experimental_compile()
 
 
@@ -133,7 +134,7 @@ def test_invalid_graph_2_actors_3(ray_start_regular):
             ]
         )
 
-    with pytest.raises(AssertionError, match=INVALID_GRAPH):
+    with pytest.raises(ValueError, match=INVALID_GRAPH):
         dag.experimental_compile()
 
 
@@ -166,7 +167,7 @@ def test_invalid_graph_3_actors(ray_start_regular):
             ]
         )
 
-    with pytest.raises(AssertionError, match=INVALID_GRAPH):
+    with pytest.raises(ValueError, match=INVALID_GRAPH):
         dag.experimental_compile()
 
 

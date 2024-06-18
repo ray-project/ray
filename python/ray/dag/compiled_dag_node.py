@@ -745,11 +745,12 @@ class CompiledDAG:
 
         from ray.dag.constants import RAY_ADAG_ENABLE_VERIFY_GRAPH
 
-        if RAY_ADAG_ENABLE_VERIFY_GRAPH:
-            assert self._verify_graph(), (
-                "Detect a deadlock in the graph. If this is a false positive, "
-                "please disable the graph verification by setting the environment "
-                "variable RAY_ADAG_ENABLE_VERIFY_GRAPH to 0."
+        if RAY_ADAG_ENABLE_VERIFY_GRAPH and not self._verify_graph():
+            raise ValueError(
+                "This DAG cannot be compiled because it will deadlock on NCCL"
+                "calls. If this is a false positive, please disable the graph"
+                "verification by setting the environment variable"
+                "RAY_ADAG_ENABLE_VERIFY_GRAPH to 0."
             )
 
         # Validate input channels for tasks that have not been visited
@@ -879,6 +880,8 @@ class CompiledDAG:
         Use topological sort to verify whether the graph is a DAG.
         If not, the DAG will result in a deadlock.
         """
+        assert self.idx_to_task
+        assert self.actor_to_tasks
 
         class GraphNode:
             def __init__(self):
@@ -911,22 +914,32 @@ class CompiledDAG:
 
         graph = defaultdict(GraphNode)
         for idx, task in self.idx_to_task.items():
+            # Add an edge from task_{bind_index} to task_{bind_index+1}
+            # on the same actor.
             next_task_idx = _get_next_task_idx(task)
             _add_edge(graph, idx, next_task_idx)
             for downstream_idx in task.downstream_node_idxs:
                 if task.dag_node.type_hint.requires_nccl():
+                    # Add an edge from the writer and reader of an NCCL channel
+                    # to the node that has the next bind index on the same actor
+                    # as the writer.
                     _add_edge(graph, downstream_idx, next_task_idx)
                 else:
+                    # Add an edge from the writer to the reader if the channel
+                    # isn't an NCCL channel.
                     _add_edge(graph, idx, downstream_idx)
         total_edges = sum(node.in_degree for node in graph.values())
 
+        # A list of nodes with in-degree 0, including (1) InputNode and
+        # (2) the nodes that only read from NCCL channels and are the first
+        # node on the actor.
         zero_in_degree_nodes = deque()
         for idx, node in graph.items():
             if node.in_degree == 0:
                 zero_in_degree_nodes.append(idx)
         removed_edges = 0
         while zero_in_degree_nodes:
-            node = zero_in_degree_nodes.pop()
+            node = zero_in_degree_nodes.popleft()
             for out_node in graph[node].out_edges:
                 graph[out_node].in_edges.remove(node)
                 removed_edges += 1
