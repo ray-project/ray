@@ -4,11 +4,15 @@ import time
 from enum import Enum
 from typing import Any, Callable, Dict, List, Optional
 
+from ray.train._internal.checkpoint_manager import _CheckpointManager
 from ray.train.v2._internal.constants import (
     DEFAULT_HEALTH_CHECK_INTERVAL_S,
     HEALTH_CHECK_INTERVAL_S_ENV_VAR,
 )
 from ray.train.v2._internal.execution.callback import Callback, SystemCallback
+from ray.train.v2._internal.execution.checkpoint.checkpoint_handler import (
+    CheckpointHandler,
+)
 from ray.train.v2._internal.execution.failure_handling import (
     FailureDecision,
     FailurePolicy,
@@ -20,6 +24,7 @@ from ray.train.v2._internal.execution.scaling_policy import (
 )
 from ray.train.v2._internal.execution.worker_group import WorkerGroup, WorkerGroupStatus
 from ray.train.v2._internal.util import time_monotonic
+from ray.train.v2.api.config import RunConfig
 
 logger = logging.getLogger(__file__)
 
@@ -64,18 +69,26 @@ class TrainController:
         train_fn: Callable[[Dict[str, Any]], None],
         scaling_policy: ScalingPolicy,
         failure_policy: FailurePolicy,
+        run_config: Optional[RunConfig] = None,
         callbacks: Optional[List[Callback]] = None,
     ):
         self._train_fn = train_fn
 
         self._scaling_policy = scaling_policy
         self._failure_policy = failure_policy
+        self._run_config = run_config or RunConfig()
         self._callbacks = callbacks or []
-        self._system_callbacks = [
+
+        # TODO: Initialize checkpoint manager on restore
+        self._checkpoint_manager = _CheckpointManager(
+            self._run_config.checkpoint_config
+        )
+        self._checkpoint_handler = CheckpointHandler(self._checkpoint_manager)
+
+        self._system_callbacks = [self._checkpoint_handler] + [
             c for c in self._callbacks if isinstance(c, SystemCallback)
         ]
-
-        self._worker_group = self.worker_group_cls()
+        self._worker_group = self.worker_group_cls(run_config=self._run_config)
         self._state = TrainControllerState.INITIALIZING
 
         self._latest_poll_time = float("-inf")
@@ -134,9 +147,18 @@ class TrainController:
         """Restart the worker group and launch the train function."""
         self._maybe_shutdown_worker_group()
 
+        # If there's a latest checkpoint that's been committed,
+        # use it to restore the worker group.
+        latest_checkpoint_result = self._checkpoint_manager.latest_checkpoint_result
+        latest_checkpoint = (
+            latest_checkpoint_result.checkpoint if latest_checkpoint_result else None
+        )
+        # Start the worker group with the latest checkpoint.
         # TODO: Handle failures in starting the worker group.
         self._worker_group.start(
-            num_workers=num_workers, resources_per_worker=resources_per_worker
+            num_workers=num_workers,
+            resources_per_worker=resources_per_worker,
+            checkpoint=latest_checkpoint,
         )
         for callback in self._system_callbacks:
             callback.after_worker_group_start(self._worker_group)
@@ -184,6 +206,11 @@ class TrainController:
         ), self.get_state()
 
         worker_group_status = self._poll_workers()
+
+        # TODO: Better structure for the order of all handlers post processing.
+        # the worker group status.
+        if self.get_state() == TrainControllerState.RUNNING:
+            self._checkpoint_handler.handle_poll_results(worker_group_status)
 
         if worker_group_status.finished and not worker_group_status.errors:
             self._set_state(TrainControllerState.FINISHED)

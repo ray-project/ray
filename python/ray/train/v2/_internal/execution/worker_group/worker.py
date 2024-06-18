@@ -6,11 +6,14 @@ from typing import Callable, List, Optional, TypeVar
 
 import ray
 from ray.actor import ActorHandle
+from ray.train import Checkpoint
+from ray.train._internal.session import _TrainingResult
 from ray.train.v2._internal.execution.checkpoint.sync_actor import SynchronizationActor
 from ray.train.v2._internal.execution.context import (
     DistributedContext,
     ExecutionContext,
     TrainContext,
+    get_train_context,
     set_train_context,
 )
 from ray.train.v2._internal.execution.storage import StorageContext
@@ -23,6 +26,7 @@ T = TypeVar("T")
 class WorkerStatus:
     running: bool
     error: Optional[Exception] = None
+    training_result: Optional[_TrainingResult] = None
 
 
 @dataclass
@@ -56,9 +60,13 @@ class RayTrainWorker:
             accelerator_ids=ray.get_runtime_context().get_accelerator_ids(),
         )
 
-    def poll_status(self):
-        # TODO: Implement checkpoint polling logic.
-        pass
+    def poll_status(self) -> _TrainingResult:
+        train_context = get_train_context()
+        result_queue = train_context.get_result_queue()
+        if result_queue.empty():
+            return None
+        training_result = result_queue.get()
+        return training_result
 
     def init_train_context(
         self,
@@ -66,6 +74,7 @@ class RayTrainWorker:
         distributed_context: DistributedContext,
         synchronization_actor: SynchronizationActor,
         storage_context: StorageContext,
+        checkpoint: Optional[Checkpoint] = None,
     ):
         context = TrainContext(
             run_config=run_config,
@@ -75,5 +84,6 @@ class RayTrainWorker:
                 result_queue=Queue(),
             ),
             storage_context=storage_context,
+            checkpoint=checkpoint,
         )
         set_train_context(context)

@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from typing import Callable, Dict, List, Optional, Tuple, TypeVar
 
 import ray
+from ray.train import Checkpoint
 from ray.train.v2._internal.constants import (
     DEFAULT_MAX_CONSECUTIVE_HEALTH_CHECK_MISSES,
     MAX_CONSECUTIVE_HEALTH_CHECK_MISSES_ENV_VAR,
@@ -59,10 +60,9 @@ class WorkerGroup:
     def __init__(
         self,
         run_config: Optional[RunConfig] = None,
-        storage_context: Optional[StorageContext] = None,
     ):
         self._run_config = run_config or RunConfig()
-        self._storage_context = storage_context or StorageContext(
+        self._storage_context = StorageContext(
             storage_path=self._run_config.storage_path,
             experiment_dir_name=self._run_config.name,
             storage_filesystem=self._run_config.storage_filesystem,
@@ -87,7 +87,12 @@ class WorkerGroup:
             )
         )
 
-    def start(self, num_workers: int, resources_per_worker: dict):
+    def start(
+        self,
+        num_workers: int,
+        resources_per_worker: dict,
+        checkpoint: Optional[Checkpoint] = None,
+    ):
         """Start the a number of workers with the given resources.
 
         This should also also handle rank assignment.
@@ -121,7 +126,7 @@ class WorkerGroup:
             )
         ).remote()
 
-        self._init_train_context_on_workers()
+        self._init_train_context_on_workers(checkpoint=checkpoint)
 
     @classmethod
     def _sort_workers_by_ip_and_gpu_id(
@@ -224,6 +229,7 @@ class WorkerGroup:
         self._pg = None
         self._train_fn_tasks = []
         self._num_consecutive_poll_misses = collections.defaultdict(int)
+        self._sync_actor = None
 
     def _assert_workers_started(self):
         if not self._workers:
@@ -335,7 +341,7 @@ class WorkerGroup:
         if not self._workers:
             return WorkerGroupStatus(0, self._latest_start_time, {})
 
-        _, poll_errors = self._poll_workers_and_collect_errors(timeout)
+        poll_results, poll_errors = self._poll_workers_and_collect_errors(timeout)
         training_finished, train_task_errors = self._poll_train_tasks()
 
         # Populate the worker status errors with the errors raised from
@@ -347,12 +353,14 @@ class WorkerGroup:
         ]
 
         return WorkerGroupStatus(
-            len(self._workers),
-            self._latest_start_time,
-            {
-                world_rank: WorkerStatus(running=(not finished), error=error)
-                for world_rank, (finished, error) in enumerate(
-                    zip(training_finished, errors)
+            num_workers=len(self._workers),
+            latest_start_time=self._latest_start_time,
+            worker_statuses={
+                world_rank: WorkerStatus(
+                    running=(not finished), error=error, training_result=result
+                )
+                for world_rank, (finished, error, result) in enumerate(
+                    zip(training_finished, errors, poll_results)
                 )
             },
         )
@@ -454,7 +462,7 @@ class WorkerGroup:
         self._distributed_contexts = distributed_contexts
         logger.info(f"Started distributed worker group:{worker_info_str}")
 
-    def _init_train_context_on_workers(self):
+    def _init_train_context_on_workers(self, checkpoint: Optional[Checkpoint] = None):
         # Set up worker group distributed contexts
         self._set_worker_group_distributed_contexts()
         context_init_tasks = [
@@ -463,6 +471,7 @@ class WorkerGroup:
                 distributed_context=self._distributed_contexts[i],
                 synchronization_actor=self._sync_actor,
                 storage_context=self._storage_context,
+                checkpoint=checkpoint,
             )
             for i, worker in enumerate(self._workers)
         ]

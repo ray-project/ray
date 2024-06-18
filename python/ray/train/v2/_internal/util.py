@@ -1,5 +1,6 @@
 import functools
 import time
+from datetime import datetime
 from typing import Any, Callable, ContextManager, Dict, Optional, TypeVar, Union
 
 from ray.train._internal.utils import count_required_parameters
@@ -70,6 +71,10 @@ def construct_train_func(
                 return train_func()
 
     return train_fn
+
+
+def date_str():
+    return datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
 
 
 def time_monotonic():

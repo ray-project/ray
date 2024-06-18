@@ -1,4 +1,5 @@
 from typing import Optional
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -27,7 +28,7 @@ from ray.train.v2.api.config import ScalingConfig
 
 
 class DummyWorkerGroup(WorkerGroup):
-    def __init__(self):
+    def __init__(self, run_config=None):
         self._active = False
         self._num_workers = 0
         self._latest_start_time = float("-inf")
@@ -43,7 +44,7 @@ class DummyWorkerGroup(WorkerGroup):
             worker_statuses=self._worker_statuses,
         )
 
-    def start(self, num_workers, resources_per_worker):
+    def start(self, num_workers, resources_per_worker, checkpoint=None):
         self._num_workers = num_workers
         self._latest_start_time = time_monotonic()
         self._worker_statuses = {
@@ -125,6 +126,9 @@ def test_resize():
     )
     worker_group = controller.get_worker_group()
 
+    controller._checkpoint_handler = MagicMock()
+    controller._system_callbacks = []
+
     decisions = [
         NoopDecision(),
         ResizeDecision(num_workers=2, resources_per_worker={}),
@@ -170,6 +174,9 @@ def test_failure_handling():
         failure_policy=failure_policy,
     )
     worker_group = controller.get_worker_group()
+
+    controller._checkpoint_handler = MagicMock()
+    controller._system_callbacks = []
 
     assert controller.get_state() == TrainControllerState.INITIALIZING
     scaling_policy.queue_recovery_decision(
