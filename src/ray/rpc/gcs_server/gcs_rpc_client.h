@@ -56,6 +56,10 @@ class Executor {
   std::function<void()> operation_;
 };
 
+/// Convenience macro to invoke VOID_GCS_RPC_CLIENT_METHOD_FULL with defaults.
+///
+/// Creates a Sync and an Async method just like in VOID_GCS_RPC_CLIENT_METHOD_FULL,
+/// with NAMESPACE = ray::rpc, and handle_payload_status = true.
 #define VOID_GCS_RPC_CLIENT_METHOD(                         \
     SERVICE, METHOD, grpc_client, method_timeout_ms, SPECS) \
   VOID_GCS_RPC_CLIENT_METHOD_FULL(                          \
@@ -64,10 +68,12 @@ class Executor {
 /// Define a void GCS RPC client method.
 ///
 /// Example:
-///   VOID_GCS_RPC_CLIENT_METHOD(
+///   VOID_GCS_RPC_CLIENT_METHOD_FULL(
+///     ray::rpc,
 ///     ActorInfoGcsService,
 ///     CreateActor,
 ///     actor_info_grpc_client_,
+///     /*handle_payload_status=*/true,
 ///     /*method_timeout_ms*/ -1,) # Default value
 ///   generates
 ///
