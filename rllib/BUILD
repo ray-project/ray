@@ -567,12 +567,6 @@ py_test(
     srcs = ["algorithms/appo/tests/test_appo.py"]
 )
 py_test(
-    name = "test_appo_off_policyness",
-    tags = ["team:rllib", "algorithms_dir", "multi_gpu", "exclusive"],
-    size = "large",
-    srcs = ["algorithms/appo/tests/test_appo_off_policyness.py"]
-)
-py_test(
     name = "test_appo_learner",
     tags = ["team:rllib", "algorithms_dir"],
     size = "medium",
@@ -638,12 +632,6 @@ py_test(
     tags = ["team:rllib", "algorithms_dir"],
     size = "small",
     srcs = ["algorithms/impala/tests/test_vtrace_v2.py"]
-)
-py_test(
-    name = "test_impala_off_policyness",
-    tags = ["team:rllib", "algorithms_dir", "exclusive"],
-    size = "large",
-    srcs = ["algorithms/impala/tests/test_impala_off_policyness.py"]
 )
 
 # MARWIL

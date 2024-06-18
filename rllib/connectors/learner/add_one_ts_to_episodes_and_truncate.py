@@ -28,8 +28,7 @@ class AddOneTsToEpisodesAndTruncate(ConnectorV2):
 
     .. testcode::
 
-        from ray.rllib.connectors.common import AddOneTsToEpisodesAndTruncate
-        from ray.rllib.core.columns import Columns
+        from ray.rllib.connectors.learner import AddOneTsToEpisodesAndTruncate
         from ray.rllib.env.single_agent_episode import SingleAgentEpisode
         from ray.rllib.utils.test_utils import check
 
