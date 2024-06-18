@@ -171,7 +171,7 @@ class FiberState {
 #endif
 
   // The fiber stack allocator.
-  boost::fibers::fixedsize_stack allocator_;
+  boost::fibers::segmented_stack allocator_;
   /// The fiber channel used to send task between the submitter thread
   /// (main direct_actor_trasnport thread) and the fiber_runner_thread
   FiberChannel channel_;
