@@ -1200,7 +1200,8 @@ class Learner:
         """
         self._check_is_built()
 
-        module_state = state.get("module_state")
+        # TODO (sven): Deprecate old state keys and create constants for new ones.
+        module_state = state.get("rl_module", state.get("module_state"))
         # TODO: once we figure out the optimizer format, we can set/get the state
         if module_state is None:
             raise ValueError(
@@ -1208,7 +1209,8 @@ class Learner:
             )
         self.set_module_state(module_state)
 
-        optimizer_state = state.get("optimizer_state")
+        # TODO (sven): Deprecate old state keys and create constants for new ones.
+        optimizer_state = state.get("optimizer", state.get("optimizer_state"))
         if optimizer_state is None:
             raise ValueError(
                 "state must have a key 'optimizer_state' for the optimizer weights"
