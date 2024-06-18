@@ -1,4 +1,8 @@
+import asyncio
 import collections
+import inspect
+import queue
+from concurrent.futures import ThreadPoolExecutor
 from types import GeneratorType
 from typing import Any, Callable, Iterable, Iterator, List, Optional
 
@@ -104,22 +108,34 @@ def _parse_op_fn(op: AbstractUDFMap):
         fn_constructor_args = op._fn_constructor_args or ()
         fn_constructor_kwargs = op._fn_constructor_kwargs or {}
 
-        op_fn = make_callable_class_concurrent(op_fn)
-
-        def fn(item: Any) -> Any:
-            assert ray.data._cached_fn is not None
-            assert ray.data._cached_cls == op_fn
-            try:
-                return ray.data._cached_fn(item, *fn_args, **fn_kwargs)
-            except Exception as e:
-                _handle_debugger_exception(e)
-
         def init_fn():
             if ray.data._cached_fn is None:
                 ray.data._cached_cls = op_fn
                 ray.data._cached_fn = op_fn(
                     *fn_constructor_args, **fn_constructor_kwargs
                 )
+
+        if inspect.isasyncgenfunction(op._fn.__call__):
+
+            async def fn(item: Any) -> Any:
+                assert ray.data._cached_fn is not None
+                assert ray.data._cached_cls == op_fn
+
+                try:
+                    return ray.data._cached_fn(item, *fn_args, **fn_kwargs)
+                except Exception as e:
+                    _handle_debugger_exception(e)
+
+        else:
+            op_fn = make_callable_class_concurrent(op_fn)
+
+            def fn(item: Any) -> Any:
+                assert ray.data._cached_fn is not None
+                assert ray.data._cached_cls == op_fn
+                try:
+                    return ray.data._cached_fn(item, *fn_args, **fn_kwargs)
+                except Exception as e:
+                    _handle_debugger_exception(e)
 
     else:
 
@@ -158,6 +174,7 @@ def _validate_batch_output(batch: Block) -> None:
             np.ndarray,
             collections.abc.Mapping,
             pd.core.frame.DataFrame,
+            dict,
         ),
     ):
         raise ValueError(
@@ -193,45 +210,94 @@ def _validate_batch_output(batch: Block) -> None:
 def _generate_transform_fn_for_map_batches(
     fn: UserDefinedFunction,
 ) -> MapTransformCallable[DataBatch, DataBatch]:
-    def transform_fn(
-        batches: Iterable[DataBatch], _: TaskContext
-    ) -> Iterable[DataBatch]:
-        for batch in batches:
-            try:
-                if (
-                    not isinstance(batch, collections.abc.Mapping)
-                    and BlockAccessor.for_block(batch).num_rows() == 0
-                ):
-                    # For empty input blocks, we directly ouptut them without
-                    # calling the UDF.
-                    # TODO(hchen): This workaround is because some all-to-all
-                    # operators output empty blocks with no schema.
-                    res = [batch]
+    if inspect.iscoroutinefunction(fn):
+        # UDF is a callable class with async generator `__call__` method.
+        def transform_fn(
+            input_iterable: Iterable[DataBatch], _: TaskContext
+        ) -> Iterable[DataBatch]:
+            # Use a queue to store results from async generator calls.
+            # In the main event loop, we will put results into this queue
+            # from async generator, and yield them from the queue as they
+            # become available.
+            result_queue = queue.Queue()
+
+            async def process_batch(batch: DataBatch):
+                output_batch_iterator = await fn(batch)
+                # As soon as results become available from the async generator,
+                # put them into the result queue so they can be yielded.
+                async for output_row in output_batch_iterator:
+                    result_queue.put(output_row)
+
+            async def process_all_batches():
+                tasks = [asyncio.create_task(process_batch(x)) for x in input_iterable]
+                for task in asyncio.as_completed(tasks):
+                    await task
+                # Sentinel to indicate completion.
+                result_queue.put(None)
+
+            def run_event_loop():
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                loop.run_until_complete(process_all_batches())
+                loop.close()
+
+            # Start the event loop in a new thread
+            executor = ThreadPoolExecutor(max_workers=1)
+            executor.submit(run_event_loop)
+
+            # Yield results as they become available
+            while True:
+                # `out_batch` here is a one-row batch which contains
+                # output from the async generator, corresponding to a
+                # single row from the input batch.
+                out_batch = result_queue.get()
+                # Exit when sentinel is received.
+                if out_batch is None:
+                    break
+                _validate_batch_output(out_batch)
+                yield out_batch
+
+    else:
+
+        def transform_fn(
+            batches: Iterable[DataBatch], _: TaskContext
+        ) -> Iterable[DataBatch]:
+            for batch in batches:
+                try:
+                    if (
+                        not isinstance(batch, collections.abc.Mapping)
+                        and BlockAccessor.for_block(batch).num_rows() == 0
+                    ):
+                        # For empty input blocks, we directly ouptut them without
+                        # calling the UDF.
+                        # TODO(hchen): This workaround is because some all-to-all
+                        # operators output empty blocks with no schema.
+                        res = [batch]
+                    else:
+                        res = fn(batch)
+                        if not isinstance(res, GeneratorType):
+                            res = [res]
+                except ValueError as e:
+                    read_only_msgs = [
+                        "assignment destination is read-only",
+                        "buffer source array is read-only",
+                    ]
+                    err_msg = str(e)
+                    if any(msg in err_msg for msg in read_only_msgs):
+                        raise ValueError(
+                            f"Batch mapper function {fn.__name__} tried to mutate a "
+                            "zero-copy read-only batch. To be able to mutate the "
+                            "batch, pass zero_copy_batch=False to map_batches(); "
+                            "this will create a writable copy of the batch before "
+                            "giving it to fn. To elide this copy, modify your mapper "
+                            "function so it doesn't try to mutate its input."
+                        ) from e
+                    else:
+                        raise e from None
                 else:
-                    res = fn(batch)
-                    if not isinstance(res, GeneratorType):
-                        res = [res]
-            except ValueError as e:
-                read_only_msgs = [
-                    "assignment destination is read-only",
-                    "buffer source array is read-only",
-                ]
-                err_msg = str(e)
-                if any(msg in err_msg for msg in read_only_msgs):
-                    raise ValueError(
-                        f"Batch mapper function {fn.__name__} tried to mutate a "
-                        "zero-copy read-only batch. To be able to mutate the "
-                        "batch, pass zero_copy_batch=False to map_batches(); "
-                        "this will create a writable copy of the batch before "
-                        "giving it to fn. To elide this copy, modify your mapper "
-                        "function so it doesn't try to mutate its input."
-                    ) from e
-                else:
-                    raise e from None
-            else:
-                for out_batch in res:
-                    _validate_batch_output(out_batch)
-                    yield out_batch
+                    for out_batch in res:
+                        _validate_batch_output(out_batch)
+                        yield out_batch
 
     return transform_fn
 

@@ -1,3 +1,4 @@
+import asyncio
 import itertools
 import math
 import os
@@ -698,6 +699,34 @@ def test_map_batches_generator(ray_start_regular_shared, tmp_path):
         ds_list = ds.map_batches(
             fail_generator, batch_size=2, batch_format="pyarrow"
         ).take()
+
+
+def test_map_batches_async_generator(ray_start_regular_shared):
+    async def sleep_and_yield(i):
+        await asyncio.sleep(i)
+        return {"input": [i], "output": [2**i]}
+
+    class AsyncActor:
+        def __init__(self):
+            pass
+
+        async def __call__(self, batch):
+            tasks = [sleep_and_yield(i) for i in batch["id"]]
+            results = await asyncio.gather(*tasks)
+            for result in results:
+                yield result
+
+    n = 5
+    ds = ray.data.range(n, override_num_blocks=1)
+    ds = ds.map_batches(AsyncActor, batch_size=None, concurrency=1)
+
+    start_t = time.time()
+    output = ds.take_all()
+    runtime = time.time() - start_t
+    assert runtime < sum(range(n)), runtime
+
+    expected_output = [{"input": i, "output": 2**i} for i in range(n)]
+    assert output == expected_output, (output, expected_output)
 
 
 def test_map_batches_actors_preserves_order(shutdown_only):
