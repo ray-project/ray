@@ -5,9 +5,9 @@ This is split out from streaming_executor.py to facilitate better unit testing.
 
 import logging
 import math
+import os
 import threading
 import time
-import os
 from collections import defaultdict, deque
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple
@@ -557,12 +557,12 @@ def select_operator_to_run(
     if ensure_at_least_one_running and not ops:
         can_beyond_limit = os.environ.get("SELECT_OP_BEYOND_LIMIT", 0)
         if can_beyond_limit or all(op.num_active_tasks() == 0 for op in topology):
-           # The topology is entirely idle,
+            # The topology is entirely idle,
             # so choose from all ready ops ignoring limits.
             ops = [
-               op
+                op
                 for op, state in topology.items()
-               if state.num_queued() > 0 and not op.completed()
+                if state.num_queued() > 0 and not op.completed()
             ]
 
     selected_op = None
