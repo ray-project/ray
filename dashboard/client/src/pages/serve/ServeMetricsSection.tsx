@@ -206,7 +206,7 @@ export const ServeMetricsSection = ({
               </MenuItem>
             ))}
           </TextField>
-          <HelpInfo>Time picker</HelpInfo>
+          <HelpInfo>Time range picker</HelpInfo>
         </Box>
         <div className={classes.grafanaEmbedsContainer}>
           {metricsConfig.map(({ title, pathParams }) => {

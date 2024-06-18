@@ -50,7 +50,6 @@ const useStyles = makeStyles((theme) =>
 
 export enum RefreshOptions {
   OFF = "off",
-  ONE_SECOND = "1s",
   FIVE_SECONDS = "5s",
   TEN_SECONDS = "10s",
   THIRTY_SECONDS = "30s",
@@ -77,7 +76,6 @@ export enum TimeRangeOptions {
 
 export const REFRESH_VALUE: Record<RefreshOptions, string> = {
   [RefreshOptions.OFF]: "",
-  [RefreshOptions.ONE_SECOND]: "1s",
   [RefreshOptions.FIVE_SECONDS]: "5s",
   [RefreshOptions.TEN_SECONDS]: "10s",
   [RefreshOptions.THIRTY_SECONDS]: "30s",
