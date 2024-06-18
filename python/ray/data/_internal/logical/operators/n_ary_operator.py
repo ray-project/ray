@@ -17,6 +17,12 @@ class NAry(LogicalOperator):
         """
         super().__init__(self.__class__.__name__, list(input_ops), num_outputs)
 
+    def is_lineage_serializable(self) -> bool:
+        # NOTE: Historically, lineage serialization was explicitly not supported for
+        # `NAry` operators. I'm not sure if we still need this restriction, but I'm
+        # keeping it to be safe. See https://github.com/ray-project/ray/pull/24190.
+        return False
+
 
 class Zip(NAry):
     """Logical operator for zip."""
