@@ -4607,7 +4607,10 @@ class Dataset:
             >>> ray.data.read_csv("s3://anonymous@ray-example-data/iris.csv").has_serializable_lineage()
             True
         """  # noqa: E501
-        return self._plan.has_lazy_input()
+        return all(
+            op.is_lineage_serializable()
+            for op in self._logical_plan.dag.post_order_iter()
+        )
 
     @DeveloperAPI
     def serialize_lineage(self) -> bytes:
