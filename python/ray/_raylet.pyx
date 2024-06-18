@@ -4458,7 +4458,12 @@ cdef class CoreWorker:
             named_actor_handle_pair = (
                 CCoreWorkerProcess.GetCoreWorker().GetNamedActorHandle(
                     name, ray_namespace))
-        check_status(named_actor_handle_pair.second)
+        try:
+            check_status(named_actor_handle_pair.second)
+        except RpcError as e:
+            if e.rpc_code == GRPC_STATUS_CODE_DEADLINE_EXCEEDED:
+                raise GetTimeoutError(e.message)
+            raise
 
         return self.make_actor_handle(named_actor_handle_pair.first)
 
