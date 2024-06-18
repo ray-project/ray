@@ -4485,7 +4485,13 @@ cdef class CoreWorker:
         with nogil:
             result_pair = CCoreWorkerProcess.GetCoreWorker().ListNamedActors(
                 all_namespaces)
-        check_status(result_pair.second)
+        try:
+            check_status(result_pair.second)
+        except RpcError as e:
+            if e.rpc_code == GRPC_STATUS_CODE_DEADLINE_EXCEEDED:
+                raise GetTimeoutError(e.message)
+            raise
+
         return [
             (namespace.decode("utf-8"),
              name.decode("utf-8")) for namespace, name in result_pair.first]
