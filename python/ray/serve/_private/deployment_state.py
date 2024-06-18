@@ -2566,7 +2566,13 @@ class DeploymentStateManager:
     def get_deployment_statuses(
         self, ids: Optional[List[DeploymentID]] = None
     ) -> List[DeploymentStatusInfo]:
+        """
+        Return the statuses of the deployments with the given `ids`.
+        If `ids` is `None`, returns the status of all deployments.
+        """
         if ids is None:
+            # fast path for returning all deployments,
+            # avoids checking `if ids is None` in a loop
             return [
                 state.curr_status_info for state in self._deployment_states.values()
             ]
