@@ -2577,8 +2577,12 @@ class DeploymentStateManager:
                 state.curr_status_info for state in self._deployment_states.values()
             ]
         else:
-            states = (self._deployment_states.get(id) for id in ids)
-            return [state.curr_status_info for state in states if state]
+            statuses = []
+            for id in ids:
+                state = self._deployment_states.get(id)
+                if state is not None:
+                    statuses.append(state.curr_status_info)
+            return statuses
 
     def get_alive_replica_actor_ids(self) -> Set[str]:
         alive_replica_actor_ids = set()
