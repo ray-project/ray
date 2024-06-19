@@ -1,121 +1,133 @@
 import gymnasium as gym
+from typing import Dict, Optional, Tuple
 
-from ray.rllib.algorithms.ppo.tf.ppo_tf_rl_module import PPOTfRLModule
 from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import PPOTorchRLModule
+from ray.rllib.core.columns import Columns
 from ray.rllib.core.rl_module.rl_module import RLModule, RLModuleConfig
-from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.utils.framework import try_import_torch, try_import_tf
+from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.torch_utils import FLOAT_MIN
+from ray.rllib.utils.typing import TensorType
 
 torch, nn = try_import_torch()
-_, tf, _ = try_import_tf()
 
 
-class ActionMaskRLMBase(RLModule):
+class ActionMaskRLM(RLModule):
     def __init__(self, config: RLModuleConfig):
-        if not isinstance(config.observation_space, gym.spaces.Dict):
+        # If observation space is not of type `Dict` raise an error.
+        if not isinstance(config.observation_space, gym.spaces.dict.Dict):
             raise ValueError(
-                "This model requires the environment to provide a "
-                "gym.spaces.Dict observation space."
+                "This RLModule requires the environment to provide a "
+                "`gym.spaces.Dict` observation space of the form: \n"
+                " {'action_mask': Box(0.0, 1.0, shape=(self.action_space.n,)),"
+                "  'observation_space': self.observation_space}"
             )
-        # We need to adjust the observation space for this RL Module so that, when
-        # building the default models, the RLModule does not "see" the action mask but
-        # only the original observation space without the action mask. This tricks it
-        # into building models that are compatible with the original observation space.
+
+        # While the environment holds an observation space that contains, both,
+        # the action mask and the original observation space, the 'RLModule'
+        # receives only the `"observation"` element of the space, but not the
+        # action mask.
+        self.observation_space_with_mask = config.observation_space
         config.observation_space = config.observation_space["observations"]
 
-        # The PPORLModule, in its constructor, will build models for the modified
-        # observation space.
+        # Keeps track if observation specs have been checked already.
+        self._checked_observations = False
+
+        # The PPORLModule, in its constructor will build networks for the original
+        # observation space (i.e. without the action mask).
         super().__init__(config)
 
 
-class TorchActionMaskRLM(ActionMaskRLMBase, PPOTorchRLModule):
-    def _forward_inference(self, batch, **kwargs):
-        return mask_forward_fn_torch(super()._forward_inference, batch, **kwargs)
+class ActionMaskTorchRLM(ActionMaskRLM, PPOTorchRLModule):
+    def setup(self):
+        super().setup()
 
-    def _forward_train(self, batch, *args, **kwargs):
-        return mask_forward_fn_torch(super()._forward_train, batch, **kwargs)
+        self.config.observation_space = self.observation_space_with_mask
 
-    def _forward_exploration(self, batch, *args, **kwargs):
-        return mask_forward_fn_torch(super()._forward_exploration, batch, **kwargs)
+    def _forward_inference(
+        self, batch: Dict[str, TensorType], **kwargs
+    ) -> Dict[str, TensorType]:
+        # Preprocess the original batch to extract the action mask.
+        action_mask, batch = self._preprocess_batch(batch)
+        # Run the forward pass.
+        outs = super()._forward_inference(batch, **kwargs)
+        # Mask the action logits and return.
+        return self._mask_action_logits(outs, action_mask)
 
+    def _forward_exploration(
+        self, batch: Dict[str, TensorType], **kwargs
+    ) -> Dict[str, TensorType]:
+        # Preprocess the original batch to extract the action mask.
+        action_mask, batch = self._preprocess_batch(batch)
+        # Run the forward pass.
+        outs = super()._forward_exploration(batch, **kwargs)
+        # Mask the action logits and return.
+        return self._mask_action_logits(outs, action_mask)
 
-class TFActionMaskRLM(ActionMaskRLMBase, PPOTfRLModule):
-    def _forward_inference(self, batch, **kwargs):
-        return mask_forward_fn_tf(super()._forward_inference, batch, **kwargs)
+    def _forward_train(
+        self, batch: Dict[str, TensorType], **kwargs
+    ) -> Dict[str, TensorType]:
+        # Preprocess the original batch to extract the action mask.
+        action_mask, batch = self._preprocess_batch(batch)
+        # Run the forward pass.
+        outs = super()._forward_train(batch, **kwargs)
+        # Mask the action logits and return.
+        return self._mask_action_logits(outs, action_mask)
 
-    def _forward_train(self, batch, *args, **kwargs):
-        return mask_forward_fn_tf(super()._forward_train, batch, **kwargs)
+    def _compute_values(self, batch: Dict[str, TensorType], device: str = None):
+        # Preprocess the batch to extract the `observations` to `Columns.OBS`.
+        _, batch = self._preprocess_batch(batch)
+        # Call the super's method to compute values for GAE.
+        return super()._compute_values(batch, device=device)
 
-    def _forward_exploration(self, batch, *args, **kwargs):
-        return mask_forward_fn_tf(super()._forward_exploration, batch, **kwargs)
+    def _preprocess_batch(
+        self, batch: Dict[str, TensorType], **kwargs
+    ) -> Tuple[TensorType, Dict[str, TensorType]]:
 
+        # Check observation specs for action mask and observation keys.
+        self._check_batch(batch)
 
-def mask_forward_fn_torch(forward_fn, batch, **kwargs):
-    _check_batch(batch)
+        # Extract the available actions tensor from the observation.
+        action_mask = batch[Columns.OBS].pop("action_mask")
 
-    # Extract the available actions tensor from the observation.
-    action_mask = batch[SampleBatch.OBS]["action_mask"]
+        # Modify the batch for the `PPORLModule`'s `forward` method, i.e.
+        # pass only `"obs"` into the `forward` method.
+        batch[Columns.OBS] = batch[Columns.OBS].pop("observations")
 
-    # Modify the incoming batch so that the default models can compute logits and
-    # values as usual.
-    batch[SampleBatch.OBS] = batch[SampleBatch.OBS]["observations"]
+        # Return the extracted action mask and the modified batch.
+        return action_mask, batch
 
-    outputs = forward_fn(batch, **kwargs)
+    def _mask_action_logits(
+        self, batch: Dict[str, TensorType], action_mask: TensorType
+    ) -> Dict[str, TensorType]:
 
-    # Mask logits
-    logits = outputs[SampleBatch.ACTION_DIST_INPUTS]
-    # Convert action_mask into a [0.0 || -inf]-type mask.
-    inf_mask = torch.clamp(torch.log(action_mask), min=FLOAT_MIN)
-    masked_logits = logits + inf_mask
+        # Convert action mask into an `[0.0][-inf]`-type mask.
+        inf_mask = torch.clamp(torch.log(action_mask), min=FLOAT_MIN)
 
-    # Replace original values with masked values.
-    outputs[SampleBatch.ACTION_DIST_INPUTS] = masked_logits
+        # Mask the logits.
+        batch[Columns.ACTION_DIST_INPUTS] += inf_mask
 
-    return outputs
+        # Return the batch with the masked action logits.
+        return batch
 
-
-def mask_forward_fn_tf(forward_fn, batch, **kwargs):
-    _check_batch(batch)
-
-    # Extract the available actions tensor from the observation.
-    action_mask = batch[SampleBatch.OBS]["action_mask"]
-
-    # Modify the incoming batch so that the default models can compute logits and
-    # values as usual.
-    batch[SampleBatch.OBS] = batch[SampleBatch.OBS]["observations"]
-
-    outputs = forward_fn(batch, **kwargs)
-
-    # Mask logits
-    logits = outputs[SampleBatch.ACTION_DIST_INPUTS]
-    # Convert action_mask into a [0.0 || -inf]-type mask.
-    inf_mask = tf.maximum(tf.math.log(action_mask), tf.float32.min)
-    masked_logits = logits + inf_mask
-
-    # Replace original values with masked values.
-    outputs[SampleBatch.ACTION_DIST_INPUTS] = masked_logits
-
-    return outputs
-
-
-def _check_batch(batch):
-    """Check whether the batch contains the required keys."""
-    if "action_mask" not in batch[SampleBatch.OBS]:
-        raise ValueError(
-            "Action mask not found in observation. This model requires "
-            "the environment to provide observations that include an "
-            "action mask (i.e. an observation space of the Dict space "
-            "type that looks as follows: \n"
-            "{'action_mask': Box(0.0, 1.0, shape=(self.action_space.n,)),"
-            "'observations': <observation_space>}"
-        )
-    if "observations" not in batch[SampleBatch.OBS]:
-        raise ValueError(
-            "Observations not found in observation.This model requires "
-            "the environment to provide observations that include a "
-            " (i.e. an observation space of the Dict space "
-            "type that looks as follows: \n"
-            "{'action_mask': Box(0.0, 1.0, shape=(self.action_space.n,)),"
-            "'observations': <observation_space>}"
-        )
+    def _check_batch(self, batch: Dict[str, TensorType]) -> Optional[ValueError]:
+        """Assert that the batch includes action mask and observations."""
+        if not self._checked_observations:
+            if "action_mask" not in batch[Columns.OBS]:
+                raise ValueError(
+                    "No action mask found in observation. This `RLModule` requires "
+                    "the environment to provide observations that include an "
+                    "action mask (i.e. an observation space of the Dict space "
+                    "type that looks as follows: \n"
+                    "{'action_mask': Box(0.0, 1.0, shape=(self.action_space.n,)),"
+                    "'observations': self.observation_space}"
+                )
+            if "observations" not in batch[Columns.OBS]:
+                raise ValueError(
+                    "No observations found in observation. This 'RLModule` requires "
+                    "the environment to provide observations that include the original "
+                    "observations under a key `'observations'` in a dict (i.e. an "
+                    "observation space of the Dict space type that looks as follows: \n"
+                    "{'action_mask': Box(0.0, 1.0, shape=(self.action_space.n,)),"
+                    "'observations': <observation_space>}"
+                )
+            self._checked_observations = True
