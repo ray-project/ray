@@ -9,20 +9,6 @@ The Ray Distributed Debugger is a VS Code extension that streamlines the debuggi
 Ray Distributed Debugger abstracts the complexities of debugging distributed systems for you to debug Ray applications more efficiently, saving time and effort in the development workflow.
 
 
-Download for Free
-=================
-
-.. raw:: html
-
-    <script charset="utf-8" type="text/javascript" src="https://js.hsforms.net/forms/embed/v2.js"></script>
-    <script>
-    hbspt.forms.create({
-        region: "na1",
-        portalId: "20523749",
-        formId: "bda3899b-8a0e-4aa9-82b2-6b2399ea6438"
-    });
-    </script>
-
 Demo
 ====
 
@@ -33,118 +19,151 @@ Demo
     </div>
 
 
-How to use
-==========
-
-Prerequisite
-------------
-
-1. `Visual Studio Code <https://code.visualstudio.com/>`_
-2. `ray[default] >= 2.9.1`
-3. `debugpy >= 1.8.0`
-
 Get started
------------
+===========
 
-- **Setup Environment**: Create a new virtual environment and install dependencies.
-
-    .. code-block:: python
-
-        conda create -n myenv python=3.9
-        conda activate myenv
-        pip install "ray[default]" debugpy
+Click `here <https://www.anyscale.com/blog/ray-distributed-debugger?utm_source=ray_docs&utm_medium=docs&utm_campaign=promotion#download-for-free>`_ to download the Ray Debugger extension for free.
 
 
-- **Start a Ray Cluster**: Run ray start `--head` to start a Ray Cluster.
+Setup Environment
+~~~~~~~~~~~~~~~~~
 
-    .. code-block:: bash
+Create a new virtual environment and install dependencies.
 
-        ray start --head
+.. code-block:: python
 
-- **Register Clusters**: Add the Ray cluster `IP:PORT` to the Cluster list. The default `IP:PORT` is `127.0.0.1:8265`, and you may change it when starting a new cluster. Make sure the IP and port are accessible from your current machine.
+    conda create -n myenv python=3.9
+    conda activate myenv
+    pip install "ray[default]" debugpy
 
+
+Start a Ray Cluster
+~~~~~~~~~~~~~~~~~~~
+
+Run ray start `--head` to start a Ray Cluster.
+
+.. code-block:: bash
+
+    ray start --head
+
+
+Register the cluster
+~~~~~~~~~~~~~~~~~~~~
+
+Add the Ray cluster `IP:PORT` to the cluster list. The default `IP:PORT` is `127.0.0.1:8265`, and you can change it when starting a new cluster. Make sure your current machine can access the IP and port.
 
 .. image:: ./images/register-cluster.gif
     :align: center
 
 
-- **Create a Ray Task**: Create a file `job.py` with the following snippet. Add the `RAY_DEBUG` environment variable to enable Ray Debugger and add `breakpoint()` in the ray task.
+Create a Ray Task
+~~~~~~~~~~~~~~~~~
 
-    .. code-block:: python
+Create a file `job.py` with the following snippet. Add the `RAY_DEBUG` environment variable to enable Ray Debugger and add `breakpoint()` in the Ray task.
 
-        import ray
-        import sys
+.. code-block:: python
 
-        # Add RAY_DEBUG environment variable to enable Ray Debugger
-        ray.init(runtime_env={
-            "env_vars": {"RAY_DEBUG": "1"}, 
-        })
+    import ray
+    import sys
 
-        @ray.remote
-        def my_task(x):
-            y = x * x
-            breakpoint() # Add a breakpoint in the ray task
-            return y
+    # Add RAY_DEBUG environment variable to enable Ray Debugger.
+    ray.init(runtime_env={
+        "env_vars": {"RAY_DEBUG": "1"}, 
+    })
 
-        @ray.remote
-        def post_mortem(x):
-            x += 1
-            raise Exception("An exception is raised")
-            return x
+    @ray.remote
+    def my_task(x):
+        y = x * x
+        breakpoint() # Add a breakpoint in the ray task.
+        return y
 
-        if len(sys.argv) == 1:
-            ray.get(my_task.remote(10))
-        else:
-            ray.get(post_mortem.remote(10)) 
+    @ray.remote
+    def post_mortem(x):
+        x += 1
+        raise Exception("An exception is raised")
+        return x
+
+    if len(sys.argv) == 1:
+        ray.get(my_task.remote(10))
+    else:
+        ray.get(post_mortem.remote(10)) 
 
 
+Setup Debugger Local Folder
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-- **Setup Debugger Local Folder**: Ray Debugger needs to know the absolute path to the folder you submitted `job.py`. Use pwd command to get the submission path, and set the cluster's local folder to the path. For each cluster, you can set the local folder by clicking on the ⚙️ icon on the cluster item.
+Ray Debugger needs to know the absolute path to the folder you submitted `job.py`. Use pwd command to get the submission path, and set the cluster's local folder to the path. For each cluster, you can set the local folder by clicking on the ⚙️ icon on the cluster item.
 
 .. image:: ./images/setup-debugger.gif
     :align: center
 
-- **Run Your Ray Application**: Start running your Ray application.
 
-    .. code-block:: bash
+Run Your Ray Application
+~~~~~~~~~~~~~~~~~~~~~~~~
 
-        python job.py
+Start running your Ray application.
 
-- **Attach to Paused Tasks**:
-  - The task will enter a paused state once the breakpoint is hit.
-  - The terminal will clearly indicate when a task is paused and waiting for the debugger to attach.
-  - The paused tasks will be listed in the Ray Debugger extension.
-  - Click on a paused task to attach the VSCode debugger.
+.. code-block:: bash
+
+    python job.py
+
+
+Attach to Paused Tasks
+~~~~~~~~~~~~~~~~~~~~~~
+
+When debugger hits a breakpoint
+
+- The task enters a paused state.
+- The terminal clearly indicates when the debugger pauses a task and waits for the debugger to attach.
+- The paused task is listed in the Ray Debugger extension.
+- Click on the paused task to attach the VS Code debugger.
 
 .. image:: ./images/attach-paused-task.gif
     :align: center
 
-- **Use the VSCode Debugger**: Debug your Ray application just as you would when developing locally.
+
+Use the VS Code debugger
+~~~~~~~~~~~~~~~~~~~~~~~~
+
+Debug your Ray app just as you would when developing locally.
 
 
-Post-Mortem Debugging
+Post-mortem debugging
 =====================
 
-Continuing from the previous section, let's delve into Post-Mortem debugging. This feature becomes essential when Ray tasks encounter unhandled exceptions. In such cases, Ray automatically freezes the failing task, awaiting attachment by the Ray Debugger. This functionality empowers you to thoroughly investigate and inspect the program's state at the time of the error.
+Use post-mortem debugging when Ray tasks encounter unhandled exceptions. In such cases, Ray automatically freezes the failing task, awaiting attachment by the Ray Debugger. This feature allows you to thoroughly investigate and inspect the program's state at the time of the error.
 
-- **Run a Ray Task Raised Exception**: Run the same `job.py` created above with an additional argument raise-exception.
+Run a Ray Task Raised Exception
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-    .. code-block:: bash
+Run the same `job.py` created above with an additional argument raise-exception.
+    
+.. code-block:: bash
 
-        python job.py raise-exception
+    python job.py raise-exception
 
-- **Attach to Paused Tasks**:
-  - The task will be frozen once the exception is thrown.
-  - The terminal will clearly indicate when a task is paused and waiting for the debugger to attach.
-  - The paused tasks will be listed in the Ray Debugger extension.
-  - Click on a paused task to attach the VSCode debugger.
+
+Attach to Paused Tasks
+~~~~~~~~~~~~~~~~~~~~~~
+
+When the app throws an exception:
+
+- The debugger freezes the task.
+- The terminal clearly indicates when the debugger pauses a task is paused and waits for the debugger to attach.
+- The paused task is listed in the Ray Debugger extension.
+- You can click on a paused task to attach the VS Code debugger.
 
 .. image:: ./images/post-moretem.gif
     :align: center
 
-- **Use the VSCode Debugger**: Debug your Ray application just as you would when developing locally.
+
+Use the VS Code Debugger
+~~~~~~~~~~~~~~~~~~~~~~~~
+
+Debug your Ray app just as you would when developing locally.
+
 
 Feedback
 =========
 
-Join `#ray-debugger <https://ray-distributed.slack.com/archives/C073MPGLAC9>`_ channel on the Ray slack channel to get help
+Join the `#ray-debugger <https://ray-distributed.slack.com/archives/C073MPGLAC9>`_ channel on the Ray Slack channel to get help.
