@@ -1136,6 +1136,23 @@ def test_dashboard_requests_fail_on_missing_deps(ray_start_regular):
     # Response should not be populated
     assert response is None
 
+def test_dashboard_rejects_cross_origin_requests(ray_start_regular):
+    """Check that requests from client fail with minimal installation"""
+    response = None
+
+# python/ray/dashboard/modules/dashboard_sdk.py has an implementation of poking
+# at it with requests, we just need to double check what a browser looking
+# request will look like
+
+    with pytest.raises(ServerUnavailable):
+        client = StateApiClient()
+        response = client.list(
+            StateResource.NODES, options=ListApiOptions(), raise_on_missing_output=False
+        )
+
+    # Response should not be populated
+    assert response is None
+
 
 @pytest.mark.skipif(
     os.environ.get("RAY_DEFAULT") != "1",
@@ -1164,6 +1181,7 @@ def test_dashboard_module_load(tmpdir):
     assert loaded_modules_actual == loaded_modules_expected
 
     # Test modules that don't exist.
+    # This has to be broken right
     loaded_modules_expected = {"StateHea"}
     with pytest.raises(AssertionError):
         loaded_modules = head._load_modules(modules_to_load=loaded_modules_expected)
