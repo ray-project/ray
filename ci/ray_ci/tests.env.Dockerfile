@@ -4,7 +4,7 @@ ARG BASE_IMAGE
 FROM "$BASE_IMAGE"
 
 ARG BUILD_TYPE
-ARG BUILDKITE_PIPELINE_ID
+ARG BUILDKITE_CACHE_READONLY
 
 ENV CC=clang
 ENV CXX=clang++-12
@@ -18,8 +18,8 @@ RUN <<EOF
 
 set -euo pipefail
 
-if [[ "$BUILDKITE_PIPELINE_ID" != "0189e759-8c96-4302-b6b5-b4274406bf89" ]]; then
-  # Only upload cache results on (Linux and Windows) postmerge pipeline.
+if [[ "$BUILDKITE_CACHE_READONLY" == "true" ]]; then
+  # Disables uploading cache when it is read-only.
   echo "build --remote_upload_local_results=false" >> ~/.bazelrc
 fi
 

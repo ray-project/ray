@@ -44,8 +44,13 @@ class TrainHead(dashboard_utils.DashboardHeadModule):
         else:
             try:
                 train_runs = await stats_actor.get_all_train_runs.remote()
-                # TODO(aguo): Sort by created_at
-                details = TrainRunsResponse(train_runs=list(train_runs.values()))
+                # Sort train runs in reverse chronological order
+                train_runs = sorted(
+                    train_runs.values(),
+                    key=lambda run: run.start_time,
+                    reverse=True,
+                )
+                details = TrainRunsResponse(train_runs=train_runs)
             except ray.exceptions.RayTaskError as e:
                 # Task failure sometimes are due to GCS
                 # failure. When GCS failed, we expect a longer time

@@ -1,5 +1,6 @@
 import logging
 import os
+import time
 from collections import defaultdict
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Optional, Tuple, Type, TypeVar
@@ -118,6 +119,10 @@ class BackendExecutor:
                 ray_constants.NEURON_RT_VISIBLE_CORES_ENV_VAR,
             )
         ]
+
+        # Record the initialization time of BackendExecutor, which is
+        # after trainer.fit() and before worker_group executes the training function.
+        self._start_time = time.time()
 
         self.state_tracking_enabled = env_integer(RAY_TRAIN_ENABLE_STATE_TRACKING, 0)
 
@@ -547,6 +552,7 @@ class BackendExecutor:
                 controller_actor_id=core_context.get_actor_id(),
                 datasets=datasets,
                 worker_group=self.worker_group,
+                start_time=self._start_time,
             )
 
         # Run the training function asynchronously in its own thread.
