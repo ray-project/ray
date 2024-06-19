@@ -1,3 +1,5 @@
+import os
+
 # Unsupported configs can use this value to detect if the user has set it.
 _UNSUPPORTED = "UNSUPPORTED"
 
@@ -15,3 +17,6 @@ MAX_CONSECUTIVE_HEALTH_CHECK_MISSES_ENV_VAR = (
     "RAY_TRAIN_MAX_CONSECUTIVE_HEALTH_CHECK_MISSES"
 )
 DEFAULT_MAX_CONSECUTIVE_HEALTH_CHECK_MISSES = 5
+
+# V2 feature flag.
+V2_ENABLED = bool(int(os.environ.get("RAY_TRAIN_V2_ENABLED", "0")))

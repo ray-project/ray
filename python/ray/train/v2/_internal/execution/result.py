@@ -6,7 +6,7 @@ from typing import Any, Dict, Optional, Union
 import pandas as pd
 import pyarrow
 
-from ray.train import Result as ResultV1
+from ray.air.result import Result as ResultV1
 from ray.train.v2._internal.exceptions import TrainingFailedError
 
 logger = logging.getLogger(__name__)

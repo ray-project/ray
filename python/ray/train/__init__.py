@@ -26,6 +26,17 @@ from ray.train.backend import BackendConfig
 from ray.train.constants import TRAIN_DATASET_KEY
 from ray.train.context import get_context
 from ray.train.trainer import TrainingIterator
+from ray.train.v2._internal.constants import V2_ENABLED
+
+if V2_ENABLED:
+    from ray.train.v2.api.config import RunConfig, ScalingConfig  # noqa: F811
+    from ray.train.v2.api.train_fn_utils import (  # noqa: F811
+        get_checkpoint,
+        get_context,
+        get_dataset_shard,
+        report,
+    )
+
 
 usage_lib.record_library_usage("train")
 

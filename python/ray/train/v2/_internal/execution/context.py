@@ -6,9 +6,11 @@ from typing import Any, Dict, Optional
 
 import ray
 from ray.train import Checkpoint
+from ray.train._internal import session
 from ray.train._internal.session import _TrainingResult
 from ray.train.v2._internal.execution.checkpoint.sync_actor import SynchronizationActor
 from ray.train.v2._internal.execution.storage import StorageContext
+from ray.train.v2._internal.util import _copy_doc
 from ray.train.v2.api.config import RunConfig
 
 logger = logging.getLogger(__file__)
@@ -37,40 +39,52 @@ class TrainContext:
     storage_context: StorageContext
     checkpoint: Optional[Checkpoint] = None
 
+    @_copy_doc(session.get_metadata)
     def get_metadata(self) -> Dict[str, Any]:
         raise NotImplementedError
 
+    @_copy_doc(session.get_experiment_name)
     def get_experiment_name(self) -> str:
         # TODO: Resolve run_config.name if it is None
         return self.run_config.name
 
+    @_copy_doc(session.get_trial_name)
     def get_trial_name(self) -> str:
         raise NotImplementedError
 
+    @_copy_doc(session.get_trial_id)
     def get_trial_id(self) -> str:
         raise NotImplementedError
 
+    @_copy_doc(session.get_trial_resources)
     def get_trial_resources(self):
         raise NotImplementedError
 
+    @_copy_doc(session.get_trial_dir)
     def get_trial_dir(self) -> str:
         raise NotImplementedError
 
+    @_copy_doc(session.get_world_size)
     def get_world_size(self) -> int:
         return self.distributed_context.world_size
 
+    @_copy_doc(session.get_world_rank)
     def get_world_rank(self) -> int:
         return self.distributed_context.world_rank
 
+    @_copy_doc(session.get_local_rank)
     def get_local_rank(self) -> int:
         return self.distributed_context.local_rank
 
+    @_copy_doc(session.get_local_world_size)
     def get_local_world_size(self) -> int:
         return self.distributed_context.local_world_size
 
+    @_copy_doc(session.get_node_rank)
     def get_node_rank(self) -> int:
         return self.distributed_context.node_rank
 
+    @_copy_doc(session.get_storage)
     def get_storage(self):
         return self.storage_context
 

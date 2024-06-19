@@ -27,7 +27,7 @@ class CheckpointHandler(SystemCallback):
         # When a worker group shutdown, self._num_workers is set to None,
         # waiting to be updated when a new worker group status is received again.
         self._num_workers: Optional[int] = None
-        # # A list of queues holding training results from workers.
+        # A list of queues holding training results from workers.
         self._training_result_queues: Optional[List[deque]] = None
         # The checkpoint manager to register the consolidated checkpoint.
         self._checkpoint_manager: _CheckpointManager = checkpoint_manager
@@ -36,13 +36,13 @@ class CheckpointHandler(SystemCallback):
         """Handle poll results from workers.
 
         Steps:
-            1. Check if the checkpoint handler is correctly initialized.
-            2. Update the training result queues with poll results.
-                If all workers have reported a checkpoint, continue onto the
-                next step of committing the checkpoint in the checkpoint manager.
-            3. Consolidate a list of checkpoints to single checkpoint.
-            4. Register the checkpoint to checkpoint manager.
-            5. TODO: Snapshot checkpoint manager metadata to storage for recovery.
+        1. Check if the checkpoint handler is correctly initialized.
+        2. Update the training result queues with poll results.
+            If all workers have reported a checkpoint, continue onto the
+            next step of committing the checkpoint in the checkpoint manager.
+        3. Consolidate a list of checkpoints to single checkpoint.
+        4. Register the checkpoint to checkpoint manager.
+        5. TODO: Snapshot checkpoint manager metadata to storage for recovery.
         """
         # Step 1: If self._num_workers is None, we need to initialize the number
         # of workers and training_results_queues from the worker group status. This

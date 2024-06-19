@@ -9,7 +9,6 @@ from ray.train.v2._internal.exceptions import (
     WorkerHealthCheckFailedError,
     WorkerHealthCheckMissedError,
 )
-from ray.train.v2._internal.execution.context import get_train_context
 from ray.train.v2._internal.execution.worker_group import (
     ActorMetadata,
     RayTrainWorker,
@@ -252,17 +251,19 @@ def test_setup_worker_group(ray_start_4_cpus, tmp_path):
     worker_group.start(num_workers=num_workers, resources_per_worker={"CPU": 1})
 
     def get_world_size():
-        return get_train_context().get_world_size()
+        return ray.train.get_context().get_world_size()
 
     def get_world_rank():
-        return get_train_context().get_world_rank()
+        return ray.train.get_context().get_world_rank()
 
     def get_storage_context_name():
-        return get_train_context().get_storage().experiment_dir_name
+        return ray.train.get_context().get_storage().experiment_dir_name
 
     assert worker_group.execute(get_world_size) == [num_workers] * num_workers
     assert sorted(worker_group.execute(get_world_rank)) == list(range(num_workers))
     assert worker_group.execute(get_storage_context_name) == ["test"] * num_workers
+
+    worker_group.shutdown()
 
 
 if __name__ == "__main__":

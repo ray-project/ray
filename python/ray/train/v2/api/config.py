@@ -1,8 +1,8 @@
 from dataclasses import dataclass
 from typing import Optional, Tuple, Union
 
-from ray.train import RunConfig as RunConfigV1
-from ray.train import ScalingConfig as ScalingConfigV1
+from ray.air.config import RunConfig as RunConfigV1
+from ray.air.config import ScalingConfig as ScalingConfigV1
 from ray.train.v2._internal.util import date_str
 
 _UNSUPPORTED_STR = "UNSUPPORTED"
