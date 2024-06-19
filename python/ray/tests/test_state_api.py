@@ -3584,7 +3584,7 @@ def test_job_info_is_running_task(shutdown_only):
     ray.get(signal.wait.remote())
 
     client = ray.worker.global_worker.gcs_client
-    job_id = ray.worker.global_worker.current_job_id.binary()
+    job_id = ray.worker.global_worker.current_job_id
     all_job_info = client.get_all_job_info()
     assert len(all_job_info) == 1
     assert job_id in all_job_info

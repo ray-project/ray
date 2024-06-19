@@ -592,7 +592,8 @@ class FaultTolerantActorManager:
                 `mark_healthy=True`, will send `func` to all actors and mark those
                 actors "healthy" that respond to the request within `timeout_seconds`
                 and are currently tagged as "unhealthy".
-            remote_actor_ids: Apply func on a selected set of remote actors.
+            remote_actor_ids: Apply func on a selected set of remote actors. Use None
+                (default) for all actors.
             timeout_seconds: Time to wait (in seconds) for results. Set this to 0.0 for
                 fire-and-forget. Set this to None (default) to wait infinitely (i.e. for
                 synchronous execution).
