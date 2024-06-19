@@ -250,7 +250,7 @@ RLModules
 - |new_stack| `How to configure an autoregressive action distribution <https://github.com/ray-project/ray/blob/master/rllib/examples/rl_modules/autoregressive_actions.py>`__:
    Learning with an auto-regressive action distribution (for example, two action components, where distribution of the second component depends on the first's actually sampled value).
 - |new_stack| `How to train a UAV with Gymnasium Reward Shaping <https://github.com/lmco/ray/blob/master/rllib/examples/quadx_waypoints.py>`__:
-   Example of how to train a UAV using Pyflyt, Gymnasium Reward Shaping, and RLLib PPO and Ray Tune.
+   Example of how to train a UAV using Pyflyt, Gymnasium Reward Shaping, RLlib PPO, and Ray Tune.
 
 - |old_stack| `How to train with parametric actions <https://github.com/ray-project/ray/blob/master/rllib/examples/_old_api_stack/parametric_actions_cartpole.py>`__:
    Example of how to handle variable-length or parametric action spaces.
