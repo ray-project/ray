@@ -10,6 +10,8 @@ import {
   TableRow,
   TextField,
   Typography,
+  MenuItem,
+  Select,
 } from "@mui/material";
 import Pagination from "@mui/material/Pagination";
 import makeStyles from "@mui/styles/makeStyles";
@@ -124,6 +126,20 @@ const JobList = () => {
                 ),
               }}
             />
+            <Select
+              displayEmpty
+              defaultValue=""
+              onChange={(e) => changeFilter("status", e.target.value)}
+              sx={{ width: 120, height: 35 }}
+            >
+              <MenuItem value="">
+                <em>All Statuses</em>
+              </MenuItem>
+              <MenuItem value="PENDING">Pending</MenuItem>
+              <MenuItem value="RUNNING">Running</MenuItem>
+              <MenuItem value="SUCCEEDED">Succeeded</MenuItem>
+              <MenuItem value="FAILED">Failed</MenuItem>
+            </Select>
           </Box>
           <div>
             <Pagination
