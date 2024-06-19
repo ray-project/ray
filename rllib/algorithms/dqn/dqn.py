@@ -605,7 +605,7 @@ class DQN(Algorithm):
         # Old and hybrid API stacks (Policy, RolloutWorker, Connector, maybe RLModule,
         # maybe Learner).
         else:
-            return self._training_step_old_and_hybrid_api_stack()
+            return self._training_step_old_api_stack()
 
     def _training_step_new_api_stack(self, *, with_noise_reset) -> ResultDict:
         # Alternate between storing and sampling and training.
@@ -771,8 +771,8 @@ class DQN(Algorithm):
 
         return self.metrics.reduce()
 
-    def _training_step_old_and_hybrid_api_stack(self) -> ResultDict:
-        """Training step for the old and hybrid training stacks.
+    def _training_step_old_api_stack(self) -> ResultDict:
+        """Training step for the old API stack.
 
         More specifically this training step relies on `RolloutWorker`.
         """

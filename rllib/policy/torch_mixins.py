@@ -56,9 +56,7 @@ class EntropyCoeffSchedule:
         self._entropy_coeff_schedule = None
         # Disable any scheduling behavior related to learning if Learner API is active.
         # Schedules are handled by Learner class.
-        if entropy_coeff_schedule is None or (
-            self.config.get("enable_rl_module_and_learner", False)
-        ):
+        if entropy_coeff_schedule is None:
             self.entropy_coeff = entropy_coeff
         else:
             # Allows for custom schedule similar to lr_schedule format
@@ -208,27 +206,16 @@ class TargetNetworkMixin:
 
         # Support partial (soft) synching.
         # If tau == 1.0: Full sync from Q-model to target Q-model.
+        # Support partial (soft) synching.
+        # If tau == 1.0: Full sync from Q-model to target Q-model.
+        target_state_dict = next(iter(self.target_models.values())).state_dict()
+        model_state_dict = {
+            k: tau * model_state_dict[k] + (1 - tau) * v
+            for k, v in target_state_dict.items()
+        }
 
-        if self.config.get("enable_rl_module_and_learner", False):
-            target_current_network_pairs = self.model.get_target_network_pairs()
-            for target_network, current_network in target_current_network_pairs:
-                current_state_dict = current_network.state_dict()
-                new_state_dict = {
-                    k: tau * current_state_dict[k] + (1 - tau) * v
-                    for k, v in target_network.state_dict().items()
-                }
-                target_network.load_state_dict(new_state_dict)
-        else:
-            # Support partial (soft) synching.
-            # If tau == 1.0: Full sync from Q-model to target Q-model.
-            target_state_dict = next(iter(self.target_models.values())).state_dict()
-            model_state_dict = {
-                k: tau * model_state_dict[k] + (1 - tau) * v
-                for k, v in target_state_dict.items()
-            }
-
-            for target in self.target_models.values():
-                target.load_state_dict(model_state_dict)
+        for target in self.target_models.values():
+            target.load_state_dict(model_state_dict)
 
     @override(TorchPolicy)
     def set_weights(self, weights):

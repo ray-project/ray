@@ -178,12 +178,7 @@ class VTraceClipGradients:
         self, optimizer: LocalOptimizer, loss: TensorType
     ) -> ModelGradients:
         # Supporting more than one loss/optimizer.
-        if self.config.get("enable_rl_module_and_learner", False):
-            # In order to access the variables for rl modules, we need to
-            # use the underlying keras api model.trainable_variables.
-            trainable_variables = self.model.trainable_variables
-        else:
-            trainable_variables = self.model.trainable_variables()
+        trainable_variables = self.model.trainable_variables()
         if self.config["_tf_policy_handles_more_than_one_loss"]:
             optimizers = force_list(optimizer)
             losses = force_list(loss)
@@ -302,14 +297,13 @@ def get_impala_tf_policy(name: str, base: TFPolicyV2Type) -> TFPolicyV2Type:
             # However, we also would like to avoid creating special Policy-subclasses
             # for this as the entire Policy concept will soon not be used anymore with
             # the new Learner- and RLModule APIs.
-            if not self.config.get("enable_rl_module_and_learner"):
-                GradStatsMixin.__init__(self)
-                VTraceClipGradients.__init__(self)
-                VTraceOptimizer.__init__(self)
-                LearningRateSchedule.__init__(self, config["lr"], config["lr_schedule"])
-                EntropyCoeffSchedule.__init__(
-                    self, config["entropy_coeff"], config["entropy_coeff_schedule"]
-                )
+            GradStatsMixin.__init__(self)
+            VTraceClipGradients.__init__(self)
+            VTraceOptimizer.__init__(self)
+            LearningRateSchedule.__init__(self, config["lr"], config["lr_schedule"])
+            EntropyCoeffSchedule.__init__(
+                self, config["entropy_coeff"], config["entropy_coeff_schedule"]
+            )
 
             # Note: this is a bit ugly, but loss and optimizer initialization must
             # happen after all the MixIns are initialized.

@@ -208,49 +208,42 @@ class TargetNetworkMixin:
     """
 
     def __init__(self):
-        if not self.config.get("enable_rl_module_and_learner", False):
-            model_vars = self.model.trainable_variables()
-            target_model_vars = self.target_model.trainable_variables()
+        model_vars = self.model.trainable_variables()
+        target_model_vars = self.target_model.trainable_variables()
 
-            @make_tf_callable(self.get_session())
-            def update_target_fn(tau):
-                tau = tf.convert_to_tensor(tau, dtype=tf.float32)
-                update_target_expr = []
-                assert len(model_vars) == len(target_model_vars), (
-                    model_vars,
-                    target_model_vars,
+        @make_tf_callable(self.get_session())
+        def update_target_fn(tau):
+            tau = tf.convert_to_tensor(tau, dtype=tf.float32)
+            update_target_expr = []
+            assert len(model_vars) == len(target_model_vars), (
+                model_vars,
+                target_model_vars,
+            )
+            for var, var_target in zip(model_vars, target_model_vars):
+                update_target_expr.append(
+                    var_target.assign(tau * var + (1.0 - tau) * var_target)
                 )
-                for var, var_target in zip(model_vars, target_model_vars):
-                    update_target_expr.append(
-                        var_target.assign(tau * var + (1.0 - tau) * var_target)
-                    )
-                    logger.debug("Update target op {}".format(var_target))
-                return tf.group(*update_target_expr)
+                logger.debug("Update target op {}".format(var_target))
+            return tf.group(*update_target_expr)
 
-            # Hard initial update.
-            self._do_update = update_target_fn
-            # TODO: The previous SAC implementation does an update(1.0) here.
-            # If this is changed to tau != 1.0 the sac_loss_function test fails. Why?
-            # Also the test is not very maintainable, we need to change that unittest
-            # anyway.
-            self.update_target(tau=1.0)  # self.config.get("tau", 1.0))
+        # Hard initial update.
+        self._do_update = update_target_fn
+        # TODO: The previous SAC implementation does an update(1.0) here.
+        # If this is changed to tau != 1.0 the sac_loss_function test fails. Why?
+        # Also the test is not very maintainable, we need to change that unittest
+        # anyway.
+        self.update_target(tau=1.0)  # self.config.get("tau", 1.0))
 
     @property
     def q_func_vars(self):
         if not hasattr(self, "_q_func_vars"):
-            if self.config.get("enable_rl_module_and_learner", False):
-                self._q_func_vars = self.model.variables
-            else:
-                self._q_func_vars = self.model.variables()
+            self._q_func_vars = self.model.variables()
         return self._q_func_vars
 
     @property
     def target_q_func_vars(self):
         if not hasattr(self, "_target_q_func_vars"):
-            if self.config.get("enable_rl_module_and_learner", False):
-                self._target_q_func_vars = self.target_model.variables
-            else:
-                self._target_q_func_vars = self.target_model.variables()
+            self._target_q_func_vars = self.target_model.variables()
         return self._target_q_func_vars
 
     # Support both hard and soft sync.
@@ -259,10 +252,7 @@ class TargetNetworkMixin:
 
     @override(TFPolicy)
     def variables(self) -> List[TensorType]:
-        if self.config.get("enable_rl_module_and_learner", False):
-            return self.model.variables
-        else:
-            return self.model.variables()
+        return self.model.variables()
 
     def set_weights(self, weights):
         if isinstance(self, TFPolicy):
@@ -271,8 +261,7 @@ class TargetNetworkMixin:
             EagerTFPolicyV2.set_weights(self, weights)
         elif isinstance(self, EagerTFPolicy):  # Handle TF2 policies.
             EagerTFPolicy.set_weights(self, weights)
-        if not self.config.get("enable_rl_module_and_learner", False):
-            self.update_target(self.config.get("tau", 1.0))
+        self.update_target(self.config.get("tau", 1.0))
 
 
 @OldAPIStack

@@ -425,7 +425,7 @@ class PPO(Algorithm):
         # Old and hybrid API stacks (Policy, RolloutWorker, Connector, maybe RLModule,
         # maybe Learner).
         else:
-            return self._training_step_old_and_hybrid_api_stacks()
+            return self._training_step_old_api_stack()
 
     def _training_step_new_api_stack(self) -> ResultDict:
         # Collect batches from sample workers until we have a full batch.
@@ -559,7 +559,7 @@ class PPO(Algorithm):
 
         return self.metrics.reduce()
 
-    def _training_step_old_and_hybrid_api_stacks(self) -> ResultDict:
+    def _training_step_old_api_stack(self) -> ResultDict:
         # Collect batches from sample workers until we have a full batch.
         with self._timers[SAMPLE_TIMER]:
             if self.config.count_steps_by == "agent_steps":
@@ -578,33 +578,12 @@ class PPO(Algorithm):
             # Standardize advantages.
             train_batch = standardize_fields(train_batch, ["advantages"])
 
-        # Perform a train step on the collected batch.
-        if self.config.enable_rl_module_and_learner:
-            mini_batch_size_per_learner = (
-                self.config.mini_batch_size_per_learner
-                or self.config.sgd_minibatch_size
-            )
-            train_results = self.learner_group.update_from_batch(
-                batch=train_batch,
-                minibatch_size=mini_batch_size_per_learner,
-                num_iters=self.config.num_sgd_iter,
-            )
-
-        elif self.config.simple_optimizer:
+        if self.config.simple_optimizer:
             train_results = train_one_step(self, train_batch)
         else:
             train_results = multi_gpu_train_one_step(self, train_batch)
 
-        if self.config.enable_rl_module_and_learner:
-            # The train results's loss keys are pids to their loss values. But we also
-            # return a total_loss key at the same level as the pid keys. So we need to
-            # subtract that to get the total set of pids to update.
-            # TODO (Kourosh): We should also not be using train_results as a message
-            #  passing medium to infer which policies to update. We could use
-            #  policies_to_train variable that is given by the user to infer this.
-            policies_to_update = set(train_results.keys()) - {ALL_MODULES}
-        else:
-            policies_to_update = list(train_results.keys())
+        policies_to_update = list(train_results.keys())
 
         global_vars = {
             "timestep": self._counters[NUM_AGENT_STEPS_SAMPLED],
@@ -621,45 +600,11 @@ class PPO(Algorithm):
         with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
             if self.workers.num_remote_workers() > 0:
                 from_worker_or_learner_group = None
-                if self.config.enable_rl_module_and_learner:
-                    # sync weights from learner_group to all rollout workers
-                    from_worker_or_learner_group = self.learner_group
                 self.workers.sync_weights(
                     from_worker_or_learner_group=from_worker_or_learner_group,
                     policies=policies_to_update,
                     global_vars=global_vars,
                 )
-            elif self.config.enable_rl_module_and_learner:
-                weights = self.learner_group.get_weights()
-                self.workers.local_worker().set_weights(weights)
-
-        if self.config.enable_rl_module_and_learner:
-            kl_dict = {}
-            if self.config.use_kl_loss:
-                for pid in policies_to_update:
-                    kl = train_results[pid][LEARNER_RESULTS_KL_KEY]
-                    kl_dict[pid] = kl
-                    if np.isnan(kl):
-                        logger.warning(
-                            f"KL divergence for Module {pid} is non-finite, this will "
-                            "likely destabilize your model and the training process. "
-                            "Action(s) in a specific state have near-zero probability. "
-                            "This can happen naturally in deterministic environments "
-                            "where the optimal policy has zero mass for a specific "
-                            "action. To fix this issue, consider setting `kl_coeff` to "
-                            "0.0 or increasing `entropy_coeff` in your config."
-                        )
-
-            # triggers a special update method on RLOptimizer to update the KL values.
-            additional_results = self.learner_group.additional_update(
-                module_ids_to_update=policies_to_update,
-                sampled_kl_values=kl_dict,
-                timestep=self._counters[NUM_AGENT_STEPS_SAMPLED],
-            )
-            for pid, res in additional_results.items():
-                train_results[pid].update(res)
-
-            return train_results
 
         # For each policy: Update KL scale and warn about possible issues
         for policy_id, policy_info in train_results.items():

@@ -491,39 +491,36 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
             else self.config.num_gpus_per_env_runner
         )
 
-        # This is only for the old API where local_worker was responsible for learning
-        if not self.config.enable_rl_module_and_learner:
-            # Error if we don't find enough GPUs.
-            if (
-                ray.is_initialized()
-                and ray._private.worker._mode() != ray._private.worker.LOCAL_MODE
-                and not config._fake_gpus
-            ):
-                devices = []
-                if self.config.framework_str in ["tf2", "tf"]:
-                    devices = get_tf_gpu_devices()
-                elif self.config.framework_str == "torch":
-                    devices = list(range(torch.cuda.device_count()))
+        # Error if we don't find enough GPUs.
+        if (
+            ray.is_initialized()
+            and ray._private.worker._mode() != ray._private.worker.LOCAL_MODE
+            and not config._fake_gpus
+        ):
+            devices = []
+            if self.config.framework_str in ["tf2", "tf"]:
+                devices = get_tf_gpu_devices()
+            elif self.config.framework_str == "torch":
+                devices = list(range(torch.cuda.device_count()))
 
-                if len(devices) < num_gpus:
-                    raise RuntimeError(
-                        ERR_MSG_NO_GPUS.format(len(devices), devices)
-                        + HOWTO_CHANGE_CONFIG
-                    )
-            # Warn, if running in local-mode and actual GPUs (not faked) are
-            # requested.
-            elif (
-                ray.is_initialized()
-                and ray._private.worker._mode() == ray._private.worker.LOCAL_MODE
-                and num_gpus > 0
-                and not self.config._fake_gpus
-            ):
-                logger.warning(
-                    "You are running ray with `local_mode=True`, but have "
-                    f"configured {num_gpus} GPUs to be used! In local mode, "
-                    f"Policies are placed on the CPU and the `num_gpus` setting "
-                    f"is ignored."
+            if len(devices) < num_gpus:
+                raise RuntimeError(
+                    ERR_MSG_NO_GPUS.format(len(devices), devices) + HOWTO_CHANGE_CONFIG
                 )
+        # Warn, if running in local-mode and actual GPUs (not faked) are
+        # requested.
+        elif (
+            ray.is_initialized()
+            and ray._private.worker._mode() == ray._private.worker.LOCAL_MODE
+            and num_gpus > 0
+            and not self.config._fake_gpus
+        ):
+            logger.warning(
+                "You are running ray with `local_mode=True`, but have "
+                f"configured {num_gpus} GPUs to be used! In local mode, "
+                f"Policies are placed on the CPU and the `num_gpus` setting "
+                f"is ignored."
+            )
 
         self.filters: Dict[PolicyID, Filter] = defaultdict(NoFilter)
 
@@ -536,9 +533,7 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
         # must have it's Model (if any) defined and ready to output an initial
         # state.
         for pol in self.policy_map.values():
-            if not pol._model_init_state_automatically_added and not pol.config.get(
-                "enable_rl_module_and_learner", False
-            ):
+            if not pol._model_init_state_automatically_added:
                 pol._update_model_view_requirements_from_init_state()
 
         self.multiagent: bool = set(self.policy_map.keys()) != {DEFAULT_POLICY_ID}
@@ -1121,7 +1116,7 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
         """
         validate_policy_id(policy_id, error=False)
 
-        if module_spec is not None and not self.config.enable_rl_module_and_learner:
+        if module_spec is not None:
             raise ValueError(
                 "If you pass in module_spec to the policy, the RLModule API needs "
                 "to be enabled."
@@ -1713,26 +1708,6 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
         # merge configs. Also updates the preprocessor dict.
         updated_policy_dict = self._get_complete_policy_specs_dict(policy_dict)
 
-        # Use the updated policy dict to create the marl_module_spec if necessary
-        if self.config.enable_rl_module_and_learner:
-            spec = self.config.get_marl_module_spec(
-                policy_dict=updated_policy_dict,
-                single_agent_rl_module_spec=single_agent_rl_module_spec,
-            )
-            if self.marl_module_spec is None:
-                # this is the first time, so we should create the marl_module_spec
-                self.marl_module_spec = spec
-            else:
-                # This is adding a new policy, so we need call add_modules on the
-                # module_specs of returned spec.
-                self.marl_module_spec.add_modules(spec.module_specs)
-
-            # Add __marl_module_spec key into the config so that the policy can access
-            # it.
-            updated_policy_dict = self._update_policy_dict_with_marl_module(
-                updated_policy_dict
-            )
-
         # Builds the self.policy_map dict
         self._build_policy_map(
             policy_dict=updated_policy_dict,
@@ -1792,9 +1767,7 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
                 preprocessor = ModelCatalog.get_preprocessor_for_space(
                     obs_space,
                     merged_conf.model,
-                    include_multi_binary=self.config.get(
-                        "enable_rl_module_and_learner", False
-                    ),
+                    include_multi_binary=False,
                 )
                 # Original observation space should be accessible at
                 # obs_space.original_space after this step.
@@ -1858,17 +1831,6 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
                 )
             else:
                 new_policy = policy
-
-            # Maybe torch compile an RLModule.
-            if self.config.get(
-                "enable_rl_module_and_learner", False
-            ) and self.config.get("torch_compile_worker"):
-                if self.config.framework_str != "torch":
-                    raise ValueError("Attempting to compile a non-torch RLModule.")
-                rl_module = getattr(new_policy, "model", None)
-                if rl_module is not None:
-                    compile_config = self.config.get_torch_compile_worker_config()
-                    rl_module.compile(compile_config)
 
             self.policy_map[name] = new_policy
 
