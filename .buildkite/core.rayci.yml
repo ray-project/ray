@@ -280,7 +280,6 @@ steps:
   - label: ":ray: core: flaky tests"
     tags:
       - python
-      - skip-on-premerge
     instance_type: large
     soft_fail: true
     commands:
