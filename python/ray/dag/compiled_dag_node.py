@@ -745,7 +745,7 @@ class CompiledDAG:
 
         from ray.dag.constants import RAY_ADAG_ENABLE_VERIFY_GRAPH
 
-        if RAY_ADAG_ENABLE_VERIFY_GRAPH and not self._verify_graph():
+        if RAY_ADAG_ENABLE_VERIFY_GRAPH and not self._detect_deadlock():
             raise ValueError(
                 "This DAG cannot be compiled because it will deadlock on NCCL "
                 "calls. If this is a false positive, please disable the graph "
@@ -865,7 +865,7 @@ class CompiledDAG:
         self._dag_submitter.start()
         self._dag_output_fetcher.start()
 
-    def _verify_graph(self) -> bool:
+    def _detect_deadlock(self) -> bool:
         """
         Create a graph following these rules:
 

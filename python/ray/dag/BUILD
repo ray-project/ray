@@ -74,7 +74,7 @@ py_test_module_list(
   files = [
     "tests/experimental/test_accelerated_dag.py",
     "tests/experimental/test_torch_tensor_dag.py",
-    "tests/experimental/test_verify_graph.py",
+    "tests/experimental/test_detect_deadlock.py",
   ],
   size = "medium",
   tags = ["exclusive", "accelerated_dag", "no_windows", "team:core"],
