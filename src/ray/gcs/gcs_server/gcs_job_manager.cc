@@ -69,6 +69,24 @@ void GcsJobManager::HandleAddJob(rpc::AddJobRequest request,
   }
 }
 
+void GcsJobManager::HandleDeleteJob(rpc::DeleteJobRequest request,
+                                    rpc::DeleteJobReply *reply,
+                                    rpc::SendReplyCallback send_reply_callback){
+  const JobID job_id = JobID::FromBinary(request.job_id());
+
+  auto on_done = [this, job_id, reply, send_reply_callback](const Status &status) {
+    if (!status.ok()) {
+      RAY_LOG(ERROR) << "Failed to delete job, job_id = " << job_id;
+    }
+    GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
+  };
+  Status status = gcs_table_storage_->JobTable().Delete(job_id, on_done);
+
+  if (!status.ok()) {
+    on_done(status);
+  }
+}
+
 void GcsJobManager::MarkJobAsFinished(rpc::JobTableData job_table_data,
                                       std::function<void(Status)> done_callback) {
   const JobID job_id = JobID::FromBinary(job_table_data.job_id());

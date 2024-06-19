@@ -163,6 +163,10 @@ class JobInfoGcsServiceHandler {
                             AddJobReply *reply,
                             SendReplyCallback send_reply_callback) = 0;
 
+  virtual void HandleDeleteJob(DeleteJobRequest request,
+                            DeleteJobReply *reply,
+                            SendReplyCallback send_reply_callback) = 0;
+
   virtual void HandleMarkJobFinished(MarkJobFinishedRequest request,
                                      MarkJobFinishedReply *reply,
                                      SendReplyCallback send_reply_callback) = 0;
@@ -200,6 +204,7 @@ class JobInfoGrpcService : public GrpcService {
       std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
       const ClusterID &cluster_id) override {
     JOB_INFO_SERVICE_RPC_HANDLER(AddJob);
+    JOB_INFO_SERVICE_RPC_HANDLER(DeleteJob);
     JOB_INFO_SERVICE_RPC_HANDLER(MarkJobFinished);
     JOB_INFO_SERVICE_RPC_HANDLER(GetAllJobInfo);
     JOB_INFO_SERVICE_RPC_HANDLER(ReportJobError);

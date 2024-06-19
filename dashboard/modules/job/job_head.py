@@ -366,9 +366,9 @@ class JobHead(dashboard_utils.DashboardHeadModule):
                 text=f"Job {job_or_submission_id} does not exist",
                 status=aiohttp.web.HTTPNotFound.status_code,
             )
-        if job.type is not JobType.SUBMISSION:
+        if job.type is not JobType.SUBMISSION and job.type is not JobType.DRIVER:
             return Response(
-                text="Can only delete submission type jobs",
+                text="Can only delete submission and driver type jobs",
                 status=aiohttp.web.HTTPBadRequest.status_code,
             )
 
@@ -377,7 +377,7 @@ class JobHead(dashboard_utils.DashboardHeadModule):
                 self.choose_agent(),
                 timeout=dashboard_consts.WAIT_AVAILABLE_AGENT_TIMEOUT,
             )
-            resp = await job_agent_client.delete_job_internal(job.submission_id)
+            resp = await job_agent_client.delete_job_internal(job_or_submission_id)
         except Exception:
             return Response(
                 text=traceback.format_exc(),

@@ -179,6 +179,40 @@ async def test_get_all_job_info(call_ray_start, tmp_path):  # noqa: F811
     ["ray start --head"],
     indirect=True,
 )
+async def test_delete_job_info(call_ray_start, tmp_path):
+    """Test that JobInfo is deleted from the GCS."""
+    with ray.init(address=call_ray_start) as address_info:
+        gcs_aio_client = GcsAioClient(
+            address=address_info["gcs_address"], nums_reconnect_retry=0
+        )
+        job_manager = JobManager(gcs_aio_client, tmp_path)
+
+        # Submit a job.
+        submission_id = await job_manager.submit_job(
+            entrypoint="python -c 'import ray; ray.init()'",
+        )
+
+        # Wait for the job to be finished.
+        await async_wait_for_condition_async_predicate(
+            check_job_succeeded, job_manager=job_manager, job_id=submission_id
+        )
+
+    deleted = job_manager.delete_job(submission_id)
+    assert deleted
+
+    with ray.init(address=call_ray_start):
+        job_id = ray.get_runtime_context().get_job_id()
+
+    deleted = job_manager.delete_from_job_table(job_id)
+    assert deleted
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "call_ray_start",
+    ["ray start --head"],
+    indirect=True,
+)
 async def test_get_all_job_info_with_is_running_tasks(call_ray_start):  # noqa: F811
     """Test the is_running_tasks bit in the GCS get_all_job_info API."""
 

@@ -13,11 +13,12 @@ from ray.dashboard.modules.job.common import (
     JobSubmitResponse,
     JobStopResponse,
     JobLogsResponse,
+    JOB_ID_METADATA_KEY,
 )
 from ray.dashboard.modules.job.job_manager import JobManager
 from ray.dashboard.modules.job.pydantic_models import JobType
 from ray.dashboard.modules.job.utils import parse_and_validate_request, find_job_by_ids
-
+import ray._private.ray_constants as ray_constants
 
 routes = optional_utils.DashboardAgentRouteTable
 logger = logging.getLogger(__name__)
@@ -27,6 +28,7 @@ class JobAgent(dashboard_utils.DashboardAgentModule):
     def __init__(self, dashboard_agent):
         super().__init__(dashboard_agent)
         self._job_manager = None
+        self._gcs_aio_client = dashboard_agent.gcs_aio_client
 
     @routes.post("/api/job_agent/jobs/")
     @optional_utils.init_ray_and_catch_exceptions()
@@ -117,14 +119,31 @@ class JobAgent(dashboard_utils.DashboardAgentModule):
                 text=f"Job {job_or_submission_id} does not exist",
                 status=aiohttp.web.HTTPNotFound.status_code,
             )
-        if job.type is not JobType.SUBMISSION:
-            return Response(
-                text="Can only delete submission type jobs",
-                status=aiohttp.web.HTTPBadRequest.status_code,
-            )
-
         try:
-            deleted = await self.get_job_manager().delete_job(job.submission_id)
+            job_mgr = self.get_job_manager()
+            if job.type is JobType.DRIVER:
+                deleted = await job_mgr.delete_from_job_table(job.job_id)
+            elif job.type is JobType.SUBMISSION:
+                deleted = await job_mgr.delete_job(job.submission_id)
+                if deleted:
+                    job_infos = await self._gcs_aio_client.get_all_job_info(
+                        timeout=None
+                    )
+                    for job_id, job_item in job_infos.items():
+                        if job_item.config.ray_namespace.startswith(
+                            ray_constants.RAY_INTERNAL_NAMESPACE_PREFIX
+                        ):
+                            # Skip jobs in any _ray_internal_namespace
+                            continue
+                        metadata = job_item.config.metadata
+                        job_submission_id = metadata.get(JOB_ID_METADATA_KEY)
+                        if job_submission_id and job_submission_id == job.submission_id:
+                            await job_mgr.delete_from_job_table(job_item.job_id.hex())
+            else:
+                return Response(
+                    text="Can only delete submission and driver type jobs",
+                    status=aiohttp.web.HTTPBadRequest.status_code,
+                )
             resp = JobDeleteResponse(deleted=deleted)
         except Exception:
             return Response(
