@@ -47,13 +47,11 @@ def main(results=None):
     #################################################
     ray.init()
 
-    def put_channel_small(chans, do_get=False, do_release=False):
+    def put_channel_small(chans, do_get=False):
         for chan in chans:
             chan.write(b"0")
             if do_get:
-                chan.begin_read()
-            if do_release:
-                chan.end_read()
+                chan.read()
 
     @ray.remote
     class ChannelReader:
@@ -63,13 +61,12 @@ def main(results=None):
         def read(self, chans):
             while True:
                 for chan in chans:
-                    chan.begin_read()
-                    chan.end_read()
+                    chan.read()
 
     chans = [ray_channel.Channel(None, [None], 1000)]
     results += timeit(
         "[unstable] local put:local get, single channel calls",
-        lambda: put_channel_small(chans, do_get=True, do_release=True),
+        lambda: put_channel_small(chans, do_get=True),
     )
 
     reader = ChannelReader.remote()
@@ -123,8 +120,7 @@ def main(results=None):
 
     def _exec(dag):
         output_channel = dag.execute(b"x")
-        output_channel.begin_read()
-        output_channel.end_read()
+        output_channel.read()
 
     async def exec_async(tag):
         async def _exec_async():

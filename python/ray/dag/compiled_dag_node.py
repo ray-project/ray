@@ -3,6 +3,7 @@ from collections import defaultdict
 from typing import Any, Dict, List, Tuple, Union, Optional, Set
 import logging
 import threading
+import uuid
 
 import ray
 from ray.experimental.compiled_dag_ref import CompiledDAGRef, RayDAGTaskError
@@ -49,7 +50,7 @@ def do_allocate_channel(
 
     Args:
         readers: The actor handles of the readers.
-        buffer_size_bytes: The maximum size of messages in the channel.
+        typ: The output type hint for the channel.
 
     Returns:
         The allocated channel.
@@ -135,14 +136,14 @@ def _exec_task(self, task: "ExecutableTask", idx: int) -> bool:
         True if we are done executing all tasks of this actor, False otherwise.
     """
     # TODO: for cases where output is passed as input to a task on
-    # the same actor, introduce a "LocalChannel" to avoid the overhead
+    # the same actor, introduce a "IntraProcessChannel" to avoid the overhead
     # of serialization/deserialization and synchronization.
     method = getattr(self, task.method_name)
     input_reader = self._input_readers[idx]
     output_writer = self._output_writers[idx]
     res = None
     try:
-        res = input_reader.begin_read()
+        res = input_reader.read()
     except IOError:
         # Channel closed. Exit the loop.
         return True
@@ -410,6 +411,7 @@ class CompiledDAG:
         Returns:
             Channel: A wrapper around ray.ObjectRef.
         """
+        self._dag_id = uuid.uuid4().hex
         self._buffer_size_bytes: Optional[int] = buffer_size_bytes
         if self._buffer_size_bytes is None:
             self._buffer_size_bytes = MAX_BUFFER_SIZE
@@ -493,6 +495,15 @@ class CompiledDAG:
                 ray.get_runtime_context().get_node_id(), soft=False
             )
         ).remote()
+
+    def get_id(self) -> str:
+        """
+        Get the unique ID of the compiled DAG.
+        """
+        return self._dag_id
+
+    def __str__(self) -> str:
+        return f"CompiledDAG({self._dag_id})"
 
     def _add_node(self, node: "ray.dag.DAGNode") -> None:
         idx = self.counter
@@ -681,12 +692,12 @@ class CompiledDAG:
                 # `readers` is the nodes that are ordered after the current one (`task`)
                 # in the DAG.
                 readers = [self.idx_to_task[idx] for idx in task.downstream_node_idxs]
-                assert len(readers) == 1
 
                 def _get_node_id(self):
                     return ray.get_runtime_context().get_node_id()
 
                 if isinstance(readers[0].dag_node, MultiOutputNode):
+                    assert len(readers) == 1
                     # This node is a multi-output node, which means that it will only be
                     # read by the driver, not an actor. Thus, we handle this case by
                     # setting `reader_handles` to `[self._driver_actor]`.
@@ -705,9 +716,8 @@ class CompiledDAG:
 
                     #     compiled_dag = dag.experimental_compile()
                     #     output_channel = compiled_dag.execute(1)
-                    #     result = output_channel.begin_read()
+                    #     result = output_channel.read()
                     #     print(result)
-                    #     output_channel.end_read()
 
                     #     compiled_dag.teardown()
                     reader_handles = [self._driver_actor]
@@ -968,7 +978,7 @@ class CompiledDAG:
             if self._max_execution_index + 1 == execution_index:
                 # Directly fetch and return without buffering
                 self._max_execution_index += 1
-                return self._dag_output_fetcher.begin_read()
+                return self._dag_output_fetcher.read()
             # Otherwise, buffer the result
             if len(self._result_buffer) >= self._max_buffered_results:
                 raise ValueError(
@@ -979,7 +989,7 @@ class CompiledDAG:
             self._max_execution_index += 1
             self._result_buffer[
                 self._max_execution_index
-            ] = self._dag_output_fetcher.begin_read()
+            ] = self._dag_output_fetcher.read()
 
         # CompiledDAGRef guarantees that the same execution index will not
         # be requested multiple times

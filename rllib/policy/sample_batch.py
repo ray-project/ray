@@ -353,7 +353,7 @@ class SampleBatch(dict):
         Returns:
             A deep or shallow copy of this SampleBatch object.
         """
-        copy_ = {k: v for k, v in self.items()}
+        copy_ = dict(self)
         data = tree.map_structure(
             lambda v: (
                 np.array(v, copy=not shallow) if isinstance(v, np.ndarray) else v
@@ -403,7 +403,7 @@ class SampleBatch(dict):
 
         seq_lens = None if self.get(SampleBatch.SEQ_LENS, 1) is None else 1
 
-        self_as_dict = {k: v for k, v in self.items()}
+        self_as_dict = dict(self)
 
         for i in range(self.count):
             yield tree.map_structure_with_path(
@@ -475,7 +475,7 @@ class SampleBatch(dict):
         # meaningless).
         permutation = np.random.permutation(self.count)
 
-        self_as_dict = {k: v for k, v in self.items()}
+        self_as_dict = dict(self)
         shuffled = tree.map_structure(lambda v: v[permutation], self_as_dict)
         self.update(shuffled)
         # Flush cache such that intercepted values are recalculated after the
@@ -864,7 +864,7 @@ class SampleBatch(dict):
                     curr[p] = f_pad
                 curr = curr[p]
 
-        self_as_dict = {k: v for k, v in self.items()}
+        self_as_dict = dict(self)
         tree.map_structure_with_path(_zero_pad_in_place, self_as_dict)
 
         # Set flags to indicate, we are now zero-padded (and to what extend).

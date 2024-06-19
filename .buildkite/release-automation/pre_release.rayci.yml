@@ -4,23 +4,18 @@ depends_on:
 steps:
   - label: "Check release blockers"
     key: check-release-blockers
-    job_env: forge
     instance_type: small_branch
     commands:
       - bazel run //ci/ray_ci/automation:weekly_green_metric -- --check
 
   - label: "Check commit hash"
     key: check-commit-hash
-    job_env: forge
-    depends_on: check-release-blockers
-    allow_dependency_failure: true
     commands:
       - bash .buildkite/release-automation/check-commit-hash.sh
   
   - label: "Build update version binary"
     key: build-update-version-zip
     instance_type: default
-    job_env: forge
     commands:
       - bazel build --build_python_zip --incompatible_use_python_toolchains=false --python_path=python //ci/ray_ci/automation:update_version
       - cp bazel-bin/ci/ray_ci/automation/update_version.zip /artifact-mount/
@@ -118,7 +113,6 @@ steps:
     if: build.branch !~ /^releases\// && build.env("RAYCI_WEEKLY_RELEASE_NIGHTLY") == "1"
     depends_on: trigger-postmerge-nightly
     allow_dependency_failure: true
-    job_env: forge
     commands:
       - bazel run //ci/ray_ci/automation:check_nightly_ray_commit -- --ray_type={{matrix}} --expected_commit="${BUILDKITE_COMMIT}"
     matrix:

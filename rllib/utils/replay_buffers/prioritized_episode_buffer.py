@@ -11,7 +11,7 @@ from ray.rllib.execution.segment_tree import MinSegmentTree, SumSegmentTree
 from ray.rllib.utils import force_list
 from ray.rllib.utils.replay_buffers.episode_replay_buffer import EpisodeReplayBuffer
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.typing import SampleBatchType
+from ray.rllib.utils.typing import ModuleID, SampleBatchType
 
 
 class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
@@ -31,8 +31,8 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
     the original episode. This way, episodes can be completed via subsequent `add`
     calls.
 
-    Sampling returns batches of size B (number of 'rows'), where each row is a tuple
-    of the form
+    Sampling returns a size `B` episode list (number of 'rows'), where each episode
+    holds a tuple tuple of the form
 
     `(o_t, a_t, sum(r_t+1:t+n), o_t+n)`
 
@@ -43,16 +43,16 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
     sampled uniformly across the interval defined by the tuple (for each row in the
     batch).
 
-    Each batch contains - in addition to the data tuples presented above - two further
-    columns, namely `n_steps` and `weigths`. The former holds the `n_step` used for each
-    row in the batch and the latter the corresponding (importance sampling) weight for
-    each row in the batch.
+    Each episode contains - in addition to the data tuples presented above - two further
+    elements in its ` extra_model_outputs`, namely `n_steps` and `weights`. The former
+    holds the `n_step` used for the sampled timesteps in the episode and the latter the
+    corresponding (importance sampling) weight for the transition.
 
-    After sampling priorities can be updated (for the last sampled batch) with
+    After sampling priorities can be updated (for the last sampled episode list) with
     `self.update_priorities`. This method assigns the new priorities automatically to
     the last sampled timesteps. Note, this implies that sampling timesteps and updating
     their corresponding priorities needs to alternate (e.g. sampling several times and
-    then updating the priorities would not work because tjhe buffer caches the last
+    then updating the priorities would not work because the buffer caches the last
     sampled timestep indices).
 
     .. testcode::
@@ -60,7 +60,7 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
         import gymnasium as gym
 
         from ray.rllib.env.single_agent_episode import SingleAgentEpisode
-        from ray.rllib.utils.replay_buffers.prioritized_episode_replay_buffer import (
+        from ray.rllib.utils.replay_buffers import (
             PrioritizedEpisodeReplayBuffer
         )
 
@@ -69,7 +69,7 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
 
         # Set up the loop variables
         terminated = False
-        trunctaed = False
+        truncated = False
         num_timesteps = 10000
         episodes = []
 
@@ -125,8 +125,8 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
         Args:
             capacity: The total number of timesteps to be storable in this buffer.
                 Will start ejecting old episodes once this limit is reached.
-            batch_size_B: The number of rows in a SampleBatch returned from `sample()`.
-            batch_length_T: The length of each row in a SampleBatch returned from
+            batch_size_B: The number of episodes returned from `sample()`.
+            batch_length_T: The length of each episode in the episode list returned from
                 `sample()`.
             alpha: The amount of prioritization to be used: `alpha=1.0` means full
                 prioritization, `alpha=0.0` means no prioritization.
@@ -157,6 +157,9 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
         self._max_idx = 0
         # Map from tree indices to sample indices (i.e. `self._indices`).
         self._tree_idx_to_sample_idx = {}
+        # Keep track of the indices that were sampled last for updating the
+        # weights later.
+        self._last_sampled_indices = []
 
     @override(EpisodeReplayBuffer)
     def add(
@@ -171,11 +174,11 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
         not complete, this could lead to edge cases (e.g. with very small capacity
         or very long episode length) where the first part of an episode is evicted
         while the next part just comes in.
-        In such cases, we evict the complete episode, including the new chunk,
-        unless the episode is the last one in the buffer. In the latter case the
-        buffer will be allowed to overflow in a temporary fashion, i.e. during
-        the next addition of samples to the buffer an attempt is made to fall below
-        capacity again.
+        To defend against such case, the complete episode is evicted, including
+        the new chunk, unless the episode is the only one in the buffer. In the
+        latter case the buffer will be allowed to overflow in a temporary fashion,
+        i.e. during the next addition of samples to the buffer an attempt is made
+        to fall below capacity again.
 
         The user is advised to select a large enough buffer with regard to the maximum
         expected episode length.
@@ -228,6 +231,8 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
             self._num_episodes_evicted += 1
 
         # Remove corresponding indices, if episodes were evicted.
+        # TODO (simon): Refactor into method such that MultiAgent
+        # version can inherit.
         if eps_evicted_idxs:
             new_indices = []
             i = 0
@@ -240,6 +245,7 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
                     self._max_idx -= 1 if self._max_idx == idx_triple[2] else 0
                     self._sum_segment[idx_triple[2]] = 0.0
                     self._min_segment[idx_triple[2]] = float("inf")
+                    self._tree_idx_to_sample_idx.pop(idx_triple[2])
                 # Otherwise update the index in the index mapping.
                 else:
                     new_indices.append(idx_triple)
@@ -375,9 +381,7 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
 
         # Sample the n-step if necessary.
         actual_n_step = n_step or 1
-        random_n_step = False
-        if isinstance(n_step, tuple):
-            random_n_step = True
+        random_n_step = isinstance(n_step, tuple)
 
         # Keep track of the indices that were sampled last for updating the
         # weights later (see `ray.rllib.utils.replay_buffer.utils.
@@ -398,9 +402,8 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
             random_sum = self.rng.random() * self._sum_segment.sum()
             # Get the highest index in the sum-tree for which the sum is
             # smaller or equal the random sum sample.
-            # Note, we sample `o_(t + n_step)` as this is the state that
-            # brought the information contained in the TD-error (see Schaul
-            # et al. (2018), Algorithm 1).
+            # Note, in contrast to Schaul et al. (2018) (who sample `o_(t + n_step)`,
+            # Algorithm 1) we sample `o_t`.
             idx = self._sum_segment.find_prefixsum_idx(random_sum)
             # Get the theoretical probability mass for drawing this sample.
             p_sample = self._sum_segment[idx] / total_segment_sum
@@ -427,8 +430,8 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
                 continue
 
             # Note, this will be the reward after executing action
-            # `a_(episode_ts-n_step+1)`. For `n_step>1` this will be the sum of
-            # all discounted rewards that were collected over the last n steps.
+            # `a_(episode_ts-n_step+1)`. For `n_step>1` this will be the discounted
+            # sum of all discounted rewards that were collected over the last n steps.
             raw_rewards = episode.get_rewards(
                 slice(episode_ts, episode_ts + actual_n_step)
             )
@@ -515,6 +518,7 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
                 "_min_segment": self._min_segment.get_state(),
                 "_free_nodes": list(self._free_nodes),
                 "_max_priority": self._max_priority,
+                "_max_idx": self._max_idx,
                 "_tree_idx_to_sample_idx": list(self._tree_idx_to_sample_idx.items()),
                 # TODO (sven, simon): Do we need these?
                 "_last_sampled_indices": self._last_sampled_indices,
@@ -530,17 +534,20 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
             state: A buffer state stored (usually stored in a checkpoint).
         """
         # Set super's state.
-        super().set_state()
+        super().set_state(state)
         # Set additional attributes.
         self._sum_segment.set_state(state["_sum_segment"])
         self._min_segment.set_state(state["_min_segment"])
         self._free_nodes = deque(state["_free_nodes"])
         self._max_priority = state["_max_priority"]
+        self._max_idx = state["_max_idx"]
         self._tree_idx_to_sample_idx = dict(state["_tree_idx_to_sample_idx"])
         # TODO (sven, simon): Do we need these?
         self._last_sampled_indices = state["_last_sampled_indices"]
 
-    def update_priorities(self, priorities: NDArray) -> None:
+    def update_priorities(
+        self, priorities: NDArray, module_id: Optional[ModuleID] = None
+    ) -> None:
         """Update the priorities of items at corresponding indices.
 
         Usually, incoming priorities are TD-errors.
@@ -564,6 +571,7 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
             self._min_segment[idx] = priority**self._alpha
             # Update the maximal priority.
             self._max_priority = max(self._max_priority, priority)
+        self._last_sampled_indices.clear()
 
     def _get_free_node_and_assign(self, sample_index, weight: float = 1.0) -> int:
         """Gets the next free node in the segment trees.
