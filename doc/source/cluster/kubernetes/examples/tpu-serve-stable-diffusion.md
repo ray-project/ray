@@ -2,7 +2,7 @@
 
 # Serve a Stable Diffusion model on GKE with TPUs
 
-> **Note:** The Python files for the Ray Serve application and its client are in the [ray-project/serve_config_examples](https://github.com/ray-project/serve_config_examples) repo under `/stable_diffusion/tpu`. This example is adapted from the [tensorflow/tpu](https://github.com/tensorflow/tpu/tree/master/tools/ray_tpu/src/serve) Cloud TPU example.
+> **Note:** The Python files for the Ray Serve application and its client are in the [ray-project/serve_config_examples](https://github.com/ray-project/serve_config_examples). This example is adapted from the [tensorflow/tpu](https://github.com/tensorflow/tpu/tree/master/tools/ray_tpu/src/serve) Cloud TPU example.
 
 ## Step 1: Create a Kubernetes cluster with TPUs
 
@@ -12,26 +12,27 @@ Follow [Creating a GKE Cluster with TPUs for KubeRay](kuberay-gke-tpu-cluster-se
 
 Follow [this document](kuberay-operator-deploy) to install the latest stable KubeRay operator via Helm repository. Multi-host TPU support is provided in KubeRay v1.1.0+. Please note that the YAML file in this example uses `serveConfigV2`, which is supported starting from KubeRay v0.6.0.
 
-## Step 3: Create a RayCluster with a TPU worker group
+## Step 3: Install the RayService
 
 ```sh
 # Creates a RayCluster with a single-host v4 TPU worker group of 2x2x1 topology
-kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/v1.1.1/ray-operator/config/samples/ray-cluster.tpu-v4-singlehost.yaml
+kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/v1.1.1/ray-operator/config/samples/ray-service.tpu-single-host.yaml
 
 # Creates a RayCluster with a multi-host v4 TPU worker group of 2x2x2 topology
-kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/v1.1.1/ray-operator/config/samples/ray-cluster.tpu-v4-multihost.yaml
+kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/v1.1.1/ray-operator/config/samples/ray-service.tpu-multi-host.yaml
 ```
 
 KubeRay operator v1.1.0 adds a new `NumOfHosts` field to the RayCluster CR, supporting multi-host worker groups. This field specifies the number of workers to create per replica, with each replica representing a multi-host PodSlice. The value for `NumOfHosts` should match the number of TPU VM hosts expected by the given `cloud.google.com/gke-tpu-topology` node selector.
 
-## Step 4: Run the Serve deployment with ray job submit
+## Step 4: View the Serve deployment in the Ray dashboard
 
-Download the Ray Serve and API client Python files:
+Verify the RayService is deployed and running
 
 ```sh
-git clone https://github.com/ray-project/serve_config_examples.git
+kubectl get rayservice
 
-cd stable_diffusion/tpu
+# NAME               SERVICE STATUS   NUM SERVE ENDPOINTS
+# s-d-tpu-serve-svc   Running          2
 ```
 
 Retrieve the name of the RayCluster Head service
@@ -43,30 +44,29 @@ kubectl get svc
 Then, port-forward the Ray dashboard. To view the dashboard, open http://localhost:8265/ on your local machine.
 
 ```sh
-kubectl port-forward svc/example-cluster-kuberay-head-svc 8265:8265 &
+# change the service name to match the one output under `kubectl get svc`
+kubectl port-forward svc/s-d-tpu-raycluster-ljw2r-head-svc 8265:8265 &
 ```
 
-In a separate terminal, submit the serve deployment using ray job.
-
-```sh
-ray job submit --runtime-env runtime_env.yaml -- python3 ray_serve_diffusion_flax.py
-```
-
-You may now monitor the status of the Ray Job in the Ray dashboard, and view the running serve deployment from
-the 'Serve' tab.
+You may now monitor the status of the RayService in the Ray dashboard from the the 'Serve' tab. The installed RayService
+should create a running application with the name 'stable_diffusion'. The application will have two deployments, the
+API ingress which will receive input prompts and the stable diffusion server.
 
 
 ## Step 5: Send text-to-image prompts to the model server
 
-Port forward the Ray Serve endpoint:
+Port forward the Ray Serve service:
 ```sh
-kubectl port-forward svc/example-cluster-kuberay-head-svc 8000:8000 &
+kubectl port-forward svc/s-d-tpu-serve-svc 8000
 ```
 
-In a separate terminal, submit the prompt script using ray job submit:
+In a separate terminal, download and run the python prompt script:
 
 ```sh
-ray job submit --runtime-env runtime_env.yaml -- python3 fake_load_test.py
+curl -LO https://raw.githubusercontent.com/ray-project/serve_config_examples/master/stable_diffusion/stable_diffusion_tpu_req.py
+
+python stable_diffusion_tpu_req.py  --save_pictures
 ```
 
-* The output of the Ray job can be viewed from http://localhost:8000/, or saved by passing the flag --save_pictures.
+* The results of the stable diffusion inference will be saved to a file named diffusion_results.png.
+![diffusion_results](../images/diffusion_results.png)
