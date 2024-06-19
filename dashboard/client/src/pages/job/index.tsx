@@ -1,6 +1,8 @@
 import {
   Box,
   InputAdornment,
+  MenuItem,
+  Select,
   Switch,
   Table,
   TableBody,
@@ -10,8 +12,6 @@ import {
   TableRow,
   TextField,
   Typography,
-  MenuItem,
-  Select,
 } from "@mui/material";
 import Pagination from "@mui/material/Pagination";
 import makeStyles from "@mui/styles/makeStyles";
