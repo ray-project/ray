@@ -8,7 +8,7 @@ import traceback
 
 import ray
 from ray.exceptions import RayTaskError
-from ray.experimental.compiled_dag_ref import CompiledDAGRef
+from ray.experimental.compiled_dag_ref import CompiledDAGRef, CompiledDAGFuture
 from ray.experimental.channel import (
     ChannelInterface,
     ChannelOutputType,
@@ -19,7 +19,7 @@ from ray.experimental.channel import (
     AwaitableBackgroundReader,
     AwaitableBackgroundWriter,
 )
-from ray.util.annotations import DeveloperAPI, PublicAPI
+from ray.util.annotations import DeveloperAPI
 
 from ray.experimental.channel.shared_memory_channel import (
     SharedMemoryType,
@@ -181,21 +181,6 @@ def _exec_task(self, task: "ExecutableTask", idx: int) -> bool:
         output_writer.write(_wrap_exception(exc))
 
     return False
-
-
-@PublicAPI(stability="alpha")
-class AwaitableDAGOutput:
-    def __init__(self, fut: asyncio.Future, ReaderInterface: ReaderInterface):
-        self._fut = fut
-        self._reader = ReaderInterface
-
-    async def get(self):
-        ret = await self._fut
-        # NOTE(swang): If the object is zero-copy deserialized, then it will
-        # stay in scope as long as this future is in scope. Therefore, we must
-        # delete it here before we return the result to the user.
-        self._fut = None
-        return ret
 
 
 @DeveloperAPI
@@ -1045,7 +1030,7 @@ class CompiledDAG:
         self,
         *args,
         **kwargs,
-    ) -> AwaitableDAGOutput:
+    ) -> CompiledDAGFuture:
         """Execute this DAG using the compiled execution path.
 
         NOTE: Not threadsafe.
@@ -1068,7 +1053,7 @@ class CompiledDAG:
             fut = asyncio.Future()
             await self._fut_queue.put(fut)
 
-        return AwaitableDAGOutput(fut, self._dag_output_fetcher)
+        return CompiledDAGFuture(self, self._execution_index, fut)
 
     def teardown(self):
         """Teardown and cancel all actor tasks for this DAG. After this

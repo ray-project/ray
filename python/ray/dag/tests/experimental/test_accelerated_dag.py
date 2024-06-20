@@ -758,8 +758,8 @@ def test_asyncio(ray_start_regular_shared, max_queue_size):
         # there is a memory leak in the DAG backend, then only the first task
         # will succeed.
         val = np.ones(100) * i
-        awaitable_output = await compiled_dag.execute_async(val)
-        result = await awaitable_output.get()
+        fut = await compiled_dag.execute_async(val)
+        result = await fut
         assert (result == val).all()
 
     loop.run_until_complete(asyncio.gather(*[main(i) for i in range(10)]))
@@ -770,7 +770,7 @@ def test_asyncio(ray_start_regular_shared, max_queue_size):
 
 @pytest.mark.parametrize("max_queue_size", [None, 2])
 def test_asyncio_exceptions(ray_start_regular_shared, max_queue_size):
-    a = Actor.remote(0, fail_after=100)
+    a = Actor.remote(0)
     with InputNode() as i:
         dag = a.inc.bind(i)
 
@@ -780,20 +780,29 @@ def test_asyncio_exceptions(ray_start_regular_shared, max_queue_size):
     )
 
     async def main():
-        for i in range(99):
-            awaitable_output = await compiled_dag.execute_async(1)
-            result = await awaitable_output.get()
-            assert result == i + 1
+        fut = await compiled_dag.execute_async(1)
+        result = await fut
+        assert result == 1
 
-        execution_error = None
-        for i in range(99):
-            awaitable_output = await compiled_dag.execute_async(1)
-            result = await awaitable_output.get()
-            if isinstance(result, RayTaskError):
-                execution_error = result
-                break
-        assert execution_error is not None
-        assert isinstance(execution_error.cause, RuntimeError)
+        fut = await compiled_dag.execute_async("hello")
+        with pytest.raises(RayTaskError) as exc_info:
+            await fut
+        assert isinstance(exc_info.value.as_instanceof_cause(), TypeError)
+        # Traceback should match the original actor class definition.
+        assert "self.i += x" in str(exc_info.value)
+
+        # Can throw an error multiple times.
+        fut = await compiled_dag.execute_async("hello")
+        with pytest.raises(RayTaskError) as exc_info:
+            await fut
+        assert isinstance(exc_info.value.as_instanceof_cause(), TypeError)
+        # Traceback should match the original actor class definition.
+        assert "self.i += x" in str(exc_info.value)
+
+        # Can use the DAG after exceptions are thrown.
+        fut = await compiled_dag.execute_async(1)
+        result = await fut
+        assert result == 2
 
     loop.run_until_complete(main())
     # Note: must teardown before starting a new Ray session, otherwise you'll get
