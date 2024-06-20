@@ -827,6 +827,10 @@ class Worker:
                 whose values should be retrieved.
             timeout: The maximum amount of time in
                 seconds to wait before returning.
+            return_exceptions: If any of the objects deserialize to an
+                Exception object, whether to return them as values in the
+                returned list. If False, then the first found exception will be
+                raised.
         Returns:
             list: List of deserialized objects
             bytes: UUID of the debugger breakpoint we should drop

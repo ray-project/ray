@@ -242,7 +242,7 @@ class ReaderInterface:
     def _read_list(self) -> Any:
         raise NotImplementedError
 
-    def read(self) -> Any:
+    def read(self) -> List[Any]:
         outputs = self._read_list()
         self._num_reads += 1
         return outputs

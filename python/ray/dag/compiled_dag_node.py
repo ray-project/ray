@@ -7,8 +7,12 @@ import uuid
 import traceback
 
 import ray
-from ray.exceptions import RayTaskError
-from ray.experimental.compiled_dag_ref import CompiledDAGRef, CompiledDAGFuture
+from ray.exceptions import RayTaskError, RayChannelError
+from ray.experimental.compiled_dag_ref import (
+    CompiledDAGRef,
+    CompiledDAGFuture,
+    _process_return_vals,
+)
 from ray.experimental.channel import (
     ChannelInterface,
     ChannelOutputType,
@@ -159,9 +163,12 @@ def _exec_task(self, task: "ExecutableTask", idx: int) -> bool:
     res = None
     try:
         res = input_reader.read()
-    except IOError:
+    except RayChannelError:
         # Channel closed. Exit the loop.
         return True
+
+    try:
+        _process_return_vals(res, return_single_output=False)
     except Exception as exc:
         # Previous task raised an application-level exception.
         # Propagate it and skip the actual task. We don't need to wrap the
@@ -176,9 +183,14 @@ def _exec_task(self, task: "ExecutableTask", idx: int) -> bool:
 
     try:
         output_val = method(*resolved_inputs)
-        output_writer.write(output_val)
     except Exception as exc:
-        output_writer.write(_wrap_exception(exc))
+        output_val = _wrap_exception(exc)
+
+    try:
+        output_writer.write(output_val)
+    except RayChannelError:
+        # Channel closed. Exit the loop.
+        return True
 
     return False
 
