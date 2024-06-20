@@ -2,9 +2,11 @@ import ray
 import sys
 
 # Add RAY_DEBUG environment variable to enable Ray Debugger.
-ray.init(runtime_env={
-    "env_vars": {"RAY_DEBUG": "1"},
-})
+ray.init(
+    runtime_env={
+        "env_vars": {"RAY_DEBUG": "1"},
+    }
+)
 
 
 @ray.remote
