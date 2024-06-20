@@ -683,14 +683,18 @@ void NodeManager::HandleReleaseUnusedBundles(rpc::ReleaseUnusedBundlesRequest re
                            -1);
   }
 
-  // Cancel lease requests related to unused bundles
-  cluster_task_manager_->CancelTasks(
+  // Cancel lease requests that are waiting for workers
+  // to free the acquired pg bundle resources
+  // so that pg bundle can be returned.
+  local_task_manager_->CancelTasks(
       [&](const std::shared_ptr<internal::Work> &work) {
         const auto bundle_id = work->task.GetTaskSpecification().PlacementGroupBundleId();
-        return !bundle_id.first.IsNil() && 0 == in_use_bundles.count(bundle_id);
+        return !bundle_id.first.IsNil() && (0 == in_use_bundles.count(bundle_id)) &&
+               (work->GetState() == internal::WorkStatus::WAITING_FOR_WORKER);
       },
       rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_INTENDED,
-      "The task is cancelled because it uses placement group bundles that are not "
+      "The lease request is cancelled because it uses placement group bundles that are "
+      "not "
       "registered to GCS. It can happen upon GCS restart.");
 
   // Kill all workers that are currently associated with the unused bundles.
