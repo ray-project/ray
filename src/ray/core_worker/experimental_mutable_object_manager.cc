@@ -279,8 +279,8 @@ Status MutableObjectManager::ReadAcquire(const ObjectID &object_id,
   }
 
   // Check whether the channel has an error set before checking that we are the only
-  // reader.  called. If the channel is already closed, then it's OK to
-  // ReadAcquire and ReadRelease in any order.
+  // reader. If the channel is already closed, then it's OK to ReadAcquire and
+  // ReadRelease in any order.
   std::unique_ptr<plasma::MutableObject> &object = channel->mutable_object;
   RAY_RETURN_NOT_OK(object->header->CheckHasError());
   // The channel is still open. This lock ensures that there is only one reader
