@@ -128,7 +128,7 @@ const JobList = () => {
               }}
             />
             <Autocomplete
-              style={{ height: 35, width: 150 }}
+              sx={{ height: 35, width: 150 }}
               options={["PENDING", "RUNNING", "SUCCEEDED", "FAILED"]}
               onInputChange={(event, value) => changeFilter("status", value.trim())}
               renderInput={(params) => (
