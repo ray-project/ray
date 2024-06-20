@@ -976,7 +976,7 @@ class CompiledDAG:
                     # Add an edge from the writer to the reader if the channel
                     # isn't an NCCL channel.
                     _add_edge(graph, idx, downstream_idx)
-        total_nodes = len(graph)
+        num_total_nodes = len(graph)
 
         # A list of nodes with in-degree 0, including (1) InputNode and
         # (2) the nodes that only read from NCCL channels and are the first
@@ -985,19 +985,33 @@ class CompiledDAG:
         for idx, node in graph.items():
             if node.in_degree == 0:
                 zero_in_degree_nodes.append(idx)
-        visited_nodes = 0
+        visited_nodes = set()
 
         # Perform topological sort to find a topological order of the graph.
         # If topological order exists, the graph is a DAG. Otherwise, it has
         # a cycle.
         while zero_in_degree_nodes:
             node = zero_in_degree_nodes.popleft()
-            visited_nodes += 1
+            visited_nodes.add(node)
             for out_node in graph[node].out_edges:
                 graph[out_node].in_edges.remove(node)
                 if graph[out_node].in_degree == 0:
                     zero_in_degree_nodes.append(out_node)
-        return total_nodes == visited_nodes
+
+        # Remove visited nodes from the graph.
+        for node in visited_nodes:
+            del graph[node]
+
+        topological_order_exists = len(visited_nodes) == num_total_nodes
+        if not topological_order_exists:
+            logger.error(
+                "The compiled DAG has a cycle. It will deadlock on NCCL calls. "
+                "The following nodes are not in the topological order. That is, "
+                "some of the following nodes are involved in a cycle: "
+                f"{list(graph.keys())}"
+            )
+
+        return topological_order_exists
 
     def _monitor_failures(self):
         outer = self
