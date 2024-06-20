@@ -32,13 +32,6 @@ class PendingRequest:
     created_at: float = field(default_factory=time.time)
     future: asyncio.Future = field(default_factory=lambda: asyncio.Future())
 
-    def __eq__(self, other: Any) -> bool:
-        """Request ID is expected to be unique."""
-        if isinstance(other, PendingRequest):
-            return self.metadata.request_id == other.metadata.request_id
-
-        return False
-
     def reset_future(self):
         """Reset the `asyncio.Future`, must be called if this request is re-used."""
         self.future = asyncio.Future()

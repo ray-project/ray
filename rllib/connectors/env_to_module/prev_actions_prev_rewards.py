@@ -5,14 +5,13 @@ from gymnasium.spaces import Box
 import numpy as np
 
 from ray.rllib.connectors.connector_v2 import ConnectorV2
-from ray.rllib.core.columns import Columns
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.spaces.space_utils import batch, flatten_to_single_ndarray
 from ray.rllib.utils.typing import EpisodeType
 
 
-class PrevActionsPrevRewardsConnector(ConnectorV2):
+class PrevActionsPrevRewards(ConnectorV2):
     """A connector piece that adds previous rewards and actions to the input obs.
 
     - Requires Columns.OBS to be already a part of the batch.
@@ -36,13 +35,11 @@ class PrevActionsPrevRewardsConnector(ConnectorV2):
     """
 
     ORIG_OBS_KEY = "_orig_obs"
-    PREV_ACTIONS_KEY = "prev_actions"
-    PREV_REWARDS_KEY = "prev_rewards"
+    PREV_ACTIONS_KEY = "prev_n_actions"
+    PREV_REWARDS_KEY = "prev_n_rewards"
 
     @override(ConnectorV2)
     def recompute_observation_space_from_input_spaces(self):
-        if self.input_action_space is None:
-            return None
         if self._multi_agent:
             ret = {}
             for agent_id, obs_space in self.input_observation_space.spaces.items():
@@ -64,7 +61,7 @@ class PrevActionsPrevRewardsConnector(ConnectorV2):
         n_prev_rewards: int = 1,
         **kwargs,
     ):
-        """Initializes a PrevActionsPrevRewardsConnector instance.
+        """Initializes a PrevActionsPrevRewards instance.
 
         Args:
             multi_agent: Whether this is a connector operating on a multi-agent
@@ -108,23 +105,16 @@ class PrevActionsPrevRewardsConnector(ConnectorV2):
         shared_data: Optional[dict] = None,
         **kwargs,
     ) -> Any:
-        observations = data.get(Columns.OBS)
-
-        if observations is None:
-            raise ValueError(
-                f"`batch` must already have a column named {Columns.OBS} in it "
-                f"for this connector to work!"
-            )
-
-        new_obs = []
-        for sa_episode, orig_obs in self.single_agent_episode_iterator(
-            episodes, zip_with_batch_column=observations
+        for sa_episode in self.single_agent_episode_iterator(
+            episodes, agents_that_stepped_only=True
         ):
             # Episode is not finalized yet and thus still operates on lists of items.
             assert not sa_episode.is_finalized
 
+            augmented_obs = {self.ORIG_OBS_KEY: sa_episode.get_observations(-1)}
+
             if self.n_prev_actions:
-                prev_n_actions = flatten_to_single_ndarray(
+                augmented_obs[self.PREV_ACTIONS_KEY] = flatten_to_single_ndarray(
                     batch(
                         sa_episode.get_actions(
                             indices=slice(-self.n_prev_actions, None),
@@ -135,28 +125,19 @@ class PrevActionsPrevRewardsConnector(ConnectorV2):
                 )
 
             if self.n_prev_rewards:
-                prev_n_rewards = np.array(
+                augmented_obs[self.PREV_REWARDS_KEY] = np.array(
                     sa_episode.get_rewards(
                         indices=slice(-self.n_prev_rewards, None),
                         fill=0.0,
                     )
                 )
 
-            new_obs.append(
-                {
-                    self.ORIG_OBS_KEY: orig_obs,
-                    self.PREV_ACTIONS_KEY: prev_n_actions,
-                    self.PREV_REWARDS_KEY: prev_n_rewards,
-                }
-            )
-
-        # Convert the observations in the batch into a dict with the keys:
-        # "_obs", "_prev_rewards", and "_prev_actions".
-        self.foreach_batch_item_change_in_place(
-            batch=data,
-            column=Columns.OBS,
-            func=lambda orig_obs, eps_id, agent_id, module_id: new_obs.pop(0),
-        )
+            # Write new observation directly back into the episode.
+            sa_episode.set_observations(at_indices=-1, new_data=augmented_obs)
+            #  We set the Episode's observation space to ours so that we can safely
+            #  set the last obs to the new value (without causing a space mismatch
+            #  error).
+            sa_episode.observation_space = self.observation_space
 
         return data
 

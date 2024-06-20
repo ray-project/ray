@@ -5,7 +5,7 @@ import { get } from "./requestHandlers";
 export const getTasks = (jobId: string | undefined) => {
   let url = "api/v0/tasks?detail=1&limit=10000";
   if (jobId) {
-    url += `&job_id=${jobId}`;
+    url += `&filter_keys=job_id&filter_predicates=%3D&filter_values=${jobId}`;
   }
   return get<StateApiResponse<Task>>(url);
 };
