@@ -2,14 +2,6 @@ import ray
 from ray.exceptions import RayTaskError
 
 
-class RayDAGTaskError(RayTaskError):
-    """
-    Wraps an exception that occurred during the execution of a DAG.
-    """
-
-    pass
-
-
 class CompiledDAGRef(ray.ObjectRef):
     """
     A reference to a compiled DAG execution result.
@@ -69,7 +61,13 @@ class CompiledDAGRef(ray.ObjectRef):
                 "on a CompiledDAGRef and it was already called."
             )
         self._ray_get_called = True
-        val = self._dag._execute_until(self._execution_index)
-        # if isinstance(val, RayDAGTaskError):
-        #    raise val.cause
-        return val
+        vals = self._dag._execute_until(self._execution_index)
+
+        # Check for exceptions.
+        for val in vals:
+            if isinstance(val, RayTaskError):
+                raise val
+
+        if self._dag.has_single_output:
+            return vals[0]
+        return vals

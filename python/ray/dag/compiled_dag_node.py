@@ -7,7 +7,8 @@ import uuid
 import traceback
 
 import ray
-from ray.experimental.compiled_dag_ref import CompiledDAGRef, RayDAGTaskError
+from ray.exceptions import RayTaskError
+from ray.experimental.compiled_dag_ref import CompiledDAGRef
 from ray.experimental.channel import (
     ChannelInterface,
     ChannelOutputType,
@@ -132,7 +133,7 @@ def _wrap_exception(exc):
         "".join(traceback.format_exception(type(exc), exc, exc.__traceback__)),
         task_exception=True,
     )
-    wrapped = RayDAGTaskError(
+    wrapped = RayTaskError(
         function_name="do_exec_tasks",
         traceback_str=backtrace,
         cause=exc,
@@ -462,7 +463,7 @@ class CompiledDAG:
         # Preprocessing identifies the input node and output node.
         self.input_task_idx: Optional[int] = None
         self.output_task_idx: Optional[int] = None
-        self.has_single_output: bool = False
+        self._has_single_output: bool = False
         self.actor_task_count: Dict["ray._raylet.ActorID", int] = defaultdict(int)
 
         # Cached attributes that are set during compilation.
@@ -509,6 +510,10 @@ class CompiledDAG:
                 ray.get_runtime_context().get_node_id(), soft=False
             )
         ).remote()
+
+    @property
+    def has_single_output(self):
+        return self._has_single_output
 
     def get_id(self) -> str:
         """
@@ -641,7 +646,7 @@ class CompiledDAG:
         output_node = self.idx_to_task[self.output_task_idx].dag_node
         # Add an MultiOutputNode to the end of the DAG if it's not already there.
         if not isinstance(output_node, MultiOutputNode):
-            self.has_single_output = True
+            self._has_single_output = True
             output_node = MultiOutputNode([output_node])
             self._add_node(output_node)
             self.output_task_idx = self.dag_node_to_idx[output_node]
@@ -861,9 +866,8 @@ class CompiledDAG:
         # If no MultiOutputNode was specified during the DAG creation, there is only
         # one output. Return a single output channel instead of a list of
         # channels.
-        if self.has_single_output:
+        if self._has_single_output:
             assert len(self.dag_output_channels) == 1
-            self.dag_output_channels = self.dag_output_channels[0]
 
         # Driver should ray.put on input, ray.get/release on output
         self._monitor = self._monitor_failures()

@@ -208,7 +208,8 @@ class ChannelInterface:
         zero-copy (e.g., bytes or a numpy array) *and* the object is still in scope.
 
         Returns:
-            Any: The deserialized value.
+            Any: The deserialized value. If the deserialized value is an
+            Exception, it will be returned directly instead of being raised.
         """
 
     def close(self) -> None:
@@ -224,14 +225,9 @@ class ChannelInterface:
 @DeveloperAPI
 class ReaderInterface:
     def __init__(self, input_channels: List[ChannelInterface]):
-        if isinstance(input_channels, List):
-            for chan in input_channels:
-                assert isinstance(chan, ChannelInterface)
-            self._has_single_output = False
-        else:
-            assert isinstance(input_channels, ChannelInterface)
-            self._has_single_output = True
-            input_channels = [input_channels]
+        assert isinstance(input_channels, list)
+        for chan in input_channels:
+            assert isinstance(chan, ChannelInterface)
 
         self._input_channels = input_channels
         self._closed = False
@@ -249,10 +245,7 @@ class ReaderInterface:
     def read(self) -> Any:
         outputs = self._read_list()
         self._num_reads += 1
-        if self._has_single_output:
-            return outputs[0]
-        else:
-            return outputs
+        return outputs
 
     def close(self) -> None:
         self._closed = True
@@ -296,10 +289,7 @@ class AwaitableBackgroundReader(ReaderInterface):
         self._background_task = asyncio.ensure_future(self.run())
 
     def _run(self):
-        vals = [c.read() for c in self._input_channels]
-        if self._has_single_output:
-            vals = vals[0]
-        return vals
+        return [c.read() for c in self._input_channels]
 
     async def run(self):
         loop = asyncio.get_running_loop()
