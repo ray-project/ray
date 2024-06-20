@@ -1,6 +1,13 @@
-import traceback
-
 import ray
+from ray.exceptions import RayTaskError
+
+
+class RayDAGTaskError(RayTaskError):
+    """
+    Wraps an exception that occurred during the execution of a DAG.
+    """
+
+    pass
 
 
 class CompiledDAGRef(ray.ObjectRef):
@@ -62,28 +69,7 @@ class CompiledDAGRef(ray.ObjectRef):
                 "on a CompiledDAGRef and it was already called."
             )
         self._ray_get_called = True
-        return self._dag._execute_until(self._execution_index)
-
-
-class RayDAGTaskError:
-    """
-    Wraps an exception that occurred during the execution of a DAG.
-    """
-
-    def __init__(self, exc):
-        """
-        Args:
-            exc: The exception that occurred during the execution of the DAG.
-        """
-        self._cause = exc
-        self._backtrace = ray._private.utils.format_error_message(
-            "".join(traceback.format_exception(type(exc), exc, exc.__traceback__)),
-            task_exception=True,
-        )
-
-    def __str__(self):
-        return "Exception occurred during DAG execution:\n" + self._backtrace
-
-    @property
-    def cause(self):
-        return self._cause
+        val = self._dag._execute_until(self._execution_index)
+        # if isinstance(val, RayDAGTaskError):
+        #    raise val.cause
+        return val

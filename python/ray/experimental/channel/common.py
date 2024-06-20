@@ -312,10 +312,15 @@ class AwaitableBackgroundReader(ReaderInterface):
 
             # Set the result on the main thread.
             fut.set_result(res)
+            # NOTE(swang): If the object is zero-copy deserialized, then it
+            # will stay in scope as long as ret and the future are in scope.
+            # Therefore, we must delete both here after fulfilling the future.
+            del res
+            del fut
 
     def close(self):
-        self._background_task.cancel()
         super().close()
+        self._background_task_executor.shutdown(cancel_futures=True)
 
 
 @DeveloperAPI

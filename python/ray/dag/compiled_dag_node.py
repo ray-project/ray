@@ -4,6 +4,7 @@ from typing import Any, Dict, List, Tuple, Union, Optional, Set
 import logging
 import threading
 import uuid
+import traceback
 
 import ray
 from ray.experimental.compiled_dag_ref import CompiledDAGRef, RayDAGTaskError
@@ -126,6 +127,19 @@ def _prep_task(self, task: "ExecutableTask") -> None:
     output_writer.start()
 
 
+def _wrap_exception(exc):
+    backtrace = ray._private.utils.format_error_message(
+        "".join(traceback.format_exception(type(exc), exc, exc.__traceback__)),
+        task_exception=True,
+    )
+    wrapped = RayDAGTaskError(
+        function_name="do_exec_tasks",
+        traceback_str=backtrace,
+        cause=exc,
+    )
+    return wrapped
+
+
 def _exec_task(self, task: "ExecutableTask", idx: int) -> bool:
     """
     Execute the task.
@@ -163,9 +177,7 @@ def _exec_task(self, task: "ExecutableTask", idx: int) -> bool:
         output_val = method(*resolved_inputs)
         output_writer.write(output_val)
     except Exception as exc:
-        # TODO(rui): consider different ways of passing down the exception,
-        # e.g., wrapping with RayTaskError.
-        output_writer.write(RayDAGTaskError(exc))
+        output_writer.write(_wrap_exception(exc))
 
     return False
 
@@ -178,8 +190,10 @@ class AwaitableDAGOutput:
 
     async def get(self):
         ret = await self._fut
-        if isinstance(ret, Exception):
-            raise ret
+        # NOTE(swang): If the object is zero-copy deserialized, then it will
+        # stay in scope as long as this future is in scope. Therefore, we must
+        # delete it here before we return the result to the user.
+        self._fut = None
         return ret
 
 
