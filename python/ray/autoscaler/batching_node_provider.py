@@ -199,18 +199,14 @@ class BatchingNodeProvider(NodeProvider):
 
     def node_tags(self, node_id: str) -> Dict[str, str]:
         node_data = self.node_data_dict[node_id]
-        if node_data.replica_index is not None:
-            return {
-                TAG_RAY_NODE_KIND: node_data.kind,
-                TAG_RAY_NODE_STATUS: node_data.status,
-                TAG_RAY_USER_NODE_TYPE: node_data.type,
-                TAG_RAY_REPLICA_INDEX: node_data.replica_index,
-            }
-        return {
+        tags = {
             TAG_RAY_NODE_KIND: node_data.kind,
             TAG_RAY_NODE_STATUS: node_data.status,
             TAG_RAY_USER_NODE_TYPE: node_data.type,
         }
+        if node_data.replica_index is not None:
+            tags[TAG_RAY_REPLICA_INDEX] = node_data.replica_index
+        return tags
 
     def internal_ip(self, node_id: str) -> str:
         return self.node_data_dict[node_id].ip
@@ -259,7 +255,5 @@ class BatchingNodeProvider(NodeProvider):
             for worker_id in self.replicas_to_nodes[node_replica_index]:
                 # Check if worker has already been scheduled to delete
                 if worker_id not in self.scale_request.workers_to_delete:
-                    # Assume all workers in a group are of the same type
-                    self.scale_request.desired_num_workers[node_type] -= 1
                     self.scale_request.workers_to_delete.add(worker_id)
         self.scale_change_needed = True
