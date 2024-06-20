@@ -579,7 +579,7 @@ class ExecutionPlan:
         the LogicalPlan is used."""
         if root_op is None:
             root_op = self._logical_plan.dag
-        return isinstance(root_op, Read) and len(root_op.input_dependencies) == 0
+        return root_op.is_read()
 
     def has_computed_output(self) -> bool:
         """Whether this plan has a computed snapshot for the final operator, i.e. for the

@@ -54,6 +54,7 @@ py_test_module_list(
 # Medium tests.
 py_test_module_list(
     size = "medium",
+    env = {"ANYSCALE_TRACING_EXPORTER_IMPORT_PATH": ""},
     files = [
         "test_callback.py",
         "test_cancellation.py",
