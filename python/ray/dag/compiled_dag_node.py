@@ -35,6 +35,12 @@ from ray.experimental.channel.torch_tensor_nccl_channel import (
     _destroy_nccl_group,
 )
 
+
+class TestSerializer(msgspec.Struct):
+    zero: tuple[any, ...]
+    one: dict
+
+
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 MAX_BUFFER_SIZE = int(100 * 1e6)  # 100MB
@@ -251,7 +257,9 @@ class DAGInputAdapter:
 
         def extractor(key: Union[int, str]):
             def extract_arg(encoded_args):
-                args, kwargs = msgspec.msgpack.decode(encoded_args)
+                output = msgspec.msgpack.decode(encoded_args)
+                args = output["zero"]
+                kwargs = output["one"]
 
                 if isinstance(key, int):
                     return args[key]
@@ -1191,7 +1199,7 @@ class CompiledDAG:
 
         worker = ray._private.worker.global_worker
         inp = msgspec.msgpack.encode(
-            (args, kwargs),
+            TestSerializer(zero=args, one=kwargs),
             enc_hook=worker.get_serialization_context().serialize,
         )
         self._dag_submitter.write(inp)
@@ -1223,7 +1231,7 @@ class CompiledDAG:
         async with self._dag_submission_lock:
             worker = ray._private.worker.global_worker
             inp = msgspec.msgpack.encode(
-                (args, kwargs),
+                TestSerializer(zero=args, one=kwargs),
                 enc_hook=worker.get_serialization_context().serialize,
             )
             await self._dag_submitter.write(inp)
