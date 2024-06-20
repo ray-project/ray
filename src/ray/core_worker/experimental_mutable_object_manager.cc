@@ -275,8 +275,7 @@ Status MutableObjectManager::ReadAcquire(const ObjectID &object_id,
   }
   PlasmaObjectHeader::Semaphores sem;
   if (!GetSemaphores(object_id, sem)) {
-    return Status::ChannelError(
-        "Channel has not been registered (cannot get semaphores)");
+    return Status::IOError("Channel has not been registered (cannot get semaphores)");
   }
 
   // Check whether the channel has an error set before checking that we are the only
