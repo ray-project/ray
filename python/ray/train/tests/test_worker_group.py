@@ -236,7 +236,8 @@ def test_sort_local_workers_by_gpu_id(ray_start_2_cpus):
 
     def setup_and_check_worker_group(pids, node_ids, gpu_ids, expected_local_ranks):
         """
-        Create a worker group, group workers by Node ID, and check local ranks assignment.
+        Create a worker group, group workers by Node ID,
+        and check local ranks assignment.
 
         Args:
             pids: List of unique process IDs.

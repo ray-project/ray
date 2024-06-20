@@ -411,7 +411,9 @@ class BackendExecutor:
         node_ids = {}  # map from node id to node index
         node_cnt = 0  # count the number of nodes
 
-        node_id_dict = defaultdict(int)  # map from node id to the number of workers on it.
+        node_id_dict = defaultdict(
+            int
+        )  # map from node id to the number of workers on it.
         for world_rank in range(len(self.worker_group)):
             worker = self.worker_group.workers[world_rank]
             node_id = worker.metadata.node_id
@@ -430,9 +432,9 @@ class BackendExecutor:
 
         workers_info = "\n".join(
             [
-                f"- (node_id={w.metadata.node_id}, ip={w.metadata.node_ip}, pid={w.metadata.pid}) "
-                f"world_rank={i}, local_rank={local_rank_map[i]}, "
-                f"node_rank={node_rank_map[i]}"
+                f"- (node_id={w.metadata.node_id}, ip={w.metadata.node_ip}, "
+                f"pid={w.metadata.pid}) world_rank={i}, "
+                f"local_rank={local_rank_map[i]}, node_rank={node_rank_map[i]}"
                 for i, w in enumerate(self.worker_group.workers)
             ]
         )
