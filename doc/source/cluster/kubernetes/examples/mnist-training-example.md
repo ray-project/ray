@@ -21,7 +21,7 @@ A RayJob consists of a RayCluster custom resource and a job that can be submitte
 
 ```sh
 # Download `ray-job.pytorch-mnist.yaml`
-curl -LO https://raw.githubusercontent.com/ray-project/kuberay/v1.0.0/ray-operator/config/samples/pytorch-mnist/ray-job.pytorch-mnist.yaml
+curl -LO https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/samples/pytorch-mnist/ray-job.pytorch-mnist.yaml
 
 # Create a RayJob
 kubectl apply -f ray-job.pytorch-mnist.yaml
