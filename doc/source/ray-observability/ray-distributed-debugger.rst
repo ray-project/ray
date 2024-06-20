@@ -25,7 +25,7 @@ Get started
 Click `here <https://www.anyscale.com/blog/ray-distributed-debugger?utm_source=ray_docs&utm_medium=docs&utm_campaign=promotion#download-for-free>`_ to download the Ray Debugger extension for free.
 
 
-Setup Environment
+Setup environment
 ~~~~~~~~~~~~~~~~~
 
 Create a new virtual environment and install dependencies.
@@ -37,7 +37,7 @@ Create a new virtual environment and install dependencies.
     pip install "ray[default]" debugpy
 
 
-Start a Ray Cluster
+Start a Ray cluster
 ~~~~~~~~~~~~~~~~~~~
 
 Run ray start `--head` to start a Ray Cluster.
@@ -56,7 +56,7 @@ Add the Ray cluster `IP:PORT` to the cluster list. The default `IP:PORT` is `127
     :align: center
 
 
-Create a Ray Task
+Create a Ray task
 ~~~~~~~~~~~~~~~~~
 
 Create a file `job.py` with the following snippet. Add the `RAY_DEBUG` environment variable to enable Ray Debugger and add `breakpoint()` in the Ray task.
@@ -89,7 +89,7 @@ Create a file `job.py` with the following snippet. Add the `RAY_DEBUG` environme
         ray.get(post_mortem.remote(10)) 
 
 
-Setup Debugger Local Folder
+Setup debugger local folder
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Ray Debugger needs to know the absolute path to the folder you submitted `job.py`. Use pwd command to get the submission path, and set the cluster's local folder to the path. For each cluster, you can set the local folder by clicking on the ⚙️ icon on the cluster item.
@@ -98,7 +98,7 @@ Ray Debugger needs to know the absolute path to the folder you submitted `job.py
     :align: center
 
 
-Run Your Ray Application
+Run your Ray application
 ~~~~~~~~~~~~~~~~~~~~~~~~
 
 Start running your Ray application.
@@ -108,7 +108,7 @@ Start running your Ray application.
     python job.py
 
 
-Attach to Paused Tasks
+Attach to paused tasks
 ~~~~~~~~~~~~~~~~~~~~~~
 
 When debugger hits a breakpoint
@@ -133,7 +133,7 @@ Post-mortem debugging
 
 Use post-mortem debugging when Ray tasks encounter unhandled exceptions. In such cases, Ray automatically freezes the failing task, awaiting attachment by the Ray Debugger. This feature allows you to thoroughly investigate and inspect the program's state at the time of the error.
 
-Run a Ray Task Raised Exception
+Run a Ray task raised exception
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Run the same `job.py` file with an additional argument to raise an exception.
@@ -143,7 +143,7 @@ Run the same `job.py` file with an additional argument to raise an exception.
     python job.py raise-exception
 
 
-Attach to Paused Tasks
+Attach to paused tasks
 ~~~~~~~~~~~~~~~~~~~~~~
 
 When the app throws an exception:
@@ -157,7 +157,7 @@ When the app throws an exception:
     :align: center
 
 
-Use the VS Code Debugger
+Use the VS Code debugger
 ~~~~~~~~~~~~~~~~~~~~~~~~
 
 Debug your Ray app just as you would when developing locally.
