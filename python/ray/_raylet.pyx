@@ -216,6 +216,7 @@ include "includes/ray_config.pxi"
 include "includes/function_descriptor.pxi"
 include "includes/buffer.pxi"
 include "includes/common.pxi"
+include "includes/gcs_client.pxi"
 include "includes/serialization.pxi"
 include "includes/libcoreworker.pxi"
 include "includes/global_state_accessor.pxi"
@@ -551,46 +552,6 @@ class ObjectRefGenerator:
 
 # For backward compatibility.
 StreamingObjectRefGenerator = ObjectRefGenerator
-
-cdef int check_status(const CRayStatus& status) nogil except -1:
-    if status.ok():
-        return 0
-
-    with gil:
-        message = status.message().decode()
-
-    if status.IsObjectStoreFull():
-        raise ObjectStoreFullError(message)
-    elif status.IsInvalidArgument():
-        raise ValueError(message)
-    elif status.IsOutOfDisk():
-        raise OutOfDiskError(message)
-    elif status.IsObjectRefEndOfStream():
-        raise ObjectRefStreamEndOfStreamError(message)
-    elif status.IsInterrupted():
-        raise KeyboardInterrupt()
-    elif status.IsTimedOut():
-        raise GetTimeoutError(message)
-    elif status.IsNotFound():
-        raise ValueError(message)
-    elif status.IsObjectNotFound():
-        raise ValueError(message)
-    elif status.IsObjectUnknownOwner():
-        raise ValueError(message)
-    elif status.IsIOError():
-        raise IOError(message)
-    elif status.IsRpcError():
-        raise RpcError(message, rpc_code=status.rpc_code())
-    elif status.IsIntentionalSystemExit():
-        with gil:
-            raise_sys_exit_with_custom_error_message(message)
-    elif status.IsUnexpectedSystemExit():
-        with gil:
-            raise_sys_exit_with_custom_error_message(
-                message, exit_code=1)
-    else:
-        raise RaySystemError(message)
-
 
 cdef c_bool is_plasma_object(shared_ptr[CRayObject] obj):
     """Return True if the given object is a plasma object."""
@@ -2709,8 +2670,71 @@ def _auto_reconnect(f):
     return wrapper
 
 
-cdef class GcsClient:
-    """Cython wrapper class of C++ `ray::gcs::GcsClient`."""
+class GcsClient:
+    """
+    Cython wrapper class of C++ `ray::gcs::GcsClient`.
+
+    This class is in transition to use the new C++ GcsClient binding. The old
+    PythonGcsClient binding is not deleted until we are confident that the new
+    binding is stable.
+
+    Defaults to the new binding. If you want to use the old binding, please
+    set the environment variable `RAY_USE_OLD_GCS_CLIENT=1`.
+    """
+    def __new__(cls, *args, **kwargs):
+        if os.getenv('RAY_USE_OLD_GCS_CLIENT') == '1':
+            return OldGcsClient(*args, **kwargs)
+        return super(GcsClient, cls).__new__(cls)
+
+    def __init__(self, address,
+                  nums_reconnect_retry=RayConfig.instance().nums_py_gcs_reconnect_retry(
+                  ),
+                  cluster_id: str = None):
+        # nums_reconnect_retry is ignored because now we rely on GcsRpcClient
+        # retry.
+        # TODO: it does not support initial connection when GCS is down. We need to
+        # support it in GcsRpcClient.
+        self.inner = NewGcsClient.standalone(address, cluster_id)
+        self.new_gcs_client_methods = set([
+            # Internal KV
+            "internal_kv_get",
+            "internal_kv_multi_get",
+            "internal_kv_put",
+            "internal_kv_del",
+            "internal_kv_exists",
+            "internal_kv_keys",
+            # Jobs
+            "get_all_job_info",
+            # Nodes
+            "check_alive",
+            "drain_nodes",
+            "get_all_node_info",
+            # Node Resources
+            "get_all_resource_usage",
+            # Autoscaler
+            "request_cluster_resource_constraint",
+            "get_cluster_resource_state",
+            "get_cluster_status",
+            "report_autoscaling_state",
+            "drain_node"
+            # Runtime Env
+            "pin_runtime_env_uri",
+            # Properties
+            "cluster_id",
+            "address",
+        ])
+
+    def __getattr__(self, name):
+        if name in self.new_gcs_client_methods:
+            if "TEST_RAY_COLLECT_KV_FREQUENCY" in os.environ:
+                with ray._private.utils._CALLED_FREQ_LOCK:
+                    ray._private.utils._CALLED_FREQ[name] += 1
+
+            return getattr(self.inner, name)
+        raise AttributeError(f"'GcsClient' object has no attribute '{name}'")
+
+cdef class OldGcsClient:
+    """Old Cython wrapper class of C++ `ray::gcs::PythonGcsClient`."""
     cdef:
         shared_ptr[CPythonGcsClient] inner
         object address
@@ -2718,8 +2742,7 @@ cdef class GcsClient:
         ClusterID cluster_id
 
     def __cinit__(self, address,
-                  nums_reconnect_retry=RayConfig.instance().nums_py_gcs_reconnect_retry(
-                  ),
+                  nums_reconnect_retry,
                   cluster_id: str = None):
         cdef GcsClientOptions gcs_options = GcsClientOptions.from_gcs_address(address)
         self.inner.reset(new CPythonGcsClient(dereference(gcs_options.native())))

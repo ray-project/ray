@@ -356,7 +356,8 @@ class NodeInfoAccessor {
   ///
   /// \param callback Callback that will be called after lookup finishes.
   /// \return Status
-  virtual Status AsyncGetAll(const MultiItemCallback<rpc::GcsNodeInfo> &callback);
+  virtual Status AsyncGetAll(int64_t timeout_ms,
+                             const MultiItemCallback<rpc::GcsNodeInfo> &callback);
 
   /// Subscribe to node addition and removal events from GCS and cache those information.
   ///
@@ -388,6 +389,11 @@ class NodeInfoAccessor {
   ///
   /// \return All nodes in cache.
   virtual const absl::flat_hash_map<NodeID, rpc::GcsNodeInfo> &GetAll() const;
+
+  /// Get information of all nodes from an RPC to GCS synchronously.
+  ///
+  /// \return All nodes in cache.
+  virtual Status GetAllNoCache(int64_t timeout_ms, std::vector<rpc::GcsNodeInfo> &nodes);
 
   /// Send a check alive request to GCS for the liveness of some nodes.
   ///
@@ -773,8 +779,7 @@ class InternalKVAccessor {
       const std::string &ns,
       const std::vector<std::string> &keys,
       const int64_t timeout_ms,
-      const OptionalItemCallback<absl::flat_hash_map<std::string, std::string>>
-          &callback);
+      const OptionalItemCallback<std::unordered_map<std::string, std::string>> &callback);
 
   /// Asynchronously set the value for a given key.
   ///
@@ -878,7 +883,7 @@ class InternalKVAccessor {
   virtual Status MultiGet(const std::string &ns,
                           const std::vector<std::string> &keys,
                           const int64_t timeout_ms,
-                          absl::flat_hash_map<std::string, std::string> &values);
+                          std::unordered_map<std::string, std::string> &values);
 
   /// Delete the key
   ///
