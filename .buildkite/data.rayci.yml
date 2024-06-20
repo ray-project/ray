@@ -149,6 +149,7 @@ steps:
     depends_on: data16build
 
   - label: ":database: data: flaky tests"
+    key: data_flaky_tests
     tags: 
       - python
       - data
@@ -163,6 +164,7 @@ steps:
     depends_on: data16build
 
   - label: ":database: data: flaky gpu tests"
+    key: data_flaky_gpu_tests
     tags: 
       - python
       - data
