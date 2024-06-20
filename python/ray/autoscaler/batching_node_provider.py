@@ -199,11 +199,17 @@ class BatchingNodeProvider(NodeProvider):
 
     def node_tags(self, node_id: str) -> Dict[str, str]:
         node_data = self.node_data_dict[node_id]
+        if node_data.replica_index is not None:
+            return {
+                TAG_RAY_NODE_KIND: node_data.kind,
+                TAG_RAY_NODE_STATUS: node_data.status,
+                TAG_RAY_USER_NODE_TYPE: node_data.type,
+                TAG_RAY_REPLICA_INDEX: node_data.replica_index,
+            }
         return {
             TAG_RAY_NODE_KIND: node_data.kind,
             TAG_RAY_NODE_STATUS: node_data.status,
             TAG_RAY_USER_NODE_TYPE: node_data.type,
-            TAG_RAY_REPLICA_INDEX: node_data.replica_index,
         }
 
     def internal_ip(self, node_id: str) -> str:
