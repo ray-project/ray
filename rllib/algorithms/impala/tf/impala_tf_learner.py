@@ -136,7 +136,6 @@ class ImpalaTfLearner(ImpalaLearner, TfLearner):
         # Return the total loss.
         return total_loss
 
-    @override(ImpalaLearner)
     def _compute_values(self, batch):
         infos = batch.pop(Columns.INFOS, None)
         batch = tree.map_structure(lambda s: tf.convert_to_tensor(s), batch)
