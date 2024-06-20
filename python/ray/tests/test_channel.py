@@ -173,7 +173,7 @@ def test_set_error_before_read(ray_start_regular):
         # call to read() *could* block.
 
         # We wrap both calls to read() in pytest.raises() as both calls could
-        # trigger an IOError exception if the channel has already been closed.
+        # trigger an RayChannelError exception if the channel has already been closed.
         with pytest.raises(
             ray.exceptions.RayTaskError, match=r"Channel closed"
         ) as exc_info:
@@ -556,7 +556,7 @@ def test_remote_reader_close(ray_start_cluster, remote):
         def read(self):
             try:
                 self._reader_chan.read()
-            except IOError:
+            except RayChannelError:
                 pass
 
         def close(self):
