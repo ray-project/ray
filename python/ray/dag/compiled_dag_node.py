@@ -879,6 +879,50 @@ class CompiledDAG:
 
         Use topological sort to verify whether the graph is a DAG.
         If not, the DAG will result in a deadlock.
+
+        [Explanation]
+
+        Each actor has a list of tasks, each with a bind index. Tasks are executed
+        sequentially in ascending order of their bind index on the actor (Rule #1),
+        where lower indices precede higher ones.
+
+        For non-NCCL channels, the `write` function operates asynchronously. Take
+        the shared memory channel as an example, the completion of the `write`
+        function means that the data has been successfully written into the shared
+        memory. The completion of the `write` function doesn't depend on readers.
+
+        For data transfer via the shared memory channel, the following three events
+        occur sequentially:
+
+        (1) The writer calls the `write` function.
+        (2) The data is successfully written into the shared memory.
+        (3) The reader calls the `read` function.
+
+        The `write` must happen before the `read` in these asynchronous channels.
+        Therefore, we add an edge from the writer to the reader if the channel isn't
+        an NCCL channel (Rule #2).
+
+        For the NCCL channel, the `write` function operates synchronously, and the
+        completion of the `write` function means that the data is being read by the
+        reader at the same time.
+
+        For the data transfer via the NCCL channel, the following events occur:
+
+        (1) The writer calls the `write` function, and the reader calls the `read`
+            function at the same time.
+        (2) The data is successfully transferred via the NCCL channel.
+
+        After (1) and (2) are completed, the following events can occur:
+
+        (3a) The task with the next bind index on the same actor as the writer can
+            be executed.
+        (3b) The reader DAG node can start to call the `write` function to write
+            the data to its downstream nodes.
+
+        We add an edge from the writer and reader of an NCCL channel to the node that
+        has the next bind index on the same actor as the writer (Rule #3). If you are
+        interested in the detailed explanation, please refer to
+        https://github.com/ray-project/ray/pull/45960.
         """
         assert self.idx_to_task
         assert self.actor_to_tasks
