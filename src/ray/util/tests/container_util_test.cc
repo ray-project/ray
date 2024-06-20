@@ -36,31 +36,36 @@ TEST(ContainerUtilTest, TestMapFindOrDie) {
   }
 }
 
-TEST(ContainerUtilTest, RemoveElementsLastElement) {
-  std::deque<int> queue{1, 2, 3, 4};
-  std::function<bool(int)> even = [](int value) { return value % 2 == 0; };
-  remove_elements(even, queue);
+TEST(ContainerUtilTest, TestEraseIf) {
+  {
+    std::list<int> list{1, 2, 3, 4};
+    ray::erase_if<int>(list, [](const int &value) { return value % 2 == 0; });
+    ASSERT_EQ(list, (std::list<int>{1, 3}));
+  }
 
-  std::deque<int> expected{1, 3};
-  ASSERT_EQ(queue, expected);
-}
+  {
+    std::list<int> list{1, 2, 3};
+    ray::erase_if<int>(list, [](const int &value) { return value % 2 == 0; });
+    ASSERT_EQ(list, (std::list<int>{1, 3}));
+  }
 
-TEST(ContainerUtilTest, RemoveElementsExcludeLastElement) {
-  std::deque<int> queue{1, 2, 3};
-  std::function<bool(int)> even = [](int value) { return value % 2 == 0; };
-  remove_elements(even, queue);
+  {
+    std::list<int> list{};
+    ray::erase_if<int>(list, [](const int &value) { return value % 2 == 0; });
+    ASSERT_EQ(list, (std::list<int>{}));
+  }
 
-  std::deque<int> expected{1, 3};
-  ASSERT_EQ(queue, expected);
-}
+  {
+    absl::flat_hash_map<int, std::deque<int>> map;
+    map[1] = std::deque<int>{1, 3};
+    map[2] = std::deque<int>{2, 4};
+    map[3] = std::deque<int>{5, 6};
+    ray::erase_if<int, int>(map, [](const int &value) { return value % 2 == 0; });
 
-TEST(ContainerUtilTest, RemoveElementsEmptyContainer) {
-  std::deque<int> queue{};
-  std::function<bool(int)> even = [](int value) { return value % 2 == 0; };
-  remove_elements(even, queue);
-
-  std::deque<int> expected{};
-  ASSERT_EQ(queue, expected);
+    ASSERT_EQ(map.size(), 2);
+    ASSERT_EQ(map[1], (std::deque<int>{1, 3}));
+    ASSERT_EQ(map[3], (std::deque<int>{5}));
+  }
 }
 
 }  // namespace ray

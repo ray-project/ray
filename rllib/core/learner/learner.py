@@ -8,6 +8,7 @@ import pathlib
 from typing import (
     Any,
     Callable,
+    Container,
     Dict,
     List,
     Hashable,
@@ -18,6 +19,8 @@ from typing import (
     TYPE_CHECKING,
     Union,
 )
+
+import tree  # pip install dm_tree
 
 import ray
 from ray.rllib.connectors.learner.learner_connector_pipeline import (
@@ -30,6 +33,7 @@ from ray.rllib.core.rl_module.marl_module import (
 )
 from ray.rllib.core.rl_module.rl_module import RLModule, SingleAgentRLModuleSpec
 from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
+from ray.rllib.utils import force_list
 from ray.rllib.utils.annotations import (
     OverrideToImplementCustomLogic,
     OverrideToImplementCustomLogic_CallToSuperRecommended,
@@ -52,7 +56,6 @@ from ray.rllib.utils.minibatch_utils import (
     MiniBatchDummyIterator,
     MiniBatchCyclicIterator,
 )
-from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.schedules.scheduler import Scheduler
 from ray.rllib.utils.serialization import serialize_type
@@ -313,6 +316,7 @@ class Learner:
             self._learner_connector = self.config.build_learner_connector(
                 input_observation_space=None,
                 input_action_space=None,
+                device=self._device,
             )
 
         # Build the module to be trained by this learner.
@@ -811,8 +815,8 @@ class Learner:
     def compute_loss(
         self,
         *,
-        fwd_out: Union[MultiAgentBatch, NestedDict],
-        batch: Union[MultiAgentBatch, NestedDict],
+        fwd_out: Dict[str, Any],
+        batch: Dict[str, Any],
     ) -> Union[TensorType, Dict[str, Any]]:
         """Computes the loss for the module being optimized.
 
@@ -867,7 +871,7 @@ class Learner:
         *,
         module_id: ModuleID,
         config: Optional["AlgorithmConfig"] = None,
-        batch: NestedDict,
+        batch: Dict[str, Any],
         fwd_out: Dict[str, TensorType],
     ) -> TensorType:
         """Computes the loss for a single module.
@@ -1160,7 +1164,7 @@ class Learner:
     @abc.abstractmethod
     def _update(
         self,
-        batch: NestedDict,
+        batch: Dict[str, Any],
         **kwargs,
     ) -> Tuple[Any, Any, Any]:
         """Contains all logic for an in-graph/traceable update step.
@@ -1171,7 +1175,8 @@ class Learner:
         with all the individual results.
 
         Args:
-            batch: The train batch already converted in to a (tensor) NestedDict.
+            batch: The train batch already converted to a Dict mapping str to (possibly
+                nested) tensors.
             kwargs: Forward compatibility kwargs.
 
         Returns:
@@ -1196,7 +1201,8 @@ class Learner:
         """
         self._check_is_built()
 
-        module_state = state.get("module_state")
+        # TODO (sven): Deprecate old state keys and create constants for new ones.
+        module_state = state.get("rl_module", state.get("module_state"))
         # TODO: once we figure out the optimizer format, we can set/get the state
         if module_state is None:
             raise ValueError(
@@ -1204,7 +1210,8 @@ class Learner:
             )
         self.set_module_state(module_state)
 
-        optimizer_state = state.get("optimizer_state")
+        # TODO (sven): Deprecate old state keys and create constants for new ones.
+        optimizer_state = state.get("optimizer", state.get("optimizer_state"))
         if optimizer_state is None:
             raise ValueError(
                 "state must have a key 'optimizer_state' for the optimizer weights"
@@ -1215,19 +1222,43 @@ class Learner:
         # If not provided in state (None), all Modules will be trained by default.
         self.config.multi_agent(policies_to_train=state.get("modules_to_train"))
 
-    def get_state(self) -> Dict[str, Any]:
-        """Get the state of the learner.
+    def get_state(
+        self,
+        components: Optional[Union[str, List[str]]] = None,
+        *,
+        inference_only: bool = False,
+        module_ids: Optional[Container[ModuleID]] = None,
+    ) -> Dict[str, Any]:
+        """Get (select components of) the state of this Learner.
+
+        Args:
+            components: Either None (return all components) or one of "rl_module",
+                "optimizer", or "modules_to_be_updated", or a list of either of these.
+            inference_only: Whether to return the inference-only weight set of the
+                underlying RLModule. Note that this setting only has an effect if
+                components is None or the string "rl_module" is in components.
+            module_ids: Optional container of ModuleIDs to be returned only within the
+                state dict. If None (default), all module IDs' weights are returned.
 
         Returns:
-            The state of the optimizer and module.
-
+            The state (or select components thereof) of this Learner.
         """
         self._check_is_built()
-        return {
-            "module_state": self.get_module_state(),
-            "optimizer_state": self.get_optimizer_state(),
-            "modules_to_train": self.config.policies_to_train,
-        }
+        components = force_list(components) or [
+            "rl_module",
+            "optimizer",
+            "modules_to_be_updated",
+        ]
+        state = {}
+        if "rl_module" in components:
+            state["rl_module"] = self.get_module_state(
+                inference_only=inference_only, module_ids=module_ids
+            )
+        if "optimizer" in components:
+            state["optimizer"] = self.get_optimizer_state()
+        if "modules_to_be_updated" in components:
+            state["modules_to_be_updated"] = self.config.policies_to_train
+        return state
 
     def set_optimizer_state(self, state: Dict[str, Any]) -> None:
         """Sets the state of all optimizers currently registered in this Learner.
@@ -1263,14 +1294,25 @@ class Learner:
 
         self._check_is_built()
 
+        # Resolve batch/episodes being ray object refs (instead of
+        # actual batch/episodes objects).
+        if isinstance(batch, ray.ObjectRef):
+            batch = ray.get(batch)
+        if isinstance(episodes, ray.ObjectRef) or (
+            isinstance(episodes, list) and isinstance(episodes[0], ray.ObjectRef)
+        ):
+            episodes = ray.get(episodes)
+            episodes = tree.flatten(episodes)
+
         # Call the learner connector.
+        shared_data = {}
         if self._learner_connector is not None and episodes is not None:
             # Call the learner connector pipeline.
             batch = self._learner_connector(
                 rl_module=self.module,
                 data=batch if batch is not None else {},
                 episodes=episodes,
-                shared_data={},
+                shared_data=shared_data,
             )
             # Convert to a batch.
             # TODO (sven): Try to not require MultiAgentBatch anymore.
@@ -1300,7 +1342,7 @@ class Learner:
 
         # Log all timesteps (env, agent, modules) based on given episodes.
         if self._learner_connector is not None and episodes is not None:
-            self._log_steps_trained_metrics(episodes, batch)
+            self._log_steps_trained_metrics(episodes, batch, shared_data)
         # TODO (sven): Possibly remove this if-else block entirely. We might be in a
         #  world soon where we always learn from episodes, never from an incoming batch.
         else:
@@ -1340,15 +1382,15 @@ class Learner:
         # Convert input batch into a tensor batch (MultiAgentBatch) on the correct
         # device (e.g. GPU). We move the batch already here to avoid having to move
         # every single minibatch that is created in the `batch_iter` below.
-        batch = self._convert_batch_type(batch)
+        if self._learner_connector is None:
+            batch = self._convert_batch_type(batch)
         batch = self._set_slicing_by_batch_id(batch, value=True)
 
         for tensor_minibatch in batch_iter(batch, minibatch_size, num_iters):
             # Make the actual in-graph/traced `_update` call. This should return
             # all tensor values (no numpy).
-            nested_tensor_minibatch = NestedDict(tensor_minibatch.policy_batches)
             fwd_out, loss_per_module, tensor_metrics = self._update(
-                nested_tensor_minibatch
+                tensor_minibatch.policy_batches
             )
 
             # Convert logged tensor metrics (logged during tensor-mode of MetricsLogger)
@@ -1658,10 +1700,11 @@ class Learner:
     def _get_clip_function() -> Callable:
         """Returns the gradient clipping function to use, given the framework."""
 
-    def _log_steps_trained_metrics(self, episodes, batch):
+    def _log_steps_trained_metrics(self, episodes, batch, shared_data):
         # Logs this iteration's steps trained, based on given `episodes`.
         env_steps = sum(len(e) for e in episodes)
         log_dict = defaultdict(dict)
+        orig_lengths = shared_data.get("_sa_episodes_lengths", {})
         for sa_episode in self._learner_connector.single_agent_episode_iterator(
             episodes, agents_that_stepped_only=False
         ):
@@ -1674,8 +1717,11 @@ class Learner:
             if mid != ALL_MODULES and mid not in batch.policy_batches:
                 continue
 
-            _len = len(sa_episode)
-
+            _len = (
+                orig_lengths[sa_episode.id_]
+                if sa_episode.id_ in orig_lengths
+                else len(sa_episode)
+            )
             # TODO (sven): Decide, whether agent_ids should be part of LEARNER_RESULTS.
             #  Currently and historically, only ModuleID keys and ALL_MODULES were used
             #  and expected. Does it make sense to include e.g. agent steps trained?

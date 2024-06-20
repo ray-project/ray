@@ -6,15 +6,12 @@ from ray.rllib.algorithms.impala.torch.vtrace_torch_v2 import (
     vtrace_torch,
     make_time_major,
 )
-from ray.rllib.core import DEFAULT_MODULE_ID
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.learner.learner import ENTROPY_KEY
 from ray.rllib.core.learner.torch.torch_learner import TorchLearner
-from ray.rllib.core.models.base import CRITIC, ENCODER_OUT
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.framework import try_import_torch
-from ray.rllib.utils.torch_utils import convert_to_torch_tensor
 from ray.rllib.utils.typing import ModuleID, TensorType
 
 torch, nn = try_import_torch()
@@ -32,18 +29,51 @@ class ImpalaTorchLearner(ImpalaLearner, TorchLearner):
         batch: NestedDict,
         fwd_out: Dict[str, TensorType],
     ) -> TensorType:
-        action_dist_class_train = (
-            self.module[module_id].unwrapped().get_train_action_dist_cls()
-        )
-        target_policy_dist = action_dist_class_train.from_logits(
-            fwd_out[Columns.ACTION_DIST_INPUTS]
-        )
-        values = fwd_out[Columns.VF_PREDS]
-
-        behaviour_actions_logp = batch[Columns.ACTION_LOGP]
-        target_actions_logp = target_policy_dist.logp(batch[Columns.ACTIONS])
-        rollout_frag_or_episode_len = config.get_rollout_fragment_length()
+        # TODO (sven): Now that we do the +1ts trick to be less vulnerable about
+        #  bootstrap values at the end of rollouts in the new stack, we might make
+        #  this a more flexible, configurable parameter for users, e.g.
+        #  `v_trace_seq_len` (independent of `rollout_fragment_length`). Separation
+        #  of concerns (sampling vs learning).
         recurrent_seq_len = None
+        rollout_frag_or_episode_len = config.get_rollout_fragment_length()
+
+        loss_mask = batch[Columns.LOSS_MASK].float()
+        loss_mask_time_major = make_time_major(
+            loss_mask,
+            trajectory_len=rollout_frag_or_episode_len,
+            recurrent_seq_len=recurrent_seq_len,
+        )
+        size_loss_mask = torch.sum(loss_mask)
+
+        # Behavior actions logp and target actions logp.
+        behaviour_actions_logp = batch[Columns.ACTION_LOGP]
+        target_policy_dist = (
+            self.module[module_id]
+            .unwrapped()
+            .get_train_action_dist_cls()
+            .from_logits(fwd_out[Columns.ACTION_DIST_INPUTS])
+        )
+        target_actions_logp = target_policy_dist.logp(batch[Columns.ACTIONS])
+
+        # Values and bootstrap values.
+        values_time_major = make_time_major(
+            fwd_out[Columns.VF_PREDS],
+            trajectory_len=rollout_frag_or_episode_len,
+            recurrent_seq_len=recurrent_seq_len,
+        )
+        assert Columns.VALUES_BOOTSTRAPPED not in batch
+        # Use as bootstrap values the vf-preds in the next "batch row", except
+        # for the very last row (which doesn't have a next row), for which the
+        # bootstrap value does not matter b/c it has a +1ts value at its end
+        # anyways. So we chose an arbitrary item (for simplicity of not having to
+        # move new data to the device).
+        bootstrap_values = torch.cat(
+            [
+                values_time_major[0][1:],  # 0th ts values from "next row"
+                values_time_major[0][0:1],  # <- can use any arbitrary value here
+            ],
+            dim=0,
+        )
 
         # TODO(Artur): In the old impala code, actions were unsqueezed if they were
         #  multi_discrete. Find out why and if we need to do the same here.
@@ -63,20 +93,6 @@ class ImpalaTorchLearner(ImpalaLearner, TorchLearner):
             trajectory_len=rollout_frag_or_episode_len,
             recurrent_seq_len=recurrent_seq_len,
         )
-        values_time_major = make_time_major(
-            values,
-            trajectory_len=rollout_frag_or_episode_len,
-            recurrent_seq_len=recurrent_seq_len,
-        )
-        if self.config.enable_env_runner_and_connector_v2:
-            bootstrap_values = batch[Columns.VALUES_BOOTSTRAPPED]
-        else:
-            bootstrap_values_time_major = make_time_major(
-                batch[Columns.VALUES_BOOTSTRAPPED],
-                trajectory_len=rollout_frag_or_episode_len,
-                recurrent_seq_len=recurrent_seq_len,
-            )
-            bootstrap_values = bootstrap_values_time_major[-1]
 
         # the discount factor that is used should be gamma except for timesteps where
         # the episode is terminated. In that case, the discount factor should be 0.
@@ -88,10 +104,6 @@ class ImpalaTorchLearner(ImpalaLearner, TorchLearner):
                 recurrent_seq_len=recurrent_seq_len,
             ).type(dtype=torch.float32)
         ) * config.gamma
-
-        # TODO(Artur) Why was there `TorchCategorical if is_multidiscrete else
-        #  dist_class` in the old code torch impala policy?
-        device = behaviour_actions_logp_time_major[0].device
 
         # Note that vtrace will compute the main loop on the CPU for better performance.
         vtrace_adjusted_target_values, pg_advantages = vtrace_torch(
@@ -105,32 +117,25 @@ class ImpalaTorchLearner(ImpalaLearner, TorchLearner):
             clip_pg_rho_threshold=config.vtrace_clip_pg_rho_threshold,
         )
 
-        # Sample size is T x B, where T is the trajectory length and B is the batch size
-        # We mean over the batch size for consistency with the pre-RLModule
-        # implementation of IMPALA
-        # TODO(Artur): Mean over trajectory length after migration to RLModules.
-        batch_size = (
-            convert_to_torch_tensor(target_actions_logp_time_major.shape[-1])
-            .float()
-            .to(device)
-        )
-
         # The policy gradients loss.
-        pi_loss = -torch.sum(target_actions_logp_time_major * pg_advantages)
-        mean_pi_loss = pi_loss / batch_size
+        pi_loss = -torch.sum(
+            target_actions_logp_time_major * pg_advantages * loss_mask_time_major
+        )
+        mean_pi_loss = pi_loss / size_loss_mask
 
         # The baseline loss.
         delta = values_time_major - vtrace_adjusted_target_values
-        vf_loss = 0.5 * torch.sum(torch.pow(delta, 2.0))
-        mean_vf_loss = vf_loss / batch_size
+        vf_loss = 0.5 * torch.sum(torch.pow(delta, 2.0) * loss_mask_time_major)
+        mean_vf_loss = vf_loss / size_loss_mask
 
         # The entropy loss.
-        mean_entropy_loss = -torch.mean(target_policy_dist.entropy())
+        entropy_loss = -torch.sum(target_policy_dist.entropy() * loss_mask)
+        mean_entropy_loss = entropy_loss / size_loss_mask
 
         # The summed weighted loss.
         total_loss = (
-            pi_loss
-            + vf_loss * config.vf_loss_coeff
+            mean_pi_loss
+            + mean_vf_loss * config.vf_loss_coeff
             + (
                 mean_entropy_loss
                 * self.entropy_coeff_schedulers_per_module[
@@ -142,8 +147,10 @@ class ImpalaTorchLearner(ImpalaLearner, TorchLearner):
         # Log important loss stats.
         self.metrics.log_dict(
             {
-                "pi_loss": mean_pi_loss,
-                "vf_loss": mean_vf_loss,
+                "pi_loss": pi_loss,
+                "mean_pi_loss": mean_pi_loss,
+                "vf_loss": vf_loss,
+                "mean_vf_loss": mean_vf_loss,
                 ENTROPY_KEY: -mean_entropy_loss,
             },
             key=module_id,
@@ -151,21 +158,3 @@ class ImpalaTorchLearner(ImpalaLearner, TorchLearner):
         )
         # Return the total loss.
         return total_loss
-
-    @override(ImpalaLearner)
-    def _compute_values(self, batch):
-        infos = batch.pop(Columns.INFOS, None)
-        batch = convert_to_torch_tensor(batch, device=self._device)
-        # batch = tree.map_structure(lambda s: torch.from_numpy(s), batch)
-        if infos is not None:
-            batch[Columns.INFOS] = infos
-
-        # TODO (sven): Make multi-agent capable.
-        module = self.module[DEFAULT_MODULE_ID].unwrapped()
-
-        # Shared encoder.
-        encoder_outs = module.encoder(batch)
-        # Value head.
-        vf_out = module.vf(encoder_outs[ENCODER_OUT][CRITIC])
-        # Squeeze out last dimension (single node value head).
-        return vf_out.squeeze(-1)

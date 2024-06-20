@@ -178,6 +178,7 @@ steps:
     depends_on: docgpubuild
 
   - label: ":ray-serve: serve: flaky tests"
+    key: serve_flaky_tests
     tags: 
       - serve
       - skip-on-premerge

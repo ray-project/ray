@@ -122,7 +122,7 @@ if __name__ == "__main__":
     else:
         register_env("lopsided-pend", lambda _: LopsidedObs(gym.make("Pendulum-v1")))
 
-    config = (
+    base_config = (
         get_trainable_cls(args.algo)
         .get_default_config()
         .environment("lopsided-pend")
@@ -144,12 +144,9 @@ if __name__ == "__main__":
         )
         .training(
             train_batch_size_per_learner=512,
-            mini_batch_size_per_learner=64,
             gamma=0.95,
             # Linearly adjust learning rate based on number of GPUs.
             lr=0.0003 * (args.num_gpus or 1),
-            lambda_=0.1,
-            vf_clip_param=10.0,
             vf_loss_coeff=0.01,
         )
         .rl_module(
@@ -183,11 +180,19 @@ if __name__ == "__main__":
         # )
     )
 
+    # PPO specific settings.
+    if args.algo == "PPO":
+        base_config.training(
+            mini_batch_size_per_learner=64,
+            lambda_=0.1,
+            vf_clip_param=10.0,
+        )
+
     # Add a simple multi-agent setup.
     if args.num_agents > 0:
-        config = config.multi_agent(
+        base_config.multi_agent(
             policies={f"p{i}" for i in range(args.num_agents)},
             policy_mapping_fn=lambda aid, *a, **kw: f"p{aid}",
         )
 
-    run_rllib_example_script_experiment(config, args)
+    run_rllib_example_script_experiment(base_config, args)

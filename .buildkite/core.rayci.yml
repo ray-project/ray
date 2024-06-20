@@ -278,6 +278,7 @@ steps:
         --parallelism-per-worker 2
 
   - label: ":ray: core: flaky tests"
+    key: core_flaky_tests
     tags:
       - python
       - skip-on-premerge
@@ -289,6 +290,7 @@ steps:
         --except-tags multi_gpu
 
   - label: ":ray: core: flaky gpu tests"
+    key: core_flaky_gpu_tests
     tags:
       - gpu
       - python

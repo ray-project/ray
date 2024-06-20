@@ -470,8 +470,12 @@ def test_exceed_max_buffered_results(ray_start_regular):
 
     compiled_dag = dag.experimental_compile(max_buffered_results=1)
 
+    refs = []
     for i in range(3):
         ref = compiled_dag.execute(1)
+        # Hold the refs to avoid get() being called on the ref
+        # when it goes out of scope
+        refs.append(ref)
 
     # ray.get() on the 3rd ref fails because the DAG cannot buffer 2 results.
     with pytest.raises(

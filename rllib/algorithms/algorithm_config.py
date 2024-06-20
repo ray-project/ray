@@ -520,6 +520,7 @@ class AlgorithmConfig(_Config):
         self._disable_preprocessor_api = False
         self._disable_action_flattening = False
         self._disable_initialize_loss_from_dummy_batch = False
+        self._dont_auto_sync_env_runner_states = False
 
         # Has this config object been frozen (cannot alter its attributes anymore).
         self._is_frozen = False
@@ -928,7 +929,7 @@ class AlgorithmConfig(_Config):
                     )
                 )
             # Batch all data.
-            pipeline.append(BatchIndividualItems())
+            pipeline.append(BatchIndividualItems(multi_agent=self.is_multi_agent()))
             # Convert to Tensors.
             pipeline.append(NumpyToTensor())
 
@@ -1011,7 +1012,12 @@ class AlgorithmConfig(_Config):
 
         return pipeline
 
-    def build_learner_connector(self, input_observation_space, input_action_space):
+    def build_learner_connector(
+        self,
+        input_observation_space,
+        input_action_space,
+        device=None,
+    ):
         from ray.rllib.connectors.learner import (
             AddColumnsFromEpisodesToTrainBatch,
             AddObservationsFromEpisodesToBatch,
@@ -1019,13 +1025,18 @@ class AlgorithmConfig(_Config):
             AgentToModuleMapping,
             BatchIndividualItems,
             LearnerConnectorPipeline,
+            NumpyToTensor,
         )
 
         custom_connectors = []
         # Create a learner connector pipeline (including RLlib's default
         # learner connector piece) and return it.
         if self._learner_connector is not None:
-            val_ = self._learner_connector(input_observation_space, input_action_space)
+            val_ = self._learner_connector(
+                input_observation_space,
+                input_action_space,
+                # device,  # TODO (sven): Also pass device into custom builder.
+            )
 
             from ray.rllib.connectors.connector_v2 import ConnectorV2
 
@@ -1074,7 +1085,9 @@ class AlgorithmConfig(_Config):
                     )
                 )
             # Batch all data.
-            pipeline.append(BatchIndividualItems())
+            pipeline.append(BatchIndividualItems(multi_agent=self.is_multi_agent()))
+            # Convert to Tensors.
+            pipeline.append(NumpyToTensor(as_learner_connector=True, device=device))
         return pipeline
 
     def build_learner_group(
@@ -3130,7 +3143,10 @@ class AlgorithmConfig(_Config):
 
     @property
     def total_train_batch_size(self):
-        if self.train_batch_size_per_learner is not None:
+        if (
+            self.train_batch_size_per_learner is not None
+            and self.enable_rl_module_and_learner
+        ):
             return self.train_batch_size_per_learner * (self.num_learners or 1)
         else:
             return self.train_batch_size

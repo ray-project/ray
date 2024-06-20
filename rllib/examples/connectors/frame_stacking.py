@@ -190,12 +190,7 @@ if __name__ == "__main__":
             learner_connector=(
                 None if args.use_gym_wrapper_framestacking else _make_learner_connector
             ),
-            lambda_=0.95,
-            kl_coeff=0.5,
-            clip_param=0.1,
-            vf_clip_param=10.0,
             entropy_coeff=0.01,
-            num_sgd_iter=10,
             # Linearly adjust learning rate based on number of GPUs.
             lr=0.00015 * (args.num_gpus or 1),
             grad_clip=100.0,
@@ -213,6 +208,17 @@ if __name__ == "__main__":
             )
         )
     )
+
+    # PPO specific settings.
+    if args.algo == "PPO":
+        base_config.training(
+            num_sgd_iter=10,
+            mini_batch_size_per_learner=64,
+            lambda_=0.95,
+            kl_coeff=0.5,
+            clip_param=0.1,
+            vf_clip_param=10.0,
+        )
 
     # Add a simple multi-agent setup.
     if args.num_agents > 0:

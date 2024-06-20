@@ -1321,8 +1321,10 @@ void GcsActorManager::OnActorSchedulingFailed(
   ray::rpc::ActorDeathCause death_cause;
   switch (failure_type) {
   case rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_PLACEMENT_GROUP_REMOVED:
-    error_msg =
-        "Could not create the actor because its associated placement group was removed.";
+    error_msg = absl::StrCat(
+        "Could not create the actor because its associated placement group was "
+        "removed.\n",
+        scheduling_failure_message);
     death_cause.mutable_actor_unschedulable_context()->set_error_message(error_msg);
     break;
   case rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_RUNTIME_ENV_SETUP_FAILED:

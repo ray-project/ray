@@ -98,19 +98,19 @@ if __name__ == "__main__":
             # Plug-in our custom RLModule class.
             rl_module_spec=SingleAgentRLModuleSpec(
                 module_class=TinyAtariCNN,
-                model_config_dict={"a": "b"},
+                # Feel free to specify your own `model_config_dict` settings below.
+                # The `model_config_dict` defined here will be available inside your
+                # custom RLModule class through the `self.config.model_config_dict`
+                # property.
+                model_config_dict={
+                    "conv_filters": [
+                        # num filters, kernel wxh, stride wxh, padding type
+                        [16, 4, 2, "same"],
+                        [32, 4, 2, "same"],
+                        [256, 11, 1, "valid"],
+                    ],
+                },
             ),
-            # Feel free to specify your own `model_config_dict` settings below.
-            # The `model_config_dict` defined here will be available inside your custom
-            # RLModule class through the `self.config.model_config_dict` property.
-            model_config_dict={
-                "conv_filters": [
-                    # num filters, kernel wxh, stride wxh, padding type
-                    [16, 4, 2, "same"],
-                    [32, 4, 2, "same"],
-                    [64, 4, 2, "same"],
-                ],
-            },
         )
     )
 

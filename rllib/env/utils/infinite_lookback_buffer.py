@@ -46,6 +46,9 @@ class InfiniteLookbackBuffer:
     def extend(self, items) -> None:
         """Appends all items in `items` to the end of this buffer."""
         if self.finalized:
+            # TODO (sven): When extending with a list of structs, we should
+            #  probably rather do: `tree.map_structure(..., self.data,
+            #  tree.map_structure(lambda *s: np.array(*s), *items)`)??
             self.data = tree.map_structure(
                 lambda d, i: np.concatenate([d, i], axis=0), self.data, np.array(items)
             )

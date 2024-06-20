@@ -24,7 +24,7 @@ from ray.rllib.utils.metrics import (
     NUM_ENV_STEPS_SAMPLED,
     NUM_TARGET_UPDATES,
 )
-from ray.rllib.utils.metrics import ALL_MODULES, LEARNER_STATS_KEY
+from ray.rllib.utils.metrics import LEARNER_STATS_KEY
 from ray.rllib.utils.typing import (
     ResultDict,
 )
@@ -277,19 +277,13 @@ class APPO(Impala):
                 lambda p, _: p.update_target()
             )
 
-    def after_train_step(self, train_results: ResultDict) -> None:
-        """Updates the target network and the KL coefficient for the APPO-loss.
+    @override(Impala)
+    def training_step(self) -> ResultDict:
+        train_results = super().training_step()
 
-        This method is called from within the `training_step` method after each train
-        update.
-        The target network update frequency is calculated automatically by the product
-        of `num_sgd_iter` setting (usually 1 for APPO) and `minibatch_buffer_size`.
-
-        Args:
-            train_results: The results dict collected during the most recent
-                training step.
-        """
-
+        # Update the target network and the KL coefficient for the APPO-loss.
+        # The target network update frequency is calculated automatically by the product
+        # of `num_sgd_iter` setting (usually 1 for APPO) and `minibatch_buffer_size`.
         if self.config.enable_rl_module_and_learner:
             if NUM_TARGET_UPDATES in train_results:
                 self._counters[NUM_TARGET_UPDATES] += train_results[NUM_TARGET_UPDATES]
@@ -340,24 +334,6 @@ class APPO(Impala):
                     # Update KL on all trainable policies within the local (trainer)
                     # Worker.
                     self.workers.local_worker().foreach_policy_to_train(update)
-
-    @override(Impala)
-    def _get_additional_update_kwargs(self, train_results) -> dict:
-        return dict(
-            last_update=self._counters[LAST_TARGET_UPDATE_TS],
-            mean_kl_loss_per_module={
-                module_id: r[LEARNER_RESULTS_KL_KEY]
-                for module_id, r in train_results.items()
-                if module_id != ALL_MODULES
-            },
-        )
-
-    @override(Impala)
-    def training_step(self) -> ResultDict:
-        train_results = super().training_step()
-
-        # Update KL, target network periodically.
-        self.after_train_step(train_results)
 
         return train_results
 

@@ -111,17 +111,15 @@ class LocalTaskManager : public ILocalTaskManager {
   /// \param task: Output parameter.
   void TaskFinished(std::shared_ptr<WorkerInterface> worker, RayTask *task);
 
-  /// Attempt to cancel an already queued task.
+  /// Attempt to cancel all queued tasks that match the predicate.
   ///
-  /// \param task_id: The id of the task to remove.
-  /// \param failure_type: The failure type.
-  ///
-  /// \return True if task was successfully removed. This function will return
-  /// false if the task is already running.
-  bool CancelTask(const TaskID &task_id,
-                  rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type =
-                      rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_INTENDED,
-                  const std::string &scheduling_failure_message = "") override;
+  /// \param predicate: A function that returns true if a task needs to be cancelled.
+  /// \param failure_type: The reason for cancellation.
+  /// \param scheduling_failure_message: The reason message for cancellation.
+  /// \return True if any task was successfully cancelled.
+  bool CancelTasks(std::function<bool(const std::shared_ptr<internal::Work> &)> predicate,
+                   rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type,
+                   const std::string &scheduling_failure_message) override;
 
   /// Return if any tasks are pending resource acquisition.
   ///
@@ -202,6 +200,18 @@ class LocalTaskManager : public ILocalTaskManager {
                            bool is_detached_actor,
                            const rpc::Address &owner_address,
                            const std::string &runtime_env_setup_error_message);
+
+  /// Attempt to cancel an already queued task.
+  ///
+  /// \param task_id: The id of the task to remove.
+  /// \param failure_type: The failure type.
+  ///
+  /// \return True if task was successfully removed. This function will return
+  /// false if the task is already running.
+  bool CancelTask(const TaskID &task_id,
+                  rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type =
+                      rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_INTENDED,
+                  const std::string &scheduling_failure_message = "");
 
   /// Attempts to dispatch all tasks which are ready to run. A task
   /// will be dispatched if it is on `tasks_to_dispatch_` and there are still
