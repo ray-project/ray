@@ -311,8 +311,6 @@ LOG_PREFIX_JOB_ID = ":job_id:"
 OBJECT_METADATA_TYPE_CROSS_LANGUAGE = b"XLANG"
 # A constant used as object metadata to indicate the object is python specific.
 OBJECT_METADATA_TYPE_PYTHON = b"PYTHON"
-# A constant used as object metadata to indicate the object is accelerated-DAG specific.
-OBJECT_METADATA_TYPE_ACCELERATED_DAG = b"ACCELERATED_DAG"
 # A constant used as object metadata to indicate the object is raw bytes.
 OBJECT_METADATA_TYPE_RAW = b"RAW"
 

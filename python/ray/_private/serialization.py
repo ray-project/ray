@@ -231,10 +231,7 @@ class SerializationContext:
     def _deserialize_msgpack_data(self, data, metadata_fields):
         msgpack_data, pickle5_data = split_buffer(data)
 
-        if (
-            metadata_fields[0] == ray_constants.OBJECT_METADATA_TYPE_PYTHON
-            or metadata_fields[0] == ray_constants.OBJECT_METADATA_TYPE_ACCELERATED_DAG
-        ):
+        if metadata_fields[0] == ray_constants.OBJECT_METADATA_TYPE_PYTHON:
             python_objects = self._deserialize_pickle5_data(pickle5_data)
         else:
             python_objects = []
@@ -279,7 +276,6 @@ class SerializationContext:
             if metadata_fields[0] in [
                 ray_constants.OBJECT_METADATA_TYPE_CROSS_LANGUAGE,
                 ray_constants.OBJECT_METADATA_TYPE_PYTHON,
-                ray_constants.OBJECT_METADATA_TYPE_ACCELERATED_DAG,
             ]:
                 return self._deserialize_msgpack_data(data, metadata_fields)
             # Check if the object should be returned as raw bytes.
