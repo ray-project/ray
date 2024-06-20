@@ -102,9 +102,11 @@ def test_basic(ray_start_regular):
         dag = a.inc.bind(i)
 
     compiled_dag = dag.experimental_compile()
+    dag_id = compiled_dag.get_id()
 
     for i in range(3):
         ref = compiled_dag.execute(1)
+        assert str(ref) == f"CompiledDAGRef({dag_id}, execution_index={i})"
         result = ray.get(ref)
         assert result == i + 1
 
@@ -468,8 +470,12 @@ def test_exceed_max_buffered_results(ray_start_regular):
 
     compiled_dag = dag.experimental_compile(max_buffered_results=1)
 
+    refs = []
     for i in range(3):
         ref = compiled_dag.execute(1)
+        # Hold the refs to avoid get() being called on the ref
+        # when it goes out of scope
+        refs.append(ref)
 
     # ray.get() on the 3rd ref fails because the DAG cannot buffer 2 results.
     with pytest.raises(
@@ -483,6 +489,20 @@ def test_exceed_max_buffered_results(ray_start_regular):
         ray.get(ref)
 
     compiled_dag.teardown()
+
+
+def test_compiled_dag_ref_del(ray_start_regular):
+    a = Actor.remote(0)
+    with InputNode() as inp:
+        dag = a.inc.bind(inp)
+
+    compiled_dag = dag.experimental_compile()
+    # Test that when ref is deleted or goes out of scope, the corresponding
+    # execution result is retrieved and immediately discarded. This is confirmed
+    # when future execute() methods do not block.
+    for _ in range(10):
+        ref = compiled_dag.execute(1)
+        del ref
 
 
 def test_dag_fault_tolerance_chain(ray_start_regular_shared):
