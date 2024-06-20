@@ -7,12 +7,19 @@ from ray.util.annotations import PublicAPI
 
 
 def _process_return_vals(return_vals: List[Any], return_single_output: bool):
+    """
+    Process return values for return to the DAG caller. Any exceptions found in
+    return_vals will be raised. If return_single_output=True, it indicates that
+    the original DAG did not have a MultiOutputNode, so the DAG caller expects
+    a single return value instead of a list.
+    """
     # Check for exceptions.
     for val in return_vals:
         if isinstance(val, RayTaskError):
             raise val
 
     if return_single_output:
+        assert len(return_vals) == 1
         return return_vals[0]
 
     return return_vals
@@ -23,11 +30,10 @@ class CompiledDAGRef(ray.ObjectRef):
     """
     A reference to a compiled DAG execution result.
 
-    This is a subclass of ObjectRef and resembles ObjectRef in the
-    most common way. For example, similar to ObjectRef, ray.get()
-    can be called on it to retrieve result. However, there are several
-    major differences:
-    1. ray.get() can only be called once on CompiledDAGRef.
+    This is a subclass of ObjectRef and resembles ObjectRef.  For example,
+    similar to ObjectRef, ray.get() can be called on it to retrieve the result.
+    However, there are several major differences:
+    1. ray.get() can only be called once per CompiledDAGRef.
     2. ray.wait() is not supported.
     3. CompiledDAGRef cannot be copied, deep copied, or pickled.
     4. CompiledDAGRef cannot be passed as an argument to another task.
@@ -86,7 +92,21 @@ class CompiledDAGRef(ray.ObjectRef):
 
 
 @PublicAPI(stability="alpha")
-class CompiledDAGFuture:
+class CompiledDAGFuture(CompiledDAGRef):
+    """
+    A reference to a compiled DAG execution result, when executed with asyncio.
+    This differs from CompiledDAGRef in that `await` must be called on the
+    future to get the result, instead of `ray.get()`.
+
+    This resembles async usage of ObjectRefs. For example, similar to
+    ObjectRef, `await` can be called directly on the CompiledDAGFuture to
+    retrieve the result.  However, there are several major differences:
+    1. `await` can only be called once per CompiledDAGFuture.
+    2. ray.wait() is not supported.
+    3. CompiledDAGFuture cannot be copied, deep copied, or pickled.
+    4. CompiledDAGFuture cannot be passed as an argument to another task.
+    """
+
     def __init__(
         self,
         dag: "ray.experimental.CompiledDAG",
