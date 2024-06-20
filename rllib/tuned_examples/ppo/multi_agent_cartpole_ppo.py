@@ -1,5 +1,5 @@
 from ray.rllib.algorithms.ppo import PPOConfig
-from ray.rllib.examples.envs.classes.multi_agent import MultiAgentPendulum
+from ray.rllib.examples.envs.classes.multi_agent import MultiAgentCartPole
 from ray.rllib.utils.metrics import (
     ENV_RUNNER_RESULTS,
     EPISODE_RETURN_MEAN,
@@ -14,8 +14,8 @@ parser = add_rllib_example_script_args()
 args = parser.parse_args()
 
 register_env(
-    "multi_agent_pendulum",
-    lambda _: MultiAgentPendulum({"num_agents": args.num_agents}),
+    "multi_agent_cartpole",
+    lambda _: MultiAgentCartPole({"num_agents": args.num_agents}),
 )
 
 config = (
@@ -24,24 +24,24 @@ config = (
         enable_rl_module_and_learner=True,
         enable_env_runner_and_connector_v2=True,
     )
-    .environment("multi_agent_pendulum")
+    .environment("multi_agent_cartpole")
     .env_runners(
         num_envs_per_env_runner=1,
         num_env_runners=2,
     )
     .rl_module(
         model_config_dict={
-            "fcnet_activation": "relu",
-            "uses_new_env_runners": True,
-        },
+            "fcnet_hiddens": [32],
+            "fcnet_activation": "linear",
+            "vf_share_layers": True,
+        }
     )
     .training(
-        train_batch_size=512,
-        lambda_=0.1,
-        gamma=0.95,
+        gamma=0.99,
         lr=0.0003,
-        sgd_minibatch_size=64,
-        vf_clip_param=10.0,
+        num_sgd_iter=6,
+        vf_loss_coeff=0.01,
+        use_kl_loss=True,
     )
     .multi_agent(
         policy_mapping_fn=lambda aid, *arg, **kw: f"p{aid}",
@@ -50,9 +50,9 @@ config = (
 )
 
 stop = {
-    NUM_ENV_STEPS_SAMPLED_LIFETIME: 500000,
+    NUM_ENV_STEPS_SAMPLED_LIFETIME: 300000,
     # Divide by num_agents to get actual return per agent.
-    f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": -400.0 * (args.num_agents or 1),
+    f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": 350.0 * (args.num_agents or 1),
 }
 
 
