@@ -40,11 +40,7 @@ Create a new virtual environment and install dependencies.
 Start a Ray cluster
 ~~~~~~~~~~~~~~~~~~~
 
-Run ray start `--head` to start a Ray Cluster.
-
-.. code-block:: bash
-
-    ray start --head
+Run `ray start --head` to start a Ray Cluster.
 
 
 Register the cluster
@@ -92,7 +88,7 @@ Create a file `job.py` with the following snippet. Add the `RAY_DEBUG` environme
 Setup debugger local folder
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Ray Debugger needs to know the absolute path to the folder you submitted `job.py`. Use pwd command to get the submission path, and set the cluster's local folder to the path. For each cluster, you can set the local folder by clicking on the ⚙️ icon on the cluster item.
+Ray Debugger needs to know the absolute path to the folder you submitted `job.py`. Use `pwd` command to get the submission path, and set the cluster's local folder to the path. For each cluster, you can set the local folder by clicking on the ⚙️ icon on the cluster item.
 
 .. image:: ./images/setup-debugger.gif
     :align: center

@@ -17,4 +17,3 @@ GKE
 namespace
 ARM
 breakpoint
-pwd
