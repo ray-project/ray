@@ -114,7 +114,7 @@ When the app throws an exception:
 - The debugger freezes the task.
 - The terminal clearly indicates when the debugger pauses a task is paused and waits for the debugger to attach.
 - The paused task is listed in the Ray Debugger extension.
-- Click the paused task to attach the VS Code debugger. 
+- Click the play icon next to the name of the paused task to attach the debugger and start debugging. 
 
 .. image:: ./images/post-moretem.gif
     :align: center

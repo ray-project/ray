@@ -19,7 +19,7 @@ def my_task(x):
 @ray.remote
 def post_mortem(x):
     x += 1
-    raise Exception("An exception is raised")
+    raise Exception("An exception is raised.")
     return x
 
 
