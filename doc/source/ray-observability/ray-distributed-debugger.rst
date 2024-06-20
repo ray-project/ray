@@ -30,7 +30,8 @@ Setup environment
 
 Create a new virtual environment and install dependencies.
 
-.. code-block:: python
+.. testcode::
+    :skipif: True
 
     conda create -n myenv python=3.9
     conda activate myenv
