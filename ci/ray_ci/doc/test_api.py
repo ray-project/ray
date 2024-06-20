@@ -8,6 +8,7 @@ from ci.ray_ci.doc.api import (
     _SPHINX_AUTOCLASS_HEADER,
     _SPHINX_AUTOSUMMARY_HEADER,
 )
+from ci.ray_ci.doc.mock.mock_module import mock_function
 
 
 def test_from_autosummary():
@@ -98,6 +99,18 @@ def test_from_autoclasss():
                 test["input"]["module"],
             )
         ) == str(test["output"])
+
+
+def test_get_canonical_name():
+    api = API(
+        name="ci.ray_ci.doc.mock.mock_function",
+        annotation_type=AnnotationType.PUBLIC_API,
+        code_type=CodeType.FUNCTION,
+    )
+    assert (
+        api.get_canonical_name()
+        == f"{mock_function.__module__}.{mock_function.__qualname__}"
+    )
 
 
 if __name__ == "__main__":

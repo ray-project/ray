@@ -1,8 +1,12 @@
 from ray.rllib.core.columns import Columns
+from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.core.rl_module.torch import TorchRLModule
+from ray.rllib.models.torch.misc import (
+    normc_initializer,
+    same_padding,
+    valid_padding,
+)
 from ray.rllib.models.torch.torch_distributions import TorchCategorical
-from ray.rllib.models.torch.misc import normc_initializer
-from ray.rllib.models.torch.misc import same_padding, valid_padding
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.torch_utils import convert_to_torch_tensor
@@ -37,10 +41,9 @@ class TinyAtariCNN(TorchRLModule):
         """
         # Get the CNN stack config from our RLModuleConfig's (self.config)
         # `model_config_dict` property:
-        if "conv_filters" in self.config.model_config_dict:
-            conv_filters = self.config.model_config_dict["conv_filters"]
+        conv_filters = self.config.model_config_dict.get("conv_filters")
         # Default CNN stack with 3 layers:
-        else:
+        if conv_filters is None:
             conv_filters = [
                 [16, 4, 2, "same"],  # num filters, kernel wxh, stride wxh, padding type
                 [32, 4, 2, "same"],
@@ -66,13 +69,10 @@ class TinyAtariCNN(TorchRLModule):
                 out_size = valid_padding(in_size, kernel_size, strides)
 
             layer = nn.Conv2d(in_depth, out_depth, kernel_size, strides, bias=True)
-            # Initialize CNN layer kernel.
+            # Initialize CNN layer kernel and bias.
             nn.init.xavier_uniform_(layer.weight)
-            # Initialize CNN layer bias.
             nn.init.zeros_(layer.bias)
-
             layers.append(layer)
-
             # Activation.
             layers.append(nn.ReLU())
 
@@ -83,10 +83,13 @@ class TinyAtariCNN(TorchRLModule):
 
         # Add the final CNN 1x1 layer with num_filters == num_actions to be reshaped to
         # yield the logits (no flattening, no additional linear layers required).
+        _final_conv = nn.Conv2d(in_depth, self.config.action_space.n, 1, 1, bias=True)
+        nn.init.xavier_uniform_(_final_conv.weight)
+        nn.init.zeros_(_final_conv.bias)
         self._logits = nn.Sequential(
-            nn.ZeroPad2d(same_padding(in_size, 1, 1)[0]),
-            nn.Conv2d(in_depth, self.config.action_space.n, 1, 1, bias=True),
+            nn.ZeroPad2d(same_padding(in_size, 1, 1)[0]), _final_conv
         )
+
         self._values = nn.Linear(in_depth, 1)
         # Mimick old API stack behavior of initializing the value function with `normc`
         # std=0.01.
@@ -115,25 +118,10 @@ class TinyAtariCNN(TorchRLModule):
             Columns.VF_PREDS: values,
         }
 
-    # TODO (sven): We still need to define the distibution to use here, even though,
-    #  we have a pretty standard action space (Discrete), which should simply always map
-    #  to a categorical dist. by default.
-    @override(TorchRLModule)
-    def get_inference_action_dist_cls(self):
-        return TorchCategorical
-
-    @override(TorchRLModule)
-    def get_exploration_action_dist_cls(self):
-        return TorchCategorical
-
-    @override(TorchRLModule)
-    def get_train_action_dist_cls(self):
-        return TorchCategorical
-
     # TODO (sven): In order for this RLModule to work with PPO, we must define
     #  our own `_compute_values()` method. This would become more obvious, if we simply
     #  subclassed the `PPOTorchRLModule` directly here (which we didn't do for
-    #  simplicity and to keep some generality). We might change even get rid of algo-
+    #  simplicity and to keep some generality). We might even get rid of algo-
     #  specific RLModule subclasses altogether in the future and replace them
     #  by mere algo-specific APIs (w/o any actual implementations).
     def _compute_values(self, batch, device):
@@ -150,6 +138,24 @@ class TinyAtariCNN(TorchRLModule):
             torch.squeeze(features, dim=[-1, -2]),
             torch.squeeze(logits, dim=[-1, -2]),
         )
+
+    # TODO (sven): In order for this RLModule to work with PPO, we must define
+    #  our own `get_..._action_dist_cls()` methods. This would become more obvious,
+    #  if we simply subclassed the `PPOTorchRLModule` directly here (which we didn't do
+    #  for simplicity and to keep some generality). We might even get rid of algo-
+    #  specific RLModule subclasses altogether in the future and replace them
+    #  by mere algo-specific APIs (w/o any actual implementations).
+    @override(RLModule)
+    def get_train_action_dist_cls(self):
+        return TorchCategorical
+
+    @override(RLModule)
+    def get_exploration_action_dist_cls(self):
+        return TorchCategorical
+
+    @override(RLModule)
+    def get_inference_action_dist_cls(self):
+        return TorchCategorical
 
 
 if __name__ == "__main__":

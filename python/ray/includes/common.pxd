@@ -506,7 +506,7 @@ cdef extern from "src/ray/protobuf/gcs.pb.h" nogil:
 
     cdef cppclass CJobConfig "ray::rpc::JobConfig":
         c_string ray_namespace() const
-        const c_string &SerializeAsString()
+        const c_string &SerializeAsString() const
 
     cdef cppclass CNodeDeathInfo "ray::rpc::NodeDeathInfo":
         int reason() const
@@ -526,6 +526,7 @@ cdef extern from "src/ray/protobuf/gcs.pb.h" nogil:
         int runtime_env_agent_port() const
         CNodeDeathInfo death_info() const
         void ParseFromString(const c_string &serialized)
+        const c_string& SerializeAsString() const
 
     cdef enum CGcsNodeState "ray::rpc::GcsNodeInfo_GcsNodeState":
         ALIVE "ray::rpc::GcsNodeInfo_GcsNodeState_ALIVE",
@@ -534,7 +535,7 @@ cdef extern from "src/ray/protobuf/gcs.pb.h" nogil:
         c_string job_id() const
         c_bool is_dead() const
         CJobConfig config() const
-        const c_string &SerializeAsString()
+        const c_string &SerializeAsString() const
 
     cdef cppclass CPythonFunction "ray::rpc::PythonFunction":
         void set_key(const c_string &key)
@@ -570,7 +571,7 @@ cdef extern from "src/ray/protobuf/gcs.pb.h" nogil:
     cdef cppclass CActorTableData "ray::rpc::ActorTableData":
         CAddress address() const
         void ParseFromString(const c_string &serialized)
-        const c_string &SerializeAsString()
+        const c_string &SerializeAsString() const
 
 cdef extern from "ray/common/task/task_spec.h" nogil:
     cdef cppclass CConcurrencyGroup "ray::ConcurrencyGroup":

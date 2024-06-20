@@ -221,12 +221,19 @@ def convert_to_non_torch_type(stats: TensorStructType) -> TensorStructType:
 
 
 @PublicAPI
-def convert_to_torch_tensor(x: TensorStructType, device: Optional[str] = None):
+def convert_to_torch_tensor(
+    x: TensorStructType,
+    device: Optional[str] = None,
+    pin_memory: bool = False,
+):
     """Converts any struct to torch.Tensors.
 
-    x: Any (possibly nested) struct, the values in which will be
-        converted and returned as a new struct with all leaves converted
-        to torch tensors.
+    Args:
+        x: Any (possibly nested) struct, the values in which will be
+            converted and returned as a new struct with all leaves converted
+            to torch tensors.
+        device: The device to create the tensor on.
+        pin_memory: If True, will call the `pin_memory()` method on the created tensors.
 
     Returns:
         Any: A new struct with the same structure as `x`, but with all
@@ -269,6 +276,10 @@ def convert_to_torch_tensor(x: TensorStructType, device: Optional[str] = None):
         # Floatify all float64 tensors.
         if tensor.is_floating_point():
             tensor = tensor.float()
+
+        # Pin the tensor's memory (for faster transfer to GPU later).
+        if pin_memory and torch.cuda.is_available():
+            tensor.pin_memory()
 
         return tensor if device is None else tensor.to(device)
 

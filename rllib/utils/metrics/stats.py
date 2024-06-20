@@ -624,12 +624,24 @@ class Stats:
         else:
             # Use the numpy/torch "nan"-prefix to ignore NaN's in our value lists.
             if torch and torch.is_tensor(values[0]):
+                # TODO (sven): Currently, tensor metrics only work with window=1.
+                #  We might want o enforce it more formally, b/c it's probably not a
+                #  good idea to have MetricsLogger or Stats tinker with the actual
+                #  computation graph that users are trying to build in their loss
+                #  functions.
+                assert len(values) == 1
                 assert all(torch.is_tensor(v) for v in values), values
-                reduce_meth = getattr(torch, "nan" + self._reduce_method)
-                reduce_in = torch.stack(values)
-                if self._reduce_method == "mean":
-                    reduce_in = reduce_in.float()
-                reduced = reduce_meth(reduce_in)
+                # TODO (sven) If the shape is (), do NOT even use the reduce method.
+                #  Using `tf.reduce_mean()` here actually lead to a completely broken
+                #  DreamerV3 (for a still unknown exact reason).
+                if len(values[0].shape) == 0:
+                    reduced = values[0]
+                else:
+                    reduce_meth = getattr(torch, "nan" + self._reduce_method)
+                    reduce_in = torch.stack(values)
+                    if self._reduce_method == "mean":
+                        reduce_in = reduce_in.float()
+                    reduced = reduce_meth(reduce_in)
             elif tf and tf.is_tensor(values[0]):
                 # TODO (sven): Currently, tensor metrics only work with window=1.
                 #  We might want o enforce it more formally, b/c it's probably not a
