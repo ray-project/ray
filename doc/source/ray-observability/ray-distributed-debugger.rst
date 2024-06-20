@@ -60,15 +60,6 @@ Create a file `job.py` with the following snippet. Add the `RAY_DEBUG` environme
 .. literalinclude:: ./doc_code/ray-distributed-debugger.py
     :language: python
 
-Setup debugger local folder
-~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-Ray Debugger needs to know the absolute path to the folder you submitted `job.py`. Use `pwd` command to get the submission path, and set the cluster's local folder to the path. For each cluster, you can set the local folder by clicking on the ⚙️ icon on the cluster item.
-
-.. image:: ./images/setup-debugger.gif
-    :align: center
-
-
 Run your Ray app 
 ~~~~~~~~~~~~~~~~
 
