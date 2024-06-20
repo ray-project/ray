@@ -57,33 +57,8 @@ Create a Ray task
 
 Create a file `job.py` with the following snippet. Add the `RAY_DEBUG` environment variable to enable Ray Debugger and add `breakpoint()` in the Ray task.
 
-.. code-block:: python
-
-    import ray
-    import sys
-
-    # Add RAY_DEBUG environment variable to enable Ray Debugger.
-    ray.init(runtime_env={
-        "env_vars": {"RAY_DEBUG": "1"}, 
-    })
-
-    @ray.remote
-    def my_task(x):
-        y = x * x
-        breakpoint() # Add a breakpoint in the ray task.
-        return y
-
-    @ray.remote
-    def post_mortem(x):
-        x += 1
-        raise Exception("An exception is raised")
-        return x
-
-    if len(sys.argv) == 1:
-        ray.get(my_task.remote(10))
-    else:
-        ray.get(post_mortem.remote(10)) 
-
+.. literalinclude:: ./doc_code/ray-distributed-debugger.py
+    :language: python
 
 Setup debugger local folder
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
