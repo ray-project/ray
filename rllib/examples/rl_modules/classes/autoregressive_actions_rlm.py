@@ -158,7 +158,7 @@ class AutoregressiveActionsRLM(RLModule):
         """
 
 
-class AutoregressiveActionTorchRLM(TorchRLModule, AutoregressiveActionsRLM):
+class AutoregressiveActionsTorchRLM(TorchRLModule, AutoregressiveActionsRLM):
     @override(AutoregressiveActionsRLM)
     def pi(
         self, batch: Dict[str, TensorType], inference: bool = False
