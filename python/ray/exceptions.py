@@ -829,6 +829,15 @@ class ObjectRefStreamEndOfStreamError(RayError):
     pass
 
 
+@PublicAPI(stability="alpha")
+class RayChannelError(RaySystemError):
+    """Indicates that Ray encountered a system error related
+    to ray.experimental.channel.
+    """
+
+    pass
+
+
 RAY_EXCEPTION_TYPES = [
     PlasmaObjectNotAvailable,
     RayError,

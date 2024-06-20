@@ -11,7 +11,7 @@ import pytest
 import ray
 import ray.cluster_utils
 import ray.experimental.channel as ray_channel
-from ray.exceptions import RayTaskError
+from ray.exceptions import RayChannelError
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 from ray.dag.compiled_dag_node import CompiledDAG
 
@@ -174,10 +174,14 @@ def test_set_error_before_read(ray_start_regular):
 
         # We wrap both calls to read() in pytest.raises() as both calls could
         # trigger an IOError exception if the channel has already been closed.
-        with pytest.raises(ray.exceptions.RayTaskError):
+        with pytest.raises(
+            ray.exceptions.RayTaskError, match=r"Channel closed"
+        ) as exc_info:
             ray.get([a.close.remote(), b.read.remote()])
-        with pytest.raises(ray.exceptions.RayTaskError):
+        assert isinstance(exc_info.value.as_instanceof_cause(), RayChannelError)
+        with pytest.raises(ray.exceptions.RayTaskError) as exc_info:
             ray.get(b.read.remote())
+        assert isinstance(exc_info.value.as_instanceof_cause(), RayChannelError)
 
 
 @pytest.mark.skipif(
@@ -777,7 +781,7 @@ def test_put_error(ray_start_cluster):
             "".join(traceback.format_exception(type(exc), exc, exc.__traceback__)),
             task_exception=True,
         )
-        wrapped = RayTaskError(
+        wrapped = ray.exceptions.RayTaskError(
             function_name="do_exec_tasks",
             traceback_str=backtrace,
             cause=exc,
@@ -821,7 +825,7 @@ def test_put_error(ray_start_cluster):
             assert chan.read()
         except Exception as exc:
             assert isinstance(exc, ValueError)
-            assert isinstance(exc, RayTaskError)
+            assert isinstance(exc, ray.exceptions.RayTaskError)
 
 
 if __name__ == "__main__":
