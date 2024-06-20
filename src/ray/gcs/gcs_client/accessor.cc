@@ -1303,7 +1303,7 @@ Status AutoscalerStateAccessor::RequestClusterResourceConstraint(
     const std::vector<int64_t> &count_array) {
   rpc::autoscaler::RequestClusterResourceConstraintRequest request;
   rpc::autoscaler::RequestClusterResourceConstraintReply reply;
-  RAY_CHECK(bundles.size() == count_array.size());
+  RAY_CHECK_EQ(bundles.size(), count_array.size());
   for (size_t i = 0; i < bundles.size(); ++i) {
     const auto &bundle = bundles[i];
     auto count = count_array[i];
