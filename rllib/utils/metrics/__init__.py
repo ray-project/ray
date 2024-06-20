@@ -2,13 +2,19 @@
 EVALUATION_RESULTS = "evaluation"
 ENV_RUNNER_RESULTS = "env_runners"
 REPLAY_BUFFER_RESULTS = "replay_buffer"
+LEARNER_GROUP = "learner_group"
 LEARNER_RESULTS = "learners"
 FAULT_TOLERANCE_STATS = "fault_tolerance"
 TIMERS = "timers"
 # ALGORITHM_RESULTS = "algorithm"
 
+# RLModule metrics
+NUM_TRAINABLE_PARAMETERS = "num_trainable_parameters"
+NUM_NON_TRAINABLE_PARAMETERS = "num_non_trainable_parameters"
+
 # Counters for sampling, sampling (on eval workers) and
 # training steps (env- and agent steps).
+MEAN_NUM_EPISODE_LISTS_RECEIVED = "mean_num_episode_lists_received"
 NUM_AGENT_STEPS_SAMPLED = "num_agent_steps_sampled"
 NUM_AGENT_STEPS_SAMPLED_LIFETIME = "num_agent_steps_sampled_lifetime"
 NUM_AGENT_STEPS_SAMPLED_THIS_ITER = "num_agent_steps_sampled_this_iter"  # @OldAPIStack
@@ -30,7 +36,9 @@ EPISODE_RETURN_MAX = "episode_return_max"
 EPISODE_RETURN_MIN = "episode_return_min"
 NUM_EPISODES = "num_episodes"
 NUM_EPISODES_LIFETIME = "num_episodes_lifetime"
+TIME_BETWEEN_SAMPLING = "time_between_sampling"
 
+MEAN_NUM_LEARNER_GROUP_UPDATE_CALLED = "mean_num_learner_group_update_called"
 NUM_AGENT_STEPS_TRAINED = "num_agent_steps_trained"
 NUM_AGENT_STEPS_TRAINED_LIFETIME = "num_agent_steps_trained_lifetime"
 NUM_AGENT_STEPS_TRAINED_THIS_ITER = "num_agent_steps_trained_this_iter"  # @OldAPIStack
@@ -48,6 +56,11 @@ NUM_SYNCH_WORKER_WEIGHTS = "num_weight_broadcasts"
 NUM_TRAINING_STEP_CALLS_SINCE_LAST_SYNCH_WORKER_WEIGHTS = (
     "num_training_step_calls_since_last_synch_worker_weights"
 )
+# The running sequence number for a set of NN weights. If a worker's NN has a
+# lower sequence number than some weights coming in for an update, the worker
+# should perform the update, otherwise ignore the incoming weights (they are older
+# or the same) as/than the ones it already has.
+WEIGHTS_SEQ_NO = "weights_seq_no"
 # Number of total gradient updates that have been performed on a policy.
 NUM_GRAD_UPDATES_LIFETIME = "num_grad_updates_lifetime"
 # Average difference between the number of grad-updates that the policy/ies had
