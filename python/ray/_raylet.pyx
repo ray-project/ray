@@ -3890,9 +3890,15 @@ cdef class CoreWorker:
             c_vector[CObjectID] lookup_ids = ObjectRefsToVector(object_refs)
 
         with nogil:
-            check_status(
+            status =
                 CCoreWorkerProcess.GetCoreWorker().GetLocationFromOwner(
-                    lookup_ids, timeout_ms, &results))
+                    lookup_ids, timeout_ms, &results)
+        try:
+            check_status(status)
+        except RpcError as e:
+            if e.rpc_code == GRPC_STATUS_CODE_DEADLINE_EXCEEDED:
+                raise GetTimeoutError(e.message)
+            raise
 
         object_locations = {}
         for i in range(results.size()):
