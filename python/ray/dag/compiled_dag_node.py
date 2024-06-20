@@ -882,6 +882,10 @@ class CompiledDAG:
 
         [Explanation]
 
+        Note that the edges in this graph do not represent data flow but rather the
+        order of events. An edge from node A to node B indicates that node A must occur
+        before node B.
+
         Each actor has a list of tasks, each with a bind index. Tasks are executed
         sequentially in ascending order of their bind index on the actor (Rule #1),
         where lower indices precede higher ones.
@@ -972,7 +976,7 @@ class CompiledDAG:
                     # Add an edge from the writer to the reader if the channel
                     # isn't an NCCL channel.
                     _add_edge(graph, idx, downstream_idx)
-        total_edges = sum(node.in_degree for node in graph.values())
+        total_nodes = len(graph)
 
         # A list of nodes with in-degree 0, including (1) InputNode and
         # (2) the nodes that only read from NCCL channels and are the first
@@ -981,15 +985,19 @@ class CompiledDAG:
         for idx, node in graph.items():
             if node.in_degree == 0:
                 zero_in_degree_nodes.append(idx)
-        removed_edges = 0
+        visited_nodes = 0
+
+        # Perform topological sort to find a topological order of the graph.
+        # If topological order exists, the graph is a DAG. Otherwise, it has
+        # a cycle.
         while zero_in_degree_nodes:
             node = zero_in_degree_nodes.popleft()
+            visited_nodes += 1
             for out_node in graph[node].out_edges:
                 graph[out_node].in_edges.remove(node)
-                removed_edges += 1
                 if graph[out_node].in_degree == 0:
                     zero_in_degree_nodes.append(out_node)
-        return removed_edges == total_edges
+        return total_nodes == visited_nodes
 
     def _monitor_failures(self):
         outer = self
