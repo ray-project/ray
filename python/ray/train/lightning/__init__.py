@@ -19,6 +19,12 @@ from ray.train.lightning._lightning_utils import (
     RayTrainReportCallback,
     prepare_trainer,
 )
+from ray.train.v2._internal.constants import V2_ENABLED
+
+if V2_ENABLED:
+    from ray.train.v2.lightning.lightning_utils import (  # noqa: F811
+        RayTrainReportCallback,
+    )
 
 __all__ = [
     "prepare_trainer",
