@@ -3890,9 +3890,8 @@ cdef class CoreWorker:
             c_vector[CObjectID] lookup_ids = ObjectRefsToVector(object_refs)
 
         with nogil:
-            status =
-                CCoreWorkerProcess.GetCoreWorker().GetLocationFromOwner(
-                    lookup_ids, timeout_ms, &results)
+            status = CCoreWorkerProcess.GetCoreWorker().GetLocationFromOwner(
+                lookup_ids, timeout_ms, &results)
         try:
             check_status(status)
         except RpcError as e:
