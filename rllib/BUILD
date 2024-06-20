@@ -2940,6 +2940,24 @@ py_test(
     args = ["--enable-new-api-stack", "--stop-iters=3"],
 )
 
+py_test(
+    name = "examples/rl_modules/action_masking_rlm.py",
+    main = "examples/rl_modules/action_masking_rlm.py",
+    tags = ["team:rllib", "examples"],
+    size = "medium",
+    srcs = ["examples/rl_modules/action_masking_rlm.py"],
+    args = ["--enable-new-api-stack", "--stop-iters=5"],
+)
+
+py_test(
+    name = "examples/rl_modules/autoregressive_actions_rlm",
+    main = "examples/rl_modules/autoregressive_actions_rlm.py",
+    tags = ["team:rllib", "examples"],
+    size = "medium",
+    srcs = ["examples/rl_modules/autoregressive_actions_rlm.py"],
+    args = ["--enable-new-api-stack"],
+)
+
 #@OldAPIStack @HybridAPIStack
 py_test(
     name = "examples/rl_modules/classes/mobilenet_rlm_hybrid_api_stack",
