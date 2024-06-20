@@ -126,3 +126,31 @@ class NvidiaGPUAcceleratorManager(AcceleratorManager):
             assert len(gpus) == 1
             return gpus[0]["Name"]
         return None
+
+    @staticmethod
+    def get_current_node_accelerator_memory() -> int:
+        try:
+            pynvml.nvmlInit()
+        except pynvml.NVMLError:
+            return 0  # pynvml init failed
+        device_count = pynvml.nvmlDeviceGetCount()
+        cuda_device_memory = 0
+        if device_count > 0:
+            handle = pynvml.nvmlDeviceGetHandleByIndex(0)
+            cuda_device_memory = int(pynvml.nvmlDeviceGetMemoryInfo(handle).total)
+        pynvml.nvmlShutdown()
+        return cuda_device_memory
+
+    @staticmethod
+    def get_ec2_instance_accelerator_memory(
+        instance_type: str, instances: dict
+    ) -> Optional[str]:
+        if instance_type not in instances:
+            return None
+
+        gpus = instances[instance_type].get("GpuInfo", {}).get("Gpus")
+        if gpus is not None:
+            # TODO(ameer): currently we support one gpu type per node.
+            assert len(gpus) == 1
+            return int(gpus[0]["MemoryInfo"]["SizeInMiB"]) * 1024 * 1024
+        return None

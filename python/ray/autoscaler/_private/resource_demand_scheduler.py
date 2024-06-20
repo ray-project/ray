@@ -109,7 +109,7 @@ class ResourceDemandScheduler:
         upscaling_speed: float,
     ) -> None:
         self.provider = provider
-        self.node_types = copy.deepcopy(node_types)
+        self.node_types = self._adjust_node_types(copy.deepcopy(node_types))
         self.node_resource_updated = set()
         self.max_workers = max_workers
         self.head_node_type = head_node_type
@@ -151,11 +151,26 @@ class ResourceDemandScheduler:
         inferered resources are not lost.
         """
         self.provider = provider
-        self.node_types = copy.deepcopy(node_types)
+        self.node_types = self._adjust_node_types(copy.deepcopy(node_types))
         self.node_resource_updated = set()
         self.max_workers = max_workers
         self.head_node_type = head_node_type
         self.upscaling_speed = upscaling_speed
+
+    def _adjust_node_types(self, node_types):
+        # update available_node_types gpu_memory to gpu_memory_per_gpu
+        for node_type, node_config in node_types.items():
+            resources = node_config["resources"]
+            if "gpu_memory" in resources:
+                if "GPU" in resources and resources["GPU"] > 0:
+                    resources["node:gpu_memory_per_gpu"] = (
+                        resources["gpu_memory"] / resources["GPU"]
+                    )
+                else:
+                    resources["node:gpu_memory_per_gpu"] = 0
+                del resources["gpu_memory"]
+            node_types[node_type] = node_config
+        return node_types
 
     def is_feasible(self, bundle: ResourceDict) -> bool:
         for node_type, config in self.node_types.items():
@@ -372,6 +387,10 @@ class ResourceDemandScheduler:
                 for key in ["CPU", "GPU", "memory", "object_store_memory"]:
                     if key in runtime_resources:
                         resources[key] = runtime_resources[key]
+                if "gpu_memory" in runtime_resources and "GPU" in runtime_resources:
+                    resources["node:gpu_memory_per_gpu"] = int(
+                        runtime_resources["gpu_memory"]
+                    ) / int(runtime_resources["GPU"])
                 self.node_types[node_type]["resources"] = resources
 
                 node_kind = tags[TAG_RAY_NODE_KIND]
@@ -526,7 +545,15 @@ class ResourceDemandScheduler:
             if TAG_RAY_USER_NODE_TYPE in tags:
                 node_type = tags[TAG_RAY_USER_NODE_TYPE]
                 ip = self.provider.internal_ip(node_id)
-                available_resources = unused_resources_by_ip.get(ip)
+                available_resources = copy.deepcopy(unused_resources_by_ip.get(ip))
+                available_node_type = self.node_types.get(node_type, {})
+                if (
+                    available_resources
+                    and "node:gpu_memory_per_gpu" in available_node_type["resources"]
+                ):
+                    available_resources[
+                        "node:gpu_memory_per_gpu"
+                    ] = available_node_type["resources"]["node:gpu_memory_per_gpu"]
                 add_node(node_type, available_resources)
 
         for node_type, count in pending_nodes.items():
@@ -823,7 +850,7 @@ def _resource_based_utilization_scorer(
     num_matching_resource_types = 0
     for k, v in node_resources.items():
         # Don't divide by zero.
-        if v < 1:
+        if v < 1 or k == "node::gpu_memory_per_gpu":
             # Could test v == 0 on the nose, but v < 1 feels safer.
             # (Note that node resources are integers.)
             continue
@@ -931,8 +958,31 @@ def get_bin_pack_residual(
     return unfulfilled, nodes + used
 
 
+def _convert_relative_resources(
+    node: ResourceDict, resources: ResourceDict
+) -> Optional[ResourceDict]:
+    # return None if relative resources can't be converted
+    adjusted_resources = resources.copy()
+    if "gpu_memory" in resources:
+        if (
+            "node:gpu_memory_per_gpu" not in node
+            or node["node:gpu_memory_per_gpu"] == 0
+        ):
+            return None
+        adjusted_resources["GPU"] = (
+            resources["gpu_memory"] / node["node:gpu_memory_per_gpu"]
+        )
+        if adjusted_resources["GPU"] > 1.0:
+            return None
+        del adjusted_resources["gpu_memory"]
+    return adjusted_resources
+
+
 def _fits(node: ResourceDict, resources: ResourceDict) -> bool:
-    for k, v in resources.items():
+    adjusted_resources = _convert_relative_resources(node, resources)
+    if adjusted_resources is None:
+        return False
+    for k, v in adjusted_resources.items():
         # TODO(jjyao): Change ResourceDict to a class so we can
         # hide the implicit resource handling.
         if v > node.get(
@@ -943,7 +993,10 @@ def _fits(node: ResourceDict, resources: ResourceDict) -> bool:
 
 
 def _inplace_subtract(node: ResourceDict, resources: ResourceDict) -> None:
-    for k, v in resources.items():
+    adjusted_resources = _convert_relative_resources(node, resources)
+    if adjusted_resources is None:
+        return
+    for k, v in adjusted_resources.items():
         if v == 0:
             # This is an edge case since some reasonable programs/computers can
             # do `ray.autoscaler.sdk.request_resources({"GPU": 0}"})`.

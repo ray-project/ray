@@ -169,6 +169,7 @@ class AutoscalingConfigTest(unittest.TestCase):
             "CPU": 32,
             "memory": 183395103539,
             "GPU": 4,
+            "gpu_memory": 4 * 16160 * 1024 * 1024,
             "accelerator_type:V100": 1,
         }
         expected_available_node_types["neuron_core_inf_1_ondemand"]["resources"] = {
@@ -197,7 +198,15 @@ class AutoscalingConfigTest(unittest.TestCase):
                     "InstanceType": "p3.8xlarge",
                     "VCpuInfo": {"DefaultVCpus": 32},
                     "MemoryInfo": {"SizeInMiB": 249856},
-                    "GpuInfo": {"Gpus": [{"Name": "V100", "Count": 4}]},
+                    "GpuInfo": {
+                        "Gpus": [
+                            {
+                                "Name": "V100",
+                                "Count": 4,
+                                "MemoryInfo": {"SizeInMiB": 16160},
+                            }
+                        ]
+                    },
                 },
                 {
                     "InstanceType": "inf2.xlarge",
@@ -221,7 +230,6 @@ class AutoscalingConfigTest(unittest.TestCase):
             new_config = prepare_config(new_config)
             importer = _NODE_PROVIDERS.get(new_config["provider"]["type"])
             provider_cls = importer(new_config["provider"])
-
             try:
                 new_config = provider_cls.fillout_available_node_types_resources(
                     new_config
