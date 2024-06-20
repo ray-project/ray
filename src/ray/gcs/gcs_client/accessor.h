@@ -896,7 +896,7 @@ class RuntimeEnvAccessor {
   /// Only works if URI has prefix "gcs://", for which GCS holds a reference for
   /// `expiration_s` seconds. After that, GCS decrements the reference count.
   ///
-  /// For all other URIs, this call is a no-op.
+  /// For all other URIs, this call is a no-op and returns OK.
   Status PinRuntimeEnvUri(const std::string &uri, int expiration_s, int64_t timeout_ms);
 
  private:
