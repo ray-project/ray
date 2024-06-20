@@ -7,6 +7,7 @@ import pickle
 import random
 import sys
 import time
+import numpy as np
 
 import pytest
 
@@ -99,16 +100,22 @@ class Collector:
 def test_basic(ray_start_regular):
     a = Actor.remote(0)
     with InputNode() as i:
-        dag = a.inc.bind(i)
+        dag = a.echo.bind(i)
 
     compiled_dag = dag.experimental_compile()
     dag_id = compiled_dag.get_id()
 
     for i in range(3):
-        ref = compiled_dag.execute(1)
+        # Use numpy so that the value returned by ray.get will be zero-copy
+        # deserialized. If there is a memory leak in the DAG backend, then only
+        # the first iteration will succeed.
+        val = np.ones(100) * i
+        ref = compiled_dag.execute(val)
         assert str(ref) == f"CompiledDAGRef({dag_id}, execution_index={i})"
         result = ray.get(ref)
-        assert result == i + 1
+        assert (result == val).all()
+        # Delete the buffer so that the next DAG output can be written.
+        del result
 
     # Note: must teardown before starting a new Ray session, otherwise you'll get
     # a segfault from the dangling monitor thread upon the new Ray init.
@@ -676,9 +683,13 @@ def test_asyncio(ray_start_regular_shared, max_queue_size):
     )
 
     async def main(i):
-        awaitable_output = await compiled_dag.execute_async(i)
+        # Use numpy so that the return value will be zero-copy deserialized. If
+        # there is a memory leak in the DAG backend, then only the first task
+        # will succeed.
+        val = np.ones(100) * i
+        awaitable_output = await compiled_dag.execute_async(val)
         result = await awaitable_output.get()
-        assert result == i
+        assert (result == val).all()
 
     loop.run_until_complete(asyncio.gather(*[main(i) for i in range(10)]))
     # Note: must teardown before starting a new Ray session, otherwise you'll get
