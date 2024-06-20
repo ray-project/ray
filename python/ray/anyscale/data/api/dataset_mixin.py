@@ -1,13 +1,16 @@
-import typing
+import functools
 from typing import Protocol
 
+from ray.anyscale.data._internal.logical.operators.expand_paths_operator import (
+    ExpandPaths,
+)
+from ray.anyscale.data._internal.logical.operators.read_files_operator import ReadFiles
 from ray.anyscale.data.api.streaming_aggregate import StreamingAggFn
 from ray.anyscale.data.logical_operators.streaming_aggregate import StreamingAggregate
+from ray.data import Dataset
 from ray.data._internal.logical.interfaces.logical_plan import LogicalPlan
 from ray.data._internal.plan import ExecutionPlan
-
-if typing.TYPE_CHECKING:
-    from ray.data import Dataset
+from ray.data._internal.stats import DatasetStats
 
 
 class DatasetProtocol(Protocol):
@@ -81,3 +84,17 @@ class DatasetMixin:
         )
         logical_plan = LogicalPlan(agg_op)
         return Dataset(plan, logical_plan)
+
+    @functools.wraps(Dataset.input_files)
+    def input_files(self) -> int:
+        if isinstance(self._logical_plan.dag, ReadFiles):
+            input_dependencies = self._logical_plan.dag.input_dependencies
+            assert len(input_dependencies) == 1
+            expand_paths_op = input_dependencies[0]
+            assert isinstance(expand_paths_op, ExpandPaths)
+            execution_plan = ExecutionPlan(DatasetStats(metadata={}, parent=None))
+            logical_plan = LogicalPlan(expand_paths_op)
+            dataset = Dataset(execution_plan, logical_plan)
+            return list({row["path"] for row in dataset.take_all()})
+        else:
+            return list(set(self._plan.input_files()))

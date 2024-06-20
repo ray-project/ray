@@ -1,5 +1,5 @@
 import logging
-from typing import TYPE_CHECKING, Iterable, List, Tuple
+from typing import TYPE_CHECKING, Iterable, List, Optional, Tuple
 
 import numpy as np
 import pyarrow as pa
@@ -99,8 +99,11 @@ def create_expand_paths_operator(
                         )
 
                     file_paths.append(file_path)
-                    in_memory_size = file_size * encoding_ratio
-                    running_in_memory_size += in_memory_size
+                    # `HTTPFileSystem` returns `None` for `file_size`. In this case, we
+                    # place all paths in the same block.
+                    if file_size is not None:
+                        in_memory_size = file_size * encoding_ratio
+                        running_in_memory_size += in_memory_size
 
                     if (
                         running_in_memory_size
@@ -131,7 +134,7 @@ def _get_file_infos(
     path: str,
     filesystem: "pyarrow.fs.FileSystem",
     ignore_missing_path: bool,
-) -> Iterable[Tuple[str, int]]:
+) -> Iterable[Tuple[str, Optional[int]]]:
     from pyarrow.fs import FileType
 
     try:
@@ -153,7 +156,7 @@ def _expand_directory(
     path: str,
     filesystem: "pyarrow.fs.FileSystem",
     ignore_missing_path: bool,
-) -> Iterable[Tuple[str, int]]:
+) -> Iterable[Tuple[str, Optional[int]]]:
     exclude_prefixes = [".", "_"]
 
     from pyarrow.fs import FileSelector

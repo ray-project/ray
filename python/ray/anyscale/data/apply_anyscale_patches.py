@@ -6,7 +6,6 @@ from ray.anyscale.data.planner import _register_anyscale_plan_logical_op_fns
 def _patch_class_with_mixin(original_cls, mixin_cls):
     for name, method in mixin_cls.__dict__.items():
         if not name.startswith("__"):
-            assert not hasattr(original_cls, name)
             setattr(original_cls, name, method)
 
 

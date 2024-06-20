@@ -1,6 +1,7 @@
 import warnings
 from typing import TYPE_CHECKING, Any, Dict, List, Literal, Optional, Tuple, Union
 
+from ray._private.auto_init_hook import wrap_auto_init
 from ray.anyscale.data._internal.logical.operators.expand_paths_operator import (
     ExpandPaths,
 )
@@ -10,12 +11,357 @@ from ray.data._internal.logical.interfaces import LogicalPlan
 from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.stats import DatasetStats
 from ray.data.dataset import Dataset
-from ray.data.datasource import ImageDatasource, Partitioning, PathPartitionFilter
+from ray.data.datasource import (
+    ImageDatasource,
+    JSONDatasource,
+    NumpyDatasource,
+    Partitioning,
+    PathPartitionFilter,
+)
 from ray.data.datasource.file_meta_provider import BaseFileMetadataProvider
 from ray.data.datasource.path_util import _resolve_paths_and_filesystem
 
 if TYPE_CHECKING:
     import pyarrow.fs
+
+
+META_PROVIDER_WARNING = (
+    "You don't need to use `meta_provider` if you're using Ray on Anyscale."
+)
+
+
+# TODO(@bveeramani): Add `read_tfrecords`.
+
+
+def read_webdataset(
+    paths: Union[str, List[str]],
+    *,
+    filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+    parallelism: int = -1,
+    arrow_open_stream_args: Optional[Dict[str, Any]] = None,
+    meta_provider: Optional[BaseFileMetadataProvider] = None,
+    partition_filter: Optional[PathPartitionFilter] = None,
+    decoder: Optional[Union[bool, str, callable, list]] = True,
+    fileselect: Optional[Union[list, callable]] = None,
+    filerename: Optional[Union[list, callable]] = None,
+    suffixes: Optional[Union[list, callable]] = None,
+    verbose_open: bool = False,
+    shuffle: Union[Literal["files"], None] = None,
+    include_paths: bool = False,
+    file_extensions: Optional[List[str]] = None,
+    concurrency: Optional[int] = None,
+    override_num_blocks: Optional[int] = None,
+) -> Dataset:
+    from ray.anyscale.data.datasource.webdataset_reader import WebDatasetReader
+    from ray.data.read_api import read_webdataset as read_webdataset_fallback
+
+    if (
+        parallelism != -1
+        or meta_provider is not None
+        or override_num_blocks is not None
+        or shuffle is not None
+    ):
+        if meta_provider is not None:
+            warnings.warn(META_PROVIDER_WARNING)
+
+        return read_webdataset_fallback(
+            paths=paths,
+            filesystem=filesystem,
+            parallelism=parallelism,
+            arrow_open_stream_args=arrow_open_stream_args,
+            meta_provider=meta_provider,
+            partition_filter=partition_filter,
+            decoder=decoder,
+            fileselect=fileselect,
+            filerename=filerename,
+            suffixes=suffixes,
+            verbose_open=verbose_open,
+            include_paths=include_paths,
+            shuffle=shuffle,
+            file_extensions=file_extensions,
+            concurrency=concurrency,
+            override_num_blocks=override_num_blocks,
+        )
+
+    reader = WebDatasetReader(
+        decoder=decoder,
+        fileselect=fileselect,
+        filerename=filerename,
+        suffixes=suffixes,
+        verbose_open=verbose_open,
+        include_paths=include_paths,
+        # TODO: `read_webdataset` doesn't support `partitioning` yet.
+        partitioning=None,
+        open_args=arrow_open_stream_args,
+    )
+    return read_files(
+        paths,
+        reader,
+        filesystem=filesystem,
+        partition_filter=partition_filter,
+        # TODO: `read_webdataset` doesn't support `ignore_missing_paths` yet.
+        ignore_missing_paths=False,
+        file_extensions=file_extensions,
+        concurrency=concurrency,
+        # TODO: `read_webdataset` doesn't support `ray_remote_args` yet.
+        ray_remote_args=None,
+    )
+
+
+def read_avro(
+    paths: Union[str, List[str]],
+    *,
+    filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+    parallelism: int = -1,
+    ray_remote_args: Optional[Dict[str, Any]] = None,
+    arrow_open_stream_args: Optional[Dict[str, Any]] = None,
+    meta_provider: Optional[BaseFileMetadataProvider] = None,
+    partition_filter: Optional[PathPartitionFilter] = None,
+    partitioning: Partitioning = None,
+    include_paths: bool = False,
+    ignore_missing_paths: bool = False,
+    shuffle: Union[Literal["files"], None] = None,
+    file_extensions: Optional[List[str]] = None,
+    concurrency: Optional[int] = None,
+    override_num_blocks: Optional[int] = None,
+) -> Dataset:
+    from ray.anyscale.data.datasource.avro_reader import AvroReader
+    from ray.data.read_api import read_avro as read_avro_fallback
+
+    if (
+        parallelism != -1
+        or meta_provider is not None
+        or override_num_blocks is not None
+        or shuffle is not None
+    ):
+        if meta_provider is not None:
+            warnings.warn(META_PROVIDER_WARNING)
+
+        return read_avro_fallback(
+            paths=paths,
+            filesystem=filesystem,
+            parallelism=parallelism,
+            ray_remote_args=ray_remote_args,
+            arrow_open_stream_args=arrow_open_stream_args,
+            meta_provider=meta_provider,
+            partition_filter=partition_filter,
+            partitioning=partitioning,
+            include_paths=include_paths,
+            ignore_missing_paths=ignore_missing_paths,
+            shuffle=shuffle,
+            file_extensions=file_extensions,
+            concurrency=concurrency,
+            override_num_blocks=override_num_blocks,
+        )
+
+    reader = AvroReader(
+        include_paths=include_paths,
+        partitioning=partitioning,
+        open_args=arrow_open_stream_args,
+    )
+    return read_files(
+        paths,
+        reader,
+        filesystem=filesystem,
+        partition_filter=partition_filter,
+        ignore_missing_paths=ignore_missing_paths,
+        file_extensions=file_extensions,
+        concurrency=concurrency,
+        ray_remote_args=ray_remote_args,
+    )
+
+
+def read_json(
+    paths: Union[str, List[str]],
+    *,
+    filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+    parallelism: int = -1,
+    ray_remote_args: Dict[str, Any] = None,
+    arrow_open_stream_args: Optional[Dict[str, Any]] = None,
+    meta_provider: Optional[BaseFileMetadataProvider] = None,
+    partition_filter: Optional[PathPartitionFilter] = None,
+    partitioning: Partitioning = Partitioning("hive"),
+    include_paths: bool = False,
+    ignore_missing_paths: bool = False,
+    shuffle: Union[Literal["files"], None] = None,
+    file_extensions: Optional[List[str]] = JSONDatasource._FILE_EXTENSIONS,
+    concurrency: Optional[int] = None,
+    override_num_blocks: Optional[int] = None,
+    **arrow_json_args,
+) -> Dataset:
+    from ray.anyscale.data.datasource.json_reader import JSONReader
+    from ray.data.read_api import read_json as read_json_fallback
+
+    if (
+        parallelism != -1
+        or meta_provider is not None
+        or override_num_blocks is not None
+        or shuffle is not None
+    ):
+        if meta_provider is not None:
+            warnings.warn(META_PROVIDER_WARNING)
+
+        return read_json_fallback(
+            paths=paths,
+            filesystem=filesystem,
+            parallelism=parallelism,
+            ray_remote_args=ray_remote_args,
+            arrow_open_stream_args=arrow_open_stream_args,
+            meta_provider=meta_provider,
+            partition_filter=partition_filter,
+            partitioning=partitioning,
+            include_paths=include_paths,
+            ignore_missing_paths=ignore_missing_paths,
+            shuffle=shuffle,
+            file_extensions=file_extensions,
+            concurrency=concurrency,
+            override_num_blocks=override_num_blocks,
+            **arrow_json_args,
+        )
+
+    reader = JSONReader(
+        arrow_json_args,
+        include_paths=include_paths,
+        partitioning=partitioning,
+        open_args=arrow_open_stream_args,
+    )
+    return read_files(
+        paths,
+        reader,
+        filesystem=filesystem,
+        partition_filter=partition_filter,
+        ignore_missing_paths=ignore_missing_paths,
+        file_extensions=file_extensions,
+        concurrency=concurrency,
+        ray_remote_args=ray_remote_args,
+    )
+
+
+def read_numpy(
+    paths: Union[str, List[str]],
+    *,
+    filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+    parallelism: int = -1,
+    arrow_open_stream_args: Optional[Dict[str, Any]] = None,
+    meta_provider: Optional[BaseFileMetadataProvider] = None,
+    partition_filter: Optional[PathPartitionFilter] = None,
+    partitioning: Partitioning = None,
+    include_paths: bool = False,
+    ignore_missing_paths: bool = False,
+    shuffle: Union[Literal["files"], None] = None,
+    file_extensions: Optional[List[str]] = NumpyDatasource._FILE_EXTENSIONS,
+    concurrency: Optional[int] = None,
+    override_num_blocks: Optional[int] = None,
+    **numpy_load_args,
+) -> Dataset:
+    from ray.anyscale.data.datasource.numpy_reader import NumpyReader
+    from ray.data.read_api import read_numpy as read_numpy_fallback
+
+    if (
+        parallelism != -1
+        or meta_provider is not None
+        or override_num_blocks is not None
+        or shuffle is not None
+    ):
+        if meta_provider is not None:
+            warnings.warn(META_PROVIDER_WARNING)
+
+        return read_numpy_fallback(
+            paths=paths,
+            filesystem=filesystem,
+            parallelism=parallelism,
+            arrow_open_stream_args=arrow_open_stream_args,
+            meta_provider=meta_provider,
+            partition_filter=partition_filter,
+            partitioning=partitioning,
+            include_paths=include_paths,
+            ignore_missing_paths=ignore_missing_paths,
+            shuffle=shuffle,
+            file_extensions=file_extensions,
+            concurrency=concurrency,
+            override_num_blocks=override_num_blocks,
+            **numpy_load_args,
+        )
+
+    reader = NumpyReader(
+        numpy_load_args=numpy_load_args,
+        include_paths=include_paths,
+        partitioning=partitioning,
+        open_args=arrow_open_stream_args,
+    )
+    return read_files(
+        paths,
+        reader,
+        filesystem=filesystem,
+        partition_filter=partition_filter,
+        ignore_missing_paths=ignore_missing_paths,
+        file_extensions=file_extensions,
+        concurrency=concurrency,
+        ray_remote_args={},
+    )
+
+
+def read_binary_files(
+    paths: Union[str, List[str]],
+    *,
+    include_paths: bool = False,
+    filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+    parallelism: int = -1,
+    ray_remote_args: Dict[str, Any] = None,
+    arrow_open_stream_args: Optional[Dict[str, Any]] = None,
+    meta_provider: Optional[BaseFileMetadataProvider] = None,
+    partition_filter: Optional[PathPartitionFilter] = None,
+    partitioning: Partitioning = None,
+    ignore_missing_paths: bool = False,
+    shuffle: Union[Literal["files"], None] = None,
+    file_extensions: Optional[List[str]] = None,
+    concurrency: Optional[int] = None,
+    override_num_blocks: Optional[int] = None,
+) -> Dataset:
+    from ray.anyscale.data.datasource.binary_reader import BinaryReader
+    from ray.data.read_api import read_binary_files as read_binary_files_fallback
+
+    if (
+        parallelism != -1
+        or meta_provider is not None
+        or override_num_blocks is not None
+        or shuffle is not None
+    ):
+        if meta_provider is not None:
+            warnings.warn(META_PROVIDER_WARNING)
+
+        return read_binary_files_fallback(
+            paths=paths,
+            include_paths=include_paths,
+            filesystem=filesystem,
+            parallelism=parallelism,
+            ray_remote_args=ray_remote_args,
+            arrow_open_stream_args=arrow_open_stream_args,
+            meta_provider=meta_provider,
+            partition_filter=partition_filter,
+            partitioning=partitioning,
+            ignore_missing_paths=ignore_missing_paths,
+            shuffle=shuffle,
+            file_extensions=file_extensions,
+            concurrency=concurrency,
+            override_num_blocks=override_num_blocks,
+        )
+
+    reader = BinaryReader(
+        include_paths=include_paths,
+        partitioning=partitioning,
+        open_args=arrow_open_stream_args,
+    )
+    return read_files(
+        paths,
+        reader,
+        filesystem=filesystem,
+        partition_filter=partition_filter,
+        ignore_missing_paths=ignore_missing_paths,
+        file_extensions=file_extensions,
+        concurrency=concurrency,
+        ray_remote_args=ray_remote_args,
+    )
 
 
 def read_images(
@@ -47,8 +393,7 @@ def read_images(
         or shuffle is not None
     ):
         if meta_provider is not None:
-            # TODO(@bveeramani): Update this warning message.
-            warnings.warn("You don't need to use `meta_provider` blah blah blah.")
+            warnings.warn(META_PROVIDER_WARNING)
 
         return read_images_fallback(
             paths,
@@ -88,6 +433,142 @@ def read_images(
     )
 
 
+def read_text(
+    paths: Union[str, List[str]],
+    *,
+    encoding: str = "utf-8",
+    drop_empty_lines: bool = True,
+    filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+    parallelism: int = -1,
+    ray_remote_args: Optional[Dict[str, Any]] = None,
+    arrow_open_stream_args: Optional[Dict[str, Any]] = None,
+    meta_provider: Optional[BaseFileMetadataProvider] = None,
+    partition_filter: Optional[PathPartitionFilter] = None,
+    partitioning: Partitioning = None,
+    include_paths: bool = False,
+    ignore_missing_paths: bool = False,
+    shuffle: Union[Literal["files"], None] = None,
+    file_extensions: Optional[List[str]] = None,
+    concurrency: Optional[int] = None,
+    override_num_blocks: Optional[int] = None,
+) -> Dataset:
+    from ray.anyscale.data.datasource.text_reader import TextReader
+    from ray.data.read_api import read_text as read_text_fallback
+
+    if (
+        parallelism != -1
+        or meta_provider is not None
+        or override_num_blocks is not None
+        or shuffle is not None
+    ):
+        if meta_provider is not None:
+            warnings.warn(META_PROVIDER_WARNING)
+
+        return read_text_fallback(
+            paths,
+            encoding=encoding,
+            drop_empty_lines=drop_empty_lines,
+            filesystem=filesystem,
+            parallelism=parallelism,
+            ray_remote_args=ray_remote_args,
+            arrow_open_stream_args=arrow_open_stream_args,
+            meta_provider=meta_provider,
+            partition_filter=partition_filter,
+            partitioning=partitioning,
+            include_paths=include_paths,
+            ignore_missing_paths=ignore_missing_paths,
+            shuffle=shuffle,
+            file_extensions=file_extensions,
+            concurrency=concurrency,
+            override_num_blocks=override_num_blocks,
+        )
+
+    reader = TextReader(
+        drop_empty_lines=drop_empty_lines,
+        encoding=encoding,
+        include_paths=include_paths,
+        partitioning=partitioning,
+        open_args=arrow_open_stream_args,
+    )
+    return read_files(
+        paths,
+        reader,
+        filesystem=filesystem,
+        partition_filter=partition_filter,
+        ignore_missing_paths=ignore_missing_paths,
+        file_extensions=file_extensions,
+        concurrency=concurrency,
+        ray_remote_args=ray_remote_args,
+    )
+
+
+def read_csv(
+    paths: Union[str, List[str]],
+    *,
+    filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+    parallelism: int = -1,
+    ray_remote_args: Dict[str, Any] = None,
+    arrow_open_stream_args: Optional[Dict[str, Any]] = None,
+    meta_provider: Optional[BaseFileMetadataProvider] = None,
+    partition_filter: Optional[PathPartitionFilter] = None,
+    partitioning: Partitioning = Partitioning("hive"),
+    include_paths: bool = False,
+    ignore_missing_paths: bool = False,
+    shuffle: Union[Literal["files"], None] = None,
+    file_extensions: Optional[List[str]] = None,
+    concurrency: Optional[int] = None,
+    override_num_blocks: Optional[int] = None,
+    **arrow_csv_args,
+) -> Dataset:
+    from ray.anyscale.data.datasource.csv_reader import CSVReader
+    from ray.data.read_api import read_csv as read_csv_fallback
+
+    if (
+        parallelism != -1
+        or meta_provider is not None
+        or override_num_blocks is not None
+        or shuffle is not None
+    ):
+        if meta_provider is not None:
+            warnings.warn(META_PROVIDER_WARNING)
+
+        return read_csv_fallback(
+            paths,
+            filesystem=filesystem,
+            parallelism=parallelism,
+            ray_remote_args=ray_remote_args,
+            arrow_open_stream_args=arrow_open_stream_args,
+            meta_provider=meta_provider,
+            partition_filter=partition_filter,
+            partitioning=partitioning,
+            include_paths=include_paths,
+            ignore_missing_paths=ignore_missing_paths,
+            shuffle=shuffle,
+            file_extensions=file_extensions,
+            concurrency=concurrency,
+            override_num_blocks=override_num_blocks,
+            **arrow_csv_args,
+        )
+
+    reader = CSVReader(
+        arrow_csv_args=arrow_csv_args,
+        include_paths=include_paths,
+        partitioning=partitioning,
+        open_args=arrow_open_stream_args,
+    )
+    return read_files(
+        paths,
+        reader,
+        filesystem=filesystem,
+        partition_filter=partition_filter,
+        ignore_missing_paths=ignore_missing_paths,
+        file_extensions=file_extensions,
+        concurrency=concurrency,
+        ray_remote_args=ray_remote_args,
+    )
+
+
+@wrap_auto_init
 def read_files(
     paths: Union[str, List[str]],
     reader: FileReader,
@@ -99,7 +580,7 @@ def read_files(
     concurrency: Optional[int],
     ray_remote_args: Dict[str, Any],
 ) -> Dataset:
-    paths, filesystem = _resolve_paths_and_filesystem(paths, None)
+    paths, filesystem = _resolve_paths_and_filesystem(paths, filesystem)
     expand_paths_op = ExpandPaths(
         paths=paths,
         reader=reader,
