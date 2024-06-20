@@ -3,7 +3,10 @@ import ray
 import ray._private.test_utils as test_utils
 from ray.util.placement_group import placement_group, remove_placement_group
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
-from dashboard_test import DashboardTestAtScale
+from dashboard_test import (
+    DashboardTestAtScale,
+    update_release_test_result_for_dashboard_api_requests_duration_seconds,
+)
 import time
 import tqdm
 
@@ -116,4 +119,6 @@ if not is_smoke_test:
         }
     ]
 dashboard_test.update_release_test_result(results)
+update_release_test_result_for_dashboard_api_requests_duration_seconds(results)
+
 test_utils.safe_write_to_results_json(results)

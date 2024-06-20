@@ -1140,6 +1140,25 @@ def fetch_prometheus_metrics(prom_addresses: List[str]) -> Dict[str, List[Any]]:
     return samples_by_name
 
 
+def query_prometheus(promethesus_host: str, query: str):
+    """Query promethesus for the metric.
+
+    Returns: json dict of the query result.
+    Raises: Exception on failure to get, or ImportError in minimal tests.
+    """
+    import requests
+
+    url = f"{promethesus_host}/api/v1/query"
+
+    response = requests.get(url, params={"query": query})
+    response.raise_for_status()
+
+    results = response.json()
+    if results["status"] != "success":
+        raise Exception("Failed to fetch data")
+    return results
+
+
 def raw_metrics(info: RayContext) -> Dict[str, List[Any]]:
     """Return prometheus metrics from a RayContext
 
