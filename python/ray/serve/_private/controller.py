@@ -877,12 +877,18 @@ class ServeController:
         grpc_config = self.get_grpc_config()
         applications = {}
 
-        app_configs = self.get_app_configs() or {}
+        app_statuses = self.application_state_manager.list_app_statuses()
+
+        # If there are no app statuses, there's no point getting the app configs.
+        # Moreover, there might be no app statuses because the GCS is down,
+        # in which case getting the app configs would fail anyway,
+        # since they're stored in the checkpoint in the GCS.
+        app_configs = self.get_app_configs() if app_statuses else {}
 
         for (
             app_name,
             app_status_info,
-        ) in self.application_state_manager.list_app_statuses().items():
+        ) in app_statuses.items():
             applications[app_name] = ApplicationDetails(
                 name=app_name,
                 route_prefix=self.application_state_manager.get_route_prefix(app_name),
@@ -948,10 +954,10 @@ class ServeController:
             statuses.append(self.get_serve_status(name))
         return statuses
 
-    def get_app_configs(self) -> Optional[Dict[str, ServeApplicationSchema]]:
+    def get_app_configs(self) -> Dict[str, ServeApplicationSchema]:
         checkpoint = self.kv_store.get(CONFIG_CHECKPOINT_KEY)
         if checkpoint is None:
-            return None
+            return {}
 
         _, _, _, config_checkpoints_dict = pickle.loads(checkpoint)
         return {
