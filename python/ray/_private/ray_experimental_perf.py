@@ -7,7 +7,6 @@ import ray
 from ray.dag.compiled_dag_node import CompiledDAG
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
-import ray.experimental.channel as ray_channel
 from ray.dag import InputNode, MultiOutputNode
 from ray._private.utils import (
     get_or_create_event_loop,

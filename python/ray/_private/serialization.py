@@ -1,11 +1,9 @@
 import io
-import msgspec
 import logging
 import threading
 import traceback
 from typing import Any
 
-import time
 import google.protobuf.message
 
 import ray._private.utils
@@ -55,38 +53,6 @@ from ray.util import serialization_addons
 from ray.util import inspect_serializability
 
 logger = logging.getLogger(__name__)
-
-# 1. Create this type on the fly (as required by the user args):
-# 2. Then register a custom serializer with register_serializer()
-# 3. The custom serializer should use msgspec serializer for the outer structure, and
-#    the Python serializer for the internal Python objects.
-#    - Use msgspec.msgpack.encode() for the type defined on-the-fly.
-
-# OR
-
-# Serialize each of the args and kwargs individually
-# Write all of them directly into a bytes array (along with information about how long
-# each item is). We should avoid doing any copying.
-
-# t = ((b"x"), {})
-"""
-class TestSerialize:
-    zero: tuple[any, ...]
-    one: dict
-
-class TestSerialize:
-    # args:
-    zero_a: bytes
-    zero_b: bytes
-    zero_c: bytes
-
-    # kwargs:
-    one: bytes
-"""
-
-class TestSerialize(msgspec.Struct):
-    zero: bytes
-    one: bytes
 
 
 class DeserializationError(Exception):
@@ -265,7 +231,10 @@ class SerializationContext:
     def _deserialize_msgpack_data(self, data, metadata_fields):
         msgpack_data, pickle5_data = split_buffer(data)
 
-        if metadata_fields[0] == ray_constants.OBJECT_METADATA_TYPE_PYTHON or metadata_fields[0] == ray_constants.OBJECT_METADATA_TYPE_ACCELERATED_DAG:
+        if (
+            metadata_fields[0] == ray_constants.OBJECT_METADATA_TYPE_PYTHON
+            or metadata_fields[0] == ray_constants.OBJECT_METADATA_TYPE_ACCELERATED_DAG
+        ):
             python_objects = self._deserialize_pickle5_data(pickle5_data)
         else:
             python_objects = []
@@ -528,38 +497,10 @@ class SerializationContext:
         msgpack_data = MessagePackSerializer.dumps(value, _python_serializer)
 
         if python_objects:
-            contains_adag = False
-            start = time.perf_counter()
-            for obj in python_objects:
-                adag_serialized = []
-                if isinstance(obj, TestSerialize):
-                    contains_adag = True
-                    a = time.perf_counter()
-                    zero_serialized = MessagePackSerializer.dumps(obj.zero, _python_serializer)
-                    b = time.perf_counter()
-                    one_serialized = MessagePackSerializer.dumps(obj.one, _python_serializer)
-                    c = time.perf_counter()
-                    print("First type: " + str(type(obj.zero)))
-                    print("Second type: " + str(type(obj.one)))
-                    print("First took " + str(1000000 * (b - a)) + " us")
-                    print("Second took " + str(1000000 * (c - b)) + " us")
-                    # adag_serialized.append((zero_serialized, one_serialized))
-                    adag_serialized.append(zero_serialized)
-                # All objects must be for the accelerated DAG or none of them must be.
-                assert len(adag_serialized) == 0 or len(adag_serialized) == len(python_objects)
-            end = time.perf_counter()
-            print("Took " + str(1000000 * (end - start)) + " us")
-
-            if contains_adag:
-                metadata = ray_constants.OBJECT_METADATA_TYPE_ACCELERATED_DAG
-                pickle5_serialized_object = self._serialize_to_pickle5(
-                    metadata, python_objects
-                )
-            else:
-                metadata = ray_constants.OBJECT_METADATA_TYPE_PYTHON
-                pickle5_serialized_object = self._serialize_to_pickle5(
-                    metadata, python_objects
-                )
+            metadata = ray_constants.OBJECT_METADATA_TYPE_PYTHON
+            pickle5_serialized_object = self._serialize_to_pickle5(
+                metadata, python_objects
+            )
         else:
             pickle5_serialized_object = None
 
