@@ -96,6 +96,13 @@ class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient> {
 
   virtual std::pair<std::string, int> GetGcsServerAddress() const;
 
+  virtual ClusterID GetClusterId() const {
+    if (client_call_manager_) {
+      return client_call_manager_->GetClusterId();
+    }
+    return ClusterID::Nil();
+  }
+
   /// Return client information for debug.
   virtual std::string DebugString() const { return ""; }
 
@@ -208,6 +215,13 @@ class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient> {
   std::unique_ptr<rpc::ClientCallManager> client_call_manager_;
   std::function<void()> resubscribe_func_;
 };
+
+// Creates a GcsClient that connects to an existing GCS server. The GcsClient listens
+// on a dedicated singleton io_context on a dedicated thread, that all GcsClients created
+// this way share. The io_context and the thread are lazily created when the first
+// GcsClient is created.
+std::shared_ptr<GcsClient> ConnectToGcsStandalone(
+    const GcsClientOptions &options, const ClusterID &cluster_id = ClusterID::Nil());
 
 // This client is only supposed to be used from Cython / Python
 class RAY_EXPORT PythonGcsClient {

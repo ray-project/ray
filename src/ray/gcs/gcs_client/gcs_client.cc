@@ -690,5 +690,36 @@ Status PythonCheckGcsHealth(const std::string &gcs_address,
   return Status::OK();
 }
 
+/// Creates a singleton thread that runs an io_service.
+/// All ConnectToGcsStandalone calls will share this io_service.
+class SingletonIoContext {
+ public:
+  static SingletonIoContext &Instance() {
+    static SingletonIoContext instance;
+    return instance;
+  }
+
+  instrumented_io_context &GetIoService() { return io_service_; }
+
+ private:
+  SingletonIoContext() : work_(io_service_) {
+    std::thread io_thread([this] { io_service_.run(); });
+    io_thread.detach();
+  }
+  ~SingletonIoContext() { io_service_.stop(); }
+
+  instrumented_io_context io_service_;
+  boost::asio::io_service::work work_;  // to keep io_service_ running
+};
+
+std::shared_ptr<GcsClient> ConnectToGcsStandalone(const GcsClientOptions &options,
+                                                  const ClusterID &cluster_id) {
+  auto gcs_client = std::make_shared<GcsClient>(options, UniqueID::FromRandom());
+  instrumented_io_context &io_service = SingletonIoContext::Instance().GetIoService();
+  // This only returns OK status right now.
+  RAY_CHECK_OK(gcs_client->Connect(io_service, cluster_id));
+  return gcs_client;
+}
+
 }  // namespace gcs
 }  // namespace ray

@@ -83,7 +83,7 @@ Status JobInfoAccessor::AsyncSubscribeAll(
         done(status);
       }
     };
-    RAY_CHECK_OK(AsyncGetAll(callback));
+    RAY_CHECK_OK(AsyncGetAll(GetGcsTimeoutMs(), callback));
   };
   subscribe_operation_ = [this, subscribe](const StatusCallback &done) {
     return client_impl_->GetGcsSubscriber().SubscribeAllJobs(subscribe, done);
@@ -107,16 +107,31 @@ void JobInfoAccessor::AsyncResubscribe() {
 }
 
 Status JobInfoAccessor::AsyncGetAll(
-    const MultiItemCallback<rpc::JobTableData> &callback) {
+    int64_t timeout_ms, const MultiItemCallback<rpc::JobTableData> &callback) {
   RAY_LOG(DEBUG) << "Getting all job info.";
   RAY_CHECK(callback);
   rpc::GetAllJobInfoRequest request;
   client_impl_->GetGcsRpcClient().GetAllJobInfo(
-      request, [callback](const Status &status, const rpc::GetAllJobInfoReply &reply) {
+      request,
+      [callback](const Status &status, const rpc::GetAllJobInfoReply &reply) {
         callback(status, VectorFromProtobuf(reply.job_info_list()));
         RAY_LOG(DEBUG) << "Finished getting all job info.";
-      });
+      },
+      timeout_ms);
   return Status::OK();
+}
+
+Status JobInfoAccessor::GetAll(int64_t timeout_ms,
+                               std::vector<rpc::JobTableData> &job_data_list) {
+  std::promise<Status> ret_promise;
+  RAY_RETURN_NOT_OK(
+      AsyncGetAll(timeout_ms,
+                  [&ret_promise, &job_data_list](
+                      const Status &status, const std::vector<rpc::JobTableData> &data) {
+                    job_data_list = data;
+                    ret_promise.set_value(status);
+                  }));
+  return ret_promise.get_future().get();
 }
 
 Status JobInfoAccessor::AsyncGetNextJobID(const ItemCallback<JobID> &callback) {
@@ -552,6 +567,25 @@ Status NodeInfoAccessor::AsyncDrainNode(const NodeID &node_id,
   return Status::OK();
 }
 
+Status NodeInfoAccessor::DrainNodes(const std::vector<NodeID> &node_ids,
+                                    int64_t timeout_ms,
+                                    std::vector<std::string> &drained_node_ids) {
+  RAY_LOG(DEBUG) << "Draining nodes, node id = " << debug_string(node_ids);
+  rpc::DrainNodeRequest request;
+  rpc::DrainNodeReply reply;
+  for (const auto &node_id : node_ids) {
+    auto draining_request = request.add_drain_node_data();
+    draining_request->set_node_id(node_id.Binary());
+  }
+  RAY_RETURN_NOT_OK(
+      client_impl_->GetGcsRpcClient().SyncDrainNode(request, &reply, timeout_ms));
+  drained_node_ids.clear();
+  for (const auto &s : reply.drain_node_status()) {
+    drained_node_ids.push_back(s.node_id());
+  }
+  return Status::OK();
+}
+
 Status NodeInfoAccessor::AsyncGetAll(const MultiItemCallback<GcsNodeInfo> &callback) {
   RAY_LOG(DEBUG) << "Getting information of all nodes.";
   rpc::GetAllNodeInfoRequest request;
@@ -787,6 +821,13 @@ Status NodeResourceInfoAccessor::AsyncGetAllResourceUsage(
                        << status;
       });
   return Status::OK();
+}
+
+Status NodeResourceInfoAccessor::GetAllResourceUsage(
+    int64_t timeout_ms, rpc::GetAllResourceUsageReply &reply) {
+  rpc::GetAllResourceUsageRequest request;
+  return client_impl_->GetGcsRpcClient().SyncGetAllResourceUsage(
+      request, &reply, timeout_ms);
 }
 
 Status TaskInfoAccessor::AsyncAddTaskEventData(
