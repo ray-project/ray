@@ -11,6 +11,9 @@ from ray.experimental.channel.conftest import start_nccl_mock
 from ray.tests.conftest import *  # noqa
 from ray.dag import InputNode, MultiOutputNode
 
+if sys.platform != "linux" and sys.platform != "darwin":
+    pytest.skip("Skipping, requires Linux or Mac.", allow_module_level=True)
+
 INVALID_GRAPH = "This DAG cannot be compiled because it will "
 "deadlock on NCCL calls. If this is a false positive, please "
 "disable the graph verification by setting the environment "

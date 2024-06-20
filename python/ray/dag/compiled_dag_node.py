@@ -867,65 +867,70 @@ class CompiledDAG:
 
     def _detect_deadlock(self) -> bool:
         """
-        Create a graph following these rules:
+        Create a graph with the following 3 rules, and then use
+        topological sort to verify whether the graph is a DAG.
+        If not, the DAG will result in a deadlock due to a cycle.
 
-        1. Add an edge from task_{bind_index} to task_{bind_index+1}
-           on the same actor.
-        2. Add an edge from the writer to the reader if the channel
-           isn't an NCCL channel.
-        3. Add an edge from the writer and reader of an NCCL channel
-           to the node that has the next bind index on the same actor
-           as the writer.
+        We need to check whether there is a cycle in a “depends-on”
+        graph, where A → B means that B depends on A.
 
-        Use topological sort to verify whether the graph is a DAG.
-        If not, the DAG will result in a deadlock.
+        #1: Add an edge from task.{bind_index} to task.{bind_index+1}
+            on the same actor.
 
-        [Explanation]
+        Reason: Each actor executes tasks in the order that they are
+                bound in. Therefore task.{bind_index+1} depends on
+                task.{bind_index}.
 
-        Note that the edges in this graph do not represent data flow but rather the
-        order of events. An edge from node A to node B indicates that node A must occur
-        before node B.
+        #2: Add an edge from the writer to the reader if the channel
+            isn't an NCCL channel.
 
-        Each actor has a list of tasks, each with a bind index. Tasks are executed
-        sequentially in ascending order of their bind index on the actor (Rule #1),
-        where lower indices precede higher ones.
+        Reason: Channels represent data dependencies. In order to read
+                data, the writer must have written the data first.
 
-        For non-NCCL channels, the `write` function operates asynchronously. Take
-        the shared memory channel as an example, the completion of the `write`
-        function means that the data has been successfully written into the shared
-        memory. The completion of the `write` function doesn't depend on readers.
+        #3: Add an edge from the reader of an NCCL channel to the node
+            that has the next bind index on the same actor as the writer.
 
-        For data transfer via the shared memory channel, the following three events
-        occur sequentially:
+        Reason: NCCL channels are blocking, meaning that both the writer
+                and reader must reach the send/recv call before either can
+                proceed. Therefore, the next task on the writer cannot be
+                executed until the reader of the NCCL channel has started.
 
-        (1) The writer calls the `write` function.
-        (2) The data is successfully written into the shared memory.
-        (3) The reader calls the `read` function.
+        With rules #1 and #2 alone, it is not possible to create cycles,
+        because when the DAG is created, new tasks can only depend on tasks
+        that have already been created.
 
-        The `write` must happen before the `read` in these asynchronous channels.
-        Therefore, we add an edge from the writer to the reader if the channel isn't
-        an NCCL channel (Rule #2).
+        With rule #3, it is possible to create a cycle where two actors will
+        block waiting for the other to begin reading from an NCCL channel.
 
-        For the NCCL channel, the `write` function operates synchronously, and the
-        completion of the `write` function means that the data is being read by the
-        reader at the same time.
+        [Example]
 
-        For the data transfer via the NCCL channel, the following events occur:
+        # data flow: driver -> a.no_op -> a.no_op -> driver
+        with InputNode() as inp:
+            dag = a.no_op.bind(inp)
+            dag.with_type_hint(TorchTensorType(transport="nccl"))
+            dag = a.no_op.bind(dag)
+        dag.experimental_compile()
 
-        (1) The writer calls the `write` function, and the reader calls the `read`
-            function at the same time.
-        (2) The data is successfully transferred via the NCCL channel.
+        In the above example, communication between a.no_op occurs via an NCCL
+        channel, while communication between the driver process and a.no_op occurs
+        via shared memory channels. The example experiences a deadlock because the
+        completion of the write function in the first a.no_op requires the second
+        a.no_op to simultaneously call the read function. However, each actor has
+        a list of tasks, each assigned a bind index, and these tasks are executed
+        sequentially in ascending order of their bind index on the actor. Therefore,
+        it’s impossible for both writer and reader on the same actor to write and
+        read simultaneously.
 
-        After (1) and (2) are completed, the following events can occur:
+        We can create a depends-on graph based on the above rules. Then, the graph
+        will look like this:
 
-        (3a) The task with the next bind index on the same actor as the writer can
-            be executed.
-        (3b) The reader DAG node can start to call the `write` function to write
-            the data to its downstream nodes.
+                              |---|
+                              |   v
+        driver -> a.no_op -> a.no_op -> driver
 
-        We add an edge from the writer and reader of an NCCL channel to the node that
-        has the next bind index on the same actor as the writer (Rule #3). If you are
-        interested in the detailed explanation, please refer to
+        Then, we use topological sort to verify whether the graph has a cycle.
+
+        If you are interested in the detailed explanation, please refer to
         https://github.com/ray-project/ray/pull/45960.
         """
         assert self.idx_to_task
