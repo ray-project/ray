@@ -1,8 +1,6 @@
 import {
   Box,
   InputAdornment,
-  MenuItem,
-  Select,
   Switch,
   Table,
   TableBody,
@@ -13,6 +11,7 @@ import {
   TextField,
   Typography,
 } from "@mui/material";
+import Autocomplete from "@mui/material/Autocomplete";
 import Pagination from "@mui/material/Pagination";
 import makeStyles from "@mui/styles/makeStyles";
 import React from "react";
@@ -25,7 +24,6 @@ import { HelpInfo } from "../../components/Tooltip";
 import { MainNavPageInfo } from "../layout/mainNavContext";
 import { useJobList } from "./hook/useJobList";
 import { JobRow } from "./JobRow";
-import Autocomplete from "@mui/material/Autocomplete";
 
 const useStyles = makeStyles((theme) => ({
   root: {
@@ -130,10 +128,10 @@ const JobList = () => {
             <Autocomplete
               sx={{ height: 35, width: 150 }}
               options={["PENDING", "RUNNING", "SUCCEEDED", "FAILED"]}
-              onInputChange={(event, value) => changeFilter("status", value.trim())}
-              renderInput={(params) => (
-                <TextField {...params} label="Status" />
-              )}
+              onInputChange={(event, value) =>
+                changeFilter("status", value.trim())
+              }
+              renderInput={(params) => <TextField {...params} label="Status" />}
             />
           </Box>
           <div>
