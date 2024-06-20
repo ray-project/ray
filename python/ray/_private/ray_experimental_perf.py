@@ -57,6 +57,7 @@ def main(results=None):
     #################################################
     ray.init()
 
+    """
     def put_channel_small(chans, do_get=False):
         for chan in chans:
             chan.write(b"0")
@@ -125,6 +126,7 @@ def main(results=None):
     )
     for reader in readers:
         ray.kill(reader)
+    """
 
     # Tests for compiled DAGs.
 

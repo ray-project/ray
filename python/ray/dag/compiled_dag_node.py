@@ -6,6 +6,8 @@ import threading
 import uuid
 import traceback
 
+import time
+import msgspec
 import ray
 from ray.exceptions import RayTaskError, RayChannelError
 from ray.experimental.compiled_dag_ref import (
@@ -44,7 +46,6 @@ MAX_BUFFER_TOTAL_MEMORY = int(10 * 1e9)  # 10GB
 MAX_BUFFER_COUNT = MAX_BUFFER_TOTAL_MEMORY // MAX_BUFFER_SIZE
 
 logger = logging.getLogger(__name__)
-
 
 @DeveloperAPI
 def do_allocate_channel(
@@ -250,9 +251,10 @@ class DAGInputAdapter:
 
         def extractor(key: Union[int, str]):
             def extract_arg(args_tuple):
-                positional_args, kwargs = args_tuple
+                positional_args = args_tuple.zero
+                kwargs = args_tuple.one
                 if isinstance(key, int):
-                    return positional_args[key]
+                    return positional_args #[key]
                 else:
                     return kwargs[key]
 
@@ -1187,7 +1189,85 @@ class CompiledDAG:
 
         self._get_or_compile()
 
-        inp = (args, kwargs)
+        print("args: " + str(args))
+        print("args type: " + str(type(args)) + ", length: " + str(len(args)))
+        print("kwargs type: " + str(type(kwargs)))
+        inp = TestSerialize(zero = args[0], one = None)
+
+        class MyClass:
+            def __init__(self, attr1, attr2):
+                self.attr1 = attr1
+                self.attr2 = attr2
+
+        def custom_encode(obj):
+            if isinstance(obj, MyClass):
+                return {"__type__": "MyClass", "attr1": obj.attr1, "attr2": obj.attr2}
+            raise TypeError(f"Object of type {obj.__class__.__name__} is not JSON serializable")
+
+        my_instance = MyClass(1, "value")
+
+        # Encode
+        a = time.perf_counter()
+        encoded = msgspec.msgpack.encode(my_instance, enc_hook=custom_encode)
+        b = time.perf_counter()
+        print("ok: " + str(encoded))  # Should not be /x80
+        print("^ this encode took " + str(1000000 * (b - a)) + " us")
+
+        # Decode (if needed)
+        def custom_decode(obj):
+            if "__type__" in obj and obj["__type__"] == "MyClass":
+                return MyClass(obj["attr1"], obj["attr2"])
+            return obj
+
+        decoded = msgspec.msgpack.decode(encoded, dec_hook=custom_decode)
+        print(decoded)  # Should print the MyClass instance
+
+        a = time.perf_counter()
+        class Haha:
+            def __init__(self):
+                self._hello = "Hello"
+                self._time = (1, 2, 3)
+
+            def print_it():
+                print(self._time)
+
+        fields = {"args": args, "kwargs": kwargs} # , "haha": Haha()}
+        CustomStruct = type('CustomStruct', (msgspec.Struct,), fields)
+        custom_struct = CustomStruct()
+        b = time.perf_counter()
+        enc = msgspec.msgpack.encode(custom_struct)
+        c = time.perf_counter()
+        def custom_encode(obj):
+            print("custom_encode for obj: " + str(obj))
+            if isinstance(obj, Point):
+                return {"__type__": "CustomStruct", "args": obj.args, "kwargs": obj.kwargs}
+            return obj
+        d = time.perf_counter()
+        enc_again = msgspec.msgpack.encode(custom_struct, enc_hook=custom_encode)
+        e = time.perf_counter()
+        enc_three = msgspec.msgpack.encode(fields)
+        f = time.perf_counter()
+        print("custom_struct type: " + str(type(custom_struct)))
+        print("Creating the custom type took " + str(1000000 * (b - a)) + " us")
+        print("Encoding the custom type took " + str(1000000 * (c - b)) + " us")
+        print("args type: " + str(type(custom_struct.args)))
+        print("args: " + str(custom_struct.args))
+        print("kwargs type: " + str(type(custom_struct.kwargs)))
+        print("kwargs: " + str(custom_struct.kwargs))
+        # print("haha type: " + str(type(custom_struct.haha)))
+        # print("haha: " + str(custom_struct.haha))
+        print("enc type: " + str(type(enc)))
+        print("enc output: " + str(enc))
+        print("another try: " + str(msgspec.msgpack.encode(b"x")))
+        print("enc_again type: " + str(type(enc_again)))
+        print("enc_again output: " + str(enc_again))
+        print("enc_again decoded: " + str(msgspec.msgpack.decode(enc_again)))
+        print("enc_three type: " + str(type(enc_three)))
+        print("enc_three output: " + str(enc_three))
+        print("enc_three decoded: " + str(msgspec.msgpack.decode(enc_three)))
+        print("enc_three took " + str(1000000 * (f - e)) + " us")
+
+        # inp = (args, kwargs)
         self._dag_submitter.write(inp)
 
         ref = CompiledDAGRef(self, self._execution_index)
@@ -1215,7 +1295,8 @@ class CompiledDAG:
 
         self._get_or_compile()
         async with self._dag_submission_lock:
-            inp = (args, kwargs)
+            inp = TestSerialize(zero = args[0], one = None)
+            #inp = (args, kwargs)
             await self._dag_submitter.write(inp)
             # Allocate a future that the caller can use to get the result.
             fut = asyncio.Future()
