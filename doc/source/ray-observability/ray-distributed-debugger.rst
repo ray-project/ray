@@ -94,25 +94,25 @@ Ray Debugger needs to know the absolute path to the folder you submitted `job.py
     :align: center
 
 
-Run your Ray application
-~~~~~~~~~~~~~~~~~~~~~~~~
+Run your Ray app 
+~~~~~~~~~~~~~~~~
 
-Start running your Ray application.
+Start running your Ray app.
 
 .. code-block:: bash
 
     python job.py
 
 
-Attach to paused tasks
-~~~~~~~~~~~~~~~~~~~~~~
+Attach to a paused task
+~~~~~~~~~~~~~~~~~~~~~~~
 
 When debugger hits a breakpoint
 
 - The task enters a paused state.
 - The terminal clearly indicates when the debugger pauses a task and waits for the debugger to attach.
 - The paused task is listed in the Ray Debugger extension.
-- Click the paused task to attach the VS Code debugger.
+- Click on the paused task to attach the VS Code debugger.
 
 .. image:: ./images/attach-paused-task.gif
     :align: center
@@ -139,8 +139,8 @@ Run the same `job.py` file with an additional argument to raise an exception.
     python job.py raise-exception
 
 
-Attach to paused tasks
-~~~~~~~~~~~~~~~~~~~~~~
+Attach to paused task
+~~~~~~~~~~~~~~~~~~~~~
 
 When the app throws an exception:
 
@@ -160,6 +160,6 @@ Debug your Ray app just as you would when developing locally.
 
 
 Feedback
-=========
+========
 
 Join the `#ray-debugger <https://ray-distributed.slack.com/archives/C073MPGLAC9>`_ channel on the Ray Slack channel to get help.
