@@ -1,19 +1,14 @@
-import collections
-import itertools
 from contextlib import nullcontext
 from typing import Callable, Iterator, Optional, TypeVar
 
-from ray.data._internal.block_batching.interfaces import BlockPrefetcher
 from ray.data._internal.block_batching.util import (
     blocks_to_batches,
     collate,
     extract_data_from_batch,
     format_batches,
 )
-from ray.data._internal.memory_tracing import trace_deallocation
 from ray.data._internal.stats import DatasetStats
 from ray.data.block import Block, DataBatch
-from ray.types import ObjectRef
 
 T = TypeVar("T")
 
