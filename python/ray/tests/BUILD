@@ -732,33 +732,6 @@ py_test_module_list(
 
 py_test_module_list(
   files = [
-    "test_actor.py",
-    "test_advanced.py",
-    "test_asyncio.py",
-    "test_basic.py",
-    "test_basic_2.py",
-    "test_basic_3.py",
-    "test_basic_4.py",
-    "test_basic_5.py",
-    "test_multiprocessing.py",
-    "test_list_actors.py",
-    "test_list_actors_2.py",
-    "test_list_actors_3.py",
-    "test_list_actors_4.py",
-    "test_object_assign_owner.py",
-    "test_dashboard.py",
-    "test_gcs_utils.py",
-  ],
-  size = "large",
-  name_suffix = "_new_gcs_client",
-  env = {"RAY_USE_NEW_GCS_CLIENT": "1"},
-  tags = ["exclusive", "team:core"],
-  deps = ["//:ray_lib", ":conftest"],
-)
-
-
-py_test_module_list(
-  files = [
     "test_object_spilling.py",
     "test_object_spilling_2.py",
     "test_object_spilling_3.py",

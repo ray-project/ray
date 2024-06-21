@@ -703,13 +703,18 @@ class SingletonIoContext {
 
  private:
   SingletonIoContext() : work_(io_service_) {
-    std::thread io_thread([this] { io_service_.run(); });
-    io_thread.detach();
+    io_thread_ = std::thread([this] { io_service_.run(); });
   }
-  ~SingletonIoContext() { io_service_.stop(); }
+  ~SingletonIoContext() {
+    io_service_.stop();
+    if (io_thread_.joinable()) {
+      io_thread_.join();
+    }
+  }
 
   instrumented_io_context io_service_;
   boost::asio::io_service::work work_;  // to keep io_service_ running
+  std::thread io_thread_;
 };
 
 std::shared_ptr<GcsClient> ConnectToGcsStandalone(const GcsClientOptions &options,

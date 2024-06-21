@@ -14,6 +14,22 @@ from ray.includes.common cimport (
     kStreamingGeneratorReturn,
 )
 
+from ray.exceptions import (
+    RayActorError,
+    ActorDiedError,
+    RayError,
+    RaySystemError,
+    RayTaskError,
+    ObjectStoreFullError,
+    OutOfDiskError,
+    GetTimeoutError,
+    TaskCancelledError,
+    AsyncioActorExit,
+    PendingCallsLimitExceeded,
+    RpcError,
+    ObjectRefStreamEndOfStreamError,
+)
+
 
 cdef class GcsClientOptions:
     """Cython wrapper class of C++ `ray::gcs::GcsClientOptions`."""

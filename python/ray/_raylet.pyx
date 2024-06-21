@@ -2670,9 +2670,9 @@ def _auto_reconnect(f):
     return wrapper
 
 
-class GcsClient:
+cdef class GcsClient:
     """
-    Cython wrapper class of C++ `ray::gcs::GcsClient`.
+    Client to the GCS server. Only contains synchronous methods.
 
     This class is in transition to use the new C++ GcsClient binding. The old
     PythonGcsClient binding is not deleted until we are confident that the new
@@ -2681,57 +2681,33 @@ class GcsClient:
     Defaults to the new binding. If you want to use the old binding, please
     set the environment variable `RAY_USE_OLD_GCS_CLIENT=1`.
     """
-    def __new__(cls, *args, **kwargs):
-        if os.getenv('RAY_USE_OLD_GCS_CLIENT') == '1':
-            return OldGcsClient(*args, **kwargs)
-        return super(GcsClient, cls).__new__(cls)
 
-    def __init__(self, address,
-                  nums_reconnect_retry=RayConfig.instance().nums_py_gcs_reconnect_retry(
-                  ),
+    cdef object inner  # OldGcsClient or NewGcsClient
+    cdef c_bool use_old_client
+
+    def __cinit__(self, address,
+                  nums_reconnect_retry=None,
                   cluster_id: str = None):
-        # nums_reconnect_retry is ignored because now we rely on GcsRpcClient
-        # retry.
-        # TODO: it does not support initial connection when GCS is down. We need to
-        # support it in GcsRpcClient.
-        self.inner = NewGcsClient.standalone(address, cluster_id)
-        self.new_gcs_client_methods = set([
-            # Internal KV
-            "internal_kv_get",
-            "internal_kv_multi_get",
-            "internal_kv_put",
-            "internal_kv_del",
-            "internal_kv_exists",
-            "internal_kv_keys",
-            # Jobs
-            "get_all_job_info",
-            # Nodes
-            "check_alive",
-            "drain_nodes",
-            "get_all_node_info",
-            # Node Resources
-            "get_all_resource_usage",
-            # Autoscaler
-            "request_cluster_resource_constraint",
-            "get_cluster_resource_state",
-            "get_cluster_status",
-            "report_autoscaling_state",
-            "drain_node"
-            # Runtime Env
-            "pin_runtime_env_uri",
-            # Properties
-            "cluster_id",
-            "address",
-        ])
+        self.use_old_client = os.getenv("RAY_USE_OLD_GCS_CLIENT") == "1"
+        if self.use_old_client:
+            self.inner = OldGcsClient(address, nums_reconnect_retry, cluster_id)
+        else:
+            # nums_reconnect_retry is ignored because now we rely on GcsRpcClient
+            # retry.
+            # TODO: it does not support initial connection when GCS is down. We need to
+            # support it in GcsRpcClient.
+            self.inner = NewGcsClient.standalone(address, cluster_id)
+        logger.debug(f"Created GcsClient. use old? {self.use_old_client}, inner {self.inner}")
 
     def __getattr__(self, name):
-        if name in self.new_gcs_client_methods:
-            if "TEST_RAY_COLLECT_KV_FREQUENCY" in os.environ:
-                with ray._private.utils._CALLED_FREQ_LOCK:
-                    ray._private.utils._CALLED_FREQ[name] += 1
-
+        if self.use_old_client:
             return getattr(self.inner, name)
-        raise AttributeError(f"'GcsClient' object has no attribute '{name}'")
+        # For new client, we collect the frequency of each method call.
+        # For old client, that is done in @_auto_reconnect.
+        if "TEST_RAY_COLLECT_KV_FREQUENCY" in os.environ:
+            with ray._private.utils._CALLED_FREQ_LOCK:
+                ray._private.utils._CALLED_FREQ[name] += 1
+        return getattr(self.inner, name)
 
 cdef class OldGcsClient:
     """Old Cython wrapper class of C++ `ray::gcs::PythonGcsClient`."""
@@ -2742,7 +2718,7 @@ cdef class OldGcsClient:
         ClusterID cluster_id
 
     def __cinit__(self, address,
-                  nums_reconnect_retry,
+                  nums_reconnect_retry = RayConfig.instance().nums_py_gcs_reconnect_retry(),
                   cluster_id: str = None):
         cdef GcsClientOptions gcs_options = GcsClientOptions.from_gcs_address(address)
         self.inner.reset(new CPythonGcsClient(dereference(gcs_options.native())))

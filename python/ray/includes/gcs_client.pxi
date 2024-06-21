@@ -6,13 +6,11 @@
 
 """
 Binding of C++ ray::gcs::GcsClient.
-
 """
 
 # This file is a .pxi which is included in _raylet.pyx. This means any already-imported
 # symbols can directly be used here. This is not ideal, but we can't easily split this
-# out to a separate translation unit because we need to access the singleton
-# CCoreWorkerProcess.
+# out to a separate translation unit because we need to access the singleton thread.
 #
 # We need to best-effort import everything we need.
 
