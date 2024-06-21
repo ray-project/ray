@@ -2617,9 +2617,6 @@ def get(
         if isinstance(object_refs, ObjectRefGenerator):
             return object_refs
 
-        if isinstance(object_refs, CompiledDAGRef):
-            return object_refs.get()
-
         is_individual_id = isinstance(object_refs, ray.ObjectRef)
         if is_individual_id:
             object_refs = [object_refs]
@@ -2839,11 +2836,6 @@ def wait(
                 "wait() expected a list of ray.ObjectRef or "
                 "ray.ObjectRefGenerator, "
                 f"got list containing {type(ray_waitable)}"
-            )
-        if isinstance(ray_waitable, CompiledDAGRef):
-            raise TypeError(
-                "wait() does not support CompiledDAGRef. "
-                "Please call ray.get() on the CompiledDAGRef to get the result."
             )
     worker.check_connected()
 
