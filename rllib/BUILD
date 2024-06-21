@@ -3010,6 +3010,24 @@ py_test(
     args = ["--enable-new-api-stack", "--stop-iters=3"],
 )
 
+py_test(
+    name = "examples/rl_modules/action_masking_rlm",
+    main = "examples/rl_modules/action_masking_rlm.py",
+    tags = ["team:rllib", "examples"],
+    size = "medium",
+    srcs = ["examples/rl_modules/action_masking_rlm.py"],
+    args = ["--enable-new-api-stack", "--stop-iters=5"],
+)
+
+py_test(
+    name = "examples/rl_modules/autoregressive_actions_rlm",
+    main = "examples/rl_modules/autoregressive_actions_rlm.py",
+    tags = ["team:rllib", "examples"],
+    size = "medium",
+    srcs = ["examples/rl_modules/autoregressive_actions_rlm.py"],
+    args = ["--enable-new-api-stack"],
+)
+
 #@OldAPIStack @HybridAPIStack
 py_test(
     name = "examples/rl_modules/classes/mobilenet_rlm_hybrid_api_stack",
@@ -3026,27 +3044,6 @@ py_test(
     size = "medium",
     srcs = ["examples/rl_modules/pretraining_single_agent_training_multi_agent.py"],
     args = ["--enable-new-api-stack", "--num-agents=2", "--stop-iters-pretraining=5", "--stop-iters=20", "--stop-reward=150.0"],
-)
-
-
-
-# TODO (sven): Continue cleanup from here with adding more subdirectories.
-py_test(
-    name = "examples/action_masking_tf2",
-    main = "examples/action_masking.py",
-    tags = ["team:rllib", "exclusive", "examples", "examples_use_all_core"],
-    size = "large",
-    srcs = ["examples/action_masking.py"],
-    args = ["--stop-iter=2", "--framework=tf2"]
-)
-
-py_test(
-    name = "examples/action_masking_torch",
-    main = "examples/action_masking.py",
-    tags = ["team:rllib", "exclusive", "examples"],
-    size = "medium",
-    srcs = ["examples/action_masking.py"],
-    args = ["--stop-iter=2", "--framework=torch"]
 )
 
 py_test(
