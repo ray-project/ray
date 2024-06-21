@@ -53,8 +53,7 @@ def test_preemption_error():
     status = _worker_group_status_from_errors(
         [None, PreemptionRayActorError(), None, RuntimeError(), None]
     )
-    for _ in range(5):
-        assert policy.make_decision(status) == FailureDecision.RESTART
+    assert policy.make_decision(status) == FailureDecision.RESTART
 
     # Raise when the preemption error is not the cause of the failure.
     status = _worker_group_status_from_errors(

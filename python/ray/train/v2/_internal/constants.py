@@ -1,4 +1,7 @@
 import os
+from typing import Dict
+
+from ray._private.ray_constants import env_bool, env_set_by_user
 
 # Unsupported configs can use this value to detect if the user has set it.
 _UNSUPPORTED = "UNSUPPORTED"
@@ -19,4 +22,22 @@ MAX_CONSECUTIVE_HEALTH_CHECK_MISSES_ENV_VAR = (
 DEFAULT_MAX_CONSECUTIVE_HEALTH_CHECK_MISSES = 5
 
 # V2 feature flag.
-V2_ENABLED = bool(int(os.environ.get("RAY_TRAIN_V2_ENABLED", "0")))
+V2_ENABLED_ENV_VAR = "RAY_TRAIN_V2_ENABLED"
+V2_ENABLED = env_bool(V2_ENABLED_ENV_VAR, False)
+
+
+ENV_VARS_TO_PROPAGATE = (V2_ENABLED_ENV_VAR,)
+
+
+def get_env_vars_to_propagate() -> Dict[str, str]:
+    """Returns a dictionary of environment variables that should be propagated
+    from the driver to each training worker.
+
+    This way, users only need to set environment variables in one place
+    when launching the script instead of needing to manually set a runtime environment.
+    """
+    env_vars = {}
+    for env_var in ENV_VARS_TO_PROPAGATE:
+        if env_set_by_user(env_var):
+            env_vars[env_var] = os.environ[env_var]
+    return env_vars

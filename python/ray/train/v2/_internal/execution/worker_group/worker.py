@@ -49,7 +49,12 @@ class RayTrainWorker:
         return fn(*fn_args, **fn_kwargs)
 
     def run_train_fn(self, train_fn: Callable):
-        train_fn()
+        try:
+            train_fn()
+        finally:
+            # Make sure the result queue is fully consumed before the worker exits.
+            # Training is not "finished" until all results are processed.
+            self.flush_result_queue()
 
     def get_metadata(self) -> ActorMetadata:
         return ActorMetadata(
@@ -60,12 +65,25 @@ class RayTrainWorker:
             accelerator_ids=ray.get_runtime_context().get_accelerator_ids(),
         )
 
+    def flush_result_queue(self):
+        """Waits until all results are consumed and processed by the controller.
+
+        Joining the queue will block until all items have been processed.
+        This requires `poll_status` to be called repeatedly until the
+        queue has been fully flushed.
+        """
+        result_queue = get_train_context().get_result_queue()
+        result_queue.join()
+
     def poll_status(self) -> _TrainingResult:
         train_context = get_train_context()
         result_queue = train_context.get_result_queue()
         if result_queue.empty():
             return None
+        # TODO: We can implement two phase commit here.
+        # Only mark the task done when the result has been processed by the controller.
         training_result = result_queue.get()
+        result_queue.task_done()
         return training_result
 
     def init_train_context(

@@ -9,6 +9,7 @@ from ray.train import Checkpoint
 from ray.train.v2._internal.constants import (
     DEFAULT_MAX_CONSECUTIVE_HEALTH_CHECK_MISSES,
     MAX_CONSECUTIVE_HEALTH_CHECK_MISSES_ENV_VAR,
+    get_env_vars_to_propagate,
 )
 from ray.train.v2._internal.exceptions import (
     WorkerHealthCheckFailedError,
@@ -30,7 +31,7 @@ from ray.util.scheduling_strategies import (
     PlacementGroupSchedulingStrategy,
 )
 
-logger = logging.getLogger(__file__)
+logger = logging.getLogger(__name__)
 
 T = TypeVar("T")
 
@@ -105,12 +106,14 @@ class WorkerGroup:
         )
         pg = self._pg = placement_group([resources_per_worker] * num_workers)
 
+        logger.info(f"Starting worker group of size {num_workers}.")
         actors = [
             remote_actor_cls.options(
                 max_concurrency=2,
                 scheduling_strategy=PlacementGroupSchedulingStrategy(
                     placement_group=pg, placement_group_bundle_index=i
                 ),
+                runtime_env={"env_vars": get_env_vars_to_propagate()},
             ).remote()
             for i in range(num_workers)
         ]

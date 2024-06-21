@@ -24,19 +24,33 @@ class DefaultFailurePolicy(FailurePolicy):
         for error in worker_group_status.errors.values():
             # Always try restarting in the case of a preempted actor.
             if isinstance(error, RayActorError) and error.preempted:
-                logger.warning(
-                    "At least one of the worker failures was caused by "
-                    "node preemption. Ray Train will not increment the "
-                    "failure count and will trigger a restart."
+                logger.info(
+                    "Deciding to RESTART, since at least one of the worker failures "
+                    "was caused by node preemption. Ray Train will not increment the "
+                    "total failure count and will restart the worker group."
                 )
                 return FailureDecision.RESTART
 
         self._total_failures += 1
 
         if self.failure_config.max_failures == -1:
+            logger.info(
+                "Deciding to RESTART, since infinite retry is enabled. "
+                f"Encountered {self._total_failures} failures so far."
+            )
             return FailureDecision.RESTART
 
         if self._total_failures > self.failure_config.max_failures:
+            logger.info(
+                "Deciding to TERMINATE, since the total failure count "
+                f"({self._total_failures}) exceeded the maximum allowed failures: "
+                f"FailureConfig(max_failures={self.failure_config.max_failures})."
+            )
             return FailureDecision.RAISE
 
+        logger.info(
+            "Deciding to RESTART, since the total "
+            f"failure count ({self._total_failures}) <= "
+            f"FailureConfig(max_failures={self.failure_config.max_failures})."
+        )
         return FailureDecision.RESTART

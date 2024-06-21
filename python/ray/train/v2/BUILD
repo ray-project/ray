@@ -1,10 +1,14 @@
+py_library(
+    name = "conftest",
+    srcs = ["tests/conftest.py"]
+)
+
 py_test(
     name = "test_accelerator_utils",
     size = "small",
     srcs = ["tests/test_accelerator_utils.py"],
     tags = ["exclusive", "team:ml", "train_v2"],
-    deps = ["//:ray_lib"],
-    env = {"RAY_TRAIN_V2_ENABLED": "1"},
+    deps = ["//:ray_lib", ":conftest"],
 )
 
 py_test(
@@ -12,8 +16,7 @@ py_test(
     size = "small",
     srcs = ["tests/test_checkpoint_handler.py"],
     tags = ["exclusive", "team:ml", "train_v2"],
-    deps = ["//:ray_lib"],
-    env = {"RAY_TRAIN_V2_ENABLED": "1"},
+    deps = ["//:ray_lib", ":conftest"],
 )
 
 py_test(
@@ -21,8 +24,7 @@ py_test(
     size = "small",
     srcs = ["tests/test_controller.py"],
     tags = ["exclusive", "team:ml", "train_v2"],
-    deps = ["//:ray_lib"],
-    env = {"RAY_TRAIN_V2_ENABLED": "1"},
+    deps = ["//:ray_lib", ":conftest"],
 )
 
 py_test(
@@ -30,8 +32,7 @@ py_test(
     size = "small",
     srcs = ["tests/test_data_parallel_trainer.py"],
     tags = ["exclusive", "team:ml", "train_v2"],
-    deps = ["//:ray_lib"],
-    env = {"RAY_TRAIN_V2_ENABLED": "1"},
+    deps = ["//:ray_lib", ":conftest"],
 )
 
 py_test(
@@ -39,8 +40,15 @@ py_test(
     size = "small",
     srcs = ["tests/test_failure_policy.py"],
     tags = ["exclusive", "team:ml", "train_v2"],
-    deps = ["//:ray_lib"],
-    env = {"RAY_TRAIN_V2_ENABLED": "1"},
+    deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test(
+    name = "test_persistence",
+    size = "medium",
+    srcs = ["tests/test_persistence.py"],
+    tags = ["exclusive", "team:ml", "train_v2"],
+    deps = ["//:ray_lib", ":conftest"],
 )
 
 py_test(
@@ -48,8 +56,7 @@ py_test(
     size = "small",
     srcs = ["tests/test_result.py"],
     tags = ["exclusive", "team:ml", "train_v2"],
-    deps = ["//:ray_lib"],
-    env = {"RAY_TRAIN_V2_ENABLED": "1"},
+    deps = ["//:ray_lib", ":conftest"],
 )
 
 py_test(
@@ -57,8 +64,7 @@ py_test(
     size = "small",
     srcs = ["tests/test_storage.py"],
     tags = ["exclusive", "team:ml", "train_v2"],
-    deps = ["//:ray_lib"],
-    env = {"RAY_TRAIN_V2_ENABLED": "1"},
+    deps = ["//:ray_lib", ":conftest"],
 )
 
 py_test(
@@ -66,8 +72,7 @@ py_test(
     size = "small",
     srcs = ["tests/test_sync_actor.py"],
     tags = ["exclusive", "team:ml", "train_v2"],
-    deps = ["//:ray_lib"],
-    env = {"RAY_TRAIN_V2_ENABLED": "1"},
+    deps = ["//:ray_lib", ":conftest"],
 )
 
 py_test(
@@ -75,6 +80,5 @@ py_test(
     size = "small",
     srcs = ["tests/test_worker_group_v2.py"],
     tags = ["exclusive", "team:ml", "train_v2"],
-    deps = ["//:ray_lib"],
-    env = {"RAY_TRAIN_V2_ENABLED": "1"},
+    deps = ["//:ray_lib", ":conftest"],
 )

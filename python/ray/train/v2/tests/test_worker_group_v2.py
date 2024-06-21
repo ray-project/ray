@@ -1,14 +1,19 @@
 import collections
+import os
 import time
 
 import pytest
 
 import ray
-from ray.train.v2._internal.constants import MAX_CONSECUTIVE_HEALTH_CHECK_MISSES_ENV_VAR
+from ray.train.v2._internal.constants import (
+    ENV_VARS_TO_PROPAGATE,
+    MAX_CONSECUTIVE_HEALTH_CHECK_MISSES_ENV_VAR,
+)
 from ray.train.v2._internal.exceptions import (
     WorkerHealthCheckFailedError,
     WorkerHealthCheckMissedError,
 )
+from ray.train.v2._internal.execution.context import get_train_context
 from ray.train.v2._internal.execution.worker_group import (
     ActorMetadata,
     RayTrainWorker,
@@ -264,6 +269,43 @@ def test_setup_worker_group(ray_start_4_cpus, tmp_path):
     assert worker_group.execute(get_storage_context_name) == ["test"] * num_workers
 
     worker_group.shutdown()
+
+
+@pytest.mark.parametrize("queue_backlog_length", [0, 1, 3])
+def test_flush_worker_result_queue(ray_start_4_cpus, queue_backlog_length):
+    """Make sure that the result queue is fully consumed before the worker exits."""
+    wg = WorkerGroup()
+    wg.start(num_workers=4, resources_per_worker={"CPU": 1})
+
+    def populate_result_queue():
+        get_train_context().get_result_queue().put("result")
+
+    for _ in range(queue_backlog_length):
+        wg.execute(populate_result_queue)
+
+    wg.run_train_fn(lambda: None)
+    status = wg.poll_status()
+
+    for _ in range(queue_backlog_length - 1):
+        assert not status.finished
+        status = wg.poll_status()
+
+    assert status.finished
+
+    wg.shutdown()
+
+
+def test_env_var_propagation(ray_start_4_cpus, monkeypatch):
+    """Ray Train should automatically propagate some environment variables
+    from the driver to the workers."""
+    test_env_var = ENV_VARS_TO_PROPAGATE[0]
+    monkeypatch.setenv(test_env_var, "1")
+    w = WorkerGroup()
+    w.start(num_workers=4, resources_per_worker={"CPU": 1})
+    env_vars = w.execute(lambda: os.environ.get(test_env_var))
+    w.shutdown()
+
+    assert env_vars == ["1"] * 4
 
 
 if __name__ == "__main__":

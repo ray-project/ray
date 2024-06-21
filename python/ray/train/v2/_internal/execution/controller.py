@@ -5,6 +5,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
+from ray._private.auto_init_hook import wrap_auto_init
 from ray.train._internal.checkpoint_manager import _CheckpointManager
 from ray.train.v2._internal.constants import (
     DEFAULT_HEALTH_CHECK_INTERVAL_S,
@@ -30,7 +31,7 @@ from ray.train.v2._internal.execution.worker_group import WorkerGroup, WorkerGro
 from ray.train.v2._internal.util import time_monotonic
 from ray.train.v2.api.config import RunConfig
 
-logger = logging.getLogger(__file__)
+logger = logging.getLogger(__name__)
 
 
 class TrainControllerState(Enum):
@@ -115,19 +116,27 @@ class TrainController:
         """Executes failure handling decisions (ex: restart, terminate)."""
         assert worker_group_status.errors
 
+        errors_str = "\n".join(
+            [
+                f"[Rank {worker_rank}] {error}"
+                for worker_rank, error in worker_group_status.errors.items()
+            ]
+        )
+
         if failure_decision == FailureDecision.RESTART:
-            errors = worker_group_status.errors.values()
             logger.error(
-                "Restarting workers after encountering "
-                f"{len(errors)} worker errors:\n"
-                + ("\n".join([str(e) for e in errors]))
+                "Restarting worker group after encountering "
+                f"{len(worker_group_status.errors)} failure(s) on workers:\n"
+                f"{errors_str}"
             )
+            # Shutdown the worker group so that we don't keep polling errored tasks.
+            self._maybe_shutdown_worker_group()
             self._set_state(TrainControllerState.RECOVERING)
         elif failure_decision == FailureDecision.RAISE:
-            errors = worker_group_status.errors.values()
             logger.error(
-                "Terminating training after encountering worker errors:\n"
-                + ("\n".join([str(e) for e in errors]))
+                "Terminating worker group after encountering "
+                f"{len(worker_group_status.errors)} failure(s) on workers:\n"
+                f"{errors_str}"
             )
             self._set_state(TrainControllerState.ERRORED)
             self._training_failed_error = TrainingFailedError(
@@ -250,6 +259,7 @@ class TrainController:
                 )
                 self._execute_scaling_decision(scaling_decision)
 
+    @wrap_auto_init
     def run(self):
         """Run the main control loop. Exits when training is finished or errored."""
         self._scaling_policy.on_controller_run_start()
