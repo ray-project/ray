@@ -24,7 +24,7 @@ Download the extension
 
 
 Set up the environment
-~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~
 
 Create a new virtual environment and install dependencies.
 
@@ -70,7 +70,7 @@ Start running your Ray app.
 
 
 Attach to the paused task
-~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~
 
 When the debugger hits a breakpoint:
 
@@ -84,7 +84,7 @@ When the debugger hits a breakpoint:
 
 
 Start debugging
-~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~
 
 Debug your Ray app as you would when developing locally.
 
@@ -119,7 +119,7 @@ When the app throws an exception:
 
 
 Start debugging
-~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~
 
 Debug your Ray app as you would when developing locally.
 
