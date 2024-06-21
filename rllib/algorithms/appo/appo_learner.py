@@ -51,7 +51,6 @@ class AppoLearner(ImpalaLearner):
         Args:
             module_id:
         """
-
         #    return dict(
         #        last_update=self._counters[LAST_TARGET_UPDATE_TS],
         #        mean_kl_loss_per_module={
