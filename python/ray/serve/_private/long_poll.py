@@ -252,7 +252,7 @@ class LongPollHost:
         # If there are any keys with outdated snapshot ids,
         # return their updated values immediately.
         updated_objects = {}
-        for key, snapshot_id in keys_to_snapshot_ids.items():
+        for key, client_snapshot_id in keys_to_snapshot_ids.items():
             try:
                 existing_id = self.snapshot_ids[key]
             except KeyError:
