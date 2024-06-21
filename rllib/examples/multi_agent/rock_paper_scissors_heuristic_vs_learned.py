@@ -57,6 +57,7 @@ parser = add_rllib_example_script_args(
     default_timesteps=200000,
     default_reward=6.0,
 )
+parser.set_defaults(num_agents=2)
 parser.add_argument(
     "--use-lstm",
     action="store_true",
