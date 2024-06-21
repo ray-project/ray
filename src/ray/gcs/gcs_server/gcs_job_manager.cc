@@ -71,10 +71,10 @@ void GcsJobManager::HandleAddJob(rpc::AddJobRequest request,
 
 void GcsJobManager::HandleDeleteJob(rpc::DeleteJobRequest request,
                                     rpc::DeleteJobReply *reply,
-                                    rpc::SendReplyCallback send_reply_callback){
+                                    rpc::SendReplyCallback send_reply_callback) {
   const JobID job_id = JobID::FromBinary(request.job_id());
 
-  auto on_done = [this, job_id, reply, send_reply_callback](const Status &status) {
+  auto on_done = [job_id, reply, send_reply_callback](const Status &status) {
     if (!status.ok()) {
       RAY_LOG(ERROR) << "Failed to delete job, job_id = " << job_id;
     }

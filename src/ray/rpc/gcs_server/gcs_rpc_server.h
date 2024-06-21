@@ -164,8 +164,8 @@ class JobInfoGcsServiceHandler {
                             SendReplyCallback send_reply_callback) = 0;
 
   virtual void HandleDeleteJob(DeleteJobRequest request,
-                            DeleteJobReply *reply,
-                            SendReplyCallback send_reply_callback) = 0;
+                               DeleteJobReply *reply,
+                               SendReplyCallback send_reply_callback) = 0;
 
   virtual void HandleMarkJobFinished(MarkJobFinishedRequest request,
                                      MarkJobFinishedReply *reply,

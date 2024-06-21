@@ -179,7 +179,7 @@ async def test_get_all_job_info(call_ray_start, tmp_path):  # noqa: F811
     ["ray start --head"],
     indirect=True,
 )
-async def test_delete_job_info(call_ray_start, tmp_path):
+async def test_delete_job_info(call_ray_start, tmp_path):  # noqa: F811
     """Test that JobInfo is deleted from the GCS."""
     with ray.init(address=call_ray_start) as address_info:
         gcs_aio_client = GcsAioClient(
