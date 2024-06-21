@@ -712,9 +712,9 @@ def test_map_batches_async_generator(ray_start_regular_shared):
 
         async def __call__(self, batch):
             tasks = [sleep_and_yield(i) for i in batch["id"]]
-            results = await asyncio.gather(*tasks)
-            for result in results:
-                yield result
+            tasks = [asyncio.create_task(sleep_and_yield(i)) for i in batch["id"]]
+            for task in tasks:
+                yield await task
 
     n = 5
     ds = ray.data.range(n, override_num_blocks=1)
