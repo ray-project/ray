@@ -2617,6 +2617,8 @@ def get(
         if isinstance(object_refs, ObjectRefGenerator):
             return object_refs
 
+        # Use direct type check instead of `isinstance()` to fix
+        # many_tasks perf regression.
         if type(object_refs) == CompiledDAGRef:
             return object_refs.get()
 
@@ -2840,6 +2842,7 @@ def wait(
                 "ray.ObjectRefGenerator, "
                 f"got list containing {type(ray_waitable)}"
             )
+        # Use direct type check instead of `isinstance()` to fix many_tasks perf test.
         if type(ray_waitable) == CompiledDAGRef:
             raise TypeError(
                 "wait() does not support CompiledDAGRef. "
