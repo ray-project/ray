@@ -892,8 +892,7 @@ class CompiledDAG:
                 bound in. Therefore task.{bind_index+1} happens before
                 task.{bind_index}.
 
-        #2: Add an edge from the writer to the reader if the channel
-            isn't an NCCL channel.
+        #2: Add an edge from the writer to the reader
 
         Reason: Channels represent data dependencies. In order to read
                 data, the writer must have written the data first.
@@ -983,14 +982,12 @@ class CompiledDAG:
             next_task_idx = _get_next_task_idx(task)
             _add_edge(graph, idx, next_task_idx)
             for downstream_idx in task.downstream_node_idxs:
+                # Add an edge from the writer to the reader.
+                _add_edge(graph, idx, downstream_idx)
                 if task.dag_node.type_hint.requires_nccl():
                     # Add an edge from the reader of an NCCL channel to the node
                     # that has the next bind index on the same actor as the writer.
                     _add_edge(graph, downstream_idx, next_task_idx)
-                else:
-                    # Add an edge from the writer to the reader if the channel
-                    # isn't an NCCL channel.
-                    _add_edge(graph, idx, downstream_idx)
         num_total_nodes = len(graph)
 
         # A list of nodes with in-degree 0, including (1) InputNode and
