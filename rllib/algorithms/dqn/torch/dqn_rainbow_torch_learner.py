@@ -18,6 +18,14 @@ from ray.rllib.algorithms.dqn.dqn_rainbow_learner import (
 )
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.learner.torch.torch_learner import TorchLearner
+from ray.rllib.core.rl_module.marl_module import MultiAgentRLModule
+from ray.rllib.core.rl_module.rl_module_with_target_networks_interface import (
+    RLModuleWithTargetNetworksInterface,
+)
+from ray.rllib.core.rl_module.torch.torch_rl_module import (
+    TorchRLModule,
+    TorchDDPRLModuleWithTargetNetworksInterface,
+)
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.metrics import TD_ERROR_KEY
@@ -253,6 +261,40 @@ class DQNRainbowTorchLearner(DQNRainbowLearner, TorchLearner):
             )
 
         return total_loss
+
+    @override(TorchLearner)
+    def _make_modules_ddp_if_necessary(self) -> None:
+        """Logic for (maybe) making all Modules within self._module DDP.
+
+        This implementation differs from the super's default one in using the special
+        TorchDDPRLModuleWithTargetNetworksInterface wrapper, instead of the default
+        TorchDDPRLModule one.
+        """
+
+        # If the module is a MultiAgentRLModule and nn.Module we can simply assume
+        # all the submodules are registered. Otherwise, we need to loop through
+        # each submodule and move it to the correct device.
+        # TODO (Kourosh): This can result in missing modules if the user does not
+        #  register them in the MultiAgentRLModule. We should find a better way to
+        #  handle this.
+        if self._distributed:
+            # Single agent module: Convert to
+            # `TorchDDPRLModuleWithTargetNetworksInterface`.
+            if isinstance(self._module, RLModuleWithTargetNetworksInterface):
+                self._module = TorchDDPRLModuleWithTargetNetworksInterface(self._module)
+            # Multi agent module: Convert each submodule to
+            # `TorchDDPRLModuleWithTargetNetworksInterface`.
+            else:
+                assert isinstance(self._module, MultiAgentRLModule)
+                for key in self._module.keys():
+                    sub_module = self._module[key]
+                    if isinstance(sub_module, TorchRLModule):
+                        # Wrap and override the module ID key in self._module.
+                        self._module.add_module(
+                            key,
+                            TorchDDPRLModuleWithTargetNetworksInterface(sub_module),
+                            override=True,
+                        )
 
     @override(DQNRainbowLearner)
     def _update_module_target_networks(
