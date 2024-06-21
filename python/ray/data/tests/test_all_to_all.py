@@ -10,7 +10,16 @@ import pyarrow as pa
 import pytest
 
 import ray
-from ray.data.aggregate import AggregateFn, Count, Max, Mean, Min, Quantile, Std, Sum
+from ray.data._internal.aggregate._aggregate import (
+    Count,
+    Max,
+    Mean,
+    Min,
+    Quantile,
+    Std,
+    Sum,
+)
+from ray.data.aggregate import AggregateFn
 from ray.data.context import DataContext
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.util import named_values
