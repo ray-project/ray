@@ -233,6 +233,7 @@ void CoreWorkerProcessImpl::InitializeSystemConfig() {
   thread.join();
 
   RayConfig::instance().initialize(promise.get_future().get());
+  ray::asio::testing::init();
 }
 
 void CoreWorkerProcessImpl::RunWorkerTaskExecutionLoop() {
