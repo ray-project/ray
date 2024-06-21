@@ -162,6 +162,9 @@ def _exec_task(self, task: "ExecutableTask", idx: int) -> bool:
     try:
         output_val = method(*resolved_inputs)
         output_writer.write(output_val)
+    except IOError:
+        # Channel closed. Exit the loop.
+        return True
     except Exception as exc:
         # TODO(rui): consider different ways of passing down the exception,
         # e.g., wrapping with RayTaskError.
