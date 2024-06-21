@@ -6,13 +6,13 @@ from typing import Optional, Union
 
 import pyarrow
 
-from ray.data.block import BlockAccessor
-from ray.data.datasource.file_datasink import BlockBasedFileDatasink
-from ray.data.datasource.webdataset_datasource import (
+from ray.data._internal.datasource.webdataset_datasource import (
     _apply_list,
     _default_encoder,
     _make_iterable,
 )
+from ray.data.block import BlockAccessor
+from ray.data.datasource.file_datasink import BlockBasedFileDatasink
 
 
 class _WebDatasetDatasink(BlockBasedFileDatasink):

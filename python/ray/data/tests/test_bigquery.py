@@ -8,7 +8,8 @@ from google.cloud.bigquery import job
 from google.cloud.bigquery_storage_v1.types import stream as gcbqs_stream
 
 import ray
-from ray.data.datasource import BigQueryDatasource, _BigQueryDatasink
+from ray.data._internal.datasource.bigquery_datasource import BigQueryDatasource
+from ray.data.datasource import _BigQueryDatasink
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.mock_http_server import *  # noqa
 from ray.tests.conftest import *  # noqa
