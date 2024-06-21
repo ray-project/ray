@@ -2,7 +2,6 @@ import asyncio
 import collections
 import inspect
 import queue
-from concurrent.futures import ThreadPoolExecutor
 from types import GeneratorType
 from typing import Any, Callable, Iterable, Iterator, List, Optional
 
@@ -109,6 +108,7 @@ def _parse_op_fn(op: AbstractUDFMap):
         fn_constructor_kwargs = op._fn_constructor_kwargs or {}
 
         if inspect.isasyncgenfunction(op._fn.__call__):
+
             def init_fn():
                 if ray.data._cached_fn is None:
                     ray.data._cached_cls = op_fn
