@@ -2697,7 +2697,7 @@ cdef class GcsClient:
             # TODO: it does not support initial connection when GCS is down. We need to
             # support it in GcsRpcClient.
             self.inner = NewGcsClient.standalone(address, cluster_id)
-        logger.debug(f"Created GcsClient. use old? {self.use_old_client}, inner {self.inner}")
+        logger.debug(f"Created GcsClient. inner {self.inner}")
 
     def __getattr__(self, name):
         if self.use_old_client:
@@ -2718,7 +2718,8 @@ cdef class OldGcsClient:
         ClusterID cluster_id
 
     def __cinit__(self, address,
-                  nums_reconnect_retry = RayConfig.instance().nums_py_gcs_reconnect_retry(),
+                  nums_reconnect_retry=RayConfig.instance().nums_py_gcs_reconnect_retry(
+                  ),
                   cluster_id: str = None):
         cdef GcsClientOptions gcs_options = GcsClientOptions.from_gcs_address(address)
         self.inner.reset(new CPythonGcsClient(dereference(gcs_options.native())))

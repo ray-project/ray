@@ -33,9 +33,14 @@ cdef class NewGcsClient:
     # TODO(ryw): we can also reuse the CoreWorker's GcsClient to save resources.
     @staticmethod
     def standalone(gcs_address: str, cluster_id: str = None) -> "NewGcsClient":
-        cdef GcsClientOptions gcs_options = GcsClientOptions.from_gcs_address(gcs_address)
-        cdef CClusterID c_cluster_id = CClusterID.Nil() if cluster_id is None else CClusterID.FromHex(cluster_id)
-        cdef shared_ptr[CGcsClient] inner = ConnectToGcsStandalone(dereference(gcs_options.native()), c_cluster_id)
+        cdef GcsClientOptions gcs_options = GcsClientOptions.from_gcs_address(
+            gcs_address
+        )
+        cdef CClusterID c_cluster_id = (
+            CClusterID.Nil() if cluster_id is None else CClusterID.FromHex(cluster_id)
+        )
+        cdef shared_ptr[CGcsClient] inner = ConnectToGcsStandalone(
+            dereference(gcs_options.native()), c_cluster_id)
         my = NewGcsClient()
         my.inner = inner
         return my
@@ -55,7 +60,9 @@ cdef class NewGcsClient:
     #############################################################
     # Internal KV sync methods
     #############################################################
-    def internal_kv_get(self, c_string key, namespace=None, timeout=None) -> Optional[bytes]:
+    def internal_kv_get(
+        self, c_string key, namespace=None, timeout=None
+    ) -> Optional[bytes]:
         cdef:
             c_string ns = namespace or b""
             int64_t timeout_ms = round(1000 * timeout) if timeout else -1
@@ -69,17 +76,18 @@ cdef class NewGcsClient:
             check_status(status)
             return value
 
-    def internal_kv_multi_get(self, keys: List[bytes], namespace=None, timeout=None) -> Dict[bytes,bytes]:
+    def internal_kv_multi_get(
+        self, keys: List[bytes], namespace=None, timeout=None
+    ) -> Dict[bytes, bytes]:
         cdef:
             c_string ns = namespace or b""
             int64_t timeout_ms = round(1000 * timeout) if timeout else -1
             c_vector[c_string] c_keys = [key for key in keys]
             unordered_map[c_string, c_string] values
-            CRayStatus status
         with nogil:
-            status = self.inner.get().InternalKV().MultiGet(ns, c_keys, timeout_ms, values)
-
-        check_status(status)
+            check_status(
+                self.inner.get().InternalKV().MultiGet(ns, c_keys, timeout_ms, values)
+            )
 
         result = {}
         it = values.begin()
@@ -90,7 +98,6 @@ cdef class NewGcsClient:
             postincrement(it)
         return result
 
-
     def internal_kv_put(self, c_string key, c_string value, c_bool overwrite=False,
                         namespace=None, timeout=None) -> int:
         """
@@ -100,10 +107,12 @@ cdef class NewGcsClient:
             c_string ns = namespace or b""
             int64_t timeout_ms = round(1000 * timeout) if timeout else -1
             c_bool added = False
-            CRayStatus status
         with nogil:
-            status = self.inner.get().InternalKV().Put(ns, key, value, overwrite, timeout_ms, added)
-        check_status(status)
+            check_status(
+                self.inner.get()
+                .InternalKV()
+                .Put(ns, key, value, overwrite, timeout_ms, added)
+            )
         return 1 if added else 0
 
     def internal_kv_del(self, c_string key, c_bool del_by_prefix,
@@ -114,22 +123,26 @@ cdef class NewGcsClient:
         cdef:
             c_string ns = namespace or b""
             int64_t timeout_ms = round(1000 * timeout) if timeout else -1
-            CRayStatus status
             int num_deleted = 0
         with nogil:
-            status = self.inner.get().InternalKV().Del(ns, key, del_by_prefix, timeout_ms, num_deleted)
-        check_status(status)
+            check_status(
+                self.inner.get()
+                .InternalKV()
+                .Del(ns, key, del_by_prefix, timeout_ms, num_deleted)
+            )
         return num_deleted
 
-    def internal_kv_keys(self, c_string prefix, namespace=None, timeout=None) -> List[bytes]:
+    def internal_kv_keys(
+        self, c_string prefix, namespace=None, timeout=None
+    ) -> List[bytes]:
         cdef:
             c_string ns = namespace or b""
             int64_t timeout_ms = round(1000 * timeout) if timeout else -1
             c_vector[c_string] keys
-            CRayStatus status
         with nogil:
-            status = self.inner.get().InternalKV().Keys(ns, prefix, timeout_ms, keys)
-        check_status(status)
+            check_status(
+                self.inner.get().InternalKV().Keys(ns, prefix, timeout_ms, keys)
+            )
 
         result = [key for key in keys]
         return result
@@ -139,27 +152,31 @@ cdef class NewGcsClient:
             c_string ns = namespace or b""
             int64_t timeout_ms = round(1000 * timeout) if timeout else -1
             c_bool exists = False
-            CRayStatus status
         with nogil:
-            status = self.inner.get().InternalKV().Exists(ns, key, timeout_ms, exists)
-        check_status(status)
+            check_status(
+                self.inner.get().InternalKV().Exists(ns, key, timeout_ms, exists)
+            )
         return exists
 
     #############################################################
     # NodeInfo methods
     #############################################################
-    def check_alive(self, node_ips: List[bytes], timeout: Optional[float] = None) -> List[bool]:
+    def check_alive(
+        self, node_ips: List[bytes], timeout: Optional[float] = None
+    ) -> List[bool]:
         cdef:
             int64_t timeout_ms = round(1000 * timeout) if timeout else -1
             c_vector[c_string] c_node_ips = [ip for ip in node_ips]
             c_vector[c_bool] results
-            CRayStatus status
         with nogil:
-            status = self.inner.get().Nodes().CheckAlive(c_node_ips, timeout_ms, results)
-        check_status(status)
+            check_status(
+                self.inner.get().Nodes().CheckAlive(c_node_ips, timeout_ms, results)
+            )
         return [result for result in results]
 
-    def drain_nodes(self, node_ids: List[bytes], timeout: Optional[float] = None) -> List[bytes]:
+    def drain_nodes(
+        self, node_ids: List[bytes], timeout: Optional[float] = None
+    ) -> List[bytes]:
         """returns a list of node_ids that are successfully drained."""
         cdef:
             int64_t timeout_ms = round(1000 * timeout) if timeout else -1
@@ -168,11 +185,14 @@ cdef class NewGcsClient:
         for node_id in node_ids:
             c_node_ids.push_back(CNodeID.FromBinary(node_id))
         with nogil:
-            check_status(self.inner.get().Nodes().DrainNodes(c_node_ids, timeout_ms, results))
+            check_status(
+                self.inner.get().Nodes().DrainNodes(c_node_ids, timeout_ms, results)
+            )
         return [result for result in results]
 
-
-    def get_all_node_info(self, timeout: Optional[float] = None) -> Dict[NodeID, gcs_pb2.NodeInfo]:
+    def get_all_node_info(
+        self, timeout: Optional[float] = None
+    ) -> Dict[NodeID, gcs_pb2.NodeInfo]:
         cdef int64_t timeout_ms = round(1000 * timeout) if timeout else -1
         cdef c_vector[CGcsNodeInfo] reply
         cdef c_vector[c_string] serialized_reply
@@ -190,12 +210,18 @@ cdef class NewGcsClient:
     #############################################################
     # NodeResources methods
     #############################################################
-    def get_all_resource_usage(self, timeout: Optional[float] = None) -> gcs_pb2.GetAllResourceUsageReply:
+    def get_all_resource_usage(
+        self, timeout: Optional[float] = None
+    ) -> gcs_pb2.GetAllResourceUsageReply:
         cdef int64_t timeout_ms = round(1000 * timeout) if timeout else -1
         cdef CGetAllResourceUsageReply c_reply
         cdef c_string serialized_reply
         with nogil:
-            check_status(self.inner.get().NodeResources().GetAllResourceUsage(timeout_ms, c_reply))
+            check_status(
+                    self.inner.get()
+                    .NodeResources()
+                    .GetAllResourceUsage(timeout_ms, c_reply)
+                )
             serialized_reply = c_reply.SerializeAsString()
         ret = gcs_pb2.GetAllResourceUsageReply()
         ret.ParseFromString(serialized_reply)
@@ -204,7 +230,9 @@ cdef class NewGcsClient:
     #############################################################
     # Job methods
     #############################################################
-    def get_all_job_info(self, timeout: Optional[float] = None) -> Dict[JobID, gcs_pb2.JobTableData]:
+    def get_all_job_info(
+        self, timeout: Optional[float] = None
+    ) -> Dict[JobID, gcs_pb2.JobTableData]:
         cdef int64_t timeout_ms = round(1000 * timeout) if timeout else -1
         cdef c_vector[CJobTableData] reply
         cdef c_vector[c_string] serialized_reply
@@ -244,7 +272,6 @@ cdef class NewGcsClient:
             check_status(self.inner.get().Autoscaler().RequestClusterResourceConstraint(
                 timeout_ms, bundles, count_array))
 
-
     def get_cluster_resource_state(
             self,
             timeout_s=None):
@@ -252,11 +279,11 @@ cdef class NewGcsClient:
             int64_t timeout_ms = round(1000 * timeout_s) if timeout_s else -1
             c_string serialized_reply
         with nogil:
-            check_status(self.inner.get().Autoscaler().GetClusterResourceState(timeout_ms,
-                         serialized_reply))
+            check_status(self.inner.get().Autoscaler().GetClusterResourceState(
+                timeout_ms,
+                serialized_reply))
 
         return serialized_reply
-
 
     def get_cluster_status(
             self,
@@ -270,7 +297,6 @@ cdef class NewGcsClient:
 
         return serialized_reply
 
-
     def report_autoscaling_state(
         self,
         serialzied_state: c_string,
@@ -282,7 +308,6 @@ cdef class NewGcsClient:
         with nogil:
             check_status(self.inner.get().Autoscaler().ReportAutoscalingState(
                 timeout_ms, serialzied_state))
-
 
     def drain_node(
             self,
