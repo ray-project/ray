@@ -408,7 +408,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "torch_only"],
     size = "large",
     srcs = ["tuned_examples/ppo/multi_agent_cartpole_ppo.py"],
-    args = ["--as-test", "--enable-new-api-stack", "--num-agents=2", "--stop-reward="]
+    args = ["--as-test", "--enable-new-api-stack", "--num-agents=2"]
 )
 py_test(
     name = "learning_tests_multi_agent_cartpole_ppo_gpu",
