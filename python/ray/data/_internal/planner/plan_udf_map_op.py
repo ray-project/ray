@@ -108,18 +108,21 @@ def _parse_op_fn(op: AbstractUDFMap):
         fn_constructor_args = op._fn_constructor_args or ()
         fn_constructor_kwargs = op._fn_constructor_kwargs or {}
 
-        def init_fn():
-            if ray.data._cached_fn is None:
-                ray.data._cached_cls = op_fn
-                ray.data._cached_fn = op_fn(
-                    *fn_constructor_args, **fn_constructor_kwargs
-                )
-
         if inspect.isasyncgenfunction(op._fn.__call__):
+            def init_fn():
+                if ray.data._cached_fn is None:
+                    ray.data._cached_cls = op_fn
+                    ray.data._cached_fn = op_fn(
+                        *fn_constructor_args, **fn_constructor_kwargs
+                    )
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
+                    ray.data._cached_loop = loop
 
             async def fn(item: Any) -> Any:
                 assert ray.data._cached_fn is not None
                 assert ray.data._cached_cls == op_fn
+                assert ray.data._cached_loop is not None
 
                 try:
                     return ray.data._cached_fn(item, *fn_args, **fn_kwargs)
@@ -128,6 +131,13 @@ def _parse_op_fn(op: AbstractUDFMap):
 
         else:
             op_fn = make_callable_class_concurrent(op_fn)
+
+            def init_fn():
+                if ray.data._cached_fn is None:
+                    ray.data._cached_cls = op_fn
+                    ray.data._cached_fn = op_fn(
+                        *fn_constructor_args, **fn_constructor_kwargs
+                    )
 
             def fn(item: Any) -> Any:
                 assert ray.data._cached_fn is not None
@@ -215,42 +225,45 @@ def _generate_transform_fn_for_map_batches(
         def transform_fn(
             input_iterable: Iterable[DataBatch], _: TaskContext
         ) -> Iterable[DataBatch]:
-            # Use a queue to store results from async generator calls.
-            # In the main event loop, we will put results into this queue
-            # from async generator, and yield them from the queue as they
-            # become available.
-            result_queue = queue.Queue()
+            # Use a queue to store outputs from async generator calls.
+            # We will put output batches into this queue from async
+            # generators, and in the main event loop, yield them from
+            # the queue as they become available.
+            output_batch_queue = queue.Queue()
 
             async def process_batch(batch: DataBatch):
                 output_batch_iterator = await fn(batch)
                 # As soon as results become available from the async generator,
                 # put them into the result queue so they can be yielded.
-                async for output_row in output_batch_iterator:
-                    result_queue.put(output_row)
+                async for output_batch in output_batch_iterator:
+                    output_batch_queue.put(output_batch)
 
             async def process_all_batches():
-                tasks = [asyncio.create_task(process_batch(x)) for x in input_iterable]
-                for task in asyncio.as_completed(tasks):
-                    await task
+                loop = ray.data._cached_loop
+                tasks = [loop.create_task(process_batch(x)) for x in input_iterable]
+
+                ctx = ray.data.DataContext.get_current()
+                if ctx.execution_options.preserve_order:
+                    for task in tasks:
+                        await task()
+                else:
+                    for task in asyncio.as_completed(tasks):
+                        await task
                 # Sentinel to indicate completion.
-                result_queue.put(None)
+                output_batch_queue.put(None)
 
-            def run_event_loop():
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
-                loop.run_until_complete(process_all_batches())
-                loop.close()
-
-            # Start the event loop in a new thread
-            executor = ThreadPoolExecutor(max_workers=1)
-            executor.submit(run_event_loop)
+            # Use the existing event loop to create and run
+            # Tasks to process each batch
+            loop = ray.data._cached_loop
+            loop.run_until_complete(process_all_batches())
 
             # Yield results as they become available
             while True:
-                # `out_batch` here is a one-row batch which contains
-                # output from the async generator, corresponding to a
+                # `out_batch` here is a one-row output batch
+                # from the async generator, corresponding to a
                 # single row from the input batch.
-                out_batch = result_queue.get()
+                out_batch = output_batch_queue.get()
+
                 # Exit when sentinel is received.
                 if out_batch is None:
                     break
