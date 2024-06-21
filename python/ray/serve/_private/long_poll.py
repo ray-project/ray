@@ -260,7 +260,7 @@ class LongPollHost:
                 # just ignore them.
                 continue
 
-            if existing_id != snapshot_id:
+            if existing_id != client_snapshot_id:
                 updated_objects[key] = UpdatedObject(
                     self.object_snapshots[key], existing_id
                 )
@@ -410,7 +410,11 @@ class LongPollHost:
         except KeyError:
             # Initial snapshot id must be >= 0, so that the long poll client
             # can send a negative initial snapshot id to get a fast update.
-            self.snapshot_ids[object_key] = 0
+            # They should also be randomized to try to avoid situations where,
+            # if the controller restarts and a client has a now-invalid snapshot id
+            # that happens to match what the controller restarts with,
+            # the client wouldn't receive an update.
+            self.snapshot_ids[object_key] = random.randint(0, 1_000_000)
         self.object_snapshots[object_key] = updated_object
         logger.debug(f"LongPollHost: Notify change for key {object_key}.")
 
