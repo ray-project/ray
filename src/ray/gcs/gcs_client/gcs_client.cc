@@ -83,8 +83,8 @@ void GcsSubscriberClient::PubsubCommandBatch(
 // The reply proto message has a `GcsStatus` field named `status`.
 // May return:
 // - TimedOut if the gRPC call timed out.
-// - GrpcUnknown or GrpcUnavailable.
 // - Status serialized from the payload status from GCS.
+// - RpcError if the gRPC call failed.
 // - OK
 template <typename Reply>
 ray::Status HandleGcsStatuses(const grpc::Status &return_status, const Reply &reply) {
@@ -149,6 +149,7 @@ Status GcsClient::Connect(instrumented_io_context &io_service,
   placement_group_accessor_ = std::make_unique<PlacementGroupInfoAccessor>(this);
   internal_kv_accessor_ = std::make_unique<InternalKVAccessor>(this);
   task_accessor_ = std::make_unique<TaskInfoAccessor>(this);
+  autoscaler_state_accessor_ = std::make_unique<AutoscalerStateAccessor>(this);
 
   RAY_LOG(DEBUG) << "GcsClient connected " << options_.gcs_address_ << ":"
                  << options_.gcs_port_;
@@ -385,21 +386,9 @@ Status PythonGcsClient::PinRuntimeEnvUri(const std::string &uri,
 
   absl::ReaderMutexLock lock(&mutex_);
   rpc::PinRuntimeEnvURIReply reply;
-  grpc::Status grpc_status =
-      runtime_env_stub_->PinRuntimeEnvURI(&context, request, &reply);
-  ray::Status status = HandleGcsStatuses(grpc_status, reply);
-  if (status.IsGrpcUnavailable()) {
-    std::string msg =
-        "Failed to pin URI reference for " + uri + " due to the GCS being " +
-        "unavailable, most likely it has crashed: " + status.message() + ".";
-    return Status::GrpcUnavailable(msg);
-  }
-  if (status.IsGrpcUnknown()) {
-    std::string msg = "Failed to pin URI reference for " + uri +
-                      " due to unexpected error " + status.message() + ".";
-    return Status::GrpcUnknown(msg, status.rpc_code());
-  }
-  return status;
+
+  grpc::Status status = runtime_env_stub_->PinRuntimeEnvURI(&context, request, &reply);
+  return HandleGcsStatuses(status, reply);
 }
 
 Status PythonGcsClient::GetAllNodeInfo(int64_t timeout_ms,

@@ -78,6 +78,7 @@ class error_code;
 
 namespace ray {
 
+// If you add to this list, please also update kCodeToStr in status.cc.
 enum class StatusCode : char {
   OK = 0,
   OutOfMemory = 1,
@@ -102,16 +103,6 @@ enum class StatusCode : char {
   ObjectAlreadySealed = 23,
   ObjectStoreFull = 24,
   TransientObjectStoreFull = 25,
-  // grpc status
-  // This represents UNAVAILABLE status code
-  // returned by grpc.
-  GrpcUnavailable = 26,
-  // This represents all other status codes
-  // returned by grpc that are not defined above.
-  // TODO(ryw): this name collides with grpc::StatusCode::UNKNOWN.
-  // We should remove this in favor of RpcError which also carries
-  // rpc_code.
-  GrpcUnknown = 27,
   // Object store is both out of memory and
   // out of disk.
   OutOfDisk = 28,
@@ -245,18 +236,6 @@ class RAY_EXPORT Status {
     return Status(StatusCode::OutOfDisk, msg);
   }
 
-  static Status GrpcUnavailable(const std::string &msg) {
-    // Hard code the rpc_code to 14 because we don't want to add dependency to the grpcpp
-    // library.
-    return Status(StatusCode::GrpcUnavailable, msg, /*grpc::StatusCode::UNAVAILABLE*/ 14);
-  }
-
-  static Status GrpcUnknown(const std::string &msg, int rpc_code) {
-    // Note this is not (always) grpc::StatusCode::UNKNOWN == 2, but a catch-all for all
-    // other grpc status codes.
-    return Status(StatusCode::GrpcUnknown, msg, rpc_code);
-  }
-
   static Status RpcError(const std::string &msg, int rpc_code) {
     return Status(StatusCode::RpcError, msg, rpc_code);
   }
@@ -312,11 +291,6 @@ class RAY_EXPORT Status {
   bool IsTransientObjectStoreFull() const {
     return code() == StatusCode::TransientObjectStoreFull;
   }
-  bool IsGrpcUnavailable() const { return code() == StatusCode::GrpcUnavailable; }
-  bool IsGrpcUnknown() const { return code() == StatusCode::GrpcUnknown; }
-
-  // gRPC errors also have rpc_code.
-  bool IsGrpcError() const { return IsGrpcUnknown() || IsGrpcUnavailable(); }
 
   bool IsRpcError() const { return code() == StatusCode::RpcError; }
 

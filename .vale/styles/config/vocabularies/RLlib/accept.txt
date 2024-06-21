@@ -9,9 +9,12 @@ config
 (IMPALA|impala)
 hyperparameters?
 MARLModule
+MLAgents
+multiagent
 postprocessing
 (PPO|ppo)
 [Pp]y[Tt]orch
+pragmas?
 (RL|rl)lib
 RLModule
 rollout

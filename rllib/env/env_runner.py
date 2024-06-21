@@ -1,14 +1,18 @@
 import abc
-from typing import Any, Dict, TYPE_CHECKING
+from typing import Any, Container, Dict, Optional, TYPE_CHECKING
+
+import tree  # pip install dm_tree
 
 from ray.rllib.utils.actor_manager import FaultAwareApply
 from ray.rllib.utils.annotations import OldAPIStack
 from ray.rllib.utils.framework import try_import_tf
+from ray.rllib.utils.torch_utils import convert_to_torch_tensor
+from ray.rllib.utils.typing import TensorType
 
 if TYPE_CHECKING:
     from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 
-tf1, _, _ = try_import_tf()
+tf1, tf, _ = try_import_tf()
 
 
 @OldAPIStack
@@ -73,16 +77,30 @@ class EnvRunner(FaultAwareApply, metaclass=abc.ABCMeta):
             The collected experience in any form.
         """
 
-    def get_state(self) -> Dict[str, Any]:
+    def get_state(
+        self,
+        components: Optional[Container[str]] = None,
+        inference_only: bool = False,
+    ) -> Dict[str, Any]:
         """Returns this EnvRunner's (possibly serialized) current state as a dict.
 
+        Args:
+            components: An optional list of string keys to be included in the
+                returned state. This might be useful, if getting certain components
+                of the state is expensive (e.g. reading/compiling the weights of a large
+                NN) and at the same time, these components are not required by the
+                caller.
+            inference_only: Whether to return the inference-only weight set of the
+                underlying RLModule. Note that this setting only has an effect if
+                components is None or the string "rl_module" is in components.
+
         Returns:
-            The current state of this EnvRunner.
+            The current state (or only the components specified) of this EnvRunner.
         """
         # TODO (sven, simon): `Algorithm.save_checkpoint()` will store with
-        # this an empty worker state and in `Algorithm.from_checkpoint()`
-        # the empty state (not `None`) must be ensured separately. Shall we
-        # return here as a default `None`?
+        #  this an empty worker state and in `Algorithm.from_checkpoint()`
+        #  the empty state (not `None`) must be ensured separately. Shall we
+        #  return here as a default `None`?
         return {}
 
     def set_state(self, state: Dict[str, Any]) -> None:
@@ -113,3 +131,11 @@ class EnvRunner(FaultAwareApply, metaclass=abc.ABCMeta):
     def __del__(self) -> None:
         """If this Actor is deleted, clears all resources used by it."""
         pass
+
+    def _convert_to_tensor(self, struct) -> TensorType:
+        """Converts structs to a framework-specific tensor."""
+
+        if self.config.framework_str == "torch":
+            return convert_to_torch_tensor(struct)
+        else:
+            return tree.map_structure(tf.convert_to_tensor, struct)
