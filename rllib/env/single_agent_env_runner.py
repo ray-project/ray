@@ -1,10 +1,10 @@
-import gymnasium as gym
-import logging
-import tree
-
+import time
 from collections import defaultdict
 from functools import partial
-from typing import DefaultDict, Dict, List, Optional
+import logging
+from typing import Any, Container, DefaultDict, Dict, List, Optional
+
+import gymnasium as gym
 
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
@@ -16,7 +16,9 @@ from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.env_runner import EnvRunner
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 from ray.rllib.env.utils import _gym_env_creator
+from ray.rllib.utils import force_list
 from ray.rllib.utils.annotations import override
+from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.metrics import (
     EPISODE_DURATION_SEC_MEAN,
@@ -33,11 +35,13 @@ from ray.rllib.utils.metrics import (
     NUM_EPISODES,
     NUM_MODULE_STEPS_SAMPLED,
     NUM_MODULE_STEPS_SAMPLED_LIFETIME,
+    SAMPLE_TIMER,
+    TIME_BETWEEN_SAMPLING,
+    WEIGHTS_SEQ_NO,
 )
 from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
 from ray.rllib.utils.spaces.space_utils import unbatch
-from ray.rllib.utils.torch_utils import convert_to_torch_tensor
-from ray.rllib.utils.typing import EpisodeID, ModelWeights, ResultDict, TensorType
+from ray.rllib.utils.typing import EpisodeID, ModelWeights, ResultDict
 from ray.tune.registry import ENV_CREATOR, _global_registry
 from ray.util.annotations import PublicAPI
 
@@ -91,7 +95,7 @@ class SingleAgentEnvRunner(EnvRunner):
         try:
             module_spec: SingleAgentRLModuleSpec = self.config.rl_module_spec
             module_spec.observation_space = self._env_to_module.observation_space
-            module_spec.action_space = self.env.envs[0].action_space
+            module_spec.action_space = self.env.single_action_space
             if module_spec.model_config_dict is None:
                 module_spec.model_config_dict = self.config.model_config
             # Only load a light version of the module, if available. This is useful
@@ -119,6 +123,8 @@ class SingleAgentEnvRunner(EnvRunner):
             EpisodeID, List[SingleAgentEpisode]
         ] = defaultdict(list)
         self._weights_seq_no: int = 0
+
+        self._time_after_sampling = None
 
     @override(EnvRunner)
     def sample(
@@ -156,55 +162,64 @@ class SingleAgentEnvRunner(EnvRunner):
         """
         assert not (num_timesteps is not None and num_episodes is not None)
 
-        # If no execution details are provided, use the config to try to infer the
-        # desired timesteps/episodes to sample and exploration behavior.
-        if explore is None:
-            explore = self.config.explore
-        if (
-            num_timesteps is None
-            and num_episodes is None
-            and self.config.batch_mode == "truncate_episodes"
-        ):
-            num_timesteps = (
-                self.config.get_rollout_fragment_length(worker_index=self.worker_index)
-                * self.num_envs
+        if self._time_after_sampling is not None:
+            self.metrics.log_value(
+                key=TIME_BETWEEN_SAMPLING,
+                value=time.perf_counter() - self._time_after_sampling,
             )
 
-        # Sample n timesteps.
-        if num_timesteps is not None:
-            samples = self._sample_timesteps(
-                num_timesteps=num_timesteps,
-                explore=explore,
-                random_actions=random_actions,
-                force_reset=force_reset,
-            )
-        # Sample m episodes.
-        elif num_episodes is not None:
-            samples = self._sample_episodes(
-                num_episodes=num_episodes,
-                explore=explore,
-                random_actions=random_actions,
-            )
-        # For complete episodes mode, sample as long as the number of timesteps
-        # done is smaller than the `train_batch_size`.
-        else:
-            total = 0
-            samples = []
-            while total < self.config.train_batch_size:
-                episodes = self._sample_episodes(
-                    num_episodes=self.num_envs,
+        with self.metrics.log_time(SAMPLE_TIMER):
+            # If no execution details are provided, use the config to try to infer the
+            # desired timesteps/episodes to sample and exploration behavior.
+            if explore is None:
+                explore = self.config.explore
+            if (
+                num_timesteps is None
+                and num_episodes is None
+                and self.config.batch_mode == "truncate_episodes"
+            ):
+                num_timesteps = (
+                    self.config.get_rollout_fragment_length(self.worker_index)
+                    * self.num_envs
+                )
+
+            # Sample n timesteps.
+            if num_timesteps is not None:
+                samples = self._sample_timesteps(
+                    num_timesteps=num_timesteps,
+                    explore=explore,
+                    random_actions=random_actions,
+                    force_reset=force_reset,
+                )
+            # Sample m episodes.
+            elif num_episodes is not None:
+                samples = self._sample_episodes(
+                    num_episodes=num_episodes,
                     explore=explore,
                     random_actions=random_actions,
                 )
-                total += sum(len(e) for e in episodes)
-                samples.extend(episodes)
+            # For complete episodes mode, sample as long as the number of timesteps
+            # done is smaller than the `train_batch_size`.
+            else:
+                total = 0
+                samples = []
+                while total < self.config.train_batch_size:
+                    episodes = self._sample_episodes(
+                        num_episodes=self.num_envs,
+                        explore=explore,
+                        random_actions=random_actions,
+                    )
+                    total += sum(len(e) for e in episodes)
+                    samples.extend(episodes)
 
-        # Make the `on_sample_end` callback.
-        self._callbacks.on_sample_end(
-            env_runner=self,
-            metrics_logger=self.metrics,
-            samples=samples,
-        )
+            # Make the `on_sample_end` callback.
+            self._callbacks.on_sample_end(
+                env_runner=self,
+                metrics_logger=self.metrics,
+                samples=samples,
+            )
+
+        self._time_after_sampling = time.perf_counter()
 
         return samples
 
@@ -278,7 +293,8 @@ class SingleAgentEnvRunner(EnvRunner):
                 # RLModule forward pass: Explore or not.
                 if explore:
                     env_steps_lifetime = (
-                        self.metrics.peek(NUM_ENV_STEPS_SAMPLED_LIFETIME) + ts
+                        self.metrics.peek(NUM_ENV_STEPS_SAMPLED_LIFETIME, default=0)
+                        + ts
                     )
                     to_env = self.module.forward_exploration(
                         to_module, t=env_steps_lifetime
@@ -447,7 +463,7 @@ class SingleAgentEnvRunner(EnvRunner):
         obs, infos = self.env.reset()
         for env_index in range(self.num_envs):
             episodes[env_index].add_env_reset(
-                observation=obs[env_index],
+                observation=unbatch(obs)[env_index],
                 infos=infos[env_index],
             )
             self._make_on_episode_callback("on_episode_start", env_index, episodes)
@@ -474,7 +490,8 @@ class SingleAgentEnvRunner(EnvRunner):
                 # RLModule forward pass: Explore or not.
                 if explore:
                     env_steps_lifetime = (
-                        self.metrics.peek(NUM_ENV_STEPS_SAMPLED_LIFETIME) + ts
+                        self.metrics.peek(NUM_ENV_STEPS_SAMPLED_LIFETIME, default=0)
+                        + ts
                     )
                     to_env = self.module.forward_exploration(
                         to_module, t=env_steps_lifetime
@@ -623,40 +640,66 @@ class SingleAgentEnvRunner(EnvRunner):
         # Return reduced metrics.
         return self.metrics.reduce()
 
-    # TODO (sven): Remove the requirement for EnvRunners/RolloutWorkers to have this
-    #  API. Replace by proper state overriding via `EnvRunner.set_state()`
-    def set_weights(
+    @override(EnvRunner)
+    def get_state(
         self,
-        weights: ModelWeights,
-        global_vars: Optional[Dict] = None,
-        weights_seq_no: int = 0,
-    ) -> None:
-        """Writes the weights of our (single-agent) RLModule.
+        components: Optional[Container[str]] = None,
+        *,
+        inference_only: bool = True,
+        module_ids=None,
+    ) -> Dict[str, Any]:
+        components = force_list(
+            components
+            if components is not None
+            else ["rl_module", "env_to_module_connector", "module_to_env_connector"]
+        )
+        state = {
+            WEIGHTS_SEQ_NO: self._weights_seq_no,
+            NUM_ENV_STEPS_SAMPLED_LIFETIME: (
+                self.metrics.peek(NUM_ENV_STEPS_SAMPLED_LIFETIME, default=0)
+            ),
+        }
+        if "rl_module" in components:
+            state["rl_module"] = self.module.get_state(inference_only=inference_only)
+        if "env_to_module_connector" in components:
+            state["env_to_module_connector"] = self._env_to_module.get_state()
+        if "module_to_env_connector" in components:
+            state["module_to_env_connector"] = self._module_to_env.get_state()
 
-        Args:
-            weigths: A dictionary mapping `ModuleID`s to the new weigths to
-                be used in the `MultiAgentRLModule` stored in this instance.
-            global_vars: An optional global vars dictionary to set this
-                worker to. If None, do not update the global_vars.
-            weights_seq_no: If needed, a sequence number for the weights version
-                can be passed into this method. If not None, will store this seq no
-                (in self.weights_seq_no) and in future calls - if the seq no did not
-                change wrt. the last call - will ignore the call to save on performance.
+        return state
 
-        """
+    @override(EnvRunner)
+    def set_state(self, state: Dict[str, Any]) -> None:
+        if "env_to_module_connector" in state:
+            self._env_to_module.set_state(state["env_to_module_connector"])
+        if "module_to_env_connector" in state:
+            self._module_to_env.set_state(state["module_to_env_connector"])
 
-        # Only update the weigths, if this is the first synchronization or
-        # if the weights of this `EnvRunner` lacks behind the actual ones.
-        if weights_seq_no == 0 or self._weights_seq_no < weights_seq_no:
-            if isinstance(weights, dict) and DEFAULT_MODULE_ID in weights:
-                weights = weights[DEFAULT_MODULE_ID]
-            weights = self._convert_to_tensor(weights)
-            self.module.set_state(weights)
+        # Update the RLModule state.
+        if "rl_module" in state:
+            # A missing value for WEIGHTS_SEQ_NO or a value of 0 means: Force the
+            # update.
+            weights_seq_no = state.get(WEIGHTS_SEQ_NO, 0)
 
-    def get_weights(self, modules=None, inference_only: bool = False):
-        """Returns the weights of our (single-agent) RLModule."""
+            # Only update the weigths, if this is the first synchronization or
+            # if the weights of this `EnvRunner` lacks behind the actual ones.
+            if weights_seq_no == 0 or self._weights_seq_no < weights_seq_no:
+                weights = state["rl_module"]
+                if isinstance(weights, dict) and DEFAULT_MODULE_ID in weights:
+                    weights = weights[DEFAULT_MODULE_ID]
+                weights = self._convert_to_tensor(weights)
+                self.module.set_state(weights)
+            # Update our weights_seq_no, if the new one is > 0.
+            if weights_seq_no > 0:
+                self._weights_seq_no = weights_seq_no
 
-        return self.module.get_state(inference_only=inference_only)
+        # Update our lifetime counters.
+        if NUM_ENV_STEPS_SAMPLED_LIFETIME in state:
+            self.metrics.set_value(
+                key=NUM_ENV_STEPS_SAMPLED_LIFETIME,
+                value=state[NUM_ENV_STEPS_SAMPLED_LIFETIME],
+                reduce="sum",
+            )
 
     @override(EnvRunner)
     def assert_healthy(self):
@@ -724,6 +767,7 @@ class SingleAgentEnvRunner(EnvRunner):
                 asynchronous=self.config.remote_worker_envs,
             )
         )
+
         self.num_envs: int = self.env.num_envs
         assert self.num_envs == self.config.num_envs_per_env_runner
 
@@ -759,14 +803,6 @@ class SingleAgentEnvRunner(EnvRunner):
             rl_module=self.module,
             env_index=idx,
         )
-
-    def _convert_to_tensor(self, struct) -> TensorType:
-        """Converts structs to a framework-specific tensor."""
-
-        if self.config.framework_str == "torch":
-            return convert_to_torch_tensor(struct)
-        else:
-            return tree.map_structure(tf.convert_to_tensor, struct)
 
     def _increase_sampled_metrics(self, num_steps):
         # Per sample cycle stats.
@@ -821,3 +857,25 @@ class SingleAgentEnvRunner(EnvRunner):
         self.metrics.log_value(EPISODE_RETURN_MIN, ret, reduce="min", window=win)
         self.metrics.log_value(EPISODE_LEN_MAX, length, reduce="max", window=win)
         self.metrics.log_value(EPISODE_RETURN_MAX, ret, reduce="max", window=win)
+
+    @Deprecated(
+        new="SingleAgentEnvRunner.get_state(components='rl_module')",
+        error=False,
+    )
+    def get_weights(self, modules=None):
+        return self.get_state(components="rl_module")["rl_module"]
+
+    @Deprecated(new="SingleAgentEnvRunner.set_state()", error=False)
+    def set_weights(
+        self,
+        weights: ModelWeights,
+        global_vars: Optional[Dict] = None,
+        weights_seq_no: int = 0,
+    ) -> None:
+        assert global_vars is None
+        return self.set_state(
+            {
+                "rl_module": weights,
+                WEIGHTS_SEQ_NO: weights_seq_no,
+            }
+        )

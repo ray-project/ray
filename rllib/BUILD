@@ -152,16 +152,6 @@ py_test(
 # --------------------------------------------------------------------
 
 # APPO
-#@OldAPIStack
-py_test(
-    name = "learning_tests_cartpole_appo_hybrid_api_stack",
-    main = "tests/run_regression_tests.py",
-    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "no_tf_static_graph"],
-    size = "medium", # bazel may complain about it being too long sometimes - medium is on purpose as some frameworks take longer
-    srcs = ["tests/run_regression_tests.py"],
-    data = ["tuned_examples/appo/cartpole-appo-w-rl-modules-and-learner.yaml"],
-    args = ["--dir=tuned_examples/appo"]
-)
 
 #@OldAPIStack
 py_test(
@@ -335,18 +325,16 @@ py_test(
 )
 
 # IMPALA
-#@OldAPIStack
-# py_test(
-#    name = "learning_tests_cartpole_impala_old_api_stack",
-#    main = "tests/run_regression_tests.py",
-#    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
-#    size = "large",
-#    srcs = ["tests/run_regression_tests.py"],
-#    data = ["tuned_examples/impala/cartpole-impala.yaml"],
-#    args = ["--dir=tuned_examples/impala"]
-# )
+py_test(
+    name = "learning_tests_cartpole_impala",
+    main = "tuned_examples/impala/cartpole_impala.py",
+    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "torch_only"],
+    size = "large",
+    srcs = ["tuned_examples/impala/cartpole_impala.py"],
+    args = ["--as-test", "--enable-new-api-stack"]
+)
 
-#@OldAPIStack
+#@OldAPIstack
 py_test(
     name = "learning_tests_cartpole_separate_losses_impala_old_api_stack",
     main = "tests/run_regression_tests.py",
@@ -579,12 +567,6 @@ py_test(
     srcs = ["algorithms/appo/tests/test_appo.py"]
 )
 py_test(
-    name = "test_appo_off_policyness",
-    tags = ["team:rllib", "algorithms_dir", "multi_gpu", "exclusive"],
-    size = "large",
-    srcs = ["algorithms/appo/tests/test_appo_off_policyness.py"]
-)
-py_test(
     name = "test_appo_learner",
     tags = ["team:rllib", "algorithms_dir"],
     size = "medium",
@@ -632,7 +614,7 @@ py_test(
     srcs = ["algorithms/dreamerv3/tests/test_dreamerv3.py"]
 )
 
-# Impala
+# IMPALA
 py_test(
     name = "test_impala",
     tags = ["team:rllib", "algorithms_dir"],
@@ -650,18 +632,6 @@ py_test(
     tags = ["team:rllib", "algorithms_dir"],
     size = "small",
     srcs = ["algorithms/impala/tests/test_vtrace_v2.py"]
-)
-py_test(
-    name = "test_impala_off_policyness",
-    tags = ["team:rllib", "algorithms_dir", "exclusive"],
-    size = "large",
-    srcs = ["algorithms/impala/tests/test_impala_off_policyness.py"]
-)
-py_test(
-    name = "test_impala_learner",
-    tags = ["team:rllib", "algorithms_dir"],
-    size = "medium",
-    srcs = ["algorithms/impala/tests/test_impala_learner.py"]
 )
 
 # MARWIL
@@ -739,8 +709,9 @@ py_test(
 # Tag: memory_leak_tests
 # --------------------------------------------------------------------
 
+# @OldAPIStack
 py_test(
-    name = "test_memory_leak_appo",
+    name = "test_memory_leak_appo_old_api_stack",
     tags = ["team:rllib", "memory_leak_tests"],
     main = "utils/tests/run_memory_leak_tests.py",
     size = "large",
@@ -748,9 +719,9 @@ py_test(
     data = ["tuned_examples/appo/memory-leak-test-appo.yaml"],
     args = ["--dir=tuned_examples/appo"]
 )
-
+# @OldAPIStack
 py_test(
-    name = "test_memory_leak_dqn",
+    name = "test_memory_leak_dqn_old_api_stack",
     tags = ["team:rllib", "memory_leak_tests"],
     main = "utils/tests/run_memory_leak_tests.py",
     size = "large",
@@ -758,9 +729,9 @@ py_test(
     data = ["tuned_examples/dqn/memory-leak-test-dqn.yaml"],
     args = ["--dir=tuned_examples/dqn"]
 )
-
+# @OldAPIStack
 py_test(
-    name = "test_memory_leak_impala",
+    name = "test_memory_leak_impala_old_api_stack",
     tags = ["team:rllib", "memory_leak_tests"],
     main = "utils/tests/run_memory_leak_tests.py",
     size = "large",
@@ -768,9 +739,9 @@ py_test(
     data = ["tuned_examples/impala/memory-leak-test-impala.yaml"],
     args = ["--dir=tuned_examples/impala"]
 )
-
+# @OldAPIStack
 py_test(
-    name = "test_memory_leak_ppo",
+    name = "test_memory_leak_ppo_old_api_stack",
     tags = ["team:rllib", "memory_leak_tests"],
     main = "utils/tests/run_memory_leak_tests.py",
     size = "large",
@@ -778,19 +749,9 @@ py_test(
     data = ["tuned_examples/ppo/memory-leak-test-ppo.yaml"],
     args = ["--dir=tuned_examples/ppo"]
 )
-
+# @OldAPIStack
 py_test(
-    name = "test_memory_leak_ppo_new_stack",
-    tags = ["team:rllib", "memory_leak_tests"],
-    main = "utils/tests/run_memory_leak_tests.py",
-    size = "large",
-    srcs = ["utils/tests/run_memory_leak_tests.py"],
-    data = ["tuned_examples/ppo/memory_leak_test_ppo_new_stack.py"],
-    args = ["--dir=tuned_examples/ppo", "--to-check=rollout_worker"]
-)
-
-py_test(
-    name = "test_memory_leak_sac",
+    name = "test_memory_leak_sac_old_api_stack",
     tags = ["team:rllib", "memory_leak_tests"],
     main = "utils/tests/run_memory_leak_tests.py",
     size = "large",
@@ -2240,6 +2201,7 @@ py_test(
 # subdirectory: connectors/
 # ....................................
 # Framestacking examples only run in smoke-test mode (a few iters only).
+# PPO
 py_test(
     name = "examples/connectors/frame_stacking_ppo",
     main = "examples/connectors/frame_stacking.py",
@@ -2257,8 +2219,26 @@ py_test(
     srcs = ["examples/connectors/frame_stacking.py"],
     args = ["--enable-new-api-stack", "--num-agents=2", "--stop-iter=2", "--framework=torch", "--algo=PPO", "--num-env-runners=4", "--num-cpus=6"]
 )
+# IMPALA
+py_test(
+    name = "examples/connectors/frame_stacking_impala",
+    main = "examples/connectors/frame_stacking.py",
+    tags = ["team:rllib", "exclusive", "examples"],
+    size = "medium",
+    srcs = ["examples/connectors/frame_stacking.py"],
+    args = ["--enable-new-api-stack", "--stop-iter=2", "--framework=torch", "--algo=IMPALA"]
+)
+py_test(
+    name = "examples/connectors/frame_stacking_multi_agent_impala",
+    main = "examples/connectors/frame_stacking.py",
+    tags = ["team:rllib", "exclusive", "examples"],
+    size = "medium",
+    srcs = ["examples/connectors/frame_stacking.py"],
+    args = ["--enable-new-api-stack", "--num-agents=2", "--stop-iter=2", "--framework=torch", "--algo=IMPALA", "--num-env-runners=4", "--num-cpus=6"]
+)
 
 # Nested observation spaces (flattening).
+# PPO
 py_test(
     name = "examples/connectors/flatten_observations_dict_space_ppo",
     main = "examples/connectors/flatten_observations_dict_space.py",
@@ -2267,7 +2247,6 @@ py_test(
     srcs = ["examples/connectors/flatten_observations_dict_space.py"],
     args = ["--enable-new-api-stack", "--as-test", "--stop-reward=400.0", "--framework=torch", "--algo=PPO"]
 )
-
 py_test(
     name = "examples/connectors/flatten_observations_dict_space_multi_agent_ppo",
     main = "examples/connectors/flatten_observations_dict_space.py",
@@ -2275,6 +2254,23 @@ py_test(
     size = "medium",
     srcs = ["examples/connectors/flatten_observations_dict_space.py"],
     args = ["--enable-new-api-stack", "--num-agents=2", "--as-test", "--stop-reward=800.0", "--framework=torch", "--algo=PPO"]
+)
+# IMPALA
+py_test(
+    name = "examples/connectors/flatten_observations_dict_space_impala",
+    main = "examples/connectors/flatten_observations_dict_space.py",
+    tags = ["team:rllib", "exclusive", "examples"],
+    size = "large",
+    srcs = ["examples/connectors/flatten_observations_dict_space.py"],
+    args = ["--enable-new-api-stack", "--as-test", "--stop-reward=400.0", "--stop-timesteps=2000000", "--framework=torch", "--algo=IMPALA"]
+)
+py_test(
+    name = "examples/connectors/flatten_observations_dict_space_multi_agent_impala",
+    main = "examples/connectors/flatten_observations_dict_space.py",
+    tags = ["team:rllib", "exclusive", "examples"],
+    size = "large",
+    srcs = ["examples/connectors/flatten_observations_dict_space.py"],
+    args = ["--enable-new-api-stack", "--num-agents=2", "--as-test", "--stop-reward=800.0", "--stop-timesteps=2000000", "--framework=torch", "--algo=IMPALA"]
 )
 
 # Prev-r/prev actions + LSTM example.
@@ -2297,6 +2293,7 @@ py_test(
 )
 
 # MeanStd filtering example.
+# PPO
 py_test(
     name = "examples/connectors/mean_std_filtering_ppo",
     main = "examples/connectors/mean_std_filtering.py",
@@ -2314,6 +2311,25 @@ py_test(
     srcs = ["examples/connectors/mean_std_filtering.py"],
     args = ["--enable-new-api-stack", "--num-agents=2", "--as-test", "--stop-reward=-600.0", "--framework=torch", "--algo=PPO", "--num-env-runners=5", "--num-cpus=7"]
 )
+# IMPALA
+# TODO (sven): Make IMPALA learn Pendulum OR make this script flexible to accept
+#  (lopsided obs) CartPole as well.
+# py_test(
+#    name = "examples/connectors/mean_std_filtering_impala",
+#    main = "examples/connectors/mean_std_filtering.py",
+#    tags = ["team:rllib", "exclusive", "examples"],
+#    size = "medium",
+#    srcs = ["examples/connectors/mean_std_filtering.py"],
+#    args = ["--enable-new-api-stack", "--as-test", "--stop-reward=-300.0", "--framework=torch", "--algo=IMPALA", "--num-env-runners=2"]
+# )
+# py_test(
+#    name = "examples/connectors/mean_std_filtering_multi_agent_impala",
+#    main = "examples/connectors/mean_std_filtering.py",
+#    tags = ["team:rllib", "exclusive", "examples"],
+#    size = "medium",
+#    srcs = ["examples/connectors/mean_std_filtering.py"],
+#    args = ["--enable-new-api-stack", "--num-agents=2", "--as-test", "--stop-reward=-600.0", "--framework=torch", "--algo=IMPALA", "--num-env-runners=5", "--num-cpus=6"]
+# )
 
 # subdirectory: curriculum/
 # ....................................
@@ -2940,6 +2956,24 @@ py_test(
     args = ["--enable-new-api-stack", "--stop-iters=3"],
 )
 
+py_test(
+    name = "examples/rl_modules/action_masking_rlm",
+    main = "examples/rl_modules/action_masking_rlm.py",
+    tags = ["team:rllib", "examples"],
+    size = "medium",
+    srcs = ["examples/rl_modules/action_masking_rlm.py"],
+    args = ["--enable-new-api-stack", "--stop-iters=5"],
+)
+
+py_test(
+    name = "examples/rl_modules/autoregressive_actions_rlm",
+    main = "examples/rl_modules/autoregressive_actions_rlm.py",
+    tags = ["team:rllib", "examples"],
+    size = "medium",
+    srcs = ["examples/rl_modules/autoregressive_actions_rlm.py"],
+    args = ["--enable-new-api-stack"],
+)
+
 #@OldAPIStack @HybridAPIStack
 py_test(
     name = "examples/rl_modules/classes/mobilenet_rlm_hybrid_api_stack",
@@ -2956,27 +2990,6 @@ py_test(
     size = "medium",
     srcs = ["examples/rl_modules/pretraining_single_agent_training_multi_agent.py"],
     args = ["--enable-new-api-stack", "--num-agents=2", "--stop-iters-pretraining=5", "--stop-iters=20", "--stop-reward=150.0"],
-)
-
-
-
-# TODO (sven): Continue cleanup from here with adding more subdirectories.
-py_test(
-    name = "examples/action_masking_tf2",
-    main = "examples/action_masking.py",
-    tags = ["team:rllib", "exclusive", "examples", "examples_use_all_core"],
-    size = "large",
-    srcs = ["examples/action_masking.py"],
-    args = ["--stop-iter=2", "--framework=tf2"]
-)
-
-py_test(
-    name = "examples/action_masking_torch",
-    main = "examples/action_masking.py",
-    tags = ["team:rllib", "exclusive", "examples"],
-    size = "medium",
-    srcs = ["examples/action_masking.py"],
-    args = ["--stop-iter=2", "--framework=torch"]
 )
 
 py_test(
@@ -3015,7 +3028,6 @@ py_test(
     args = ["--run=IMPALA", "--as-test", "--framework=torch", "--stop-reward=28", "--num-cpus=4"]
 )
 
-# TODO (Kourosh): tf2 ~5x slower compared to torch on the new stack
 py_test(
     name = "examples/cartpole_lstm_ppo_tf2",
     main = "examples/cartpole_lstm.py",

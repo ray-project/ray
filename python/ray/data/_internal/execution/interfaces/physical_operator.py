@@ -441,3 +441,7 @@ class PhysicalOperator(Operator):
         # all operators in the dataset have implemented accurate memory accounting.
         # Eventually all operators should implement accurate memory accounting.
         return False
+
+    def supports_fusion(self) -> bool:
+        """Returns ```True``` if this operator can be fused with other operators."""
+        return False

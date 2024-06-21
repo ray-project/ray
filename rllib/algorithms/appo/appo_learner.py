@@ -51,6 +51,16 @@ class AppoLearner(ImpalaLearner):
         Args:
             module_id:
         """
+
+        #    return dict(
+        #        last_update=self._counters[LAST_TARGET_UPDATE_TS],
+        #        mean_kl_loss_per_module={
+        #            module_id: r[LEARNER_RESULTS_KL_KEY]
+        #            for module_id, r in train_results.items()
+        #            if module_id != ALL_MODULES
+        #        },
+        #    )
+
         # TODO (avnish) Using steps trained here instead of sampled ... I'm not sure
         #  why the other implementation uses sampled.
         #  The difference in steps sampled/trained is pretty

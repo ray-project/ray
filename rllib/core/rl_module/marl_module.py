@@ -1,4 +1,5 @@
 from dataclasses import dataclass, field
+import logging
 import pathlib
 import pprint
 from typing import (
@@ -7,7 +8,6 @@ from typing import (
     Dict,
     KeysView,
     List,
-    Mapping,
     Optional,
     Set,
     Type,
@@ -32,7 +32,10 @@ from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.policy import validate_policy_id
 from ray.rllib.utils.serialization import serialize_type, deserialize_type
 from ray.rllib.utils.typing import ModuleID, T
+from ray.util import log_once
 from ray.util.annotations import PublicAPI
+
+logger = logging.getLogger("ray.rllib")
 
 
 @PublicAPI(stability="alpha")
@@ -239,7 +242,7 @@ class MultiAgentRLModule(RLModule):
     @override(RLModule)
     def _forward_train(
         self, batch: MultiAgentBatch, **kwargs
-    ) -> Union[Mapping[str, Any], Dict[ModuleID, Mapping[str, Any]]]:
+    ) -> Union[Dict[str, Any], Dict[ModuleID, Dict[str, Any]]]:
         """Runs the forward_train pass.
 
         TODO(avnishn, kourosh): Review type hints for forward methods.
@@ -256,7 +259,7 @@ class MultiAgentRLModule(RLModule):
     @override(RLModule)
     def _forward_inference(
         self, batch: MultiAgentBatch, **kwargs
-    ) -> Union[Mapping[str, Any], Dict[ModuleID, Mapping[str, Any]]]:
+    ) -> Union[Dict[str, Any], Dict[ModuleID, Dict[str, Any]]]:
         """Runs the forward_inference pass.
 
         TODO(avnishn, kourosh): Review type hints for forward methods.
@@ -273,7 +276,7 @@ class MultiAgentRLModule(RLModule):
     @override(RLModule)
     def _forward_exploration(
         self, batch: MultiAgentBatch, **kwargs
-    ) -> Union[Mapping[str, Any], Dict[ModuleID, Mapping[str, Any]]]:
+    ) -> Union[Dict[str, Any], Dict[ModuleID, Dict[str, Any]]]:
         """Runs the forward_exploration pass.
 
         TODO(avnishn, kourosh): Review type hints for forward methods.
@@ -290,7 +293,7 @@ class MultiAgentRLModule(RLModule):
     @override(RLModule)
     def get_state(
         self, module_ids: Optional[Set[ModuleID]] = None, inference_only: bool = False
-    ) -> Mapping[ModuleID, Any]:
+    ) -> Dict[ModuleID, Any]:
         """Returns the state of the multi-agent module.
 
         This method returns the state of each module specified by module_ids. If
@@ -317,7 +320,7 @@ class MultiAgentRLModule(RLModule):
         }
 
     @override(RLModule)
-    def set_state(self, state_dict: Mapping[ModuleID, Any]) -> None:
+    def set_state(self, state_dict: Dict[ModuleID, Any]) -> None:
         """Sets the state of the multi-agent module.
 
         It is assumed that the state_dict is a mapping from module IDs to their
@@ -331,7 +334,12 @@ class MultiAgentRLModule(RLModule):
             state_dict: The state dict to set.
         """
         for module_id, state in state_dict.items():
-            self._rl_modules[module_id].set_state(state)
+            if module_id in self:
+                self._rl_modules[module_id].set_state(state)
+            elif log_once("mid_in_state_but_not_in_marl_module"):
+                logger.warning(
+                    f"ModuleID '{module_id}' found in `state`, but not in `self`!"
+                )
 
     @override(RLModule)
     def save_state(self, path: Union[str, pathlib.Path]) -> None:
@@ -413,7 +421,7 @@ class MultiAgentRLModule(RLModule):
         forward_fn_name: str,
         batch: Union[NestedDict[Any], Dict[ModuleID, Any]],
         **kwargs,
-    ) -> Dict[ModuleID, Mapping[ModuleID, Any]]:
+    ) -> Dict[ModuleID, Dict[ModuleID, Any]]:
         """This is a helper method that runs the forward pass for the given module.
 
         It uses forward_fn_name to get the forward pass method from the RLModule
@@ -638,7 +646,7 @@ class MultiAgentRLModuleSpec:
 @ExperimentalAPI
 @dataclass
 class MultiAgentRLModuleConfig:
-    modules: Mapping[ModuleID, SingleAgentRLModuleSpec] = field(default_factory=dict)
+    modules: Dict[ModuleID, SingleAgentRLModuleSpec] = field(default_factory=dict)
 
     def to_dict(self):
         return {
