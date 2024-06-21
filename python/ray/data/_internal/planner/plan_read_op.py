@@ -26,9 +26,6 @@ READ_FILE_RETRY_ON_ERRORS = ["AWS Error NETWORK_CONNECTION", "AWS Error ACCESS_D
 READ_FILE_MAX_ATTEMPTS = 10
 READ_FILE_RETRY_MAX_BACKOFF_SECONDS = 32
 
-import time
-import logging
-logger = logging.getLogger(__name__)
 
 # Defensively compute the size of the block as the max size reported by the
 # datasource and the actual read task size. This is to guard against issues
