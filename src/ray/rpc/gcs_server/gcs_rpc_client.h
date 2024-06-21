@@ -238,7 +238,7 @@ class GcsRpcClient {
           callback(status, reply);
         }
         delete executor;
-      } else if (!status.IsGrpcError()) {
+      } else if (!status.IsRpcError()) {
         callback(status, reply);
         delete executor;
       } else {
