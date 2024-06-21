@@ -128,3 +128,10 @@ Share feedback
 ==============
 
 Join the `#ray-debugger <https://ray-distributed.slack.com/archives/C073MPGLAC9>`_ channel on the Ray Slack channel to get help.
+
+
+Next steps
+==========
+
+For guidance on debugging distributed apps in Ray, see :doc:`General debugging <./user-guides/debug-apps/general-debugging>`.
+For tips on using the Ray debugger, see :doc:`Ray debugging <./user-guides/debug-apps/ray-debugging>`.
