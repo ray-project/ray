@@ -10,7 +10,7 @@ import ci.ray_ci.bazel_sharding as bazel_sharding
 
 
 POSTMERGE_PIPELINE = "0189e759-8c96-4302-b6b5-b4274406bf89"
-RAY_VERSION = "2.9.3"
+RAY_VERSION = "2.9.3+pinterest5"
 
 
 def chunk_into_n(list: List[str], n: int) -> List[List[str]]:

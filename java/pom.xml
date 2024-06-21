@@ -63,7 +63,7 @@
   <properties>
     <java.version>1.8</java.version>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-    <project.version>2.9.3</project.version>
+    <project.version>2.9.3+pinterest5</project.version>
   </properties>
 
   <dependencyManagement>
