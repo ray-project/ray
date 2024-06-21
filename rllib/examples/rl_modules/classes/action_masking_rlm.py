@@ -100,11 +100,11 @@ class ActionMaskingTorchRLModule(ActionMaskingRLModule, PPOTorchRLModule):
         return self._mask_action_logits(outs, action_mask)
 
     @override(PPOTorchRLModule)
-    def _compute_values(self, batch: Dict[str, TensorType], device: str = None):
+    def _compute_values(self, batch: Dict[str, TensorType]):
         # Preprocess the batch to extract the `observations` to `Columns.OBS`.
         _, batch = self._preprocess_batch(batch)
         # Call the super's method to compute values for GAE.
-        return super()._compute_values(batch, device=device)
+        return super()._compute_values(batch)
 
     def _preprocess_batch(
         self, batch: Dict[str, TensorType], **kwargs

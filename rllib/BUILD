@@ -2957,7 +2957,7 @@ py_test(
 )
 
 py_test(
-    name = "examples/rl_modules/action_masking_rlm.py",
+    name = "examples/rl_modules/action_masking_rlm",
     main = "examples/rl_modules/action_masking_rlm.py",
     tags = ["team:rllib", "examples"],
     size = "medium",
