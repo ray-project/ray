@@ -307,12 +307,13 @@ You can schedule actors or tasks to a placement group using
 
 .. note::
 
-  When you use an actor with a placement group, always specify ``num_cpus``.
+  By default, Ray actors use 1 logical CPU for scheduling, and 0 logical CPU for running.
+  This means, by default, actors cannot get scheduled on a zero-cpu node, but an infinite number of them can run on any non-zero cpu node.
+  The default resource requirements for actors was chosen for historical reasons.
+  When scheduling an actor with default resource requirements and a placement group, the placement group has to be created with a bundle containing at least 1 CPU
+  (since the actor requires 1 CPU for scheduling). However, after the actor is created, it doesn't consume the placement group CPU resource.
 
-  By default (with no arguments to ``ray.remote``) Ray actor requires 1 CPU when it is scheduled. But after it is created, it occupies 0 CPU.
-
-  When scheduling an actor without resource requirements and a placement group, the placement group has to be created (since it requires 1 CPU to be scheduled).
-  However, after the actor is created, it doesn't consume the placement group resources.
+  To avoid any surprises, always specify resource requirements explicitly for actors. If resources are specified explicitly, they are required for both scheduling and running.
 
 The actor is scheduled now! One bundle can be used by multiple tasks and actors (i.e., the bundle to task (or actor) is a one-to-many relationship).
 In this case, since the actor uses 1 CPU, 1 GPU remains from the bundle.
