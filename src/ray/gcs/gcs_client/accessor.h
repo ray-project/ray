@@ -885,6 +885,24 @@ class InternalKVAccessor {
   GcsClient *client_impl_;
 };
 
+class RuntimeEnvAccessor {
+ public:
+  RuntimeEnvAccessor() = default;
+  explicit RuntimeEnvAccessor(GcsClient *client_impl);
+  virtual ~RuntimeEnvAccessor() = default;
+
+  /// Pins a runtime environment by URI.
+  ///
+  /// Only works if URI has prefix "gcs://", for which GCS holds a reference for
+  /// `expiration_s` seconds. After that, GCS decrements the reference count.
+  ///
+  /// For all other URIs, this call is a no-op and returns OK.
+  Status PinRuntimeEnvUri(const std::string &uri, int expiration_s, int64_t timeout_ms);
+
+ private:
+  GcsClient *client_impl_;
+};
+
 /// \class AutoscalerStateAccessor
 /// `AutoscalerStateAccessor` is a sub-interface of `GcsClient`.
 /// This class includes all the methods that are related to accessing
@@ -919,7 +937,6 @@ class AutoscalerStateAccessor {
  private:
   GcsClient *client_impl_;
 };
-;
 
 }  // namespace gcs
 
