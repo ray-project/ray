@@ -760,7 +760,8 @@ class CompiledDAG:
                 "This DAG cannot be compiled because it will deadlock on NCCL "
                 "calls. If you believe this is a false positive, please disable "
                 "the graph verification by setting the environment variable "
-                "RAY_ADAG_ENABLE_VERIFY_GRAPH to 0."
+                "RAY_ADAG_ENABLE_VERIFY_GRAPH to 0 and file an issue at "
+                "https://github.com/ray-project/ray/issues/new/."
             )
 
         # Validate input channels for tasks that have not been visited
@@ -1020,10 +1021,9 @@ class CompiledDAG:
         topological_order_exists = len(visited_nodes) == num_total_nodes
         if not topological_order_exists:
             logger.error(
-                "The compiled DAG has a cycle. It will deadlock on NCCL calls. "
-                "The following nodes are not in the topological order. That is, "
-                "some of the following nodes are involved in a cycle: "
-                f"{list(graph.keys())}"
+                "The compiled DAG may hang due to blocking NCCL calls. If you "
+                "believe this is a false positive, please file an issue at "
+                "https://github.com/ray-project/ray/issues/new/."
             )
 
         return topological_order_exists
