@@ -9,8 +9,6 @@ The Ray Distributed Debugger is a VS Code extension that streamlines the debuggi
 Ray Distributed Debugger abstracts the complexities of debugging distributed systems for you to debug Ray applications more efficiently, saving time and effort in the development workflow.
 
 
-Demo
-====
 
 .. raw:: html
 
@@ -133,5 +131,5 @@ Join the `#ray-debugger <https://ray-distributed.slack.com/archives/C073MPGLAC9>
 Next steps
 ==========
 
-For guidance on debugging distributed apps in Ray, see :doc:`General debugging <./user-guides/debug-apps/general-debugging>`.
-For tips on using the Ray debugger, see :doc:`Ray debugging <./user-guides/debug-apps/ray-debugging>`.
+- For guidance on debugging distributed apps in Ray, see :doc:`General debugging <./user-guides/debug-apps/general-debugging>`.
+- For tips on using the Ray debugger, see :doc:`Ray debugging <./user-guides/debug-apps/ray-debugging>`.
