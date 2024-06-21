@@ -127,7 +127,7 @@ class RunningStat:
         delta = self.mean_array - other.mean_array
         delta2 = delta * delta
         m = (n1 * self.mean_array + n2 * other.mean_array) / n
-        s = self.std_array + other.std_array + delta2 * n1 * n2 / n
+        s = self.std_array + other.std_array + (delta2 / n) * n1 * n2
         self.num_pushes = n
         self.mean_array = m
         self.std_array = s
