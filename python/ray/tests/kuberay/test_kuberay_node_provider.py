@@ -57,7 +57,7 @@ def test_worker_group_index(group_name, expected_index):
 @pytest.mark.skipif(sys.platform.startswith("win"), reason="Not relevant on Windows.")
 @pytest.mark.parametrize(
     "group_index,expected_max_replicas,expected_replicas",
-    [(0, 300, 1), (1, 200, 1), (2, None, 0)],
+    [(0, 300, 1), (1, 200, 1), (2, 4, 1), (3, None, 0)],
 )
 def test_worker_group_replicas(group_index, expected_max_replicas, expected_replicas):
     """Basic unit test for _worker_group_max_replicas and _worker_group_replicas
@@ -221,7 +221,7 @@ def test_get_node_data(podlist_file: str, expected_node_data):
             [
                 {
                     "op": "replace",
-                    "path": "/spec/workerGroupSpecs/2/replicas",
+                    "path": "/spec/workerGroupSpecs/3/replicas",
                     "value": 5,
                 },
                 {
