@@ -1550,7 +1550,6 @@ Status CoreWorker::Get(const std::vector<ObjectID> &ids,
   }
   results.resize(ids.size(), nullptr);
 
-#if defined(__APPLE__) || defined(__linux__)
   // Check whether these are experimental.Channel objects.
   bool is_experimental_channel = false;
   for (const ObjectID &id : ids) {
@@ -1571,7 +1570,6 @@ Status CoreWorker::Get(const std::vector<ObjectID> &ids,
     }
     return GetExperimentalMutableObjects(ids, results);
   }
-#endif
 
   return GetObjects(ids, timeout_ms, results);
 }
