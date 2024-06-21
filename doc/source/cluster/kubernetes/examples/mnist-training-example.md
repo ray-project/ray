@@ -58,7 +58,7 @@ kubectl get rayjob
 # rayjob-pytorch-mnist   SUCCEEDED    Complete            2024-06-17T04:08:25Z   2024-06-17T04:22:21Z   16m
 ```
 
-After Seeing `JOB_STATUS` marked as `SUCCEEDED`, you can check the training logs:
+After seeing `JOB_STATUS` marked as `SUCCEEDED`, you can check the training logs:
 
 ```sh
 # check pods name
