@@ -25,10 +25,6 @@ config = (
         enable_env_runner_and_connector_v2=True,
     )
     .environment("multi_agent_cartpole")
-    .env_runners(
-        num_envs_per_env_runner=1,
-        num_env_runners=2,
-    )
     .rl_module(
         model_config_dict={
             "fcnet_hiddens": [32],
