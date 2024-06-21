@@ -753,14 +753,14 @@ class CompiledDAG:
             for idx in task.downstream_node_idxs:
                 frontier.append(idx)
 
-        from ray.dag.constants import RAY_ADAG_ENABLE_VERIFY_GRAPH
+        from ray.dag.constants import RAY_ADAG_ENABLE_DETECT_DEADLOCK
 
-        if RAY_ADAG_ENABLE_VERIFY_GRAPH and not self._detect_deadlock():
+        if RAY_ADAG_ENABLE_DETECT_DEADLOCK and not self._detect_deadlock():
             raise ValueError(
                 "This DAG cannot be compiled because it will deadlock on NCCL "
                 "calls. If you believe this is a false positive, please disable "
                 "the graph verification by setting the environment variable "
-                "RAY_ADAG_ENABLE_VERIFY_GRAPH to 0 and file an issue at "
+                "RAY_ADAG_ENABLE_DETECT_DEADLOCK to 0 and file an issue at "
                 "https://github.com/ray-project/ray/issues/new/."
             )
 
@@ -882,14 +882,14 @@ class CompiledDAG:
         topological sort to verify whether the graph is a DAG.
         If not, the DAG will result in a deadlock due to a cycle.
 
-        We need to check whether there is a cycle in a “depends-on”
-        graph, where A → B means that B depends on A.
+        We need to check whether there is a cycle in a “happens-before”
+        graph, where A -> B means that B happens before A.
 
         #1: Add an edge from task.{bind_index} to task.{bind_index+1}
             on the same actor.
 
         Reason: Each actor executes tasks in the order that they are
-                bound in. Therefore task.{bind_index+1} depends on
+                bound in. Therefore task.{bind_index+1} happens before
                 task.{bind_index}.
 
         #2: Add an edge from the writer to the reader if the channel
@@ -932,8 +932,8 @@ class CompiledDAG:
         it’s impossible for both writer and reader on the same actor to write and
         read simultaneously.
 
-        We can create a depends-on graph based on the above rules. Then, the graph
-        will look like this:
+        We can create a happens-before graph based on the above rules. Then, the
+        graph will look like this:
 
                               |---|
                               |   v
@@ -984,9 +984,8 @@ class CompiledDAG:
             _add_edge(graph, idx, next_task_idx)
             for downstream_idx in task.downstream_node_idxs:
                 if task.dag_node.type_hint.requires_nccl():
-                    # Add an edge from the writer and reader of an NCCL channel
-                    # to the node that has the next bind index on the same actor
-                    # as the writer.
+                    # Add an edge from the reader of an NCCL channel to the node
+                    # that has the next bind index on the same actor as the writer.
                     _add_edge(graph, downstream_idx, next_task_idx)
                 else:
                     # Add an edge from the writer to the reader if the channel

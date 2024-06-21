@@ -8,7 +8,7 @@ BIND_INDEX_KEY = "bind_index"
 # Reserved key to distinguish DAGNode type and avoid collision with user dict.
 DAGNODE_TYPE_KEY = "__dag_node_type__"
 
-# Feature flag to turn off the graph verification.
-RAY_ADAG_ENABLE_VERIFY_GRAPH = (
-    os.environ.get("RAY_ADAG_ENABLE_VERIFY_GRAPH", "1") == "1"
+# Feature flag to turn off the deadlock detection.
+RAY_ADAG_ENABLE_DETECT_DEADLOCK = (
+    os.environ.get("RAY_ADAG_ENABLE_DETECT_DEADLOCK", "1") == "1"
 )
