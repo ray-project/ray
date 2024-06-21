@@ -429,29 +429,34 @@ TPU_PARAM_ARGS = ",".join(
     ]
 )
 TPU_TEST_DATA = (
-    pytest.param(
-        get_basic_ray_cr(),
-        4,
-        id="tpu-k8s-resource-limits",
-    ),
-    pytest.param(
-        _get_ray_cr_with_tpu_custom_resource(),
-        4,
-        id="tpu-custom-resource",
-    ),
-    pytest.param(
-        _get_ray_cr_with_tpu_k8s_resource_limit_and_custom_resource(),
-        4,
-        id="tpu--k8s-resource-limits-and-custom-resource",
-    ),
-    pytest.param(
-        _get_ray_cr_with_no_tpus(),
-        0,
-        id="no-tpus-requested",
-    ),
+    []
+    if platform.system() == "Windows"
+    else [
+        pytest.param(
+            get_basic_ray_cr(),
+            4,
+            id="tpu-k8s-resource-limits",
+        ),
+        pytest.param(
+            _get_ray_cr_with_tpu_custom_resource(),
+            4,
+            id="tpu-custom-resource",
+        ),
+        pytest.param(
+            _get_ray_cr_with_tpu_k8s_resource_limit_and_custom_resource(),
+            4,
+            id="tpu--k8s-resource-limits-and-custom-resource",
+        ),
+        pytest.param(
+            _get_ray_cr_with_no_tpus(),
+            0,
+            id="no-tpus-requested",
+        ),
+    ]
 )
 
 
+@pytest.mark.skipif(platform.system() == "Windows", reason="Not relevant.")
 @pytest.mark.parametrize(TPU_PARAM_ARGS, TPU_TEST_DATA)
 def test_get_num_tpus(ray_cr_in: Dict[str, Any], expected_num_tpus: int):
     """Verify that _get_num_tpus correctly returns the number of requested TPUs."""
