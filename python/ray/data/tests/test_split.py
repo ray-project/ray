@@ -97,12 +97,11 @@ def _test_equal_split_balanced(block_sizes, num_splits):
         blk = (blocks[-1], metadata[-1])
         ref_bundles.append(RefBundle((blk,), owns_blocks=True))
         total_rows += block_size
-    block_list = BlockList(blocks, metadata, owned_by_consumer=True)
 
     logical_plan = LogicalPlan(InputData(input_data=ref_bundles))
     stats = DatasetStats(metadata={"TODO": []}, parent=None)
     ds = Dataset(
-        ExecutionPlan(block_list, stats, run_by_consumer=True),
+        ExecutionPlan(stats),
         logical_plan,
     )
 

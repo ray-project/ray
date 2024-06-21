@@ -1321,8 +1321,10 @@ void GcsActorManager::OnActorSchedulingFailed(
   ray::rpc::ActorDeathCause death_cause;
   switch (failure_type) {
   case rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_PLACEMENT_GROUP_REMOVED:
-    error_msg =
-        "Could not create the actor because its associated placement group was removed.";
+    error_msg = absl::StrCat(
+        "Could not create the actor because its associated placement group was "
+        "removed.\n",
+        scheduling_failure_message);
     death_cause.mutable_actor_unschedulable_context()->set_error_message(error_msg);
     break;
   case rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_RUNTIME_ENV_SETUP_FAILED:
@@ -1480,7 +1482,7 @@ void GcsActorManager::Initialize(const GcsInitData &gcs_init_data) {
   });
 
   // Notify raylets to release unused workers.
-  gcs_actor_scheduler_->ReleaseUnusedWorkers(node_to_workers);
+  gcs_actor_scheduler_->ReleaseUnusedActorWorkers(node_to_workers);
 
   RAY_LOG(DEBUG) << "The number of registered actors is " << registered_actors_.size()
                  << ", and the number of created actors is " << created_actors_.size();

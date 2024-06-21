@@ -40,3 +40,12 @@ class InputData(LogicalOperator):
             return sum(bundle.num_rows() for bundle in self.input_data)
         else:
             return None
+
+    def output_data(self) -> Optional[List[RefBundle]]:
+        if self.input_data is None:
+            return None
+        return self.input_data
+
+    def is_lineage_serializable(self) -> bool:
+        # This operator isn't serializable because it contains ObjectRefs.
+        return False

@@ -18,6 +18,7 @@ def test_autodetect_num_tpus_accel(mock_glob):
         "/dev/accel2",
         "/dev/accel3",
     ]
+    TPUAcceleratorManager.get_current_node_num_accelerators.cache_clear()
     assert TPUAcceleratorManager.get_current_node_num_accelerators() == 4
 
 
@@ -26,6 +27,7 @@ def test_autodetect_num_tpus_accel(mock_glob):
 def test_autodetect_num_tpus_vfio(mock_list, mock_glob):
     mock_glob.return_value = []
     mock_list.return_value = [f"{i}" for i in range(4)]
+    TPUAcceleratorManager.get_current_node_num_accelerators.cache_clear()
     assert TPUAcceleratorManager.get_current_node_num_accelerators() == 4
 
 
@@ -34,6 +36,7 @@ def test_autodetect_num_tpus_vfio(mock_list, mock_glob):
 def test_autodetect_num_tpus_without_devices(mock_list, mock_glob):
     mock_list.side_effect = FileNotFoundError
     mock_glob.return_value = []
+    TPUAcceleratorManager.get_current_node_num_accelerators.cache_clear()
     assert TPUAcceleratorManager.get_current_node_num_accelerators() == 0
 
 
@@ -46,12 +49,16 @@ def test_autodetect_num_tpus_without_devices(mock_list, mock_glob):
         ("gce", "v3-128", "TPU-V3"),
         ("gce", "v4-8", "TPU-V4"),
         ("gce", "v4-2048", "TPU-V4"),
+        ("gce", "v5p-8", "TPU-V5P"),
+        ("gce", "v5litepod-8", "TPU-V5LITEPOD"),
         ("gke", "v2-8", "TPU-V2"),
         ("gke", "v2-32", "TPU-V2"),
         ("gke", "v3-8", "TPU-V3"),
         ("gke", "v3-128", "TPU-V3"),
         ("gke", "v4-8", "TPU-V4"),
         ("gke", "v4-2048", "TPU-V4"),
+        ("gke", "v5p-8", "TPU-V5P"),
+        ("gke", "v5litepod-8", "TPU-V5LITEPOD"),
     ],
 )
 @patch("requests.get")
@@ -181,15 +188,20 @@ def test_validate_resource_request_quantity(test_config):
 
 
 @pytest.mark.parametrize(
-    "tpu_chips",
+    "test_case",
     [
-        ["1"],
-        ["1", "2"],
-        ["1", "2", "3", "4"],
+        (4, ["0"]),
+        (4, ["0", "1"]),
+        (4, ["0", "1", "2", "3"]),
+        (8, ["0", "1", "2", "3", "4", "5", "6", "7"]),
     ],
 )
-def test_set_tpu_visible_ids_and_bounds(tpu_chips):
+@patch("glob.glob")
+def test_set_tpu_visible_ids_and_bounds(mock_glob, test_case):
+    num_devices, tpu_chips = test_case
+    mock_glob.return_value = ["/dev/accel" + str(x) for x in range(num_devices)]
     with patch.dict("os.environ", {}, clear=True):
+        TPUAcceleratorManager.get_current_node_num_accelerators.cache_clear()
         TPUAcceleratorManager.set_current_process_visible_accelerator_ids(tpu_chips)
         if len(tpu_chips) == 1:
             assert (
@@ -205,8 +217,12 @@ def test_set_tpu_visible_ids_and_bounds(tpu_chips):
             )
             assert os.environ[tpu.TPU_HOST_BOUNDS_ENV_VAR] == tpu.TPU_SINGLE_HOST_BOUNDS
             assert os.environ[tpu.TPU_VISIBLE_CHIPS_ENV_VAR] == ",".join(tpu_chips)
-        else:  # len(tpu_chips) == 4
+        elif len(tpu_chips) == 4:
             # Check that nothing is set, let the ML framework use the defaults.
+            assert os.environ.get(tpu.TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR, None) is None
+            assert os.environ.get(tpu.TPU_SINGLE_HOST_BOUNDS, None) is None
+            assert os.environ.get(tpu.TPU_VISIBLE_CHIPS_ENV_VAR, None) is None
+        else:  # len(tpu_chips) == 8
             assert os.environ.get(tpu.TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR, None) is None
             assert os.environ.get(tpu.TPU_SINGLE_HOST_BOUNDS, None) is None
             assert os.environ.get(tpu.TPU_VISIBLE_CHIPS_ENV_VAR, None) is None

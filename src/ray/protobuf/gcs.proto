@@ -175,10 +175,6 @@ message ErrorTableData {
   double timestamp = 4;
 }
 
-message ScheduleData {
-  map<string, bytes> schedule_plan = 1;
-}
-
 message ProfileEventEntry {
   // The start timestamp of the event time.
   int64 start_time = 1;

@@ -28,18 +28,12 @@ import ray.cloudpickle as pickle
 from ray._private.thirdparty.tabulate.tabulate import tabulate
 from ray._private.usage import usage_lib
 from ray.air.util.tensor_extensions.utils import _create_possibly_ragged_ndarray
-from ray.data._internal.block_list import BlockList
 from ray.data._internal.compute import ComputeStrategy
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.equalize import _equalize
 from ray.data._internal.execution.interfaces import RefBundle
-from ray.data._internal.execution.legacy_compat import (
-    _block_list_to_bundles,
-    _bundles_to_block_list,
-)
 from ray.data._internal.iterator.iterator_impl import DataIteratorImpl
 from ray.data._internal.iterator.stream_split_iterator import StreamSplitDataIterator
-from ray.data._internal.lazy_block_list import LazyBlockList
 from ray.data._internal.logical.operators.all_to_all_operator import (
     RandomizeBlocks,
     RandomShuffle,
@@ -72,8 +66,6 @@ from ray.data.block import (
     VALID_BATCH_FORMATS,
     Block,
     BlockAccessor,
-    BlockMetadata,
-    BlockPartition,
     DataBatch,
     T,
     U,
@@ -86,7 +78,6 @@ from ray.data.datasource import (
     Connection,
     Datasink,
     FilenameProvider,
-    ReadTask,
     _BigQueryDatasink,
     _CSVDatasink,
     _ImageDatasink,
@@ -1398,23 +1389,21 @@ class Dataset:
         block_refs, metadata = zip(*bundle.blocks)
 
         if locality_hints is None:
-            blocks = np.array_split(block_refs, n)
-            meta = np.array_split(metadata, n)
+            block_refs_splits = np.array_split(block_refs, n)
+            metadata_splits = np.array_split(metadata, n)
 
             split_datasets = []
-            for b, m in zip(blocks, meta):
-                block_list = BlockList(
-                    b.tolist(), m.tolist(), owned_by_consumer=owned_by_consumer
-                )
-                ref_bundles = _block_list_to_bundles(block_list, owned_by_consumer)
+            for block_refs_split, metadata_split in zip(
+                block_refs_splits, metadata_splits
+            ):
+                ref_bundles = [
+                    RefBundle([(b, m)], owns_blocks=owned_by_consumer)
+                    for b, m in zip(block_refs_split, metadata_split)
+                ]
                 logical_plan = LogicalPlan(InputData(input_data=ref_bundles))
                 split_datasets.append(
                     MaterializedDataset(
-                        ExecutionPlan(
-                            block_list,
-                            stats,
-                            run_by_consumer=owned_by_consumer,
-                        ),
+                        ExecutionPlan(stats),
                         logical_plan,
                     )
                 )
@@ -1530,14 +1519,9 @@ class Dataset:
         split_datasets = []
         for bundle in per_split_bundles:
             logical_plan = LogicalPlan(InputData(input_data=[bundle]))
-            block_split = _bundles_to_block_list([bundle])
             split_datasets.append(
                 MaterializedDataset(
-                    ExecutionPlan(
-                        block_split,
-                        stats,
-                        run_by_consumer=owned_by_consumer,
-                    ),
+                    ExecutionPlan(stats),
                     logical_plan,
                 )
             )
@@ -1595,7 +1579,7 @@ class Dataset:
         blocks, metadata = _split_at_indices(
             bundle.blocks,
             indices,
-            bundle.owns_blocks,
+            False,
         )
         split_duration = time.perf_counter() - start_time
         parent_stats = self._plan.stats()
@@ -1604,18 +1588,14 @@ class Dataset:
         for bs, ms in zip(blocks, metadata):
             stats = DatasetStats(metadata={"Split": ms}, parent=parent_stats)
             stats.time_total_s = split_duration
-
-            split_block_list = BlockList(bs, ms, owned_by_consumer=bundle.owns_blocks)
-            ref_bundles = _block_list_to_bundles(split_block_list, bundle.owns_blocks)
+            ref_bundles = [
+                RefBundle([(b, m)], owns_blocks=False) for b, m in zip(bs, ms)
+            ]
             logical_plan = LogicalPlan(InputData(input_data=ref_bundles))
 
             splits.append(
                 MaterializedDataset(
-                    ExecutionPlan(
-                        split_block_list,
-                        stats,
-                        run_by_consumer=bundle.owns_blocks,
-                    ),
+                    ExecutionPlan(stats),
                     logical_plan,
                 )
             )
@@ -1789,62 +1769,14 @@ class Dataset:
         Returns:
             A new dataset holding the rows of the input datasets.
         """
-        from ray.data._internal.execution.legacy_compat import (
-            get_legacy_lazy_block_list_read_only,
-        )
-
         start_time = time.perf_counter()
 
-        owned_by_consumer = False
         datasets = [self] + list(other)
-        has_nonlazy = any(not ds._plan.is_read_only() for ds in datasets)
-        if has_nonlazy:
-            ops_to_union = []
-            blocks = []
-            metadata = []
-            for ds in datasets:
-                bundle = ds._plan.execute()
-                op_logical_plan = ds._plan._logical_plan
-                ops_to_union.append(op_logical_plan.dag)
-                blocks.extend(bundle.block_refs)
-                metadata.extend(bundle.metadata)
-            blocklist = BlockList(blocks, metadata, owned_by_consumer=owned_by_consumer)
-
-            logical_plan = LogicalPlan(UnionLogicalOperator(*ops_to_union))
-        else:
-            tasks: List[ReadTask] = []
-            block_partition_refs: List[ObjectRef[BlockPartition]] = []
-            block_partition_meta_refs: List[ObjectRef[BlockMetadata]] = []
-
-            # Gather read task names from input blocks of unioned Datasets,
-            # and concat them before passing to resulting LazyBlockList
-            read_task_names = []
-            self_read_name = self._plan._in_blocks._read_op_name or "Read"
-            read_task_names.append(self_read_name)
-            other_read_names = [
-                o._plan._in_blocks._read_op_name or "Read" for o in other
-            ]
-            read_task_names.extend(other_read_names)
-
-            for ds in datasets:
-                bl = get_legacy_lazy_block_list_read_only(ds._plan)
-                tasks.extend(bl._tasks)
-                block_partition_refs.extend(bl._block_partition_refs)
-                block_partition_meta_refs.extend(bl._block_partition_meta_refs)
-            blocklist = LazyBlockList(
-                tasks,
-                f"Union({','.join(read_task_names)})",
-                block_partition_refs,
-                block_partition_meta_refs,
-                owned_by_consumer=owned_by_consumer,
-            )
-
-            logical_plan = self._logical_plan
-            logical_plans = [union_ds._plan._logical_plan for union_ds in datasets]
-            op = UnionLogicalOperator(
-                *[plan.dag for plan in logical_plans],
-            )
-            logical_plan = LogicalPlan(op)
+        logical_plans = [union_ds._plan._logical_plan for union_ds in datasets]
+        op = UnionLogicalOperator(
+            *[plan.dag for plan in logical_plans],
+        )
+        logical_plan = LogicalPlan(op)
 
         stats = DatasetStats(
             metadata={"Union": []},
@@ -1852,7 +1784,7 @@ class Dataset:
         )
         stats.time_total_s = time.perf_counter() - start_time
         return Dataset(
-            ExecutionPlan(blocklist, stats, run_by_consumer=owned_by_consumer),
+            ExecutionPlan(stats),
             logical_plan,
         )
 
@@ -4076,7 +4008,7 @@ class Dataset:
             >>> ds = ray.data.read_csv("s3://anonymous@air-example-data/iris.csv")
             >>> ds
             Dataset(
-               num_rows=150,
+               num_rows=?,
                schema={
                   sepal length (cm): double,
                   sepal width (cm): double,
@@ -4106,7 +4038,7 @@ class Dataset:
             >>> ds
             Concatenator
             +- Dataset(
-                  num_rows=150,
+                  num_rows=?,
                   schema={
                      sepal length (cm): double,
                      sepal width (cm): double,
@@ -4569,8 +4501,8 @@ class Dataset:
         copy = Dataset.copy(self, _deep_copy=True, _as=MaterializedDataset)
         copy._plan.execute()
 
-        blocks = copy._plan._snapshot_blocks
-        blocks_with_metadata = blocks.get_blocks_with_metadata() if blocks else []
+        bundle = copy._plan._snapshot_bundle
+        blocks_with_metadata = bundle.blocks
         # TODO(hchen): Here we generate the same number of blocks as
         # the original Dataset. Because the old code path does this, and
         # some unit tests implicily depend on this behavior.
@@ -4585,17 +4517,14 @@ class Dataset:
         ]
         logical_plan = LogicalPlan(InputData(input_data=ref_bundles))
         output = MaterializedDataset(
-            ExecutionPlan(
-                blocks,
-                copy._plan.stats(),
-                run_by_consumer=False,
-            ),
+            ExecutionPlan(copy._plan.stats()),
             logical_plan,
         )
-        output._plan.execute()  # No-op that marks the plan as fully executed.
         # Metrics are tagged with `copy`s uuid, update the output uuid with
         # this so the user can access the metrics label.
+        output._set_name(copy._name)
         output._set_uuid(copy._get_uuid())
+        output._plan.execute()  # No-op that marks the plan as fully executed.
         return output
 
     def stats(self) -> str:
@@ -4678,7 +4607,10 @@ class Dataset:
             >>> ray.data.read_csv("s3://anonymous@ray-example-data/iris.csv").has_serializable_lineage()
             True
         """  # noqa: E501
-        return self._plan.has_lazy_input()
+        return all(
+            op.is_lineage_serializable()
+            for op in self._logical_plan.dag.post_order_iter()
+        )
 
     @DeveloperAPI
     def serialize_lineage(self) -> bytes:
@@ -4711,7 +4643,7 @@ class Dataset:
             .. testoutput::
 
                 Dataset(
-                   num_rows=150,
+                   num_rows=?,
                    schema={
                       sepal length (cm): double,
                       sepal width (cm): double,
@@ -4746,7 +4678,7 @@ class Dataset:
         plan_copy = self._plan.deep_copy()
         logical_plan_copy = copy.copy(self._plan._logical_plan)
         ds = Dataset(plan_copy, logical_plan_copy)
-        ds._plan.clear_block_refs()
+        ds._plan.clear_snapshot()
         ds._set_uuid(self._get_uuid())
 
         def _reduce_remote_fn(rf: ray.remote_function.RemoteFunction):
@@ -4793,7 +4725,7 @@ class Dataset:
             .. testoutput::
 
                 Dataset(
-                   num_rows=150,
+                   num_rows=?,
                    schema={
                       sepal length (cm): double,
                       sepal width (cm): double,
