@@ -192,7 +192,7 @@ cdef class NewGcsClient:
 
     def get_all_node_info(
         self, timeout: Optional[float] = None
-    ) -> Dict[NodeID, gcs_pb2.NodeInfo]:
+    ) -> Dict[NodeID, gcs_pb2.GcsNodeInfo]:
         cdef int64_t timeout_ms = round(1000 * timeout) if timeout else -1
         cdef c_vector[CGcsNodeInfo] reply
         cdef c_vector[c_string] serialized_reply
@@ -202,7 +202,7 @@ cdef class NewGcsClient:
                 serialized_reply.push_back(node.SerializeAsString())
         ret = {}
         for serialized in serialized_reply:
-            proto = gcs_pb2.NodeInfo()
+            proto = gcs_pb2.GcsNodeInfo()
             proto.ParseFromString(serialized)
             ret[NodeID.from_binary(proto.node_id)] = proto
         return ret
