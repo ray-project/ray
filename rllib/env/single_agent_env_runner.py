@@ -463,7 +463,7 @@ class SingleAgentEnvRunner(EnvRunner):
         obs, infos = self.env.reset()
         for env_index in range(self.num_envs):
             episodes[env_index].add_env_reset(
-                observation=obs[env_index],
+                observation=unbatch(obs)[env_index],
                 infos=infos[env_index],
             )
             self._make_on_episode_callback("on_episode_start", env_index, episodes)
@@ -767,6 +767,7 @@ class SingleAgentEnvRunner(EnvRunner):
                 asynchronous=self.config.remote_worker_envs,
             )
         )
+
         self.num_envs: int = self.env.num_envs
         assert self.num_envs == self.config.num_envs_per_env_runner
 
