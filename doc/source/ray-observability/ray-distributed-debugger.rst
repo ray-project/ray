@@ -18,15 +18,13 @@ Demo
         <iframe width="560" height="315" src="https://www.youtube.com/embed/EiGHHUXL0oI" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>
     </div>
 
+Download the extension
 
-Get started
-===========
-
-Click `here <https://www.anyscale.com/blog/ray-distributed-debugger?utm_source=ray_docs&utm_medium=docs&utm_campaign=promotion#download-for-free>`_ to download the Ray Debugger extension for free.
+`Download <https://www.anyscale.com/blog/ray-distributed-debugger?utm_source=ray_docs&utm_medium=docs&utm_campaign=promotion#download-for-free>`_ the Ray Debugger extension.
 
 
-Setup environment
-~~~~~~~~~~~~~~~~~
+Set up the environment
+~~~~~~~~~~~~~~~~~~
 
 Create a new virtual environment and install dependencies.
 
@@ -41,13 +39,13 @@ Create a new virtual environment and install dependencies.
 Start a Ray cluster
 ~~~~~~~~~~~~~~~~~~~
 
-Run `ray start --head` to start a Ray Cluster.
+Run `ray start --head` to start a Ray cluster.
 
 
 Register the cluster
 ~~~~~~~~~~~~~~~~~~~~
 
-Add the Ray cluster `IP:PORT` to the cluster list. The default `IP:PORT` is `127.0.0.1:8265`, and you can change it when starting a new cluster. Make sure your current machine can access the IP and port.
+Find and click the Ray extension in the VS Code left side nav. Add the Ray cluster `IP:PORT` to the cluster list. The default `IP:PORT` is `127.0.0.1:8265`. You can change it when you start the cluster. Make sure your current machine can access the IP and port.
 
 .. image:: ./images/register-cluster.gif
     :align: center
@@ -71,24 +69,24 @@ Start running your Ray app.
     python job.py
 
 
-Attach to a paused task
+Attach to the paused task
 ~~~~~~~~~~~~~~~~~~~~~~~
 
-When debugger hits a breakpoint
+When the debugger hits a breakpoint:
 
 - The task enters a paused state.
 - The terminal clearly indicates when the debugger pauses a task and waits for the debugger to attach.
 - The paused task is listed in the Ray Debugger extension.
-- Click on the paused task to attach the VS Code debugger.
+- Click the play icon next to the name of the paused task to attach the VS Code debugger.
 
 .. image:: ./images/attach-paused-task.gif
     :align: center
 
 
-Use the VS Code debugger
+Start debugging
 ~~~~~~~~~~~~~~~~~~~~~~~~
 
-Debug your Ray app just as you would when developing locally.
+Debug your Ray app as you would when developing locally.
 
 
 Post-mortem debugging
@@ -106,13 +104,13 @@ Run the same `job.py` file with an additional argument to raise an exception.
     python job.py raise-exception
 
 
-Attach to paused task
-~~~~~~~~~~~~~~~~~~~~~
+Attach to the paused task
+~~~~~~~~~~~~~~~~~~~~~~~~~
 
 When the app throws an exception:
 
 - The debugger freezes the task.
-- The terminal clearly indicates when the debugger pauses a task is paused and waits for the debugger to attach.
+- The terminal clearly indicates when the debugger pauses a task and waits for the debugger to attach.
 - The paused task is listed in the Ray Debugger extension.
 - Click the play icon next to the name of the paused task to attach the debugger and start debugging. 
 
@@ -120,13 +118,13 @@ When the app throws an exception:
     :align: center
 
 
-Use the VS Code debugger
+Start debugging
 ~~~~~~~~~~~~~~~~~~~~~~~~
 
-Debug your Ray app just as you would when developing locally.
+Debug your Ray app as you would when developing locally.
 
 
-Feedback
-========
+Share feedback
+==============
 
 Join the `#ray-debugger <https://ray-distributed.slack.com/archives/C073MPGLAC9>`_ channel on the Ray Slack channel to get help.
