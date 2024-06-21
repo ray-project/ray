@@ -12,7 +12,7 @@ ray.init(
 @ray.remote
 def my_task(x):
     y = x * x
-    breakpoint()  # Add a breakpoint in the ray task.
+    breakpoint()  # Add a breakpoint in the Ray task.
     return y
 
 
