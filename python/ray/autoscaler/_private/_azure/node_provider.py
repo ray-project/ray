@@ -292,6 +292,8 @@ class AzureNodeProvider(NodeProvider):
                 },
             }
         }
+        if parameters["properties"]["parameters"].get("priority", {}).get("value") == "spot":
+            parameters["properties"]["parameters"].pop("evictionPolicy", None)
 
         # TODO: we could get the private/public ips back directly
         create_or_update = get_azure_sdk_function(
