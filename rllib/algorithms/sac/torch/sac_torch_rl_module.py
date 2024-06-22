@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict
 
 from ray.rllib.algorithms.sac.sac_rl_module import (
     ACTION_DIST_INPUTS_NEXT,
@@ -8,25 +8,19 @@ from ray.rllib.algorithms.sac.sac_rl_module import (
 from ray.rllib.algorithms.sac.sac_rl_module import SACRLModule
 from ray.rllib.core.models.base import ENCODER_OUT, Encoder, Model
 from ray.rllib.core.rl_module.torch.torch_rl_module import TorchRLModule
-from ray.rllib.core.rl_module.torch.torch_rl_module_with_target_networks_interface import (  # noqa
-    TorchRLModuleWithTargetNetworksInterface,
+from ray.rllib.core.rl_module.rl_module_with_target_networks_interface import (
+    RLModuleWithTargetNetworksInterface,
 )
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.nested_dict import NestedDict
-from ray.rllib.utils.typing import NetworkType
-
 
 torch, nn = try_import_torch()
 
 
-class SACTorchRLModule(
-    TorchRLModule,
-    SACRLModule,
-    TorchRLModuleWithTargetNetworksInterface,
-):
+class SACTorchRLModule(TorchRLModule, SACRLModule):
     framework: str = "torch"
 
     @override(SACRLModule)
@@ -56,10 +50,10 @@ class SACTorchRLModule(
             # Set the expected and unexpected keys for the inference-only module.
             self._set_inference_only_state_dict_keys()
 
-    @override(TorchRLModuleWithTargetNetworksInterface)
-    def get_target_network_pairs(self) -> List[Tuple[NetworkType, NetworkType]]:
-        """Returns target Q and Q network(s) to update the target network(s)."""
-        return [
+    @override(RLModuleWithTargetNetworksInterface)
+    def sync_target_networks(self, module_id, config, tau: float) -> None:
+        tau = tau if tau is not None else config.tau
+        pairs = [
             (self.qf_target_encoder, self.qf_encoder),
             (self.qf_target, self.qf),
         ] + (
@@ -71,6 +65,17 @@ class SACTorchRLModule(
             if self.twin_q
             else []
         )
+        # Loop through all individual networks that have a corresponding target net.
+        for target_net, main_net in pairs:
+            # Get the current parameters from the main network.
+            state_dict = main_net.state_dict()
+            # Use here Polyak averaging.
+            new_target_state_dict = {
+                k: tau * state_dict[k] + (1 - tau) * v
+                for k, v in target_net.state_dict().items()
+            }
+            # Apply the new parameters to the target Q network.
+            target_net.load_state_dict(new_target_state_dict)
 
     @override(TorchRLModule)
     def get_state(self, inference_only: bool = False) -> Dict[str, Any]:

@@ -6,6 +6,9 @@ from ray.rllib.core.columns import Columns
 from ray.rllib.core.models.base import Encoder, Model
 from ray.rllib.core.models.specs.typing import SpecType
 from ray.rllib.core.rl_module.rl_module import RLModule
+from ray.rllib.core.rl_module.rl_module_with_target_networks_interface import (
+    RLModuleWithTargetNetworksInterface,
+)
 from ray.rllib.models.distributions import Distribution
 from ray.rllib.utils.annotations import (
     ExperimentalAPI,
@@ -24,7 +27,7 @@ QF_TARGET_NEXT_PROBS = "qf_target_next_probs"
 
 
 @ExperimentalAPI
-class DQNRainbowRLModule(RLModule):
+class DQNRainbowRLModule(RLModule, RLModuleWithTargetNetworksInterface):
     @override(RLModule)
     def setup(self):
         # Get the DQN Rainbow catalog.

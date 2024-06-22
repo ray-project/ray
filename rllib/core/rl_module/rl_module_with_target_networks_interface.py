@@ -1,7 +1,9 @@
 import abc
-from typing import List, Tuple
+from typing import Optional, TYPE_CHECKING
 
-from ray.rllib.utils.typing import NetworkType
+if TYPE_CHECKING:
+    from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+    from ray.rllib.utils.typing import ModuleID
 
 
 class RLModuleWithTargetNetworksInterface(abc.ABC):
@@ -12,18 +14,12 @@ class RLModuleWithTargetNetworksInterface(abc.ABC):
     """
 
     @abc.abstractmethod
-    def get_target_network_pairs(self) -> List[Tuple[NetworkType, NetworkType]]:
-        """Returns a list of (target, current) networks.
-
-        This is used for identifying the target networks that are used for stabilizing
-        the updates of the current trainable networks of this RLModule.
-
-        Returns:
-            A list of (target, current) networks.
-        """
-
-    @abc.abstractmethod
-    def _sync_target_networks(self, tau: float) -> None:
+    def sync_target_networks(
+        self,
+        module_id: "ModuleID",
+        config: "AlgorithmConfig",
+        tau: Optional[float] = None,
+    ) -> None:
         """Update the target network(s) from their corresponding "main" networks.
 
         The update is made via Polyak averaging (if tau=1.0, the target network(s)
@@ -31,5 +27,8 @@ class RLModuleWithTargetNetworksInterface(abc.ABC):
         target network(s) are left as-is).
 
         Args:
-            tau: The tau value to use for polyak averaging.
+            module_id: The RLModule ID to update the target nets for.
+            config: The module specific AlgorithmConfig to be used.
+            tau: An optional tau value to use for polyak averaging. If None, should try
+                using the `tau` setting given in `config.
         """

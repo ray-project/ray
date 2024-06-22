@@ -5,6 +5,9 @@ from ray.rllib.algorithms.sac.sac_catalog import SACCatalog
 from ray.rllib.core.models.base import Encoder, Model
 from ray.rllib.core.models.specs.typing import SpecType
 from ray.rllib.core.rl_module.rl_module import RLModule
+from ray.rllib.core.rl_module.rl_module_with_target_networks_interface import (
+    RLModuleWithTargetNetworksInterface,
+)
 from ray.rllib.models.distributions import Distribution
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import (
@@ -22,7 +25,7 @@ ACTION_DIST_INPUTS_NEXT = "action_dist_inputs_next"
 
 
 @ExperimentalAPI
-class SACRLModule(RLModule):
+class SACRLModule(RLModule, RLModuleWithTargetNetworksInterface):
     """`RLModule` for the Soft-Actor-Critic (SAC) algorithm.
 
     It consists of several architectures, each in turn composed of
