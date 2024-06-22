@@ -2,6 +2,7 @@ import asyncio
 import collections
 import inspect
 import queue
+from threading import Thread
 from types import GeneratorType
 from typing import Any, Callable, Iterable, Iterator, List, Optional
 
@@ -44,6 +45,22 @@ from ray.data.block import (
 from ray.data.context import DataContext
 from ray.data.exceptions import UserCodeException
 from ray.util.rpdb import _is_ray_debugger_enabled
+
+
+class _MapActorContext:
+    def __init__(
+        self,
+        cached_cls: UserDefinedFunction,
+        cached_fn: Callable[[Any], Any],
+        cached_loop: Optional[asyncio.AbstractEventLoop] = None,
+        cached_asyncio_thread: Optional[Thread] = None,
+    ):
+        self.cached_cls = cached_cls
+        self.cached_fn = cached_fn
+
+        # Only used for callable class with async generator `__call__` method.
+        self.cached_loop = cached_loop
+        self.cached_asyncio_thread = cached_asyncio_thread
 
 
 def plan_udf_map_op(
@@ -108,24 +125,38 @@ def _parse_op_fn(op: AbstractUDFMap):
         fn_constructor_kwargs = op._fn_constructor_kwargs or {}
 
         if inspect.isasyncgenfunction(op._fn.__call__):
-
+            # TODO(scottjlee): (1) support non-generator async functions
+            # (2) make the map actor async
             def init_fn():
-                if ray.data._cached_fn is None:
-                    ray.data._cached_cls = op_fn
-                    ray.data._cached_fn = op_fn(
-                        *fn_constructor_args, **fn_constructor_kwargs
-                    )
+                if ray.data._map_actor_context is None:
                     loop = asyncio.new_event_loop()
-                    asyncio.set_event_loop(loop)
-                    ray.data._cached_loop = loop
+
+                    def run_loop():
+                        asyncio.set_event_loop(loop)
+                        loop.run_forever()
+
+                    thread = Thread(target=run_loop)
+                    thread.start()
+
+                    ray.data._map_actor_context = _MapActorContext(
+                        cached_cls=op_fn,
+                        cached_fn=op_fn(
+                            *fn_constructor_args,
+                            **fn_constructor_kwargs,
+                        ),
+                        cached_loop=loop,
+                        cached_asyncio_thread=thread,
+                    )
 
             async def fn(item: Any) -> Any:
-                assert ray.data._cached_fn is not None
-                assert ray.data._cached_cls == op_fn
-                assert ray.data._cached_loop is not None
+                assert ray.data._map_actor_context is not None
 
                 try:
-                    return ray.data._cached_fn(item, *fn_args, **fn_kwargs)
+                    return ray.data._map_actor_context.cached_fn(
+                        item,
+                        *fn_args,
+                        **fn_kwargs,
+                    )
                 except Exception as e:
                     _handle_debugger_exception(e)
 
@@ -133,17 +164,23 @@ def _parse_op_fn(op: AbstractUDFMap):
             op_fn = make_callable_class_concurrent(op_fn)
 
             def init_fn():
-                if ray.data._cached_fn is None:
-                    ray.data._cached_cls = op_fn
-                    ray.data._cached_fn = op_fn(
-                        *fn_constructor_args, **fn_constructor_kwargs
+                if ray.data._map_actor_context is None:
+                    ray.data._map_actor_context = _MapActorContext(
+                        cached_cls=op_fn,
+                        cached_fn=op_fn(
+                            *fn_constructor_args,
+                            **fn_constructor_kwargs,
+                        ),
                     )
 
             def fn(item: Any) -> Any:
-                assert ray.data._cached_fn is not None
-                assert ray.data._cached_cls == op_fn
+                assert ray.data._map_actor_context is not None
                 try:
-                    return ray.data._cached_fn(item, *fn_args, **fn_kwargs)
+                    return ray.data._map_actor_context.cached_fn(
+                        item,
+                        *fn_args,
+                        **fn_kwargs,
+                    )
                 except Exception as e:
                     _handle_debugger_exception(e)
 
@@ -222,53 +259,7 @@ def _generate_transform_fn_for_map_batches(
 ) -> MapTransformCallable[DataBatch, DataBatch]:
     if inspect.iscoroutinefunction(fn):
         # UDF is a callable class with async generator `__call__` method.
-        def transform_fn(
-            input_iterable: Iterable[DataBatch], _: TaskContext
-        ) -> Iterable[DataBatch]:
-            # Use a queue to store outputs from async generator calls.
-            # We will put output batches into this queue from async
-            # generators, and in the main event loop, yield them from
-            # the queue as they become available.
-            output_batch_queue = queue.Queue()
-
-            async def process_batch(batch: DataBatch):
-                output_batch_iterator = await fn(batch)
-                # As soon as results become available from the async generator,
-                # put them into the result queue so they can be yielded.
-                async for output_batch in output_batch_iterator:
-                    output_batch_queue.put(output_batch)
-
-            async def process_all_batches():
-                loop = ray.data._cached_loop
-                tasks = [loop.create_task(process_batch(x)) for x in input_iterable]
-
-                ctx = ray.data.DataContext.get_current()
-                if ctx.execution_options.preserve_order:
-                    for task in tasks:
-                        await task()
-                else:
-                    for task in asyncio.as_completed(tasks):
-                        await task
-                # Sentinel to indicate completion.
-                output_batch_queue.put(None)
-
-            # Use the existing event loop to create and run
-            # Tasks to process each batch
-            loop = ray.data._cached_loop
-            loop.run_until_complete(process_all_batches())
-
-            # Yield results as they become available
-            while True:
-                # `out_batch` here is a one-row output batch
-                # from the async generator, corresponding to a
-                # single row from the input batch.
-                out_batch = output_batch_queue.get()
-
-                # Exit when sentinel is received.
-                if out_batch is None:
-                    break
-                _validate_batch_output(out_batch)
-                yield out_batch
+        transform_fn = _generate_transform_fn_for_async_map_batches(fn)
 
     else:
 
@@ -311,6 +302,65 @@ def _generate_transform_fn_for_map_batches(
                     for out_batch in res:
                         _validate_batch_output(out_batch)
                         yield out_batch
+
+    return transform_fn
+
+
+def _generate_transform_fn_for_async_map_batches(
+    fn: UserDefinedFunction,
+) -> MapTransformCallable[DataBatch, DataBatch]:
+    class OutputQueueSentinel:
+        """Sentinel to indicate completion of async generator."""
+
+        pass
+
+    def transform_fn(
+        input_iterable: Iterable[DataBatch], _: TaskContext
+    ) -> Iterable[DataBatch]:
+        # Use a queue to store outputs from async generator calls.
+        # We will put output batches into this queue from async
+        # generators, and in the main event loop, yield them from
+        # the queue as they become available.
+        output_batch_queue = queue.Queue()
+
+        async def process_batch(batch: DataBatch):
+            output_batch_iterator = await fn(batch)
+            # As soon as results become available from the async generator,
+            # put them into the result queue so they can be yielded.
+            async for output_batch in output_batch_iterator:
+                output_batch_queue.put(output_batch)
+
+        async def process_all_batches():
+            loop = ray.data._map_actor_context.cached_loop
+            tasks = [loop.create_task(process_batch(x)) for x in input_iterable]
+
+            ctx = ray.data.DataContext.get_current()
+            if ctx.execution_options.preserve_order:
+                for task in tasks:
+                    await task()
+            else:
+                for task in asyncio.as_completed(tasks):
+                    await task
+            # Sentinel to indicate completion.
+            output_batch_queue.put(OutputQueueSentinel())
+
+        # Use the existing event loop to create and run
+        # Tasks to process each batch
+        loop = ray.data._map_actor_context.cached_loop
+        future = asyncio.run_coroutine_threadsafe(process_all_batches(), loop)
+
+        # Yield results as they become available
+        while not future.done():
+            # `out_batch` here is a one-row output batch
+            # from the async generator, corresponding to a
+            # single row from the input batch.
+            out_batch = output_batch_queue.get()
+
+            # Exit when sentinel is received.
+            if isinstance(out_batch, OutputQueueSentinel):
+                break
+            _validate_batch_output(out_batch)
+            yield out_batch
 
     return transform_fn
 

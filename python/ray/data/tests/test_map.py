@@ -701,34 +701,6 @@ def test_map_batches_generator(ray_start_regular_shared, tmp_path):
         ).take()
 
 
-def test_map_batches_async_generator(ray_start_regular_shared):
-    async def sleep_and_yield(i):
-        await asyncio.sleep(i)
-        return {"input": [i], "output": [2**i]}
-
-    class AsyncActor:
-        def __init__(self):
-            pass
-
-        async def __call__(self, batch):
-            tasks = [sleep_and_yield(i) for i in batch["id"]]
-            tasks = [asyncio.create_task(sleep_and_yield(i)) for i in batch["id"]]
-            for task in tasks:
-                yield await task
-
-    n = 5
-    ds = ray.data.range(n, override_num_blocks=1)
-    ds = ds.map_batches(AsyncActor, batch_size=None, concurrency=1)
-
-    start_t = time.time()
-    output = ds.take_all()
-    runtime = time.time() - start_t
-    assert runtime < sum(range(n)), runtime
-
-    expected_output = [{"input": i, "output": 2**i} for i in range(n)]
-    assert output == expected_output, (output, expected_output)
-
-
 def test_map_batches_actors_preserves_order(shutdown_only):
     class UDFClass:
         def __call__(self, x):
@@ -1084,6 +1056,39 @@ def test_nonserializable_map_batches(shutdown_only):
     # Check that the `inspect_serializability` trace was printed
     with pytest.raises(TypeError, match=r".*was found to be non-serializable.*"):
         x.map_batches(lambda _: lock).take(1)
+
+
+def test_map_batches_async_generator(shutdown_only):
+    ray.shutdown()
+    ray.init(num_cpus=10)
+
+    async def sleep_and_yield(i):
+        print("sleep", i)
+        await asyncio.sleep(i % 5)
+        print("yield", i)
+        return {"input": [i], "output": [2**i]}
+
+    class AsyncActor:
+        def __init__(self):
+            pass
+
+        async def __call__(self, batch):
+            tasks = [sleep_and_yield(i) for i in batch["id"]]
+            tasks = [asyncio.create_task(sleep_and_yield(i)) for i in batch["id"]]
+            for task in tasks:
+                yield await task
+
+    n = 10
+    ds = ray.data.range(n, override_num_blocks=2)
+    ds = ds.map_batches(AsyncActor, batch_size=1, concurrency=1, max_concurrency=2)
+
+    start_t = time.time()
+    output = ds.take_all()
+    runtime = time.time() - start_t
+    assert runtime < sum(range(n)), runtime
+
+    expected_output = [{"input": i, "output": 2**i} for i in range(n)]
+    assert output == expected_output, (output, expected_output)
 
 
 if __name__ == "__main__":
