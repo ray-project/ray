@@ -2,15 +2,6 @@ import logging
 
 import pytest
 
-import ray
-
-
-@pytest.fixture()
-def ray_start_4_cpus():
-    ray.init(num_cpus=4)
-    yield
-    ray.shutdown()
-
 
 @pytest.fixture(autouse=True)
 def setup_logging():

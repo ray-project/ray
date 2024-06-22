@@ -9,9 +9,9 @@ from ray.train import BackendConfig, Checkpoint
 from ray.train.backend import Backend
 from ray.train.tests.util import create_dict_checkpoint
 from ray.train.v2._internal.exceptions import TrainingFailedError
-from ray.train.v2._internal.execution.result import Result
 from ray.train.v2.api.config import RunConfig, ScalingConfig
 from ray.train.v2.api.data_parallel_trainer import DataParallelTrainer
+from ray.train.v2.api.result import Result
 
 
 @pytest.fixture(scope="module", autouse=True)

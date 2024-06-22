@@ -205,6 +205,26 @@ def train_fn(config):
                 # `train.report` should not have deleted this!
                 assert os.path.exists(temp_dir)
 
+        # TODO: This barrier before raising is a workaround to deflake the test.
+        # In this test setup, rank 0 is the fast-reporting worker
+        # that does not upload a checkpoint.
+        # If rank 0 raises an error immediately after getting past `report`,
+        # the next iteration of the control loop will handle the failure
+        # and the checkpoints from all other ranks will not be processed.
+        # This results in an earlier checkpoint getting used during restoration,
+        # which will cause the test assertions to fail.
+        # This should be fixed by forcing a queue flush on all workers before
+        # executing the failure decisions.
+        train_context = ray.train.get_context()
+        sync_actor = train_context.get_synchronization_actor()
+        ray.get(
+            sync_actor.broadcast_from_rank_zero.remote(
+                world_rank=train_context.get_world_rank(),
+                world_size=train_context.get_world_size(),
+                data="barrier",
+            )
+        )
+
         if i in config.get("fail_iters", []):
             raise RuntimeError(f"Failing on iter={i}!!")
 
@@ -336,7 +356,7 @@ def test_trainer(
     monkeypatch.setenv(HEALTH_CHECK_INTERVAL_S_ENV_VAR, str(health_check_interval_s))
     # Make report time slightly longer than health check interval.
     # This is arbitrary but is meant to mimic a somewhat realistic scenario.
-    time_between_reports = health_check_interval_s * 1.5
+    time_between_reports = health_check_interval_s * 2
 
     exp_name = f"trainer_persistence_test-{uuid.uuid4().hex}"
     no_checkpoint_ranks = [0]

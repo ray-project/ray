@@ -20,7 +20,6 @@ from ray.train.v2._internal.execution.failure_handling import (
     FailureDecision,
     FailurePolicy,
 )
-from ray.train.v2._internal.execution.result import Result
 from ray.train.v2._internal.execution.scaling_policy import (
     ResizeDecision,
     ScalingDecision,
@@ -30,6 +29,7 @@ from ray.train.v2._internal.execution.storage import get_fs_and_path
 from ray.train.v2._internal.execution.worker_group import WorkerGroup, WorkerGroupStatus
 from ray.train.v2._internal.util import time_monotonic
 from ray.train.v2.api.config import RunConfig
+from ray.train.v2.api.result import Result
 
 logger = logging.getLogger(__name__)
 
@@ -140,8 +140,7 @@ class TrainController:
             )
             self._set_state(TrainControllerState.ERRORED)
             self._training_failed_error = TrainingFailedError(
-                "Training failed due to worker errors of user function",
-                worker_failures=worker_group_status.errors,
+                worker_failures=worker_group_status.errors
             )
         elif failure_decision == FailureDecision.NOOP:
             assert self._state == TrainControllerState.RUNNING
@@ -164,7 +163,6 @@ class TrainController:
     def _restart_worker_group(self, num_workers: int, resources_per_worker: dict):
         """Restart the worker group and launch the train function."""
         self._maybe_shutdown_worker_group()
-        self._training_failed_error = None
 
         # If there's a latest checkpoint that's been committed,
         # use it to restore the worker group.
@@ -303,16 +301,10 @@ class TrainController:
         )
         experiment_fs_path = Path(storage_fs_path, self._run_config.name).as_posix()
 
-        errors = (
-            self._training_failed_error
-            if controller_state == TrainControllerState.ERRORED
-            else None
-        )
-
         return Result(
             metrics=latest_metrics,
             checkpoint=latest_checkpoint,
-            error=errors,
+            error=self._training_failed_error,
             path=experiment_fs_path,
             best_checkpoints=best_checkpoints,
             _storage_filesystem=storage_filesystem,

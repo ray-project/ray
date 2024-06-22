@@ -29,7 +29,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Callable, List, Optional, Tuple, Type, Union
 
 from ray.air._internal.filelock import TempFileLock
-from ray.tune.utils import date_str
+from ray.train.v2._internal.util import date_str
 from ray.util.annotations import DeveloperAPI
 
 if TYPE_CHECKING:
@@ -513,4 +513,4 @@ class StorageContext:
     @staticmethod
     def make_default_checkpoint_dir_name():
         """Get the name of the checkpoint directory by timestamp."""
-        return f"checkpoint_{date_str()}"
+        return f"checkpoint_{date_str(include_ms=True)}"

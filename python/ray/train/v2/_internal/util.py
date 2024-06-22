@@ -73,8 +73,11 @@ def construct_train_func(
     return train_fn
 
 
-def date_str():
-    return datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
+def date_str(include_ms: bool = False):
+    pattern = "%Y-%m-%d_%H-%M-%S"
+    if include_ms:
+        pattern += ".%f"
+    return datetime.today().strftime(pattern)
 
 
 def time_monotonic():

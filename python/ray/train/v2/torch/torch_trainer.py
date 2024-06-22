@@ -1,11 +1,23 @@
 from typing import Any, Callable, Dict, Optional, Union
 
 from ray.train import Checkpoint, DataConfig
-from ray.train.torch.config import TorchConfig
+from ray.train.torch.config import TorchConfig as TorchConfigV1
+from ray.train.torch.config import _TorchBackend as _TorchBackendV1
 from ray.train.trainer import GenDataset
 from ray.train.v2.api.config import RunConfig, ScalingConfig
 from ray.train.v2.api.data_parallel_trainer import DataParallelTrainer
 from ray.util import PublicAPI
+
+
+class _TorchBackend(_TorchBackendV1):
+    def on_shutdown(self, *args, **kwargs):
+        pass
+
+
+class TorchConfig(TorchConfigV1):
+    @property
+    def backend_cls(self):
+        return _TorchBackend
 
 
 @PublicAPI(stability="stable")
@@ -198,9 +210,10 @@ class TorchTrainer(DataParallelTrainer):
             train_loop_config=train_loop_config,
             backend_config=torch_config,
             scaling_config=scaling_config,
-            dataset_config=dataset_config,
             run_config=run_config,
-            datasets=datasets,
-            resume_from_checkpoint=resume_from_checkpoint,
-            metadata=metadata,
+            # TODO: Re-enable below.
+            # dataset_config=dataset_config,
+            # datasets=datasets,
+            # resume_from_checkpoint=resume_from_checkpoint,
+            # metadata=metadata,
         )

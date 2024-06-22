@@ -1,4 +1,3 @@
-import logging
 from typing import Dict, List
 
 import pytest
@@ -17,11 +16,6 @@ from ray.train.v2._internal.execution.worker_group import (
 )
 from ray.train.v2._internal.util import time_monotonic
 from ray.train.v2.api.config import ScalingConfig
-
-
-@pytest.fixture(autouse=True)
-def setup_logging():
-    logging.basicConfig(level=logging.DEBUG)
 
 
 class MockAutoscalingRequester(AutoscalingRequester):

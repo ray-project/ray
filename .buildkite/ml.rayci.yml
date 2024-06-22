@@ -63,7 +63,6 @@ steps:
   - label: ":bullettrain_front: ml: train v2 tests"
     tags: train
     instance_type: large
-    parallelism: 2
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/train/... ml
         --parallelism-per-worker 3

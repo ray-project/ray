@@ -35,7 +35,6 @@ class RayTrainReportCallback(RayTrainReportCallbackV1):
     """
 
     def __init__(self) -> None:
-        super().__init__()
         # TODO: Upstream this change into ray.train.lightning.
         # The difference in this version is removing the trial directory usage.
         job_id = ray.get_runtime_context().get_job_id()

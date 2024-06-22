@@ -2,7 +2,7 @@ import pandas as pd
 import pytest
 
 from ray.train import Checkpoint
-from ray.train.v2._internal.execution.result import Result
+from ray.train.v2.api.result import Result
 
 
 def test_result_raises_with_dataframe():

@@ -8,7 +8,7 @@ from ray.train.v2._internal.accelerators import AcceleratorSetupCallback
 from ray.train.v2._internal.constants import _UNSUPPORTED
 from ray.train.v2._internal.execution.controller import TrainController
 from ray.train.v2._internal.execution.failure_handling import DefaultFailurePolicy
-from ray.train.v2._internal.execution.scaling_policy import FixedScalingPolicy
+from ray.train.v2._internal.execution.scaling_policy import create_scaling_policy
 from ray.train.v2._internal.util import construct_train_func
 from ray.train.v2.api.backend_setup import BackendSetupCallback
 from ray.train.v2.api.config import RunConfig, ScalingConfig
@@ -63,7 +63,7 @@ class DataParallelTrainer:
 
         controller = TrainController(
             train_fn=train_fn,
-            scaling_policy=FixedScalingPolicy(self.scaling_config),
+            scaling_policy=create_scaling_policy(self.scaling_config),
             failure_policy=DefaultFailurePolicy(self.run_config.failure_config),
             run_config=self.run_config,
             callbacks=callbacks,

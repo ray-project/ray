@@ -14,12 +14,24 @@ class WorkerHealthCheckFailedError(RayTrainError):
 
     def __init__(self, message, failure: Exception):
         super().__init__(message)
+        self._message = message
         self.health_check_failure = failure
 
+    def __reduce__(self):
+        return (self.__class__, (self._message, self.health_check_failure))
 
-class TrainingFailedError(Exception):
+
+class TrainingFailedError(RayTrainError):
     """Exception raised when training fails."""
 
-    def __init__(self, message, worker_failures: Dict[int, Exception]):
-        super().__init__(message)
+    def __init__(self, worker_failures: Dict[int, Exception]):
+        super().__init__(
+            "Training failed due to worker errors. "
+            "Please inspect the error logs above, "
+            "or access the latest worker failures in this "
+            "exception's `worker_failures` attribute."
+        )
         self.worker_failures = worker_failures
+
+    def __reduce__(self):
+        return (self.__class__, (self.worker_failures,))

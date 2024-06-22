@@ -30,6 +30,7 @@ from ray.train.v2._internal.constants import V2_ENABLED
 
 if V2_ENABLED:
     from ray.train.v2.api.config import RunConfig, ScalingConfig  # noqa: F811
+    from ray.train.v2.api.result import Result  # noqa: F811
     from ray.train.v2.api.train_fn_utils import (  # noqa: F811
         get_checkpoint,
         get_context,
@@ -74,3 +75,12 @@ RunConfig.__module__ = "ray.train"
 ScalingConfig.__module__ = "ray.train"
 SyncConfig.__module__ = "ray.train"
 TrainingIterator.__module__ = "ray.train"
+
+
+# Append Anyscale proprietary APIs and apply patches
+if V2_ENABLED:
+    from ray.anyscale.train.api.config import (  # noqa: E402, F811, isort: skip
+        ScalingConfig,
+    )
+
+    ScalingConfig.__module__ = "ray.train"

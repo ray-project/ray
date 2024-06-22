@@ -88,6 +88,9 @@ class WorkerGroup:
             )
         )
 
+        # Maps world rank to the ongoing poll task.
+        self._world_rank_to_ongoing_poll: Dict[int, ObjectRef] = {}
+
     def start(
         self,
         num_workers: int,
@@ -232,6 +235,7 @@ class WorkerGroup:
         self._pg = None
         self._train_fn_tasks = []
         self._num_consecutive_poll_misses = collections.defaultdict(int)
+        self._world_rank_to_ongoing_poll = {}
         self._sync_actor = None
 
     def _assert_workers_started(self):
@@ -246,6 +250,23 @@ class WorkerGroup:
         ]
 
         self._latest_start_time = time_monotonic()
+
+    def _get_poll_tasks(self) -> List[ObjectRef]:
+        """Get the poll tasks for each worker.
+
+        If there is an ongoing poll task for a worker that did not finish
+        in the timeout on the previous round, return that task instead of
+        queueing up a new one.
+
+        Spawns a new poll task for the worker if there is no ongoing poll task.
+        """
+        poll_tasks = []
+        for i, worker in enumerate(self._workers):
+            if i in self._world_rank_to_ongoing_poll:
+                poll_tasks.append(self._world_rank_to_ongoing_poll[i])
+            else:
+                poll_tasks.append(worker.actor.poll_status.remote())
+        return poll_tasks
 
     def _poll_workers_and_collect_errors(
         self, timeout: Optional[float]
@@ -269,9 +290,9 @@ class WorkerGroup:
             poll_results: A list of poll results from each worker.
             poll_errors: Poll task errors or None if the poll task succeeded.
         """
+        poll_tasks = self._get_poll_tasks()
         poll_task_to_world_rank = {
-            worker.actor.poll_status.remote(): i
-            for i, worker in enumerate(self._workers)
+            poll_task: i for i, poll_task in enumerate(poll_tasks)
         }
         done_polls, hanging_polls = ray.wait(
             list(poll_task_to_world_rank),
@@ -283,6 +304,10 @@ class WorkerGroup:
 
         for hanging_poll in hanging_polls:
             hanging_rank = poll_task_to_world_rank[hanging_poll]
+
+            # The hanging poll task should be saved and awaited in the next round.
+            self._world_rank_to_ongoing_poll[hanging_rank] = hanging_poll
+
             self._num_consecutive_poll_misses[hanging_rank] += 1
             total_misses = self._num_consecutive_poll_misses[hanging_rank]
 
@@ -299,6 +324,10 @@ class WorkerGroup:
 
         for done_poll in done_polls:
             done_rank = poll_task_to_world_rank[done_poll]
+
+            # Remove the ongoing poll task for the worker.
+            self._world_rank_to_ongoing_poll.pop(done_rank, None)
+
             try:
                 poll_result = ray.get(done_poll)
                 poll_task_to_result[done_poll] = poll_result
@@ -311,7 +340,7 @@ class WorkerGroup:
                 )
                 logger.exception(error_msg)
                 poll_task_to_error[done_poll] = WorkerHealthCheckFailedError(
-                    error_msg, e
+                    error_msg, failure=e
                 )
 
         results = [
