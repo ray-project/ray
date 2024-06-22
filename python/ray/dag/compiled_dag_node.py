@@ -387,7 +387,7 @@ class CompiledDAG:
         enable_asyncio: bool = False,
         async_max_queue_size: Optional[int] = None,
         max_buffered_results: Optional[int] = None,
-        info_level_when_execution_may_block: Optional[str] = None,
+        raise_if_execution_may_block: bool = True,
     ):
         """
         Args:
@@ -412,11 +412,9 @@ class CompiledDAG:
                 executions is beyond the DAG capacity, the new execution would
                 be blocked in the first place; therefore, this limit is only
                 enforced when it is smaller than the DAG capacity.
-            info_level_when_execution_may_block: The level of information to
-                print when the execution may be blocked due to DAG is at its
-                capacity. `None` means no information will be printed, "WARN"
-                means a warning message will be printed, and "ERROR" means an
-                exception will be thrown.
+            raise_if_execution_may_block: if True, an exception will be raised
+                if the execution may block when calling the execute() method.
+                If False, a warning will be printed instead.
 
         Returns:
             Channel: A wrapper around ray.ObjectRef.
@@ -441,7 +439,7 @@ class CompiledDAG:
         self._max_buffered_results: Optional[int] = max_buffered_results
         if self._max_buffered_results is None:
             self._max_buffered_results = MAX_BUFFER_COUNT
-        self._info_level_when_execution_may_block = info_level_when_execution_may_block
+        self._raise_if_execution_may_block = raise_if_execution_may_block
         # Used to ensure that the future returned to the
         # caller corresponds to the correct DAG output. I.e.
         # order of futures added to fut_queue should match the
@@ -878,24 +876,29 @@ class CompiledDAG:
 
         self._dag_submitter.start()
         self._dag_output_fetcher.start()
-        self._capacity = self._compute_capacity()
-        print(f"Capacity of the DAG: {self._capacity}")
+        self._max_concurrent_executions = self._compute_max_concurrent_executions()
 
     @property
-    def capacity(self) -> int:
-        return self._capacity
-
-    def _compute_capacity(self):
+    def max_concurrent_executions(self) -> int:
         """
-        Compute the capacity of the DAG. The capacity is the number of inputs
-        the DAG could start processing without blocking when none of the outputs
-        is consumed.
+        Get the maximum number of concurrent executions that the DAG
+        can perform without blocking.
+        """
+        return self._max_concurrent_executions
+
+    def _compute_max_concurrent_executions(self):
+        """
+        Compute the max possible concurrent executions of the DAG. This is the
+        number of inputs the DAG could start processing without blocking when
+        none of the outputs is consumed.
 
         Returns:
-            The capacity of the DAG.
+            The max possible concurrent executions of the DAG.
 
-        NOTE: The DAG can hold intermediate results in either the intermediate
-        channels or the actors, specifically:
+        NOTE: The max possible concurrent executions is determined by the
+        "capacity" of the DAG, i.e., the number of intermediate results the
+        DAG can hold. The DAG holds these intermediate results in either
+        the intermediate channels or the actors, specifically:
         - Channel capacity: either 1 or 0 depending on the channel type.
         - Actor capacity: capacity is 1 because the actor can fetch and hold one
             object from each input channel during execution. For an actor with
@@ -907,14 +910,14 @@ class CompiledDAG:
         capacity of the DAG.
         """
         capa = {idx: float("inf") for idx in self.idx_to_task}
-        pq = []
+        priority_queue = []
 
         # Initial capacity is 1 as input channel has capacity 1.
         capa[self.input_task_idx] = 1
-        heapq.heappush(pq, (1, self.input_task_idx, set()))
+        heapq.heappush(priority_queue, (1, self.input_task_idx, set()))
 
-        while pq:
-            cur_capa, cur_idx, cur_actors = heapq.heappop(pq)
+        while priority_queue:
+            cur_capa, cur_idx, cur_actors = heapq.heappop(priority_queue)
             if cur_idx == self.output_task_idx:
                 return cur_capa
 
@@ -947,7 +950,7 @@ class CompiledDAG:
                         f" downstream_capa = {downstream_capa}"
                         f" new_actors = {new_actors}"
                     )
-                    heapq.heappush(pq, (downstream_capa, downstream_idx, new_actors))
+                    heapq.heappush(priority_queue, (downstream_capa, downstream_idx, new_actors))
 
     def _monitor_failures(self):
         outer = self
@@ -1097,18 +1100,18 @@ class CompiledDAG:
 
         self._get_or_compile()
 
-        if self._execution_index - self._max_execution_index > self._capacity:
-            if self._info_level_when_execution_may_block == "ERROR":
+        if self._execution_index - self._max_execution_index > self._max_concurrent_executions:
+            if self._raise_if_execution_may_block:
                 raise ValueError(
-                    "Execution may be blocked due to DAG is at its capacity "
-                    f"({self._capacity}). Please call ray.get() on previous "
-                    "CompiledDAGRefs to retrieve and release results from the DAG."
+                    f"This DAG can support at most {self._max_concurrent_executions} "
+                    "concurrent executions. Please call ray.get() on previous CompiledDAGRefs "
+                    "and ensure the results go out of scope before calling dag.execute again."
                 )
-            elif self._info_level_when_execution_may_block == "WARN":
+            else:
                 logger.warn(
-                    "Execution may be blocked due to DAG is at its capacity "
-                    f"({self._capacity}). Please call ray.get() on previous "
-                    "CompiledDAGRefs to retrieve and release results from the DAG."
+                    f"This DAG can support at most {self._max_concurrent_executions} "
+                    "concurrent executions. Please call ray.get() on previous CompiledDAGRefs "
+                    "and ensure the results go out of scope before calling dag.execute again."
                 )
 
         inp = (args, kwargs)
@@ -1172,14 +1175,14 @@ def build_compiled_dag_from_ray_dag(
     enable_asyncio: bool = False,
     async_max_queue_size: Optional[int] = None,
     max_buffered_results: Optional[int] = None,
-    info_level_when_execution_may_block: Optional[str] = None,
+    raise_if_execution_may_block: bool = True,
 ) -> "CompiledDAG":
     compiled_dag = CompiledDAG(
         buffer_size_bytes,
         enable_asyncio,
         async_max_queue_size,
         max_buffered_results,
-        info_level_when_execution_may_block,
+        raise_if_execution_may_block,
     )
 
     def _build_compiled_dag(node):
