@@ -1,7 +1,5 @@
-import abc
-
 from ray.rllib.core.rl_module.rl_module_with_target_networks_interface import (
-    RLModuleWithTargetNetworksInterface
+    RLModuleWithTargetNetworksInterface,
 )
 
 
