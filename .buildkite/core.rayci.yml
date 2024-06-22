@@ -341,7 +341,7 @@ steps:
       - bazel run //ci/ray_ci:build_in_docker -- docker --platform cpu
         --canonical-tag test_container
       - docker build --progress=plain --build-arg BASE_IMAGE="rayproject/ray:test_container"
-        -t rayproject/ray:runtime_env_container -f docker/runtime_env_container/Dockerfile .
+        -t rayproject/ray:runtime_env_container -f ci/docker/runtime_env_container/Dockerfile .
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... core --only-tags container
     depends_on:
       - manylinux

@@ -141,6 +141,16 @@ Execution
 
     Dataset.materialize
 
+Schema
+------
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+   :template: autosummary/class_without_autosummary_noindex.rst
+
+   Schema
+
 .. _block-api:
 
 Internals
