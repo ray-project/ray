@@ -520,6 +520,7 @@ class AlgorithmConfig(_Config):
         self._disable_preprocessor_api = False
         self._disable_action_flattening = False
         self._disable_initialize_loss_from_dummy_batch = False
+        self._dont_auto_sync_env_runner_states = False
 
         # Has this config object been frozen (cannot alter its attributes anymore).
         self._is_frozen = False
@@ -928,7 +929,7 @@ class AlgorithmConfig(_Config):
                     )
                 )
             # Batch all data.
-            pipeline.append(BatchIndividualItems())
+            pipeline.append(BatchIndividualItems(multi_agent=self.is_multi_agent()))
             # Convert to Tensors.
             pipeline.append(NumpyToTensor())
 
@@ -1011,7 +1012,12 @@ class AlgorithmConfig(_Config):
 
         return pipeline
 
-    def build_learner_connector(self, input_observation_space, input_action_space):
+    def build_learner_connector(
+        self,
+        input_observation_space,
+        input_action_space,
+        device=None,
+    ):
         from ray.rllib.connectors.learner import (
             AddColumnsFromEpisodesToTrainBatch,
             AddObservationsFromEpisodesToBatch,
@@ -1019,13 +1025,18 @@ class AlgorithmConfig(_Config):
             AgentToModuleMapping,
             BatchIndividualItems,
             LearnerConnectorPipeline,
+            NumpyToTensor,
         )
 
         custom_connectors = []
         # Create a learner connector pipeline (including RLlib's default
         # learner connector piece) and return it.
         if self._learner_connector is not None:
-            val_ = self._learner_connector(input_observation_space, input_action_space)
+            val_ = self._learner_connector(
+                input_observation_space,
+                input_action_space,
+                # device,  # TODO (sven): Also pass device into custom builder.
+            )
 
             from ray.rllib.connectors.connector_v2 import ConnectorV2
 
@@ -1074,7 +1085,9 @@ class AlgorithmConfig(_Config):
                     )
                 )
             # Batch all data.
-            pipeline.append(BatchIndividualItems())
+            pipeline.append(BatchIndividualItems(multi_agent=self.is_multi_agent()))
+            # Convert to Tensors.
+            pipeline.append(NumpyToTensor(as_learner_connector=True, device=device))
         return pipeline
 
     def build_learner_group(
@@ -1965,26 +1978,26 @@ class AlgorithmConfig(_Config):
 
         Args:
             num_learners: Number of Learner workers used for updating the RLModule.
-                A value of 0 means training will take place on a local Learner on main
+                A value of 0 means training takes place on a local Learner on main
                 process CPUs or 1 GPU (determined by `num_gpus_per_learner`).
                 For multi-gpu training, you have to set `num_learners` to > 1 and set
-                `num_gpus_per_learner` accordingly (e.g. 4 GPUs total and model fits on
+                `num_gpus_per_learner` accordingly (e.g., 4 GPUs total and model fits on
                 1 GPU: `num_learners=4; num_gpus_per_learner=1` OR 4 GPUs total and
                 model requires 2 GPUs: `num_learners=2; num_gpus_per_learner=2`).
             num_cpus_per_learner: Number of CPUs allocated per Learner worker.
                 Only necessary for custom processing pipeline inside each Learner
                 requiring multiple CPU cores. Ignored if `num_learners=0`.
             num_gpus_per_learner: Number of GPUs allocated per Learner worker. If
-                `num_learners=0`, any value greater than 0 will run the
-                training on a single GPU on the main process, while a value of 0 will
-                run the training on main process CPUs. If `num_gpus_per_learner` is
-                > 0, then `num_cpus_per_learner` should not be changed (from its default
+                `num_learners=0`, any value greater than 0 runs the
+                training on a single GPU on the main process, while a value of 0 runs
+                the training on main process CPUs. If `num_gpus_per_learner` is > 0,
+                then you shouldn't change `num_cpus_per_learner` (from its default
                 value of 1).
             local_gpu_idx: If `num_gpus_per_learner` > 0, and
-                `num_learners` < 2, then this GPU index will be used for
-                training. This is an index into the available
+                `num_learners` < 2, then RLlib uses this GPU index for training. This is
+                an index into the available
                 CUDA devices. For example if `os.environ["CUDA_VISIBLE_DEVICES"] = "1"`
-                then a `local_gpu_idx` of 0 will use the GPU with ID=1 on the node.
+                and `local_gpu_idx=0`, RLlib uses the GPU with ID=1 on the node.
 
         Returns:
             This updated AlgorithmConfig object.
@@ -2060,8 +2073,8 @@ class AlgorithmConfig(_Config):
                 worker. This setting only applies to the new API stack. The number
                 of Learner workers can be set via `config.resources(
                 num_learners=...)`. The total effective batch size is then
-                `num_learners` x `train_batch_size_per_learner` and can
-                be accessed via the property `AlgorithmConfig.total_train_batch_size`.
+                `num_learners` x `train_batch_size_per_learner` and you can
+                access it with the property `AlgorithmConfig.total_train_batch_size`.
             train_batch_size: Training batch size, if applicable. When on the new API
                 stack, this setting should no longer be used. Instead, use
                 `train_batch_size_per_learner` (in combination with
@@ -2164,7 +2177,8 @@ class AlgorithmConfig(_Config):
             callbacks_class: Callbacks class, whose methods will be run during
                 various phases of training and environment sample collection.
                 See the `DefaultCallbacks` class and
-                `examples/custom_metrics_and_callbacks.py` for more usage information.
+                `examples/metrics/custom_metrics_and_callbacks.py` for more usage
+                information.
 
         Returns:
             This updated AlgorithmConfig object.
@@ -3129,7 +3143,10 @@ class AlgorithmConfig(_Config):
 
     @property
     def total_train_batch_size(self):
-        if self.train_batch_size_per_learner is not None:
+        if (
+            self.train_batch_size_per_learner is not None
+            and self.enable_rl_module_and_learner
+        ):
             return self.train_batch_size_per_learner * (self.num_learners or 1)
         else:
             return self.train_batch_size
@@ -4015,7 +4032,7 @@ class AlgorithmConfig(_Config):
         #  Remove this once we are able to specify placement group bundle index in RLlib
         if self.num_cpus_per_learner > 1 and self.num_gpus_per_learner > 0:
             raise ValueError(
-                "Cannot set both `num_cpus_per_learner` > 1 and "
+                "Can't set both `num_cpus_per_learner` > 1 and "
                 " `num_gpus_per_learner` > 0! Either set "
                 "`num_cpus_per_learner` > 1 (and `num_gpus_per_learner`"
                 "=0) OR set `num_gpus_per_learner` > 0 (and leave "
@@ -4028,7 +4045,7 @@ class AlgorithmConfig(_Config):
         if self.num_learners == 0 and self.num_gpus_per_env_runner > 1:
             raise ValueError(
                 "num_gpus_per_env_runner must be 0 (cpu) or 1 (gpu) when using local "
-                "mode (i.e. `num_learners=0`)"
+                "mode (i.e., `num_learners=0`)"
             )
 
     def _validate_multi_agent_settings(self):
@@ -4133,7 +4150,7 @@ class AlgorithmConfig(_Config):
             )
 
         if self.input_ == "dataset":
-            # If we need to read a ray dataset set the parallelism and
+            # If you need to read a Ray dataset set the parallelism and
             # num_cpus_per_read_task from rollout worker settings
             self.input_config["num_cpus_per_read_task"] = self.num_cpus_per_env_runner
             if self.in_evaluation:

@@ -1,7 +1,7 @@
 # The base-deps Docker image installs main libraries needed to run Ray
 
 # The GPU options are NVIDIA CUDA developer images.
-ARG BASE_IMAGE="ubuntu:focal"
+ARG BASE_IMAGE="ubuntu:22.04"
 FROM ${BASE_IMAGE}
 # FROM directive resets ARG
 ARG BASE_IMAGE
@@ -47,7 +47,7 @@ RUN sudo apt-get update -y && sudo apt-get upgrade -y \
         openssh-client \
         gnupg; fi) \
     && wget --quiet \
-        "https://repo.anaconda.com/miniconda/Miniconda3-py311_23.10.0-1-Linux-${HOSTTYPE}.sh" \
+        "https://repo.anaconda.com/miniconda/Miniconda3-py311_24.4.0-0-Linux-${HOSTTYPE}.sh" \
         -O /tmp/miniconda.sh \
     && /bin/bash /tmp/miniconda.sh -b -u -p $HOME/anaconda3 \
     && $HOME/anaconda3/bin/conda init \ 
@@ -68,7 +68,7 @@ RUN sudo apt-get update -y && sudo apt-get upgrade -y \
     # We install cmake temporarily to get psutil
     && sudo apt-get autoremove -y cmake zlib1g-dev \
         # We keep g++ on GPU images, because uninstalling removes CUDA Devel tooling
-        $(if [[ "$BASE_IMAGE" == "ubuntu:focal" && "$HOSTTYPE" == "x86_64" ]]; then echo \
+        $(if [[ "$BASE_IMAGE" == "ubuntu:22.04" && "$HOSTTYPE" == "x86_64" ]]; then echo \
         g++; fi) \
     && sudo rm -rf /var/lib/apt/lists/* \
     && sudo apt-get clean \

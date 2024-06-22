@@ -208,7 +208,7 @@ Status MutableObjectManager::WriteAcquire(const ObjectID &object_id,
   if (!channel) {
     return Status::IOError("Channel has not been registered");
   }
-  RAY_CHECK(!channel->written) << "You must call WriteAcquire() before WriteRelease()";
+  RAY_CHECK(!channel->written) << "You must call WriteRelease() before WriteAcquire()";
 
   std::unique_ptr<plasma::MutableObject> &object = channel->mutable_object;
   int64_t total_size = data_size + metadata_size;
@@ -290,12 +290,15 @@ Status MutableObjectManager::ReadAcquire(const ObjectID &object_id,
   size_t total_size = channel->mutable_object->header->data_size +
                       channel->mutable_object->header->metadata_size;
   RAY_CHECK_LE(static_cast<int64_t>(total_size), channel->mutable_object->allocated_size);
+  std::shared_ptr<MutableObjectBuffer> channel_buffer =
+      std::make_shared<MutableObjectBuffer>(
+          shared_from_this(), channel->mutable_object->buffer, object_id);
   std::shared_ptr<SharedMemoryBuffer> data_buf =
-      SharedMemoryBuffer::Slice(channel->mutable_object->buffer,
+      SharedMemoryBuffer::Slice(channel_buffer,
                                 /*offset=*/0,
                                 /*size=*/channel->mutable_object->header->data_size);
   std::shared_ptr<SharedMemoryBuffer> metadata_buf =
-      SharedMemoryBuffer::Slice(channel->mutable_object->buffer,
+      SharedMemoryBuffer::Slice(channel_buffer,
                                 /*offset=*/channel->mutable_object->header->data_size,
                                 /*size=*/channel->mutable_object->header->metadata_size);
 

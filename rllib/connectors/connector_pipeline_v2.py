@@ -36,6 +36,20 @@ class ConnectorPipelineV2(ConnectorV2):
         connectors: Optional[List[ConnectorV2]] = None,
         **kwargs,
     ):
+        """Initializes a ConnectorPipelineV2 instance.
+
+        Args:
+            input_observation_space: The (optional) input observation space for this
+                connector piece. This is the space coming from a previous connector
+                piece in the (env-to-module or learner) pipeline or is directly
+                defined within the gym.Env.
+            input_action_space: The (optional) input action space for this connector
+                piece. This is the space coming from a previous connector piece in the
+                (module-to-env) pipeline or is directly defined within the gym.Env.
+            connectors: A list of individual ConnectorV2 pieces to be added to this
+                pipeline during construction. Note that you can always add (or remove)
+                more ConnectorV2 pieces later on the fly.
+        """
         self.connectors = connectors or []
 
         super().__init__(input_observation_space, input_action_space, **kwargs)
@@ -48,6 +62,7 @@ class ConnectorPipelineV2(ConnectorV2):
     @override(ConnectorV2)
     def __call__(
         self,
+        *,
         rl_module: RLModule,
         data: Any,
         episodes: List[EpisodeType],
@@ -60,6 +75,7 @@ class ConnectorPipelineV2(ConnectorV2):
         Each connector piece receives as input the output of the previous connector
         piece in the pipeline.
         """
+        shared_data = shared_data if shared_data is not None else {}
         # Loop through connector pieces and call each one with the output of the
         # previous one. Thereby, time each connector piece's call.
         for connector in self.connectors:
@@ -296,7 +312,7 @@ class ConnectorPipelineV2(ConnectorV2):
             obs_space = self.input_observation_space
             act_space = self.input_action_space
             for con in self.connectors:
-                con.input_observation_space = obs_space
                 con.input_action_space = act_space
+                con.input_observation_space = obs_space
                 obs_space = con.observation_space
                 act_space = con.action_space

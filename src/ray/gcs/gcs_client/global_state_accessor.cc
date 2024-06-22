@@ -118,6 +118,18 @@ std::vector<std::string> GlobalStateAccessor::GetAllAvailableResources() {
   return available_resources;
 }
 
+std::vector<std::string> GlobalStateAccessor::GetAllTotalResources() {
+  std::vector<std::string> total_resources;
+  std::promise<bool> promise;
+  {
+    absl::ReaderMutexLock lock(&mutex_);
+    RAY_CHECK_OK(gcs_client_->NodeResources().AsyncGetAllTotalResources(
+        TransformForMultiItemCallback<rpc::TotalResources>(total_resources, promise)));
+  }
+  promise.get_future().get();
+  return total_resources;
+}
+
 std::unordered_map<NodeID, int64_t> GlobalStateAccessor::GetDrainingNodes() {
   std::promise<std::unordered_map<NodeID, int64_t>> promise;
   {

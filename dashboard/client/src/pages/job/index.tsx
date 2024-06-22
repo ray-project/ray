@@ -11,6 +11,7 @@ import {
   TextField,
   Typography,
 } from "@mui/material";
+import Autocomplete from "@mui/material/Autocomplete";
 import Pagination from "@mui/material/Pagination";
 import makeStyles from "@mui/styles/makeStyles";
 import React from "react";
@@ -123,6 +124,14 @@ const JobList = () => {
                   <InputAdornment position="end">Per Page</InputAdornment>
                 ),
               }}
+            />
+            <Autocomplete
+              sx={{ height: 35, width: 150 }}
+              options={["PENDING", "RUNNING", "SUCCEEDED", "FAILED"]}
+              onInputChange={(event, value) =>
+                changeFilter("status", value.trim())
+              }
+              renderInput={(params) => <TextField {...params} label="Status" />}
             />
           </Box>
           <div>

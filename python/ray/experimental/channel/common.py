@@ -175,9 +175,15 @@ class ChannelInterface:
         pass
 
     def ensure_registered_as_writer(self):
+        """
+        Check whether the process is a valid writer. This method must be idempotent.
+        """
         raise NotImplementedError
 
     def ensure_registered_as_reader(self):
+        """
+        Check whether the process is a valid reader. This method must be idempotent.
+        """
         raise NotImplementedError
 
     def write(self, value: Any) -> None:
@@ -186,34 +192,24 @@ class ChannelInterface:
 
         Blocks if there are still pending readers for the previous value. The
         writer may not write again until the specified number of readers have
-        called ``end_read``.
+        read the value.
 
         Args:
             value: The value to write.
         """
         raise NotImplementedError
 
-    def begin_read(self) -> Any:
+    def read(self) -> Any:
         """
         Read the latest value from the channel. This call will block until a
         value is available to read.
 
-        Subsequent calls to begin_read() will *block*, until end_read() is
-        called and the next value is available to read.
+        Subsequent calls to read() may *block* if the deserialized object is
+        zero-copy (e.g., bytes or a numpy array) *and* the object is still in scope.
 
         Returns:
             Any: The deserialized value.
         """
-        raise NotImplementedError
-
-    def end_read(self) -> None:
-        """
-        Signal to the writer that the channel is ready to write again.
-
-        If begin_read is not called first, then this call will block until a
-        value is written, then drop the value.
-        """
-        raise NotImplementedError
 
     def close(self) -> None:
         """
@@ -247,19 +243,16 @@ class ReaderInterface:
     def start(self):
         raise NotImplementedError
 
-    def _begin_read_list(self) -> Any:
+    def _read_list(self) -> Any:
         raise NotImplementedError
 
-    def begin_read(self) -> Any:
-        outputs = self._begin_read_list()
+    def read(self) -> Any:
+        outputs = self._read_list()
         self._num_reads += 1
         if self._has_single_output:
             return outputs[0]
         else:
             return outputs
-
-    def end_read(self) -> Any:
-        raise NotImplementedError
 
     def close(self) -> None:
         self._closed = True
@@ -275,12 +268,8 @@ class SynchronousReader(ReaderInterface):
     def start(self):
         pass
 
-    def _begin_read_list(self) -> Any:
-        return [c.begin_read() for c in self._input_channels]
-
-    def end_read(self) -> Any:
-        for c in self._input_channels:
-            c.end_read()
+    def _read_list(self) -> Any:
+        return [c.read() for c in self._input_channels]
 
 
 @DeveloperAPI
@@ -307,7 +296,7 @@ class AwaitableBackgroundReader(ReaderInterface):
         self._background_task = asyncio.ensure_future(self.run())
 
     def _run(self):
-        vals = [c.begin_read() for c in self._input_channels]
+        vals = [c.read() for c in self._input_channels]
         if self._has_single_output:
             vals = vals[0]
         return vals
@@ -323,10 +312,6 @@ class AwaitableBackgroundReader(ReaderInterface):
 
             # Set the result on the main thread.
             fut.set_result(res)
-
-    def end_read(self) -> Any:
-        for c in self._input_channels:
-            c.end_read()
 
     def close(self):
         self._background_task.cancel()

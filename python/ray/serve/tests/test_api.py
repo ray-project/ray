@@ -412,6 +412,52 @@ def test_delete_application(serve_instance):
     assert requests.get("http://127.0.0.1:8000/app_g").text == "got g"
 
 
+@pytest.mark.asyncio
+async def test_delete_while_initializing(serve_instance):
+    """Test that __del__ runs when a replica terminates while initializing."""
+
+    @ray.remote
+    class Counter:
+        def __init__(self):
+            self.count = 0
+
+        def incr(self):
+            self.count += 1
+
+        def get_count(self) -> int:
+            return self.count
+
+    signal = SignalActor.remote()
+    counter = Counter.remote()
+
+    @serve.deployment(graceful_shutdown_timeout_s=0.01)
+    class HangingStart:
+        async def __init__(
+            self, signal: ray.actor.ActorHandle, counter: ray.actor.ActorHandle
+        ):
+            self.signal = signal
+            self.counter = counter
+            await signal.send.remote()
+            print("HangingStart set the EventHolder.")
+            await asyncio.sleep(10000)
+
+        async def __del__(self):
+            print("Running __del__")
+            await self.counter.incr.remote()
+
+    serve._run(HangingStart.bind(signal, counter), _blocking=False)
+
+    print("Waiting for the deployment to start initialization.")
+    await signal.wait.remote()
+
+    print("Calling serve.delete().")
+    serve.delete(name=SERVE_DEFAULT_APP_NAME)
+
+    # Ensure that __del__ ran once, even though the deployment terminated
+    # during initialization.
+    assert (await counter.get_count.remote()) == 1
+
+
 def test_deployment_name_with_app_name(serve_instance):
     """Test replica name with app name as prefix"""
 
