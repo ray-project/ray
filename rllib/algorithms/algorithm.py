@@ -901,7 +901,7 @@ class Algorithm(Trainable, AlgorithmBase):
                     self.workers.sync_env_runner_states(
                         config=self.config,
                         env_steps_sampled=self.metrics.peek(
-                            NUM_ENV_STEPS_SAMPLED_LIFETIME
+                            NUM_ENV_STEPS_SAMPLED_LIFETIME, default=0
                         ),
                     )
             # Compile final ResultDict from `train_results` and `eval_results`. Note
