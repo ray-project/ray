@@ -90,6 +90,16 @@ Status GcsClient::Connect(instrumented_io_context &io_service,
   gcs_rpc_client_ = std::make_shared<rpc::GcsRpcClient>(
       options_.gcs_address_, options_.gcs_port_, *client_call_manager_);
 
+  if (GetClusterId().IsNil()) {
+    rpc::GetClusterIdRequest request;
+    rpc::GetClusterIdReply reply;
+    // Note: maybe gcs_rpc_server_connect_timeout_s is better.
+    RAY_RETURN_NOT_OK(
+        gcs_rpc_client_->SyncGetClusterId(request, &reply, GetGcsTimeoutMs()));
+    client_call_manager_->SetClusterId(ClusterID::FromBinary(reply.cluster_id()));
+    RAY_CHECK(!GetClusterId().IsNil());
+  }
+
   resubscribe_func_ = [this]() {
     job_accessor_->AsyncResubscribe();
     actor_accessor_->AsyncResubscribe();

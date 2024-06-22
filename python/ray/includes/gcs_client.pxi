@@ -212,7 +212,7 @@ cdef class NewGcsClient:
     #############################################################
     def get_all_resource_usage(
         self, timeout: Optional[float] = None
-    ) -> gcs_pb2.GetAllResourceUsageReply:
+    ) -> GetAllResourceUsageReply:
         cdef int64_t timeout_ms = round(1000 * timeout) if timeout else -1
         cdef CGetAllResourceUsageReply c_reply
         cdef c_string serialized_reply
@@ -223,7 +223,7 @@ cdef class NewGcsClient:
                     .GetAllResourceUsage(timeout_ms, c_reply)
                 )
             serialized_reply = c_reply.SerializeAsString()
-        ret = gcs_pb2.GetAllResourceUsageReply()
+        ret = GetAllResourceUsageReply()
         ret.ParseFromString(serialized_reply)
         return ret
 
