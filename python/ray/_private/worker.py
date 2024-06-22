@@ -2546,10 +2546,15 @@ def get(object_refs: "ObjectRef[R]", *, timeout: Optional[float] = None) -> R:
     ...
 
 
+@overload
+def get(object_refs: CompiledDAGRef, *, timeout: Optional[float] = None) -> Any:
+    ...
+
+
 @PublicAPI
 @client_mode_hook
 def get(
-    object_refs: Union["ObjectRef[Any]", Sequence["ObjectRef[Any]"]],
+    object_refs: Union["ObjectRef[Any]", Sequence["ObjectRef[Any]"], CompiledDAGRef],
     *,
     timeout: Optional[float] = None,
 ) -> Union[Any, List[Any]]:
@@ -2839,11 +2844,6 @@ def wait(
                 "wait() expected a list of ray.ObjectRef or "
                 "ray.ObjectRefGenerator, "
                 f"got list containing {type(ray_waitable)}"
-            )
-        if isinstance(ray_waitable, CompiledDAGRef):
-            raise TypeError(
-                "wait() does not support CompiledDAGRef. "
-                "Please call ray.get() on the CompiledDAGRef to get the result."
             )
     worker.check_connected()
 
