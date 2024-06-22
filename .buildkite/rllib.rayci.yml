@@ -45,7 +45,7 @@ steps:
 
   - label: ":brain: rllib: learning tests pytorch"
     tags: rllib
-    parallelism: 3
+    parallelism: 4
     instance_type: large
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //rllib/... rllib 
