@@ -16,7 +16,7 @@ from ray.rllib.utils.nested_dict import NestedDict
 _, tf, _ = try_import_tf()
 
 
-class APPOTfRLModule(PPOTfRLModule, RLModuleWithTargetNetworksInterface, APPORLModule):
+class APPOTfRLModule(PPOTfRLModule, APPORLModule, RLModuleWithTargetNetworksInterface):
     @override(PPOTfRLModule)
     def setup(self):
         super().setup()
