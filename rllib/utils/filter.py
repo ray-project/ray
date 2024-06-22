@@ -114,7 +114,7 @@ class RunningStat:
             delta = x - self.mean_array
             self.mean_array[...] += delta / self.num_pushes
             self.std_array[...] += (
-                delta * delta * (self.num_pushes - 1) / self.num_pushes
+                (delta / self.num_pushes) * delta * (self.num_pushes - 1)
             )
 
     def update(self, other):
