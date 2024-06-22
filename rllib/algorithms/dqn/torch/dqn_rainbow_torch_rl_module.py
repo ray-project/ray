@@ -55,8 +55,7 @@ class DQNRainbowTorchRLModule(TorchRLModule, DQNRainbowRLModule):
             self._set_inference_only_state_dict_keys()
 
     @override(RLModuleWithTargetNetworksInterface)
-    def sync_target_networks(self, module_id, config, tau: float) -> None:
-        tau = tau if tau is not None else config.tau
+    def sync_target_networks(self, tau: float) -> None:
         pairs = [(self.target_encoder, self.encoder), (self.af_target, self.af)] + (
             # If we have a dueling architecture we need to update the value stream
             # target, too.

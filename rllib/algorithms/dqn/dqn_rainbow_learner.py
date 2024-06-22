@@ -46,7 +46,7 @@ class DQNRainbowLearner(Learner):
 
         # Initially sync target networks.
         self.module.foreach_module(
-            lambda mid, module: module._sync_target_networks(tau=1.0)
+            lambda mid, module: module.sync_target_networks(tau=1.0)
         )
 
         # Prepend a NEXT_OBS from episodes to train batch connector piece (right
@@ -75,7 +75,7 @@ class DQNRainbowLearner(Learner):
             timestep - self.metrics.peek(last_update_ts_key, default=0)
             >= config.target_network_update_freq
         ):
-            self.module[module_id]._sync_target_networks(config.tau)
+            self.module[module_id].sync_target_networks(config.tau)
             # Increase lifetime target network update counter by one.
             self.metrics.log_value((module_id, NUM_TARGET_UPDATES), 1, reduce="sum")
             # Update the (single-value -> window=1) last updated timestep metric.

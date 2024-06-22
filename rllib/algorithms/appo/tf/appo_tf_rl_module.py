@@ -29,8 +29,7 @@ class APPOTfRLModule(PPOTfRLModule, RLModuleWithTargetNetworksInterface, APPORLM
             self.old_encoder.trainable = False
 
     @override(RLModuleWithTargetNetworksInterface)
-    def sync_target_networks(self, module_id, config, tau=None):
-        tau = tau if tau is not None else config.tau
+    def sync_target_networks(self, tau: float) -> None:
         for target_network, current_network in [
             (self.old_pi, self.pi),
             (self.old_encoder, self.encoder),
