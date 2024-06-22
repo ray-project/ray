@@ -1023,30 +1023,6 @@ class Learner:
 
         return self.metrics.reduce()
 
-    @OverrideToImplementCustomLogic_CallToSuperRecommended
-    def additional_update_for_module(
-        self,
-        *,
-        module_id: ModuleID,
-        config: Optional["AlgorithmConfig"] = None,
-        timestep: int,
-        **kwargs,
-    ) -> None:
-        """Apply additional non-gradient based updates for a single module.
-
-        See `additional_update` for more details.
-
-        Args:
-            module_id: The id of the module to update.
-            config: The AlgorithmConfig specific to the given `module_id`.
-            timestep: The current global timestep (to be used with schedulers).
-            **kwargs: Keyword arguments to use for the additional update.
-
-        Returns:
-            A dictionary of results from the update
-        """
-        pass
-
     def update_from_batch(
         self,
         batch: MultiAgentBatch,
@@ -1294,6 +1270,10 @@ class Learner:
 
         self._check_is_built()
 
+        # Call `_before_gradient_based_update` to allow for non-gradient based
+        # preparations-, logging-, and update logic to happen.
+        self._before_gradient_based_update(timesteps or {})
+
         # Resolve batch/episodes being ray object refs (instead of
         # actual batch/episodes objects).
         if isinstance(batch, ray.ObjectRef):
@@ -1359,14 +1339,15 @@ class Learner:
                 clear_on_reduce=True,
             )
 
-        if minibatch_size and self._learner_connector is not None:
-            batch_iter = partial(
-                MiniBatchCyclicIterator,
-                uses_new_env_runners=True,
-                min_total_mini_batches=min_total_mini_batches,
-            )
-        elif minibatch_size:
-            batch_iter = MiniBatchCyclicIterator
+        if minibatch_size:
+            if self._learner_connector is not None:
+                batch_iter = partial(
+                    MiniBatchCyclicIterator,
+                    uses_new_env_runners=True,
+                    min_total_mini_batches=min_total_mini_batches,
+                )
+            else:
+                batch_iter = MiniBatchCyclicIterator
         elif num_iters > 1:
             # `minibatch_size` was not set but `num_iters` > 1.
             # Under the old training stack, users could do multiple sgd passes
@@ -1410,10 +1391,13 @@ class Learner:
 
         # Call `_after_gradient_based_update` to allow for non-gradient based
         # cleanups-, logging-, and update logic to happen.
-        self._after_gradient_based_update(timesteps)
+        self._after_gradient_based_update(timesteps or {})
 
         # Reduce results across all minibatch update steps.
         return self.metrics.reduce()
+
+    def _before_gradient_based_update(self, timesteps: Dict[str, Any]) -> None:
+        pass #TODO: docstring
 
     @OverrideToImplementCustomLogic_CallToSuperRecommended
     def _after_gradient_based_update(self, timesteps: Dict[str, Any]) -> None:
@@ -1428,8 +1412,6 @@ class Learner:
                 `NUM_ENV_STEPS_SAMPLED_LIFETIME`.
                 # TODO (sven): Make this a more formal structure with its own type.
         """
-        timesteps = timesteps or {}
-
         # Only update this optimizer's lr, if a scheduler has been registered
         # along with it.
         for module_id, optimizer_names in self._module_optimizers.items():
@@ -1755,25 +1737,10 @@ class Learner:
         self.metrics.log_dict(dict(log_dict), reduce="sum", clear_on_reduce=True)
 
     @Deprecated(
-        new="self.metrics.[log_value|log_dict|log_time](key=..., value=..., "
-        "reduce=[mean|min|max|sum], window=..., ema_coeff=...)",
-        help="Use the new ray.rllib.utils.metrics.metrics_logger::MetricsLogger API "
-        "for logging your custom values and time-reducing (or parallel-reducing) them.",
+        new="Learner._before_gradient_based_update() and/or "
+        "Learner._after_gradient_based_update()",
         error=True,
     )
-    def register_metric(self, *args, **kwargs):
+    def additional_update_for_module(self, *args, **kwargs):
         pass
 
-    @Deprecated(
-        new="self.metrics.[log_value|log_dict|log_time](key=..., value=..., "
-        "reduce=[mean|min|max|sum], window=..., ema_coeff=...)",
-        help="Use the new ray.rllib.utils.metrics.metrics_logger::MetricsLogger API "
-        "for logging your custom values and time-reducing (or parallel-reducing) them.",
-        error=True,
-    )
-    def register_metrics(self, *args, **kwargs):
-        pass
-
-    @Deprecated(error=True)
-    def compile_results(self, *args, **kwargs):
-        pass

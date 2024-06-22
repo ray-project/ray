@@ -526,37 +526,6 @@ class PPO(Algorithm):
                 weights = self.learner_group.get_weights(inference_only=True)
                 self.workers.local_worker().set_weights(weights)
 
-        with self.metrics.log_time((TIMERS, LEARNER_ADDITIONAL_UPDATE_TIMER)):
-            kl_dict = {}
-            if self.config.use_kl_loss:
-                for mid in modules_to_update:
-                    kl = convert_to_numpy(
-                        self.metrics.peek(
-                            (LEARNER_RESULTS, mid, LEARNER_RESULTS_KL_KEY)
-                        )
-                    )
-                    if np.isnan(kl):
-                        logger.warning(
-                            f"KL divergence for Module {mid} is non-finite, this "
-                            "will likely destabilize your model and the training "
-                            "process. Action(s) in a specific state have near-zero "
-                            "probability. This can happen naturally in deterministic "
-                            "environments where the optimal policy has zero mass for a "
-                            "specific action. To fix this issue, consider setting "
-                            "`kl_coeff` to 0.0 or increasing `entropy_coeff` in your "
-                            "config."
-                        )
-                    kl_dict[mid] = kl
-
-            # TODO (sven): Move to Learner._after_gradient_based_update().
-            # Triggers a special update method on RLOptimizer to update the KL values.
-            additional_results = self.learner_group.additional_update(
-                module_ids_to_update=modules_to_update,
-                sampled_kl_values=kl_dict,
-                timestep=self.metrics.peek(NUM_ENV_STEPS_SAMPLED_LIFETIME),
-            )
-            self.metrics.merge_and_log_n_dicts(additional_results, key=LEARNER_RESULTS)
-
         return self.metrics.reduce()
 
     def _training_step_old_and_hybrid_api_stacks(self) -> ResultDict:

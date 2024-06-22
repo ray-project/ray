@@ -7,7 +7,11 @@ from ray.rllib.algorithms.ppo.ppo import (
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.learner.learner import Learner
 from ray.rllib.evaluation.postprocessing import Postprocessing
-from ray.rllib.utils.annotations import override, OverrideToImplementCustomLogic
+from ray.rllib.utils.annotations import (
+    override,
+    OverrideToImplementCustomLogic,
+    OverrideToImplementCustomLogic_CallToSuperRecommended,
+)
 from ray.rllib.utils.lambda_defaultdict import LambdaDefaultDict
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.postprocessing.value_predictions import compute_value_targets
@@ -206,21 +210,18 @@ class PPOLearner(Learner):
         self.entropy_coeff_schedulers_per_module.pop(module_id, None)
         self.curr_kl_coeffs_per_module.pop(module_id, None)
 
+    @OverrideToImplementCustomLogic_CallToSuperRecommended
     @override(Learner)
-    def additional_update_for_module(
+    def _after_gradient_based_update(
         self,
         *,
-        module_id: ModuleID,
-        config: "PPOConfig",
-        timestep: int,
+        timesteps: Dict[str, Any],
     ) -> None:
-        super().additional_update_for_module(
-            module_id=module_id,
-            config=config,
-            timestep=timestep,
-        )
+        super()._after_gradient_based_update(timesteps=timesteps)
 
         # Update entropy coefficient via our Scheduler.
+        TODO: add per-module loop here
+
         new_entropy_coeff = self.entropy_coeff_schedulers_per_module[module_id].update(
             timestep=timestep
         )
@@ -229,6 +230,37 @@ class PPOLearner(Learner):
             new_entropy_coeff,
             window=1,
         )
+
+        with self.metrics.log_time((TIMERS, LEARNER_ADDITIONAL_UPDATE_TIMER)):
+            kl_dict = {}
+            if self.config.use_kl_loss:
+                for mid in modules_to_update:
+                    kl = convert_to_numpy(
+                        self.metrics.peek(
+                            (LEARNER_RESULTS, mid, LEARNER_RESULTS_KL_KEY)
+                        )
+                    )
+                    if np.isnan(kl):
+                        logger.warning(
+                            f"KL divergence for Module {mid} is non-finite, this "
+                            "will likely destabilize your model and the training "
+                            "process. Action(s) in a specific state have near-zero "
+                            "probability. This can happen naturally in deterministic "
+                            "environments where the optimal policy has zero mass for a "
+                            "specific action. To fix this issue, consider setting "
+                            "`kl_coeff` to 0.0 or increasing `entropy_coeff` in your "
+                            "config."
+                        )
+                    kl_dict[mid] = kl
+
+            # TODO (sven): Move to Learner._after_gradient_based_update().
+            # Triggers a special update method on RLOptimizer to update the KL values.
+            additional_results = self.learner_group.additional_update(
+                module_ids_to_update=modules_to_update,
+                sampled_kl_values=kl_dict,
+                timestep=self.metrics.peek(NUM_ENV_STEPS_SAMPLED_LIFETIME),
+            )
+            self.metrics.merge_and_log_n_dicts(additional_results, key=LEARNER_RESULTS)
 
     @OverrideToImplementCustomLogic
     def _compute_values(
