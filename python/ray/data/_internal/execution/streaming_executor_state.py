@@ -578,6 +578,7 @@ def select_operator_to_run(
     assert isinstance(cur_usage, TopologyResourceUsage), cur_usage
 
     # Filter to ops that are eligible for execution.
+    breakpoint()
     ops = []
     for op, state in topology.items():
         under_resource_limits = _execution_allowed(op, cur_usage, limits)
