@@ -118,9 +118,10 @@ config = (
 )
 
 stop = {
-    "env_runner_results/episode_return_mean": 21.0,
-    "num_env_steps_sampled_lifetime": 10000000000,
+    f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": 21.0,
+    NUM_ENV_STEPS_SAMPLED_LIFETIME: 10000000000,
 }
+
 
 if __name__ == "__main__":
     from ray.rllib.utils.test_utils import run_rllib_example_script_experiment

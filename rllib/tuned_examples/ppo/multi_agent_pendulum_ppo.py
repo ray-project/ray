@@ -9,6 +9,7 @@ from ray.rllib.utils.test_utils import add_rllib_example_script_args
 from ray.tune.registry import register_env
 
 parser = add_rllib_example_script_args()
+parser.set_defaults(num_agents=2)
 # Use `parser` to add your own custom command line options to this script
 # and (if needed) use their values toset up `config` below.
 args = parser.parse_args()
@@ -25,10 +26,6 @@ config = (
         enable_env_runner_and_connector_v2=True,
     )
     .environment("multi_agent_pendulum")
-    .env_runners(
-        num_envs_per_env_runner=1,
-        num_env_runners=2,
-    )
     .rl_module(
         model_config_dict={
             "fcnet_activation": "relu",
