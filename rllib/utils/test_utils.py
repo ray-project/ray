@@ -44,17 +44,16 @@ from ray.rllib.utils.metrics import (
     ENV_RUNNER_RESULTS,
     EPISODE_RETURN_MEAN,
     EVALUATION_RESULTS,
+    NUM_ENV_STEPS_SAMPLED_LIFETIME,
     NUM_ENV_STEPS_TRAINED,
     NUM_ENV_STEPS_TRAINED_LIFETIME,
-    NUM_ENV_STEPS_SAMPLED_LIFETIME,
     NUM_EPISODES_LIFETIME,
 )
 from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.typing import ResultDict
 from ray.rllib.utils.error import UnsupportedSpaceException
-
-
 from ray.tune import CLIReporter, run_experiments
+from ray.tune.progress_reporter import TIME_TOTAL_S
 
 
 if TYPE_CHECKING:
@@ -1214,15 +1213,15 @@ def run_learning_tests_from_yaml_or_py(
             progress_reporter=CLIReporter(
                 metric_columns={
                     TRAINING_ITERATION: "iter",
-                    "time_total_s": "time_total_s",
-                    NUM_ENV_STEPS_SAMPLED_LIFETIME: "ts (sampled)",
-                    NUM_ENV_STEPS_TRAINED_LIFETIME: "ts (trained)",
-                    NUM_EPISODES_LIFETIME: "train_episodes",
-                    f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": "reward_mean",
+                    TIME_TOTAL_S: "total time (s)",
+                    NUM_ENV_STEPS_SAMPLED_LIFETIME: "env ts (sampled)",
+                    NUM_ENV_STEPS_TRAINED_LIFETIME: "env ts (trained)",
+                    NUM_EPISODES_LIFETIME: "episodes",
+                    f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": "R",
                     (
                         f"{EVALUATION_RESULTS}/{ENV_RUNNER_RESULTS}/"
                         f"{EPISODE_RETURN_MEAN}"
-                    ): "eval_reward_mean",
+                    ): "R (eval)",
                 },
                 parameter_columns=["framework"],
                 sort_by_metric=True,
@@ -1432,6 +1431,8 @@ def run_rllib_example_script_experiment(
         parser = add_rllib_example_script_args()
         args = parser.parse_args()
 
+    tune_callbacks = tune_callbacks or []
+
     # If run --as-release-test, --as-test must also be set.
     if args.as_release_test:
         args.as_test = True
@@ -1533,7 +1534,6 @@ def run_rllib_example_script_experiment(
     # Run the experiment using Ray Tune.
 
     # Log results using WandB.
-    tune_callbacks = tune_callbacks or []
     if hasattr(args, "wandb_key") and args.wandb_key is not None:
         project = args.wandb_project or (
             args.algo.lower() + "-" + re.sub("\\W+", "-", str(config.env).lower())
@@ -1549,28 +1549,27 @@ def run_rllib_example_script_experiment(
 
     # Auto-configure a CLIReporter (to log the results to the console).
     # Use better ProgressReporter for multi-agent cases: List individual policy rewards.
-    progress_reporter = None
     if args.num_agents > 0:
-        progress_reporter = CLIReporter(
-            metric_columns={
-                **{
-                    TRAINING_ITERATION: "iter",
-                    "time_total_s": "total time (s)",
-                    NUM_ENV_STEPS_SAMPLED_LIFETIME: "ts",
-                    f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": "combined return",
-                },
-                **{
-                    (
-                        f"{ENV_RUNNER_RESULTS}/module_episode_returns_mean/" f"{pid}"
-                    ): f"return {pid}"
-                    for pid in config.policies
-                },
-            },
+        from ray.rllib.algorithms.algorithm import Algorithm
+
+        progress_metrics = Algorithm._progress_metrics.copy()
+        progress_metrics.update(
+            {
+                f"{ENV_RUNNER_RESULTS}/module_episode_returns_mean/{pid}": (
+                    f"eps. R ({pid})"
+                )
+                for pid in config.policies
+            }
         )
 
-    # Force Tuner to use old progress output as the new one silently ignores our custom
-    # `CLIReporter`.
-    os.environ["RAY_AIR_NEW_OUTPUT"] = "0"
+        from ray.tune.experimental.output import TrainReporter
+
+        tune_callbacks.append(
+            TrainReporter(
+                verbosity=args.verbose,
+                progress_metrics=progress_metrics,
+            )
+        )
 
     # Run the actual experiment (using Tune).
     start_time = time.time()
@@ -1580,12 +1579,12 @@ def run_rllib_example_script_experiment(
         run_config=air.RunConfig(
             stop=stop,
             verbose=args.verbose,
-            callbacks=tune_callbacks,
+            # Pass None (not empty list) to trigger construction of default callbacks.
+            callbacks=tune_callbacks or None,
             checkpoint_config=air.CheckpointConfig(
                 checkpoint_frequency=args.checkpoint_freq,
                 checkpoint_at_end=args.checkpoint_at_end,
             ),
-            progress_reporter=progress_reporter,
         ),
         tune_config=tune.TuneConfig(
             num_samples=args.num_samples,

@@ -7,7 +7,7 @@ Tune's Tuner:
 tune.Tuner(
     param_space=...,  # <- your RLlib config
     run_config=air.RunConfig(
-        progress_reporter=[some already instantiated TuneReporterBase object],
+        callbacks=[some already instantiated TuneReporterBase object],
     ),
 )
 ```
@@ -52,19 +52,22 @@ from ray.rllib.utils.metrics import (
     EPISODE_RETURN_MEAN,
     NUM_ENV_STEPS_SAMPLED_LIFETIME,
 )
+from ray.tune.experimental.output import TrainReporter
 
 
-my_multi_agent_progress_reporter = tune.CLIReporter(
+my_multi_agent_progress_reporter = TrainReporter(
+    verbosity=2,
     # In the following dict, the keys are the (possibly nested) keys that can be found
     # in RLlib's (PPO's) result dict, produced at every training iteration, and the
-    # values are the column names you would like to see in your console reports.
-    # Note that for nested result dict keys, you need to use slashes "/" to define the
-    # exact path.
-    metric_columns={
+    # values are the actually displayed names you would like to see in your console
+    # reports. Note that for nested result dict keys, you need to use slashes "/" to
+    # define the exact path, do NOT use actually nested dicts in this `progress_metrics`
+    # dict here.
+    progress_metrics={
         **{
-            TRAINING_ITERATION: "iter",
+            TRAINING_ITERATION: "training iteration",
             "time_total_s": "total time (s)",
-            NUM_ENV_STEPS_SAMPLED_LIFETIME: "ts",
+            NUM_ENV_STEPS_SAMPLED_LIFETIME: "env steps (lifetime)",
             # RLlib always sums up all agents' rewards and reports it under:
             # result_dict[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN].
             f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": "combined return",
@@ -73,7 +76,9 @@ my_multi_agent_progress_reporter = tune.CLIReporter(
         # see the individual agents' returns. We can find these under the result dict's
         # 'env_runners/module_episode_returns_mean/' key (then the policy ID):
         **{
-            f"{ENV_RUNNER_RESULTS}/module_episode_returns_mean/{pid}": f"return {pid}"
+            f"{ENV_RUNNER_RESULTS}/module_episode_returns_mean/{pid}": (
+                f"return for policy {pid}"
+            )
             for pid in ["policy1", "policy2", "policy3"]
         },
     },
@@ -83,11 +88,6 @@ my_multi_agent_progress_reporter = tune.CLIReporter(
 if __name__ == "__main__":
     # Force Tuner to use old progress output as the new one silently ignores our custom
     # `CLIReporter`.
-    # TODO (sven): Find out why we require this hack.
-    import os
-
-    os.environ["RAY_AIR_NEW_OUTPUT"] = "0"
-
     # Register our multi-agent env with a fixed number of agents.
     # The agents' IDs are 0, 1, and 2.
     tune.register_env("env", lambda _: MultiAgentCartPole({"num_agents": 3}))
@@ -116,8 +116,8 @@ if __name__ == "__main__":
         param_space=config,
         run_config=air.RunConfig(
             stop=stop,
-            verbose=2,
-            # Plugin our own progress reporter.
-            progress_reporter=my_multi_agent_progress_reporter,
+            # Plugin our own progress reporter as a tune callback (not to be confused
+            # with RLlib callbacks!).
+            callbacks=[my_multi_agent_progress_reporter],
         ),
     ).fit()
