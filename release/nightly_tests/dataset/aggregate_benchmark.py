@@ -1,7 +1,7 @@
 from typing import Tuple
 
 import ray
-from ray.data._internal.aggregate._aggregate import (
+from ray.data._internal.aggregate import (
     _AggregateOnKeyBase,
     Max,
     Mean,

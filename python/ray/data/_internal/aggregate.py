@@ -1,5 +1,5 @@
 import math
-from typing import TYPE_CHECKING, Callable, List, Optional, Union
+from typing import TYPE_CHECKING, List, Optional, Union
 
 from ray.data._internal.null_aggregate import (
     _null_wrap_accumulate_block,
@@ -9,9 +9,8 @@ from ray.data._internal.null_aggregate import (
     _null_wrap_merge,
 )
 from ray.data._internal.planner.exchange.sort_task_spec import SortKey
-from ray.data.aggregate._aggregate import AggregateFn
-from ray.data.block import AggType, Block, BlockAccessor, KeyType, T, U
-from ray.util.annotations import PublicAPI
+from ray.data.aggregate import AggregateFn
+from ray.data.block import AggType, Block, BlockAccessor
 
 if TYPE_CHECKING:
     import pyarrow as pa
