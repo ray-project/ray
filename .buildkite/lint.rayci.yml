@@ -24,9 +24,10 @@ steps:
     key: lint-medium
     instance_type: medium
     depends_on:
-      - forge
+      - oss-ci-base_build
     commands:
       - ./ci/lint/lint.sh {{matrix}}
+    job_env: oss-ci-base_build
     matrix:
       - api_annotations
       - api_discrepancy

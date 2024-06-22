@@ -24,6 +24,8 @@ from ray.util.accelerators.accelerators import (
     GOOGLE_TPU_V2,
     GOOGLE_TPU_V3,
     GOOGLE_TPU_V4,
+    GOOGLE_TPU_V5P,
+    GOOGLE_TPU_V5LITEPOD,
 )
 
 __all__ = [
@@ -52,6 +54,8 @@ __all__ = [
     "GOOGLE_TPU_V2",
     "GOOGLE_TPU_V3",
     "GOOGLE_TPU_V4",
+    "GOOGLE_TPU_V5P",
+    "GOOGLE_TPU_V5LITEPOD",
     # Deprecated
     "NVIDIA_TESLA_A100",
 ]

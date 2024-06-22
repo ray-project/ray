@@ -174,7 +174,7 @@ except ImportError:
             """Selects the right resource bundles for learner workers based off of cf.
 
             Args:
-                cf: The algorithm config.
+                cf: The AlgorithmConfig instance to extract bundle-information from.
 
             Returns:
                 A list of resource bundles for the learner workers.
@@ -187,7 +187,7 @@ except ImportError:
                 elif cf.num_cpus_per_learner:
                     learner_bundles = [
                         {
-                            "CPU": cf.num_cpus_per_learner * cf.num_learners,
+                            "CPU": cf.num_learners * cf.num_cpus_per_learner,
                         }
                     ]
             else:
@@ -480,13 +480,17 @@ class Algorithm(Trainable, AlgorithmBase):
         # components (including timers, counters and other stats in its own
         # `training_step()` and other methods) as well as custom callbacks.
         self.metrics = MetricsLogger()
-        # Initialize lifetime counters.
+        # Initialize lifetime counters (or those that are common as Tune stop criteria.
+        # We don't want tune to crash regularly b/c these stats might be still missing
+        # entirely after the first few iterations.
         self.metrics.log_dict(
             {
                 NUM_ENV_STEPS_SAMPLED_LIFETIME: 0,
                 NUM_AGENT_STEPS_SAMPLED_LIFETIME: {DEFAULT_AGENT_ID: 0},
                 NUM_ENV_STEPS_TRAINED_LIFETIME: 0,
                 NUM_AGENT_STEPS_TRAINED_LIFETIME: {DEFAULT_AGENT_ID: 0},
+                NUM_EPISODES_LIFETIME: 0,
+                f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": np.nan,
             },
             reduce="sum",
         )
@@ -542,7 +546,7 @@ class Algorithm(Trainable, AlgorithmBase):
         # (although their values may be nan), so that Tune doesn't complain
         # when we use these as stopping criteria.
         self.evaluation_metrics = {
-            "evaluation": {
+            EVALUATION_RESULTS: {
                 ENV_RUNNER_RESULTS: {
                     EPISODE_RETURN_MAX: np.nan,
                     EPISODE_RETURN_MIN: np.nan,
@@ -647,9 +651,6 @@ class Algorithm(Trainable, AlgorithmBase):
             logdir=self.logdir,
         )
 
-        # Ensure remote workers are initially in sync with the local worker.
-        self.workers.sync_weights(inference_only=True)
-
         # Compile, validate, and freeze an evaluation config.
         self.evaluation_config = self.config.get_evaluation_config_object()
         self.evaluation_config.validate()
@@ -729,7 +730,6 @@ class Algorithm(Trainable, AlgorithmBase):
             # Need to add back method_type in case Algorithm is restored from checkpoint
             method_config["type"] = method_type
 
-        self.learner_group = None
         if self.config.enable_rl_module_and_learner:
             local_worker = self.workers.local_worker()
             env = spaces = None
@@ -787,13 +787,23 @@ class Algorithm(Trainable, AlgorithmBase):
                 self.workers.foreach_worker(
                     lambda w: w.set_is_policy_to_train(policies_to_train),
                 )
-
-            # Sync the weights from the learner group to the rollout workers.
-            weights = self.learner_group.get_weights(
-                inference_only=self.config.enable_env_runner_and_connector_v2
-            )
-            local_worker.set_weights(weights)
-            self.workers.sync_weights(inference_only=True)
+                # Sync the weights from the learner group to the rollout workers.
+                weights = self.learner_group.get_weights()
+                local_worker.set_weights(weights)
+                self.workers.sync_weights(inference_only=True)
+            # New stack/EnvRunner APIs: Use get/set_state (no more get/set_weights).
+            else:
+                # Sync the weights from the learner group to the rollout workers.
+                weights = self.learner_group.get_weights(
+                    inference_only=self.config.enable_env_runner_and_connector_v2
+                )
+                local_worker.set_state({"rl_module": weights})
+                self.workers.sync_env_runner_states(
+                    config=self.config,
+                    env_steps_sampled=self.metrics.peek(
+                        NUM_ENV_STEPS_SAMPLED_LIFETIME, default=0
+                    ),
+                )
 
         # Run `on_algorithm_init` callback after initialization is done.
         self.callbacks.on_algorithm_init(algorithm=self, metrics_logger=self.metrics)
@@ -889,7 +899,7 @@ class Algorithm(Trainable, AlgorithmBase):
                 )
             eval_results = self.evaluation_metrics
 
-        # Sync filters on workers.
+        # Sync EnvRunner workers.
         # TODO (sven): For the new API stack, the common execution pattern for any algo
         #  should be: [sample + get_metrics + get_state] -> send all these in one remote
         #  call down to `training_step` (where episodes are sent as ray object
@@ -897,13 +907,16 @@ class Algorithm(Trainable, AlgorithmBase):
         #  in special key in result dict and perform the connector merge/broadcast
         #  inside the `training_step` as well. See the new IMPALA for an example.
         if self.config.enable_env_runner_and_connector_v2:
-            # Synchronize EnvToModule and ModuleToEnv connector states and broadcast new
-            # states back to all EnvRunners.
-            with self.metrics.log_time((TIMERS, SYNCH_ENV_CONNECTOR_STATES_TIMER)):
-                self.workers.sync_env_runner_states(
-                    config=self.config,
-                    env_steps_sampled=self.metrics.peek(NUM_ENV_STEPS_SAMPLED_LIFETIME),
-                )
+            if not self.config._dont_auto_sync_env_runner_states:
+                # Synchronize EnvToModule and ModuleToEnv connector states and broadcast
+                # new states back to all EnvRunners.
+                with self.metrics.log_time((TIMERS, SYNCH_ENV_CONNECTOR_STATES_TIMER)):
+                    self.workers.sync_env_runner_states(
+                        config=self.config,
+                        env_steps_sampled=self.metrics.peek(
+                            NUM_ENV_STEPS_SAMPLED_LIFETIME
+                        ),
+                    )
             # Compile final ResultDict from `train_results` and `eval_results`. Note
             # that, as opposed to the old API stack, EnvRunner stats should already be
             # in `train_results` and `eval_results`.
@@ -2329,7 +2342,7 @@ class Algorithm(Trainable, AlgorithmBase):
                 will raise a KeyError.
 
         Raises:
-            KeyError if `policy_id` cannot be found in this Algorithm.
+            KeyError: if `policy_id` cannot be found in this Algorithm.
 
         .. testcode::
 
@@ -2747,7 +2760,8 @@ class Algorithm(Trainable, AlgorithmBase):
             deprecation_warning(
                 "callbacks dict interface",
                 "a class extending rllib.algorithms.callbacks.DefaultCallbacks; "
-                "see `rllib/examples/custom_metrics_and_callbacks.py` for an example.",
+                "see `rllib/examples/metrics/custom_metrics_and_callbacks.py` for an "
+                "example.",
                 error=True,
             )
 
@@ -2777,7 +2791,7 @@ class Algorithm(Trainable, AlgorithmBase):
             env_context: The EnvContext to configure the environment.
 
         Raises:
-            Exception in case something is wrong with the given environment.
+            Exception: in case something is wrong with the given environment.
         """
         pass
 
@@ -2842,19 +2856,28 @@ class Algorithm(Trainable, AlgorithmBase):
             "config": self.config,
         }
 
-        if hasattr(self, "workers"):
-            state["worker"] = self.workers.local_worker().get_state()
+        # New API stack.
+        if self.config.enable_env_runner_and_connector_v2:
+            # Save entire MetricsLogger state.
+            state["metrics_logger"] = self.metrics.get_state()
 
-        # Also store eval `policy_mapping_fn` (in case it's different from main one).
-        # Note, the new `EnvRunner API` has no policy mapping function.
-        if (
-            hasattr(self, "evaluation_workers")
-            and self.evaluation_workers is not None
-            and not self.config.enable_env_runner_and_connector_v2
-        ):
-            state[
-                "eval_policy_mapping_fn"
-            ] = self.evaluation_workers.local_worker().policy_mapping_fn
+        # Old API stack.
+        else:
+            if hasattr(self, "workers"):
+                state["worker"] = self.workers.local_worker().get_state()
+
+            # Also store eval `policy_mapping_fn` (in case it's different from main
+            # one). Note, the new `EnvRunner API` has no policy mapping function.
+            if (
+                hasattr(self, "evaluation_workers")
+                and self.evaluation_workers is not None
+            ):
+                state[
+                    "eval_policy_mapping_fn"
+                ] = self.evaluation_workers.local_worker().policy_mapping_fn
+
+        # Save counters.
+        state["counters"] = self._counters
 
         # TODO: Experimental functionality: Store contents of replay buffer
         #  to checkpoint, only if user has configured this.
@@ -2862,13 +2885,6 @@ class Algorithm(Trainable, AlgorithmBase):
             "store_buffer_in_checkpoints"
         ):
             state["local_replay_buffer"] = self.local_replay_buffer.get_state()
-
-        # New API stack: Save entire MetricsLogger state.
-        if self.config.enable_env_runner_and_connector_v2:
-            state["metrics_logger"] = self.metrics.get_state()
-        # Old API stack: Save only counters.
-        else:
-            state["counters"] = self._counters
 
         # Save current `training_iteration`.
         state[TRAINING_ITERATION] = self.training_iteration
@@ -3139,19 +3155,25 @@ class Algorithm(Trainable, AlgorithmBase):
             if self.config.get("framework") == "tf2" and not tf.executing_eagerly():
                 tf1.enable_eager_execution()
 
-            results = None
+            results = {}
+            training_step_results = None
             # Create a step context ...
             with TrainIterCtx(algo=self) as train_iter_ctx:
                 # .. so we can query it whether we should stop the iteration loop (e.g.
                 # when we have reached `min_time_s_per_iteration`).
-                while not train_iter_ctx.should_stop(results):
+                while not train_iter_ctx.should_stop(training_step_results):
                     # Before training step, try to bring failed workers back.
                     with self._timers[RESTORE_WORKERS_TIMER]:
                         self.restore_workers(self.workers)
 
                     # Try to train one step.
                     with self._timers[TRAINING_STEP_TIMER]:
-                        results = self.training_step()
+                        # TODO (sven): Should we reduce the different
+                        #  `training_step_results` over time with MetricsLogger.
+                        training_step_results = self.training_step()
+
+                    if training_step_results:
+                        results = training_step_results
 
         return results, train_iter_ctx
 
@@ -3171,7 +3193,6 @@ class Algorithm(Trainable, AlgorithmBase):
         Returns:
             The results dict from the evaluation call.
         """
-
         if self.evaluation_workers is not None:
             with self._timers[RESTORE_EVAL_WORKERS_TIMER]:
                 self.restore_workers(self.evaluation_workers)
@@ -3492,7 +3513,9 @@ class Algorithm(Trainable, AlgorithmBase):
         )
 
         results["num_healthy_workers"] = self.workers.num_healthy_remote_workers()
-        results["num_in_flight_async_reqs"] = self.workers.num_in_flight_async_reqs()
+        results[
+            "num_in_flight_async_sample_reqs"
+        ] = self.workers.num_in_flight_async_reqs()
         results[
             "num_remote_worker_restarts"
         ] = self.workers.num_remote_worker_restarts()

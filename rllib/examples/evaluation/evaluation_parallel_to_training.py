@@ -53,7 +53,7 @@ running with a fixed number of 100k training timesteps
 |          71.7485 | 100000 |   476.51 |             476.51 |
 +------------------+--------+----------+--------------------+
 
-When running without parallel evaluation (`--evaluation-not-parallel-to-training` flag),
+When running without parallel evaluation (no `--evaluation-parallel-to-training` flag),
 the experiment takes considerably longer (~70sec vs ~80sec):
 +-----------------------------+------------+-----------------+--------+
 | Trial name                  | status     | loc             |   iter |
@@ -89,37 +89,10 @@ from ray.rllib.utils.typing import ResultDict
 from ray.tune.registry import get_trainable_cls, register_env
 
 parser = add_rllib_example_script_args(default_reward=500.0)
-parser.add_argument(
-    "--evaluation-duration",
-    type=lambda v: v if v == "auto" else int(v),
-    default="auto",
-    help="Number of evaluation episodes/timesteps to run each iteration. "
-    "If 'auto', will run as many as possible during train pass.",
-)
-parser.add_argument(
-    "--evaluation-duration-unit",
-    type=str,
-    default="timesteps",
-    choices=["episodes", "timesteps"],
-    help="The unit in which to measure the duration (`episodes` or `timesteps`).",
-)
-parser.add_argument(
-    "--evaluation-not-parallel-to-training",
-    action="store_true",
-    help="Whether to  NOT run evaluation parallel to training, but in sequence.",
-)
-parser.add_argument(
-    "--evaluation-num-env-runners",
-    type=int,
-    default=2,
-    help="The number of evaluation EnvRunners to setup. "
-    "0 for a single local evaluation EnvRunner.",
-)
-parser.add_argument(
-    "--evaluation-interval",
-    type=int,
-    default=1,
-    help="Every how many train iterations should we run an evaluation loop?",
+parser.set_defaults(
+    evaluation_num_env_runners=2,
+    evaluation_interval=1,
+    evaluation_duration_unit="timesteps",
 )
 parser.add_argument(
     "--evaluation-parallel-to-training-wo-thread",
@@ -219,9 +192,7 @@ if __name__ == "__main__":
         .evaluation(
             # Parallel evaluation+training config.
             # Switch on evaluation in parallel with training.
-            evaluation_parallel_to_training=(
-                not args.evaluation_not_parallel_to_training
-            ),
+            evaluation_parallel_to_training=args.evaluation_parallel_to_training,
             # Use two evaluation workers. Must be >0, otherwise,
             # evaluation will run on a local worker and block (no parallelism).
             evaluation_num_env_runners=args.evaluation_num_env_runners,

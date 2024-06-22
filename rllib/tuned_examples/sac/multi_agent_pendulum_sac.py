@@ -25,26 +25,27 @@ register_env(
 config = (
     SACConfig()
     .environment(env="multi_agent_pendulum")
-    .env_runners(num_env_runners=0)
     .training(
         initial_alpha=1.001,
         lr=3e-4,
         target_entropy="auto",
-        n_step=1,#[1, 3],
+        n_step=1,
         tau=0.005,
         train_batch_size_per_learner=256,
         target_network_update_freq=1,
         replay_buffer_config={
-            "type": "MultiAgentEpisodeReplayBuffer",
+            "type": "MultiAgentPrioritizedEpisodeReplayBuffer",
             "capacity": 100000,
+            "alpha": 1.0,
+            "beta": 0.0,
         },
-        num_steps_sampled_before_learning_starts=256 * args.num_agents,
+        num_steps_sampled_before_learning_starts=256,
     )
     .rl_module(
         model_config_dict={
             "fcnet_hiddens": [256, 256],
-            "fcnet_activation": "relu",
-            # "fcnet_weights_initializer": nn.init.xavier_uniform_,
+            "fcnet_activation": "tanh",
+            "fcnet_weights_initializer": nn.init.xavier_uniform_,
             # "post_fcnet_hiddens": [],
             # "post_fcnet_activation": None,
             # "post_fcnet_weights_initializer": nn.init.orthogonal_,
@@ -53,6 +54,7 @@ config = (
     )
     .reporting(
         metrics_num_episodes_for_smoothing=5,
+        min_sample_timesteps_per_iteration=1000,
     )
 )
 
@@ -69,6 +71,13 @@ stop = {
 }
 
 if __name__ == "__main__":
+    assert (
+        args.num_agents > 0
+    ), "The `--num-agents` arg must be > 0 for this script to work."
+    assert (
+        args.enable_new_api_stack
+    ), "The `--enable-new-api-stack` arg must be activated for this script to work."
+
     from ray.rllib.utils.test_utils import run_rllib_example_script_experiment
 
     run_rllib_example_script_experiment(config, args, stop=stop)
