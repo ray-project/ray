@@ -21,6 +21,7 @@ import numpy as np
 import ray
 from ray._private.auto_init_hook import wrap_auto_init
 from ray.air.util.tensor_extensions.utils import _create_possibly_ragged_ndarray
+from ray.data._internal.datasource.avro_datasource import AvroDatasource
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.logical.operators.from_operators import (
     FromArrow,
@@ -46,7 +47,6 @@ from ray.data.block import Block, BlockAccessor, BlockExecStats, BlockMetadata
 from ray.data.context import DataContext
 from ray.data.dataset import Dataset, MaterializedDataset
 from ray.data.datasource import (
-    AvroDatasource,
     BaseFileMetadataProvider,
     BigQueryDatasource,
     BinaryDatasource,

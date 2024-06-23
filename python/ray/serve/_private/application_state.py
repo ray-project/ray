@@ -500,13 +500,12 @@ class ApplicationState:
         # Get the lowest rank, i.e. highest priority, deployment status info object
         # The deployment status info with highest priority determines the corresponding
         # application status to set.
-        lowest_rank_status = min(
-            self.get_deployments_statuses(), key=lambda info: info.rank
-        )
+        deployment_statuses = self.get_deployments_statuses()
+        lowest_rank_status = min(deployment_statuses, key=lambda info: info.rank)
         if lowest_rank_status.status == DeploymentStatus.UNHEALTHY:
             unhealthy_deployment_names = [
                 s.name
-                for s in self.get_deployments_statuses()
+                for s in deployment_statuses
                 if s.status == DeploymentStatus.UNHEALTHY
             ]
             status_msg = f"The deployments {unhealthy_deployment_names} are UNHEALTHY."
