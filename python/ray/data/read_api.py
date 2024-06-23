@@ -2738,7 +2738,6 @@ def read_delta_sharing_tables(
             with the Delta Sharing table connection.
     """
 
-
     datasource = DeltaSharingDatasource(
         url=url,
         jsonPredicateHints=jsonPredicateHints,
