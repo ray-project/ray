@@ -180,22 +180,6 @@ class APPOTfLearner(AppoLearner, ImpalaTfLearner):
         return total_loss
 
     @override(AppoLearner)
-    def _update_module_target_networks(
-        self,
-        module_id: ModuleID,
-        config: APPOConfig,
-    ) -> None:
-        module = self.module[module_id]
-
-        target_current_network_pairs = module.get_target_network_pairs()
-        for target_network, current_network in target_current_network_pairs:
-            for old_var, current_var in zip(
-                target_network.variables, current_network.variables
-            ):
-                updated_var = config.tau * current_var + (1.0 - config.tau) * old_var
-                old_var.assign(updated_var)
-
-    @override(AppoLearner)
     def _update_module_kl_coeff(
         self, module_id: ModuleID, config: APPOConfig, sampled_kl: float
     ) -> None:

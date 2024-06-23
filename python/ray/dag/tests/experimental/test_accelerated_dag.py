@@ -566,6 +566,7 @@ def test_exceed_max_buffered_results(ray_start_regular):
     ):
         ray.get(ref)
 
+    del refs
     compiled_dag.teardown()
 
 
