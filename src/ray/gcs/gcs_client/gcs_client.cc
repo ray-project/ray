@@ -92,11 +92,15 @@ Status GcsClient::Connect(instrumented_io_context &io_service,
 
   if (GetClusterId().IsNil()) {
     rpc::GetClusterIdRequest request;
-    rpc::GetClusterIdReply reply;
-    // Note: maybe gcs_rpc_server_connect_timeout_s is better.
-    RAY_RETURN_NOT_OK(
-        gcs_rpc_client_->SyncGetClusterId(request, &reply, GetGcsTimeoutMs()));
-    client_call_manager_->SetClusterId(ClusterID::FromBinary(reply.cluster_id()));
+    gcs_rpc_client_->GetClusterId(
+        request,
+        [this](const Status &status, const auto &reply) {
+          RAY_CHECK_OK(status);
+          this->client_call_manager_->SetClusterId(
+              ClusterID::FromBinary(reply.cluster_id()));
+          return Status::OK();
+        },
+        /*timeout_ms=*/-1);
     RAY_CHECK(!GetClusterId().IsNil());
   }
 
@@ -156,6 +160,13 @@ void GcsClient::Disconnect() {
 
 std::pair<std::string, int> GcsClient::GetGcsServerAddress() const {
   return gcs_rpc_client_->GetAddress();
+}
+
+ClusterID GcsClient::GetClusterId() const {
+  if (client_call_manager_) {
+    return client_call_manager_->GetClusterId();
+  }
+  return ClusterID::Nil();
 }
 
 PythonGcsClient::PythonGcsClient(const GcsClientOptions &options) : options_(options) {}

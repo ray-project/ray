@@ -84,7 +84,11 @@ class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient> {
 
   /// Connect to GCS Service. Non-thread safe.
   /// This function must be called before calling other functions.
-  /// Sends RPCs to GCS to get ClusterID.
+  ///
+  /// If `cluster_id` is Nil, sends async RPC to GCS to get ClusterID. Note when we do
+  /// this, GCS may be down. Because we assume GCS is HA, we will keep retrying until GCS
+  /// is up. Before a reply, GetClusterId() gets Nil. This RPC does not block the
+  /// Connect() call.
   ///
   /// \param instrumented_io_context IO execution service.
   /// \param cluster_id Optional cluster ID to provide to the client.
@@ -98,12 +102,8 @@ class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient> {
 
   virtual std::pair<std::string, int> GetGcsServerAddress() const;
 
-  virtual ClusterID GetClusterId() const {
-    if (client_call_manager_) {
-      return client_call_manager_->GetClusterId();
-    }
-    return ClusterID::Nil();
-  }
+  // Gets ClusterID. If it's not set in Connect() nor received from GCS, returns Nil.
+  virtual ClusterID GetClusterId() const;
 
   /// Return client information for debug.
   virtual std::string DebugString() const { return ""; }
