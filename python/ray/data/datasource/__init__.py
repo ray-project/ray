@@ -11,6 +11,7 @@ from ray.data.datasource.datasource import (
     Reader,
     ReadTask,
 )
+from ray.data.datasource.delta_sharing_datasource import DeltaSharingDatasource
 from ray.data.datasource.file_based_datasource import (
     FileBasedDatasource,
     _S3FileSystemWrapper,
@@ -72,6 +73,7 @@ __all__ = [
     "Datasource",
     "_SQLDatasink",
     "SQLDatasource",
+    "DeltaSharingDatasource",
     "DefaultFileMetadataProvider",
     "DummyOutputDatasink",
     "FastFileMetadataProvider",

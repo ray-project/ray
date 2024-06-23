@@ -3,7 +3,7 @@ import unittest
 from unittest import mock
 from unittest.mock import patch
 
-from delta_sharing.protocol import DeltaSharingProfile, Table
+from delta_sharing.protocol import Table
 from delta_sharing.rest_client import DataSharingRestClient
 
 import ray
@@ -43,7 +43,8 @@ class TestDeltaSharingDatasource(unittest.TestCase):
         )
 
     @patch(
-        "ray.data.datasource.delta_sharing_datasource.DeltaSharingDatasource.setup_delta_sharing_connections"
+        "ray.data.datasource.delta_sharing_datasource.DeltaSharingDatasource.\
+            setup_delta_sharing_connections"
     )
     def test_init(self, mock_setup_delta_sharing_connections):
         mock_setup_delta_sharing_connections.return_value = (
@@ -66,7 +67,8 @@ class TestDeltaSharingDatasource(unittest.TestCase):
         self.assertEqual(datasource._timestamp, None)
 
     @patch(
-        "ray.data.datasource.delta_sharing_datasource.DeltaSharingDatasource.setup_delta_sharing_connections"
+        "ray.data.datasource.delta_sharing_datasource.DeltaSharingDatasource.\
+            setup_delta_sharing_connections"
     )
     def test_get_read_tasks(self, mock_setup_delta_sharing_connections):
         mock_setup_delta_sharing_connections.return_value = (
@@ -86,7 +88,8 @@ class TestDeltaSharingDatasource(unittest.TestCase):
         self.assertTrue(all(isinstance(task, ReadTask) for task in read_tasks))
 
     @patch(
-        "ray.data.datasource.delta_sharing_datasource.DeltaSharingDatasource.setup_delta_sharing_connections"
+        "ray.data.datasource.delta_sharing_datasource.DeltaSharingDatasource.\
+            setup_delta_sharing_connections"
     )
     def test_empty_files_warning(self, mock_setup_delta_sharing_connections):
         self.mock_response.add_files = []

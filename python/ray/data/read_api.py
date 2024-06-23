@@ -53,6 +53,7 @@ from ray.data.datasource import (
     Connection,
     CSVDatasource,
     Datasource,
+    DeltaSharingDatasource,
     ImageDatasource,
     JSONDatasource,
     LanceDatasource,
@@ -2736,7 +2737,7 @@ def read_delta_sharing_tables(
         ValueError: If the URL is not properly formatted or if there is an issue
             with the Delta Sharing table connection.
     """
-    from ray.data.datasource.delta_sharing_datasource import DeltaSharingDatasource
+
 
     datasource = DeltaSharingDatasource(
         url=url,
