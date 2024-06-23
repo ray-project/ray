@@ -156,10 +156,14 @@ def test_set_error_before_read(ray_start_regular):
 
         def read(self):
             self.arr = self._channel.read()
-            # Keep self.arr in scope. This is to check that the next time we
-            # read (after the channel has been closed), the read() call does
-            # not block even though we still have the previous shared memory
-            # buffer in scope via self.arr.
+            # Keep self.arr in scope. While self.arr is in scope, its backing
+            # shared_ptr<MutableObjectBuffer> in C++ will also stay in scope.
+            # Under normal execution, this will block the next read() from
+            # returning, since we are still using the shared buffer.
+
+            # In this test we are checking that if the channel is closed, then
+            # the next read() will return an error immediately instead of
+            # blocking, even though we still have self.arr in scope.
             return self.arr
 
     for _ in range(10):
