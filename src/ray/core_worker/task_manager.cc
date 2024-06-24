@@ -1241,6 +1241,11 @@ int64_t TaskManager::RemoveLineageReference(const ObjectID &object_id,
       }
     }
 
+    if (it->second.spec.IsActorTask()) {
+      const auto actor_creation_return_id = it->second.spec.ActorCreationDummyObjectId();
+      released_objects->push_back(actor_creation_return_id);
+    }
+
     total_lineage_footprint_bytes_ -= it->second.lineage_footprint_bytes;
     // The task has finished and none of the return IDs are in scope anymore,
     // so it is safe to remove the task spec.
