@@ -36,7 +36,7 @@ from ray._private.test_utils import (
     wait_until_server_available,
     wait_until_succeeded_without_exception,
 )
-from ray.core.generated import gcs_pb2
+from ray.core.generated import common_pb2
 import ray.scripts.scripts as scripts
 from ray.dashboard import dashboard
 from ray.dashboard.head import DashboardHead
@@ -219,7 +219,7 @@ def test_raylet_and_agent_share_fate(shutdown_only):
         node for node in ray.nodes() if node["NodeID"] == worker_node_id
     ][0]
     assert not worker_node_info["Alive"]
-    assert worker_node_info["DeathReason"] == gcs_pb2.NodeDeathInfo.Reason.Value(
+    assert worker_node_info["DeathReason"] == common_pb2.NodeDeathInfo.Reason.Value(
         "UNEXPECTED_TERMINATION"
     )
     assert (
@@ -1318,12 +1318,16 @@ async def test_dashboard_exports_metric_on_event_loop_lag(
     addr = ray_context["raylet_ip_address"]
     prom_addresses = [f"{addr}:{dashboard_consts.DASHBOARD_METRIC_PORT}"]
 
-    metrics_samples: Dict[str, List[Sample]] = fetch_prometheus_metrics(prom_addresses)
-    print(metrics_samples)
+    def check_lag_metrics():
+        metrics_samples: Dict[str, List[Sample]] = fetch_prometheus_metrics(
+            prom_addresses
+        )
+        lag_metric_samples = metrics_samples["ray_dashboard_event_loop_lag_seconds"]
+        assert len(lag_metric_samples) > 0
+        assert any(sample.value > 1 for sample in lag_metric_samples)
+        return True
 
-    lag_metric_samples = metrics_samples["ray_dashboard_event_loop_lag_seconds"]
-    assert len(lag_metric_samples) > 0
-    assert any(sample.value > 1 for sample in lag_metric_samples)
+    wait_for_condition(check_lag_metrics)
 
 
 if __name__ == "__main__":

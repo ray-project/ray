@@ -1,3 +1,4 @@
+import math
 import time
 
 import numpy as np
@@ -40,7 +41,8 @@ def test_tensors_basic(ray_start_regular_shared):
     assert str(ds) == (
         "Dataset(num_rows=6, schema={data: numpy.ndarray(shape=(3, 5), dtype=int64)})"
     )
-    assert ds.size_bytes() == 5 * 3 * 6 * 8
+    # The actual size is slightly larger due to metadata.
+    assert math.isclose(ds.size_bytes(), 5 * 3 * 6 * 8, rel_tol=0.1)
 
     # Test row iterator yields tensors.
     for tensor in ds.iter_rows():

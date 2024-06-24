@@ -13,6 +13,7 @@ from ray.core.generated.common_pb2 import (
     ActorDiedErrorContext,
     Address,
     Language,
+    NodeDeathInfo,
     RayException,
 )
 from ray.util.annotations import DeveloperAPI, PublicAPI
@@ -187,6 +188,7 @@ class RayTaskError(RayError):
 
         try:
             dual_cls = self.make_dual_exception_type()
+            return dual_cls(self.cause)
         except TypeError as e:
             logger.warning(
                 f"User exception type {type(self.cause)} in RayTaskError can't"
@@ -195,8 +197,6 @@ class RayTaskError(RayError):
                 f" access the user exception. Failure in subclassing: {e}"
             )
             return self
-
-        return dual_cls(self.cause)
 
     def __str__(self):
         """Format a RayTaskError as a string."""
@@ -340,7 +340,9 @@ class ActorDiedError(RayActorError):
 
     BASE_ERROR_MSG = "The actor died unexpectedly before finishing this task."
 
-    def __init__(self, cause: Union[RayTaskError, ActorDiedErrorContext] = None):
+    def __init__(
+        self, cause: Optional[Union[RayTaskError, ActorDiedErrorContext]] = None
+    ):
         """
         Construct a RayActorError by building the arguments.
         """
@@ -381,11 +383,12 @@ class ActorDiedError(RayActorError):
                 error_msg_lines.append(
                     "The actor never ran - it was cancelled before it started running."
                 )
-            if cause.preempted:
+            if (
+                cause.node_death_info
+                and cause.node_death_info.reason
+                == NodeDeathInfo.AUTOSCALER_DRAIN_PREEMPTED
+            ):
                 preempted = True
-                error_msg_lines.append(
-                    "\tThe actor's node was killed by a spot preemption."
-                )
             error_msg = "\n".join(error_msg_lines)
             actor_id = ActorID(cause.actor_id).hex()
         super().__init__(actor_id, error_msg, actor_init_failed, preempted)

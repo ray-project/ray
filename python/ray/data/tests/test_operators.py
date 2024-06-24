@@ -44,8 +44,8 @@ from ray.tests.conftest import *  # noqa
 
 
 def _get_blocks(bundle: RefBundle, output_list: List[Block]):
-    for block, _ in bundle.blocks:
-        output_list.append(list(ray.get(block)["id"]))
+    for block_ref in bundle.block_refs:
+        output_list.append(list(ray.get(block_ref)["id"]))
 
 
 def _mul2_transform(block_iter: Iterable[Block], ctx) -> Iterable[Block]:
@@ -196,9 +196,11 @@ def test_split_operator(ray_start_regular_shared, equal, chunk_size):
         while op.has_next():
             ref = op.get_next()
             assert ref.owns_blocks, ref
-            for block, _ in ref.blocks:
+            for block_ref in ref.block_refs:
                 assert ref.output_split_idx is not None
-                output_splits[ref.output_split_idx].extend(list(ray.get(block)["id"]))
+                output_splits[ref.output_split_idx].extend(
+                    list(ray.get(block_ref)["id"])
+                )
     op.all_inputs_done()
 
     expected_splits = [[] for _ in range(num_splits)]
@@ -234,8 +236,8 @@ def test_split_operator_random(ray_start_regular_shared, equal, random_seed):
     while op.has_next():
         ref = op.get_next()
         assert ref.owns_blocks, ref
-        for block, _ in ref.blocks:
-            output_splits[ref.output_split_idx].extend(list(ray.get(block)["id"]))
+        for block_ref in ref.block_refs:
+            output_splits[ref.output_split_idx].extend(list(ray.get(block_ref)["id"]))
     if equal:
         actual = [len(output_splits[i]) for i in range(3)]
         expected = [num_inputs // 3] * 3
@@ -271,8 +273,8 @@ def test_split_operator_locality_hints(ray_start_regular_shared):
     while op.has_next():
         ref = op.get_next()
         assert ref.owns_blocks, ref
-        for block, _ in ref.blocks:
-            output_splits[ref.output_split_idx].extend(list(ray.get(block)["id"]))
+        for block_ref in ref.block_refs:
+            output_splits[ref.output_split_idx].extend(list(ray.get(block_ref)["id"]))
 
     total = 0
     for i in range(2):
@@ -583,8 +585,8 @@ def test_limit_operator(ray_start_regular_shared):
 
 def _get_bundles(bundle: RefBundle):
     output = []
-    for block, _ in bundle.blocks:
-        output.extend(list(ray.get(block)["id"]))
+    for block_ref in bundle.block_refs:
+        output.extend(list(ray.get(block_ref)["id"]))
     return output
 
 

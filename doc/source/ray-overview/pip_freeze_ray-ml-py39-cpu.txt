@@ -189,7 +189,7 @@ httpx==0.27.0
 huggingface-hub==0.19.4
 humanfriendly==10.0
 hyperopt==0.2.7
-idna==3.6
+idna @ file:///croot/idna_1714398848350/work
 imageio==2.31.1
 imageio-ffmpeg==0.4.5
 importlib-metadata==6.11.0
@@ -251,7 +251,7 @@ matplotlib-inline==0.1.6
 mdit-py-plugins==0.4.1
 mdurl==0.1.2
 memray==1.10.0
-menuinst @ file:///croot/menuinst_1714510563922/work
+menuinst @ file:///croot/menuinst_1716404372721/work
 minigrid==2.3.1
 mistune==0.8.4
 ml-dtypes==0.3.2
@@ -298,9 +298,9 @@ opencensus-context==0.1.3
 opencv-python==4.8.1.78
 opentelemetry-api==1.1.0
 opentelemetry-exporter-otlp==1.1.0
-opentelemetry-exporter-otlp-proto-common==1.24.0
+opentelemetry-exporter-otlp-proto-common==1.25.0
 opentelemetry-exporter-otlp-proto-grpc==1.1.0
-opentelemetry-exporter-otlp-proto-http==1.24.0
+opentelemetry-exporter-otlp-proto-http==1.25.0
 opentelemetry-proto==1.1.0
 opentelemetry-sdk==1.1.0
 opentelemetry-semantic-conventions==0.20b0
@@ -323,7 +323,7 @@ pexpect==4.8.0
 pickleshare==0.7.5
 Pillow==9.2.0
 pip-tools==7.4.1
-pkginfo==1.10.0
+pkginfo==1.11.0
 platformdirs==3.11.0
 plotly==5.18.0
 pluggy==1.3.0
@@ -382,7 +382,7 @@ PyYAML==6.0.1
 pyzmq==24.0.1
 qpd==0.4.4
 querystring-parser==1.2.4
-ray @ file:///home/ray/ray-3.0.0.dev0-cp39-cp39-manylinux2014_x86_64.whl#sha256=237379118ceb8d811894c5ffc96a492b87751c7457295c86d2ca462c4fb9fc4e
+ray @ file:///home/ray/ray-3.0.0.dev0-cp39-cp39-manylinux2014_x86_64.whl#sha256=a9997ec644b83133b2241067ec2a3355c7b001863d04b075b11d101141f3a840
 recsim==0.2.4
 redis==3.5.3
 referencing==0.35.1
@@ -447,7 +447,7 @@ tensorflow-probability==0.23.0
 tensorstore==0.1.45
 termcolor==2.3.0
 terminado==0.18.0
-textual==0.62.0
+textual==0.64.0
 tf-slim==1.1.0
 tf2onnx==1.15.1
 threadpoolctl==3.1.0

@@ -100,23 +100,22 @@ class ServeJSONFormatter(logging.Formatter):
                 The formatted log record in json format.
         """
         record_format = copy.deepcopy(self.component_log_fmt)
-        record_attributes = copy.deepcopy(record.__dict__)
         record_format[SERVE_LOG_LEVEL_NAME] = record.levelname
         record_format[SERVE_LOG_TIME] = self.asctime_formatter.format(record)
 
         for field in ServeJSONFormatter.ADD_IF_EXIST_FIELDS:
-            if field in record_attributes:
-                record_format[field] = record_attributes[field]
+            if field in record.__dict__:
+                record_format[field] = record.__dict__[field]
 
         record_format[SERVE_LOG_MESSAGE] = self.message_formatter.format(record)
 
-        if SERVE_LOG_EXTRA_FIELDS in record_attributes:
-            if not isinstance(record_attributes[SERVE_LOG_EXTRA_FIELDS], dict):
+        if SERVE_LOG_EXTRA_FIELDS in record.__dict__:
+            if not isinstance(record.__dict__[SERVE_LOG_EXTRA_FIELDS], dict):
                 raise ValueError(
                     f"Expected a dictionary passing into {SERVE_LOG_EXTRA_FIELDS}, "
-                    f"but got {type(record_attributes[SERVE_LOG_EXTRA_FIELDS])}"
+                    f"but got {type(record.__dict__[SERVE_LOG_EXTRA_FIELDS])}"
                 )
-            for k, v in record_attributes[SERVE_LOG_EXTRA_FIELDS].items():
+            for k, v in record.__dict__[SERVE_LOG_EXTRA_FIELDS].items():
                 if k in record_format:
                     raise KeyError(f"Found duplicated key in the log record: {k}")
                 record_format[k] = v

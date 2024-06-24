@@ -78,6 +78,7 @@ class error_code;
 
 namespace ray {
 
+// If you add to this list, please also update kCodeToStr in status.cc.
 enum class StatusCode : char {
   OK = 0,
   OutOfMemory = 1,
@@ -102,13 +103,6 @@ enum class StatusCode : char {
   ObjectAlreadySealed = 23,
   ObjectStoreFull = 24,
   TransientObjectStoreFull = 25,
-  // grpc status
-  // This represents UNAVAILABLE status code
-  // returned by grpc.
-  GrpcUnavailable = 26,
-  // This represents all other status codes
-  // returned by grpc that are not defined above.
-  GrpcUnknown = 27,
   // Object store is both out of memory and
   // out of disk.
   OutOfDisk = 28,
@@ -242,14 +236,6 @@ class RAY_EXPORT Status {
     return Status(StatusCode::OutOfDisk, msg);
   }
 
-  static Status GrpcUnavailable(const std::string &msg) {
-    return Status(StatusCode::GrpcUnavailable, msg);
-  }
-
-  static Status GrpcUnknown(const std::string &msg) {
-    return Status(StatusCode::GrpcUnknown, msg);
-  }
-
   static Status RpcError(const std::string &msg, int rpc_code) {
     return Status(StatusCode::RpcError, msg, rpc_code);
   }
@@ -305,10 +291,6 @@ class RAY_EXPORT Status {
   bool IsTransientObjectStoreFull() const {
     return code() == StatusCode::TransientObjectStoreFull;
   }
-  bool IsGrpcUnavailable() const { return code() == StatusCode::GrpcUnavailable; }
-  bool IsGrpcUnknown() const { return code() == StatusCode::GrpcUnknown; }
-
-  bool IsGrpcError() const { return IsGrpcUnknown() || IsGrpcUnavailable(); }
 
   bool IsRpcError() const { return code() == StatusCode::RpcError; }
 

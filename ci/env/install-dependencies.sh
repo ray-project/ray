@@ -79,7 +79,7 @@ install_miniconda() {
 
   if [ ! -x "${conda}" ] || [ "${MINIMAL_INSTALL-}" = 1 ]; then  # If no conda is found, install it
     local miniconda_dir  # Keep directories user-independent, to help with Bazel caching
-    local miniconda_version="Miniconda3-py39_24.1.2-0"
+    local miniconda_version="Miniconda3-py311_24.4.0-0"
     local miniconda_platform=""
     local exe_suffix=".sh"
 
@@ -160,8 +160,11 @@ install_miniconda() {
     )
   fi
 
-  # Install mpi4py
-  "${WORKSPACE_DIR}"/ci/suppress_output conda install -c anaconda mpi4py -y
+  if [[ "${PYTHON-}" != "3.12" ]]; then
+    # Install mpi4py as a test dependency for Python <3.12; currently mpi4py is not 
+    # available for Python 3.12
+    "${WORKSPACE_DIR}"/ci/suppress_output conda install -c anaconda mpi4py -y
+  fi
 
   command -V python
   test -x "${CONDA_PYTHON_EXE}"  # make sure conda is activated

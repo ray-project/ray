@@ -11,7 +11,7 @@ https://docs.ray.io/en/master/rllib-algorithms.html#deep-q-networks-dqn-rainbow-
 
 from collections import defaultdict
 import logging
-from typing import Any, Callable, Dict, List, Optional, Type, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple, Type, Union
 import numpy as np
 
 from ray.rllib.algorithms.algorithm import Algorithm
@@ -127,7 +127,7 @@ class DQNConfig(AlgorithmConfig):
         # Overrides of AlgorithmConfig defaults
         # `env_runners()`
         # Set to `self.n_step`, if 'auto'.
-        self.rollout_fragment_length = "auto"
+        self.rollout_fragment_length: Union[int, str] = "auto"
         self.exploration_config = {
             "type": "EpsilonGreedy",
             "initial_epsilon": 1.0,
@@ -235,7 +235,7 @@ class DQNConfig(AlgorithmConfig):
         dueling: Optional[bool] = NotProvided,
         hiddens: Optional[int] = NotProvided,
         double_q: Optional[bool] = NotProvided,
-        n_step: Optional[int] = NotProvided,
+        n_step: Optional[Union[int, Tuple[int, int]]] = NotProvided,
         before_learn_on_batch: Callable[
             [Type[MultiAgentBatch], List[Type[Policy]], Type[int]],
             Type[MultiAgentBatch],
@@ -311,7 +311,12 @@ class DQNConfig(AlgorithmConfig):
             hiddens: Dense-layer setup for each the advantage branch and the value
                 branch
             double_q: Whether to use double DQN.
-            n_step: N-step for Q-learning.
+            n_step: N-step target updates. If >1, sars' tuples in trajectories will be
+                postprocessed to become sa[discounted sum of R][s t+n] tuples. An
+                integer will be interpreted as a fixed n-step value. If a tuple of 2
+                ints is provided here, the n-step value will be drawn for each sample(!)
+                in the train batch from a uniform distribution over the closed interval
+                defined by `[n_step[0], n_step[1]]`.
             before_learn_on_batch: Callback to run before learning on a multi-agent
                 batch of experiences.
             training_intensity: The intensity with which to update the model (vs
@@ -477,7 +482,11 @@ class DQNConfig(AlgorithmConfig):
     @override(AlgorithmConfig)
     def get_rollout_fragment_length(self, worker_index: int = 0) -> int:
         if self.rollout_fragment_length == "auto":
-            return self.n_step
+            return (
+                self.n_step[1]
+                if isinstance(self.n_step, (tuple, list))
+                else self.n_step
+            )
         else:
             return self.rollout_fragment_length
 
@@ -616,25 +625,32 @@ class DQN(Algorithm):
             # Add the sampled experiences to the replay buffer.
             self.local_replay_buffer.add(episodes)
             # Reduce EnvRunner metrics over the n EnvRunners.
-            self.metrics.log_n_dicts(env_runner_results, key=ENV_RUNNER_RESULTS)
+            self.metrics.merge_and_log_n_dicts(
+                env_runner_results, key=ENV_RUNNER_RESULTS
+            )
 
+        self.metrics.log_dict(
+            self.metrics.peek(
+                (ENV_RUNNER_RESULTS, NUM_AGENT_STEPS_SAMPLED), default={}
+            ),
+            key=NUM_AGENT_STEPS_SAMPLED_LIFETIME,
+            reduce="sum",
+        )
         self.metrics.log_value(
             NUM_ENV_STEPS_SAMPLED_LIFETIME,
-            self.metrics.peek(ENV_RUNNER_RESULTS, NUM_ENV_STEPS_SAMPLED, default=0),
+            self.metrics.peek((ENV_RUNNER_RESULTS, NUM_ENV_STEPS_SAMPLED), default=0),
             reduce="sum",
         )
         self.metrics.log_value(
             NUM_EPISODES_LIFETIME,
-            self.metrics.peek(ENV_RUNNER_RESULTS, NUM_EPISODES, default=0),
+            self.metrics.peek((ENV_RUNNER_RESULTS, NUM_EPISODES), default=0),
             reduce="sum",
         )
         self.metrics.log_dict(
-            self.metrics.peek(ENV_RUNNER_RESULTS, NUM_AGENT_STEPS_SAMPLED, default={}),
-            key=NUM_AGENT_STEPS_SAMPLED_LIFETIME,
-            reduce="sum",
-        )
-        self.metrics.log_dict(
-            self.metrics.peek(ENV_RUNNER_RESULTS, NUM_MODULE_STEPS_SAMPLED, default={}),
+            self.metrics.peek(
+                (ENV_RUNNER_RESULTS, NUM_MODULE_STEPS_SAMPLED),
+                default={},
+            ),
             key=NUM_MODULE_STEPS_SAMPLED_LIFETIME,
             reduce="sum",
         )
@@ -669,6 +685,14 @@ class DQN(Algorithm):
                 with self.metrics.log_time((TIMERS, LEARNER_UPDATE_TIMER)):
                     learner_results = self.learner_group.update_from_episodes(
                         episodes=episodes,
+                        timesteps={
+                            NUM_ENV_STEPS_SAMPLED_LIFETIME: (
+                                self.metrics.peek(NUM_ENV_STEPS_SAMPLED_LIFETIME)
+                            ),
+                            NUM_AGENT_STEPS_SAMPLED_LIFETIME: (
+                                self.metrics.peek(NUM_AGENT_STEPS_SAMPLED_LIFETIME)
+                            ),
+                        },
                     )
                     # Isolate TD-errors from result dicts (we should not log these to
                     # disk or WandB, they might be very large).
@@ -683,11 +707,13 @@ class DQN(Algorithm):
                         mid: {TD_ERROR_KEY: np.concatenate(s, axis=0)}
                         for mid, s in td_errors.items()
                     }
-                    self.metrics.log_n_dicts(learner_results, key=LEARNER_RESULTS)
+                    self.metrics.merge_and_log_n_dicts(
+                        learner_results, key=LEARNER_RESULTS
+                    )
                     self.metrics.log_value(
                         NUM_ENV_STEPS_TRAINED_LIFETIME,
                         self.metrics.peek(
-                            LEARNER_RESULTS, ALL_MODULES, NUM_ENV_STEPS_TRAINED
+                            (LEARNER_RESULTS, ALL_MODULES, NUM_ENV_STEPS_TRAINED)
                         ),
                         reduce="sum",
                     )
@@ -704,7 +730,7 @@ class DQN(Algorithm):
                     # TODO (sven): Uncomment this once agent steps are available in the
                     #  Learner stats.
                     # self.metrics.log_dict(self.metrics.peek(
-                    #   LEARNER_RESULTS, NUM_AGENT_STEPS_TRAINED, default={}
+                    #   (LEARNER_RESULTS, NUM_AGENT_STEPS_TRAINED), default={}
                     # ), key=NUM_AGENT_STEPS_TRAINED_LIFETIME, reduce="sum")
 
                 # Update replay buffer priorities.
@@ -717,12 +743,15 @@ class DQN(Algorithm):
                 # Update the target networks, if necessary.
                 with self.metrics.log_time((TIMERS, LEARNER_ADDITIONAL_UPDATE_TIMER)):
                     modules_to_update = set(learner_results[0].keys()) - {ALL_MODULES}
+                    # TODO (sven): Move to Learner._after_gradient_based_update().
                     additional_results = self.learner_group.additional_update(
                         module_ids_to_update=modules_to_update,
                         timestep=current_ts,
                     )
                     # log the additional results as well.
-                    self.metrics.log_n_dicts(additional_results, key=LEARNER_RESULTS)
+                    self.metrics.merge_and_log_n_dicts(
+                        additional_results, key=LEARNER_RESULTS
+                    )
 
             # Update weights and global_vars - after learning on the local worker -
             # on all remote workers.
