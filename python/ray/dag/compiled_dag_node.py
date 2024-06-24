@@ -1,5 +1,5 @@
 import asyncio
-from collections import defaultdict, deque
+from collections import defaultdict, deque, namedtuple
 from typing import Any, Dict, List, Tuple, Union, Optional, Set
 import logging
 import threading
@@ -43,12 +43,8 @@ MAX_BUFFER_TOTAL_MEMORY = int(10 * 1e9)  # 10GB
 
 MAX_BUFFER_COUNT = MAX_BUFFER_TOTAL_MEMORY // MAX_BUFFER_SIZE
 
-
-class RayDAGArgs:
-    """Holds the input arguments for an accelerated DAG node."""
-
-    args: any
-    kwargs: any
+# Holds the input arguments for an accelerated DAG node.
+RayDAGArgs = namedtuple("RayDAGArgs", ["args", "kwargs"])
 
 
 logger = logging.getLogger(__name__)
@@ -1210,9 +1206,7 @@ class CompiledDAG:
             # pickle5.
             inp = args[0]
         else:
-            inp = RayDAGArgs()
-            inp.args = args
-            inp.kwargs = kwargs
+            inp = RayDAGArgs(args=args, kwargs=kwargs)
         self._dag_submitter.write(inp)
 
         ref = CompiledDAGRef(self, self._execution_index)
@@ -1248,9 +1242,7 @@ class CompiledDAG:
                 # that avoids pickle5.
                 inp = args[0]
             else:
-                inp = RayDAGArgs()
-                inp.args = args
-                inp.kwargs = kwargs
+                inp = RayDAGArgs(args=args, kwargs=kwargs)
 
             await self._dag_submitter.write(inp)
             # Allocate a future that the caller can use to get the result.
