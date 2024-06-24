@@ -1,0 +1,232 @@
+# This section is only required for deploying Redis on Kubernetes for the purpose of enabling Ray 
+# to write GCS metadata to an external Redis for fault tolerance. If you have already deployed Redis 
+# on Kubernetes, this section can be removed.
+kind: ConfigMap
+apiVersion: v1
+metadata:
+  name: redis-config
+  labels:
+    app: redis
+data:
+  redis.conf: |-
+    dir /data
+    port 6379
+    bind 0.0.0.0
+    appendonly yes
+    protected-mode no
+    pidfile /data/redis-6379.pid
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis
+  labels:
+    app: redis
+spec:
+  type: ClusterIP
+  ports:
+    - name: redis
+      port: 6379
+  selector:
+    app: redis
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis
+  labels:
+    app: redis
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: redis
+  template:
+    metadata:
+      labels:
+        app: redis
+    spec:
+      containers:
+        - name: redis
+          image: redis:5.0.8
+          command:
+            - "sh"
+            - "-c"
+            - "redis-server /usr/local/etc/redis/redis.conf"
+          ports:
+            - containerPort: 6379
+          volumeMounts:
+            - name: config
+              mountPath: /usr/local/etc/redis/redis.conf
+              subPath: redis.conf
+      volumes:
+        - name: config
+          configMap:
+            name: redis-config
+---
+# Ray head node service, allowing worker pods to discover the head node to perform the bidirectional communication.
+# More contexts can be found at [the Ports configurations doc](https://docs.ray.io/en/latest/ray-core/configure.html#ports-configurations).
+apiVersion: v1
+kind: Service
+metadata:
+  name: service-ray-cluster
+  labels:
+    app: ray-cluster-head
+spec:
+  clusterIP: None
+  ports:
+  - name: client
+    protocol: TCP
+    port: 10001
+    targetPort: 10001
+  - name: dashboard
+    protocol: TCP
+    port: 8265
+    targetPort: 8265
+  - name: gcs-server
+    protocol: TCP
+    port: 6380
+    targetPort: 6380
+  selector:
+    app: ray-cluster-head
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: deployment-ray-head
+  labels:
+    app: ray-cluster-head
+spec:
+  # Do not change this - Ray currently only supports one head node per cluster.
+  replicas: 1
+  selector:
+    matchLabels:
+      component: ray-head
+      type: ray
+      app: ray-cluster-head
+  template:
+    metadata:
+      labels:
+        component: ray-head
+        type: ray
+        app: ray-cluster-head
+    spec:
+      # If the head node goes down, the entire cluster (including all worker
+      # nodes) will go down as well. If you want Kubernetes to bring up a new
+      # head node in this case, set this to "Always," else set it to "Never."
+      restartPolicy: Always
+
+      # This volume allocates shared memory for Ray to use for its plasma
+      # object store. If you do not provide this, Ray will fall back to
+      # /tmp which cause slowdowns if it's not a shared memory volume.
+      volumes:
+      - name: dshm
+        emptyDir:
+          medium: Memory
+      containers:
+        - name: ray-head
+          image: rayproject/ray:2.3.0
+          imagePullPolicy: Always
+          command: [ "/bin/bash", "-c", "--" ]
+          # if there is no password for Redis, set --redis-password=''
+          args:
+            - "ray start --head --port=6380 --num-cpus=$MY_CPU_REQUEST --dashboard-host=0.0.0.0 --object-manager-port=8076 --node-manager-port=8077 --dashboard-agent-grpc-port=8078 --dashboard-agent-listen-port=52365 --redis-password='' --block"
+          ports:
+            - containerPort: 6380 # GCS server
+            - containerPort: 10001 # Used by Ray Client
+            - containerPort: 8265 # Used by Ray Dashboard
+          # This volume allocates shared memory for Ray to use for its plasma
+          # object store. If you do not provide this, Ray will fall back to
+          # /tmp which cause slowdowns if it's not a shared memory volume.
+          volumeMounts:
+            - mountPath: /dev/shm
+              name: dshm
+          env:
+            # RAY_REDIS_ADDRESS lets ray use external Redis for fault tolerance
+            - name: RAY_REDIS_ADDRESS
+              value: redis:6379 # ip address for the external Redis, which is "redis:6379" in this example
+            # This is used in the ray start command so that Ray can spawn the
+            # correct number of processes. Omitting this may lead to degraded
+            # performance.
+            - name: MY_CPU_REQUEST
+              valueFrom:
+                resourceFieldRef:
+                  resource: requests.cpu
+          resources:
+            limits:
+              cpu: "1"
+              memory: "2G"
+            requests:
+              # For production use-cases, we recommend specifying integer CPU reqests and limits.
+              # We also recommend setting requests equal to limits for both CPU and memory.
+              # For this example, we use a 500m CPU request to accomodate resource-constrained local
+              # Kubernetes testing environments such as Kind and minikube.
+              cpu: "500m"
+              # The rest state memory usage of the Ray head node is around 1Gb. We do not
+              # recommend allocating less than 2Gb memory for the Ray head pod.
+              # For production use-cases, we recommend allocating at least 8Gb memory for each Ray container.
+              memory: "2G"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: deployment-ray-worker
+  labels:
+    app: ray-cluster-worker
+spec:
+  # Change this to scale the number of worker nodes started in the Ray cluster.
+  replicas: 2
+  selector:
+    matchLabels:
+      component: ray-worker
+      type: ray
+      app: ray-cluster-worker
+  template:
+    metadata:
+      labels:
+        component: ray-worker
+        type: ray
+        app: ray-cluster-worker
+    spec:
+      restartPolicy: Always
+      volumes:
+      - name: dshm
+        emptyDir:
+          medium: Memory
+      containers:
+      - name: ray-worker
+        image: rayproject/ray:2.3.0
+        imagePullPolicy: Always
+        command: ["/bin/bash", "-c", "--"]
+        args:
+          - "ray start --num-cpus=$MY_CPU_REQUEST --address=service-ray-cluster:6380 --object-manager-port=8076 --node-manager-port=8077 --dashboard-agent-grpc-port=8078 --dashboard-agent-listen-port=52365 --block"
+
+        # This volume allocates shared memory for Ray to use for its plasma
+        # object store. If you do not provide this, Ray will fall back to
+        # /tmp which cause slowdowns if it's not a shared memory volume.
+        volumeMounts:
+          - mountPath: /dev/shm
+            name: dshm
+        env:
+          # This is used in the ray start command so that Ray can spawn the
+          # correct number of processes. Omitting this may lead to degraded
+          # performance.
+          - name: MY_CPU_REQUEST
+            valueFrom:
+              resourceFieldRef:
+                resource: requests.cpu
+          # The resource requests and limits in this config are too small for production!
+          # It is better to use a few large Ray pods than many small ones.
+          # For production, it is ideal to size each Ray pod to take up the
+          # entire Kubernetes node on which it is scheduled.
+        resources:
+          limits:
+            cpu: "1"
+            memory: "1G"
+            # For production use-cases, we recommend specifying integer CPU reqests and limits.
+            # We also recommend setting requests equal to limits for both CPU and memory.
+            # For this example, we use a 500m CPU request to accomodate resource-constrained local
+            # Kubernetes testing environments such as Kind and minikube.
+          requests:
+            cpu: "500m"
+            memory: "1G"

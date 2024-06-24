@@ -1,0 +1,20 @@
+base_image: anyscale/ray:nightly-py39-cu118
+
+debian_packages:
+  - curl
+
+post_build_cmds:
+  # Install Ray
+  - pip3 uninstall -y ray || true && pip3 install -U {{ env["RAY_WHEELS"] | default("ray") }}
+  - {{ env["RAY_WHEELS_SANITY_CHECK"] | default("echo No Ray wheels sanity check") }}
+
+python:
+  pip_packages:
+    - accelerate==0.20.3
+    - diffusers==0.17.1
+    - fastapi==0.97.0
+    - ipywidgets
+    - matplotlib==3.7.1
+    - numpy==1.24.3
+    - torch==2.0.1
+    - transformers==4.30.1

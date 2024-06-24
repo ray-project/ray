@@ -1,0 +1,161 @@
+/* Kapa Ask AI button */
+#kapa-widget-container figure {
+  padding: 0 !important;
+}
+
+.mantine-Modal-root figure {
+  padding: 0 !important;
+}
+
+.assistant-title {
+  margin-top: 1em;
+}
+
+.container-xl.blurred {
+    filter: blur(5px);
+}
+
+.chat-widget {
+  position: fixed;
+  bottom: 10px;
+  right: 10px;
+  z-index: 1000;
+}
+
+.chat-popup {
+  display: none;
+  position: fixed;
+  top: 20%;
+  left: 50%;
+  transform: translate(-50%, -20%);
+  width: 55%;
+  height: 75%;
+  background-color: var(--pst-color-background);
+  border: 1px solid var(--pst-color-border);
+  border-radius: 10px;
+  box-shadow: 0 5px 10px var(--pst-color-shadow);
+  z-index: 1032;
+  max-height: 1000px;
+  overflow: hidden;
+  padding-bottom: 40px;
+}
+
+.chatFooter {
+    position: absolute;
+    bottom: 0;
+    right: 0;
+    width: 100%;
+    background-color: var(--pst-color-surface);
+}
+
+#openChatBtn {
+  border: 1px solid var(--pst-color-border);
+  background-color: var(--pst-color-surface);
+  color: var(--pst-color-text-base);
+  width: 70px;
+  height: 70px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+#closeChatBtn {
+    border: none;
+    background-color: transparent;
+    color: var(--pst-color-text-base);
+    font-size: 1.2em;
+}
+
+#closeChatBtn:hover {
+    color: var(--pst-color-link-hover);
+}
+
+#searchBar {
+  border: 1px solid var(--pst-color-border);
+  background-color: var(--pst-color-surface);
+  margin: 0em 1em 0em 0em;
+  border-radius: 4px;
+  color: var(--pst-color-text-base);
+}
+
+.chatHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: .5rem;
+}
+
+.chatHeader > .header-wrapper {
+  text-align: center;
+  width: 100%;
+}
+
+.chatContentContainer {
+  padding: 15px;
+  max-height: calc(100% - 100px);
+  overflow-y: auto;
+}
+
+.chatContentContainer input {
+    margin-top: 10px;
+    margin-bottom: 10px;
+}
+
+hr {
+  border: none;
+  height: 1px;
+  /* Set the hr color */
+  color: #333;  /* old IE */
+  background-color: #333;  /* Modern Browsers */
+}
+
+#result * {
+  overflow-anchor: none;
+}
+
+#anchor {
+  overflow-anchor: auto;
+  height: 1px;
+}
+
+#result {
+  padding: 15px;
+  border-radius: 10px;
+  margin-top: 10px;
+  margin-bottom: 10px;
+  background-color: var(--pst-color-surface);
+  max-height: 50vh;  /* Ensure the result area does not take too much vertical space */
+  overflow-y: auto;
+}
+
+.chatContentContainer textarea {
+  flex-grow: 1;
+  min-width: 50px;
+  max-height: 40px;
+  resize: none;
+}
+
+#searchBtn {
+  white-space: nowrap;
+  border-radius: 4px;
+}
+
+.input-group {
+  display: flex;
+  align-items: stretch;
+}
+
+#blurDiv {
+  width: 100vw;
+  height: 100vh;
+  position: fixed;
+  top: 0;
+  left: 0;
+  backdrop-filter: blur(5px);
+  z-index: 1031;
+}
+
+#blurDiv.blurDiv-hidden {
+  display: none !important;
+}
