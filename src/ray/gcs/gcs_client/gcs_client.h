@@ -102,9 +102,6 @@ class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient> {
 
   virtual std::pair<std::string, int> GetGcsServerAddress() const;
 
-  // Gets ClusterID. If it's not set in Connect() nor received from GCS, returns Nil.
-  virtual ClusterID GetClusterId() const;
-
   /// Return client information for debug.
   virtual std::string DebugString() const { return ""; }
 
@@ -179,10 +176,8 @@ class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient> {
     return *autoscaler_state_accessor_;
   }
 
-  const ClusterID &GetClusterId() {
-    RAY_CHECK(client_call_manager_) << "Cannot retrieve cluster ID before it is set.";
-    return client_call_manager_->GetClusterId();
-  }
+  // Gets ClusterID. If it's not set in Connect(), blocks on a sync RPC to GCS to get it.
+  virtual ClusterID GetClusterId() const;
 
   /// Get the sub-interface for accessing worker information in GCS.
   /// This function is thread safe.
@@ -222,8 +217,8 @@ class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient> {
 // on a dedicated singleton io_context on a dedicated thread, that all GcsClients created
 // this way share. The io_context and the thread are lazily created when the first
 // GcsClient is created.
-std::shared_ptr<GcsClient> ConnectToGcsStandalone(
-    const GcsClientOptions &options, const ClusterID &cluster_id = ClusterID::Nil());
+std::shared_ptr<GcsClient> ConnectToGcsStandalone(const GcsClientOptions &options,
+                                                  const ClusterID &cluster_id);
 
 // This client is only supposed to be used from Cython / Python
 class RAY_EXPORT PythonGcsClient {

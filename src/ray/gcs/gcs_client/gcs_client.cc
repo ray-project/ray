@@ -90,7 +90,7 @@ Status GcsClient::Connect(instrumented_io_context &io_service,
   gcs_rpc_client_ = std::make_shared<rpc::GcsRpcClient>(
       options_.gcs_address_, options_.gcs_port_, *client_call_manager_);
 
-  if (GetClusterId().IsNil()) {
+  if (cluster_id.IsNil()) {
     rpc::GetClusterIdRequest request;
     gcs_rpc_client_->GetClusterId(
         request,
@@ -163,10 +163,18 @@ std::pair<std::string, int> GcsClient::GetGcsServerAddress() const {
 }
 
 ClusterID GcsClient::GetClusterId() const {
-  if (client_call_manager_) {
-    return client_call_manager_->GetClusterId();
+  ClusterID cluster_id = client_call_manager_->GetClusterId();
+  if (cluster_id.IsNil()) {
+    rpc::GetClusterIdRequest request;
+    rpc::GetClusterIdReply reply;
+    RAY_LOG(ERROR) << "Cluster ID is nil, retrying to get cluster ID from GCS server.";
+    auto status = gcs_rpc_client_->SyncGetClusterId(request, &reply, -1);
+    RAY_CHECK_OK(status);
+    cluster_id = ClusterID::FromBinary(reply.cluster_id());
+    RAY_LOG(ERROR) << "Retrieved cluster ID from GCS server: " << cluster_id;
+    client_call_manager_->SetClusterId(cluster_id);
   }
-  return ClusterID::Nil();
+  return cluster_id;
 }
 
 PythonGcsClient::PythonGcsClient(const GcsClientOptions &options) : options_(options) {}

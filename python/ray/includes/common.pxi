@@ -51,7 +51,7 @@ cdef class GcsClientOptions:
     cdef CGcsClientOptions* native(self):
         return <CGcsClientOptions*>(self.inner.get())
 
-cdef int check_status_timeout_as_rpc_eror(const CRayStatus& status) nogil except -1:
+cdef int check_status_timeout_as_rpc_error(const CRayStatus& status) nogil except -1:
     if status.ok():
         return 0
 
@@ -94,7 +94,7 @@ cdef int check_status_timeout_as_rpc_eror(const CRayStatus& status) nogil except
 cdef int check_status(const CRayStatus& status) nogil except -1:
     with gil:
         try:
-            return check_status_timeout_as_rpc_eror(status)
+            return check_status_timeout_as_rpc_error(status)
         except RpcError as e:
             if e.rpc_code == CGrpcStatusCode.DEADLINE_EXCEEDED:
                 raise GetTimeoutError(e.message)

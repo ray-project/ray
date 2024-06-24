@@ -73,7 +73,7 @@ cdef class NewGcsClient:
         if status.IsNotFound():
             return None
         else:
-            check_status_timeout_as_rpc_eror(status)
+            check_status_timeout_as_rpc_error(status)
             return value
 
     def internal_kv_multi_get(
@@ -85,7 +85,7 @@ cdef class NewGcsClient:
             c_vector[c_string] c_keys = [key for key in keys]
             unordered_map[c_string, c_string] values
         with nogil:
-            check_status_timeout_as_rpc_eror(
+            check_status_timeout_as_rpc_error(
                 self.inner.get().InternalKV().MultiGet(ns, c_keys, timeout_ms, values)
             )
 
@@ -108,7 +108,7 @@ cdef class NewGcsClient:
             int64_t timeout_ms = round(1000 * timeout) if timeout else -1
             c_bool added = False
         with nogil:
-            check_status_timeout_as_rpc_eror(
+            check_status_timeout_as_rpc_error(
                 self.inner.get()
                 .InternalKV()
                 .Put(ns, key, value, overwrite, timeout_ms, added)
@@ -125,7 +125,7 @@ cdef class NewGcsClient:
             int64_t timeout_ms = round(1000 * timeout) if timeout else -1
             int num_deleted = 0
         with nogil:
-            check_status_timeout_as_rpc_eror(
+            check_status_timeout_as_rpc_error(
                 self.inner.get()
                 .InternalKV()
                 .Del(ns, key, del_by_prefix, timeout_ms, num_deleted)
@@ -140,7 +140,7 @@ cdef class NewGcsClient:
             int64_t timeout_ms = round(1000 * timeout) if timeout else -1
             c_vector[c_string] keys
         with nogil:
-            check_status_timeout_as_rpc_eror(
+            check_status_timeout_as_rpc_error(
                 self.inner.get().InternalKV().Keys(ns, prefix, timeout_ms, keys)
             )
 
@@ -153,7 +153,7 @@ cdef class NewGcsClient:
             int64_t timeout_ms = round(1000 * timeout) if timeout else -1
             c_bool exists = False
         with nogil:
-            check_status_timeout_as_rpc_eror(
+            check_status_timeout_as_rpc_error(
                 self.inner.get().InternalKV().Exists(ns, key, timeout_ms, exists)
             )
         return exists
@@ -169,7 +169,7 @@ cdef class NewGcsClient:
             c_vector[c_string] c_node_ips = [ip for ip in node_ips]
             c_vector[c_bool] results
         with nogil:
-            check_status_timeout_as_rpc_eror(
+            check_status_timeout_as_rpc_error(
                 self.inner.get().Nodes().CheckAlive(c_node_ips, timeout_ms, results)
             )
         return [result for result in results]
@@ -185,7 +185,7 @@ cdef class NewGcsClient:
         for node_id in node_ids:
             c_node_ids.push_back(CNodeID.FromBinary(node_id))
         with nogil:
-            check_status_timeout_as_rpc_eror(
+            check_status_timeout_as_rpc_error(
                 self.inner.get().Nodes().DrainNodes(c_node_ids, timeout_ms, results)
             )
         return [result for result in results]
@@ -197,7 +197,7 @@ cdef class NewGcsClient:
         cdef c_vector[CGcsNodeInfo] reply
         cdef c_vector[c_string] serialized_reply
         with nogil:
-            check_status_timeout_as_rpc_eror(self.inner.get().Nodes().GetAllNoCache(timeout_ms, reply))
+            check_status_timeout_as_rpc_error(self.inner.get().Nodes().GetAllNoCache(timeout_ms, reply))
             for node in reply:
                 serialized_reply.push_back(node.SerializeAsString())
         ret = {}
@@ -217,7 +217,7 @@ cdef class NewGcsClient:
         cdef CGetAllResourceUsageReply c_reply
         cdef c_string serialized_reply
         with nogil:
-            check_status_timeout_as_rpc_eror(
+            check_status_timeout_as_rpc_error(
                     self.inner.get()
                     .NodeResources()
                     .GetAllResourceUsage(timeout_ms, c_reply)
@@ -237,7 +237,7 @@ cdef class NewGcsClient:
         cdef c_vector[CJobTableData] reply
         cdef c_vector[c_string] serialized_reply
         with nogil:
-            check_status_timeout_as_rpc_eror(self.inner.get().Jobs().GetAll(timeout_ms, reply))
+            check_status_timeout_as_rpc_error(self.inner.get().Jobs().GetAll(timeout_ms, reply))
             for i in range(reply.size()):
                 serialized_reply.push_back(reply[i].SerializeAsString())
         ret = {}
@@ -255,7 +255,7 @@ cdef class NewGcsClient:
             int64_t timeout_ms = round(1000 * timeout) if timeout else -1
             c_string c_uri = uri.encode()
         with nogil:
-            check_status_timeout_as_rpc_eror(self.inner.get().RuntimeEnvs().PinRuntimeEnvUri(
+            check_status_timeout_as_rpc_error(self.inner.get().RuntimeEnvs().PinRuntimeEnvUri(
                 c_uri, expiration_s, timeout_ms))
 
     #############################################################
@@ -269,7 +269,7 @@ cdef class NewGcsClient:
         cdef:
             int64_t timeout_ms = round(1000 * timeout_s) if timeout_s else -1
         with nogil:
-            check_status_timeout_as_rpc_eror(self.inner.get().Autoscaler().RequestClusterResourceConstraint(
+            check_status_timeout_as_rpc_error(self.inner.get().Autoscaler().RequestClusterResourceConstraint(
                 timeout_ms, bundles, count_array))
 
     def get_cluster_resource_state(
@@ -279,7 +279,7 @@ cdef class NewGcsClient:
             int64_t timeout_ms = round(1000 * timeout_s) if timeout_s else -1
             c_string serialized_reply
         with nogil:
-            check_status_timeout_as_rpc_eror(self.inner.get().Autoscaler().GetClusterResourceState(
+            check_status_timeout_as_rpc_error(self.inner.get().Autoscaler().GetClusterResourceState(
                 timeout_ms,
                 serialized_reply))
 
@@ -292,7 +292,7 @@ cdef class NewGcsClient:
             int64_t timeout_ms = round(1000 * timeout_s) if timeout_s else -1
             c_string serialized_reply
         with nogil:
-            check_status_timeout_as_rpc_eror(self.inner.get().Autoscaler().GetClusterStatus(timeout_ms,
+            check_status_timeout_as_rpc_error(self.inner.get().Autoscaler().GetClusterStatus(timeout_ms,
                          serialized_reply))
 
         return serialized_reply
@@ -306,7 +306,7 @@ cdef class NewGcsClient:
         cdef:
             int64_t timeout_ms = round(1000 * timeout_s) if timeout_s else -1
         with nogil:
-            check_status_timeout_as_rpc_eror(self.inner.get().Autoscaler().ReportAutoscalingState(
+            check_status_timeout_as_rpc_error(self.inner.get().Autoscaler().ReportAutoscalingState(
                 timeout_ms, serialzied_state))
 
     def drain_node(
@@ -324,7 +324,7 @@ cdef class NewGcsClient:
             c_bool is_accepted = False
             c_string rejection_reason_message
         with nogil:
-            check_status_timeout_as_rpc_eror(self.inner.get().Autoscaler().DrainNode(
+            check_status_timeout_as_rpc_error(self.inner.get().Autoscaler().DrainNode(
                 node_id, reason, reason_message,
                 deadline_timestamp_ms, timeout_ms, is_accepted,
                 rejection_reason_message))
