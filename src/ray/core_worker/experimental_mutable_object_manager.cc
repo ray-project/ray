@@ -208,7 +208,6 @@ Status MutableObjectManager::WriteAcquire(const ObjectID &object_id,
   if (!channel) {
     return Status::IOError("Channel has not been registered");
   }
-  RAY_CHECK(!channel->written) << "You must call WriteRelease() before WriteAcquire()";
 
   std::unique_ptr<plasma::MutableObject> &object = channel->mutable_object;
   int64_t total_size = data_size + metadata_size;
@@ -225,6 +224,12 @@ Status MutableObjectManager::WriteAcquire(const ObjectID &object_id,
   if (!GetSemaphores(object_id, sem)) {
     return Status::IOError("Channel has not been registered (cannot get semaphores)");
   }
+  // Check whether the channel has an error set before checking that WriteRelease() was
+  // called. If the channel is already closed, then it's OK to WriteAcquire and
+  // WriteRelease in any order.
+  RAY_RETURN_NOT_OK(object->header->CheckHasError());
+  RAY_CHECK(!channel->written) << "You must call WriteRelease() before WriteAcquire()";
+
   RAY_RETURN_NOT_OK(
       object->header->WriteAcquire(sem, data_size, metadata_size, num_readers));
   data = SharedMemoryBuffer::Slice(object->buffer, 0, data_size);
@@ -243,13 +248,17 @@ Status MutableObjectManager::WriteRelease(const ObjectID &object_id) {
   if (!channel) {
     return Status::IOError("Channel has not been registered");
   }
-  RAY_CHECK(channel->written) << "You must call WriteAcquire() before WriteRelease()";
-
   PlasmaObjectHeader::Semaphores sem;
   if (!GetSemaphores(object_id, sem)) {
     return Status::IOError("Channel has not been registered (cannot get semaphores)");
   }
   std::unique_ptr<plasma::MutableObject> &object = channel->mutable_object;
+  // Check whether the channel has an error set before checking that WriteAcquire() was
+  // called. If the channel is already closed, then it's OK to WriteAcquire and
+  // WriteRelease in any order.
+  RAY_RETURN_NOT_OK(object->header->CheckHasError());
+  RAY_CHECK(channel->written) << "You must call WriteAcquire() before WriteRelease()";
+
   RAY_RETURN_NOT_OK(object->header->WriteRelease(sem));
   channel->written = false;
   return Status::OK();
@@ -264,20 +273,24 @@ Status MutableObjectManager::ReadAcquire(const ObjectID &object_id,
   if (!channel) {
     return Status::IOError("Channel has not been registered");
   }
-  // This lock ensures that there is only one reader at a time. The lock is released in
-  // `ReadRelease()`.
+  PlasmaObjectHeader::Semaphores sem;
+  if (!GetSemaphores(object_id, sem)) {
+    return Status::IOError("Channel has not been registered (cannot get semaphores)");
+  }
+
+  // Check whether the channel has an error set before checking that we are the only
+  // reader. If the channel is already closed, then it's OK to ReadAcquire and
+  // ReadRelease in any order.
+  std::unique_ptr<plasma::MutableObject> &object = channel->mutable_object;
+  RAY_RETURN_NOT_OK(object->header->CheckHasError());
+  // The channel is still open. This lock ensures that there is only one reader
+  // at a time. The lock is released in `ReadRelease()`.
   channel->lock->lock();
   channel->reading = true;
 
-  PlasmaObjectHeader::Semaphores sem;
-  if (!GetSemaphores(object_id, sem)) {
-    channel->reading = false;
-    channel->lock->unlock();
-    return Status::IOError("Channel has not been registered (cannot get semaphores)");
-  }
   int64_t version_read = 0;
-  Status s = channel->mutable_object->header->ReadAcquire(
-      sem, channel->next_version_to_read, version_read);
+  Status s =
+      object->header->ReadAcquire(sem, channel->next_version_to_read, version_read);
   if (!s.ok()) {
     // Failed because the error bit was set on the mutable object.
     channel->reading = false;
@@ -287,8 +300,7 @@ Status MutableObjectManager::ReadAcquire(const ObjectID &object_id,
   RAY_CHECK_GT(version_read, 0);
   channel->next_version_to_read = version_read;
 
-  size_t total_size = channel->mutable_object->header->data_size +
-                      channel->mutable_object->header->metadata_size;
+  size_t total_size = object->header->data_size + object->header->metadata_size;
   RAY_CHECK_LE(static_cast<int64_t>(total_size), channel->mutable_object->allocated_size);
   std::shared_ptr<MutableObjectBuffer> channel_buffer =
       std::make_shared<MutableObjectBuffer>(
@@ -296,11 +308,11 @@ Status MutableObjectManager::ReadAcquire(const ObjectID &object_id,
   std::shared_ptr<SharedMemoryBuffer> data_buf =
       SharedMemoryBuffer::Slice(channel_buffer,
                                 /*offset=*/0,
-                                /*size=*/channel->mutable_object->header->data_size);
+                                /*size=*/object->header->data_size);
   std::shared_ptr<SharedMemoryBuffer> metadata_buf =
       SharedMemoryBuffer::Slice(channel_buffer,
-                                /*offset=*/channel->mutable_object->header->data_size,
-                                /*size=*/channel->mutable_object->header->metadata_size);
+                                /*offset=*/object->header->data_size,
+                                /*size=*/object->header->metadata_size);
 
   result = std::make_shared<RayObject>(
       std::move(data_buf), std::move(metadata_buf), std::vector<rpc::ObjectReference>());
@@ -315,14 +327,21 @@ Status MutableObjectManager::ReadRelease(const ObjectID &object_id)
   if (!channel) {
     return Status::IOError("Channel has not been registered");
   }
+
+  PlasmaObjectHeader::Semaphores sem;
+  RAY_CHECK(GetSemaphores(object_id, sem));
+
+  // Check whether the channel has an error set before checking that we called
+  // ReadAcquire. If the channel is already closed, then it's OK to ReadAcquire
+  // and ReadRelease in any order.
+  std::unique_ptr<plasma::MutableObject> &object = channel->mutable_object;
+  RAY_RETURN_NOT_OK(object->header->CheckHasError());
+  // The channel is still open. Make sure that we called ReadAcquire first.
   if (!channel->reading) {
     return Status::IOError("Must call ReadAcquire() on the channel before ReadRelease()");
   }
 
-  PlasmaObjectHeader::Semaphores sem;
-  RAY_CHECK(GetSemaphores(object_id, sem));
-  Status s =
-      channel->mutable_object->header->ReadRelease(sem, channel->next_version_to_read);
+  Status s = object->header->ReadRelease(sem, channel->next_version_to_read);
   if (!s.ok()) {
     // Failed because the error bit was set on the mutable object.
     channel->reading = false;
