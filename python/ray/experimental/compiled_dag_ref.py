@@ -6,7 +6,6 @@ from ray.exceptions import RayTaskError
 from ray.util.annotations import PublicAPI
 
 
-<<<<<<< HEAD
 def _process_return_vals(return_vals: List[Any], return_single_output: bool):
     """
     Process return values for return to the DAG caller. Any exceptions found in
