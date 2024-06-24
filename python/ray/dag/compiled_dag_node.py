@@ -34,7 +34,6 @@ from ray.experimental.channel.torch_tensor_nccl_channel import (
     _destroy_nccl_group,
 )
 
-
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 MAX_BUFFER_SIZE = int(100 * 1e6)  # 100MB
