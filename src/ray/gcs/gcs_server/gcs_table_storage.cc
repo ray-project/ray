@@ -212,7 +212,6 @@ template class GcsTable<UniqueID, StoredConfig>;
 template class GcsTableWithJobId<ActorID, ActorTableData>;
 template class GcsTableWithJobId<ActorID, TaskSpec>;
 template class GcsTable<PlacementGroupID, PlacementGroupTableData>;
-template class GcsTable<PlacementGroupID, ScheduleData>;
 
 }  // namespace gcs
 }  // namespace ray

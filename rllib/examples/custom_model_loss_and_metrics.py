@@ -1,4 +1,5 @@
-# TODO (sven): Move this example script into the new API stack.
+# @OldAPIStack
+
 #  Users should just inherit the Learner and extend the loss_fn.
 # TODO (sven): Move this example script to `examples/learners/...`
 

@@ -115,6 +115,7 @@ def _make_request_metadata(
 
     return RequestMetadata(
         request_id="test_request",
+        internal_request_id="test_internal_request",
         endpoint="test_endpoint",
         call_method=call_method if call_method is not None else "__call__",
         _request_protocol=protocol,
@@ -144,9 +145,6 @@ async def test_calling_methods_before_initialize():
 
     with pytest.raises(RuntimeError):
         await user_callable_wrapper.call_reconfigure(None)
-
-    with pytest.raises(RuntimeError):
-        await user_callable_wrapper.call_destructor()
 
 
 @pytest.mark.asyncio

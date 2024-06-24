@@ -1681,7 +1681,6 @@ def get_and_run_resource_killer(
     kill_filter_fn=None,
 ):
     assert ray.is_initialized(), "The API is only available when Ray is initialized."
-    name = resource_killer_cls.__ray_actor_class__.__name__
 
     head_node_id = ray.get_runtime_context().get_node_id()
     # Schedule the actor on the current node.
@@ -1690,7 +1689,7 @@ def get_and_run_resource_killer(
             node_id=head_node_id, soft=False
         ),
         namespace=namespace,
-        name=name,
+        name="ResourceKiller",
         lifetime=lifetime,
     ).remote(
         head_node_id,
@@ -1698,9 +1697,9 @@ def get_and_run_resource_killer(
         max_to_kill=max_to_kill,
         kill_filter_fn=kill_filter_fn,
     )
-    print(f"Waiting for {name} to be ready...")
+    print("Waiting for ResourceKiller to be ready...")
     ray.get(resource_killer.ready.remote())
-    print(f"{name} is ready now.")
+    print("ResourceKiller is ready now.")
     if not no_start:
         time.sleep(kill_delay_s)
         resource_killer.run.remote()
@@ -2183,14 +2182,6 @@ def skip_flaky_core_test_premerge(reason: str):
         )(func)
 
     return wrapper
-
-
-def get_ray_default_worker_file_path():
-    py_version = f"{sys.version_info[0]}.{sys.version_info[1]}"
-    return (
-        f"/home/ray/anaconda3/lib/python{py_version}/"
-        "site-packages/ray/_private/workers/default_worker.py"
-    )
 
 
 def close_common_connections(pid):

@@ -36,7 +36,7 @@ from ray._private.test_utils import (
     wait_until_server_available,
     wait_until_succeeded_without_exception,
 )
-from ray.core.generated import gcs_pb2
+from ray.core.generated import common_pb2
 import ray.scripts.scripts as scripts
 from ray.dashboard import dashboard
 from ray.dashboard.head import DashboardHead
@@ -219,7 +219,7 @@ def test_raylet_and_agent_share_fate(shutdown_only):
         node for node in ray.nodes() if node["NodeID"] == worker_node_id
     ][0]
     assert not worker_node_info["Alive"]
-    assert worker_node_info["DeathReason"] == gcs_pb2.NodeDeathInfo.Reason.Value(
+    assert worker_node_info["DeathReason"] == common_pb2.NodeDeathInfo.Reason.Value(
         "UNEXPECTED_TERMINATION"
     )
     assert (

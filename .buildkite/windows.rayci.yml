@@ -26,6 +26,7 @@ steps:
       - "3.9"
       - "3.10"
       - "3.11"
+      - "3.12"
     depends_on: windowsbuild
 
   - label: ":ray: core: :windows: cpp tests"
@@ -110,6 +111,7 @@ steps:
     depends_on: windowsbuild
 
   - label: "flaky :windows: tests"
+    key: windows_flaky_tests
     tags: skip-on-premerge
     job_env: WINDOWS
     instance_type: windows

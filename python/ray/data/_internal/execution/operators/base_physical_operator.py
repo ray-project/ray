@@ -131,6 +131,9 @@ class AllToAllOperator(PhysicalOperator):
             for sub_bar in self._sub_progress_bar_dict.values():
                 sub_bar.close()
 
+    def supports_fusion(self):
+        return True
+
 
 class NAryOperator(PhysicalOperator):
     """An operator that has multiple input dependencies and one output.
