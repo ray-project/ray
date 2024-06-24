@@ -1101,6 +1101,7 @@ numpy==1.26.4
     #   pylance
     #   pyro-ppl
     #   pytorch-lightning
+    #   pywavelets
     #   scikit-image
     #   scikit-learn
     #   scipy
