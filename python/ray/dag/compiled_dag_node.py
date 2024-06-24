@@ -258,7 +258,7 @@ class DAGInputAdapter:
 
         def extractor(key: Union[int, str]):
             def extract_arg(raw_args):
-                if isinstance(raw_args, bytes):
+                if not isinstance(raw_args, RayDAGArgs):
                     # Fast path for a single input of type `bytes`.
                     return raw_args
                 else:
@@ -1202,7 +1202,7 @@ class CompiledDAG:
 
         self._get_or_compile()
 
-        if len(args) == 1 and len(kwargs) == 0 and not isinstance(args[0], RayDAGArgs):
+        if len(args) == 1 and len(kwargs) == 0 and isinstance(args[0], bytes):
             # When serializing a tuple, the Ray serializer invokes pickle5, which adds
             # several microseconds of overhead. One common case for accelerated DAGs is
             # passing a single argument of type `bytes`. To avoid imposing this overhead
