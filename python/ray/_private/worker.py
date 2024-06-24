@@ -1399,8 +1399,11 @@ def init(
 
     # Configure the logging settings for the driver process.
     if logging_config or ray_constants.RAY_SETUP_DEFAULT_LOGGER:
-        dict_config = logging_config._get_dict_config() \
-            if logging_config else LoggingConfig()._get_dict_config()
+        dict_config = (
+            logging_config._get_dict_config()
+            if logging_config
+            else LoggingConfig()._get_dict_config()
+        )
         logging.config.dictConfig(dict_config)
 
     # Parse the hidden options:

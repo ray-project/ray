@@ -21,15 +21,3 @@ class CoreContextFilter(logging.Filter):
             if task_id is not None:
                 setattr(record, LogKey.TASK_ID.value, task_id)
         return True
-
-
-class ServeContextFilter(logging.Filter):
-    def filter(self, record):
-        request_context = ray.serve.context._serve_request_context.get()
-        if request_context.route:
-            setattr(record, LogKey.SERVE_LOG_ROUTE, request_context.route)
-        if request_context.request_id:
-            setattr(record, LogKey.SERVE_LOG_REQUEST_ID, request_context.request_id)
-        if request_context.app_name:
-            setattr(record, LogKey.SERVE_LOG_APPLICATION, request_context.app_name)
-        return True

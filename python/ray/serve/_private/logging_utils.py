@@ -1,6 +1,4 @@
 import builtins
-import copy
-import json
 import logging
 import os
 import sys
@@ -16,12 +14,10 @@ from ray.serve._private.constants import (
     RAY_SERVE_ENABLE_JSON_LOGGING,
     RAY_SERVE_ENABLE_MEMORY_PROFILING,
     RAY_SERVE_LOG_TO_STDERR,
-    SERVE_LOG_ACTOR_ID,
     SERVE_LOG_APPLICATION,
     SERVE_LOG_COMPONENT,
     SERVE_LOG_COMPONENT_ID,
     SERVE_LOG_DEPLOYMENT,
-    SERVE_LOG_EXTRA_FIELDS,
     SERVE_LOG_LEVEL_NAME,
     SERVE_LOG_MESSAGE,
     SERVE_LOG_RECORD_FORMAT,
@@ -29,7 +25,6 @@ from ray.serve._private.constants import (
     SERVE_LOG_REQUEST_ID,
     SERVE_LOG_ROUTE,
     SERVE_LOG_TIME,
-    SERVE_LOG_WORKER_ID,
     SERVE_LOGGER_NAME,
 )
 from ray.serve._private.utils import get_component_file_name
@@ -74,6 +69,19 @@ class ServeComponentFilter(logging.Filter):
             setattr(record, SERVE_LOG_COMPONENT, self.component_name)
             setattr(record, SERVE_LOG_REPLICA, self.component_id)
 
+        return True
+
+
+class ServeContextFilter(logging.Filter):
+    def filter(self, record):
+        # Add Serve specific log fields.
+        request_context = ray.serve.context._serve_request_context.get()
+        if request_context.route:
+            setattr(record, SERVE_LOG_ROUTE, request_context.route)
+        if request_context.request_id:
+            setattr(record, SERVE_LOG_REQUEST_ID, request_context.request_id)
+        if request_context.app_name:
+            setattr(record, SERVE_LOG_APPLICATION, request_context.app_name)
         return True
 
 
@@ -253,7 +261,7 @@ def configure_component_logger(
 
     This logger will *not* propagate its log messages to the parent logger(s).
     """
-    logger = logging.getLogger(SERVE_LOGGER_NAME)
+    logger = logging.getLogger()
     logger.propagate = False
     logger.setLevel(logging_config.log_level)
     logger.handlers.clear()
@@ -294,16 +302,12 @@ def configure_component_logger(
             "'LoggingConfig' to enable json format."
         )
     if RAY_SERVE_ENABLE_JSON_LOGGING or logging_config.encoding == EncodingType.JSON:
-        serve_component_filter = ServeComponentFilter(
-            component_name, component_id, component_type
+        file_handler.addFilter(CoreContextFilter())
+        file_handler.addFilter(ServeContextFilter())
+        file_handler.addFilter(
+            ServeComponentFilter(component_name, component_id, component_type)
         )
-        file_handler.addFilter(serve_component_filter)
-        # TODO: create filter and formatter for JSON logging and parse out the extra
-        #  fields
         file_handler.setFormatter(JSONFormatter())
-        # file_handler.setFormatter(
-        #     ServeJSONFormatter(component_name, component_id, component_type)
-        # )
     else:
         file_handler.setFormatter(ServeFormatter(component_name, component_id))
 
@@ -459,19 +463,3 @@ class LoggingContext:
     def __exit__(self, et, ev, tb):
         if self.level is not None:
             self.logger.setLevel(self.old_level)
-
-
-class ServeContextFilter(CoreContextFilter):
-    def filter(self, record):
-        # Apply the CoreContextFilter first.
-        super().filter(record)
-
-        # Add Serve specific log fields.
-        request_context = ray.serve.context._serve_request_context.get()
-        if request_context.route:
-            setattr(record, SERVE_LOG_ROUTE, request_context.route)
-        if request_context.request_id:
-            setattr(record, SERVE_LOG_REQUEST_ID, request_context.request_id)
-        if request_context.app_name:
-            setattr(record, SERVE_LOG_APPLICATION, request_context.app_name)
-        return True

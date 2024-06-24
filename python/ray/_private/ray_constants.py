@@ -484,4 +484,5 @@ RAY_NODE_IP_FILENAME = "node_ip_address.json"
 
 PLACEMENT_GROUP_BUNDLE_RESOURCE_NAME = "bundle"
 
+# TODO: move this to a separate PR
 RAY_SETUP_DEFAULT_LOGGER = env_bool("RAY_SETUP_DEFAULT_LOGGER", False)
