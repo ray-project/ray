@@ -7,6 +7,7 @@ import ray
 from ray.dag.compiled_dag_node import CompiledDAG
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
+import ray.experimental.channel as ray_channel
 from ray.dag import InputNode, MultiOutputNode
 from ray._private.utils import (
     get_or_create_event_loop,
@@ -56,7 +57,6 @@ def main(results=None):
     #################################################
     ray.init()
 
-    """
     def put_channel_small(chans, do_get=False):
         for chan in chans:
             chan.write(b"0")
@@ -125,7 +125,6 @@ def main(results=None):
     )
     for reader in readers:
         ray.kill(reader)
-    """
 
     # Tests for compiled DAGs.
 
@@ -147,11 +146,9 @@ def main(results=None):
     with InputNode() as inp:
         dag = a.echo.bind(inp)
 
-    """
     results += timeit(
         "[unstable] single-actor DAG calls", lambda: ray.get(dag.execute(b"x"))
     )
-    """
     compiled_dag = dag.experimental_compile()
     results += timeit(
         "[unstable] compiled single-actor DAG calls", lambda: _exec(compiled_dag)
