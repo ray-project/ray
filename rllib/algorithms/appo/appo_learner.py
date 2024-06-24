@@ -27,7 +27,9 @@ class AppoLearner(ImpalaLearner):
         super().build()
 
         # Initially sync target networks (w/ tau=1.0 -> full overwrite).
-        self.module.sync_target_networks(tau=1.0)
+        self.module.foreach_module(
+            lambda mid, module: module.sync_target_networks(tau=1.0)
+        )
 
         # The current kl coefficients per module as (framework specific) tensor
         # variables.
