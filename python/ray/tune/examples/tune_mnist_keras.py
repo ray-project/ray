@@ -32,7 +32,9 @@ def train_mnist(config):
 
     model.compile(
         loss="sparse_categorical_crossentropy",
-        optimizer=tf.keras.optimizers.SGD(lr=config["lr"], momentum=config["momentum"]),
+        optimizer=tf.keras.optimizers.SGD(
+            learning_rate=config["lr"], momentum=config["momentum"]
+        ),
         metrics=["accuracy"],
     )
 

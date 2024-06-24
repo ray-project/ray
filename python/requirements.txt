@@ -45,7 +45,7 @@ opencensus
 aiohttp_cors
 dm_tree
 uvicorn
-scikit-image==0.21.0
+scikit-image==0.24.0
 prometheus_client>=0.7.1
 pandas
 aiohttp>=3.7,<3.9; python_version < "3.12"

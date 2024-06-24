@@ -845,7 +845,7 @@ knack==0.10.1
     # via azure-cli-core
 kubernetes==24.2.0
     # via -r /home/ubuntu/ray/ci/../python/requirements/test-requirements.txt
-lazy-loader==0.3
+lazy-loader==0.4
     # via scikit-image
 lazy-object-proxy==1.9.0
     # via openapi-spec-validator
@@ -1214,6 +1214,7 @@ packaging==21.3
     #   jupyter-server
     #   jupyterlab
     #   jupyterlab-server
+    #   lazy-loader
     #   lightning-utilities
     #   matplotlib
     #   mlflow
@@ -1550,8 +1551,6 @@ pyu2f==0.1.5
     # via google-reauth
 pyvmomi==8.0.2.0.1
     # via vsphere-automation-sdk
-pywavelets==1.5.0
-    # via scikit-image
 pyyaml==6.0.1
     # via
     #   -r /home/ubuntu/ray/ci/../python/requirements.txt
@@ -1692,7 +1691,7 @@ safetensors==0.4.3
     #   transformers
 sarif-om==1.0.4
     # via cfn-lint
-scikit-image==0.21.0
+scikit-image==0.24.0
     # via -r /home/ubuntu/ray/ci/../python/requirements.txt
 scikit-learn==1.3.2
     # via

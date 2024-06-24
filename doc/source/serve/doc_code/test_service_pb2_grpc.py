@@ -4,7 +4,7 @@
 """Client and server classes corresponding to protobuf-defined services."""
 import grpc
 
-import test_service_pb2 as src_dot_ray_dot_protobuf_dot_test__service__pb2
+import doc.source.serve.doc_code.test_service_pb2 as src_dot_ray_dot_protobuf_dot_test__service__pb2
 
 
 class TestServiceStub(object):

@@ -11,8 +11,8 @@ from ray.serve.config import gRPCOptions
 
 grpc_port = 9000
 grpc_servicer_functions = [
-    "user_defined_protos_pb2_grpc.add_UserDefinedServiceServicer_to_server",
-    "user_defined_protos_pb2_grpc.add_ImageClassificationServiceServicer_to_server",
+    "doc.source.serve.doc_code.grpc_proxy.user_defined_protos_pb2_grpc.add_UserDefinedServiceServicer_to_server",
+    "doc.source.serve.doc_code.grpc_proxy.user_defined_protos_pb2_grpc.add_ImageClassificationServiceServicer_to_server",
 ]
 serve.start(
     grpc_options=gRPCOptions(
@@ -26,8 +26,9 @@ serve.start(
 # __begin_grpc_deployment__
 import time
 
+
 from typing import Generator
-from user_defined_protos_pb2 import (
+from doc.source.serve.doc_code.grpc_proxy.user_defined_protos_pb2 import (
     UserDefinedMessage,
     UserDefinedMessage2,
     UserDefinedResponse,
@@ -90,8 +91,12 @@ serve.run(target=g, name=app1, route_prefix=f"/{app1}")
 
 # __begin_send_grpc_requests__
 import grpc
-from user_defined_protos_pb2_grpc import UserDefinedServiceStub
-from user_defined_protos_pb2 import UserDefinedMessage
+from doc.source.serve.doc_code.grpc_proxy.user_defined_protos_pb2_grpc import (
+    UserDefinedServiceStub,
+)
+from doc.source.serve.doc_code.grpc_proxy.user_defined_protos_pb2 import (
+    UserDefinedMessage,
+)
 
 
 channel = grpc.insecure_channel("localhost:9000")
@@ -125,8 +130,12 @@ print(f"Health: {response.message}")  # "success"
 
 # __begin_metadata__
 import grpc
-from user_defined_protos_pb2_grpc import UserDefinedServiceStub
-from user_defined_protos_pb2 import UserDefinedMessage2
+from doc.source.serve.doc_code.grpc_proxy.user_defined_protos_pb2_grpc import (
+    UserDefinedServiceStub,
+)
+from doc.source.serve.doc_code.grpc_proxy.user_defined_protos_pb2 import (
+    UserDefinedMessage2,
+)
 
 
 channel = grpc.insecure_channel("localhost:9000")
@@ -150,8 +159,12 @@ for key, value in call.trailing_metadata():
 
 # __begin_streaming__
 import grpc
-from user_defined_protos_pb2_grpc import UserDefinedServiceStub
-from user_defined_protos_pb2 import UserDefinedMessage
+from doc.source.serve.doc_code.grpc_proxy.user_defined_protos_pb2_grpc import (
+    UserDefinedServiceStub,
+)
+from doc.source.serve.doc_code.grpc_proxy.user_defined_protos_pb2 import (
+    UserDefinedMessage,
+)
 
 
 channel = grpc.insecure_channel("localhost:9000")
@@ -173,7 +186,7 @@ from typing import List
 from PIL import Image
 from io import BytesIO
 from torchvision import transforms
-from user_defined_protos_pb2 import (
+from doc.source.serve.doc_code.grpc_proxy.user_defined_protos_pb2 import (
     ImageClass,
     ImageData,
 )
@@ -277,8 +290,10 @@ serve.run(target=g2, name=app2, route_prefix=f"/{app2}")
 
 # __begin_model_composition_client__
 import grpc
-from user_defined_protos_pb2_grpc import ImageClassificationServiceStub
-from user_defined_protos_pb2 import ImageData
+from doc.source.serve.doc_code.grpc_proxy.user_defined_protos_pb2_grpc import (
+    ImageClassificationServiceStub,
+)
+from doc.source.serve.doc_code.grpc_proxy.user_defined_protos_pb2 import ImageData
 
 
 channel = grpc.insecure_channel("localhost:9000")
@@ -295,8 +310,12 @@ print(f"Probabilities: {response.probabilities}")  # [0.8846230506896973, ...]
 
 # __begin_error_handle__
 import grpc
-from user_defined_protos_pb2_grpc import UserDefinedServiceStub
-from user_defined_protos_pb2 import UserDefinedMessage
+from doc.source.serve.doc_code.grpc_proxy.user_defined_protos_pb2_grpc import (
+    UserDefinedServiceStub,
+)
+from doc.source.serve.doc_code.grpc_proxy.user_defined_protos_pb2 import (
+    UserDefinedMessage,
+)
 
 
 channel = grpc.insecure_channel("localhost:9000")
@@ -312,7 +331,10 @@ except grpc.RpcError as rpc_error:
 
 
 # __begin_grpc_context_define_app__
-from user_defined_protos_pb2 import UserDefinedMessage, UserDefinedResponse
+from doc.source.serve.doc_code.grpc_proxy.user_defined_protos_pb2 import (
+    UserDefinedMessage,
+    UserDefinedResponse,
+)
 
 from ray import serve
 from ray.serve.grpc_util import RayServegRPCContext
@@ -364,8 +386,12 @@ serve.run(target=g, name=app1, route_prefix=f"/{app1}")
 
 # __begin_grpc_context_client__
 import grpc
-from user_defined_protos_pb2_grpc import UserDefinedServiceStub
-from user_defined_protos_pb2 import UserDefinedMessage
+from doc.source.serve.doc_code.grpc_proxy.user_defined_protos_pb2_grpc import (
+    UserDefinedServiceStub,
+)
+from doc.source.serve.doc_code.grpc_proxy.user_defined_protos_pb2 import (
+    UserDefinedMessage,
+)
 
 
 channel = grpc.insecure_channel("localhost:9000")

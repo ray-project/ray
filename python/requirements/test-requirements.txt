@@ -58,7 +58,6 @@ pytest-sugar==0.9.5
 pytest-lazy-fixture==0.6.3
 pytest-timeout==2.1.0
 virtualenv==20.25.3
-pipenv
 pytest-virtualenv; python_version < "3.12"
 pytest-sphinx @ git+https://github.com/ray-project/pytest-sphinx
 pyzmq==26.0.3

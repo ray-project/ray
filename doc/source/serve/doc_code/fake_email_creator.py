@@ -1,5 +1,5 @@
 # __fake_start__
-from faker import Faker
+from doc.source.serve.doc_code.faker import Faker
 
 from ray import serve
 

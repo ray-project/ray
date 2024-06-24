@@ -99,10 +99,10 @@ class MNISTTrainable(tune.Trainable):
         return None
 
     def step(self):
-        self.train_loss.reset_states()
-        self.train_accuracy.reset_states()
-        self.test_loss.reset_states()
-        self.test_accuracy.reset_states()
+        self.train_loss.reset_state()
+        self.train_accuracy.reset_state()
+        self.test_loss.reset_state()
+        self.test_accuracy.reset_state()
 
         for idx, (images, labels) in enumerate(self.train_ds):
             if idx > MAX_TRAIN_BATCH:  # This is optional and can be removed.

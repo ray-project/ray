@@ -14,7 +14,7 @@ from google.protobuf import text_format
 
 import psutil
 import ray
-from mock import patch
+from unittest.mock import patch
 from ray._private import ray_constants
 from ray._private.metrics_agent import fix_grpc_metric
 from ray._private.test_utils import (

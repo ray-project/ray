@@ -1,5 +1,6 @@
 import argparse
 
+import keras
 import tensorflow as tf
 
 import ray
@@ -10,12 +11,12 @@ from ray.train import Result, ScalingConfig
 from ray.train.tensorflow import TensorflowTrainer
 
 
-def build_model() -> tf.keras.Model:
-    model = tf.keras.Sequential(
+def build_model() -> keras.Model:
+    model = keras.Sequential(
         [
-            tf.keras.layers.InputLayer(input_shape=(100,)),
-            tf.keras.layers.Dense(10),
-            tf.keras.layers.Dense(1),
+            keras.layers.InputLayer(input_shape=(100,)),
+            keras.layers.Dense(10),
+            keras.layers.Dense(1),
         ]
     )
     return model
@@ -30,9 +31,9 @@ def train_func(config: dict):
         # Model building/compiling need to be within `strategy.scope()`.
         multi_worker_model = build_model()
         multi_worker_model.compile(
-            optimizer=tf.keras.optimizers.SGD(learning_rate=config.get("lr", 1e-3)),
-            loss=tf.keras.losses.mean_absolute_error,
-            metrics=[tf.keras.metrics.mean_squared_error],
+            optimizer=keras.optimizers.SGD(learning_rate=config.get("lr", 1e-3)),
+            loss=keras.losses.mean_absolute_error,
+            metrics=[keras.metrics.mean_squared_error],
         )
 
     dataset = train.get_dataset_shard("train")
