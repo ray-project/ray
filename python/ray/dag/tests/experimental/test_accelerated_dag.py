@@ -717,7 +717,7 @@ def test_asyncio_exceptions(ray_start_regular_shared, max_queue_size):
 
 class TestMaxConcurrency:
     """
-    Test computation of max concurrent execution of CompiledDAGs and exceptions 
+    Test computation of max concurrent execution of CompiledDAGs and exceptions
     when it is exceeded.
 
     This test checks a series of linear and branched DAGs. For each DAG, its structure
@@ -952,7 +952,7 @@ class TestCompositeChannel:
             dag = a.inc.bind(dag)
 
         compiled_dag = dag.experimental_compile()
-        # See doc string of test_dag_capacity for explanation of the ASCII diagram.
+        # See doc string of TestMaxConcurrency for explanation of the ASCII diagram.
         # driver -(3)-> a.inc(x) -(x)-> a.inc(x) -(x)-> a.inc(2) -(1)-> driver
         assert compiled_dag.max_concurrent_executions == 3
 
@@ -988,7 +988,7 @@ class TestCompositeChannel:
 
         # a: 0+1 -> b: 100+1 -> a: 1+101
         compiled_dag = dag.experimental_compile()
-        # See doc string of test_dag_capacity for explanation of the ASCII diagram.
+        # See doc string of TestMaxConcurrency for explanation of the ASCII diagram.
         # driver -(5)-> a.inc(x) -(x)-> b.inc(4) -(3)-> a.inc(2) -(1)-> driver
         assert compiled_dag.max_concurrent_executions == 5
 
@@ -1024,7 +1024,7 @@ class TestCompositeChannel:
             dag = MultiOutputNode([a.inc.bind(dag), b.inc.bind(dag)])
 
         compiled_dag = dag.experimental_compile()
-        # See doc string of test_dag_capacity for explanation of the ASCII diagram.
+        # See doc string of TestMaxConcurrency for explanation of the ASCII diagram.
         # driver -(3)-> a.inc (x) -(x)-> a.inc(2) -(1)-> driver
         #                   \                            ^
         #                    -------- b.inc (2) --------/

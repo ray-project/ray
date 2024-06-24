@@ -1121,14 +1121,16 @@ class CompiledDAG:
             if self._raise_if_execution_may_block:
                 raise ValueError(
                     f"This DAG can support at most {self._max_concurrent_executions} "
-                    "concurrent executions. Please call ray.get() on previous CompiledDAGRefs "
-                    "and ensure the results go out of scope before calling dag.execute again."
+                    "concurrent executions. Please call ray.get() on previous "
+                    "CompiledDAGRefs and ensure the results go out of scope before "
+                    "calling dag.execute again."
                 )
             else:
                 logger.warn(
                     f"This DAG can support at most {self._max_concurrent_executions} "
-                    "concurrent executions. Please call ray.get() on previous CompiledDAGRefs "
-                    "and ensure the results go out of scope before calling dag.execute again."
+                    "concurrent executions. Please call ray.get() on previous "
+                    "CompiledDAGRefs and ensure the results go out of scope before "
+                    "calling dag.execute again."
                 )
 
         inp = (args, kwargs)
