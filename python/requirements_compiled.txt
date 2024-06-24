@@ -1055,7 +1055,9 @@ nevergrad==0.4.3.post7
 ninja==1.11.1.1
     # via deepspeed
 notebook==6.5.7
-    # via jupyterlab
+    # via
+    #   -r /home/ubuntu/ray/ci/../python/requirements/ml/tune-test-requirements.txt
+    #   jupyterlab
 notebook-shim==0.2.3
     # via nbclassic
     # via vsphere-automation-sdk
