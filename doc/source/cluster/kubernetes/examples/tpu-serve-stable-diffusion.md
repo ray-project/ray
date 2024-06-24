@@ -32,7 +32,7 @@ Verify the RayService is deployed and running
 kubectl get rayservice
 
 # NAME               SERVICE STATUS   NUM SERVE ENDPOINTS
-# s-d-tpu-serve-svc   Running          2
+# stable-diffusion-tpu-serve-svc   Running          2
 ```
 
 Retrieve the name of the RayCluster Head service
@@ -45,19 +45,19 @@ Then, port-forward the Ray dashboard. To view the dashboard, open http://localho
 
 ```sh
 # change the service name to match the one output under `kubectl get svc`
-kubectl port-forward svc/s-d-tpu-raycluster-ljw2r-head-svc 8265:8265 &
+kubectl port-forward svc/stable-diffusion-tpu-raycluster-ljw2r-head-svc 8265:8265 &
 ```
 
 You may now monitor the status of the RayService in the Ray dashboard from the the 'Serve' tab. The installed RayService
 should create a running application with the name 'stable_diffusion'. The application will have two deployments, the
-API ingress which will receive input prompts and the stable diffusion server.
+API ingress which will receive input prompts and the Stable Diffusion model server.
 
 
 ## Step 5: Send text-to-image prompts to the model server
 
 Port forward the Ray Serve service:
 ```sh
-kubectl port-forward svc/s-d-tpu-serve-svc 8000
+kubectl port-forward svc/stable-diffusion-tpu-serve-svc 8000
 ```
 
 In a separate terminal, download and run the python prompt script:
