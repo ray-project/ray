@@ -63,6 +63,8 @@ Training iteration 1 -> evaluation round 2
 |          26.1973 | 16000 | 0.872034 |            13.7966 |
 +------------------+-------+----------+--------------------+
 """
+from typing import Tuple
+
 from ray.air.constants import TRAINING_ITERATION
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
@@ -85,6 +87,7 @@ from ray.tune.registry import get_trainable_cls
 parser = add_rllib_example_script_args(
     default_iters=50, default_reward=0.7, default_timesteps=50000
 )
+parser.add_argument("--evaluation-parallel-to-training", action="store_true")
 parser.add_argument("--no-custom-eval", action="store_true")
 parser.add_argument("--corridor-length-training", type=int, default=10)
 parser.add_argument("--corridor-length-eval-worker-1", type=int, default=20)
@@ -94,7 +97,7 @@ parser.add_argument("--corridor-length-eval-worker-2", type=int, default=30)
 def custom_eval_function(
     algorithm: Algorithm,
     eval_workers: EnvRunnerGroup,
-) -> ResultDict:
+) -> Tuple[ResultDict, int, int]:
     """Example of a custom evaluation function.
 
     Args:
@@ -131,29 +134,30 @@ def custom_eval_function(
         print(f"Training iteration {algorithm.iteration} -> evaluation round {i}")
         # Sample episodes from the EnvRunners AND have them return only the thus
         # collected metrics.
-        episodes_all_env_runners, metrics_all_env_runners = eval_workers.foreach_worker(
+        episodes, metrics_all_env_runners = eval_workers.foreach_worker(
             # Return only the metrics, NOT the sampled episodes (we don't need them
             # anymore).
             func=lambda worker: (worker.sample(), worker.get_metrics()),
             local_worker=False,
         )
-        env_steps = sum(eps.env_steps() for eps in episodes_all_env_runners)
-        agent_steps = sum(eps.agent_steps() for eps in episodes_all_env_runners)
         env_runner_metrics.extend(metrics_all_env_runners)
 
     # You can compute metrics from the episodes manually, or use the Algorithm's
     # convenient MetricsLogger to store all evaluation metrics inside the main
     # algo.
-    algorithm.metrics.merge_and_log_n_dicts(
+    algorithm.metrics.log_n_dicts(
         env_runner_metrics, key=(EVALUATION_RESULTS, ENV_RUNNER_RESULTS)
     )
     eval_results = algorithm.metrics.reduce(
         key=(EVALUATION_RESULTS, ENV_RUNNER_RESULTS)
     )
-
     # Alternatively, you could manually reduce over the n returned `env_runner_metrics`
     # dicts, but this would be much harder as you might not know, which metrics
     # to sum up, which ones to average over, etc..
+
+    # Compute env and agent steps from sampled episodes.
+    env_steps = sum(eps.env_steps() for eps in episodes)
+    agent_steps = sum(eps.agent_steps() for eps in episodes)
 
     return eval_results, env_steps, agent_steps
 
