@@ -1110,7 +1110,7 @@ class Algorithm(Trainable, AlgorithmBase):
         # Also return the results here for convenience.
         return eval_results
 
-    def _evaluate_with_custom_eval_function(self):
+    def _evaluate_with_custom_eval_function(self) -> Tuple[ResultDict, int, int]:
         logger.info(
             f"Evaluating current state of {self} using the custom eval function "
             f"{self.config.custom_evaluation_function}"
@@ -1124,6 +1124,7 @@ class Algorithm(Trainable, AlgorithmBase):
             if not env_steps or not agent_steps:
                 raise ValueError(
                     "Custom eval function must return "
+                    "`Tuple[ResultDict, int, int]` with `int, int` being "
                     f"`env_steps` and `agent_steps`! Got {env_steps}, {agent_steps}."
                 )
         else:
