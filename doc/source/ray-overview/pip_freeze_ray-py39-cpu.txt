@@ -12,7 +12,7 @@ attrs==21.4.0
 azure-cli-core==2.40.0
 azure-cli-telemetry==1.0.8
 azure-common==1.1.28
-azure-core==1.30.1
+azure-core==1.30.2
 azure-identity==1.10.0
 azure-mgmt-compute==23.1.0
 azure-mgmt-core==1.4.0
@@ -35,8 +35,8 @@ commonmark==0.9.1
 conda @ file:///home/conda/feedstock_root/build_artifacts/conda_1715631935758/work
 conda-content-trust @ file:///croot/conda-content-trust_1714483159009/work
 conda-libmamba-solver @ file:///croot/conda-libmamba-solver_1706733287605/work/src
-conda-package-handling @ file:///croot/conda-package-handling_1714483155348/work
-conda_package_streaming @ file:///croot/conda-package-streaming_1690987966409/work
+conda-package-handling @ file:///croot/conda-package-handling_1718138267740/work
+conda_package_streaming @ file:///croot/conda-package-streaming_1718136078615/work
 cryptography==38.0.1
 Cython==0.29.37
 distlib==0.3.7
@@ -78,7 +78,7 @@ libmambapy @ file:///croot/mamba-split_1714483352891/work/libmambapy
 lz4==4.3.2
 MarkupSafe==2.1.3
 memray==1.10.0
-menuinst @ file:///croot/menuinst_1716404372721/work
+menuinst @ file:///croot/menuinst_1718132535249/work
 msal==1.18.0b1
 msal-extensions==1.0.0
 msgpack==1.0.7
@@ -100,7 +100,7 @@ packaging==21.3
 pandas==1.5.3
 paramiko==2.12.0
 Pillow==9.2.0
-pkginfo==1.11.0
+pkginfo==1.11.1
 platformdirs==3.11.0
 pluggy @ file:///tmp/build/80754af9/pluggy_1648024445381/work
 portalocker==2.8.2
@@ -127,7 +127,8 @@ python-dotenv==1.0.1
 pytz==2022.7.1
 PyWavelets==1.5.0
 PyYAML==6.0.1
-ray @ file:///home/ray/ray-3.0.0.dev0-cp39-cp39-manylinux2014_x86_64.whl#sha256=dae7fec08365958c4b6377f3b0e2db532c4e056218623575df76b8572b00e87f
+ray @ file:///home/ray/ray-2.30.0-cp39-cp39-manylinux2014_x86_64.whl#sha256=15fdab4dc3983a481166d4466c0dcaa0494e42a6777e378041e5d1f004bc4851
+ray-cpp==2.30.0
 redis==3.5.3
 requests==2.31.0
 requests-oauthlib==2.0.0
