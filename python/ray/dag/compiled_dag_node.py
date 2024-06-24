@@ -1193,7 +1193,7 @@ class CompiledDAG:
 
         self._get_or_compile()
 
-        if len(args) == 1 and len(kwargs) == 0:
+        if len(args) == 1 and len(kwargs) == 0 and isinstance(args[0], bytes):
             # When serializing a tuple, the Ray serializer invokes pickle5, which adds
             # several microseconds of overhead. One common case for accelerated DAGs is
             # passing a single argument of type `bytes`. To avoid imposing this overhead
@@ -1229,7 +1229,7 @@ class CompiledDAG:
 
         self._get_or_compile()
         async with self._dag_submission_lock:
-            if len(args) == 1 and len(kwargs) == 0:
+            if len(args) == 1 and len(kwargs) == 0 and isinstance(args[0], bytes):
                 # When serializing a tuple, the Ray serializer invokes pickle5, which
                 # adds several microseconds of overhead. One common case for accelerated
                 # DAGs is passing a single argument of type `bytes`. To avoid imposing
