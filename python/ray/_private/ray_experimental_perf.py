@@ -4,6 +4,8 @@ import logging
 from ray._private.ray_microbenchmark_helpers import timeit, asyncio_timeit
 import multiprocessing
 import ray
+from ray.dag.compiled_dag_node import CompiledDAG
+from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 import ray.experimental.channel as ray_channel
 from ray.dag import InputNode, MultiOutputNode
@@ -32,6 +34,14 @@ def check_optimized_build():
             "(Do not add this to the project-level .bazelrc file.)"
         )
         logger.warning(msg)
+
+
+def create_driver_actor():
+    return CompiledDAG.DAGDriverProxyActor.options(
+        scheduling_strategy=NodeAffinitySchedulingStrategy(
+            ray.get_runtime_context().get_node_id(), soft=False
+        )
+    ).remote()
 
 
 def main(results=None):
@@ -63,7 +73,7 @@ def main(results=None):
                 for chan in chans:
                     chan.read()
 
-    chans = [ray_channel.Channel(None, [None], 1000)]
+    chans = [ray_channel.Channel(None, [create_driver_actor()], 1000)]
     results += timeit(
         "[unstable] local put:local get, single channel calls",
         lambda: put_channel_small(chans, do_get=True),
@@ -119,15 +129,13 @@ def main(results=None):
     # Tests for compiled DAGs.
 
     def _exec(dag):
-        output_channel = dag.execute(b"x")
-        output_channel.read()
+        output_ref = dag.execute(b"x")
+        ray.get(output_ref)
 
     async def exec_async(tag):
         async def _exec_async():
-            output_channel = await compiled_dag.execute_async(b"x")
-            # Using context manager.
-            async with output_channel as _:
-                pass
+            output_ref = await compiled_dag.execute_async(b"x")
+            await output_ref.get()
 
         return await asyncio_timeit(
             tag,

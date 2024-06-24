@@ -58,8 +58,6 @@ namespace ray {
 #define STATUS_CODE_OBJECT_ALREADY_SEALED "ObjectAlreadySealed"
 #define STATUS_CODE_OBJECT_STORE_FULL "ObjectStoreFull"
 #define STATUS_CODE_TRANSIENT_OBJECT_STORE_FULL "TransientObjectStoreFull"
-#define STATUS_CODE_GRPC_UNAVAILABLE "GrpcUnavailable"
-#define STATUS_CODE_GRPC_UNKNOWN "GrpcUnknown"
 #define STATUS_CODE_OUT_OF_DISK "OutOfDisk"
 #define STATUS_CODE_OBJECT_UNKNOWN_OWNER "ObjectUnknownOwner"
 #define STATUS_CODE_RPC_ERROR "RpcError"
@@ -98,8 +96,6 @@ const absl::flat_hash_map<StatusCode, std::string> kCodeToStr = {
     {StatusCode::ObjectAlreadySealed, STATUS_CODE_OBJECT_ALREADY_SEALED},
     {StatusCode::ObjectStoreFull, STATUS_CODE_OBJECT_STORE_FULL},
     {StatusCode::TransientObjectStoreFull, STATUS_CODE_TRANSIENT_OBJECT_STORE_FULL},
-    {StatusCode::GrpcUnavailable, STATUS_CODE_GRPC_UNAVAILABLE},
-    {StatusCode::GrpcUnknown, STATUS_CODE_GRPC_UNKNOWN},
     {StatusCode::OutOfDisk, STATUS_CODE_OUT_OF_DISK},
     {StatusCode::ObjectUnknownOwner, STATUS_CODE_OBJECT_UNKNOWN_OWNER},
     {StatusCode::RpcError, STATUS_CODE_RPC_ERROR},
