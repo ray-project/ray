@@ -155,9 +155,9 @@ class FiberState {
 
   void Stop() { channel_.close(); }
 
-    void Join() {
-        fiber_stopped_event_->Wait();
-    }
+  void Join() {
+    fiber_stopped_event_->Wait();
+  }
 
  private:
   static constexpr size_t kStackSize = 1024 * 256;
