@@ -98,10 +98,10 @@ Status GcsClient::Connect(instrumented_io_context &io_service,
           RAY_CHECK_OK(status);
           this->client_call_manager_->SetClusterId(
               ClusterID::FromBinary(reply.cluster_id()));
+          RAY_CHECK(!GetClusterId().IsNil());
           return Status::OK();
         },
         /*timeout_ms=*/-1);
-    RAY_CHECK(!GetClusterId().IsNil());
   }
 
   resubscribe_func_ = [this]() {
