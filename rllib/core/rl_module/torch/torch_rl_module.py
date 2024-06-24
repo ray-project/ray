@@ -1,5 +1,5 @@
 import pathlib
-from typing import Any, List, Mapping, Tuple, Union, Type
+from typing import Any, Mapping, Union, Type
 
 from packaging import version
 
@@ -16,7 +16,6 @@ from ray.rllib.utils.torch_utils import (
     convert_to_torch_tensor,
     TORCH_COMPILE_REQUIRED_VERSION,
 )
-from ray.rllib.utils.typing import NetworkType
 
 torch, nn = try_import_torch()
 
@@ -191,8 +190,8 @@ class TorchDDPRLModuleWithTargetNetworksInterface(
     RLModuleWithTargetNetworksInterface,
 ):
     @override(RLModuleWithTargetNetworksInterface)
-    def get_target_network_pairs(self) -> List[Tuple[NetworkType, NetworkType]]:
-        return self.module.get_target_network_pairs()
+    def sync_target_networks(self, *args, **kwargs):
+        return self.module.sync_target_networks(*args, **kwargs)
 
 
 def compile_wrapper(rl_module: "TorchRLModule", compile_config: TorchCompileConfig):
