@@ -680,8 +680,9 @@ class ReporterAgent(
             self._workers.pop(self._generate_worker_key(self._get_agent_proc()))
             try:
                 gpu_usage = self._get_gpu_process_usage()
-            except:
+            except Exception as e:
                 gpu_usage = defaultdict(dict)
+                logger.debug(f"failed to retrieve GPU processes usage: {e}")
 
             result = []
             for w in self._workers.values():
