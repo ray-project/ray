@@ -485,11 +485,11 @@ class CompiledDAG:
         # this DAG, if any.
         self._nccl_group_id: Optional[str] = None
         # The index of the current execution. It is incremented each time
-        # the DAG is executed.
+        # execute() is called on the DAG.
         self._execution_index: int = 0
         # The maximum index of finished executions.
         # All results with higher indexes have not been generated yet.
-        self._max_execution_index: int = -1
+        self._last_materialized_execution_index: int = -1
         self._result_buffer: Dict[int, Any] = {}
 
         # Creates the driver actor on the same node as the driver.
@@ -889,7 +889,7 @@ class CompiledDAG:
     def _compute_max_concurrent_executions(self):
         """
         Compute the max possible concurrent executions of the DAG. This is the
-        number of inputs the DAG could start processing without blocking when
+        number of inputs the DAG could concurrently process without blocking when
         none of the outputs is consumed.
 
         Returns:
@@ -897,23 +897,35 @@ class CompiledDAG:
 
         NOTE: The max possible concurrent executions is determined by the
         "capacity" of the DAG, i.e., the number of intermediate results the
-        DAG can hold. The DAG holds these intermediate results in either
-        the intermediate channels or the actors, specifically:
-        - Channel capacity: either 1 or 0 depending on the channel type.
-        - Actor capacity: capacity is 1 because the actor can fetch and hold one
+        DAG can concurrently hold. The DAG holds these intermediate results in
+        either the intermediate channels or the actors, specifically:
+        - Channel's capacity is either 1 or 0 depending on the channel type.
+        - Actor's capacity is 1 because the actor can fetch and hold one
             object from each input channel during execution. For an actor with
             multiple methods, the capacity is still 1 because the current method
             needs to finish (which flushes the held object) before the next method
             can start.
 
-        This method performs a modified Dijkstra's algorithm to compute the
-        capacity of the DAG.
+        This method performs a modified Dijkstra's algorithm to find the minimum
+        capacity from input node to the output node. The computation of minimum
+        capacity is similar to the computation of shortest path in the original
+        Dijakstra's algorithm: both use a priority queue. The difference is that
+        in the original algorithm, only edges have weights (distances between nodes),
+        while in this algorithm, both edges and nodes have weights (capacities).
         """
-        capa = {idx: float("inf") for idx in self.idx_to_task}
+        # Capacity from input node up to each node's output channel,
+        # keyed by each node's index. Initialized to infinity to
+        # find the minimum capacity among all paths.
+        capacity = {idx: float("inf") for idx in self.idx_to_task}
         priority_queue = []
 
-        # Initial capacity is 1 as input channel has capacity 1.
-        capa[self.input_task_idx] = 1
+        # Capacity from input node to its output channel (the input channel)
+        # is 1 because the input channel has a capacity of 1.
+        capacity[self.input_task_idx] = 1
+        # Each entry of the priority queue is a tuple of
+        # (capacity, node index, set of actors used in the path),
+        # where capacity is the minimum capacity from the input node to
+        # this node's output channel.
         heapq.heappush(priority_queue, (1, self.input_task_idx, set()))
 
         while priority_queue:
@@ -937,8 +949,8 @@ class CompiledDAG:
                     # will block, so neither the actor nor the output channel
                     # can buffer any object.
                     downstream_capa = cur_capa
-                if downstream_capa < capa[downstream_idx]:
-                    capa[downstream_idx] = downstream_capa
+                if downstream_capa < capacity[downstream_idx]:
+                    capacity[downstream_idx] = downstream_capa
                     new_actors = cur_actors.copy()
                     if actor is not None:
                         new_actors.add(actor)
@@ -950,7 +962,9 @@ class CompiledDAG:
                         f" downstream_capa = {downstream_capa}"
                         f" new_actors = {new_actors}"
                     )
-                    heapq.heappush(priority_queue, (downstream_capa, downstream_idx, new_actors))
+                    heapq.heappush(
+                        priority_queue, (downstream_capa, downstream_idx, new_actors)
+                    )
 
     def _monitor_failures(self):
         outer = self
@@ -1058,10 +1072,10 @@ class CompiledDAG:
 
         TODO(rui): catch the case that user holds onto the CompiledDAGRefs
         """
-        while self._max_execution_index < execution_index:
-            if self._max_execution_index + 1 == execution_index:
+        while self._last_materialized_execution_index < execution_index:
+            if self._last_materialized_execution_index + 1 == execution_index:
                 # Directly fetch and return without buffering
-                self._max_execution_index += 1
+                self._last_materialized_execution_index += 1
                 return self._dag_output_fetcher.read()
             # Otherwise, buffer the result
             if len(self._result_buffer) >= self._max_buffered_results:
@@ -1070,9 +1084,9 @@ class CompiledDAG:
                     f"buffered results is {self._max_buffered_results}; call ray.get() "
                     "on previous CompiledDAGRefs to free them up from buffer."
                 )
-            self._max_execution_index += 1
+            self._last_materialized_execution_index += 1
             self._result_buffer[
-                self._max_execution_index
+                self._last_materialized_execution_index
             ] = self._dag_output_fetcher.read()
 
         # CompiledDAGRef guarantees that the same execution index will not
@@ -1100,7 +1114,10 @@ class CompiledDAG:
 
         self._get_or_compile()
 
-        if self._execution_index - self._max_execution_index > self._max_concurrent_executions:
+        if (
+            self._execution_index - self._last_materialized_execution_index
+            > self._max_concurrent_executions
+        ):
             if self._raise_if_execution_may_block:
                 raise ValueError(
                     f"This DAG can support at most {self._max_concurrent_executions} "
