@@ -1,4 +1,4 @@
-from typing import Mapping
+from typing import Dict
 
 from ray.rllib.algorithms.dqn.dqn import DQNConfig
 from ray.rllib.algorithms.dqn.dqn_rainbow_learner import (
@@ -50,7 +50,7 @@ class DQNRainbowTorchLearner(DQNRainbowLearner, TorchLearner):
         module_id: ModuleID,
         config: DQNConfig,
         batch: NestedDict,
-        fwd_out: Mapping[str, TensorType]
+        fwd_out: Dict[str, TensorType]
     ) -> TensorType:
 
         q_curr = fwd_out[QF_PREDS]
@@ -296,7 +296,6 @@ class DQNRainbowTorchLearner(DQNRainbowLearner, TorchLearner):
                             override=True,
                         )
 
-    @override(DQNRainbowLearner)
     def _update_module_target_networks(
         self, module_id: ModuleID, config: DQNConfig
     ) -> None:
