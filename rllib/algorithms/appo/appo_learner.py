@@ -12,8 +12,7 @@ from ray.rllib.utils.typing import ModuleID
 class AppoLearner(ImpalaLearner):
     """Adds KL coeff updates via `additional_update_for_module()` to Impala logic.
 
-    Framework-specific sub-classes must override `_update_module_target_networks()`
-    and `_update_module_kl_coeff()`
+    Framework-specific sub-classes must override `_update_module_kl_coeff()`
     """
 
     @override(ImpalaLearner)
@@ -83,7 +82,7 @@ class AppoLearner(ImpalaLearner):
             timestep - self.metrics.peek(last_update_ts_key, default=0)
             >= config.target_update_frequency
         ):
-            self._update_module_target_networks(module_id, config)
+            self.module._synch_target_network(module_id=module_id, config=config)
             # Increase lifetime target network update counter by one.
             self.metrics.log_value((module_id, NUM_TARGET_UPDATES), 1, reduce="sum")
             # Update the (single-value -> window=1) last updated timestep metric.
@@ -93,19 +92,6 @@ class AppoLearner(ImpalaLearner):
             self._update_module_kl_coeff(
                 module_id, config, mean_kl_loss_per_module[module_id]
             )
-
-    @abc.abstractmethod
-    def _update_module_target_networks(
-        self, module_id: ModuleID, config: APPOConfig
-    ) -> None:
-        """Update the target policy of each module with the current policy.
-
-        Do that update via polyak averaging.
-
-        Args:
-            module_id: The module ID, whose target network(s) need to be updated.
-            config: The AlgorithmConfig specific to the given `module_id`.
-        """
 
     @abc.abstractmethod
     def _update_module_kl_coeff(
