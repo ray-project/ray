@@ -43,6 +43,14 @@ MAX_BUFFER_TOTAL_MEMORY = int(10 * 1e9)  # 10GB
 
 MAX_BUFFER_COUNT = MAX_BUFFER_TOTAL_MEMORY // MAX_BUFFER_SIZE
 
+
+class RayDAGArgs:
+    """Holds the input arguments for an accelerated DAG node."""
+
+    args: any
+    kwargs: any
+
+
 logger = logging.getLogger(__name__)
 
 
@@ -254,8 +262,9 @@ class DAGInputAdapter:
                     # Fast path for a single input of type `bytes`.
                     return raw_args
                 else:
-                    assert isinstance(raw_args, tuple)
-                    args, kwargs = raw_args
+                    assert isinstance(raw_args, RayDAGArgs)
+                    args = raw_args.args
+                    kwargs = raw_args.kwargs
 
                 if isinstance(key, int):
                     return args[key]
@@ -1193,7 +1202,7 @@ class CompiledDAG:
 
         self._get_or_compile()
 
-        if len(args) == 1 and len(kwargs) == 0 and isinstance(args[0], bytes):
+        if len(args) == 1 and len(kwargs) == 0 and not isinstance(args[0], RayDAGArgs):
             # When serializing a tuple, the Ray serializer invokes pickle5, which adds
             # several microseconds of overhead. One common case for accelerated DAGs is
             # passing a single argument of type `bytes`. To avoid imposing this overhead
@@ -1201,7 +1210,9 @@ class CompiledDAG:
             # pickle5.
             inp = args[0]
         else:
-            inp = (args, kwargs)
+            inp = RayDAGArgs()
+            inp.args = args
+            inp.kwargs = kwargs
         self._dag_submitter.write(inp)
 
         ref = CompiledDAGRef(self, self._execution_index)
@@ -1237,7 +1248,9 @@ class CompiledDAG:
                 # that avoids pickle5.
                 inp = args[0]
             else:
-                inp = (args, kwargs)
+                inp = RayDAGArgs()
+                inp.args = args
+                inp.kwargs = kwargs
 
             await self._dag_submitter.write(inp)
             # Allocate a future that the caller can use to get the result.
