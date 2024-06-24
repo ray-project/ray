@@ -1,4 +1,4 @@
-from abc import abstractmethod
+import abc
 from typing import Any, Dict, Type, Union
 from ray.rllib.algorithms.dqn.dqn_rainbow_catalog import DQNRainbowCatalog
 from ray.rllib.algorithms.sac.sac_learner import QF_PREDS
@@ -145,7 +145,7 @@ class DQNRainbowRLModule(RLModule, RLModuleWithTargetNetworksInterface):
             ),
         ]
 
-    @abstractmethod
+    @abc.abstractmethod
     @OverrideToImplementCustomLogic
     def _qf(self, batch: Dict[str, TensorType]) -> Dict[str, TensorType]:
         """Computes Q-values.
@@ -163,7 +163,7 @@ class DQNRainbowRLModule(RLModule, RLModuleWithTargetNetworksInterface):
             ("qf_logits"), and the probabilities ("qf_probs").
         """
 
-    @abstractmethod
+    @abc.abstractmethod
     @OverrideToImplementCustomLogic
     def _qf_target(self, batch: Dict[str, TensorType]) -> Dict[str, TensorType]:
         """Computes Q-values from the target network.
@@ -181,7 +181,7 @@ class DQNRainbowRLModule(RLModule, RLModuleWithTargetNetworksInterface):
             Q-logits  ("qf_logits"), and the probabilities ("qf_probs").
         """
 
-    @abstractmethod
+    @abc.abstractmethod
     @OverrideToImplementCustomLogic
     def _af_dist(self, batch: Dict[str, TensorType]) -> Dict[str, TensorType]:
         """Compute the advantage distribution.
@@ -200,7 +200,7 @@ class DQNRainbowRLModule(RLModule, RLModuleWithTargetNetworksInterface):
             of the discrete distribution (per action and atom of the support).
         """
 
-    @abstractmethod
+    @abc.abstractmethod
     @OverrideToImplementCustomLogic
     def _qf_forward_helper(
         self,
@@ -229,7 +229,7 @@ class DQNRainbowRLModule(RLModule, RLModuleWithTargetNetworksInterface):
             ("qf_logits") and the probabilities for the support atoms ("qf_probs").
         """
 
-    @abstractmethod
+    @abc.abstractmethod
     @OverrideToImplementCustomLogic
     def _reset_noise(self, target: bool = False):
         """Resets the noise for the noisy layers.

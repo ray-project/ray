@@ -452,6 +452,7 @@ TPU_TEST_DATA = (
 )
 
 
+@pytest.mark.skipif(platform.system() == "Windows", reason="Not relevant.")
 @pytest.mark.parametrize(TPU_PARAM_ARGS, TPU_TEST_DATA)
 def test_get_num_tpus(ray_cr_in: Dict[str, Any], expected_num_tpus: int):
     """Verify that _get_num_tpus correctly returns the number of requested TPUs."""
