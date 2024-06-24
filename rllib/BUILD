@@ -152,6 +152,22 @@ py_test(
 # --------------------------------------------------------------------
 
 # APPO
+py_test(
+    name = "learning_tests_cartpole_appo",
+    main = "tuned_examples/appo/cartpole_appo.py",
+    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "torch_only"],
+    size = "large",
+    srcs = ["tuned_examples/appo/cartpole_appo.py"],
+    args = ["--as-test", "--enable-new-api-stack"]
+)
+py_test(
+    name = "learning_tests_multi_agent_cartpole_appo",
+    main = "tuned_examples/appo/multi_agent_cartpole_appo.py",
+    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "torch_only"],
+    size = "large",
+    srcs = ["tuned_examples/appo/multi_agent_cartpole_appo.py"],
+    args = ["--as-test", "--enable-new-api-stack"]
+)
 
 #@OldAPIStack
 py_test(
@@ -173,7 +189,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
     size = "medium",
     srcs = ["tests/run_regression_tests.py"],
-    data = ["tuned_examples/appo/multi_agent_cartpole_appo.py"],
+    data = ["tuned_examples/appo/multi_agent_cartpole_appo_old_api_stack.py"],
     args = ["--dir=tuned_examples/appo"]
 )
 

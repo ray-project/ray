@@ -98,7 +98,7 @@ class ImpalaLearner(Learner):
         self,
         episodes: List[EpisodeType],
         *,
-        timesteps: Optional[Dict[str, Any]] = None,
+        timesteps: Dict[str, Any],
         # TODO (sven): Deprecate these in favor of config attributes for only those
         #  algos that actually need (and know how) to do minibatching.
         minibatch_size: Optional[int] = None,
@@ -107,10 +107,14 @@ class ImpalaLearner(Learner):
         reduce_fn=None,  # Deprecated args.
         **kwargs,
     ) -> ResultDict:
+        self.metrics.set_value(
+            NUM_ENV_STEPS_SAMPLED_LIFETIME, timesteps[NUM_ENV_STEPS_SAMPLED_LIFETIME]
+        )
+
         # TODO (sven): IMPALA does NOT call additional update anymore from its
         #  `training_step()` method. Instead, we'll do this here (to avoid the extra
         #  metrics.reduce() call -> we should only call this once per update round).
-        self._before_update(timesteps)
+        self._before_gradient_based_update(timesteps=timesteps)
 
         with self.metrics.log_time((ALL_MODULES, RAY_GET_EPISODES_TIMER)):
             # Resolve batch/episodes being ray object refs (instead of
@@ -146,20 +150,14 @@ class ImpalaLearner(Learner):
                 results[ALL_MODULES][NUM_ENV_STEPS_TRAINED].values = [ts_trained]
             return results
 
-    def _before_update(self, timesteps: Optional[Dict[str, Any]] = None):
-        timesteps = timesteps or {}
+    def _before_gradient_based_update(self, timesteps: Dict[str, Any]) -> None:
+        super()._before_gradient_based_update(timesteps=timesteps)
 
         for module_id in self.module.keys():
-            super().additional_update_for_module(
-                module_id=module_id,
-                config=self.config.get_config_for_module(module_id),
-                timestep=timesteps.get(NUM_ENV_STEPS_SAMPLED_LIFETIME, 0),
-            )
-
             # Update entropy coefficient via our Scheduler.
             new_entropy_coeff = self.entropy_coeff_schedulers_per_module[
                 module_id
-            ].update(timestep=timesteps.get(NUM_ENV_STEPS_SAMPLED_LIFETIME, 0))
+            ].update(timestep=timesteps[NUM_ENV_STEPS_SAMPLED_LIFETIME])
             self.metrics.log_value(
                 (module_id, LEARNER_RESULTS_CURR_ENTROPY_COEFF_KEY),
                 new_entropy_coeff,
@@ -248,7 +246,14 @@ class _LearnerThread(threading.Thread):
             #  this thread has the information about the min minibatches necessary
             #  (due to different agents taking different steps in the env, e.g.
             #  MA-CartPole).
-            results = self._update_method(batch=ma_batch_on_gpu)
+            results = self._update_method(
+                batch=ma_batch_on_gpu,
+                timesteps={
+                    NUM_ENV_STEPS_SAMPLED_LIFETIME: self.metrics.peek(
+                        NUM_ENV_STEPS_SAMPLED_LIFETIME, default=0
+                    )
+                },
+            )
             # We have to deepcopy the results dict, b/c we must avoid having a returned
             # Stats object sit in the queue and getting a new (possibly even tensor)
             # value added to it, which would falsify this result.

@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Tuple, Union
+from typing import Any, Dict, Union
 
 from ray.rllib.algorithms.dqn.dqn_rainbow_rl_module import (
     DQNRainbowRLModule,
@@ -17,12 +17,9 @@ from ray.rllib.core.columns import Columns
 from ray.rllib.core.models.base import Encoder, ENCODER_OUT, Model
 from ray.rllib.core.rl_module.torch.torch_rl_module import TorchRLModule
 from ray.rllib.core.rl_module.rl_module import RLModule
-from ray.rllib.core.rl_module.rl_module_with_target_networks_interface import (
-    RLModuleWithTargetNetworksInterface,
-)
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
-from ray.rllib.utils.typing import NetworkType, TensorType, TensorStructType
+from ray.rllib.utils.typing import TensorType, TensorStructType
 
 torch, nn = try_import_torch()
 
@@ -294,19 +291,6 @@ class DQNRainbowTorchRLModule(TorchRLModule, DQNRainbowRLModule):
         output["probs"] = prob_per_action_per_atom
 
         return output
-
-    @override(RLModuleWithTargetNetworksInterface)
-    def get_target_network_pairs(self) -> List[Tuple[NetworkType, NetworkType]]:
-        """Returns target Q and Q network(s) to update the target network(s)."""
-        return [(self.target_encoder, self.encoder), (self.af_target, self.af)] + (
-            # If we have a dueling architecture we need to update the value stream
-            # target, too.
-            [
-                (self.vf_target, self.vf),
-            ]
-            if self.uses_dueling
-            else []
-        )
 
     # TODO (simon): Test, if providing the function with a `return_probs`
     # improves performance significantly.

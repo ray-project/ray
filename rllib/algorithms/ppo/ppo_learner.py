@@ -1,3 +1,4 @@
+import abc
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 from ray.rllib.algorithms.ppo.ppo import (
@@ -13,6 +14,10 @@ from ray.rllib.utils.annotations import (
     OverrideToImplementCustomLogic_CallToSuperRecommended,
 )
 from ray.rllib.utils.lambda_defaultdict import LambdaDefaultDict
+from ray.rllib.utils.metrics import (
+    NUM_ENV_STEPS_SAMPLED_LIFETIME,
+    NUM_MODULE_STEPS_TRAINED,
+)
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.postprocessing.value_predictions import compute_value_targets
 from ray.rllib.utils.postprocessing.episodes import (
@@ -219,48 +224,24 @@ class PPOLearner(Learner):
     ) -> None:
         super()._after_gradient_based_update(timesteps=timesteps)
 
-        # Update entropy coefficient via our Scheduler.
-        TODO: add per-module loop here
+        for module_id, module in self.module._rl_modules.items():
+            config = self.config.get_config_for_module(module_id)
 
-        new_entropy_coeff = self.entropy_coeff_schedulers_per_module[module_id].update(
-            timestep=timestep
-        )
-        self.metrics.log_value(
-            (module_id, LEARNER_RESULTS_CURR_ENTROPY_COEFF_KEY),
-            new_entropy_coeff,
-            window=1,
-        )
-
-        with self.metrics.log_time((TIMERS, LEARNER_ADDITIONAL_UPDATE_TIMER)):
-            kl_dict = {}
-            if self.config.use_kl_loss:
-                for mid in modules_to_update:
-                    kl = convert_to_numpy(
-                        self.metrics.peek(
-                            (LEARNER_RESULTS, mid, LEARNER_RESULTS_KL_KEY)
-                        )
-                    )
-                    if np.isnan(kl):
-                        logger.warning(
-                            f"KL divergence for Module {mid} is non-finite, this "
-                            "will likely destabilize your model and the training "
-                            "process. Action(s) in a specific state have near-zero "
-                            "probability. This can happen naturally in deterministic "
-                            "environments where the optimal policy has zero mass for a "
-                            "specific action. To fix this issue, consider setting "
-                            "`kl_coeff` to 0.0 or increasing `entropy_coeff` in your "
-                            "config."
-                        )
-                    kl_dict[mid] = kl
-
-            # TODO (sven): Move to Learner._after_gradient_based_update().
-            # Triggers a special update method on RLOptimizer to update the KL values.
-            additional_results = self.learner_group.additional_update(
-                module_ids_to_update=modules_to_update,
-                sampled_kl_values=kl_dict,
-                timestep=self.metrics.peek(NUM_ENV_STEPS_SAMPLED_LIFETIME),
+            # Update entropy coefficient via our Scheduler.
+            new_entropy_coeff = self.entropy_coeff_schedulers_per_module[
+                module_id
+            ].update(timestep=timesteps.get(NUM_ENV_STEPS_SAMPLED_LIFETIME, 0))
+            self.metrics.log_value(
+                (module_id, LEARNER_RESULTS_CURR_ENTROPY_COEFF_KEY),
+                new_entropy_coeff,
+                window=1,
             )
-            self.metrics.merge_and_log_n_dicts(additional_results, key=LEARNER_RESULTS)
+            if (
+                config.use_kl_loss
+                and self.metrics.peek((module_id, NUM_MODULE_STEPS_TRAINED), default=0)
+                > 0
+            ):
+                self._update_module_kl_coeff(module_id=module_id, config=config)
 
     @OverrideToImplementCustomLogic
     def _compute_values(
@@ -286,3 +267,21 @@ class PPOLearner(Learner):
             for module_id, module_batch in batch_for_vf.items()
             if self.should_module_be_updated(module_id, batch_for_vf)
         }
+
+    @abc.abstractmethod
+    def _update_module_kl_coeff(
+        self,
+        *,
+        module_id: ModuleID,
+        config: PPOConfig,
+    ) -> None:
+        """Dynamically update the KL loss coefficients of each module with.
+
+        The update is completed using the mean KL divergence between the action
+        distributions current policy and old policy of each module. That action
+        distribution is computed during the most recent update/call to `compute_loss`.
+
+        Args:
+            module_id: The module whose KL loss coefficient to update.
+            config: The AlgorithmConfig specific to the given `module_id`.
+        """

@@ -1,5 +1,4 @@
 from ray.rllib.algorithms.appo import APPOConfig
-from ray.rllib.connectors.env_to_module import MeanStdFilter
 from ray.rllib.utils.metrics import (
     ENV_RUNNER_RESULTS,
     EPISODE_RETURN_MEAN,
@@ -8,6 +7,8 @@ from ray.rllib.utils.metrics import (
 from ray.rllib.utils.test_utils import add_rllib_example_script_args
 
 parser = add_rllib_example_script_args()
+# Use `parser` to add your own custom command line options to this script
+# and (if needed) use their values toset up `config` below.
 args = parser.parse_args()
 
 
@@ -19,16 +20,12 @@ config = (
         enable_env_runner_and_connector_v2=True,
     )
     .environment("CartPole-v1")
-    .env_runners(
-        #env_to_module_connector=lambda env: MeanStdFilter(multi_agent=False),
-        num_env_runners=4,
-        num_envs_per_env_runner=5,
+    .training(
+        vf_loss_coeff=0.05,
+        entropy_coeff=0.0,
     )
-    .training(vf_loss_coeff=0.01)
     .rl_module(
         model_config_dict={
-            "fcnet_hiddens": [32],
-            "fcnet_activation": "linear",
             "vf_share_layers": True,
             "uses_new_env_runners": True,
         },

@@ -31,7 +31,6 @@ from ray.rllib.utils.deprecation import DEPRECATED_VALUE
 from ray.rllib.utils.metrics import (
     ENV_RUNNER_RESULTS,
     ENV_RUNNER_SAMPLING_TIMER,
-    LEARNER_ADDITIONAL_UPDATE_TIMER,
     LEARNER_RESULTS,
     LEARNER_UPDATE_TIMER,
     NUM_AGENT_STEPS_SAMPLED,
@@ -48,7 +47,6 @@ from ray.rllib.utils.metrics import (
     ALL_MODULES,
 )
 from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
-from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.schedules.scheduler import Scheduler
 from ray.rllib.utils.typing import ResultDict
 from ray.util.debug import log_once
