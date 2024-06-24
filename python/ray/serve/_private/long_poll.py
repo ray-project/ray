@@ -258,6 +258,9 @@ class LongPollHost:
             except KeyError:
                 # The caller may ask for keys that we don't know about (yet),
                 # just ignore them.
+                # This can happen when, for example,
+                # a deployment handle is manually created for an app
+                # that hasn't been deployed yet (by bypassing the safety checks).
                 continue
 
             if existing_id != client_snapshot_id:
