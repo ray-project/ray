@@ -40,6 +40,10 @@ class DQNRainbowLearner(Learner):
     @override(Learner)
     def build(self) -> None:
         super().build()
+
+        # Initially sync target networks (w/ tau=1.0 -> full overwrite).
+        self.module.sync_target_networks(tau=1.0)
+
         # Prepend a NEXT_OBS from episodes to train batch connector piece (right
         # after the observation default piece).
         if self.config.add_default_connectors_to_learner_pipeline:
@@ -55,6 +59,8 @@ class DQNRainbowLearner(Learner):
 
         timestep = timesteps.get(NUM_ENV_STEPS_SAMPLED_LIFETIME, 0)
 
+        # TODO (sven): Maybe we should have a `_after_gradient_based_update`
+        #  method per module?
         for module_id, module in self.module._rl_modules.items():
             config = self.config.get_config_for_module(module_id)
             # TODO (Sven): APPO uses `config.target_update_frequency`. Can we
@@ -64,16 +70,7 @@ class DQNRainbowLearner(Learner):
                 timestep - self.metrics.peek(last_update_ts_key, default=0)
                 >= config.target_network_update_freq
             ):
-                # Note, we have pairs of encoder and head networks.
-                for (
-                    target_network,
-                    current_network,
-                ) in module.get_target_network_pairs():
-                    update_target_network(
-                        main_net=current_network,
-                        target_net=target_network,
-                        tau=config.tau,
-                    )
+                module.sync_target_networks(tau=config.tau)
                 # Increase lifetime target network update counter by one.
                 self.metrics.log_value((module_id, NUM_TARGET_UPDATES), 1, reduce="sum")
                 # Update the (single-value -> window=1) last updated timestep metric.

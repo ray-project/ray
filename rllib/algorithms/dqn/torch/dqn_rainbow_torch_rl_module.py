@@ -51,6 +51,29 @@ class DQNRainbowTorchRLModule(TorchRLModule, DQNRainbowRLModule):
             # Set the expected and unexpected keys for the inference-only module.
             self._set_inference_only_state_dict_keys()
 
+    @override(RLModuleWithTargetNetworksInterface)
+    def sync_target_networks(self, tau: float) -> None:
+        pairs = [(self.target_encoder, self.encoder), (self.af_target, self.af)] + (
+            # If we have a dueling architecture we need to update the value stream
+            # target, too.
+            [
+                (self.vf_target, self.vf),
+            ]
+            if self.uses_dueling
+            else []
+        )
+        # Loop through all individual networks that have a corresponding target net.
+        for target_net, main_net in pairs:
+            # Get the current parameters from the main network.
+            state_dict = main_net.state_dict()
+            # Use here Polyak averaging.
+            new_target_state_dict = {
+                k: tau * state_dict[k] + (1 - tau) * v
+                for k, v in target_net.state_dict().items()
+            }
+            # Apply the new parameters to the target Q network.
+            target_net.load_state_dict(new_target_state_dict)
+
     # TODO (simon): Refactor to parent method.
     @override(TorchRLModule)
     def get_state(self, inference_only: bool = False) -> Dict[str, Any]:

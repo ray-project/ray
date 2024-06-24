@@ -505,6 +505,8 @@ def test_compiled_dag_ref_del(ray_start_regular):
         ref = compiled_dag.execute(1)
         del ref
 
+    compiled_dag.teardown()
+
 
 def test_dag_fault_tolerance_chain(ray_start_regular_shared):
     actors = [

@@ -289,17 +289,6 @@ py_test(
 )
 
 # DQN
-#@OldAPIStack
-# py_test(
-#    name = "learning_tests_cartpole_dqn_old_api_stack",
-#    main = "tests/run_regression_tests.py",
-#    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
-#    size = "large",
-#    srcs = ["tests/run_regression_tests.py"],
-#    data = ["tuned_examples/dqn/cartpole-dqn.yaml"],
-#    args = ["--dir=tuned_examples/dqn"]
-# )
-
 py_test(
     name = "learning_tests_cartpole_dqn",
     main = "tuned_examples/dqn/cartpole_dqn.py",

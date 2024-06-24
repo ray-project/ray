@@ -27,6 +27,9 @@ class AppoLearner(ImpalaLearner):
     def build(self):
         super().build()
 
+        # Initially sync target networks (w/ tau=1.0 -> full overwrite).
+        self.module.sync_target_networks(tau=1.0)
+
         # The current kl coefficients per module as (framework specific) tensor
         # variables.
         self.curr_kl_coeffs_per_module: LambdaDefaultDict[
@@ -49,6 +52,8 @@ class AppoLearner(ImpalaLearner):
 
         timestep = timesteps.get(NUM_ENV_STEPS_SAMPLED_LIFETIME, 0)
 
+        # TODO (sven): Maybe we should have a `_after_gradient_based_update`
+        #  method per module?
         for module_id, module in self.module._rl_modules.items():
             config = self.config.get_config_for_module(module_id)
 
@@ -71,17 +76,7 @@ class AppoLearner(ImpalaLearner):
                 timestep - self.metrics.peek(last_update_ts_key, default=0)
                 >= config.target_update_frequency
             ):
-                # Note, we have pairs of encoder and head networks.
-                for (
-                    target_network,
-                    current_network,
-                ) in module.get_target_network_pairs():
-                    update_target_network(
-                        main_net=current_network,
-                        target_net=target_network,
-                        tau=config.tau,
-                        framework=self.framework,
-                    )
+                module.sync_target_networks(tau=config.tau)
                 # Increase lifetime target network update counter by one.
                 self.metrics.log_value((module_id, NUM_TARGET_UPDATES), 1, reduce="sum")
                 # Update the (single-value -> window=1) last updated timestep metric.
