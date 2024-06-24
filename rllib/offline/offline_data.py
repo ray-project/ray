@@ -76,25 +76,27 @@ class OfflineData:
         ):
             # If no iterator should be returned, or if we want to return a single
             # batch iterator, we instantiate the batch iterator once, here.
-            # self.batch_iterator = self.data.map_batches(
-            #     functools.partial(self._map_to_episodes, self.is_multi_agent)
-            # ).iter_batches(
-            #     batch_size=num_samples,
-            #     prefetch_batches=1,
-            #     local_shuffle_buffer_size=num_samples * 10,
-            # )
+            import functools
+
             self.batch_iterator = self.data.map_batches(
-                PreprocessEpisodes,
-                fn_constructor_kwargs={
-                    "config": self.config,
-                    "learner": self.learner_handles[0],
-                },
-                concurrency=2,
+                functools.partial(self._map_to_episodes, self.is_multi_agent)
             ).iter_batches(
                 batch_size=num_samples,
                 prefetch_batches=1,
                 local_shuffle_buffer_size=num_samples * 10,
             )
+            # self.batch_iterator = self.data.map_batches(
+            #     PreprocessEpisodes,
+            #     fn_constructor_kwargs={
+            #         "config": self.config,
+            #         "learner": self.learner_handles[0],
+            #     },
+            #     concurrency=2,
+            # ).iter_batches(
+            #     batch_size=num_samples,
+            #     prefetch_batches=1,
+            #     local_shuffle_buffer_size=num_samples * 10,
+            # )
 
         # Do we want to return an iterator or a single batch?
         if return_iterator:
@@ -132,6 +134,7 @@ class OfflineData:
         """Maps a batch of data to episodes."""
 
         episodes = []
+        logger.warning(f"batch_size before: {batch['obs'].shape}")
         # TODO (simon): Give users possibility to provide a custom schema.
         for i, obs in enumerate(batch["obs"]):
 
@@ -209,8 +212,10 @@ class PreprocessEpisodes:
 
     def __call__(self, batch: Dict[str, np.ndarray]) -> Dict[str, List[EpisodeType]]:
         # Map the batch to episodes.
-        episodes = self._map_to_episodes(self._is_multi_agent, batch)
 
+        logger.warning("shape(batch): {batch.shape}")
+        episodes = self._map_to_episodes(self._is_multi_agent, batch)
+        logger.warning(f"len(episodes): {len(episodes['episodes'])}")
         # Synch the learner module.
         if self.learner_is_remote:
             result = self._learner.get_module_state.remote()
@@ -224,6 +229,7 @@ class PreprocessEpisodes:
             episodes=episodes["episodes"],
             shared_data={},
         )
+        print(f"batch: {batch}")
         batch = MultiAgentBatch(
             {
                 module_id: SampleBatch(module_data)
