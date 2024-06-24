@@ -147,9 +147,11 @@ def main(results=None):
     with InputNode() as inp:
         dag = a.echo.bind(inp)
 
+    """
     results += timeit(
         "[unstable] single-actor DAG calls", lambda: ray.get(dag.execute(b"x"))
     )
+    """
     compiled_dag = dag.experimental_compile()
     results += timeit(
         "[unstable] compiled single-actor DAG calls", lambda: _exec(compiled_dag)
