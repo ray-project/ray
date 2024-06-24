@@ -865,6 +865,20 @@ class ReporterAgent(
                 tags=tags,
             )
         )
+        records.append(
+        Record(
+                gauge=METRICS_GAUGES["component_gpu_utilization"],
+                value=0.0,
+                tags=tags,
+            )
+        )
+        records.append(
+            Record(
+                gauge=METRICS_GAUGES["component_gpu_memory_usage"],
+                value=0.0,
+                tags=tags,
+            )
+        )
         return records
 
     def _generate_system_stats_record(
