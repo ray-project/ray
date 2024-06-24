@@ -178,7 +178,7 @@ Databricks
    read_databricks_tables
 
 Delta Sharing
------
+-------------
 
 .. autosummary::
    :nosignatures:
