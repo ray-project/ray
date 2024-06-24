@@ -47,8 +47,8 @@ class SACTorchRLModule(TorchRLModule, SACRLModule):
             # Set the expected and unexpected keys for the inference-only module.
             self._set_inference_only_state_dict_keys()
 
-    #@override(RLModuleWithTargetNetworksInterface)
-    #def sync_target_networks(self, tau: float) -> None:
+    # @override(RLModuleWithTargetNetworksInterface)
+    # def sync_target_networks(self, tau: float) -> None:
     #    pairs = [
     #        (self.qf_target_encoder, self.qf_encoder),
     #        (self.qf_target, self.qf),

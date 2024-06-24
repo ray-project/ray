@@ -13,7 +13,6 @@ from ray.rllib.utils.metrics import (
     NUM_TARGET_UPDATES,
 )
 from ray.rllib.utils.schedules.scheduler import Scheduler
-from ray.rllib.utils.framework import update_target_network
 from ray.rllib.utils.typing import ModuleID
 
 

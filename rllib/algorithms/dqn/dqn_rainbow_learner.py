@@ -17,7 +17,7 @@ from ray.rllib.utils.metrics import (
     NUM_ENV_STEPS_SAMPLED_LIFETIME,
     NUM_TARGET_UPDATES,
 )
-from ray.rllib.utils.torch_utils import update_target_network
+
 
 # Now, this is double defined: In `SACRLModule` and here. I would keep it here
 # or push it into the `Learner` as these are recurring keys in RL.
