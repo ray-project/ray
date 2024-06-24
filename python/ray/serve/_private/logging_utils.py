@@ -8,6 +8,8 @@ import traceback
 from typing import Any, Optional, Tuple
 
 import ray
+from ray._private.ray_logging.filters import CoreContextFilter
+from ray._private.ray_logging.formatters import JSONFormatter
 from ray.serve._private.common import ServeComponentType
 from ray.serve._private.constants import (
     RAY_SERVE_ENABLE_CPU_PROFILING,
@@ -42,18 +44,11 @@ except ImportError:
 buildin_print = builtins.print
 
 
-class ServeJSONFormatter(logging.Formatter):
-    """Serve Logging Json Formatter
+class ServeComponentFilter(logging.Filter):
+    """Serve Component Filter
 
-    The formatter will generate the json log format on the fly
-    based on the field of record.
+    The filter will add the component name, id, and type to the log record.
     """
-
-    ADD_IF_EXIST_FIELDS = [
-        SERVE_LOG_REQUEST_ID,
-        SERVE_LOG_ROUTE,
-        SERVE_LOG_APPLICATION,
-    ]
 
     def __init__(
         self,
@@ -61,66 +56,25 @@ class ServeJSONFormatter(logging.Formatter):
         component_id: str,
         component_type: Optional[ServeComponentType] = None,
     ):
-        self.component_log_fmt = {
-            SERVE_LOG_LEVEL_NAME: SERVE_LOG_RECORD_FORMAT[SERVE_LOG_LEVEL_NAME],
-            SERVE_LOG_TIME: SERVE_LOG_RECORD_FORMAT[SERVE_LOG_TIME],
-        }
-        try:
-            runtime_context = ray.get_runtime_context()
-            actor_id = runtime_context.get_actor_id()
-            if actor_id:
-                self.component_log_fmt[SERVE_LOG_ACTOR_ID] = actor_id
-            worker_id = runtime_context.get_worker_id()
-            if worker_id:
-                self.component_log_fmt[SERVE_LOG_WORKER_ID] = worker_id
-        except Exception:
-            # If get_runtime_context() fails for any reason, do nothing (no adding
-            # actor_id and/or worker_id to the fmt)
-            pass
+        self.component_name = component_name
+        self.component_id = component_id
+        self.component_type = component_type
 
-        if component_type and component_type == ServeComponentType.REPLICA:
-            self.component_log_fmt[SERVE_LOG_DEPLOYMENT] = component_name
-            self.component_log_fmt[SERVE_LOG_REPLICA] = component_id
-            self.component_log_fmt[SERVE_LOG_COMPONENT] = component_type
-        else:
-            self.component_log_fmt[SERVE_LOG_COMPONENT] = component_name
-            self.component_log_fmt[SERVE_LOG_COMPONENT_ID] = component_id
-        self.message_formatter = logging.Formatter(
-            SERVE_LOG_RECORD_FORMAT[SERVE_LOG_MESSAGE]
-        )
-        self.asctime_formatter = logging.Formatter("%(asctime)s")
+    def filter(self, record: logging.LogRecord) -> bool:
+        """Add component attributes to the log record.
 
-    def format(self, record: logging.LogRecord) -> str:
-        """Format the log record into json format.
-
-        Args:
-            record: The log record to be formatted.
-
-            Returns:
-                The formatted log record in json format.
+        Note: the filter deosn't do any filtering, it just adds the component
+        attributes.
         """
-        record_format = copy.deepcopy(self.component_log_fmt)
-        record_format[SERVE_LOG_LEVEL_NAME] = record.levelname
-        record_format[SERVE_LOG_TIME] = self.asctime_formatter.format(record)
+        if self.component_type and self.component_type == ServeComponentType.REPLICA:
+            setattr(record, SERVE_LOG_DEPLOYMENT, self.component_name)
+            setattr(record, SERVE_LOG_REPLICA, self.component_id)
+            setattr(record, SERVE_LOG_COMPONENT, self.component_type)
+        else:
+            setattr(record, SERVE_LOG_COMPONENT, self.component_name)
+            setattr(record, SERVE_LOG_REPLICA, self.component_id)
 
-        for field in ServeJSONFormatter.ADD_IF_EXIST_FIELDS:
-            if field in record.__dict__:
-                record_format[field] = record.__dict__[field]
-
-        record_format[SERVE_LOG_MESSAGE] = self.message_formatter.format(record)
-
-        if SERVE_LOG_EXTRA_FIELDS in record.__dict__:
-            if not isinstance(record.__dict__[SERVE_LOG_EXTRA_FIELDS], dict):
-                raise ValueError(
-                    f"Expected a dictionary passing into {SERVE_LOG_EXTRA_FIELDS}, "
-                    f"but got {type(record.__dict__[SERVE_LOG_EXTRA_FIELDS])}"
-                )
-            for k, v in record.__dict__[SERVE_LOG_EXTRA_FIELDS].items():
-                if k in record_format:
-                    raise KeyError(f"Found duplicated key in the log record: {k}")
-                record_format[k] = v
-
-        return json.dumps(record_format)
+        return True
 
 
 class ServeFormatter(logging.Formatter):
@@ -292,7 +246,7 @@ def configure_component_logger(
     max_bytes: Optional[int] = None,
     backup_count: Optional[int] = None,
 ):
-    """Configure a logger to be used by a Serve component.
+    """Configure root logger to be used by a Serve component.
 
     The logger will log using a standard format to make components identifiable
     using the provided name and unique ID for this instance (e.g., replica ID).
@@ -303,21 +257,6 @@ def configure_component_logger(
     logger.propagate = False
     logger.setLevel(logging_config.log_level)
     logger.handlers.clear()
-
-    factory = logging.getLogRecordFactory()
-
-    def record_factory(*args, **kwargs):
-        request_context = ray.serve.context._serve_request_context.get()
-        record = factory(*args, **kwargs)
-        if request_context.route:
-            setattr(record, SERVE_LOG_ROUTE, request_context.route)
-        if request_context.request_id:
-            setattr(record, SERVE_LOG_REQUEST_ID, request_context.request_id)
-        if request_context.app_name:
-            setattr(record, SERVE_LOG_APPLICATION, request_context.app_name)
-        return record
-
-    logging.setLogRecordFactory(record_factory)
 
     # Only add stream handler if RAY_SERVE_LOG_TO_STDERR is True.
     if RAY_SERVE_LOG_TO_STDERR:
@@ -355,9 +294,16 @@ def configure_component_logger(
             "'LoggingConfig' to enable json format."
         )
     if RAY_SERVE_ENABLE_JSON_LOGGING or logging_config.encoding == EncodingType.JSON:
-        file_handler.setFormatter(
-            ServeJSONFormatter(component_name, component_id, component_type)
+        serve_component_filter = ServeComponentFilter(
+            component_name, component_id, component_type
         )
+        file_handler.addFilter(serve_component_filter)
+        # TODO: create filter and formatter for JSON logging and parse out the extra
+        #  fields
+        file_handler.setFormatter(JSONFormatter())
+        # file_handler.setFormatter(
+        #     ServeJSONFormatter(component_name, component_id, component_type)
+        # )
     else:
         file_handler.setFormatter(ServeFormatter(component_name, component_id))
 
@@ -513,3 +459,19 @@ class LoggingContext:
     def __exit__(self, et, ev, tb):
         if self.level is not None:
             self.logger.setLevel(self.old_level)
+
+
+class ServeContextFilter(CoreContextFilter):
+    def filter(self, record):
+        # Apply the CoreContextFilter first.
+        super().filter(record)
+
+        # Add Serve specific log fields.
+        request_context = ray.serve.context._serve_request_context.get()
+        if request_context.route:
+            setattr(record, SERVE_LOG_ROUTE, request_context.route)
+        if request_context.request_id:
+            setattr(record, SERVE_LOG_REQUEST_ID, request_context.request_id)
+        if request_context.app_name:
+            setattr(record, SERVE_LOG_APPLICATION, request_context.app_name)
+        return True

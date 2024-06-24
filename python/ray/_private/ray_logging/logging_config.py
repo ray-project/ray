@@ -3,7 +3,7 @@ from typing import Set
 
 from ray._private.ray_logging import default_impl
 from ray._private.ray_logging.formatters import TextFormatter
-from ray._private.ray_logging.filters import CoreContextFilter
+from ray._private.ray_logging.filters import CoreContextFilter, ServeContextFilter
 from ray.util.annotations import PublicAPI
 
 from dataclasses import dataclass
@@ -40,13 +40,22 @@ class DefaultDictConfigProvider(DictConfigProvider):
                             f"{CoreContextFilter.__qualname__}"
                         ),
                     },
+                    "serve_context": {
+                        "()": (
+                            f"{ServeContextFilter.__module__}."
+                            f"{ServeContextFilter.__qualname__}"
+                        ),
+                    },
                 },
                 "handlers": {
                     "console": {
                         "level": log_level,
                         "class": "logging.StreamHandler",
                         "formatter": "text",
-                        "filters": ["core_context"],
+                        "filters": [
+                            "core_context",
+                            "serve_context",
+                        ],
                     },
                 },
                 "root": {
