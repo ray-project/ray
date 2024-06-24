@@ -276,7 +276,6 @@ ray::Status ObjectBufferPool::EnsureBufferExists(const ObjectID &object_id,
   Status s = store_client_->CreateAndSpillIfNeeded(
       object_id,
       owner_address,
-      /*is_mutable=*/false,
       static_cast<int64_t>(object_size),
       nullptr,
       static_cast<int64_t>(metadata_size),

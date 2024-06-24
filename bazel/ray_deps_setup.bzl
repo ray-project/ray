@@ -118,8 +118,8 @@ def ray_deps_setup():
     auto_http_archive(
         name = "com_github_redis_hiredis",
         build_file = "@com_github_ray_project_ray//bazel:BUILD.hiredis",
-        url = "https://github.com/redis/hiredis/archive/60e5075d4ac77424809f855ba3e398df7aacefe8.tar.gz",
-        sha256 = "b6d6f799b7714d85316f9ebfb76a35a78744f42ea3b6774289d882d13a2f0383",
+        url = "https://github.com/redis/hiredis/archive/392de5d7f97353485df1237872cb682842e8d83f.tar.gz",
+        sha256 = "2101650d39a8f13293f263e9da242d2c6dee0cda08d343b2939ffe3d95cf3b8b",
         patches = [
             "@com_github_ray_project_ray//thirdparty/patches:hiredis-windows-msvc.patch",
         ],
@@ -243,10 +243,10 @@ def ray_deps_setup():
 
     http_archive(
         name = "openssl",
-        strip_prefix = "openssl-1.1.1w",
-        sha256 = "cf3098950cb4d853ad95c0841f1f9c6d3dc102dccfcacd521d93925208b76ac8",
+        strip_prefix = "openssl-1.1.1f",
+        sha256 = "186c6bfe6ecfba7a5b48c47f8a1673d0f3b0e5ba2e25602dd23b629975da3f35",
         urls = [
-            "https://www.openssl.org/source/openssl-1.1.1w.tar.gz",
+            "https://www.openssl.org/source/openssl-1.1.1f.tar.gz",
         ],
         build_file = "@rules_foreign_cc_thirdparty//openssl:BUILD.openssl.bazel",
     )
@@ -371,4 +371,12 @@ def ray_deps_setup():
          build_file = "@com_github_ray_project_ray//bazel:BUILD.jemalloc",
         sha256 = "2db82d1e7119df3e71b7640219b6dfe84789bc0537983c3b7ac4f7189aecfeaa",
         strip_prefix = "jemalloc-5.3.0",
+     )
+
+    http_archive(
+        name = "zstd",
+        urls = ["https://github.com/facebook/zstd/releases/download/v1.5.6/zstd-1.5.6.tar.gz"],
+        build_file = "@com_github_ray_project_ray//bazel:BUILD.zstd",
+        sha256 = "8c29e06cf42aacc1eafc4077ae2ec6c6fcb96a626157e0593d5e82a34fd403c1",
+        strip_prefix = "zstd-1.5.6",
      )

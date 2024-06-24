@@ -3,7 +3,6 @@ from typing import Iterable, List, Optional
 import ray
 import ray.cloudpickle as cloudpickle
 from ray.data._internal.compute import TaskPoolStrategy
-from ray.data._internal.dataset_logger import DatasetLogger
 from ray.data._internal.execution.interfaces import PhysicalOperator, RefBundle
 from ray.data._internal.execution.interfaces.task_context import TaskContext
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
@@ -21,8 +20,6 @@ from ray.data.block import Block
 from ray.data.context import DataContext
 from ray.data.datasource.datasource import ReadTask
 
-import time
-
 TASK_SIZE_WARN_THRESHOLD_BYTES = 100000
 
 # Transient errors that can occur during longer reads. Trigger retry when these occur.
@@ -30,16 +27,13 @@ READ_FILE_RETRY_ON_ERRORS = ["AWS Error NETWORK_CONNECTION", "AWS Error ACCESS_D
 READ_FILE_MAX_ATTEMPTS = 10
 READ_FILE_RETRY_MAX_BACKOFF_SECONDS = 32
 
-import time
-import logging
-logger = logging.getLogger(__name__)
 
 # Defensively compute the size of the block as the max size reported by the
 # datasource and the actual read task size. This is to guard against issues
 # with bad metadata reporting.
 def cleaned_metadata(read_task: ReadTask):
     block_meta = read_task.get_metadata()
-    task_size = 0
+    task_size = len(cloudpickle.dumps(read_task))
     if block_meta.size_bytes is None or task_size > block_meta.size_bytes:
         if task_size > TASK_SIZE_WARN_THRESHOLD_BYTES:
             print(
@@ -64,15 +58,10 @@ def plan_read_op(op: Read) -> PhysicalOperator:
         assert (
             parallelism is not None
         ), "Read parallelism must be set by the optimizer before execution"
-        start = time.time()
         read_tasks = op._datasource_or_legacy_reader.get_read_tasks(parallelism)
-        end = time.time()
-        logger.info(f"Getting read tasks took: {end-start} seconds")
         _warn_on_high_parallelism(parallelism, len(read_tasks))
 
-        # Follow up on the comment below
-        start = time.time()
-        bundle = [
+        return [
             RefBundle(
                 [
                     (
@@ -89,11 +78,7 @@ def plan_read_op(op: Read) -> PhysicalOperator:
             )
             for read_task in read_tasks
         ]
-        end = time.time()
-        logger.info(f"Generating reference bundle took: {end-start} seconds")
-        return bundle
 
-    
     inputs = InputDataBuffer(
         input_data_factory=get_input_data,
     )
