@@ -1,12 +1,9 @@
 import CloseIcon from "@mui/icons-material/Close";
-import { Dialog, IconButton, Typography } from "@mui/material";
-import { styled } from "@mui/material/styles";
+import { Dialog, IconButton, styled, Typography } from "@mui/material";
 import React, { PropsWithChildren } from "react";
 
 const PaperDialog = styled(Dialog)(({ theme }) => ({
-  paper: {
-    padding: theme.spacing(3),
-  },
+  padding: theme.spacing(3),
 }));
 
 const CloseIconButton = styled(IconButton)(({ theme }) => ({

@@ -1,35 +1,31 @@
-import { Tooltip } from "@mui/material";
-import { styled } from "@mui/material/styles";
-import { HelpInfo } from "../components/Tooltip";
+import { Theme } from "@mui/material";
 
-export const TableContainerDiv = styled("div")(({ theme }) => ({
-  overflowX: "scroll",
-}));
+const rowStyles = (theme: Theme) => ({
+  tableContainer: {
+    overflowX: "scroll",
+  },
+  expandCollapseIcon: {
+    color: theme.palette.text.secondary,
+    fontSize: "1.5em",
+    verticalAlign: "middle",
+  },
+  idCol: {
+    display: "block",
+    width: "50px",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+  },
+  OverflowCol: {
+    display: "block",
+    width: "100px",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+  },
+  helpInfo: {
+    marginLeft: theme.spacing(1),
+  },
+});
 
-export const IdColTooltip = styled(Tooltip)(({ theme }) => ({
-  display: "block",
-  width: "50px",
-  overflow: "hidden",
-  textOverflow: "ellipsis",
-  whiteSpace: "nowrap",
-}));
-
-export const IdColSpan = styled("span")(({ theme }) => ({
-  display: "block",
-  width: "50px",
-  overflow: "hidden",
-  textOverflow: "ellipsis",
-  whiteSpace: "nowrap",
-}));
-
-export const OverflowColTooltip = styled(Tooltip)(({ theme }) => ({
-  display: "block",
-  width: "100px",
-  overflow: "hidden",
-  textOverflow: "ellipsis",
-  whiteSpace: "nowrap",
-}));
-
-export const StyledHelpInfo = styled(HelpInfo)(({ theme }) => ({
-  marginLeft: theme.spacing(1),
-}));
+export default rowStyles;

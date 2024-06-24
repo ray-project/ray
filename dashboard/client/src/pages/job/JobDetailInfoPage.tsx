@@ -1,5 +1,4 @@
-import { Typography } from "@mui/material";
-import { styled } from "@mui/material/styles";
+import { Box, Theme, Typography, useTheme } from "@mui/material";
 import React from "react";
 import {
   CodeDialogButton,
@@ -23,19 +22,22 @@ import { MainNavPageInfo } from "../layout/mainNavContext";
 
 import { useJobDetail } from "./hook/useJobDetail";
 
-const RootDiv = styled("div")(({ theme }) => ({
-  padding: theme.spacing(2),
-  backgroundColor: "white",
-}));
+const useStyle = (theme: Theme) => ({
+  root: {
+    padding: theme.spacing(2),
+    backgroundColor: "white",
+  },
+});
 
 export const JobDetailInfoPage = () => {
   // TODO(aguo): Add more content to this page!
 
+  const styles = useStyle(useTheme());
   const { job, msg, isLoading, params } = useJobDetail();
 
   if (!job) {
     return (
-      <RootDiv>
+      <Box sx={styles.root}>
         <MainNavPageInfo
           pageInfo={{
             title: "Info",
@@ -49,12 +51,12 @@ export const JobDetailInfoPage = () => {
           <br />
           Request Status: {msg} <br />
         </TitleCard>
-      </RootDiv>
+      </Box>
     );
   }
 
   return (
-    <RootDiv>
+    <Box sx={styles.root}>
       <MainNavPageInfo
         pageInfo={{
           title: "Info",
@@ -64,20 +66,24 @@ export const JobDetailInfoPage = () => {
       />
       <Typography variant="h2">{job.job_id}</Typography>
       <JobMetadataSection job={job} />
-    </RootDiv>
+    </Box>
   );
 };
 
-const MetadataButton = styled(CodeDialogButtonWithPreview)(({ theme }) => ({
-  display: "inline-flex",
-  maxWidth: "100%",
-}));
+const useJobMetadataSectionStyles = (theme: Theme) => ({
+  metadataButton: {
+    display: "inline-flex",
+    maxWidth: "100%",
+  },
+});
 
 type JobMetadataSectionProps = {
   job: UnifiedJob;
 };
 
 export const JobMetadataSection = ({ job }: JobMetadataSectionProps) => {
+  const styles = useJobMetadataSectionStyles(useTheme());
+
   return (
     <MetadataSection
       metadataList={[
@@ -168,7 +174,8 @@ export const JobMetadataSection = ({ job }: JobMetadataSectionProps) => {
                 label: "User-provided metadata",
                 content:
                   job.metadata && Object.keys(job.metadata).length ? (
-                    <MetadataButton
+                    <CodeDialogButtonWithPreview
+                      sx={styles.metadataButton}
                       title="User-provided metadata"
                       code={JSON.stringify(job.metadata, undefined, 2)}
                     />

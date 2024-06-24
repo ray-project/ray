@@ -1,5 +1,10 @@
-import { Checkbox, FormControlLabel, LinearProgress } from "@mui/material";
-import { styled } from "@mui/material/styles";
+import {
+  Checkbox,
+  FormControlLabel,
+  LinearProgress,
+  Theme,
+  useTheme,
+} from "@mui/material";
 import React, { useEffect, useState } from "react";
 import { UnifiedJob } from "../../type/job";
 import {
@@ -9,13 +14,14 @@ import {
 import { useJobProgress, useJobProgressByLineage } from "./hook/useJobProgress";
 import { TaskProgressBar } from "./TaskProgressBar";
 
-const StyledAdvancedProgressBar = styled(AdvancedProgressBar)(({ theme }) => ({
-  marginTop: theme.spacing(0.5),
-}));
-
-const HideFinishedCheckbox = styled(FormControlLabel)(({ theme }) => ({
-  marginRight: 0,
-}));
+const useStyles = (theme: Theme) => ({
+  advancedProgressBar: {
+    marginTop: theme.spacing(0.5),
+  },
+  hideFinishedCheckbox: {
+    marginRight: 0,
+  },
+});
 
 type JobProgressBarProps = {
   jobId: string | undefined;
@@ -27,6 +33,8 @@ export const JobProgressBar = ({
   job,
   ...advancedProgressBarProps
 }: JobProgressBarProps) => {
+  const styles = useStyles(useTheme());
+
   // Controls the first time we fetch the advanced progress bar data
   const [advancedProgressBarRendered, setAdvancedProgressBarRendered] =
     useState(false);
@@ -94,7 +102,7 @@ export const JobProgressBar = ({
           setAdvancedProgressBarExpanded(!advancedProgressBarExpanded)
         }
         controls={
-          <HideFinishedCheckbox
+          <FormControlLabel
             control={
               <Checkbox
                 color="primary"
@@ -105,11 +113,13 @@ export const JobProgressBar = ({
               />
             }
             label="Hide finished"
+            sx={styles.hideFinishedCheckbox}
           />
         }
       />
       {advancedProgressBarExpanded && (
-        <StyledAdvancedProgressBar
+        <AdvancedProgressBar
+          sx={styles.advancedProgressBar}
           progressGroups={progressGroups}
           {...advancedProgressBarProps}
         />

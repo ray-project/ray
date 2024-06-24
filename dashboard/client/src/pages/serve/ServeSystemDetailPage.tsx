@@ -1,5 +1,4 @@
-import { Alert, Typography } from "@mui/material";
-import { styled } from "@mui/material/styles";
+import { Alert, Box, Theme, Typography, useTheme } from "@mui/material";
 import React from "react";
 import { Outlet } from "react-router-dom";
 import Loading from "../../components/Loading";
@@ -10,20 +9,21 @@ import {
   ServeMetricsSection,
 } from "./ServeMetricsSection";
 import { ServeSystemDetails } from "./ServeSystemDetails";
-
-const RootDiv = styled("div")(({ theme }) => ({
-  padding: theme.spacing(3),
-}));
-
-const ServeInstanceWarningAlert = styled(Alert)(({ theme }) => ({
-  marginBottom: theme.spacing(2),
-}));
-
-const StyledServeMetricsSection = styled(ServeMetricsSection)(({ theme }) => ({
-  marginTop: theme.spacing(4),
-}));
+const useStyles = (theme: Theme) => ({
+  root: {
+    padding: theme.spacing(3),
+  },
+  serveInstanceWarning: {
+    marginBottom: theme.spacing(2),
+  },
+  section: {
+    marginTop: theme.spacing(4),
+  },
+});
 
 export const ServeSystemDetailPage = () => {
+  const styles = useStyles(useTheme());
+
   const { serveDetails, proxies, proxiesPage, setProxiesPage, error } =
     useServeDeployments();
 
@@ -36,7 +36,7 @@ export const ServeSystemDetailPage = () => {
   }
 
   return (
-    <RootDiv>
+    <Box sx={styles.root}>
       <MainNavPageInfo
         pageInfo={{
           title: "System",
@@ -45,9 +45,9 @@ export const ServeSystemDetailPage = () => {
         }}
       />
       {serveDetails.http_options === undefined ? (
-        <ServeInstanceWarningAlert severity="warning">
+        <Alert sx={styles.serveInstanceWarning} severity="warning">
           Serve not started. Please deploy a serve application first.
-        </ServeInstanceWarningAlert>
+        </Alert>
       ) : (
         <ServeSystemDetails
           serveDetails={serveDetails}
@@ -56,8 +56,11 @@ export const ServeSystemDetailPage = () => {
           setPage={setProxiesPage}
         />
       )}
-      <StyledServeMetricsSection metricsConfig={SERVE_SYSTEM_METRICS_CONFIG} />
-    </RootDiv>
+      <ServeMetricsSection
+        sx={styles.section}
+        metricsConfig={SERVE_SYSTEM_METRICS_CONFIG}
+      />
+    </Box>
   );
 };
 

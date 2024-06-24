@@ -1,5 +1,12 @@
-import { Box, IconButton, Link, Tooltip, Typography } from "@mui/material";
-import { styled } from "@mui/material/styles";
+import {
+  Box,
+  IconButton,
+  Link,
+  Theme,
+  Tooltip,
+  Typography,
+  useTheme,
+} from "@mui/material";
 import copy from "copy-to-clipboard";
 import React, { useState } from "react";
 import { RiFileCopyLine } from "react-icons/ri";
@@ -45,44 +52,34 @@ export type Metadata = {
   readonly isAvailable?: boolean;
 };
 
-const RootBox = styled(Box)(({ theme }) => ({
-  display: "grid",
-  gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
-  rowGap: theme.spacing(1),
-  columnGap: theme.spacing(4),
-}));
-
-const LabelTypography = styled(Typography)(({ theme }) => ({
-  color: theme.palette.text.secondary,
-}));
-
-const LabelTooltip = styled(HelpInfo)(({ theme }) => ({
-  marginLeft: theme.spacing(0.5),
-}));
-
-const ContentContainerDiv = styled("div")(({ theme }) => ({
-  display: "flex",
-  alignItems: "center",
-}));
-
-const ContentTypography = styled(Typography)(({ theme }) => ({
-  display: "block",
-  textOverflow: "ellipsis",
-  overflow: "hidden",
-  whiteSpace: "nowrap",
-}));
-
-const ContentLink = styled(Link)(({ theme }) => ({
-  display: "block",
-  textOverflow: "ellipsis",
-  overflow: "hidden",
-  whiteSpace: "nowrap",
-})) as typeof Link;
-
-const StyledIconButton = styled(IconButton)(({ theme }) => ({
-  color: "black",
-  marginLeft: theme.spacing(0.5),
-}));
+const useStyles = (theme: Theme) => ({
+  root: {
+    display: "grid",
+    gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+    rowGap: theme.spacing(1),
+    columnGap: theme.spacing(4),
+  },
+  label: {
+    color: theme.palette.text.secondary,
+  },
+  labelTooltip: {
+    marginLeft: theme.spacing(0.5),
+  },
+  contentContainer: {
+    display: "flex",
+    alignItems: "center",
+  },
+  content: {
+    display: "block",
+    textOverflow: "ellipsis",
+    overflow: "hidden",
+    whiteSpace: "nowrap",
+  },
+  button: {
+    color: "black",
+    marginLeft: theme.spacing(0.5),
+  },
+});
 
 /**
  * We style the metadata content based on the type supplied.
@@ -94,6 +91,7 @@ export const MetadataContentField: React.FC<{
   content: Metadata["content"];
   label: string;
 }> = ({ content, label }) => {
+  const styles = useStyles(useTheme());
   const [copyIconClicked, setCopyIconClicked] = useState<boolean>(false);
 
   const copyElement = content && "copyableValue" in content && (
@@ -101,7 +99,7 @@ export const MetadataContentField: React.FC<{
       placement="top"
       title={copyIconClicked ? "Copied" : "Click to copy"}
     >
-      <StyledIconButton
+      <IconButton
         aria-label="copy"
         onClick={() => {
           setCopyIconClicked(true);
@@ -111,9 +109,10 @@ export const MetadataContentField: React.FC<{
         onMouseEnter={() => setCopyIconClicked(false)}
         onMouseLeave={() => setTimeout(() => setCopyIconClicked(false), 333)}
         size="small"
+        sx={styles.button}
       >
         <RiFileCopyLine />
-      </StyledIconButton>
+      </IconButton>
     </Tooltip>
   );
 
@@ -121,37 +120,40 @@ export const MetadataContentField: React.FC<{
     return content === undefined ||
       !("link" in content) ||
       content.link === undefined ? (
-      <ContentContainerDiv>
-        <ContentTypography
+      <Box sx={styles.contentContainer}>
+        <Typography
+          sx={styles.content}
           variant="body2"
           title={content?.value}
           data-testid={`metadata-content-for-${label}`}
         >
           {content?.value ?? "-"}
-        </ContentTypography>
+        </Typography>
         {copyElement}
-      </ContentContainerDiv>
+      </Box>
     ) : content.link.startsWith("http") ? (
-      <ContentContainerDiv>
-        <ContentLink
+      <Box sx={styles.contentContainer}>
+        <Link
+          sx={styles.content}
           href={content.link}
           data-testid={`metadata-content-for-${label}`}
         >
           {content.value}
-        </ContentLink>
+        </Link>
         {copyElement}
-      </ContentContainerDiv>
+      </Box>
     ) : (
-      <ContentContainerDiv>
-        <ContentLink
+      <Box sx={styles.contentContainer}>
+        <Link
+          sx={styles.content}
           component={RouterLink}
           to={content.link}
           data-testid={`metadata-content-for-${label}`}
         >
           {content.value}
-        </ContentLink>
+        </Link>
         {copyElement}
-      </ContentContainerDiv>
+      </Box>
     );
   }
   return <div data-testid={`metadata-content-for-${label}`}>{content}</div>;
@@ -163,21 +165,27 @@ export const MetadataContentField: React.FC<{
 const MetadataList: React.FC<{
   metadataList: Metadata[];
 }> = ({ metadataList }) => {
+  const styles = useStyles(useTheme());
+
   const filteredMetadataList = metadataList.filter(
     ({ isAvailable }) => isAvailable ?? true,
   );
   return (
-    <RootBox>
+    <Box sx={styles.root}>
       {filteredMetadataList.map(({ label, labelTooltip, content }, idx) => (
         <Box key={idx} flex={1} paddingTop={0.5} paddingBottom={0.5}>
           <Box display="flex" alignItems="center" marginBottom={0.5}>
-            <LabelTypography variant="body2">{label}</LabelTypography>
-            {labelTooltip && <LabelTooltip>{labelTooltip}</LabelTooltip>}
+            <Typography sx={styles.label} variant="body2">
+              {label}
+            </Typography>
+            {labelTooltip && (
+              <HelpInfo sx={styles.labelTooltip}>{labelTooltip}</HelpInfo>
+            )}
           </Box>
           <MetadataContentField content={content} label={label} />
         </Box>
       ))}
-    </RootBox>
+    </Box>
   );
 };
 

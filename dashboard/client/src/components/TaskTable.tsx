@@ -9,7 +9,9 @@ import {
   TableRow,
   TextField,
   TextFieldProps,
+  Tooltip,
   Typography,
+  useTheme,
 } from "@mui/material";
 import Autocomplete from "@mui/material/Autocomplete";
 import Pagination from "@mui/material/Pagination";
@@ -23,16 +25,13 @@ import {
   TaskCpuStackTraceLink,
   TaskMemoryProfilingButton,
 } from "../common/ProfilingLink";
-import {
-  IdColTooltip,
-  StyledHelpInfo,
-  TableContainerDiv,
-} from "../common/RowStyles";
+import rowStyles from "../common/RowStyles";
 import { sliceToPage } from "../common/util";
 import { Task } from "../type/task";
 import { useFilter } from "../util/hook";
 import StateCounter from "./StatesCounter";
 import { StatusChip } from "./StatusChip";
+import { HelpInfo } from "./Tooltip";
 export type TaskTableProps = {
   tasks: Task[];
   jobId?: string;
@@ -64,6 +63,7 @@ const TaskTable = ({
     constrainedPage,
     maxPage,
   } = sliceToPage(taskList, pageNo, pageSize);
+  const styles = rowStyles(useTheme());
 
   const columns = [
     { label: "ID" },
@@ -195,7 +195,7 @@ const TaskTable = ({
           <StateCounter type="task" list={taskList} />
         </div>
       </div>
-      <TableContainerDiv>
+      <Box sx={styles.tableContainer}>
         <Table>
           <TableHead>
             <TableRow>
@@ -207,7 +207,9 @@ const TaskTable = ({
                     alignItems="center"
                   >
                     {label}
-                    {helpInfo && <StyledHelpInfo>{helpInfo}</StyledHelpInfo>}
+                    {helpInfo && (
+                      <HelpInfo sx={styles.helpInfo}>{helpInfo}</HelpInfo>
+                    )}
                   </Box>
                 </TableCell>
               ))}
@@ -233,11 +235,15 @@ const TaskTable = ({
               return (
                 <TableRow key={task_id}>
                   <TableCell align="center">
-                    <IdColTooltip title={task_id} arrow>
-                      <Link component={RouterLink} to={`tasks/${task_id}`}>
+                    <Tooltip title={task_id} arrow>
+                      <Link
+                        sx={styles.idCol}
+                        component={RouterLink}
+                        to={`tasks/${task_id}`}
+                      >
                         {task_id}
                       </Link>
-                    </IdColTooltip>
+                    </Tooltip>
                   </TableCell>
                   <TableCell align="center">{name ? name : "-"}</TableCell>
                   <TableCell align="center">{job_id}</TableCell>
@@ -259,32 +265,42 @@ const TaskTable = ({
                   </TableCell>
                   <TableCell align="center">{func_or_class_name}</TableCell>
                   <TableCell align="center">
-                    <IdColTooltip title={node_id ? node_id : "-"} arrow>
-                      {node_id ? <NodeLink nodeId={node_id} /> : <div>-</div>}
-                    </IdColTooltip>
-                  </TableCell>
-                  <TableCell align="center">
-                    <IdColTooltip title={actor_id ? actor_id : "-"} arrow>
-                      {actor_id ? (
-                        <ActorLink actorId={actor_id} />
+                    <Tooltip title={node_id ? node_id : "-"} arrow>
+                      {node_id ? (
+                        <NodeLink sx={styles.idCol} nodeId={node_id} />
                       ) : (
-                        <div>-</div>
+                        <Box sx={styles.idCol}>-</Box>
                       )}
-                    </IdColTooltip>
+                    </Tooltip>
                   </TableCell>
                   <TableCell align="center">
-                    <IdColTooltip title={worker_id ? worker_id : "-"} arrow>
-                      <div>{worker_id ? worker_id : "-"}</div>
-                    </IdColTooltip>
+                    <Tooltip
+                      sx={styles.idCol}
+                      title={actor_id ? actor_id : "-"}
+                      arrow
+                    >
+                      {actor_id ? (
+                        <ActorLink sx={styles.idCol} actorId={actor_id} />
+                      ) : (
+                        <Box sx={styles.idCol}>-</Box>
+                      )}
+                    </Tooltip>
+                  </TableCell>
+                  <TableCell align="center">
+                    <Tooltip title={worker_id ? worker_id : "-"} arrow>
+                      <Box sx={styles.idCol}>{worker_id ? worker_id : "-"}</Box>
+                    </Tooltip>
                   </TableCell>
                   <TableCell align="center">{type}</TableCell>
                   <TableCell align="center">
-                    <IdColTooltip
+                    <Tooltip
                       title={placement_group_id ? placement_group_id : "-"}
                       arrow
                     >
-                      <div>{placement_group_id ? placement_group_id : "-"}</div>
-                    </IdColTooltip>
+                      <Box sx={styles.idCol}>
+                        {placement_group_id ? placement_group_id : "-"}
+                      </Box>
+                    </Tooltip>
                   </TableCell>
                   <TableCell align="center">
                     {Object.entries(required_resources || {}).length > 0 ? (
@@ -301,7 +317,7 @@ const TaskTable = ({
             })}
           </TableBody>
         </Table>
-      </TableContainerDiv>
+      </Box>
     </div>
   );
 };

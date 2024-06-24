@@ -10,9 +10,10 @@ import {
   TableHead,
   TableRow,
   TextField,
+  Theme,
   Typography,
+  useTheme,
 } from "@mui/material";
-import { styled } from "@mui/material/styles";
 import React, { ReactElement } from "react";
 import { CollapsibleSection } from "../../common/CollapsibleSection";
 import { sliceToPage } from "../../common/util";
@@ -27,35 +28,26 @@ import {
 } from "./ServeMetricsSection";
 import { ServeSystemPreview } from "./ServeSystemDetails";
 
-const RootDiv = styled("div")(({ theme }) => ({
-  padding: theme.spacing(3),
-}));
-
-const StyledTable = styled(Table)(({ theme }) => ({
-  tableLayout: "fixed",
-}));
-
-const ServeInstanceWarningAlert = styled(Alert)(({ theme }) => ({
-  marginBottom: theme.spacing(2),
-}));
-
-const StyledHelpInfo = styled(HelpInfo)(({ theme }) => ({
-  marginLeft: theme.spacing(1),
-}));
-
-const DeploymentsCollapsibleSection = styled(CollapsibleSection)(
-  ({ theme }) => ({
+const useStyles = (theme: Theme) => ({
+  root: {
+    padding: theme.spacing(3),
+  },
+  table: {
+    tableLayout: "fixed",
+  },
+  serveInstanceWarning: {
+    marginBottom: theme.spacing(2),
+  },
+  helpInfo: {
+    marginLeft: theme.spacing(1),
+  },
+  deploymentsSection: {
     marginTop: theme.spacing(4),
-  }),
-);
-
-const StyledCollapsibleSection = styled(CollapsibleSection)(({ theme }) => ({
-  marginTop: theme.spacing(4),
-}));
-
-const StyledServeMetricsSection = styled(ServeMetricsSection)(({ theme }) => ({
-  marginTop: theme.spacing(4),
-}));
+  },
+  section: {
+    marginTop: theme.spacing(4),
+  },
+});
 
 const columns: { label: string; helpInfo?: ReactElement; width?: string }[] = [
   { label: "" }, // Empty space for expand button
@@ -70,6 +62,7 @@ const columns: { label: string; helpInfo?: ReactElement; width?: string }[] = [
 ];
 
 export const ServeDeploymentsListPage = () => {
+  const styles = useStyles(useTheme());
   const {
     serveDetails,
     error,
@@ -95,11 +88,11 @@ export const ServeDeploymentsListPage = () => {
   } = sliceToPage(serveApplications, page.pageNo, page.pageSize);
 
   return (
-    <RootDiv>
+    <Box sx={styles.root}>
       {serveDetails.http_options === undefined ? (
-        <ServeInstanceWarningAlert severity="warning">
+        <Alert sx={styles.serveInstanceWarning} severity="warning">
           Serve not started. Please deploy a serve application first.
-        </ServeInstanceWarningAlert>
+        </Alert>
       ) : (
         <React.Fragment>
           <ServeSystemPreview
@@ -108,9 +101,10 @@ export const ServeDeploymentsListPage = () => {
             proxies={proxies}
             serveDetails={serveDetails}
           />
-          <DeploymentsCollapsibleSection
+          <CollapsibleSection
             title="Applications / Deployments"
             startExpanded
+            sx={styles.deploymentsSection}
           >
             <TableContainer>
               <TextField
@@ -132,7 +126,7 @@ export const ServeDeploymentsListPage = () => {
                 page={constrainedPage}
                 onChange={(e, pageNo) => setPage("pageNo", pageNo)}
               />
-              <StyledTable>
+              <Table sx={styles.table}>
                 <TableHead>
                   <TableRow>
                     {columns.map(({ label, helpInfo, width }) => (
@@ -148,7 +142,7 @@ export const ServeDeploymentsListPage = () => {
                         >
                           {label}
                           {helpInfo && (
-                            <StyledHelpInfo>{helpInfo}</StyledHelpInfo>
+                            <HelpInfo sx={styles.helpInfo}>{helpInfo}</HelpInfo>
                           )}
                         </Box>
                       </TableCell>
@@ -164,19 +158,22 @@ export const ServeDeploymentsListPage = () => {
                     />
                   ))}
                 </TableBody>
-              </StyledTable>
+              </Table>
             </TableContainer>
-          </DeploymentsCollapsibleSection>
-          <StyledCollapsibleSection title="Logs" startExpanded>
+          </CollapsibleSection>
+          <CollapsibleSection title="Logs" startExpanded sx={styles.section}>
             <ServeEntityLogViewer
               controller={serveDetails.controller_info}
               proxies={proxies}
               deployments={serveDeployments}
             />
-          </StyledCollapsibleSection>
+          </CollapsibleSection>
         </React.Fragment>
       )}
-      <StyledServeMetricsSection metricsConfig={APPS_METRICS_CONFIG} />
-    </RootDiv>
+      <ServeMetricsSection
+        sx={styles.section}
+        metricsConfig={APPS_METRICS_CONFIG}
+      />
+    </Box>
   );
 };

@@ -1,5 +1,11 @@
-import { Box, MenuItem, TextField, Typography } from "@mui/material";
-import { styled } from "@mui/material/styles";
+import {
+  Box,
+  MenuItem,
+  TextField,
+  Theme,
+  Typography,
+  useTheme,
+} from "@mui/material";
 import _ from "lodash";
 import React, { useEffect } from "react";
 import { useSearchParams } from "react-router-dom";
@@ -15,9 +21,11 @@ import {
   LOG_CONTEXT_KEY_SERVE_PROXY,
 } from "./ServeSystemActorDetailPage";
 
-const CaptionTextTypography = styled(Typography)(({ theme }) => ({
-  color: theme.palette.grey[600],
-}));
+const useStyles = (theme: Theme) => ({
+  captionText: {
+    color: theme.palette.grey[600],
+  },
+});
 
 type ServeEntityLogsProps = {
   controller?: ServeSystemActor;
@@ -34,6 +42,8 @@ export const ServeEntityLogViewer = ({
   proxies,
   deployments,
 }: ServeEntityLogsProps) => {
+  const styles = useStyles(useTheme());
+
   const [params, setParams] = useSearchParams();
 
   const showEntityGroups = controller !== undefined || proxies !== undefined;
@@ -191,26 +201,26 @@ export const ServeEntityLogViewer = ({
               <MenuItem value="controller">
                 <Box display="flex" flexDirection="column" gap={0.5}>
                   <span>Controller</span>
-                  <CaptionTextTypography variant="caption">
+                  <Typography variant="caption" sx={styles.captionText}>
                     Logs for app initialization, dependency installation, and
                     autoscaling.
-                  </CaptionTextTypography>
+                  </Typography>
                 </Box>
               </MenuItem>
               <MenuItem value="proxies">
                 <Box display="flex" flexDirection="column" gap={0.5}>
                   <span>Proxies</span>
-                  <CaptionTextTypography variant="caption">
+                  <Typography variant="caption" sx={styles.captionText}>
                     Logs for proxy initialization and HTTP handling.
-                  </CaptionTextTypography>
+                  </Typography>
                 </Box>
               </MenuItem>
               <MenuItem value="deployments">
                 <Box display="flex" flexDirection="column" gap={0.5}>
                   <span>Deployments</span>
-                  <CaptionTextTypography variant="caption">
+                  <Typography variant="caption" sx={styles.captionText}>
                     Application output and logs.
-                  </CaptionTextTypography>
+                  </Typography>
                 </Box>
               </MenuItem>
             </TextField>

@@ -1,4 +1,4 @@
-import { styled } from "@mui/material/styles";
+import { Box, SxProps, Theme, useTheme } from "@mui/material";
 import React from "react";
 import { RiCloseCircleFill, RiRecordCircleFill } from "react-icons/ri";
 import { ServeDeployment } from "../type/serve";
@@ -8,36 +8,57 @@ import { ClassNameProps } from "./props";
 type ServeStatusIconProps = {
   deployment: ServeDeployment;
   small: boolean;
+  sx?: SxProps<Theme>;
 } & ClassNameProps;
 
-const ServeSeccessElement = styled(RiRecordCircleFill)(({ theme }) => ({
-  width: 20,
-  height: 20,
-  marginRight: 8,
-  color: theme.palette.success.main,
-}));
-
-const ServeErrorElement = styled(RiCloseCircleFill)(({ theme }) => ({
-  width: 20,
-  height: 20,
-  marginRight: 8,
-  color: theme.palette.error.main,
-}));
+const useServeStatusIconStyles = (theme: Theme) => ({
+  icon: (small: boolean) => ({
+    width: small ? 16 : 20,
+    height: small ? 16 : 20,
+    marginRight: "8px",
+  }),
+  colorSuccess: {
+    color: theme.palette.success.main,
+  },
+  colorError: {
+    color: theme.palette.error.main,
+  },
+});
 
 export const ServeStatusIcon = ({
   deployment,
   small,
   className,
+  sx,
 }: ServeStatusIconProps) => {
+  const styles = useServeStatusIconStyles(useTheme());
+
   switch (deployment.status) {
     case "HEALTHY":
-      return <ServeSeccessElement title="Healthy" />;
+      return (
+        <Box
+          component={RiRecordCircleFill}
+          sx={Object.assign({}, styles.icon, styles.colorSuccess, sx)}
+          title="Healthy"
+        />
+      );
     case "UNHEALTHY":
-      return <ServeErrorElement title="Unhealthy" />;
+      return (
+        <Box
+          component={RiCloseCircleFill}
+          sx={Object.assign({}, styles.icon, styles.colorError, sx)}
+          title="Unhealthy"
+        />
+      );
     default:
       // UPDATING
       return (
-        <JobRunningIcon className={className} small={small} title="Updating" />
+        <JobRunningIcon
+          className={className}
+          sx={sx}
+          small={small}
+          title="Updating"
+        />
       );
   }
 };

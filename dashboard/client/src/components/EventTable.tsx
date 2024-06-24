@@ -1,5 +1,6 @@
 import { SearchOutlined } from "@mui/icons-material";
 import {
+  Box,
   Button,
   Chip,
   Grid,
@@ -7,11 +8,12 @@ import {
   LinearProgress,
   TextField,
   TextFieldProps,
+  Theme,
   Tooltip,
+  useTheme,
 } from "@mui/material";
 import Autocomplete from "@mui/material/Autocomplete";
 import Pagination from "@mui/material/Pagination";
-import { styled } from "@mui/material/styles";
 import dayjs from "dayjs";
 import React, { useContext, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
@@ -27,42 +29,39 @@ type EventTableProps = {
   job_id?: string;
 };
 
-const PageMetaDiv = styled("div")(({ theme }) => ({
-  padding: theme.spacing(2),
-  marginTop: theme.spacing(2),
-}));
-
-const FilterContainerDiv = styled("div")(({ theme }) => ({
-  display: "flex",
-  alignItems: "center",
-}));
-
-const SearchAutocomplete = styled(Autocomplete)(({ theme }) => ({
-  margin: theme.spacing(1),
-  display: "inline-block",
-  fontSize: 12,
-}));
-
-const SearchTextField = styled(TextField)(({ theme }) => ({
-  margin: theme.spacing(1),
-  display: "inline-block",
-  fontSize: 12,
-}));
-
-const SearchButton = styled(Button)(({ theme }) => ({
-  margin: theme.spacing(1),
-  display: "inline-block",
-  fontSize: 12,
-}));
-
-const InfoKVGrid = styled(Grid)(({ theme }) => ({
-  margin: theme.spacing(1),
-}));
-
-const LiArticle = styled("article")(({ theme }) => ({
-  color: theme.palette.text.secondary,
-  fontSize: 12,
-}));
+const useStyles = (theme: Theme) => ({
+  table: {
+    marginTop: theme.spacing(4),
+    padding: theme.spacing(2),
+  },
+  pageMeta: {
+    padding: theme.spacing(2),
+    marginTop: theme.spacing(2),
+  },
+  filterContainer: {
+    display: "flex",
+    alignItems: "center",
+  },
+  search: {
+    margin: theme.spacing(1),
+    display: "inline-block",
+    fontSize: 12,
+  },
+  infokv: {
+    margin: theme.spacing(1),
+  },
+  li: {
+    color: theme.palette.text.secondary,
+    fontSize: 12,
+  },
+  code: {
+    wordBreak: "break-all",
+    whiteSpace: "pre-line",
+    margin: 12,
+    fontSize: 14,
+    color: theme.palette.text.primary,
+  },
+});
 
 const useEventTable = (props: EventTableProps) => {
   const { job_id } = props;
@@ -151,6 +150,7 @@ const useEventTable = (props: EventTableProps) => {
 };
 
 const EventTable = (props: EventTableProps) => {
+  const styles = useStyles(useTheme());
   const {
     events,
     changeFilter,
@@ -171,8 +171,9 @@ const EventTable = (props: EventTableProps) => {
 
   return (
     <div style={{ position: "relative" }}>
-      <FilterContainerDiv>
-        <SearchAutocomplete
+      <Box sx={styles.filterContainer}>
+        <Autocomplete
+          sx={styles.search}
           style={{ width: 200 }}
           options={labelOptions}
           onInputChange={(_: any, value: string) => {
@@ -182,7 +183,8 @@ const EventTable = (props: EventTableProps) => {
             <TextField {...params} label="Label" />
           )}
         />
-        <SearchAutocomplete
+        <Autocomplete
+          sx={styles.search}
           style={{ width: 200 }}
           options={hostOptions}
           onInputChange={(_: any, value: string) => {
@@ -192,7 +194,8 @@ const EventTable = (props: EventTableProps) => {
             <TextField {...params} label="Host" />
           )}
         />
-        <SearchAutocomplete
+        <Autocomplete
+          sx={styles.search}
           style={{ width: 100 }}
           options={sourceOptions}
           onInputChange={(_: any, value: string) => {
@@ -202,7 +205,8 @@ const EventTable = (props: EventTableProps) => {
             <TextField {...params} label="Source" />
           )}
         />
-        <SearchAutocomplete
+        <Autocomplete
+          sx={styles.search}
           style={{ width: 140 }}
           options={severityOptions}
           onInputChange={(_: any, value: string) => {
@@ -212,7 +216,8 @@ const EventTable = (props: EventTableProps) => {
             <TextField {...params} label="Severity" />
           )}
         />
-        <SearchTextField
+        <TextField
+          sx={styles.search}
           label="Msg"
           InputProps={{
             onChange: ({ target: { value } }) => {
@@ -239,14 +244,15 @@ const EventTable = (props: EventTableProps) => {
             ),
           }}
         />
-        <SearchButton
+        <Button
+          sx={styles.search}
           size="small"
           variant="contained"
           onClick={() => reverseEvents()}
         >
           Reverse
-        </SearchButton>
-      </FilterContainerDiv>
+        </Button>
+      </Box>
       <div>
         <Pagination
           count={pagination.total}
@@ -256,7 +262,7 @@ const EventTable = (props: EventTableProps) => {
           }}
         />
       </div>
-      <PageMetaDiv>
+      <Box sx={styles.pageMeta}>
         {!events.length
           ? "No Events Yet."
           : events.map(
@@ -285,7 +291,7 @@ const EventTable = (props: EventTableProps) => {
                 const hostname = sourceHostname || hostName;
                 const realPid = pid || sourcePid;
                 return (
-                  <LiArticle key={eventId}>
+                  <Box component="article" sx={styles.li} key={eventId}>
                     <Grid container spacing={4}>
                       <Grid item>
                         <StatusChip status={severity} type={severity} />
@@ -306,9 +312,13 @@ const EventTable = (props: EventTableProps) => {
                       )}
                     </Grid>
                     <Grid container>
-                      <InfoKVGrid item>severity: {severity}</InfoKVGrid>
-                      <InfoKVGrid item>source: {sourceType}</InfoKVGrid>
-                      <InfoKVGrid item>
+                      <Grid item sx={styles.infokv}>
+                        severity: {severity}
+                      </Grid>
+                      <Grid item sx={styles.infokv}>
+                        source: {sourceType}
+                      </Grid>
+                      <Grid item sx={styles.infokv}>
                         hostname:{" "}
                         {nodeMap[hostname] ? (
                           <Link to={`/node/${nodeMap[hostname]}`}>
@@ -317,27 +327,37 @@ const EventTable = (props: EventTableProps) => {
                         ) : (
                           hostname
                         )}
-                      </InfoKVGrid>
-                      <InfoKVGrid item>pid: {realPid}</InfoKVGrid>
+                      </Grid>
+                      <Grid item sx={styles.infokv}>
+                        pid: {realPid}
+                      </Grid>
                       {jobId && (
-                        <InfoKVGrid item>
+                        <Grid item sx={styles.infokv}>
                           jobId: <Link to={`/job/${jobId}`}>{jobId}</Link>
-                        </InfoKVGrid>
+                        </Grid>
                       )}
                       {jobName && (
-                        <InfoKVGrid item>jobId: {jobName}</InfoKVGrid>
+                        <Grid item sx={styles.infokv}>
+                          jobId: {jobName}
+                        </Grid>
                       )}
                       {eventId && (
-                        <InfoKVGrid item>eventId: {eventId}</InfoKVGrid>
+                        <Grid item sx={styles.infokv}>
+                          eventId: {eventId}
+                        </Grid>
                       )}
-                      {nodeId && <InfoKVGrid item>nodeId: {nodeId}</InfoKVGrid>}
+                      {nodeId && (
+                        <Grid item sx={styles.infokv}>
+                          nodeId: {nodeId}
+                        </Grid>
+                      )}
                     </Grid>
                     <LogVirtualView content={message} language="prolog" />
-                  </LiArticle>
+                  </Box>
                 );
               },
             )}
-      </PageMetaDiv>
+      </Box>
       <div>
         <Pagination
           count={pagination.total}

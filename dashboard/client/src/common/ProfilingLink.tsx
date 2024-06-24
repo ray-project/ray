@@ -1,4 +1,5 @@
 import {
+  Box,
   Button,
   Checkbox,
   Dialog,
@@ -10,27 +11,28 @@ import {
   MenuItem,
   Select,
   TextField,
+  Theme,
   Typography,
+  useTheme,
 } from "@mui/material";
-import { styled } from "@mui/material/styles";
 import React, { PropsWithChildren, useState } from "react";
 import { HelpInfo } from "../components/Tooltip";
 import { ClassNameProps } from "./props";
 
-const ButtonLink = styled(Link)(({ theme }) => ({
-  cursor: "pointer",
-}));
-
-const DialogContentDiv = styled("div")(({ theme }) => ({
-  padding: "12px",
-  display: "flex",
-  justifyContent: "flex-end",
-}));
-
-const SecondaryButton = styled(Button)(({ theme }) => ({
-  textTransform: "capitalize",
-  color: "#5F6469",
-}));
+const useStyles = (theme: Theme) => ({
+  buttonLink: {
+    cursor: "pointer",
+  },
+  dialogContent: {
+    padding: "12px",
+    display: "flex",
+    justifyContent: "flex-end",
+  },
+  secondaryButton: {
+    textTransform: "capitalize",
+    color: "#5F6469",
+  },
+});
 
 type CpuProfilingLinkProps = PropsWithChildren<
   {
@@ -165,11 +167,17 @@ export const ProfilerButton = ({
     setOpen(false);
   };
 
+  const buttonLinkStyles = useStyles(useTheme());
+
   return (
     <div>
-      <ButtonLink onClick={handleOpen} aria-label="Memory Profiling">
+      <Link
+        onClick={handleOpen}
+        aria-label="Memory Profiling"
+        sx={buttonLinkStyles.buttonLink}
+      >
         Memory&nbsp;Profiling{type ? ` (${type})` : ""}
-      </ButtonLink>
+      </Link>
 
       <Dialog open={open} onClose={handleClose}>
         <DialogTitle>Memory Profiling Config</DialogTitle>
@@ -257,10 +265,14 @@ export const ProfilerButton = ({
             }
           />
         </DialogContent>
-        <DialogContentDiv>
-          <SecondaryButton onClick={handleClose} variant="text">
+        <Box sx={buttonLinkStyles.dialogContent}>
+          <Button
+            onClick={handleClose}
+            variant="text"
+            sx={buttonLinkStyles.secondaryButton}
+          >
             Cancel
-          </SecondaryButton>
+          </Button>
           <Button
             color="primary"
             variant="text"
@@ -280,7 +292,7 @@ export const ProfilerButton = ({
               Generate&nbsp;report
             </Link>
           </Button>
-        </DialogContentDiv>
+        </Box>
       </Dialog>
     </div>
   );

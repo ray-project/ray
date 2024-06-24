@@ -1,5 +1,4 @@
-import { Typography } from "@mui/material";
-import { styled } from "@mui/material/styles";
+import { Box, Theme, Typography, useTheme } from "@mui/material";
 import React from "react";
 import { useParams } from "react-router-dom";
 import { CodeDialogButton } from "../../common/CodeDialogButton";
@@ -21,22 +20,19 @@ import { ServeReplicaMetricsSection } from "./ServeDeploymentMetricsSection";
 
 export const LOG_CONTEXT_KEY_SERVE_DEPLOYMENTS = "serve-entity-deployments";
 
-const RootDiv = styled("div")(({ theme }) => ({
-  padding: theme.spacing(3),
-}));
-
-const StyledCollapsibleSection = styled(CollapsibleSection)(({ theme }) => ({
-  marginTop: theme.spacing(4),
-}));
-
-const StyledServeReplicaMetricsSection = styled(ServeReplicaMetricsSection)(
-  ({ theme }) => ({
+const useStyles = (theme: Theme) => ({
+  root: {
+    padding: theme.spacing(3),
+  },
+  section: {
     marginTop: theme.spacing(4),
-  }),
-);
+  },
+});
 
 export const ServeReplicaDetailPage = () => {
   const { applicationName, deploymentName, replicaId } = useParams();
+  const styles = useStyles(useTheme());
+
   const { application, deployment, replica } = useServeReplicaDetails(
     applicationName,
     deploymentName,
@@ -62,7 +58,7 @@ export const ServeReplicaDetailPage = () => {
     start_time_s,
   } = replica;
   return (
-    <RootDiv>
+    <Box sx={styles.root}>
       <MetadataSection
         metadataList={[
           {
@@ -139,14 +135,19 @@ export const ServeReplicaDetailPage = () => {
           <ServeReplicaLogs replica={replica} />
         </Section>
       </CollapsibleSection>
-      <StyledServeReplicaMetricsSection
+      <ServeReplicaMetricsSection
+        sx={styles.section}
         deploymentName={deployment.name}
         replicaId={replica.replica_id}
       />
-      <StyledCollapsibleSection title="Tasks History" startExpanded>
+      <CollapsibleSection
+        sx={styles.section}
+        title="Tasks History"
+        startExpanded
+      >
         <TaskList actorId={replica.actor_id ? replica.actor_id : undefined} />
-      </StyledCollapsibleSection>
-    </RootDiv>
+      </CollapsibleSection>
+    </Box>
   );
 };
 

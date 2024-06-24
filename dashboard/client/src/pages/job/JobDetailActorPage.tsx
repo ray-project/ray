@@ -1,4 +1,4 @@
-import { styled } from "@mui/material/styles";
+import { Box, Theme, useTheme } from "@mui/material";
 import React, { PropsWithChildren } from "react";
 
 import { Section } from "../../common/Section";
@@ -6,15 +6,19 @@ import ActorList from "../actor/ActorList";
 import { MainNavPageInfo } from "../layout/mainNavContext";
 import { useJobDetail } from "./hook/useJobDetail";
 
-const JobDetailActorsPageRoot = styled("div")(({ theme }) => ({
-  padding: theme.spacing(2),
-  backgroundColor: "white",
-}));
+const useStyle = (theme: Theme) => ({
+  root: {
+    padding: theme.spacing(2),
+    backgroundColor: "white",
+  },
+});
+
 export const JobDetailActorsPage = () => {
+  const styles = useStyle(useTheme());
   const { params } = useJobDetail();
 
   return (
-    <JobDetailActorsPageRoot>
+    <Box sx={styles.root}>
       <MainNavPageInfo
         pageInfo={{
           title: "Actors",
@@ -25,7 +29,7 @@ export const JobDetailActorsPage = () => {
       <Section title="Actors">
         <ActorList jobId={params.id} />
       </Section>
-    </JobDetailActorsPageRoot>
+    </Box>
   );
 };
 

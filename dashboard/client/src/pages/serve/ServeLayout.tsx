@@ -1,19 +1,23 @@
-import { styled } from "@mui/material/styles";
+import { Box, Theme, useTheme } from "@mui/material";
 import React from "react";
 import { RiInformationLine, RiTableLine } from "react-icons/ri";
 import { Outlet } from "react-router-dom";
 import { MainNavPageInfo } from "../layout/mainNavContext";
 import { SideTabLayout, SideTabRouteLink } from "../layout/SideTabLayout";
 
-const RootDiv = styled("div")(({ theme }) => ({
-  width: "100%",
-  minHeight: 800,
-  background: "white",
-}));
+const useStyles = (theme: Theme) => ({
+  root: {
+    width: "100%",
+    minHeight: 800,
+    background: "white",
+  },
+});
 
 export const ServeLayout = () => {
+  const styles = useStyles(useTheme());
+
   return (
-    <RootDiv>
+    <Box sx={styles.root}>
       <MainNavPageInfo
         pageInfo={{
           id: "serve",
@@ -22,7 +26,7 @@ export const ServeLayout = () => {
         }}
       />
       <Outlet />
-    </RootDiv>
+    </Box>
   );
 };
 

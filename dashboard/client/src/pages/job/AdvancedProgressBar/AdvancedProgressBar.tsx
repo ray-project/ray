@@ -1,5 +1,14 @@
-import { Table, TableBody, TableCell, TableRow } from "@mui/material";
-import { styled } from "@mui/material/styles";
+import {
+  Box,
+  Link,
+  SxProps,
+  Table,
+  TableBody,
+  TableCell,
+  TableRow,
+  Theme,
+  useTheme,
+} from "@mui/material";
 import React, { useState } from "react";
 import {
   RiAddLine,
@@ -8,23 +17,25 @@ import {
   RiCloseLine,
   RiSubtractLine,
 } from "react-icons/ri";
-import { Link } from "react-router-dom";
+import { Link as RouterLink } from "react-router-dom";
 import { ClassNameProps } from "../../../common/props";
 import { JobProgressGroup, NestedJobProgressLink } from "../../../type/job";
 import { MiniTaskProgressBar } from "../TaskProgressBar";
 
 export type AdvancedProgressBarProps = {
   progressGroups: JobProgressGroup[] | undefined;
+  sx?: SxProps<Theme>;
 } & ClassNameProps &
   Pick<AdvancedProgressBarSegmentProps, "onClickLink">;
 
 export const AdvancedProgressBar = ({
   progressGroups,
   className,
+  sx,
   ...segmentProps
 }: AdvancedProgressBarProps) => {
   return (
-    <Table className={className}>
+    <Table className={className} sx={sx}>
       <TableBody>
         {progressGroups !== undefined ? (
           progressGroups.map((group) => (
@@ -44,44 +55,35 @@ export const AdvancedProgressBar = ({
   );
 };
 
-const NameContainerTableCell = styled(TableCell)(({ theme }) => ({
-  paddingLeft: 0,
-  whiteSpace: "nowrap",
-  display: "flex",
-  alignItems: "center",
-}));
-
-const SpacerSpan = styled("span")(({ theme }) => ({
-  width: 4,
-}));
-
-const ProgressBarContainerTableCell = styled(TableCell)(({ theme }) => ({
-  width: "100%",
-  paddingRight: 0,
-}));
-
-const StyledRiSubtractLine = styled(RiSubtractLine)(({ theme }) => ({
-  width: 16,
-  height: 16,
-  verticalAlign: "top",
-  marginRight: theme.spacing(0.5),
-}));
-
-const StyledButton = styled("button")(({ theme }) => ({
-  border: "none",
-  cursor: "pointer",
-  color: "#036DCF",
-  textDecoration: "underline",
-  background: "none",
-}));
-
-const StyledLink = styled(Link)(({ theme }) => ({
-  border: "none",
-  cursor: "pointer",
-  color: "#036DCF",
-  textDecoration: "underline",
-  background: "none",
-}));
+const useAdvancedProgressBarSegmentStyles = (theme: Theme) => ({
+  nameContainer: {
+    paddingLeft: 0,
+    whiteSpace: "nowrap",
+    display: "flex",
+    alignItems: "center",
+  },
+  spacer: {
+    width: 4,
+  },
+  progressBarContainer: {
+    width: "100%",
+    paddingRight: 0,
+  },
+  icon: (hidden: boolean) => ({
+    width: 16,
+    height: 16,
+    verticalAlign: "top",
+    marginRight: theme.spacing(0.5),
+    visibility: hidden ? "hidden" : "visible",
+  }),
+  link: {
+    border: "none",
+    cursor: "pointer",
+    color: "#036DCF",
+    textDecoration: "underline",
+    background: "none",
+  },
+});
 
 export type AdvancedProgressBarSegmentProps = {
   jobProgressGroup: JobProgressGroup;
@@ -112,6 +114,8 @@ export const AdvancedProgressBarSegment = ({
   onParentCollapseButtonPressed,
   onClickLink,
 }: AdvancedProgressBarSegmentProps) => {
+  const styles = useAdvancedProgressBarSegmentStyles(useTheme());
+
   const [expanded, setExpanded] = useState(startExpanded);
   const isGroup = type === "GROUP";
 
@@ -122,13 +126,6 @@ export const AdvancedProgressBarSegment = ({
     : expanded
     ? RiArrowDownSLine
     : RiArrowRightSLine;
-
-  const StyledIconComponent = styled(IconComponent)(({ theme }) => ({
-    width: 16,
-    height: 16,
-    verticalAlign: "top",
-    marginRight: theme.spacing(0.5),
-  }));
 
   const showCollapse = isGroup && expanded;
   const handleCollapse = showCollapse
@@ -142,21 +139,25 @@ export const AdvancedProgressBarSegment = ({
       {/* Don't show the "GROUP" type rows if it's expanded. We only show the children */}
       {isGroup && expanded ? null : (
         <TableRow>
-          <NameContainerTableCell
+          <TableCell
+            sx={styles.nameContainer}
             onClick={() => {
               setExpanded(!expanded);
             }}
           >
             {showParentCollapseButton && (
-              <StyledRiSubtractLine
+              <Box
+                component={RiSubtractLine}
                 title="Collapse group"
                 onClick={onParentCollapseButtonPressed}
+                sx={styles.icon(false)}
                 style={{ marginLeft: 24 * (nestedIndex - 1) }}
               />
             )}
-            <StyledIconComponent
+            <Box
+              component={IconComponent}
               title={expanded ? "Collapse" : "Expand"}
-              sx={[children.length === 0 && { visibility: "hidden" }]}
+              sx={styles.icon(children.length === 0)}
               style={{
                 // Complex logic on where to place the icon depending on the grouping type
                 marginLeft: showParentCollapseButton
@@ -167,32 +168,40 @@ export const AdvancedProgressBarSegment = ({
             />
             {link ? (
               link.type === "actor" ? (
-                <StyledButton
+                <Box
+                  component="button"
+                  sx={styles.link}
                   onClick={(event) => {
                     onClickLink?.(link);
                     event.stopPropagation();
                   }}
                 >
                   {name}
-                </StyledButton>
+                </Box>
               ) : (
-                <StyledLink to={`tasks/${link.id}`}>{name}</StyledLink>
+                <Link
+                  component={RouterLink}
+                  sx={styles.link}
+                  to={`tasks/${link.id}`}
+                >
+                  {name}
+                </Link>
               )
             ) : (
               name
             )}
             {isGroup && (
               <React.Fragment>
-                <SpacerSpan />
+                <Box component="span" sx={styles.spacer} />
                 {"("}
                 <RiCloseLine /> {children.length}
                 {")"}
               </React.Fragment>
             )}
-          </NameContainerTableCell>
-          <ProgressBarContainerTableCell>
+          </TableCell>
+          <TableCell sx={styles.progressBarContainer}>
             <MiniTaskProgressBar {...progress} showTotal />
-          </ProgressBarContainerTableCell>
+          </TableCell>
         </TableRow>
       )}
       {expanded &&

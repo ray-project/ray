@@ -1,6 +1,7 @@
 import {
   Box,
   InputAdornment,
+  SxProps,
   Table,
   TableBody,
   TableCell,
@@ -8,30 +9,35 @@ import {
   TableRow,
   TextField,
   TextFieldProps,
+  Theme,
+  Tooltip,
+  useTheme,
 } from "@mui/material";
 import Autocomplete from "@mui/material/Autocomplete";
 import Pagination from "@mui/material/Pagination";
 import React, { useState } from "react";
-import {
-  IdColTooltip,
-  OverflowColTooltip,
-  TableContainerDiv,
-} from "../common/RowStyles";
+import rowStyles from "../common/RowStyles";
 import { sliceToPage } from "../common/util";
 import { Bundle, PlacementGroup } from "../type/placementGroup";
 import { useFilter } from "../util/hook";
 import StateCounter from "./StatesCounter";
 import { StatusChip } from "./StatusChip";
 
-const BundleResourceRequirements = ({ bundles }: { bundles: Bundle[] }) => {
+const BundleResourceRequirements = ({
+  bundles,
+  sx,
+}: {
+  bundles: Bundle[];
+  sx?: SxProps<Theme>;
+}) => {
   return (
-    <div>
+    <Box sx={sx}>
       {bundles.map(({ unit_resources }, index) => {
         return `{${Object.entries(unit_resources || {})
           .map(([key, val]) => `${key}: ${val}`)
           .join(", ")}}, `;
       })}
-    </div>
+    </Box>
   );
 };
 
@@ -51,6 +57,8 @@ const PlacementGroupTable = ({
     constrainedPage,
     maxPage,
   } = sliceToPage(placementGroupList, pageNo, pageSize);
+  const styles = rowStyles(useTheme());
+
   const columns = [
     { label: "ID" },
     { label: "Name" },
@@ -135,7 +143,7 @@ const PlacementGroupTable = ({
           <StateCounter type="placementGroup" list={placementGroupList} />
         </div>
       </div>
-      <TableContainerDiv>
+      <Box sx={styles.tableContainer}>
         <Table>
           <TableHead>
             <TableRow>
@@ -164,9 +172,9 @@ const PlacementGroupTable = ({
               }) => (
                 <TableRow key={placement_group_id}>
                   <TableCell align="center">
-                    <IdColTooltip title={placement_group_id} arrow>
-                      <div>{placement_group_id}</div>
-                    </IdColTooltip>
+                    <Tooltip title={placement_group_id} arrow>
+                      <Box sx={styles.idCol}>{placement_group_id}</Box>
+                    </Tooltip>
                   </TableCell>
                   <TableCell align="center">{name ? name : "-"}</TableCell>
                   <TableCell align="center">{creator_job_id}</TableCell>
@@ -174,12 +182,15 @@ const PlacementGroupTable = ({
                     <StatusChip type="placementGroup" status={state} />
                   </TableCell>
                   <TableCell align="center">
-                    <OverflowColTooltip
+                    <Tooltip
                       title={<BundleResourceRequirements bundles={bundles} />}
                       arrow
                     >
-                      <BundleResourceRequirements bundles={bundles} />
-                    </OverflowColTooltip>
+                      <BundleResourceRequirements
+                        sx={styles.OverflowCol}
+                        bundles={bundles}
+                      />
+                    </Tooltip>
                   </TableCell>
                   <TableCell align="center">
                     {stats ? stats.scheduling_state : "-"}
@@ -189,7 +200,7 @@ const PlacementGroupTable = ({
             )}
           </TableBody>
         </Table>
-      </TableContainerDiv>
+      </Box>
     </div>
   );
 };

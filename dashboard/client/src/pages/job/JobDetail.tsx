@@ -1,5 +1,4 @@
-import { Box } from "@mui/material";
-import { styled } from "@mui/material/styles";
+import { Box, Theme, useTheme } from "@mui/material";
 import React, { useRef, useState } from "react";
 import useSWR from "swr";
 import { CollapsibleSection } from "../../common/CollapsibleSection";
@@ -25,27 +24,27 @@ import { JobDriverLogs } from "./JobDriverLogs";
 import { JobProgressBar } from "./JobProgressBar";
 import { TaskTimeline } from "./TaskTimeline";
 
-const RootDiv = styled("div")(({ theme }) => ({
-  padding: theme.spacing(2),
-  backgroundColor: "white",
-}));
-
-const StyledCollapsibleSection = styled(CollapsibleSection)(({ theme }) => ({
-  marginBottom: theme.spacing(4),
-}));
-
-const AutoscalerSection = styled(Box)(({ theme }) => ({
-  flexWrap: "wrap",
-  [theme.breakpoints.up("md")]: {
-    flexWrap: "nowrap",
+const useStyle = (theme: Theme) => ({
+  root: {
+    padding: theme.spacing(2),
+    backgroundColor: "white",
   },
-}));
-
-const StyledNodeCountCard = styled(NodeCountCard)(({ theme }) => ({
-  flex: "1 0 500px",
-}));
+  section: {
+    marginBottom: theme.spacing(4),
+  },
+  autoscalerSection: {
+    flexWrap: "wrap",
+    [theme.breakpoints.up("md")]: {
+      flexWrap: "nowrap",
+    },
+  },
+  nodeCountCard: {
+    flex: "1 0 500px",
+  },
+});
 
 export const JobDetailChartsPage = () => {
+  const styles = useStyle(useTheme());
   const { job, msg, isLoading, params } = useJobDetail();
 
   const [taskListFilter, setTaskListFilter] = useState<string>();
@@ -72,14 +71,14 @@ export const JobDetailChartsPage = () => {
 
   if (!job) {
     return (
-      <RootDiv>
+      <Box sx={styles.root}>
         <Loading loading={isLoading} />
         <TitleCard title={`JOB - ${params.id}`}>
           <StatusChip type="job" status="LOADING" />
           <br />
           Request Status: {msg} <br />
         </TitleCard>
-      </RootDiv>
+      </Box>
     );
   }
 
@@ -118,18 +117,22 @@ export const JobDetailChartsPage = () => {
   };
 
   return (
-    <RootDiv>
+    <Box sx={styles.root}>
       <JobMetadataSection job={job} />
 
       {data?.datasets && data.datasets.length > 0 && (
-        <StyledCollapsibleSection title="Ray Data Overview">
+        <CollapsibleSection title="Ray Data Overview" sx={styles.section}>
           <Section>
             <DataOverview datasets={data.datasets} />
           </Section>
-        </StyledCollapsibleSection>
+        </CollapsibleSection>
       )}
 
-      <StyledCollapsibleSection title="Ray Core Overview" startExpanded>
+      <CollapsibleSection
+        title="Ray Core Overview"
+        startExpanded
+        sx={styles.section}
+      >
         <Section>
           <JobProgressBar
             jobId={job.job_id ? job.job_id : undefined}
@@ -137,51 +140,58 @@ export const JobDetailChartsPage = () => {
             onClickLink={handleClickLink}
           />
         </Section>
-      </StyledCollapsibleSection>
+      </CollapsibleSection>
 
-      <StyledCollapsibleSection title="Logs" startExpanded>
+      <CollapsibleSection title="Logs" startExpanded sx={styles.section}>
         <Section noTopPadding>
           <JobDriverLogs job={job} />
         </Section>
-      </StyledCollapsibleSection>
+      </CollapsibleSection>
 
       {job.job_id && (
-        <StyledCollapsibleSection title="Task Timeline (beta)" startExpanded>
+        <CollapsibleSection
+          title="Task Timeline (beta)"
+          startExpanded
+          sx={styles.section}
+        >
           <Section>
             <TaskTimeline jobId={job.job_id} />
           </Section>
-        </StyledCollapsibleSection>
+        </CollapsibleSection>
       )}
 
-      <StyledCollapsibleSection
+      <CollapsibleSection
         title="Cluster status and autoscaler"
         startExpanded
+        sx={styles.section}
       >
-        <AutoscalerSection
+        <Box
           display="flex"
           flexDirection="row"
           gap={3}
           alignItems="stretch"
+          sx={styles.autoscalerSection}
         >
-          <StyledNodeCountCard />
+          <NodeCountCard sx={styles.nodeCountCard} />
           <Section flex="1 1 500px">
             <NodeStatusCard clusterStatus={clusterStatus} />
           </Section>
           <Section flex="1 1 500px">
             <ResourceStatusCard clusterStatus={clusterStatus} />
           </Section>
-        </AutoscalerSection>
-      </StyledCollapsibleSection>
+        </Box>
+      </CollapsibleSection>
 
       {job.job_id && (
         <React.Fragment>
-          <StyledCollapsibleSection
+          <CollapsibleSection
             ref={taskTableRef}
             title="Task Table"
             expanded={taskTableExpanded}
             onExpandButtonClick={() => {
               setTaskTableExpanded(!taskTableExpanded);
             }}
+            sx={styles.section}
           >
             <Section>
               <TaskList
@@ -190,15 +200,16 @@ export const JobDetailChartsPage = () => {
                 onFilterChange={handleTaskListFilterChange}
               />
             </Section>
-          </StyledCollapsibleSection>
+          </CollapsibleSection>
 
-          <StyledCollapsibleSection
+          <CollapsibleSection
             ref={actorTableRef}
             title="Actor Table"
             expanded={actorTableExpanded}
             onExpandButtonClick={() => {
               setActorTableExpanded(!actorTableExpanded);
             }}
+            sx={styles.section}
           >
             <Section>
               <ActorList
@@ -208,15 +219,15 @@ export const JobDetailChartsPage = () => {
                 detailPathPrefix="actors"
               />
             </Section>
-          </StyledCollapsibleSection>
+          </CollapsibleSection>
 
-          <StyledCollapsibleSection title="Placement Group Table">
+          <CollapsibleSection title="Placement Group Table" sx={styles.section}>
             <Section>
               <PlacementGroupList jobId={job.job_id} />
             </Section>
-          </StyledCollapsibleSection>
+          </CollapsibleSection>
         </React.Fragment>
       )}
-    </RootDiv>
+    </Box>
   );
 };

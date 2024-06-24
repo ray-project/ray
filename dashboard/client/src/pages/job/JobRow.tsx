@@ -1,5 +1,12 @@
-import { Link, TableCell, TableRow, Tooltip } from "@mui/material";
-import { styled } from "@mui/material/styles";
+import {
+  Box,
+  Link,
+  TableCell,
+  TableRow,
+  Theme,
+  Tooltip,
+  useTheme,
+} from "@mui/material";
 import React from "react";
 import { Link as RouterLink } from "react-router-dom";
 import { CodeDialogButtonWithPreview } from "../../common/CodeDialogButton";
@@ -15,19 +22,20 @@ import { UnifiedJob } from "../../type/job";
 import { useJobProgress } from "./hook/useJobProgress";
 import { MiniTaskProgressBar } from "./TaskProgressBar";
 
-const OverflowCell = styled(Tooltip)(({ theme }) => ({
-  display: "block",
-  margin: "auto",
-  maxWidth: 360,
-  textOverflow: "ellipsis",
-  overflow: "hidden",
-  whiteSpace: "nowrap",
-}));
-
-const StatusMessage = styled(CodeDialogButtonWithPreview)(({ theme }) => ({
-  maxWidth: 250,
-  display: "inline-flex",
-}));
+const useStyles = (theme: Theme) => ({
+  overflowCell: {
+    display: "block",
+    margin: "auto",
+    maxWidth: 360,
+    textOverflow: "ellipsis",
+    overflow: "hidden",
+    whiteSpace: "nowrap",
+  },
+  statusMessage: {
+    maxWidth: 250,
+    display: "inline-flex",
+  },
+});
 
 type JobRowProps = {
   job: UnifiedJob;
@@ -45,6 +53,7 @@ export const JobRow = ({ job }: JobRowProps) => {
     entrypoint,
   } = job;
   const { progress, error, driverExists } = useJobProgress(job_id ?? undefined);
+  const styles = useStyles(useTheme());
 
   const progressBar = (() => {
     if (!driverExists) {
@@ -80,16 +89,20 @@ export const JobRow = ({ job }: JobRowProps) => {
       </TableCell>
       <TableCell align="center">{submission_id ?? "-"}</TableCell>
       <TableCell align="center">
-        <OverflowCell title={entrypoint} arrow>
-          <div>{entrypoint}</div>
-        </OverflowCell>
+        <Tooltip title={entrypoint} arrow>
+          <Box sx={styles.overflowCell}>{entrypoint}</Box>
+        </Tooltip>
       </TableCell>
       <TableCell align="center">
         <JobStatusWithIcon job={job} />
       </TableCell>
       <TableCell align="center">
         {message ? (
-          <StatusMessage title="Status message" code={message} />
+          <CodeDialogButtonWithPreview
+            sx={styles.statusMessage}
+            title="Status message"
+            code={message}
+          />
         ) : (
           "-"
         )}

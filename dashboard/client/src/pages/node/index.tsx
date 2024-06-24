@@ -12,10 +12,11 @@ import {
   TableContainer,
   TableHead,
   TableRow,
+  Theme,
   Typography,
+  useTheme,
 } from "@mui/material";
 import Pagination from "@mui/material/Pagination";
-import { styled } from "@mui/material/styles";
 import React from "react";
 import { Outlet, Link as RouterLink } from "react-router-dom";
 import { sliceToPage } from "../../common/util";
@@ -32,15 +33,16 @@ import { MainNavPageInfo } from "../layout/mainNavContext";
 import { useNodeList } from "./hook/useNodeList";
 import { NodeRows } from "./NodeRow";
 
-const RootDiv = styled("div")(({ theme }) => ({
-  padding: theme.spacing(2),
-  width: "100%",
-  position: "relative",
-}));
-
-const StyledHelpInfo = styled(HelpInfo)(({ theme }) => ({
-  marginLeft: theme.spacing(1),
-}));
+const useStyles = (theme: Theme) => ({
+  root: {
+    padding: theme.spacing(2),
+    width: "100%",
+    position: "relative",
+  },
+  helpInfo: {
+    marginLeft: theme.spacing(1),
+  },
+});
 
 const codeTextStyle = {
   fontFamily: "Roboto Mono, monospace",
@@ -238,6 +240,7 @@ export const NodeCard = (props: { node: NodeDetail }) => {
 };
 
 const Nodes = () => {
+  const styles = useStyles(useTheme());
   const {
     msg,
     isLoading,
@@ -260,7 +263,7 @@ const Nodes = () => {
   } = sliceToPage(nodeList, page.pageNo, page.pageSize);
 
   return (
-    <RootDiv>
+    <Box sx={styles.root}>
       <Loading loading={isLoading} />
       <TitleCard title="NODES">
         Auto Refresh:
@@ -366,7 +369,7 @@ const Nodes = () => {
                       >
                         {label}
                         {helpInfo && (
-                          <StyledHelpInfo>{helpInfo}</StyledHelpInfo>
+                          <HelpInfo sx={styles.helpInfo}>{helpInfo}</HelpInfo>
                         )}
                       </Box>
                     </TableCell>
@@ -396,7 +399,7 @@ const Nodes = () => {
           </Grid>
         )}
       </TitleCard>
-    </RootDiv>
+    </Box>
   );
 };
 

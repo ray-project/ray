@@ -1,5 +1,4 @@
-import { Box, Typography } from "@mui/material";
-import { styled } from "@mui/material/styles";
+import { Box, SxProps, Theme, Typography, useTheme } from "@mui/material";
 import React, {
   forwardRef,
   PropsWithChildren,
@@ -9,27 +8,22 @@ import React, {
 import { RiArrowDownSLine, RiArrowRightSLine } from "react-icons/ri";
 import { ClassNameProps } from "./props";
 
-const TitleTypography = styled(Typography)(({ theme }) => ({
-  display: "flex",
-  flexDirection: "row",
-  flexWrap: "nowrap",
-  alignItems: "center",
-  fontWeight: 500,
-  cursor: "pointer",
-  marginRight: theme.spacing(1),
-}));
-
-const SRiArrowDownSLine = styled(RiArrowDownSLine)(({ theme }) => ({
-  marginRight: theme.spacing(1),
-  width: 24,
-  height: 24,
-}));
-
-const SRiArrowRightSLine = styled(RiArrowRightSLine)(({ theme }) => ({
-  marginRight: theme.spacing(1),
-  width: 24,
-  height: 24,
-}));
+const useStyles = (theme: Theme) => ({
+  title: {
+    display: "flex",
+    flexDirection: "row",
+    flexWrap: "nowrap",
+    alignItems: "center",
+    fontWeight: 500,
+    cursor: "pointer",
+    marginRight: theme.spacing(1),
+  },
+  icon: {
+    marginRight: theme.spacing(1),
+    width: 24,
+    height: 24,
+  },
+});
 
 type CollapsibleSectionProps = PropsWithChildren<
   {
@@ -50,6 +44,7 @@ type CollapsibleSectionProps = PropsWithChildren<
      * When enabled, we will keep the content around when collapsing but hide it via css.
      */
     keepRendered?: boolean;
+    sx?: SxProps<Theme>;
   } & ClassNameProps
 >;
 
@@ -67,9 +62,11 @@ export const CollapsibleSection = forwardRef<
       children,
       keepRendered,
       icon,
+      sx,
     },
     ref,
   ) => {
+    const styles = useStyles(useTheme());
     const [internalExpanded, setInternalExpanded] = useState(startExpanded);
     const finalExpanded = expanded !== undefined ? expanded : internalExpanded;
 
@@ -79,25 +76,36 @@ export const CollapsibleSection = forwardRef<
     };
 
     return (
-      <div ref={ref} className={className}>
+      <Box ref={ref} className={className} sx={sx}>
         <Box display="flex" flexDirection="row" alignItems="center">
-          <TitleTypography variant="h4" onClick={handleExpandClick}>
-            {finalExpanded ? <SRiArrowDownSLine /> : <SRiArrowRightSLine />}
+          <Typography
+            sx={styles.title}
+            variant="h4"
+            onClick={handleExpandClick}
+          >
+            {finalExpanded ? (
+              <Box component={RiArrowDownSLine} sx={styles.icon} />
+            ) : (
+              <Box component={RiArrowRightSLine} sx={styles.icon} />
+            )}
             {title}
-          </TitleTypography>
+          </Typography>
           {icon}
         </Box>
         <HideableBlock visible={finalExpanded} keepRendered={keepRendered}>
           {children}
         </HideableBlock>
-      </div>
+      </Box>
     );
   },
 );
 
-const HideableBlockDiv = styled("div")(({ theme }) => ({
-  marginTop: theme.spacing(1),
-}));
+const useHideableBlockStyles = (theme: Theme) => ({
+  body: (hidden: boolean) => ({
+    marginTop: theme.spacing(1),
+    display: hidden ? "none" : "block",
+  }),
+});
 
 type HideableBlockProps = PropsWithChildren<
   {
@@ -120,6 +128,8 @@ export const HideableBlock = ({
   keepRendered,
   children,
 }: HideableBlockProps) => {
+  const styles = useHideableBlockStyles(useTheme());
+
   // visible represents whether the component is viewable in the browser.
   // Rendered represents whether the DOM elements exist in the DOM tree.
   // If !visible && rendered, then the elements are in the DOM but are
@@ -135,8 +145,6 @@ export const HideableBlock = ({
   // Optimization to keep the component rendered (but not visible) when hidden
   // to avoid re-rendering when component is shown again.
   return visible || (keepRendered && rendered) ? (
-    <HideableBlockDiv sx={[!visible && { display: "none" }]}>
-      {children}
-    </HideableBlockDiv>
+    <Box sx={styles.body(!visible)}>{children}</Box>
   ) : null;
 };

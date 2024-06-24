@@ -1,5 +1,4 @@
-import { Link, TableCell, TableRow } from "@mui/material";
-import { styled } from "@mui/material/styles";
+import { Link, TableCell, TableRow, Theme, useTheme } from "@mui/material";
 import React from "react";
 import { Link as RouterLink } from "react-router-dom";
 import {
@@ -16,10 +15,15 @@ import {
 } from "../../type/serve";
 import { useViewServeDeploymentMetricsButtonUrl } from "./ServeDeploymentMetricsSection";
 
-const StatusMessage = styled(CodeDialogButtonWithPreview)(({ theme }) => ({
-  maxWidth: 400,
-  display: "inline-flex",
-}));
+const useStyles = (theme: Theme) => ({
+  deploymentName: (showExpandColumn: boolean) => ({
+    fontWeight: showExpandColumn ? 500 : 400, // bold style for when name is the first column, e.g. on the Deployment page
+  }),
+  statusMessage: {
+    maxWidth: 400,
+    display: "inline-flex",
+  },
+});
 
 export type ServeDeploymentRowProps = {
   deployment: ServeDeployment;
@@ -36,6 +40,8 @@ export const ServeDeploymentRow = ({
 }: ServeDeploymentRowProps) => {
   const { name, status, message, deployment_config, replicas } = deployment;
 
+  const styles = useStyles(useTheme());
+
   const metricsUrl = useViewServeDeploymentMetricsButtonUrl(name);
 
   return (
@@ -46,10 +52,7 @@ export const ServeDeploymentRow = ({
             {/* Empty column for expand/unexpand button in the row of the parent Serve application. */}
           </TableCell>
         )}
-        <TableCell
-          align="center"
-          sx={{ fontWeight: showExpandColumn ? 500 : 400 }}
-        >
+        <TableCell align="center" sx={styles.deploymentName(showExpandColumn)}>
           <Link
             component={RouterLink}
             to={`/serve/applications/${encodeURIComponent(
@@ -64,7 +67,11 @@ export const ServeDeploymentRow = ({
         </TableCell>
         <TableCell align="center">
           {message ? (
-            <StatusMessage title="Message details" code={message} />
+            <CodeDialogButtonWithPreview
+              sx={styles.statusMessage}
+              title="Message details"
+              code={message}
+            />
           ) : (
             "-"
           )}

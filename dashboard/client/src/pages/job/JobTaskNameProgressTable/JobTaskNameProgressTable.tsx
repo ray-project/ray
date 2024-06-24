@@ -7,17 +7,20 @@ import {
   TableContainer,
   TableHead,
   TableRow,
+  Theme,
+  useTheme,
 } from "@mui/material";
-import { styled } from "@mui/material/styles";
 import React, { ReactElement } from "react";
 import { ClassNameProps } from "../../../common/props";
 import { HelpInfo } from "../../../components/Tooltip";
 import { useJobProgressByTaskName } from "../hook/useJobProgress";
 import { MiniTaskProgressBar } from "../TaskProgressBar";
 
-const StyledHelpInfo = styled(HelpInfo)(({ theme }) => ({
-  marginLeft: theme.spacing(1),
-}));
+const useStyles = (theme: Theme) => ({
+  helpInfo: {
+    marginLeft: theme.spacing(1),
+  },
+});
 
 const columns: { label: string; helpInfo?: ReactElement }[] = [
   { label: "Task name" },
@@ -35,6 +38,8 @@ export const JobTaskNameProgressTable = ({
   jobId,
   className,
 }: JobTaskNameProgressTableProps) => {
+  const styles = useStyles(useTheme());
+
   const { progress, page, setPage, total } = useJobProgressByTaskName(jobId);
 
   return (
@@ -53,7 +58,9 @@ export const JobTaskNameProgressTable = ({
               <TableCell align="center" key={label}>
                 <Box display="flex" justifyContent="center" alignItems="center">
                   {label}
-                  {helpInfo && <StyledHelpInfo>{helpInfo}</StyledHelpInfo>}
+                  {helpInfo && (
+                    <HelpInfo sx={styles.helpInfo}>{helpInfo}</HelpInfo>
+                  )}
                 </Box>
               </TableCell>
             ))}

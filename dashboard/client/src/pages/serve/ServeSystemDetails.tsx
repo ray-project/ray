@@ -7,9 +7,10 @@ import {
   TableContainer,
   TableHead,
   TableRow,
+  Theme,
   Typography,
+  useTheme,
 } from "@mui/material";
-import { styled } from "@mui/material/styles";
 import _ from "lodash";
 import React, { ReactElement } from "react";
 import { sliceToPage } from "../../common/util";
@@ -28,13 +29,15 @@ import { LinkWithArrow } from "../overview/cards/OverviewCard";
 import { convertActorStateForServeController } from "./ServeSystemActorDetailPage";
 import { ServeControllerRow, ServeProxyRow } from "./ServeSystemDetailRows";
 
-const TitleTypography = styled(Typography)(({ theme }) => ({
-  marginBottom: theme.spacing(2),
-}));
-
-const StyledHelpInfo = styled(HelpInfo)(({ theme }) => ({
-  marginLeft: theme.spacing(1),
-}));
+const useStyles = (theme: Theme) => ({
+  table: {},
+  title: {
+    marginBottom: theme.spacing(2),
+  },
+  helpInfo: {
+    marginLeft: theme.spacing(1),
+  },
+});
 
 export type ServeDetails = Pick<
   ServeApplicationsRsp,
@@ -62,6 +65,8 @@ export const ServeSystemDetails = ({
   page,
   setPage,
 }: ServeSystemDetailsProps) => {
+  const styles = useStyles(useTheme());
+
   const {
     items: list,
     constrainedPage,
@@ -70,7 +75,9 @@ export const ServeSystemDetails = ({
 
   return (
     <div>
-      <TitleTypography variant="h3">System</TitleTypography>
+      <Typography variant="h3" sx={styles.title}>
+        System
+      </Typography>
       {serveDetails.http_options && (
         <MetadataSection
           metadataList={[
@@ -112,7 +119,7 @@ export const ServeSystemDetails = ({
             onChange={(e, pageNo) => setPage("pageNo", pageNo)}
           />
         </div>
-        <Table>
+        <Table sx={styles.table}>
           <TableHead>
             <TableRow>
               {columns.map(({ label, helpInfo, width }) => (
@@ -127,7 +134,9 @@ export const ServeSystemDetails = ({
                     alignItems="center"
                   >
                     {label}
-                    {helpInfo && <StyledHelpInfo>{helpInfo}</StyledHelpInfo>}
+                    {helpInfo && (
+                      <HelpInfo sx={styles.helpInfo}>{helpInfo}</HelpInfo>
+                    )}
                   </Box>
                 </TableCell>
               ))}

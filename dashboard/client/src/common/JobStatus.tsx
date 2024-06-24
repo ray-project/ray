@@ -1,7 +1,5 @@
-import { Box } from "@mui/material";
-import { styled } from "@mui/material/styles";
+import { Box, SxProps, Theme, useTheme } from "@mui/material";
 import React from "react";
-import { IconBaseProps } from "react-icons";
 import {
   RiCheckboxCircleFill,
   RiCloseCircleFill,
@@ -12,95 +10,105 @@ import { StatusChip } from "../components/StatusChip";
 import { JobStatus, UnifiedJob } from "../type/job";
 import { ClassNameProps } from "./props";
 
-const iconSmall = {
-  width: 16,
-  height: 16,
-};
-
-const JobRunningIconType = styled(RiLoader4Line)(({ theme }) => ({
-  width: 20,
-  height: 20,
-  animation: `spinner 2s linear infinite`,
-  color: "#1E88E5",
-  animationName: "$spinner",
-  animationDuration: "1000ms",
-  animationIterationCount: "infinite",
-  animationTimingFunction: "linear",
-  "@keyframes spinner": {
-    from: {
-      transform: "rotate(0deg)",
-    },
-    to: {
-      transform: "rotate(360deg)",
-    },
+const useJobRunningIconStyles = (theme: Theme) => ({
+  icon: (small: boolean) => ({
+    width: small ? 16 : 20,
+    height: small ? 16 : 20,
+  }),
+  iconRunning: {
+    color: "#1E88E5",
+    animation: `
+      spinner 1s linear infinite;
+      @keyframes spinner
+      from {
+        transform: rotate(0deg)
+      },
+      to {
+        transform: rotate(360deg)
+      }`,
   },
-}));
+});
 
-type JobRunningIconProps = { small?: boolean } & ClassNameProps & IconBaseProps;
+type JobRunningIconProps = {
+  title?: string;
+  small?: boolean;
+  sx?: SxProps<Theme>;
+} & ClassNameProps;
 
 export const JobRunningIcon = ({
   className,
+  title,
   small = false,
+  sx,
   ...props
 }: JobRunningIconProps) => {
+  const styles = useJobRunningIconStyles(useTheme());
   return (
-    <JobRunningIconType
-      className={className}
-      sx={[small && iconSmall]}
+    <Box
+      component={RiLoader4Line}
+      sx={Object.assign({}, styles.icon(small), styles.iconRunning, sx)}
+      title={title}
       {...props}
     />
   );
 };
 
-const JobSuccessIconElement = styled(RiCheckboxCircleFill)(({ theme }) => ({
-  width: 20,
-  height: 20,
-  color: theme.palette.success.main,
-}));
-
-const JobErrorIconElement = styled(RiCloseCircleFill)(({ theme }) => ({
-  width: 20,
-  height: 20,
-  color: theme.palette.error.main,
-}));
-
-const JobStoppedIconElement = styled(RiStopCircleFill)(({ theme }) => ({
-  width: 20,
-  height: 20,
-  color: "#757575",
-}));
+const useJobStatusIconStyles = (theme: Theme) => ({
+  icon: (small: boolean) => ({
+    width: small ? 16 : 20,
+    height: small ? 16 : 20,
+  }),
+  colorSuccess: {
+    color: theme.palette.success.main,
+  },
+  colorError: {
+    color: theme.palette.error.main,
+  },
+  colorStopped: {
+    color: "#757575",
+  },
+});
 
 type JobStatusIconProps = {
   job: UnifiedJob;
   small?: boolean;
+  sx?: SxProps<Theme>;
 } & ClassNameProps;
 
 export const JobStatusIcon = ({
   job,
   small = false,
   className,
+  sx,
 }: JobStatusIconProps) => {
+  const styles = useJobStatusIconStyles(useTheme());
   switch (job.status) {
     case JobStatus.SUCCEEDED:
       return (
-        <JobSuccessIconElement
+        <Box
+          component={RiCheckboxCircleFill}
           className={className}
-          sx={[small && iconSmall]}
+          sx={Object.assign({}, styles.icon(small), styles.colorSuccess, sx)}
         />
       );
     case JobStatus.FAILED:
       return (
-        <JobErrorIconElement className={className} sx={[small && iconSmall]} />
+        <Box
+          component={RiCloseCircleFill}
+          className={className}
+          sx={Object.assign({}, styles.icon(small), styles.colorError, sx)}
+        />
       );
     case JobStatus.STOPPED:
       return (
-        <JobStoppedIconElement
+        <Box
+          component={RiStopCircleFill}
           className={className}
-          sx={[small && iconSmall]}
+          sx={Object.assign(styles.icon(small), styles.colorStopped, sx)}
         />
       );
     default:
-      return <JobRunningIcon className={className} small={small} />;
+      return <JobRunningIcon className={className} sx={sx} small={small} />;
   }
 };
 

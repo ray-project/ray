@@ -10,9 +10,10 @@ import {
   TableRow,
   TextField,
   TextFieldProps,
+  Theme,
   Typography,
+  useTheme,
 } from "@mui/material";
-import { styled } from "@mui/material/styles";
 import React, { ReactElement } from "react";
 import { Outlet, useParams } from "react-router-dom";
 import { CodeDialogButton } from "../../common/CodeDialogButton";
@@ -28,13 +29,21 @@ import { MainNavPageInfo } from "../layout/mainNavContext";
 import { useServeApplicationDetails } from "./hook/useServeApplications";
 import { ServeDeploymentRow } from "./ServeDeploymentRow";
 
-const RootDiv = styled("div")(({ theme }) => ({
-  padding: theme.spacing(3),
-}));
-
-const StyledHelpInfo = styled(HelpInfo)(({ theme }) => ({
-  marginLeft: theme.spacing(1),
-}));
+const useStyles = (theme: Theme) => ({
+  root: {
+    padding: theme.spacing(3),
+  },
+  table: {
+    tableLayout: "fixed",
+  },
+  helpInfo: {
+    marginLeft: theme.spacing(1),
+  },
+  statusMessage: {
+    display: "inline-flex",
+    maxWidth: "100%",
+  },
+});
 
 const columns: { label: string; helpInfo?: ReactElement; width?: string }[] = [
   { label: "Deployment name" },
@@ -48,6 +57,7 @@ const columns: { label: string; helpInfo?: ReactElement; width?: string }[] = [
 ];
 
 export const ServeApplicationDetailPage = () => {
+  const styles = useStyles(useTheme());
   const { applicationName } = useParams();
 
   const {
@@ -76,7 +86,7 @@ export const ServeApplicationDetailPage = () => {
   } = sliceToPage(filteredDeployments, page.pageNo, page.pageSize);
 
   return (
-    <RootDiv>
+    <Box sx={styles.root}>
       <MetadataSection
         metadataList={[
           {
@@ -220,7 +230,9 @@ export const ServeApplicationDetailPage = () => {
                       alignItems="center"
                     >
                       {label}
-                      {helpInfo && <StyledHelpInfo>{helpInfo}</StyledHelpInfo>}
+                      {helpInfo && (
+                        <HelpInfo sx={styles.helpInfo}>{helpInfo}</HelpInfo>
+                      )}
                     </Box>
                   </TableCell>
                 ))}
@@ -239,7 +251,7 @@ export const ServeApplicationDetailPage = () => {
           </Table>
         </TableContainer>
       </CollapsibleSection>
-    </RootDiv>
+    </Box>
   );
 };
 

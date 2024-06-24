@@ -10,9 +10,10 @@ import {
   TableRow,
   TextField,
   TextFieldProps,
+  Theme,
   Typography,
+  useTheme,
 } from "@mui/material";
-import { styled } from "@mui/material/styles";
 import React, { ReactElement } from "react";
 import { Outlet, useParams } from "react-router-dom";
 import { CodeDialogButton } from "../../common/CodeDialogButton";
@@ -29,17 +30,20 @@ import { useServeDeploymentDetails } from "./hook/useServeApplications";
 import { ServeReplicaRow } from "./ServeDeploymentRow";
 import { ServeEntityLogViewer } from "./ServeEntityLogViewer";
 
-const RootDiv = styled("div")(({ theme }) => ({
-  padding: theme.spacing(3),
-}));
-
-const StyledHelpInfo = styled(HelpInfo)(({ theme }) => ({
-  marginTop: theme.spacing(2),
-}));
-
-const LogCollapsibleSection = styled(CollapsibleSection)(({ theme }) => ({
-  marginTop: theme.spacing(4),
-}));
+const useStyles = (theme: Theme) => ({
+  root: {
+    padding: theme.spacing(3),
+  },
+  table: {
+    tableLayout: "fixed",
+  },
+  helpInfo: {
+    marginLeft: theme.spacing(1),
+  },
+  logSection: {
+    marginTop: theme.spacing(4),
+  },
+});
 
 const columns: { label: string; helpInfo?: ReactElement; width?: string }[] = [
   { label: "Replica ID" },
@@ -50,6 +54,7 @@ const columns: { label: string; helpInfo?: ReactElement; width?: string }[] = [
 ];
 
 export const ServeDeploymentDetailPage = () => {
+  const styles = useStyles(useTheme());
   const { applicationName, deploymentName } = useParams();
 
   const {
@@ -84,7 +89,7 @@ export const ServeDeploymentDetailPage = () => {
   } = sliceToPage(filteredReplicas, page.pageNo, page.pageSize);
 
   return (
-    <RootDiv>
+    <Box sx={styles.root}>
       <MetadataSection
         metadataList={[
           {
@@ -211,7 +216,9 @@ export const ServeDeploymentDetailPage = () => {
                       alignItems="center"
                     >
                       {label}
-                      {helpInfo && <StyledHelpInfo>{helpInfo}</StyledHelpInfo>}
+                      {helpInfo && (
+                        <HelpInfo sx={styles.helpInfo}>{helpInfo}</HelpInfo>
+                      )}
                     </Box>
                   </TableCell>
                 ))}
@@ -229,10 +236,10 @@ export const ServeDeploymentDetailPage = () => {
           </Table>
         </TableContainer>
       </CollapsibleSection>
-      <LogCollapsibleSection title="Logs" startExpanded>
+      <CollapsibleSection title="Logs" startExpanded sx={styles.logSection}>
         <ServeEntityLogViewer deployments={[deployment]} />
-      </LogCollapsibleSection>
-    </RootDiv>
+      </CollapsibleSection>
+    </Box>
   );
 };
 

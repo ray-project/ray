@@ -1,4 +1,4 @@
-import { styled } from "@mui/material/styles";
+import { Box, Theme, useTheme } from "@mui/material";
 import React from "react";
 import { Outlet } from "react-router-dom";
 import { CollapsibleSection } from "../../common/CollapsibleSection";
@@ -20,14 +20,26 @@ import TaskList from "../state/task";
 import { ActorLogs } from "./ActorLogs";
 import { useActorDetail } from "./hook/useActorDetail";
 
-const ActorDetailPageRoot = styled("div")(({ theme }) => ({
-  padding: theme.spacing(2),
-  backgroundColor: "white",
-}));
-
-const TasksSection = styled(CollapsibleSection)(({ theme }) => ({
-  marginTop: theme.spacing(4),
-}));
+const useStyle = (theme: Theme) => ({
+  root: {
+    padding: theme.spacing(2),
+    backgroundColor: "white",
+  },
+  paper: {
+    padding: theme.spacing(2),
+    marginTop: theme.spacing(2),
+    marginBottom: theme.spacing(2),
+  },
+  label: {
+    fontWeight: "bold",
+  },
+  tab: {
+    marginBottom: theme.spacing(2),
+  },
+  tasksSection: {
+    marginTop: theme.spacing(4),
+  },
+});
 
 export const ActorDetailLayout = () => {
   const { params, actorDetail } = useActorDetail();
@@ -56,23 +68,24 @@ export const ActorDetailLayout = () => {
 };
 
 const ActorDetailPage = () => {
+  const styles = useStyle(useTheme());
   const { params, actorDetail, msg, isLoading } = useActorDetail();
 
   if (isLoading || actorDetail === undefined) {
     return (
-      <ActorDetailPageRoot>
+      <Box sx={styles.root}>
         <Loading loading={isLoading} />
         <TitleCard title={`ACTOR - ${params.actorId}`}>
           <StatusChip type="actor" status="LOADING" />
           <br />
           Request Status: {msg} <br />
         </TitleCard>
-      </ActorDetailPageRoot>
+      </Box>
     );
   }
 
   return (
-    <ActorDetailPageRoot>
+    <Box sx={styles.root}>
       <MetadataSection
         metadataList={[
           {
@@ -212,12 +225,12 @@ const ActorDetailPage = () => {
           <ActorLogs actor={actorDetail} />
         </Section>
       </CollapsibleSection>
-      <TasksSection title="Tasks History">
+      <CollapsibleSection title="Tasks History" sx={styles.tasksSection}>
         <Section>
           <TaskList jobId={actorDetail.jobId} actorId={params.actorId} />
         </Section>
-      </TasksSection>
-    </ActorDetailPageRoot>
+      </CollapsibleSection>
+    </Box>
   );
 };
 

@@ -1,19 +1,24 @@
-import { styled } from "@mui/material/styles";
+import { SxProps, Theme, useTheme } from "@mui/material";
 import _ from "lodash";
 import React from "react";
 import { ServeStatusIcon } from "../../../common/ServeStatus";
 import { ListItemCard } from "../../../components/ListItemCard";
 import { useServeDeployments } from "../../serve/hook/useServeApplications";
 
-const StyledServeStatusIcon = styled(ServeStatusIcon)(({ theme }) => ({
-  marginRight: theme.spacing(1),
-}));
+const useStyles = (theme: Theme) => ({
+  icon: {
+    marginRight: theme.spacing(1),
+  },
+});
 
 type RecentServeCardProps = {
   className?: string;
+  sx?: SxProps<Theme>;
 };
 
-export const RecentServeCard = ({ className }: RecentServeCardProps) => {
+export const RecentServeCard = ({ className, sx }: RecentServeCardProps) => {
+  const styles = useStyles(useTheme());
+
   const { serveDeployments: deployments } = useServeDeployments();
 
   const sortedDeployments = _.orderBy(
@@ -36,7 +41,7 @@ export const RecentServeCard = ({ className }: RecentServeCardProps) => {
             )}/${encodeURIComponent(deployment.name)}`
           : undefined,
       className: className,
-      icon: <StyledServeStatusIcon deployment={deployment} small />,
+      icon: <ServeStatusIcon sx={styles.icon} deployment={deployment} small />,
     };
   });
 
@@ -44,6 +49,7 @@ export const RecentServeCard = ({ className }: RecentServeCardProps) => {
     <ListItemCard
       headerTitle="Serve Deployments"
       className={className}
+      sx={sx}
       items={sortedDeploymentsToRender}
       emptyListText="No Deployments yet..."
       footerText="View all deployments"

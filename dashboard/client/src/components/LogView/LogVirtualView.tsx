@@ -1,9 +1,14 @@
-import { Box, Typography } from "@mui/material";
-import { styled } from "@mui/material/styles";
+import { Box, Theme, Typography, useTheme } from "@mui/material";
 import dayjs from "dayjs";
 import prolog from "highlight.js/lib/languages/prolog";
 import { lowlight } from "lowlight";
-import React, { MutableRefObject, useCallback, useEffect, useRef, useState } from "react";
+import React, {
+  MutableRefObject,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import { FixedSizeList as List } from "react-window";
 import DialogWithTitle from "../../common/DialogWithTitle";
 import "./darcula.css";
@@ -88,9 +93,11 @@ export type LogVirtualViewProps = {
   endTime?: string;
 };
 
-const WarningInfo = styled("p")(({ theme }) => ({
-  color: theme.palette.error.main,
-}));
+const useStyles = (theme: Theme) => ({
+  warningInfo: {
+    color: theme.palette.error.main,
+  },
+});
 
 type LogLineDetailDialogProps = {
   formattedLogLine: string;
@@ -172,6 +179,7 @@ const LogVirtualView: React.FC<LogVirtualViewProps> = ({
   const timmer = useRef<ReturnType<typeof setTimeout>>();
   const el = useRef<List>(null);
   const outter = useRef<HTMLDivElement>(null);
+  const styles = useStyles(useTheme());
   if (listRef) {
     listRef.current = outter.current;
   }
@@ -224,7 +232,7 @@ const LogVirtualView: React.FC<LogVirtualViewProps> = ({
         }}
       >
         {lowlight
-          .highlight(language, origin)
+          .highlight(language, message)
           .children.map((v) => value2react(v, index.toString(), keywords))}
         <br />
       </Box>
@@ -298,11 +306,11 @@ const LogVirtualView: React.FC<LogVirtualViewProps> = ({
   return (
     <div>
       {logs && logs.length > MAX_LINES_FOR_LOGS && (
-        <WarningInfo>
+        <Box component="p" sx={styles.warningInfo}>
           [Truncation warning] This log has been truncated and only the latest{" "}
           {MAX_LINES_FOR_LOGS} lines are displayed. Click "Download" button
           above to see the full log
-        </WarningInfo>
+        </Box>
       )}
       <List
         height={height || (content.split("\n").length + 1) * 18}

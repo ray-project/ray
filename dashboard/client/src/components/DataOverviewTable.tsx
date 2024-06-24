@@ -8,15 +8,16 @@ import {
   TableRow,
   TextField,
   TextFieldProps,
+  Theme,
   Typography,
+  useTheme,
 } from "@mui/material";
 import Autocomplete from "@mui/material/Autocomplete";
 import Pagination from "@mui/material/Pagination";
-import { styled } from "@mui/material/styles";
 import React, { useState } from "react";
 import { RiArrowDownSLine, RiArrowRightSLine } from "react-icons/ri";
 import { formatDateFromTimeMs } from "../common/formatUtils";
-import { StyledHelpInfo } from "../common/RowStyles";
+import rowStyles from "../common/RowStyles";
 import { sliceToPage } from "../common/util";
 import { TaskProgressBar } from "../pages/job/TaskProgressBar";
 import { DatasetMetrics, OperatorMetrics } from "../type/data";
@@ -24,6 +25,7 @@ import { memoryConverter } from "../util/converter";
 import { useFilter } from "../util/hook";
 import StateCounter from "./StatesCounter";
 import { StatusChip } from "./StatusChip";
+import { HelpInfo } from "./Tooltip";
 
 const columns = [
   { label: "" }, // Empty column for dropdown icons
@@ -84,6 +86,8 @@ const DataOverviewTable = ({
     maxPage,
   } = sliceToPage(datasetList, pageNo, pageSize);
 
+  const styles = rowStyles(useTheme());
+
   return (
     <div>
       <div style={{ flex: 1, display: "flex", alignItems: "center" }}>
@@ -122,7 +126,9 @@ const DataOverviewTable = ({
                     alignItems="center"
                   >
                     {label}
-                    {helpInfo && <StyledHelpInfo>{helpInfo}</StyledHelpInfo>}
+                    {helpInfo && (
+                      <HelpInfo sx={styles.helpInfo}>{helpInfo}</HelpInfo>
+                    )}
                   </Box>
                 </TableCell>
               ))}
@@ -150,15 +156,12 @@ const DataOverviewTable = ({
   );
 };
 
-const SRiArrowDownSLine = styled(RiArrowDownSLine)(({ theme }) => ({
-  width: 16,
-  height: 16,
-}));
-
-const SRiArrowRightSLine = styled(RiArrowRightSLine)(({ theme }) => ({
-  width: 16,
-  height: 16,
-}));
+const useStyles = (theme: Theme) => ({
+  icon: {
+    width: 16,
+    height: 16,
+  },
+});
 
 const DataRow = ({
   datasetMetrics,
@@ -171,6 +174,7 @@ const DataRow = ({
   isExpanded?: boolean;
   setIsExpanded?: CallableFunction;
 }) => {
+  const styles = useStyles(useTheme());
   const isDatasetRow = datasetMetrics !== undefined;
   const isOperatorRow = operatorMetrics !== undefined;
   const data = datasetMetrics || operatorMetrics;
@@ -185,13 +189,17 @@ const DataRow = ({
         {isDatasetRow &&
           setIsExpanded !== undefined &&
           (isExpanded ? (
-            <SRiArrowDownSLine
+            <Box
+              component={RiArrowDownSLine}
               title={"Collapse Dataset " + datasetMetrics.dataset}
+              sx={styles.icon}
               onClick={() => setIsExpanded(false)}
             />
           ) : (
-            <SRiArrowRightSLine
+            <Box
+              component={RiArrowRightSLine}
               title={"Expand Dataset " + datasetMetrics.dataset}
+              sx={styles.icon}
               onClick={() => setIsExpanded(true)}
             />
           ))}
