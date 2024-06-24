@@ -678,8 +678,10 @@ class ReporterAgent(
             # Remove the current process (reporter agent), which is also a child of
             # the Raylet.
             self._workers.pop(self._generate_worker_key(self._get_agent_proc()))
-
-            gpu_usage = self._get_gpu_process_usage()
+            try:
+                gpu_usage = self._get_gpu_process_usage()
+            except:
+                gpu_usage = defaultdict(dict)
 
             result = []
             for w in self._workers.values():
