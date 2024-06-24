@@ -604,9 +604,20 @@ class ReporterAgent(
         import ray._private.thirdparty.pynvml as pynvml
 
         gpu_processes = defaultdict(lambda: {"memory": 0, "utilization": 0})
+        global enable_gpu_usage_check
+        if not enable_gpu_usage_check:
+            return gpu_processes
 
         try:
             pynvml.nvmlInit()
+        except Exception as e:
+            logger.debug(f"pynvml failed to retrieve GPU information: {e}")
+
+            if type(e).__name__ == "NVMLError_DriverNotLoaded":
+                enable_gpu_usage_check = False
+            return gpu_processes
+
+        try:
             num_gpus = pynvml.nvmlDeviceGetCount()
             for i in range(num_gpus):
                 gpu_handle = pynvml.nvmlDeviceGetHandleByIndex(i)
@@ -634,8 +645,7 @@ class ReporterAgent(
                     gpu_processes[pid]["utilization"] = gpu_utilization
         except Exception as e:
             logger.debug(f"pynvml failed to retrieve GPU processes: {e}")
-        finally:
-            pynvml.nvmlShutdown()
+        pynvml.nvmlShutdown()
 
         return gpu_processes
 
@@ -866,7 +876,7 @@ class ReporterAgent(
             )
         )
         records.append(
-        Record(
+            Record(
                 gauge=METRICS_GAUGES["component_gpu_utilization"],
                 value=0.0,
                 tags=tags,
