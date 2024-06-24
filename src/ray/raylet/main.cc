@@ -29,6 +29,8 @@
 #include "ray/raylet/raylet.h"
 #include "ray/stats/stats.h"
 #include "ray/util/event.h"
+#include "ray/util/process.h"
+#include "ray/util/subreaper.h"
 
 using json = nlohmann::json;
 
@@ -193,12 +195,50 @@ int main(int argc, char *argv[]) {
   RAY_CHECK_OK(gcs_client->Connect(main_service, cluster_id));
   std::unique_ptr<ray::raylet::Raylet> raylet;
 
+  // Enable subreaper. This is called in `AsyncGetInternalConfig` below, but MSVC does
+  // not allow a macro invocation (#ifdef) in another macro invocation (RAY_CHECK_OK),
+  // so we have to put it here.
+  auto enable_subreaper = [&]() {
+#ifdef __linux__
+    if (ray::SetThisProcessAsSubreaper()) {
+      ray::KnownChildrenTracker::instance().Enable();
+      ray::SetupSigchldHandlerRemoveKnownChildren(main_service);
+      auto runner = std::make_shared<ray::PeriodicalRunner>(main_service);
+      runner->RunFnPeriodically([runner]() { ray::KillUnknownChildren(); },
+                                /*period_ms=*/10000,
+                                "Raylet.KillUnknownChildren");
+      RAY_LOG(INFO) << "Set this process as subreaper. Will kill unknown children every "
+                       "10 seconds.";
+    } else {
+      RAY_LOG(WARNING) << "Failed to set this process as subreaper. Will not kill "
+                          "unknown children.";
+      ray::SetSigchldIgnore();
+    }
+#else
+    RAY_LOG(WARNING) << "Subreaper is not supported on this platform. Will not "
+                        "kill unknown children.";
+    ray::SetSigchldIgnore();
+#endif
+  };
+
   RAY_CHECK_OK(gcs_client->Nodes().AsyncGetInternalConfig(
       [&](::ray::Status status,
           const boost::optional<std::string> &stored_raylet_config) {
         RAY_CHECK_OK(status);
         RAY_CHECK(stored_raylet_config.has_value());
         RayConfig::instance().initialize(stored_raylet_config.get());
+
+        // Core worker tries to kill child processes when it exits. But they can't do
+        // it perfectly: if the core worker is killed by SIGKILL, the child processes
+        // leak. So in raylet we also kill child processes via Linux subreaper.
+        // Only works on Linux >= 3.4.
+        if (RayConfig::instance()
+                .kill_child_processes_on_worker_exit_with_raylet_subreaper()) {
+          enable_subreaper();
+        } else {
+          RAY_LOG(INFO) << "Raylet is not set to kill unknown children.";
+          ray::SetSigchldIgnore();
+        }
 
         // Parse the worker port list.
         std::istringstream worker_port_list_string(worker_port_list);
@@ -271,6 +311,9 @@ int main(int argc, char *argv[]) {
             RayConfig::instance().raylet_report_resources_period_milliseconds();
         node_manager_config.record_metrics_period_ms =
             RayConfig::instance().metrics_report_interval_ms() / 2;
+        object_manager_config.push_payload_compression_algorithm =
+            ray::ObjectManagerConfig::GetCompressionAlgorithm(
+                RayConfig::instance().object_manager_push_compression_algorithm());
         node_manager_config.store_socket_name = store_socket_name;
         node_manager_config.temp_dir = temp_dir;
         node_manager_config.log_dir = log_dir;
@@ -310,9 +353,6 @@ int main(int argc, char *argv[]) {
         }
         object_manager_config.object_chunk_size =
             RayConfig::instance().object_manager_default_chunk_size();
-        object_manager_config.push_payload_compression_algorithm =
-            ray::ObjectManagerConfig::GetCompressionAlgorithm(
-                RayConfig::instance().object_manager_push_compression_algorithm());
 
         RAY_LOG(DEBUG) << "Starting object manager with configuration: \n"
                        << "rpc_service_threads_number = "

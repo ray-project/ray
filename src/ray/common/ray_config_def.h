@@ -29,11 +29,6 @@ RAY_CONFIG(bool, event_stats, true)
 /// Ray metrics agent.
 RAY_CONFIG(bool, event_stats_metrics, false)
 
-/// Whether to enable Ray legacy scheduler warnings. These are replaced by
-/// autoscaler messages after https://github.com/ray-project/ray/pull/18724.
-/// TODO(ekl) remove this after Ray 1.8
-RAY_CONFIG(bool, legacy_scheduler_warnings, false)
-
 /// Whether to enable cluster authentication.
 RAY_CONFIG(bool, enable_cluster_auth, true)
 
@@ -110,11 +105,6 @@ RAY_CONFIG(std::string, worker_killing_policy, "group_by_owner")
 
 /// If the raylet fails to get agent info, we will retry after this interval.
 RAY_CONFIG(uint64_t, raylet_get_agent_info_interval_ms, 1)
-
-/// For a raylet, if the last resource report was sent more than this many
-/// report periods ago, then a warning will be logged that the report
-/// handler is drifting.
-RAY_CONFIG(uint64_t, num_resource_report_periods_warning, 5)
 
 /// Whether to report placement or regular resource usage for an actor.
 /// Reporting placement may cause the autoscaler to overestimate the resources
@@ -423,7 +413,7 @@ RAY_CONFIG(uint32_t, object_store_full_delay_ms, 10)
 RAY_CONFIG(double, high_plasma_storage_usage, 0.7)
 
 /// The amount of time between automatic local Python GC triggers.
-RAY_CONFIG(uint64_t, local_gc_interval_s, 10 * 60)
+RAY_CONFIG(uint64_t, local_gc_interval_s, 90 * 60)
 
 /// The min amount of time between local GCs (whether auto or mem pressure triggered).
 RAY_CONFIG(uint64_t, local_gc_min_interval_s, 10)
@@ -623,7 +613,7 @@ RAY_CONFIG(uint64_t, metrics_report_interval_ms, 10000)
 
 /// Enable the task timeline. If this is enabled, certain events such as task
 /// execution are profiled and sent to the GCS.
-/// This requires RAY_task_events_report_interval_ms > 0, so that events will
+/// This requires RAY_task_events_report_interval_ms=0, so that events will
 /// be sent to GCS.
 RAY_CONFIG(bool, enable_timeline, true)
 
@@ -750,7 +740,12 @@ RAY_CONFIG(std::string, predefined_unit_instance_resources, "GPU")
 /// "neuron_cores", "TPUs" and "FPGAs".
 /// Default custom_unit_instance_resources is "neuron_cores,TPU".
 /// When set it to "neuron_cores,TPU,FPGA", we will also treat FPGA as unit_instance.
-RAY_CONFIG(std::string, custom_unit_instance_resources, "neuron_cores,TPU,NPU")
+RAY_CONFIG(std::string, custom_unit_instance_resources, "neuron_cores,TPU,NPU,HPU")
+
+/// The name of the system-created concurrency group for actors. This group is
+/// created with 1 thread, and is created lazily. The intended usage is for
+/// Ray-internal auxiliary tasks (e.g., accelerated dag workers).
+RAY_CONFIG(std::string, system_concurrency_group_name, "_ray_system")
 
 // Maximum size of the batches when broadcasting resources to raylet.
 RAY_CONFIG(uint64_t, resource_broadcast_batch_size, 512)
@@ -789,6 +784,8 @@ RAY_CONFIG(int64_t, grpc_client_keepalive_time_ms, 300000)
 
 /// grpc keepalive timeout for client.
 RAY_CONFIG(int64_t, grpc_client_keepalive_timeout_ms, 120000)
+
+RAY_CONFIG(int64_t, grpc_client_idle_timeout_ms, 1800000)
 
 /// grpc streaming buffer size
 /// Set it to 512kb
@@ -888,6 +885,13 @@ RAY_CONFIG(int64_t, raylet_liveness_self_check_interval_ms, 5000)
 // See https://github.com/ray-project/ray/pull/33976 for more
 // info.
 RAY_CONFIG(bool, kill_child_processes_on_worker_exit, true)
+
+// Make Raylet and CoreWorker to become Linux subreaper, and let Raylet to kill
+// the child processes of the worker when the worker exits. This is useful for
+// the case where the worker crashed and had no chance to clean up its child processes.
+// Only works on Linux>=3.4. On other platforms, this flag is ignored.
+// See https://github.com/ray-project/ray/pull/42992 for more info.
+RAY_CONFIG(bool, kill_child_processes_on_worker_exit_with_raylet_subreaper, false)
 
 // If autoscaler v2 is enabled.
 RAY_CONFIG(bool, enable_autoscaler_v2, false)
