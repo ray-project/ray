@@ -279,6 +279,7 @@ def configure_component_logger(
         stream_handler = logging.StreamHandler()
         stream_handler.setFormatter(ServeFormatter(component_name, component_id))
         stream_handler.addFilter(log_to_stderr_filter)
+        stream_handler.addFilter(ServeContextFilter())
         logger.addHandler(stream_handler)
 
     if logging_config.logs_dir:
