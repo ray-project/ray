@@ -53,6 +53,8 @@ class OfflineData:
         try:
             # TODO (simon): Add support for `kwargs`.
             self.data = getattr(ray.data, self.data_read_method)(self.path)
+            ctx = ray.data.DataContext.get_current()
+            ctx.execution_options.locality_with_output = True
             logger.info("Reading data from {}".format(self.path))
             logger.info(self.data.schema())
         except Exception as e:
@@ -109,8 +111,9 @@ class OfflineData:
                     # provide locality hints.
                     PreprocessEpisodes,
                     config=self.config,
-                    learner=self.learner_handles[0],
-                    concurrency=num_shards,
+                    learner=self.learner_handles,
+                    locality_hints=self.locality_hints,
+                    concurrency=(num_shards, num_shards * 2),
                 ).streaming_split(
                     n=num_shards, equal=False, locality_hints=self.locality_hints
                 )
@@ -122,110 +125,55 @@ class OfflineData:
             # Return a single batch from the iterator.
             return next(iter(self.batch_iterator))["batch"][0]  # ["episodes"]tolist()
 
-    @staticmethod
-    def _map_to_episodes(
-        is_multi_agent: bool, batch: Dict[str, np.ndarray]
-    ) -> Dict[str, List[EpisodeType]]:
-        """Maps a batch of data to episodes."""
-
-        episodes = []
-        logger.warning(f"batch_size before: {batch['obs'].shape}")
-        # TODO (simon): Give users possibility to provide a custom schema.
-        for i, obs in enumerate(batch["obs"]):
-
-            # If multi-agent we need to extract the agent ID.
-            # TODO (simon): Check, what happens with the module ID.
-            if is_multi_agent:
-                agent_id = (
-                    batch[Columns.AGENT_ID][i]
-                    if Columns.AGENT_ID in batch
-                    # The old stack uses "agent_index" instead of "agent_id".
-                    # TODO (simon): Remove this as soon as we are new stack only.
-                    else (batch["agent_index"][i] if "agent_index" in batch else None)
-                )
-            else:
-                agent_id = None
-
-            if is_multi_agent:
-                # TODO (simon): Add support for multi-agent episodes.
-                pass
-            else:
-                # TODO (simon): Check, if observations need to be packed into numpy
-                # arrays.
-
-                # Build a single-agent episode with a single row of the batch.
-                episode = SingleAgentEpisode(
-                    id_=batch[Columns.EPS_ID][i],
-                    agent_id=agent_id,
-                    observations=[
-                        unpack_if_needed(obs),
-                        unpack_if_needed(batch[Columns.NEXT_OBS][i]),
-                    ],
-                    infos=[
-                        {},
-                        batch[Columns.INFOS][i] if Columns.INFOS in batch else {},
-                    ],
-                    actions=[batch[Columns.ACTIONS][i]],
-                    rewards=[batch[Columns.REWARDS][i]],
-                    terminated=batch[
-                        Columns.TERMINATEDS if Columns.TERMINATEDS in batch else "dones"
-                    ][i],
-                    truncated=batch[Columns.TRUNCATEDS][i]
-                    if Columns.TRUNCATEDS in batch
-                    else False,
-                    # TODO (simon): Results in zero-length episodes in connector.
-                    # t_started=batch[Columns.T if Columns.T in batch else
-                    # "unroll_id"][i][0],
-                    # TODO (simon): Single-dimensional columns are not supported.
-                    extra_model_outputs={
-                        k: [v[i]] for k, v in batch.items() if k not in SCHEMA
-                    },
-                    len_lookback_buffer=0,
-                )
-            episodes.append(episode)
-        # Note, `map_batches` expects a `Dict` as return value.
-        return {"episodes": episodes}
-
 
 class PreprocessEpisodes:
-    def __init__(self, config, learner):
+    def __init__(self, config, learner, locality_hints):
 
         self.config = config
         # We need this learner to run the learner connector pipeline.
-        self._learner = learner
+        if isinstance(learner, Learner):
+            self._learner = learner
+            self.learner_is_remote = False
+            self._module = self._learner._module
+        else:
+            loc = ray.experimental.get_object_locations([self])
+            logger.warning(f"loc: {loc}")
+            for i, hint in enumerate(locality_hints):
+                if hint == loc:
+                    self._learner = learner[i]
+            self.learner_is_remote = True
+            self._module = self.config.get_multi_agent_module_spec().build()
+
         self._learner_connector = self.config.build_learner_connector(
             input_observation_space=None,
             input_action_space=None,
         )
         self._policies_to_train = self.config.policies_to_train
         self._is_multi_agent = config.is_multi_agent()
-        if isinstance(self._learner, Learner):
-            self.learner_is_remote = False
-            self._module = self._learner._module
-        else:
-            self.learner_is_remote = True
-            self._module = self.config.get_multi_agent_module_spec().build()
+        self.iter_since_last_module_update = 0
 
     def __call__(self, batch: Dict[str, np.ndarray]) -> Dict[str, List[EpisodeType]]:
         # Map the batch to episodes.
-
-        logger.warning(f"batch: {batch[Columns.REWARDS].shape}")
         episodes = self._map_to_episodes(self._is_multi_agent, batch)
-        # logger.warning(f"len(episodes): {len(episodes['episodes'])}")
-        # Synch the learner module.
-        if self.learner_is_remote:
+
+        # Synch the learner module, if necessary. Note, in case of a local learner
+        # we have a reference to the module and therefore an up-to-date module.
+        if self.learner_is_remote and self.iter_since_last_module_update > 5:
+            # Reset the iteration counter.
+            self.iter_since_last_module_update = 0
             result = self._learner.get_module_state.remote()
             weights = result.get()
-
+            # Load the new module weights.
             self._module.load_state_dict(weights)
 
+        # Run the `Learner`'s connector pipeline.
         batch = self._learner_connector(
             rl_module=self._module,
             data={},
             episodes=episodes["episodes"],
             shared_data={},
         )
-        # logger.warning(f"batch: {batch}")
+        # Convert to `MultiAgentBatch`.
         batch = MultiAgentBatch(
             {
                 module_id: SampleBatch(module_data)
@@ -235,7 +183,8 @@ class PreprocessEpisodes:
             # metrics, but we run it twice: here and later in the learner.
             env_steps=sum(len(e) for e in episodes["episodes"]),
         )
-
+        # Remove all data from modules that should not be trained. We do
+        # not want to pass around more data than necessaty.
         for module_id in list(batch.policy_batches.keys()):
             if not self._should_module_be_updated(module_id, batch):
                 del batch.policy_batches[module_id]

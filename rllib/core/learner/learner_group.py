@@ -367,7 +367,15 @@ class LearnerGroup:
             _min_total_mini_batches=0,
             **_kwargs,
         ):
-            if _batch_shard is not None:
+            if isinstance(_batch_shard, ray.data.DataIterator):
+                result = _learner.update_from_iterator(
+                    iterator=_batch_shard,
+                    timesteps=_timesteps,
+                    minibatch_size=minibatch_size,
+                    num_iters=num_iters,
+                    **_kwargs,
+                )
+            elif _batch_shard is not None:
                 result = _learner.update_from_batch(
                     batch=_batch_shard,
                     timesteps=_timesteps,
@@ -421,7 +429,20 @@ class LearnerGroup:
             #  "lockstep"), the `ShardBatchIterator` should not be used.
             #  Then again, we might move into a world where Learner always
             #  receives Episodes, never batches.
-            if batch is not None:
+            if isinstance(batch, list) and isinstance(batch[0], ray.data.DataIterator):
+                partials = [
+                    partial(
+                        _learner_update,
+                        _batch_shard=iterator,
+                        _return_state=(return_state and i == 0),
+                        _timesteps=timesteps,
+                        **kwargs,
+                    )
+                    # Note, `OfflineData` defines exactly as many iterators as there
+                    # are learners.
+                    for i, iterator in enumerate(batch)
+                ]
+            elif batch is not None:
                 partials = [
                     partial(
                         _learner_update,
