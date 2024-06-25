@@ -607,7 +607,7 @@ def test_dag_fault_tolerance_chain(ray_start_regular_shared):
             ref = compiled_dag.execute(1)
             results = ray.get(ref)
             assert results == i
-    assert isinstance(exc_info.value.as_instanceof_cause(), TypeError)
+    assert isinstance(exc_info.value.as_instanceof_cause(), RuntimeError)
 
     compiled_dag.teardown()
 
@@ -651,7 +651,7 @@ def test_dag_fault_tolerance(ray_start_regular_shared):
             ref = compiled_dag.execute(1)
             results = ray.get(ref)
             assert results == [i + 1] * 4
-    assert isinstance(exc_info.value.as_instanceof_cause(), TypeError)
+    assert isinstance(exc_info.value.as_instanceof_cause(), RuntimeError)
 
     compiled_dag.teardown()
 
