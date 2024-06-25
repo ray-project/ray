@@ -437,9 +437,9 @@ async def test_list_jobs_empty(job_manager: JobManager):
 @pytest.mark.asyncio
 async def test_list_jobs(job_manager: JobManager):
     cmd = (
-            "python -c 'import ray; ray.init(); ray.shutdown(); "
-            "ray.init(); ray.shutdown();'"
-        )
+        "python -c 'import ray; ray.init(); ray.shutdown(); "
+        "ray.init(); ray.shutdown();'"
+    )
     submission_id = await job_manager.submit_job(entrypoint=cmd)
 
     await async_wait_for_condition_async_predicate(
