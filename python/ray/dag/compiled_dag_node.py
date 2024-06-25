@@ -30,13 +30,6 @@ from ray.experimental.channel.torch_tensor_nccl_channel import (
 
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
-MAX_BUFFER_SIZE = int(100 * 1e6)  # 100MB
-
-# The maximum total memory that can be used to buffer DAG execution results.
-MAX_BUFFER_TOTAL_MEMORY = int(10 * 1e9)  # 10GB
-
-MAX_BUFFER_COUNT = MAX_BUFFER_TOTAL_MEMORY // MAX_BUFFER_SIZE
-
 logger = logging.getLogger(__name__)
 
 
@@ -414,10 +407,13 @@ class CompiledDAG:
         Returns:
             Channel: A wrapper around ray.ObjectRef.
         """
+        from ray.dag import DAGContext
+        ctx = DAGContext.get_current()
+
         self._dag_id = uuid.uuid4().hex
         self._buffer_size_bytes: Optional[int] = buffer_size_bytes
         if self._buffer_size_bytes is None:
-            self._buffer_size_bytes = MAX_BUFFER_SIZE
+            self._buffer_size_bytes = ctx.buffer_size_bytes
         self._default_type_hint: ChannelOutputType = SharedMemoryType(
             self._buffer_size_bytes
         )
@@ -433,7 +429,7 @@ class CompiledDAG:
         # TODO(rui): consider unify it with async_max_queue_size
         self._max_buffered_results: Optional[int] = max_buffered_results
         if self._max_buffered_results is None:
-            self._max_buffered_results = MAX_BUFFER_COUNT
+            self._max_buffered_results = ctx.max_buffered_results
         # Used to ensure that the future returned to the
         # caller corresponds to the correct DAG output. I.e.
         # order of futures added to fut_queue should match the

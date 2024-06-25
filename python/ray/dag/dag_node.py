@@ -151,6 +151,15 @@ class DAGNode(DAGNodeBase):
         Returns:
             A compiled DAG.
         """
+        from ray.dag import DAGContext
+        ctx = DAGContext.get_current()
+        if _buffer_size_bytes is None:
+            _buffer_size_bytes = ctx.buffer_size_bytes
+        if _async_max_queue_size is None:
+            _async_max_queue_size = ctx.async_max_queue_size
+        if _max_buffered_results is None:
+            _max_buffered_results = ctx.max_buffered_results
+
         return build_compiled_dag_from_ray_dag(
             self,
             _buffer_size_bytes,
