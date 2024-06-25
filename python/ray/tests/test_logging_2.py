@@ -232,6 +232,51 @@ ray.get(actor_instance.print_message.remote())
         for s in should_exist:
             assert s in stderr
 
+    @pytest.mark.parametrize(
+        "ray_start_cluster_head_with_env_vars",
+        [
+            {
+                "env_vars": {
+                    "RAY_SETUP_DEFAULT_LOGGER": "1",
+                },
+            }
+        ],
+        indirect=True,
+    )
+    def test_env_setup_default_logger(
+        self, ray_start_cluster_head_with_env_vars, shutdown_only
+    ):
+        script = """
+import ray
+import logging
+
+ray.init()
+
+@ray.remote
+class actor:
+    def __init__(self):
+        pass
+
+    def print_message(self):
+        logger = logging.getLogger(__name__)
+        logger.info("This is a Ray actor")
+
+actor_instance = actor.remote()
+ray.get(actor_instance.print_message.remote())
+"""
+        stderr = run_string_as_driver(script)
+        should_exist = [
+            "job_id",
+            "worker_id",
+            "node_id",
+            "actor_id",
+            "task_id",
+            "INFO",
+            "This is a Ray actor",
+        ]
+        for s in should_exist:
+            assert s in stderr
+
 
 if __name__ == "__main__":
     if os.environ.get("PARALLEL_CI"):
