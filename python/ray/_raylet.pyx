@@ -1802,7 +1802,7 @@ cdef void execute_task(
             function = execution_info.function
 
             if core_worker.current_actor_is_asyncio():
-                if has_async_methods(actor.__class__):
+                if not has_async_methods(actor.__class__):
                     error_message = (
                         "Failed to create actor. You set the async flag, "
                         "but the actor does not "

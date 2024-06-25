@@ -37,7 +37,7 @@ def is_async_func(func) -> bool:
 @lru_cache(maxsize=2**10)
 def has_async_methods(cls: object) -> bool:
     """Return True if the class has any async methods."""
-    return any(is_async_func(m) for _, m in inspect.getmembers(cls))
+    return len(inspect.getmembers(cls, predicate=is_async_func)) > 0
 
 
 @lru_cache(maxsize=2**10)
