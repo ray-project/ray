@@ -3021,6 +3021,17 @@ py_test(
 
 # subdirectory: offline_rl/
 # ....................................
+
+# @HybridAPIStack
+py_test(
+    name = "examples/offline_rl/pretrain_bc_single_agent_evaluate_as_multi_agent",
+    main = "examples/offline_rl/pretrain_bc_single_agent_evaluate_as_multi_agent.py",
+    tags = ["team:rllib", "exclusive", "examples"],
+    size = "large",
+    srcs = ["examples/offline_rl/pretrain_bc_single_agent_evaluate_as_multi_agent.py"],
+    args = ["--as-test"]
+)
+
 #@OldAPIStack
 # TODO (sven): Doesn't seem to learn at the moment. Uncomment once fixed.
 # py_test(

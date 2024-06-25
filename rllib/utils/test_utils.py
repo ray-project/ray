@@ -1368,6 +1368,7 @@ def run_rllib_example_script_experiment(
     tune_callbacks: Optional[List] = None,
     keep_config: bool = False,
     scheduler=None,
+    progress_reporter=None,
 ) -> Union[ResultDict, tune.result_grid.ResultGrid]:
     """Given an algorithm config and some command line args, runs an experiment.
 
@@ -1442,7 +1443,7 @@ def run_rllib_example_script_experiment(
     # Define one or more stopping criteria.
     if stop is None:
         stop = {
-            f"{ENV_RUNNER_RESULTS}/episode_return_mean": args.stop_reward,
+            f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": args.stop_reward,
             f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}": args.stop_timesteps,
             TRAINING_ITERATION: args.stop_iters,
         }
@@ -1549,8 +1550,7 @@ def run_rllib_example_script_experiment(
 
     # Auto-configure a CLIReporter (to log the results to the console).
     # Use better ProgressReporter for multi-agent cases: List individual policy rewards.
-    progress_reporter = None
-    if args.num_agents > 0:
+    if progress_reporter is None and args.num_agents > 0:
         progress_reporter = CLIReporter(
             metric_columns={
                 **{

@@ -530,10 +530,10 @@ def make_multi_agent(
         def step(self, action_dict):
             obs, rew, terminated, truncated, info = {}, {}, {}, {}, {}
 
-            # the environment is expecting action for at least one agent
+            # The environment is expecting an action for at least one agent.
             if len(action_dict) == 0:
                 raise ValueError(
-                    "The environment is expecting action for at least one agent."
+                    "The environment is expecting an action for at least one agent."
                 )
 
             for i, action in action_dict.items():
