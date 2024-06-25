@@ -113,7 +113,7 @@ def exec_ray_dag(
                 TorchTensorType(
                     "auto" if dynamic_shape else SHAPE,
                     "auto" if dynamic_shape else DTYPE,
-                    transport="nccl" if use_nccl else None,
+                    transport="nccl" if use_nccl else "auto",
                 )
             )
 
@@ -124,9 +124,9 @@ def exec_ray_dag(
 
         def _run():
             i = np.random.randint(100)
-            output_channel = dag.execute(i)
+            ref = dag.execute(i)
             # TODO(swang): Replace with fake ObjectRef.
-            result = output_channel.read()
+            result = ray.get(ref)
             assert result == (i, SHAPE, DTYPE)
 
     else:
