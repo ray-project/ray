@@ -278,6 +278,7 @@ steps:
         --parallelism-per-worker 2
 
   - label: ":ray: core: flaky tests"
+    key: core_flaky_tests
     tags:
       - python
       - skip-on-premerge
@@ -286,6 +287,23 @@ steps:
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //... core
         --run-flaky-tests  --build-type clang
+        --except-tags multi_gpu
+
+  - label: ":ray: core: flaky gpu tests"
+    key: core_flaky_gpu_tests
+    tags:
+      - gpu
+      - python
+      - skip-on-premerge
+    instance_type: gpu-large
+    soft_fail: true
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //... core
+        --run-flaky-tests  --build-type clang
+        --parallelism-per-worker 2 --gpus 2
+        --build-name coregpubuild
+        --only-tags multi_gpu
+    depends_on: coregpubuild
 
   - label: ":ray: core: cpp worker tests"
     tags: core_cpp
@@ -323,7 +341,7 @@ steps:
       - bazel run //ci/ray_ci:build_in_docker -- docker --platform cpu
         --canonical-tag test_container
       - docker build --progress=plain --build-arg BASE_IMAGE="rayproject/ray:test_container"
-        -t rayproject/ray:runtime_env_container -f docker/runtime_env_container/Dockerfile .
+        -t rayproject/ray:runtime_env_container -f ci/docker/runtime_env_container/Dockerfile .
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... core --only-tags container
     depends_on:
       - manylinux

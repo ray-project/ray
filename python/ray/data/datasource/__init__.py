@@ -1,11 +1,6 @@
-from ray.data.datasource.avro_datasource import AvroDatasource
 from ray.data.datasource.bigquery_datasink import _BigQueryDatasink
 from ray.data.datasource.bigquery_datasource import BigQueryDatasource
 from ray.data.datasource.binary_datasource import BinaryDatasource
-from ray.data.datasource.block_path_provider import (
-    BlockWritePathProvider,
-    DefaultBlockWritePathProvider,
-)
 from ray.data.datasource.csv_datasink import _CSVDatasink
 from ray.data.datasource.csv_datasource import CSVDatasource
 from ray.data.datasource.datasink import Datasink, DummyOutputDatasink
@@ -17,7 +12,6 @@ from ray.data.datasource.datasource import (
 )
 from ray.data.datasource.file_based_datasource import (
     FileBasedDatasource,
-    FileExtensionFilter,
     _S3FileSystemWrapper,
 )
 from ray.data.datasource.file_datasink import (
@@ -43,10 +37,7 @@ from ray.data.datasource.numpy_datasource import NumpyDatasource
 from ray.data.datasource.parquet_bulk_datasource import ParquetBulkDatasource
 from ray.data.datasource.parquet_datasink import _ParquetDatasink
 from ray.data.datasource.parquet_datasource import ParquetDatasource
-from ray.data.datasource.parquet_meta_provider import (
-    DefaultParquetMetadataProvider,
-    ParquetMetadataProvider,
-)
+from ray.data.datasource.parquet_meta_provider import ParquetMetadataProvider
 from ray.data.datasource.partitioning import (
     Partitioning,
     PartitionStyle,
@@ -67,13 +58,11 @@ from ray.data.datasource.webdataset_datasource import WebDatasetDatasource
 # we want to only import the Hugging Face datasets library when we use
 # ray.data.from_huggingface() or HuggingFaceDatasource() directly.
 __all__ = [
-    "AvroDatasource",
     "BaseFileMetadataProvider",
     "BinaryDatasource",
     "_BigQueryDatasink",
     "BigQueryDatasource",
     "BlockBasedFileDatasink",
-    "BlockWritePathProvider",
     "Connection",
     "_CSVDatasink",
     "CSVDatasource",
@@ -81,13 +70,10 @@ __all__ = [
     "Datasource",
     "_SQLDatasink",
     "SQLDatasource",
-    "DefaultBlockWritePathProvider",
     "DefaultFileMetadataProvider",
-    "DefaultParquetMetadataProvider",
     "DummyOutputDatasink",
     "FastFileMetadataProvider",
     "FileBasedDatasource",
-    "FileExtensionFilter",
     "FileMetadataProvider",
     "FilenameProvider",
     "_ImageDatasink",

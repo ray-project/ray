@@ -6,7 +6,6 @@ export RAY_INSTALL_JAVA="${RAY_INSTALL_JAVA:-0}"
 
 # Python version key, interpreter version code
 PYTHON_VERSIONS=(
-  "py38 cp38-cp38"
   "py39 cp39-cp39"
   "py310 cp310-cp310"
   "py311 cp311-cp311"

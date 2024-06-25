@@ -46,11 +46,11 @@ class PPOTorchLearner(PPOLearner, TorchLearner):
         # and for PPO's batched value function (and bootstrap value) computations,
         # for which we add an additional (artificial) timestep to each episode to
         # simplify the actual computation.
-        if "loss_mask" in batch:
-            num_valid = torch.sum(batch["loss_mask"])
+        if Columns.LOSS_MASK in batch:
+            num_valid = torch.sum(batch[Columns.LOSS_MASK])
 
             def possibly_masked_mean(data_):
-                return torch.sum(data_[batch["loss_mask"]]) / num_valid
+                return torch.sum(data_[batch[Columns.LOSS_MASK]]) / num_valid
 
         else:
             possibly_masked_mean = torch.mean
@@ -152,7 +152,7 @@ class PPOTorchLearner(PPOLearner, TorchLearner):
 
         # Update KL coefficient.
         if config.use_kl_loss:
-            assert sampled_kl_values, "Sampled KL values are empty."
+            assert module_id in sampled_kl_values, "Sampled KL values are empty."
             sampled_kl = sampled_kl_values[module_id]
             curr_var = self.curr_kl_coeffs_per_module[module_id]
             if sampled_kl > 2.0 * config.kl_target:

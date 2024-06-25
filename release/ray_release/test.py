@@ -368,12 +368,6 @@ class Test(dict):
         """
         return self.get("env") == "gce"
 
-    def is_byod_cluster(self) -> bool:
-        """
-        Returns whether this test is running on a BYOD cluster.
-        """
-        return self["cluster"].get("byod") is not None
-
     def is_high_impact(self) -> bool:
         # a test is high impact if it catches regressions frequently, this field is
         # populated by the determine_microcheck_tests.py script
@@ -403,16 +397,12 @@ class Test(dict):
         """
         Returns the type of the BYOD cluster.
         """
-        if not self.is_byod_cluster():
-            return None
         return self["cluster"]["byod"].get("type", "cpu")
 
     def get_byod_post_build_script(self) -> Optional[str]:
         """
         Returns the post-build script for the BYOD cluster.
         """
-        if not self.is_byod_cluster():
-            return None
         return self["cluster"]["byod"].get("post_build_script")
 
     def get_byod_runtime_env(self) -> Dict[str, str]:
@@ -420,11 +410,10 @@ class Test(dict):
         Returns the runtime environment variables for the BYOD cluster.
         """
         default = {
-            "MATCH_AUTOSCALER_AND_RAY_IMAGES": "1",
             "RAY_BACKEND_LOG_JSON": "1",
-            "RAY_USAGE_STATS_ENABLED": "1",
-            "RAY_USAGE_STATS_SOURCE": "nightly-tests",
-            "RAY_USAGE_STATS_EXTRA_TAGS": f"test_name={self.get_name()}",
+            # Logs the full stack trace from Ray Data in case of exception,
+            # which is useful for debugging failures.
+            "RAY_DATA_LOG_INTERNAL_STACK_TRACE_TO_STDOUT": "1",
         }
         default.update(
             _convert_env_list_to_dict(self["cluster"]["byod"].get("runtime_env", []))
@@ -436,8 +425,6 @@ class Test(dict):
         """
         Returns the list of pips for the BYOD cluster.
         """
-        if not self.is_byod_cluster():
-            return []
         return self["cluster"]["byod"].get("pip", [])
 
     def get_name(self) -> str:
