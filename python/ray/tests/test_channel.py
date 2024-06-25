@@ -138,6 +138,9 @@ def test_set_error_before_read(ray_start_regular):
 
     @ray.remote
     class Actor:
+        def __init__(self):
+            self.arr = None
+
         def create_channel(self, writer, readers):
             self._channel = ray_channel.Channel(writer, readers, 1000)
             return self._channel
@@ -148,11 +151,20 @@ def test_set_error_before_read(ray_start_regular):
         def close(self):
             self._channel.close()
 
-        def write(self):
-            self._channel.write(b"x")
+        def write(self, arr):
+            self._channel.write(arr)
 
         def read(self):
-            self._channel.read()
+            self.arr = self._channel.read()
+            # Keep self.arr in scope. While self.arr is in scope, its backing
+            # shared_ptr<MutableObjectBuffer> in C++ will also stay in scope.
+            # Under normal execution, this will block the next read() from
+            # returning, since we are still using the shared buffer.
+
+            # In this test we are checking that if the channel is closed, then
+            # the next read() will return an error immediately instead of
+            # blocking, even though we still have self.arr in scope.
+            return self.arr
 
     for _ in range(10):
         a = Actor.remote()
@@ -161,9 +173,10 @@ def test_set_error_before_read(ray_start_regular):
         chan = ray.get(a.create_channel.remote(a, [b]))
         ray.get(b.pass_channel.remote(chan))
 
-        # Indirectly registers the channel for both the writer and the reader.
-        ray.get(a.write.remote())
-        ray.get(b.read.remote())
+        # Use numpy to enable zero-copy deserialization.
+        arr = np.random.rand(100)
+        ray.get(a.write.remote(arr))
+        assert (arr == ray.get(b.read.remote())).all()
 
         # Check that the thread does not block on the second call to read() below.
         # read() acquires a lock, though if the lock is not released when
