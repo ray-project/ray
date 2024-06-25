@@ -76,27 +76,26 @@ class OfflineData:
         ):
             # If no iterator should be returned, or if we want to return a single
             # batch iterator, we instantiate the batch iterator once, here.
-            import functools
 
-            self.batch_iterator = self.data.map_batches(
-                functools.partial(self._map_to_episodes, self.is_multi_agent)
-            ).iter_batches(
-                batch_size=num_samples,
-                prefetch_batches=1,
-                local_shuffle_buffer_size=num_samples * 10,
-            )
             # self.batch_iterator = self.data.map_batches(
-            #     PreprocessEpisodes,
-            #     fn_constructor_kwargs={
-            #         "config": self.config,
-            #         "learner": self.learner_handles[0],
-            #     },
-            #     concurrency=2,
+            #     functools.partial(self._map_to_episodes, self.is_multi_agent)
             # ).iter_batches(
             #     batch_size=num_samples,
             #     prefetch_batches=1,
             #     local_shuffle_buffer_size=num_samples * 10,
             # )
+            self.batch_iterator = self.data.map_batches(
+                PreprocessEpisodes,
+                fn_constructor_kwargs={
+                    "config": self.config,
+                    "learner": self.learner_handles[0],
+                },
+                concurrency=1,
+            ).iter_batches(
+                batch_size=num_samples,
+                prefetch_batches=1,
+                local_shuffle_buffer_size=num_samples * 10,
+            )
 
         # Do we want to return an iterator or a single batch?
         if return_iterator:
@@ -157,24 +156,27 @@ class OfflineData:
                 # TODO (simon): Add support for multi-agent episodes.
                 pass
             else:
+                # TODO (simon): Check, if observations need to be packed into numpy
+                # arrays.
+
                 # Build a single-agent episode with a single row of the batch.
                 episode = SingleAgentEpisode(
-                    id_=batch[Columns.EPS_ID][i][0],
+                    id_=batch[Columns.EPS_ID][i],
                     agent_id=agent_id,
                     observations=[
-                        unpack_if_needed(obs)[0],
-                        unpack_if_needed(batch[Columns.NEXT_OBS][i])[0],
+                        unpack_if_needed(obs),
+                        unpack_if_needed(batch[Columns.NEXT_OBS][i]),
                     ],
                     infos=[
                         {},
-                        batch[Columns.INFOS][i][0] if Columns.INFOS in batch else {},
+                        batch[Columns.INFOS][i] if Columns.INFOS in batch else {},
                     ],
-                    actions=[batch[Columns.ACTIONS][i][0]],
-                    rewards=[batch[Columns.REWARDS][i][0]],
+                    actions=[batch[Columns.ACTIONS][i]],
+                    rewards=[batch[Columns.REWARDS][i]],
                     terminated=batch[
                         Columns.TERMINATEDS if Columns.TERMINATEDS in batch else "dones"
-                    ][i][0],
-                    truncated=batch[Columns.TRUNCATEDS][i][0]
+                    ][i],
+                    truncated=batch[Columns.TRUNCATEDS][i]
                     if Columns.TRUNCATEDS in batch
                     else False,
                     # TODO (simon): Results in zero-length episodes in connector.
@@ -182,7 +184,7 @@ class OfflineData:
                     # "unroll_id"][i][0],
                     # TODO (simon): Single-dimensional columns are not supported.
                     extra_model_outputs={
-                        key: [batch[key][i][0]] for key in batch if key not in SCHEMA
+                        k: [v[i]] for k, v in batch.items() if k not in SCHEMA
                     },
                     len_lookback_buffer=0,
                 )
@@ -274,13 +276,11 @@ class PreprocessEpisodes:
             # TODO (simon): Check, what happens with the module ID.
             if is_multi_agent:
                 agent_id = (
-                    batch[Columns.AGENT_ID][i][0]
+                    batch[Columns.AGENT_ID][i]
                     if Columns.AGENT_ID in batch
                     # The old stack uses "agent_index" instead of "agent_id".
                     # TODO (simon): Remove this as soon as we are new stack only.
-                    else (
-                        batch["agent_index"][i][0] if "agent_index" in batch else None
-                    )
+                    else (batch["agent_index"][i] if "agent_index" in batch else None)
                 )
             else:
                 agent_id = None
@@ -291,22 +291,22 @@ class PreprocessEpisodes:
             else:
                 # Build a single-agent episode with a single row of the batch.
                 episode = SingleAgentEpisode(
-                    id_=batch[Columns.EPS_ID][i][0],
+                    id_=batch[Columns.EPS_ID][i],
                     agent_id=agent_id,
                     observations=[
-                        unpack_if_needed(obs)[0],
-                        unpack_if_needed(batch[Columns.NEXT_OBS][i])[0],
+                        unpack_if_needed(obs),
+                        unpack_if_needed(batch[Columns.NEXT_OBS][i]),
                     ],
                     infos=[
                         {},
-                        batch[Columns.INFOS][i][0] if Columns.INFOS in batch else {},
+                        batch[Columns.INFOS][i] if Columns.INFOS in batch else {},
                     ],
-                    actions=[batch[Columns.ACTIONS][i][0]],
-                    rewards=[batch[Columns.REWARDS][i][0]],
+                    actions=[batch[Columns.ACTIONS][i]],
+                    rewards=[batch[Columns.REWARDS][i]],
                     terminated=batch[
                         Columns.TERMINATEDS if Columns.TERMINATEDS in batch else "dones"
-                    ][i][0],
-                    truncated=batch[Columns.TRUNCATEDS][i][0]
+                    ][i],
+                    truncated=batch[Columns.TRUNCATEDS][i]
                     if Columns.TRUNCATEDS in batch
                     else False,
                     # TODO (simon): Results in zero-length episodes in connector.
@@ -314,7 +314,7 @@ class PreprocessEpisodes:
                     # "unroll_id"][i][0],
                     # TODO (simon): Single-dimensional columns are not supported.
                     extra_model_outputs={
-                        key: [batch[key][i][0]] for key in batch if key not in SCHEMA
+                        k: [v[i]] for k, v in batch.items() if k not in SCHEMA
                     },
                     len_lookback_buffer=0,
                 )

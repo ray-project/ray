@@ -1,3 +1,4 @@
+import functools
 import ray
 import unittest
 
@@ -17,7 +18,7 @@ class TestOfflineData(unittest.TestCase):
 
     def test_offline_data_load(self):
 
-        data_path = "tests/data/pendulum/small.json"
+        data_path = "tests/data/cartpole/cartpole-v1.jsonl"
         base_path = Path(__file__).parents[2]
         data_path = "local://" + base_path.joinpath(data_path).as_posix()
 
@@ -30,7 +31,7 @@ class TestOfflineData(unittest.TestCase):
 
     def test_offline_convert_to_episodes(self):
 
-        data_path = "tests/data/pendulum/small.json"
+        data_path = "tests/data/cartpole/cartpole-v1.jsonl"
         base_path = Path(__file__).parents[2]
         data_path = "local://" + base_path.joinpath(data_path).as_posix()
 
@@ -43,6 +44,31 @@ class TestOfflineData(unittest.TestCase):
 
         self.assertTrue(len(episodes) == 10)
         self.assertTrue(isinstance(episodes[0], SingleAgentEpisode))
+
+    def test_sample(self):
+
+        data_path = "tests/data/cartpole/cartpole-v1.jsonl"
+        base_path = Path(__file__).parents[2]
+        data_path = "local://" + base_path.joinpath(data_path).as_posix()
+
+        config = AlgorithmConfig().offline_data(input_=[data_path])
+
+        offline_data = OfflineData(config)
+
+        batch_iterator = offline_data.data.map_batches(
+            functools.partial(
+                offline_data._map_to_episodes, offline_data.is_multi_agent
+            )
+        ).iter_batches(
+            batch_size=10,
+            prefetch_batches=1,
+            local_shuffle_buffer_size=100,
+        )
+
+        batch = next(iter(batch_iterator))
+
+        self.assertTrue("episodes" in batch)
+        self.assertTrue(isinstance(batch["episodes"][0], SingleAgentEpisode))
 
 
 if __name__ == "__main__":
