@@ -5,6 +5,7 @@ import logging
 import os
 import pickle
 import random
+import re
 import sys
 import time
 
@@ -421,8 +422,22 @@ def test_dag_errors(ray_start_regular):
     with pytest.raises(
         TypeError,
         match=(
-            "wait\(\) does not support CompiledDAGRef. "
-            "Please call ray.get\(\) on the CompiledDAGRef to get the result."
+            re.escape(
+                "wait() expected a list of ray.ObjectRef or ray.ObjectRefGenerator, "
+                "got <class 'ray.experimental.compiled_dag_ref.CompiledDAGRef'>"
+            )
+        ),
+    ):
+        ray.wait(ref)
+
+    with pytest.raises(
+        TypeError,
+        match=(
+            re.escape(
+                "wait() expected a list of ray.ObjectRef or ray.ObjectRefGenerator, "
+                "got list containing "
+                "<class 'ray.experimental.compiled_dag_ref.CompiledDAGRef'>"
+            )
         ),
     ):
         ray.wait([ref])
@@ -488,6 +503,7 @@ def test_exceed_max_buffered_results(ray_start_regular):
     ):
         ray.get(ref)
 
+    del refs
     compiled_dag.teardown()
 
 
@@ -503,6 +519,8 @@ def test_compiled_dag_ref_del(ray_start_regular):
     for _ in range(10):
         ref = compiled_dag.execute(1)
         del ref
+
+    compiled_dag.teardown()
 
 
 def test_dag_fault_tolerance_chain(ray_start_regular_shared):

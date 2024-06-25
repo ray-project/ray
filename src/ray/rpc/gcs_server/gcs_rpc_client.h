@@ -23,6 +23,7 @@
 #include "ray/common/grpc_util.h"
 #include "ray/common/network_util.h"
 #include "ray/rpc/grpc_client.h"
+#include "src/ray/protobuf/autoscaler.grpc.pb.h"
 #include "src/ray/protobuf/gcs_service.grpc.pb.h"
 
 namespace ray {
@@ -55,13 +56,24 @@ class Executor {
   std::function<void()> operation_;
 };
 
+/// Convenience macro to invoke VOID_GCS_RPC_CLIENT_METHOD_FULL with defaults.
+///
+/// Creates a Sync and an Async method just like in VOID_GCS_RPC_CLIENT_METHOD_FULL,
+/// with NAMESPACE = ray::rpc, and handle_payload_status = true.
+#define VOID_GCS_RPC_CLIENT_METHOD(                         \
+    SERVICE, METHOD, grpc_client, method_timeout_ms, SPECS) \
+  VOID_GCS_RPC_CLIENT_METHOD_FULL(                          \
+      ray::rpc, SERVICE, METHOD, grpc_client, method_timeout_ms, true, SPECS)
+
 /// Define a void GCS RPC client method.
 ///
 /// Example:
-///   VOID_GCS_RPC_CLIENT_METHOD(
+///   VOID_GCS_RPC_CLIENT_METHOD_FULL(
+///     ray::rpc,
 ///     ActorInfoGcsService,
 ///     CreateActor,
 ///     actor_info_grpc_client_,
+///     /*handle_payload_status=*/true,
 ///     /*method_timeout_ms*/ -1,) # Default value
 ///   generates
 ///
@@ -76,6 +88,7 @@ class Executor {
 ///   That says, when there's any RPC failure, the method will automatically retry
 ///   under the hood.
 ///
+/// \param NAMESPACE namespace of the service.
 /// \param SERVICE name of the service.
 /// \param METHOD name of the RPC method.
 /// \param grpc_client The grpc client to invoke RPC.
@@ -84,35 +97,45 @@ class Executor {
 /// whole service, handler, and each call.
 /// The priority of timeout is each call > handler > whole service
 /// (the lower priority timeout is overwritten by the higher priority timeout).
+/// \param handle_payload_status true if the Reply has a status we want to return.
 /// \param SPECS The cpp method spec. For example, override.
 ///
 /// Currently, SyncMETHOD will copy the reply additionally.
 /// TODO(sang): Fix it.
-#define VOID_GCS_RPC_CLIENT_METHOD(                                              \
-    SERVICE, METHOD, grpc_client, method_timeout_ms, SPECS)                      \
-  void METHOD(const METHOD##Request &request,                                    \
-              const ClientCallback<METHOD##Reply> &callback,                     \
-              const int64_t timeout_ms = method_timeout_ms) SPECS {              \
-    invoke_async_method(&SERVICE::Stub::PrepareAsync##METHOD,                    \
-                        *grpc_client,                                            \
-                        #SERVICE ".grpc_client." #METHOD,                        \
-                        request,                                                 \
-                        callback,                                                \
-                        timeout_ms);                                             \
-  }                                                                              \
-                                                                                 \
-  ray::Status Sync##METHOD(const METHOD##Request &request,                       \
-                           METHOD##Reply *reply_in,                              \
-                           const int64_t timeout_ms = method_timeout_ms) {       \
-    std::promise<Status> promise;                                                \
-    METHOD(                                                                      \
-        request,                                                                 \
-        [&promise, reply_in](const Status &status, const METHOD##Reply &reply) { \
-          reply_in->CopyFrom(reply);                                             \
-          promise.set_value(status);                                             \
-        },                                                                       \
-        timeout_ms);                                                             \
-    return promise.get_future().get();                                           \
+#define VOID_GCS_RPC_CLIENT_METHOD_FULL(NAMESPACE,                         \
+                                        SERVICE,                           \
+                                        METHOD,                            \
+                                        grpc_client,                       \
+                                        method_timeout_ms,                 \
+                                        handle_payload_status,             \
+                                        SPECS)                             \
+  void METHOD(const NAMESPACE::METHOD##Request &request,                   \
+              const ClientCallback<NAMESPACE::METHOD##Reply> &callback,    \
+              const int64_t timeout_ms = method_timeout_ms) SPECS {        \
+    invoke_async_method<NAMESPACE::SERVICE,                                \
+                        NAMESPACE::METHOD##Request,                        \
+                        NAMESPACE::METHOD##Reply,                          \
+                        handle_payload_status>(                            \
+        &NAMESPACE::SERVICE::Stub::PrepareAsync##METHOD,                   \
+        *grpc_client,                                                      \
+        #NAMESPACE "::" #SERVICE ".grpc_client." #METHOD,                  \
+        request,                                                           \
+        callback,                                                          \
+        timeout_ms);                                                       \
+  }                                                                        \
+  ray::Status Sync##METHOD(const NAMESPACE::METHOD##Request &request,      \
+                           NAMESPACE::METHOD##Reply *reply_in,             \
+                           const int64_t timeout_ms = method_timeout_ms) { \
+    std::promise<Status> promise;                                          \
+    METHOD(                                                                \
+        request,                                                           \
+        [&promise, reply_in](const Status &status,                         \
+                             const NAMESPACE::METHOD##Reply &reply) {      \
+          reply_in->CopyFrom(reply);                                       \
+          promise.set_value(status);                                       \
+        },                                                                 \
+        timeout_ms);                                                       \
+    return promise.get_future().get();                                     \
   }
 
 /// Client used for communicating with gcs server.
@@ -180,14 +203,22 @@ class GcsRpcClient {
         std::make_unique<GrpcClient<InternalKVGcsService>>(channel_, client_call_manager);
     internal_pubsub_grpc_client_ = std::make_unique<GrpcClient<InternalPubSubGcsService>>(
         channel_, client_call_manager);
-
     task_info_grpc_client_ =
         std::make_unique<GrpcClient<TaskInfoGcsService>>(channel_, client_call_manager);
+    autoscaler_state_grpc_client_ =
+        std::make_unique<GrpcClient<autoscaler::AutoscalerStateService>>(
+            channel_, client_call_manager);
+
+    runtime_env_grpc_client_ =
+        std::make_unique<GrpcClient<RuntimeEnvGcsService>>(channel_, client_call_manager);
 
     SetupCheckTimer();
   }
 
-  template <typename Service, typename Request, typename Reply>
+  template <typename Service,
+            typename Request,
+            typename Reply,
+            bool handle_payload_status>
   void invoke_async_method(
       PrepareAsyncFunction<Service, Request, Reply> prepare_async_function,
       GrpcClient<Service> &grpc_client,
@@ -199,20 +230,19 @@ class GcsRpcClient {
         [callback](const ray::Status &status) { callback(status, Reply()); });
     auto operation_callback = [this, request, callback, executor, timeout_ms](
                                   const ray::Status &status, const Reply &reply) {
-      if (status.IsTimedOut()) {
-        callback(status, reply);
-        delete executor;
-      } else if (!status.IsGrpcError()) {
-        /* We prioritize RPC status over reply.status when propagating. */
-        if (!status.ok()) {
-          callback(status, reply);
-        } else {
-          auto st =
-              reply.status().code() == (int)StatusCode::OK
+      if (status.ok()) {
+        if constexpr (handle_payload_status) {
+          Status st =
+              (reply.status().code() == (int)StatusCode::OK)
                   ? Status()
                   : Status(StatusCode(reply.status().code()), reply.status().message());
           callback(st, reply);
+        } else {
+          callback(status, reply);
         }
+        delete executor;
+      } else if (!status.IsRpcError()) {
+        callback(status, reply);
         delete executor;
       } else {
         /* In case of GCS failure, we queue the request and these requests will be */
@@ -513,6 +543,47 @@ class GcsRpcClient {
                              GcsSubscriberCommandBatch,
                              internal_pubsub_grpc_client_,
                              /*method_timeout_ms*/ -1, )
+  /// Operations for autoscaler
+  VOID_GCS_RPC_CLIENT_METHOD_FULL(ray::rpc::autoscaler,
+                                  AutoscalerStateService,
+                                  GetClusterResourceState,
+                                  autoscaler_state_grpc_client_,
+                                  /*method_timeout_ms*/ -1,
+                                  /*handle_payload_status=*/false, )
+
+  VOID_GCS_RPC_CLIENT_METHOD_FULL(ray::rpc::autoscaler,
+                                  AutoscalerStateService,
+                                  ReportAutoscalingState,
+                                  autoscaler_state_grpc_client_,
+                                  /*method_timeout_ms*/ -1,
+                                  /*handle_payload_status=*/false, )
+
+  VOID_GCS_RPC_CLIENT_METHOD_FULL(ray::rpc::autoscaler,
+                                  AutoscalerStateService,
+                                  RequestClusterResourceConstraint,
+                                  autoscaler_state_grpc_client_,
+                                  /*method_timeout_ms*/ -1,
+                                  /*handle_payload_status=*/false, )
+
+  VOID_GCS_RPC_CLIENT_METHOD_FULL(ray::rpc::autoscaler,
+                                  AutoscalerStateService,
+                                  GetClusterStatus,
+                                  autoscaler_state_grpc_client_,
+                                  /*method_timeout_ms*/ -1,
+                                  /*handle_payload_status=*/false, )
+
+  VOID_GCS_RPC_CLIENT_METHOD_FULL(ray::rpc::autoscaler,
+                                  AutoscalerStateService,
+                                  DrainNode,
+                                  autoscaler_state_grpc_client_,
+                                  /*method_timeout_ms*/ -1,
+                                  /*handle_payload_status=*/false, )
+
+  /// Runtime Env GCS Service
+  VOID_GCS_RPC_CLIENT_METHOD(RuntimeEnvGcsService,
+                             PinRuntimeEnvURI,
+                             runtime_env_grpc_client_,
+                             /*method_timeout_ms*/ -1, )
 
   void Shutdown() {
     if (!shutdown_.exchange(true)) {
@@ -633,8 +704,10 @@ class GcsRpcClient {
       placement_group_info_grpc_client_;
   std::unique_ptr<GrpcClient<InternalKVGcsService>> internal_kv_grpc_client_;
   std::unique_ptr<GrpcClient<InternalPubSubGcsService>> internal_pubsub_grpc_client_;
-
   std::unique_ptr<GrpcClient<TaskInfoGcsService>> task_info_grpc_client_;
+  std::unique_ptr<GrpcClient<RuntimeEnvGcsService>> runtime_env_grpc_client_;
+  std::unique_ptr<GrpcClient<autoscaler::AutoscalerStateService>>
+      autoscaler_state_grpc_client_;
 
   std::shared_ptr<grpc::Channel> channel_;
   bool gcs_is_down_ = false;

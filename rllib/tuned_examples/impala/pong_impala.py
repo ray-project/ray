@@ -4,6 +4,11 @@ from ray.rllib.algorithms.impala import ImpalaConfig
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.env.wrappers.atari_wrappers import wrap_atari_for_new_api_stack
 from ray.rllib.examples.rl_modules.classes.tiny_atari_cnn import TinyAtariCNN
+from ray.rllib.utils.metrics import (
+    ENV_RUNNER_RESULTS,
+    EPISODE_RETURN_MEAN,
+    NUM_ENV_STEPS_SAMPLED_LIFETIME,
+)
 from ray.rllib.utils.test_utils import add_rllib_example_script_args
 from ray.tune.registry import register_env
 
@@ -82,8 +87,8 @@ config = (
 )
 
 stop = {
-    "env_runner_results/episode_return_mean": 20.0,
-    "num_env_steps_sampled_lifetime": 5000000,
+    f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": 20.0,
+    NUM_ENV_STEPS_SAMPLED_LIFETIME: 5000000,
 }
 
 

@@ -39,7 +39,7 @@ import ray.cloudpickle as pickle
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.registry import ALGORITHMS_CLASS_TO_NAME as ALL_ALGORITHMS
 from ray.rllib.connectors.agent.obs_preproc import ObsPreprocessorConnector
-from ray.rllib.core import DEFAULT_AGENT_ID, DEFAULT_MODULE_ID
+from ray.rllib.core import DEFAULT_MODULE_ID
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.rl_module.marl_module import MultiAgentRLModuleSpec
 from ray.rllib.core.rl_module.rl_module import RLModule, SingleAgentRLModuleSpec
@@ -93,6 +93,7 @@ from ray.rllib.utils.metrics import (
     ALL_MODULES,
     ENV_RUNNER_RESULTS,
     ENV_RUNNER_SAMPLING_TIMER,
+    EPISODE_LEN_MEAN,
     EPISODE_RETURN_MAX,
     EPISODE_RETURN_MEAN,
     EPISODE_RETURN_MIN,
@@ -273,12 +274,12 @@ class Algorithm(Trainable, AlgorithmBase):
     _override_all_key_list = ["off_policy_estimation_methods", "policies"]
 
     _progress_metrics = (
-        f"{ENV_RUNNER_RESULTS}/episode_return_mean",
-        f"{EVALUATION_RESULTS}/{ENV_RUNNER_RESULTS}/episode_return_mean",
+        f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}",
+        f"{EVALUATION_RESULTS}/{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}",
         f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}",
         f"{NUM_ENV_STEPS_TRAINED_LIFETIME}",
         f"{NUM_EPISODES_LIFETIME}",
-        f"{ENV_RUNNER_RESULTS}/episode_len_mean",
+        f"{ENV_RUNNER_RESULTS}/{EPISODE_LEN_MEAN}",
     )
 
     @staticmethod
@@ -480,20 +481,6 @@ class Algorithm(Trainable, AlgorithmBase):
         # components (including timers, counters and other stats in its own
         # `training_step()` and other methods) as well as custom callbacks.
         self.metrics = MetricsLogger()
-        # Initialize lifetime counters (or those that are common as Tune stop criteria.
-        # We don't want tune to crash regularly b/c these stats might be still missing
-        # entirely after the first few iterations.
-        self.metrics.log_dict(
-            {
-                NUM_ENV_STEPS_SAMPLED_LIFETIME: 0,
-                NUM_AGENT_STEPS_SAMPLED_LIFETIME: {DEFAULT_AGENT_ID: 0},
-                NUM_ENV_STEPS_TRAINED_LIFETIME: 0,
-                NUM_AGENT_STEPS_TRAINED_LIFETIME: {DEFAULT_AGENT_ID: 0},
-                NUM_EPISODES_LIFETIME: 0,
-                f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": np.nan,
-            },
-            reduce="sum",
-        )
 
         # Create a default logger creator if no logger_creator is specified
         if logger_creator is None:
@@ -914,7 +901,7 @@ class Algorithm(Trainable, AlgorithmBase):
                     self.workers.sync_env_runner_states(
                         config=self.config,
                         env_steps_sampled=self.metrics.peek(
-                            NUM_ENV_STEPS_SAMPLED_LIFETIME
+                            NUM_ENV_STEPS_SAMPLED_LIFETIME, default=0
                         ),
                     )
             # Compile final ResultDict from `train_results` and `eval_results`. Note
@@ -1019,7 +1006,14 @@ class Algorithm(Trainable, AlgorithmBase):
 
         # We will use a user provided evaluation function.
         if self.config.custom_evaluation_function:
-            eval_results = self._evaluate_with_custom_eval_function()
+            if self.config.enable_env_runner_and_connector_v2:
+                (
+                    eval_results,
+                    env_steps,
+                    agent_steps,
+                ) = self._evaluate_with_custom_eval_function()
+            else:
+                eval_results = self.config.custom_evaluation_function()
         # There is no eval EnvRunnerGroup -> Run on local EnvRunner.
         elif self.evaluation_workers is None:
             (
@@ -1116,20 +1110,32 @@ class Algorithm(Trainable, AlgorithmBase):
         # Also return the results here for convenience.
         return eval_results
 
-    def _evaluate_with_custom_eval_function(self):
+    def _evaluate_with_custom_eval_function(self) -> Tuple[ResultDict, int, int]:
         logger.info(
             f"Evaluating current state of {self} using the custom eval function "
             f"{self.config.custom_evaluation_function}"
         )
-        eval_results = self.config.custom_evaluation_function(
-            self, self.evaluation_workers
-        )
+        if self.config.enable_env_runner_and_connector_v2:
+            (
+                eval_results,
+                env_steps,
+                agent_steps,
+            ) = self.config.custom_evaluation_function(self, self.evaluation_workers)
+            if not env_steps or not agent_steps:
+                raise ValueError(
+                    "Custom eval function must return "
+                    "`Tuple[ResultDict, int, int]` with `int, int` being "
+                    f"`env_steps` and `agent_steps`! Got {env_steps}, {agent_steps}."
+                )
+        else:
+            eval_results = self.config.custom_evaluation_function()
         if not eval_results or not isinstance(eval_results, dict):
             raise ValueError(
                 "Custom eval function must return "
                 f"dict of metrics! Got {eval_results}."
             )
-        return eval_results
+
+        return eval_results, env_steps, agent_steps
 
     def _evaluate_on_local_env_runner(self, env_runner):
         if hasattr(env_runner, "input_reader") and env_runner.input_reader is None:
@@ -3632,16 +3638,20 @@ class TrainIterCtx:
         self.trained = 0
         if self.algo.config.enable_env_runner_and_connector_v2:
             self.init_env_steps_sampled = self.algo.metrics.peek(
-                NUM_ENV_STEPS_SAMPLED_LIFETIME
+                NUM_ENV_STEPS_SAMPLED_LIFETIME, default=0
             )
             self.init_env_steps_trained = self.algo.metrics.peek(
-                NUM_ENV_STEPS_TRAINED_LIFETIME
+                NUM_ENV_STEPS_TRAINED_LIFETIME, default=0
             )
             self.init_agent_steps_sampled = sum(
-                self.algo.metrics.peek(NUM_AGENT_STEPS_SAMPLED_LIFETIME).values()
+                self.algo.metrics.peek(
+                    NUM_AGENT_STEPS_SAMPLED_LIFETIME, default={}
+                ).values()
             )
             self.init_agent_steps_trained = sum(
-                self.algo.metrics.peek(NUM_AGENT_STEPS_TRAINED_LIFETIME).values()
+                self.algo.metrics.peek(
+                    NUM_AGENT_STEPS_TRAINED_LIFETIME, default={}
+                ).values()
             )
         else:
             self.init_env_steps_sampled = self.algo._counters[NUM_ENV_STEPS_SAMPLED]
@@ -3681,7 +3691,7 @@ class TrainIterCtx:
                 self.sampled = (
                     sum(
                         self.algo.metrics.peek(
-                            NUM_AGENT_STEPS_SAMPLED_LIFETIME
+                            NUM_AGENT_STEPS_SAMPLED_LIFETIME, default={}
                         ).values()
                     )
                     - self.init_agent_steps_sampled
@@ -3689,18 +3699,18 @@ class TrainIterCtx:
                 self.trained = (
                     sum(
                         self.algo.metrics.peek(
-                            NUM_AGENT_STEPS_TRAINED_LIFETIME
+                            NUM_AGENT_STEPS_TRAINED_LIFETIME, default={}
                         ).values()
                     )
                     - self.init_agent_steps_trained
                 )
             else:
                 self.sampled = (
-                    self.algo.metrics.peek(NUM_ENV_STEPS_SAMPLED_LIFETIME)
+                    self.algo.metrics.peek(NUM_ENV_STEPS_SAMPLED_LIFETIME, default=0)
                     - self.init_env_steps_sampled
                 )
                 self.trained = (
-                    self.algo.metrics.peek(NUM_ENV_STEPS_TRAINED_LIFETIME)
+                    self.algo.metrics.peek(NUM_ENV_STEPS_TRAINED_LIFETIME, default=0)
                     - self.init_env_steps_trained
                 )
         else:

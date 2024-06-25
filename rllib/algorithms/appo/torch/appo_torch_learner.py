@@ -219,21 +219,6 @@ class APPOTorchLearner(AppoLearner, ImpalaTorchLearner):
                         )
 
     @override(AppoLearner)
-    def _update_module_target_networks(
-        self, module_id: ModuleID, config: APPOConfig
-    ) -> None:
-        module = self.module[module_id]
-
-        target_current_network_pairs = module.get_target_network_pairs()
-        for target_network, current_network in target_current_network_pairs:
-            current_state_dict = current_network.state_dict()
-            new_state_dict = {
-                k: config.tau * current_state_dict[k] + (1 - config.tau) * v
-                for k, v in target_network.state_dict().items()
-            }
-            target_network.load_state_dict(new_state_dict)
-
-    @override(AppoLearner)
     def _update_module_kl_coeff(
         self, module_id: ModuleID, config: APPOConfig, sampled_kl: float
     ) -> None:
