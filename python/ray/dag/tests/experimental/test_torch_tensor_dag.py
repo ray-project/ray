@@ -7,6 +7,7 @@ import time
 
 import pytest
 
+from ray.exceptions import RayTaskError
 import ray
 from ray.air._internal import torch_utils
 import ray.cluster_utils
@@ -298,8 +299,9 @@ def test_torch_tensor_nccl_wrong_shape(ray_start_regular):
     compiled_dag = dag.experimental_compile()
 
     ref = compiled_dag.execute(1)
-    with pytest.raises(ValueError):
+    with pytest.raises(RayTaskError) as exc_info:
         ray.get(ref)
+    assert isinstance(exc_info.value.as_instanceof_cause(), ValueError)
 
     compiled_dag.teardown()
 
@@ -421,8 +423,9 @@ def test_torch_tensor_nccl_direct_return_error(ray_start_regular):
     compiled_dag = dag.experimental_compile()
 
     ref = compiled_dag.execute((shape, dtype, 1))
-    with pytest.raises(ValueError):
+    with pytest.raises(RayTaskError) as exc_info:
         ray.get(ref)
+    assert isinstance(exc_info.value.as_instanceof_cause(), ValueError)
 
     compiled_dag.teardown()
 

@@ -603,8 +603,8 @@ def test_dag_fault_tolerance_chain(ray_start_regular_shared):
         results = ray.get(ref)
 
     with pytest.raises(RayTaskError) as exc_info:
-        for i in range(99, 200):
-            ref = compiled_dag.execute(1)
+        for i in range(99):
+            ref = compiled_dag.execute(i)
             results = ray.get(ref)
             assert results == i
     assert isinstance(exc_info.value.as_instanceof_cause(), RuntimeError)
