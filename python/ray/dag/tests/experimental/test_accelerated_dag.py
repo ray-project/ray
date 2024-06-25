@@ -483,7 +483,7 @@ def test_exceed_max_buffered_results(ray_start_regular):
     with InputNode() as i:
         dag = a.inc.bind(i)
 
-    compiled_dag = dag.experimental_compile(max_buffered_results=1)
+    compiled_dag = dag.experimental_compile(_max_buffered_results=1)
 
     refs = []
     for i in range(3):
@@ -690,7 +690,7 @@ def test_asyncio(ray_start_regular_shared, max_queue_size):
 
     loop = get_or_create_event_loop()
     compiled_dag = dag.experimental_compile(
-        enable_asyncio=True, async_max_queue_size=max_queue_size
+        enable_asyncio=True, _async_max_queue_size=max_queue_size
     )
 
     async def main(i):
@@ -712,7 +712,7 @@ def test_asyncio_exceptions(ray_start_regular_shared, max_queue_size):
 
     loop = get_or_create_event_loop()
     compiled_dag = dag.experimental_compile(
-        enable_asyncio=True, async_max_queue_size=max_queue_size
+        enable_asyncio=True, _async_max_queue_size=max_queue_size
     )
 
     async def main():
