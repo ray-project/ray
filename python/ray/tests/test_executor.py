@@ -2,7 +2,7 @@ import os
 
 from unittest.mock import patch, call
 
-from abc import ABC
+from abc import ABC, abstractmethod
 import sys
 import pytest
 from ray.util.concurrent.futures.ray_executor import (
@@ -150,10 +150,12 @@ class ActorPoolTests(ABC):
     """
 
     @property
+    @abstractmethod
     def apc(self) -> type[_AbstractActorPool]:
         ...
 
     @property
+    @abstractmethod
     def apt(self) -> str:
         ...
 
@@ -208,9 +210,9 @@ class ActorPoolTests(ABC):
 
     def test_get_actor_ids_returns_list_of_strings(self, actor_pool):
         actor_ids = actor_pool.get_actor_ids()
-        assert type(actor_ids) == list
+        assert isinstance(list, actor_ids)
         for i in actor_ids:
-            assert type(i) == str
+            assert isinstance(str, i)
 
     def test_actor_pool_exit_removes_from_pool(self):
         pool = self.apc(num_actors=1)
@@ -380,7 +382,7 @@ class TestExistingInstanceSetup(TestShared):
             result = ex.submit(lambda x: x * x, 100).result()
             assert result == 10_000
             assert ex._context is not None
-            assert type(ex._context) == RayContext
+            assert isinstance(RayContext, ex._context)
             assert ex._context.address_info["address"] == self.address
 
     def test_remote_function_runs_on_specified_instance_with_map(self):
@@ -389,7 +391,7 @@ class TestExistingInstanceSetup(TestShared):
             for result in futures_iter:
                 assert result == 10_000
             assert ex._context is not None
-            assert type(ex._context) == RayContext
+            assert isinstance(RayContext, ex._context)
             assert ex._context.address_info["address"] == self.address
 
     def test_context_manager_does_not_invoke_shutdown_on_existing_instance(self):
@@ -426,8 +428,8 @@ class TestSetupShutdown(TestIsolated):
                 assert n0 == n1
                 assert ex0._context is not None
                 assert ex1._context is not None
-                assert type(ex0._context) == RayContext
-                assert type(ex1._context) == RayContext
+                assert isinstance(RayContext, ex0._context)
+                assert isinstance(RayContext, ex1._context)
                 assert (
                     ex0._context.address_info["node_id"]
                     == ex1._context.address_info["node_id"]
@@ -655,7 +657,7 @@ class TestProcessPool(TestIsolated):
         assert hasattr(ray_iter, "__next__")
         assert hasattr(ppe_iter, "__iter__")
         assert hasattr(ppe_iter, "__next__")
-        assert type(ray_result) == type(ppe_result)
+        assert isinstance(type(ppe_result), ray_result)
         assert sorted(ray_result) == sorted(ppe_result)
 
     def test_conformity_with_processpool_using_max_workers(self):
@@ -668,7 +670,7 @@ class TestProcessPool(TestIsolated):
             ray_result = ex.submit(f_process0, 100).result()
         with ProcessPoolExecutor(max_workers=2) as ppe:
             ppe_result = ppe.submit(f_process1, 100).result()
-        assert type(ray_result) == type(ppe_result)
+        assert isinstance(type(ppe_result), ray_result)
         assert ray_result == ppe_result
 
     def test_conformity_with_processpool_map_using_max_workers(self):
@@ -687,7 +689,7 @@ class TestProcessPool(TestIsolated):
         assert hasattr(ray_iter, "__next__")
         assert hasattr(ppe_iter, "__iter__")
         assert hasattr(ppe_iter, "__next__")
-        assert type(ray_result) == type(ppe_result)
+        assert isinstance(type(ppe_result), ray_result)
         assert sorted(ray_result) == sorted(ppe_result)
 
 
@@ -725,7 +727,7 @@ class TestThreadPool(TestIsolated):
         assert hasattr(ray_iter, "__next__")
         assert hasattr(tpe_iter, "__iter__")
         assert hasattr(tpe_iter, "__next__")
-        assert type(ray_result) == type(tpe_result)
+        assert isinstance(type(tpe_result), ray_result)
         assert sorted(ray_result) == sorted(tpe_result)
 
     def test_conformity_with_threadpool_using_max_workers(self):
@@ -761,7 +763,7 @@ class TestThreadPool(TestIsolated):
         assert hasattr(ray_iter, "__next__")
         assert hasattr(tpe_iter, "__iter__")
         assert hasattr(tpe_iter, "__next__")
-        assert type(ray_result) == type(tpe_result)
+        assert isinstance(type(tpe_result), ray_result)
         assert sorted(ray_result) == sorted(tpe_result)
 
     def test_conformity_with_threadpool_initializer_initargs(self):

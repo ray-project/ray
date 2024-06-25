@@ -5,16 +5,12 @@ from concurrent.futures import Executor, Future
 from concurrent.futures._base import _result_or_cancel  # type: ignore
 from typing import (
     Any,
-    Callable,
-    Iterable,
-    Iterator,
-    Optional,
     ParamSpec,
     TYPE_CHECKING,
     TypeVar,
     TypedDict,
-    Union,
 )
+from collections.abc import Callable, Iterable, Iterator
 import random
 
 import ray
@@ -46,15 +42,17 @@ class _ActorPoolBase(ABC):
     RayExecutor."""
 
     @property
-    def max_tasks_per_actor(self) -> Union[None, int]:
+    @abstractmethod
+    def max_tasks_per_actor(self) -> int | None:
         ...
 
     @max_tasks_per_actor.setter
     @abstractmethod
-    def max_tasks_per_actor(self, val: Optional[int]) -> None:
+    def max_tasks_per_actor(self, val: int | None) -> None:
         ...
 
     @property
+    @abstractmethod
     def num_actors(self) -> int:
         ...
 
@@ -64,15 +62,16 @@ class _ActorPoolBase(ABC):
         ...
 
     @property
-    def initializer(self) -> Union[None, Callable[..., Any]]:
+    def initializer(self) -> Callable[..., Any] | None:
         ...
 
     @initializer.setter
     @abstractmethod
-    def initializer(self, val: Optional[Callable[..., Any]]) -> None:
+    def initializer(self, val: Callable[..., Any] | None) -> None:
         ...
 
     @property
+    @abstractmethod
     def initargs(self) -> tuple[Any, ...]:
         ...
 
@@ -102,9 +101,9 @@ class _AbstractActorPool(_ActorPoolBase, ABC):
     def __init__(
         self,
         num_actors: int = 2,
-        initializer: Optional[Callable[..., Any]] = None,
+        initializer: Callable[..., Any] | None = None,
         initargs: tuple[Any, ...] = (),
-        max_tasks_per_actor: Optional[int] = None,
+        max_tasks_per_actor: int | None = None,
     ) -> None:
         self.max_tasks_per_actor = max_tasks_per_actor
         self.num_actors = num_actors
@@ -123,11 +122,11 @@ class _AbstractActorPool(_ActorPoolBase, ABC):
         return [i["actor"]._ray_actor_id.hex() for i in self.pool]
 
     @property
-    def max_tasks_per_actor(self) -> Union[None, int]:
+    def max_tasks_per_actor(self) -> int | None:
         return self._max_tasks_per_actor
 
     @max_tasks_per_actor.setter
-    def max_tasks_per_actor(self, val: Optional[int]) -> None:
+    def max_tasks_per_actor(self, val: int | None) -> None:
         if val is not None:
             if val < 1:
                 raise ValueError(
@@ -149,11 +148,11 @@ class _AbstractActorPool(_ActorPoolBase, ABC):
         return
 
     @property
-    def initializer(self) -> Union[None, Callable[..., Any]]:
+    def initializer(self) -> Callable[..., Any] | None:
         return self._initializer
 
     @initializer.setter
-    def initializer(self, val: Optional[Callable[..., Any]]) -> None:
+    def initializer(self, val: Callable[..., Any] | None) -> None:
         if val is not None:
             if not callable(val):
                 raise TypeError("initializer must be callable")
@@ -166,7 +165,7 @@ class _AbstractActorPool(_ActorPoolBase, ABC):
 
     @initargs.setter
     def initargs(self, val: tuple[Any, ...]) -> None:
-        if type(val) != tuple:
+        if not isinstance(tuple, val):
             raise TypeError("initargs must be tuple")
         self._initargs = val
         return
@@ -179,7 +178,7 @@ class _AbstractActorPool(_ActorPoolBase, ABC):
         class ExecutorActor:
             def __init__(
                 self,
-                initializer: Optional[Callable[..., Any]] = None,
+                initializer: Callable[..., Any] | None = None,
                 initargs: tuple[Any, ...] = (),
             ) -> None:
                 self.initializer = initializer
@@ -397,12 +396,12 @@ class RayExecutor(Executor):
 
     def __init__(
         self,
-        max_workers: Optional[int] = None,
-        shutdown_ray: Optional[bool] = None,
-        initializer: Optional[Callable[..., Any]] = None,
+        max_workers: int | None = None,
+        shutdown_ray: bool | None = None,
+        initializer: Callable[..., Any] | None = None,
         initargs: tuple[Any, ...] = (),
-        max_tasks_per_child: Optional[int] = None,
-        mp_context: Optional[Any] = None,
+        max_tasks_per_child: int | None = None,
+        mp_context: Any | None = None,
         actor_pool_type: str = "random",
         **kwargs: Any,
     ):
@@ -456,13 +455,13 @@ class RayExecutor(Executor):
             max_workers = int(ray._private.state.cluster_resources()["CPU"])
         if max_workers < 1:
             raise ValueError(
-                f"max_workers={max_workers} as given. The argument \
-                max_workers must be >= 1"
+                f"max_workers={max_workers} as given. The argument "
+                "max_workers must be >= 1",
             )
         self.max_workers = max_workers
 
         actor_pool_type_err = ValueError(
-            "actor_pool_type must be either 'random' or 'roundrobin'"
+            "actor_pool_type must be either 'random' or 'roundrobin'",
         )
         if not isinstance(actor_pool_type, str):
             raise actor_pool_type_err
@@ -524,7 +523,7 @@ class RayExecutor(Executor):
         self,
         fn: Callable[..., T],
         *iterables: Iterable[Any],
-        timeout: Optional[float] = None,
+        timeout: float | None = None,
         chunksize: int = 1,
     ) -> Iterator[T]:
         """
