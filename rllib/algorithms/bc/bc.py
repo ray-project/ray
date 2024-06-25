@@ -165,7 +165,7 @@ class BC(MARWIL):
                 #     episodes=episodes
                 # )
 
-                self.metrics.log_n_dicts(learner_results, key=LEARNER_RESULTS)
+                self.metrics.merge_and_log_n_dicts(learner_results, key=LEARNER_RESULTS)
                 self.metrics.log_value(
                     NUM_ENV_STEPS_TRAINED_LIFETIME,
                     self.metrics.peek(

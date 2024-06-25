@@ -91,6 +91,7 @@ class OfflineData:
                     "learner": self.learner_handles[0],
                 },
                 concurrency=1,
+                batch_size=num_samples,
             ).iter_batches(
                 batch_size=num_samples,
                 prefetch_batches=1,
@@ -141,13 +142,11 @@ class OfflineData:
             # TODO (simon): Check, what happens with the module ID.
             if is_multi_agent:
                 agent_id = (
-                    batch[Columns.AGENT_ID][i][0]
+                    batch[Columns.AGENT_ID][i]
                     if Columns.AGENT_ID in batch
                     # The old stack uses "agent_index" instead of "agent_id".
                     # TODO (simon): Remove this as soon as we are new stack only.
-                    else (
-                        batch["agent_index"][i][0] if "agent_index" in batch else None
-                    )
+                    else (batch["agent_index"][i] if "agent_index" in batch else None)
                 )
             else:
                 agent_id = None
@@ -215,9 +214,9 @@ class PreprocessEpisodes:
     def __call__(self, batch: Dict[str, np.ndarray]) -> Dict[str, List[EpisodeType]]:
         # Map the batch to episodes.
 
-        logger.warning("shape(batch): {batch.shape}")
+        logger.warning(f"batch: {batch[Columns.REWARDS].shape}")
         episodes = self._map_to_episodes(self._is_multi_agent, batch)
-        logger.warning(f"len(episodes): {len(episodes['episodes'])}")
+        # logger.warning(f"len(episodes): {len(episodes['episodes'])}")
         # Synch the learner module.
         if self.learner_is_remote:
             result = self._learner.get_module_state.remote()
@@ -231,7 +230,7 @@ class PreprocessEpisodes:
             episodes=episodes["episodes"],
             shared_data={},
         )
-        print(f"batch: {batch}")
+        # logger.warning(f"batch: {batch}")
         batch = MultiAgentBatch(
             {
                 module_id: SampleBatch(module_data)
