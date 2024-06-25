@@ -205,7 +205,7 @@ SERVE_LOG_RECORD_FORMAT = {
 }
 
 # There are some attributes that we only use internally or don't provide values to the
-# users. Adding to this set will help use remove them from logged to structured logs.
+# users. Adding to this set will remove them from structured logs.
 SERVE_LOG_UNWANTED_ATTRS = {
     "serve_access_log",
     "task_id",

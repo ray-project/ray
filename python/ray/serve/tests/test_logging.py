@@ -397,6 +397,7 @@ def check_log_file(log_file: str, expected_regex: list, check_contains: bool = T
             else:
                 assert re.findall(regex, s) == []
 
+
 class TestLoggingAPI:
     def test_start_serve_with_logging_config(self, serve_and_ray_shutdown):
         serve.start(logging_config={"log_level": "DEBUG", "encoding": "JSON"})
@@ -523,7 +524,9 @@ class TestLoggingAPI:
         check_log_file(resp["logs_path"], [".*model_info_level.*"])
         if enable_access_log:
             check_log_file(resp["logs_path"], [".*model_not_show.*"])
-            check_log_file(resp["logs_path"], ["serve_access_log"], check_contains=False)
+            check_log_file(
+                resp["logs_path"], ["serve_access_log"], check_contains=False
+            )
         else:
             with pytest.raises(AssertionError):
                 check_log_file(resp["logs_path"], [".*model_not_show.*"])

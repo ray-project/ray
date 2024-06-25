@@ -41,7 +41,7 @@ buildin_print = builtins.print
 
 
 class ServeComponentFilter(logging.Filter):
-    """Serve Component Filter
+    """Serve component filter.
 
     The filter will add the component name, id, and type to the log record.
     """
@@ -59,7 +59,7 @@ class ServeComponentFilter(logging.Filter):
     def filter(self, record: logging.LogRecord) -> bool:
         """Add component attributes to the log record.
 
-        Note: the filter deosn't do any filtering, it just adds the component
+        Note: the filter doesn't do any filtering, it only adds the component
         attributes.
         """
         if self.component_type and self.component_type == ServeComponentType.REPLICA:
@@ -74,16 +74,15 @@ class ServeComponentFilter(logging.Filter):
 
 
 class ServeContextFilter(logging.Filter):
-    """Serve Context Filter
+    """Serve context filter.
 
     The filter will add the route, request id, app name to the log record.
 
-    Note: the filter deosn't do any filtering, it just adds the serve request context
+    Note: the filter doesn't do any filtering, it only adds the serve request context
     attributes.
     """
 
     def filter(self, record):
-        # Add Serve specific log fields.
         request_context = ray.serve.context._serve_request_context.get()
         if request_context.route:
             setattr(record, SERVE_LOG_ROUTE, request_context.route)
@@ -95,11 +94,12 @@ class ServeContextFilter(logging.Filter):
 
 
 class ServeLogAttributeRemovalFilter(logging.Filter):
-    """Serve log attribute removal Filter
+    """Serve log attribute removal filter.
 
-    The filter will remove unwanted attributes on to the log record.
+    The filter will remove unwanted attributes on the log record so they won't be
+    included in the structured logs.
 
-    Note: the filter deosn't do any filtering, it only removes unwanted attributes.
+    Note: the filter doesn't do any filtering, it only removes unwanted attributes.
     """
 
     def filter(self, record):
