@@ -2,7 +2,7 @@ import logging
 import threading
 from dataclasses import dataclass
 from queue import Queue
-from typing import Any, Dict, Optional
+from typing import TYPE_CHECKING, Any, Dict, Optional
 
 import ray
 from ray.train import Checkpoint
@@ -12,6 +12,10 @@ from ray.train.v2._internal.execution.checkpoint.sync_actor import Synchronizati
 from ray.train.v2._internal.execution.storage import StorageContext
 from ray.train.v2._internal.util import _copy_doc
 from ray.train.v2.api.config import RunConfig
+
+if TYPE_CHECKING:
+    from ray.train.v2._internal.execution.worker_group.thread_runner import ThreadRunner
+
 
 logger = logging.getLogger(__file__)
 
@@ -27,8 +31,22 @@ class DistributedContext:
 
 @dataclass
 class ExecutionContext:
+    """Holds the execution context for the current worker process.
+
+    Every worker process has a single execution context accessed via the
+    `TrainContext`, which includes the training thread that is actually
+    running the user code.
+    """
+
+    # A shared synchronization actor that helps broadcast data across ranks.
     synchronization_actor: SynchronizationActor
+
+    # A queue that receives training results from the user training code.
+    # `ray.train.report` in user code populates this queue.
     result_queue: Queue
+
+    # The thread launcher that runs the user training loop.
+    training_thread_runner: "ThreadRunner"
 
 
 @dataclass

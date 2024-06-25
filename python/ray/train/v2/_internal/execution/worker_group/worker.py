@@ -1,10 +1,11 @@
 import os
+import queue
 import socket
 from dataclasses import dataclass
-from queue import Queue
-from typing import Callable, Dict, List, Optional, TypeVar, Union
+from typing import Any, Callable, Dict, List, Optional, TypeVar, Union
 
 import ray
+from .thread_runner import ThreadRunner
 from ray.actor import ActorHandle
 from ray.train import Checkpoint
 from ray.train._internal.session import _TrainingResult
@@ -48,13 +49,14 @@ class RayTrainWorker:
     def execute(self, fn: Callable[..., T], *fn_args, **fn_kwargs) -> T:
         return fn(*fn_args, **fn_kwargs)
 
-    def run_train_fn(self, train_fn: Callable):
-        try:
-            train_fn()
-        finally:
-            # Make sure the result queue is fully consumed before the worker exits.
-            # Training is not "finished" until all results are processed.
-            self.flush_result_queue()
+    def run_train_fn(self, train_fn: Callable[[], Any]):
+        """Run the training function in a separate thread.
+
+        This function should return immediately, freeing up the main actor thread
+        to perform other tasks such as polling the status.
+        """
+        # Create and start the training thread.
+        get_train_context().execution_context.training_thread_runner.run(train_fn)
 
     def get_metadata(self) -> ActorMetadata:
         return ActorMetadata(
@@ -65,26 +67,30 @@ class RayTrainWorker:
             accelerator_ids=ray.get_runtime_context().get_accelerator_ids(),
         )
 
-    def flush_result_queue(self):
-        """Waits until all results are consumed and processed by the controller.
+    def poll_status(self) -> WorkerStatus:
+        execution_context = get_train_context().execution_context
 
-        Joining the queue will block until all items have been processed.
-        This requires `poll_status` to be called repeatedly until the
-        queue has been fully flushed.
-        """
-        result_queue = get_train_context().get_result_queue()
-        result_queue.join()
-
-    def poll_status(self) -> _TrainingResult:
-        train_context = get_train_context()
-        result_queue = train_context.get_result_queue()
-        if result_queue.empty():
-            return None
         # TODO: We can implement two phase commit here.
         # Only mark the task done when the result has been processed by the controller.
-        training_result = result_queue.get()
-        result_queue.task_done()
-        return training_result
+        try:
+            training_result = execution_context.result_queue.get_nowait()
+            execution_context.result_queue.task_done()
+        except queue.Empty:
+            training_result = None
+
+        error = execution_context.training_thread_runner.get_error()
+
+        # TODO: The running state should not be conflated with queue flushing.
+        # Running should only be true if the user code is still running.
+        # This relies on `worker_group_status.finished` returning False
+        # until all training results have been flushed.
+        running = execution_context.training_thread_runner.is_running() or bool(
+            training_result
+        )
+
+        return WorkerStatus(
+            running=running, error=error, training_result=training_result
+        )
 
     def init_train_context(
         self,
@@ -99,7 +105,8 @@ class RayTrainWorker:
             distributed_context=distributed_context,
             execution_context=ExecutionContext(
                 synchronization_actor=synchronization_actor,
-                result_queue=Queue(),
+                result_queue=queue.Queue(),
+                training_thread_runner=ThreadRunner(),
             ),
             storage_context=storage_context,
             checkpoint=checkpoint,

@@ -6,6 +6,7 @@ from ray.train.examples.pytorch.torch_linear_example import (
     train_func as linear_train_func,
 )
 from ray.train.torch import TorchTrainer
+from ray.train.v2._internal.constants import HEALTH_CHECK_INTERVAL_S_ENV_VAR
 
 
 @pytest.fixture(scope="module")
@@ -13,6 +14,12 @@ def ray_start_4_cpus():
     ray.init(num_cpus=4)
     yield
     ray.shutdown()
+
+
+@pytest.fixture(autouse=True)
+def reduce_health_check_interval(monkeypatch):
+    monkeypatch.setenv(HEALTH_CHECK_INTERVAL_S_ENV_VAR, "0.2")
+    yield
 
 
 @pytest.mark.parametrize("num_workers", [1, 2])

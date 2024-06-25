@@ -94,6 +94,15 @@ py_test(
 )
 
 py_test(
+    name = "test_thread_runner",
+    size = "small",
+    srcs = ["tests/test_thread_runner.py"],
+    tags = ["exclusive", "team:ml", "train_v2"],
+    deps = ["//:ray_lib", ":conftest"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
+)
+
+py_test(
     name = "test_torch_trainer",
     size = "small",
     srcs = ["tests/test_torch_trainer.py"],
@@ -103,9 +112,9 @@ py_test(
 )
 
 py_test(
-    name = "test_worker_group_v2",
+    name = "test_worker_group",
     size = "small",
-    srcs = ["tests/test_worker_group_v2.py"],
+    srcs = ["tests/test_worker_group.py"],
     tags = ["exclusive", "team:ml", "train_v2"],
     deps = ["//:ray_lib", ":conftest"],
     env = {"RAY_TRAIN_V2_ENABLED": "1"},

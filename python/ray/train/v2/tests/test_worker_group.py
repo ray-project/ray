@@ -49,7 +49,8 @@ def test_poll_status_finished(ray_start_4_cpus):
 
     # Wait for the workers to finish the training fn before polling.
     # Otherwise, the poll_status call may return before the workers finish.
-    ray.wait(wg._get_train_fn_tasks(), num_returns=len(wg))
+    while not wg.poll_status().finished:
+        time.sleep(0.01)
 
     status = wg.poll_status()
     wg.shutdown()
@@ -68,16 +69,18 @@ def test_poll_status_failures(
         if training_failure:
             raise RuntimeError("train error")
 
-    def patched_poll_status(worker_self):
-        if poll_failure:
+    if poll_failure:
+
+        def patched_poll_status(worker_self):
             raise RuntimeError("poll error")
 
-    monkeypatch.setattr(RayTrainWorker, "poll_status", patched_poll_status)
+        monkeypatch.setattr(RayTrainWorker, "poll_status", patched_poll_status)
 
     wg = WorkerGroup()
     wg.start(num_workers=4, resources_per_worker={"CPU": 1})
     wg.run_train_fn(train_fn)
-    ray.wait(wg._get_train_fn_tasks(), num_returns=len(wg))
+    while not wg.poll_status().finished:
+        time.sleep(0.01)
 
     status = wg.poll_status()
     wg.shutdown()
@@ -284,12 +287,15 @@ def test_flush_worker_result_queue(ray_start_4_cpus, queue_backlog_length):
         wg.execute(populate_result_queue)
 
     wg.run_train_fn(lambda: None)
-    status = wg.poll_status()
 
-    for _ in range(queue_backlog_length - 1):
-        assert not status.finished
+    for _ in range(queue_backlog_length):
         status = wg.poll_status()
+        assert all(
+            worker_status.training_result
+            for worker_status in status.worker_statuses.values()
+        )
 
+    status = wg.poll_status()
     assert status.finished
 
     wg.shutdown()

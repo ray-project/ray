@@ -2,7 +2,7 @@ import collections
 import logging
 import os
 from dataclasses import dataclass
-from typing import Callable, Dict, List, Optional, Tuple, TypeVar
+from typing import Callable, Dict, List, Optional, TypeVar
 
 import ray
 from ray.train import Checkpoint
@@ -76,9 +76,6 @@ class WorkerGroup:
         self._latest_start_time = float("-inf")
         self._pg = None
 
-        # Long-running actor task refs that run the training function.
-        self._train_fn_tasks: List[ObjectRef] = []
-
         # Maps world rank to the number of consecutive health check misses.
         self._num_consecutive_poll_misses: Dict[int, int] = collections.defaultdict(int)
         self._max_consecutive_poll_misses = int(
@@ -112,7 +109,6 @@ class WorkerGroup:
         logger.info(f"Starting worker group of size {num_workers}.")
         actors = [
             remote_actor_cls.options(
-                max_concurrency=2,
                 scheduling_strategy=PlacementGroupSchedulingStrategy(
                     placement_group=pg, placement_group_bundle_index=i
                 ),
@@ -233,7 +229,6 @@ class WorkerGroup:
     def _clear_state(self):
         self._workers = []
         self._pg = None
-        self._train_fn_tasks = []
         self._num_consecutive_poll_misses = collections.defaultdict(int)
         self._world_rank_to_ongoing_poll = {}
         self._sync_actor = None
@@ -245,9 +240,11 @@ class WorkerGroup:
     def run_train_fn(self, train_fn: Callable):
         self._assert_workers_started()
 
-        self._train_fn_tasks = [
-            worker.actor.run_train_fn.remote(train_fn) for worker in self._workers
-        ]
+        # Launch the training function on each worker.
+        # This task should start a worker thread and return immediately.
+        ray.get(
+            [worker.actor.run_train_fn.remote(train_fn) for worker in self._workers]
+        )
 
         self._latest_start_time = time_monotonic()
 
@@ -270,7 +267,7 @@ class WorkerGroup:
 
     def _poll_workers_and_collect_errors(
         self, timeout: Optional[float]
-    ) -> Tuple[List, List[Optional[Exception]]]:
+    ) -> List[WorkerStatus]:
         """Launch poll tasks on each worker and collect the results.
 
         The poll task should involve very little computation and should
@@ -300,7 +297,7 @@ class WorkerGroup:
             timeout=timeout,
         )
 
-        poll_task_to_result, poll_task_to_error = {}, {}
+        poll_task_to_result = {}
 
         for hanging_poll in hanging_polls:
             hanging_rank = poll_task_to_world_rank[hanging_poll]
@@ -311,6 +308,7 @@ class WorkerGroup:
             self._num_consecutive_poll_misses[hanging_rank] += 1
             total_misses = self._num_consecutive_poll_misses[hanging_rank]
 
+            error = None
             if total_misses >= self._max_consecutive_poll_misses:
                 error_msg = (
                     f"A worker has missed {total_misses} "
@@ -318,9 +316,11 @@ class WorkerGroup:
                     f"Worker info: {self._workers[hanging_rank]}"
                 )
                 logger.error(error_msg)
-                poll_task_to_error[hanging_poll] = WorkerHealthCheckMissedError(
-                    error_msg
-                )
+                error = WorkerHealthCheckMissedError(error_msg)
+
+            poll_task_to_result[hanging_poll] = WorkerStatus(
+                running=True, error=error, training_result=None
+            )
 
         for done_poll in done_polls:
             done_rank = poll_task_to_world_rank[done_poll]
@@ -329,8 +329,9 @@ class WorkerGroup:
             self._world_rank_to_ongoing_poll.pop(done_rank, None)
 
             try:
-                poll_result = ray.get(done_poll)
+                poll_result: WorkerStatus = ray.get(done_poll)
                 poll_task_to_result[done_poll] = poll_result
+
                 # Reset the consecutive poll misses for the worker.
                 self._num_consecutive_poll_misses[done_rank] = 0
             except Exception as e:
@@ -339,61 +340,40 @@ class WorkerGroup:
                     f"Worker info: {self._workers[done_rank]}"
                 )
                 logger.exception(error_msg)
-                poll_task_to_error[done_poll] = WorkerHealthCheckFailedError(
-                    error_msg, failure=e
+
+                poll_task_to_result[done_poll] = WorkerStatus(
+                    running=False,
+                    error=WorkerHealthCheckFailedError(error_msg, failure=e),
+                    training_result=None,
                 )
 
+        # Collect the results and errors in the order of the workers.
         results = [
             poll_task_to_result.get(poll_task) for poll_task in poll_task_to_world_rank
         ]
-        errors = [
-            poll_task_to_error.get(poll_task) for poll_task in poll_task_to_world_rank
-        ]
-        return results, errors
-
-    def _poll_train_tasks(self) -> Tuple[List[bool], List[Optional[Exception]]]:
-        assert self._train_fn_tasks
-
-        done_train_tasks, _ = ray.wait(
-            self._train_fn_tasks, num_returns=len(self._train_fn_tasks), timeout=0
-        )
-
-        train_task_to_error = {}
-        for train_task in done_train_tasks:
-            try:
-                ray.get(train_task)
-            except Exception as e:
-                train_task_to_error[train_task] = e
-
-        training_finished = [task in done_train_tasks for task in self._train_fn_tasks]
-        errors = [train_task_to_error.get(task) for task in self._train_fn_tasks]
-        return training_finished, errors
+        return results
 
     def poll_status(self, timeout: Optional[float] = None) -> WorkerGroupStatus:
+        """Poll the status of all workers in the worker group.
+
+        Args:
+            timeout: The maximum time to wait for the poll tasks to complete.
+        """
         if not self._workers:
-            return WorkerGroupStatus(0, self._latest_start_time, {})
+            return WorkerGroupStatus(
+                num_workers=0,
+                latest_start_time=self._latest_start_time,
+                worker_statuses={},
+            )
 
-        poll_results, poll_errors = self._poll_workers_and_collect_errors(timeout)
-        training_finished, train_task_errors = self._poll_train_tasks()
-
-        # Populate the worker status errors with the errors raised from
-        # either of the poll or training tasks.
-        # The poll task error takes precedence if both tasks fail.
-        errors = [
-            poll_error or train_task_error
-            for poll_error, train_task_error in zip(poll_errors, train_task_errors)
-        ]
+        poll_results = self._poll_workers_and_collect_errors(timeout)
 
         return WorkerGroupStatus(
             num_workers=len(self._workers),
             latest_start_time=self._latest_start_time,
             worker_statuses={
-                world_rank: WorkerStatus(
-                    running=(not finished), error=error, training_result=result
-                )
-                for world_rank, (finished, error, result) in enumerate(
-                    zip(training_finished, errors, poll_results)
-                )
+                world_rank: worker_status
+                for world_rank, worker_status in enumerate(poll_results)
             },
         )
 
@@ -511,8 +491,3 @@ class WorkerGroup:
             for i, worker in enumerate(self._workers)
         ]
         ray.get(context_init_tasks)
-
-    # Testing only
-
-    def _get_train_fn_tasks(self) -> List[ObjectRef]:
-        return self._train_fn_tasks

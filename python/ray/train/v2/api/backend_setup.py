@@ -17,13 +17,6 @@ class BackendSetupCallback(SystemCallback):
         self._backend.on_start(worker_group, self._backend_config)
         self._backend.on_training_start(worker_group, self._backend_config)
 
-        # TODO: Executing this dummy function is a temporary workaround
-        # to avoid a GIL segfault in the torch training loop.
-        # This is most likely a bug with Ray threaded actors,
-        # and the fix is to manage the training thread ourselves with
-        # python threading, rather than relying on actor threading.
-        worker_group.execute(lambda: None)
-
     def before_worker_group_shutdown(self, worker_group: WorkerGroup):
         try:
             self._backend.on_shutdown(worker_group, self._backend_config)

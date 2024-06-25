@@ -10,8 +10,15 @@ from ray.train.lightning import (
 from ray.train.lightning._lightning_utils import import_lightning
 from ray.train.tests.lightning_test_utils import DummyDataModule, LinearModule
 from ray.train.torch import TorchTrainer
+from ray.train.v2._internal.constants import HEALTH_CHECK_INTERVAL_S_ENV_VAR
 
 pl = import_lightning()
+
+
+@pytest.fixture(autouse=True)
+def reduce_health_check_interval(monkeypatch):
+    monkeypatch.setenv(HEALTH_CHECK_INTERVAL_S_ENV_VAR, "0.2")
+    yield
 
 
 @pytest.mark.parametrize("strategy_name", ["ddp", "fsdp"])
