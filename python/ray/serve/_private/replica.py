@@ -339,11 +339,11 @@ class ReplicaActor:
         """
         ray.serve.context._serve_request_context.set(
             ray.serve.context._RequestContext(
-                request_metadata.route,
-                request_metadata.request_id,
-                self._deployment_id.app_name,
-                request_metadata.multiplexed_model_id,
-                request_metadata.grpc_context,
+                route=request_metadata.route,
+                request_id=request_metadata.request_id,
+                app_name=self._deployment_id.app_name,
+                multiplexed_model_id=request_metadata.multiplexed_model_id,
+                grpc_context=request_metadata.grpc_context,
             )
         )
 
@@ -552,8 +552,9 @@ class ReplicaActor:
 
         proto = RequestMetadataProto.FromString(proto_request_metadata)
         request_metadata: RequestMetadata = RequestMetadata(
-            proto.request_id,
-            proto.endpoint,
+            request_id=proto.request_id,
+            internal_request_id=proto.internal_request_id,
+            endpoint=proto.endpoint,
             call_method=proto.call_method,
             multiplexed_model_id=proto.multiplexed_model_id,
             route=proto.route,
@@ -726,7 +727,19 @@ class ReplicaActor:
         # can skip the wait period.
         if self._user_callable_initialized:
             await self._drain_ongoing_requests()
+
+        try:
             await self._user_callable_wrapper.call_destructor()
+        except:  # noqa: E722
+            # We catch a blanket exception since the constructor may still be
+            # running, so instance variables used by the destructor may not exist.
+            if self._user_callable_initialized:
+                logger.exception(
+                    "__del__ ran before replica finished initializing, and "
+                    "raised an exception."
+                )
+            else:
+                logger.exception("__del__ raised an exception.")
 
         await self._metrics_manager.shutdown()
 
@@ -963,7 +976,7 @@ class UserCallableWrapper:
         scope = pickle.loads(request.pickled_asgi_scope)
         receive = ASGIReceiveProxy(
             scope,
-            request_metadata.request_id,
+            request_metadata,
             request.receive_asgi_messages,
         )
         receive_task = self._user_code_event_loop.create_task(
@@ -1158,10 +1171,15 @@ class UserCallableWrapper:
     async def call_destructor(self):
         """Explicitly call the `__del__` method of the user callable.
 
-        Calling this multiple times has no effect; only the first call will actually
-        call the destructor.
+        Calling this multiple times has no effect; only the first call will
+        actually call the destructor.
         """
-        self._raise_if_not_initialized("call_destructor")
+        if self._callable is None:
+            logger.info(
+                "This replica has not yet started running user code. "
+                "Skipping __del__."
+            )
+            return
 
         # Only run the destructor once. This is safe because there is no `await` between
         # checking the flag here and flipping it to `True` below.

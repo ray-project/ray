@@ -45,6 +45,9 @@ class TrainRunInfo(BaseModel):
     datasets: List[TrainDatasetInfo] = Field(
         description="A List of dataset info for this Train run."
     )
+    start_time: float = Field(
+        description="The UNIX timestamp of the start time of this Train run."
+    )
 
 
 @DeveloperAPI
