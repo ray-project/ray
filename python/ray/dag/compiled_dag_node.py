@@ -250,7 +250,7 @@ class DAGInputAdapter:
             return extract_arg
 
         if input_attr_node:
-            key = input_attr_node.get_other_args_to_resolve()["key"]
+            key = input_attr_node.key
         else:
             key = 0
         self._adapt_method = extractor(key)
@@ -452,6 +452,10 @@ class CompiledDAG:
         self.input_task_idx: Optional[int] = None
         self.output_task_idx: Optional[int] = None
         self.has_single_output: bool = False
+        # Number of expected positional args and kwargs that may be passed to
+        # dag.execute.
+        self._input_num_positional_args: Optional[int] = None
+        self._input_kwargs: Tuple[str, ...] = None
         self.actor_task_count: Dict["ray._raylet.ActorID", int] = defaultdict(int)
 
         # Cached attributes that are set during compilation.
@@ -547,6 +551,10 @@ class CompiledDAG:
                 "Compiled DAGs currently require exactly one InputNode"
             )
 
+        direct_input: Optional[bool] = None
+        input_positional_args: Set[int] = set()
+        input_kwargs: Set[str] = set()
+
         # For each task node, set its upstream and downstream task nodes.
         # Also collect the set of tasks that produce torch.tensors.
         for node_idx, task in self.idx_to_task.items():
@@ -574,6 +582,13 @@ class CompiledDAG:
                         "Compiled DAGs can only bind methods to an actor "
                         "that is already created with Actor.remote()"
                     )
+
+                if dag_node.num_returns != 1:
+                    raise ValueError(
+                        "Compiled DAGs only supports actor methods with "
+                        "num_returns=1"
+                    )
+
                 self.actor_task_count[actor_handle._actor_id] += 1
 
                 if dag_node.type_hint.requires_nccl():
@@ -601,10 +616,35 @@ class CompiledDAG:
                 if isinstance(task.dag_node, ClassMethodNode):
                     downstream_actor_handle = task.dag_node._get_actor_handle()
 
-                # If the upstream node is an InputAttributeNode, treat the
-                # DAG's input node as the actual upstream node
                 if isinstance(upstream_node.dag_node, InputAttributeNode):
+                    # Record all of the keys used to index the InputNode.
+                    # During execution, we will check that the user provides
+                    # the same args and kwargs.
+                    if isinstance(upstream_node.dag_node.key, int):
+                        input_positional_args.add(upstream_node.dag_node.key)
+                    elif isinstance(upstream_node.dag_node.key, str):
+                        input_kwargs.add(upstream_node.dag_node.key)
+                    else:
+                        raise ValueError(
+                            "InputNode() can only be indexed using int for positional args or str for kwargs."
+                        )
+
+                    if direct_input is not None and direct_input:
+                        raise ValueError(
+                            "All tasks must either use InputNode() directly, or they must index to specific args or kwargs."
+                        )
+                    direct_input = False
+
+                    # If the upstream node is an InputAttributeNode, treat the
+                    # DAG's input node as the actual upstream node
                     upstream_node = self.idx_to_task[self.input_task_idx]
+
+                elif isinstance(upstream_node.dag_node, InputNode):
+                    if direct_input is not None and not direct_input:
+                        raise ValueError(
+                            "All tasks must either use InputNode() directly, or they must index to specific args or kwargs."
+                        )
+                    direct_input = True
 
                 upstream_node.downstream_node_idxs[node_idx] = downstream_actor_handle
                 task.arg_type_hints.append(upstream_node.dag_node.type_hint)
@@ -645,6 +685,14 @@ class CompiledDAG:
             raise ValueError("Driver cannot participate in the NCCL group.")
         if nccl_actors and self._nccl_group_id is None:
             self._nccl_group_id = _init_nccl_group(nccl_actors)
+
+        if direct_input:
+            self._input_num_positional_args = 1
+        elif not input_positional_args:
+            self._input_num_positional_args = 0
+        else:
+            self._input_num_positional_args = max(input_positional_args) + 1
+        self._input_kwargs = tuple(input_kwargs)
 
     def _get_or_compile(
         self,
@@ -1175,12 +1223,32 @@ class CompiledDAG:
 
         self._get_or_compile()
 
+        self._check_inputs(args, kwargs)
         inp = (args, kwargs)
         self._dag_submitter.write(inp)
 
         ref = CompiledDAGRef(self, self._execution_index)
         self._execution_index += 1
         return ref
+
+    def _check_inputs(self, args: Tuple[Any, ...], kwargs: Dict[str, Any]) -> None:
+        """
+        Helper method to check that the DAG args provided by the user during
+        execution are valid according to the defined DAG.
+        """
+        if len(args) != self._input_num_positional_args:
+            raise ValueError(
+                "dag.execute() or dag.execute_async() must be "
+                f"called with {self._input_num_positional_args} positional args, got "
+                f"{len(args)}"
+            )
+
+        for kwarg in self._input_kwargs:
+            if kwarg not in kwargs:
+                raise ValueError(
+                    "dag.execute() or dag.execute_async() "
+                    f"must be called with kwarg `{kwarg}`"
+                )
 
     async def execute_async(
         self,

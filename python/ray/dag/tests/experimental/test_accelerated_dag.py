@@ -75,6 +75,10 @@ class Actor:
         time.sleep(x)
         return x
 
+    @ray.method(num_returns=2)
+    def return_two(self, x):
+        return x, x + 1
+
 
 @ray.remote
 class Collector:
@@ -114,6 +118,20 @@ def test_basic(ray_start_regular):
     # Note: must teardown before starting a new Ray session, otherwise you'll get
     # a segfault from the dangling monitor thread upon the new Ray init.
     compiled_dag.teardown()
+
+
+def test_multiple_returns(ray_start_regular):
+    a = Actor.remote(0)
+    b = Actor.remote(0)
+    with InputNode() as i:
+        dag = a.return_two.bind(i)
+        dag = b.echo.bind(dag)
+
+    with pytest.raises(
+        ValueError,
+        match="Compiled DAGs only supports actor methods with " "num_returns=1",
+    ):
+        dag.experimental_compile()
 
 
 def test_out_of_order_get(ray_start_regular):
@@ -243,6 +261,24 @@ def test_multi_args_single_actor(ray_start_regular):
         result = ray.get(ref)
         assert result == [3, 2] * (i + 1)
 
+    with pytest.raises(
+        ValueError,
+        match=r"dag.execute\(\) or dag.execute_async\(\) must be called with 2 positional args, got 1",
+    ):
+        compiled_dag.execute((2, 3))
+
+    with pytest.raises(
+        ValueError,
+        match=r"dag.execute\(\) or dag.execute_async\(\) must be called with 2 positional args, got 0",
+    ):
+        compiled_dag.execute()
+
+    with pytest.raises(
+        ValueError,
+        match=r"dag.execute\(\) or dag.execute_async\(\) must be called with 2 positional args, got 0",
+    ):
+        compiled_dag.execute(args=(2, 3))
+
     compiled_dag.teardown()
 
 
@@ -291,6 +327,24 @@ def test_kwargs_single_actor(ray_start_regular):
         ref = compiled_dag.execute(x=2, y=3)
         result = ray.get(ref)
         assert result == [3, 2] * (i + 1)
+
+    with pytest.raises(
+        ValueError,
+        match=r"dag.execute\(\) or dag.execute_async\(\) must be called with kwarg",
+    ):
+        compiled_dag.execute()
+
+    with pytest.raises(
+        ValueError,
+        match=r"dag.execute\(\) or dag.execute_async\(\) must be called with kwarg `x`",
+    ):
+        compiled_dag.execute(y=3)
+
+    with pytest.raises(
+        ValueError,
+        match=r"dag.execute\(\) or dag.execute_async\(\) must be called with kwarg `y`",
+    ):
+        compiled_dag.execute(x=3)
 
     compiled_dag.teardown()
 
