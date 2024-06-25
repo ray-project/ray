@@ -240,13 +240,15 @@ async def find_job_by_ids(
     return None
 
 
-async def find_jobs_with_job_ids(
+async def find_jobs_by_job_ids(
     gcs_aio_client: GcsAioClient,
     job_info_client: JobInfoStorageClient,
     job_ids: List[str],
 ) -> Dict[str, JobDetails]:
     """
     Returns a dictionary of submission jobs with the given job ids, keyed by the job id.
+
+    This only accepts job ids and not submission ids.
     """
     driver_jobs, submission_job_drivers = await get_driver_jobs(gcs_aio_client)
 
