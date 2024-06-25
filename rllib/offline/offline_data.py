@@ -76,25 +76,20 @@ class OfflineData:
         ):
             # If no iterator should be returned, or if we want to return a single
             # batch iterator, we instantiate the batch iterator once, here.
-
-            # self.batch_iterator = self.data.map_batches(
-            #     functools.partial(self._map_to_episodes, self.is_multi_agent)
-            # ).iter_batches(
-            #     batch_size=num_samples,
-            #     prefetch_batches=1,
-            #     local_shuffle_buffer_size=num_samples * 10,
-            # )
+            # TODO (simon, sven): The iterator depends on the `num_samples`, i.e.abs
+            # sampling later with a different batch size would need a
+            # reinstantiation of the iterator.
             self.batch_iterator = self.data.map_batches(
                 PreprocessEpisodes,
                 fn_constructor_kwargs={
                     "config": self.config,
                     "learner": self.learner_handles[0],
                 },
-                concurrency=1,
+                concurrency=2,
                 batch_size=num_samples,
             ).iter_batches(
                 batch_size=num_samples,
-                prefetch_batches=1,
+                prefetch_batches=2,
                 local_shuffle_buffer_size=num_samples * 10,
             )
 

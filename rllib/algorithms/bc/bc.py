@@ -169,7 +169,7 @@ class BC(MARWIL):
                 self.metrics.log_value(
                     NUM_ENV_STEPS_TRAINED_LIFETIME,
                     self.metrics.peek(
-                        LEARNER_RESULTS, ALL_MODULES, NUM_ENV_STEPS_TRAINED
+                        (LEARNER_RESULTS, ALL_MODULES, NUM_ENV_STEPS_TRAINED)
                     ),
                     reduce="sum",
                 )
