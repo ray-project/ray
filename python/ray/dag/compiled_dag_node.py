@@ -260,7 +260,7 @@ class DAGInputAdapter:
         def extractor(key: Union[int, str]):
             def extract_arg(raw_args):
                 if not isinstance(raw_args, RayDAGArgs):
-                    # Fast path for a single input of type `bytes`.
+                    # Fast path for a single input.
                     return raw_args
                 else:
                     assert isinstance(raw_args, RayDAGArgs)
@@ -1203,12 +1203,12 @@ class CompiledDAG:
 
         self._get_or_compile()
 
-        if len(args) == 1 and len(kwargs) == 0 and isinstance(args[0], bytes):
+        if len(args) == 1 and len(kwargs) == 0:
             # When serializing a tuple, the Ray serializer invokes pickle5, which adds
             # several microseconds of overhead. One common case for accelerated DAGs is
-            # passing a single argument of type `bytes`. To avoid imposing this overhead
-            # on this common case, we create a fast path for this case that avoids
-            # pickle5.
+            # passing a single argument (oftentimes of of type `bytes`, which requires
+            # no serialization). To avoid imposing this overhead on this common case, we
+            # create a fast path for this case that avoids pickle5.
             inp = args[0]
         else:
             inp = RayDAGArgs(args=args, kwargs=kwargs)
@@ -1239,12 +1239,13 @@ class CompiledDAG:
 
         self._get_or_compile()
         async with self._dag_submission_lock:
-            if len(args) == 1 and len(kwargs) == 0 and isinstance(args[0], bytes):
+            if len(args) == 1 and len(kwargs) == 0:
                 # When serializing a tuple, the Ray serializer invokes pickle5, which
                 # adds several microseconds of overhead. One common case for accelerated
-                # DAGs is passing a single argument of type `bytes`. To avoid imposing
-                # this overhead on this common case, we create a fast path for this case
-                # that avoids pickle5.
+                # DAGs is passing a single argument (oftentimes of of type `bytes`,
+                # which requires no serialization). To avoid imposing this overhead on
+                # this common case, we create a fast path for this case that avoids
+                # pickle5.
                 inp = args[0]
             else:
                 inp = RayDAGArgs(args=args, kwargs=kwargs)
