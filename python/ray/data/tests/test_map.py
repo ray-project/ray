@@ -1073,13 +1073,13 @@ def test_map_batches_async_generator(shutdown_only):
             pass
 
         async def __call__(self, batch):
-            tasks = [sleep_and_yield(i) for i in batch["id"]]
             tasks = [asyncio.create_task(sleep_and_yield(i)) for i in batch["id"]]
             for task in tasks:
                 yield await task
 
     n = 10
     ds = ray.data.range(n, override_num_blocks=2)
+    ds = ds.map(lambda x: x)
     ds = ds.map_batches(AsyncActor, batch_size=1, concurrency=1, max_concurrency=2)
 
     start_t = time.time()

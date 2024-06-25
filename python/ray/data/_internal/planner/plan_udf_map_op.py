@@ -50,17 +50,31 @@ from ray.util.rpdb import _is_ray_debugger_enabled
 class _MapActorContext:
     def __init__(
         self,
-        cached_cls: UserDefinedFunction,
-        cached_fn: Callable[[Any], Any],
-        cached_loop: Optional[asyncio.AbstractEventLoop] = None,
-        cached_asyncio_thread: Optional[Thread] = None,
+        udf_map_cls: UserDefinedFunction,
+        udf_map_fn: Callable[[Any], Any],
+        is_async: bool,
     ):
-        self.cached_cls = cached_cls
-        self.cached_fn = cached_fn
+        self.udf_map_cls = udf_map_cls
+        self.udf_map_fn = udf_map_fn
+        self.is_async = is_async
+        self.udf_map_asyncio_loop = None
+        self.udf_map_asyncio_thread = None
 
+        if is_async:
+            self._init_async()
+
+    def _init_async(self):
         # Only used for callable class with async generator `__call__` method.
-        self.cached_loop = cached_loop
-        self.cached_asyncio_thread = cached_asyncio_thread
+        loop = asyncio.new_event_loop()
+
+        def run_loop():
+            asyncio.set_event_loop(loop)
+            loop.run_forever()
+
+        thread = Thread(target=run_loop)
+        thread.start()
+        self.udf_map_asyncio_loop = loop
+        self.udf_map_asyncio_thread = thread
 
 
 def plan_udf_map_op(
@@ -124,35 +138,32 @@ def _parse_op_fn(op: AbstractUDFMap):
         fn_constructor_args = op._fn_constructor_args or ()
         fn_constructor_kwargs = op._fn_constructor_kwargs or {}
 
-        if inspect.isasyncgenfunction(op._fn.__call__):
-            # TODO(scottjlee): (1) support non-generator async functions
-            # (2) make the map actor async
-            def init_fn():
-                if ray.data._map_actor_context is None:
-                    loop = asyncio.new_event_loop()
+        is_async_gen = inspect.isasyncgenfunction(op._fn.__call__)
 
-                    def run_loop():
-                        asyncio.set_event_loop(loop)
-                        loop.run_forever()
+        # TODO(scottjlee): (1) support non-generator async functions
+        # (2) make the map actor async
+        if not is_async_gen:
+            op_fn = make_callable_class_concurrent(op_fn)
 
-                    thread = Thread(target=run_loop)
-                    thread.start()
+        def init_fn():
+            if ray.data._map_actor_context is None:
+                ray.data._map_actor_context = _MapActorContext(
+                    udf_map_cls=op_fn,
+                    udf_map_fn=op_fn(
+                        *fn_constructor_args,
+                        **fn_constructor_kwargs,
+                    ),
+                    is_async=is_async_gen,
+                )
 
-                    ray.data._map_actor_context = _MapActorContext(
-                        cached_cls=op_fn,
-                        cached_fn=op_fn(
-                            *fn_constructor_args,
-                            **fn_constructor_kwargs,
-                        ),
-                        cached_loop=loop,
-                        cached_asyncio_thread=thread,
-                    )
+        if is_async_gen:
 
             async def fn(item: Any) -> Any:
                 assert ray.data._map_actor_context is not None
+                assert ray.data._map_actor_context.is_async
 
                 try:
-                    return ray.data._map_actor_context.cached_fn(
+                    return ray.data._map_actor_context.udf_map_fn(
                         item,
                         *fn_args,
                         **fn_kwargs,
@@ -161,22 +172,12 @@ def _parse_op_fn(op: AbstractUDFMap):
                     _handle_debugger_exception(e)
 
         else:
-            op_fn = make_callable_class_concurrent(op_fn)
-
-            def init_fn():
-                if ray.data._map_actor_context is None:
-                    ray.data._map_actor_context = _MapActorContext(
-                        cached_cls=op_fn,
-                        cached_fn=op_fn(
-                            *fn_constructor_args,
-                            **fn_constructor_kwargs,
-                        ),
-                    )
 
             def fn(item: Any) -> Any:
                 assert ray.data._map_actor_context is not None
+                assert not ray.data._map_actor_context.is_async
                 try:
-                    return ray.data._map_actor_context.cached_fn(
+                    return ray.data._map_actor_context.udf_map_fn(
                         item,
                         *fn_args,
                         **fn_kwargs,
@@ -309,11 +310,6 @@ def _generate_transform_fn_for_map_batches(
 def _generate_transform_fn_for_async_map_batches(
     fn: UserDefinedFunction,
 ) -> MapTransformCallable[DataBatch, DataBatch]:
-    class OutputQueueSentinel:
-        """Sentinel to indicate completion of async generator."""
-
-        pass
-
     def transform_fn(
         input_iterable: Iterable[DataBatch], _: TaskContext
     ) -> Iterable[DataBatch]:
@@ -331,7 +327,7 @@ def _generate_transform_fn_for_async_map_batches(
                 output_batch_queue.put(output_batch)
 
         async def process_all_batches():
-            loop = ray.data._map_actor_context.cached_loop
+            loop = ray.data._map_actor_context.udf_map_asyncio_loop
             tasks = [loop.create_task(process_batch(x)) for x in input_iterable]
 
             ctx = ray.data.DataContext.get_current()
@@ -341,24 +337,17 @@ def _generate_transform_fn_for_async_map_batches(
             else:
                 for task in asyncio.as_completed(tasks):
                     await task
-            # Sentinel to indicate completion.
-            output_batch_queue.put(OutputQueueSentinel())
 
-        # Use the existing event loop to create and run
-        # Tasks to process each batch
-        loop = ray.data._map_actor_context.cached_loop
+        # Use the existing event loop to create and run Tasks to process each batch
+        loop = ray.data._map_actor_context.udf_map_asyncio_loop
         future = asyncio.run_coroutine_threadsafe(process_all_batches(), loop)
 
-        # Yield results as they become available
+        # Yield results as they become available.
         while not future.done():
-            # `out_batch` here is a one-row output batch
+            # Here, `out_batch` is a one-row output batch
             # from the async generator, corresponding to a
             # single row from the input batch.
             out_batch = output_batch_queue.get()
-
-            # Exit when sentinel is received.
-            if isinstance(out_batch, OutputQueueSentinel):
-                break
             _validate_batch_output(out_batch)
             yield out_batch
 
