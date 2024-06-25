@@ -5,6 +5,7 @@ import logging
 import os
 import pickle
 import random
+import re
 import sys
 import time
 
@@ -421,8 +422,22 @@ def test_dag_errors(ray_start_regular):
     with pytest.raises(
         TypeError,
         match=(
-            "wait\(\) does not support CompiledDAGRef. "
-            "Please call ray.get\(\) on the CompiledDAGRef to get the result."
+            re.escape(
+                "wait() expected a list of ray.ObjectRef or ray.ObjectRefGenerator, "
+                "got <class 'ray.experimental.compiled_dag_ref.CompiledDAGRef'>"
+            )
+        ),
+    ):
+        ray.wait(ref)
+
+    with pytest.raises(
+        TypeError,
+        match=(
+            re.escape(
+                "wait() expected a list of ray.ObjectRef or ray.ObjectRefGenerator, "
+                "got list containing "
+                "<class 'ray.experimental.compiled_dag_ref.CompiledDAGRef'>"
+            )
         ),
     ):
         ray.wait([ref])
