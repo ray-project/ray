@@ -324,7 +324,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "learning_tests", "torch_only", "learning_tests_cartpole", "learning_tests_discrete", "learning_tests_pytorch_use_all_core", "gpu"],
     size = "large",
     srcs = ["tuned_examples/dqn/multi_agent_cartpole_dqn.py"],
-    args = ["--as-test", "--enable-new-api-stack", "--num-agents=2", "--num-gpus=1"]
+    args = ["--as-test", "--enable-new-api-stack", "--num-agents=2", "--num-gpus=1", "--num-cpus=4"]
 )
 
 py_test(
@@ -333,7 +333,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "learning_tests", "torch_only", "learning_tests_cartpole", "learning_tests_discrete", "learning_tests_pytorch_use_all_core"],
     size = "large",
     srcs = ["tuned_examples/dqn/multi_agent_cartpole_dqn.py"],
-    args = ["--as-test", "--enable-new-api-stack", "--num-agents=2", "--num-gpus=2"]
+    args = ["--as-test", "--enable-new-api-stack", "--num-agents=2", "--num-gpus=2", "--num-cpus=5"]
 )
 
 py_test(
@@ -342,7 +342,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "learning_tests", "torch_only", "learning_tests_cartpole", "learning_tests_discrete", "learning_tests_pytorch_use_all_core", "multi_gpu"],
     size = "large",
     srcs = ["tuned_examples/dqn/multi_agent_cartpole_dqn.py"],
-    args = ["--as-test", "--enable-new-api-stack", "--num-agents=2", "--num-gpus=2"]
+    args = ["--as-test", "--enable-new-api-stack", "--num-agents=2", "--num-gpus=2", "--num-cpus=5"]
 )
 
 #@OldAPIStack
@@ -682,7 +682,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "learning_tests", "torch_only", "learning_tests_pendulum", "learning_tests_continuous"],
     size = "large",
     srcs = ["tuned_examples/sac/multi_agent_pendulum_sac.py"],
-    args = ["--as-test", "--enable-new-api-stack", "--num-agents=2"]
+    args = ["--as-test", "--enable-new-api-stack", "--num-agents=2", "--num-cpus=4"]
 )
 
 py_test(
@@ -691,7 +691,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "learning_tests", "torch_only", "learning_tests_pendulum", "learning_tests_continuous", "gpu"],
     size = "large",
     srcs = ["tuned_examples/sac/multi_agent_pendulum_sac.py"],
-    args = ["--as-test", "--enable-new-api-stack", "--num-agents=2", "--num-gpus=1"]
+    args = ["--as-test", "--enable-new-api-stack", "--num-agents=2", "--num-gpus=1", "--num-cpus=4"]
 )
 
 # Does not run (yet) due to dynamic computation graphs in SAC that get propagated 
