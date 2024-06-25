@@ -3,14 +3,13 @@ import traceback
 import ray
 
 
-class CompiledDAGRef(ray.ObjectRef):
+class CompiledDAGRef:
     """
     A reference to a compiled DAG execution result.
 
-    This is a subclass of ObjectRef and resembles ObjectRef in the
-    most common way. For example, similar to ObjectRef, ray.get()
-    can be called on it to retrieve result. However, there are several
-    major differences:
+    A CompiledDAGRef resembles an ObjectRef in the most common way.
+    For example, similar to ObjectRef, ray.get() can be called on
+    it to retrieve result. However, there are several major differences:
     1. ray.get() can only be called once on CompiledDAGRef.
     2. ray.wait() is not supported.
     3. CompiledDAGRef cannot be copied, deep copied, or pickled.

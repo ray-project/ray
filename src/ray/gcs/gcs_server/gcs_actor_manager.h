@@ -88,9 +88,6 @@ class GcsActor {
     actor_table_data_.set_max_restarts(actor_creation_task_spec.max_actor_restarts());
     actor_table_data_.set_num_restarts(0);
 
-    auto dummy_object = TaskSpecification(task_spec).ActorDummyObject().Binary();
-    actor_table_data_.set_actor_creation_dummy_object_id(dummy_object);
-
     actor_table_data_.mutable_function_descriptor()->CopyFrom(
         task_spec.function_descriptor());
 
