@@ -1274,6 +1274,7 @@ class CompiledDAG:
             raise ValueError("Use execute if enable_asyncio=False")
 
         self._get_or_compile()
+        self._check_inputs(args, kwargs)
         async with self._dag_submission_lock:
             inp = (args, kwargs)
             await self._dag_submitter.write(inp)
