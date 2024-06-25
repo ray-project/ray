@@ -44,7 +44,12 @@ MAX_BUFFER_TOTAL_MEMORY = int(10 * 1e9)  # 10GB
 MAX_BUFFER_COUNT = MAX_BUFFER_TOTAL_MEMORY // MAX_BUFFER_SIZE
 
 # Holds the input arguments for an accelerated DAG node.
-RayDAGArgs = namedtuple("RayDAGArgs", ["args", "kwargs"])
+RayDAGArgsBase = namedtuple("RayDAGArgsBase", ["args", "kwargs"])
+
+
+@PublicAPI(stability="alpha")
+class RayDAGArgs(RayDAGArgsBase):
+    __slots__ = ()
 
 
 logger = logging.getLogger(__name__)
