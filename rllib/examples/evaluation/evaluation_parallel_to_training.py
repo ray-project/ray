@@ -94,6 +94,12 @@ parser.set_defaults(
     evaluation_interval=1,
     evaluation_duration_unit="timesteps",
 )
+parser.add_argument(
+    "--evaluation-parallel-to-training-wo-thread",
+    action="store_true",
+    help="A debugging setting that disables using a threadpool when evaluating in "
+    "parallel to training. Use for testing purposes only!",
+)
 
 
 class AssertEvalCallback(DefaultCallbacks):
