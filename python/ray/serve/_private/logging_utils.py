@@ -73,6 +73,10 @@ class ServeComponentFilter(logging.Filter):
 
 
 class ServeContextFilter(logging.Filter):
+    """Serve Context Filter
+
+    The filter will add the route, request id, app name to the log record.
+    """
     def filter(self, record):
         # Add Serve specific log fields.
         request_context = ray.serve.context._serve_request_context.get()
@@ -254,14 +258,14 @@ def configure_component_logger(
     max_bytes: Optional[int] = None,
     backup_count: Optional[int] = None,
 ):
-    """Configure root logger to be used by a Serve component.
+    """Configure a logger to be used by a Serve component.
 
     The logger will log using a standard format to make components identifiable
     using the provided name and unique ID for this instance (e.g., replica ID).
 
     This logger will *not* propagate its log messages to the parent logger(s).
     """
-    logger = logging.getLogger()
+    logger = logging.getLogger(SERVE_LOGGER_NAME)
     logger.propagate = False
     logger.setLevel(logging_config.log_level)
     logger.handlers.clear()
