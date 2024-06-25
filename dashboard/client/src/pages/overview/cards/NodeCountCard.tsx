@@ -54,7 +54,10 @@ export const NodeCountCard = ({ className, sx }: NodeCountCardProps) => {
   }
 
   return (
-    <OverviewCard className={className} sx={Object.assign({}, styles.root, sx)}>
+    <OverviewCard
+      className={className}
+      sx={[styles.root, ...(Array.isArray(sx) ? sx : [sx])]}
+    >
       {grafanaHost === undefined || !prometheusHealth ? (
         <Box sx={styles.noGraph}>
           <Typography variant="h3">Node count</Typography>

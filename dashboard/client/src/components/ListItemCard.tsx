@@ -54,7 +54,10 @@ export const ListItemCard = ({
   const styles = useStyles(useTheme());
 
   return (
-    <OverviewCard className={className} sx={Object.assign({}, styles.root, sx)}>
+    <OverviewCard
+      className={className}
+      sx={[styles.root, ...(Array.isArray(sx) ? sx : [sx])]}
+    >
       <Typography variant="h3">{headerTitle}</Typography>
       <Box sx={styles.listContainer}>
         {items.map((item: ListItemProps) => (

@@ -32,7 +32,7 @@ export const OverviewCard = ({
   return (
     <Paper
       className={className}
-      sx={Object.assign({}, styles.root, sx)}
+      sx={[styles.root, ...(Array.isArray(sx) ? sx : [sx])]}
       variant="outlined"
     >
       {children}

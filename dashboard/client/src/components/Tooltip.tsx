@@ -38,7 +38,7 @@ export const HelpInfo = ({ children, className, sx }: HelpInfoProps) => {
     <StyledTooltip className={className} title={children}>
       <HelpOutlineIcon
         fontSize="small"
-        sx={Object.assign({}, styles.helpIcon, sx)}
+        sx={[styles.helpIcon, ...(Array.isArray(sx) ? sx : [sx])]}
       />
     </StyledTooltip>
   );

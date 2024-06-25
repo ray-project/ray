@@ -38,7 +38,11 @@ export const ServeStatusIcon = ({
       return (
         <Box
           component={RiRecordCircleFill}
-          sx={Object.assign({}, styles.icon, styles.colorSuccess, sx)}
+          sx={[
+            styles.icon,
+            styles.colorSuccess,
+            ...(Array.isArray(sx) ? sx : [sx]),
+          ]}
           title="Healthy"
         />
       );
@@ -46,7 +50,11 @@ export const ServeStatusIcon = ({
       return (
         <Box
           component={RiCloseCircleFill}
-          sx={Object.assign({}, styles.icon, styles.colorError, sx)}
+          sx={[
+            styles.icon,
+            styles.colorError,
+            ...(Array.isArray(sx) ? sx : [sx]),
+          ]}
           title="Unhealthy"
         />
       );

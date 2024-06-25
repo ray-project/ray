@@ -50,12 +50,10 @@ const NumberedLines = ({ lines }: NumberedLinesProps) => {
         {lines.map((line, index) => (
           <TableRow key={index}>
             <TableCell
-              sx={Object.assign({}, styles.cell, styles.lineNumber)}
+              sx={[styles.cell, styles.lineNumber]}
               data-line-number={index + 1}
             />
-            <TableCell sx={Object.assign({}, styles.cell, styles.line)}>
-              {line}
-            </TableCell>
+            <TableCell sx={[styles.cell, styles.line]}>{line}</TableCell>
           </TableRow>
         ))}
       </TableBody>

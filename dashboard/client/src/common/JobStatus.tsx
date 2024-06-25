@@ -1,4 +1,4 @@
-import { Box, SxProps, Theme, useTheme } from "@mui/material";
+import { Box, keyframes, SxProps, Theme, useTheme } from "@mui/material";
 import React from "react";
 import {
   RiCheckboxCircleFill,
@@ -10,6 +10,14 @@ import { StatusChip } from "../components/StatusChip";
 import { JobStatus, UnifiedJob } from "../type/job";
 import { ClassNameProps } from "./props";
 
+const spinner = keyframes`
+from {
+  transform: rotate(0deg)
+},
+to {
+  transform: rotate(360deg)
+}`;
+
 const useJobRunningIconStyles = (theme: Theme) => ({
   icon: (small: boolean) => ({
     width: small ? 16 : 20,
@@ -17,15 +25,7 @@ const useJobRunningIconStyles = (theme: Theme) => ({
   }),
   iconRunning: {
     color: "#1E88E5",
-    animation: `
-      spinner 1s linear infinite;
-      @keyframes spinner
-      from {
-        transform: rotate(0deg)
-      },
-      to {
-        transform: rotate(360deg)
-      }`,
+    animation: `${spinner} 1s linear infinite`,
   },
 });
 
@@ -39,14 +39,18 @@ export const JobRunningIcon = ({
   className,
   title,
   small = false,
-  sx,
+  sx = [],
   ...props
 }: JobRunningIconProps) => {
   const styles = useJobRunningIconStyles(useTheme());
   return (
     <Box
       component={RiLoader4Line}
-      sx={Object.assign({}, styles.icon(small), styles.iconRunning, sx)}
+      sx={[
+        styles.icon(small),
+        styles.iconRunning,
+        ...(Array.isArray(sx) ? sx : [sx]),
+      ]}
       title={title}
       {...props}
     />
@@ -82,13 +86,14 @@ export const JobStatusIcon = ({
   sx,
 }: JobStatusIconProps) => {
   const styles = useJobStatusIconStyles(useTheme());
+  const sx_styles = Array.isArray(sx) ? sx : [sx];
   switch (job.status) {
     case JobStatus.SUCCEEDED:
       return (
         <Box
           component={RiCheckboxCircleFill}
           className={className}
-          sx={Object.assign({}, styles.icon(small), styles.colorSuccess, sx)}
+          sx={[styles.icon(small), styles.colorSuccess, ...sx_styles]}
         />
       );
     case JobStatus.FAILED:
@@ -96,7 +101,7 @@ export const JobStatusIcon = ({
         <Box
           component={RiCloseCircleFill}
           className={className}
-          sx={Object.assign({}, styles.icon(small), styles.colorError, sx)}
+          sx={[styles.icon(small), styles.colorError, ...sx_styles]}
         />
       );
     case JobStatus.STOPPED:
@@ -104,7 +109,7 @@ export const JobStatusIcon = ({
         <Box
           component={RiStopCircleFill}
           className={className}
-          sx={Object.assign(styles.icon(small), styles.colorStopped, sx)}
+          sx={[styles.icon(small), styles.colorStopped, ...sx_styles]}
         />
       );
     default:

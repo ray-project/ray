@@ -57,7 +57,10 @@ export const ClusterUtilizationCard = ({
   }
 
   return (
-    <OverviewCard className={className} sx={Object.assign({}, styles.root, sx)}>
+    <OverviewCard
+      className={className}
+      sx={[styles.root, ...(Array.isArray(sx) ? sx : [sx])]}
+    >
       {/* TODO (aguo): Switch this to overall utilization graph */}
       {/* TODO (aguo): Handle grafana not running */}
       {grafanaHost === undefined || !prometheusHealth ? (

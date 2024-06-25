@@ -114,7 +114,10 @@ export const CodeDialogButtonWithPreview = ({
   const buttonTextToPass = buttonText ?? "Expand";
 
   return (
-    <Box className={className} sx={Object.assign({}, styles.root, sx)}>
+    <Box
+      className={className}
+      sx={[styles.root, ...(Array.isArray(sx) ? sx : [sx])]}
+    >
       <Box component="span" sx={styles.previewText}>
         {codeText}
       </Box>

@@ -70,22 +70,12 @@ export const OverviewPage = () => {
           <Box sx={styles.overviewCardsContainer}>
             <NodeCountCard sx={styles.overviewCard} />
             <OverviewCard
-              sx={Object.assign(
-                {},
-                styles.root,
-                styles.overviewCard,
-                styles.autoscalerCard,
-              )}
+              sx={[styles.root, styles.overviewCard, styles.autoscalerCard]}
             >
               <NodeStatusCard clusterStatus={clusterStatus} />
             </OverviewCard>
             <OverviewCard
-              sx={Object.assign(
-                {},
-                styles.root,
-                styles.overviewCard,
-                styles.autoscalerCard,
-              )}
+              sx={[styles.root, styles.overviewCard, styles.autoscalerCard]}
             >
               <ResourceStatusCard clusterStatus={clusterStatus} />
             </OverviewCard>

@@ -39,10 +39,7 @@ export const Section = ({
           <Typography variant="h4">{title}</Typography>
         </Box>
       )}
-      <Paper
-        variant="outlined"
-        sx={Object.assign({}, styles.contentContainer(noTopPadding))}
-      >
+      <Paper variant="outlined" sx={styles.contentContainer(noTopPadding)}>
         {children}
       </Paper>
     </Box>
