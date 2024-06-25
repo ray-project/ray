@@ -384,7 +384,7 @@ class RayExecutor(Executor):
     (see https://docs.ray.io/en/latest/ray-core/package-ref.html#ray-init).
 
     For example, this will connect to a cluster at the specified address:
-    .. code-block:: python
+    .. testcode::
 
         RayExecutor(address='192.168.0.123:25001')
 
@@ -503,7 +503,7 @@ class RayExecutor(Executor):
 
         Usage example:
 
-        .. code-block:: python
+        .. testcode::
 
             with RayExecutor() as ex:
                 future_0 = ex.submit(lambda x: x * x, 100)
@@ -557,7 +557,7 @@ class RayExecutor(Executor):
 
         Usage example 1:
 
-        .. code-block:: python
+        .. testcode::
 
             with RayExecutor() as ex:
                 futures = ex.map(lambda x: x * x, [100, 100, 100])
@@ -565,7 +565,7 @@ class RayExecutor(Executor):
 
         Usage example 2:
 
-        .. code-block:: python
+        .. testcode::
 
             def f(x, y):
                 return x * y
