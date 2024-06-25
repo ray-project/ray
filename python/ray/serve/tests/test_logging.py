@@ -255,9 +255,7 @@ def test_context_information_in_logging(serve_and_ray_shutdown, json_log_format)
             "replica": serve.get_replica_context().replica_id.unique_id,
             "actor_id": ray.get_runtime_context().get_actor_id(),
             "worker_id": ray.get_runtime_context().get_worker_id(),
-            "job_id": ray.get_runtime_context().get_job_id(),
             "node_id": ray.get_runtime_context().get_node_id(),
-            "task_id": ray.get_runtime_context().get_task_id(),
         }
 
     @serve.deployment(
@@ -275,9 +273,7 @@ def test_context_information_in_logging(serve_and_ray_shutdown, json_log_format)
                 "replica": serve.get_replica_context().replica_id.unique_id,
                 "actor_id": ray.get_runtime_context().get_actor_id(),
                 "worker_id": ray.get_runtime_context().get_worker_id(),
-                "job_id": ray.get_runtime_context().get_job_id(),
                 "node_id": ray.get_runtime_context().get_node_id(),
-                "task_id": ray.get_runtime_context().get_task_id(),
             }
 
     serve.run(fn.bind(), name="app1", route_prefix="/fn")
@@ -325,11 +321,9 @@ def test_context_information_in_logging(serve_and_ray_shutdown, json_log_format)
                 f'"route": "{resp["route"]}", '
                 f'"request_id": "{resp["request_id"]}", '
                 f'"application": "{resp["app_name"]}", '
-                f'"job_id": "{resp["job_id"]}", '
                 f'"worker_id": "{resp["worker_id"]}", '
                 f'"node_id": "{resp["node_id"]}", '
                 f'"actor_id": "{resp["actor_id"]}", '
-                f'"task_id": "{resp["task_id"]}", '
                 f'"deployment": "{resp["app_name"]}_fn", '
                 f'"replica": "{method_replica_id}", '
                 f'"component_name": "replica".*'
@@ -339,11 +333,9 @@ def test_context_information_in_logging(serve_and_ray_shutdown, json_log_format)
                 f'"route": "{resp2["route"]}", '
                 f'"request_id": "{resp2["request_id"]}", '
                 f'"application": "{resp2["app_name"]}", '
-                f'"job_id": "{resp2["job_id"]}", '
                 f'"worker_id": "{resp2["worker_id"]}", '
                 f'"node_id": "{resp2["node_id"]}", '
                 f'"actor_id": "{resp2["actor_id"]}", '
-                f'"task_id": "{resp2["task_id"]}", '
                 f'"deployment": "{resp2["app_name"]}_Model", '
                 f'"replica": "{class_method_replica_id}", '
                 f'"component_name": "replica".*'
@@ -396,12 +388,14 @@ def test_extra_field(serve_and_ray_shutdown, raise_error):
             assert re.findall('.*"k2": "my_v2".*', s) != []
 
 
-def check_log_file(log_file: str, expected_regex: list):
+def check_log_file(log_file: str, expected_regex: list, check_contains: bool = True):
     with open(log_file, "r") as f:
         s = f.read()
         for regex in expected_regex:
-            assert re.findall(regex, s) != []
-
+            if check_contains:
+                assert re.findall(regex, s) != []
+            else:
+                assert re.findall(regex, s) == []
 
 class TestLoggingAPI:
     def test_start_serve_with_logging_config(self, serve_and_ray_shutdown):
@@ -504,10 +498,15 @@ class TestLoggingAPI:
         check_log_file(resp["logs_path"], [".*model_info_level.*"])
 
     @pytest.mark.parametrize("enable_access_log", [True, False])
-    def test_access_log(self, serve_and_ray_shutdown, enable_access_log):
+    @pytest.mark.parametrize("encoding_type", ["TEXT", "JSON"])
+    def test_access_log(self, serve_and_ray_shutdown, encoding_type, enable_access_log):
         logger = logging.getLogger("ray.serve")
+        logging_config = {
+            "enable_access_log": enable_access_log,
+            "encoding": encoding_type,
+        }
 
-        @serve.deployment(logging_config={"enable_access_log": enable_access_log})
+        @serve.deployment(logging_config=logging_config)
         class Model:
             def __call__(self, req: starlette.requests.Request):
                 logger.info("model_info_level")
@@ -524,6 +523,7 @@ class TestLoggingAPI:
         check_log_file(resp["logs_path"], [".*model_info_level.*"])
         if enable_access_log:
             check_log_file(resp["logs_path"], [".*model_not_show.*"])
+            check_log_file(resp["logs_path"], ["serve_access_log"], check_contains=False)
         else:
             with pytest.raises(AssertionError):
                 check_log_file(resp["logs_path"], [".*model_not_show.*"])

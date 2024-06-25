@@ -25,6 +25,7 @@ from ray.serve._private.constants import (
     SERVE_LOG_REQUEST_ID,
     SERVE_LOG_ROUTE,
     SERVE_LOG_TIME,
+    SERVE_LOG_UNWANTED_ATTRS,
     SERVE_LOGGER_NAME,
 )
 from ray.serve._private.utils import get_component_file_name
@@ -90,6 +91,22 @@ class ServeContextFilter(logging.Filter):
             setattr(record, SERVE_LOG_REQUEST_ID, request_context.request_id)
         if request_context.app_name:
             setattr(record, SERVE_LOG_APPLICATION, request_context.app_name)
+        return True
+
+
+class ServeLogAttributeRemovalFilter(logging.Filter):
+    """Serve log attribute removal Filter
+
+    The filter will remove unwanted attributes on to the log record.
+
+    Note: the filter deosn't do any filtering, it only removes unwanted attributes.
+    """
+
+    def filter(self, record):
+        for key in SERVE_LOG_UNWANTED_ATTRS:
+            if hasattr(record, key):
+                delattr(record, key)
+
         return True
 
 
@@ -322,6 +339,9 @@ def configure_component_logger(
 
     if logging_config.enable_access_log is False:
         file_handler.addFilter(log_access_log_filter)
+
+    # Remove unwanted attributes from the log record.
+    file_handler.addFilter(ServeLogAttributeRemovalFilter())
 
     # Redirect print, stdout, and stderr to Serve logger.
     if not RAY_SERVE_LOG_TO_STDERR:
