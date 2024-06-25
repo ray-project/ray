@@ -1,9 +1,12 @@
 import asyncio
-from typing import Any, List
+from typing import Any, List, Optional
 
 import ray
 from ray.exceptions import RayTaskError
 from ray.util.annotations import PublicAPI
+
+DEFAULT_ADAG_PUT_TIMEOUT_S = 10
+DEFAULT_ADAG_GET_TIMEOUT_S = 10
 
 
 def _process_return_vals(return_vals: List[Any], return_single_output: bool):
@@ -77,14 +80,14 @@ class CompiledDAGRef:
         if not self._ray_get_called:
             self.get()
 
-    def get(self):
+    def get(self, timeout: Optional[float] = DEFAULT_ADAG_GET_TIMEOUT_S):
         if self._ray_get_called:
             raise ValueError(
                 "ray.get() can only be called once "
                 "on a CompiledDAGRef, and it was already called."
             )
         self._ray_get_called = True
-        return_vals = self._dag._execute_until(self._execution_index)
+        return_vals = self._dag._execute_until(self._execution_index, timeout)
         return _process_return_vals(
             return_vals,
             self._dag.has_single_output,

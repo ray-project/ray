@@ -12,7 +12,7 @@ import numpy as np
 
 import pytest
 
-from ray.exceptions import RayChannelError
+from ray.exceptions import RayChannelError, RayChannelTimeoutError
 import ray
 import ray._private
 import ray.cluster_utils
@@ -457,6 +457,75 @@ def test_chain_dag(ray_start_regular, num_actors):
         ref = compiled_dag.execute([])
         result = ray.get(ref)
         assert result == list(range(num_actors))
+
+    compiled_dag.teardown()
+
+
+def test_execution_timeout(ray_start_regular):
+    a = Actor.remote(0)
+    with InputNode() as inp:
+        dag = a.inc.bind(inp)
+
+    compiled_dag = dag.experimental_compile(execution_timeout=3)
+    refs = []
+    timed_out = False
+    for i in range(5):
+        try:
+            ref = compiled_dag.execute(1)
+            # Hold the refs to avoid get() being called on the ref
+            # when it goes out of scope
+            refs.append(ref)
+        except RayChannelTimeoutError:
+            # The first 3 tasks should complete, and the 4th one
+            # should block then time out because the max possible
+            # concurrent executions for the DAG is 3.
+            assert i == 3
+            timed_out = True
+            break
+    assert timed_out
+
+    compiled_dag.teardown()
+
+
+def test_execution_with_tiny_timeout(ray_start_regular):
+    a = Actor.remote(0)
+    with InputNode() as inp:
+        dag = a.inc.bind(inp)
+
+    compiled_dag = dag.experimental_compile(execution_timeout=0.001)  # 1ms
+    for i in range(5):
+        # Test this would not raise timeout exception.
+        ref = compiled_dag.execute(1)
+        result = ray.get(ref)
+        assert result == i + 1
+
+    compiled_dag.teardown()
+
+
+def test_get_timeout(ray_start_regular):
+    a = Actor.remote(0)
+    with InputNode() as inp:
+        dag = a.sleep.bind(inp)
+
+    compiled_dag = dag.experimental_compile()
+    ref = compiled_dag.execute(10)
+    with pytest.raises(RayChannelTimeoutError):
+        ray.get(ref, timeout=3)
+
+    compiled_dag.teardown()
+
+
+def test_get_with_zero_timeout(ray_start_regular):
+    a = Actor.remote(0)
+    with InputNode() as inp:
+        dag = a.inc.bind(inp)
+
+    compiled_dag = dag.experimental_compile()
+    ref = compiled_dag.execute(1)
+    # Give enough time for DAG execution result to be ready
+    time.sleep(1)
+    result = ray.get(ref, timeout=0)
+    assert result == 1
 
     compiled_dag.teardown()
 

@@ -1,6 +1,7 @@
 import ray
 from ray.dag.base import DAGNodeBase
 from ray.dag.py_obj_scanner import _PyObjScanner
+from ray.experimental.compiled_dag_ref import DEFAULT_ADAG_PUT_TIMEOUT_S
 from ray.util.annotations import DeveloperAPI
 import copy
 
@@ -128,6 +129,7 @@ class DAGNode(DAGNodeBase):
 
     def experimental_compile(
         self,
+        execution_timeout: Optional[float] = DEFAULT_ADAG_PUT_TIMEOUT_S,
         _buffer_size_bytes: Optional[int] = None,
         enable_asyncio: bool = False,
         _asyncio_max_queue_size: Optional[int] = None,
@@ -136,6 +138,8 @@ class DAGNode(DAGNodeBase):
         """Compile an accelerated execution path for this DAG.
 
         Args:
+            execution_timeout: The maximum time in seconds to wait for execute()
+                calls.
             _buffer_size_bytes: The maximum size of messages that can be passed
                 between tasks in the DAG.
             enable_asyncio: Whether to enable asyncio for this DAG.
@@ -164,6 +168,7 @@ class DAGNode(DAGNodeBase):
 
         return build_compiled_dag_from_ray_dag(
             self,
+            execution_timeout,
             _buffer_size_bytes,
             enable_asyncio,
             _asyncio_max_queue_size,
