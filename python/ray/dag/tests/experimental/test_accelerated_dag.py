@@ -263,19 +263,22 @@ def test_multi_args_single_actor(ray_start_regular):
 
     with pytest.raises(
         ValueError,
-        match=r"dag.execute\(\) or dag.execute_async\(\) must be called with 2 positional args, got 1",
+        match=r"dag.execute\(\) or dag.execute_async\(\) must be called with 2 "
+        "positional args, got 1",
     ):
         compiled_dag.execute((2, 3))
 
     with pytest.raises(
         ValueError,
-        match=r"dag.execute\(\) or dag.execute_async\(\) must be called with 2 positional args, got 0",
+        match=r"dag.execute\(\) or dag.execute_async\(\) must be called with 2 "
+        "positional args, got 0",
     ):
         compiled_dag.execute()
 
     with pytest.raises(
         ValueError,
-        match=r"dag.execute\(\) or dag.execute_async\(\) must be called with 2 positional args, got 0",
+        match=r"dag.execute\(\) or dag.execute_async\(\) must be called with 2 "
+        "positional args, got 0",
     ):
         compiled_dag.execute(args=(2, 3))
 

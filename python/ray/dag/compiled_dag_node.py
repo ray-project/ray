@@ -626,12 +626,15 @@ class CompiledDAG:
                         input_kwargs.add(upstream_node.dag_node.key)
                     else:
                         raise ValueError(
-                            "InputNode() can only be indexed using int for positional args or str for kwargs."
+                            "InputNode() can only be indexed using int "
+                            "for positional args or str for kwargs."
                         )
 
                     if direct_input is not None and direct_input:
                         raise ValueError(
-                            "All tasks must either use InputNode() directly, or they must index to specific args or kwargs."
+                            "All tasks must either use InputNode() "
+                            "directly, or they must index to specific args or "
+                            "kwargs."
                         )
                     direct_input = False
 
@@ -642,7 +645,8 @@ class CompiledDAG:
                 elif isinstance(upstream_node.dag_node, InputNode):
                     if direct_input is not None and not direct_input:
                         raise ValueError(
-                            "All tasks must either use InputNode() directly, or they must index to specific args or kwargs."
+                            "All tasks must either use InputNode() directly, "
+                            "or they must index to specific args or kwargs."
                         )
                     direct_input = True
 
