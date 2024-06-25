@@ -3029,6 +3029,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "examples"],
     size = "large",
     srcs = ["examples/offline_rl/pretrain_bc_single_agent_evaluate_as_multi_agent.py"],
+    data = ["tests/data/cartpole/large.json"],
     args = ["--as-test"]
 )
 
