@@ -298,7 +298,7 @@ def test_torch_tensor_nccl_wrong_shape(ray_start_regular):
     compiled_dag = dag.experimental_compile()
 
     ref = compiled_dag.execute(1)
-    with pytest.raises(OSError):
+    with pytest.raises(ValueError):
         ray.get(ref)
 
     compiled_dag.teardown()
@@ -421,7 +421,7 @@ def test_torch_tensor_nccl_direct_return_error(ray_start_regular):
     compiled_dag = dag.experimental_compile()
 
     ref = compiled_dag.execute((shape, dtype, 1))
-    with pytest.raises(OSError):
+    with pytest.raises(ValueError):
         ray.get(ref)
 
     compiled_dag.teardown()
