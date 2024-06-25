@@ -5,7 +5,7 @@ import argparse
 import ray
 from ray._private.state_api_test_utils import verify_failed_task
 from ray.util.state import list_workers
-from ray._private.test_utils import wait_for_condition, get_ray_default_worker_file_path
+from ray._private.test_utils import wait_for_condition
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 parser = argparse.ArgumentParser()
@@ -17,12 +17,11 @@ parser.add_argument(
 )
 args = parser.parse_args()
 
-worker_pth = get_ray_default_worker_file_path()
 
 if args.use_image_uri_api:
     runtime_env = {"image_uri": args.image}
 else:
-    runtime_env = {"container": {"image": args.image, "worker_path": worker_pth}}
+    runtime_env = {"container": {"image": args.image}}
 
 ray.init(num_cpus=1)
 

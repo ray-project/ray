@@ -885,6 +885,59 @@ class InternalKVAccessor {
   GcsClient *client_impl_;
 };
 
+class RuntimeEnvAccessor {
+ public:
+  RuntimeEnvAccessor() = default;
+  explicit RuntimeEnvAccessor(GcsClient *client_impl);
+  virtual ~RuntimeEnvAccessor() = default;
+
+  /// Pins a runtime environment by URI.
+  ///
+  /// Only works if URI has prefix "gcs://", for which GCS holds a reference for
+  /// `expiration_s` seconds. After that, GCS decrements the reference count.
+  ///
+  /// For all other URIs, this call is a no-op and returns OK.
+  Status PinRuntimeEnvUri(const std::string &uri, int expiration_s, int64_t timeout_ms);
+
+ private:
+  GcsClient *client_impl_;
+};
+
+/// \class AutoscalerStateAccessor
+/// `AutoscalerStateAccessor` is a sub-interface of `GcsClient`.
+/// This class includes all the methods that are related to accessing
+/// autoscaler state information in the GCS.
+class AutoscalerStateAccessor {
+ public:
+  AutoscalerStateAccessor() = default;
+  explicit AutoscalerStateAccessor(GcsClient *client_impl);
+  virtual ~AutoscalerStateAccessor() = default;
+
+  virtual Status RequestClusterResourceConstraint(
+      int64_t timeout_ms,
+      const std::vector<std::unordered_map<std::string, double>> &bundles,
+      const std::vector<int64_t> &count_array);
+
+  virtual Status GetClusterResourceState(int64_t timeout_ms,
+                                         std::string &serialized_reply);
+
+  virtual Status GetClusterStatus(int64_t timeout_ms, std::string &serialized_reply);
+
+  virtual Status ReportAutoscalingState(int64_t timeout_ms,
+                                        const std::string &serialized_state);
+
+  virtual Status DrainNode(const std::string &node_id,
+                           int32_t reason,
+                           const std::string &reason_message,
+                           int64_t deadline_timestamp_ms,
+                           int64_t timeout_ms,
+                           bool &is_accepted,
+                           std::string &rejection_reason_message);
+
+ private:
+  GcsClient *client_impl_;
+};
+
 }  // namespace gcs
 
 }  // namespace ray

@@ -21,6 +21,7 @@ import numpy as np
 import ray
 from ray._private.auto_init_hook import wrap_auto_init
 from ray.air.util.tensor_extensions.utils import _create_possibly_ragged_ndarray
+from ray.data._internal.datasource.avro_datasource import AvroDatasource
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.logical.operators.from_operators import (
     FromArrow,
@@ -46,7 +47,6 @@ from ray.data.block import Block, BlockAccessor, BlockExecStats, BlockMetadata
 from ray.data.context import DataContext
 from ray.data.dataset import Dataset, MaterializedDataset
 from ray.data.datasource import (
-    AvroDatasource,
     BaseFileMetadataProvider,
     BigQueryDatasource,
     BinaryDatasource,
@@ -124,10 +124,7 @@ def from_blocks(blocks: List[Block]):
     from_blocks_op = FromBlocks(block_refs, metadata)
     logical_plan = LogicalPlan(from_blocks_op)
     return MaterializedDataset(
-        ExecutionPlan(
-            DatasetStats(metadata={"FromBlocks": metadata}, parent=None),
-            run_by_consumer=False,
-        ),
+        ExecutionPlan(DatasetStats(metadata={"FromBlocks": metadata}, parent=None)),
         logical_plan,
     )
 
@@ -207,10 +204,7 @@ def from_items(
     from_items_op = FromItems(blocks, metadata)
     logical_plan = LogicalPlan(from_items_op)
     return MaterializedDataset(
-        ExecutionPlan(
-            DatasetStats(metadata={"FromItems": metadata}, parent=None),
-            run_by_consumer=False,
-        ),
+        ExecutionPlan(DatasetStats(metadata={"FromItems": metadata}, parent=None)),
         logical_plan,
     )
 
@@ -441,7 +435,7 @@ def read_datasource(
     )
     logical_plan = LogicalPlan(read_op)
     return Dataset(
-        plan=ExecutionPlan(stats, run_by_consumer=False),
+        plan=ExecutionPlan(stats),
         logical_plan=logical_plan,
     )
 
@@ -1105,7 +1099,7 @@ def read_json(
         >>> ds.schema()
         Column     Type
         ------     ----
-        timestamp  timestamp[s]
+        timestamp  timestamp[...]
         size       int64
 
         Read a JSONL file in remote storage.
@@ -2481,10 +2475,7 @@ def from_pandas_refs(
         metadata = ray.get([get_metadata.remote(df) for df in dfs])
         logical_plan = LogicalPlan(FromPandas(dfs, metadata))
         return MaterializedDataset(
-            ExecutionPlan(
-                DatasetStats(metadata={"FromPandas": metadata}, parent=None),
-                run_by_consumer=False,
-            ),
+            ExecutionPlan(DatasetStats(metadata={"FromPandas": metadata}, parent=None)),
             logical_plan,
         )
 
@@ -2495,10 +2486,7 @@ def from_pandas_refs(
     metadata = ray.get(metadata)
     logical_plan = LogicalPlan(FromPandas(blocks, metadata))
     return MaterializedDataset(
-        ExecutionPlan(
-            DatasetStats(metadata={"FromPandas": metadata}, parent=None),
-            run_by_consumer=False,
-        ),
+        ExecutionPlan(DatasetStats(metadata={"FromPandas": metadata}, parent=None)),
         logical_plan,
     )
 
@@ -2581,10 +2569,7 @@ def from_numpy_refs(
     logical_plan = LogicalPlan(FromNumpy(blocks, metadata))
 
     return MaterializedDataset(
-        ExecutionPlan(
-            DatasetStats(metadata={"FromNumpy": metadata}, parent=None),
-            run_by_consumer=False,
-        ),
+        ExecutionPlan(DatasetStats(metadata={"FromNumpy": metadata}, parent=None)),
         logical_plan,
     )
 
@@ -2660,10 +2645,7 @@ def from_arrow_refs(
     logical_plan = LogicalPlan(FromArrow(tables, metadata))
 
     return MaterializedDataset(
-        ExecutionPlan(
-            DatasetStats(metadata={"FromArrow": metadata}, parent=None),
-            run_by_consumer=False,
-        ),
+        ExecutionPlan(DatasetStats(metadata={"FromArrow": metadata}, parent=None)),
         logical_plan,
     )
 

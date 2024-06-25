@@ -87,15 +87,19 @@ class APPOTorchLearner(AppoLearner, ImpalaTorchLearner):
             trajectory_len=rollout_frag_or_episode_len,
             recurrent_seq_len=recurrent_seq_len,
         )
-        if self.config.enable_env_runner_and_connector_v2:
-            bootstrap_values = batch[Columns.VALUES_BOOTSTRAPPED]
-        else:
-            bootstrap_values_time_major = make_time_major(
-                batch[Columns.VALUES_BOOTSTRAPPED],
-                trajectory_len=rollout_frag_or_episode_len,
-                recurrent_seq_len=recurrent_seq_len,
-            )
-            bootstrap_values = bootstrap_values_time_major[-1]
+        assert Columns.VALUES_BOOTSTRAPPED not in batch
+        # Use as bootstrap values the vf-preds in the next "batch row", except
+        # for the very last row (which doesn't have a next row), for which the
+        # bootstrap value does not matter b/c it has a +1ts value at its end
+        # anyways. So we chose an arbitrary item (for simplicity of not having to
+        # move new data to the device).
+        bootstrap_values = torch.cat(
+            [
+                values_time_major[0][1:],  # 0th ts values from "next row"
+                values_time_major[0][0:1],  # <- can use any arbitrary value here
+            ],
+            dim=0,
+        )
 
         # The discount factor that is used should be gamma except for timesteps where
         # the episode is terminated. In that case, the discount factor should be 0.
@@ -213,21 +217,6 @@ class APPOTorchLearner(AppoLearner, ImpalaTorchLearner):
                             TorchDDPRLModuleWithTargetNetworksInterface(sub_module),
                             override=True,
                         )
-
-    @override(AppoLearner)
-    def _update_module_target_networks(
-        self, module_id: ModuleID, config: APPOConfig
-    ) -> None:
-        module = self.module[module_id]
-
-        target_current_network_pairs = module.get_target_network_pairs()
-        for target_network, current_network in target_current_network_pairs:
-            current_state_dict = current_network.state_dict()
-            new_state_dict = {
-                k: config.tau * current_state_dict[k] + (1 - config.tau) * v
-                for k, v in target_network.state_dict().items()
-            }
-            target_network.load_state_dict(new_state_dict)
 
     @override(AppoLearner)
     def _update_module_kl_coeff(

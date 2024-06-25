@@ -15,9 +15,7 @@ from ray.rllib.utils.annotations import override
 from ray.rllib.utils.nested_dict import NestedDict
 
 
-class APPOTorchRLModule(
-    PPOTorchRLModule, RLModuleWithTargetNetworksInterface, APPORLModule
-):
+class APPOTorchRLModule(PPOTorchRLModule, APPORLModule):
     @override(PPOTorchRLModule)
     def setup(self):
         super().setup()
@@ -31,8 +29,17 @@ class APPOTorchRLModule(
             self.old_encoder.requires_grad_(False)
 
     @override(RLModuleWithTargetNetworksInterface)
-    def get_target_network_pairs(self):
-        return [(self.old_pi, self.pi), (self.old_encoder, self.encoder)]
+    def sync_target_networks(self, tau: float) -> None:
+        for target_network, current_network in [
+            (self.old_pi, self.pi),
+            (self.old_encoder, self.encoder),
+        ]:
+            current_state_dict = current_network.state_dict()
+            new_state_dict = {
+                k: tau * current_state_dict[k] + (1 - tau) * v
+                for k, v in target_network.state_dict().items()
+            }
+            target_network.load_state_dict(new_state_dict)
 
     @override(PPOTorchRLModule)
     def output_specs_train(self) -> List[str]:
