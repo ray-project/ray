@@ -18,8 +18,7 @@ from typing import (
 import numpy as np
 
 from ray.data._internal.block_batching.iter_batches import iter_batches
-from ray.data._internal.block_list import BlockList
-from ray.data._internal.execution.legacy_compat import _block_list_to_bundles
+from ray.data._internal.execution.interfaces import RefBundle
 from ray.data._internal.logical.operators.input_data_operator import InputData
 from ray.data._internal.logical.optimizers import LogicalPlan
 from ray.data._internal.plan import ExecutionPlan
@@ -701,7 +700,7 @@ class DataIterator(abc.ABC):
             ... )
             >>> it = ds.iterator(); it
             DataIterator(Dataset(
-               num_rows=150,
+               num_rows=?,
                schema={
                   sepal length (cm): double,
                   sepal width (cm): double,
@@ -731,7 +730,7 @@ class DataIterator(abc.ABC):
             >>> it
             DataIterator(Concatenator
             +- Dataset(
-                  num_rows=150,
+                  num_rows=?,
                   schema={
                      sepal length (cm): double,
                      sepal width (cm): double,
@@ -870,20 +869,13 @@ class DataIterator(abc.ABC):
         block_iter, stats, owned_by_consumer = self._to_block_iterator()
 
         block_refs_and_metadata = list(block_iter)
-        block_refs = [block_ref for block_ref, _ in block_refs_and_metadata]
-        metadata = [metadata for _, metadata in block_refs_and_metadata]
-
-        block_list = BlockList(
-            block_refs, metadata, owned_by_consumer=owned_by_consumer
-        )
-        ref_bundles = _block_list_to_bundles(block_list, owned_by_consumer)
+        ref_bundles = [
+            RefBundle([(block_ref, metadata)], owned_by_consumer)
+            for block_ref, metadata in block_refs_and_metadata
+        ]
         logical_plan = LogicalPlan(InputData(input_data=ref_bundles))
         return MaterializedDataset(
-            ExecutionPlan(
-                block_list,
-                stats,
-                run_by_consumer=owned_by_consumer,
-            ),
+            ExecutionPlan(stats),
             logical_plan,
         )
 

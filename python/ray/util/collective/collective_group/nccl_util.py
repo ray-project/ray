@@ -56,12 +56,15 @@ if torch_available():
         # FLOAT types
         torch.half: nccl.NCCL_HALF,
         torch.float: nccl.NCCL_FLOAT,
-        torch.bfloat16: nccl.NCCL_BFLOAT16,
         torch.float16: nccl.NCCL_FLOAT16,
         torch.float32: nccl.NCCL_FLOAT32,
         torch.float64: nccl.NCCL_FLOAT64,
         torch.double: nccl.NCCL_DOUBLE,
     }
+
+    # Older versions of cupy don't support bfloat16.
+    if hasattr(nccl, "NCCL_BFlOAT16"):
+        TORCH_NCCL_DTYPE_MAP[torch.bfloat16] = nccl.NCCL_BFLOAT16
 
     TORCH_NUMPY_DTYPE_MAP = {
         # INT types

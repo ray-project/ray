@@ -2,7 +2,6 @@ from abc import abstractmethod
 from typing import Any, Dict, Type
 from ray.rllib.algorithms.sac.sac_catalog import SACCatalog
 
-# from ray.rllib.algorithms.sac.sac_learner import QF_PREDS
 from ray.rllib.core.models.base import Encoder, Model
 from ray.rllib.core.models.specs.typing import SpecType
 from ray.rllib.core.rl_module.rl_module import RLModule
@@ -76,8 +75,9 @@ class SACRLModule(RLModule, RLModuleWithTargetNetworksInterface):
 
             # Build the target Q encoder as an exact copy of the Q encoder.
             # TODO (simon): Maybe merging encoders together for target and qf
-            # and keep only the heads differently?
+            #  and keep only the heads differently?
             self.qf_target_encoder = catalog.build_qf_encoder(framework=self.framework)
+
             # If necessary, build also a twin Q encoders.
             if self.twin_q:
                 self.qf_twin_encoder = catalog.build_qf_encoder(

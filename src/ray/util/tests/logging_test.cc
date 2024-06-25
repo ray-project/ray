@@ -186,10 +186,8 @@ TEST(PrintLogTest, TestRayLogEveryMs) {
   EXPECT_LT(occurrences, 15);
 }
 
-#if defined(__APPLE__) || defined(__linux__)
-
 TEST(PrintLogTest, TestTextLogging) {
-  setenv("RAY_BACKEND_LOG_JSON", "0", true);
+  setEnv("RAY_BACKEND_LOG_JSON", "0");
   RayLog::StartRayLog("/tmp/gcs", RayLogLevel::INFO, "");
   CaptureStdout();
   RAY_LOG(INFO).WithField("key1", "value1").WithField("key2", "value2")
@@ -202,11 +200,11 @@ TEST(PrintLogTest, TestTextLogging) {
             std::string::npos);
 
   RayLog::ShutDownRayLog();
-  unsetenv("RAY_BACKEND_LOG_JSON");
+  unsetEnv("RAY_BACKEND_LOG_JSON");
 }
 
 TEST(PrintLogTest, TestJSONLogging) {
-  setenv("RAY_BACKEND_LOG_JSON", "1", true);
+  setEnv("RAY_BACKEND_LOG_JSON", "1");
   RayLog::StartRayLog("/tmp/raylet", RayLogLevel::INFO, "");
   CaptureStdout();
   RAY_LOG(DEBUG) << "this is not logged";
@@ -214,10 +212,13 @@ TEST(PrintLogTest, TestJSONLogging) {
   RAY_LOG(WARNING) << "this needs\nescape\"";
   RAY_LOG(INFO).WithField("key1", "value1").WithField("key2", "value\n2")
       << "contextual log";
+  // Make sure logging binary (invalid utf-8) won't crash
+  // even though it might generate invalid json.
+  RAY_LOG(INFO) << "\xC3\x28";
 
   std::vector<std::string> log_lines =
       absl::StrSplit(GetCapturedStdout(), '\n', absl::SkipEmpty());
-  ASSERT_EQ(3, log_lines.size());
+  ASSERT_EQ(4, log_lines.size());
   json log1 = json::parse(log_lines[0]);
   json log2 = json::parse(log_lines[1]);
   json log3 = json::parse(log_lines[2]);
@@ -231,12 +232,11 @@ TEST(PrintLogTest, TestJSONLogging) {
   ASSERT_EQ(log3[std::string(kLogKeyComponent)], "raylet");
   ASSERT_EQ(log3["key1"], "value1");
   ASSERT_EQ(log3["key2"], "value\n2");
+  ASSERT_TRUE(log_lines[3].find("\xC3\x28") != std::string::npos);
 
   RayLog::ShutDownRayLog();
-  unsetenv("RAY_BACKEND_LOG_JSON");
+  unsetEnv("RAY_BACKEND_LOG_JSON");
 }
-
-#endif // defined(__APPLE__) || defined(__linux__)
 
 #endif /* GTEST_HAS_STREAM_REDIRECTION */
 

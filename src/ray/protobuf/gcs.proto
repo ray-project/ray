@@ -99,10 +99,6 @@ message ActorTableData {
   bytes actor_id = 1;
   // The ID of the caller of the actor creation task.
   bytes parent_id = 2;
-  // The dummy object ID returned by the actor creation task. If the actor
-  // dies, then this is the object that should be restarted for the actor
-  // to be recreated.
-  bytes actor_creation_dummy_object_id = 3;
   // The ID of the job that created the actor.
   bytes job_id = 4;
   // Current state of this actor.
@@ -173,10 +169,6 @@ message ErrorTableData {
   string error_message = 3;
   // The timestamp of the error message.
   double timestamp = 4;
-}
-
-message ScheduleData {
-  map<string, bytes> schedule_plan = 1;
 }
 
 message ProfileEventEntry {
@@ -293,6 +285,13 @@ message AvailableResources {
   bytes node_id = 1;
   // Resource capacity currently available on this node manager.
   map<string, double> resources_available = 2;
+}
+
+message TotalResources {
+  // Node id.
+  bytes node_id = 1;
+  // Resource capacity currently total on this node manager.
+  map<string, double> resources_total = 2;
 }
 
 // A snapshot of the state of a node.

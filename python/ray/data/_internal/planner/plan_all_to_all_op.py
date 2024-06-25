@@ -1,3 +1,5 @@
+from typing import List
+
 from ray.data._internal.execution.interfaces import PhysicalOperator
 from ray.data._internal.execution.operators.base_physical_operator import (
     AllToAllOperator,
@@ -19,14 +21,16 @@ from ray.data.context import DataContext
 
 
 def plan_all_to_all_op(
-    op: AbstractAllToAll,
-    input_physical_dag: PhysicalOperator,
+    op: AbstractAllToAll, physical_children: List[PhysicalOperator]
 ) -> AllToAllOperator:
     """Get the corresponding physical operators DAG for AbstractAllToAll operators.
 
     Note this method only converts the given `op`, but not its input dependencies.
     See Planner.plan() for more details.
     """
+    assert len(physical_children) == 1
+    input_physical_dag = physical_children[0]
+
     target_max_block_size = None
     if isinstance(op, RandomizeBlocks):
         fn = generate_randomize_blocks_fn(op)

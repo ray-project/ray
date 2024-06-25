@@ -105,7 +105,7 @@ def convert_pandas_to_torch_tensor(
 
     multi_input = columns and (isinstance(columns[0], (list, tuple)))
 
-    if not multi_input and column_dtypes and type(column_dtypes) != torch.dtype:
+    if not multi_input and column_dtypes and not isinstance(column_dtypes, torch.dtype):
         raise TypeError(
             "If `columns` is a list of strings, "
             "`column_dtypes` must be None or a single `torch.dtype`."

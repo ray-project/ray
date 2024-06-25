@@ -134,6 +134,9 @@ class OperatorFusionRule(Rule):
             AbstractUDFMap,
         )
 
+        if not up_op.supports_fusion() or not down_op.supports_fusion():
+            return False
+
         # We currently only support fusing for the following cases:
         # - TaskPoolMapOperator -> TaskPoolMapOperator/ActorPoolMapOperator
         # - TaskPoolMapOperator -> AllToAllOperator
