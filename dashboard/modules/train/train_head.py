@@ -25,8 +25,8 @@ class TrainHead(dashboard_utils.DashboardHeadModule):
         self._train_stats_actor = None
         self._job_info_client = None
 
-    # TODO(aguo): Update this to a "v2" path since I made a backwards-incompatible change.
-    # Will do so after the API is more stable.
+    # TODO(aguo): Update this to a "v2" path since I made a backwards-incompatible
+    # change. Will do so after the API is more stable.
     @routes.get("/api/train/runs")
     @dashboard_optional_utils.init_ray_and_catch_exceptions()
     @DeveloperAPI
@@ -54,8 +54,8 @@ class TrainHead(dashboard_utils.DashboardHeadModule):
                 status=500,
                 text=(
                     "Train state data is not available. Please make sure Ray Train "
-                    "is running and that the Train state actor is enabled by setting the "
-                    'RAY_TRAIN_ENABLE_STATE_TRACKING environment variable to "1".'
+                    "is running and that the Train state actor is enabled by setting "
+                    'the RAY_TRAIN_ENABLE_STATE_TRACKING environment variable to "1".'
                 ),
             )
         else:
