@@ -83,10 +83,6 @@ from ray.types import ObjectRef
 from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
-from ray.util.metrics import Gauge
-from ray.serve._private.constants import DEFAULT_LATENCY_BUCKET_MS
-import time
-
 if TYPE_CHECKING:
     import dask
     import datasets
@@ -398,7 +394,6 @@ def read_datasource(
 
     # TODO(hchen/chengsu): Remove the duplicated get_read_tasks call here after
     # removing LazyBlockList code path.
-
     read_tasks = datasource_or_legacy_reader.get_read_tasks(requested_parallelism)
 
     read_op_name = f"Read{datasource.get_name()}"

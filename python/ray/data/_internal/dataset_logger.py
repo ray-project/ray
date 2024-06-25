@@ -47,13 +47,6 @@ class DatasetLogger:
         to call explicitly. Assumes that `ray.init()` has already been called prior
         to calling this method; otherwise raises a `ValueError`."""
 
-        # Add timestamps to all logs as a default
-        logging.basicConfig(
-            level=logging.DEBUG,
-            format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-            datefmt='%Y-%m-%d %H:%M:%S',
-        )
-
         # We initialize a logger using the given base `log_name`, which
         # logs to stdout. Logging with this logger to stdout is enabled by the
         # `log_to_stdout` parameter in `self.get_logger()`.
@@ -69,8 +62,6 @@ class DatasetLogger:
         # We need to set the log level again when explicitly
         # initializing a new logger (otherwise can have undesirable level).
         logger.setLevel(LOGGER_LEVEL.upper())
-
-
 
         # If ray.init() is called and the global node session directory path
         # is valid, we can create the additional handler to write to the

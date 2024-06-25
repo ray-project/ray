@@ -26,7 +26,7 @@ from ray.util.annotations import DeveloperAPI
 if TYPE_CHECKING:
     import pyarrow
 
-from ray.util.metrics import Histogram
+
 logger = logging.getLogger(__name__)
 
 
@@ -575,7 +575,6 @@ def _get_file_infos(
             file_infos.append((file_path, file_size))
     elif file_info.type == FileType.File:
         file_infos.append((path, file_info.size))
-        
     elif file_info.type == FileType.NotFound and ignore_missing_path:
         pass
     else:
