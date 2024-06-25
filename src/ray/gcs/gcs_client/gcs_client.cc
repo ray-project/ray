@@ -90,20 +90,6 @@ Status GcsClient::Connect(instrumented_io_context &io_service,
   gcs_rpc_client_ = std::make_shared<rpc::GcsRpcClient>(
       options_.gcs_address_, options_.gcs_port_, *client_call_manager_);
 
-  if (cluster_id.IsNil()) {
-    rpc::GetClusterIdRequest request;
-    gcs_rpc_client_->GetClusterId(
-        request,
-        [this](const Status &status, const auto &reply) {
-          RAY_CHECK_OK(status);
-          this->client_call_manager_->SetClusterId(
-              ClusterID::FromBinary(reply.cluster_id()));
-          RAY_CHECK(!GetClusterId().IsNil());
-          return Status::OK();
-        },
-        /*timeout_ms=*/-1);
-  }
-
   resubscribe_func_ = [this]() {
     job_accessor_->AsyncResubscribe();
     actor_accessor_->AsyncResubscribe();
@@ -167,11 +153,11 @@ ClusterID GcsClient::GetClusterId() const {
   if (cluster_id.IsNil()) {
     rpc::GetClusterIdRequest request;
     rpc::GetClusterIdReply reply;
-    RAY_LOG(ERROR) << "Cluster ID is nil, retrying to get cluster ID from GCS server.";
+    RAY_LOG(INFO) << "Cluster ID is nil, getting cluster ID from GCS server.";
     auto status = gcs_rpc_client_->SyncGetClusterId(request, &reply, -1);
     RAY_CHECK_OK(status);
     cluster_id = ClusterID::FromBinary(reply.cluster_id());
-    RAY_LOG(ERROR) << "Retrieved cluster ID from GCS server: " << cluster_id;
+    RAY_LOG(INFO) << "Retrieved cluster ID from GCS server: " << cluster_id;
     client_call_manager_->SetClusterId(cluster_id);
   }
   return cluster_id;
