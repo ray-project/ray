@@ -11,7 +11,7 @@ import numpy as np
 
 import pytest
 
-from ray.exceptions import RayTaskError
+from ray.exceptions import RayTaskError, RayChannelError
 import ray
 import ray._private
 import ray.cluster_utils
@@ -601,17 +601,13 @@ def test_dag_fault_tolerance_chain(ray_start_regular_shared):
     for i in range(99):
         ref = compiled_dag.execute(i)
         results = ray.get(ref)
-        assert results == i
 
-    execution_error = None
-    for i in range(99):
-        ref = compiled_dag.execute(i)
-        result = ray.get(ref)
-        if isinstance(result, RayTaskError):
-            execution_error = result
-            break
-    assert execution_error is not None
-    assert isinstance(execution_error.cause, RuntimeError)
+    with pytest.raises(RayTaskError) as exc_info:
+        for i in range(99, 200):
+            ref = compiled_dag.execute(1)
+            results = ray.get(ref)
+            assert results == i
+    assert isinstance(exc_info.value.as_instanceof_cause(), TypeError)
 
     compiled_dag.teardown()
 
@@ -650,15 +646,12 @@ def test_dag_fault_tolerance(ray_start_regular_shared):
         results = ray.get(ref)
         assert results == [i + 1] * 4
 
-    execution_error = None
-    for i in range(99):
-        ref = compiled_dag.execute(1)
-        res = ray.get(ref)
-        if isinstance(res[0], RayTaskError):
-            execution_error = res[0]
-            break
-    assert execution_error is not None
-    assert isinstance(execution_error.cause, RuntimeError)
+    with pytest.raises(RayTaskError) as exc_info:
+        for i in range(99, 200):
+            ref = compiled_dag.execute(1)
+            results = ray.get(ref)
+            assert results == [i + 1] * 4
+    assert isinstance(exc_info.value.as_instanceof_cause(), TypeError)
 
     compiled_dag.teardown()
 
@@ -695,7 +688,7 @@ def test_dag_fault_tolerance_sys_exit(ray_start_regular_shared):
         results = ray.get(ref)
         assert results == [i + 1] * 4
 
-    with pytest.raises(IOError, match="Channel closed."):
+    with pytest.raises(RayChannelError, match="Channel closed."):
         for i in range(99):
             ref = compiled_dag.execute(1)
             ray.get(ref)
