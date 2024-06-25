@@ -1,6 +1,7 @@
 from typing import List, Optional
 
 from ray._private.pydantic_compat import BaseModel, Field
+from ray.dashboard.modules.job.pydantic_models import JobDetails
 from ray.util.annotations import DeveloperAPI
 
 
@@ -45,11 +46,33 @@ class TrainRunInfo(BaseModel):
     datasets: List[TrainDatasetInfo] = Field(
         description="A List of dataset info for this Train run."
     )
-    start_time: float = Field(
+    start_time_ms: int = Field(
         description="The UNIX timestamp of the start time of this Train run."
     )
 
 
 @DeveloperAPI
+class TrainRunInfoWithDetails(BaseModel):
+    """Metadata for a Ray Train run and information about its workers."""
+
+    name: str = Field(description="The name of the Train run.")
+    id: str = Field(description="The unique identifier for each Train run.")
+    job_id: str = Field(description="The Ray Job ID.")
+    controller_actor_id: str = Field(description="Actor Id of the Train controller.")
+    workers: List[TrainWorkerInfo] = Field(
+        description="A List of Train workers sorted by global ranks."
+    )
+    datasets: List[TrainDatasetInfo] = Field(
+        description="A List of dataset info for this Train run."
+    )
+    start_time_ms: int = Field(
+        description="The UNIX timestamp of the start time of this Train run."
+    )
+    job_details: Optional[JobDetails] = Field(
+        None, description="Details of the job that started this Train run."
+    )
+
+
+@DeveloperAPI
 class TrainRunsResponse(BaseModel):
-    train_runs: List[TrainRunInfo]
+    train_runs: List[TrainRunInfoWithDetails]

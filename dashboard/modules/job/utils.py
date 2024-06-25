@@ -1,3 +1,4 @@
+import asyncio
 import dataclasses
 import logging
 import os
@@ -237,3 +238,43 @@ async def find_job_by_ids(
         return job
 
     return None
+
+
+async def find_jobs_with_job_ids(
+    gcs_aio_client: GcsAioClient,
+    job_info_client: JobInfoStorageClient,
+    job_ids: List[str],
+) -> Dict[str, JobDetails]:
+    """
+    Returns a dictionary of submission jobs with the given job ids, keyed by the job id.
+    """
+    driver_jobs, submission_job_drivers = await get_driver_jobs(gcs_aio_client)
+
+    # Filter down to the request job_ids
+    driver_jobs = {key: job for key, job in driver_jobs.items() if key in job_ids}
+    submission_job_drivers = {
+        key: job for key, job in submission_job_drivers.items() if job.id in job_ids
+    }
+
+    # Fetch job details for each job
+    job_submission_ids = submission_job_drivers.keys()
+    job_infos = await asyncio.gather(
+        *[
+            job_info_client.get_info(submission_id)
+            for submission_id in job_submission_ids
+        ]
+    )
+
+    return {
+        **driver_jobs,
+        **{
+            submission_job_drivers.get(submission_id).id: JobDetails(
+                **dataclasses.asdict(job_info),
+                submission_id=submission_id,
+                job_id=submission_job_drivers.get(submission_id).id,
+                driver_info=submission_job_drivers.get(submission_id),
+                type=JobType.SUBMISSION,
+            )
+            for job_info, submission_id in zip(job_infos, job_submission_ids)
+        },
+    }
