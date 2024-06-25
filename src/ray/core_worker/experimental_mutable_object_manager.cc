@@ -391,7 +391,7 @@ Status MutableObjectManager::ReadRelease(const ObjectID &object_id)
 }
 
 Status MutableObjectManager::SetError(const ObjectID &object_id) {
-  RAY_LOG(DEBUG) << "Set error " << object_id;
+  RAY_LOG(DEBUG) << "SetError " << object_id;
   absl::ReaderMutexLock guard(&destructor_lock_);
   return SetErrorInternal(object_id);
 }
