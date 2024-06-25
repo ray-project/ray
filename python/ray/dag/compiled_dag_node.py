@@ -1,10 +1,11 @@
 import asyncio
-from collections import defaultdict, deque, namedtuple
+from collections import defaultdict, deque
 from typing import Any, Dict, List, Tuple, Union, Optional, Set
 import logging
 import threading
 import uuid
 import traceback
+from typing import NamedTuple
 
 import ray
 from ray.exceptions import RayTaskError, RayChannelError
@@ -43,13 +44,12 @@ MAX_BUFFER_TOTAL_MEMORY = int(10 * 1e9)  # 10GB
 
 MAX_BUFFER_COUNT = MAX_BUFFER_TOTAL_MEMORY // MAX_BUFFER_SIZE
 
+
 # Holds the input arguments for an accelerated DAG node.
-RayDAGArgsBase = namedtuple("RayDAGArgsBase", ["args", "kwargs"])
-
-
 @PublicAPI(stability="alpha")
-class RayDAGArgs(RayDAGArgsBase):
-    __slots__ = ()
+class RayDAGArgs(NamedTuple):
+    args: Tuple[Any, ...]
+    kwargs: Dict[str, Any]
 
 
 logger = logging.getLogger(__name__)
