@@ -2297,7 +2297,10 @@ class AlgorithmConfig(_Config):
                 for training.
             custom_evaluation_function: Customize the evaluation method. This must be a
                 function of signature (algo: Algorithm, eval_workers: EnvRunnerGroup) ->
-                metrics: dict. See the Algorithm.evaluate() method to see the default
+                (metrics: dict, env_steps: int, agent_steps: int) (metrics: dict if
+                `enable_env_runner_and_connector_v2=True`), where `env_steps` and
+                `agent_steps` define the number of sampled steps during the evaluation
+                iteration. See the Algorithm.evaluate() method to see the default
                 implementation. The Algorithm guarantees all eval workers have the
                 latest policy state before this function is called.
             always_attach_evaluation_results: Make sure the latest available evaluation
