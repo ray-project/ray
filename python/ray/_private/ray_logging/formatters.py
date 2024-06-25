@@ -6,10 +6,10 @@ from ray._private.ray_logging.constants import (
     LOGGER_FLATTEN_KEYS,
 )
 from ray._private.ray_constants import LOGGER_FORMAT
-from typing import Any
+from typing import Any, Dict
 
 
-def _append_flatten_attributes(formatted_attrs: dict, key: str, value: Any):
+def _append_flatten_attributes(formatted_attrs: Dict[str, Any], key: str, value: Any):
     """Flatten the dictionary values for special keys and append the values in place.
 
     If the key is in `LOGGER_FLATTEN_KEYS`, the value will be flattened and appended

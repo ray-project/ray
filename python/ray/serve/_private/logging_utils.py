@@ -76,7 +76,11 @@ class ServeContextFilter(logging.Filter):
     """Serve Context Filter
 
     The filter will add the route, request id, app name to the log record.
+
+    Note: the filter deosn't do any filtering, it just adds the serve request context
+    attributes.
     """
+
     def filter(self, record):
         # Add Serve specific log fields.
         request_context = ray.serve.context._serve_request_context.get()
