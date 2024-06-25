@@ -152,7 +152,6 @@ class TestJSONFormatter:
             "key1",
             "key2",
         ]
-        print(record_dict)
         for key in should_exist:
             assert key in record_dict
         assert record_dict["key1"] == "value1", record_dict

@@ -358,7 +358,6 @@ def test_context_information_in_logging(serve_and_ray_shutdown, json_log_format)
             )
 
         def check_log_file(log_file: str, expected_regex: list):
-            print("in check_log_file", log_file, expected_regex)
             with open(log_file, "r") as f:
                 s = f.read()
                 assert re.findall(expected_regex, s) != []
@@ -393,7 +392,6 @@ def test_extra_field(serve_and_ray_shutdown, raise_error):
         resp = resp.json()
         with open(resp["log_file"], "r") as f:
             s = f.read()
-            print('hello!!!', s)
             assert re.findall(".*my_v1.*", s) != []
             assert re.findall('.*"k2": "my_v2".*', s) != []
 
