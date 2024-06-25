@@ -144,9 +144,10 @@ Status MutableObjectProvider::WriteAcquire(const ObjectID &object_id,
                                            const uint8_t *metadata,
                                            int64_t metadata_size,
                                            int64_t num_readers,
-                                           std::shared_ptr<Buffer> &data) {
+                                           std::shared_ptr<Buffer> &data,
+                                           int64_t timeout_ms) {
   return object_manager_->WriteAcquire(
-      object_id, data_size, metadata, metadata_size, num_readers, data);
+      object_id, data_size, metadata, metadata_size, num_readers, data, timeout_ms);
 }
 
 Status MutableObjectProvider::WriteRelease(const ObjectID &object_id) {
@@ -154,8 +155,9 @@ Status MutableObjectProvider::WriteRelease(const ObjectID &object_id) {
 }
 
 Status MutableObjectProvider::ReadAcquire(const ObjectID &object_id,
-                                          std::shared_ptr<RayObject> &result) {
-  return object_manager_->ReadAcquire(object_id, result);
+                                          std::shared_ptr<RayObject> &result,
+                                          int64_t timeout_ms) {
+  return object_manager_->ReadAcquire(object_id, result, timeout_ms);
 }
 
 Status MutableObjectProvider::ReadRelease(const ObjectID &object_id) {

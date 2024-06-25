@@ -327,6 +327,7 @@ class TorchTensorNcclChannel(ChannelInterface):
     def write(
         self,
         tensors: Union["torch.Tensor", List["torch.Tensor"], Exception],
+        timeout: Optional[float] = None,
     ):
         if isinstance(tensors, ray.exceptions.RayTaskError):
             # TODO(swang): Write exceptions to the meta channel if it is
@@ -373,7 +374,9 @@ class TorchTensorNcclChannel(ChannelInterface):
         self._nccl_group.recv(buf, self._writer_rank)
         return buf
 
-    def read(self) -> Union["torch.Tensor", List["torch.Tensor"]]:
+    def read(
+        self, timeout: Optional[float] = None
+    ) -> Union["torch.Tensor", List["torch.Tensor"]]:
         if self._meta_channel is not None:
             meta = self._meta_channel.read()
         else:

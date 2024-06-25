@@ -11,7 +11,7 @@ import pytest
 import ray
 import ray.cluster_utils
 import ray.experimental.channel as ray_channel
-from ray.exceptions import RayChannelError
+from ray.exceptions import RayChannelError, RayChannelTimeoutError
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 from ray.dag.compiled_dag_node import CompiledDAG
 
@@ -38,6 +38,32 @@ def test_put_local_get(ray_start_regular):
         val = i.to_bytes(8, "little")
         chan.write(val)
         assert chan.read() == val
+
+
+@pytest.mark.skipif(
+    sys.platform != "linux" and sys.platform != "darwin",
+    reason="Requires Linux or Mac.",
+)
+def test_read_timeout(ray_start_regular):
+    chan = ray_channel.Channel(None, [create_driver_actor()], 1000)
+
+    with pytest.raises(RayChannelTimeoutError):
+        chan.read(timeout=1)
+
+
+@pytest.mark.skipif(
+    sys.platform != "linux" and sys.platform != "darwin",
+    reason="Requires Linux or Mac.",
+)
+def test_write_timeout(ray_start_regular):
+    chan = ray_channel.Channel(None, [create_driver_actor()], 1000)
+
+    val = 1
+    bytes = val.to_bytes(8, "little")
+    chan.write(bytes, timeout=1)
+    print("wrote first")
+    with pytest.raises(RayChannelTimeoutError):
+        chan.write(bytes, timeout=1)
 
 
 @pytest.mark.skipif(

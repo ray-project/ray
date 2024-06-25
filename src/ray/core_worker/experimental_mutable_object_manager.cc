@@ -202,7 +202,8 @@ Status MutableObjectManager::WriteAcquire(const ObjectID &object_id,
                                           const uint8_t *metadata,
                                           int64_t metadata_size,
                                           int64_t num_readers,
-                                          std::shared_ptr<Buffer> &data) {
+                                          std::shared_ptr<Buffer> &data,
+                                          int64_t timeout_ms) {
   RAY_LOG(DEBUG) << "WriteAcquire " << object_id;
   absl::ReaderMutexLock guard(&destructor_lock_);
 
@@ -233,8 +234,16 @@ Status MutableObjectManager::WriteAcquire(const ObjectID &object_id,
   RAY_RETURN_NOT_OK(object->header->CheckHasError());
   RAY_CHECK(!channel->written) << "You must call WriteRelease() before WriteAcquire()";
 
-  RAY_RETURN_NOT_OK(
-      object->header->WriteAcquire(sem, data_size, metadata_size, num_readers));
+  std::chrono::steady_clock::time_point *timeout_point_ptr = nullptr;
+  if (timeout_ms != -1) {
+    RAY_CHECK_GE(timeout_ms, 0);
+    auto now = std::chrono::steady_clock::now();
+    auto timeout_duration = std::chrono::milliseconds(timeout_ms);
+    auto timeout_point = now + timeout_duration;
+    timeout_point_ptr = &timeout_point;
+  }
+  RAY_RETURN_NOT_OK(object->header->WriteAcquire(
+      sem, data_size, metadata_size, num_readers, timeout_point_ptr));
   data = SharedMemoryBuffer::Slice(object->buffer, 0, data_size);
   if (metadata) {
     // Copy the metadata to the buffer.
@@ -270,7 +279,8 @@ Status MutableObjectManager::WriteRelease(const ObjectID &object_id) {
 }
 
 Status MutableObjectManager::ReadAcquire(const ObjectID &object_id,
-                                         std::shared_ptr<RayObject> &result)
+                                         std::shared_ptr<RayObject> &result,
+                                         int64_t timeout_ms)
     ABSL_NO_THREAD_SAFETY_ANALYSIS {
   RAY_LOG(DEBUG) << "ReadAcquire " << object_id;
   absl::ReaderMutexLock guard(&destructor_lock_);
@@ -289,16 +299,34 @@ Status MutableObjectManager::ReadAcquire(const ObjectID &object_id,
   // Check whether the channel has an error set before checking that we are the only
   // reader. If the channel is already closed, then it's OK to ReadAcquire and
   // ReadRelease in any order.
+  std::chrono::steady_clock::time_point *timeout_point_ptr = nullptr;
+  if (timeout_ms != -1) {
+    RAY_CHECK_GE(timeout_ms, 0);
+    auto now = std::chrono::steady_clock::now();
+    auto timeout_duration = std::chrono::milliseconds(timeout_ms);
+    auto timeout_point = now + timeout_duration;
+    timeout_point_ptr = &timeout_point;
+  }
+
+  bool locked = false;
+  bool expired = false;
   do {
     RAY_RETURN_NOT_OK(object->header->CheckHasError());
     // The channel is still open. This lock ensures that there is only one reader
     // at a time. The lock is released in `ReadRelease()`.
-  } while (!channel->lock->try_lock());
-  channel->reading = true;
+    locked = channel->lock->try_lock();
+    expired = timeout_point_ptr && std::chrono::steady_clock::now() >= *timeout_point_ptr;
+  } while (!locked && !expired);
+  if (!locked) {
+    // If timeout_ms == 0, we want to try once to get the lock,
+    // therefore we check locked rather than expired.
+    return Status::ChannelTimeoutError("Timed out acquiring the read lock.");
+  }
 
+  channel->reading = true;
   int64_t version_read = 0;
-  Status s =
-      object->header->ReadAcquire(sem, channel->next_version_to_read, version_read);
+  Status s = object->header->ReadAcquire(
+      sem, channel->next_version_to_read, version_read, timeout_point_ptr);
   if (!s.ok()) {
     RAY_LOG(DEBUG) << "ReadAcquire error was set, returning " << object_id;
     // Failed because the error bit was set on the mutable object.

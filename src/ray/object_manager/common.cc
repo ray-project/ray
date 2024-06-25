@@ -74,10 +74,32 @@ Status PlasmaObjectHeader::CheckHasError() const {
 
 #if defined(__APPLE__) || defined(__linux__)
 
-Status PlasmaObjectHeader::TryToAcquireSemaphore(sem_t *sem) const {
+Status PlasmaObjectHeader::TryToAcquireSemaphore(
+    sem_t *sem, std::chrono::steady_clock::time_point *timeout_point) const {
   // Check `has_error` first to avoid blocking forever on the semaphore.
   RAY_RETURN_NOT_OK(CheckHasError());
-  RAY_CHECK_EQ(sem_wait(sem), 0);
+  auto now = std::chrono::steady_clock::now();
+
+  if (timeout_point == nullptr) {
+    RAY_CHECK_EQ(sem_wait(sem), 0);
+  } else if (now >= *timeout_point) {
+    if (sem_trywait(sem) != 0) {
+      return Status::ChannelTimeoutError("Timed out acquiring semaphore.");
+    }
+  } else {
+    bool got_sem = false;
+    // macOS does not support sem_timedwait, so we implement a unified solution here.
+    while (std::chrono::steady_clock::now() < *timeout_point) {
+      if (sem_trywait(sem) == 0) {
+        got_sem = true;
+        break;
+      }
+    }
+    if (!got_sem) {
+      return Status::ChannelTimeoutError("Timed out acquiring semaphore.");
+    }
+  }
+
   // Check `has_error` again so that no more than one thread is ever in the critical
   // section after `SetErrorUnlocked()` has been called. One thread could be in the
   // critical section when that is called, but no additional thread will enter the
@@ -104,15 +126,17 @@ void PlasmaObjectHeader::SetErrorUnlocked(Semaphores &sem) {
   RAY_CHECK_EQ(sem_post(sem.header_sem), 0);
 }
 
-Status PlasmaObjectHeader::WriteAcquire(Semaphores &sem,
-                                        uint64_t write_data_size,
-                                        uint64_t write_metadata_size,
-                                        int64_t write_num_readers) {
+Status PlasmaObjectHeader::WriteAcquire(
+    Semaphores &sem,
+    uint64_t write_data_size,
+    uint64_t write_metadata_size,
+    int64_t write_num_readers,
+    std::chrono::steady_clock::time_point *timeout_point) {
   RAY_CHECK(sem.object_sem);
   RAY_CHECK(sem.header_sem);
 
-  RAY_RETURN_NOT_OK(TryToAcquireSemaphore(sem.object_sem));
-  RAY_RETURN_NOT_OK(TryToAcquireSemaphore(sem.header_sem));
+  RAY_RETURN_NOT_OK(TryToAcquireSemaphore(sem.object_sem, timeout_point));
+  RAY_RETURN_NOT_OK(TryToAcquireSemaphore(sem.header_sem, timeout_point));
 
   RAY_CHECK_EQ(num_read_acquires_remaining, 0UL);
   RAY_CHECK_EQ(num_read_releases_remaining, 0UL);
@@ -139,19 +163,25 @@ Status PlasmaObjectHeader::WriteRelease(Semaphores &sem) {
   return Status::OK();
 }
 
-Status PlasmaObjectHeader::ReadAcquire(Semaphores &sem,
-                                       int64_t version_to_read,
-                                       int64_t &version_read) {
+Status PlasmaObjectHeader::ReadAcquire(
+    Semaphores &sem,
+    int64_t version_to_read,
+    int64_t &version_read,
+    std::chrono::steady_clock::time_point *timeout_point) {
   RAY_CHECK(sem.header_sem);
 
-  RAY_RETURN_NOT_OK(TryToAcquireSemaphore(sem.header_sem));
+  RAY_RETURN_NOT_OK(TryToAcquireSemaphore(sem.header_sem, timeout_point));
 
   // TODO(jhumphri): Wouldn't a futex be better here than polling?
   // Wait for the requested version (or a more recent one) to be sealed.
   while (version < version_to_read || !is_sealed) {
     RAY_CHECK_EQ(sem_post(sem.header_sem), 0);
     sched_yield();
-    RAY_RETURN_NOT_OK(TryToAcquireSemaphore(sem.header_sem));
+    if (timeout_point != nullptr && std::chrono::steady_clock::now() >= *timeout_point) {
+      return Status::ChannelTimeoutError(
+          "Timed out waiting for object available to read.");
+    }
+    RAY_RETURN_NOT_OK(TryToAcquireSemaphore(sem.header_sem, timeout_point));
   }
 
   bool success = false;
@@ -204,7 +234,8 @@ Status PlasmaObjectHeader::ReadRelease(Semaphores &sem, int64_t read_version) {
 
 #else  // defined(__APPLE__) || defined(__linux__)
 
-Status PlasmaObjectHeader::TryToAcquireSemaphore(sem_t *sem) const {
+Status PlasmaObjectHeader::TryToAcquireSemaphore(
+    sem_t *sem, std::chrono::steady_clock::time_point *timeout_point) const {
   return Status::NotImplemented("Not supported on Windows.");
 }
 

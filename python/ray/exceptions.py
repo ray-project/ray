@@ -838,6 +838,13 @@ class RayChannelError(RaySystemError):
     pass
 
 
+@PublicAPI(stability="alpha")
+class RayChannelTimeoutError(RayChannelError, TimeoutError):
+    """Raised when the channel operation times out."""
+
+    pass
+
+
 RAY_EXCEPTION_TYPES = [
     PlasmaObjectNotAvailable,
     RayError,

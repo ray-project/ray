@@ -62,7 +62,7 @@ class MutableObjectManager : public std::enable_shared_from_this<MutableObjectMa
 
   struct Channel {
     Channel(std::unique_ptr<plasma::MutableObject> mutable_object_ptr)
-        : lock(std::make_unique<std::mutex>()),
+        : lock(std::make_unique<std::timed_mutex>()),
           mutable_object(std::move(mutable_object_ptr)) {}
 
     // WriteAcquire() sets this to true. WriteRelease() sets this to false.
@@ -73,7 +73,7 @@ class MutableObjectManager : public std::enable_shared_from_this<MutableObjectMa
     bool reading = false;
 
     // This mutex protects `next_version_to_read`.
-    std::unique_ptr<std::mutex> lock;
+    std::unique_ptr<std::timed_mutex> lock;
     // The last version that we read. To read again, we must pass a newer
     // version than this.
     int64_t next_version_to_read = 1;
@@ -146,13 +146,18 @@ class MutableObjectManager : public std::enable_shared_from_this<MutableObjectMa
   /// value we will write before the next WriteAcquire can proceed. The readers
   /// may not start reading until WriteRelease is called.
   /// \param[out] data The mutable object buffer in plasma that can be written to.
+  /// \param[in] timeout_ms The timeout in milliseconds to acquire the write lock.
+  /// If this is 0, the method will try to acquire the write lock once immediately,
+  /// and return either OK or TimedOut without blocking. If this is -1, the method
+  /// will block indefinitely until the write lock is acquired.
   /// \return The return status.
   Status WriteAcquire(const ObjectID &object_id,
                       int64_t data_size,
                       const uint8_t *metadata,
                       int64_t metadata_size,
                       int64_t num_readers,
-                      std::shared_ptr<Buffer> &data);
+                      std::shared_ptr<Buffer> &data,
+                      int64_t timeout_ms = -1);
 
   /// Releases an acquired write lock on the object, allowing readers to read.
   /// This is the equivalent of "Seal" for normal objects.
@@ -167,9 +172,15 @@ class MutableObjectManager : public std::enable_shared_from_this<MutableObjectMa
   /// \param[in] object_id The ID of the object.
   /// \param[out] result The read object. This buffer is guaranteed to be valid
   /// until the caller calls ReadRelease next.
+  /// \param[in] timeout_ms The timeout in milliseconds to acquire the read lock.
+  /// If this is 0, the method will try to acquire the read lock once immediately,
+  /// and return either OK or TimedOut without blocking. If this is -1, the method
+  ///  will block indefinitely until the read lock is acquired.
   /// \return The return status. The ReadAcquire can fail if there have already
   /// been `num_readers` for the current value.
-  Status ReadAcquire(const ObjectID &object_id, std::shared_ptr<RayObject> &result);
+  Status ReadAcquire(const ObjectID &object_id,
+                     std::shared_ptr<RayObject> &result,
+                     int64_t expiration_ms = -1);
 
   /// Releases the object, allowing it to be written again. If the caller did
   /// not previously ReadAcquire the object, then this first blocks until the
