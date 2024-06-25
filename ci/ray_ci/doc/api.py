@@ -1,5 +1,6 @@
 import re
 import importlib
+import inspect
 
 from enum import Enum
 from dataclasses import dataclass
@@ -117,7 +118,9 @@ class API:
                 return self.name
             attribute = getattr(attribute, token)
 
-        return f"{attribute.__module__}.{attribute.__qualname__}"
+        if inspect.isclass(attribute) or inspect.isfunction(attribute):
+            return f"{attribute.__module__}.{attribute.__qualname__}"
+        return self.name
 
     def _is_private_name(self) -> bool:
         """
@@ -125,7 +128,7 @@ class API:
         underscores.
         """
         name_has_underscore = self.name.split(".")[-1].startswith("_")
-        is_internal = ".internal." in self.name
+        is_internal = "._internal." in self.name
 
         return name_has_underscore or is_internal
 
