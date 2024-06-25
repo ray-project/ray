@@ -617,15 +617,6 @@ class PPO(Algorithm):
                             "0.0 or increasing `entropy_coeff` in your config."
                         )
 
-            # triggers a special update method on RLOptimizer to update the KL values.
-            additional_results = self.learner_group.additional_update(
-                module_ids_to_update=policies_to_update,
-                sampled_kl_values=kl_dict,
-                timestep=self._counters[NUM_AGENT_STEPS_SAMPLED],
-            )
-            for pid, res in additional_results.items():
-                train_results[pid].update(res)
-
             return train_results
 
         # For each policy: Update KL scale and warn about possible issues

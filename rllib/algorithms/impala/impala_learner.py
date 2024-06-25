@@ -13,7 +13,10 @@ from ray.rllib.core.columns import Columns
 from ray.rllib.core.learner.learner import Learner
 from ray.rllib.connectors.learner import AddOneTsToEpisodesAndTruncate
 from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
-from ray.rllib.utils.annotations import override
+from ray.rllib.utils.annotations import (
+    override,
+    OverrideToImplementCustomLogic_CallToSuperRecommended,
+)
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.lambda_defaultdict import LambdaDefaultDict
 from ray.rllib.utils.metrics import (
@@ -114,7 +117,7 @@ class ImpalaLearner(Learner):
         # TODO (sven): IMPALA does NOT call additional update anymore from its
         #  `training_step()` method. Instead, we'll do this here (to avoid the extra
         #  metrics.reduce() call -> we should only call this once per update round).
-        self._before_gradient_based_update(timesteps=timesteps)
+        self.before_gradient_based_update(timesteps=timesteps)
 
         with self.metrics.log_time((ALL_MODULES, RAY_GET_EPISODES_TIMER)):
             # Resolve batch/episodes being ray object refs (instead of
@@ -150,8 +153,9 @@ class ImpalaLearner(Learner):
                 results[ALL_MODULES][NUM_ENV_STEPS_TRAINED].values = [ts_trained]
             return results
 
-    def _before_gradient_based_update(self, timesteps: Dict[str, Any]) -> None:
-        super()._before_gradient_based_update(timesteps=timesteps)
+    @OverrideToImplementCustomLogic_CallToSuperRecommended
+    def before_gradient_based_update(self, *, timesteps: Dict[str, Any]) -> None:
+        super().before_gradient_based_update(timesteps=timesteps)
 
         for module_id in self.module.keys():
             # Update entropy coefficient via our Scheduler.

@@ -50,8 +50,7 @@ class PPOLearner(Learner):
 
         # Set up KL coefficient variables (per module).
         # Note that the KL coeff is not controlled by a Scheduler, but seeks
-        # to stay close to a given kl_target value in our implementation of
-        # `self.additional_update_for_module()`.
+        # to stay close to a given kl_target value.
         self.curr_kl_coeffs_per_module: Dict[ModuleID, TensorType] = LambdaDefaultDict(
             lambda module_id: self._get_tensor_variable(
                 self.config.get_config_for_module(module_id).kl_coeff
@@ -217,12 +216,12 @@ class PPOLearner(Learner):
 
     @OverrideToImplementCustomLogic_CallToSuperRecommended
     @override(Learner)
-    def _after_gradient_based_update(
+    def after_gradient_based_update(
         self,
         *,
         timesteps: Dict[str, Any],
     ) -> None:
-        super()._after_gradient_based_update(timesteps=timesteps)
+        super().after_gradient_based_update(timesteps=timesteps)
 
         for module_id, module in self.module._rl_modules.items():
             config = self.config.get_config_for_module(module_id)

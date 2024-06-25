@@ -175,8 +175,6 @@ class LearnerGroup:
             self._update_request_tags = Counter()
             self._update_request_tag = 0
             self._update_request_results = {}
-            self._additional_update_request_tags = Counter()
-            self._additional_update_request_tag = 0
 
         # A special MetricsLogger object (not exposed to the user) for reducing
         # the n results dicts returned by our n Learner workers in case we are on
@@ -618,10 +616,6 @@ class LearnerGroup:
                             del self._update_request_results[tag]
                     else:
                         assert False
-                        assert tag in self._additional_update_request_tags
-                        self._additional_update_request_tags[tag] -= 1
-                        if self._additional_update_request_tags[tag] == 0:
-                            del self._additional_update_request_tags[tag]
 
                 else:
                     raise result_or_error

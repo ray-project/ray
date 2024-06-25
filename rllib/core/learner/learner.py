@@ -1144,9 +1144,9 @@ class Learner:
 
         self._check_is_built()
 
-        # Call `_before_gradient_based_update` to allow for non-gradient based
+        # Call `before_gradient_based_update` to allow for non-gradient based
         # preparations-, logging-, and update logic to happen.
-        self._before_gradient_based_update(timesteps=timesteps or {})
+        self.before_gradient_based_update(timesteps=timesteps or {})
 
         # Resolve batch/episodes being ray object refs (instead of
         # actual batch/episodes objects).
@@ -1263,15 +1263,15 @@ class Learner:
 
         self._set_slicing_by_batch_id(batch, value=False)
 
-        # Call `_after_gradient_based_update` to allow for non-gradient based
+        # Call `after_gradient_based_update` to allow for non-gradient based
         # cleanups-, logging-, and update logic to happen.
-        self._after_gradient_based_update(timesteps=timesteps or {})
+        self.after_gradient_based_update(timesteps=timesteps or {})
 
         # Reduce results across all minibatch update steps.
         return self.metrics.reduce()
 
     @OverrideToImplementCustomLogic_CallToSuperRecommended
-    def _before_gradient_based_update(self, *, timesteps: Dict[str, Any]) -> None:
+    def before_gradient_based_update(self, *, timesteps: Dict[str, Any]) -> None:
         """Called before gradient-based updates are completed.
 
         Should be overridden to implement custom preparation-, logging-, or
@@ -1285,7 +1285,7 @@ class Learner:
         """
 
     @OverrideToImplementCustomLogic_CallToSuperRecommended
-    def _after_gradient_based_update(self, *, timesteps: Dict[str, Any]) -> None:
+    def after_gradient_based_update(self, *, timesteps: Dict[str, Any]) -> None:
         """Called after gradient-based updates are completed.
 
         Should be overridden to implement custom cleanup-, logging-, or non-gradient-
@@ -1614,8 +1614,10 @@ class Learner:
         self.metrics.log_dict(dict(log_dict), reduce="sum", clear_on_reduce=True)
 
     @Deprecated(
-        new="Learner._before_gradient_based_update() and/or "
-        "Learner._after_gradient_based_update()",
+        new="Learner.before_gradient_based_update("
+        "timesteps={'num_env_steps_sampled_lifetime': ...}) and/or "
+        "Learner.after_gradient_based_update("
+        "timesteps={'num_env_steps_sampled_lifetime': ...})",
         error=True,
     )
     def additional_update_for_module(self, *args, **kwargs):

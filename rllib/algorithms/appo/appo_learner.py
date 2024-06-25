@@ -17,7 +17,7 @@ from ray.rllib.utils.typing import ModuleID
 
 
 class AppoLearner(ImpalaLearner):
-    """Adds KL coeff updates via `_after_gradient_based_update()` to Impala logic.
+    """Adds KL coeff updates via `after_gradient_based_update()` to Impala logic.
 
     Framework-specific sub-classes must override `_update_module_kl_coeff()`.
     """
@@ -47,13 +47,13 @@ class AppoLearner(ImpalaLearner):
         self.curr_kl_coeffs_per_module.pop(module_id)
 
     @override(Learner)
-    def _after_gradient_based_update(self, *, timesteps: Dict[str, Any]) -> None:
+    def after_gradient_based_update(self, *, timesteps: Dict[str, Any]) -> None:
         """Updates the target Q Networks."""
-        super()._after_gradient_based_update(timesteps=timesteps)
+        super().after_gradient_based_update(timesteps=timesteps)
 
         timestep = timesteps.get(NUM_ENV_STEPS_SAMPLED_LIFETIME, 0)
 
-        # TODO (sven): Maybe we should have a `_after_gradient_based_update`
+        # TODO (sven): Maybe we should have a `after_gradient_based_update`
         #  method per module?
         for module_id, module in self.module._rl_modules.items():
             config = self.config.get_config_for_module(module_id)
