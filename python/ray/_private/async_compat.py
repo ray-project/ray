@@ -28,15 +28,24 @@ def try_install_uvloop():
         pass
 
 
-@lru_cache(maxsize=2**10)
-def is_async_func(func):
+def is_async_func(func) -> bool:
     """Return True if the function is an async or async generator method."""
     return inspect.iscoroutinefunction(func) or inspect.isasyncgenfunction(func)
 
 
-@lru_cache(maxsize=2**10)
-def sync_to_async(func):
-    """Convert a blocking function to async function"""
+@lru_cache(
+    maxsize=2**10
+)  # this is called every time an actor method is called via .remote()
+def has_async_methods(cls: object) -> bool:
+    """Return True if the class has any async methods."""
+    return any(is_async_func(m) for _, m in inspect.getmembers(cls))
+
+
+@lru_cache(
+    maxsize=2**10
+)  # this is called every time an actor method is called via .remote()
+def sync_to_async(func) -> bool:
+    """Wrap a blocking function in an async function"""
 
     if is_async_func(func):
         return func
