@@ -170,6 +170,7 @@ void MutableObjectManager::OpenSemaphores(const ObjectID &object_id,
 }
 
 void MutableObjectManager::DestroySemaphores(const ObjectID &object_id) {
+  RAY_LOG(DEBUG) << "Destroy " << object_id;
   PlasmaObjectHeader::Semaphores sem;
   if (!GetSemaphores(object_id, sem)) {
     return;
@@ -202,11 +203,12 @@ Status MutableObjectManager::WriteAcquire(const ObjectID &object_id,
                                           int64_t metadata_size,
                                           int64_t num_readers,
                                           std::shared_ptr<Buffer> &data) {
+  RAY_LOG(DEBUG) << "WriteAcquire " << object_id;
   absl::ReaderMutexLock guard(&destructor_lock_);
 
   Channel *channel = GetChannel(object_id);
   if (!channel) {
-    return Status::IOError("Channel has not been registered");
+    return Status::ChannelError("Channel has not been registered");
   }
 
   std::unique_ptr<plasma::MutableObject> &object = channel->mutable_object;
@@ -222,7 +224,8 @@ Status MutableObjectManager::WriteAcquire(const ObjectID &object_id,
 
   PlasmaObjectHeader::Semaphores sem;
   if (!GetSemaphores(object_id, sem)) {
-    return Status::IOError("Channel has not been registered (cannot get semaphores)");
+    return Status::ChannelError(
+        "Channel has not been registered (cannot get semaphores)");
   }
   // Check whether the channel has an error set before checking that WriteRelease() was
   // called. If the channel is already closed, then it's OK to WriteAcquire and
@@ -242,15 +245,17 @@ Status MutableObjectManager::WriteAcquire(const ObjectID &object_id,
 }
 
 Status MutableObjectManager::WriteRelease(const ObjectID &object_id) {
+  RAY_LOG(DEBUG) << "WriteRelease " << object_id;
   absl::ReaderMutexLock guard(&destructor_lock_);
 
   Channel *channel = GetChannel(object_id);
   if (!channel) {
-    return Status::IOError("Channel has not been registered");
+    return Status::ChannelError("Channel has not been registered");
   }
   PlasmaObjectHeader::Semaphores sem;
   if (!GetSemaphores(object_id, sem)) {
-    return Status::IOError("Channel has not been registered (cannot get semaphores)");
+    return Status::ChannelError(
+        "Channel has not been registered (cannot get semaphores)");
   }
   std::unique_ptr<plasma::MutableObject> &object = channel->mutable_object;
   // Check whether the channel has an error set before checking that WriteAcquire() was
@@ -267,15 +272,17 @@ Status MutableObjectManager::WriteRelease(const ObjectID &object_id) {
 Status MutableObjectManager::ReadAcquire(const ObjectID &object_id,
                                          std::shared_ptr<RayObject> &result)
     ABSL_NO_THREAD_SAFETY_ANALYSIS {
+  RAY_LOG(DEBUG) << "ReadAcquire " << object_id;
   absl::ReaderMutexLock guard(&destructor_lock_);
 
   Channel *channel = GetChannel(object_id);
   if (!channel) {
-    return Status::IOError("Channel has not been registered");
+    return Status::ChannelError("Channel has not been registered");
   }
   PlasmaObjectHeader::Semaphores sem;
   if (!GetSemaphores(object_id, sem)) {
-    return Status::IOError("Channel has not been registered (cannot get semaphores)");
+    return Status::ChannelError(
+        "Channel has not been registered (cannot get semaphores)");
   }
 
   // Check whether the channel has an error set before checking that we are the only
@@ -292,6 +299,7 @@ Status MutableObjectManager::ReadAcquire(const ObjectID &object_id,
   Status s =
       object->header->ReadAcquire(sem, channel->next_version_to_read, version_read);
   if (!s.ok()) {
+    RAY_LOG(DEBUG) << "ReadAcquire error was set, returning " << object_id;
     // Failed because the error bit was set on the mutable object.
     channel->reading = false;
     channel->lock->unlock();
@@ -316,16 +324,38 @@ Status MutableObjectManager::ReadAcquire(const ObjectID &object_id,
 
   result = std::make_shared<RayObject>(
       std::move(data_buf), std::move(metadata_buf), std::vector<rpc::ObjectReference>());
+  if (result->IsException()) {
+    // If the result is an exception, currently we use zero-copy
+    // deserialization to create the frontend exception object. This makes it
+    // easy for the frontend code to leak the shared_ptr<MutableObjectBuffer>,
+    // which will block future values from being written. Therefore, we make a
+    // copy of the buffer here so that the MutableObjectBuffer can be
+    // immediately released.
+    std::shared_ptr<LocalMemoryBuffer> data_copy = std::make_shared<LocalMemoryBuffer>(
+        channel_buffer->Data(),
+        /*size=*/channel->mutable_object->header->data_size,
+        /*copy_data=*/true);
+    std::shared_ptr<LocalMemoryBuffer> metadata_copy =
+        std::make_shared<LocalMemoryBuffer>(
+            channel_buffer->Data() + channel->mutable_object->header->data_size,
+            /*size=*/channel->mutable_object->header->metadata_size,
+            /*copy_data=*/true);
+    result = std::make_shared<RayObject>(std::move(data_copy),
+                                         std::move(metadata_copy),
+                                         std::vector<rpc::ObjectReference>());
+  }
+  RAY_LOG(DEBUG) << "ReadAcquire returning buffer " << object_id;
   return Status::OK();
 }
 
 Status MutableObjectManager::ReadRelease(const ObjectID &object_id)
     ABSL_NO_THREAD_SAFETY_ANALYSIS {
+  RAY_LOG(DEBUG) << "ReadRelease " << object_id;
   absl::ReaderMutexLock guard(&destructor_lock_);
 
   Channel *channel = GetChannel(object_id);
   if (!channel) {
-    return Status::IOError("Channel has not been registered");
+    return Status::ChannelError("Channel has not been registered");
   }
 
   PlasmaObjectHeader::Semaphores sem;
@@ -338,11 +368,13 @@ Status MutableObjectManager::ReadRelease(const ObjectID &object_id)
   RAY_RETURN_NOT_OK(object->header->CheckHasError());
   // The channel is still open. Make sure that we called ReadAcquire first.
   if (!channel->reading) {
-    return Status::IOError("Must call ReadAcquire() on the channel before ReadRelease()");
+    return Status::ChannelError(
+        "Must call ReadAcquire() on the channel before ReadRelease()");
   }
 
   Status s = object->header->ReadRelease(sem, channel->next_version_to_read);
   if (!s.ok()) {
+    RAY_LOG(DEBUG) << "ReadRelease error was set, returning: " << object_id;
     // Failed because the error bit was set on the mutable object.
     channel->reading = false;
     channel->lock->unlock();
@@ -359,6 +391,7 @@ Status MutableObjectManager::ReadRelease(const ObjectID &object_id)
 }
 
 Status MutableObjectManager::SetError(const ObjectID &object_id) {
+  RAY_LOG(DEBUG) << "SetError " << object_id;
   absl::ReaderMutexLock guard(&destructor_lock_);
   return SetErrorInternal(object_id);
 }
@@ -368,14 +401,15 @@ Status MutableObjectManager::SetErrorInternal(const ObjectID &object_id) {
   if (channel) {
     PlasmaObjectHeader::Semaphores sem;
     if (!GetSemaphores(object_id, sem)) {
-      return Status::IOError("Channel has not been registered (cannot get semaphores)");
+      return Status::ChannelError(
+          "Channel has not been registered (cannot get semaphores)");
     }
     channel->mutable_object->header->SetErrorUnlocked(sem);
     channel->reader_registered = false;
     channel->writer_registered = false;
     // TODO(jhumphri): Free the channel.
   } else {
-    return Status::IOError("Channel has not been registered");
+    return Status::ChannelError("Channel has not been registered");
   }
   return Status::OK();
 }

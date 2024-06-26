@@ -1,5 +1,6 @@
 import abc
-from typing import Any, Dict, Type, Union
+from typing import Any, Dict, List, Tuple, Type, Union
+
 from ray.rllib.algorithms.dqn.dqn_rainbow_catalog import DQNRainbowCatalog
 from ray.rllib.algorithms.sac.sac_learner import QF_PREDS
 from ray.rllib.core.columns import Columns
@@ -16,7 +17,7 @@ from ray.rllib.utils.annotations import (
     OverrideToImplementCustomLogic,
 )
 from ray.rllib.utils.schedules.scheduler import Scheduler
-from ray.rllib.utils.typing import TensorType
+from ray.rllib.utils.typing import NetworkType, TensorType
 
 ATOMS = "atoms"
 QF_LOGITS = "qf_logits"
@@ -85,6 +86,19 @@ class DQNRainbowRLModule(RLModule, RLModuleWithTargetNetworksInterface):
         # Define the action distribution for sampling the exploit action
         # during exploration.
         self.action_dist_cls = catalog.get_action_dist_cls(framework=self.framework)
+
+    @override(RLModuleWithTargetNetworksInterface)
+    def get_target_network_pairs(self) -> List[Tuple[NetworkType, NetworkType]]:
+        """Returns target Q and Q network(s) to update the target network(s)."""
+        return [(self.target_encoder, self.encoder), (self.af_target, self.af)] + (
+            # If we have a dueling architecture we need to update the value stream
+            # target, too.
+            [
+                (self.vf_target, self.vf),
+            ]
+            if self.uses_dueling
+            else []
+        )
 
     @override(RLModule)
     def get_exploration_action_dist_cls(self) -> Type[Distribution]:
