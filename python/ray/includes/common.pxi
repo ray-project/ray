@@ -37,7 +37,7 @@ cdef class GcsClientOptions:
         unique_ptr[CGcsClientOptions] inner
 
     @classmethod
-    def from_gcs_address(cls, gcs_address, cluster_id_hex = None):
+    def from_gcs_address(cls, gcs_address, cluster_id_hex=None):
         cdef CClusterID c_cluster_id = CClusterID.Nil()
         if cluster_id_hex is not None:
             c_cluster_id = CClusterID.FromHex(cluster_id_hex)
