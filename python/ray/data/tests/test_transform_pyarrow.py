@@ -457,6 +457,9 @@ def _create_dataset(op, data):
     return ds
 
 
+@pytest.mark.skipif(
+    object_extension_type_allowed(), reason="Arrow table supports pickled objects"
+)
 @pytest.mark.parametrize(
     "op, data",
     [
