@@ -10,9 +10,7 @@ from ray.rllib.algorithms.ppo.ppo import (
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.algorithms.ppo.tests.test_ppo import PENDULUM_FAKE_BATCH
 from ray.rllib.core import DEFAULT_MODULE_ID
-from ray.rllib.core.learner.learner import (
-    LEARNER_RESULTS_CURR_LR_KEY,
-)
+from ray.rllib.core.learner.learner import DEFAULT_OPTIMIZER, LR_KEY
 from ray.rllib.evaluation.postprocessing import (
     compute_gae_for_sample_batch,
 )
@@ -50,7 +48,7 @@ class MyCallbacks(DefaultCallbacks):
 
         # Learning rate should decrease by 0.0001/4 per iteration.
         check(
-            stats[LEARNER_RESULTS_CURR_LR_KEY],
+            stats[DEFAULT_OPTIMIZER + "_" + LR_KEY],
             0.0000075 if algorithm.iteration == 1 else 0.000005,
         )
         # Compare reported curr lr vs the actual lr found in the optimizer object.
@@ -60,7 +58,7 @@ class MyCallbacks(DefaultCallbacks):
             if algorithm.config.framework_str == "torch"
             else optim.lr
         )
-        check(stats[LEARNER_RESULTS_CURR_LR_KEY], actual_optimizer_lr)
+        check(stats[DEFAULT_OPTIMIZER + "_" + LR_KEY], actual_optimizer_lr)
 
 
 class TestPPO(unittest.TestCase):

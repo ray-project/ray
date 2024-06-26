@@ -27,7 +27,6 @@ class JobAgent(dashboard_utils.DashboardAgentModule):
     def __init__(self, dashboard_agent):
         super().__init__(dashboard_agent)
         self._job_manager = None
-        self._gcs_job_info_stub = None
 
     @routes.post("/api/job_agent/jobs/")
     @optional_utils.init_ray_and_catch_exceptions()

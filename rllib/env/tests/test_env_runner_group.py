@@ -23,7 +23,7 @@ class TestEnvRunnerGroup(unittest.TestCase):
             env_creator=lambda _: gym.make("CartPole-v1"),
             default_policy_class=RandomPolicy,
             config=AlgorithmConfig().env_runners(num_env_runners=2),
-            num_workers=2,
+            num_env_runners=2,
         )
 
         policies = ws.foreach_worker(
@@ -52,7 +52,7 @@ class TestEnvRunnerGroup(unittest.TestCase):
             env_creator=lambda _: gym.make("CartPole-v1"),
             default_policy_class=RandomPolicy,
             config=AlgorithmConfig().env_runners(num_env_runners=2),
-            num_workers=2,
+            num_env_runners=2,
         )
 
         policy_refs = ws.foreach_worker(
@@ -74,7 +74,7 @@ class TestEnvRunnerGroup(unittest.TestCase):
             env_creator=lambda _: gym.make("CartPole-v1"),
             default_policy_class=RandomPolicy,
             config=AlgorithmConfig().env_runners(num_env_runners=2),
-            num_workers=2,
+            num_env_runners=2,
         )
 
         # Fired async request against both remote workers.

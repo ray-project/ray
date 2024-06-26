@@ -1,11 +1,18 @@
+import logging
 from types import ModuleType
-from typing import TYPE_CHECKING, Dict, Optional
+from typing import TYPE_CHECKING, List, Optional
 
 import ray
 
 if TYPE_CHECKING:
     import cupy as cp
     import torch
+
+
+# Logger for this module. It should be configured at the entry point
+# into the program using Ray. Ray provides a default configuration at
+# entry/init points.
+logger = logging.getLogger(__name__)
 
 
 class _NcclGroup:
@@ -20,7 +27,7 @@ class _NcclGroup:
         world_size: int,
         comm_id: int,
         rank: Optional[int],
-        actor_ids_to_ranks: Dict[ray.ActorID, int],
+        actor_handles: List["ray.actor.ActorHandle"],
         cuda_stream: Optional[int],
     ):
         """
@@ -50,17 +57,22 @@ class _NcclGroup:
                 cupy.cuda.nccl.get_unique_id().
             rank: The rank of this actor. If None, then the caller is not a
                 participant of the NCCL group.
-            actor_ids_to_ranks: A map from actor ID to its rank in the group.
+            actor_handles: A list of actor handles, in rank order.
             cuda_stream: A raw CUDA stream to dispatch NCCL ops to. If rank is
                 specified, then this must be specified too.
         """
         self._rank: Optional[int] = rank
         self.nccl_util: Optional[ModuleType] = None
-        self._actor_ids_to_ranks = actor_ids_to_ranks
+        self._actor_handles = actor_handles
 
         if rank is not None:
             assert ray.get_gpu_ids(), "NCCL actor has no GPUs assigned"
             assert cuda_stream is not None, "NCCL actor must specify cuda_stream"
+
+            expected_rank = self.get_rank(ray.get_runtime_context().current_actor)
+            assert (
+                rank == expected_rank
+            ), f"NCCL actor's rank {rank} does not match expected rank {expected_rank}"
 
             from ray.util.collective.collective_group import nccl_util
 
@@ -87,6 +99,9 @@ class _NcclGroup:
 
         self._closed = False
 
+    def _get_actor_handles(self) -> List["ray.actor.ActorHandle"]:
+        return self._actor_handles
+
     def get_rank(self, actor: ray.actor.ActorHandle) -> int:
         """
         Return the given actor's rank in the NCCL communicator.
@@ -94,9 +109,12 @@ class _NcclGroup:
         Args:
             actor: The actor handle to look up.
         """
-        if actor._ray_actor_id not in self._actor_ids_to_ranks:
+        actor_ids = [a._ray_actor_id for a in self._actor_handles]
+        try:
+            rank = actor_ids.index(actor._ray_actor_id)
+        except ValueError:
             raise ValueError("Actor is not in the NCCL group.")
-        return self._actor_ids_to_ranks[actor._ray_actor_id]
+        return rank
 
     def get_self_rank(self) -> Optional[int]:
         """
@@ -170,6 +188,14 @@ class _NcclGroup:
             return
 
         self._closed = True
-        # Abort *after* setting the _closed flag.
-        self._comm.abort()
-        self._comm.destroy()
+
+        if self._comm is not None:
+            logger.info(
+                "Destructing NCCL group on actor: "
+                f"{ray.get_runtime_context().current_actor}"
+            )
+            # Abort *after* setting the _closed flag. This ensures that NCCL
+            # ops that were blocked on a remote peer will see that the _closed
+            # flag is True when they exit from the abort.
+            self._comm.abort()
+            self._comm.destroy()

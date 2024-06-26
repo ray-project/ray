@@ -161,7 +161,8 @@ class TorchMLP(nn.Module):
                 # Insert a layer normalization in between layer's output and
                 # the activation.
                 if hidden_layer_use_layernorm:
-                    layers.append(nn.LayerNorm(dims[i + 1]))
+                    # We use an epsilon of 0.001 here to mimick the Tf default behavior.
+                    layers.append(nn.LayerNorm(dims[i + 1], eps=0.001))
                 # Add the activation function.
                 if hidden_activation is not None:
                     layers.append(hidden_activation())
@@ -294,7 +295,8 @@ class TorchCNN(nn.Module):
 
             # Layernorm.
             if cnn_use_layernorm:
-                layers.append(nn.LayerNorm((out_depth, out_size[0], out_size[1])))
+                # We use an epsilon of 0.001 here to mimick the Tf default behavior.
+                layers.append(LayerNorm1D(out_depth, eps=0.001))
             # Activation.
             if cnn_activation is not None:
                 layers.append(cnn_activation())
@@ -446,7 +448,7 @@ class TorchCNNTranspose(nn.Module):
             layers.append(layer)
             # Layernorm (never for final layer).
             if cnn_transpose_use_layernorm and not is_final_layer:
-                layers.append(nn.LayerNorm((out_depth, out_size[0], out_size[1])))
+                layers.append(LayerNorm1D(out_depth, eps=0.001))
             # Last layer is never activated (regardless of config).
             if cnn_transpose_activation is not None and not is_final_layer:
                 layers.append(cnn_transpose_activation())
@@ -464,3 +466,20 @@ class TorchCNNTranspose(nn.Module):
         out = inputs.permute(0, 3, 1, 2)
         out = self.cnn_transpose(out.type(self.expected_input_dtype))
         return out.permute(0, 2, 3, 1)
+
+
+class LayerNorm1D(nn.Module):
+    def __init__(self, num_features, **kwargs):
+        super().__init__()
+        self.layer_norm = nn.LayerNorm(num_features, **kwargs)
+
+    def forward(self, x):
+        # x shape: (B, dim, dim, channels).
+        batch_size, channels, h, w = x.size()
+        # Reshape to (batch_size * height * width, channels) for LayerNorm
+        x = x.permute(0, 2, 3, 1).reshape(-1, channels)
+        # Apply LayerNorm
+        x = self.layer_norm(x)
+        # Reshape back to (batch_size, dim, dim, channels)
+        x = x.reshape(batch_size, h, w, channels).permute(0, 3, 1, 2)
+        return x

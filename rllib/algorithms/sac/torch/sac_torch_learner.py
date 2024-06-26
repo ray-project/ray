@@ -15,17 +15,15 @@ from ray.rllib.algorithms.sac.sac_learner import (
     QF_TWIN_LOSS_KEY,
     QF_TWIN_PREDS,
     TD_ERROR_MEAN_KEY,
-    TD_ERROR_KEY,
     SACLearner,
 )
-from ray.rllib.core import DEFAULT_MODULE_ID
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.learner.learner import (
     POLICY_LOSS_KEY,
 )
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
-from ray.rllib.utils.metrics import ALL_MODULES
+from ray.rllib.utils.metrics import ALL_MODULES, TD_ERROR_KEY
 from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.typing import ModuleID, ParamDict, TensorType
 
@@ -221,8 +219,6 @@ class SACTorchLearner(DQNRainbowTorchLearner, SACLearner):
         # Note further, we use here the Huber loss instead of the mean squared error
         # as it improves training performance.
         critic_loss = torch.mean(
-            # TODO (simon): Introduce priority weights when episode buffer is ready.
-            # batch[PRIO_WEIGHTS] *
             batch["weights"]
             * torch.nn.HuberLoss(reduction="none", delta=1.0)(
                 q_selected, q_selected_target
@@ -303,28 +299,26 @@ class SACTorchLearner(DQNRainbowTorchLearner, SACLearner):
     def compute_gradients(
         self, loss_per_module: Dict[str, TensorType], **kwargs
     ) -> ParamDict:
-        for optim in self._optimizer_parameters:
-            optim.zero_grad(set_to_none=True)
-
         grads = {}
-
         for module_id in set(loss_per_module.keys()) - {ALL_MODULES}:
-            config = self.config.get_config_for_module(module_id)
+            # Loop through optimizers registered for this module.
+            for optim_name, optim in self.get_optimizers_for_module(module_id):
+                # Zero the gradients. Note, we need to reset the gradients b/c
+                # each component for a module operates on the same graph.
+                optim.zero_grad(set_to_none=True)
 
-            # Calculate gradients for each loss by its optimizer.
-            # TODO (sven): Maybe we rename to `actor`, `critic`. We then also
-            #  need to either add to or change in the `Learner` constants.
-            for component in (
-                ["qf", "policy", "alpha"] + ["qf_twin"] if config.twin_q else []
-            ):
-                self.metrics.peek(DEFAULT_MODULE_ID, component + "_loss").backward(
+                # Compute the gradients for the component and module.
+                self.metrics.peek((module_id, optim_name + "_loss")).backward(
                     retain_graph=True
                 )
+                # Store the gradients for the component and module.
+                # TODO (simon): Check another time the graph for overlapping
+                # gradients.
                 grads.update(
                     {
-                        pid: p.grad
+                        pid: p.grad.clone()
                         for pid, p in self.filter_param_dict_for_optimizer(
-                            self._params, self.get_optimizer(module_id, component)
+                            self._params, optim
                         ).items()
                     }
                 )

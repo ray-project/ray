@@ -661,9 +661,17 @@ class RunConfig:
         from ray.train.constants import DEFAULT_STORAGE_PATH
         from ray.tune.experimental.output import AirVerbosity, get_air_verbosity
 
+        if self.local_dir is not None:
+            raise DeprecationWarning(
+                "The `RunConfig(local_dir)` argument is deprecated. "
+                "You should set the `RunConfig(storage_path)` instead."
+                "See the docs: https://docs.ray.io/en/latest/train/user-guides/"
+                "persistent-storage.html#setting-the-local-staging-directory"
+            )
+
         if self.storage_path is None:
-            # TODO(justinvyu): [Deprecated] Remove fallback to local dir.
-            self.storage_path = self.local_dir or DEFAULT_STORAGE_PATH
+            # TODO(justinvyu): [Deprecated] Remove in 2.30
+            self.storage_path = DEFAULT_STORAGE_PATH
 
             # If no remote path is set, try to get Ray Storage URI
             ray_storage_uri: Optional[str] = _get_storage_uri()
@@ -689,10 +697,6 @@ class RunConfig:
             # For old output engine, this is Verbosity.V3_TRIAL_DETAILS
             # Todo (krfricke): Currently uses number to pass test_configs::test_repr
             self.verbose = get_air_verbosity(AirVerbosity.DEFAULT) or 3
-
-        # Convert Paths to strings
-        if isinstance(self.local_dir, Path):
-            self.local_dir = self.local_dir.as_posix()
 
         if isinstance(self.storage_path, Path):
             self.storage_path = self.storage_path.as_posix()

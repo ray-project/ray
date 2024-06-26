@@ -515,7 +515,7 @@ class TestActorPool(unittest.TestCase):
         assert res3 is None
 
 
-def test_start_actor_timeout(ray_start_regular_shared):
+def test_start_actor_timeout(ray_start_regular_shared, restore_data_context):
     """Tests that ActorPoolMapOperator raises an exception on
     timeout while waiting for actors."""
 
@@ -523,11 +523,9 @@ def test_start_actor_timeout(ray_start_regular_shared):
         def __call__(self, x):
             return x
 
-    from ray.data._internal.execution.operators import actor_pool_map_operator
     from ray.exceptions import GetTimeoutError
 
-    original_timeout = actor_pool_map_operator.DEFAULT_WAIT_FOR_MIN_ACTORS_SEC
-    actor_pool_map_operator.DEFAULT_WAIT_FOR_MIN_ACTORS_SEC = 1
+    ray.data.DataContext.get_current().wait_for_min_actors_s = 1
 
     with pytest.raises(
         GetTimeoutError,
@@ -544,7 +542,6 @@ def test_start_actor_timeout(ray_start_regular_shared):
             compute=ray.data.ActorPoolStrategy(size=5),
             num_gpus=100,
         ).take_all()
-    actor_pool_map_operator.DEFAULT_WAIT_FOR_MIN_ACTORS_SEC = original_timeout
 
 
 if __name__ == "__main__":

@@ -441,16 +441,16 @@ void raylet::RayletClient::PushMutableObject(
       });
 }
 
-void raylet::RayletClient::ReleaseUnusedWorkers(
+void raylet::RayletClient::ReleaseUnusedActorWorkers(
     const std::vector<WorkerID> &workers_in_use,
-    const rpc::ClientCallback<rpc::ReleaseUnusedWorkersReply> &callback) {
-  rpc::ReleaseUnusedWorkersRequest request;
+    const rpc::ClientCallback<rpc::ReleaseUnusedActorWorkersReply> &callback) {
+  rpc::ReleaseUnusedActorWorkersRequest request;
   for (auto &worker_id : workers_in_use) {
     request.add_worker_ids_in_use(worker_id.Binary());
   }
-  grpc_client_->ReleaseUnusedWorkers(
+  grpc_client_->ReleaseUnusedActorWorkers(
       request,
-      [callback](const Status &status, const rpc::ReleaseUnusedWorkersReply &reply) {
+      [callback](const Status &status, const rpc::ReleaseUnusedActorWorkersReply &reply) {
         if (!status.ok()) {
           RAY_LOG(WARNING)
               << "Error releasing workers from raylet, the raylet may have died:"

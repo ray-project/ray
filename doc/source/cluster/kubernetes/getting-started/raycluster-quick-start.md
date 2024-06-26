@@ -6,7 +6,7 @@ This guide shows you how to manage and interact with Ray clusters on Kubernetes.
 
 ## Preparation
 
-* Install [kubectl](https://kubernetes.io/docs/tasks/tools/#kubectl) (>= 1.23), [Helm](https://helm.sh/docs/intro/install/) (>= v3.4), and [Kind](https://kind.sigs.k8s.io/docs/user/quick-start/#installation).
+* Install [kubectl](https://kubernetes.io/docs/tasks/tools/#kubectl) (>= 1.23), [Helm](https://helm.sh/docs/intro/install/) (>= v3.4), [Kind](https://kind.sigs.k8s.io/docs/user/quick-start/#installation), and [Docker](https://docs.docker.com/engine/install/).
 * Make sure your Kubernetes cluster has at least 4 CPU and 4 GB RAM.
 
 ## Step 1: Create a Kubernetes cluster
@@ -143,7 +143,7 @@ See the job you submitted in Step 4 in the **Recent jobs** pane as shown below.
 ## Step 6: Cleanup
 
 ```sh
-# [Step 5.1]: Delete the RayCluster CR
+# [Step 6.1]: Delete the RayCluster CR
 # Uninstall the RayCluster Helm chart
 helm uninstall raycluster
 # release "raycluster" uninstalled
@@ -155,7 +155,7 @@ kubectl get pods
 # NAME                                READY   STATUS    RESTARTS   AGE
 # kuberay-operator-7fbdbf8c89-pt8bk   1/1     Running   0          XXm
 
-# [Step 5.2]: Delete the KubeRay operator
+# [Step 6.2]: Delete the KubeRay operator
 # Uninstall the KubeRay operator Helm chart
 helm uninstall kuberay-operator
 # release "kuberay-operator" uninstalled
@@ -164,6 +164,6 @@ helm uninstall kuberay-operator
 kubectl get pods
 # No resources found in default namespace.
 
-# [Step 5.3]: Delete the Kubernetes cluster
+# [Step 6.3]: Delete the Kubernetes cluster
 kind delete cluster
 ```

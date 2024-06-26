@@ -13,7 +13,10 @@ from ray.rllib.utils.annotations import (
     override,
     OverrideToImplementCustomLogic_CallToSuperRecommended,
 )
-from ray.rllib.utils.metrics import LAST_TARGET_UPDATE_TS, NUM_TARGET_UPDATES
+from ray.rllib.utils.metrics import (
+    LAST_TARGET_UPDATE_TS,
+    NUM_TARGET_UPDATES,
+)
 from ray.rllib.utils.typing import ModuleID
 
 if TYPE_CHECKING:
@@ -32,7 +35,6 @@ QF_TARGET_NEXT_PREDS = "qf_target_next_preds"
 QF_TARGET_NEXT_PROBS = "qf_target_next_probs"
 QF_PREDS = "qf_preds"
 QF_PROBS = "qf_probs"
-TD_ERROR_KEY = "td_error"
 TD_ERROR_MEAN_KEY = "td_error_mean"
 
 
@@ -41,6 +43,12 @@ class DQNRainbowLearner(Learner):
     @override(Learner)
     def build(self) -> None:
         super().build()
+
+        # Initially sync target networks.
+        self.module.foreach_module(
+            lambda mid, module: module.sync_target_networks(tau=1.0)
+        )
+
         # Prepend a NEXT_OBS from episodes to train batch connector piece (right
         # after the observation default piece).
         if self.config.add_default_connectors_to_learner_pipeline:
@@ -67,24 +75,11 @@ class DQNRainbowLearner(Learner):
             timestep - self.metrics.peek(last_update_ts_key, default=0)
             >= config.target_network_update_freq
         ):
-            self._update_module_target_networks(module_id, config)
+            self.module[module_id].sync_target_networks(config.tau)
             # Increase lifetime target network update counter by one.
             self.metrics.log_value((module_id, NUM_TARGET_UPDATES), 1, reduce="sum")
             # Update the (single-value -> window=1) last updated timestep metric.
             self.metrics.log_value(last_update_ts_key, timestep, window=1)
-
-    @abc.abstractmethod
-    def _update_module_target_networks(
-        self, module_id: ModuleID, config: "DQNConfig"
-    ) -> None:
-        """Update the target Q network(s) of each module with the current Q network.
-
-        The update is made via Polyak averaging.
-
-        Args:
-            module_id: The module ID whose target Q network(s) should be updated.
-            config: The `AlgorithmConfig` specific in the given `module_id`.
-        """
 
     @abc.abstractmethod
     def _reset_noise(self) -> None:

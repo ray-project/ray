@@ -20,7 +20,6 @@ QF_TARGET_PREDS = "qf_target_preds"
 QF_TWIN_LOSS_KEY = "qf_twin_loss"
 QF_TWIN_PREDS = "qf_twin_preds"
 TD_ERROR_MEAN_KEY = "td_error_mean"
-TD_ERROR_KEY = "td_error"
 
 
 class SACLearner(DQNRainbowLearner):

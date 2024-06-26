@@ -80,7 +80,7 @@ class Unity3DEnv(MultiAgentEnv):
         port_ = None
         while True:
             # Sleep for random time to allow for concurrent startup of many
-            # environments (num_workers >> 1). Otherwise, would lead to port
+            # environments (num_env_runners >> 1). Otherwise, would lead to port
             # conflicts sometimes.
             if port_ is not None:
                 time.sleep(random.randint(1, 10))

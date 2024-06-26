@@ -58,7 +58,7 @@ def get_cliff_walking_wall_policy_and_data(
         env_creator=lambda env_config: CliffWalkingWallEnv(),
         default_policy_class=CliffWalkingWallPolicy,
         config=config,
-        num_workers=4,
+        num_env_runners=4,
     )
     ep_ret = []
     batches = []
