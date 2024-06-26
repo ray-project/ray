@@ -436,6 +436,7 @@ async def test_list_jobs_empty(job_manager: JobManager):
 
 @pytest.mark.asyncio
 async def test_list_jobs_same_submission_id(job_manager: JobManager):
+    # Multiple drivers started from the same job submission
     cmd = (
         "python -c 'import ray; ray.init(); ray.shutdown(); "
         "ray.init(); ray.shutdown();'"
@@ -446,7 +447,9 @@ async def test_list_jobs_same_submission_id(job_manager: JobManager):
         check_job_succeeded, job_manager=job_manager, job_id=submission_id
     )
     jobs_info = await job_manager.list_jobs()
-    assert len(jobs_info) == 1, jobs_info
+    # We expect only the last driver to be returned in the case of
+    # multiple jobs per job submission
+    assert len(jobs_info) == 1
 
 
 @pytest.mark.asyncio
