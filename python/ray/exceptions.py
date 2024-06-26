@@ -863,4 +863,5 @@ RAY_EXCEPTION_TYPES = [
     ActorDiedError,
     ActorUnschedulableError,
     ActorUnavailableError,
+    RayChannelError,
 ]
