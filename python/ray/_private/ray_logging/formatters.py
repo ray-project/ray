@@ -19,7 +19,7 @@ def _append_flatten_attributes(formatted_attrs: Dict[str, Any], key: str, value:
     if key in LOGGER_FLATTEN_KEYS:
         if not isinstance(value, dict):
             raise ValueError(
-                f"Expected a dictionary passing into {key}, " f"but got {type(value)}"
+                f"Expected a dictionary passing into {key}, but got {type(value)}"
             )
         for k, v in value.items():
             if k in formatted_attrs:
