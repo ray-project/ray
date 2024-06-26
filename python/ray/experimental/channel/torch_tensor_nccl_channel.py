@@ -149,8 +149,8 @@ class NestedTorchTensorNcclChannel(ChannelInterface):
         # tensors, through a CPU-specific channel.
         self._cpu_data_channel.write(serialized_cpu_data)
 
-    def begin_read(self) -> Any:
-        tensors = self._gpu_data_channel.begin_read()
+    def read(self) -> Any:
+        tensors = self._gpu_data_channel.read()
 
         if self._gpu_data_channel.has_static_type():
             # If the channel was declared with a static TorchTensorType, then
@@ -160,15 +160,10 @@ class NestedTorchTensorNcclChannel(ChannelInterface):
             tensors = [tensors]
 
         self.serialization_ctx.reset_tensors(tensors)
-        data = self._cpu_data_channel.begin_read()
+        data = self._cpu_data_channel.read()
         self.serialization_ctx.reset_tensors([])
 
         return data
-
-    def end_read(self) -> None:
-        self._gpu_data_channel.end_read()
-        if self._cpu_data_channel:
-            self._cpu_data_channel.end_read()
 
     def close(self) -> None:
         self._gpu_data_channel.close()
@@ -373,32 +368,26 @@ class TorchTensorNcclChannel(ChannelInterface):
             for rank in self._reader_ranks:
                 self._nccl_group.send(tensor, rank)
 
-    def _begin_read_single_tensor(self, typ: "TorchTensorType") -> "torch.Tensor":
+    def _read_single_tensor(self, typ: "TorchTensorType") -> "torch.Tensor":
         buf = self._torch_tensor_allocator(typ.shape, typ.dtype)
         self._nccl_group.recv(buf, self._writer_rank)
         return buf
 
-    def begin_read(self) -> Union["torch.Tensor", List["torch.Tensor"]]:
+    def read(self) -> Union["torch.Tensor", List["torch.Tensor"]]:
         if self._meta_channel is not None:
-            meta = self._meta_channel.begin_read()
-            # It's safe to release the channel because shape and dtype should get
-            # copied during deserialization.
-            self._meta_channel.end_read()
+            meta = self._meta_channel.read()
         else:
             meta = self._typ
 
         if not isinstance(meta, list):
-            return self._begin_read_single_tensor(meta)
+            return self._read_single_tensor(meta)
 
         bufs: List["torch.Tensor"] = []
         for typ in meta:
-            bufs.append(self._begin_read_single_tensor(typ))
+            bufs.append(self._read_single_tensor(typ))
         # TODO: Sync CUDA stream after receiving all tensors, instead of after
         # each tensor.
         return bufs
-
-    def end_read(self) -> None:
-        return
 
     def close(self) -> None:
         if self._meta_channel is not None:

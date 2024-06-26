@@ -5,6 +5,8 @@ from .operator import Operator
 if TYPE_CHECKING:
     import pyarrow
 
+    from ray.data._internal.execution.interfaces import RefBundle
+
 
 class LogicalOperator(Operator):
     """Abstract class for logical operators.
@@ -74,3 +76,17 @@ class LogicalOperator(Operator):
     def input_files(self) -> Optional[List[str]]:
         """The input files of this operator, or ``None`` if not known."""
         return None
+
+    def output_data(self) -> Optional[List["RefBundle"]]:
+        """The output data of this operator, or ``None`` if not known."""
+        return None
+
+    def is_lineage_serializable(self) -> bool:
+        """Returns whether the lineage of this operator can be serialized.
+
+        An operator is lineage serializable if you can serialize it on one machine and
+        deserialize it on another without losing information. Operators that store
+        object references (e.g., ``InputData``) aren't lineage serializable because the
+        objects aren't available on the deserialized machine.
+        """
+        return True

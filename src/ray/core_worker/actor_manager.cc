@@ -23,6 +23,7 @@ ActorID ActorManager::RegisterActorHandle(std::unique_ptr<ActorHandle> actor_han
                                           const ObjectID &outer_object_id,
                                           const std::string &call_site,
                                           const rpc::Address &caller_address,
+                                          bool add_local_ref,
                                           bool is_self) {
   const ActorID actor_id = actor_handle->GetActorID();
   const rpc::Address owner_address = actor_handle->GetOwnerAddress();
@@ -35,6 +36,7 @@ ActorID ActorManager::RegisterActorHandle(std::unique_ptr<ActorHandle> actor_han
                             caller_address,
                             actor_id,
                             actor_creation_return_id,
+                            add_local_ref,
                             is_self));
   ObjectID actor_handle_id = ObjectID::ForActorHandle(actor_id);
   reference_counter_->AddBorrowedObject(actor_handle_id, outer_object_id, owner_address);
@@ -56,49 +58,39 @@ std::pair<std::shared_ptr<const ActorHandle>, Status> ActorManager::GetNamedActo
     const std::string &call_site,
     const rpc::Address &caller_address) {
   ActorID actor_id = GetCachedNamedActorID(GenerateCachedActorName(ray_namespace, name));
-  if (actor_id.IsNil()) {
-    // This call needs to be blocking because we can't return until the actor
-    // handle is created, which requires the response from the RPC. This is
-    // implemented using a promise that's captured in the RPC callback.
-    // There should be no risk of deadlock because we don't hold any
-    // locks during the call and the RPCs run on a separate thread.
-    rpc::ActorTableData actor_table_data;
-    rpc::TaskSpec task_spec;
-    const auto status = gcs_client_->Actors().SyncGetByName(
-        name, ray_namespace, actor_table_data, task_spec);
-    if (status.ok()) {
-      auto actor_handle = std::make_unique<ActorHandle>(actor_table_data, task_spec);
-      actor_id = actor_handle->GetActorID();
-      AddNewActorHandle(std::move(actor_handle),
-                        call_site,
-                        caller_address,
-                        /*is_detached*/ true);
-    } else {
-      // Use a NIL actor ID to signal that the actor wasn't found.
-      RAY_LOG(DEBUG) << "Failed to look up actor with name: " << name;
-      actor_id = ActorID::Nil();
-    }
+  if (!actor_id.IsNil()) {
+    return std::make_pair(GetActorHandle(actor_id), Status::OK());
+  }
 
-    if (status.IsTimedOut()) {
-      std::ostringstream stream;
-      stream << "There was timeout in getting the actor handle, "
-                "probably because the GCS server is dead or under high load .";
-      std::string error_str = stream.str();
-      RAY_LOG(ERROR) << error_str;
-      return std::make_pair(nullptr, Status::TimedOut(error_str));
-    }
+  // This call needs to be blocking because we can't return until the actor
+  // handle is created, which requires the response from the RPC. This is
+  // implemented using a promise that's captured in the RPC callback.
+  // There should be no risk of deadlock because we don't hold any
+  // locks during the call and the RPCs run on a separate thread.
+  rpc::ActorTableData actor_table_data;
+  rpc::TaskSpec task_spec;
+  const auto status = gcs_client_->Actors().SyncGetByName(
+      name, ray_namespace, actor_table_data, task_spec);
+  if (status.ok()) {
+    auto actor_handle = std::make_unique<ActorHandle>(actor_table_data, task_spec);
+    actor_id = actor_handle->GetActorID();
+    AddNewActorHandle(std::move(actor_handle),
+                      call_site,
+                      caller_address,
+                      /*owned*/ false);
   } else {
-    // When the named actor is already cached, the reference of actor_creation_return_id
-    // must be increased, so we call AddActorHandle here to ensure that.
-    std::string serialized_actor_handle;
-    auto actor_handle = GetActorHandle(actor_id);
-    actor_handle->Serialize(&serialized_actor_handle);
+    // Use a NIL actor ID to signal that the actor wasn't found.
+    RAY_LOG(DEBUG) << "Failed to look up actor with name: " << name;
+    actor_id = ActorID::Nil();
+  }
 
-    AddActorHandle(std::make_unique<ActorHandle>(serialized_actor_handle),
-                   call_site,
-                   caller_address,
-                   actor_id,
-                   ObjectID::ForActorHandle(actor_id));
+  if (status.IsTimedOut()) {
+    std::ostringstream stream;
+    stream << "There was timeout in getting the actor handle, "
+              "probably because the GCS server is dead or under high load .";
+    std::string error_str = stream.str();
+    RAY_LOG(ERROR) << error_str;
+    return std::make_pair(nullptr, Status::TimedOut(error_str));
   }
 
   if (actor_id.IsNil()) {
@@ -124,27 +116,26 @@ bool ActorManager::CheckActorHandleExists(const ActorID &actor_id) {
 bool ActorManager::AddNewActorHandle(std::unique_ptr<ActorHandle> actor_handle,
                                      const std::string &call_site,
                                      const rpc::Address &caller_address,
-                                     bool is_detached) {
+                                     bool owned) {
   const auto &actor_id = actor_handle->GetActorID();
   const auto actor_creation_return_id = ObjectID::ForActorHandle(actor_id);
   // Detached actor doesn't need ref counting.
-  if (!is_detached) {
-    // We don't need to add an initial local ref here because it will get added
-    // in AddActorHandle.
+  if (owned) {
     reference_counter_->AddOwnedObject(actor_creation_return_id,
                                        /*inner_ids=*/{},
                                        caller_address,
                                        call_site,
                                        /*object_size*/ -1,
                                        /*is_reconstructable=*/true,
-                                       /*add_local_ref=*/false);
+                                       /*add_local_ref=*/true);
   }
 
   return AddActorHandle(std::move(actor_handle),
                         call_site,
                         caller_address,
                         actor_id,
-                        actor_creation_return_id);
+                        actor_creation_return_id,
+                        /*add_local_ref=*/false);
 }
 
 bool ActorManager::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle,
@@ -152,8 +143,11 @@ bool ActorManager::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle,
                                   const rpc::Address &caller_address,
                                   const ActorID &actor_id,
                                   const ObjectID &actor_creation_return_id,
+                                  bool add_local_ref,
                                   bool is_self) {
-  reference_counter_->AddLocalReference(actor_creation_return_id, call_site);
+  if (add_local_ref) {
+    reference_counter_->AddLocalReference(actor_creation_return_id, call_site);
+  }
   direct_actor_submitter_->AddActorQueueIfNotExists(
       actor_id,
       actor_handle->MaxPendingCalls(),

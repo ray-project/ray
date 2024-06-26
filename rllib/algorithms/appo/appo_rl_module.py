@@ -5,13 +5,16 @@ This file holds framework-agnostic components for APPO's RLModules.
 import abc
 
 from ray.rllib.algorithms.ppo.ppo_rl_module import PPORLModule
+from ray.rllib.core.rl_module.rl_module_with_target_networks_interface import (
+    RLModuleWithTargetNetworksInterface,
+)
 from ray.rllib.utils.annotations import ExperimentalAPI
 
 # TODO (simon): Write a light-weight version of this class for the `TFRLModule`
 
 
 @ExperimentalAPI
-class APPORLModule(PPORLModule, abc.ABC):
+class APPORLModule(PPORLModule, RLModuleWithTargetNetworksInterface, abc.ABC):
     def setup(self):
         super().setup()
 
