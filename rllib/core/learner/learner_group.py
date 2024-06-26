@@ -175,8 +175,6 @@ class LearnerGroup:
             self._update_request_tags = Counter()
             self._update_request_tag = 0
             self._update_request_results = {}
-            self._additional_update_request_tags = Counter()
-            self._additional_update_request_tag = 0
 
         # A special MetricsLogger object (not exposed to the user) for reducing
         # the n results dicts returned by our n Learner workers in case we are on
@@ -618,63 +616,11 @@ class LearnerGroup:
                             del self._update_request_results[tag]
                     else:
                         assert False
-                        assert tag in self._additional_update_request_tags
-                        self._additional_update_request_tags[tag] -= 1
-                        if self._additional_update_request_tags[tag] == 0:
-                            del self._additional_update_request_tags[tag]
 
                 else:
                     raise result_or_error
 
         return list(unprocessed_results.values())
-
-    def additional_update(
-        self,
-        *,
-        reduce_fn=DEPRECATED_VALUE,
-        **kwargs,
-    ) -> Union[Dict[str, Any], List[Dict[str, Any]]]:
-        """Apply additional non-gradient based updates to the Learners.
-
-        For example, this could be used to do a polyak averaging update
-        of a target network in off policy algorithms like SAC or DQN.
-
-        By default, this is a pass through that calls all Learner workers'
-        `additional_update(**kwargs)` method.
-
-        Returns:
-            A list of dictionaries of results returned by the
-            `Learner.additional_update()` calls.
-        """
-        if reduce_fn != DEPRECATED_VALUE:
-            deprecation_warning(
-                old="LearnerGroup.additional_update(reduce_fn=..)",
-                new="Learner.metrics.[log_value|log_dict|log_time](key=..., value=..., "
-                "reduce=[mean|min|max|sum], window=..., ema_coeff=...)",
-                help="Use the new ray.rllib.utils.metrics.metrics_logger::MetricsLogger"
-                " API in your custom Learner methods for logging your custom values "
-                "and time-reducing (or parallel-reducing) them.",
-                error=True,
-            )
-
-        if self.is_local:
-            results = [self._learner.additional_update(**kwargs)]
-        else:
-            results = self._worker_manager.foreach_actor(
-                [lambda w: w.additional_update(**kwargs) for _ in self._workers]
-            )
-            results = self._get_results(results)
-
-        # If we are on hybrid API stack (no EnvRunners), we need to emulate
-        # the existing behavior of returning an already reduced dict (as if we had a
-        # reduce_fn).
-        if not self.config.enable_env_runner_and_connector_v2:
-            self._metrics_logger_old_and_hybrid_stack.merge_and_log_n_dicts(results)
-            results = self._metrics_logger_old_and_hybrid_stack.reduce(
-                return_stats_obj=False
-            )
-
-        return results
 
     def add_module(
         self,

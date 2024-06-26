@@ -180,6 +180,7 @@ from ray.exceptions import (
     PendingCallsLimitExceeded,
     RpcError,
     ObjectRefStreamEndOfStreamError,
+    RayChannelError,
 )
 from ray._private import external_storage
 from ray.util.scheduling_strategies import (

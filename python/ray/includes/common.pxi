@@ -90,6 +90,8 @@ cdef int check_status_timeout_as_rpc_error(const CRayStatus& status) nogil excep
         with gil:
             raise_sys_exit_with_custom_error_message(
                 message, exit_code=1)
+    elif status.IsChannelError():
+        raise RayChannelError(message)
     else:
         raise RaySystemError(message)
 

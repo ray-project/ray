@@ -97,8 +97,6 @@ class Autodoc:
         with open(rst_file, "r") as f:
             line = f.readline()
             while line:
-                line = line.strip()
-
                 # parse currentmodule block
                 if line.startswith(_SPHINX_CURRENTMODULE_HEADER):
                     module = line[len(_SPHINX_CURRENTMODULE_HEADER) :].strip()
