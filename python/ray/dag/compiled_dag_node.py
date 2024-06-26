@@ -160,8 +160,7 @@ def _exec_task(self, task: "ExecutableTask", idx: int) -> bool:
         resolved_inputs.append(task_input.resolve(res))
 
     try:
-        # TODO(swang): Check that we are not using kwargs.
-        output_val = method(*resolved_inputs)
+        output_val = method(*resolved_inputs, **task.resolved_kwargs)
         output_writer.write(output_val)
     except IOError:
         # Channel closed. Exit the loop.
@@ -207,6 +206,10 @@ class CompiledTask:
     @property
     def args(self) -> Tuple[Any]:
         return self.dag_node.get_args()
+
+    @property
+    def kwargs(self) -> Dict[str, Any]:
+        return self.dag_node.get_kwargs()
 
     @property
     def num_readers(self) -> int:
@@ -308,6 +311,7 @@ class ExecutableTask:
         self,
         task: "CompiledTask",
         resolved_args: List[Any],
+        resolved_kwargs: Dict[str, Any],
     ):
         """
         Args:
@@ -316,6 +320,9 @@ class ExecutableTask:
                 not Channels will get passed through to the actor method.
                 If the argument is a channel, it will be replaced by the
                 value read from the channel before the method executes.
+            resolved_kwargs: The arguments to the method. Currently, we do not
+                support binding kwargs to other DAG nodes, so the values of the
+                dictionary cannot be Channels.
         """
         self.method_name = task.dag_node.get_method_name()
         self.bind_index = task.dag_node._get_bind_index()
@@ -325,6 +332,7 @@ class ExecutableTask:
 
         self.input_channels: List[ChannelInterface] = []
         self.task_inputs: List[_ExecutableTaskInput] = []
+        self.resolved_kwargs: Dict[str, Any] = resolved_kwargs
 
         # Reverse map for input_channels: maps an input channel to
         # its index in input_channels.
@@ -351,6 +359,11 @@ class ExecutableTask:
             else:
                 task_input = _ExecutableTaskInput(arg, None)
             self.task_inputs.append(task_input)
+
+        # Currently DAGs do not support binding kwargs to other DAG nodes.
+        for val in self.resolved_kwargs.values():
+            assert not isinstance(val, ChannelInterface)
+            assert not isinstance(val, DAGInputAdapter)
 
 
 @DeveloperAPI
@@ -607,6 +620,13 @@ class CompiledDAG:
                 # with the default type hint for this DAG.
                 task.dag_node.with_type_hint(self._default_type_hint)
 
+            for kwarg, val in task.kwargs.items():
+                if isinstance(val, DAGNode):
+                    raise ValueError(
+                        "Compiled DAG currently does not support binding to "
+                        "other DAG nodes as kwargs"
+                    )
+
             for arg_idx, arg in enumerate(task.args):
                 if not isinstance(arg, DAGNode):
                     continue
@@ -809,17 +829,6 @@ class CompiledDAG:
             for idx in task.downstream_node_idxs:
                 frontier.append(idx)
 
-        from ray.dag.constants import RAY_ADAG_ENABLE_DETECT_DEADLOCK
-
-        if RAY_ADAG_ENABLE_DETECT_DEADLOCK and not self._detect_deadlock():
-            raise ValueError(
-                "This DAG cannot be compiled because it will deadlock on NCCL "
-                "calls. If you believe this is a false positive, please disable "
-                "the graph verification by setting the environment variable "
-                "RAY_ADAG_ENABLE_DETECT_DEADLOCK to 0 and file an issue at "
-                "https://github.com/ray-project/ray/issues/new/."
-            )
-
         # Validate input channels for tasks that have not been visited
         for node_idx, task in self.idx_to_task.items():
             if (
@@ -838,6 +847,17 @@ class CompiledDAG:
                         "Compiled DAGs require each task to take a ray.dag.InputNode "
                         "or at least one other DAGNode as an input"
                     )
+
+        from ray.dag.constants import RAY_ADAG_ENABLE_DETECT_DEADLOCK
+
+        if RAY_ADAG_ENABLE_DETECT_DEADLOCK and not self._detect_deadlock():
+            raise ValueError(
+                "This DAG cannot be compiled because it will deadlock on NCCL "
+                "calls. If you believe this is a false positive, please disable "
+                "the graph verification by setting the environment variable "
+                "RAY_ADAG_ENABLE_DETECT_DEADLOCK to 0 and file an issue at "
+                "https://github.com/ray-project/ray/issues/new/."
+            )
 
         input_task = self.idx_to_task[self.input_task_idx]
         # Register custom serializers for inputs provided to dag.execute().
@@ -878,6 +898,7 @@ class CompiledDAG:
                 executable_task = ExecutableTask(
                     task,
                     resolved_args,
+                    task.kwargs,
                 )
                 executable_tasks.append(executable_task)
                 if worker_fn is None:

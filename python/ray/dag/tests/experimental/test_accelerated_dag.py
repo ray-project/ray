@@ -120,7 +120,7 @@ def test_basic(ray_start_regular):
     compiled_dag.teardown()
 
 
-def test_multiple_returns(ray_start_regular):
+def test_multiple_returns_not_supported(ray_start_regular):
     a = Actor.remote(0)
     b = Actor.remote(0)
     with InputNode() as i:
@@ -132,6 +132,39 @@ def test_multiple_returns(ray_start_regular):
         match="Compiled DAGs only supports actor methods with " "num_returns=1",
     ):
         dag.experimental_compile()
+
+
+def test_kwargs_not_supported(ray_start_regular):
+    a = Actor.remote(0)
+
+    # Binding InputNode as kwarg is not supported.
+    with InputNode() as i:
+        dag = a.inc_two.bind(x=i, y=1)
+    with pytest.raises(
+        ValueError,
+        match=r"Compiled DAG currently does not support binding to other DAG "
+        "nodes as kwargs",
+    ):
+        compiled_dag = dag.experimental_compile()
+
+    # Binding another DAG node as kwarg is not supported.
+    with InputNode() as i:
+        dag = a.inc.bind(i)
+        dag = a.inc_two.bind(x=dag, y=1)
+    with pytest.raises(
+        ValueError,
+        match=r"Compiled DAG currently does not support binding to other DAG "
+        "nodes as kwargs",
+    ):
+        compiled_dag = dag.experimental_compile()
+
+    # Binding normal Python value as a kwarg is supported.
+    with InputNode() as i:
+        dag = a.inc_two.bind(i, y=1)
+    compiled_dag = dag.experimental_compile()
+    assert ray.get(compiled_dag.execute(2)) == 3
+
+    compiled_dag.teardown()
 
 
 def test_out_of_order_get(ray_start_regular):
