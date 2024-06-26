@@ -2,6 +2,7 @@ from dataclasses import dataclass
 import os
 import threading
 from typing import Optional
+from ray.util.annotations import DeveloperAPI
 
 # The context singleton on this process.
 _default_context: "Optional[DAGContext]" = None
@@ -15,6 +16,7 @@ DEFAULT_ASYNC_MAX_QUEUE_SIZE = int(os.environ.get("RAY_DAG_async_max_queue_size"
 DEFAULT_MAX_BUFFERED_RESULTS = int(os.environ.get("RAY_DAG_max_buffered_results", 1000))
 
 
+@DeveloperAPI
 @dataclass
 class DAGContext:
     buffer_size_bytes: int = DEFAULT_BUFFER_SIZE_BYTES
