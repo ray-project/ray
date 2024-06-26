@@ -1177,6 +1177,12 @@ class Learner:
                 },
                 env_steps=sum(len(e) for e in episodes),
             )
+        # Have to convert to MultiAgentBatch.
+        elif isinstance(batch, SampleBatch):
+            assert len(self.module) == 1
+            batch = MultiAgentBatch(
+                {next(iter(self.module.keys())): batch}, env_steps=len(batch)
+            )
 
         # Check the MultiAgentBatch, whether our RLModule contains all ModuleIDs
         # found in this batch. If not, throw an error.
