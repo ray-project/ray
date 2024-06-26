@@ -5,7 +5,7 @@
 Here, SA=single-agent and MA=multi-agent.
 
 Note that the BC Algorithm - by default - runs on the hybrid API stack, using RLModules,
-but not EnvRunners or ConnectorV2s yet.
+but not `ConnectorV2` and `SingleAgentEpisode` yet.
 
 This example:
     - demonstrates how you can train a single-agent BC Policy (RLModule) from a JSON
@@ -92,6 +92,9 @@ if __name__ == "__main__":
 
     base_config = (
         BCConfig()
+        # For offline RL, we do not specify an env here (b/c we don't want any env
+        # instances created on the EnvRunners). Instead, we'll provide observation-
+        # and action-spaces here for the RLModule to know its input- and output types.
         .environment(
             observation_space=dummy_env.observation_space,
             action_space=dummy_env.action_space,
