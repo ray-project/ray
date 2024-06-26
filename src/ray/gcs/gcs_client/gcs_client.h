@@ -42,13 +42,17 @@ namespace gcs {
 /// password.
 class GcsClientOptions {
  public:
-  GcsClientOptions(const std::string gcs_address, int port)
-      : gcs_address_(gcs_address), gcs_port_(port) {}
+  GcsClientOptions(const std::string gcs_address,
+                   int port,
+                   const ClusterID &cluster_id = ClusterID::Nil())
+      : gcs_address_(gcs_address), gcs_port_(port), cluster_id_(cluster_id) {}
 
   /// Constructor of GcsClientOptions from gcs address
   ///
   /// \param gcs_address gcs address, including port
-  GcsClientOptions(const std::string &gcs_address) {
+  GcsClientOptions(const std::string &gcs_address,
+                   const ClusterID &cluster_id = ClusterID::Nil())
+      : cluster_id_(cluster_id) {
     std::vector<std::string> address = absl::StrSplit(gcs_address, ':');
     RAY_LOG(DEBUG) << "Connect to gcs server via address: " << gcs_address;
     RAY_CHECK(address.size() == 2);
@@ -61,6 +65,7 @@ class GcsClientOptions {
   // Gcs address
   std::string gcs_address_;
   int gcs_port_ = 0;
+  ClusterID cluster_id_;
 };
 
 /// \class GcsClient
@@ -85,21 +90,18 @@ class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient> {
   /// Connect to GCS Service. Non-thread safe.
   /// This function must be called before calling other functions.
   ///
-  /// If cluster_id is Nil, it sends a blocking RPC to GCS to get the cluster ID.
+  /// If cluster_id in options is Nil, sends a blocking RPC to GCS to get the cluster ID.
   /// If returns OK, GetClusterId() will return a non-Nil cluster ID.
   ///
   /// Warning: since it may send *sync* RPCs to GCS, if the caller is in GCS itself, it
   /// must provide a non-Nil cluster ID to avoid deadlocks.
   ///
   /// \param instrumented_io_context IO execution service.
-  /// \param cluster_id Optional cluster ID to provide to the client.
   /// \param timeout_ms Timeout in milliseconds, default to
   /// gcs_rpc_server_connect_timeout_s (5s).
   ///
   /// \return Status
-  virtual Status Connect(instrumented_io_context &io_service,
-                         const ClusterID &cluster_id = ClusterID::Nil(),
-                         int64_t timeout_ms = -1);
+  virtual Status Connect(instrumented_io_context &io_service, int64_t timeout_ms = -1);
 
   /// Disconnect with GCS Service. Non-thread safe.
   virtual void Disconnect();
@@ -221,9 +223,7 @@ class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient> {
 // io_context. This is useful for connecting to the GCS server from Python.
 //
 // For param descriptions, see GcsClient::Connect().
-Status ConnectOnSingletonIoContext(GcsClient &gcs_client,
-                                   const ClusterID &cluster_id,
-                                   int64_t timeout_ms = -1);
+Status ConnectOnSingletonIoContext(GcsClient &gcs_client, int64_t timeout_ms = -1);
 
 // This client is only supposed to be used from Cython / Python
 class RAY_EXPORT PythonGcsClient {

@@ -83,14 +83,13 @@ void GcsSubscriberClient::PubsubCommandBatch(
 GcsClient::GcsClient(const GcsClientOptions &options, UniqueID gcs_client_id)
     : options_(options), gcs_client_id_(gcs_client_id) {}
 
-Status GcsClient::Connect(instrumented_io_context &io_service,
-                          const ClusterID &cluster_id,
-                          int64_t timeout_ms) {
+Status GcsClient::Connect(instrumented_io_context &io_service, int64_t timeout_ms) {
   if (timeout_ms < 0) {
     timeout_ms = RayConfig::instance().gcs_rpc_server_connect_timeout_s() * 1000;
   }
   // Connect to gcs service.
-  client_call_manager_ = std::make_unique<rpc::ClientCallManager>(io_service, cluster_id);
+  client_call_manager_ =
+      std::make_unique<rpc::ClientCallManager>(io_service, options_.cluster_id_);
   gcs_rpc_client_ = std::make_shared<rpc::GcsRpcClient>(
       options_.gcs_address_, options_.gcs_port_, *client_call_manager_);
 
@@ -140,7 +139,7 @@ Status GcsClient::Connect(instrumented_io_context &io_service,
   RAY_LOG(DEBUG) << "GcsClient connected " << options_.gcs_address_ << ":"
                  << options_.gcs_port_;
 
-  if (cluster_id.IsNil()) {
+  if (options_.cluster_id_.IsNil()) {
     rpc::GetClusterIdRequest request;
     rpc::GetClusterIdReply reply;
     RAY_LOG(DEBUG) << "Cluster ID is nil, getting cluster ID from GCS server.";
@@ -154,7 +153,7 @@ Status GcsClient::Connect(instrumented_io_context &io_service,
       return s;
     }
     const auto reply_cluster_id = ClusterID::FromBinary(reply.cluster_id());
-    RAY_LOG(INFO) << "Retrieved cluster ID from GCS server: " << reply_cluster_id;
+    RAY_LOG(DEBUG) << "Retrieved cluster ID from GCS server: " << reply_cluster_id;
     client_call_manager_->SetClusterId(reply_cluster_id);
   }
 
@@ -745,11 +744,9 @@ class SingletonIoContext {
   std::thread io_thread_;
 };
 
-Status ConnectOnSingletonIoContext(GcsClient &gcs_client,
-                                   const ClusterID &cluster_id,
-                                   int64_t timeout_ms) {
+Status ConnectOnSingletonIoContext(GcsClient &gcs_client, int64_t timeout_ms) {
   instrumented_io_context &io_service = SingletonIoContext::Instance().GetIoService();
-  return gcs_client.Connect(io_service, cluster_id, timeout_ms);
+  return gcs_client.Connect(io_service, timeout_ms);
 }
 
 }  // namespace gcs

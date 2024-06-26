@@ -492,7 +492,7 @@ cdef extern from "ray/gcs/gcs_client/gcs_client.h" nogil:
         UNIMPLEMENTED "grpc::StatusCode::UNIMPLEMENTED",
 
     cdef cppclass CGcsClientOptions "ray::gcs::GcsClientOptions":
-        CGcsClientOptions(const c_string &gcs_address, int port)
+        CGcsClientOptions(const c_string &gcs_address, int port, CClusterID cluster_id)
 
     cdef cppclass CGcsClient "ray::gcs::GcsClient":
         CGcsClient(const CGcsClientOptions &options)
@@ -508,9 +508,7 @@ cdef extern from "ray/gcs/gcs_client/gcs_client.h" nogil:
         CRuntimeEnvAccessor& RuntimeEnvs()
         CAutoscalerStateAccessor& Autoscaler()
 
-    CRayStatus ConnectOnSingletonIoContext(
-        CGcsClient &gcs_client,
-        const CClusterID &cluster_id)
+    CRayStatus ConnectOnSingletonIoContext(CGcsClient &gcs_client)
 
     cdef cppclass CPythonGcsClient "ray::gcs::PythonGcsClient":
         CPythonGcsClient(const CGcsClientOptions &options)

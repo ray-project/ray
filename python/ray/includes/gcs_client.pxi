@@ -34,18 +34,14 @@ cdef class NewGcsClient:
     @staticmethod
     def standalone(gcs_address: str, cluster_id: str = None) -> "NewGcsClient":
         cdef GcsClientOptions gcs_options = GcsClientOptions.from_gcs_address(
-            gcs_address
+            gcs_address, cluster_id
         )
-        cdef CClusterID c_cluster_id = (
-            CClusterID.Nil() if cluster_id is None else CClusterID.FromHex(cluster_id)
-        )
-
         cdef shared_ptr[CGcsClient] inner = make_shared[CGcsClient](
             dereference(gcs_options.native()))
 
         with nogil:
             check_status_timeout_as_rpc_error(
-                ConnectOnSingletonIoContext(dereference(inner), c_cluster_id))
+                ConnectOnSingletonIoContext(dereference(inner)))
 
         my = NewGcsClient()
         my.inner = inner
