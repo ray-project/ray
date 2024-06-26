@@ -176,7 +176,7 @@ void MutableObjectProvider::PollWriterClosure(
   Status status = object_manager_->ReadAcquire(object_id, object);
   // Check if the thread returned from ReadAcquire() because the process is exiting, not
   // because there is something to read.
-  if (status.code() == StatusCode::IOError) {
+  if (status.code() == StatusCode::ChannelError) {
     // The process is exiting.
     return;
   }

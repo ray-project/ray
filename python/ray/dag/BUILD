@@ -122,7 +122,6 @@ py_test_module_list(
     tags = [
         "accelerated_dag",
         "exclusive",
-        "manual",
         "no_windows",
         "team:core",
     ],
