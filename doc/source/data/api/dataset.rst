@@ -147,9 +147,8 @@ Schema
 .. autosummary::
    :nosignatures:
    :toctree: doc/
-   :template: autosummary/class_without_autosummary_noindex.rst
 
-   Schema
+   dataset.Schema
 
 .. _block-api:
 
