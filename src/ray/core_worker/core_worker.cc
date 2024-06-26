@@ -447,7 +447,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
           if (spec.IsActorTask()) {
             if (update_seqno) {
               auto actor_handle = actor_manager_->GetActorHandle(spec.ActorId());
-              actor_handle->SetResubmittedActorTaskSpec(spec, spec.ActorDummyObject());
+              actor_handle->SetResubmittedActorTaskSpec(spec);
             }
             RAY_CHECK_OK(direct_actor_submitter_->SubmitTask(spec));
           } else {
@@ -1075,7 +1075,7 @@ void CoreWorker::InternalHeartbeat() {
     if (spec.IsActorTask()) {
       if (task_to_retry.update_seqno) {
         auto actor_handle = actor_manager_->GetActorHandle(spec.ActorId());
-        actor_handle->SetResubmittedActorTaskSpec(spec, spec.ActorDummyObject());
+        actor_handle->SetResubmittedActorTaskSpec(spec);
       }
       RAY_CHECK_OK(direct_actor_submitter_->SubmitTask(spec));
     } else {
@@ -1550,6 +1550,7 @@ Status CoreWorker::Get(const std::vector<ObjectID> &ids,
   }
   results.resize(ids.size(), nullptr);
 
+#if defined(__APPLE__) || defined(__linux__)
   // Check whether these are experimental.Channel objects.
   bool is_experimental_channel = false;
   for (const ObjectID &id : ids) {
@@ -1570,6 +1571,7 @@ Status CoreWorker::Get(const std::vector<ObjectID> &ids,
     }
     return GetExperimentalMutableObjects(ids, results);
   }
+#endif
 
   return GetObjects(ids, timeout_ms, results);
 }
@@ -2332,7 +2334,7 @@ Status CoreWorker::CreateActor(const RayFunction &function,
   // actor handle must be in scope by the time the GCS sends the
   // WaitForActorOutOfScopeRequest.
   RAY_CHECK(actor_manager_->AddNewActorHandle(
-      std::move(actor_handle), CurrentCallSite(), rpc_address_, is_detached))
+      std::move(actor_handle), CurrentCallSite(), rpc_address_, /*owned=*/!is_detached))
       << "Actor " << actor_id << " already exists";
   *return_actor_id = actor_id;
   TaskSpecification task_spec = builder.Build();
@@ -2707,10 +2709,14 @@ void CoreWorker::RemoveActorHandleReference(const ActorID &actor_id) {
 }
 
 ActorID CoreWorker::DeserializeAndRegisterActorHandle(const std::string &serialized,
-                                                      const ObjectID &outer_object_id) {
+                                                      const ObjectID &outer_object_id,
+                                                      bool add_local_ref) {
   std::unique_ptr<ActorHandle> actor_handle(new ActorHandle(serialized));
-  return actor_manager_->RegisterActorHandle(
-      std::move(actor_handle), outer_object_id, CurrentCallSite(), rpc_address_);
+  return actor_manager_->RegisterActorHandle(std::move(actor_handle),
+                                             outer_object_id,
+                                             CurrentCallSite(),
+                                             rpc_address_,
+                                             add_local_ref);
 }
 
 Status CoreWorker::SerializeActorHandle(const ActorID &actor_id,
@@ -2986,6 +2992,7 @@ Status CoreWorker::ExecuteTask(
                                           ObjectID::Nil(),
                                           CurrentCallSite(),
                                           rpc_address_,
+                                          /*add_local_ref=*/false,
                                           /*is_self=*/true);
     }
     RAY_LOG(INFO) << "Creating actor: " << task_spec.ActorCreationId();

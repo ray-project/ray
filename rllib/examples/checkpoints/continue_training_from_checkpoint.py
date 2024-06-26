@@ -4,15 +4,16 @@ Use the setup shown in this script if your experiments tend to crash after some 
 and you would therefore like to make your setup more robust and fault-tolerant.
 
 This example:
-- runs a single- or multi-agent CartPole experiment (for multi-agent, we use different
-learning rates) thereby checkpointing the state of the Algorithm every n iterations.
-- stops the experiment due to an expected crash in the algorithm's main process after
-a certain number of iterations.
-- just for testing purposes, restores the entire algorithm from the latest checkpoint
-and checks, whether the state of the restored algo exactly match the state of the
-crashed one.
-- then continues training with the restored algorithm until the desired final episode
-return is reached.
+    - runs a single- or multi-agent CartPole experiment (for multi-agent, we use
+    different learning rates) thereby checkpointing the state of the Algorithm every n
+    iterations.
+    - stops the experiment due to an expected crash in the algorithm's main process
+    after a certain number of iterations.
+    - just for testing purposes, restores the entire algorithm from the latest
+    checkpoint and checks, whether the state of the restored algo exactly match the
+    state of the crashed one.
+    - then continues training with the restored algorithm until the desired final
+    episode return is reached.
 
 
 How to run this script

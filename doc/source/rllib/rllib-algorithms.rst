@@ -9,7 +9,7 @@ Algorithms
 
 .. tip::
 
-    Check out the `environments <rllib-env.html>`__ page to learn more about different environment types.
+    See the `environments <rllib-env.html>`__ page to learn more about different environment types.
 
 Available Algorithms - Overview
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

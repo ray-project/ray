@@ -9,7 +9,6 @@ from ray.rllib.core.rl_module.torch import TorchRLModule
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.nested_dict import NestedDict
-from ray.rllib.utils.torch_utils import convert_to_torch_tensor
 
 torch, nn = try_import_torch()
 
@@ -112,13 +111,11 @@ class PPOTorchRLModule(TorchRLModule, PPORLModule):
 
         return output
 
+    # TODO (sven): Try to move entire GAE computation into PPO's loss function (similar
+    #  to IMPALA's v-trace architecture). This would also get rid of the second
+    #  Connector pass currently necessary.
     @override(PPORLModule)
-    def _compute_values(self, batch, device=None):
-        infos = batch.pop(Columns.INFOS, None)
-        batch = convert_to_torch_tensor(batch, device=device)
-        if infos is not None:
-            batch[Columns.INFOS] = infos
-
+    def _compute_values(self, batch):
         # Separate vf-encoder.
         if hasattr(self.encoder, "critic_encoder"):
             if self.is_stateful():

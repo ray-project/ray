@@ -446,11 +446,6 @@ ObjectID TaskSpecification::ActorCreationDummyObjectId() const {
       message_->actor_task_spec().actor_creation_dummy_object_id());
 }
 
-ObjectID TaskSpecification::ActorDummyObject() const {
-  RAY_CHECK(IsActorTask() || IsActorCreationTask());
-  return ReturnId(NumReturns() - 1);
-}
-
 int TaskSpecification::MaxActorConcurrency() const {
   RAY_CHECK(IsActorCreationTask());
   return message_->actor_creation_task_spec().max_concurrency();

@@ -1,6 +1,6 @@
-# TODO (sven): Move this example script into the new API stack.
+# @OldAPIStack
 
-"""Example on how to use CQL to learn from an offline json file.
+"""Example on how to use CQL to learn from an offline JSON file.
 
 Important node: Make sure that your offline data file contains only
 a single timestep per line to mimic the way SAC pulls samples from

@@ -9,6 +9,7 @@ from ray.core.generated.common_pb2 import ErrorType, JobConfig
 from ray.core.generated.gcs_pb2 import (
     ActorTableData,
     AvailableResources,
+    TotalResources,
     ErrorTableData,
     GcsEntry,
     GcsNodeInfo,
@@ -32,6 +33,7 @@ __all__ = [
     "ActorTableData",
     "GcsNodeInfo",
     "AvailableResources",
+    "TotalResources",
     "JobTableData",
     "JobConfig",
     "ErrorTableData",
