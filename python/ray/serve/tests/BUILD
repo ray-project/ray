@@ -26,7 +26,6 @@ py_test_module_list(
         "test_deployment_graph_handle_serde.py",
         "test_deployment_graph_ingress.py",
         "test_deployment_node.py",
-        "test_deployment_scheduler.py",
         "test_deployment_version.py",
         "test_enable_task_events.py",
         "test_expected_versions.py",
@@ -79,6 +78,7 @@ py_test_module_list(
         "test_request_timeout.py",
         "test_streaming_response.py",
         "test_target_capacity.py",
+        "test_deployment_scheduler.py",
     ],
     tags = [
         "exclusive",
@@ -356,10 +356,10 @@ py_test_module_list(
     ],
 )
 
-# Test compact scheduling
+# Test without compact scheduling
 py_test_module_list(
     size = "large",
-    env = {"RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY": "1"},
+    env = {"RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY": "0"},
     files = [
         "test_standalone.py",
         "test_standalone_3.py",
@@ -379,7 +379,7 @@ py_test_module_list(
 py_test_module_list(
     size = "large",
     data = glob(["test_config_files/**/*"]),
-    env = {"RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY": "1"},
+    env = {"RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY": "0"},
     files = [
         "test_standalone_2.py",
     ],
@@ -399,7 +399,7 @@ py_test_module_list(
 py_test_module_list(
     size = "medium",
     data = glob(["test_config_files/**/*"]),
-    env = {"RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY": "1"},
+    env = {"RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY": "0"},
     files = [
         "test_cluster.py",
         "test_controller_recovery.py",
