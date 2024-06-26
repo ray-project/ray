@@ -31,6 +31,8 @@ import rowStyles from "../common/RowStyles";
 import { sliceToPage } from "../common/util";
 import { getSumGpuUtilization, WorkerGpuRow } from "../pages/node/GPUColumn";
 import { getSumGRAMUsage, WorkerGRAM } from "../pages/node/GRAMColumn";
+import { WorkerHBM } from "../pages/node/HBMColumn";
+import { WorkerNpuRow } from "../pages/node/NPUColumn";
 import { ActorDetail, ActorEnum } from "../type/actor";
 import { Worker } from "../type/worker";
 import { memoryConverter } from "../util/converter";
@@ -44,6 +46,7 @@ import RayletWorkerTable, { ExpandableTableRow } from "./WorkerTable";
 
 export type ActorTableProps = {
   actors: { [actorId: string]: ActorDetail };
+  resourceFlag?: any[];
   workers?: Worker[];
   jobId?: string | null;
   filterToActorId?: string;
@@ -75,6 +78,7 @@ const isActorEnum = (state: unknown): state is ActorEnum => {
 
 const ActorTable = ({
   actors = {},
+  resourceFlag = [],
   workers = [],
   jobId = null,
   filterToActorId,
@@ -263,6 +267,7 @@ const ActorTable = ({
     },
     {
       label: "GPU",
+      flag: "GPU",
       helpInfo: (
         <Typography>
           Usage of each GPU device. If no GPU usage is detected, here are the
@@ -279,9 +284,26 @@ const ActorTable = ({
     },
     {
       label: "GRAM",
+      flag: "GPU",
       helpInfo: (
         <Typography>
           Actor's GRAM usage (from Worker Process). <br />
+        </Typography>
+      ),
+    },
+    {
+      label: "NPU",
+      flag: "NPU",
+      helpInfo: (
+        <Typography>Indicates the NPU AI core usage of each device.</Typography>
+      ),
+    },
+    {
+      label: "HBM",
+      flag: "NPU",
+      helpInfo: (
+        <Typography>
+          Actor's HBM usage (from Worker Process). <br />
         </Typography>
       ),
     },
@@ -515,22 +537,27 @@ const ActorTable = ({
         <Table>
           <TableHead>
             <TableRow>
-              {columns.map(({ label, helpInfo }) => (
-                <TableCell align="center" key={label}>
-                  <Box
-                    display="flex"
-                    justifyContent="center"
-                    alignItems="center"
-                  >
-                    {label}
-                    {helpInfo && (
-                      <HelpInfo className={classes.helpInfo}>
-                        {helpInfo}
-                      </HelpInfo>
-                    )}
-                  </Box>
-                </TableCell>
-              ))}
+              {columns.map(({ label, helpInfo, flag }) => {
+                if (flag && !resourceFlag.includes(flag)) {
+                  return null;
+                }
+                return (
+                  <TableCell align="center" key={label}>
+                    <Box
+                      display="flex"
+                      justifyContent="center"
+                      alignItems="center"
+                    >
+                      {label}
+                      {helpInfo && (
+                        <HelpInfo className={classes.helpInfo}>
+                          {helpInfo}
+                        </HelpInfo>
+                      )}
+                    </Box>
+                  </TableCell>
+                );
+              })}
             </TableRow>
           </TableHead>
           <TableBody>
@@ -551,6 +578,7 @@ const ActorTable = ({
                 exitDetail,
                 requiredResources,
                 gpus,
+                npus,
                 processStats,
                 mem,
               }) => (
@@ -684,12 +712,26 @@ const ActorTable = ({
                       </PercentageBar>
                     )}
                   </TableCell>
-                  <TableCell>
-                    <WorkerGpuRow workerPID={pid} gpus={gpus} />
-                  </TableCell>
-                  <TableCell>
-                    <WorkerGRAM workerPID={pid} gpus={gpus} />
-                  </TableCell>
+                  {resourceFlag.includes("GPU") && (
+                    <TableCell>
+                      <WorkerGpuRow workerPID={pid} gpus={gpus} />
+                    </TableCell>
+                  )}
+                  {resourceFlag.includes("GPU") && (
+                    <TableCell>
+                      <WorkerGRAM workerPID={pid} gpus={gpus} />
+                    </TableCell>
+                  )}
+                  {resourceFlag.includes("NPU") && (
+                    <TableCell>
+                      <WorkerNpuRow workerPID={pid} npus={npus} />
+                    </TableCell>
+                  )}
+                  {resourceFlag.includes("NPU") && (
+                    <TableCell>
+                      <WorkerHBM workerPID={pid} npus={npus} />
+                    </TableCell>
+                  )}
                   <TableCell
                     align="center"
                     style={{

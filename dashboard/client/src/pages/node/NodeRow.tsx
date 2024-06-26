@@ -30,10 +30,13 @@ import { Worker } from "../../type/worker";
 import { memoryConverter } from "../../util/converter";
 import { NodeGPUView, WorkerGpuRow } from "./GPUColumn";
 import { NodeGRAM, WorkerGRAM } from "./GRAMColumn";
+import { NodeHBM, WorkerHBM } from "./HBMColumn";
+import { NodeNPUView, WorkerNpuRow } from "./NPUColumn";
 
 const TEXT_COL_MIN_WIDTH = 100;
 
 type NodeRowProps = Pick<NodeRowsProps, "node"> & {
+  resourceFlag?: any[];
   /**
    * Whether the node has been expanded to show workers
    */
@@ -88,6 +91,7 @@ const useStyles = makeStyles((theme) =>
  * Does not show any data about the node's workers.
  */
 export const NodeRow = ({
+  resourceFlag = [],
   node,
   expanded,
   onExpandButtonClick,
@@ -181,12 +185,26 @@ export const NodeRow = ({
           </PercentageBar>
         )}
       </TableCell>
-      <TableCell>
-        <NodeGPUView node={node} />
-      </TableCell>
-      <TableCell>
-        <NodeGRAM node={node} />
-      </TableCell>
+      {resourceFlag.includes("GPU") && (
+        <TableCell>
+          <NodeGPUView node={node} />
+        </TableCell>
+      )}
+      {resourceFlag.includes("GPU") && (
+        <TableCell>
+          <NodeGRAM node={node} />
+        </TableCell>
+      )}
+      {resourceFlag.includes("NPU") && (
+        <TableCell>
+          <NodeNPUView node={node} />
+        </TableCell>
+      )}
+      {resourceFlag.includes("NPU") && (
+        <TableCell>
+          <NodeHBM node={node} />
+        </TableCell>
+      )}
       <TableCell>
         {raylet && objectStoreTotalMemory && (
           <PercentageBar
@@ -236,6 +254,7 @@ export const NodeRow = ({
 };
 
 type WorkerRowProps = {
+  resourceFlag?: any[];
   /**
    * Details of the worker
    */
@@ -249,7 +268,11 @@ type WorkerRowProps = {
 /**
  * A single row that represents the data of a Worker
  */
-export const WorkerRow = ({ node, worker }: WorkerRowProps) => {
+export const WorkerRow = ({
+  resourceFlag = [],
+  node,
+  worker,
+}: WorkerRowProps) => {
   const classes = rowStyles();
 
   const {
@@ -313,12 +336,26 @@ export const WorkerRow = ({ node, worker }: WorkerRowProps) => {
           </PercentageBar>
         )}
       </TableCell>
-      <TableCell>
-        <WorkerGpuRow workerPID={pid} gpus={node.gpus} />
-      </TableCell>
-      <TableCell>
-        <WorkerGRAM workerPID={pid} gpus={node.gpus} />
-      </TableCell>
+      {resourceFlag.includes("GPU") && (
+        <TableCell>
+          <WorkerGpuRow workerPID={pid} gpus={node.gpus} />
+        </TableCell>
+      )}
+      {resourceFlag.includes("GPU") && (
+        <TableCell>
+          <WorkerGRAM workerPID={pid} gpus={node.gpus} />
+        </TableCell>
+      )}
+      {resourceFlag.includes("NPU") && (
+        <TableCell>
+          <WorkerNpuRow workerPID={pid} npus={node.npus} />
+        </TableCell>
+      )}
+      {resourceFlag.includes("NPU") && (
+        <TableCell>
+          <WorkerHBM workerPID={pid} npus={node.npus} />
+        </TableCell>
+      )}
       <TableCell>N/A</TableCell>
       <TableCell>N/A</TableCell>
       <TableCell align="center">N/A</TableCell>
@@ -330,6 +367,7 @@ export const WorkerRow = ({ node, worker }: WorkerRowProps) => {
 };
 
 type NodeRowsProps = {
+  resourceFlag?: any[];
   /**
    * Details of the node
    */
@@ -348,6 +386,7 @@ type NodeRowsProps = {
  * The rows related to a node and its workers. Expandable to show information about workers.
  */
 export const NodeRows = ({
+  resourceFlag = [],
   node,
   isRefreshing,
   startExpanded = false,
@@ -384,13 +423,19 @@ export const NodeRows = ({
   return (
     <React.Fragment>
       <NodeRow
+        resourceFlag={resourceFlag}
         node={node}
         expanded={isExpanded}
         onExpandButtonClick={handleExpandButtonClick}
       />
       {isExpanded &&
         workers.map((worker) => (
-          <WorkerRow key={worker.pid} node={node} worker={worker} />
+          <WorkerRow
+            resourceFlag={resourceFlag}
+            key={worker.pid}
+            node={node}
+            worker={worker}
+          />
         ))}
     </React.Fragment>
   );

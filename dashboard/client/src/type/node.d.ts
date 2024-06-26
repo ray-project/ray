@@ -10,6 +10,7 @@ export type NodeDetail = {
   cpus?: number[]; // Logic CPU Count, Physical CPU Count
   mem?: number[]; // total memory, free memory, memory used ratio
   gpus?: GPUStats[]; // GPU stats fetched from node, 1 entry per GPU
+  npus?: NPUStats[]; // NPU stats fetched from node, 1 entry per NPU
   bootTime: number; // start time
   loadAvg: number[][]; // recent 1，5，15 minitues system load，load per cpu http://man7.org/linux/man-pages/man3/getloadavg.3.html
   disk: {
@@ -53,6 +54,14 @@ export type NodeListRsp = {
   msg: string;
 };
 
+export type NodeResourceFlagRsp = {
+  data: {
+    resourceFlag: string[];
+  };
+  result: boolean;
+  msg: string;
+};
+
 export type ProcessGPUUsage = {
   // This gpu usage stats from a process
   pid: number;
@@ -68,6 +77,18 @@ export type GPUStats = {
   memoryUsed: number;
   memoryTotal: number;
   processes?: ProcessGPUUsage[];
+};
+
+export type NPUStats = {
+  uuid: string;
+  index: number;
+  name: string;
+  temperatureNpu: number;
+  utilizationNpu?: number;
+  powerDraw: number;
+  memoryUsed: number;
+  memoryTotal: number;
+  processes?: NPUProcessStats[];
 };
 
 export type NodeDetailExtend = {

@@ -9,6 +9,7 @@ export const getActors = () => {
       actors: {
         [actorId: string]: ActorDetail;
       };
+      resourceFlag: any[];
     };
   }>("logical/actors");
 };
