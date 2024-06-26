@@ -28,6 +28,7 @@ import ray.cloudpickle as pickle
 from ray._private.thirdparty.tabulate.tabulate import tabulate
 from ray._private.usage import usage_lib
 from ray.air.util.tensor_extensions.utils import _create_possibly_ragged_ndarray
+from ray.data._internal.aggregate import Max, Mean, Min, Std, Sum
 from ray.data._internal.compute import ComputeStrategy
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.equalize import _equalize
@@ -61,7 +62,7 @@ from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.split import _get_num_rows, _split_at_indices
 from ray.data._internal.stats import DatasetStats, DatasetStatsSummary, StatsManager
 from ray.data._internal.util import AllToAllAPI, ConsumptionAPI, get_compute_strategy
-from ray.data.aggregate import AggregateFn, Max, Mean, Min, Std, Sum
+from ray.data.aggregate import AggregateFn
 from ray.data.block import (
     VALID_BATCH_FORMATS,
     Block,
