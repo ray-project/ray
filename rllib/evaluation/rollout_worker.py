@@ -541,17 +541,19 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
             ):
                 pol._update_model_view_requirements_from_init_state()
 
-        self.multiagent: bool = set(self.policy_map.keys()) != {DEFAULT_POLICY_ID}
-        if self.multiagent and self.env is not None:
-            if not isinstance(
+        if (
+            self.config.is_multi_agent()
+            and self.env is not None
+            and not isinstance(
                 self.env,
                 (BaseEnv, ExternalMultiAgentEnv, MultiAgentEnv, ray.actor.ActorHandle),
-            ):
-                raise ValueError(
-                    f"Have multiple policies {self.policy_map}, but the "
-                    f"env {self.env} is not a subclass of BaseEnv, "
-                    f"MultiAgentEnv, ActorHandle, or ExternalMultiAgentEnv!"
-                )
+            )
+        ):
+            raise ValueError(
+                f"You are running a multi-agent setup, but the env {self.env} is not a "
+                f"subclass of BaseEnv, MultiAgentEnv, ActorHandle, or "
+                f"ExternalMultiAgentEnv!"
+            )
 
         if self.worker_index == 0:
             logger.info("Built filter map: {}".format(self.filters))
