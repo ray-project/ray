@@ -118,3 +118,23 @@ class API:
             attribute = getattr(attribute, token)
 
         return f"{attribute.__module__}.{attribute.__qualname__}"
+
+    def _is_private_name(self) -> bool:
+        """
+        Check if this API has a private name. Private names are those that start with
+        underscores.
+        """
+        name_has_underscore = self.name.split(".")[-1].startswith("_")
+        is_internal = ".internal." in self.name
+
+        return name_has_underscore or is_internal
+
+    def is_public(self) -> bool:
+        """
+        Check if this API is public. Public APIs are those that are annotated as public
+        and not have private names.
+        """
+        return (
+            self.annotation_type == AnnotationType.PUBLIC_API
+            and not self._is_private_name()
+        )
