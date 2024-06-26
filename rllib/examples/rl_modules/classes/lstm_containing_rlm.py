@@ -26,16 +26,19 @@ class LSTMContainingRLModule(TorchRLModule):
         preprocessing through a connector pipeline (for example, flattening,
         frame-stacking, mean/std-filtering, etc..).
         """
+        # Assume a simple Box(1D) tensor as input shape.
+        in_size = self.config.observation_space.shape[0]
+        # Build a sequential stack.
+        layers = []
+
         # Get the LSTM cell size from our RLModuleConfig's (self.config)
         # `model_config_dict` property:
         cell_size = self.config.model_config_dict.get("lstm_cell_size", 256)
+        layers.append(nn.LSTM(in_size, cell_size))
+        in_size = cell_size
+
         # Get the dense layer pre-stack configuration from the same config dict.
         dense_layers = self.config.model_config_dict.get("dense_layers", [128, 128])
-
-        # Build a Dense stack.
-        layers = []
-        # Assume a simple Box(1D) tensor as input shape.
-        in_size = self.config.observation_space.shape[0]
         for out_size in dense_layers:
             # Dense layer.
             layers.append(nn.Linear(in_size, out_size))
@@ -43,26 +46,30 @@ class LSTMContainingRLModule(TorchRLModule):
             layers.append(nn.ReLU())
             in_size = out_size
 
-        self._dense_stack = nn.Sequential(*layers)
+        self._net = nn.Sequential(*layers)
 
-        # Add the LSTM layer.
-        self._lstm = nn.LSTM()
-
-        self._logits = nn.Sequential(
-            nn.ZeroPad2d(same_padding(in_size, 1, 1)[0]),
-            nn.Conv2d(in_depth, self.config.action_space.n, 1, 1, bias=True),
-        )
-        self._values = nn.Linear(in_depth, 1)
+        # Logits layer (no bias, no activation).
+        self._logits = nn.Linear(in_size, self.config.action_space.n)
+        # Single-node value layer.
+        self._values = nn.Linear(in_size, 1)
 
     @override(TorchRLModule)
     def _forward_inference(self, batch, **kwargs):
         # Compute the basic 1D feature tensor (inputs to policy- and value-heads).
         _, logits = self._compute_features_and_logits(batch)
+
         # Return logits as ACTION_DIST_INPUTS (categorical distribution).
+        # Note that the default `GetActions` connector piece (in the EnvRunner) will
+        # take care of argmax-"sampling" from the logits to yield the inference (greedy)
+        # action.
         return {Columns.ACTION_DIST_INPUTS: logits}
 
     @override(TorchRLModule)
     def _forward_exploration(self, batch, **kwargs):
+        # Exact same as `_forward_inference`.
+        # Note that the default `GetActions` connector piece (in the EnvRunner) will
+        # take care of stochastic sampling from the Categorical defined by the logits
+        # to yield the exploration action.
         return self._forward_inference(batch, **kwargs)
 
     @override(TorchRLModule)
@@ -100,18 +107,14 @@ class LSTMContainingRLModule(TorchRLModule):
     #  by mere algo-specific APIs (w/o any actual implementations).
     def _compute_values(self, batch, device):
         obs = convert_to_torch_tensor(batch[Columns.OBS], device=device)
-        features = self._base_cnn_stack(obs.permute(0, 3, 1, 2))
-        features = torch.squeeze(features, dim=[-1, -2])
+        features = self._net(obs)
         return self._values(features).squeeze(-1)
 
     def _compute_features_and_logits(self, batch):
-        obs = batch[Columns.OBS].permute(0, 3, 1, 2)
-        features = self._base_cnn_stack(obs)
+        obs = batch[Columns.OBS]
+        features = self._net(obs)
         logits = self._logits(features)
-        return (
-            torch.squeeze(features, dim=[-1, -2]),
-            torch.squeeze(logits, dim=[-1, -2]),
-        )
+        return features, logits
 
 
 if __name__ == "__main__":
@@ -123,14 +126,13 @@ if __name__ == "__main__":
         observation_space=gym.spaces.Box(-1.0, 1.0, (42, 42, 4), np.float32),
         action_space=gym.spaces.Discrete(4),
     )
-    my_net = TinyAtariCNN(rl_module_config)
+    my_net = LSTMContainingRLModule(rl_module_config)
 
     B = 10
-    w = 42
-    h = 42
-    c = 4
+    T = 5
+    f = 25
     data = torch.from_numpy(
-        np.random.random_sample(size=(B, w, h, c)).astype(np.float32)
+        np.random.random_sample(size=(B, T, f)).astype(np.float32)
     )
     print(my_net.forward_inference({"obs": data}))
     print(my_net.forward_exploration({"obs": data}))
