@@ -8,7 +8,12 @@ import tree  # pip install dm_tree
 
 from ray.rllib.utils.annotations import DeveloperAPI, PublicAPI
 from ray.rllib.utils.deprecation import Deprecated
-from ray.rllib.utils.typing import TensorShape, TensorStructType, TensorType
+from ray.rllib.utils.typing import (
+    NetworkType,
+    TensorShape,
+    TensorStructType,
+    TensorType,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -262,6 +267,36 @@ def try_import_torch(error: bool = False):
 def _torch_stubs():
     nn = _NNStub()
     return None, nn
+
+
+@PublicAPI
+def update_target_network(
+    *,
+    main_net: NetworkType,
+    target_net: NetworkType,
+    tau: float,
+    framework: str = "torch",
+) -> None:
+    """Updates a target network (from a "main" network) using Polyak averaging.
+
+    new_target_net_weight = (
+        tau * main_net_weight + (1.0 - tau) * current_target_net_weight
+    )
+
+    Args:
+        main_net: The nn.Module to update from.
+        target_net: The target network to update.
+        tau: The tau value to use in the Polyak averaging formula.
+        framework: The framework specifier. Must be "torch" or "tf2".
+    """
+    assert framework in ["torch", "tf2"]
+    if framework == "torch":
+        from ray.rllib.utils.torch_utils import update_target_network as _update_target
+
+    else:
+        from ray.rllib.utils.tf_utils import update_target_network as _update_target
+
+    _update_target(main_net=main_net, target_net=target_net, tau=tau)
 
 
 @DeveloperAPI
