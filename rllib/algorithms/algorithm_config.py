@@ -452,7 +452,6 @@ class AlgorithmConfig(_Config):
         self.ope_split_batch_by_episode = True
         self.evaluation_num_env_runners = 0
         self.custom_evaluation_function = None
-        self.always_attach_evaluation_results = True
         # TODO: Set this flag still in the config or - much better - in the
         #  RolloutWorker as a property.
         self.in_evaluation = False
@@ -547,6 +546,7 @@ class AlgorithmConfig(_Config):
         self._enable_rl_module_api = DEPRECATED_VALUE
         self.auto_wrap_old_gym_envs = DEPRECATED_VALUE
         self.disable_env_checking = DEPRECATED_VALUE
+        self.always_attach_evaluation_results = DEPRECATED_VALUE
 
         # The following values have moved because of the new ReplayBuffer API
         self.buffer_size = DEPRECATED_VALUE
@@ -2212,9 +2212,8 @@ class AlgorithmConfig(_Config):
         ope_split_batch_by_episode: Optional[bool] = NotProvided,
         evaluation_num_env_runners: Optional[int] = NotProvided,
         custom_evaluation_function: Optional[Callable] = NotProvided,
-        always_attach_evaluation_results: Optional[bool] = NotProvided,
         # Deprecated args.
-        evaluation_num_episodes=DEPRECATED_VALUE,
+        always_attach_evaluation_results=DEPRECATED_VALUE,
         evaluation_num_workers=DEPRECATED_VALUE,
     ) -> "AlgorithmConfig":
         """Sets the config's evaluation settings.
@@ -2303,19 +2302,16 @@ class AlgorithmConfig(_Config):
                 iteration. See the Algorithm.evaluate() method to see the default
                 implementation. The Algorithm guarantees all eval workers have the
                 latest policy state before this function is called.
-            always_attach_evaluation_results: Make sure the latest available evaluation
-                results are always attached to a step result dict. This may be useful
-                if Tune or some other meta controller needs access to evaluation metrics
-                all the time.
 
         Returns:
             This updated AlgorithmConfig object.
         """
-        if evaluation_num_episodes != DEPRECATED_VALUE:
+        if always_attach_evaluation_results != DEPRECATED_VALUE:
             deprecation_warning(
-                old="AlgorithmConfig.evaluation(evaluation_num_episodes=..)",
-                new="AlgorithmConfig.evaluation(evaluation_duration=.., "
-                "evaluation_duration_unit='episodes')",
+                old="AlgorithmConfig.evaluation(always_attach_evaluation_results=..)",
+                help="This setting is no longer needed, b/c Tune does not error "
+                "anymore (only warns) when a metrics key can't be found in the "
+                "results.",
                 error=True,
             )
         if evaluation_num_workers != DEPRECATED_VALUE:
@@ -2363,8 +2359,6 @@ class AlgorithmConfig(_Config):
             self.evaluation_num_env_runners = evaluation_num_env_runners
         if custom_evaluation_function is not NotProvided:
             self.custom_evaluation_function = custom_evaluation_function
-        if always_attach_evaluation_results is not NotProvided:
-            self.always_attach_evaluation_results = always_attach_evaluation_results
         if ope_split_batch_by_episode is not NotProvided:
             self.ope_split_batch_by_episode = ope_split_batch_by_episode
 
