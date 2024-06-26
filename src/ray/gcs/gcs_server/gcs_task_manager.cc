@@ -14,6 +14,7 @@
 
 #include "ray/gcs/gcs_server/gcs_task_manager.h"
 
+#include "absl/strings/match.h"
 #include "ray/common/ray_config.h"
 #include "ray/common/status.h"
 
@@ -419,7 +420,7 @@ void GcsTaskManager::HandleGetTaskEvents(rpc::GetTaskEventsRequest request,
       return false;
     }
 
-    if (filters.has_name() && task_event.task_info().name() != filters.name()) {
+    if (filters.has_name() && !absl::EqualsIgnoreCase(task_event.task_info().name(), filters.name())) {
       return false;
     }
 
@@ -440,7 +441,7 @@ void GcsTaskManager::HandleGetTaskEvents(rpc::GetTaskEventsRequest request,
         }
       }
 
-      if (filters.state() != task_status_descriptor->FindValueByNumber(state)->name()) {
+      if (!absl::EqualsIgnoreCase(filters.state(), task_status_descriptor->FindValueByNumber(state)->name())) {
         return false;
       }
     }
