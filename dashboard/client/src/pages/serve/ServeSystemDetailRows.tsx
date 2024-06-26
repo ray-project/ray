@@ -1,28 +1,10 @@
-import {
-  Link,
-  TableCell,
-  TableRow,
-  Theme,
-  Tooltip,
-  useTheme,
-} from "@mui/material";
+import { Link, TableCell, TableRow, Tooltip } from "@mui/material";
 import React from "react";
 import { Link as RouterLink } from "react-router-dom";
 import { StatusChip } from "../../components/StatusChip";
 import { ServeProxy, ServeSystemActor } from "../../type/serve";
 import { useFetchActor } from "../actor/hook/useActorDetail";
 import { convertActorStateForServeController } from "./ServeSystemActorDetailPage";
-
-const useStyles = (theme: Theme) => ({
-  idCol: {
-    display: "inline-block",
-    width: "50px",
-    overflow: "hidden",
-    textOverflow: "ellipsis",
-    whiteSpace: "nowrap",
-    verticalAlign: "bottom",
-  },
-});
 
 export type ServeProxyRowProps = {
   proxy: ServeProxy;
@@ -79,7 +61,6 @@ const ServeSystemActorRow = ({
   status,
 }: ServeSystemActorRowProps) => {
   const { node_id, actor_id } = actor;
-  const styles = useStyles(useTheme());
 
   return (
     <TableRow>
@@ -110,7 +91,14 @@ const ServeSystemActorRow = ({
         {node_id ? (
           <Tooltip title={node_id} arrow>
             <Link
-              sx={styles.idCol}
+              sx={{
+                display: "inline-block",
+                width: "50px",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+                verticalAlign: "bottom",
+              }}
               component={RouterLink}
               to={`/cluster/nodes/${node_id}`}
             >
@@ -125,7 +113,14 @@ const ServeSystemActorRow = ({
         {actor_id ? (
           <Tooltip title={actor_id} arrow>
             <Link
-              sx={styles.idCol}
+              sx={{
+                display: "inline-block",
+                width: "50px",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+                verticalAlign: "bottom",
+              }}
               component={RouterLink}
               to={`/actors/${actor_id}`}
             >

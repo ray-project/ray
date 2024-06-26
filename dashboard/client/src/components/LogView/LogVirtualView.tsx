@@ -1,4 +1,4 @@
-import { Box, Theme, Typography, useTheme } from "@mui/material";
+import { Box, Typography } from "@mui/material";
 import dayjs from "dayjs";
 import prolog from "highlight.js/lib/languages/prolog";
 import { lowlight } from "lowlight";
@@ -93,12 +93,6 @@ export type LogVirtualViewProps = {
   endTime?: string;
 };
 
-const useStyles = (theme: Theme) => ({
-  warningInfo: {
-    color: theme.palette.error.main,
-  },
-});
-
 type LogLineDetailDialogProps = {
   formattedLogLine: string;
   onClose: () => void;
@@ -179,7 +173,6 @@ const LogVirtualView: React.FC<LogVirtualViewProps> = ({
   const timmer = useRef<ReturnType<typeof setTimeout>>();
   const el = useRef<List>(null);
   const outter = useRef<HTMLDivElement>(null);
-  const styles = useStyles(useTheme());
   if (listRef) {
     listRef.current = outter.current;
   }
@@ -306,7 +299,7 @@ const LogVirtualView: React.FC<LogVirtualViewProps> = ({
   return (
     <div>
       {logs && logs.length > MAX_LINES_FOR_LOGS && (
-        <Box component="p" sx={styles.warningInfo}>
+        <Box component="p" sx={{ color: (theme) => theme.palette.error.main }}>
           [Truncation warning] This log has been truncated and only the latest{" "}
           {MAX_LINES_FOR_LOGS} lines are displayed. Click "Download" button
           above to see the full log

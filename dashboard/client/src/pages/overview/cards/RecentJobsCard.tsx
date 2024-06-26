@@ -1,16 +1,10 @@
-import { SxProps, Theme, useTheme } from "@mui/material";
+import { SxProps, Theme } from "@mui/material";
 import _ from "lodash";
 import React from "react";
 import { JobStatusIcon } from "../../../common/JobStatus";
 import { ListItemCard } from "../../../components/ListItemCard";
 import { UnifiedJob } from "../../../type/job";
 import { useJobList } from "../../job/hook/useJobList";
-
-const useStyles = (theme: Theme) => ({
-  icon: {
-    marginRight: theme.spacing(1),
-  },
-});
 
 type RecentJobsCardProps = {
   className?: string;
@@ -27,8 +21,6 @@ const getLink = (job: UnifiedJob) => {
 };
 
 export const RecentJobsCard = ({ className, sx }: RecentJobsCardProps) => {
-  const styles = useStyles(useTheme());
-
   const { jobList } = useJobList();
 
   const sortedJobs = _.orderBy(jobList, ["startTime"], ["desc"]).slice(0, 6);
@@ -45,7 +37,12 @@ export const RecentJobsCard = ({ className, sx }: RecentJobsCardProps) => {
       subtitle: job.entrypoint,
       link: getLink(job),
       className: className,
-      icon: <JobStatusIcon sx={styles.icon} job={job} />,
+      icon: (
+        <JobStatusIcon
+          sx={{ marginRight: (theme) => theme.spacing(1) }}
+          job={job}
+        />
+      ),
     };
   });
 

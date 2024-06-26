@@ -8,16 +8,13 @@ import {
   TableRow,
   TextField,
   TextFieldProps,
-  Theme,
   Typography,
-  useTheme,
 } from "@mui/material";
 import Autocomplete from "@mui/material/Autocomplete";
 import Pagination from "@mui/material/Pagination";
 import React, { useState } from "react";
 import { RiArrowDownSLine, RiArrowRightSLine } from "react-icons/ri";
 import { formatDateFromTimeMs } from "../common/formatUtils";
-import rowStyles from "../common/RowStyles";
 import { sliceToPage } from "../common/util";
 import { TaskProgressBar } from "../pages/job/TaskProgressBar";
 import { DatasetMetrics, OperatorMetrics } from "../type/data";
@@ -86,8 +83,6 @@ const DataOverviewTable = ({
     maxPage,
   } = sliceToPage(datasetList, pageNo, pageSize);
 
-  const styles = rowStyles(useTheme());
-
   return (
     <div>
       <div style={{ flex: 1, display: "flex", alignItems: "center" }}>
@@ -127,7 +122,11 @@ const DataOverviewTable = ({
                   >
                     {label}
                     {helpInfo && (
-                      <HelpInfo sx={styles.helpInfo}>{helpInfo}</HelpInfo>
+                      <HelpInfo
+                        sx={{ marginLeft: (theme) => theme.spacing(1) }}
+                      >
+                        {helpInfo}
+                      </HelpInfo>
                     )}
                   </Box>
                 </TableCell>
@@ -156,13 +155,6 @@ const DataOverviewTable = ({
   );
 };
 
-const useStyles = (theme: Theme) => ({
-  icon: {
-    width: 16,
-    height: 16,
-  },
-});
-
 const DataRow = ({
   datasetMetrics,
   operatorMetrics,
@@ -174,7 +166,6 @@ const DataRow = ({
   isExpanded?: boolean;
   setIsExpanded?: CallableFunction;
 }) => {
-  const styles = useStyles(useTheme());
   const isDatasetRow = datasetMetrics !== undefined;
   const isOperatorRow = operatorMetrics !== undefined;
   const data = datasetMetrics || operatorMetrics;
@@ -192,14 +183,14 @@ const DataRow = ({
             <Box
               component={RiArrowDownSLine}
               title={"Collapse Dataset " + datasetMetrics.dataset}
-              sx={styles.icon}
+              sx={{ width: 16, height: 16 }}
               onClick={() => setIsExpanded(false)}
             />
           ) : (
             <Box
               component={RiArrowRightSLine}
               title={"Expand Dataset " + datasetMetrics.dataset}
-              sx={styles.icon}
+              sx={{ width: 16, height: 16 }}
               onClick={() => setIsExpanded(true)}
             />
           ))}

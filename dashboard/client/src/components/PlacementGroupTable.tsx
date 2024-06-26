@@ -11,7 +11,6 @@ import {
   TextFieldProps,
   Theme,
   Tooltip,
-  useTheme,
 } from "@mui/material";
 import Autocomplete from "@mui/material/Autocomplete";
 import Pagination from "@mui/material/Pagination";
@@ -57,7 +56,6 @@ const PlacementGroupTable = ({
     constrainedPage,
     maxPage,
   } = sliceToPage(placementGroupList, pageNo, pageSize);
-  const styles = rowStyles(useTheme());
 
   const columns = [
     { label: "ID" },
@@ -143,7 +141,7 @@ const PlacementGroupTable = ({
           <StateCounter type="placementGroup" list={placementGroupList} />
         </div>
       </div>
-      <Box sx={styles.tableContainer}>
+      <Box sx={{ overflowX: "scroll" }}>
         <Table>
           <TableHead>
             <TableRow>
@@ -173,7 +171,7 @@ const PlacementGroupTable = ({
                 <TableRow key={placement_group_id}>
                   <TableCell align="center">
                     <Tooltip title={placement_group_id} arrow>
-                      <Box sx={styles.idCol}>{placement_group_id}</Box>
+                      <Box sx={rowStyles.idCol}>{placement_group_id}</Box>
                     </Tooltip>
                   </TableCell>
                   <TableCell align="center">{name ? name : "-"}</TableCell>
@@ -187,7 +185,13 @@ const PlacementGroupTable = ({
                       arrow
                     >
                       <BundleResourceRequirements
-                        sx={styles.OverflowCol}
+                        sx={{
+                          display: "block",
+                          width: "100px",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                        }}
                         bundles={bundles}
                       />
                     </Tooltip>

@@ -1,4 +1,4 @@
-import { Box, Theme, Typography, useTheme } from "@mui/material";
+import { Box, Typography } from "@mui/material";
 import React from "react";
 import {
   CodeDialogButton,
@@ -22,22 +22,16 @@ import { MainNavPageInfo } from "../layout/mainNavContext";
 
 import { useJobDetail } from "./hook/useJobDetail";
 
-const useStyle = (theme: Theme) => ({
-  root: {
-    padding: theme.spacing(2),
-    backgroundColor: "white",
-  },
-});
-
 export const JobDetailInfoPage = () => {
   // TODO(aguo): Add more content to this page!
 
-  const styles = useStyle(useTheme());
   const { job, msg, isLoading, params } = useJobDetail();
 
   if (!job) {
     return (
-      <Box sx={styles.root}>
+      <Box
+        sx={{ padding: (theme) => theme.spacing(2), backgroundColor: "white" }}
+      >
         <MainNavPageInfo
           pageInfo={{
             title: "Info",
@@ -56,7 +50,9 @@ export const JobDetailInfoPage = () => {
   }
 
   return (
-    <Box sx={styles.root}>
+    <Box
+      sx={{ padding: (theme) => theme.spacing(2), backgroundColor: "white" }}
+    >
       <MainNavPageInfo
         pageInfo={{
           title: "Info",
@@ -70,20 +66,11 @@ export const JobDetailInfoPage = () => {
   );
 };
 
-const useJobMetadataSectionStyles = (theme: Theme) => ({
-  metadataButton: {
-    display: "inline-flex",
-    maxWidth: "100%",
-  },
-});
-
 type JobMetadataSectionProps = {
   job: UnifiedJob;
 };
 
 export const JobMetadataSection = ({ job }: JobMetadataSectionProps) => {
-  const styles = useJobMetadataSectionStyles(useTheme());
-
   return (
     <MetadataSection
       metadataList={[
@@ -175,7 +162,7 @@ export const JobMetadataSection = ({ job }: JobMetadataSectionProps) => {
                 content:
                   job.metadata && Object.keys(job.metadata).length ? (
                     <CodeDialogButtonWithPreview
-                      sx={styles.metadataButton}
+                      sx={{ display: "inline-flex", maxWidth: "100%" }}
                       title="User-provided metadata"
                       code={JSON.stringify(job.metadata, undefined, 2)}
                     />

@@ -7,9 +7,7 @@ import {
   TableContainer,
   TableHead,
   TableRow,
-  Theme,
   Typography,
-  useTheme,
 } from "@mui/material";
 import _ from "lodash";
 import React, { ReactElement } from "react";
@@ -28,16 +26,6 @@ import { useFetchActor } from "../actor/hook/useActorDetail";
 import { LinkWithArrow } from "../overview/cards/OverviewCard";
 import { convertActorStateForServeController } from "./ServeSystemActorDetailPage";
 import { ServeControllerRow, ServeProxyRow } from "./ServeSystemDetailRows";
-
-const useStyles = (theme: Theme) => ({
-  table: {},
-  title: {
-    marginBottom: theme.spacing(2),
-  },
-  helpInfo: {
-    marginLeft: theme.spacing(1),
-  },
-});
 
 export type ServeDetails = Pick<
   ServeApplicationsRsp,
@@ -65,8 +53,6 @@ export const ServeSystemDetails = ({
   page,
   setPage,
 }: ServeSystemDetailsProps) => {
-  const styles = useStyles(useTheme());
-
   const {
     items: list,
     constrainedPage,
@@ -75,7 +61,10 @@ export const ServeSystemDetails = ({
 
   return (
     <div>
-      <Typography variant="h3" sx={styles.title}>
+      <Typography
+        variant="h3"
+        sx={{ marginBottom: (theme) => theme.spacing(2) }}
+      >
         System
       </Typography>
       {serveDetails.http_options && (
@@ -119,7 +108,7 @@ export const ServeSystemDetails = ({
             onChange={(e, pageNo) => setPage("pageNo", pageNo)}
           />
         </div>
-        <Table sx={styles.table}>
+        <Table>
           <TableHead>
             <TableRow>
               {columns.map(({ label, helpInfo, width }) => (
@@ -135,7 +124,11 @@ export const ServeSystemDetails = ({
                   >
                     {label}
                     {helpInfo && (
-                      <HelpInfo sx={styles.helpInfo}>{helpInfo}</HelpInfo>
+                      <HelpInfo
+                        sx={{ marginLeft: (theme) => theme.spacing(1) }}
+                      >
+                        {helpInfo}
+                      </HelpInfo>
                     )}
                   </Box>
                 </TableCell>

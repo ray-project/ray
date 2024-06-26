@@ -1,28 +1,7 @@
-import {
-  Box,
-  TableHead,
-  TableRow,
-  TableSortLabel,
-  Theme,
-  useTheme,
-} from "@mui/material";
+import { Box, TableHead, TableRow, TableSortLabel } from "@mui/material";
 import React from "react";
 import { StyledTableCell } from "./TableCell";
 import { Order } from "./tableUtils";
-
-const useSortableTableHeadStyles = (theme: Theme) => ({
-  visuallyHidden: {
-    border: 0,
-    clip: "rect(0 0 0 0)",
-    height: 1,
-    margin: -1,
-    overflow: "hidden",
-    padding: 0,
-    position: "absolute",
-    top: 20,
-    width: 1,
-  },
-});
 
 export type HeaderInfo<T> = {
   sortable: boolean;
@@ -41,7 +20,6 @@ type SortableTableHeadProps<T> = {
 
 const SortableTableHead = <T,>(props: SortableTableHeadProps<T>) => {
   const { order, orderBy, onRequestSort, headerInfo, firstColumnEmpty } = props;
-  const styles = useSortableTableHeadStyles(useTheme());
   const createSortHandler = (id: T) => (event: React.MouseEvent<unknown>) => {
     onRequestSort(event, id);
   };
@@ -64,7 +42,20 @@ const SortableTableHead = <T,>(props: SortableTableHeadProps<T>) => {
                 >
                   {headerInfo.label}
                   {orderBy === headerInfo.id ? (
-                    <Box component="span" sx={styles.visuallyHidden}>
+                    <Box
+                      component="span"
+                      sx={{
+                        border: 0,
+                        clip: "rect(0 0 0 0)",
+                        height: 1,
+                        margin: -1,
+                        overflow: "hidden",
+                        padding: 0,
+                        position: "absolute",
+                        top: 20,
+                        width: 1,
+                      }}
+                    >
                       {order === "desc"
                         ? "sorted descending"
                         : "sorted ascending"}

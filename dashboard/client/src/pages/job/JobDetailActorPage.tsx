@@ -1,4 +1,4 @@
-import { Box, Theme, useTheme } from "@mui/material";
+import { Box } from "@mui/material";
 import React, { PropsWithChildren } from "react";
 
 import { Section } from "../../common/Section";
@@ -6,19 +6,13 @@ import ActorList from "../actor/ActorList";
 import { MainNavPageInfo } from "../layout/mainNavContext";
 import { useJobDetail } from "./hook/useJobDetail";
 
-const useStyle = (theme: Theme) => ({
-  root: {
-    padding: theme.spacing(2),
-    backgroundColor: "white",
-  },
-});
-
 export const JobDetailActorsPage = () => {
-  const styles = useStyle(useTheme());
   const { params } = useJobDetail();
 
   return (
-    <Box sx={styles.root}>
+    <Box
+      sx={{ padding: (theme) => theme.spacing(2), backgroundColor: "white" }}
+    >
       <MainNavPageInfo
         pageInfo={{
           title: "Actors",

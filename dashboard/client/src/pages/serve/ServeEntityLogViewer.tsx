@@ -1,11 +1,4 @@
-import {
-  Box,
-  MenuItem,
-  TextField,
-  Theme,
-  Typography,
-  useTheme,
-} from "@mui/material";
+import { Box, MenuItem, TextField, Typography } from "@mui/material";
 import _ from "lodash";
 import React, { useEffect } from "react";
 import { useSearchParams } from "react-router-dom";
@@ -20,12 +13,6 @@ import {
   LOG_CONTEXT_KEY_SERVE_CONTROLLER,
   LOG_CONTEXT_KEY_SERVE_PROXY,
 } from "./ServeSystemActorDetailPage";
-
-const useStyles = (theme: Theme) => ({
-  captionText: {
-    color: theme.palette.grey[600],
-  },
-});
 
 type ServeEntityLogsProps = {
   controller?: ServeSystemActor;
@@ -42,8 +29,6 @@ export const ServeEntityLogViewer = ({
   proxies,
   deployments,
 }: ServeEntityLogsProps) => {
-  const styles = useStyles(useTheme());
-
   const [params, setParams] = useSearchParams();
 
   const showEntityGroups = controller !== undefined || proxies !== undefined;
@@ -201,7 +186,10 @@ export const ServeEntityLogViewer = ({
               <MenuItem value="controller">
                 <Box display="flex" flexDirection="column" gap={0.5}>
                   <span>Controller</span>
-                  <Typography variant="caption" sx={styles.captionText}>
+                  <Typography
+                    variant="caption"
+                    sx={{ color: (theme) => theme.palette.grey[600] }}
+                  >
                     Logs for app initialization, dependency installation, and
                     autoscaling.
                   </Typography>
@@ -210,7 +198,10 @@ export const ServeEntityLogViewer = ({
               <MenuItem value="proxies">
                 <Box display="flex" flexDirection="column" gap={0.5}>
                   <span>Proxies</span>
-                  <Typography variant="caption" sx={styles.captionText}>
+                  <Typography
+                    variant="caption"
+                    sx={{ color: (theme) => theme.palette.grey[600] }}
+                  >
                     Logs for proxy initialization and HTTP handling.
                   </Typography>
                 </Box>
@@ -218,7 +209,10 @@ export const ServeEntityLogViewer = ({
               <MenuItem value="deployments">
                 <Box display="flex" flexDirection="column" gap={0.5}>
                   <span>Deployments</span>
-                  <Typography variant="caption" sx={styles.captionText}>
+                  <Typography
+                    variant="caption"
+                    sx={{ color: (theme) => theme.palette.grey[600] }}
+                  >
                     Application output and logs.
                   </Typography>
                 </Box>

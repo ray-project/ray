@@ -1,4 +1,4 @@
-import { Box, Theme, useTheme } from "@mui/material";
+import { Box } from "@mui/material";
 import React, { useRef, useState } from "react";
 import useSWR from "swr";
 import { CollapsibleSection } from "../../common/CollapsibleSection";
@@ -24,27 +24,7 @@ import { JobDriverLogs } from "./JobDriverLogs";
 import { JobProgressBar } from "./JobProgressBar";
 import { TaskTimeline } from "./TaskTimeline";
 
-const useStyle = (theme: Theme) => ({
-  root: {
-    padding: theme.spacing(2),
-    backgroundColor: "white",
-  },
-  section: {
-    marginBottom: theme.spacing(4),
-  },
-  autoscalerSection: {
-    flexWrap: "wrap",
-    [theme.breakpoints.up("md")]: {
-      flexWrap: "nowrap",
-    },
-  },
-  nodeCountCard: {
-    flex: "1 0 500px",
-  },
-});
-
 export const JobDetailChartsPage = () => {
-  const styles = useStyle(useTheme());
   const { job, msg, isLoading, params } = useJobDetail();
 
   const [taskListFilter, setTaskListFilter] = useState<string>();
@@ -71,7 +51,9 @@ export const JobDetailChartsPage = () => {
 
   if (!job) {
     return (
-      <Box sx={styles.root}>
+      <Box
+        sx={{ padding: (theme) => theme.spacing(2), backgroundColor: "white" }}
+      >
         <Loading loading={isLoading} />
         <TitleCard title={`JOB - ${params.id}`}>
           <StatusChip type="job" status="LOADING" />
@@ -117,11 +99,16 @@ export const JobDetailChartsPage = () => {
   };
 
   return (
-    <Box sx={styles.root}>
+    <Box
+      sx={{ padding: (theme) => theme.spacing(2), backgroundColor: "white" }}
+    >
       <JobMetadataSection job={job} />
 
       {data?.datasets && data.datasets.length > 0 && (
-        <CollapsibleSection title="Ray Data Overview" sx={styles.section}>
+        <CollapsibleSection
+          title="Ray Data Overview"
+          sx={{ marginBottom: (theme) => theme.spacing(4) }}
+        >
           <Section>
             <DataOverview datasets={data.datasets} />
           </Section>
@@ -131,7 +118,7 @@ export const JobDetailChartsPage = () => {
       <CollapsibleSection
         title="Ray Core Overview"
         startExpanded
-        sx={styles.section}
+        sx={{ marginBottom: (theme) => theme.spacing(4) }}
       >
         <Section>
           <JobProgressBar
@@ -142,7 +129,11 @@ export const JobDetailChartsPage = () => {
         </Section>
       </CollapsibleSection>
 
-      <CollapsibleSection title="Logs" startExpanded sx={styles.section}>
+      <CollapsibleSection
+        title="Logs"
+        startExpanded
+        sx={{ marginBottom: (theme) => theme.spacing(4) }}
+      >
         <Section noTopPadding>
           <JobDriverLogs job={job} />
         </Section>
@@ -152,7 +143,7 @@ export const JobDetailChartsPage = () => {
         <CollapsibleSection
           title="Task Timeline (beta)"
           startExpanded
-          sx={styles.section}
+          sx={{ marginBottom: (theme) => theme.spacing(4) }}
         >
           <Section>
             <TaskTimeline jobId={job.job_id} />
@@ -163,16 +154,21 @@ export const JobDetailChartsPage = () => {
       <CollapsibleSection
         title="Cluster status and autoscaler"
         startExpanded
-        sx={styles.section}
+        sx={{ marginBottom: (theme) => theme.spacing(4) }}
       >
         <Box
           display="flex"
           flexDirection="row"
           gap={3}
           alignItems="stretch"
-          sx={styles.autoscalerSection}
+          sx={(theme) => ({
+            flexWrap: "wrap",
+            [theme.breakpoints.up("md")]: {
+              flexWrap: "nowrap",
+            },
+          })}
         >
-          <NodeCountCard sx={styles.nodeCountCard} />
+          <NodeCountCard sx={{ flex: "1 0 500px" }} />
           <Section flex="1 1 500px">
             <NodeStatusCard clusterStatus={clusterStatus} />
           </Section>
@@ -191,7 +187,7 @@ export const JobDetailChartsPage = () => {
             onExpandButtonClick={() => {
               setTaskTableExpanded(!taskTableExpanded);
             }}
-            sx={styles.section}
+            sx={{ marginBottom: (theme) => theme.spacing(4) }}
           >
             <Section>
               <TaskList
@@ -209,7 +205,7 @@ export const JobDetailChartsPage = () => {
             onExpandButtonClick={() => {
               setActorTableExpanded(!actorTableExpanded);
             }}
-            sx={styles.section}
+            sx={{ marginBottom: (theme) => theme.spacing(4) }}
           >
             <Section>
               <ActorList
@@ -221,7 +217,10 @@ export const JobDetailChartsPage = () => {
             </Section>
           </CollapsibleSection>
 
-          <CollapsibleSection title="Placement Group Table" sx={styles.section}>
+          <CollapsibleSection
+            title="Placement Group Table"
+            sx={{ marginBottom: (theme) => theme.spacing(4) }}
+          >
             <Section>
               <PlacementGroupList jobId={job.job_id} />
             </Section>

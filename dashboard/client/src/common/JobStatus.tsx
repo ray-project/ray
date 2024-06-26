@@ -1,4 +1,4 @@
-import { Box, keyframes, SxProps, Theme, useTheme } from "@mui/material";
+import { Box, keyframes, SxProps, Theme } from "@mui/material";
 import React from "react";
 import {
   RiCheckboxCircleFill,
@@ -18,17 +18,6 @@ to {
   transform: rotate(360deg)
 }`;
 
-const useJobRunningIconStyles = (theme: Theme) => ({
-  icon: (small: boolean) => ({
-    width: small ? 16 : 20,
-    height: small ? 16 : 20,
-  }),
-  iconRunning: {
-    color: "#1E88E5",
-    animation: `${spinner} 1s linear infinite`,
-  },
-});
-
 type JobRunningIconProps = {
   title?: string;
   small?: boolean;
@@ -42,13 +31,16 @@ export const JobRunningIcon = ({
   sx = [],
   ...props
 }: JobRunningIconProps) => {
-  const styles = useJobRunningIconStyles(useTheme());
   return (
     <Box
       component={RiLoader4Line}
       sx={[
-        styles.icon(small),
-        styles.iconRunning,
+        {
+          width: small ? 16 : 20,
+          height: small ? 16 : 20,
+          color: "#1E88E5",
+          animation: `${spinner} 1s linear infinite`,
+        },
         ...(Array.isArray(sx) ? sx : [sx]),
       ]}
       title={title}
@@ -56,22 +48,6 @@ export const JobRunningIcon = ({
     />
   );
 };
-
-const useJobStatusIconStyles = (theme: Theme) => ({
-  icon: (small: boolean) => ({
-    width: small ? 16 : 20,
-    height: small ? 16 : 20,
-  }),
-  colorSuccess: {
-    color: theme.palette.success.main,
-  },
-  colorError: {
-    color: theme.palette.error.main,
-  },
-  colorStopped: {
-    color: "#757575",
-  },
-});
 
 type JobStatusIconProps = {
   job: UnifiedJob;
@@ -85,15 +61,20 @@ export const JobStatusIcon = ({
   className,
   sx,
 }: JobStatusIconProps) => {
-  const styles = useJobStatusIconStyles(useTheme());
-  const sx_styles = Array.isArray(sx) ? sx : [sx];
   switch (job.status) {
     case JobStatus.SUCCEEDED:
       return (
         <Box
           component={RiCheckboxCircleFill}
           className={className}
-          sx={[styles.icon(small), styles.colorSuccess, ...sx_styles]}
+          sx={[
+            {
+              width: small ? 16 : 20,
+              height: small ? 16 : 20,
+              color: (theme) => theme.palette.success.main,
+            },
+            ...(Array.isArray(sx) ? sx : [sx]),
+          ]}
         />
       );
     case JobStatus.FAILED:
@@ -101,7 +82,14 @@ export const JobStatusIcon = ({
         <Box
           component={RiCloseCircleFill}
           className={className}
-          sx={[styles.icon(small), styles.colorError, ...sx_styles]}
+          sx={[
+            {
+              width: small ? 16 : 20,
+              height: small ? 16 : 20,
+              color: (theme) => theme.palette.error.main,
+            },
+            ...(Array.isArray(sx) ? sx : [sx]),
+          ]}
         />
       );
     case JobStatus.STOPPED:
@@ -109,7 +97,14 @@ export const JobStatusIcon = ({
         <Box
           component={RiStopCircleFill}
           className={className}
-          sx={[styles.icon(small), styles.colorStopped, ...sx_styles]}
+          sx={[
+            {
+              width: small ? 16 : 20,
+              height: small ? 16 : 20,
+              color: "#757575",
+            },
+            ...(Array.isArray(sx) ? sx : [sx]),
+          ]}
         />
       );
     default:

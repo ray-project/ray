@@ -1,4 +1,4 @@
-import { Alert, Box, Theme, Typography, useTheme } from "@mui/material";
+import { Alert, Box, Typography } from "@mui/material";
 import React from "react";
 import { Outlet } from "react-router-dom";
 import Loading from "../../components/Loading";
@@ -9,21 +9,8 @@ import {
   ServeMetricsSection,
 } from "./ServeMetricsSection";
 import { ServeSystemDetails } from "./ServeSystemDetails";
-const useStyles = (theme: Theme) => ({
-  root: {
-    padding: theme.spacing(3),
-  },
-  serveInstanceWarning: {
-    marginBottom: theme.spacing(2),
-  },
-  section: {
-    marginTop: theme.spacing(4),
-  },
-});
 
 export const ServeSystemDetailPage = () => {
-  const styles = useStyles(useTheme());
-
   const { serveDetails, proxies, proxiesPage, setProxiesPage, error } =
     useServeDeployments();
 
@@ -36,7 +23,7 @@ export const ServeSystemDetailPage = () => {
   }
 
   return (
-    <Box sx={styles.root}>
+    <Box sx={{ padding: (theme) => theme.spacing(3) }}>
       <MainNavPageInfo
         pageInfo={{
           title: "System",
@@ -45,7 +32,10 @@ export const ServeSystemDetailPage = () => {
         }}
       />
       {serveDetails.http_options === undefined ? (
-        <Alert sx={styles.serveInstanceWarning} severity="warning">
+        <Alert
+          sx={{ marginBottom: (theme) => theme.spacing(2) }}
+          severity="warning"
+        >
           Serve not started. Please deploy a serve application first.
         </Alert>
       ) : (
@@ -57,7 +47,7 @@ export const ServeSystemDetailPage = () => {
         />
       )}
       <ServeMetricsSection
-        sx={styles.section}
+        sx={{ marginTop: (theme) => theme.spacing(4) }}
         metricsConfig={SERVE_SYSTEM_METRICS_CONFIG}
       />
     </Box>

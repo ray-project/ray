@@ -10,7 +10,6 @@ import {
   TextFieldProps,
   Theme,
   Tooltip,
-  useTheme,
 } from "@mui/material";
 import Autocomplete from "@mui/material/Autocomplete";
 import Pagination from "@mui/material/Pagination";
@@ -29,39 +28,13 @@ type EventTableProps = {
   job_id?: string;
 };
 
-const useStyles = (theme: Theme) => ({
-  table: {
-    marginTop: theme.spacing(4),
-    padding: theme.spacing(2),
-  },
-  pageMeta: {
-    padding: theme.spacing(2),
-    marginTop: theme.spacing(2),
-  },
-  filterContainer: {
-    display: "flex",
-    alignItems: "center",
-  },
-  search: {
+const eventTableStyles = {
+  search: (theme: Theme) => ({
     margin: theme.spacing(1),
     display: "inline-block",
     fontSize: 12,
-  },
-  infokv: {
-    margin: theme.spacing(1),
-  },
-  li: {
-    color: theme.palette.text.secondary,
-    fontSize: 12,
-  },
-  code: {
-    wordBreak: "break-all",
-    whiteSpace: "pre-line",
-    margin: 12,
-    fontSize: 14,
-    color: theme.palette.text.primary,
-  },
-});
+  }),
+};
 
 const useEventTable = (props: EventTableProps) => {
   const { job_id } = props;
@@ -150,7 +123,6 @@ const useEventTable = (props: EventTableProps) => {
 };
 
 const EventTable = (props: EventTableProps) => {
-  const styles = useStyles(useTheme());
   const {
     events,
     changeFilter,
@@ -171,9 +143,14 @@ const EventTable = (props: EventTableProps) => {
 
   return (
     <div style={{ position: "relative" }}>
-      <Box sx={styles.filterContainer}>
+      <Box
+        sx={{
+          display: "flex",
+          alignItems: "center",
+        }}
+      >
         <Autocomplete
-          sx={styles.search}
+          sx={eventTableStyles.search}
           style={{ width: 200 }}
           options={labelOptions}
           onInputChange={(_: any, value: string) => {
@@ -184,7 +161,7 @@ const EventTable = (props: EventTableProps) => {
           )}
         />
         <Autocomplete
-          sx={styles.search}
+          sx={eventTableStyles.search}
           style={{ width: 200 }}
           options={hostOptions}
           onInputChange={(_: any, value: string) => {
@@ -195,7 +172,7 @@ const EventTable = (props: EventTableProps) => {
           )}
         />
         <Autocomplete
-          sx={styles.search}
+          sx={eventTableStyles.search}
           style={{ width: 100 }}
           options={sourceOptions}
           onInputChange={(_: any, value: string) => {
@@ -206,7 +183,7 @@ const EventTable = (props: EventTableProps) => {
           )}
         />
         <Autocomplete
-          sx={styles.search}
+          sx={eventTableStyles.search}
           style={{ width: 140 }}
           options={severityOptions}
           onInputChange={(_: any, value: string) => {
@@ -217,7 +194,7 @@ const EventTable = (props: EventTableProps) => {
           )}
         />
         <TextField
-          sx={styles.search}
+          sx={eventTableStyles.search}
           label="Msg"
           InputProps={{
             onChange: ({ target: { value } }) => {
@@ -245,7 +222,7 @@ const EventTable = (props: EventTableProps) => {
           }}
         />
         <Button
-          sx={styles.search}
+          sx={eventTableStyles.search}
           size="small"
           variant="contained"
           onClick={() => reverseEvents()}
@@ -262,7 +239,12 @@ const EventTable = (props: EventTableProps) => {
           }}
         />
       </div>
-      <Box sx={styles.pageMeta}>
+      <Box
+        sx={(theme) => ({
+          padding: theme.spacing(2),
+          marginTop: theme.spacing(2),
+        })}
+      >
         {!events.length
           ? "No Events Yet."
           : events.map(
@@ -291,7 +273,14 @@ const EventTable = (props: EventTableProps) => {
                 const hostname = sourceHostname || hostName;
                 const realPid = pid || sourcePid;
                 return (
-                  <Box component="article" sx={styles.li} key={eventId}>
+                  <Box
+                    component="article"
+                    sx={(theme) => ({
+                      color: theme.palette.text.secondary,
+                      fontSize: 12,
+                    })}
+                    key={eventId}
+                  >
                     <Grid container spacing={4}>
                       <Grid item>
                         <StatusChip status={severity} type={severity} />
@@ -312,13 +301,22 @@ const EventTable = (props: EventTableProps) => {
                       )}
                     </Grid>
                     <Grid container>
-                      <Grid item sx={styles.infokv}>
+                      <Grid
+                        item
+                        sx={{ margin: (theme: Theme) => theme.spacing(1) }}
+                      >
                         severity: {severity}
                       </Grid>
-                      <Grid item sx={styles.infokv}>
+                      <Grid
+                        item
+                        sx={{ margin: (theme: Theme) => theme.spacing(1) }}
+                      >
                         source: {sourceType}
                       </Grid>
-                      <Grid item sx={styles.infokv}>
+                      <Grid
+                        item
+                        sx={{ margin: (theme: Theme) => theme.spacing(1) }}
+                      >
                         hostname:{" "}
                         {nodeMap[hostname] ? (
                           <Link to={`/node/${nodeMap[hostname]}`}>
@@ -328,26 +326,41 @@ const EventTable = (props: EventTableProps) => {
                           hostname
                         )}
                       </Grid>
-                      <Grid item sx={styles.infokv}>
+                      <Grid
+                        item
+                        sx={{ margin: (theme: Theme) => theme.spacing(1) }}
+                      >
                         pid: {realPid}
                       </Grid>
                       {jobId && (
-                        <Grid item sx={styles.infokv}>
+                        <Grid
+                          item
+                          sx={{ margin: (theme: Theme) => theme.spacing(1) }}
+                        >
                           jobId: <Link to={`/job/${jobId}`}>{jobId}</Link>
                         </Grid>
                       )}
                       {jobName && (
-                        <Grid item sx={styles.infokv}>
+                        <Grid
+                          item
+                          sx={{ margin: (theme: Theme) => theme.spacing(1) }}
+                        >
                           jobId: {jobName}
                         </Grid>
                       )}
                       {eventId && (
-                        <Grid item sx={styles.infokv}>
+                        <Grid
+                          item
+                          sx={{ margin: (theme: Theme) => theme.spacing(1) }}
+                        >
                           eventId: {eventId}
                         </Grid>
                       )}
                       {nodeId && (
-                        <Grid item sx={styles.infokv}>
+                        <Grid
+                          item
+                          sx={{ margin: (theme: Theme) => theme.spacing(1) }}
+                        >
                           nodeId: {nodeId}
                         </Grid>
                       )}

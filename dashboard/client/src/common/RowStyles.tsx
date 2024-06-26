@@ -1,14 +1,4 @@
-import { Theme } from "@mui/material";
-
-const rowStyles = (theme: Theme) => ({
-  tableContainer: {
-    overflowX: "scroll",
-  },
-  expandCollapseIcon: {
-    color: theme.palette.text.secondary,
-    fontSize: "1.5em",
-    verticalAlign: "middle",
-  },
+const rowStyles = {
   idCol: {
     display: "block",
     width: "50px",
@@ -23,9 +13,6 @@ const rowStyles = (theme: Theme) => ({
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
   },
-  helpInfo: {
-    marginLeft: theme.spacing(1),
-  },
-});
+};
 
 export default rowStyles;

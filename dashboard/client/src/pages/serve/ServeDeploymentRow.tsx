@@ -1,4 +1,4 @@
-import { Link, TableCell, TableRow, Theme, useTheme } from "@mui/material";
+import { Link, TableCell, TableRow } from "@mui/material";
 import React from "react";
 import { Link as RouterLink } from "react-router-dom";
 import {
@@ -15,16 +15,6 @@ import {
 } from "../../type/serve";
 import { useViewServeDeploymentMetricsButtonUrl } from "./ServeDeploymentMetricsSection";
 
-const useStyles = (theme: Theme) => ({
-  deploymentName: (showExpandColumn: boolean) => ({
-    fontWeight: showExpandColumn ? 500 : 400, // bold style for when name is the first column, e.g. on the Deployment page
-  }),
-  statusMessage: {
-    maxWidth: 400,
-    display: "inline-flex",
-  },
-});
-
 export type ServeDeploymentRowProps = {
   deployment: ServeDeployment;
   application: ServeApplication;
@@ -40,8 +30,6 @@ export const ServeDeploymentRow = ({
 }: ServeDeploymentRowProps) => {
   const { name, status, message, deployment_config, replicas } = deployment;
 
-  const styles = useStyles(useTheme());
-
   const metricsUrl = useViewServeDeploymentMetricsButtonUrl(name);
 
   return (
@@ -52,7 +40,10 @@ export const ServeDeploymentRow = ({
             {/* Empty column for expand/unexpand button in the row of the parent Serve application. */}
           </TableCell>
         )}
-        <TableCell align="center" sx={styles.deploymentName(showExpandColumn)}>
+        <TableCell
+          align="center"
+          sx={{ fontWeight: showExpandColumn ? 500 : 400 }}
+        >
           <Link
             component={RouterLink}
             to={`/serve/applications/${encodeURIComponent(
@@ -68,7 +59,7 @@ export const ServeDeploymentRow = ({
         <TableCell align="center">
           {message ? (
             <CodeDialogButtonWithPreview
-              sx={styles.statusMessage}
+              sx={{ maxWidth: 400, display: "inline-flex" }}
               title="Message details"
               code={message}
             />

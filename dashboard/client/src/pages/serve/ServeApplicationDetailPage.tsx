@@ -10,9 +10,7 @@ import {
   TableRow,
   TextField,
   TextFieldProps,
-  Theme,
   Typography,
-  useTheme,
 } from "@mui/material";
 import React, { ReactElement } from "react";
 import { Outlet, useParams } from "react-router-dom";
@@ -29,22 +27,6 @@ import { MainNavPageInfo } from "../layout/mainNavContext";
 import { useServeApplicationDetails } from "./hook/useServeApplications";
 import { ServeDeploymentRow } from "./ServeDeploymentRow";
 
-const useStyles = (theme: Theme) => ({
-  root: {
-    padding: theme.spacing(3),
-  },
-  table: {
-    tableLayout: "fixed",
-  },
-  helpInfo: {
-    marginLeft: theme.spacing(1),
-  },
-  statusMessage: {
-    display: "inline-flex",
-    maxWidth: "100%",
-  },
-});
-
 const columns: { label: string; helpInfo?: ReactElement; width?: string }[] = [
   { label: "Deployment name" },
   { label: "Status" },
@@ -57,7 +39,6 @@ const columns: { label: string; helpInfo?: ReactElement; width?: string }[] = [
 ];
 
 export const ServeApplicationDetailPage = () => {
-  const styles = useStyles(useTheme());
   const { applicationName } = useParams();
 
   const {
@@ -86,7 +67,7 @@ export const ServeApplicationDetailPage = () => {
   } = sliceToPage(filteredDeployments, page.pageNo, page.pageSize);
 
   return (
-    <Box sx={styles.root}>
+    <Box sx={{ padding: (theme) => theme.spacing(3) }}>
       <MetadataSection
         metadataList={[
           {
@@ -231,7 +212,11 @@ export const ServeApplicationDetailPage = () => {
                     >
                       {label}
                       {helpInfo && (
-                        <HelpInfo sx={styles.helpInfo}>{helpInfo}</HelpInfo>
+                        <HelpInfo
+                          sx={{ marginLeft: (theme) => theme.spacing(1) }}
+                        >
+                          {helpInfo}
+                        </HelpInfo>
                       )}
                     </Box>
                   </TableCell>

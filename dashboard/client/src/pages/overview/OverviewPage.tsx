@@ -1,4 +1,4 @@
-import { Box, Theme, useTheme } from "@mui/material";
+import { Box, Theme } from "@mui/material";
 import React from "react";
 import { CollapsibleSection } from "../../common/CollapsibleSection";
 import {
@@ -14,12 +14,12 @@ import { OverviewCard } from "./cards/OverviewCard";
 import { RecentJobsCard } from "./cards/RecentJobsCard";
 import { RecentServeCard } from "./cards/RecentServeCard";
 
-const useStyles = (theme: Theme) => ({
-  root: {
+const styles = {
+  root: (theme: Theme) => ({
     padding: theme.spacing(3),
     backgroundColor: "white",
-  },
-  overviewCardsContainer: {
+  }),
+  overviewCardsContainer: (theme: Theme) => ({
     display: "flex",
     flexDirection: "row",
     flexWrap: "wrap",
@@ -28,26 +28,21 @@ const useStyles = (theme: Theme) => ({
     [theme.breakpoints.up("md")]: {
       flexWrap: "nowrap",
     },
-  },
-  overviewCard: {
+  }),
+  overviewCard: (theme: Theme) => ({
     flex: "1 0 448px",
     maxWidth: "100%",
     [theme.breakpoints.up("md")]: {
       // Calculate max width based on 1/3 of the total width minus padding between cards
       maxWidth: `calc((100% - ${theme.spacing(3)} * 2) / 3)`,
     },
-  },
-  autoscalerCard: {
+  }),
+  autoscalerCard: (theme: Theme) => ({
     padding: theme.spacing(2, 3),
-  },
-  section: {
-    marginTop: theme.spacing(4),
-  },
-});
+  }),
+};
 
 export const OverviewPage = () => {
-  const styles = useStyles(useTheme());
-
   const { clusterStatus } = useRayStatus();
 
   return (
@@ -62,7 +57,7 @@ export const OverviewPage = () => {
       </Box>
 
       <CollapsibleSection
-        sx={styles.section}
+        sx={{ marginTop: (theme) => theme.spacing(4) }}
         title="Cluster status and autoscaler"
         startExpanded
       >
@@ -83,7 +78,11 @@ export const OverviewPage = () => {
         }
       </CollapsibleSection>
 
-      <CollapsibleSection sx={styles.section} title="Events" startExpanded>
+      <CollapsibleSection
+        sx={{ marginTop: (theme) => theme.spacing(4) }}
+        title="Events"
+        startExpanded
+      >
         <EventTable />
       </CollapsibleSection>
     </Box>

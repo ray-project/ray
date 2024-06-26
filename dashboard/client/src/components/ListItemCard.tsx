@@ -1,4 +1,4 @@
-import { Box, Link, SxProps, Theme, Typography, useTheme } from "@mui/material";
+import { Box, Link, SxProps, Theme, Typography } from "@mui/material";
 import React, { ReactNode } from "react";
 import { Link as RouterLink } from "react-router-dom";
 import { ClassNameProps } from "../common/props";
@@ -24,24 +24,6 @@ type ListItemProps = {
   sx?: SxProps<Theme>;
 } & ClassNameProps;
 
-const useStyles = (theme: Theme) => ({
-  root: {
-    display: "flex",
-    flexDirection: "column",
-    padding: theme.spacing(2, 3),
-  },
-  listContainer: {
-    marginTop: theme.spacing(2),
-    flex: 1,
-    overflow: "hidden",
-  },
-  listItem: {
-    "&:not(:first-child)": {
-      marginTop: theme.spacing(1),
-    },
-  },
-});
-
 export const ListItemCard = ({
   className,
   headerTitle,
@@ -51,17 +33,36 @@ export const ListItemCard = ({
   footerLink,
   sx,
 }: ListItemCardProps) => {
-  const styles = useStyles(useTheme());
-
   return (
     <OverviewCard
       className={className}
-      sx={[styles.root, ...(Array.isArray(sx) ? sx : [sx])]}
+      sx={[
+        (theme) => ({
+          display: "flex",
+          flexDirection: "column",
+          padding: theme.spacing(2, 3),
+        }),
+        ...(Array.isArray(sx) ? sx : [sx]),
+      ]}
     >
       <Typography variant="h3">{headerTitle}</Typography>
-      <Box sx={styles.listContainer}>
+      <Box
+        sx={(theme) => ({
+          marginTop: theme.spacing(2),
+          flex: 1,
+          overflow: "hidden",
+        })}
+      >
         {items.map((item: ListItemProps) => (
-          <ListItem {...item} sx={styles.listItem} key={item.title} />
+          <ListItem
+            {...item}
+            sx={(theme) => ({
+              "&:not(:first-child)": {
+                marginTop: theme.spacing(1),
+              },
+            })}
+            key={item.title}
+          />
         ))}
         {items.length === 0 && (
           <Typography variant="h4">{itemEmptyTip}</Typography>
@@ -72,7 +73,7 @@ export const ListItemCard = ({
   );
 };
 
-const useListItemStyles = (theme: Theme) => ({
+const listItemStyles = {
   root: {
     display: "flex",
     flexDirection: "row",
@@ -80,21 +81,7 @@ const useListItemStyles = (theme: Theme) => ({
     alignItems: "center",
     textDecoration: "none",
   },
-
-  textContainer: {
-    flex: "1 1 auto",
-    width: `calc(100% - calc(${theme.spacing(1)} + 20px))`,
-  },
-  title: {
-    color: "#036DCF",
-  },
-  entrypoint: {
-    overflow: "hidden",
-    textOverflow: "ellipsis",
-    whiteSpace: "nowrap",
-    color: "#5F6469",
-  },
-});
+};
 
 const ListItem = ({
   icon,
@@ -104,16 +91,28 @@ const ListItem = ({
   link,
   sx,
 }: ListItemProps) => {
-  const styles = useListItemStyles(useTheme());
-
   const cardContent = (
     <React.Fragment>
       {icon}
-      <Box sx={styles.textContainer}>
-        <Typography sx={styles.title} variant="body2">
+      <Box
+        sx={(theme) => ({
+          flex: "1 1 auto",
+          width: `calc(100% - calc(${theme.spacing(1)} + 20px))`,
+        })}
+      >
+        <Typography sx={{ color: "#036DCF" }} variant="body2">
           {title}
         </Typography>
-        <Typography sx={styles.entrypoint} title={subtitle} variant="caption">
+        <Typography
+          sx={(theme) => ({
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+            color: "#5F6469",
+          })}
+          title={subtitle}
+          variant="caption"
+        >
           {subtitle}
         </Typography>
       </Box>
@@ -122,11 +121,11 @@ const ListItem = ({
   return (
     <Box className={className} sx={sx}>
       {link !== undefined ? (
-        <Link component={RouterLink} sx={styles.root} to={link}>
+        <Link component={RouterLink} sx={listItemStyles.root} to={link}>
           {cardContent}
         </Link>
       ) : (
-        <Box sx={styles.root}>{cardContent}</Box>
+        <Box sx={listItemStyles.root}>{cardContent}</Box>
       )}
     </Box>
   );

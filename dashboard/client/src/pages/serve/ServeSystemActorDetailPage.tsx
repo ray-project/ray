@@ -1,4 +1,4 @@
-import { Box, Theme, Typography, useTheme } from "@mui/material";
+import { Box, Typography } from "@mui/material";
 import React from "react";
 import { useParams } from "react-router-dom";
 import { CollapsibleSection } from "../../common/CollapsibleSection";
@@ -24,14 +24,7 @@ import {
   useServeProxyDetails,
 } from "./hook/useServeApplications";
 
-const useStyles = (theme: Theme) => ({
-  root: {
-    padding: theme.spacing(3),
-  },
-});
-
 export const ServeProxyDetailPage = () => {
-  const styles = useStyles(useTheme());
   const { proxyId } = useParams();
 
   const { proxy, loading } = useServeProxyDetails(proxyId);
@@ -49,7 +42,7 @@ export const ServeProxyDetailPage = () => {
   }
 
   return (
-    <Box sx={styles.root}>
+    <Box sx={{ padding: (theme) => theme.spacing(3) }}>
       <MainNavPageInfo
         pageInfo={
           proxy.node_id
@@ -72,7 +65,6 @@ export const ServeProxyDetailPage = () => {
 };
 
 export const ServeControllerDetailPage = () => {
-  const styles = useStyles(useTheme());
   const { controller, loading } = useServeControllerDetails();
 
   if (loading) {
@@ -84,7 +76,7 @@ export const ServeControllerDetailPage = () => {
   }
 
   return (
-    <Box sx={styles.root}>
+    <Box sx={{ padding: (theme) => theme.spacing(3) }}>
       <MainNavPageInfo
         pageInfo={{
           id: "serveController",

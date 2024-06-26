@@ -7,7 +7,6 @@ import {
   TableCell,
   TableRow,
   Theme,
-  useTheme,
 } from "@mui/material";
 import React, { useState } from "react";
 import {
@@ -55,36 +54,6 @@ export const AdvancedProgressBar = ({
   );
 };
 
-const useAdvancedProgressBarSegmentStyles = (theme: Theme) => ({
-  nameContainer: {
-    paddingLeft: 0,
-    whiteSpace: "nowrap",
-    display: "flex",
-    alignItems: "center",
-  },
-  spacer: {
-    width: 4,
-  },
-  progressBarContainer: {
-    width: "100%",
-    paddingRight: 0,
-  },
-  icon: (hidden: boolean) => ({
-    width: 16,
-    height: 16,
-    verticalAlign: "top",
-    marginRight: theme.spacing(0.5),
-    visibility: hidden ? "hidden" : "visible",
-  }),
-  link: {
-    border: "none",
-    cursor: "pointer",
-    color: "#036DCF",
-    textDecoration: "underline",
-    background: "none",
-  },
-});
-
 export type AdvancedProgressBarSegmentProps = {
   jobProgressGroup: JobProgressGroup;
   /**
@@ -114,8 +83,6 @@ export const AdvancedProgressBarSegment = ({
   onParentCollapseButtonPressed,
   onClickLink,
 }: AdvancedProgressBarSegmentProps) => {
-  const styles = useAdvancedProgressBarSegmentStyles(useTheme());
-
   const [expanded, setExpanded] = useState(startExpanded);
   const isGroup = type === "GROUP";
 
@@ -140,7 +107,12 @@ export const AdvancedProgressBarSegment = ({
       {isGroup && expanded ? null : (
         <TableRow>
           <TableCell
-            sx={styles.nameContainer}
+            sx={{
+              paddingLeft: 0,
+              whiteSpace: "nowrap",
+              display: "flex",
+              alignItems: "center",
+            }}
             onClick={() => {
               setExpanded(!expanded);
             }}
@@ -150,14 +122,25 @@ export const AdvancedProgressBarSegment = ({
                 component={RiSubtractLine}
                 title="Collapse group"
                 onClick={onParentCollapseButtonPressed}
-                sx={styles.icon(false)}
-                style={{ marginLeft: 24 * (nestedIndex - 1) }}
+                sx={(theme) => ({
+                  width: 16,
+                  height: 16,
+                  verticalAlign: "top",
+                  marginRight: theme.spacing(0.5),
+                  marginLeft: theme.spacing(3 * (nestedIndex - 1)),
+                })}
               />
             )}
             <Box
               component={IconComponent}
               title={expanded ? "Collapse" : "Expand"}
-              sx={styles.icon(children.length === 0)}
+              sx={{
+                width: 16,
+                height: 16,
+                verticalAlign: "top",
+                marginRight: (theme) => theme.spacing(0.5),
+                visibility: children.length === 0 ? "hidden" : "visible",
+              }}
               style={{
                 // Complex logic on where to place the icon depending on the grouping type
                 marginLeft: showParentCollapseButton
@@ -170,7 +153,13 @@ export const AdvancedProgressBarSegment = ({
               link.type === "actor" ? (
                 <Box
                   component="button"
-                  sx={styles.link}
+                  sx={{
+                    border: "none",
+                    cursor: "pointer",
+                    color: "#036DCF",
+                    textDecoration: "underline",
+                    background: "none",
+                  }}
                   onClick={(event) => {
                     onClickLink?.(link);
                     event.stopPropagation();
@@ -181,7 +170,13 @@ export const AdvancedProgressBarSegment = ({
               ) : (
                 <Link
                   component={RouterLink}
-                  sx={styles.link}
+                  sx={{
+                    border: "none",
+                    cursor: "pointer",
+                    color: "#036DCF",
+                    textDecoration: "underline",
+                    background: "none",
+                  }}
                   to={`tasks/${link.id}`}
                 >
                   {name}
@@ -192,14 +187,14 @@ export const AdvancedProgressBarSegment = ({
             )}
             {isGroup && (
               <React.Fragment>
-                <Box component="span" sx={styles.spacer} />
+                <Box component="span" sx={{ width: 4 }} />
                 {"("}
                 <RiCloseLine /> {children.length}
                 {")"}
               </React.Fragment>
             )}
           </TableCell>
-          <TableCell sx={styles.progressBarContainer}>
+          <TableCell sx={{ width: "100%", paddingRight: 0 }}>
             <MiniTaskProgressBar {...progress} showTotal />
           </TableCell>
         </TableRow>

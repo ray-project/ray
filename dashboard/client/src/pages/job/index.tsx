@@ -9,9 +9,7 @@ import {
   TableHead,
   TableRow,
   TextField,
-  Theme,
   Typography,
-  useTheme,
 } from "@mui/material";
 import Autocomplete from "@mui/material/Autocomplete";
 import Pagination from "@mui/material/Pagination";
@@ -25,19 +23,6 @@ import { HelpInfo } from "../../components/Tooltip";
 import { MainNavPageInfo } from "../layout/mainNavContext";
 import { useJobList } from "./hook/useJobList";
 import { JobRow } from "./JobRow";
-
-const useStyles = (theme: Theme) => ({
-  root: {
-    padding: theme.spacing(2),
-    width: "100%",
-  },
-  progressError: {
-    marginTop: theme.spacing(1),
-  },
-  helpInfo: {
-    marginLeft: theme.spacing(1),
-  },
-});
 
 const columns = [
   { label: "Job ID" },
@@ -64,7 +49,6 @@ const columns = [
 ];
 
 const JobList = () => {
-  const styles = useStyles(useTheme());
   const {
     msg,
     isLoading,
@@ -83,7 +67,7 @@ const JobList = () => {
   } = sliceToPage(jobList, page.pageNo, page.pageSize);
 
   return (
-    <Box sx={styles.root}>
+    <Box sx={{ padding: (theme) => theme.spacing(2), width: "100%" }}>
       <Loading loading={isLoading} />
       <TitleCard title="JOBS">
         Auto Refresh:
@@ -154,7 +138,11 @@ const JobList = () => {
                     >
                       {label}
                       {helpInfo && (
-                        <HelpInfo sx={styles.helpInfo}>{helpInfo}</HelpInfo>
+                        <HelpInfo
+                          sx={{ marginLeft: (theme) => theme.spacing(1) }}
+                        >
+                          {helpInfo}
+                        </HelpInfo>
                       )}
                     </Box>
                   </TableCell>

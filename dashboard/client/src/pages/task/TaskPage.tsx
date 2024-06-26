@@ -1,4 +1,4 @@
-import { Box, Theme, Typography, useTheme } from "@mui/material";
+import { Box, Typography } from "@mui/material";
 import React from "react";
 import { useParams } from "react-router-dom";
 import { CodeDialogButtonWithPreview } from "../../common/CodeDialogButton";
@@ -23,21 +23,14 @@ import { Task } from "../../type/task";
 import { MainNavPageInfo } from "../layout/mainNavContext";
 import { useStateApiTask } from "../state/hook/useStateApi";
 
-const useStyles = (theme: Theme) => ({
-  root: {
-    padding: theme.spacing(2),
-    backgroundColor: "white",
-  },
-});
-
 export const TaskPage = () => {
   const { taskId } = useParams();
   const { task, isLoading } = useStateApiTask(taskId);
 
-  const styles = useStyles(useTheme());
-
   return (
-    <Box sx={styles.root}>
+    <Box
+      sx={{ padding: (theme) => theme.spacing(2), backgroundColor: "white" }}
+    >
       <MainNavPageInfo
         pageInfo={
           task

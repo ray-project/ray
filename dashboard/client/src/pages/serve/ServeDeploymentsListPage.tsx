@@ -10,9 +10,7 @@ import {
   TableHead,
   TableRow,
   TextField,
-  Theme,
   Typography,
-  useTheme,
 } from "@mui/material";
 import React, { ReactElement } from "react";
 import { CollapsibleSection } from "../../common/CollapsibleSection";
@@ -28,27 +26,6 @@ import {
 } from "./ServeMetricsSection";
 import { ServeSystemPreview } from "./ServeSystemDetails";
 
-const useStyles = (theme: Theme) => ({
-  root: {
-    padding: theme.spacing(3),
-  },
-  table: {
-    tableLayout: "fixed",
-  },
-  serveInstanceWarning: {
-    marginBottom: theme.spacing(2),
-  },
-  helpInfo: {
-    marginLeft: theme.spacing(1),
-  },
-  deploymentsSection: {
-    marginTop: theme.spacing(4),
-  },
-  section: {
-    marginTop: theme.spacing(4),
-  },
-});
-
 const columns: { label: string; helpInfo?: ReactElement; width?: string }[] = [
   { label: "" }, // Empty space for expand button
   { label: "Name" },
@@ -62,7 +39,6 @@ const columns: { label: string; helpInfo?: ReactElement; width?: string }[] = [
 ];
 
 export const ServeDeploymentsListPage = () => {
-  const styles = useStyles(useTheme());
   const {
     serveDetails,
     error,
@@ -88,9 +64,12 @@ export const ServeDeploymentsListPage = () => {
   } = sliceToPage(serveApplications, page.pageNo, page.pageSize);
 
   return (
-    <Box sx={styles.root}>
+    <Box sx={{ padding: (theme) => theme.spacing(3) }}>
       {serveDetails.http_options === undefined ? (
-        <Alert sx={styles.serveInstanceWarning} severity="warning">
+        <Alert
+          sx={{ marginBottom: (theme) => theme.spacing(2) }}
+          severity="warning"
+        >
           Serve not started. Please deploy a serve application first.
         </Alert>
       ) : (
@@ -104,7 +83,7 @@ export const ServeDeploymentsListPage = () => {
           <CollapsibleSection
             title="Applications / Deployments"
             startExpanded
-            sx={styles.deploymentsSection}
+            sx={{ marginTop: (theme) => theme.spacing(4) }}
           >
             <TableContainer>
               <TextField
@@ -126,7 +105,7 @@ export const ServeDeploymentsListPage = () => {
                 page={constrainedPage}
                 onChange={(e, pageNo) => setPage("pageNo", pageNo)}
               />
-              <Table sx={styles.table}>
+              <Table sx={{ tableLayout: "fixed" }}>
                 <TableHead>
                   <TableRow>
                     {columns.map(({ label, helpInfo, width }) => (
@@ -142,7 +121,11 @@ export const ServeDeploymentsListPage = () => {
                         >
                           {label}
                           {helpInfo && (
-                            <HelpInfo sx={styles.helpInfo}>{helpInfo}</HelpInfo>
+                            <HelpInfo
+                              sx={{ marginLeft: (theme) => theme.spacing(1) }}
+                            >
+                              {helpInfo}
+                            </HelpInfo>
                           )}
                         </Box>
                       </TableCell>
@@ -161,7 +144,11 @@ export const ServeDeploymentsListPage = () => {
               </Table>
             </TableContainer>
           </CollapsibleSection>
-          <CollapsibleSection title="Logs" startExpanded sx={styles.section}>
+          <CollapsibleSection
+            title="Logs"
+            startExpanded
+            sx={{ marginTop: (theme) => theme.spacing(4) }}
+          >
             <ServeEntityLogViewer
               controller={serveDetails.controller_info}
               proxies={proxies}
@@ -171,7 +158,7 @@ export const ServeDeploymentsListPage = () => {
         </React.Fragment>
       )}
       <ServeMetricsSection
-        sx={styles.section}
+        sx={{ marginTop: (theme) => theme.spacing(4) }}
         metricsConfig={APPS_METRICS_CONFIG}
       />
     </Box>

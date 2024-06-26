@@ -1,13 +1,4 @@
-import {
-  Box,
-  Grid,
-  Switch,
-  Tab,
-  TableContainer,
-  Tabs,
-  Theme,
-  useTheme,
-} from "@mui/material";
+import { Box, Grid, Switch, Tab, TableContainer, Tabs } from "@mui/material";
 import React from "react";
 import { Link } from "react-router-dom";
 import { formatDateFromTimeMs } from "../../common/formatUtils";
@@ -21,25 +12,7 @@ import { memoryConverter } from "../../util/converter";
 import { MainNavPageInfo } from "../layout/mainNavContext";
 import { useNodeDetail } from "./hook/useNodeDetail";
 
-const useStyle = (theme: Theme) => ({
-  root: {
-    padding: theme.spacing(2),
-  },
-  paper: {
-    padding: theme.spacing(2),
-    marginTop: theme.spacing(2),
-    marginBottom: theme.spacing(2),
-  },
-  label: {
-    fontWeight: "bold",
-  },
-  tab: {
-    marginBottom: theme.spacing(2),
-  },
-});
-
 const NodeDetailPage = () => {
-  const styles = useStyle(useTheme());
   const {
     params,
     selectedTab,
@@ -53,7 +26,7 @@ const NodeDetailPage = () => {
   } = useNodeDetail();
 
   return (
-    <Box sx={styles.root}>
+    <Box sx={{ padding: (theme) => theme.spacing(2) }}>
       <MainNavPageInfo
         pageInfo={{
           title: `Node: ${params.id}`,
@@ -80,7 +53,11 @@ const NodeDetailPage = () => {
         Request Status: {msg}
       </TitleCard>
       <TitleCard title="Node Detail">
-        <Tabs value={selectedTab} onChange={handleChange} sx={styles.tab}>
+        <Tabs
+          value={selectedTab}
+          onChange={handleChange}
+          sx={{ marginBottom: (theme) => theme.spacing(2) }}
+        >
           <Tab value="info" label="Info" />
           <Tab value="raylet" label="Raylet" />
           <Tab
@@ -95,26 +72,33 @@ const NodeDetailPage = () => {
           />
         </Tabs>
         {nodeDetail && selectedTab === "info" && (
-          <Box sx={styles.paper}>
+          <Box
+            sx={(theme) => ({
+              padding: theme.spacing(2),
+              marginTop: theme.spacing(2),
+              marginBottom: theme.spacing(2),
+            })}
+          >
             <Grid container>
               <Grid item xs>
-                <Box sx={styles.label}>Hostname</Box> {nodeDetail.hostname}
+                <Box sx={{ fontWeight: "bold" }}>Hostname</Box>{" "}
+                {nodeDetail.hostname}
               </Grid>
               <Grid item xs>
-                <Box sx={styles.label}>IP</Box> {nodeDetail.ip}
+                <Box sx={{ fontWeight: "bold" }}>IP</Box> {nodeDetail.ip}
               </Grid>
             </Grid>
             <Grid container>
               <Grid item xs>
                 {nodeDetail.cpus && (
                   <React.Fragment>
-                    <Box sx={styles.label}>CPU (Logic/Physic)</Box>{" "}
+                    <Box sx={{ fontWeight: "bold" }}>CPU (Logic/Physic)</Box>{" "}
                     {nodeDetail.cpus[0]}/ {nodeDetail.cpus[1]}
                   </React.Fragment>
                 )}
               </Grid>
               <Grid item xs>
-                <Box sx={styles.label}>Load (1/5/15min)</Box>{" "}
+                <Box sx={{ fontWeight: "bold" }}>Load (1/5/15min)</Box>{" "}
                 {nodeDetail?.loadAvg[0] &&
                   nodeDetail.loadAvg[0]
                     .map((e) => Number(e).toFixed(2))
@@ -123,30 +107,30 @@ const NodeDetailPage = () => {
             </Grid>
             <Grid container>
               <Grid item xs>
-                <Box sx={styles.label}>Load per CPU (1/5/15min)</Box>{" "}
+                <Box sx={{ fontWeight: "bold" }}>Load per CPU (1/5/15min)</Box>{" "}
                 {nodeDetail?.loadAvg[1] &&
                   nodeDetail.loadAvg[1]
                     .map((e) => Number(e).toFixed(2))
                     .join("/")}
               </Grid>
               <Grid item xs>
-                <Box sx={styles.label}>Boot Time</Box>{" "}
+                <Box sx={{ fontWeight: "bold" }}>Boot Time</Box>{" "}
                 {formatDateFromTimeMs(nodeDetail.bootTime * 1000)}
               </Grid>
             </Grid>
             <Grid container>
               <Grid item xs>
-                <Box sx={styles.label}>Sent Tps</Box>{" "}
+                <Box sx={{ fontWeight: "bold" }}>Sent Tps</Box>{" "}
                 {memoryConverter(nodeDetail?.networkSpeed[0])}/s
               </Grid>
               <Grid item xs>
-                <Box sx={styles.label}>Recieved Tps</Box>{" "}
+                <Box sx={{ fontWeight: "bold" }}>Recieved Tps</Box>{" "}
                 {memoryConverter(nodeDetail?.networkSpeed[1])}/s
               </Grid>
             </Grid>
             <Grid container>
               <Grid item xs>
-                <Box sx={styles.label}>Memory</Box>{" "}
+                <Box sx={{ fontWeight: "bold" }}>Memory</Box>{" "}
                 {nodeDetail?.mem && (
                   <PercentageBar
                     num={Number(nodeDetail?.mem[0] - nodeDetail?.mem[1])}
@@ -158,7 +142,7 @@ const NodeDetailPage = () => {
                 )}
               </Grid>
               <Grid item xs>
-                <Box sx={styles.label}>CPU</Box>{" "}
+                <Box sx={{ fontWeight: "bold" }}>CPU</Box>{" "}
                 <PercentageBar num={Number(nodeDetail.cpu)} total={100}>
                   {nodeDetail.cpu}%
                 </PercentageBar>
@@ -168,7 +152,7 @@ const NodeDetailPage = () => {
               {nodeDetail?.disk &&
                 Object.entries(nodeDetail?.disk).map(([path, obj]) => (
                   <Grid item xs={6} key={path}>
-                    <Box sx={styles.label}>Disk ({path})</Box>{" "}
+                    <Box sx={{ fontWeight: "bold" }}>Disk ({path})</Box>{" "}
                     {obj && (
                       <PercentageBar num={Number(obj.used)} total={obj.total}>
                         {memoryConverter(obj.used)}/{memoryConverter(obj.total)}
@@ -180,7 +164,7 @@ const NodeDetailPage = () => {
             </Grid>
             <Grid container>
               <Grid item xs>
-                <Box sx={styles.label}>Logs</Box>{" "}
+                <Box sx={{ fontWeight: "bold" }}>Logs</Box>{" "}
                 <Link
                   to={`/logs/?nodeId=${encodeURIComponent(
                     nodeDetail.raylet.nodeId,
@@ -194,10 +178,16 @@ const NodeDetailPage = () => {
         )}
         {raylet && Object.keys(raylet).length > 0 && selectedTab === "raylet" && (
           <React.Fragment>
-            <Box sx={styles.paper}>
+            <Box
+              sx={(theme) => ({
+                padding: theme.spacing(2),
+                marginTop: theme.spacing(2),
+                marginBottom: theme.spacing(2),
+              })}
+            >
               <Grid container>
                 <Grid item xs>
-                  <Box sx={styles.label}>Command</Box>
+                  <Box sx={{ fontWeight: "bold" }}>Command</Box>
                   <br />
                   <div style={{ height: 200, overflow: "auto" }}>
                     {nodeDetail?.cmdline.join(" ")}
@@ -206,13 +196,14 @@ const NodeDetailPage = () => {
               </Grid>
               <Grid container>
                 <Grid item xs>
-                  <Box sx={styles.label}>Pid</Box> {raylet?.pid}
+                  <Box sx={{ fontWeight: "bold" }}>Pid</Box> {raylet?.pid}
                 </Grid>
                 <Grid item xs>
-                  <Box sx={styles.label}>Workers Num</Box> {raylet?.numWorkers}
+                  <Box sx={{ fontWeight: "bold" }}>Workers Num</Box>{" "}
+                  {raylet?.numWorkers}
                 </Grid>
                 <Grid item xs>
-                  <Box sx={styles.label}>Node Manager Port</Box>{" "}
+                  <Box sx={{ fontWeight: "bold" }}>Node Manager Port</Box>{" "}
                   {raylet?.nodeManagerPort}
                 </Grid>
               </Grid>
@@ -221,7 +212,13 @@ const NodeDetailPage = () => {
         )}
         {nodeDetail?.workers && selectedTab === "worker" && (
           <React.Fragment>
-            <TableContainer sx={styles.paper}>
+            <TableContainer
+              sx={(theme) => ({
+                padding: theme.spacing(2),
+                marginTop: theme.spacing(2),
+                marginBottom: theme.spacing(2),
+              })}
+            >
               <RayletWorkerTable
                 workers={nodeDetail?.workers}
                 actorMap={nodeDetail?.actors}
@@ -231,7 +228,13 @@ const NodeDetailPage = () => {
         )}
         {nodeDetail?.actors && selectedTab === "actor" && (
           <React.Fragment>
-            <TableContainer sx={styles.paper}>
+            <TableContainer
+              sx={(theme) => ({
+                padding: theme.spacing(2),
+                marginTop: theme.spacing(2),
+                marginBottom: theme.spacing(2),
+              })}
+            >
               <ActorTable
                 actors={nodeDetail.actors}
                 workers={nodeDetail?.workers}

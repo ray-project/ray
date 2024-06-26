@@ -10,9 +10,7 @@ import {
   TableRow,
   TextField,
   TextFieldProps,
-  Theme,
   Typography,
-  useTheme,
 } from "@mui/material";
 import React, { ReactElement } from "react";
 import { Outlet, useParams } from "react-router-dom";
@@ -30,21 +28,6 @@ import { useServeDeploymentDetails } from "./hook/useServeApplications";
 import { ServeReplicaRow } from "./ServeDeploymentRow";
 import { ServeEntityLogViewer } from "./ServeEntityLogViewer";
 
-const useStyles = (theme: Theme) => ({
-  root: {
-    padding: theme.spacing(3),
-  },
-  table: {
-    tableLayout: "fixed",
-  },
-  helpInfo: {
-    marginLeft: theme.spacing(1),
-  },
-  logSection: {
-    marginTop: theme.spacing(4),
-  },
-});
-
 const columns: { label: string; helpInfo?: ReactElement; width?: string }[] = [
   { label: "Replica ID" },
   { label: "Status" },
@@ -54,7 +37,6 @@ const columns: { label: string; helpInfo?: ReactElement; width?: string }[] = [
 ];
 
 export const ServeDeploymentDetailPage = () => {
-  const styles = useStyles(useTheme());
   const { applicationName, deploymentName } = useParams();
 
   const {
@@ -89,7 +71,7 @@ export const ServeDeploymentDetailPage = () => {
   } = sliceToPage(filteredReplicas, page.pageNo, page.pageSize);
 
   return (
-    <Box sx={styles.root}>
+    <Box sx={{ padding: (theme) => theme.spacing(3) }}>
       <MetadataSection
         metadataList={[
           {
@@ -217,7 +199,11 @@ export const ServeDeploymentDetailPage = () => {
                     >
                       {label}
                       {helpInfo && (
-                        <HelpInfo sx={styles.helpInfo}>{helpInfo}</HelpInfo>
+                        <HelpInfo
+                          sx={{ marginLeft: (theme) => theme.spacing(1) }}
+                        >
+                          {helpInfo}
+                        </HelpInfo>
                       )}
                     </Box>
                   </TableCell>
@@ -236,7 +222,11 @@ export const ServeDeploymentDetailPage = () => {
           </Table>
         </TableContainer>
       </CollapsibleSection>
-      <CollapsibleSection title="Logs" startExpanded sx={styles.logSection}>
+      <CollapsibleSection
+        title="Logs"
+        startExpanded
+        sx={{ marginTop: (theme) => theme.spacing(4) }}
+      >
         <ServeEntityLogViewer deployments={[deployment]} />
       </CollapsibleSection>
     </Box>

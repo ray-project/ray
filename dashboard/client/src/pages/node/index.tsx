@@ -12,9 +12,7 @@ import {
   TableContainer,
   TableHead,
   TableRow,
-  Theme,
   Typography,
-  useTheme,
 } from "@mui/material";
 import Pagination from "@mui/material/Pagination";
 import React from "react";
@@ -32,17 +30,6 @@ import { memoryConverter } from "../../util/converter";
 import { MainNavPageInfo } from "../layout/mainNavContext";
 import { useNodeList } from "./hook/useNodeList";
 import { NodeRows } from "./NodeRow";
-
-const useStyles = (theme: Theme) => ({
-  root: {
-    padding: theme.spacing(2),
-    width: "100%",
-    position: "relative",
-  },
-  helpInfo: {
-    marginLeft: theme.spacing(1),
-  },
-});
 
 const codeTextStyle = {
   fontFamily: "Roboto Mono, monospace",
@@ -240,7 +227,6 @@ export const NodeCard = (props: { node: NodeDetail }) => {
 };
 
 const Nodes = () => {
-  const styles = useStyles(useTheme());
   const {
     msg,
     isLoading,
@@ -263,7 +249,13 @@ const Nodes = () => {
   } = sliceToPage(nodeList, page.pageNo, page.pageSize);
 
   return (
-    <Box sx={styles.root}>
+    <Box
+      sx={(theme) => ({
+        padding: theme.spacing(2),
+        width: "100%",
+        position: "relative",
+      })}
+    >
       <Loading loading={isLoading} />
       <TitleCard title="NODES">
         Auto Refresh:
@@ -369,7 +361,11 @@ const Nodes = () => {
                       >
                         {label}
                         {helpInfo && (
-                          <HelpInfo sx={styles.helpInfo}>{helpInfo}</HelpInfo>
+                          <HelpInfo
+                            sx={{ marginLeft: (theme) => theme.spacing(1) }}
+                          >
+                            {helpInfo}
+                          </HelpInfo>
                         )}
                       </Box>
                     </TableCell>

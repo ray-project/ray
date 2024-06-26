@@ -1,4 +1,4 @@
-import { Box, SxProps, Theme, useTheme } from "@mui/material";
+import { Box, SxProps, Theme } from "@mui/material";
 import React from "react";
 import { RiCloseCircleFill, RiRecordCircleFill } from "react-icons/ri";
 import { ServeDeployment } from "../type/serve";
@@ -11,36 +11,24 @@ type ServeStatusIconProps = {
   sx?: SxProps<Theme>;
 } & ClassNameProps;
 
-const useServeStatusIconStyles = (theme: Theme) => ({
-  icon: (small: boolean) => ({
-    width: small ? 16 : 20,
-    height: small ? 16 : 20,
-    marginRight: "8px",
-  }),
-  colorSuccess: {
-    color: theme.palette.success.main,
-  },
-  colorError: {
-    color: theme.palette.error.main,
-  },
-});
-
 export const ServeStatusIcon = ({
   deployment,
   small,
   className,
   sx,
 }: ServeStatusIconProps) => {
-  const styles = useServeStatusIconStyles(useTheme());
-
   switch (deployment.status) {
     case "HEALTHY":
       return (
         <Box
           component={RiRecordCircleFill}
           sx={[
-            styles.icon,
-            styles.colorSuccess,
+            {
+              width: small ? 16 : 20,
+              height: small ? 16 : 20,
+              marginRight: "8px",
+              color: (theme) => theme.palette.success.main,
+            },
             ...(Array.isArray(sx) ? sx : [sx]),
           ]}
           title="Healthy"
@@ -51,8 +39,12 @@ export const ServeStatusIcon = ({
         <Box
           component={RiCloseCircleFill}
           sx={[
-            styles.icon,
-            styles.colorError,
+            {
+              width: small ? 16 : 20,
+              height: small ? 16 : 20,
+              marginRight: "8px",
+              color: (theme) => theme.palette.error.main,
+            },
             ...(Array.isArray(sx) ? sx : [sx]),
           ]}
           title="Unhealthy"

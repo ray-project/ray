@@ -1,12 +1,4 @@
-import {
-  Box,
-  IconButton,
-  Link,
-  TableCell,
-  TableRow,
-  Theme,
-  useTheme,
-} from "@mui/material";
+import { Box, IconButton, Link, TableCell, TableRow } from "@mui/material";
 import React, { useState } from "react";
 import { RiArrowDownSLine, RiArrowRightSLine } from "react-icons/ri";
 import { Link as RouterLink } from "react-router-dom";
@@ -24,16 +16,7 @@ export type ServeApplicationRowsProps = {
   application: ServeApplication;
   startExpanded?: boolean;
 };
-const useStyles = (theme: Theme) => ({
-  applicationName: {
-    fontWeight: 500,
-  },
-  expandCollapseIcon: {
-    color: theme.palette.text.secondary,
-    fontSize: "1.5em",
-    verticalAlign: "middle",
-  },
-});
+
 export const ServeApplicationRows = ({
   application,
   startExpanded = true,
@@ -52,8 +35,6 @@ export const ServeApplicationRows = ({
 
   const deploymentsList = Object.values(deployments);
 
-  const styles = useStyles(useTheme());
-
   const onExpandButtonClick = () => {
     setExpanded(!isExpanded);
   };
@@ -67,17 +48,25 @@ export const ServeApplicationRows = ({
             {!isExpanded ? (
               <Box
                 component={RiArrowRightSLine}
-                sx={styles.expandCollapseIcon}
+                sx={{
+                  color: (theme) => theme.palette.text.secondary,
+                  fontSize: "1.5em",
+                  verticalAlign: "middle",
+                }}
               />
             ) : (
               <Box
                 component={RiArrowDownSLine}
-                sx={styles.expandCollapseIcon}
+                sx={{
+                  color: (theme) => theme.palette.text.secondary,
+                  fontSize: "1.5em",
+                  verticalAlign: "middle",
+                }}
               />
             )}
           </IconButton>
         </TableCell>
-        <TableCell align="center" sx={styles.applicationName}>
+        <TableCell align="center" sx={{ fontWeight: 500 }}>
           <Link
             component={RouterLink}
             to={`applications/${name ? encodeURIComponent(name) : "-"}`}

@@ -11,28 +11,11 @@ import {
   MenuItem,
   Select,
   TextField,
-  Theme,
   Typography,
-  useTheme,
 } from "@mui/material";
 import React, { PropsWithChildren, useState } from "react";
 import { HelpInfo } from "../components/Tooltip";
 import { ClassNameProps } from "./props";
-
-const useStyles = (theme: Theme) => ({
-  buttonLink: {
-    cursor: "pointer",
-  },
-  dialogContent: {
-    padding: "12px",
-    display: "flex",
-    justifyContent: "flex-end",
-  },
-  secondaryButton: {
-    textTransform: "capitalize",
-    color: "#5F6469",
-  },
-});
 
 type CpuProfilingLinkProps = PropsWithChildren<
   {
@@ -167,14 +150,12 @@ export const ProfilerButton = ({
     setOpen(false);
   };
 
-  const buttonLinkStyles = useStyles(useTheme());
-
   return (
     <div>
       <Link
         onClick={handleOpen}
         aria-label="Memory Profiling"
-        sx={buttonLinkStyles.buttonLink}
+        sx={{ cursor: "pointer" }}
       >
         Memory&nbsp;Profiling{type ? ` (${type})` : ""}
       </Link>
@@ -265,11 +246,13 @@ export const ProfilerButton = ({
             }
           />
         </DialogContent>
-        <Box sx={buttonLinkStyles.dialogContent}>
+        <Box
+          sx={{ padding: "12px", display: "flex", justifyContent: "flex-end" }}
+        >
           <Button
             onClick={handleClose}
             variant="text"
-            sx={buttonLinkStyles.secondaryButton}
+            sx={{ textTransform: "capitalize", color: "#5F6469" }}
           >
             Cancel
           </Button>

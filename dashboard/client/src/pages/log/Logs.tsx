@@ -6,9 +6,7 @@ import {
   List,
   ListItem,
   Paper,
-  Theme,
   Typography,
-  useTheme,
 } from "@mui/material";
 import { grey } from "@mui/material/colors";
 import React, { useMemo, useState } from "react";
@@ -22,23 +20,7 @@ import { getStateApiDownloadLogUrl, listStateApiLogs } from "../../service/log";
 import { getNodeList } from "../../service/node";
 import { MainNavPageInfo } from "../layout/mainNavContext";
 
-const useStyles = (theme: Theme) => ({
-  root: {
-    padding: theme.spacing(2),
-    width: "100%",
-  },
-  table: {
-    marginTop: theme.spacing(4),
-    padding: theme.spacing(2),
-  },
-  pageMeta: {
-    padding: theme.spacing(2),
-    marginTop: theme.spacing(2),
-  },
-});
-
 export const StateApiLogsListPage = () => {
-  const styles = useStyles(useTheme());
   const [searchParams] = useSearchParams();
   const nodeId = searchParams.get("nodeId");
   const folder = searchParams.get("folder");
@@ -58,7 +40,7 @@ export const StateApiLogsListPage = () => {
       : `/logs/`;
 
   return (
-    <Box sx={styles.root}>
+    <Box sx={{ padding: (theme) => theme.spacing(2), width: "100%" }}>
       <TitleCard title="Logs Viewer">
         <Paper elevation={0}>
           {!nodeId && <p>Select a node to view logs</p>}
@@ -138,13 +120,6 @@ export const StateApiLogsNodesList = () => {
   );
 };
 
-const useStateApiLogsFilesListStyles = (theme: Theme) => ({
-  iconButton: {
-    verticalAlign: "baseline",
-    color: grey[700],
-  },
-});
-
 type StateApiLogsFilesListProps = {
   nodeId: string;
   folder: string | null;
@@ -156,8 +131,6 @@ export const StateApiLogsFilesList = ({
   folder,
   fileName,
 }: StateApiLogsFilesListProps) => {
-  const styles = useStateApiLogsFilesListStyles(useTheme());
-
   // We want to do a partial search for file name.
   const fileNameGlob = fileName ? `*${fileName}*` : undefined;
   const glob = fileNameGlob
@@ -245,7 +218,7 @@ export const StateApiLogsFilesList = ({
                       href={downloadUrl}
                       download={fileName}
                       size="small"
-                      sx={styles.iconButton}
+                      sx={{ verticalAlign: "baseline", color: grey[700] }}
                     >
                       <RiDownload2Line size={16} />
                     </IconButton>
@@ -261,7 +234,6 @@ export const StateApiLogsFilesList = ({
 };
 
 export const StateApiLogViewerPage = () => {
-  const styles = useStyles(useTheme());
   const [searchParams] = useSearchParams();
   const nodeId = searchParams.get("nodeId");
   const fileName = searchParams.get("fileName");
@@ -277,7 +249,7 @@ export const StateApiLogViewerPage = () => {
       : `/logs/?nodeId=${nodeId}`;
 
   return (
-    <Box sx={styles.root}>
+    <Box sx={{ padding: (theme) => theme.spacing(2), width: "100%" }}>
       <TitleCard title="Logs Viewer">
         <Paper elevation={0}>
           {!nodeId && <p>Select a node to view logs</p>}

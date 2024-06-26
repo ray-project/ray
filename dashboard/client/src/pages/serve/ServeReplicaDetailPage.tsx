@@ -1,4 +1,4 @@
-import { Box, Theme, Typography, useTheme } from "@mui/material";
+import { Box, Typography } from "@mui/material";
 import React from "react";
 import { useParams } from "react-router-dom";
 import { CodeDialogButton } from "../../common/CodeDialogButton";
@@ -20,18 +20,8 @@ import { ServeReplicaMetricsSection } from "./ServeDeploymentMetricsSection";
 
 export const LOG_CONTEXT_KEY_SERVE_DEPLOYMENTS = "serve-entity-deployments";
 
-const useStyles = (theme: Theme) => ({
-  root: {
-    padding: theme.spacing(3),
-  },
-  section: {
-    marginTop: theme.spacing(4),
-  },
-});
-
 export const ServeReplicaDetailPage = () => {
   const { applicationName, deploymentName, replicaId } = useParams();
-  const styles = useStyles(useTheme());
 
   const { application, deployment, replica } = useServeReplicaDetails(
     applicationName,
@@ -58,7 +48,7 @@ export const ServeReplicaDetailPage = () => {
     start_time_s,
   } = replica;
   return (
-    <Box sx={styles.root}>
+    <Box sx={{ padding: (theme) => theme.spacing(3) }}>
       <MetadataSection
         metadataList={[
           {
@@ -136,12 +126,12 @@ export const ServeReplicaDetailPage = () => {
         </Section>
       </CollapsibleSection>
       <ServeReplicaMetricsSection
-        sx={styles.section}
+        sx={{ marginTop: (theme) => theme.spacing(4) }}
         deploymentName={deployment.name}
         replicaId={replica.replica_id}
       />
       <CollapsibleSection
-        sx={styles.section}
+        sx={{ marginTop: (theme) => theme.spacing(4) }}
         title="Tasks History"
         startExpanded
       >

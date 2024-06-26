@@ -1,4 +1,4 @@
-import { Box, Theme, useTheme } from "@mui/material";
+import { Box } from "@mui/material";
 import React from "react";
 import Loading from "../../components/Loading";
 import { MetadataSection } from "../../components/MetadataSection";
@@ -8,21 +8,14 @@ import { MainNavPageInfo } from "../layout/mainNavContext";
 
 import { useClusterDetail } from "./hook/useClusterDetail";
 
-const useStyle = (theme: Theme) => ({
-  root: {
-    padding: theme.spacing(2),
-  },
-});
-
 export const ClusterDetailInfoPage = () => {
   // TODO(aguo): Add more content to this page!
 
-  const styles = useStyle(useTheme());
   const { clusterDetail, msg, isLoading } = useClusterDetail();
 
   if (!clusterDetail) {
     return (
-      <Box sx={styles.root}>
+      <Box sx={{ padding: (theme) => theme.spacing(2) }}>
         <MainNavPageInfo
           pageInfo={{
             title: "Cluster Info",
@@ -41,7 +34,7 @@ export const ClusterDetailInfoPage = () => {
   }
 
   return (
-    <Box sx={styles.root}>
+    <Box sx={{ padding: (theme) => theme.spacing(2) }}>
       <MainNavPageInfo
         pageInfo={{
           title: "Cluster Info",

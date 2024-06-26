@@ -1,4 +1,4 @@
-import { Box, Color, Theme, useTheme } from "@mui/material";
+import { Box, Color } from "@mui/material";
 import { blue, blueGrey, cyan, green, red } from "@mui/material/colors";
 import React, { CSSProperties, ReactNode } from "react";
 import { TaskStatus } from "../pages/job/hook/useJobProgress";
@@ -98,20 +98,6 @@ const typeMap = {
   [key: string]: Color;
 };
 
-const useStyles = (theme: Theme) => ({
-  root: {
-    padding: "2px 8px",
-    border: "solid 1px",
-    borderRadius: "4px",
-    fontSize: 12,
-    display: "inline-flex",
-    alignItems: "center",
-  },
-  afterIcon: {
-    marginLeft: "4px",
-  },
-});
-
 export type StatusChipProps = {
   type: keyof typeof colorMap;
   status: string | ActorEnum | ReactNode;
@@ -120,7 +106,6 @@ export type StatusChipProps = {
 };
 
 export const StatusChip = ({ type, status, suffix, icon }: StatusChipProps) => {
-  const styles = useStyles(useTheme());
   let color: Color | string = blueGrey;
 
   if (typeMap[type]) {
@@ -143,9 +128,23 @@ export const StatusChip = ({ type, status, suffix, icon }: StatusChipProps) => {
   }
 
   return (
-    <Box component="span" sx={styles.root} style={style}>
+    <Box
+      component="span"
+      sx={{
+        padding: "2px 8px",
+        border: "solid 1px",
+        borderRadius: "4px",
+        fontSize: 12,
+        display: "inline-flex",
+        alignItems: "center",
+      }}
+      style={style}
+    >
       {icon}
-      <Box component="span" sx={icon !== undefined ? styles.afterIcon : {}}>
+      <Box
+        component="span"
+        sx={icon !== undefined ? { marginLeft: "4px" } : {}}
+      >
         {status}
       </Box>
       <Box sx={{ marginLeft: 0.5 }}>{suffix}</Box>

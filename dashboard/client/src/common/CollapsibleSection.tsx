@@ -1,4 +1,4 @@
-import { Box, SxProps, Theme, Typography, useTheme } from "@mui/material";
+import { Box, SxProps, Theme, Typography } from "@mui/material";
 import React, {
   forwardRef,
   PropsWithChildren,
@@ -7,23 +7,6 @@ import React, {
 } from "react";
 import { RiArrowDownSLine, RiArrowRightSLine } from "react-icons/ri";
 import { ClassNameProps } from "./props";
-
-const useStyles = (theme: Theme) => ({
-  title: {
-    display: "flex",
-    flexDirection: "row",
-    flexWrap: "nowrap",
-    alignItems: "center",
-    fontWeight: 500,
-    cursor: "pointer",
-    marginRight: theme.spacing(1),
-  },
-  icon: {
-    marginRight: theme.spacing(1),
-    width: 24,
-    height: 24,
-  },
-});
 
 type CollapsibleSectionProps = PropsWithChildren<
   {
@@ -66,7 +49,6 @@ export const CollapsibleSection = forwardRef<
     },
     ref,
   ) => {
-    const styles = useStyles(useTheme());
     const [internalExpanded, setInternalExpanded] = useState(startExpanded);
     const finalExpanded = expanded !== undefined ? expanded : internalExpanded;
 
@@ -79,14 +61,36 @@ export const CollapsibleSection = forwardRef<
       <Box ref={ref} className={className} sx={sx}>
         <Box display="flex" flexDirection="row" alignItems="center">
           <Typography
-            sx={styles.title}
+            sx={(theme) => ({
+              display: "flex",
+              flexDirection: "row",
+              flexWrap: "nowrap",
+              alignItems: "center",
+              fontWeight: 500,
+              cursor: "pointer",
+              marginRight: theme.spacing(1),
+            })}
             variant="h4"
             onClick={handleExpandClick}
           >
             {finalExpanded ? (
-              <Box component={RiArrowDownSLine} sx={styles.icon} />
+              <Box
+                component={RiArrowDownSLine}
+                sx={(theme) => ({
+                  marginRight: theme.spacing(1),
+                  width: 24,
+                  height: 24,
+                })}
+              />
             ) : (
-              <Box component={RiArrowRightSLine} sx={styles.icon} />
+              <Box
+                component={RiArrowRightSLine}
+                sx={(theme) => ({
+                  marginRight: theme.spacing(1),
+                  width: 24,
+                  height: 24,
+                })}
+              />
             )}
             {title}
           </Typography>
@@ -99,13 +103,6 @@ export const CollapsibleSection = forwardRef<
     );
   },
 );
-
-const useHideableBlockStyles = (theme: Theme) => ({
-  body: (hidden: boolean) => ({
-    marginTop: theme.spacing(1),
-    display: hidden ? "none" : "block",
-  }),
-});
 
 type HideableBlockProps = PropsWithChildren<
   {
@@ -128,8 +125,6 @@ export const HideableBlock = ({
   keepRendered,
   children,
 }: HideableBlockProps) => {
-  const styles = useHideableBlockStyles(useTheme());
-
   // visible represents whether the component is viewable in the browser.
   // Rendered represents whether the DOM elements exist in the DOM tree.
   // If !visible && rendered, then the elements are in the DOM but are
@@ -145,6 +140,13 @@ export const HideableBlock = ({
   // Optimization to keep the component rendered (but not visible) when hidden
   // to avoid re-rendering when component is shown again.
   return visible || (keepRendered && rendered) ? (
-    <Box sx={styles.body(!visible)}>{children}</Box>
+    <Box
+      sx={{
+        marginTop: (theme) => theme.spacing(1),
+        display: !visible ? "none" : "block",
+      }}
+    >
+      {children}
+    </Box>
   ) : null;
 };
