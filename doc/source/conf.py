@@ -29,12 +29,14 @@ sys.path.insert(0, os.path.abspath("../../python/"))
 
 # -- General configuration ------------------------------------------------
 
-# The name of a reST role (builtin or Sphinx extension) to use as the default role, that
-# is, for text marked up `like this`. This can be set to 'py:obj' to make `filter` a
-# cross-reference to the Python function “filter”. The default is None, which doesn’t
-# reassign the default role.
-
-default_role = "py:obj"
+# This setting controls how single backticks are handled by sphinx. Developers
+# are used to using single backticks for code, but RST syntax requires that code
+# code to be denoted with _double_ backticks.
+# Here we make sphinx treat single backticks as code also, because everyone is
+# used to using single backticks as is done with markdown; without this setting,
+# lots of documentation ends up getting committed with single backticks anyway,
+# so we might as well make it work as developers intend for it to.
+default_role = "code"
 
 sys.path.append(os.path.abspath("./_ext"))
 
@@ -91,6 +93,14 @@ myst_enable_extensions = [
 ]
 
 myst_heading_anchors = 3
+
+# Make broken internal references into build time errors.
+# See https://www.sphinx-doc.org/en/master/usage/configuration.html#confval-nitpicky
+# for more information. :py:class: references are ignored due to false positives
+# arising from type annotations. See https://github.com/ray-project/ray/pull/46103
+# for additional context.
+nitpicky = True
+nitpick_ignore_regex = [("py:class", ".*")]
 
 # Cache notebook outputs in _build/.jupyter_cache
 # To prevent notebook execution, set this to "off". To force re-execution, set this to
