@@ -3,6 +3,7 @@ import logging
 import os
 import sys
 import time
+import traceback
 
 import numpy as np
 import pytest
@@ -10,6 +11,7 @@ import pytest
 import ray
 import ray.cluster_utils
 import ray.experimental.channel as ray_channel
+from ray.exceptions import RayChannelError
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 from ray.dag.compiled_dag_node import CompiledDAG
 
@@ -184,11 +186,15 @@ def test_set_error_before_read(ray_start_regular):
         # call to read() *could* block.
 
         # We wrap both calls to read() in pytest.raises() as both calls could
-        # trigger an IOError exception if the channel has already been closed.
-        with pytest.raises(ray.exceptions.RayTaskError):
+        # trigger an RayChannelError exception if the channel has already been closed.
+        with pytest.raises(
+            ray.exceptions.RayTaskError, match=r"Channel closed"
+        ) as exc_info:
             ray.get([a.close.remote(), b.read.remote()])
-        with pytest.raises(ray.exceptions.RayTaskError):
+        assert isinstance(exc_info.value.as_instanceof_cause(), RayChannelError)
+        with pytest.raises(ray.exceptions.RayTaskError) as exc_info:
             ray.get(b.read.remote())
+        assert isinstance(exc_info.value.as_instanceof_cause(), RayChannelError)
 
 
 @pytest.mark.skipif(
@@ -563,7 +569,7 @@ def test_remote_reader_close(ray_start_cluster, remote):
         def read(self):
             try:
                 self._reader_chan.read()
-            except IOError:
+            except RayChannelError:
                 pass
 
         def close(self):
@@ -770,6 +776,69 @@ def test_composite_channel_multiple_readers(ray_start_cluster):
     (2) actor1 writes data to CompositeChannel and actor2 and the driver reads it.
     Currently, (1) is not supported, and (2) is blocked by the reference count issue.
     """
+
+
+@pytest.mark.skipif(
+    sys.platform != "linux" and sys.platform != "darwin",
+    reason="Requires Linux or Mac.",
+)
+def test_put_error(ray_start_cluster):
+    cluster = ray_start_cluster
+    # This node is for both the driver (including the DriverHelperActor) and the
+    # writer actor.
+    cluster.add_node(num_cpus=2)
+    ray.init(address=cluster.address)
+
+    def _wrap_exception(exc):
+        backtrace = ray._private.utils.format_error_message(
+            "".join(traceback.format_exception(type(exc), exc, exc.__traceback__)),
+            task_exception=True,
+        )
+        wrapped = ray.exceptions.RayTaskError(
+            function_name="do_exec_tasks",
+            traceback_str=backtrace,
+            cause=exc,
+        )
+        return wrapped
+
+    @ray.remote(num_cpus=1)
+    class Actor:
+        def setup(self, driver_actor):
+            self._channel = ray_channel.Channel(
+                ray.get_runtime_context().current_actor,
+                [driver_actor],
+                1000,
+            )
+
+        def get_channel(self):
+            return self._channel
+
+        def write(self, write_error):
+            if write_error:
+                try:
+                    raise ValueError("")
+                except Exception as exc:
+                    self._channel.write(_wrap_exception(exc))
+            else:
+                self._channel.write(b"x")
+
+    a = Actor.remote()
+    ray.get(a.setup.remote(create_driver_actor()))
+    chan = ray.get(a.get_channel.remote())
+
+    # Putting a bytes object multiple times is okay.
+    for _ in range(3):
+        ray.get(a.write.remote(write_error=False))
+        assert chan.read() == b"x"
+
+    # Putting an exception multiple times is okay.
+    for _ in range(3):
+        ray.get(a.write.remote(write_error=True))
+        try:
+            assert chan.read()
+        except Exception as exc:
+            assert isinstance(exc, ValueError)
+            assert isinstance(exc, ray.exceptions.RayTaskError)
 
 
 if __name__ == "__main__":

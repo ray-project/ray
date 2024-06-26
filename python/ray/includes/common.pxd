@@ -129,6 +129,7 @@ cdef extern from "ray/common/status.h" namespace "ray" nogil:
         c_bool IsObjectRefEndOfStream()
         c_bool IsIntentionalSystemExit()
         c_bool IsUnexpectedSystemExit()
+        c_bool IsChannelError()
 
         c_string ToString()
         c_string CodeAsString()
