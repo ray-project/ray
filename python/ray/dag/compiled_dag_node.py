@@ -4,9 +4,15 @@ from typing import Any, Dict, List, Tuple, Union, Optional, Set
 import logging
 import threading
 import uuid
+import traceback
 
 import ray
-from ray.experimental.compiled_dag_ref import CompiledDAGRef, RayDAGTaskError
+from ray.exceptions import RayTaskError, RayChannelError
+from ray.experimental.compiled_dag_ref import (
+    CompiledDAGRef,
+    CompiledDAGFuture,
+    _process_return_vals,
+)
 from ray.experimental.channel import (
     ChannelInterface,
     ChannelOutputType,
@@ -17,7 +23,7 @@ from ray.experimental.channel import (
     AwaitableBackgroundReader,
     AwaitableBackgroundWriter,
 )
-from ray.util.annotations import DeveloperAPI, PublicAPI
+from ray.util.annotations import DeveloperAPI
 
 from ray.experimental.channel.shared_memory_channel import (
     SharedMemoryType,
@@ -126,6 +132,19 @@ def _prep_task(self, task: "ExecutableTask") -> None:
     output_writer.start()
 
 
+def _wrap_exception(exc):
+    backtrace = ray._private.utils.format_error_message(
+        "".join(traceback.format_exception(type(exc), exc, exc.__traceback__)),
+        task_exception=True,
+    )
+    wrapped = RayTaskError(
+        function_name="do_exec_tasks",
+        traceback_str=backtrace,
+        cause=exc,
+    )
+    return wrapped
+
+
 def _exec_task(self, task: "ExecutableTask", idx: int) -> bool:
     """
     Execute the task.
@@ -144,9 +163,12 @@ def _exec_task(self, task: "ExecutableTask", idx: int) -> bool:
     res = None
     try:
         res = input_reader.read()
-    except IOError:
+    except RayChannelError:
         # Channel closed. Exit the loop.
         return True
+
+    try:
+        _process_return_vals(res, return_single_output=False)
     except Exception as exc:
         # Previous task raised an application-level exception.
         # Propagate it and skip the actual task. We don't need to wrap the
@@ -161,29 +183,16 @@ def _exec_task(self, task: "ExecutableTask", idx: int) -> bool:
 
     try:
         output_val = method(*resolved_inputs, **task.resolved_kwargs)
+    except Exception as exc:
+        output_val = _wrap_exception(exc)
+
+    try:
         output_writer.write(output_val)
-    except IOError:
+    except RayChannelError:
         # Channel closed. Exit the loop.
         return True
-    except Exception as exc:
-        # TODO(rui): consider different ways of passing down the exception,
-        # e.g., wrapping with RayTaskError.
-        output_writer.write(RayDAGTaskError(exc))
 
     return False
-
-
-@PublicAPI(stability="alpha")
-class AwaitableDAGOutput:
-    def __init__(self, fut: asyncio.Future, ReaderInterface: ReaderInterface):
-        self._fut = fut
-        self._reader = ReaderInterface
-
-    async def get(self):
-        ret = await self._fut
-        if isinstance(ret, Exception):
-            raise ret
-        return ret
 
 
 @DeveloperAPI
@@ -465,7 +474,7 @@ class CompiledDAG:
         # Preprocessing identifies the input node and output node.
         self.input_task_idx: Optional[int] = None
         self.output_task_idx: Optional[int] = None
-        self.has_single_output: bool = False
+        self._has_single_output: bool = False
         # Number of expected positional args and kwargs that may be passed to
         # dag.execute.
         self._input_num_positional_args: Optional[int] = None
@@ -516,6 +525,10 @@ class CompiledDAG:
                 ray.get_runtime_context().get_node_id(), soft=False
             )
         ).remote()
+
+    @property
+    def has_single_output(self):
+        return self._has_single_output
 
     def get_id(self) -> str:
         """
@@ -695,7 +708,7 @@ class CompiledDAG:
         output_node = self.idx_to_task[self.output_task_idx].dag_node
         # Add an MultiOutputNode to the end of the DAG if it's not already there.
         if not isinstance(output_node, MultiOutputNode):
-            self.has_single_output = True
+            self._has_single_output = True
             output_node = MultiOutputNode([output_node])
             self._add_node(output_node)
             self.output_task_idx = self.dag_node_to_idx[output_node]
@@ -932,9 +945,8 @@ class CompiledDAG:
         # If no MultiOutputNode was specified during the DAG creation, there is only
         # one output. Return a single output channel instead of a list of
         # channels.
-        if self.has_single_output:
+        if self._has_single_output:
             assert len(self.dag_output_channels) == 1
-            self.dag_output_channels = self.dag_output_channels[0]
 
         # Driver should ray.put on input, ray.get/release on output
         self._monitor = self._monitor_failures()
@@ -1280,7 +1292,7 @@ class CompiledDAG:
         self,
         *args,
         **kwargs,
-    ) -> AwaitableDAGOutput:
+    ) -> CompiledDAGFuture:
         """Execute this DAG using the compiled execution path.
 
         NOTE: Not threadsafe.
@@ -1304,7 +1316,7 @@ class CompiledDAG:
             fut = asyncio.Future()
             await self._fut_queue.put(fut)
 
-        return AwaitableDAGOutput(fut, self._dag_output_fetcher)
+        return CompiledDAGFuture(self, self._execution_index, fut)
 
     def teardown(self):
         """Teardown and cancel all actor tasks for this DAG. After this

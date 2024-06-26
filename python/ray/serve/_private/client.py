@@ -380,11 +380,6 @@ class ServeControllerClient:
         )
 
     @_ensure_connected
-    def get_app_config(self, name: str = SERVE_DEFAULT_APP_NAME) -> Dict:
-        """Returns the most recently requested Serve config."""
-        return ray.get(self._controller.get_app_config.remote(name))
-
-    @_ensure_connected
     def get_serve_status(self, name: str = SERVE_DEFAULT_APP_NAME) -> StatusOverview:
         proto = StatusOverviewProto.FromString(
             ray.get(self._controller.get_serve_status.remote(name))
