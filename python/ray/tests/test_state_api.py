@@ -250,8 +250,8 @@ def generate_task_event(
     )
     state_updates = TaskStateUpdate(
         node_id=node_id,
+        state_ts={state: 1},
     )
-    setattr(state_updates, TaskStatus.Name(state).lower() + "_ts", 1)
     return TaskEvents(
         task_id=id,
         job_id=job_id,
@@ -1007,10 +1007,12 @@ async def test_api_manager_list_tasks_events(state_api_manager):
     second = int(1e9)
     state_updates = TaskStateUpdate(
         node_id=node_id.binary(),
-        pending_args_avail_ts=current,
-        submitted_to_worker_ts=current + second,
-        running_ts=current + (2 * second),
-        finished_ts=current + (3 * second),
+        state_ts={
+            TaskStatus.PENDING_ARGS_AVAIL: current,
+            TaskStatus.SUBMITTED_TO_WORKER: current + second,
+            TaskStatus.RUNNING: current + (2 * second),
+            TaskStatus.FINISHED: current + (3 * second),
+        },
     )
 
     """
@@ -1056,9 +1058,11 @@ async def test_api_manager_list_tasks_events(state_api_manager):
     """
     state_updates = TaskStateUpdate(
         node_id=node_id.binary(),
-        pending_args_avail_ts=current,
-        submitted_to_worker_ts=current + second,
-        running_ts=current + (2 * second),
+        state_ts={
+            TaskStatus.PENDING_ARGS_AVAIL: current,
+            TaskStatus.SUBMITTED_TO_WORKER: current + second,
+            TaskStatus.RUNNING: current + (2 * second),
+        },
     )
     events = TaskEvents(
         task_id=id,
@@ -1077,8 +1081,10 @@ async def test_api_manager_list_tasks_events(state_api_manager):
     Test None of start & end time is updated.
     """
     state_updates = TaskStateUpdate(
-        pending_args_avail_ts=current,
-        submitted_to_worker_ts=current + second,
+        state_ts={
+            TaskStatus.PENDING_ARGS_AVAIL: current,
+            TaskStatus.SUBMITTED_TO_WORKER: current + second,
+        },
     )
     events = TaskEvents(
         task_id=id,
@@ -2424,7 +2430,11 @@ def test_list_get_tasks(shutdown_only):
         for task in tasks:
             assert task["job_id"] == job_id
 
-        tasks = list_tasks(filters=[("name", "=", "f_0")])
+        tasks = list_tasks(filters=[("name", "=", "f_0")], limit=1)
+        assert len(tasks) == 1
+
+        # using limit to make sure state filtering is done on the gcs side
+        tasks = list_tasks(filters=[("STATE", "=", "PENDING_ARGS_AVAIL")], limit=1)
         assert len(tasks) == 1
 
         return True
