@@ -153,11 +153,13 @@ async def get_driver_jobs(
     job_infos = await gcs_aio_client.get_all_job_info(timeout=timeout)
     # Sort jobs from GCS to follow convention of returning only last driver
     # of submission job.
-    sorted_job_infos = sorted(job_infos.items())
+    sorted_job_infos = sorted(
+        job_infos.values(), key=lambda job_table_entry: job_table_entry.job_id.hex()
+    )
 
     jobs = {}
     submission_job_drivers = {}
-    for (_, job_table_entry) in sorted_job_infos:
+    for job_table_entry in sorted_job_infos:
         if job_table_entry.config.ray_namespace.startswith(
             ray_constants.RAY_INTERNAL_NAMESPACE_PREFIX
         ):

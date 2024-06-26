@@ -435,7 +435,7 @@ async def test_list_jobs_empty(job_manager: JobManager):
 
 
 @pytest.mark.asyncio
-async def test_list_jobs(job_manager: JobManager):
+async def test_list_jobs_same_submission_id(job_manager: JobManager):
     cmd = (
         "python -c 'import ray; ray.init(); ray.shutdown(); "
         "ray.init(); ray.shutdown();'"
@@ -446,12 +446,11 @@ async def test_list_jobs(job_manager: JobManager):
         check_job_succeeded, job_manager=job_manager, job_id=submission_id
     )
     jobs_info = await job_manager.list_jobs()
-    print("DEBUG jobsinfo", jobs_info)
-    assert len(jobs_info) == 1
+    assert len(jobs_info) == 1, jobs_info
 
 
 @pytest.mark.asyncio
-async def test_list_jobs_same_submission_id(job_manager: JobManager):
+async def test_list_jobs(job_manager: JobManager):
     await job_manager.submit_job(entrypoint="echo hi", submission_id="1")
 
     runtime_env = {"env_vars": {"TEST": "123"}}
