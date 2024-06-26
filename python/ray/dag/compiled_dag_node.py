@@ -160,6 +160,7 @@ def _exec_task(self, task: "ExecutableTask", idx: int) -> bool:
         resolved_inputs.append(task_input.resolve(res))
 
     try:
+        # TODO(swang): Check that we are not using kwargs.
         output_val = method(*resolved_inputs)
         output_writer.write(output_val)
     except IOError:
