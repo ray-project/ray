@@ -86,9 +86,9 @@ if __name__ == "__main__":
     register_env("multi_cart", lambda cfg: MultiAgentCartPole(cfg))
     dummy_env = gym.make("CartPole-v1")
 
-    offline_file = str(
-        Path(os.path.join("../../", "tests/data/cartpole/large.json")).resolve()
-    )
+    rllib_dir = Path(__file__).parent.parent
+    print(f"rllib dir={rllib_dir}")
+    offline_file = os.path.join(rllib_dir, "tests/data/cartpole/large.json")
 
     base_config = (
         BCConfig()
