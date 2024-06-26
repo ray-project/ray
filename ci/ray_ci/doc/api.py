@@ -124,7 +124,10 @@ class API:
         Check if this API has a private name. Private names are those that start with
         underscores.
         """
-        return self.name.split(".")[-1].startswith("_")
+        name_has_underscore = self.name.split(".")[-1].startswith("_")
+        is_internal = ".internal." in self.name
+
+        return name_has_underscore or is_internal
 
     def is_public(self) -> bool:
         """
