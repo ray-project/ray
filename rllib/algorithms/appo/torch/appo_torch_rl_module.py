@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Tuple
 
 from ray.rllib.algorithms.appo.appo import (
     OLD_ACTION_DIST_LOGITS_KEY,
@@ -13,6 +13,7 @@ from ray.rllib.core.rl_module.rl_module_with_target_networks_interface import (
 )
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.nested_dict import NestedDict
+from ray.rllib.utils.typing import NetworkType
 
 
 class APPOTorchRLModule(PPOTorchRLModule, APPORLModule):
@@ -29,17 +30,8 @@ class APPOTorchRLModule(PPOTorchRLModule, APPORLModule):
             self.old_encoder.requires_grad_(False)
 
     @override(RLModuleWithTargetNetworksInterface)
-    def sync_target_networks(self, tau: float) -> None:
-        for target_network, current_network in [
-            (self.old_pi, self.pi),
-            (self.old_encoder, self.encoder),
-        ]:
-            current_state_dict = current_network.state_dict()
-            new_state_dict = {
-                k: tau * current_state_dict[k] + (1 - tau) * v
-                for k, v in target_network.state_dict().items()
-            }
-            target_network.load_state_dict(new_state_dict)
+    def get_target_network_pairs(self) -> List[Tuple[NetworkType, NetworkType]]:
+        return [(self.old_pi, self.pi), (self.old_encoder, self.encoder)]
 
     @override(PPOTorchRLModule)
     def output_specs_train(self) -> List[str]:
