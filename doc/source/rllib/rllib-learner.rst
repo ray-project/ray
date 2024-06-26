@@ -215,7 +215,6 @@ Updates
     }
     default_batch = SampleBatch(DUMMY_BATCH)
     DUMMY_BATCH = default_batch.as_multi_agent()
-    TIMESTEPS = {"num_env_steps_sampled_lifetime": 0}
 
     learner.build() # needs to be called on the learner before calling any functions
 
@@ -225,6 +224,8 @@ Updates
     .. tab-item:: Updating a LearnerGroup
 
         .. testcode::
+
+            TIMESTEPS = {"num_env_steps_sampled_lifetime": 250}
 
             # This is a blocking update.
             results = learner_group.update_from_batch(batch=DUMMY_BATCH, timesteps=TIMESTEPS)
@@ -253,7 +254,7 @@ Updates
         .. testcode::
 
             # This is a blocking update (given a training batch).
-            result = learner.update_from_batch(batch=DUMMY_BATCH, timesteps=timesteps)
+            result = learner.update_from_batch(batch=DUMMY_BATCH, timesteps=TIMESTEPS)
 
         When updating a :py:class:`~ray.rllib.core.learner.learner.Learner` you can only perform blocking updates on batches of data.
         You can perform non-gradient based updates before or after the gradient-based ones by overriding
