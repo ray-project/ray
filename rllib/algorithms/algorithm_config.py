@@ -2315,8 +2315,9 @@ class AlgorithmConfig(_Config):
             deprecation_warning(
                 old="AlgorithmConfig.evaluation(evaluation_num_workers=..)",
                 new="AlgorithmConfig.evaluation(evaluation_num_env_runners=..)",
-                error=True,
+                error=False,
             )
+            self.evaluation_num_env_runners = evaluation_num_workers
 
         if evaluation_interval is not NotProvided:
             self.evaluation_interval = evaluation_interval
