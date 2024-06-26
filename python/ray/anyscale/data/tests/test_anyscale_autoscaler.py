@@ -20,6 +20,12 @@ from ray.data._internal.execution.streaming_executor_state import OpState
 MOCKED_CURRENT_TIME = 0
 
 
+@pytest.fixture(autouse=True)
+def enable_actor_pool_downscaling(monkeypatch):
+    monkeypatch.setenv("RAY_DATA_DISABLE_ACTOR_POOL_SCALING_DOWN", "0")
+    yield
+
+
 def patch_time(func):
     global MOCKED_CURRENT_TIME
     MOCKED_CURRENT_TIME = 0

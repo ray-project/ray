@@ -3,10 +3,12 @@ import math
 import time
 from collections import defaultdict, deque
 from dataclasses import dataclass
+from functools import cached_property
 from logging import getLogger
 from typing import TYPE_CHECKING, Deque, Dict, Optional, Tuple
 
 import ray
+from ray._private.ray_constants import env_bool
 from ray.data._internal.execution.autoscaler import Autoscaler, AutoscalingActorPool
 from ray.data._internal.execution.autoscaling_requester import (
     get_or_create_autoscaling_requester_actor,
@@ -235,12 +237,20 @@ class AnyscaleAutoscaler(Autoscaler):
         # Determine whether to scale up based on the actor pool utilization.
         return util > self._actor_pool_scaling_up_threshold
 
+    @cached_property
+    def _disable_actor_pool_scaling_down(self):
+        # TODO(hchen): re-enable actor pool scaling down after fixing
+        # https://github.com/anyscale/runtime/issues/726
+        return env_bool("RAY_DATA_DISABLE_ACTOR_POOL_SCALING_DOWN", True)
+
     def _actor_pool_should_scale_down(
         self,
         actor_pool: AutoscalingActorPool,
         op: "PhysicalOperator",
         util: float,
     ):
+        if self._disable_actor_pool_scaling_down:
+            return False
         # Scale down, if the op is completed or no more inputs are coming.
         if op.completed() or (op._inputs_complete and op.internal_queue_size() == 0):
             return True
