@@ -161,7 +161,7 @@ class ImpalaLearner(Learner):
             # Update entropy coefficient via our Scheduler.
             new_entropy_coeff = self.entropy_coeff_schedulers_per_module[
                 module_id
-            ].update(timestep=timesteps[NUM_ENV_STEPS_SAMPLED_LIFETIME])
+            ].update(timestep=timesteps.get(NUM_ENV_STEPS_SAMPLED_LIFETIME, 0))
             self.metrics.log_value(
                 (module_id, LEARNER_RESULTS_CURR_ENTROPY_COEFF_KEY),
                 new_entropy_coeff,
