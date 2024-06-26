@@ -102,8 +102,8 @@ DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT_S = 20
 DEFAULT_GRACEFUL_SHUTDOWN_WAIT_LOOP_S = 2
 DEFAULT_HEALTH_CHECK_PERIOD_S = 10
 DEFAULT_HEALTH_CHECK_TIMEOUT_S = 30
-DEFAULT_MAX_ONGOING_REQUESTS = 100
-NEW_DEFAULT_MAX_ONGOING_REQUESTS = 5
+DEFAULT_MAX_ONGOING_REQUESTS = 5
+DEFAULT_TARGET_ONGOING_REQUESTS = 2
 
 # HTTP Proxy health check configs
 PROXY_HEALTH_CHECK_TIMEOUT_S = (
@@ -202,6 +202,14 @@ SERVE_LOG_RECORD_FORMAT = {
     SERVE_LOG_MESSAGE: "%(filename)s:%(lineno)d - %(message)s",
     SERVE_LOG_LEVEL_NAME: "%(levelname)s",
     SERVE_LOG_TIME: "%(asctime)s",
+}
+
+# There are some attributes that we only use internally or don't provide values to the
+# users. Adding to this set will remove them from structured logs.
+SERVE_LOG_UNWANTED_ATTRS = {
+    "serve_access_log",
+    "task_id",
+    "job_id",
 }
 
 SERVE_LOG_EXTRA_FIELDS = "ray_serve_extra_fields"
