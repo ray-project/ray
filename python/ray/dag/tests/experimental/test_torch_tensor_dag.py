@@ -37,6 +37,11 @@ class TorchTensorWorker:
             return 1
         return torch.ones(shape, dtype=dtype, device=self.device) * value
 
+    def send_or_raise(self, shape, dtype, value: int, raise_exception=False):
+        if raise_exception:
+            raise RuntimeError()
+        return torch.ones(shape, dtype=dtype, device=self.device) * value
+
     def send_dict_with_tuple_args(self, args):
         shape, dtype, value = args
         return {
@@ -452,6 +457,71 @@ def test_torch_tensor_nccl_direct_return_error(ray_start_regular):
     # TODO(swang): This currently requires time.sleep to avoid some issue with
     # following tests.
     time.sleep(3)
+
+
+@pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
+def test_torch_tensor_exceptions(ray_start_regular):
+    """
+    Test nested torch.Tensor passed via NCCL. Its shape and dtype is
+    dynamically declared, and there may be multiple tensors.
+    """
+    if not USE_GPU:
+        pytest.skip("NCCL tests require GPUs")
+
+    assert (
+        sum(node["Resources"].get("GPU", 0) for node in ray.nodes()) > 1
+    ), "This test requires at least 2 GPUs"
+
+    actor_cls = TorchTensorWorker.options(num_gpus=1)
+
+    sender = actor_cls.remote()
+    receiver = actor_cls.remote()
+
+    with InputNode() as inp:
+        dag = sender.send_or_raise.bind(inp.shape, inp.dtype, inp.value, inp.raise_exception)
+        dag = dag.with_type_hint(TorchTensorType(transport="nccl"))
+        dag = receiver.recv.bind(dag)
+
+    compiled_dag = dag.experimental_compile()
+
+    for i in range(3):
+        i += 1
+
+        shape = (10 * i,)
+        dtype = torch.float16
+
+        ref = compiled_dag.execute(
+                shape=shape,
+                dtype=dtype,
+                value=i,
+                raise_exception=False,
+                )
+        result = ray.get(ref)
+        assert result == (i, shape, dtype)
+
+    # Application level exceptions are thrown to the end ray.get
+    ref = compiled_dag.execute(
+            shape=shape,
+            dtype=dtype,
+            value=i,
+            raise_exception=True,
+            )
+    with pytest.raises(RayTaskError) as exc_info:
+        ray.get(ref)
+    assert isinstance(exc_info.value.as_instanceof_cause(), RuntimeError)
+
+    # If using dynamic shape or dtype is used and direct_return=False, then the
+    # DAG should still be usable after application-level exceptions.
+    ref = compiled_dag.execute(
+            shape=shape,
+            dtype=dtype,
+            value=i,
+            raise_exception=False,
+            )
+    result = ray.get(ref)
+    assert result == (i, shape, dtype)
+
+    compiled_dag.teardown()
 
 
 if __name__ == "__main__":
