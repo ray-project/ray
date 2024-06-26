@@ -108,7 +108,6 @@ class TestTrajectoryViewAPI(unittest.TestCase):
         # and Learner API.
         config = (
             ppo.PPOConfig()
-            .api_stack(enable_rl_module_and_learner=False)
             .environment("CartPole-v1")
             # Activate LSTM + prev-action + rewards.
             .training(
@@ -187,8 +186,6 @@ class TestTrajectoryViewAPI(unittest.TestCase):
     def test_traj_view_attention_net(self):
         config = (
             ppo.PPOConfig()
-            # Batch-norm models have not been migrated to the RL Module API yet.
-            .api_stack(enable_rl_module_and_learner=False)
             .environment(
                 "ray.rllib.examples.envs.classes.debug_counter_env.DebugCounterEnv",
                 env_config={"config": {"start_at_t": 1}},  # first obs is [1.0]
@@ -310,8 +307,6 @@ class TestTrajectoryViewAPI(unittest.TestCase):
 
         config = (
             ppo.PPOConfig()
-            # The Policy used to be passed in, now we have to pass in the RLModuleSpecs
-            .api_stack(enable_rl_module_and_learner=False)
             .framework("torch")
             .multi_agent(policies=policies, policy_mapping_fn=policy_fn)
             .training(

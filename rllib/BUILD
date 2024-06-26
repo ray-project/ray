@@ -794,23 +794,10 @@ py_test(
 
 # PPO
 py_test(
-    name = "test_ppo_with_env_runner",
-    tags = ["team:rllib", "algorithms_dir"],
-    size = "medium",
-    srcs = ["algorithms/ppo/tests/test_ppo_with_env_runner.py"]
-)
-
-py_test(
     name = "test_ppo",
     tags = ["team:rllib", "algorithms_dir"],
-    size = "large",
+    size = "medium",
     srcs = ["algorithms/ppo/tests/test_ppo.py"]
-)
-py_test(
-    name = "test_ppo_with_rl_module",
-    tags = ["team:rllib", "algorithms_dir"],
-    size = "large",
-    srcs = ["algorithms/ppo/tests/test_ppo_with_rl_module.py"]
 )
 py_test(
     name = "test_ppo_rl_module",
@@ -829,6 +816,13 @@ py_test(
     tags = ["team:rllib", "algorithms_dir", "gpu"],
     size = "large",
     srcs = ["algorithms/ppo/tests/test_repro_ppo.py"]
+)
+# @OldAPIStack
+py_test(
+    name = "test_ppo_old_api_stack",
+    tags = ["team:rllib", "algorithms_dir"],
+    size = "large",
+    srcs = ["algorithms/ppo/tests/test_ppo_old_api_stack.py"]
 )
 
 # SAC

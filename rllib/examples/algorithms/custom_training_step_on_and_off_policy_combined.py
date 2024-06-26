@@ -198,7 +198,6 @@ if __name__ == "__main__":
 
     config = (
         AlgorithmConfig()
-        .api_stack(enable_rl_module_and_learner=False)
         .environment("multi_agent_cartpole")
         .framework("torch" if args.torch else "tf")
         .multi_agent(policies=policies, policy_mapping_fn=policy_mapping_fn)

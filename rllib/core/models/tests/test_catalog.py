@@ -388,7 +388,10 @@ class TestCatalog(unittest.TestCase):
 
         config = (
             PPOConfig()
-            .api_stack(enable_rl_module_and_learner=True)
+            .api_stack(
+                enable_rl_module_and_learner=True,
+                enable_env_runner_and_connector_v2=True,
+            )
             .rl_module(
                 rl_module_spec=SingleAgentRLModuleSpec(catalog_class=MyCatalog),
             )

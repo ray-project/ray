@@ -190,9 +190,6 @@ if __name__ == "__main__":
         .debugging(log_level="INFO")
     )
     # Disable RLModules because they need connectors
-    # TODO (Sven): Deprecate ExternalEnv (via EnvRunner path) and reenable connectors
-    #  and RL Modules here.
-    config.api_stack(enable_rl_module_and_learner=False)
 
     # DQN.
     if args.run == "DQN" or args.run == "APEX" or args.run == "R2D2":
