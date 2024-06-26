@@ -81,6 +81,7 @@ def test_basic_states(shutdown_only):
     # Test creation states.
     expected = {
         "ALIVE": 3,
+        "IDLE": 3,
         "PENDING_CREATION": 1,
     }
     wait_for_condition(
@@ -94,6 +95,7 @@ def test_basic_states(shutdown_only):
     b.get.remote()
     c.wait.remote()
     expected = {
+        "ALIVE": 3,
         "RUNNING_TASK": 1,
         "RUNNING_IN_RAY_GET": 1,
         "RUNNING_IN_RAY_WAIT": 1,
@@ -123,6 +125,7 @@ def test_destroy_actors(shutdown_only):
 
     expected = {
         "ALIVE": 1,
+        "IDLE": 1,
         "DEAD": 2,
     }
     wait_for_condition(
@@ -137,6 +140,7 @@ def test_destroy_actors_from_driver(monkeypatch, shutdown_only):
     with monkeypatch.context() as m:
         # Dead actors are not cached.
         m.setenv("RAY_maximum_gcs_destroyed_actor_cached_count", 5)
+        m.setenv("RAY_WORKER_TIMEOUT_S", 5)
         driver = """
 import ray
 ray.init("auto")
