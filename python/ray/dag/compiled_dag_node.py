@@ -329,9 +329,9 @@ class ExecutableTask:
                 not Channels will get passed through to the actor method.
                 If the argument is a channel, it will be replaced by the
                 value read from the channel before the method executes.
-            resolved_kwargs: The arguments to the method. Currently, we do not
-                support binding kwargs to other DAG nodes, so the values of the
-                dictionary cannot be Channels.
+            resolved_kwargs: The keyword arguments to the method. Currently, we
+                do not support binding kwargs to other DAG nodes, so the values
+                of the dictionary cannot be Channels.
         """
         self.method_name = task.dag_node.get_method_name()
         self.bind_index = task.dag_node._get_bind_index()
@@ -578,7 +578,11 @@ class CompiledDAG:
                 "Compiled DAGs currently require exactly one InputNode"
             )
 
+        # Whether the DAG binds directly to the InputNode(), versus binding to
+        # a positional arg or kwarg of the input. For example, a.foo.bind(inp)
+        # instead of a.foo.bind(inp[0]) or a.foo.bind(inp.key).
         direct_input: Optional[bool] = None
+        # Collect the set of InputNode keys bound to DAG node args.
         input_positional_args: Set[int] = set()
         input_kwargs: Set[str] = set()
 

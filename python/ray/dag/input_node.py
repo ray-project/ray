@@ -215,7 +215,7 @@ class InputAttributeNode(DAGNode):
     def __init__(
         self,
         dag_input_node: InputNode,
-        key: str,
+        key: Union[int, str],
         accessor_method: str,
         input_type: str = None,
     ):
