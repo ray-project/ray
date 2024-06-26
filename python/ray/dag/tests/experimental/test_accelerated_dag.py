@@ -12,7 +12,7 @@ import numpy as np
 
 import pytest
 
-from ray.exceptions import RayTaskError, RayChannelError
+from ray.exceptions import RayChannelError
 import ray
 import ray._private
 import ray.cluster_utils
@@ -470,17 +470,15 @@ def test_dag_exception_basic(ray_start_regular, capsys):
     # Can throw an error.
     compiled_dag = dag.experimental_compile()
     ref = compiled_dag.execute("hello")
-    with pytest.raises(RayTaskError) as exc_info:
+    with pytest.raises(TypeError) as exc_info:
         ray.get(ref)
-    assert isinstance(exc_info.value.as_instanceof_cause(), TypeError)
     # Traceback should match the original actor class definition.
     assert "self.i += x" in str(exc_info.value)
 
     # Can throw an error multiple times.
     ref = compiled_dag.execute("hello")
-    with pytest.raises(RayTaskError) as exc_info:
+    with pytest.raises(TypeError) as exc_info:
         ray.get(ref)
-    assert isinstance(exc_info.value.as_instanceof_cause(), TypeError)
     # Traceback should match the original actor class definition.
     assert "self.i += x" in str(exc_info.value)
 
@@ -501,17 +499,15 @@ def test_dag_exception_chained(ray_start_regular, capsys):
     # Can throw an error.
     compiled_dag = dag.experimental_compile()
     ref = compiled_dag.execute("hello")
-    with pytest.raises(RayTaskError) as exc_info:
+    with pytest.raises(TypeError) as exc_info:
         ray.get(ref)
-    assert isinstance(exc_info.value.as_instanceof_cause(), TypeError)
     # Traceback should match the original actor class definition.
     assert "self.i += x" in str(exc_info.value)
 
     # Can throw an error multiple times.
     ref = compiled_dag.execute("hello")
-    with pytest.raises(RayTaskError) as exc_info:
+    with pytest.raises(TypeError) as exc_info:
         ray.get(ref)
-    assert isinstance(exc_info.value.as_instanceof_cause(), TypeError)
     # Traceback should match the original actor class definition.
     assert "self.i += x" in str(exc_info.value)
 
@@ -532,17 +528,15 @@ def test_dag_exception_multi_output(ray_start_regular, capsys):
 
     # Can throw an error.
     ref = compiled_dag.execute("hello")
-    with pytest.raises(RayTaskError) as exc_info:
+    with pytest.raises(TypeError) as exc_info:
         ray.get(ref)
-    assert isinstance(exc_info.value.as_instanceof_cause(), TypeError)
     # Traceback should match the original actor class definition.
     assert "self.i += x" in str(exc_info.value)
 
     # Can throw an error multiple times.
     ref = compiled_dag.execute("hello")
-    with pytest.raises(RayTaskError) as exc_info:
+    with pytest.raises(TypeError) as exc_info:
         ray.get(ref)
-    assert isinstance(exc_info.value.as_instanceof_cause(), TypeError)
     # Traceback should match the original actor class definition.
     assert "self.i += x" in str(exc_info.value)
 
@@ -707,12 +701,11 @@ def test_dag_fault_tolerance_chain(ray_start_regular_shared):
         ref = compiled_dag.execute(i)
         results = ray.get(ref)
 
-    with pytest.raises(RayTaskError) as exc_info:
+    with pytest.raises(RuntimeError):
         for i in range(99):
             ref = compiled_dag.execute(i)
             results = ray.get(ref)
             assert results == i
-    assert isinstance(exc_info.value.as_instanceof_cause(), RuntimeError)
 
     compiled_dag.teardown()
 
@@ -751,12 +744,11 @@ def test_dag_fault_tolerance(ray_start_regular_shared):
         results = ray.get(ref)
         assert results == [i + 1] * 4
 
-    with pytest.raises(RayTaskError) as exc_info:
+    with pytest.raises(RuntimeError):
         for i in range(99, 200):
             ref = compiled_dag.execute(1)
             results = ray.get(ref)
             assert results == [i + 1] * 4
-    assert isinstance(exc_info.value.as_instanceof_cause(), RuntimeError)
 
     compiled_dag.teardown()
 
@@ -886,17 +878,15 @@ def test_asyncio_exceptions(ray_start_regular_shared, max_queue_size):
         assert result == 1
 
         fut = await compiled_dag.execute_async("hello")
-        with pytest.raises(RayTaskError) as exc_info:
+        with pytest.raises(TypeError) as exc_info:
             await fut
-        assert isinstance(exc_info.value.as_instanceof_cause(), TypeError)
         # Traceback should match the original actor class definition.
         assert "self.i += x" in str(exc_info.value)
 
         # Can throw an error multiple times.
         fut = await compiled_dag.execute_async("hello")
-        with pytest.raises(RayTaskError) as exc_info:
+        with pytest.raises(TypeError) as exc_info:
             await fut
-        assert isinstance(exc_info.value.as_instanceof_cause(), TypeError)
         # Traceback should match the original actor class definition.
         assert "self.i += x" in str(exc_info.value)
 
