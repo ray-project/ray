@@ -151,6 +151,7 @@ if __name__ == "__main__":
         base_config,
         args,
         stop=stop,
+        success_metric={policy_eval_returns + "main": args.stop_reward},
         # We use a special progress reporter here to show the evaluation results (of the
         # "main" policy).
         # In the following dict, the keys are the (possibly nested) keys that can be
