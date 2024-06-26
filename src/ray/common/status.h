@@ -103,13 +103,6 @@ enum class StatusCode : char {
   ObjectAlreadySealed = 23,
   ObjectStoreFull = 24,
   TransientObjectStoreFull = 25,
-  // grpc status
-  // This represents UNAVAILABLE status code
-  // returned by grpc.
-  GrpcUnavailable = 26,
-  // This represents all other status codes
-  // returned by grpc that are not defined above.
-  GrpcUnknown = 27,
   // Object store is both out of memory and
   // out of disk.
   OutOfDisk = 28,
@@ -120,6 +113,9 @@ enum class StatusCode : char {
   AuthError = 33,
   // Indicates the input value is not valid.
   InvalidArgument = 34,
+  // Indicates that a channel (a mutable plasma object) is closed and cannot be
+  // read or written to.
+  ChannelError = 35,
 };
 
 #if defined(__clang__)
@@ -243,14 +239,6 @@ class RAY_EXPORT Status {
     return Status(StatusCode::OutOfDisk, msg);
   }
 
-  static Status GrpcUnavailable(const std::string &msg) {
-    return Status(StatusCode::GrpcUnavailable, msg);
-  }
-
-  static Status GrpcUnknown(const std::string &msg) {
-    return Status(StatusCode::GrpcUnknown, msg);
-  }
-
   static Status RpcError(const std::string &msg, int rpc_code) {
     return Status(StatusCode::RpcError, msg, rpc_code);
   }
@@ -261,6 +249,10 @@ class RAY_EXPORT Status {
 
   static Status AuthError(const std::string &msg) {
     return Status(StatusCode::AuthError, msg);
+  }
+
+  static Status ChannelError(const std::string &msg) {
+    return Status(StatusCode::ChannelError, msg);
   }
 
   static StatusCode StringToCode(const std::string &str);
@@ -306,16 +298,14 @@ class RAY_EXPORT Status {
   bool IsTransientObjectStoreFull() const {
     return code() == StatusCode::TransientObjectStoreFull;
   }
-  bool IsGrpcUnavailable() const { return code() == StatusCode::GrpcUnavailable; }
-  bool IsGrpcUnknown() const { return code() == StatusCode::GrpcUnknown; }
-
-  bool IsGrpcError() const { return IsGrpcUnknown() || IsGrpcUnavailable(); }
 
   bool IsRpcError() const { return code() == StatusCode::RpcError; }
 
   bool IsOutOfResource() const { return code() == StatusCode::OutOfResource; }
 
   bool IsAuthError() const { return code() == StatusCode::AuthError; }
+
+  bool IsChannelError() const { return code() == StatusCode::ChannelError; }
 
   // Return a string representation of this status suitable for printing.
   // Returns the string "OK" for success.

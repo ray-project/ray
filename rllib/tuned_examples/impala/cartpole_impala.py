@@ -7,6 +7,8 @@ from ray.rllib.utils.metrics import (
 from ray.rllib.utils.test_utils import add_rllib_example_script_args
 
 parser = add_rllib_example_script_args()
+# Use `parser` to add your own custom command line options to this script
+# and (if needed) use their values toset up `config` below.
 args = parser.parse_args()
 
 

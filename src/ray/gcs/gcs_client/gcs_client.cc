@@ -130,6 +130,8 @@ Status GcsClient::Connect(instrumented_io_context &io_service,
   placement_group_accessor_ = std::make_unique<PlacementGroupInfoAccessor>(this);
   internal_kv_accessor_ = std::make_unique<InternalKVAccessor>(this);
   task_accessor_ = std::make_unique<TaskInfoAccessor>(this);
+  runtime_env_accessor_ = std::make_unique<RuntimeEnvAccessor>(this);
+  autoscaler_state_accessor_ = std::make_unique<AutoscalerStateAccessor>(this);
 
   RAY_LOG(DEBUG) << "GcsClient connected " << options_.gcs_address_ << ":"
                  << options_.gcs_port_;
@@ -183,7 +185,7 @@ Status PythonGcsClient::Connect(const ClusterID &cluster_id,
         RAY_LOG(DEBUG) << "Received cluster ID from GCS server: " << cluster_id_;
         RAY_CHECK(!cluster_id_.IsNil());
         break;
-      } else if (!connect_status.IsGrpcError()) {
+      } else if (!connect_status.IsRpcError()) {
         return HandleGcsError(reply.status());
       }
       std::this_thread::sleep_for(std::chrono::milliseconds(1000));
@@ -414,15 +416,9 @@ Status PythonGcsClient::PinRuntimeEnvUri(const std::string &uri,
   if (status.ok()) {
     if (reply.status().code() == static_cast<int>(StatusCode::OK)) {
       return Status::OK();
-    } else if (reply.status().code() == static_cast<int>(StatusCode::GrpcUnavailable)) {
-      std::string msg =
-          "Failed to pin URI reference for " + uri + " due to the GCS being " +
-          "unavailable, most likely it has crashed: " + reply.status().message() + ".";
-      return Status::GrpcUnavailable(msg);
+    } else {
+      return Status(StatusCode(reply.status().code()), reply.status().message());
     }
-    std::string msg = "Failed to pin URI reference for " + uri +
-                      " due to unexpected error " + reply.status().message() + ".";
-    return Status::GrpcUnknown(msg);
   }
   return Status::RpcError(status.error_message(), status.error_code());
 }

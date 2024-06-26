@@ -180,6 +180,7 @@ from ray.exceptions import (
     PendingCallsLimitExceeded,
     RpcError,
     ObjectRefStreamEndOfStreamError,
+    RayChannelError,
 )
 from ray._private import external_storage
 from ray.util.scheduling_strategies import (
@@ -588,6 +589,8 @@ cdef int check_status(const CRayStatus& status) nogil except -1:
         with gil:
             raise_sys_exit_with_custom_error_message(
                 message, exit_code=1)
+    elif status.IsChannelError():
+        raise RayChannelError(message)
     else:
         raise RaySystemError(message)
 

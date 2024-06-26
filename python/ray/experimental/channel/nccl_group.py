@@ -3,6 +3,7 @@ from types import ModuleType
 from typing import TYPE_CHECKING, List, Optional
 
 import ray
+from ray.exceptions import RayChannelError
 
 if TYPE_CHECKING:
     import cupy as cp
@@ -139,7 +140,7 @@ class _NcclGroup:
             peer_rank: The rank of the actor to send to.
         """
         if self._closed:
-            raise IOError("NCCL group has been destroyed.")
+            raise RayChannelError("NCCL group has been destroyed.")
         # TODO(swang): Handle send/recv async NCCL errors such as network
         # failures.
         self._comm.send(
@@ -155,7 +156,7 @@ class _NcclGroup:
         Receive a torch.Tensor from a peer and synchronize the current stream.
 
         After this call returns, the receive buffer is safe to read from from
-        any stream. An IOError will be raised if an error occurred (e.g.,
+        any stream. An RayChannelError will be raised if an error occurred (e.g.,
         remote actor died), and the buffer is not safe to read.
 
         Args:
@@ -163,7 +164,7 @@ class _NcclGroup:
             peer_rank: The rank of the actor to receive from.
         """
         if self._closed:
-            raise IOError("NCCL group has been destroyed.")
+            raise RayChannelError("NCCL group has been destroyed.")
         self._comm.recv(
             self.nccl_util.get_tensor_ptr(buf),
             buf.numel(),
@@ -178,7 +179,7 @@ class _NcclGroup:
         # TODO(swang): Avoid CUDA synchronization.
         self._cuda_stream.synchronize()
         if self._closed:
-            raise IOError("NCCL group has been destroyed.")
+            raise RayChannelError("NCCL group has been destroyed.")
 
     def destroy(self):
         """

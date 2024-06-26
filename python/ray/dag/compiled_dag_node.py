@@ -1,12 +1,18 @@
 import asyncio
-from collections import defaultdict
+from collections import defaultdict, deque
 from typing import Any, Dict, List, Tuple, Union, Optional, Set
 import logging
 import threading
 import uuid
+import traceback
 
 import ray
-from ray.experimental.compiled_dag_ref import CompiledDAGRef, RayDAGTaskError
+from ray.exceptions import RayTaskError, RayChannelError
+from ray.experimental.compiled_dag_ref import (
+    CompiledDAGRef,
+    CompiledDAGFuture,
+    _process_return_vals,
+)
 from ray.experimental.channel import (
     ChannelInterface,
     ChannelOutputType,
@@ -17,7 +23,7 @@ from ray.experimental.channel import (
     AwaitableBackgroundReader,
     AwaitableBackgroundWriter,
 )
-from ray.util.annotations import DeveloperAPI, PublicAPI
+from ray.util.annotations import DeveloperAPI
 
 from ray.experimental.channel.shared_memory_channel import (
     SharedMemoryType,
@@ -126,6 +132,19 @@ def _prep_task(self, task: "ExecutableTask") -> None:
     output_writer.start()
 
 
+def _wrap_exception(exc):
+    backtrace = ray._private.utils.format_error_message(
+        "".join(traceback.format_exception(type(exc), exc, exc.__traceback__)),
+        task_exception=True,
+    )
+    wrapped = RayTaskError(
+        function_name="do_exec_tasks",
+        traceback_str=backtrace,
+        cause=exc,
+    )
+    return wrapped
+
+
 def _exec_task(self, task: "ExecutableTask", idx: int) -> bool:
     """
     Execute the task.
@@ -144,9 +163,12 @@ def _exec_task(self, task: "ExecutableTask", idx: int) -> bool:
     res = None
     try:
         res = input_reader.read()
-    except IOError:
+    except RayChannelError:
         # Channel closed. Exit the loop.
         return True
+
+    try:
+        _process_return_vals(res, return_single_output=False)
     except Exception as exc:
         # Previous task raised an application-level exception.
         # Propagate it and skip the actual task. We don't need to wrap the
@@ -161,26 +183,16 @@ def _exec_task(self, task: "ExecutableTask", idx: int) -> bool:
 
     try:
         output_val = method(*resolved_inputs)
-        output_writer.write(output_val)
     except Exception as exc:
-        # TODO(rui): consider different ways of passing down the exception,
-        # e.g., wrapping with RayTaskError.
-        output_writer.write(RayDAGTaskError(exc))
+        output_val = _wrap_exception(exc)
+
+    try:
+        output_writer.write(output_val)
+    except RayChannelError:
+        # Channel closed. Exit the loop.
+        return True
 
     return False
-
-
-@PublicAPI(stability="alpha")
-class AwaitableDAGOutput:
-    def __init__(self, fut: asyncio.Future, ReaderInterface: ReaderInterface):
-        self._fut = fut
-        self._reader = ReaderInterface
-
-    async def get(self):
-        ret = await self._fut
-        if isinstance(ret, Exception):
-            raise ret
-        return ret
 
 
 @DeveloperAPI
@@ -448,7 +460,7 @@ class CompiledDAG:
         # Preprocessing identifies the input node and output node.
         self.input_task_idx: Optional[int] = None
         self.output_task_idx: Optional[int] = None
-        self.has_single_output: bool = False
+        self._has_single_output: bool = False
         self.actor_task_count: Dict["ray._raylet.ActorID", int] = defaultdict(int)
 
         # Cached attributes that are set during compilation.
@@ -495,6 +507,10 @@ class CompiledDAG:
                 ray.get_runtime_context().get_node_id(), soft=False
             )
         ).remote()
+
+    @property
+    def has_single_output(self):
+        return self._has_single_output
 
     def get_id(self) -> str:
         """
@@ -627,7 +643,7 @@ class CompiledDAG:
         output_node = self.idx_to_task[self.output_task_idx].dag_node
         # Add an MultiOutputNode to the end of the DAG if it's not already there.
         if not isinstance(output_node, MultiOutputNode):
-            self.has_single_output = True
+            self._has_single_output = True
             output_node = MultiOutputNode([output_node])
             self._add_node(output_node)
             self.output_task_idx = self.dag_node_to_idx[output_node]
@@ -693,9 +709,6 @@ class CompiledDAG:
                 # in the DAG.
                 readers = [self.idx_to_task[idx] for idx in task.downstream_node_idxs]
 
-                def _get_node_id(self):
-                    return ray.get_runtime_context().get_node_id()
-
                 if isinstance(readers[0].dag_node, MultiOutputNode):
                     assert len(readers) == 1
                     # This node is a multi-output node, which means that it will only be
@@ -755,6 +768,17 @@ class CompiledDAG:
 
             for idx in task.downstream_node_idxs:
                 frontier.append(idx)
+
+        from ray.dag.constants import RAY_ADAG_ENABLE_DETECT_DEADLOCK
+
+        if RAY_ADAG_ENABLE_DETECT_DEADLOCK and not self._detect_deadlock():
+            raise ValueError(
+                "This DAG cannot be compiled because it will deadlock on NCCL "
+                "calls. If you believe this is a false positive, please disable "
+                "the graph verification by setting the environment variable "
+                "RAY_ADAG_ENABLE_DETECT_DEADLOCK to 0 and file an issue at "
+                "https://github.com/ray-project/ray/issues/new/."
+            )
 
         # Validate input channels for tasks that have not been visited
         for node_idx, task in self.idx_to_task.items():
@@ -847,9 +871,8 @@ class CompiledDAG:
         # If no MultiOutputNode was specified during the DAG creation, there is only
         # one output. Return a single output channel instead of a list of
         # channels.
-        if self.has_single_output:
+        if self._has_single_output:
             assert len(self.dag_output_channels) == 1
-            self.dag_output_channels = self.dag_output_channels[0]
 
         # Driver should ray.put on input, ray.get/release on output
         self._monitor = self._monitor_failures()
@@ -867,6 +890,154 @@ class CompiledDAG:
 
         self._dag_submitter.start()
         self._dag_output_fetcher.start()
+
+    def _detect_deadlock(self) -> bool:
+        """
+        Create a graph with the following 3 rules, and then use
+        topological sort to verify whether the graph is a DAG.
+        If not, the DAG will result in a deadlock due to a cycle.
+
+        We need to check whether there is a cycle in a “happens-before”
+        graph, where A -> B means that B happens before A.
+
+        #1: Add an edge from task.{bind_index} to task.{bind_index+1}
+            on the same actor.
+
+        Reason: Each actor executes tasks in the order that they are
+                bound in. Therefore task.{bind_index+1} happens before
+                task.{bind_index}.
+
+        #2: Add an edge from the writer to the reader
+
+        Reason: Channels represent data dependencies. In order to read
+                data, the writer must have written the data first.
+
+        #3: Add an edge from the reader of an NCCL channel to the node
+            that has the next bind index on the same actor as the writer.
+
+        Reason: NCCL channels are blocking, meaning that both the writer
+                and reader must reach the send/recv call before either can
+                proceed. Therefore, the next task on the writer cannot be
+                executed until the reader of the NCCL channel has started.
+
+        With rules #1 and #2 alone, it is not possible to create cycles,
+        because when the DAG is created, new tasks can only depend on tasks
+        that have already been created.
+
+        With rule #3, it is possible to create a cycle where two actors will
+        block waiting for the other to begin reading from an NCCL channel.
+
+        [Example]
+
+        # data flow: driver -> a.no_op -> a.no_op -> driver
+        with InputNode() as inp:
+            dag = a.no_op.bind(inp)
+            dag.with_type_hint(TorchTensorType(transport="nccl"))
+            dag = a.no_op.bind(dag)
+        dag.experimental_compile()
+
+        In the above example, communication between a.no_op occurs via an NCCL
+        channel, while communication between the driver process and a.no_op occurs
+        via shared memory channels. The example experiences a deadlock because the
+        completion of the write function in the first a.no_op requires the second
+        a.no_op to simultaneously call the read function. However, each actor has
+        a list of tasks, each assigned a bind index, and these tasks are executed
+        sequentially in ascending order of their bind index on the actor. Therefore,
+        it’s impossible for both writer and reader on the same actor to write and
+        read simultaneously.
+
+        We can create a happens-before graph based on the above rules. Then, the
+        graph will look like this:
+
+                              |---|
+                              |   v
+        driver -> a.no_op -> a.no_op -> driver
+
+        Then, we use topological sort to verify whether the graph has a cycle.
+
+        If you are interested in the detailed explanation, please refer to
+        https://github.com/ray-project/ray/pull/45960.
+        """
+        assert self.idx_to_task
+        assert self.actor_to_tasks
+
+        class GraphNode:
+            def __init__(self):
+                self.in_edges = set()
+                self.out_edges = set()
+
+            @property
+            def in_degree(self) -> int:
+                return len(self.in_edges)
+
+        from ray.dag import ClassMethodNode
+
+        def _get_next_task_idx(task: "CompiledTask") -> Optional[int]:
+            if not isinstance(task.dag_node, ClassMethodNode):
+                return None
+            actor_handle = task.dag_node._get_actor_handle()
+            bind_index = task.dag_node._get_bind_index()
+            for same_node_task in self.actor_to_tasks[actor_handle]:
+                if same_node_task.dag_node._get_bind_index() == bind_index + 1:
+                    return same_node_task.idx
+            return None
+
+        def _add_edge(
+            graph: Dict[int, GraphNode], from_idx: int, to_idx: Optional[int]
+        ):
+            if to_idx is None:
+                return
+            graph[from_idx].out_edges.add(to_idx)
+            graph[to_idx].in_edges.add(from_idx)
+
+        graph = defaultdict(GraphNode)
+        for idx, task in self.idx_to_task.items():
+            # Add an edge from task_{bind_index} to task_{bind_index+1}
+            # on the same actor.
+            next_task_idx = _get_next_task_idx(task)
+            _add_edge(graph, idx, next_task_idx)
+            for downstream_idx in task.downstream_node_idxs:
+                # Add an edge from the writer to the reader.
+                _add_edge(graph, idx, downstream_idx)
+                if task.dag_node.type_hint.requires_nccl():
+                    # Add an edge from the reader of an NCCL channel to the node
+                    # that has the next bind index on the same actor as the writer.
+                    _add_edge(graph, downstream_idx, next_task_idx)
+        num_total_nodes = len(graph)
+
+        # A list of nodes with in-degree 0, including (1) InputNode and
+        # (2) the nodes that only read from NCCL channels and are the first
+        # node on the actor.
+        zero_in_degree_nodes = deque()
+        for idx, node in graph.items():
+            if node.in_degree == 0:
+                zero_in_degree_nodes.append(idx)
+        visited_nodes = set()
+
+        # Perform topological sort to find a topological order of the graph.
+        # If topological order exists, the graph is a DAG. Otherwise, it has
+        # a cycle.
+        while zero_in_degree_nodes:
+            node = zero_in_degree_nodes.popleft()
+            visited_nodes.add(node)
+            for out_node in graph[node].out_edges:
+                graph[out_node].in_edges.remove(node)
+                if graph[out_node].in_degree == 0:
+                    zero_in_degree_nodes.append(out_node)
+
+        # Remove visited nodes from the graph.
+        for node in visited_nodes:
+            del graph[node]
+
+        topological_order_exists = len(visited_nodes) == num_total_nodes
+        if not topological_order_exists:
+            logger.error(
+                "The compiled DAG may hang due to blocking NCCL calls. If you "
+                "believe this is a false positive, please file an issue at "
+                "https://github.com/ray-project/ray/issues/new/."
+            )
+
+        return topological_order_exists
 
     def _monitor_failures(self):
         outer = self
@@ -1027,7 +1198,7 @@ class CompiledDAG:
         self,
         *args,
         **kwargs,
-    ) -> AwaitableDAGOutput:
+    ) -> CompiledDAGFuture:
         """Execute this DAG using the compiled execution path.
 
         NOTE: Not threadsafe.
@@ -1050,7 +1221,7 @@ class CompiledDAG:
             fut = asyncio.Future()
             await self._fut_queue.put(fut)
 
-        return AwaitableDAGOutput(fut, self._dag_output_fetcher)
+        return CompiledDAGFuture(self, self._execution_index, fut)
 
     def teardown(self):
         """Teardown and cancel all actor tasks for this DAG. After this

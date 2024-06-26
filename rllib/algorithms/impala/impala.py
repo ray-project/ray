@@ -651,7 +651,7 @@ class Impala(Algorithm):
         if not self.config.enable_rl_module_and_learner:
             return self._training_step_old_api_stack()
 
-        do_async_updates = self.config.num_learner_workers > 0
+        do_async_updates = self.config.num_learners > 0
 
         # Asynchronously request all EnvRunners to sample and return their current
         # (e.g. ConnectorV2) states and sampling metrics/stats.
