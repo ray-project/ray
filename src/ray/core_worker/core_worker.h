@@ -126,11 +126,6 @@ class TaskCounter {
     actor_name_ = actor_name;
   }
 
-  void UnbecomeActor() {
-    absl::MutexLock l(&mu_);
-    actor_name_ = "";
-  }
-
   void SetJobId(const JobID &job_id) {
     absl::MutexLock l(&mu_);
     job_id_ = job_id.Hex();
@@ -145,7 +140,7 @@ class TaskCounter {
       float running = 0.0;
       float in_get = 0.0;
       float in_wait = 0.0;
-      float alive = 0.0;
+      float idle = 0.0;
       if (running_in_wait_counter_.Total() > 0) {
         in_wait = 1.0;
       } else if (running_in_get_counter_.Total() > 0) {
@@ -153,10 +148,10 @@ class TaskCounter {
       } else if (num_tasks_running_ > 0) {
         running = 1.0;
       } else {
-        alive = 1.0;
+        idle = 1.0;
       }
-      ray::stats::STATS_actors.Record(alive,
-                                      {{"State", "ALIVE"},
+      ray::stats::STATS_actors.Record(idle,
+                                      {{"State", "IDLE"},
                                        {"Name", actor_name_},
                                        {"Source", "executor"},
                                        {"JobId", job_id_}});

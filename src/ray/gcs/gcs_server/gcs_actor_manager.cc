@@ -298,13 +298,6 @@ GcsActorManager::GcsActorManager(
       new CounterMap<std::pair<rpc::ActorTableData::ActorState, std::string>>());
   actor_state_counter_->SetOnChangeCallback(
       [this](const std::pair<rpc::ActorTableData::ActorState, std::string> key) mutable {
-        if (key.first ==
-            rpc::ActorTableData::ActorState::ActorTableData_ActorState_ALIVE) {
-          // If the actor is ALIVE, we rely on core worker to report the stats
-          // since it knows the state an live actor is in (e.g. RUNNING_TASK,
-          // RUNNING_IN_RAY_GET)
-          return;
-        }
         int64_t num_actors = actor_state_counter_->Get(key);
         ray::stats::STATS_actors.Record(
             num_actors,
