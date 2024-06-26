@@ -99,10 +99,6 @@ message ActorTableData {
   bytes actor_id = 1;
   // The ID of the caller of the actor creation task.
   bytes parent_id = 2;
-  // The dummy object ID returned by the actor creation task. If the actor
-  // dies, then this is the object that should be restarted for the actor
-  // to be recreated.
-  bytes actor_creation_dummy_object_id = 3;
   // The ID of the job that created the actor.
   bytes job_id = 4;
   // Current state of this actor.
