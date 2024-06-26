@@ -20,6 +20,20 @@ You can also create a cluster from the [Google Cloud Console](https://console.cl
 
 Run the following command to create a TPU node pool for Ray TPU workers. You can also create it from the Google Cloud Console: <https://cloud.google.com/kubernetes-engine/docs/how-to/tpus#console>
 
+To create a node pool with a single-host TPU topology:
+```sh
+gcloud container node-pools create tpu-node-pool \
+  --zone us-central2-b \
+  --cluster kuberay-tpu-cluster \
+  --num-nodes 1 \
+  --min-nodes 0 \
+  --max-nodes 1 \
+  --enable-autoscaling \
+  --machine-type ct4p-hightpu-4t \
+  --tpu-topology 2x2x1
+```
+
+Alternatively, create a multi-host node pool as follows:
 ```sh
 gcloud container node-pools create tpu-node-pool \
   --zone us-central2-b \
@@ -32,9 +46,9 @@ gcloud container node-pools create tpu-node-pool \
   --tpu-topology 2x2x2
 ```
 
-The `--tpu-topology` flag specifies the physical topology of the TPU PodSlice. This example uses a v4 TPU slice with a 2x2x2 topology, or 8 total TPU chips. v4 TPUs have 4 chips per VM host, so a 2x2x2 v4 slice will have 2 TPU hosts, each scheduled on their own node. TPU slices are treated as atomic units, and scaled using node pools rather than singular nodes. Therefore, the number of TPU hosts should always equal the number of nodes in the TPU node pool. For more information about selecting a TPU topology and accelerator, see the [GKE documentation](https://cloud.google.com/kubernetes-engine/docs/concepts/tpus).
+The `--tpu-topology` flag specifies the physical topology of the TPU PodSlice. This example uses a v4 TPU slice with either a 2x2x1 or 2x2x2 topology. v4 TPUs have 4 chips per VM host, so a 2x2x2 v4 slice will have 8 chips total and 2 TPU hosts, each scheduled on their own node. TPU slices are treated as atomic units, and scaled using node pools rather than singular nodes. Therefore, the number of TPU hosts should always equal the number of nodes in the TPU node pool. For more information about selecting a TPU topology and accelerator, see the [GKE documentation](https://cloud.google.com/kubernetes-engine/docs/concepts/tpus).
 
-GKE uses Kubernetes node selectors to ensure TPU workloads run on the desired TPU machine type and topology.
+GKE uses Kubernetes node selectors to ensure TPU workloads run on the desired machine type and topology.
 For more details, see the [GKE documentation](https://cloud.google.com/kubernetes-engine/docs/how-to/tpus#workload_preparation).
 
 ## Step 3: Configure `kubectl` to connect to the cluster

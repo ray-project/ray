@@ -16,24 +16,27 @@ ___________________________________________________________
 
 After setting up a GKE cluster with TPUs and the Ray TPU initialization webhook, you're ready to begin running
 workloads on Ray with TPUs. The :ref:`StableDiffusion example <kuberay-tpu-stable-diffusion-example>` shows how to
-serve a model with Ray on multi-host TPUs.
+serve a model with Ray on single-host TPUs.
 
 
 Configuring Ray Pods for TPU usage
 __________________________________
 
 Using any TPU accelerator requires specifying `google.com/tpu` resource `limits` and `requests` in the container fields of your `RayCluster`'s
-`workerGroupSpecs`. This resource specifies the number of TPU chips for GKE to allocate each Pod. Additionally, GKE uses `gke-tpu` node selectors to schedule TPU pods
-on the node matching the desired TPU accelerator and topology.
+`workerGroupSpecs`. This resource specifies the number of TPU chips for GKE to allocate each Pod. KubeRay v1.1.0 adds a `numOfHosts`
+field to the RayCluster custom resource, specifying the number of TPU hosts to create per worker group replica. For multi-host worker groups,
+replicas are treated as PodSlices rather than individual workers, with `numOfHosts` worker nodes being created per replica.
+Additionally, GKE uses `gke-tpu` node selectors to schedule TPU pods on the node matching the desired TPU accelerator and topology.
 
-Below is a config snippet for a RayCluster worker group with 2 Ray TPU workers, each scheduled on their own v4 TPU node.
+Below is a config snippet for a RayCluster worker group with 2 Ray TPU workers, each scheduled on their own GKE v4 TPU node.
 
 .. code-block:: yaml
 
    groupName: tpu-group
-   replicas: 2
+   replicas: 1
    minReplicas: 0
-   maxReplicas: 2
+   maxReplicas: 1
+   numOfHosts: 2
    ...
    template:
        spec:
