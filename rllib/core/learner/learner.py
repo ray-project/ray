@@ -897,156 +897,6 @@ class Learner:
             information.
         """
 
-    @OverrideToImplementCustomLogic
-    def additional_update(
-        self,
-        *,
-        module_ids_to_update: Optional[Sequence[ModuleID]] = None,
-        timestep: int,
-        **kwargs,
-    ) -> Dict[ModuleID, ResultDict]:
-        """Apply additional non-gradient based updates to this Algorithm.
-
-        For example, this could be used to do a polyak averaging update
-        of a target network in off policy algorithms like SAC or DQN.
-
-        Example:
-
-        .. testcode::
-
-            import gymnasium as gym
-
-            from ray.rllib.algorithms.ppo.ppo import (
-                LEARNER_RESULTS_CURR_KL_COEFF_KEY,
-                PPOConfig,
-            )
-            from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
-            from ray.rllib.algorithms.ppo.torch.ppo_torch_learner import (
-                PPOTorchLearner
-            )
-            from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import (
-                PPOTorchRLModule
-            )
-            from ray.rllib.core import DEFAULT_MODULE_ID
-            from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
-
-            env = gym.make("CartPole-v1")
-            config = (
-                PPOConfig()
-                .training(
-                    kl_coeff=0.2,
-                    kl_target=0.01,
-                    clip_param=0.3,
-                    vf_clip_param=10.0,
-                    # Taper down entropy coeff. from 0.01 to 0.0 over 20M ts.
-                    entropy_coeff=[
-                        [0, 0.01],
-                        [20000000, 0.0],
-                    ],
-                    vf_loss_coeff=0.5,
-                )
-            )
-
-            # Create a single agent RL module spec.
-            module_spec = SingleAgentRLModuleSpec(
-                module_class=PPOTorchRLModule,
-                observation_space=env.observation_space,
-                action_space=env.action_space,
-                model_config_dict = {"hidden": [128, 128]},
-                catalog_class = PPOCatalog,
-            )
-
-            class CustomPPOLearner(PPOTorchLearner):
-                def additional_update_for_module(
-                    self, *, module_id, config, timestep, sampled_kl_values
-                ) -> None:
-
-                    super().additional_update_for_module(
-                        module_id=module_id,
-                        config=config,
-                        timestep=timestep,
-                        sampled_kl_values=sampled_kl_values,
-                    )
-
-                    # Try something else than the PPO paper here.
-                    sampled_kl = sampled_kl_values[module_id]
-                    curr_var = self.curr_kl_coeffs_per_module[module_id]
-                    if sampled_kl > 1.2 * self.config.kl_target:
-                        curr_var.data *= 1.2
-                    elif sampled_kl < 0.8 * self.config.kl_target:
-                        curr_var.data *= 0.4
-                    self.metrics.log_value(
-                        (module_id, LEARNER_RESULTS_CURR_KL_COEFF_KEY),
-                        curr_var.item(),
-                        window=1,
-                    )
-
-            # Construct the Learner object.
-            learner = CustomPPOLearner(
-                config=config,
-                module_spec=module_spec,
-            )
-            # Note: Learners need to be built before they can be used.
-            learner.build()
-
-            # Inside a training loop, we can now call the additional update as we like:
-            for i in range(100):
-                # sample = ...
-                # learner.update(sample)
-                if i % 10 == 0:
-                    learner.additional_update(
-                        timestep=i,
-                        sampled_kl_values={DEFAULT_MODULE_ID: 0.5}
-                    )
-
-        Args:
-            module_ids_to_update: The ids of the modules to update. If None, all
-                modules will be updated.
-            timestep: The current timestep.
-            **kwargs: Keyword arguments to use for the additional update.
-
-        Returns:
-            A dictionary of results from the update
-        """
-        module_ids = (
-            module_ids_to_update
-            if module_ids_to_update is not None
-            else self.module.keys()
-        )
-        for module_id in module_ids:
-            self.additional_update_for_module(
-                module_id=module_id,
-                config=self.config.get_config_for_module(module_id),
-                timestep=timestep,
-                **kwargs,
-            )
-
-        return self.metrics.reduce()
-
-    @OverrideToImplementCustomLogic_CallToSuperRecommended
-    def additional_update_for_module(
-        self,
-        *,
-        module_id: ModuleID,
-        config: Optional["AlgorithmConfig"] = None,
-        timestep: int,
-        **kwargs,
-    ) -> None:
-        """Apply additional non-gradient based updates for a single module.
-
-        See `additional_update` for more details.
-
-        Args:
-            module_id: The id of the module to update.
-            config: The AlgorithmConfig specific to the given `module_id`.
-            timestep: The current global timestep (to be used with schedulers).
-            **kwargs: Keyword arguments to use for the additional update.
-
-        Returns:
-            A dictionary of results from the update
-        """
-        pass
-
     def update_from_batch(
         self,
         batch: MultiAgentBatch,
@@ -1294,6 +1144,10 @@ class Learner:
 
         self._check_is_built()
 
+        # Call `before_gradient_based_update` to allow for non-gradient based
+        # preparations-, logging-, and update logic to happen.
+        self.before_gradient_based_update(timesteps=timesteps or {})
+
         # Resolve batch/episodes being ray object refs (instead of
         # actual batch/episodes objects).
         if isinstance(batch, ray.ObjectRef):
@@ -1322,6 +1176,12 @@ class Learner:
                     for module_id, module_data in batch.items()
                 },
                 env_steps=sum(len(e) for e in episodes),
+            )
+        # Have to convert to MultiAgentBatch.
+        elif isinstance(batch, SampleBatch):
+            assert len(self.module) == 1
+            batch = MultiAgentBatch(
+                {next(iter(self.module.keys())): batch}, env_steps=len(batch)
             )
 
         # Check the MultiAgentBatch, whether our RLModule contains all ModuleIDs
@@ -1359,14 +1219,15 @@ class Learner:
                 clear_on_reduce=True,
             )
 
-        if minibatch_size and self._learner_connector is not None:
-            batch_iter = partial(
-                MiniBatchCyclicIterator,
-                uses_new_env_runners=True,
-                min_total_mini_batches=min_total_mini_batches,
-            )
-        elif minibatch_size:
-            batch_iter = MiniBatchCyclicIterator
+        if minibatch_size:
+            if self._learner_connector is not None:
+                batch_iter = partial(
+                    MiniBatchCyclicIterator,
+                    uses_new_env_runners=True,
+                    min_total_mini_batches=min_total_mini_batches,
+                )
+            else:
+                batch_iter = MiniBatchCyclicIterator
         elif num_iters > 1:
             # `minibatch_size` was not set but `num_iters` > 1.
             # Under the old training stack, users could do multiple sgd passes
@@ -1408,15 +1269,29 @@ class Learner:
 
         self._set_slicing_by_batch_id(batch, value=False)
 
-        # Call `_after_gradient_based_update` to allow for non-gradient based
+        # Call `after_gradient_based_update` to allow for non-gradient based
         # cleanups-, logging-, and update logic to happen.
-        self._after_gradient_based_update(timesteps)
+        self.after_gradient_based_update(timesteps=timesteps or {})
 
         # Reduce results across all minibatch update steps.
         return self.metrics.reduce()
 
     @OverrideToImplementCustomLogic_CallToSuperRecommended
-    def _after_gradient_based_update(self, timesteps: Dict[str, Any]) -> None:
+    def before_gradient_based_update(self, *, timesteps: Dict[str, Any]) -> None:
+        """Called before gradient-based updates are completed.
+
+        Should be overridden to implement custom preparation-, logging-, or
+        non-gradient-based Learner/RLModule update logic before(!) gradient-based
+        updates are performed.
+
+        Args:
+            timesteps: Timesteps dict, which must have the key
+                `NUM_ENV_STEPS_SAMPLED_LIFETIME`.
+                # TODO (sven): Make this a more formal structure with its own type.
+        """
+
+    @OverrideToImplementCustomLogic_CallToSuperRecommended
+    def after_gradient_based_update(self, *, timesteps: Dict[str, Any]) -> None:
         """Called after gradient-based updates are completed.
 
         Should be overridden to implement custom cleanup-, logging-, or non-gradient-
@@ -1428,35 +1303,25 @@ class Learner:
                 `NUM_ENV_STEPS_SAMPLED_LIFETIME`.
                 # TODO (sven): Make this a more formal structure with its own type.
         """
-        timesteps = timesteps or {}
-
         # Only update this optimizer's lr, if a scheduler has been registered
         # along with it.
         for module_id, optimizer_names in self._module_optimizers.items():
             for optimizer_name in optimizer_names:
                 optimizer = self._named_optimizers[optimizer_name]
+                # Update and log learning rate of this optimizer.
                 lr_schedule = self._optimizer_lr_schedules.get(optimizer)
-                if lr_schedule is None:
-                    continue
-                new_lr = lr_schedule.update(
-                    timestep=timesteps.get(NUM_ENV_STEPS_SAMPLED_LIFETIME, 0)
+                if lr_schedule is not None:
+                    new_lr = lr_schedule.update(
+                        timestep=timesteps.get(NUM_ENV_STEPS_SAMPLED_LIFETIME, 0)
+                    )
+                    self._set_optimizer_lr(optimizer, lr=new_lr)
+                self.metrics.log_value(
+                    # Cut out the module ID from the beginning since it's already part
+                    # of the key sequence: (ModuleID, "[optim name]_lr").
+                    key=(module_id, f"{optimizer_name[len(module_id) + 1:]}_{LR_KEY}"),
+                    value=convert_to_numpy(self._get_optimizer_lr(optimizer)),
+                    window=1,
                 )
-                self._set_optimizer_lr(optimizer, lr=new_lr)
-
-        # Log all current learning rates of all our optimizers (registered under the
-        # different ModuleIDs).
-        self.metrics.log_dict(
-            {
-                # Cut out the module ID from the beginning since it's already part of
-                # the key sequence: (ModuleID, "[optim name]_lr").
-                (mid, f"{full_name[len(mid) + 1:]}_{LR_KEY}"): convert_to_numpy(
-                    self._get_optimizer_lr(self._named_optimizers[full_name])
-                )
-                for mid, full_names in self._module_optimizers.items()
-                for full_name in full_names
-            },
-            window=1,
-        )
 
     def _set_slicing_by_batch_id(
         self, batch: MultiAgentBatch, *, value: bool
@@ -1755,25 +1620,11 @@ class Learner:
         self.metrics.log_dict(dict(log_dict), reduce="sum", clear_on_reduce=True)
 
     @Deprecated(
-        new="self.metrics.[log_value|log_dict|log_time](key=..., value=..., "
-        "reduce=[mean|min|max|sum], window=..., ema_coeff=...)",
-        help="Use the new ray.rllib.utils.metrics.metrics_logger::MetricsLogger API "
-        "for logging your custom values and time-reducing (or parallel-reducing) them.",
+        new="Learner.before_gradient_based_update("
+        "timesteps={'num_env_steps_sampled_lifetime': ...}) and/or "
+        "Learner.after_gradient_based_update("
+        "timesteps={'num_env_steps_sampled_lifetime': ...})",
         error=True,
     )
-    def register_metric(self, *args, **kwargs):
-        pass
-
-    @Deprecated(
-        new="self.metrics.[log_value|log_dict|log_time](key=..., value=..., "
-        "reduce=[mean|min|max|sum], window=..., ema_coeff=...)",
-        help="Use the new ray.rllib.utils.metrics.metrics_logger::MetricsLogger API "
-        "for logging your custom values and time-reducing (or parallel-reducing) them.",
-        error=True,
-    )
-    def register_metrics(self, *args, **kwargs):
-        pass
-
-    @Deprecated(error=True)
-    def compile_results(self, *args, **kwargs):
+    def additional_update_for_module(self, *args, **kwargs):
         pass

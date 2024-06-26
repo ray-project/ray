@@ -8,10 +8,11 @@ import random
 import re
 import sys
 import time
+import numpy as np
 
 import pytest
 
-from ray.experimental.compiled_dag_ref import RayDAGTaskError
+from ray.exceptions import RayTaskError, RayChannelError
 import ray
 import ray._private
 import ray.cluster_utils
@@ -100,16 +101,22 @@ class Collector:
 def test_basic(ray_start_regular):
     a = Actor.remote(0)
     with InputNode() as i:
-        dag = a.inc.bind(i)
+        dag = a.echo.bind(i)
 
     compiled_dag = dag.experimental_compile()
     dag_id = compiled_dag.get_id()
 
     for i in range(3):
-        ref = compiled_dag.execute(1)
+        # Use numpy so that the value returned by ray.get will be zero-copy
+        # deserialized. If there is a memory leak in the DAG backend, then only
+        # the first iteration will succeed.
+        val = np.ones(100) * i
+        ref = compiled_dag.execute(val)
         assert str(ref) == f"CompiledDAGRef({dag_id}, execution_index={i})"
         result = ray.get(ref)
-        assert result == i + 1
+        assert (result == val).all()
+        # Delete the buffer so that the next DAG output can be written.
+        del result
 
     # Note: must teardown before starting a new Ray session, otherwise you'll get
     # a segfault from the dangling monitor thread upon the new Ray init.
@@ -364,22 +371,93 @@ def test_chain_dag(ray_start_regular, num_actors):
     compiled_dag.teardown()
 
 
-def test_dag_exception(ray_start_regular, capsys):
+def test_dag_exception_basic(ray_start_regular, capsys):
+    # Test application throwing exceptions with a single task.
     a = Actor.remote(0)
     with InputNode() as inp:
         dag = a.inc.bind(inp)
 
+    # Can throw an error.
     compiled_dag = dag.experimental_compile()
     ref = compiled_dag.execute("hello")
-    result = ray.get(ref)
-    assert isinstance(result, RayDAGTaskError)
-    assert isinstance(result.cause, TypeError)
+    with pytest.raises(RayTaskError) as exc_info:
+        ray.get(ref)
+    assert isinstance(exc_info.value.as_instanceof_cause(), TypeError)
+    # Traceback should match the original actor class definition.
+    assert "self.i += x" in str(exc_info.value)
 
-    # Can do it multiple times.
+    # Can throw an error multiple times.
     ref = compiled_dag.execute("hello")
-    result = ray.get(ref)
-    assert isinstance(result, RayDAGTaskError)
-    assert isinstance(result.cause, TypeError)
+    with pytest.raises(RayTaskError) as exc_info:
+        ray.get(ref)
+    assert isinstance(exc_info.value.as_instanceof_cause(), TypeError)
+    # Traceback should match the original actor class definition.
+    assert "self.i += x" in str(exc_info.value)
+
+    # Can use the DAG after exceptions are thrown.
+    assert ray.get(compiled_dag.execute(1)) == 1
+
+    compiled_dag.teardown()
+
+
+def test_dag_exception_chained(ray_start_regular, capsys):
+    # Test application throwing exceptions with a task that depends on another
+    # task.
+    a = Actor.remote(0)
+    with InputNode() as inp:
+        dag = a.inc.bind(inp)
+        dag = a.inc.bind(dag)
+
+    # Can throw an error.
+    compiled_dag = dag.experimental_compile()
+    ref = compiled_dag.execute("hello")
+    with pytest.raises(RayTaskError) as exc_info:
+        ray.get(ref)
+    assert isinstance(exc_info.value.as_instanceof_cause(), TypeError)
+    # Traceback should match the original actor class definition.
+    assert "self.i += x" in str(exc_info.value)
+
+    # Can throw an error multiple times.
+    ref = compiled_dag.execute("hello")
+    with pytest.raises(RayTaskError) as exc_info:
+        ray.get(ref)
+    assert isinstance(exc_info.value.as_instanceof_cause(), TypeError)
+    # Traceback should match the original actor class definition.
+    assert "self.i += x" in str(exc_info.value)
+
+    # Can use the DAG after exceptions are thrown.
+    assert ray.get(compiled_dag.execute(1)) == 2
+
+    compiled_dag.teardown()
+
+
+def test_dag_exception_multi_output(ray_start_regular, capsys):
+    # Test application throwing exceptions with a DAG with multiple outputs.
+    a = Actor.remote(0)
+    b = Actor.remote(0)
+    with InputNode() as inp:
+        dag = MultiOutputNode([a.inc.bind(inp), b.inc.bind(inp)])
+
+    compiled_dag = dag.experimental_compile()
+
+    # Can throw an error.
+    ref = compiled_dag.execute("hello")
+    with pytest.raises(RayTaskError) as exc_info:
+        ray.get(ref)
+    assert isinstance(exc_info.value.as_instanceof_cause(), TypeError)
+    # Traceback should match the original actor class definition.
+    assert "self.i += x" in str(exc_info.value)
+
+    # Can throw an error multiple times.
+    ref = compiled_dag.execute("hello")
+    with pytest.raises(RayTaskError) as exc_info:
+        ray.get(ref)
+    assert isinstance(exc_info.value.as_instanceof_cause(), TypeError)
+    # Traceback should match the original actor class definition.
+    assert "self.i += x" in str(exc_info.value)
+
+    # Can use the DAG after exceptions are thrown.
+    assert ray.get(compiled_dag.execute(1)) == [1, 1]
 
     compiled_dag.teardown()
 
@@ -538,17 +616,13 @@ def test_dag_fault_tolerance_chain(ray_start_regular_shared):
     for i in range(99):
         ref = compiled_dag.execute(i)
         results = ray.get(ref)
-        assert results == i
 
-    execution_error = None
-    for i in range(99):
-        ref = compiled_dag.execute(i)
-        result = ray.get(ref)
-        if isinstance(result, RayDAGTaskError):
-            execution_error = result
-            break
-    assert execution_error is not None
-    assert isinstance(execution_error.cause, RuntimeError)
+    with pytest.raises(RayTaskError) as exc_info:
+        for i in range(99):
+            ref = compiled_dag.execute(i)
+            results = ray.get(ref)
+            assert results == i
+    assert isinstance(exc_info.value.as_instanceof_cause(), RuntimeError)
 
     compiled_dag.teardown()
 
@@ -587,15 +661,12 @@ def test_dag_fault_tolerance(ray_start_regular_shared):
         results = ray.get(ref)
         assert results == [i + 1] * 4
 
-    execution_error = None
-    for i in range(99):
-        ref = compiled_dag.execute(1)
-        res = ray.get(ref)
-        if isinstance(res[0], RayDAGTaskError):
-            execution_error = res[0]
-            break
-    assert execution_error is not None
-    assert isinstance(execution_error.cause, RuntimeError)
+    with pytest.raises(RayTaskError) as exc_info:
+        for i in range(99, 200):
+            ref = compiled_dag.execute(1)
+            results = ray.get(ref)
+            assert results == [i + 1] * 4
+    assert isinstance(exc_info.value.as_instanceof_cause(), RuntimeError)
 
     compiled_dag.teardown()
 
@@ -632,7 +703,7 @@ def test_dag_fault_tolerance_sys_exit(ray_start_regular_shared):
         results = ray.get(ref)
         assert results == [i + 1] * 4
 
-    with pytest.raises(IOError, match="Channel closed."):
+    with pytest.raises(RayChannelError, match="Channel closed."):
         for i in range(99):
             ref = compiled_dag.execute(1)
             ray.get(ref)
@@ -694,9 +765,13 @@ def test_asyncio(ray_start_regular_shared, max_queue_size):
     )
 
     async def main(i):
-        awaitable_output = await compiled_dag.execute_async(i)
-        result = await awaitable_output.get()
-        assert result == i
+        # Use numpy so that the return value will be zero-copy deserialized. If
+        # there is a memory leak in the DAG backend, then only the first task
+        # will succeed.
+        val = np.ones(100) * i
+        fut = await compiled_dag.execute_async(val)
+        result = await fut
+        assert (result == val).all()
 
     loop.run_until_complete(asyncio.gather(*[main(i) for i in range(10)]))
     # Note: must teardown before starting a new Ray session, otherwise you'll get
@@ -706,7 +781,7 @@ def test_asyncio(ray_start_regular_shared, max_queue_size):
 
 @pytest.mark.parametrize("max_queue_size", [None, 2])
 def test_asyncio_exceptions(ray_start_regular_shared, max_queue_size):
-    a = Actor.remote(0, fail_after=100)
+    a = Actor.remote(0)
     with InputNode() as i:
         dag = a.inc.bind(i)
 
@@ -716,20 +791,29 @@ def test_asyncio_exceptions(ray_start_regular_shared, max_queue_size):
     )
 
     async def main():
-        for i in range(99):
-            awaitable_output = await compiled_dag.execute_async(1)
-            result = await awaitable_output.get()
-            assert result == i + 1
+        fut = await compiled_dag.execute_async(1)
+        result = await fut
+        assert result == 1
 
-        execution_error = None
-        for i in range(99):
-            awaitable_output = await compiled_dag.execute_async(1)
-            result = await awaitable_output.get()
-            if isinstance(result, RayDAGTaskError):
-                execution_error = result
-                break
-        assert execution_error is not None
-        assert isinstance(execution_error.cause, RuntimeError)
+        fut = await compiled_dag.execute_async("hello")
+        with pytest.raises(RayTaskError) as exc_info:
+            await fut
+        assert isinstance(exc_info.value.as_instanceof_cause(), TypeError)
+        # Traceback should match the original actor class definition.
+        assert "self.i += x" in str(exc_info.value)
+
+        # Can throw an error multiple times.
+        fut = await compiled_dag.execute_async("hello")
+        with pytest.raises(RayTaskError) as exc_info:
+            await fut
+        assert isinstance(exc_info.value.as_instanceof_cause(), TypeError)
+        # Traceback should match the original actor class definition.
+        assert "self.i += x" in str(exc_info.value)
+
+        # Can use the DAG after exceptions are thrown.
+        fut = await compiled_dag.execute_async(1)
+        result = await fut
+        assert result == 2
 
     loop.run_until_complete(main())
     # Note: must teardown before starting a new Ray session, otherwise you'll get
