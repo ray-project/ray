@@ -508,8 +508,9 @@ cdef extern from "ray/gcs/gcs_client/gcs_client.h" nogil:
         CRuntimeEnvAccessor& RuntimeEnvs()
         CAutoscalerStateAccessor& Autoscaler()
 
-    shared_ptr[CGcsClient] ConnectToGcsStandalone(
-        const CGcsClientOptions &options, const CClusterID &cluster_id)
+    CRayStatus ConnectOnSingletonIoContext(
+        CGcsClient &gcs_client,
+        const CClusterID &cluster_id)
 
     cdef cppclass CPythonGcsClient "ray::gcs::PythonGcsClient":
         CPythonGcsClient(const CGcsClientOptions &options)

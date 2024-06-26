@@ -85,12 +85,21 @@ class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient> {
   /// Connect to GCS Service. Non-thread safe.
   /// This function must be called before calling other functions.
   ///
+  /// If cluster_id is Nil, it sends a blocking RPC to GCS to get the cluster ID.
+  /// If returns OK, GetClusterId() will return a non-Nil cluster ID.
+  ///
+  /// Warning: since it may send *sync* RPCs to GCS, if the caller is in GCS itself, it
+  /// must provide a non-Nil cluster ID to avoid deadlocks.
+  ///
   /// \param instrumented_io_context IO execution service.
   /// \param cluster_id Optional cluster ID to provide to the client.
+  /// \param timeout_ms Timeout in milliseconds, default to
+  /// gcs_rpc_server_connect_timeout_s (5s).
   ///
   /// \return Status
   virtual Status Connect(instrumented_io_context &io_service,
-                         const ClusterID &cluster_id = ClusterID::Nil());
+                         const ClusterID &cluster_id = ClusterID::Nil(),
+                         int64_t timeout_ms = -1);
 
   /// Disconnect with GCS Service. Non-thread safe.
   virtual void Disconnect();
@@ -208,12 +217,13 @@ class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient> {
   std::function<void()> resubscribe_func_;
 };
 
-// Creates a GcsClient that connects to an existing GCS server. The GcsClient listens
-// on a dedicated singleton io_context on a dedicated thread, that all GcsClients created
-// this way share. The io_context and the thread are lazily created when the first
-// GcsClient is created.
-std::shared_ptr<GcsClient> ConnectToGcsStandalone(const GcsClientOptions &options,
-                                                  const ClusterID &cluster_id);
+// Connects a GcsClient to the GCS server, on a shared lazy-initialized singleton
+// io_context. This is useful for connecting to the GCS server from Python.
+//
+// For param descriptions, see GcsClient::Connect().
+Status ConnectOnSingletonIoContext(GcsClient &gcs_client,
+                                   const ClusterID &cluster_id,
+                                   int64_t timeout_ms = -1);
 
 // This client is only supposed to be used from Cython / Python
 class RAY_EXPORT PythonGcsClient {

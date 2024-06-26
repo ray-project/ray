@@ -19,7 +19,7 @@ from typing import List
 from ray.includes.common cimport (
     CGcsClient,
     CGetAllResourceUsageReply,
-    ConnectToGcsStandalone,
+    ConnectOnSingletonIoContext,
 )
 from ray.core.generated import gcs_pb2
 from cython.operator import dereference, postincrement
@@ -39,8 +39,14 @@ cdef class NewGcsClient:
         cdef CClusterID c_cluster_id = (
             CClusterID.Nil() if cluster_id is None else CClusterID.FromHex(cluster_id)
         )
-        cdef shared_ptr[CGcsClient] inner = ConnectToGcsStandalone(
-            dereference(gcs_options.native()), c_cluster_id)
+
+        cdef shared_ptr[CGcsClient] inner = make_shared[CGcsClient](
+            dereference(gcs_options.native()))
+
+        with nogil:
+            check_status_timeout_as_rpc_error(
+                ConnectOnSingletonIoContext(dereference(inner), c_cluster_id))
+
         my = NewGcsClient()
         my.inner = inner
         return my

@@ -84,7 +84,11 @@ GcsClient::GcsClient(const GcsClientOptions &options, UniqueID gcs_client_id)
     : options_(options), gcs_client_id_(gcs_client_id) {}
 
 Status GcsClient::Connect(instrumented_io_context &io_service,
-                          const ClusterID &cluster_id) {
+                          const ClusterID &cluster_id,
+                          int64_t timeout_ms) {
+  if (timeout_ms < 0) {
+    timeout_ms = RayConfig::instance().gcs_rpc_server_connect_timeout_s() * 1000;
+  }
   // Connect to gcs service.
   client_call_manager_ = std::make_unique<rpc::ClientCallManager>(io_service, cluster_id);
   gcs_rpc_client_ = std::make_shared<rpc::GcsRpcClient>(
@@ -135,6 +139,25 @@ Status GcsClient::Connect(instrumented_io_context &io_service,
 
   RAY_LOG(DEBUG) << "GcsClient connected " << options_.gcs_address_ << ":"
                  << options_.gcs_port_;
+
+  if (cluster_id.IsNil()) {
+    rpc::GetClusterIdRequest request;
+    rpc::GetClusterIdReply reply;
+    RAY_LOG(DEBUG) << "Cluster ID is nil, getting cluster ID from GCS server.";
+
+    Status s = gcs_rpc_client_->SyncGetClusterId(request, &reply, timeout_ms);
+    if (!s.ok()) {
+      RAY_LOG(WARNING) << "Failed to get cluster ID from GCS server: " << s;
+      gcs_rpc_client_->Shutdown();
+      gcs_rpc_client_.reset();
+      client_call_manager_.reset();
+      return s;
+    }
+    const auto reply_cluster_id = ClusterID::FromBinary(reply.cluster_id());
+    RAY_LOG(INFO) << "Retrieved cluster ID from GCS server: " << reply_cluster_id;
+    client_call_manager_->SetClusterId(reply_cluster_id);
+  }
+
   return Status::OK();
 }
 
@@ -150,16 +173,6 @@ std::pair<std::string, int> GcsClient::GetGcsServerAddress() const {
 
 ClusterID GcsClient::GetClusterId() const {
   ClusterID cluster_id = client_call_manager_->GetClusterId();
-  if (cluster_id.IsNil()) {
-    rpc::GetClusterIdRequest request;
-    rpc::GetClusterIdReply reply;
-    RAY_LOG(INFO) << "Cluster ID is nil, getting cluster ID from GCS server.";
-    auto status = gcs_rpc_client_->SyncGetClusterId(request, &reply, -1);
-    RAY_CHECK_OK(status);
-    cluster_id = ClusterID::FromBinary(reply.cluster_id());
-    RAY_LOG(INFO) << "Retrieved cluster ID from GCS server: " << cluster_id;
-    client_call_manager_->SetClusterId(cluster_id);
-  }
   return cluster_id;
 }
 
@@ -732,13 +745,11 @@ class SingletonIoContext {
   std::thread io_thread_;
 };
 
-std::shared_ptr<GcsClient> ConnectToGcsStandalone(const GcsClientOptions &options,
-                                                  const ClusterID &cluster_id) {
-  auto gcs_client = std::make_shared<GcsClient>(options, UniqueID::FromRandom());
+Status ConnectOnSingletonIoContext(GcsClient &gcs_client,
+                                   const ClusterID &cluster_id,
+                                   int64_t timeout_ms) {
   instrumented_io_context &io_service = SingletonIoContext::Instance().GetIoService();
-  // This only returns OK status right now.
-  RAY_CHECK_OK(gcs_client->Connect(io_service, cluster_id));
-  return gcs_client;
+  return gcs_client.Connect(io_service, cluster_id, timeout_ms);
 }
 
 }  // namespace gcs

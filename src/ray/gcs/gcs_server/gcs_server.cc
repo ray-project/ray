@@ -556,8 +556,10 @@ void GcsServer::InitFunctionManager() {
 }
 
 void GcsServer::InitUsageStatsClient() {
-  usage_stats_client_ = std::make_unique<UsageStatsClient>(
-      "127.0.0.1:" + std::to_string(GetPort()), main_service_);
+  usage_stats_client_ =
+      std::make_unique<UsageStatsClient>("127.0.0.1:" + std::to_string(GetPort()),
+                                         main_service_,
+                                         rpc_server_.GetClusterId());
 }
 
 void GcsServer::InitKVManager() {
