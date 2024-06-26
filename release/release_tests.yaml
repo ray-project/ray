@@ -1517,6 +1517,45 @@
 # Long running tests
 #######################
 
+- name: long_running_actor_deaths_jem
+  group: Long running tests
+  working_dir: long_running_tests
+
+  frequency: weekly
+
+  team: core
+  cluster:
+    byod:
+      pip:
+        # TODO: https://github.com/Farama-Foundation/AutoROM/issues/48
+        - https://ray-ci-deps-wheels.s3.us-west-2.amazonaws.com/AutoROM.accept_rom_license-0.5.4-py3-none-any.whl
+      runtime_env:
+        - RLLIB_TEST_NO_JAX_IMPORT=1
+        - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
+    cluster_compute: tpl_cpu_1.yaml
+
+  run:
+    timeout: 86400
+    script: python workloads/actor_deaths.py
+    long_running: true
+
+  smoke_test:
+    frequency: nightly
+
+    run:
+      timeout: 3600
+
+  alert: long_running_tests
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      smoke_test:
+        frequency: manual
+      cluster:
+        cluster_compute: tpl_cpu_1_gce.yaml
 - name: long_running_actor_deaths
   group: Long running tests
   working_dir: long_running_tests
@@ -1684,6 +1723,50 @@
       cluster:
         cluster_compute: tpl_cpu_1_gce.yaml
 
+- name: long_running_many_drivers_jem
+  group: Long running tests
+  working_dir: long_running_tests
+
+  frequency: weekly
+
+  team: core
+  cluster:
+    byod:
+      pip:
+        # TODO: https://github.com/Farama-Foundation/AutoROM/issues/48
+        - https://ray-ci-deps-wheels.s3.us-west-2.amazonaws.com/AutoROM.accept_rom_license-0.5.4-py3-none-any.whl
+      runtime_env:
+        - RLLIB_TEST_NO_JAX_IMPORT=1
+        - LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so
+    cluster_compute: tpl_cpu_4.yaml
+
+  run:
+    timeout: 86400
+    script: python workloads/many_drivers.py --iteration-num=4000
+    long_running: true
+    wait_for_nodes:
+      num_nodes: 4
+
+  smoke_test:
+    frequency: nightly
+
+    run:
+      timeout: 3600
+
+  alert: long_running_tests
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      smoke_test:
+        frequency: manual
+        run:
+          timeout: 3600
+      cluster:
+        cluster_compute: tpl_cpu_4_gce.yaml
+
 - name: long_running_many_drivers
   group: Long running tests
   working_dir: long_running_tests
@@ -1792,6 +1875,48 @@
   run:
     timeout: 86400
     script: python workloads/many_tasks.py
+    long_running: true
+
+  smoke_test:
+    frequency: nightly
+
+    run:
+      timeout: 3600
+
+  alert: long_running_tests
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      smoke_test:
+        frequency: manual
+        run:
+          timeout: 3600
+      cluster:
+        cluster_compute: tpl_cpu_1_gce.yaml
+
+- name: long_running_many_tasks_serialized_ids_jem
+  group: Long running tests
+  working_dir: long_running_tests
+
+  frequency: weekly
+
+  team: core
+  cluster:
+    byod:
+      pip:
+        # TODO: https://github.com/Farama-Foundation/AutoROM/issues/48
+        - https://ray-ci-deps-wheels.s3.us-west-2.amazonaws.com/AutoROM.accept_rom_license-0.5.4-py3-none-any.whl
+      runtime_env:
+        - RLLIB_TEST_NO_JAX_IMPORT=1
+        - LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so
+    cluster_compute: tpl_cpu_1.yaml
+
+  run:
+    timeout: 86400
+    script: python workloads/many_tasks_serialized_ids.py
     long_running: true
 
   smoke_test:
@@ -2587,6 +2712,41 @@
 
   alert: default
 
+# - name: xgboost_train_batch_inference_benchmark_100G_jem
+#   group: Train tests
+#   working_dir: train_tests/xgboost_lightgbm
+#
+#   frequency: nightly-3x
+#   team: ml
+#   cluster:
+#     byod:
+#       type: gpu
+#       runtime_env:
+#         - LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so
+#     cluster_compute: compute_aws_10workers.yaml
+#
+#   run:
+#     timeout: 36000
+#     script: python train_batch_inference_benchmark.py "xgboost" --size=100G
+#
+#     wait_for_nodes:
+#       num_nodes: 11
+#
+#   variations:
+#     - __suffix__: aws
+#     - __suffix__: gce
+#       env: gce
+#       frequency: manual
+#       cluster:
+#         cluster_compute: compute_gce_10workers.yaml
+#
+#   smoke_test:
+#     frequency: manual
+#
+#     run:
+#       timeout: 1800
+#
+#   alert: default
 
 - name: lightgbm_train_batch_inference_benchmark_10G
   group: Train tests
@@ -2886,6 +3046,52 @@
       frequency: manual
       cluster:
         cluster_compute: decision_tree/autoscaling_compute_gce.yaml
+
+# - name: autoscaling_shuffle_1tb_1000_partitions_jem
+#   group: core-multi-test
+#   working_dir: nightly_tests
+#
+#   frequency: nightly
+#
+#   team: core
+#   cluster:
+#     byod:
+#       runtime_env:
+#         - RAY_worker_killing_policy=retriable_lifo
+#         - LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so
+#     cluster_compute: shuffle/shuffle_compute_autoscaling.yaml
+#
+#   run:
+#     timeout: 4000
+#     script: python shuffle/shuffle_test.py --num-partitions=1000 --partition-size=1e9
+#       --no-streaming
+
+- name: autoscaling_shuffle_1tb_1000_partitions_mi
+  group: core-multi-test
+  working_dir: nightly_tests
+
+  frequency: nightly
+
+  team: core
+  cluster:
+    byod:
+      runtime_env:
+        - RAY_worker_killing_policy=retriable_lifo
+        - LD_PRELOAD=/usr/local/lib/libmimalloc.so
+    cluster_compute: shuffle/shuffle_compute_autoscaling.yaml
+
+  run:
+    timeout: 4000
+    script: python shuffle/shuffle_test.py --num-partitions=1000 --partition-size=1e9
+      --no-streaming
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_compute: shuffle/shuffle_compute_autoscaling_gce.yaml
 
 - name: autoscaling_shuffle_1tb_1000_partitions
   group: core-multi-test
@@ -3826,6 +4032,34 @@
       cluster:
         cluster_compute: stable_diffusion_benchmark_compute_gce.yaml
 
+# - name: streaming_data_ingest_benchmark_1tb_jem
+#   group: data-tests
+#   working_dir: nightly_tests/dataset
+#
+#   frequency: nightly
+#   team: data
+#
+#   cluster:
+#     byod:
+#       type: gpu
+#       runtime_env:
+#         - LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so
+#     cluster_compute: data_ingest_benchmark_compute.yaml
+#
+#   run:
+#     timeout: 300
+#     script: python data_ingest_benchmark.py --dataset-size-gb=1000 --num-workers=20 --streaming
+#     wait_for_nodes:
+#       num_nodes: 20
+#
+#   variations:
+#     - __suffix__: aws
+#     - __suffix__: gce
+#       env: gce
+#       frequency: manual
+#       cluster:
+#         cluster_compute: data_ingest_benchmark_compute_gce.yaml
+
 - name: streaming_data_ingest_benchmark_1tb
   group: data-tests
   working_dir: nightly_tests/dataset
@@ -4131,6 +4365,58 @@
       cluster:
         cluster_compute: ../../air_tests/air_benchmarks/compute_gpu_4x4_gce.yaml
 
+# - name: read_images_train_16_gpu_jem
+#   group: data-tests
+#   working_dir: nightly_tests/dataset
+#
+#   frequency: nightly
+#   team: data
+#   cluster:
+#     byod:
+#       type: gpu
+#       post_build_script: byod_install_mosaicml.sh
+#       runtime_env:
+#         - LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so
+#     cluster_compute: multi_node_train_16_workers.yaml
+#
+#   run:
+#     timeout: 18000
+#     script: python multi_node_train_benchmark.py --num-workers 16 --file-type image --use-gpu --num-epochs 2
+#
+#   variations:
+#     - __suffix__: aws
+#     - __suffix__: gce
+#       env: gce
+#       frequency: manual
+#       cluster:
+#         cluster_compute: ../../air_tests/air_benchmarks/compute_gpu_4x4_gce.yaml
+
+- name: read_images_train_16_gpu_mi
+  group: data-tests
+  working_dir: nightly_tests/dataset
+
+  frequency: nightly
+  team: data
+  cluster:
+    byod:
+      type: gpu
+      post_build_script: byod_install_mosaicml.sh
+      runtime_env:
+        - LD_PRELOAD=/usr/local/lib/libmimalloc.so
+    cluster_compute: multi_node_train_16_workers.yaml
+
+  run:
+    timeout: 18000
+    script: python multi_node_train_benchmark.py --num-workers 16 --file-type image --use-gpu --num-epochs 2
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_compute: ../../air_tests/air_benchmarks/compute_gpu_4x4_gce.yaml
+
 - name: read_images_train_16_gpu_preserve_order
   group: data-tests
   working_dir: nightly_tests/dataset
@@ -4352,6 +4638,36 @@
       frequency: manual
       cluster:
         cluster_compute: single_node_benchmark_compute_gce.yaml
+
+# - name: dataset_shuffle_random_shuffle_1tb_jem
+#   group: data-tests
+#   working_dir: nightly_tests
+#
+#   frequency: nightly
+#   team: data
+#
+#   cluster:
+#     byod:
+#       runtime_env:
+#         - RAY_worker_killing_policy=retriable_lifo
+#         - LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so
+#       pip:
+#         - ray[default]
+#     cluster_compute: shuffle/datasets_large_scale_compute_small_instances.yaml
+#
+#   run:
+#     timeout: 7200
+#     script: python dataset/sort.py --num-partitions=1000 --partition-size=1e9 --shuffle
+#     wait_for_nodes:
+#       num_nodes: 20
+#
+#   variations:
+#     - __suffix__: aws
+#     - __suffix__: gce
+#       env: gce
+#       frequency: manual
+#       cluster:
+#         cluster_compute: shuffle/datasets_large_scale_compute_small_instances_gce.yaml
 
 - name: dataset_shuffle_random_shuffle_1tb
   group: data-tests
