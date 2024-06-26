@@ -300,18 +300,10 @@ def test_torch_tensor_nccl_wrong_shape(ray_start_regular):
 
     compiled_dag = dag.experimental_compile()
 
-    ref = compiled_dag.execute(
-            shape=(20, ),
-            dtype=dtype,
-            value=1
-            )
-    ray.get(ref) == (1, (20, ), dtype)
+    ref = compiled_dag.execute(shape=(20,), dtype=dtype, value=1)
+    ray.get(ref) == (1, (20,), dtype)
 
-    ref = compiled_dag.execute(
-            shape=(10, ),
-            dtype=dtype,
-            value=1
-            )
+    ref = compiled_dag.execute(shape=(10,), dtype=dtype, value=1)
 
     with pytest.raises(RayChannelError):
         ray.get(ref)
@@ -321,11 +313,7 @@ def test_torch_tensor_nccl_wrong_shape(ray_start_regular):
     # when the task returns torch.Tensors of the wrong shape or dtype. Check
     # that we can no longer submit to the DAG.
     with pytest.raises(RayChannelError):
-        ref = compiled_dag.execute(
-                shape=(20, ),
-                dtype=dtype,
-                value=1
-                )
+        ref = compiled_dag.execute(shape=(20,), dtype=dtype, value=1)
 
     compiled_dag.teardown()
 
@@ -446,18 +434,10 @@ def test_torch_tensor_nccl_direct_return_error(ray_start_regular):
 
     compiled_dag = dag.experimental_compile()
 
-    ref = compiled_dag.execute(
-            shape=shape,
-            dtype=dtype,
-            value=1,
-            send_tensor=True)
+    ref = compiled_dag.execute(shape=shape, dtype=dtype, value=1, send_tensor=True)
     assert ray.get(ref) == (1, shape, dtype)
 
-    ref = compiled_dag.execute(
-            shape=shape,
-            dtype=dtype,
-            value=1,
-            send_tensor=False)
+    ref = compiled_dag.execute(shape=shape, dtype=dtype, value=1, send_tensor=False)
     with pytest.raises(RayChannelError):
         ray.get(ref)
 
@@ -466,11 +446,7 @@ def test_torch_tensor_nccl_direct_return_error(ray_start_regular):
     # something other than a torch.Tensor. Check that we can no longer submit
     # to the DAG.
     with pytest.raises(RayChannelError):
-        ref = compiled_dag.execute(
-                shape=shape,
-                dtype=dtype,
-                value=1,
-                send_tensor=True)
+        ref = compiled_dag.execute(shape=shape, dtype=dtype, value=1, send_tensor=True)
 
     compiled_dag.teardown()
 
