@@ -11,22 +11,32 @@ from ray._private.utils import _get_pyarrow_version
 from ray.util.annotations import PublicAPI
 
 MIN_PYARROW_VERSION_SCALAR_SUBCLASS = parse_version("9.0.0")
-PYARROW_VERSION = parse_version(_get_pyarrow_version())
+
+_VER = _get_pyarrow_version()
+PYARROW_VERSION = None if _VER is None else parse_version(_VER)
 
 
 def object_extension_type_allowed() -> bool:
     return (
-        PYARROW_VERSION is None
-        or PYARROW_VERSION >= MIN_PYARROW_VERSION_SCALAR_SUBCLASS
+        PYARROW_VERSION is not None
+        and PYARROW_VERSION >= MIN_PYARROW_VERSION_SCALAR_SUBCLASS
     )
 
 
+# Please see https://arrow.apache.org/docs/python/extending_types.html for more info
 @PublicAPI(stability="alpha")
 class ArrowPythonObjectType(pa.ExtensionType):
+    """Defines a new Arrow extension type for Python objects.
+    We do not require a parametrized type, so the constructor does not
+    take any arguments
+    """
+
     def __init__(self) -> None:
+        # Defines the underlying storage type as the PyArrow LargeBinary type
         super().__init__(pa.large_binary(), "ray.data.arrow_pickled_object")
 
     def __arrow_ext_serialize__(self) -> bytes:
+        # Since there are no type parameters, we are free to return empty
         return b""
 
     @classmethod
@@ -36,15 +46,27 @@ class ArrowPythonObjectType(pa.ExtensionType):
         return ArrowPythonObjectType()
 
     def __arrow_ext_scalar_class__(self) -> type:
+        """Returns the scalar class of the extension type. Indexing out of the
+        PyArrow extension array will return instances of this type.
+        """
         return ArrowPythonObjectScalar
 
     def __arrow_ext_class__(self) -> type:
+        """Returns the array type of the extension type. Selecting one array
+        out of the ChunkedArray that makes up a column in a Table with
+        this custom type will return an instance of this type.
+        """
         return ArrowPythonObjectArray
 
     def to_pandas_dtype(self):
+        """Pandas interoperability type. This describes the Pandas counterpart
+        to the Arrow type. See https://pandas.pydata.org/docs/development/extending.html
+        for more information.
+        """
         return ray.air.util.object_extensions.pandas.PythonObjectDtype()
 
     def __reduce__(self):
+        # Earlier PyArrow versions require custom pickling behavior.
         return self.__arrow_ext_deserialize__, (
             self.storage_type,
             self.__arrow_ext_serialize__(),
@@ -53,6 +75,8 @@ class ArrowPythonObjectType(pa.ExtensionType):
 
 @PublicAPI(stability="alpha")
 class ArrowPythonObjectScalar(pa.ExtensionScalar):
+    """Scalar class for ArrowPythonObjectType"""
+
     def as_py(self) -> typing.Any:
         if not isinstance(self.value, pa.LargeBinaryScalar):
             raise RuntimeError(
@@ -63,6 +87,8 @@ class ArrowPythonObjectScalar(pa.ExtensionScalar):
 
 @PublicAPI(stability="alpha")
 class ArrowPythonObjectArray(pa.ExtensionArray):
+    """Array class for ArrowPythonObjectType"""
+
     def from_objects(
         objects: typing.Union[np.ndarray, typing.Iterable[typing.Any]]
     ) -> "ArrowPythonObjectArray":

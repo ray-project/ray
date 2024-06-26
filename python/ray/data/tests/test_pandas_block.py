@@ -1,11 +1,8 @@
 import pandas as pd
 import pytest
 
-<<<<<<< HEAD
 import ray
 import ray.data
-=======
->>>>>>> origin/master
 from ray.data._internal.pandas_block import PandasBlockAccessor
 from ray.data.extensions.object_extension import object_extension_type_allowed
 

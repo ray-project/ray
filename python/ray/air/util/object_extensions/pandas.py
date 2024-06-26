@@ -11,8 +11,11 @@ import ray.air.util.object_extensions.arrow
 from ray.util.annotations import PublicAPI
 
 
+# See https://pandas.pydata.org/docs/development/extending.html for more information.
 @PublicAPI(stability="alpha")
 class PythonObjectArray(pd.api.extensions.ExtensionArray):
+    """Implements the Pandas extension array interface for the Arrow object array"""
+
     def __init__(self, values: collections.abc.Iterable[typing.Any]):
         vals = list(values)
         self.values = np.empty(len(vals), dtype=object)

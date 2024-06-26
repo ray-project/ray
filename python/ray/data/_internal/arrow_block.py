@@ -19,7 +19,10 @@ import numpy as np
 
 from ray._private.utils import _get_pyarrow_version
 from ray.air.constants import TENSOR_COLUMN_NAME
-from ray.air.util.tensor_extensions.arrow import pyarrow_table_from_pydict
+from ray.air.util.tensor_extensions.arrow import (
+    ArrowConversionError,
+    pyarrow_table_from_pydict,
+)
 from ray.data._internal.arrow_ops import transform_polars, transform_pyarrow
 from ray.data._internal.numpy_support import (
     convert_udf_returns_to_numpy,
@@ -212,8 +215,6 @@ class ArrowBlockAccessor(TableBlockAccessor):
     def numpy_to_block(
         batch: Union[Dict[str, np.ndarray], Dict[str, list]],
     ) -> "pyarrow.Table":
-        import pyarrow as pa
-
         from ray.data.extensions.object_extension import (
             ArrowPythonObjectArray,
             object_extension_type_allowed,
@@ -230,11 +231,7 @@ class ArrowBlockAccessor(TableBlockAccessor):
             if col.dtype.type is np.object_ or col.ndim > 1:
                 try:
                     col = ArrowTensorArray.from_numpy(col, col_name)
-                except (
-                    pyarrow.ArrowInvalid,
-                    pyarrow.ArrowNotImplementedError,
-                    pyarrow.ArrowTypeError,
-                ):
+                except ArrowConversionError:
                     if object_extension_type_allowed():
                         if log_once(f"arrow_object_pickle_{col_name}"):
                             logger.warning(
