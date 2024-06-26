@@ -268,7 +268,7 @@ class MultiAgentEnvRunner(EnvRunner):
                 # MARLModule forward pass: Explore or not.
                 if explore:
                     env_steps_lifetime = self.metrics.peek(
-                        NUM_ENV_STEPS_SAMPLED_LIFETIME
+                        NUM_ENV_STEPS_SAMPLED_LIFETIME, default=0
                     ) + self.metrics.peek(NUM_ENV_STEPS_SAMPLED, default=0)
                     to_env = self.module.forward_exploration(
                         to_module, t=env_steps_lifetime
@@ -465,7 +465,7 @@ class MultiAgentEnvRunner(EnvRunner):
                 # MARLModule forward pass: Explore or not.
                 if explore:
                     env_steps_lifetime = self.metrics.peek(
-                        NUM_ENV_STEPS_SAMPLED_LIFETIME
+                        NUM_ENV_STEPS_SAMPLED_LIFETIME, default=0
                     ) + self.metrics.peek(NUM_ENV_STEPS_SAMPLED, default=0)
                     to_env = self.module.forward_exploration(
                         to_module, t=env_steps_lifetime
@@ -828,8 +828,6 @@ class MultiAgentEnvRunner(EnvRunner):
 
     def _setup_metrics(self):
         self.metrics = MetricsLogger()
-        # Initialize lifetime counts.
-        self.metrics.log_value(NUM_ENV_STEPS_SAMPLED_LIFETIME, 0, reduce="sum")
 
         self._done_episodes_for_metrics: List[MultiAgentEpisode] = []
         self._ongoing_episodes_for_metrics: DefaultDict[
