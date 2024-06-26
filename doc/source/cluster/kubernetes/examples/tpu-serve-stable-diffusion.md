@@ -17,12 +17,9 @@ Follow [this document](kuberay-operator-deploy) to install the latest stable Kub
 ```sh
 # Creates a RayCluster with a single-host v4 TPU worker group of 2x2x1 topology
 kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/v1.1.1/ray-operator/config/samples/ray-service.tpu-single-host.yaml
-
-# Creates a RayCluster with a multi-host v4 TPU worker group of 2x2x2 topology
-kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/v1.1.1/ray-operator/config/samples/ray-service.tpu-multi-host.yaml
 ```
 
-KubeRay operator v1.1.0 adds a new `NumOfHosts` field to the RayCluster CR, supporting multi-host worker groups. This field specifies the number of workers to create per replica, with each replica representing a multi-host PodSlice. The value for `NumOfHosts` should match the number of TPU VM hosts expected by the given `cloud.google.com/gke-tpu-topology` node selector.
+KubeRay operator v1.1.0 adds a new `NumOfHosts` field to the RayCluster CR, supporting multi-host worker groups. This field specifies the number of workers to create per replica, with each replica representing a multi-host PodSlice. The value for `NumOfHosts` should match the number of TPU VM hosts expected by the given `cloud.google.com/gke-tpu-topology` node selector. For this example, the Stable Diffusion model is small enough to run on a single TPU host, so `numOfHosts` is set to 1 in the RayService manifest.
 
 ## Step 4: View the Serve deployment in the Ray dashboard
 
@@ -69,4 +66,5 @@ python stable_diffusion_tpu_req.py  --save_pictures
 ```
 
 * The results of the stable diffusion inference will be saved to a file named diffusion_results.png.
+
 ![diffusion_results](../images/diffusion_results.png)
