@@ -7,7 +7,7 @@ import time
 
 import pytest
 
-from ray.exceptions import RayTaskError, RayChannelError
+from ray.exceptions import RayChannelError
 import ray
 from ray.air._internal import torch_utils
 import ray.cluster_utils
@@ -283,7 +283,6 @@ def test_torch_tensor_nccl_wrong_shape(ray_start_regular):
     sender = actor_cls.remote()
     receiver = actor_cls.remote()
 
-    shape = (10,)
     dtype = torch.float16
 
     # Passing tensors of the wrong shape will error.
