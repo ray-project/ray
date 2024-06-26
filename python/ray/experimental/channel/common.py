@@ -360,7 +360,7 @@ class AwaitableBackgroundWriter(WriterInterface):
             from ray.dag import DAGContext
 
             ctx = DAGContext.get_current()
-            max_queue_size = ctx.async_max_queue_size
+            max_queue_size = ctx.max_async_queue_size
         self._queue = asyncio.Queue(max_queue_size)
         self._background_task = None
         self._background_task_executor = concurrent.futures.ThreadPoolExecutor(

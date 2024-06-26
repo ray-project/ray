@@ -377,7 +377,7 @@ class CompiledDAG:
         self,
         buffer_size_bytes: Optional[int],
         enable_asyncio: bool = False,
-        async_max_queue_size: Optional[int] = None,
+        max_async_queue_size: Optional[int] = None,
         max_buffered_results: Optional[int] = None,
     ):
         """
@@ -389,7 +389,7 @@ class CompiledDAG:
                 be running in an event loop and must use `execute_async` to
                 invoke the DAG. Otherwise, the caller should use `execute` to
                 invoke the DAG.
-            async_max_queue_size: Optional parameter to limit how many DAG
+            max_async_queue_size: Optional parameter to limit how many DAG
                 inputs can be queued at a time. The actual number of concurrent
                 DAG invocations may be higher than this, if there are already
                 inputs being processed by the DAG executors. If used, the
@@ -426,8 +426,8 @@ class CompiledDAG:
 
         self._enable_asyncio: bool = enable_asyncio
         self._fut_queue = asyncio.Queue()
-        self._async_max_queue_size: Optional[int] = async_max_queue_size
-        # TODO(rui): consider unify it with async_max_queue_size
+        self._max_async_queue_size: Optional[int] = max_async_queue_size
+        # TODO(rui): consider unify it with max_async_queue_size
         self._max_buffered_results: Optional[int] = max_buffered_results
         if self._max_buffered_results is None:
             self._max_buffered_results = ctx.max_buffered_results
@@ -863,7 +863,7 @@ class CompiledDAG:
         self._monitor = self._monitor_failures()
         if self._enable_asyncio:
             self._dag_submitter = AwaitableBackgroundWriter(
-                self.dag_input_channel, self._async_max_queue_size
+                self.dag_input_channel, self._max_async_queue_size
             )
             self._dag_output_fetcher = AwaitableBackgroundReader(
                 self.dag_output_channels,
@@ -1231,13 +1231,13 @@ def build_compiled_dag_from_ray_dag(
     dag: "ray.dag.DAGNode",
     buffer_size_bytes: Optional[int],
     enable_asyncio: bool = False,
-    async_max_queue_size: Optional[int] = None,
+    max_async_queue_size: Optional[int] = None,
     max_buffered_results: Optional[int] = None,
 ) -> "CompiledDAG":
     compiled_dag = CompiledDAG(
         buffer_size_bytes,
         enable_asyncio,
-        async_max_queue_size,
+        max_async_queue_size,
         max_buffered_results,
     )
 

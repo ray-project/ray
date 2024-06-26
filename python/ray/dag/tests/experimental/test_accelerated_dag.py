@@ -690,7 +690,7 @@ def test_asyncio(ray_start_regular_shared, max_queue_size):
 
     loop = get_or_create_event_loop()
     compiled_dag = dag.experimental_compile(
-        enable_asyncio=True, _async_max_queue_size=max_queue_size
+        enable_asyncio=True, _max_async_queue_size=max_queue_size
     )
 
     async def main(i):
@@ -712,7 +712,7 @@ def test_asyncio_exceptions(ray_start_regular_shared, max_queue_size):
 
     loop = get_or_create_event_loop()
     compiled_dag = dag.experimental_compile(
-        enable_asyncio=True, _async_max_queue_size=max_queue_size
+        enable_asyncio=True, _max_async_queue_size=max_queue_size
     )
 
     async def main():

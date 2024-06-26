@@ -10,8 +10,8 @@ _context_lock = threading.Lock()
 
 # Default buffer size is 1MB.
 DEFAULT_BUFFER_SIZE_BYTES = int(os.environ.get("RAY_DAG_buffer_size_bytes", 1e6))
-# Default async_max_queue_size is 0, which means no limit.
-DEFAULT_ASYNC_MAX_QUEUE_SIZE = int(os.environ.get("RAY_DAG_async_max_queue_size", 0))
+# Default max_async_queue_size is 0, which means no limit.
+DEFAULT_MAX_ASYNC_QUEUE_SIZE = int(os.environ.get("RAY_DAG_max_async_queue_size", 0))
 # The default max_buffered_results is 1000, and the default buffer size is 1 MB.
 # The maximum memory usage for buffered results is 1 GB.
 DEFAULT_MAX_BUFFERED_RESULTS = int(os.environ.get("RAY_DAG_max_buffered_results", 1000))
@@ -25,7 +25,7 @@ class DAGContext:
     Args:
         buffer_size_bytes: The maximum size of messages that can be passed
             between tasks in the DAG.
-        async_max_queue_size: The max queue size for the async execution.
+        max_async_queue_size: The max queue size for the async execution.
         max_buffered_results: The maximum number of execution results that
             are allowed to be buffered. Setting a higher value allows more
             DAGs to be executed before `ray.get()` must be called but also
@@ -36,7 +36,7 @@ class DAGContext:
     """
 
     buffer_size_bytes: int = DEFAULT_BUFFER_SIZE_BYTES
-    async_max_queue_size: int = DEFAULT_ASYNC_MAX_QUEUE_SIZE
+    max_async_queue_size: int = DEFAULT_MAX_ASYNC_QUEUE_SIZE
     max_buffered_results: int = DEFAULT_MAX_BUFFERED_RESULTS
 
     @staticmethod
