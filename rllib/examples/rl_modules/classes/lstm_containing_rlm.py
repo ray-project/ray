@@ -28,15 +28,15 @@ class LSTMContainingRLModule(TorchRLModule):
         """
         # Assume a simple Box(1D) tensor as input shape.
         in_size = self.config.observation_space.shape[0]
-        # Build a sequential stack.
-        layers = []
 
         # Get the LSTM cell size from our RLModuleConfig's (self.config)
         # `model_config_dict` property:
         cell_size = self.config.model_config_dict.get("lstm_cell_size", 256)
-        layers.append(nn.LSTM(in_size, cell_size))
+        self._lstm = nn.LSTM(in_size, cell_size)
         in_size = cell_size
 
+        # Build a sequential stack.
+        layers = []
         # Get the dense layer pre-stack configuration from the same config dict.
         dense_layers = self.config.model_config_dict.get("dense_layers", [128, 128])
         for out_size in dense_layers:
@@ -46,7 +46,7 @@ class LSTMContainingRLModule(TorchRLModule):
             layers.append(nn.ReLU())
             in_size = out_size
 
-        self._net = nn.Sequential(*layers)
+        self._fc_net = nn.Sequential(*layers)
 
         # Logits layer (no bias, no activation).
         self._logits = nn.Linear(in_size, self.config.action_space.n)
@@ -56,13 +56,16 @@ class LSTMContainingRLModule(TorchRLModule):
     @override(TorchRLModule)
     def _forward_inference(self, batch, **kwargs):
         # Compute the basic 1D feature tensor (inputs to policy- and value-heads).
-        _, logits = self._compute_features_and_logits(batch)
+        _, state_out, logits = self._compute_features_state_out_and_logits(batch)
 
         # Return logits as ACTION_DIST_INPUTS (categorical distribution).
         # Note that the default `GetActions` connector piece (in the EnvRunner) will
         # take care of argmax-"sampling" from the logits to yield the inference (greedy)
         # action.
-        return {Columns.ACTION_DIST_INPUTS: logits}
+        return {
+            Columns.STATE_OUT: state_out,
+            Columns.ACTION_DIST_INPUTS: logits,
+        }
 
     @override(TorchRLModule)
     def _forward_exploration(self, batch, **kwargs):
@@ -75,11 +78,12 @@ class LSTMContainingRLModule(TorchRLModule):
     @override(TorchRLModule)
     def _forward_train(self, batch, **kwargs):
         # Compute the basic 1D feature tensor (inputs to policy- and value-heads).
-        features, logits = self._compute_features_and_logits(batch)
+        features, state_out, logits = self._compute_features_state_out_and_logits(batch)
         # Besides the action logits, we also have to return value predictions here
         # (to be used inside the loss function).
         values = self._values(features).squeeze(-1)
         return {
+            Columns.STATE_OUT: state_out,
             Columns.ACTION_DIST_INPUTS: logits,
             Columns.VF_PREDS: values,
         }
@@ -110,11 +114,12 @@ class LSTMContainingRLModule(TorchRLModule):
         features = self._net(obs)
         return self._values(features).squeeze(-1)
 
-    def _compute_features_and_logits(self, batch):
+    def _compute_features_state_out_and_logits(self, batch):
         obs = batch[Columns.OBS]
-        features = self._net(obs)
+        state_in = batch[Columns.STATE_IN]
+        features, state_out = self._lstm(obs, state_in)
         logits = self._logits(features)
-        return features, logits
+        return features, state_out, logits
 
 
 if __name__ == "__main__":
