@@ -1,8 +1,10 @@
 from pathlib import Path
+import time
 
 from ray.rllib.algorithms.bc import BCConfig
 from ray.rllib.utils.metrics import ENV_RUNNER_RESULTS, EPISODE_RETURN_MEAN
 
+# Define the data paths.
 data_path = "tests/data/cartpole/cartpole-v1_large.jsonl/1_000000_000000.json"
 base_path = Path(__file__).parents[2]
 print(f"base_path={base_path}")
@@ -18,7 +20,7 @@ config = (
         enable_env_runner_and_connector_v2=True,
     )
     .learners(
-        num_learners=2,
+        num_learners=4,
     )
     .evaluation(
         evaluation_interval=3,
@@ -27,18 +29,16 @@ config = (
         evaluation_parallel_to_training=True,
     )
     .offline_data(input_=[data_path])
-    .training(
-        lr=0.0008,
-    )
+    .training(lr=0.0008, train_batch_size_per_learner=500)
 )
 
 num_iterations = 350
 min_reward = 120.0
 
-# ray.init(local_mode=True)
 # TODO (simon): Add support for recurrent modules.
 algo = config.build()
 learnt = False
+start = time.perf_counter()
 for i in range(num_iterations):
     results = algo.train()
 
@@ -56,4 +56,6 @@ if not learnt:
         f"`BC` did not reach {min_reward} reward from expert offline data!"
     )
 
+stop = time.perf_counter()
+print(f"Time needed: {(stop - start)} secs.")
 algo.stop()

@@ -1,12 +1,15 @@
 import logging
 import numpy as np
 from pathlib import Path
+import random
 import ray
-from typing import Dict, List
+from ray.actor import ActorHandle
+from typing import Dict, List, Optional, Union
 
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.learner import Learner
+from ray.rllib.core.rl_module.marl_module import MultiAgentRLModuleSpec
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
 from ray.rllib.utils.compression import unpack_if_needed
@@ -52,7 +55,9 @@ class OfflineData:
         self.compressed = config.get("compressed", False)
         try:
             # TODO (simon): Add support for `kwargs`.
-            self.data = getattr(ray.data, self.data_read_method)(self.path)
+            self.data = getattr(ray.data, self.data_read_method)(
+                self.path, override_num_blocks=4
+            )
             ctx = ray.data.DataContext.get_current()
             ctx.execution_options.locality_with_output = True
             logger.info("Reading data from {}".format(self.path))
@@ -63,6 +68,7 @@ class OfflineData:
         self.batch_iterator = None
         self.locality_hints = None
         self.learner_handles = None
+        self.module_spec = None
 
     def sample(
         self,
@@ -87,7 +93,7 @@ class OfflineData:
                     "config": self.config,
                     "learner": self.learner_handles[0],
                 },
-                concurrency=2,
+                concurrency=4,
                 batch_size=num_samples,
             ).iter_batches(
                 batch_size=num_samples,
@@ -100,20 +106,19 @@ class OfflineData:
             # In case of multiple shards, we return multiple
             # `StreamingSplitIterator` instances.
             if num_shards > 1:
-                # return self.data.map_batches(
-                #     functools.partial(self._map_to_episodes, self.is_multi_agent)
-                # ).streaming_split(
-                #     n=num_shards, equal=False, locality_hints=self.locality_hints
-                # )
                 return self.data.map_batches(
                     # TODO (cheng su): At best the learner handle passed in here should
                     # be the one from the learner that is nearest, but here we cannot
                     # provide locality hints.
                     PreprocessEpisodes,
-                    config=self.config,
-                    learner=self.learner_handles,
-                    locality_hints=self.locality_hints,
+                    fn_constructor_kwargs={
+                        "config": self.config,
+                        "learner": self.learner_handles,
+                        "locality_hints": self.locality_hints,
+                        "module_spec": self.module_spec,
+                    },
                     concurrency=(num_shards, num_shards * 2),
+                    batch_size=num_samples,
                 ).streaming_split(
                     n=num_shards, equal=False, locality_hints=self.locality_hints
                 )
@@ -123,26 +128,45 @@ class OfflineData:
                 return self.batch_iterator
         else:
             # Return a single batch from the iterator.
-            return next(iter(self.batch_iterator))["batch"][0]  # ["episodes"]tolist()
+            return next(iter(self.batch_iterator))["batch"][0]
 
 
 class PreprocessEpisodes:
-    def __init__(self, config, learner, locality_hints):
+    def __init__(
+        self,
+        config,
+        learner: Union[Learner, list[ActorHandle]],
+        locality_hints: Optional[list] = None,
+        module_spec: Optional[MultiAgentRLModuleSpec] = None,
+    ):
 
         self.config = config
         # We need this learner to run the learner connector pipeline.
+        # If it is a `Learner` instance, the `Learner` is local.
         if isinstance(learner, Learner):
             self._learner = learner
             self.learner_is_remote = False
             self._module = self._learner._module
+        # Otherwise we have remote `Learner`s.
         else:
-            loc = ray.experimental.get_object_locations([self])
-            logger.warning(f"loc: {loc}")
+            # loc = ray.experimental.get_object_locations([self])
+            # logger.warning(f"loc: {loc}")
+            # nodes = loc[""]
+            # for i, hint in enumerate(locality_hints):
+            #     if hint == loc:
+            #         self._learner = learner[i]
+            node_id = ray.get_runtime_context().get_node_id()
+            # Shuffle indices such that not each data block syncs weights
+            # with the same learner.
+            indices = list(range(len(locality_hints)))
+            random.shuffle(indices)
+            locality_hints = [locality_hints[i] for i in indices]
+            learner = [learner[i] for i in indices]
             for i, hint in enumerate(locality_hints):
-                if hint == loc:
+                if hint == node_id:
                     self._learner = learner[i]
             self.learner_is_remote = True
-            self._module = self.config.get_multi_agent_module_spec().build()
+            self._module = module_spec.build()
 
         self._learner_connector = self.config.build_learner_connector(
             input_observation_space=None,
@@ -161,8 +185,9 @@ class PreprocessEpisodes:
         if self.learner_is_remote and self.iter_since_last_module_update > 5:
             # Reset the iteration counter.
             self.iter_since_last_module_update = 0
-            result = self._learner.get_module_state.remote()
-            weights = result.get()
+            # Request the module weights from the remote learner.
+            weights_ref = self._learner.get_module_state.remote(inference_only=False)
+            weights = ray.get(weights_ref)
             # Load the new module weights.
             self._module.load_state_dict(weights)
 

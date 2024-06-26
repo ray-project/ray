@@ -802,14 +802,25 @@ class Algorithm(Trainable, AlgorithmBase):
                 )
 
             if self.offline_data:
+                # If the learners are remote we need to provide specific
+                # information and the learner's actor handles.
                 if self.learner_group.is_remote:
+                    # If learners run on different nodes, locality hints help
+                    # to use the nearest learner in the workers that do the
+                    # data preprocessing.
                     learner_node_ids = self.learner_group.foreach_learner(
                         lambda l: ray.get_runtime_context().get_node_id()
                     )
                     self.offline_data.locality_hints = [
                         node_id.get() for node_id in learner_node_ids
                     ]
+                    # Provide the actor handles for the learners for module
+                    # updating during preprocessing.
                     self.offline_data.learner_handles = self.learner_group._workers
+                    # Provide the module_spec. Note, in the remote case this is needed
+                    # because the learner module cannot be copied, but must be built.
+                    self.offline_data.module_spec = module_spec
+                # Otherwise we can simply pass in the local learner.
                 else:
                     self.offline_data.learner_handles = [self.learner_group._learner]
 

@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from functools import partial
 import json
 import logging
+import numpy
 import pathlib
 from typing import (
     Any,
@@ -1285,20 +1286,21 @@ class Learner:
         num_iters: int = 1,
     ):
         self._check_is_built()
-        logger.warning("------ In Learner update_from_iterator")
         minibatch_size = minibatch_size or 32
 
-        def _finalize_fn(batch: Dict[str, Any]) -> Dict[str, Any]:
-            batch = self._convert_batch_type(batch["batch"])
+        def _finalize_fn(batch: Dict[str, numpy.ndarray]) -> Dict[str, Any]:
+            # Note, the incoming batch is a dictionary with a numpy array
+            # holding the `MultiAgentBatch`.
+            batch = self._convert_batch_type(batch["batch"][0])
             return {"batch": self._set_slicing_by_batch_id(batch, value=True)}
 
         i = 0
         for batch in iterator.iter_batches(
-            batch_size=minibatch_size, _finalize_fn=_finalize_fn, prefetch_batches=1
+            batch_size=minibatch_size, _finalize_fn=_finalize_fn, prefetch_batches=2
         ):
             # Update the iteration counter.
             i += 1
-            # Note, `_collate_fn`  must return a dictionary.
+            # Note, `_finalize_fn`  must return a dictionary.
             batch = batch["batch"]
             # Check the MultiAgentBatch, whether our RLModule contains all ModuleIDs
             # found in this batch. If not, throw an error.

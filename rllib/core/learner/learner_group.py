@@ -367,6 +367,9 @@ class LearnerGroup:
             _min_total_mini_batches=0,
             **_kwargs,
         ):
+            # If the batch shard is an `DataIterator` we have an offline
+            # multi-learner setup and `update_from_iterator` needs to
+            # handle updating.
             if isinstance(_batch_shard, ray.data.DataIterator):
                 result = _learner.update_from_iterator(
                     iterator=_batch_shard,
