@@ -50,7 +50,7 @@ import ray._private.services as services
 import ray._private.state
 import ray._private.storage as storage
 
-from ray._private.structured_logging.logging_config import LoggingConfig
+from ray._private.ray_logging.logging_config import LoggingConfig
 
 # Ray modules
 import ray.actor
@@ -88,6 +88,7 @@ from ray.experimental.internal_kv import (
     _internal_kv_reset,
 )
 from ray.experimental import tqdm_ray
+from ray.experimental.compiled_dag_ref import CompiledDAGRef
 from ray.experimental.tqdm_ray import RAY_TQDM_MAGIC
 from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
 from ray.util.debug import log_once
@@ -813,6 +814,7 @@ class Worker:
         self,
         object_refs: list,
         timeout: Optional[float] = None,
+        return_exceptions: bool = False,
     ):
         """Get the values in the object store associated with the IDs.
 
@@ -825,6 +827,10 @@ class Worker:
                 whose values should be retrieved.
             timeout: The maximum amount of time in
                 seconds to wait before returning.
+            return_exceptions: If any of the objects deserialize to an
+                Exception object, whether to return them as values in the
+                returned list. If False, then the first found exception will be
+                raised.
         Returns:
             list: List of deserialized objects
             bytes: UUID of the debugger breakpoint we should drop
@@ -855,14 +861,17 @@ class Worker:
                         len(ray_constants.OBJECT_METADATA_DEBUG_PREFIX) :
                     ]
         values = self.deserialize_objects(data_metadata_pairs, object_refs)
-        for i, value in enumerate(values):
-            if isinstance(value, RayError):
-                if isinstance(value, ray.exceptions.ObjectLostError):
-                    global_worker.core_worker.dump_object_store_memory_usage()
-                if isinstance(value, RayTaskError):
-                    raise value.as_instanceof_cause()
-                else:
-                    raise value
+        if not return_exceptions:
+            # Raise exceptions instead of returning them to the user.
+            for i, value in enumerate(values):
+                if isinstance(value, RayError):
+                    if isinstance(value, ray.exceptions.ObjectLostError):
+                        global_worker.core_worker.dump_object_store_memory_usage()
+                    if isinstance(value, RayTaskError):
+                        raise value.as_instanceof_cause()
+                    else:
+                        raise value
+
         return values, debugger_breakpoint
 
     def main_loop(self):
@@ -1337,7 +1346,7 @@ def init(
             "configure_logging" is true.
         logging_config: [Experimental] Logging configuration will be applied to the
             root loggers for both the driver process and all worker processes belonging
-            to the current job. See :class:`~LoggingConfig` for details.
+            to the current job. See :class:`~ray.LoggingConfig` for details.
         log_to_driver: If true, the output from all of the worker
             processes on all nodes will be directed to the driver.
         namespace: A namespace is a logical grouping of jobs and named actors.
@@ -2545,10 +2554,15 @@ def get(object_refs: "ObjectRef[R]", *, timeout: Optional[float] = None) -> R:
     ...
 
 
+@overload
+def get(object_refs: CompiledDAGRef, *, timeout: Optional[float] = None) -> Any:
+    ...
+
+
 @PublicAPI
 @client_mode_hook
 def get(
-    object_refs: Union["ObjectRef[Any]", Sequence["ObjectRef[Any]"]],
+    object_refs: Union["ObjectRef[Any]", Sequence["ObjectRef[Any]"], CompiledDAGRef],
     *,
     timeout: Optional[float] = None,
 ) -> Union[Any, List[Any]]:
@@ -2615,6 +2629,9 @@ def get(
         # compatible to ray.get for dataset.
         if isinstance(object_refs, ObjectRefGenerator):
             return object_refs
+
+        if isinstance(object_refs, CompiledDAGRef):
+            return object_refs.get()
 
         is_individual_id = isinstance(object_refs, ray.ObjectRef)
         if is_individual_id:
@@ -2725,14 +2742,14 @@ blocking_wait_inside_async_warned = False
 @PublicAPI
 @client_mode_hook
 def wait(
-    ray_waitables: List[Union["ObjectRef[R]", "ObjectRefGenerator[R]"]],
+    ray_waitables: List[Union[ObjectRef, ObjectRefGenerator]],
     *,
     num_returns: int = 1,
     timeout: Optional[float] = None,
     fetch_local: bool = True,
 ) -> Tuple[
-    List[Union["ObjectRef[R]", "ObjectRefGenerator[R]"]],
-    List[Union["ObjectRef[R]", "ObjectRefGenerator[R]"]],
+    List[Union[ObjectRef, ObjectRefGenerator]],
+    List[Union[ObjectRef, ObjectRefGenerator]],
 ]:
     """Return a list of IDs that are ready and a list of IDs that are not.
 
@@ -2741,8 +2758,8 @@ def wait(
     is not set, the function simply waits until that number of objects is ready
     and returns that exact number of object refs.
 
-    `ray_waitables` is a list of :class:`~ObjectRef` and
-    :class:`~ObjectRefGenerator`.
+    `ray_waitables` is a list of :class:`~ray.ObjectRef` and
+    :class:`~ray.ObjectRefGenerator`.
 
     The method returns two lists, ready and unready `ray_waitables`.
 
@@ -2890,7 +2907,7 @@ def get_actor(name: str, namespace: Optional[str] = None) -> "ray.actor.ActorHan
         ActorHandle to the actor.
 
     Raises:
-        ValueError if the named actor does not exist.
+        ValueError: if the named actor does not exist.
     """
     if not name:
         raise ValueError("Please supply a non-empty value to get_actor")

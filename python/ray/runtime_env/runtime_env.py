@@ -211,7 +211,6 @@ class RuntimeEnv(dict):
         # Example for using container
         RuntimeEnv(
             container={"image": "anyscale/ray-ml:nightly-py38-cpu",
-            "worker_path": "/root/python/ray/_private/workers/default_worker.py",
             "run_options": ["--cap-drop SYS_ADMIN","--log-level=debug"]})
 
         # Example for set env_vars
@@ -250,7 +249,6 @@ class RuntimeEnv(dict):
             https://conda.io/projects/conda/en/latest/user-guide/tasks/manage-environments.html#create-env-file-manually
         container: Require a given (Docker) container image,
             The Ray worker process will run in a container with this image.
-            The `worker_path` is the default_worker.py path.
             The `run_options` list spec is here:
             https://docs.docker.com/engine/reference/run/
         env_vars: Environment variables to set.
@@ -365,19 +363,21 @@ class RuntimeEnv(dict):
             )
 
         if self.get("container"):
-            if len(runtime_env) > 1:
+            invalid_keys = set(runtime_env.keys()) - {"container", "config"}
+            if len(invalid_keys):
                 raise ValueError(
                     "The 'container' field currently cannot be used "
                     "together with other fields of runtime_env. "
-                    f"Specified fields: {runtime_env.keys()}"
+                    f"Specified fields: {invalid_keys}"
                 )
 
         if self.get("image_uri"):
-            if len(runtime_env) > 1:
+            invalid_keys = set(runtime_env.keys()) - {"image_uri", "config"}
+            if len(invalid_keys):
                 raise ValueError(
                     "The 'image_uri' field currently cannot be used "
                     "together with other fields of runtime_env. "
-                    f"Specified fields: {runtime_env.keys()}"
+                    f"Specified fields: {invalid_keys}"
                 )
 
         for option, validate_fn in OPTION_TO_VALIDATION_FN.items():

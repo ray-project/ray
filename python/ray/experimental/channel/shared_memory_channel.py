@@ -1,10 +1,11 @@
 import io
 import logging
-from typing import Any, List, Optional, Union
+from typing import Any, Dict, List, Optional, Set, Union
 
 import ray
 from ray._raylet import SerializedObject
 from ray.experimental.channel.common import ChannelInterface, ChannelOutputType
+from ray.experimental.channel.intra_process_channel import IntraProcessChannel
 from ray.experimental.channel.torch_tensor_type import TorchTensorType
 from ray.util.annotations import PublicAPI
 
@@ -13,7 +14,10 @@ from ray.util.annotations import PublicAPI
 # entry/init points.
 logger = logging.getLogger(__name__)
 
-DEFAULT_MAX_BUFFER_SIZE = int(100 * 1e6)  # 100MB
+DEFAULT_MAX_BUFFER_SIZE = int(100 * 1e6)  # 100 mB
+# The min buffer size must be large enough to at least fit an instance of the
+# _ResizeChannel class along with any metadata.
+MIN_BUFFER_SIZE = int(1000)  # 1000 bytes
 
 
 def _get_node_id(self) -> "ray.NodeID":
@@ -80,6 +84,29 @@ def _create_channel_ref(
     return object_ref
 
 
+def _get_self_actor() -> Optional["ray.actor.ActorHandle"]:
+    """
+    Get the current actor handle in this worker.
+    If this is called in a driver process, it will return None.
+    """
+    try:
+        return ray.get_runtime_context().current_actor
+    except RuntimeError:
+        return None
+
+
+class _ResizeChannel:
+    """
+    When a channel must be resized, the channel backing store must be resized on both
+    the writer and the reader nodes. The writer first resizes its own backing store. The
+    writer then uses an instance of this class as a sentinel value to tell the reader to
+    resize its own backing store. The class instance is sent through the channel.
+    """
+
+    def __init__(self, reader_ref: "ray.ObjectRef"):
+        self._reader_ref = reader_ref
+
+
 class SharedMemoryType(ChannelOutputType):
     def __init__(self, buffer_size_bytes: int):
         """
@@ -128,7 +155,7 @@ class SharedMemoryType(ChannelOutputType):
                     cpu_data_typ=cpu_data_typ,
                 )
 
-        return Channel(writer, readers)
+        return CompositeChannel(writer, readers)
 
     def set_nccl_group_id(self, group_id: str) -> None:
         assert self.requires_nccl()
@@ -148,7 +175,7 @@ class Channel(ChannelInterface):
     def __init__(
         self,
         writer: Optional[ray.actor.ActorHandle],
-        readers: List[Optional[ray.actor.ActorHandle]],
+        readers: List[ray.actor.ActorHandle],
         typ: Optional[Union[int, SharedMemoryType]] = None,
         _writer_node_id: Optional["ray.NodeID"] = None,
         _reader_node_id: Optional["ray.NodeID"] = None,
@@ -164,16 +191,16 @@ class Channel(ChannelInterface):
 
         Args:
             writer: The actor that may write to the channel. None signifies the driver.
-            readers: The actors that may read from the channel. None signifies
-                the driver.
+            readers: The actors that may read from the channel. No reader may be None.
             typ: Type information about the values passed through the channel.
                 Either an integer representing the max buffer size in bytes
                 allowed, or a SharedMemoryType.
         Returns:
             Channel: A wrapper around ray.ObjectRef.
         """
-        is_creator = False
         assert len(readers) > 0
+        for reader in readers:
+            assert isinstance(reader, ray.actor.ActorHandle)
 
         if typ is None:
             typ = SharedMemoryType(DEFAULT_MAX_BUFFER_SIZE)
@@ -185,6 +212,22 @@ class Channel(ChannelInterface):
                 "bytes or a SharedMemoryType"
             )
 
+        if typ.buffer_size_bytes < MIN_BUFFER_SIZE:
+            raise ValueError(
+                "typ.buffer_size_bytes must be at least MIN_BUFFER_SIZE "
+                f"({MIN_BUFFER_SIZE} bytes)"
+            )
+
+        self._writer = writer
+        self._readers = readers
+        self._typ = typ
+
+        self._worker = ray._private.worker.global_worker
+        self._worker.check_connected()
+
+        self._writer_registered = False
+        self._reader_registered = False
+
         if _writer_ref is None:
             # We are the writer. Check that the passed handle matches the
             # current actor (or it is the driver).
@@ -192,12 +235,7 @@ class Channel(ChannelInterface):
             # actor, so we shouldn't need to include `writer` in the
             # constructor args. Either support Channels being constructed by
             # someone other than the writer or remove it from the args.
-            self_actor = None
-            try:
-                self_actor = ray.get_runtime_context().current_actor
-            except RuntimeError:
-                # This is the driver so there is no current actor handle.
-                pass
+            self_actor = _get_self_actor()
             assert writer == self_actor
 
             self._writer_node_id = (
@@ -205,29 +243,16 @@ class Channel(ChannelInterface):
             )
             self._writer_ref = _create_channel_ref(self, typ.buffer_size_bytes)
 
-            if readers[0] is None:
-                # Reader is the driver. We assume that the reader and the writer are on
-                # the same node.
-                self._reader_node_id = self._writer_node_id
-                self._reader_ref = self._writer_ref
-            else:
-                # Reader and writer are on different nodes.
-                self._reader_node_id = _get_reader_node_id(self, readers[0])
-                for reader in readers:
-                    reader_node_id = _get_reader_node_id(self, reader)
-                    if reader_node_id != self._reader_node_id:
-                        raise NotImplementedError(
-                            "All readers must be on the same node for now."
-                        )
-                if self.is_remote():
-                    fn = readers[0].__ray_call__
-                    self._reader_ref = ray.get(
-                        fn.remote(_create_channel_ref, typ.buffer_size_bytes)
+            self._reader_node_id = _get_reader_node_id(self, readers[0])
+            for reader in readers:
+                reader_node_id = _get_reader_node_id(self, reader)
+                if reader_node_id != self._reader_node_id:
+                    raise NotImplementedError(
+                        "All readers must be on the same node for now."
                     )
-                else:
-                    self._reader_ref = self._writer_ref
+            self._create_reader_ref(readers, typ.buffer_size_bytes)
 
-            is_creator = True
+            assert self._reader_ref is not None
         else:
             assert (
                 _writer_node_id is not None
@@ -242,22 +267,26 @@ class Channel(ChannelInterface):
             self._reader_node_id = _reader_node_id
             self._reader_ref = _reader_ref
 
-        self._writer = writer
-        self._readers = readers
-        self._typ = typ
         self._num_readers = len(self._readers)
         if self.is_remote():
             self._num_readers = 1
 
-        self._worker = ray._private.worker.global_worker
-        self._worker.check_connected()
+    def _create_reader_ref(
+        self, readers: List[Optional["ray.actor.ActorHandle"]], buffer_size_bytes: int
+    ):
+        # TODO(jhumphri): Free the current reader ref once the reference to it is
+        # destroyed below.
+        if self.is_remote():
+            fn = readers[0].__ray_call__
+            self._reader_ref = ray.get(
+                fn.remote(_create_channel_ref, buffer_size_bytes)
+            )
+        else:
+            self._reader_ref = self._writer_ref
 
+        # We need to register the new writer_ref.
         self._writer_registered = False
-        self._reader_registered = False
-
-        if is_creator:
-            self.ensure_registered_as_writer()
-            assert self._reader_ref is not None
+        self.ensure_registered_as_writer()
 
     @staticmethod
     def is_local_node(node_id):
@@ -280,17 +309,12 @@ class Channel(ChannelInterface):
             self._reader_ref
         ), "`self._reader_ref` must be not be None when registering a writer, because "
         "it should have been initialized in the constructor."
-
-        if len(self._readers) == 1 and self._readers[0] is None:
-            actor_id = ray.ActorID.nil()
-        else:
-            actor_id = self._readers[0]._actor_id
         self._worker.core_worker.experimental_channel_register_writer(
             self._writer_ref,
             self._reader_ref,
             self._writer_node_id,
             self._reader_node_id,
-            actor_id,
+            self._readers[0]._actor_id,
             len(self._readers),
         )
         self._writer_registered = True
@@ -337,6 +361,36 @@ class Channel(ChannelInterface):
             self._reader_ref,
         )
 
+    def __str__(self) -> str:
+        return f"Channel(_reader_ref={self._reader_ref})"
+
+    def _resize_channel_if_needed(self, serialized_value: str):
+        # serialized_value.total_bytes *only* includes the size of the data. It does not
+        # include the size of the metadata, so we must account for the size of the
+        # metadata explicitly.
+        size = serialized_value.total_bytes + len(serialized_value.metadata)
+        if size > self._typ.buffer_size_bytes:
+            # Now make the channel backing store larger.
+            self._typ.buffer_size_bytes = size
+            # TODO(jhumphri): Free the current writer ref once the reference to it is
+            # destroyed below.
+            prev_writer_ref = self._writer_ref
+            self._writer_ref = _create_channel_ref(self, self._typ.buffer_size_bytes)
+
+            self._create_reader_ref(self._readers, self._typ.buffer_size_bytes)
+
+            # Write a special message to the channel so that the readers know to
+            # stop using the current reader_ref.
+            special_message = _ResizeChannel(self._reader_ref)
+            special_message_serialized = (
+                self._worker.get_serialization_context().serialize(special_message)
+            )
+            self._worker.core_worker.experimental_channel_put_serialized(
+                special_message_serialized,
+                prev_writer_ref,
+                self._num_readers,
+            )
+
     def write(self, value: Any):
         self.ensure_registered_as_writer()
 
@@ -357,19 +411,28 @@ class Channel(ChannelInterface):
         else:
             serialized_value = value
 
+        self._resize_channel_if_needed(serialized_value)
+
         self._worker.core_worker.experimental_channel_put_serialized(
             serialized_value,
             self._writer_ref,
             self._num_readers,
         )
 
-    def begin_read(self) -> Any:
+    def read(self) -> Any:
         self.ensure_registered_as_reader()
-        return ray.get(self._reader_ref)
+        ret = self._worker.get_objects([self._reader_ref], return_exceptions=True)[0][0]
 
-    def end_read(self):
-        self.ensure_registered_as_reader()
-        self._worker.core_worker.experimental_channel_read_release([self._reader_ref])
+        if isinstance(ret, _ResizeChannel):
+            self._reader_ref = ret._reader_ref
+            # We need to register the new reader_ref.
+            self._reader_registered = False
+            self.ensure_registered_as_reader()
+            ret = self._worker.get_objects([self._reader_ref], return_exceptions=True)[
+                0
+            ][0]
+
+        return ret
 
     def close(self) -> None:
         """
@@ -380,3 +443,117 @@ class Channel(ChannelInterface):
         if self.is_local_node(self._reader_node_id):
             self.ensure_registered_as_reader()
         self._worker.core_worker.experimental_channel_set_error(self._reader_ref)
+
+
+@PublicAPI(stability="alpha")
+class CompositeChannel(ChannelInterface):
+    """
+    Can be used to send data to different readers via different channels.
+    For example, if the reader is in the same worker process as the writer,
+    the data can be sent via IntraProcessChannel. If the reader is in a different
+    worker process, the data can be sent via shared memory channel.
+
+    Args:
+        writer: The actor that may write to the channel. None signifies the driver.
+        readers: The actors that may read from the channel. None signifies
+            the driver.
+    """
+
+    def __init__(
+        self,
+        writer: Optional[ray.actor.ActorHandle],
+        readers: List[ray.actor.ActorHandle],
+        _channel_dict: Optional[Dict[ray.ActorID, ChannelInterface]] = None,
+        _channels: Optional[Set[ChannelInterface]] = None,
+    ):
+        self._writer = writer
+        self._readers = readers
+        self._writer_registered = False
+        self._reader_registered = False
+        # A dictionary that maps the actor ID to the channel object.
+        self._channel_dict = _channel_dict or {}
+        # The set of channels is a deduplicated version of the _channel_dict values.
+        self._channels = _channels or set()
+        if self._channels:
+            # This CompositeChannel object is created by deserialization.
+            # We don't need to create channels again.
+            return
+
+        remote_readers = []
+        for reader in self._readers:
+            if self._writer != reader:
+                remote_readers.append(reader)
+        # There are some local readers which are the same worker process as the writer.
+        # Create a local channel for the writer and the local readers.
+        num_local_readers = len(self._readers) - len(remote_readers)
+        if num_local_readers > 0:
+            assert (
+                num_local_readers == 1
+            ), "Only support one reader on the same actor for now."
+            local_channel = IntraProcessChannel(self._writer)
+            self._channels.add(local_channel)
+            actor_id = self._get_actor_id(self._writer)
+            self._channel_dict[actor_id] = local_channel
+        # There are some remote readers which are not the same Ray actor as the writer.
+        # Create a shared memory channel for the writer and the remote readers.
+        if len(remote_readers) != 0:
+            remote_channel = Channel(self._writer, remote_readers)
+            self._channels.add(remote_channel)
+            for reader in remote_readers:
+                actor_id = self._get_actor_id(reader)
+                self._channel_dict[actor_id] = remote_channel
+
+    def _get_actor_id(self, reader: ray.actor.ActorHandle) -> str:
+        return reader._actor_id.hex()
+
+    def _get_self_actor_id(self) -> str:
+        """
+        Get the actor ID of the current process. If the current process is the driver,
+        use the actor ID of the DAGDriverProxyActor.
+        """
+        actor_id = ray.get_runtime_context().get_actor_id()
+        if actor_id is None:
+            # The reader is the driver process.
+            # Use the actor ID of the DAGDriverProxyActor.
+            assert len(self._readers) == 1
+            actor_id = self._get_actor_id(self._readers[0])
+        return actor_id
+
+    def ensure_registered_as_writer(self) -> None:
+        if self._writer_registered:
+            return
+        for channel in self._channels:
+            channel.ensure_registered_as_writer()
+        self._writer_registered = True
+
+    def ensure_registered_as_reader(self) -> None:
+        if self._reader_registered:
+            return
+        for channel in self._channels:
+            channel.ensure_registered_as_reader()
+        self._reader_registered = True
+
+    def __reduce__(self):
+        return CompositeChannel, (
+            self._writer,
+            self._readers,
+            self._channel_dict,
+            self._channels,
+        )
+
+    def __str__(self) -> str:
+        return f"CompositeChannel(_channels={self._channels})"
+
+    def write(self, value: Any):
+        self.ensure_registered_as_writer()
+        for channel in self._channels:
+            channel.write(value)
+
+    def read(self) -> Any:
+        self.ensure_registered_as_reader()
+        actor_id = self._get_self_actor_id()
+        return self._channel_dict[actor_id].read()
+
+    def close(self) -> None:
+        for channel in self._channels:
+            channel.close()

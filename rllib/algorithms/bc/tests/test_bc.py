@@ -48,7 +48,7 @@ class TestBC(unittest.TestCase):
             .offline_data(input_=[data_file])
         )
         num_iterations = 350
-        min_reward = 75.0
+        min_return_to_reach = 75.0
 
         # Test for RLModule API and ModelV2.
         for rl_modules in [True, False]:
@@ -79,21 +79,12 @@ class TestBC(unittest.TestCase):
 
                         eval_results = results.get("evaluation")
                         if eval_results:
-                            print(
-                                "iter={} R={}".format(
-                                    i,
-                                    eval_results[
-                                        f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}"
-                                    ],
-                                )
-                            )
+                            mean_return = eval_results[ENV_RUNNER_RESULTS][
+                                EPISODE_RETURN_MEAN
+                            ]
+                            print("iter={} R={}".format(i, mean_return))
                             # Learn until good reward is reached in the actual env.
-                            if (
-                                eval_results[
-                                    f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}"
-                                ]
-                                > min_reward
-                            ):
+                            if mean_return > min_return_to_reach:
                                 print("learnt!")
                                 learnt = True
                                 break
@@ -101,7 +92,7 @@ class TestBC(unittest.TestCase):
                     if not learnt:
                         raise ValueError(
                             "`BC` did not reach {} reward from expert offline "
-                            "data!".format(min_reward)
+                            "data!".format(min_return_to_reach)
                         )
 
                     check_compute_single_action(algo, include_prev_action_reward=True)
