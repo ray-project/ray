@@ -260,14 +260,14 @@ TEST(MutableObjectProvider, MutableObjectBufferSetError) {
   // Set error is idempotent and should never block.
   EXPECT_EQ(provider.SetError(object_id).code(), StatusCode::OK);
 
-  // All future reads and writes return IOError.
+  // All future reads and writes return ChannelError.
   {
     std::shared_ptr<RayObject> result;
-    EXPECT_EQ(provider.ReadAcquire(object_id, result).code(), StatusCode::IOError);
+    EXPECT_EQ(provider.ReadAcquire(object_id, result).code(), StatusCode::ChannelError);
   }
   {
     std::shared_ptr<RayObject> result;
-    EXPECT_EQ(provider.ReadAcquire(object_id, result).code(), StatusCode::IOError);
+    EXPECT_EQ(provider.ReadAcquire(object_id, result).code(), StatusCode::ChannelError);
   }
   EXPECT_EQ(provider
                 .WriteAcquire(object_id,
@@ -277,7 +277,7 @@ TEST(MutableObjectProvider, MutableObjectBufferSetError) {
                               /*num_readers=*/1,
                               data)
                 .code(),
-            StatusCode::IOError);
+            StatusCode::ChannelError);
   EXPECT_EQ(provider
                 .WriteAcquire(object_id,
                               /*data_size=*/0,
@@ -286,7 +286,7 @@ TEST(MutableObjectProvider, MutableObjectBufferSetError) {
                               /*num_readers=*/1,
                               data)
                 .code(),
-            StatusCode::IOError);
+            StatusCode::ChannelError);
 }
 
 TEST(MutableObjectProvider, MutableObjectBufferSetErrorBeforeWriteRelease) {
@@ -314,16 +314,16 @@ TEST(MutableObjectProvider, MutableObjectBufferSetErrorBeforeWriteRelease) {
   // Set error is idempotent and should never block.
   EXPECT_EQ(provider.SetError(object_id).code(), StatusCode::OK);
 
-  // All future reads and writes return IOError.
+  // All future reads and writes return ChannelError.
   {
     std::shared_ptr<RayObject> result;
-    EXPECT_EQ(provider.ReadAcquire(object_id, result).code(), StatusCode::IOError);
+    EXPECT_EQ(provider.ReadAcquire(object_id, result).code(), StatusCode::ChannelError);
   }
   {
     std::shared_ptr<RayObject> result;
-    EXPECT_EQ(provider.ReadAcquire(object_id, result).code(), StatusCode::IOError);
+    EXPECT_EQ(provider.ReadAcquire(object_id, result).code(), StatusCode::ChannelError);
   }
-  EXPECT_EQ(provider.WriteRelease(object_id).code(), StatusCode::IOError);
+  EXPECT_EQ(provider.WriteRelease(object_id).code(), StatusCode::ChannelError);
   EXPECT_EQ(provider
                 .WriteAcquire(object_id,
                               /*data_size=*/0,
@@ -332,7 +332,7 @@ TEST(MutableObjectProvider, MutableObjectBufferSetErrorBeforeWriteRelease) {
                               /*num_readers=*/1,
                               data)
                 .code(),
-            StatusCode::IOError);
+            StatusCode::ChannelError);
   EXPECT_EQ(provider
                 .WriteAcquire(object_id,
                               /*data_size=*/0,
@@ -341,7 +341,7 @@ TEST(MutableObjectProvider, MutableObjectBufferSetErrorBeforeWriteRelease) {
                               /*num_readers=*/1,
                               data)
                 .code(),
-            StatusCode::IOError);
+            StatusCode::ChannelError);
 }
 
 TEST(MutableObjectProvider, MutableObjectBufferSetErrorBeforeReadRelease) {
@@ -373,13 +373,13 @@ TEST(MutableObjectProvider, MutableObjectBufferSetErrorBeforeReadRelease) {
 
     // When the error is set, reading again before releasing does not block.
     // Also immediately returns the error.
-    EXPECT_EQ(provider.ReadAcquire(object_id, result).code(), StatusCode::IOError);
+    EXPECT_EQ(provider.ReadAcquire(object_id, result).code(), StatusCode::ChannelError);
   }
 
-  // All future reads and writes return IOError.
+  // All future reads and writes return ChannelError.
   {
     std::shared_ptr<RayObject> result;
-    EXPECT_EQ(provider.ReadAcquire(object_id, result).code(), StatusCode::IOError);
+    EXPECT_EQ(provider.ReadAcquire(object_id, result).code(), StatusCode::ChannelError);
   }
   EXPECT_EQ(provider
                 .WriteAcquire(object_id,
@@ -389,7 +389,7 @@ TEST(MutableObjectProvider, MutableObjectBufferSetErrorBeforeReadRelease) {
                               /*num_readers=*/1,
                               data)
                 .code(),
-            StatusCode::IOError);
+            StatusCode::ChannelError);
   EXPECT_EQ(provider
                 .WriteAcquire(object_id,
                               /*data_size=*/0,
@@ -398,7 +398,7 @@ TEST(MutableObjectProvider, MutableObjectBufferSetErrorBeforeReadRelease) {
                               /*num_readers=*/1,
                               data)
                 .code(),
-            StatusCode::IOError);
+            StatusCode::ChannelError);
 }
 
 #endif  // defined(__APPLE__) || defined(__linux__)

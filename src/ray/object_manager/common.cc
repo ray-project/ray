@@ -67,7 +67,7 @@ Status PlasmaObjectHeader::CheckHasError() const {
   // We do an acquire load so that no loads/stores are reordered before the load to
   // `has_error`. This acquire load pairs with the release store in `SetErrorUnlocked()`.
   if (has_error.load(std::memory_order_acquire)) {
-    return Status::IOError("Channel closed.");
+    return Status::ChannelError("Channel closed.");
   }
   return Status::OK();
 }
