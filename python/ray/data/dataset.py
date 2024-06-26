@@ -28,6 +28,7 @@ import ray.cloudpickle as pickle
 from ray._private.thirdparty.tabulate.tabulate import tabulate
 from ray._private.usage import usage_lib
 from ray.air.util.tensor_extensions.utils import _create_possibly_ragged_ndarray
+from ray.data._internal.aggregate import Max, Mean, Min, Std, Sum
 from ray.data._internal.compute import ComputeStrategy
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.equalize import _equalize
@@ -61,7 +62,7 @@ from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.split import _get_num_rows, _split_at_indices
 from ray.data._internal.stats import DatasetStats, DatasetStatsSummary, StatsManager
 from ray.data._internal.util import AllToAllAPI, ConsumptionAPI, get_compute_strategy
-from ray.data.aggregate import AggregateFn, Max, Mean, Min, Std, Sum
+from ray.data.aggregate import AggregateFn
 from ray.data.block import (
     VALID_BATCH_FORMATS,
     Block,
@@ -1403,10 +1404,7 @@ class Dataset:
                 logical_plan = LogicalPlan(InputData(input_data=ref_bundles))
                 split_datasets.append(
                     MaterializedDataset(
-                        ExecutionPlan(
-                            stats,
-                            run_by_consumer=owned_by_consumer,
-                        ),
+                        ExecutionPlan(stats),
                         logical_plan,
                     )
                 )
@@ -1524,10 +1522,7 @@ class Dataset:
             logical_plan = LogicalPlan(InputData(input_data=[bundle]))
             split_datasets.append(
                 MaterializedDataset(
-                    ExecutionPlan(
-                        stats,
-                        run_by_consumer=owned_by_consumer,
-                    ),
+                    ExecutionPlan(stats),
                     logical_plan,
                 )
             )
@@ -1601,10 +1596,7 @@ class Dataset:
 
             splits.append(
                 MaterializedDataset(
-                    ExecutionPlan(
-                        stats,
-                        run_by_consumer=bundle.owns_blocks,
-                    ),
+                    ExecutionPlan(stats),
                     logical_plan,
                 )
             )
@@ -1793,7 +1785,7 @@ class Dataset:
         )
         stats.time_total_s = time.perf_counter() - start_time
         return Dataset(
-            ExecutionPlan(stats, run_by_consumer=False),
+            ExecutionPlan(stats),
             logical_plan,
         )
 
@@ -4526,10 +4518,7 @@ class Dataset:
         ]
         logical_plan = LogicalPlan(InputData(input_data=ref_bundles))
         output = MaterializedDataset(
-            ExecutionPlan(
-                copy._plan.stats(),
-                run_by_consumer=False,
-            ),
+            ExecutionPlan(copy._plan.stats()),
             logical_plan,
         )
         # Metrics are tagged with `copy`s uuid, update the output uuid with
@@ -4619,7 +4608,10 @@ class Dataset:
             >>> ray.data.read_csv("s3://anonymous@ray-example-data/iris.csv").has_serializable_lineage()
             True
         """  # noqa: E501
-        return self._plan.has_lazy_input()
+        return all(
+            op.is_lineage_serializable()
+            for op in self._logical_plan.dag.post_order_iter()
+        )
 
     @DeveloperAPI
     def serialize_lineage(self) -> bytes:

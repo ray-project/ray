@@ -814,6 +814,7 @@ class Worker:
         self,
         object_refs: list,
         timeout: Optional[float] = None,
+        return_exceptions: bool = False,
     ):
         """Get the values in the object store associated with the IDs.
 
@@ -826,6 +827,10 @@ class Worker:
                 whose values should be retrieved.
             timeout: The maximum amount of time in
                 seconds to wait before returning.
+            return_exceptions: If any of the objects deserialize to an
+                Exception object, whether to return them as values in the
+                returned list. If False, then the first found exception will be
+                raised.
         Returns:
             list: List of deserialized objects
             bytes: UUID of the debugger breakpoint we should drop
@@ -856,14 +861,17 @@ class Worker:
                         len(ray_constants.OBJECT_METADATA_DEBUG_PREFIX) :
                     ]
         values = self.deserialize_objects(data_metadata_pairs, object_refs)
-        for i, value in enumerate(values):
-            if isinstance(value, RayError):
-                if isinstance(value, ray.exceptions.ObjectLostError):
-                    global_worker.core_worker.dump_object_store_memory_usage()
-                if isinstance(value, RayTaskError):
-                    raise value.as_instanceof_cause()
-                else:
-                    raise value
+        if not return_exceptions:
+            # Raise exceptions instead of returning them to the user.
+            for i, value in enumerate(values):
+                if isinstance(value, RayError):
+                    if isinstance(value, ray.exceptions.ObjectLostError):
+                        global_worker.core_worker.dump_object_store_memory_usage()
+                    if isinstance(value, RayTaskError):
+                        raise value.as_instanceof_cause()
+                    else:
+                        raise value
+
         return values, debugger_breakpoint
 
     def main_loop(self):
@@ -2546,10 +2554,15 @@ def get(object_refs: "ObjectRef[R]", *, timeout: Optional[float] = None) -> R:
     ...
 
 
+@overload
+def get(object_refs: CompiledDAGRef, *, timeout: Optional[float] = None) -> Any:
+    ...
+
+
 @PublicAPI
 @client_mode_hook
 def get(
-    object_refs: Union["ObjectRef[Any]", Sequence["ObjectRef[Any]"]],
+    object_refs: Union["ObjectRef[Any]", Sequence["ObjectRef[Any]"], CompiledDAGRef],
     *,
     timeout: Optional[float] = None,
 ) -> Union[Any, List[Any]]:
@@ -2839,11 +2852,6 @@ def wait(
                 "wait() expected a list of ray.ObjectRef or "
                 "ray.ObjectRefGenerator, "
                 f"got list containing {type(ray_waitable)}"
-            )
-        if isinstance(ray_waitable, CompiledDAGRef):
-            raise TypeError(
-                "wait() does not support CompiledDAGRef. "
-                "Please call ray.get() on the CompiledDAGRef to get the result."
             )
     worker.check_connected()
 

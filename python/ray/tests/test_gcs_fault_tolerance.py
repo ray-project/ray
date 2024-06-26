@@ -1,4 +1,5 @@
 import sys
+import asyncio
 import os
 import threading
 from time import sleep
@@ -22,6 +23,8 @@ from ray._private.test_utils import (
 )
 from ray.job_submission import JobSubmissionClient, JobStatus
 from ray._raylet import GcsClient
+from ray._private.runtime_env.plugin import RuntimeEnvPlugin
+from ray.util.state import list_placement_groups
 
 import psutil
 
@@ -1091,6 +1094,7 @@ def raises_exception(exc_type, f):
         {"kill_job": False, "kill_actor": False, "expect_alive": "all"},
         {"kill_job": True, "kill_actor": False, "expect_alive": "AB"},
         {"kill_job": True, "kill_actor": True, "expect_alive": "none"},
+        {"kill_job": False, "kill_actor": True, "expect_alive": "regular"},
     ],
 )
 @pytest.mark.skipif(not enable_external_redis(), reason="Only valid in redis env")
@@ -1115,6 +1119,9 @@ def test_gcs_server_restart_destroys_out_of_scope_actors(
 
     Case 2: before GCS is down, job died; during GCS is down, A died
         all should be dead
+
+    Case 3: during GCS is down, A died
+        regular actor should be alive, A and B should be dead
     """
 
     cluster = ray_start_cluster
@@ -1184,16 +1191,110 @@ def test_gcs_server_restart_destroys_out_of_scope_actors(
         # It took some time for raylet to report worker failure.
         wait_for_condition(
             lambda: raises_exception(
-                ValueError, lambda: ray.get_actor("regular", namespace="ns")
+                ValueError, lambda: ray.get_actor("parent", namespace="ns")
             )
         )
+        wait_for_condition(
+            lambda: raises_exception(
+                ValueError, lambda: ray.get_actor("child", namespace="ns")
+            )
+        )
+    elif case["expect_alive"] == "regular":
+        regular2 = ray.get_actor("regular", namespace="ns")
         wait_for_condition(
             lambda: raises_exception(
                 ValueError, lambda: ray.get_actor("parent", namespace="ns")
             )
         )
+        wait_for_condition(
+            lambda: raises_exception(
+                ValueError, lambda: ray.get_actor("child", namespace="ns")
+            )
+        )
+        assert ray.get(regular2.getpid.remote()) == regular_pid
     else:
         raise ValueError(f"Unknown case: {case}")
+
+
+MyPlugin = "MyPlugin"
+MY_PLUGIN_CLASS_PATH = "ray.tests.test_gcs_fault_tolerance.HangPlugin"
+
+
+class HangPlugin(RuntimeEnvPlugin):
+    name = MyPlugin
+
+    async def create(
+        self,
+        uri,
+        runtime_env,
+        ctx,
+        logger,  # noqa: F821
+    ) -> float:
+        while True:
+            await asyncio.sleep(1)
+
+    @staticmethod
+    def validate(runtime_env_dict: dict) -> str:
+        return 1
+
+
+@pytest.mark.parametrize(
+    "ray_start_regular_with_external_redis",
+    [
+        generate_system_config_map(
+            gcs_rpc_server_reconnect_timeout_s=60,
+            testing_asio_delay_us="NodeManagerService.grpc_server.CancelResourceReserve=500000000:500000000",  # noqa: E501
+        ),
+    ],
+    indirect=True,
+)
+@pytest.mark.parametrize(
+    "set_runtime_env_plugins",
+    [
+        '[{"class":"' + MY_PLUGIN_CLASS_PATH + '"}]',
+    ],
+    indirect=True,
+)
+def test_placement_group_removal_after_gcs_restarts(
+    set_runtime_env_plugins, ray_start_regular_with_external_redis
+):
+    @ray.remote
+    def task():
+        pass
+
+    pg = ray.util.placement_group(bundles=[{"CPU": 1}])
+    _ = task.options(
+        max_retries=0,
+        num_cpus=1,
+        scheduling_strategy=PlacementGroupSchedulingStrategy(
+            placement_group=pg,
+        ),
+        runtime_env={
+            MyPlugin: {"name": "f2"},
+            "config": {"setup_timeout_seconds": -1},
+        },
+    ).remote()
+
+    # The task should be popping worker
+    # TODO(jjyao) Use a more determinstic way to
+    # decide whether the task is popping worker
+    sleep(5)
+
+    ray.util.remove_placement_group(pg)
+    # The PG is marked as REMOVED in redis but not removed yet from raylet
+    # due to the injected delay of CancelResourceReserve rpc
+    wait_for_condition(lambda: list_placement_groups()[0].state == "REMOVED")
+
+    ray._private.worker._global_node.kill_gcs_server()
+    # After GCS restarts, it will try to remove the PG resources
+    # again via ReleaseUnusedBundles rpc
+    ray._private.worker._global_node.start_gcs_server()
+
+    def verify_pg_resources_cleaned():
+        r_keys = ray.available_resources().keys()
+        return all("group" not in k for k in r_keys)
+
+    wait_for_condition(verify_pg_resources_cleaned, timeout=30)
 
 
 if __name__ == "__main__":

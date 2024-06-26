@@ -100,9 +100,10 @@ struct GcsServerMocker {
     }
 
     /// WorkerLeaseInterface
-    void ReleaseUnusedWorkers(
+    void ReleaseUnusedActorWorkers(
         const std::vector<WorkerID> &workers_in_use,
-        const rpc::ClientCallback<rpc::ReleaseUnusedWorkersReply> &callback) override {
+        const rpc::ClientCallback<rpc::ReleaseUnusedActorWorkersReply> &callback)
+        override {
       num_release_unused_workers += 1;
       release_callbacks.push_back(callback);
     }
@@ -188,8 +189,8 @@ struct GcsServerMocker {
       }
     }
 
-    bool ReplyReleaseUnusedWorkers() {
-      rpc::ReleaseUnusedWorkersReply reply;
+    bool ReplyReleaseUnusedActorWorkers() {
+      rpc::ReleaseUnusedActorWorkersReply reply;
       if (release_callbacks.size() == 0) {
         return false;
       } else {
@@ -335,7 +336,8 @@ struct GcsServerMocker {
     std::list<rpc::ClientCallback<rpc::DrainRayletReply>> drain_raylet_callbacks = {};
     std::list<rpc::ClientCallback<rpc::RequestWorkerLeaseReply>> callbacks = {};
     std::list<rpc::ClientCallback<rpc::CancelWorkerLeaseReply>> cancel_callbacks = {};
-    std::list<rpc::ClientCallback<rpc::ReleaseUnusedWorkersReply>> release_callbacks = {};
+    std::list<rpc::ClientCallback<rpc::ReleaseUnusedActorWorkersReply>>
+        release_callbacks = {};
     int num_lease_requested = 0;
     int num_return_requested = 0;
     int num_commit_requested = 0;
