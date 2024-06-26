@@ -218,6 +218,24 @@ class Channel(ChannelInterface):
                 f"({MIN_BUFFER_SIZE} bytes)"
             )
 
+        # For now, all readers must be on the same node. Note that the writer can still
+        # be on a different node than the readers though.
+        # TODO(jhumphri): Allow different readers for the same channel to be on
+        # different nodes.
+        prev_reader_node = None
+        prev_reader = None
+        for reader in readers:
+            node = _get_reader_node_id(self, reader)
+            if prev_reader_node is None:
+                prev_reader_node = node
+            elif prev_reader_node != node:
+                raise ValueError(
+                    f"All reader actors must be on the same node. Actor {prev_reader} "
+                    f"is on node {prev_reader_node} while actor {reader} is on node "
+                    f"{node}"
+                )
+            prev_reader = reader
+
         self._writer = writer
         self._readers = readers
         self._typ = typ
@@ -269,6 +287,13 @@ class Channel(ChannelInterface):
 
         self._num_readers = len(self._readers)
         if self.is_remote():
+            from ray.dag.context import GRPC_MAX_PAYLOAD
+
+            if typ.buffer_size_bytes > GRPC_MAX_PAYLOAD:
+                raise ValueError(
+                    "The object written to the channel must have a size less than or "
+                    f"equal to the max gRPC payload size ({GRPC_MAX_PAYLOAD} bytes)"
+                )
             self._num_readers = 1
 
     def _create_reader_ref(
@@ -369,6 +394,14 @@ class Channel(ChannelInterface):
         # include the size of the metadata, so we must account for the size of the
         # metadata explicitly.
         size = serialized_value.total_bytes + len(serialized_value.metadata)
+
+        from ray.dag.context import GRPC_MAX_PAYLOAD
+
+        if size > GRPC_MAX_PAYLOAD and self.is_remote():
+            raise ValueError(
+                "The object written to the channel must have a size less than or equal "
+                f"to the max gRPC payload size ({GRPC_MAX_PAYLOAD} bytes)"
+            )
         if size > self._typ.buffer_size_bytes:
             # Now make the channel backing store larger.
             self._typ.buffer_size_bytes = size

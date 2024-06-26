@@ -18,6 +18,7 @@ import ray._private
 import ray.cluster_utils
 from ray.dag import InputNode, MultiOutputNode
 from ray.tests.conftest import *  # noqa
+from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 from ray._private.utils import (
     get_or_create_event_loop,
 )
@@ -1016,6 +1017,128 @@ def test_channel_access_after_close(ray_start_regular_shared):
 
     with pytest.raises(RayChannelError, match="Channel closed."):
         ray.get(ref)
+
+def test_driver_and_actor_as_readers(ray_start_regular):
+    a = Actor.remote(0)
+    b = Actor.remote(10)
+    with InputNode() as inp:
+        x = a.inc.bind(inp)
+        y = b.inc.bind(x)
+        dag = MultiOutputNode([x, y])
+
+    with pytest.raises(
+        ValueError,
+        match="DAG outputs currently cannot be read by other actor tasks.",
+    ):
+        dag.experimental_compile()
+
+
+def test_readers_on_different_nodes(ray_start_cluster):
+    cluster = ray_start_cluster
+    # This node is for the driver (including the DriverHelperActor) and one of the
+    # readers.
+    cluster.add_node(num_cpus=2)
+    # This node is for the other reader.
+    cluster.add_node(num_cpus=1)
+    ray.init(address=cluster.address)
+
+    def _get_node_id(self) -> "ray.NodeID":
+        return ray.get_runtime_context().get_node_id()
+
+    @ray.remote(num_cpus=1)
+    def get_node_id() -> "ray.NodeID":
+        time.sleep(1)
+        return _get_node_id(None)
+
+    nodes = ray.get([get_node_id.options(num_cpus=1).remote() for _ in range(3)])
+    # We want to check that the readers are on different nodes. Thus, we convert `nodes`
+    # to a set and then back to a list to remove duplicates. Then we check that the
+    # length of `nodes` is 2.
+    nodes = list(set(nodes))
+    assert len(nodes) == 2
+
+    def create_actor(node):
+        return Actor.options(
+            scheduling_strategy=NodeAffinitySchedulingStrategy(node, soft=False)
+        ).remote(0)
+
+    a = create_actor(nodes[0])
+    b = create_actor(nodes[1])
+    actors = [a, b]
+
+    nodes_check = ray.get([act.__ray_call__.remote(_get_node_id) for act in actors])
+    a_node = nodes_check[0]
+    b_node = nodes_check[1]
+    assert a_node != b_node
+
+    with InputNode() as inp:
+        x = a.inc.bind(inp)
+        y = b.inc.bind(inp)
+        dag = MultiOutputNode([x, y])
+
+    with pytest.raises(
+        ValueError,
+        match="All reader actors must be on the same node.*",
+    ):
+        dag.experimental_compile()
+
+
+def test_bunch_readers_on_different_nodes(ray_start_cluster):
+    cluster = ray_start_cluster
+    # This node is for the driver (including the DriverHelperActor) and two of the
+    # readers.
+    cluster.add_node(num_cpus=3)
+    # This node is for the other two readers.
+    cluster.add_node(num_cpus=2)
+    ray.init(address=cluster.address)
+
+    def _get_node_id(self) -> "ray.NodeID":
+        return ray.get_runtime_context().get_node_id()
+
+    @ray.remote(num_cpus=1)
+    def get_node_id() -> "ray.NodeID":
+        time.sleep(1)
+        return _get_node_id(None)
+
+    nodes = ray.get([get_node_id.options(num_cpus=1).remote() for _ in range(3)])
+    # We want to check that the readers are on different nodes. Thus, we convert `nodes`
+    # to a set and then back to a list to remove duplicates. Then we check that the
+    # length of `nodes` is 2.
+    nodes = list(set(nodes))
+    assert len(nodes) == 2
+
+    def create_actor(node):
+        return Actor.options(
+            scheduling_strategy=NodeAffinitySchedulingStrategy(node, soft=False)
+        ).remote(0)
+
+    a = create_actor(nodes[0])
+    b = create_actor(nodes[0])
+    c = create_actor(nodes[1])
+    d = create_actor(nodes[1])
+    actors = [a, b, c, d]
+
+    nodes_check = ray.get([act.__ray_call__.remote(_get_node_id) for act in actors])
+    a_node = nodes_check[0]
+    b_node = nodes_check[1]
+    c_node = nodes_check[2]
+    d_node = nodes_check[3]
+    assert a_node == b_node
+    assert b_node != c_node
+    assert c_node == d_node
+
+    with InputNode() as inp:
+        w = a.inc.bind(inp)
+        x = b.inc.bind(inp)
+        y = c.inc.bind(inp)
+        z = d.inc.bind(inp)
+        dag = MultiOutputNode([w, x, y, z])
+
+    with pytest.raises(
+        ValueError,
+        match="All reader actors must be on the same node.*",
+    ):
+        dag.experimental_compile()
 
 
 if __name__ == "__main__":

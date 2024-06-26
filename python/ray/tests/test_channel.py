@@ -841,6 +841,140 @@ def test_put_error(ray_start_cluster):
             assert isinstance(exc, ray.exceptions.RayTaskError)
 
 
+@pytest.mark.skipif(
+    sys.platform != "linux" and sys.platform != "darwin",
+    reason="Requires Linux or Mac.",
+)
+def test_payload_too_large(ray_start_regular):
+    with pytest.raises(
+        ValueError,
+        match="typ.buffer_size_bytes must be at least MIN_BUFFER_SIZE (471859200 "
+        "bytes)",
+    ):
+        ray_channel.Channel(None, [create_driver_actor()], 1024 * 1024 * 512)
+
+
+@pytest.mark.skipif(
+    sys.platform != "linux" and sys.platform != "darwin",
+    reason="Requires Linux or Mac.",
+)
+def test_payload_resize_too_large(ray_start_regular):
+    chan = ray_channel.Channel(None, [create_driver_actor()], 1000)
+
+    with pytest.raises(
+        ValueError,
+        match="typ.buffer_size_bytes must be at least MIN_BUFFER_SIZE (471859200 "
+        "bytes)",
+    ):
+        chan.write(b"x" * (1024 * 1024 * 512))
+
+
+@pytest.mark.skipif(
+    sys.platform != "linux" and sys.platform != "darwin",
+    reason="Requires Linux or Mac.",
+)
+def test_readers_on_different_nodes(ray_start_cluster):
+    cluster = ray_start_cluster
+    # This node is for the driver (including the DriverHelperActor) and one of the
+    # readers.
+    cluster.add_node(num_cpus=2)
+    # This node is for the other reader.
+    cluster.add_node(num_cpus=1)
+    ray.init(address=cluster.address)
+
+    @ray.remote(num_cpus=1)
+    class Actor:
+        def get_node_id(self) -> "ray.NodeID":
+            return ray.get_runtime_context().get_node_id()
+
+    @ray.remote(num_cpus=1)
+    def get_node_id() -> "ray.NodeID":
+        time.sleep(1)
+        return ray.get_runtime_context().get_node_id()
+
+    nodes = ray.get([get_node_id.options(num_cpus=1).remote() for _ in range(5)])
+    # We want to check that the readers are on different nodes. Thus, we convert `nodes`
+    # to a set and then back to a list to remove duplicates. Then we check that the
+    # length of `nodes` is 2.
+    nodes = list(set(nodes))
+    assert len(nodes) == 2
+
+    def create_actor(node):
+        return Actor.options(
+            scheduling_strategy=NodeAffinitySchedulingStrategy(node, soft=False)
+        ).remote()
+
+    a = create_actor(nodes[0])
+    b = create_actor(nodes[1])
+    actors = [a, b]
+
+    nodes_check = ray.get([act.get_node_id.remote() for act in actors])
+    a_node = nodes_check[0]
+    b_node = nodes_check[1]
+    assert a_node != b_node
+
+    with pytest.raises(
+        ValueError, match="All reader actors must be on the same node.*"
+    ):
+        ray_channel.Channel(None, [create_driver_actor(), a, b], 1000)
+
+
+@pytest.mark.skipif(
+    sys.platform != "linux" and sys.platform != "darwin",
+    reason="Requires Linux or Mac.",
+)
+def test_bunch_readers_on_different_nodes(ray_start_cluster):
+    cluster = ray_start_cluster
+    # This node is for the driver (including the DriverHelperActor) and two of the
+    # readers.
+    cluster.add_node(num_cpus=3)
+    # This node is for the other two readers.
+    cluster.add_node(num_cpus=2)
+    ray.init(address=cluster.address)
+
+    @ray.remote(num_cpus=1)
+    class Actor:
+        def get_node_id(self) -> "ray.NodeID":
+            return ray.get_runtime_context().get_node_id()
+
+    @ray.remote(num_cpus=1)
+    def get_node_id() -> "ray.NodeID":
+        time.sleep(1)
+        return ray.get_runtime_context().get_node_id()
+
+    nodes = ray.get([get_node_id.options(num_cpus=1).remote() for _ in range(5)])
+    # We want to check that the readers are on different nodes. Thus, we convert `nodes`
+    # to a set and then back to a list to remove duplicates. Then we check that the
+    # length of `nodes` is 2.
+    nodes = list(set(nodes))
+    assert len(nodes) == 2
+
+    def create_actor(node):
+        return Actor.options(
+            scheduling_strategy=NodeAffinitySchedulingStrategy(node, soft=False)
+        ).remote()
+
+    a = create_actor(nodes[0])
+    b = create_actor(nodes[0])
+    c = create_actor(nodes[1])
+    d = create_actor(nodes[1])
+    actors = [a, b, c, d]
+
+    nodes_check = ray.get([act.get_node_id.remote() for act in actors])
+    a_node = nodes_check[0]
+    b_node = nodes_check[1]
+    c_node = nodes_check[2]
+    d_node = nodes_check[3]
+    assert a_node == b_node
+    assert b_node != c_node
+    assert c_node == d_node
+
+    with pytest.raises(
+        ValueError, match="All reader actors must be on the same node.*"
+    ):
+        ray_channel.Channel(None, [create_driver_actor(), a, b, c, d], 1000)
+
+
 if __name__ == "__main__":
     if os.environ.get("PARALLEL_CI"):
         sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))

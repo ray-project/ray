@@ -18,6 +18,13 @@ DEFAULT_ASYNCIO_MAX_QUEUE_SIZE = int(
 # The maximum memory usage for buffered results is 1 GB.
 DEFAULT_MAX_BUFFERED_RESULTS = int(os.environ.get("RAY_DAG_max_buffered_results", 1000))
 
+# We still need to add support for transferring objects that are larger than the gRPC
+# payload limit, which Ray sets to ~512 MiB (so we set it slightly lower here to be
+# safe).
+# TODO(jhumphri): Add support for transferring objects that are larger than the gRPC
+# payload limit. We can support this by breaking an object into multiple RPCs.
+GRPC_MAX_PAYLOAD = int(1024 * 1024 * 450)  # 450 MiB
+
 
 @DeveloperAPI
 @dataclass
