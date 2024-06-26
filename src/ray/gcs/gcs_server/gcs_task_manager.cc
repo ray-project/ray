@@ -420,7 +420,8 @@ void GcsTaskManager::HandleGetTaskEvents(rpc::GetTaskEventsRequest request,
       return false;
     }
 
-    if (filters.has_name() && !absl::EqualsIgnoreCase(task_event.task_info().name(), filters.name())) {
+    if (filters.has_name() &&
+        !absl::EqualsIgnoreCase(task_event.task_info().name(), filters.name())) {
       return false;
     }
 
@@ -441,7 +442,9 @@ void GcsTaskManager::HandleGetTaskEvents(rpc::GetTaskEventsRequest request,
         }
       }
 
-      if (!absl::EqualsIgnoreCase(filters.state(), task_status_descriptor->FindValueByNumber(state)->name())) {
+      if (!absl::EqualsIgnoreCase(
+              filters.state(),
+              task_status_descriptor->FindValueByNumber(state)->name())) {
         return false;
       }
     }
