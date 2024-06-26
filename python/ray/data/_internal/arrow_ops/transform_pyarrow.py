@@ -174,6 +174,7 @@ def concat(blocks: List["pyarrow.Table"]) -> "pyarrow.Table":
     """
     import pyarrow as pa
 
+    from ray.air.util.tensor_extensions.arrow import ArrowConversionError
     from ray.data.extensions import (
         ArrowPythonObjectArray,
         ArrowPythonObjectType,
@@ -199,7 +200,10 @@ def concat(blocks: List["pyarrow.Table"]) -> "pyarrow.Table":
 
     # If the result contains pyarrow schemas, unify them
     schemas_to_unify = [b.schema for b in blocks]
-    schema = unify_schemas(schemas_to_unify)
+    try:
+        schema = unify_schemas(schemas_to_unify)
+    except Exception as e:
+        raise ArrowConversionError(str(blocks)) from e
     if (
         any(isinstance(type_, pa.ExtensionType) for type_ in schema.types)
         or cols_with_null_list

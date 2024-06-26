@@ -67,7 +67,7 @@ ARROW_OBJECT_FIXABLE_ERRORS = ("ArrowTypeError", "ArrowNotImplementedError")
 def is_object_fixable_error(e: ArrowConversionError) -> bool:
     """Returns whether this error can be fixed by using an ArrowPythonObjectArray"""
     return any(
-        err in "".join(traceback.format_exception(e))
+        err in "".join(traceback.format_exception(type(e), e, e.__traceback__))
         for err in ARROW_OBJECT_FIXABLE_ERRORS
     )
 

@@ -485,6 +485,7 @@ def test_fallback_to_pandas_on_incompatible_data(
     "op, data",
     [
         ("map", [1, 2**100]),
+        ("map_batches", [[1.0], [2**4]]),
     ],
 )
 def test_pyarrow_conversion_error_detailed_info(
@@ -508,7 +509,7 @@ def test_pyarrow_conversion_error_detailed_info(
     error_msg = str(e.value)
     expected_msg = "ArrowConversionError: Error converting data to Arrow:"
     assert expected_msg in error_msg, error_msg
-    assert "'my_data'" in error_msg, error_msg
+    assert "my_data" in error_msg, error_msg
 
 
 if __name__ == "__main__":
