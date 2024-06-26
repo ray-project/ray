@@ -1,8 +1,10 @@
+from typing import Any
+
+import tree  # pip install dm_tree
+
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.rl_module.torch import TorchRLModule
 from ray.rllib.models.torch.torch_distributions import TorchCategorical
-from ray.rllib.models.torch.misc import normc_initializer
-from ray.rllib.models.torch.misc import same_padding, valid_padding
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.torch_utils import convert_to_torch_tensor
@@ -11,8 +13,48 @@ torch, nn = try_import_torch()
 
 
 class LSTMContainingRLModule(TorchRLModule):
-    """An example TorchRLModule that contains an LSTM layer."""
+    """An example TorchRLModule that contains an LSTM layer.
 
+    .. testcode::
+
+        import numpy as np
+        import gymnasium as gym
+        from ray.rllib.core.rl_module.rl_module import RLModuleConfig
+
+        B = 10  # batch size
+        T = 5  # seq len
+        f = 25  # feature dim
+        CELL = 32  # LSTM cell size
+
+        # Construct the RLModule.
+        rl_module_config = RLModuleConfig(
+            observation_space=gym.spaces.Box(-1.0, 1.0, (f,), np.float32),
+            action_space=gym.spaces.Discrete(4),
+            model_config_dict={"lstm_cell_size": CELL}
+        )
+        my_net = LSTMContainingRLModule(rl_module_config)
+
+        # Create some dummy input.
+        obs = torch.from_numpy(np.random.random_sample(size=(B, T, f)).astype(np.float32))
+        state_in = my_net.get_initial_state()
+        # Repeat state_in across batch.
+        state_in = tree.map_structure(
+            lambda s: torch.from_numpy(s).unsqueeze(0).repeat(B, 1), state_in
+        )
+        input_dict = {
+            Columns.OBS: obs,
+            Columns.STATE_IN: state_in,
+        }
+
+        # Run through all 3 forward passes.
+        print(my_net.forward_inference(input_dict))
+        print(my_net.forward_exploration(input_dict))
+        print(my_net.forward_train(input_dict))
+
+        # Print out the number of parameters.
+        num_all_params = sum(int(np.prod(p.size())) for p in my_net.parameters())
+        print(f"num params = {num_all_params}")
+    """
     @override(TorchRLModule)
     def setup(self):
         """Use this method to create all the model components that you require.
@@ -31,9 +73,9 @@ class LSTMContainingRLModule(TorchRLModule):
 
         # Get the LSTM cell size from our RLModuleConfig's (self.config)
         # `model_config_dict` property:
-        cell_size = self.config.model_config_dict.get("lstm_cell_size", 256)
-        self._lstm = nn.LSTM(in_size, cell_size)
-        in_size = cell_size
+        self._lstm_cell_size = self.config.model_config_dict.get("lstm_cell_size", 256)
+        self._lstm = nn.LSTM(in_size, self._lstm_cell_size, batch_first=False)
+        in_size = self._lstm_cell_size
 
         # Build a sequential stack.
         layers = []
@@ -42,7 +84,7 @@ class LSTMContainingRLModule(TorchRLModule):
         for out_size in dense_layers:
             # Dense layer.
             layers.append(nn.Linear(in_size, out_size))
-            # Activation.
+            # ReLU activation.
             layers.append(nn.ReLU())
             in_size = out_size
 
@@ -52,6 +94,13 @@ class LSTMContainingRLModule(TorchRLModule):
         self._logits = nn.Linear(in_size, self.config.action_space.n)
         # Single-node value layer.
         self._values = nn.Linear(in_size, 1)
+
+    @override(TorchRLModule)
+    def get_initial_state(self) -> Any:
+        return {
+            "h": np.zeros(shape=(self._lstm_cell_size,), dtype=np.float32),
+            "c": np.zeros(shape=(self._lstm_cell_size,), dtype=np.float32),
+        }
 
     @override(TorchRLModule)
     def _forward_inference(self, batch, **kwargs):
@@ -117,31 +166,15 @@ class LSTMContainingRLModule(TorchRLModule):
     def _compute_features_state_out_and_logits(self, batch):
         obs = batch[Columns.OBS]
         state_in = batch[Columns.STATE_IN]
-        features, state_out = self._lstm(obs, state_in)
+        h, c = state_in["h"], state_in["c"]
+        # Unsqueeze the layer dim (we only have 1 LSTM layer.
+        features, (h, c) = self._lstm(
+            obs.permute(1, 0, 2),  # we have to permute, b/c our LSTM is time-major
+            (h.unsqueeze(0), c.unsqueeze(0)),
+        )
+        # Reshape our features from (B, T, f) to (BxT, f).
+        features = features.reshape((-1, features.shape[-1]))
+        # Push through our FC net.
+        features = self._fc_net(features)
         logits = self._logits(features)
-        return features, state_out, logits
-
-
-if __name__ == "__main__":
-    import numpy as np
-    import gymnasium as gym
-    from ray.rllib.core.rl_module.rl_module import RLModuleConfig
-
-    rl_module_config = RLModuleConfig(
-        observation_space=gym.spaces.Box(-1.0, 1.0, (42, 42, 4), np.float32),
-        action_space=gym.spaces.Discrete(4),
-    )
-    my_net = LSTMContainingRLModule(rl_module_config)
-
-    B = 10
-    T = 5
-    f = 25
-    data = torch.from_numpy(
-        np.random.random_sample(size=(B, T, f)).astype(np.float32)
-    )
-    print(my_net.forward_inference({"obs": data}))
-    print(my_net.forward_exploration({"obs": data}))
-    print(my_net.forward_train({"obs": data}))
-
-    num_all_params = sum(int(np.prod(p.size())) for p in my_net.parameters())
-    print(f"num params = {num_all_params}")
+        return features, {"h": h.squeeze(0), "c": c.squeeze(0)}, logits
