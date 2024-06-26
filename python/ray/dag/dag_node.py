@@ -152,6 +152,7 @@ class DAGNode(DAGNodeBase):
             A compiled DAG.
         """
         from ray.dag import DAGContext
+
         ctx = DAGContext.get_current()
         if _buffer_size_bytes is None:
             _buffer_size_bytes = ctx.buffer_size_bytes

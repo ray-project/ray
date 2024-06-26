@@ -358,6 +358,7 @@ class AwaitableBackgroundWriter(WriterInterface):
         super().__init__(output_channel)
         if max_queue_size is None:
             from ray.dag import DAGContext
+
             ctx = DAGContext.get_current()
             max_queue_size = ctx.async_max_queue_size
         self._queue = asyncio.Queue(max_queue_size)

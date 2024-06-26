@@ -408,6 +408,7 @@ class CompiledDAG:
             Channel: A wrapper around ray.ObjectRef.
         """
         from ray.dag import DAGContext
+
         ctx = DAGContext.get_current()
 
         self._dag_id = uuid.uuid4().hex
