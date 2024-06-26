@@ -264,10 +264,11 @@ def test_tracking_by_name(shutdown_only):
     a = Actor1.remote()
     b = Actor2.remote()
 
-    # Test the GCS recorded case.
     expected = {
-        "Actor1": 1,
-        "Actor2": 1,
+        # one reported by gcs as ALIVE
+        # another reported by core worker as IDLE
+        "Actor1": 2,
+        "Actor2": 2,
     }
     wait_for_condition(
         lambda: actors_by_name(info) == expected,
@@ -275,15 +276,8 @@ def test_tracking_by_name(shutdown_only):
         retry_interval_ms=500,
     )
 
-    # Also test the core worker recorded case.
-    a.sleep.remote()
-    b.sleep.remote()
-    time.sleep(1)
-    wait_for_condition(
-        lambda: actors_by_name(info) == expected,
-        timeout=20,
-        retry_interval_ms=500,
-    )
+    del a
+    del b
 
 
 def test_get_all_actors_info(shutdown_only):
