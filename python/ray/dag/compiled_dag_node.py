@@ -1,6 +1,7 @@
 import asyncio
 from collections import defaultdict, deque
 from typing import Any, Dict, List, Tuple, Union, Optional, Set
+import heapq
 import logging
 import threading
 import uuid
@@ -386,6 +387,7 @@ class CompiledDAG:
         enable_asyncio: bool = False,
         async_max_queue_size: Optional[int] = None,
         max_buffered_results: Optional[int] = None,
+        raise_if_execution_may_block: bool = True,
     ):
         """
         Args:
@@ -410,6 +412,9 @@ class CompiledDAG:
                 executions is beyond the DAG capacity, the new execution would
                 be blocked in the first place; therefore, this limit is only
                 enforced when it is smaller than the DAG capacity.
+            raise_if_execution_may_block: if True, an exception will be raised
+                if the execution may block when calling the execute() method.
+                If False, a warning will be printed instead.
 
         Returns:
             Channel: A wrapper around ray.ObjectRef.
@@ -434,6 +439,7 @@ class CompiledDAG:
         self._max_buffered_results: Optional[int] = max_buffered_results
         if self._max_buffered_results is None:
             self._max_buffered_results = MAX_BUFFER_COUNT
+        self._raise_if_execution_may_block = raise_if_execution_may_block
         # Used to ensure that the future returned to the
         # caller corresponds to the correct DAG output. I.e.
         # order of futures added to fut_queue should match the
@@ -479,11 +485,11 @@ class CompiledDAG:
         # this DAG, if any.
         self._nccl_group_id: Optional[str] = None
         # The index of the current execution. It is incremented each time
-        # the DAG is executed.
+        # execute() is called on the DAG.
         self._execution_index: int = 0
         # The maximum index of finished executions.
         # All results with higher indexes have not been generated yet.
-        self._max_execution_index: int = -1
+        self._last_materialized_execution_index: int = -1
         self._result_buffer: Dict[int, Any] = {}
 
         # Creates the driver actor on the same node as the driver.
@@ -878,6 +884,95 @@ class CompiledDAG:
 
         self._dag_submitter.start()
         self._dag_output_fetcher.start()
+        self._max_concurrent_executions = self._compute_max_concurrent_executions()
+
+    @property
+    def max_concurrent_executions(self) -> int:
+        """
+        Get the maximum number of concurrent executions that the DAG
+        can perform without blocking.
+        """
+        return self._max_concurrent_executions
+
+    def _compute_max_concurrent_executions(self):
+        """
+        Compute the max possible concurrent executions of the DAG. This is the
+        number of inputs the DAG could concurrently process without blocking when
+        none of the outputs is consumed.
+
+        Returns:
+            The max possible concurrent executions of the DAG.
+
+        NOTE: The max possible concurrent executions is determined by the
+        "capacity" of the DAG, i.e., the number of intermediate results the
+        DAG can concurrently hold. The DAG holds these intermediate results in
+        either the intermediate channels or the actors, specifically:
+        - Channel's capacity is either 1 or 0 depending on the channel type.
+        - Actor's capacity is 1 because the actor can fetch and hold one
+            object from each input channel during execution. For an actor with
+            multiple methods, the capacity is still 1 because the current method
+            needs to finish (which flushes the held object) before the next method
+            can start.
+
+        This method performs a modified Dijkstra's algorithm to find the minimum
+        capacity from input node to the output node. The computation of minimum
+        capacity is similar to the computation of shortest path in the original
+        Dijakstra's algorithm: both use a priority queue. The difference is that
+        in the original algorithm, only edges have weights (distances between nodes),
+        while in this algorithm, both edges and nodes have weights (capacities).
+        """
+        # Capacity from input node up to each node's output channel,
+        # keyed by each node's index. Initialized to infinity to
+        # find the minimum capacity among all paths.
+        capacity = {idx: float("inf") for idx in self.idx_to_task}
+        priority_queue = []
+
+        # Capacity from input node to its output channel (the input channel)
+        # is 1 because the input channel has a capacity of 1.
+        capacity[self.input_task_idx] = 1
+        # Each entry of the priority queue is a tuple of
+        # (capacity, node index, set of actors used in the path),
+        # where capacity is the minimum capacity from the input node to
+        # this node's output channel.
+        heapq.heappush(priority_queue, (1, self.input_task_idx, set()))
+
+        while priority_queue:
+            cur_capa, cur_idx, cur_actors = heapq.heappop(priority_queue)
+            if cur_idx == self.output_task_idx:
+                return cur_capa
+
+            chan_capa = self.idx_to_task[cur_idx].output_channel.capacity()
+
+            for downstream_idx, actor in self.idx_to_task[
+                cur_idx
+            ].downstream_node_idxs.items():
+                if actor is not None and actor not in cur_actors:
+                    # If the actor is not used in the current path, its method
+                    # can be executed, therefore 1 object can be buffered at
+                    # this actor, and chan_capa can be buffered at the output channel.
+                    actor_capa = 1
+                    downstream_capa = cur_capa + actor_capa + chan_capa
+                else:
+                    # If the actor is already used in the path, its method
+                    # will block, so neither the actor nor the output channel
+                    # can buffer any object.
+                    downstream_capa = cur_capa
+                if downstream_capa < capacity[downstream_idx]:
+                    capacity[downstream_idx] = downstream_capa
+                    new_actors = cur_actors.copy()
+                    if actor is not None:
+                        new_actors.add(actor)
+                    logger.info(
+                        f"curr_idx = {cur_idx}, downstream_idx = {downstream_idx},"
+                        f" curr_idx_task = {self.idx_to_task[cur_idx].dag_node}"
+                        " downstream_idx_task = "
+                        f"{self.idx_to_task[downstream_idx].dag_node}"
+                        f" downstream_capa = {downstream_capa}"
+                        f" new_actors = {new_actors}"
+                    )
+                    heapq.heappush(
+                        priority_queue, (downstream_capa, downstream_idx, new_actors)
+                    )
 
     def _detect_deadlock(self) -> bool:
         """
@@ -1133,10 +1228,10 @@ class CompiledDAG:
 
         TODO(rui): catch the case that user holds onto the CompiledDAGRefs
         """
-        while self._max_execution_index < execution_index:
-            if self._max_execution_index + 1 == execution_index:
+        while self._last_materialized_execution_index < execution_index:
+            if self._last_materialized_execution_index + 1 == execution_index:
                 # Directly fetch and return without buffering
-                self._max_execution_index += 1
+                self._last_materialized_execution_index += 1
                 return self._dag_output_fetcher.read()
             # Otherwise, buffer the result
             if len(self._result_buffer) >= self._max_buffered_results:
@@ -1145,9 +1240,9 @@ class CompiledDAG:
                     f"buffered results is {self._max_buffered_results}; call ray.get() "
                     "on previous CompiledDAGRefs to free them up from buffer."
                 )
-            self._max_execution_index += 1
+            self._last_materialized_execution_index += 1
             self._result_buffer[
-                self._max_execution_index
+                self._last_materialized_execution_index
             ] = self._dag_output_fetcher.read()
 
         # CompiledDAGRef guarantees that the same execution index will not
@@ -1174,6 +1269,25 @@ class CompiledDAG:
             raise ValueError("Use execute_async if enable_asyncio=True")
 
         self._get_or_compile()
+
+        if (
+            self._execution_index - self._last_materialized_execution_index
+            > self._max_concurrent_executions
+        ):
+            if self._raise_if_execution_may_block:
+                raise ValueError(
+                    f"This DAG can support at most {self._max_concurrent_executions} "
+                    "concurrent executions. Please call ray.get() on previous "
+                    "CompiledDAGRefs and ensure the results go out of scope before "
+                    "calling dag.execute again."
+                )
+            else:
+                logger.warn(
+                    f"This DAG can support at most {self._max_concurrent_executions} "
+                    "concurrent executions. Please call ray.get() on previous "
+                    "CompiledDAGRefs and ensure the results go out of scope before "
+                    "calling dag.execute again."
+                )
 
         inp = (args, kwargs)
         self._dag_submitter.write(inp)
@@ -1236,12 +1350,14 @@ def build_compiled_dag_from_ray_dag(
     enable_asyncio: bool = False,
     async_max_queue_size: Optional[int] = None,
     max_buffered_results: Optional[int] = None,
+    raise_if_execution_may_block: bool = True,
 ) -> "CompiledDAG":
     compiled_dag = CompiledDAG(
         buffer_size_bytes,
         enable_asyncio,
         async_max_queue_size,
         max_buffered_results,
+        raise_if_execution_may_block,
     )
 
     def _build_compiled_dag(node):

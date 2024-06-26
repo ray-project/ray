@@ -737,6 +737,219 @@ def test_asyncio_exceptions(ray_start_regular_shared, max_queue_size):
     compiled_dag.teardown()
 
 
+class TestMaxConcurrency:
+    """
+    Test computation of max concurrent execution of CompiledDAGs and exceptions
+    when it is exceeded.
+
+    This test checks a series of linear and branched DAGs. For each DAG, its structure
+    and capacity of internal components are illustrated with a simple ASCII diagram.
+    A number in a parenthesis indicates the Nth intermediate object, an 'x' indicates
+    the actor or channel is blocked to hold any objects.
+    """
+
+    def test_basic(self, ray_start_regular):
+        a = Actor.remote(0)
+        with InputNode() as i:
+            dag = a.inc.bind(i)
+        compiled_dag = dag.experimental_compile()
+        # driver -(3)-> a.inc (2) -(1)-> driver
+        assert compiled_dag.max_concurrent_executions == 3
+        refs = []
+        for i in range(3):
+            ref = compiled_dag.execute(1)
+            refs.append(ref)
+        # No blocking when capacity is not exceeded.
+        result = ray.get(ref)
+        assert result == 3
+        # Throws an error when capacity is exceeded.
+        refs = []
+        for i in range(3):
+            ref = compiled_dag.execute(1)
+            refs.append(ref)
+        with pytest.raises(
+            ValueError,
+            match=(
+                "This DAG can support at most 3 concurrent executions. "
+                "Please call ray.get\(\) on previous CompiledDAGRefs and ensure "
+                "the results go out of scope before calling dag.execute again."
+            ),
+        ):
+            compiled_dag.execute(1)
+        compiled_dag.teardown()
+
+    def test_multi_actors(self, ray_start_regular):
+        a1 = Actor.remote(0)
+        a2 = Actor.remote(0)
+        with InputNode() as i:
+            dag = a1.inc.bind(i)
+            dag = a2.inc.bind(dag)
+        compiled_dag = dag.experimental_compile()
+        # driver -(5)-> a1.inc (4) -(3)-> a2.inc (2) -(1)-> driver
+        assert compiled_dag.max_concurrent_executions == 5
+        refs = []
+        for i in range(5):
+            ref = compiled_dag.execute(1)
+            refs.append(ref)
+        # No blocking when capacity is not exceeded.
+        result = ray.get(ref)
+        assert result == 15
+        # Throws an error when capacity is exceeded.
+        refs = []
+        for i in range(5):
+            ref = compiled_dag.execute(1)
+            refs.append(ref)
+        with pytest.raises(
+            ValueError,
+            match=(
+                "This DAG can support at most 5 concurrent executions. "
+                "Please call ray.get\(\) on previous CompiledDAGRefs and ensure "
+                "the results go out of scope before calling dag.execute again."
+            ),
+        ):
+            compiled_dag.execute(1)
+        compiled_dag.teardown()
+
+    def test_single_actor_multi_methods(self, ray_start_regular):
+        a = Actor.remote(0)
+        with InputNode() as inp:
+            dag = a.inc.bind(inp)
+            dag = a.echo.bind(dag)
+        compiled_dag = dag.experimental_compile()
+        # driver -(3)-> a.inc (x) -(x)-> a.echo (2) -(1)-> driver
+        assert compiled_dag.max_concurrent_executions == 3
+        refs = []
+        for i in range(3):
+            ref = compiled_dag.execute(1)
+            refs.append(ref)
+        # No blocking when capacity is not exceeded.
+        result = ray.get(ref)
+        assert result == 3
+        # Throws an error when capacity is exceeded.
+        refs = []
+        for i in range(3):
+            ref = compiled_dag.execute(1)
+            refs.append(ref)
+        with pytest.raises(
+            ValueError,
+            match=(
+                "This DAG can support at most 3 concurrent executions. "
+                "Please call ray.get\(\) on previous CompiledDAGRefs and ensure "
+                "the results go out of scope before calling dag.execute again."
+            ),
+        ):
+            compiled_dag.execute(1)
+        compiled_dag.teardown()
+
+    def test_single_actor_repeated_methods(self, ray_start_regular):
+        a = Actor.remote(0)
+        with InputNode() as inp:
+            dag = a.inc.bind(inp)
+            dag = a.inc.bind(dag)
+        compiled_dag = dag.experimental_compile()
+        # driver -(3)-> a.inc (x) -(x)-> a.inc (2) -(1)-> driver
+        assert compiled_dag.max_concurrent_executions == 3
+        refs = []
+        for i in range(3):
+            ref = compiled_dag.execute(1)
+            refs.append(ref)
+        # No blocking when capacity is not exceeded.
+        result = ray.get(ref)
+        assert result == 14
+        # Throws an error when capacity is exceeded.
+        refs = []
+        for i in range(3):
+            ref = compiled_dag.execute(1)
+            refs.append(ref)
+        with pytest.raises(
+            ValueError,
+            match=(
+                "This DAG can support at most 3 concurrent executions. "
+                "Please call ray.get\(\) on previous CompiledDAGRefs and ensure "
+                "the results go out of scope before calling dag.execute again."
+            ),
+        ):
+            compiled_dag.execute(1)
+
+    def test_chain(self, ray_start_regular):
+        actors = [Actor.options(num_cpus=0).remote(0) for _ in range(10)]
+        with InputNode() as inp:
+            dag = inp
+            for a in actors:
+                dag = a.inc.bind(dag)
+        compiled_dag = dag.experimental_compile()
+        # driver -(21)-> a0.inc (20) -(19)-> ... a9.inc (2) -(1)-> driver
+        # 10 (actors) + 10 (output channels of actors) + 1 (input channel)
+        assert compiled_dag.max_concurrent_executions == 21
+
+    def test_branch_multi_actors(self, ray_start_regular):
+        a = Actor.remote(0)
+        c = Collector.remote()
+        with InputNode() as i:
+            branch = a.inc.bind(i[0])
+            dag = c.collect_two.bind(branch, i[1])
+        compiled_dag = dag.experimental_compile()
+        # driver -(x)-> a.inc (3) -> c.collect_two (2) -(1)-> driver
+        #    \                           ^
+        #     \ -----------(3)----------/
+        assert compiled_dag.max_concurrent_executions == 3
+        refs = []
+        for i in range(3):
+            ref = compiled_dag.execute(0, 1)
+            refs.append(ref)
+        # No blocking when capacity is not exceeded.
+        result = ray.get(ref)
+        assert result == [0, 1, 0, 1, 0, 1]
+        # Throws an error when capacity is exceeded.
+        refs = []
+        for i in range(3):
+            ref = compiled_dag.execute(0, 1)
+            refs.append(ref)
+        with pytest.raises(
+            ValueError,
+            match=(
+                "This DAG can support at most 3 concurrent executions. "
+                "Please call ray.get\(\) on previous CompiledDAGRefs and ensure "
+                "the results go out of scope before calling dag.execute again."
+            ),
+        ):
+            compiled_dag.execute(1)
+        compiled_dag.teardown()
+
+    def test_branch_multi_output_node(self, ray_start_regular):
+        actors = [Actor.remote(0) for _ in range(3)]
+        with InputNode() as i:
+            out = [a.inc.bind(i) for a in actors]
+            dag = MultiOutputNode(out)
+        compiled_dag = dag.experimental_compile()
+        # driver -(3)-> a0.inc (2) -(1)-> driver
+        #  \------(3)-> a1.inc (2) -(1)---/
+        #   \-----(3)-> a2.inc (2) -(1)--/
+        assert compiled_dag.max_concurrent_executions == 3
+        refs = []
+        for i in range(3):
+            ref = compiled_dag.execute(1)
+            refs.append(ref)
+        # No blocking when capacity is not exceeded.
+        result = ray.get(ref)
+        assert result == [3, 3, 3]
+        # Throws an error when capacity is exceeded.
+        refs = []
+        for i in range(3):
+            ref = compiled_dag.execute(1)
+            refs.append(ref)
+        with pytest.raises(
+            ValueError,
+            match=(
+                "This DAG can support at most 3 concurrent executions. "
+                "Please call ray.get\(\) on previous CompiledDAGRefs and ensure "
+                "the results go out of scope before calling dag.execute again."
+            ),
+        ):
+            compiled_dag.execute(1)
+        compiled_dag.teardown()
+
+
 class TestCompositeChannel:
     def test_composite_channel_one_actor(self, ray_start_regular_shared):
         """
@@ -761,6 +974,10 @@ class TestCompositeChannel:
             dag = a.inc.bind(dag)
 
         compiled_dag = dag.experimental_compile()
+        # See doc string of TestMaxConcurrency for explanation of the ASCII diagram.
+        # driver -(3)-> a.inc(x) -(x)-> a.inc(x) -(x)-> a.inc(2) -(1)-> driver
+        assert compiled_dag.max_concurrent_executions == 3
+
         ref = compiled_dag.execute(1)
         assert ray.get(ref) == 4
 
@@ -793,6 +1010,10 @@ class TestCompositeChannel:
 
         # a: 0+1 -> b: 100+1 -> a: 1+101
         compiled_dag = dag.experimental_compile()
+        # See doc string of TestMaxConcurrency for explanation of the ASCII diagram.
+        # driver -(5)-> a.inc(x) -(x)-> b.inc(4) -(3)-> a.inc(2) -(1)-> driver
+        assert compiled_dag.max_concurrent_executions == 5
+
         ref = compiled_dag.execute(1)
         assert ray.get(ref) == 102
 
@@ -825,6 +1046,12 @@ class TestCompositeChannel:
             dag = MultiOutputNode([a.inc.bind(dag), b.inc.bind(dag)])
 
         compiled_dag = dag.experimental_compile()
+        # See doc string of TestMaxConcurrency for explanation of the ASCII diagram.
+        # driver -(3)-> a.inc (x) -(x)-> a.inc(2) -(1)-> driver
+        #                   \                            ^
+        #                    -------- b.inc (2) --------/
+        assert compiled_dag.max_concurrent_executions == 3
+
         ref = compiled_dag.execute(1)
         assert ray.get(ref) == [2, 101]
 

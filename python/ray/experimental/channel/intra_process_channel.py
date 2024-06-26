@@ -63,3 +63,8 @@ class IntraProcessChannel(ChannelInterface):
     def close(self) -> None:
         ctx = ChannelContext.get_current().serialization_context
         ctx.reset_data(self._channel_id)
+
+    def capacity(self) -> int:
+        # IntraProcessChannel can buffer at most one object in the
+        # serialization context.
+        return 1

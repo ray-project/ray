@@ -170,6 +170,11 @@ class NestedTorchTensorNcclChannel(ChannelInterface):
         if self._cpu_data_channel is not None:
             self._cpu_data_channel.close()
 
+    def capacity(self) -> int:
+        # NCCL channel does not buffer data so the overall capacity is 0
+        # (even though the CPU channel may buffer data).
+        return 0
+
 
 def _torch_zeros_allocator(shape: Tuple[int], dtype: "torch.dtype"):
     import torch
@@ -405,6 +410,10 @@ class TorchTensorNcclChannel(ChannelInterface):
             self._typ.shape != TorchTensorType.AUTO
             and self._typ.dtype != TorchTensorType.AUTO
         )
+
+    def capacity(self) -> int:
+        # NCCL channel does not buffer data.
+        return 0
 
 
 def _do_init_nccl_group(self, group_id, world_size, comm_id, rank, actor_handles):
