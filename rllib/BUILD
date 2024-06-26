@@ -166,7 +166,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "torch_only"],
     size = "large",
     srcs = ["tuned_examples/appo/multi_agent_cartpole_appo.py"],
-    args = ["--as-test", "--enable-new-api-stack", "--num-gpus=1"]
+    args = ["--as-test", "--enable-new-api-stack", "--num-agents=2", "--num-gpus=1"]
 )
 
 #@OldAPIStack
@@ -821,12 +821,6 @@ py_test(
     tags = ["team:rllib", "algorithms_dir"],
     size = "large",
     srcs = ["algorithms/ppo/tests/test_ppo.py"]
-)
-py_test(
-    name = "test_ppo_with_rl_module",
-    tags = ["team:rllib", "algorithms_dir"],
-    size = "large",
-    srcs = ["algorithms/ppo/tests/test_ppo_with_rl_module.py"]
 )
 py_test(
     name = "test_ppo_rl_module",

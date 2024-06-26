@@ -9,6 +9,7 @@ from ray.rllib.utils.test_utils import add_rllib_example_script_args
 from ray.tune.registry import register_env
 
 parser = add_rllib_example_script_args()
+parser.set_defaults(num_agents=2)
 # Use `parser` to add your own custom command line options to this script
 # and (if needed) use their values toset up `config` below.
 args = parser.parse_args()
@@ -26,7 +27,10 @@ config = (
     .environment("env", env_config={"num_agents": args.num_agents})
     .training(
         vf_loss_coeff=0.005,
-        model={
+        entropy_coeff=0.0,
+    )
+    .rl_module(
+        model_config_dict={
             "vf_share_layers": True,
             "uses_new_env_runners": True,
         },
