@@ -2430,7 +2430,11 @@ def test_list_get_tasks(shutdown_only):
         for task in tasks:
             assert task["job_id"] == job_id
 
-        tasks = list_tasks(filters=[("name", "=", "f_0")])
+        tasks = list_tasks(filters=[("name", "=", "f_0")], limit=1)
+        assert len(tasks) == 1
+
+        # using limit to make sure state filtering is done on the gcs side
+        tasks = list_tasks(filters=[("STATE", "=", "PENDING_ARGS_AVAIL")], limit=1)
         assert len(tasks) == 1
 
         return True
