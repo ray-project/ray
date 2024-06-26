@@ -942,6 +942,7 @@ def test_all_to_all_estimated_output_blocks():
 
 
 def test_input_data_buffer_does_not_free_inputs():
+    # Tests https://github.com/ray-project/ray/issues/46282
     block = pd.DataFrame({"id": [0]})
     block_ref = ray.put(block)
     metadata = BlockAccessor.for_block(block).get_metadata()
@@ -952,6 +953,8 @@ def test_input_data_buffer_does_not_free_inputs():
     op.get_next()
     gc.collect()
 
+    # `InputDataBuffer` should still hold a reference to the input block even after
+    # `get_next` is called.
     assert len(gc.get_referrers(block_ref)) > 0
 
 
