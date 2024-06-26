@@ -14,7 +14,6 @@ from ray.autoscaler.tags import (
     NODE_KIND_HEAD,
     TAG_RAY_NODE_KIND,
     TAG_RAY_NODE_STATUS,
-    TAG_RAY_REPLICA_INDEX,
     TAG_RAY_USER_NODE_TYPE,
 )
 
@@ -167,6 +166,7 @@ class BatchingNodeProvider(NodeProvider):
             workers_to_delete=set(),  # No workers to delete yet
         )
         all_nodes = list(self.node_data_dict.keys())
+        self.replicas_to_nodes.clear()
         for node_id in all_nodes:
             replica_index = self.node_data_dict[node_id].replica_index
             # Only add node to map if it belongs to a TPU podslice
@@ -199,14 +199,11 @@ class BatchingNodeProvider(NodeProvider):
 
     def node_tags(self, node_id: str) -> Dict[str, str]:
         node_data = self.node_data_dict[node_id]
-        tags = {
+        return {
             TAG_RAY_NODE_KIND: node_data.kind,
             TAG_RAY_NODE_STATUS: node_data.status,
             TAG_RAY_USER_NODE_TYPE: node_data.type,
         }
-        if node_data.replica_index is not None:
-            tags[TAG_RAY_REPLICA_INDEX] = node_data.replica_index
-        return tags
 
     def internal_ip(self, node_id: str) -> str:
         return self.node_data_dict[node_id].ip

@@ -74,7 +74,6 @@ from ray.autoscaler.tags import (
     TAG_RAY_LAUNCH_CONFIG,
     TAG_RAY_NODE_KIND,
     TAG_RAY_NODE_STATUS,
-    TAG_RAY_REPLICA_INDEX,
     TAG_RAY_RUNTIME_CONFIG,
     TAG_RAY_USER_NODE_TYPE,
 )
@@ -272,13 +271,6 @@ class StandardAutoscaler:
         # Tracks nodes scheduled for termination
         self.nodes_to_terminate: List[NodeID] = []
 
-        # A set of replica indices used to track replicas scheduled for termination.
-        self.replicas_to_delete: Set[str] = set()
-
-        # Map of replica indices to worker nodes in each replica.
-        # A replica index refers to a multi-host PodSlice created by KubeRay.
-        self.replicas_to_nodes: Dict[str, List[NodeID]] = defaultdict(list)
-
         # Disable NodeUpdater threads if true.
         # Should be set to true in situations where another component, such as
         # a Kubernetes operator, is responsible for Ray setup on nodes.
@@ -415,14 +407,6 @@ class StandardAutoscaler:
             )
             return
 
-        # Populate mapping of replica indices to nodes in that replica.
-        self.replicas_to_nodes.clear()
-        for node_id in self.non_terminated_nodes.worker_ids:
-            tags = self.provider.node_tags(node_id)
-            if TAG_RAY_REPLICA_INDEX in tags:
-                node_replica_index = tags[TAG_RAY_REPLICA_INDEX]
-                self.replicas_to_nodes[node_replica_index].append(node_id)
-
         # This will accumulate the nodes we need to terminate.
         self.nodes_to_terminate = []
 
@@ -498,7 +482,6 @@ class StandardAutoscaler:
         (3) Terminates outdated nodes,
                 namely nodes whose configs don't match `node_config` for the
                 relevant node type.
-        (4) Terminates nodes part of a multi-host replica being deleted.
 
         Avoids terminating non-outdated nodes required by
         autoscaler.sdk.request_resources().
@@ -622,15 +605,6 @@ class StandardAutoscaler:
             aggregate=operator.add,
         )
         self.nodes_to_terminate.append(node_id)
-        # Scale down entire multi-host replica of node being deleted
-        tags = self.provider.node_tags(node_id)
-        if TAG_RAY_REPLICA_INDEX in tags:
-            replica_index = tags[TAG_RAY_REPLICA_INDEX]
-            self.replicas_to_delete.add(replica_index)
-            logger_method(
-                "StandardAutoscaler: "
-                f"Terminating nodes with replicaIndex {replica_index}."
-            )
 
     def terminate_scheduled_nodes(self):
         """Terminate scheduled nodes and clean associated autoscaler state."""
@@ -645,18 +619,6 @@ class StandardAutoscaler:
         # explicitly disabled.
         if self.worker_rpc_drain:
             self.drain_nodes_via_gcs(self.nodes_to_terminate)
-        # Clean up multi-host replicas to delete
-        for node in self.nodes_to_terminate:
-            tags = self.provider.node_tags(node)
-            if TAG_RAY_REPLICA_INDEX in tags:
-                replica_index = tags[TAG_RAY_REPLICA_INDEX]
-                if replica_index in self.replicas_to_nodes:
-                    if node in self.replicas_to_nodes[replica_index]:
-                        self.replicas_to_nodes[replica_index].remove(node)
-                        # remove replica index once all nodes in replica removed
-                        if len(self.replicas_to_nodes[replica_index]) == 0:
-                            self.replicas_to_nodes.pop(replica_index)
-                            self.replicas_to_delete.remove(replica_index)
         # Terminate the nodes
         self.provider.terminate_nodes(self.nodes_to_terminate)
         for node in self.nodes_to_terminate:
@@ -996,9 +958,7 @@ class StandardAutoscaler:
         self, node_id: NodeID, node_type_counts: Dict[NodeType, int]
     ) -> Tuple[KeepOrTerminate, Optional[str]]:
         """Determines if a worker should be kept based on the min_workers
-        and max_workers constraint of the worker's node_type. Additionally,
-        workers belonging to a multi-host replica being deleted are scheduled
-        to delete as well.
+        and max_workers constraint of the worker's node_type.
 
         Returns KeepOrTerminate.keep when both of the following hold:
         (a) The worker's node_type is present among the keys of the current
@@ -1006,13 +966,11 @@ class StandardAutoscaler:
         (b) Deleting the node would violate the min_workers constraint for that
             worker's node_type.
 
-        Returns KeepOrTerminate.terminate when the following hold:
+        Returns KeepOrTerminate.terminate when both the following hold:
         (a) The worker's node_type is not present among the keys of the current
             config's available_node_types dict.
         (b) Keeping the node would violate the max_workers constraint for that
             worker's node_type.
-        (c) The worker has TAG_RAY_REPLICA_INDEX tag set, and its replica index is
-            found in replicas_to_delete.
 
         Return KeepOrTerminate.decide_later otherwise.
 
@@ -1030,16 +988,6 @@ class StandardAutoscaler:
         assert self.provider
 
         tags = self.provider.node_tags(node_id)
-
-        if TAG_RAY_REPLICA_INDEX in tags:
-            replica_index = tags[TAG_RAY_REPLICA_INDEX]
-            # All nodes in this replica should be deleted, regardless of
-            # available_node_types.
-            if replica_index in self.replicas_to_delete:
-                return (
-                    KeepOrTerminate.terminate,
-                    f"Node belongs to a replica being deleted: {replica_index}",
-                )
 
         if TAG_RAY_USER_NODE_TYPE in tags:
             node_type = tags[TAG_RAY_USER_NODE_TYPE]
