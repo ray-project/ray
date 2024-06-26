@@ -204,6 +204,14 @@ SERVE_LOG_RECORD_FORMAT = {
     SERVE_LOG_TIME: "%(asctime)s",
 }
 
+# There are some attributes that we only use internally or don't provide values to the
+# users. Adding to this set will remove them from structured logs.
+SERVE_LOG_UNWANTED_ATTRS = {
+    "serve_access_log",
+    "task_id",
+    "job_id",
+}
+
 SERVE_LOG_EXTRA_FIELDS = "ray_serve_extra_fields"
 
 # Serve HTTP request header key for routing requests.
