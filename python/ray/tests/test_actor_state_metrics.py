@@ -222,6 +222,7 @@ def test_async_actor(shutdown_only):
     a = AsyncActor.remote()
     a.sleep.remote()
     expected = {
+        "ALIVE": 1,
         "RUNNING_TASK": 1,
     }
     wait_for_condition(
@@ -234,6 +235,7 @@ def test_async_actor(shutdown_only):
     a.do_get.remote()
     a.do_get.remote()
     expected = {
+        "ALIVE": 1,
         "RUNNING_IN_RAY_GET": 1,
     }
     wait_for_condition(
