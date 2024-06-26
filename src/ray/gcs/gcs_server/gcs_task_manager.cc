@@ -423,6 +423,27 @@ void GcsTaskManager::HandleGetTaskEvents(rpc::GetTaskEventsRequest request,
       return false;
     }
 
+    if (filters.has_state()) {
+      const google::protobuf::EnumDescriptor *task_status_descriptor =
+          ray::rpc::TaskStatus_descriptor();
+
+      // Figure out the latest state of a task.
+      TaskStatus state = ray::rpc::TaskStatus.Nil;
+      if (task_event.has_state_updates()) {
+        for (int i = task_status_descriptor->value_count() - 1; i >= 0; --i) {
+          if (task_event.state_updates()->state_ts().contains(
+                  task_status_descriptor->value(i)->number())) {
+            state = task_status_descriptor->value(i)->number();
+            break;
+          }
+        }
+      }
+
+      if (filters.state() != task_status_descriptor->FindValueByNumber(state)->name()) {
+        return false;
+      }
+    }
+
     return true;
   };
 
