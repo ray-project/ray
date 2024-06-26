@@ -112,7 +112,7 @@ void GcsTaskManager::GcsTaskManagerStorage::MarkTaskAttemptFailedIfNeeded(
   // We could mark the task as failed even if might not have state updates yet (i.e. only
   // profiling events are reported).
   auto state_updates = task_events.mutable_state_updates();
-  state_updates->set_failed_ts(failed_ts);
+  (*state_updates->mutable_state_ts())[ray::rpc::TaskStatus::FAILED] = failed_ts;
   state_updates->mutable_error_info()->CopyFrom(error_info);
 }
 
@@ -428,12 +428,13 @@ void GcsTaskManager::HandleGetTaskEvents(rpc::GetTaskEventsRequest request,
           ray::rpc::TaskStatus_descriptor();
 
       // Figure out the latest state of a task.
-      TaskStatus state = ray::rpc::TaskStatus.Nil;
+      ray::rpc::TaskStatus state = ray::rpc::TaskStatus::NIL;
       if (task_event.has_state_updates()) {
         for (int i = task_status_descriptor->value_count() - 1; i >= 0; --i) {
-          if (task_event.state_updates()->state_ts().contains(
+          if (task_event.state_updates().state_ts().contains(
                   task_status_descriptor->value(i)->number())) {
-            state = task_status_descriptor->value(i)->number();
+            state = static_cast<ray::rpc::TaskStatus>(
+                task_status_descriptor->value(i)->number());
             break;
           }
         }
