@@ -7,7 +7,7 @@ import time
 
 import pytest
 
-from ray.exceptions import RayChannelError
+from ray.exceptions import RayTaskError, RayChannelError
 import ray
 from ray.air._internal import torch_utils
 import ray.cluster_utils
@@ -478,7 +478,9 @@ def test_torch_tensor_exceptions(ray_start_regular):
     receiver = actor_cls.remote()
 
     with InputNode() as inp:
-        dag = sender.send_or_raise.bind(inp.shape, inp.dtype, inp.value, inp.raise_exception)
+        dag = sender.send_or_raise.bind(
+            inp.shape, inp.dtype, inp.value, inp.raise_exception
+        )
         dag = dag.with_type_hint(TorchTensorType(transport="nccl"))
         dag = receiver.recv.bind(dag)
 
@@ -491,21 +493,21 @@ def test_torch_tensor_exceptions(ray_start_regular):
         dtype = torch.float16
 
         ref = compiled_dag.execute(
-                shape=shape,
-                dtype=dtype,
-                value=i,
-                raise_exception=False,
-                )
+            shape=shape,
+            dtype=dtype,
+            value=i,
+            raise_exception=False,
+        )
         result = ray.get(ref)
         assert result == (i, shape, dtype)
 
     # Application level exceptions are thrown to the end ray.get
     ref = compiled_dag.execute(
-            shape=shape,
-            dtype=dtype,
-            value=i,
-            raise_exception=True,
-            )
+        shape=shape,
+        dtype=dtype,
+        value=i,
+        raise_exception=True,
+    )
     with pytest.raises(RayTaskError) as exc_info:
         ray.get(ref)
     assert isinstance(exc_info.value.as_instanceof_cause(), RuntimeError)
@@ -513,11 +515,11 @@ def test_torch_tensor_exceptions(ray_start_regular):
     # If using dynamic shape or dtype is used and direct_return=False, then the
     # DAG should still be usable after application-level exceptions.
     ref = compiled_dag.execute(
-            shape=shape,
-            dtype=dtype,
-            value=i,
-            raise_exception=False,
-            )
+        shape=shape,
+        dtype=dtype,
+        value=i,
+        raise_exception=False,
+    )
     result = ray.get(ref)
     assert result == (i, shape, dtype)
 

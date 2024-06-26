@@ -184,7 +184,6 @@ def _exec_task(self, task: "ExecutableTask", idx: int) -> bool:
     try:
         output_val = method(*resolved_inputs)
     except Exception as exc:
-        print("EXCEPTION", exc)
         output_val = _wrap_exception(exc)
 
     try:
