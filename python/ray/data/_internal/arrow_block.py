@@ -2,6 +2,7 @@ import collections
 import heapq
 import logging
 import random
+import traceback
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -21,6 +22,7 @@ from ray._private.utils import _get_pyarrow_version
 from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.air.util.tensor_extensions.arrow import (
     ArrowConversionError,
+    convert_list_to_pyarrow_array,
     pyarrow_table_from_pydict,
 )
 from ray.data._internal.arrow_ops import transform_polars, transform_pyarrow
@@ -58,6 +60,16 @@ if TYPE_CHECKING:
 
 T = TypeVar("T")
 logger = logging.getLogger(__name__)
+
+ARROW_OBJECT_FIXABLE_ERRORS = ("ArrowTypeError", "ArrowNotImplementedError")
+
+
+def is_object_fixable_error(e: ArrowConversionError) -> bool:
+    """Returns whether this error can be fixed by using an ArrowPythonObjectArray"""
+    return any(
+        err in "".join(traceback.format_exception(e))
+        for err in ARROW_OBJECT_FIXABLE_ERRORS
+    )
 
 
 # We offload some transformations to polars for performance.
@@ -151,22 +163,18 @@ class ArrowBlockBuilder(TableBlockBuilder):
 
                     columns[col_name] = ArrowTensorArray.from_numpy(col, col_name)
                 else:
-                    columns[col_name] = pyarrow.array(col)
-            except (
-                pyarrow.ArrowInvalid,
-                pyarrow.ArrowNotImplementedError,
-                pyarrow.ArrowTypeError,
-            ):
+                    columns[col_name] = convert_list_to_pyarrow_array(col, columns)
+            except ArrowConversionError as e:
                 from ray.data.extensions.object_extension import (
                     ArrowPythonObjectArray,
                     object_extension_type_allowed,
                 )
 
-                if object_extension_type_allowed():
+                if object_extension_type_allowed() and is_object_fixable_error(e):
                     columns[col_name] = ArrowPythonObjectArray.from_objects(col)
                 else:
                     raise
-        return pyarrow.Table.from_pydict(columns)
+        return pyarrow_table_from_pydict(columns)
 
     @staticmethod
     def _concat_tables(tables: List[Block]) -> Block:
@@ -231,8 +239,8 @@ class ArrowBlockAccessor(TableBlockAccessor):
             if col.dtype.type is np.object_ or col.ndim > 1:
                 try:
                     col = ArrowTensorArray.from_numpy(col, col_name)
-                except ArrowConversionError:
-                    if object_extension_type_allowed():
+                except ArrowConversionError as e:
+                    if object_extension_type_allowed() and is_object_fixable_error(e):
                         if log_once(f"arrow_object_pickle_{col_name}"):
                             logger.warning(
                                 f"Failed to interpret {col_name} as "

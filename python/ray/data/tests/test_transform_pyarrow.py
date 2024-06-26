@@ -428,7 +428,7 @@ class UnsupportedType:
     pass
 
 
-def _create_datasset(op, data):
+def _create_dataset(op, data):
     ds = ray.data.range(2, override_num_blocks=2)
 
     if op == "map":
@@ -472,7 +472,7 @@ def test_fallback_to_pandas_on_incompatible_data(
 ):
     # Test if the first UDF output is incompatible with Arrow,
     # Ray Data will fall back to using Pandas.
-    ds = _create_datasset(op, data)
+    ds = _create_dataset(op, data)
     ds = ds.materialize()
     block = ray.get(ds.get_internal_block_refs()[0])
     assert isinstance(block, pd.DataFrame)
@@ -482,9 +482,6 @@ def test_fallback_to_pandas_on_incompatible_data(
     "op, data",
     [
         ("map", [1, 2**100]),
-        ("map", [1, UnsupportedType()]),
-        ("map", [np.array([1]), np.array([2**100])]),
-        ("map_batches", [[1], [None]]),
     ],
 )
 def test_pyarrow_conversion_error_detailed_info(
@@ -500,7 +497,7 @@ def test_pyarrow_conversion_error_detailed_info(
     #   schema.
     # Check that we'll raise an ArrowConversionError with detailed information
     # about the incompatible data.
-    ds = _create_datasset(op, data)
+    ds = _create_dataset(op, data)
 
     with pytest.raises(Exception) as e:
         ds.materialize()
