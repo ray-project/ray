@@ -639,7 +639,7 @@ def test_dag_errors(ray_start_regular):
         ValueError,
         match=(
             "ray.get\(\) can only be called once "
-            "on a CompiledDAGRef and it was already called."
+            "on a CompiledDAGRef, and it was already called."
         ),
     ):
         ray.get(ref)
