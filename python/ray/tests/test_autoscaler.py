@@ -63,8 +63,8 @@ from ray.autoscaler.tags import (
     TAG_RAY_CLUSTER_NAME,
     TAG_RAY_NODE_KIND,
     TAG_RAY_NODE_STATUS,
-    TAG_RAY_USER_NODE_TYPE,
     TAG_RAY_REPLICA_INDEX,
+    TAG_RAY_USER_NODE_TYPE,
 )
 from ray.tests.test_batch_node_provider_unit import (
     MockBatchingNodeProvider,
@@ -318,14 +318,6 @@ TYPES_A = {
 }
 
 TYPES_TPU = {
-    "empty_node": {
-        "node_config": {
-            "FooProperty": 42,
-            "TestProp": 1,
-        },
-        "resources": {},
-        "max_workers": 0,
-    },
     "tpu-worker": {
         "node_config": {},
         "resources": {"CPU": 1, "TPU": 4},
@@ -3606,22 +3598,23 @@ class AutoscalingTest(unittest.TestCase):
         config = copy.deepcopy(TPU_CLUSTER)
         config["available_node_types"]["tpu-worker"]["min_workers"] = 4
         config["available_node_types"]["tpu-worker"]["max_workers"] = 4
+        config["provider"][FOREGROUND_NODE_LAUNCH_KEY] = True
+        config["provider"][DISABLE_LAUNCH_CONFIG_CHECK_KEY] = True
+        config["provider"][DISABLE_NODE_UPDATERS_KEY] = True
         config_path = self.write_config(config)
-        self.provider = MockProvider()
+        self.provider = MockBatchingNodeProvider(
+            provider_config={
+                DISABLE_LAUNCH_CONFIG_CHECK_KEY: True,
+                DISABLE_NODE_UPDATERS_KEY: True,
+                FOREGROUND_NODE_LAUNCH_KEY: True,
+            },
+            cluster_name="test-cluster",
+            _allow_multiple=True,
+        )
         runner = MockProcessRunner()
         runner.respond_to_call("json .Config.Env", ["[]" for i in range(5)])
         lm = LoadMetrics()
 
-        get_or_create_head_node(
-            config,
-            printable_config_file=config_path,
-            no_restart=False,
-            restart_only=False,
-            yes=True,
-            override_cluster_name=None,
-            _provider=self.provider,
-            _runner=runner,
-        )
         self.waitForNodes(1)
         autoscaler = MockAutoscaler(
             config_path,
@@ -3633,56 +3626,51 @@ class AutoscalingTest(unittest.TestCase):
             process_runner=runner,
             update_interval_s=0,
         )
+        self.provider.safe_to_scale_flag = True
         autoscaler.update()
-        self.waitForNodes(5)
-        assert autoscaler.pending_launches.value == 0
-        assert (
-            len(
-                self.provider.non_terminated_nodes(
-                    {TAG_RAY_NODE_KIND: NODE_KIND_WORKER}
-                )
-            )
-            == 4
+        # Scale up 4 Ray workers
+        assert self.num_nodes(tag_filters=WORKER_FILTER) == 4, (
+            self.provider.non_terminated_nodes(tag_filters=WORKER_FILTER),
+            self.provider.non_terminated_nodes(tag_filters={}),
         )
-
         fill_in_raylet_ids(self.provider, lm)
-        autoscaler.update()
-        self.waitFor(lambda: autoscaler.pending_launches.value == 0)
-        self.waitForNodes(4, tag_filters={TAG_RAY_NODE_KIND: NODE_KIND_WORKER})
-        assert autoscaler.pending_launches.value == 0
 
-        # Set replicaIndex node tag
+        # Set replica_index in node_data for all workers
+        index = 0
         for node_id in NonTerminatedNodes(self.provider).worker_ids:
-            self.provider.set_node_tags(
-                node_id, {TAG_RAY_REPLICA_INDEX: "tpu-group-0", **WORKER_FILTER}
-            )
+            if index < 2:
+                self.provider.set_node_replica_index(node_id, "tpu-group-0")
+            else:
+                self.provider.set_node_replica_index(node_id, "tpu-group-1")
+            index += 1
 
-        # Manually delete one TPU worker
-        mock_logger = Mock(spec=logging.Logger(""))
-        worker_0 = NonTerminatedNodes(self.provider).worker_ids[0]
-        autoscaler.schedule_node_termination(
-            worker_0, "deleting TPU worker for test", mock_logger.info
+        replicaIndexFilter = {TAG_RAY_REPLICA_INDEX: "tpu-group-0"}
+        assert self.num_nodes(tag_filters=replicaIndexFilter) == 2, (
+            self.provider.non_terminated_nodes(tag_filters=replicaIndexFilter),
+            self.provider.non_terminated_nodes(tag_filters={}),
         )
-        autoscaler.update()
-        events = autoscaler.event_summarizer.summary()
-        assert (
-            "Removing 4 nodes of type tpu-worker (Node belongs to a replica being "
-            "deleted: tpu-group-0)."
-        ) in events
-
-        # We should not be starting/stopping empty_node at all.
-        for event in events:
-            assert "empty_node" not in event
-
-        # All nodes in the same replica index have been removed
-        assert (
-            len(
-                self.provider.non_terminated_nodes(
-                    {TAG_RAY_NODE_KIND: NODE_KIND_WORKER}
-                )
-            )
-            == 0
+        replicaIndexFilter[TAG_RAY_REPLICA_INDEX] = "tpu-group-1"
+        assert self.num_nodes(tag_filters=replicaIndexFilter) == 2, (
+            self.provider.non_terminated_nodes(tag_filters=replicaIndexFilter),
+            self.provider.non_terminated_nodes(tag_filters={}),
         )
+
+        # Verify replica_to_nodes mapping has been populated
+        assert len(self.provider.replicas_to_nodes["tpu-group-0"]) == 2
+        assert len(self.provider.replicas_to_nodes["tpu-group-1"]) == 2
+
+        worker_0 = NonTerminatedNodes(self.provider).worker_ids[0]  # tpu-group-0
+        worker_2 = NonTerminatedNodes(self.provider).worker_ids[2]  # tpu-group-1
+        # Manually delete one TPU worker in tpu-group-0
+        # BatchingNodeProvider should scale down all nodes in the replica
+        assert worker_0 in self.provider.node_data_dict
+        self.provider.terminate_node(worker_0)
+        assert len(self.provider.scale_request.workers_to_delete) == 2
+
+        # Scale down the tpu-group-1 replica
+        assert worker_2 in self.provider.node_data_dict
+        self.provider.terminate_node(worker_2)
+        assert len(self.provider.scale_request.workers_to_delete) == 4
 
 
 def test_import():

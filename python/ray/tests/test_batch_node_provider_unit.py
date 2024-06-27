@@ -58,6 +58,9 @@ class MockBatchingNodeProvider(BatchingNodeProvider):
         self.num_non_terminated_nodes_calls += 1
         return self._node_data_dict
 
+    def set_node_replica_index(self, node_id, replica_index):
+        self._node_data_dict[node_id].replica_index = replica_index
+
     def submit_scale_request(self, scale_request: ScaleRequest) -> None:
         """Simulate modification of cluster state by an external cluster manager."""
         self._scale_request_submitted_count += 1
