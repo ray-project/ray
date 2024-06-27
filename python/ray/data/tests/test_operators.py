@@ -1,4 +1,5 @@
 import collections
+import gc
 import random
 import time
 from typing import Any, Iterable, List
@@ -37,7 +38,7 @@ from ray.data._internal.execution.operators.task_pool_map_operator import (
 )
 from ray.data._internal.execution.operators.union_operator import UnionOperator
 from ray.data._internal.execution.util import make_ref_bundles
-from ray.data.block import Block
+from ray.data.block import Block, BlockAccessor
 from ray.data.context import DataContext
 from ray.data.tests.util import run_one_op_task, run_op_tasks_sync
 from ray.tests.conftest import *  # noqa
@@ -938,6 +939,23 @@ def test_all_to_all_estimated_output_blocks():
     # estimated output blocks for op2 should fallback to op1
     assert op2._estimated_output_blocks is None
     assert op2.num_outputs_total() == estimated_output_blocks
+
+
+def test_input_data_buffer_does_not_free_inputs():
+    # Tests https://github.com/ray-project/ray/issues/46282
+    block = pd.DataFrame({"id": [0]})
+    block_ref = ray.put(block)
+    metadata = BlockAccessor.for_block(block).get_metadata()
+    op = InputDataBuffer(
+        input_data=[RefBundle([(block_ref, metadata)], owns_blocks=False)]
+    )
+
+    op.get_next()
+    gc.collect()
+
+    # `InputDataBuffer` should still hold a reference to the input block even after
+    # `get_next` is called.
+    assert len(gc.get_referrers(block_ref)) > 0
 
 
 if __name__ == "__main__":

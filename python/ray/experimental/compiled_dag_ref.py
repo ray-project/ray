@@ -16,7 +16,7 @@ def _process_return_vals(return_vals: List[Any], return_single_output: bool):
     # Check for exceptions.
     for val in return_vals:
         if isinstance(val, RayTaskError):
-            raise val
+            raise val.as_instanceof_cause()
 
     if return_single_output:
         assert len(return_vals) == 1
