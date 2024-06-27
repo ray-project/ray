@@ -10,6 +10,7 @@ import ray
 from ray.data._internal.arrow_ops.transform_pyarrow import concat, unify_schemas
 from ray.data.block import BlockAccessor
 from ray.data.extensions import (
+    ArrowConversionError,
     ArrowPythonObjectArray,
     ArrowPythonObjectType,
     ArrowTensorArray,
@@ -207,8 +208,9 @@ def test_arrow_concat_object_with_tensor_fails():
     t2 = pa.table(
         {"a": ArrowTensorArray.from_numpy([np.zeros((10, 10))] * 2), "b": [7, 8]}
     )
-    with pytest.raises(ValueError, match="objects and tensors"):
+    with pytest.raises(ArrowConversionError) as exc_info:
         concat([t1, t2])
+    assert "objects and tensors" in str(exc_info.value.__cause__)
 
 
 def test_unify_schemas():

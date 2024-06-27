@@ -54,7 +54,18 @@ def unify_schemas(
     schemas: List["pyarrow.Schema"],
 ) -> "pyarrow.Schema":
     """Version of `pyarrow.unify_schemas()` which also handles checks for
-    variable-shaped tensors in the given schemas."""
+    variable-shaped tensors in the given schemas.
+
+    This function scans all input schemas to identify columns that contain
+    variable-shaped tensors or objects. For tensor columns, it ensures the
+    use of appropriate tensor types (including variable-shaped tensor types).
+    For object columns, it uses a specific object type to accommodate any
+    objects present. Additionally, it handles columns with null-typed lists
+    by determining their actual types from the given schemas.
+
+    Currently, it disallows the concatenation of tensor columns and
+    pickled object columsn for performance reasons.
+    """
     import pyarrow as pa
 
     from ray.air.util.object_extensions.arrow import ArrowPythonObjectType

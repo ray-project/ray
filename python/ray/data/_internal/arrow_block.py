@@ -2,7 +2,6 @@ import collections
 import heapq
 import logging
 import random
-import traceback
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -61,15 +60,15 @@ if TYPE_CHECKING:
 T = TypeVar("T")
 logger = logging.getLogger(__name__)
 
-ARROW_OBJECT_FIXABLE_ERRORS = ("ArrowTypeError", "ArrowNotImplementedError")
-
 
 def is_object_fixable_error(e: ArrowConversionError) -> bool:
-    """Returns whether this error can be fixed by using an ArrowPythonObjectArray"""
-    return any(
-        err in "".join(traceback.format_exception(type(e), e, e.__traceback__))
-        for err in ARROW_OBJECT_FIXABLE_ERRORS
+    ARROW_OBJECT_FIXABLE_ERRORS = (
+        pyarrow.lib.ArrowTypeError,
+        pyarrow.lib.ArrowNotImplementedError,
+        pyarrow.lib.ArrowInvalid,
     )
+    """Returns whether this error can be fixed by using an ArrowPythonObjectArray"""
+    return isinstance(e.__cause__, ARROW_OBJECT_FIXABLE_ERRORS)
 
 
 # We offload some transformations to polars for performance.
