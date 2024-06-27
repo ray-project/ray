@@ -988,7 +988,6 @@ class StandardAutoscaler:
         assert self.provider
 
         tags = self.provider.node_tags(node_id)
-
         if TAG_RAY_USER_NODE_TYPE in tags:
             node_type = tags[TAG_RAY_USER_NODE_TYPE]
 
