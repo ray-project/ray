@@ -12,7 +12,7 @@ import numpy as np
 
 import pytest
 
-from ray.exceptions import RayTaskError, RayChannelError
+from ray.exceptions import RayChannelError
 import ray
 import ray._private
 import ray.cluster_utils
@@ -76,6 +76,10 @@ class Actor:
         time.sleep(x)
         return x
 
+    @ray.method(num_returns=2)
+    def return_two(self, x):
+        return x, x + 1
+
 
 @ray.remote
 class Collector:
@@ -120,6 +124,53 @@ def test_basic(ray_start_regular):
 
     # Note: must teardown before starting a new Ray session, otherwise you'll get
     # a segfault from the dangling monitor thread upon the new Ray init.
+    compiled_dag.teardown()
+
+
+def test_multiple_returns_not_supported(ray_start_regular):
+    a = Actor.remote(0)
+    b = Actor.remote(0)
+    with InputNode() as i:
+        dag = a.return_two.bind(i)
+        dag = b.echo.bind(dag)
+
+    with pytest.raises(
+        ValueError,
+        match="Compiled DAGs only supports actor methods with " "num_returns=1",
+    ):
+        dag.experimental_compile()
+
+
+def test_kwargs_not_supported(ray_start_regular):
+    a = Actor.remote(0)
+
+    # Binding InputNode as kwarg is not supported.
+    with InputNode() as i:
+        dag = a.inc_two.bind(x=i, y=1)
+    with pytest.raises(
+        ValueError,
+        match=r"Compiled DAG currently does not support binding to other DAG "
+        "nodes as kwargs",
+    ):
+        compiled_dag = dag.experimental_compile()
+
+    # Binding another DAG node as kwarg is not supported.
+    with InputNode() as i:
+        dag = a.inc.bind(i)
+        dag = a.inc_two.bind(x=dag, y=1)
+    with pytest.raises(
+        ValueError,
+        match=r"Compiled DAG currently does not support binding to other DAG "
+        "nodes as kwargs",
+    ):
+        compiled_dag = dag.experimental_compile()
+
+    # Binding normal Python value as a kwarg is supported.
+    with InputNode() as i:
+        dag = a.inc_two.bind(i, y=1)
+    compiled_dag = dag.experimental_compile()
+    assert ray.get(compiled_dag.execute(2)) == 3
+
     compiled_dag.teardown()
 
 
@@ -250,6 +301,27 @@ def test_multi_args_single_actor(ray_start_regular):
         result = ray.get(ref)
         assert result == [3, 2] * (i + 1)
 
+    with pytest.raises(
+        ValueError,
+        match=r"dag.execute\(\) or dag.execute_async\(\) must be called with 2 "
+        "positional args, got 1",
+    ):
+        compiled_dag.execute((2, 3))
+
+    with pytest.raises(
+        ValueError,
+        match=r"dag.execute\(\) or dag.execute_async\(\) must be called with 2 "
+        "positional args, got 0",
+    ):
+        compiled_dag.execute()
+
+    with pytest.raises(
+        ValueError,
+        match=r"dag.execute\(\) or dag.execute_async\(\) must be called with 2 "
+        "positional args, got 0",
+    ):
+        compiled_dag.execute(args=(2, 3))
+
     compiled_dag.teardown()
 
 
@@ -298,6 +370,24 @@ def test_kwargs_single_actor(ray_start_regular):
         ref = compiled_dag.execute(x=2, y=3)
         result = ray.get(ref)
         assert result == [3, 2] * (i + 1)
+
+    with pytest.raises(
+        ValueError,
+        match=r"dag.execute\(\) or dag.execute_async\(\) must be called with kwarg",
+    ):
+        compiled_dag.execute()
+
+    with pytest.raises(
+        ValueError,
+        match=r"dag.execute\(\) or dag.execute_async\(\) must be called with kwarg `x`",
+    ):
+        compiled_dag.execute(y=3)
+
+    with pytest.raises(
+        ValueError,
+        match=r"dag.execute\(\) or dag.execute_async\(\) must be called with kwarg `y`",
+    ):
+        compiled_dag.execute(x=3)
 
     compiled_dag.teardown()
 
@@ -380,17 +470,15 @@ def test_dag_exception_basic(ray_start_regular, capsys):
     # Can throw an error.
     compiled_dag = dag.experimental_compile()
     ref = compiled_dag.execute("hello")
-    with pytest.raises(RayTaskError) as exc_info:
+    with pytest.raises(TypeError) as exc_info:
         ray.get(ref)
-    assert isinstance(exc_info.value.as_instanceof_cause(), TypeError)
     # Traceback should match the original actor class definition.
     assert "self.i += x" in str(exc_info.value)
 
     # Can throw an error multiple times.
     ref = compiled_dag.execute("hello")
-    with pytest.raises(RayTaskError) as exc_info:
+    with pytest.raises(TypeError) as exc_info:
         ray.get(ref)
-    assert isinstance(exc_info.value.as_instanceof_cause(), TypeError)
     # Traceback should match the original actor class definition.
     assert "self.i += x" in str(exc_info.value)
 
@@ -411,17 +499,15 @@ def test_dag_exception_chained(ray_start_regular, capsys):
     # Can throw an error.
     compiled_dag = dag.experimental_compile()
     ref = compiled_dag.execute("hello")
-    with pytest.raises(RayTaskError) as exc_info:
+    with pytest.raises(TypeError) as exc_info:
         ray.get(ref)
-    assert isinstance(exc_info.value.as_instanceof_cause(), TypeError)
     # Traceback should match the original actor class definition.
     assert "self.i += x" in str(exc_info.value)
 
     # Can throw an error multiple times.
     ref = compiled_dag.execute("hello")
-    with pytest.raises(RayTaskError) as exc_info:
+    with pytest.raises(TypeError) as exc_info:
         ray.get(ref)
-    assert isinstance(exc_info.value.as_instanceof_cause(), TypeError)
     # Traceback should match the original actor class definition.
     assert "self.i += x" in str(exc_info.value)
 
@@ -442,17 +528,15 @@ def test_dag_exception_multi_output(ray_start_regular, capsys):
 
     # Can throw an error.
     ref = compiled_dag.execute("hello")
-    with pytest.raises(RayTaskError) as exc_info:
+    with pytest.raises(TypeError) as exc_info:
         ray.get(ref)
-    assert isinstance(exc_info.value.as_instanceof_cause(), TypeError)
     # Traceback should match the original actor class definition.
     assert "self.i += x" in str(exc_info.value)
 
     # Can throw an error multiple times.
     ref = compiled_dag.execute("hello")
-    with pytest.raises(RayTaskError) as exc_info:
+    with pytest.raises(TypeError) as exc_info:
         ray.get(ref)
-    assert isinstance(exc_info.value.as_instanceof_cause(), TypeError)
     # Traceback should match the original actor class definition.
     assert "self.i += x" in str(exc_info.value)
 
@@ -549,7 +633,7 @@ def test_dag_errors(ray_start_regular):
         ValueError,
         match=(
             "ray.get\(\) can only be called once "
-            "on a CompiledDAGRef and it was already called."
+            "on a CompiledDAGRef, and it was already called."
         ),
     ):
         ray.get(ref)
@@ -617,12 +701,11 @@ def test_dag_fault_tolerance_chain(ray_start_regular_shared):
         ref = compiled_dag.execute(i)
         results = ray.get(ref)
 
-    with pytest.raises(RayTaskError) as exc_info:
+    with pytest.raises(RuntimeError):
         for i in range(99):
             ref = compiled_dag.execute(i)
             results = ray.get(ref)
             assert results == i
-    assert isinstance(exc_info.value.as_instanceof_cause(), RuntimeError)
 
     compiled_dag.teardown()
 
@@ -661,12 +744,11 @@ def test_dag_fault_tolerance(ray_start_regular_shared):
         results = ray.get(ref)
         assert results == [i + 1] * 4
 
-    with pytest.raises(RayTaskError) as exc_info:
+    with pytest.raises(RuntimeError):
         for i in range(99, 200):
             ref = compiled_dag.execute(1)
             results = ray.get(ref)
             assert results == [i + 1] * 4
-    assert isinstance(exc_info.value.as_instanceof_cause(), RuntimeError)
 
     compiled_dag.teardown()
 
@@ -796,17 +878,15 @@ def test_asyncio_exceptions(ray_start_regular_shared, max_queue_size):
         assert result == 1
 
         fut = await compiled_dag.execute_async("hello")
-        with pytest.raises(RayTaskError) as exc_info:
+        with pytest.raises(TypeError) as exc_info:
             await fut
-        assert isinstance(exc_info.value.as_instanceof_cause(), TypeError)
         # Traceback should match the original actor class definition.
         assert "self.i += x" in str(exc_info.value)
 
         # Can throw an error multiple times.
         fut = await compiled_dag.execute_async("hello")
-        with pytest.raises(RayTaskError) as exc_info:
+        with pytest.raises(TypeError) as exc_info:
             await fut
-        assert isinstance(exc_info.value.as_instanceof_cause(), TypeError)
         # Traceback should match the original actor class definition.
         assert "self.i += x" in str(exc_info.value)
 
