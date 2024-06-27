@@ -776,7 +776,7 @@ def read_parquet(
         meta_provider=meta_provider,
         partition_filter=partition_filter,
         shuffle=shuffle,
-        seed = seed,
+        seed=seed,
         include_paths=include_paths,
         file_extensions=file_extensions,
     )
