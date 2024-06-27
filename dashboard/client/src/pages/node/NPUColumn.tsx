@@ -4,6 +4,11 @@ import { RightPaddedTypography } from "../../common/CustomTypography";
 import UsageBar from "../../common/UsageBar";
 import { NodeDetail, NPUStats } from "../../type/node";
 
+export type NodeNPUEntryProps = {
+  slot: number;
+  npu: NPUStats;
+};
+
 export const NodeNPUEntry: React.FC<NodeNPUEntryProps> = ({ npu, slot }) => {
   return (
     <Tooltip title={npu.name}>
