@@ -14,7 +14,10 @@ from ray._private.pydantic_compat import BaseModel, ValidationError
 from ray._private.test_utils import SignalActor, wait_for_condition
 from ray.serve._private.api import call_app_builder_with_args_if_necessary
 from ray.serve._private.common import DeploymentID
-from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
+from ray.serve._private.constants import (
+    DEFAULT_MAX_ONGOING_REQUESTS,
+    SERVE_DEFAULT_APP_NAME,
+)
 from ray.serve.deployment import Application
 from ray.serve.exceptions import RayServeException
 from ray.serve.handle import DeploymentHandle
@@ -1080,10 +1083,10 @@ def test_max_ongoing_requests_none(serve_instance):
         ).bind()
 
     serve.run(serve.deployment(max_concurrent_queries=None)(A).bind())
-    assert get_max_ongoing_requests() == 100
+    assert get_max_ongoing_requests() == DEFAULT_MAX_ONGOING_REQUESTS
 
     serve.run(serve.deployment(A).options(max_concurrent_queries=None).bind())
-    assert get_max_ongoing_requests() == 100
+    assert get_max_ongoing_requests() == DEFAULT_MAX_ONGOING_REQUESTS
 
     serve.run(
         serve.deployment(max_ongoing_requests=8, max_concurrent_queries=None)(A).bind()

@@ -8,9 +8,6 @@ from ray.rllib.algorithms.sac.sac_rl_module import (
 from ray.rllib.algorithms.sac.sac_rl_module import SACRLModule
 from ray.rllib.core.models.base import ENCODER_OUT, Encoder, Model
 from ray.rllib.core.rl_module.torch.torch_rl_module import TorchRLModule
-from ray.rllib.core.rl_module.rl_module_with_target_networks_interface import (
-    RLModuleWithTargetNetworksInterface,
-)
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
@@ -50,31 +47,31 @@ class SACTorchRLModule(TorchRLModule, SACRLModule):
             # Set the expected and unexpected keys for the inference-only module.
             self._set_inference_only_state_dict_keys()
 
-    @override(RLModuleWithTargetNetworksInterface)
-    def sync_target_networks(self, tau: float) -> None:
-        pairs = [
-            (self.qf_target_encoder, self.qf_encoder),
-            (self.qf_target, self.qf),
-        ] + (
-            # If we have twin networks we need to update them, too.
-            [
-                (self.qf_target_twin_encoder, self.qf_twin_encoder),
-                (self.qf_target_twin, self.qf_twin),
-            ]
-            if self.twin_q
-            else []
-        )
-        # Loop through all individual networks that have a corresponding target net.
-        for target_net, main_net in pairs:
-            # Get the current parameters from the main network.
-            state_dict = main_net.state_dict()
-            # Use here Polyak averaging.
-            new_target_state_dict = {
-                k: tau * state_dict[k] + (1 - tau) * v
-                for k, v in target_net.state_dict().items()
-            }
-            # Apply the new parameters to the target Q network.
-            target_net.load_state_dict(new_target_state_dict)
+    # @override(RLModuleWithTargetNetworksInterface)
+    # def sync_target_networks(self, tau: float) -> None:
+    #    pairs = [
+    #        (self.qf_target_encoder, self.qf_encoder),
+    #        (self.qf_target, self.qf),
+    #    ] + (
+    #        # If we have twin networks we need to update them, too.
+    #        [
+    #            (self.qf_target_twin_encoder, self.qf_twin_encoder),
+    #            (self.qf_target_twin, self.qf_twin),
+    #        ]
+    #        if self.twin_q
+    #        else []
+    #    )
+    #    # Loop through all individual networks that have a corresponding target net.
+    #    for target_net, main_net in pairs:
+    #        # Get the current parameters from the main network.
+    #        state_dict = main_net.state_dict()
+    #        # Use here Polyak averaging.
+    #        new_target_state_dict = {
+    #            k: tau * state_dict[k] + (1 - tau) * v
+    #            for k, v in target_net.state_dict().items()
+    #        }
+    #        # Apply the new parameters to the target Q network.
+    #        target_net.load_state_dict(new_target_state_dict)
 
     @override(TorchRLModule)
     def get_state(self, inference_only: bool = False) -> Dict[str, Any]:
