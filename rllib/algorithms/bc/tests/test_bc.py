@@ -16,7 +16,8 @@ class TestBC(unittest.TestCase):
         ray.shutdown()
 
     def test_bc_compilation_and_learning_from_offline_file(self):
-        data_path = "tests/data/cartpole/large.json"
+        # Define the data paths.
+        data_path = "tests/data/cartpole/cartpole-v1_large"
         base_path = Path(__file__).parents[3]
         print(f"base_path={base_path}")
         data_path = "local://" + base_path.joinpath(data_path).as_posix()
@@ -30,6 +31,9 @@ class TestBC(unittest.TestCase):
                 enable_rl_module_and_learner=True,
                 enable_env_runner_and_connector_v2=True,
             )
+            .learners(
+                num_learners=0,
+            )
             .evaluation(
                 evaluation_interval=3,
                 evaluation_num_env_runners=1,
@@ -39,6 +43,7 @@ class TestBC(unittest.TestCase):
             .offline_data(input_=[data_path])
             .training(
                 lr=0.0008,
+                train_batch_size_per_learner=2000,
             )
         )
 

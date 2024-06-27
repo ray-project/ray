@@ -430,7 +430,7 @@ class AlgorithmConfig(_Config):
 
         # `self.offline_data()`
         self.input_ = "sampler"
-        self.input_read_method = "read_json"
+        self.input_read_method = "read_parquet"
         self.input_config = {}
         self.actions_in_input_normalized = False
         self.postprocess_inputs = False

@@ -66,7 +66,7 @@ if __name__ == "__main__":
 # min_reward = 120.0
 
 # # TODO (simon): Add support for recurrent modules.
-# algo = config.build()
+algo = config.build()
 # learnt = False
 # start = time.perf_counter()
 # for i in range(num_iterations):
