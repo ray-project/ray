@@ -14,6 +14,7 @@ from ray.autoscaler.tags import (
     NODE_KIND_HEAD,
     TAG_RAY_NODE_KIND,
     TAG_RAY_NODE_STATUS,
+    TAG_RAY_REPLICA_INDEX,
     TAG_RAY_USER_NODE_TYPE,
 )
 
@@ -169,7 +170,7 @@ class BatchingNodeProvider(NodeProvider):
         self.replicas_to_nodes.clear()
         for node_id in all_nodes:
             replica_index = self.node_data_dict[node_id].replica_index
-            # Only add node to map if it belongs to a TPU podslice
+            # Only add node to map if it belongs to a multi-host podslice
             if replica_index is not None:
                 self.replicas_to_nodes[replica_index].append(node_id)
         # Support filtering by TAG_RAY_NODE_KIND, TAG_RAY_NODE_STATUS, and
@@ -199,11 +200,14 @@ class BatchingNodeProvider(NodeProvider):
 
     def node_tags(self, node_id: str) -> Dict[str, str]:
         node_data = self.node_data_dict[node_id]
-        return {
+        tags = {
             TAG_RAY_NODE_KIND: node_data.kind,
             TAG_RAY_NODE_STATUS: node_data.status,
             TAG_RAY_USER_NODE_TYPE: node_data.type,
         }
+        if node_data.replica_index is not None:
+            tags[TAG_RAY_REPLICA_INDEX] = node_data.replica_index
+        return tags
 
     def internal_ip(self, node_id: str) -> str:
         return self.node_data_dict[node_id].ip
@@ -247,8 +251,9 @@ class BatchingNodeProvider(NodeProvider):
         self.scale_request.workers_to_delete.add(node_id)
 
         # Scale down all nodes in replica if node_id is part of a multi-host podslice
-        node_replica_index = self.node_data_dict[node_id].replica_index
-        if node_replica_index is not None:
+        tags = self.node_tags(node_id)
+        if TAG_RAY_REPLICA_INDEX in tags:
+            node_replica_index = tags[TAG_RAY_REPLICA_INDEX]
             for worker_id in self.replicas_to_nodes[node_replica_index]:
                 # Check if worker has already been scheduled to delete
                 if worker_id not in self.scale_request.workers_to_delete:
