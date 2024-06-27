@@ -21,11 +21,7 @@ from ray.serve._private.common import (
     TargetCapacityDirection,
 )
 from ray.serve._private.config import DeploymentConfig
-from ray.serve._private.constants import (
-    NEW_DEFAULT_MAX_ONGOING_REQUESTS,
-    RAY_SERVE_ENABLE_TASK_EVENTS,
-    SERVE_LOGGER_NAME,
-)
+from ray.serve._private.constants import RAY_SERVE_ENABLE_TASK_EVENTS, SERVE_LOGGER_NAME
 from ray.serve._private.deploy_utils import (
     deploy_args_to_deployment_info,
     get_app_code_version,
@@ -1109,11 +1105,6 @@ def override_deployment_info(
         # `num_replicas="auto"`
         if options.get("num_replicas") == "auto":
             options["num_replicas"] = None
-            if (
-                "max_ongoing_requests"
-                not in original_options["user_configured_option_names"]
-            ):
-                options["max_ongoing_requests"] = NEW_DEFAULT_MAX_ONGOING_REQUESTS
 
             new_config = AutoscalingConfig.default().dict()
             # If `autoscaling_config` is specified, its values override

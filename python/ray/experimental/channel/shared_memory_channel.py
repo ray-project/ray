@@ -421,14 +421,16 @@ class Channel(ChannelInterface):
 
     def read(self) -> Any:
         self.ensure_registered_as_reader()
-        ret = ray.get(self._reader_ref)
+        ret = self._worker.get_objects([self._reader_ref], return_exceptions=True)[0][0]
 
         if isinstance(ret, _ResizeChannel):
             self._reader_ref = ret._reader_ref
             # We need to register the new reader_ref.
             self._reader_registered = False
             self.ensure_registered_as_reader()
-            ret = ray.get(self._reader_ref)
+            ret = self._worker.get_objects([self._reader_ref], return_exceptions=True)[
+                0
+            ][0]
 
         return ret
 
