@@ -368,7 +368,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "torch_only"],
     size = "large",
     srcs = ["tuned_examples/impala/multi_agent_cartpole_impala.py"],
-    args = ["--as-test", "--enable-new-api-stack", "--num-agents=2", "--num-gpus=1", "--num-cpus=5"]
+    args = ["--as-test", "--enable-new-api-stack", "--num-agents=2", "--num-gpus=1", "--num-cpus=6"]
 )
 py_test(
     name = "learning_tests_multi_agent_cartpole_impala_gpu",
@@ -3105,15 +3105,6 @@ py_test(
 # subdirectory: rl_modules/
 # ....................................
 py_test(
-    name = "examples/rl_modules/custom_rl_module",
-    main = "examples/rl_modules/custom_rl_module.py",
-    tags = ["team:rllib", "examples"],
-    size = "medium",
-    srcs = ["examples/rl_modules/custom_rl_module.py"],
-    args = ["--enable-new-api-stack", "--stop-iters=3"],
-)
-
-py_test(
     name = "examples/rl_modules/action_masking_rlm",
     main = "examples/rl_modules/action_masking_rlm.py",
     tags = ["team:rllib", "examples"],
@@ -3129,6 +3120,22 @@ py_test(
     size = "medium",
     srcs = ["examples/rl_modules/autoregressive_actions_rlm.py"],
     args = ["--enable-new-api-stack"],
+)
+py_test(
+    name = "examples/rl_modules/custom_cnn_rl_module",
+    main = "examples/rl_modules/custom_cnn_rl_module.py",
+    tags = ["team:rllib", "examples"],
+    size = "medium",
+    srcs = ["examples/rl_modules/custom_cnn_rl_module.py"],
+    args = ["--enable-new-api-stack", "--stop-iters=3"],
+)
+py_test(
+    name = "examples/rl_modules/custom_lstm_rl_module",
+    main = "examples/rl_modules/custom_lstm_rl_module.py",
+    tags = ["team:rllib", "examples"],
+    size = "medium",
+    srcs = ["examples/rl_modules/custom_lstm_rl_module.py"],
+    args = ["--as-test", "--enable-new-api-stack"],
 )
 
 #@OldAPIStack @HybridAPIStack
