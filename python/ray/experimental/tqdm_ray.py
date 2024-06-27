@@ -68,6 +68,7 @@ class tqdm:
         iterable: Optional[Iterable] = None,
         desc: Optional[str] = None,
         total: Optional[int] = None,
+        leave: Optional[bool] = True,
         position: Optional[int] = None,
         flush_interval_s: Optional[float] = None,
     ):
@@ -82,6 +83,7 @@ class tqdm:
         self._iterable = iterable
         self._desc = desc or ""
         self._total = total
+        self._leave = leave
         self._ip = services.get_node_ip_address()
         self._pid = os.getpid()
         self._pos = position or 0
@@ -143,6 +145,7 @@ class tqdm:
             "pos": self._pos,
             "desc": self._desc,
             "total": self._total,
+            "leave": self._leave,
             "ip": self._ip,
             "pid": self._pid,
             "uuid": self._uuid,
@@ -176,6 +179,7 @@ class _Bar:
         self.bar = real_tqdm.tqdm(
             desc=state["desc"] + " " + str(state["pos"]),
             total=state["total"],
+            leave=state["leave"],
             position=pos_offset + state["pos"],
             dynamic_ncols=True,
         )
