@@ -35,12 +35,6 @@ class DAGContext:
         >>> DAGContext.get_current().buffer_size_bytes
         500
 
-        >>> import os
-        >>> os.environ["RAY_DAG_buffer_size_bytes"] = "900"
-        >>> from ray.dag import DAGContext
-        >>> DAGContext.get_current().buffer_size_bytes
-        900
-
     Args:
         buffer_size_bytes: The maximum size of messages that can be passed
             between tasks in the DAG.
