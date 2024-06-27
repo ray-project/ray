@@ -7,7 +7,7 @@ import time
 
 import pytest
 
-from ray.exceptions import RayTaskError, RayChannelError
+from ray.exceptions import RayChannelError
 import ray
 from ray.air._internal import torch_utils
 import ray.cluster_utils
@@ -508,9 +508,8 @@ def test_torch_tensor_exceptions(ray_start_regular):
         value=i,
         raise_exception=True,
     )
-    with pytest.raises(RayTaskError) as exc_info:
+    with pytest.raises(RuntimeError):
         ray.get(ref)
-    assert isinstance(exc_info.value.as_instanceof_cause(), RuntimeError)
 
     # If using dynamic shape or dtype is used and direct_return=False, then the
     # DAG should still be usable after application-level exceptions.

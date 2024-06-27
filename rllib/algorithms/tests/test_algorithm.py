@@ -250,7 +250,6 @@ class TestAlgorithm(unittest.TestCase):
                 evaluation_duration=2,
                 evaluation_duration_unit="episodes",
                 evaluation_config=dqn.DQNConfig.overrides(gamma=0.98),
-                always_attach_evaluation_results=False,
             )
             .callbacks(callbacks_class=AssertEvalCallback)
         )
@@ -290,14 +289,13 @@ class TestAlgorithm(unittest.TestCase):
                 evaluation_duration=2,
                 evaluation_duration_unit="episodes",
                 evaluation_config=dqn.DQNConfig.overrides(gamma=0.98),
-                always_attach_evaluation_results=True,
             )
             .reporting(min_sample_timesteps_per_iteration=100)
             .callbacks(callbacks_class=AssertEvalCallback)
         )
         for _ in framework_iterator(config, frameworks=("torch", "tf")):
             algo = config.build()
-            # Should always see latest available eval results.
+            # Should only see eval results, when eval actually ran.
             r0 = algo.train()
             r1 = algo.train()
             r2 = algo.train()
@@ -307,9 +305,9 @@ class TestAlgorithm(unittest.TestCase):
             # Eval results are not available at step 0.
             # But step 3 should still have it, even though no eval was
             # run during that step.
-            self.assertTrue(EVALUATION_RESULTS in r0)
+            self.assertTrue(EVALUATION_RESULTS not in r0)
             self.assertTrue(EVALUATION_RESULTS in r1)
-            self.assertTrue(EVALUATION_RESULTS in r2)
+            self.assertTrue(EVALUATION_RESULTS not in r2)
             self.assertTrue(EVALUATION_RESULTS in r3)
 
     def test_evaluation_wo_evaluation_env_runner_group(self):
@@ -327,7 +325,7 @@ class TestAlgorithm(unittest.TestCase):
             algo_wo_env_on_local_worker = config.build()
             self.assertRaisesRegex(
                 ValueError,
-                "Cannot evaluate on a local worker",
+                "Can't evaluate on a local worker",
                 algo_wo_env_on_local_worker.evaluate,
             )
             algo_wo_env_on_local_worker.stop()

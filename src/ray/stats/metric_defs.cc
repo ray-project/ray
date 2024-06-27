@@ -59,7 +59,8 @@ DEFINE_stats(
 DEFINE_stats(actors,
              "Current number of actors currently in a particular state.",
              // State: the actor state, which is from rpc::ActorTableData::ActorState,
-             // but can also be RUNNING_TASK, RUNNING_IN_RAY_GET, and RUNNING_IN_RAY_WAIT.
+             // For ALIVE actor the sub-state can be IDLE, RUNNING_TASK,
+             // RUNNING_IN_RAY_GET, and RUNNING_IN_RAY_WAIT.
              // Name: the name of actor class.
              // Source: component reporting, e.g., "gcs" or "executor".
              ("State", "Name", "Source", "JobId"),

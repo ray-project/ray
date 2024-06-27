@@ -18,12 +18,13 @@ import starlette
 import ray
 import ray.util.state as state_api
 from ray import serve
+from ray._private.ray_logging.formatters import JSONFormatter
 from ray._private.test_utils import wait_for_condition
 from ray.serve._private.common import ReplicaID, ServeComponentType
 from ray.serve._private.constants import SERVE_LOG_EXTRA_FIELDS, SERVE_LOGGER_NAME
 from ray.serve._private.logging_utils import (
+    ServeComponentFilter,
     ServeFormatter,
-    ServeJSONFormatter,
     StreamToLogger,
     configure_component_logger,
     get_serve_logs_dir,
@@ -254,6 +255,7 @@ def test_context_information_in_logging(serve_and_ray_shutdown, json_log_format)
             "replica": serve.get_replica_context().replica_id.unique_id,
             "actor_id": ray.get_runtime_context().get_actor_id(),
             "worker_id": ray.get_runtime_context().get_worker_id(),
+            "node_id": ray.get_runtime_context().get_node_id(),
         }
 
     @serve.deployment(
@@ -271,6 +273,7 @@ def test_context_information_in_logging(serve_and_ray_shutdown, json_log_format)
                 "replica": serve.get_replica_context().replica_id.unique_id,
                 "actor_id": ray.get_runtime_context().get_actor_id(),
                 "worker_id": ray.get_runtime_context().get_worker_id(),
+                "node_id": ray.get_runtime_context().get_node_id(),
             }
 
     serve.run(fn.bind(), name="app1", route_prefix="/fn")
@@ -314,28 +317,28 @@ def test_context_information_in_logging(serve_and_ray_shutdown, json_log_format)
         class_method_replica_id = resp2["replica"].split("#")[-1]
         if json_log_format:
             user_method_log_regex = (
-                ".*"
-                f'"actor_id": "{resp["actor_id"]}", '
+                '.*"message": "user func".*'
+                f'"route": "{resp["route"]}", '
+                f'"request_id": "{resp["request_id"]}", '
+                f'"application": "{resp["app_name"]}", '
                 f'"worker_id": "{resp["worker_id"]}", '
+                f'"node_id": "{resp["node_id"]}", '
+                f'"actor_id": "{resp["actor_id"]}", '
                 f'"deployment": "{resp["app_name"]}_fn", '
                 f'"replica": "{method_replica_id}", '
-                f'"component_name": "replica", '
-                f'"request_id": "{resp["request_id"]}", '
-                f'"route": "{resp["route"]}", '
-                f'"application": "{resp["app_name"]}", '
-                '"message":.* user func.*'
+                f'"component_name": "replica".*'
             )
             user_class_method_log_regex = (
-                ".*"
-                f'"actor_id": "{resp2["actor_id"]}", '
+                '.*"message": "user log message from class method".*'
+                f'"route": "{resp2["route"]}", '
+                f'"request_id": "{resp2["request_id"]}", '
+                f'"application": "{resp2["app_name"]}", '
                 f'"worker_id": "{resp2["worker_id"]}", '
+                f'"node_id": "{resp2["node_id"]}", '
+                f'"actor_id": "{resp2["actor_id"]}", '
                 f'"deployment": "{resp2["app_name"]}_Model", '
                 f'"replica": "{class_method_replica_id}", '
-                f'"component_name": "replica", '
-                f'"request_id": "{resp2["request_id"]}", '
-                f'"route": "{resp2["route"]}", '
-                f'"application": "{resp2["app_name"]}", '
-                '"message":.* user log message from class method.*'
+                f'"component_name": "replica".*'
             )
         else:
             user_method_log_regex = (
@@ -381,15 +384,18 @@ def test_extra_field(serve_and_ray_shutdown, raise_error):
         resp = resp.json()
         with open(resp["log_file"], "r") as f:
             s = f.read()
-            assert re.findall(".*my_v1.*", s) == []
+            assert re.findall(".*my_v1.*", s) != []
             assert re.findall('.*"k2": "my_v2".*', s) != []
 
 
-def check_log_file(log_file: str, expected_regex: list):
+def check_log_file(log_file: str, expected_regex: list, check_contains: bool = True):
     with open(log_file, "r") as f:
         s = f.read()
         for regex in expected_regex:
-            assert re.findall(regex, s) != []
+            if check_contains:
+                assert re.findall(regex, s) != []
+            else:
+                assert re.findall(regex, s) == []
 
 
 class TestLoggingAPI:
@@ -493,10 +499,15 @@ class TestLoggingAPI:
         check_log_file(resp["logs_path"], [".*model_info_level.*"])
 
     @pytest.mark.parametrize("enable_access_log", [True, False])
-    def test_access_log(self, serve_and_ray_shutdown, enable_access_log):
+    @pytest.mark.parametrize("encoding_type", ["TEXT", "JSON"])
+    def test_access_log(self, serve_and_ray_shutdown, encoding_type, enable_access_log):
         logger = logging.getLogger("ray.serve")
+        logging_config = {
+            "enable_access_log": enable_access_log,
+            "encoding": encoding_type,
+        }
 
-        @serve.deployment(logging_config={"enable_access_log": enable_access_log})
+        @serve.deployment(logging_config=logging_config)
         class Model:
             def __call__(self, req: starlette.requests.Request):
                 logger.info("model_info_level")
@@ -513,6 +524,9 @@ class TestLoggingAPI:
         check_log_file(resp["logs_path"], [".*model_info_level.*"])
         if enable_access_log:
             check_log_file(resp["logs_path"], [".*model_not_show.*"])
+            check_log_file(
+                resp["logs_path"], ["serve_access_log"], check_contains=False
+            )
         else:
             with pytest.raises(AssertionError):
                 check_log_file(resp["logs_path"], [".*model_not_show.*"])
@@ -560,14 +574,14 @@ class TestLoggingAPI:
 
 
 @pytest.mark.parametrize("is_replica_type_component", [False, True])
-def test_json_log_formatter(is_replica_type_component):
-    """Test the json log formatter"""
+def test_serve_component_filter(is_replica_type_component):
+    """Test Serve component filter"""
 
     if is_replica_type_component:
         component_type = ServeComponentType.REPLICA
-        formatter = ServeJSONFormatter("component", "component_id", component_type)
+        filter = ServeComponentFilter("component", "component_id", component_type)
     else:
-        formatter = ServeJSONFormatter("component", "component_id")
+        filter = ServeComponentFilter("component", "component_id")
     init_kwargs = {
         "name": "test_log",
         "level": logging.DEBUG,
@@ -580,8 +594,8 @@ def test_json_log_formatter(is_replica_type_component):
     record = logging.LogRecord(**init_kwargs)
 
     def format_and_verify_json_output(record, expected_record: dict):
-        formatted_record = formatter.format(record)
-        formatted_record_dict = json.loads(formatted_record)
+        filter.filter(record)
+        formatted_record_dict = record.__dict__
         for key in expected_record:
             assert key in formatted_record_dict
             assert formatted_record_dict[key] == expected_record[key]
@@ -594,7 +608,7 @@ def test_json_log_formatter(is_replica_type_component):
     # Ensure message exists in the output.
     # Note that there is no "message" key in the record dict until it has been
     # formatted. This check should go before other fields are set and checked.
-    expected_json["message"] = "my_path:1 - my_message"
+    expected_json["msg"] = "my_message"
     format_and_verify_json_output(record, expected_json)
 
     # Set request id
@@ -635,7 +649,7 @@ def test_configure_component_logger_with_log_encoding_env_text(log_encoding):
 
     When the log encoding env is not set, set to "TEXT" or set to unknon values,
     the ServeFormatter should be used. When the log encoding env is set to "JSON",
-    the ServeJSONFormatter should be used. Also, the log config should take the
+    the JSONFormatter should be used. Also, the log config should take the
     precedence it's set.
     """
     env_encoding, log_config_encoding, expected_encoding = log_encoding
@@ -667,7 +681,7 @@ def test_configure_component_logger_with_log_encoding_env_text(log_encoding):
         for handler in logger.handlers:
             if isinstance(handler, logging.handlers.RotatingFileHandler):
                 if expected_encoding == EncodingType.JSON:
-                    assert isinstance(handler.formatter, ServeJSONFormatter)
+                    assert isinstance(handler.formatter, JSONFormatter)
                 else:
                     assert isinstance(handler.formatter, ServeFormatter)
 
@@ -706,10 +720,6 @@ def test_logging_disable_stdout(serve_and_ray_shutdown, ray_instance, tmp_dir):
     serve.run(app)
     requests.get("http://127.0.0.1:8000")
 
-    def contain_logging_prefix(message: str, from_replica: bool = False) -> bool:
-        logging_prefix = r"^test_logging.py:" if not from_replica else r"^replica.py:"
-        return len(re.findall(logging_prefix, message)) == 1
-
     # Check if each of the logs exist in Serve's log files.
     from_serve_logger_check = False
     from_print_check = False
@@ -723,30 +733,19 @@ def test_logging_disable_stdout(serve_and_ray_shutdown, ray_instance, tmp_dir):
                 for line in f:
                     structured_log = json.loads(line)
                     _message = structured_log["message"]
-                    if "from_serve_logger" in _message and contain_logging_prefix(
-                        _message
-                    ):
+                    if "from_serve_logger" in _message:
                         from_serve_logger_check = True
-                    elif "from_print" in _message and contain_logging_prefix(_message):
+                    elif "from_print" in _message:
                         from_print_check = True
 
                     # Error was logged from replica directly.
-                    elif "from_error" in _message and contain_logging_prefix(
-                        _message, from_replica=True
-                    ):
+                    elif "from_error" in _message:
                         from_error_check = True
-                    elif "direct_from_stdout" in _message and contain_logging_prefix(
-                        _message
-                    ):
+                    elif "direct_from_stdout" in _message:
                         direct_from_stdout = True
-                    elif "direct_from_stderr" in _message and contain_logging_prefix(
-                        _message
-                    ):
+                    elif "direct_from_stderr" in _message:
                         direct_from_stderr = True
-                    elif (
-                        "this\nis\nmultiline\nlog\n" in _message
-                        and contain_logging_prefix(_message)
-                    ):
+                    elif "this\nis\nmultiline\nlog\n" in _message:
                         multiline_log = True
     assert from_serve_logger_check
     assert from_print_check

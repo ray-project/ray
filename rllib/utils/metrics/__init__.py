@@ -98,7 +98,6 @@ OFFLINE_SAMPLING_TIMER = "offline_sampling_timer"
 REPLAY_BUFFER_SAMPLE_TIMER = "replay_buffer_sampling_timer"
 REPLAY_BUFFER_UPDATE_PRIOS_TIMER = "replay_buffer_update_prios_timer"
 LEARNER_UPDATE_TIMER = "learner_update_timer"
-LEARNER_ADDITIONAL_UPDATE_TIMER = "learner_additional_update_timer"
 LEARN_ON_BATCH_TIMER = "learn"  # @OldAPIStack
 LOAD_BATCH_TIMER = "load"
 TARGET_NET_UPDATE_TIMER = "target_net_update"

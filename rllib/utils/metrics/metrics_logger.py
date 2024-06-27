@@ -56,7 +56,7 @@ class MetricsLogger:
 
     def log_value(
         self,
-        key: Union[str, Tuple[str]],
+        key: Union[str, Tuple[str, ...]],
         value: Any,
         *,
         reduce: Optional[str] = "mean",
@@ -192,7 +192,7 @@ class MetricsLogger:
         self,
         stats_dict,
         *,
-        key: Optional[Union[str, Tuple[str]]] = None,
+        key: Optional[Union[str, Tuple[str, ...]]] = None,
         reduce: Optional[str] = "mean",
         window: Optional[Union[int, float]] = None,
         ema_coeff: Optional[float] = None,
@@ -292,7 +292,7 @@ class MetricsLogger:
         self,
         stats_dicts: List[Dict[str, Any]],
         *,
-        key: Optional[Union[str, Tuple[str]]] = None,
+        key: Optional[Union[str, Tuple[str, ...]]] = None,
         reduce: Optional[str] = "mean",
         window: Optional[Union[int, float]] = None,
         ema_coeff: Optional[float] = None,
@@ -492,14 +492,14 @@ class MetricsLogger:
 
     def log_time(
         self,
-        key: Union[str, Tuple[str]],
+        key: Union[str, Tuple[str, ...]],
         *,
         reduce: Optional[str] = "mean",
         window: Optional[Union[int, float]] = None,
         ema_coeff: Optional[float] = None,
         clear_on_reduce: bool = False,
-        # throughput_key: Optional[Union[str, Tuple[str]]] = None,
-        # throughput_key_of_unit_count: Optional[Union[str, Tuple[str]]] = None,
+        # throughput_key: Optional[Union[str, Tuple[str, ...]]] = None,
+        # throughput_key_of_unit_count: Optional[Union[str, Tuple[str, ...]]] = None,
     ) -> None:
         """Measures and logs a time delta value under `key` when used with a with-block.
 
@@ -610,7 +610,7 @@ class MetricsLogger:
 
     def peek(
         self,
-        key: Union[str, Tuple[str]],
+        key: Union[str, Tuple[str, ...]],
         *,
         default: Optional[Any] = None,
     ) -> Any:
@@ -678,7 +678,7 @@ class MetricsLogger:
 
     def set_value(
         self,
-        key: Union[str, Tuple[str]],
+        key: Union[str, Tuple[str, ...]],
         value: Any,
         *,
         reduce: Optional[str] = "mean",
@@ -736,7 +736,7 @@ class MetricsLogger:
                 clear_on_reduce=clear_on_reduce,
             )
 
-    def delete(self, *key: Tuple[str], key_error: bool = True) -> None:
+    def delete(self, *key: Tuple[str, ...], key_error: bool = True) -> None:
         """Deletes th egiven `key` from this metrics logger's stats.
 
         Args:
@@ -751,7 +751,7 @@ class MetricsLogger:
 
     def reduce(
         self,
-        key: Optional[Union[str, Tuple[str]]] = None,
+        key: Optional[Union[str, Tuple[str, ...]]] = None,
         *,
         return_stats_obj: bool = True,
     ) -> Dict:
