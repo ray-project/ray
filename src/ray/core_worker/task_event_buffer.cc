@@ -165,6 +165,8 @@ Status TaskEventBufferImpl::Start(bool auto_flush) {
                    << status.ToString() << "].";
 
     enabled_ = false;
+    io_service_.stop();
+    io_thread_.join();
     return status;
   }
 
