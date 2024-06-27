@@ -296,7 +296,7 @@ class GpuUtilizationInfo(TypedDict):
     utilization_gpu: Optional[Percentage]
     memory_used: Megabytes
     memory_total: Megabytes
-    processes_pids: Optional[List[ProcessGPUInfo]]
+    processes: Optional[List[ProcessGPUInfo]]
 
 
 class ReporterAgent(
@@ -487,7 +487,7 @@ class ReporterAgent(
                 logger.debug(f"pynvml failed to retrieve GPU utilization: {e}")
 
             # processes pids
-            processes_pids = None
+            processes = None
             try:
                 nv_comp_processes = pynvml.nvmlDeviceGetComputeRunningProcesses(
                     gpu_handle
@@ -495,7 +495,7 @@ class ReporterAgent(
                 nv_graphics_processes = pynvml.nvmlDeviceGetGraphicsRunningProcesses(
                     gpu_handle
                 )
-                processes_pids = [
+                processes = [
                     ProcessGPUInfo(
                         pid=int(nv_process.pid),
                         gpu_memory_usage=int(nv_process.usedGpuMemory) // MB
@@ -514,7 +514,7 @@ class ReporterAgent(
                 utilization_gpu=utilization,
                 memory_used=int(memory_info.used) // MB,
                 memory_total=int(memory_info.total) // MB,
-                processes_pids=processes_pids,
+                processes=processes,
             )
             gpu_utilizations.append(info)
         pynvml.nvmlShutdown()
