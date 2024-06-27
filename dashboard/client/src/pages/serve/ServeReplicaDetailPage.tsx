@@ -48,7 +48,7 @@ export const ServeReplicaDetailPage = () => {
     start_time_s,
   } = replica;
   return (
-    <Box sx={{ padding: (theme) => theme.spacing(3) }}>
+    <Box sx={{ padding: 3 }}>
       <MetadataSection
         metadataList={[
           {
@@ -126,12 +126,12 @@ export const ServeReplicaDetailPage = () => {
         </Section>
       </CollapsibleSection>
       <ServeReplicaMetricsSection
-        sx={{ marginTop: (theme) => theme.spacing(4) }}
+        sx={{ marginTop: 4 }}
         deploymentName={deployment.name}
         replicaId={replica.replica_id}
       />
       <CollapsibleSection
-        sx={{ marginTop: (theme) => theme.spacing(4) }}
+        sx={{ marginTop: 4 }}
         title="Tasks History"
         startExpanded
       >

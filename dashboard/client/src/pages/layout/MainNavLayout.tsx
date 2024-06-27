@@ -1,11 +1,4 @@
-import {
-  Box,
-  IconButton,
-  Link,
-  Theme,
-  Tooltip,
-  Typography,
-} from "@mui/material";
+import { Box, IconButton, Link, Tooltip, Typography } from "@mui/material";
 import React, { useContext } from "react";
 import { RiBookMarkLine, RiFeedbackLine } from "react-icons/ri/";
 import { Outlet, Link as RouterLink } from "react-router-dom";
@@ -134,12 +127,12 @@ const MainNavBar = () => {
     >
       <Link
         component={RouterLink}
-        sx={(theme) => ({
+        sx={{
           display: "flex",
           justifyContent: "center",
-          marginLeft: theme.spacing(2),
-          marginRight: theme.spacing(3),
-        })}
+          marginLeft: 2,
+          marginRight: 3,
+        }}
         to="/"
       >
         <img width={28} src={Logo} alt="Ray" />
@@ -149,7 +142,7 @@ const MainNavBar = () => {
           <Link
             component={RouterLink}
             sx={{
-              marginRight: (theme) => theme.spacing(6),
+              marginRight: 6,
               fontSize: "1rem",
               fontWeight: 500,
               color: rootRouteId === id ? "#036DCF" : "black",
@@ -162,7 +155,7 @@ const MainNavBar = () => {
         </Typography>
       ))}
       <Box sx={{ flexGrow: 1 }}></Box>
-      <Box sx={{ marginRight: (theme) => theme.spacing(2) }}>
+      <Box sx={{ marginRight: 2 }}>
         <Tooltip title="Docs">
           <IconButton
             sx={{ color: "#5F6469" }}
@@ -190,28 +183,6 @@ const MainNavBar = () => {
   );
 };
 
-const mainNavBreadcrumbsStyles = {
-  root: (theme: Theme) => ({
-    display: "flex",
-    flexDirection: "row",
-    flexWrap: "nowrap",
-    height: 36,
-    marginTop: "1px",
-    paddingLeft: theme.spacing(2),
-    paddingRight: theme.spacing(2),
-    backgroundColor: "white",
-    alignItems: "center",
-    boxShadow: "0px 1px 0px #D2DCE6",
-  }),
-  breadcrumbItem: (theme: Theme) => ({
-    fontWeight: 500,
-    color: "#8C9196",
-    "&:not(:first-child)": {
-      marginLeft: theme.spacing(1),
-    },
-  }),
-};
-
 const MainNavBreadcrumbs = () => {
   const { mainNavPageHierarchy } = useContext(MainNavContext);
 
@@ -223,7 +194,20 @@ const MainNavBreadcrumbs = () => {
   let currentPath = "";
 
   return (
-    <Box sx={mainNavBreadcrumbsStyles.root}>
+    <Box
+      sx={{
+        display: "flex",
+        flexDirection: "row",
+        flexWrap: "nowrap",
+        height: 36,
+        marginTop: "1px",
+        paddingLeft: 2,
+        paddingRight: 2,
+        backgroundColor: "white",
+        alignItems: "center",
+        boxShadow: "0px 1px 0px #D2DCE6",
+      }}
+    >
       {mainNavPageHierarchy.map(({ title, id, path }, index) => {
         if (path) {
           if (path.startsWith("/")) {
@@ -251,7 +235,13 @@ const MainNavBreadcrumbs = () => {
           return (
             <Typography
               key={id}
-              sx={mainNavBreadcrumbsStyles.breadcrumbItem}
+              sx={{
+                fontWeight: 500,
+                color: "#8C9196",
+                "&:not(:first-child)": {
+                  marginLeft: 1,
+                },
+              }}
               variant="body2"
             >
               {linkOrText}
@@ -261,13 +251,25 @@ const MainNavBreadcrumbs = () => {
           return (
             <React.Fragment key={id}>
               <Typography
-                sx={mainNavBreadcrumbsStyles.breadcrumbItem}
+                sx={{
+                  fontWeight: 500,
+                  color: "#8C9196",
+                  "&:not(:first-child)": {
+                    marginLeft: 1,
+                  },
+                }}
                 variant="body2"
               >
                 {"/"}
               </Typography>
               <Typography
-                sx={mainNavBreadcrumbsStyles.breadcrumbItem}
+                sx={{
+                  fontWeight: 500,
+                  color: "#8C9196",
+                  "&:not(:first-child)": {
+                    marginLeft: 1,
+                  },
+                }}
                 variant="body2"
               >
                 {linkOrText}

@@ -9,7 +9,7 @@ const Actors = () => {
   return (
     <Box
       sx={{
-        padding: (theme) => theme.spacing(2),
+        padding: 2,
         width: "100%",
         backgroundColor: "white",
       }}

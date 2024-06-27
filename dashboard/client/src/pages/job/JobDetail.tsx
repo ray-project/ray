@@ -51,9 +51,7 @@ export const JobDetailChartsPage = () => {
 
   if (!job) {
     return (
-      <Box
-        sx={{ padding: (theme) => theme.spacing(2), backgroundColor: "white" }}
-      >
+      <Box sx={{ padding: 2, backgroundColor: "white" }}>
         <Loading loading={isLoading} />
         <TitleCard title={`JOB - ${params.id}`}>
           <StatusChip type="job" status="LOADING" />
@@ -99,16 +97,11 @@ export const JobDetailChartsPage = () => {
   };
 
   return (
-    <Box
-      sx={{ padding: (theme) => theme.spacing(2), backgroundColor: "white" }}
-    >
+    <Box sx={{ padding: 2, backgroundColor: "white" }}>
       <JobMetadataSection job={job} />
 
       {data?.datasets && data.datasets.length > 0 && (
-        <CollapsibleSection
-          title="Ray Data Overview"
-          sx={{ marginBottom: (theme) => theme.spacing(4) }}
-        >
+        <CollapsibleSection title="Ray Data Overview" sx={{ marginBottom: 4 }}>
           <Section>
             <DataOverview datasets={data.datasets} />
           </Section>
@@ -118,7 +111,7 @@ export const JobDetailChartsPage = () => {
       <CollapsibleSection
         title="Ray Core Overview"
         startExpanded
-        sx={{ marginBottom: (theme) => theme.spacing(4) }}
+        sx={{ marginBottom: 4 }}
       >
         <Section>
           <JobProgressBar
@@ -129,11 +122,7 @@ export const JobDetailChartsPage = () => {
         </Section>
       </CollapsibleSection>
 
-      <CollapsibleSection
-        title="Logs"
-        startExpanded
-        sx={{ marginBottom: (theme) => theme.spacing(4) }}
-      >
+      <CollapsibleSection title="Logs" startExpanded sx={{ marginBottom: 4 }}>
         <Section noTopPadding>
           <JobDriverLogs job={job} />
         </Section>
@@ -143,7 +132,7 @@ export const JobDetailChartsPage = () => {
         <CollapsibleSection
           title="Task Timeline (beta)"
           startExpanded
-          sx={{ marginBottom: (theme) => theme.spacing(4) }}
+          sx={{ marginBottom: 4 }}
         >
           <Section>
             <TaskTimeline jobId={job.job_id} />
@@ -154,7 +143,7 @@ export const JobDetailChartsPage = () => {
       <CollapsibleSection
         title="Cluster status and autoscaler"
         startExpanded
-        sx={{ marginBottom: (theme) => theme.spacing(4) }}
+        sx={{ marginBottom: 4 }}
       >
         <Box
           display="flex"
@@ -187,7 +176,7 @@ export const JobDetailChartsPage = () => {
             onExpandButtonClick={() => {
               setTaskTableExpanded(!taskTableExpanded);
             }}
-            sx={{ marginBottom: (theme) => theme.spacing(4) }}
+            sx={{ marginBottom: 4 }}
           >
             <Section>
               <TaskList
@@ -205,7 +194,7 @@ export const JobDetailChartsPage = () => {
             onExpandButtonClick={() => {
               setActorTableExpanded(!actorTableExpanded);
             }}
-            sx={{ marginBottom: (theme) => theme.spacing(4) }}
+            sx={{ marginBottom: 4 }}
           >
             <Section>
               <ActorList
@@ -219,7 +208,7 @@ export const JobDetailChartsPage = () => {
 
           <CollapsibleSection
             title="Placement Group Table"
-            sx={{ marginBottom: (theme) => theme.spacing(4) }}
+            sx={{ marginBottom: 4 }}
           >
             <Section>
               <PlacementGroupList jobId={job.job_id} />

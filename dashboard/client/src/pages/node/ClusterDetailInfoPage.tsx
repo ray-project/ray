@@ -15,7 +15,7 @@ export const ClusterDetailInfoPage = () => {
 
   if (!clusterDetail) {
     return (
-      <Box sx={{ padding: (theme) => theme.spacing(2) }}>
+      <Box sx={{ padding: 2 }}>
         <MainNavPageInfo
           pageInfo={{
             title: "Cluster Info",
@@ -34,7 +34,7 @@ export const ClusterDetailInfoPage = () => {
   }
 
   return (
-    <Box sx={{ padding: (theme) => theme.spacing(2) }}>
+    <Box sx={{ padding: 2 }}>
       <MainNavPageInfo
         pageInfo={{
           title: "Cluster Info",

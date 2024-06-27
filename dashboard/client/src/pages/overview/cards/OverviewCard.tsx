@@ -50,7 +50,7 @@ export const LinkWithArrow = ({ text, to }: LinkWithArrowProps) => {
       <Box
         component={RiArrowRightLine}
         sx={{
-          marginLeft: (theme) => theme.spacing(0.5),
+          marginLeft: 0.5,
           width: 24,
           height: 24,
         }}

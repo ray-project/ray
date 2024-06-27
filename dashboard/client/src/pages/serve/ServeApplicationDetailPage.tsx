@@ -67,7 +67,7 @@ export const ServeApplicationDetailPage = () => {
   } = sliceToPage(filteredDeployments, page.pageNo, page.pageSize);
 
   return (
-    <Box sx={{ padding: (theme) => theme.spacing(3) }}>
+    <Box sx={{ padding: 3 }}>
       <MetadataSection
         metadataList={[
           {
@@ -212,11 +212,7 @@ export const ServeApplicationDetailPage = () => {
                     >
                       {label}
                       {helpInfo && (
-                        <HelpInfo
-                          sx={{ marginLeft: (theme) => theme.spacing(1) }}
-                        >
-                          {helpInfo}
-                        </HelpInfo>
+                        <HelpInfo sx={{ marginLeft: 1 }}>{helpInfo}</HelpInfo>
                       )}
                     </Box>
                   </TableCell>

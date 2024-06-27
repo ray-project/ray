@@ -67,7 +67,7 @@ const JobList = () => {
   } = sliceToPage(jobList, page.pageNo, page.pageSize);
 
   return (
-    <Box sx={{ padding: (theme) => theme.spacing(2), width: "100%" }}>
+    <Box sx={{ padding: 2, width: "100%" }}>
       <Loading loading={isLoading} />
       <TitleCard title="JOBS">
         Auto Refresh:
@@ -138,11 +138,7 @@ const JobList = () => {
                     >
                       {label}
                       {helpInfo && (
-                        <HelpInfo
-                          sx={{ marginLeft: (theme) => theme.spacing(1) }}
-                        >
-                          {helpInfo}
-                        </HelpInfo>
+                        <HelpInfo sx={{ marginLeft: 1 }}>{helpInfo}</HelpInfo>
                       )}
                     </Box>
                   </TableCell>

@@ -24,9 +24,9 @@ export const ServeStatusIcon = ({
           component={RiRecordCircleFill}
           sx={[
             {
-              width: small ? 16 : 20,
-              height: small ? 16 : 20,
-              marginRight: "8px",
+              width: 20,
+              height: 20,
+              marginRight: 1,
               color: (theme) => theme.palette.success.main,
             },
             ...(Array.isArray(sx) ? sx : [sx]),
@@ -40,9 +40,9 @@ export const ServeStatusIcon = ({
           component={RiCloseCircleFill}
           sx={[
             {
-              width: small ? 16 : 20,
-              height: small ? 16 : 20,
-              marginRight: "8px",
+              width: 20,
+              height: 20,
+              marginRight: 1,
               color: (theme) => theme.palette.error.main,
             },
             ...(Array.isArray(sx) ? sx : [sx]),

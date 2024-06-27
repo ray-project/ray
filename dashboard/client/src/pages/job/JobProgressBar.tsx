@@ -102,7 +102,7 @@ export const JobProgressBar = ({
       />
       {advancedProgressBarExpanded && (
         <AdvancedProgressBar
-          sx={{ marginTop: (theme) => theme.spacing(0.5) }}
+          sx={{ marginTop: 0.5 }}
           progressGroups={progressGroups}
           {...advancedProgressBarProps}
         />

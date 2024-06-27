@@ -37,12 +37,7 @@ export const RecentJobsCard = ({ className, sx }: RecentJobsCardProps) => {
       subtitle: job.entrypoint,
       link: getLink(job),
       className: className,
-      icon: (
-        <JobStatusIcon
-          sx={{ marginRight: (theme) => theme.spacing(1) }}
-          job={job}
-        />
-      ),
+      icon: <JobStatusIcon sx={{ marginRight: 1 }} job={job} />,
     };
   });
 

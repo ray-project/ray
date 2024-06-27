@@ -61,15 +61,10 @@ const CMDResult = () => {
   }, [cmd, executeJstat, ip, pid]);
 
   return (
-    <Box sx={(theme) => ({ padding: theme.spacing(4), width: "100%" })}>
+    <Box sx={{ padding: 4, width: "100%" }}>
       <TitleCard title={cmd}>
         {cmd === "jstat" && (
-          <Box
-            sx={(theme) => ({
-              padding: theme.spacing(2),
-              marginTop: theme.spacing(2),
-            })}
-          >
+          <Box sx={{ padding: 2, marginTop: 2 }}>
             <Grid container spacing={1}>
               <Grid item>
                 <Select

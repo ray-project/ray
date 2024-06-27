@@ -8,7 +8,6 @@ import {
   LinearProgress,
   TextField,
   TextFieldProps,
-  Theme,
   Tooltip,
 } from "@mui/material";
 import Autocomplete from "@mui/material/Autocomplete";
@@ -26,14 +25,6 @@ import { StatusChip } from "./StatusChip";
 
 type EventTableProps = {
   job_id?: string;
-};
-
-const eventTableStyles = {
-  search: (theme: Theme) => ({
-    margin: theme.spacing(1),
-    display: "inline-block",
-    fontSize: 12,
-  }),
 };
 
 const useEventTable = (props: EventTableProps) => {
@@ -150,7 +141,7 @@ const EventTable = (props: EventTableProps) => {
         }}
       >
         <Autocomplete
-          sx={eventTableStyles.search}
+          sx={{ margin: 1, display: "inline-block", fontSize: 12 }}
           style={{ width: 200 }}
           options={labelOptions}
           onInputChange={(_: any, value: string) => {
@@ -161,7 +152,7 @@ const EventTable = (props: EventTableProps) => {
           )}
         />
         <Autocomplete
-          sx={eventTableStyles.search}
+          sx={{ margin: 1, display: "inline-block", fontSize: 12 }}
           style={{ width: 200 }}
           options={hostOptions}
           onInputChange={(_: any, value: string) => {
@@ -172,7 +163,7 @@ const EventTable = (props: EventTableProps) => {
           )}
         />
         <Autocomplete
-          sx={eventTableStyles.search}
+          sx={{ margin: 1, display: "inline-block", fontSize: 12 }}
           style={{ width: 100 }}
           options={sourceOptions}
           onInputChange={(_: any, value: string) => {
@@ -183,7 +174,7 @@ const EventTable = (props: EventTableProps) => {
           )}
         />
         <Autocomplete
-          sx={eventTableStyles.search}
+          sx={{ margin: 1, display: "inline-block", fontSize: 12 }}
           style={{ width: 140 }}
           options={severityOptions}
           onInputChange={(_: any, value: string) => {
@@ -194,7 +185,7 @@ const EventTable = (props: EventTableProps) => {
           )}
         />
         <TextField
-          sx={eventTableStyles.search}
+          sx={{ margin: 1, display: "inline-block", fontSize: 12 }}
           label="Msg"
           InputProps={{
             onChange: ({ target: { value } }) => {
@@ -222,7 +213,7 @@ const EventTable = (props: EventTableProps) => {
           }}
         />
         <Button
-          sx={eventTableStyles.search}
+          sx={{ margin: 1, display: "inline-block", fontSize: 12 }}
           size="small"
           variant="contained"
           onClick={() => reverseEvents()}
@@ -239,12 +230,7 @@ const EventTable = (props: EventTableProps) => {
           }}
         />
       </div>
-      <Box
-        sx={(theme) => ({
-          padding: theme.spacing(2),
-          marginTop: theme.spacing(2),
-        })}
-      >
+      <Box sx={{ padding: 2, marginTop: 2 }}>
         {!events.length
           ? "No Events Yet."
           : events.map(
@@ -301,22 +287,13 @@ const EventTable = (props: EventTableProps) => {
                       )}
                     </Grid>
                     <Grid container>
-                      <Grid
-                        item
-                        sx={{ margin: (theme: Theme) => theme.spacing(1) }}
-                      >
+                      <Grid item sx={{ margin: 1 }}>
                         severity: {severity}
                       </Grid>
-                      <Grid
-                        item
-                        sx={{ margin: (theme: Theme) => theme.spacing(1) }}
-                      >
+                      <Grid item sx={{ margin: 1 }}>
                         source: {sourceType}
                       </Grid>
-                      <Grid
-                        item
-                        sx={{ margin: (theme: Theme) => theme.spacing(1) }}
-                      >
+                      <Grid item sx={{ margin: 1 }}>
                         hostname:{" "}
                         {nodeMap[hostname] ? (
                           <Link to={`/node/${nodeMap[hostname]}`}>
@@ -326,41 +303,26 @@ const EventTable = (props: EventTableProps) => {
                           hostname
                         )}
                       </Grid>
-                      <Grid
-                        item
-                        sx={{ margin: (theme: Theme) => theme.spacing(1) }}
-                      >
+                      <Grid item sx={{ margin: 1 }}>
                         pid: {realPid}
                       </Grid>
                       {jobId && (
-                        <Grid
-                          item
-                          sx={{ margin: (theme: Theme) => theme.spacing(1) }}
-                        >
+                        <Grid item sx={{ margin: 1 }}>
                           jobId: <Link to={`/job/${jobId}`}>{jobId}</Link>
                         </Grid>
                       )}
                       {jobName && (
-                        <Grid
-                          item
-                          sx={{ margin: (theme: Theme) => theme.spacing(1) }}
-                        >
+                        <Grid item sx={{ margin: 1 }}>
                           jobId: {jobName}
                         </Grid>
                       )}
                       {eventId && (
-                        <Grid
-                          item
-                          sx={{ margin: (theme: Theme) => theme.spacing(1) }}
-                        >
+                        <Grid item sx={{ margin: 1 }}>
                           eventId: {eventId}
                         </Grid>
                       )}
                       {nodeId && (
-                        <Grid
-                          item
-                          sx={{ margin: (theme: Theme) => theme.spacing(1) }}
-                        >
+                        <Grid item sx={{ margin: 1 }}>
                           nodeId: {nodeId}
                         </Grid>
                       )}

@@ -15,16 +15,16 @@ import { RecentJobsCard } from "./cards/RecentJobsCard";
 import { RecentServeCard } from "./cards/RecentServeCard";
 
 const styles = {
-  root: (theme: Theme) => ({
-    padding: theme.spacing(3),
+  root: {
+    padding: 3,
     backgroundColor: "white",
-  }),
+  },
   overviewCardsContainer: (theme: Theme) => ({
     display: "flex",
     flexDirection: "row",
     flexWrap: "wrap",
-    marginBottom: theme.spacing(4),
-    gap: theme.spacing(3),
+    marginBottom: 4,
+    gap: 3,
     [theme.breakpoints.up("md")]: {
       flexWrap: "nowrap",
     },
@@ -57,7 +57,7 @@ export const OverviewPage = () => {
       </Box>
 
       <CollapsibleSection
-        sx={{ marginTop: (theme) => theme.spacing(4) }}
+        sx={{ marginTop: 4 }}
         title="Cluster status and autoscaler"
         startExpanded
       >
@@ -78,11 +78,7 @@ export const OverviewPage = () => {
         }
       </CollapsibleSection>
 
-      <CollapsibleSection
-        sx={{ marginTop: (theme) => theme.spacing(4) }}
-        title="Events"
-        startExpanded
-      >
+      <CollapsibleSection sx={{ marginTop: 4 }} title="Events" startExpanded>
         <EventTable />
       </CollapsibleSection>
     </Box>

@@ -1,4 +1,4 @@
-import { Box, BoxProps, Paper, Theme, Typography } from "@mui/material";
+import { Box, BoxProps, Paper, Typography } from "@mui/material";
 import React, { PropsWithChildren } from "react";
 import { ClassNameProps } from "./props";
 
@@ -24,11 +24,11 @@ export const Section = ({
       )}
       <Paper
         variant="outlined"
-        sx={(theme: Theme) => ({
-          padding: theme.spacing(2),
+        sx={{
+          padding: 2,
           height: "100%",
           paddingTop: noTopPadding ? 0 : undefined,
-        })}
+        }}
       >
         {children}
       </Paper>

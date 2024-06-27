@@ -23,7 +23,7 @@ const NumberedLines = ({ lines }: NumberedLinesProps) => {
             <StyledTableCell
               sx={(theme) => ({
                 color: theme.palette.text.secondary,
-                paddingRight: theme.spacing(2),
+                paddingRight: 2,
                 textAlign: "right",
                 verticalAlign: "top",
                 width: "1%",

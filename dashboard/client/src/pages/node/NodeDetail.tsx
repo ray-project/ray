@@ -26,7 +26,7 @@ const NodeDetailPage = () => {
   } = useNodeDetail();
 
   return (
-    <Box sx={{ padding: (theme) => theme.spacing(2) }}>
+    <Box sx={{ padding: 2 }}>
       <MainNavPageInfo
         pageInfo={{
           title: `Node: ${params.id}`,
@@ -56,7 +56,7 @@ const NodeDetailPage = () => {
         <Tabs
           value={selectedTab}
           onChange={handleChange}
-          sx={{ marginBottom: (theme) => theme.spacing(2) }}
+          sx={{ marginBottom: 2 }}
         >
           <Tab value="info" label="Info" />
           <Tab value="raylet" label="Raylet" />
@@ -72,13 +72,7 @@ const NodeDetailPage = () => {
           />
         </Tabs>
         {nodeDetail && selectedTab === "info" && (
-          <Box
-            sx={(theme) => ({
-              padding: theme.spacing(2),
-              marginTop: theme.spacing(2),
-              marginBottom: theme.spacing(2),
-            })}
-          >
+          <Box sx={{ padding: 2, marginTop: 2, marginBottom: 2 }}>
             <Grid container>
               <Grid item xs>
                 <Box sx={{ fontWeight: "bold" }}>Hostname</Box>{" "}
@@ -179,11 +173,11 @@ const NodeDetailPage = () => {
         {raylet && Object.keys(raylet).length > 0 && selectedTab === "raylet" && (
           <React.Fragment>
             <Box
-              sx={(theme) => ({
-                padding: theme.spacing(2),
-                marginTop: theme.spacing(2),
-                marginBottom: theme.spacing(2),
-              })}
+              sx={{
+                padding: 2,
+                marginTop: 2,
+                marginBottom: 2,
+              }}
             >
               <Grid container>
                 <Grid item xs>
@@ -213,11 +207,11 @@ const NodeDetailPage = () => {
         {nodeDetail?.workers && selectedTab === "worker" && (
           <React.Fragment>
             <TableContainer
-              sx={(theme) => ({
-                padding: theme.spacing(2),
-                marginTop: theme.spacing(2),
-                marginBottom: theme.spacing(2),
-              })}
+              sx={{
+                padding: 2,
+                marginTop: 2,
+                marginBottom: 2,
+              }}
             >
               <RayletWorkerTable
                 workers={nodeDetail?.workers}
@@ -229,11 +223,11 @@ const NodeDetailPage = () => {
         {nodeDetail?.actors && selectedTab === "actor" && (
           <React.Fragment>
             <TableContainer
-              sx={(theme) => ({
-                padding: theme.spacing(2),
-                marginTop: theme.spacing(2),
-                marginBottom: theme.spacing(2),
-              })}
+              sx={{
+                padding: 2,
+                marginTop: 2,
+                marginBottom: 2,
+              }}
             >
               <ActorTable
                 actors={nodeDetail.actors}

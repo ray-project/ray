@@ -35,7 +35,7 @@ export const RecentServeCard = ({ className, sx }: RecentServeCardProps) => {
       className: className,
       icon: (
         <ServeStatusIcon
-          sx={{ marginRight: (theme) => theme.spacing(1) }}
+          sx={{ marginRight: 1 }}
           deployment={deployment}
           small
         />

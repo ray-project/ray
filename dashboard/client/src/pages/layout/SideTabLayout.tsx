@@ -26,7 +26,7 @@ export const SideTabLayout = ({ children }: PropsWithChildren<{}>) => {
     <SideTabContext.Provider value={sideTabState}>
       <Box>
         <Box
-          sx={(theme) => ({
+          sx={{
             position: "fixed",
             height: "100%",
             width: 64,
@@ -34,11 +34,11 @@ export const SideTabLayout = ({ children }: PropsWithChildren<{}>) => {
             flexDirection: "column",
             flexWrap: "nowrap",
             alignItems: "center",
-            paddingTop: theme.spacing(1),
-            paddingBottom: theme.spacing(2),
+            paddingTop: 1,
+            paddingBottom: 2,
             background: "white",
             borderRight: "1px solid #D2DCE6",
-          })}
+          }}
         >
           {children}
         </Box>
@@ -83,7 +83,7 @@ export const SideTab = ({ tabId, title, Icon }: SideTabProps) => {
           color: isSelected ? "#036DCF" : "#5F6469",
           backgroundColor: isSelected ? "#EBF3FB" : null,
           borderRadius: "4px",
-          marginTop: (theme) => theme.spacing(1),
+          marginTop: 1,
           "&:hover": {
             backgroundColor: "#EBF3FB",
           },

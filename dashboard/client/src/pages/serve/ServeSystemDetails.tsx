@@ -61,10 +61,7 @@ export const ServeSystemDetails = ({
 
   return (
     <div>
-      <Typography
-        variant="h3"
-        sx={{ marginBottom: (theme) => theme.spacing(2) }}
-      >
+      <Typography variant="h3" sx={{ marginBottom: 2 }}>
         System
       </Typography>
       {serveDetails.http_options && (
@@ -124,11 +121,7 @@ export const ServeSystemDetails = ({
                   >
                     {label}
                     {helpInfo && (
-                      <HelpInfo
-                        sx={{ marginLeft: (theme) => theme.spacing(1) }}
-                      >
-                        {helpInfo}
-                      </HelpInfo>
+                      <HelpInfo sx={{ marginLeft: 1 }}>{helpInfo}</HelpInfo>
                     )}
                   </Box>
                 </TableCell>

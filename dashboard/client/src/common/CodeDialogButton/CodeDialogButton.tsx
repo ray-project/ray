@@ -48,14 +48,14 @@ export const CodeDialogButton = ({
         >
           <Card variant="outlined">
             <Typography
-              sx={(theme) => ({
+              sx={{
                 whiteSpace: "pre",
                 fontFamily:
                   "SFMono-Regular,Consolas,Liberation Mono,Menlo,monospace",
-                padding: theme.spacing(2),
+                padding: 2,
                 overflow: "scroll",
                 maxHeight: 600,
-              })}
+              }}
             >
               {typeof code === "string" ? code : yaml.dump(code, { indent: 2 })}
             </Typography>
@@ -88,12 +88,12 @@ export const CodeDialogButtonWithPreview = ({
     <Box
       className={className}
       sx={[
-        (theme) => ({
+        {
           display: "flex",
           flexWrap: "nowrap",
           flexDirection: "row",
-          gap: theme.spacing(1),
-        }),
+          gap: 1,
+        },
         ...(Array.isArray(sx) ? sx : [sx]),
       ]}
     >

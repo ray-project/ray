@@ -38,10 +38,7 @@ export const NodeCountCard = ({ className, sx }: NodeCountCardProps) => {
       {grafanaHost === undefined || !prometheusHealth ? (
         <Box sx={{ flex: 1, padding: (theme) => theme.spacing(2, 3) }}>
           <Typography variant="h3">Node count</Typography>
-          <GrafanaNotRunningAlert
-            sx={{ marginTop: (theme) => theme.spacing(2) }}
-            severity="info"
-          />
+          <GrafanaNotRunningAlert sx={{ marginTop: 2 }} severity="info" />
         </Box>
       ) : (
         <Box

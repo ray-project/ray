@@ -112,25 +112,25 @@ export const ProgressBar = ({
           {showLegend && (
             <Box sx={{ display: "flex", flexDirection: "row" }}>
               <Box
-                sx={(theme) => ({
+                sx={{
                   display: "flex",
                   flexDirection: "row",
                   flexWrap: "nowrap",
                   alignItems: "center",
                   "&:not(:first-child)": {
-                    marginLeft: theme.spacing(1.5),
+                    marginLeft: 1.5,
                   },
                   "&:not(:last-child)": {
-                    marginRight: theme.spacing(1.5),
+                    marginRight: 1.5,
                   },
-                })}
+                }}
               >
                 <Box
                   sx={{
                     width: 16,
                     height: 16,
                     borderRadius: "4px",
-                    marginRight: (theme) => theme.spacing(1),
+                    marginRight: 1,
                     backgroundColor: "black",
                   }}
                 />
@@ -139,38 +139,32 @@ export const ProgressBar = ({
               {filteredSegments.map(({ value, label, hint, color }) => (
                 <Box
                   key={label}
-                  sx={(theme) => ({
+                  sx={{
                     display: "flex",
                     flexDirection: "row",
                     flexWrap: "nowrap",
                     alignItems: "center",
                     "&:not(:first-child)": {
-                      marginLeft: theme.spacing(1.5),
+                      marginLeft: 1.5,
                     },
                     "&:not(:last-child)": {
-                      marginRight: theme.spacing(1.5),
+                      marginRight: 1.5,
                     },
-                  })}
+                  }}
                 >
                   <Box
                     sx={{
                       width: 16,
                       height: 16,
                       borderRadius: "4px",
-                      marginRight: (theme) => theme.spacing(1),
+                      marginRight: 1,
                       backgroundColor: color,
                     }}
                   />
                   <Typography>
                     {label}: {value}
                   </Typography>
-                  {hint && (
-                    <HelpInfo
-                      sx={{ marginLeft: (theme) => theme.spacing(0.5) }}
-                    >
-                      {hint}
-                    </HelpInfo>
-                  )}
+                  {hint && <HelpInfo sx={{ marginLeft: 0.5 }}>{hint}</HelpInfo>}
                 </Box>
               ))}
             </Box>
@@ -189,7 +183,7 @@ export const ProgressBar = ({
               sx={{
                 width: 16,
                 height: 16,
-                marginRight: (theme) => theme.spacing(1),
+                marginRight: 1,
               }}
             />
           ) : (
@@ -198,7 +192,7 @@ export const ProgressBar = ({
               sx={{
                 width: 16,
                 height: 16,
-                marginRight: (theme) => theme.spacing(1),
+                marginRight: 1,
               }}
             />
           ))}
@@ -223,13 +217,13 @@ export const ProgressBar = ({
               <Box
                 component="span"
                 key={label}
-                sx={(theme) => ({
+                sx={{
                   "&:not(:last-child)": {
                     marginRight: "1px",
                   },
                   flex: value,
                   backgroundColor: color,
-                })}
+                }}
                 data-testid="progress-bar-segment"
               />
             ))}
@@ -239,7 +233,7 @@ export const ProgressBar = ({
           <Box
             sx={{
               flex: "1 0 40px",
-              marginLeft: (theme) => theme.spacing(1),
+              marginLeft: 1,
               textAlign: "end",
               whiteSpace: "nowrap",
             }}
@@ -272,22 +266,22 @@ const LegendTooltip = ({
         title={
           <Box>
             <Box
-              sx={(theme) => ({
+              sx={{
                 display: "flex",
                 flexDirection: "row",
                 flexWrap: "nowrap",
                 alignItems: "center",
                 "&:not(:first-child)": {
-                  marginTop: theme.spacing(1),
+                  marginTop: 1,
                 },
-              })}
+              }}
             >
               <Box
                 sx={{
                   width: 16,
                   height: 16,
                   borderRadius: "4px",
-                  marginRight: (theme) => theme.spacing(1),
+                  marginRight: 1,
                   backgroundColor: "black",
                 }}
               />
@@ -296,22 +290,22 @@ const LegendTooltip = ({
             {segments.map(({ value, label, color }) => (
               <Box
                 key={label}
-                sx={(theme) => ({
+                sx={{
                   display: "flex",
                   flexDirection: "row",
                   flexWrap: "nowrap",
                   alignItems: "center",
                   "&:not(:first-child)": {
-                    marginTop: theme.spacing(1),
+                    marginTop: 1,
                   },
-                })}
+                }}
               >
                 <Box
                   sx={{
                     width: 16,
                     height: 16,
                     borderRadius: "4px",
-                    marginRight: (theme) => theme.spacing(1),
+                    marginRight: 1,
                     backgroundColor: color,
                   }}
                 />

@@ -49,12 +49,12 @@ const UsageBar: React.FC<UsageBarProps> = ({ percent, text }) => {
     >
       <Box
         component="span"
-        sx={(theme) => ({
-          paddingLeft: theme.spacing(1),
-          paddingRight: theme.spacing(1),
+        sx={{
+          paddingLeft: 1,
+          paddingRight: 1,
           background: gradient,
           flexGrow: 1,
-        })}
+        }}
       >
         <Typography align="center">{text}</Typography>
       </Box>

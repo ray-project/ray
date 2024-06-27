@@ -122,11 +122,7 @@ const DataOverviewTable = ({
                   >
                     {label}
                     {helpInfo && (
-                      <HelpInfo
-                        sx={{ marginLeft: (theme) => theme.spacing(1) }}
-                      >
-                        {helpInfo}
-                      </HelpInfo>
+                      <HelpInfo sx={{ marginLeft: 1 }}>{helpInfo}</HelpInfo>
                     )}
                   </Box>
                 </TableCell>

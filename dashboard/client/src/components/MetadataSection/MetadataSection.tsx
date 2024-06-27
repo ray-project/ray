@@ -84,7 +84,7 @@ export const MetadataContentField: React.FC<{
         onMouseEnter={() => setCopyIconClicked(false)}
         onMouseLeave={() => setTimeout(() => setCopyIconClicked(false), 333)}
         size="small"
-        sx={(theme) => ({ color: "black", marginLeft: theme.spacing(0.5) })}
+        sx={{ color: "black", marginLeft: 0.5 }}
       >
         <RiFileCopyLine />
       </IconButton>
@@ -162,9 +162,7 @@ const MetadataList: React.FC<{
               {label}
             </Typography>
             {labelTooltip && (
-              <HelpInfo sx={{ marginLeft: (theme) => theme.spacing(0.5) }}>
-                {labelTooltip}
-              </HelpInfo>
+              <HelpInfo sx={{ marginLeft: 0.5 }}>{labelTooltip}</HelpInfo>
             )}
           </Box>
           <MetadataContentField content={content} label={label} />

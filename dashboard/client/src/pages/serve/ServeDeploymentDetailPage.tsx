@@ -71,7 +71,7 @@ export const ServeDeploymentDetailPage = () => {
   } = sliceToPage(filteredReplicas, page.pageNo, page.pageSize);
 
   return (
-    <Box sx={{ padding: (theme) => theme.spacing(3) }}>
+    <Box sx={{ padding: 3 }}>
       <MetadataSection
         metadataList={[
           {
@@ -199,11 +199,7 @@ export const ServeDeploymentDetailPage = () => {
                     >
                       {label}
                       {helpInfo && (
-                        <HelpInfo
-                          sx={{ marginLeft: (theme) => theme.spacing(1) }}
-                        >
-                          {helpInfo}
-                        </HelpInfo>
+                        <HelpInfo sx={{ marginLeft: 1 }}>{helpInfo}</HelpInfo>
                       )}
                     </Box>
                   </TableCell>
@@ -222,11 +218,7 @@ export const ServeDeploymentDetailPage = () => {
           </Table>
         </TableContainer>
       </CollapsibleSection>
-      <CollapsibleSection
-        title="Logs"
-        startExpanded
-        sx={{ marginTop: (theme) => theme.spacing(4) }}
-      >
+      <CollapsibleSection title="Logs" startExpanded sx={{ marginTop: 4 }}>
         <ServeEntityLogViewer deployments={[deployment]} />
       </CollapsibleSection>
     </Box>

@@ -105,7 +105,7 @@ export const ServeReplicaMetricsSection = ({
             flexDirection: "row",
             alignItems: "center",
             justifyContent: "flex-end",
-            padding: (theme) => theme.spacing(1),
+            padding: 1,
             zIndex: 1,
             height: 36,
           }}
@@ -119,7 +119,7 @@ export const ServeReplicaMetricsSection = ({
             View in Grafana
           </Button>
           <TextField
-            sx={{ marginLeft: (theme) => theme.spacing(2), width: 80 }}
+            sx={{ marginLeft: 2, width: 80 }}
             select
             size="small"
             value={refreshOption}
@@ -143,7 +143,7 @@ export const ServeReplicaMetricsSection = ({
           </TextField>
           <HelpInfo>Auto-refresh interval</HelpInfo>
           <TextField
-            sx={{ marginLeft: (theme) => theme.spacing(2), width: 140 }}
+            sx={{ marginLeft: 2, width: 140 }}
             select
             size="small"
             value={timeRangeOption}
@@ -168,13 +168,13 @@ export const ServeReplicaMetricsSection = ({
           <HelpInfo>Time range picker</HelpInfo>
         </Box>
         <Box
-          sx={(theme) => ({
+          sx={{
             display: "flex",
             flexDirection: "row",
             flexWrap: "wrap",
-            gap: theme.spacing(3),
-            marginTop: theme.spacing(2),
-          })}
+            gap: 3,
+            marginTop: 2,
+          }}
         >
           {METRICS_CONFIG.map(({ title, pathParams }) => {
             const path =

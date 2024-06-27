@@ -64,12 +64,9 @@ export const ServeDeploymentsListPage = () => {
   } = sliceToPage(serveApplications, page.pageNo, page.pageSize);
 
   return (
-    <Box sx={{ padding: (theme) => theme.spacing(3) }}>
+    <Box sx={{ padding: 3 }}>
       {serveDetails.http_options === undefined ? (
-        <Alert
-          sx={{ marginBottom: (theme) => theme.spacing(2) }}
-          severity="warning"
-        >
+        <Alert sx={{ marginBottom: 2 }} severity="warning">
           Serve not started. Please deploy a serve application first.
         </Alert>
       ) : (
@@ -83,7 +80,7 @@ export const ServeDeploymentsListPage = () => {
           <CollapsibleSection
             title="Applications / Deployments"
             startExpanded
-            sx={{ marginTop: (theme) => theme.spacing(4) }}
+            sx={{ marginTop: 4 }}
           >
             <TableContainer>
               <TextField
@@ -121,9 +118,7 @@ export const ServeDeploymentsListPage = () => {
                         >
                           {label}
                           {helpInfo && (
-                            <HelpInfo
-                              sx={{ marginLeft: (theme) => theme.spacing(1) }}
-                            >
+                            <HelpInfo sx={{ marginLeft: 1 }}>
                               {helpInfo}
                             </HelpInfo>
                           )}
@@ -144,11 +139,7 @@ export const ServeDeploymentsListPage = () => {
               </Table>
             </TableContainer>
           </CollapsibleSection>
-          <CollapsibleSection
-            title="Logs"
-            startExpanded
-            sx={{ marginTop: (theme) => theme.spacing(4) }}
-          >
+          <CollapsibleSection title="Logs" startExpanded sx={{ marginTop: 4 }}>
             <ServeEntityLogViewer
               controller={serveDetails.controller_info}
               proxies={proxies}
@@ -158,7 +149,7 @@ export const ServeDeploymentsListPage = () => {
         </React.Fragment>
       )}
       <ServeMetricsSection
-        sx={{ marginTop: (theme) => theme.spacing(4) }}
+        sx={{ marginTop: 4 }}
         metricsConfig={APPS_METRICS_CONFIG}
       />
     </Box>

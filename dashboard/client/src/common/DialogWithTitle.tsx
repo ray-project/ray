@@ -1,27 +1,6 @@
 import CloseIcon from "@mui/icons-material/Close";
-import { Dialog, IconButton, styled, Typography } from "@mui/material";
+import { Dialog, IconButton, Theme, Typography } from "@mui/material";
 import React, { PropsWithChildren } from "react";
-
-const PaperDialog = styled(Dialog)(({ theme }) => ({
-  padding: theme.spacing(3),
-}));
-
-const CloseIconButton = styled(IconButton)(({ theme }) => ({
-  position: "absolute",
-  right: theme.spacing(1.5),
-  top: theme.spacing(1.5),
-  zIndex: 1,
-}));
-
-const TitleTypography = styled(Typography)(({ theme }) => ({
-  borderBottomColor: theme.palette.divider,
-  borderBottomStyle: "solid",
-  borderBottomWidth: 1,
-  fontSize: "1.5rem",
-  lineHeight: 1,
-  marginBottom: theme.spacing(3),
-  paddingBottom: theme.spacing(3),
-}));
 
 type Props = {
   handleClose: () => void;
@@ -32,19 +11,41 @@ class DialogWithTitle extends React.Component<PropsWithChildren<Props>> {
   render() {
     const { handleClose, title } = this.props;
     return (
-      <PaperDialog
+      <Dialog
         fullWidth
         maxWidth="md"
         onClose={handleClose}
         open
         scroll="body"
+        PaperProps={{ sx: { padding: 3 } }}
       >
-        <CloseIconButton onClick={handleClose} size="large">
+        <IconButton
+          sx={(theme: Theme) => ({
+            position: "absolute",
+            right: theme.spacing(1.5),
+            top: theme.spacing(1.5),
+            zIndex: 1,
+          })}
+          onClick={handleClose}
+          size="large"
+        >
           <CloseIcon />
-        </CloseIconButton>
-        <TitleTypography>{title}</TitleTypography>
+        </IconButton>
+        <Typography
+          sx={(theme) => ({
+            borderBottomColor: theme.palette.divider,
+            borderBottomStyle: "solid",
+            borderBottomWidth: 1,
+            fontSize: "1.5rem",
+            lineHeight: 1,
+            marginBottom: 3,
+            paddingBottom: 3,
+          })}
+        >
+          {title}
+        </Typography>
         {this.props.children}
-      </PaperDialog>
+      </Dialog>
     );
   }
 }

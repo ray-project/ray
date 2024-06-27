@@ -24,10 +24,7 @@ export const TaskTimeline = ({ jobId }: TaskTimelineProps) => {
         <Link href="chrome://tracing">chrome://tracing</Link>. You can use the
         tool by visiting chrome://tracing using your address bar.
       </Typography>
-      <TimelineDownloadButton
-        sx={{ marginTop: (theme) => theme.spacing(2) }}
-        jobId={jobId}
-      />
+      <TimelineDownloadButton sx={{ marginTop: 2 }} jobId={jobId} />
     </div>
   );
 };

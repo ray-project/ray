@@ -40,7 +40,7 @@ export const StateApiLogsListPage = () => {
       : `/logs/`;
 
   return (
-    <Box sx={{ padding: (theme) => theme.spacing(2), width: "100%" }}>
+    <Box sx={{ padding: 2, width: "100%" }}>
       <TitleCard title="Logs Viewer">
         <Paper elevation={0}>
           {!nodeId && <p>Select a node to view logs</p>}
@@ -249,7 +249,7 @@ export const StateApiLogViewerPage = () => {
       : `/logs/?nodeId=${nodeId}`;
 
   return (
-    <Box sx={{ padding: (theme) => theme.spacing(2), width: "100%" }}>
+    <Box sx={{ padding: 2, width: "100%" }}>
       <TitleCard title="Logs Viewer">
         <Paper elevation={0}>
           {!nodeId && <p>Select a node to view logs</p>}

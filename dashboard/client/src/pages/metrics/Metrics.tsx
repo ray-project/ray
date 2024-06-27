@@ -419,7 +419,7 @@ export const Metrics = () => {
               flexDirection: "row",
               alignItems: "center",
               justifyContent: "flex-end",
-              padding: (theme) => theme.spacing(1),
+              padding: 1,
               boxShadow: "0px 1px 0px #D2DCE6",
               zIndex: 1,
               height: 36,
@@ -466,10 +466,7 @@ export const Metrics = () => {
               </Menu>
             )}
             <TextField
-              sx={{
-                marginLeft: (theme) => theme.spacing(2),
-                width: 80,
-              }}
+              sx={{ marginLeft: 2, width: 80 }}
               select
               size="small"
               value={refreshOption}
@@ -493,10 +490,7 @@ export const Metrics = () => {
             </TextField>
             <HelpInfo>Auto-refresh interval</HelpInfo>
             <TextField
-              sx={{
-                marginLeft: (theme) => theme.spacing(2),
-                width: 140,
-              }}
+              sx={{ marginLeft: 2, width: 140 }}
               select
               size="small"
               value={timeRangeOption}
@@ -525,7 +519,7 @@ export const Metrics = () => {
             time-series graph. You can use control/cmd + click to filter out a
             line in the time-series graph.
           </Alert>
-          <Box sx={{ margin: (theme) => theme.spacing(1) }}>
+          <Box sx={{ margin: 1 }}>
             {METRICS_CONFIG.map((config) => (
               <MetricsSection
                 key={config.title}
@@ -576,17 +570,17 @@ const MetricsSection = ({
       key={title}
       title={title}
       startExpanded
-      sx={{ marginTop: (theme) => theme.spacing(3) }}
+      sx={{ marginTop: 3 }}
       keepRendered
     >
       <Box
-        sx={(theme) => ({
+        sx={{
           display: "flex",
           flexDirection: "row",
           flexWrap: "wrap",
-          gap: theme.spacing(3),
-          marginTop: theme.spacing(2),
-        })}
+          gap: 3,
+          marginTop: 2,
+        }}
       >
         {contents.map(({ title, pathParams }) => {
           const path =

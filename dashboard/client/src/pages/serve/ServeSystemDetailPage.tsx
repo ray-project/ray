@@ -23,7 +23,7 @@ export const ServeSystemDetailPage = () => {
   }
 
   return (
-    <Box sx={{ padding: (theme) => theme.spacing(3) }}>
+    <Box sx={{ padding: 3 }}>
       <MainNavPageInfo
         pageInfo={{
           title: "System",
@@ -32,10 +32,7 @@ export const ServeSystemDetailPage = () => {
         }}
       />
       {serveDetails.http_options === undefined ? (
-        <Alert
-          sx={{ marginBottom: (theme) => theme.spacing(2) }}
-          severity="warning"
-        >
+        <Alert sx={{ marginBottom: 2 }} severity="warning">
           Serve not started. Please deploy a serve application first.
         </Alert>
       ) : (
@@ -47,7 +44,7 @@ export const ServeSystemDetailPage = () => {
         />
       )}
       <ServeMetricsSection
-        sx={{ marginTop: (theme) => theme.spacing(4) }}
+        sx={{ marginTop: 4 }}
         metricsConfig={SERVE_SYSTEM_METRICS_CONFIG}
       />
     </Box>

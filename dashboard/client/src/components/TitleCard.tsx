@@ -7,11 +7,11 @@ const TitleCard = ({
 }: PropsWithChildren<{ title?: ReactNode | string }>) => {
   return (
     <Paper
-      sx={(theme) => ({
-        padding: theme.spacing(2),
-        paddingTop: theme.spacing(1.5),
-        margin: theme.spacing(2, 1),
-      })}
+      sx={{
+        padding: 2,
+        paddingTop: 1.5,
+        margin: (theme) => theme.spacing(2, 1),
+      }}
       elevation={0}
     >
       {title && (
@@ -20,7 +20,7 @@ const TitleCard = ({
             fontSize: theme.typography.fontSize + 2,
             fontWeight: 500,
             color: theme.palette.text.secondary,
-            marginBottom: theme.spacing(1),
+            marginBottom: 1,
           })}
         >
           {title}

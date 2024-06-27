@@ -51,9 +51,7 @@ const ActorDetailPage = () => {
 
   if (isLoading || actorDetail === undefined) {
     return (
-      <Box
-        sx={{ padding: (theme) => theme.spacing(2), backgroundColor: "white" }}
-      >
+      <Box sx={{ padding: 2, backgroundColor: "white" }}>
         <Loading loading={isLoading} />
         <TitleCard title={`ACTOR - ${params.actorId}`}>
           <StatusChip type="actor" status="LOADING" />
@@ -65,9 +63,7 @@ const ActorDetailPage = () => {
   }
 
   return (
-    <Box
-      sx={{ padding: (theme) => theme.spacing(2), backgroundColor: "white" }}
-    >
+    <Box sx={{ padding: 2, backgroundColor: "white" }}>
       <MetadataSection
         metadataList={[
           {
@@ -207,10 +203,7 @@ const ActorDetailPage = () => {
           <ActorLogs actor={actorDetail} />
         </Section>
       </CollapsibleSection>
-      <CollapsibleSection
-        title="Tasks History"
-        sx={{ marginTop: (theme) => theme.spacing(4) }}
-      >
+      <CollapsibleSection title="Tasks History" sx={{ marginTop: 4 }}>
         <Section>
           <TaskList jobId={actorDetail.jobId} actorId={params.actorId} />
         </Section>

@@ -28,9 +28,7 @@ export const TaskPage = () => {
   const { task, isLoading } = useStateApiTask(taskId);
 
   return (
-    <Box
-      sx={{ padding: (theme) => theme.spacing(2), backgroundColor: "white" }}
-    >
+    <Box sx={{ padding: 2, backgroundColor: "white" }}>
       <MainNavPageInfo
         pageInfo={
           task

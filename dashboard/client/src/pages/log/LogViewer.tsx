@@ -60,7 +60,7 @@ export const LogViewer = memo(
           <div>
             <div>
               <TextField
-                sx={{ margin: (theme) => theme.spacing(1) }}
+                sx={{ margin: 1 }}
                 label="Keyword"
                 InputProps={{
                   onChange: ({ target: { value } }) => {
@@ -79,7 +79,7 @@ export const LogViewer = memo(
                 label="Start Time"
                 type="datetime-local"
                 value={startTime}
-                sx={{ margin: (theme) => theme.spacing(1) }}
+                sx={{ margin: 1 }}
                 onChange={(val) => {
                   setStart(val.target.value);
                 }}
@@ -91,7 +91,7 @@ export const LogViewer = memo(
                 label="End Time"
                 type="datetime-local"
                 value={endTime}
-                sx={{ margin: (theme) => theme.spacing(1) }}
+                sx={{ margin: 1 }}
                 onChange={(val) => {
                   setEnd(val.target.value);
                 }}
@@ -99,7 +99,7 @@ export const LogViewer = memo(
                   shrink: true,
                 }}
               />
-              <Box sx={{ margin: (theme) => theme.spacing(1) }}>
+              <Box sx={{ margin: 1 }}>
                 Reverse:{" "}
                 <Switch
                   checked={search?.revert}
@@ -107,7 +107,7 @@ export const LogViewer = memo(
                 />
                 {onRefreshClick && (
                   <Button
-                    sx={{ margin: (theme) => theme.spacing(1) }}
+                    sx={{ margin: 1 }}
                     variant="contained"
                     onClick={onRefreshClick}
                   >
@@ -115,7 +115,7 @@ export const LogViewer = memo(
                   </Button>
                 )}
                 <Button
-                  sx={{ margin: (theme) => theme.spacing(1) }}
+                  sx={{ margin: 1 }}
                   variant="contained"
                   onClick={() => {
                     setStart("");

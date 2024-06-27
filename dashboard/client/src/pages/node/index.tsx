@@ -250,11 +250,11 @@ const Nodes = () => {
 
   return (
     <Box
-      sx={(theme) => ({
-        padding: theme.spacing(2),
+      sx={{
+        padding: 2,
         width: "100%",
         position: "relative",
-      })}
+      }}
     >
       <Loading loading={isLoading} />
       <TitleCard title="NODES">
@@ -361,11 +361,7 @@ const Nodes = () => {
                       >
                         {label}
                         {helpInfo && (
-                          <HelpInfo
-                            sx={{ marginLeft: (theme) => theme.spacing(1) }}
-                          >
-                            {helpInfo}
-                          </HelpInfo>
+                          <HelpInfo sx={{ marginLeft: 1 }}>{helpInfo}</HelpInfo>
                         )}
                       </Box>
                     </TableCell>

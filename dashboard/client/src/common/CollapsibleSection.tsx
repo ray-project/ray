@@ -61,35 +61,35 @@ export const CollapsibleSection = forwardRef<
       <Box ref={ref} className={className} sx={sx}>
         <Box display="flex" flexDirection="row" alignItems="center">
           <Typography
-            sx={(theme) => ({
+            sx={{
               display: "flex",
               flexDirection: "row",
               flexWrap: "nowrap",
               alignItems: "center",
               fontWeight: 500,
               cursor: "pointer",
-              marginRight: theme.spacing(1),
-            })}
+              marginRight: 1,
+            }}
             variant="h4"
             onClick={handleExpandClick}
           >
             {finalExpanded ? (
               <Box
                 component={RiArrowDownSLine}
-                sx={(theme) => ({
-                  marginRight: theme.spacing(1),
+                sx={{
+                  marginRight: 1,
                   width: 24,
                   height: 24,
-                })}
+                }}
               />
             ) : (
               <Box
                 component={RiArrowRightSLine}
-                sx={(theme) => ({
-                  marginRight: theme.spacing(1),
+                sx={{
+                  marginRight: 1,
                   width: 24,
                   height: 24,
-                })}
+                }}
               />
             )}
             {title}
@@ -142,7 +142,7 @@ export const HideableBlock = ({
   return visible || (keepRendered && rendered) ? (
     <Box
       sx={{
-        marginTop: (theme) => theme.spacing(1),
+        marginTop: 1,
         display: !visible ? "none" : "block",
       }}
     >

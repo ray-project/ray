@@ -37,30 +37,30 @@ export const ListItemCard = ({
     <OverviewCard
       className={className}
       sx={[
-        (theme) => ({
+        {
           display: "flex",
           flexDirection: "column",
-          padding: theme.spacing(2, 3),
-        }),
+          padding: (theme) => theme.spacing(2, 3),
+        },
         ...(Array.isArray(sx) ? sx : [sx]),
       ]}
     >
       <Typography variant="h3">{headerTitle}</Typography>
       <Box
-        sx={(theme) => ({
-          marginTop: theme.spacing(2),
+        sx={{
+          marginTop: 2,
           flex: 1,
           overflow: "hidden",
-        })}
+        }}
       >
         {items.map((item: ListItemProps) => (
           <ListItem
             {...item}
-            sx={(theme) => ({
+            sx={{
               "&:not(:first-child)": {
-                marginTop: theme.spacing(1),
+                marginTop: 1,
               },
-            })}
+            }}
             key={item.title}
           />
         ))}
@@ -104,12 +104,12 @@ const ListItem = ({
           {title}
         </Typography>
         <Typography
-          sx={(theme) => ({
+          sx={{
             overflow: "hidden",
             textOverflow: "ellipsis",
             whiteSpace: "nowrap",
             color: "#5F6469",
-          })}
+          }}
           title={subtitle}
           variant="caption"
         >

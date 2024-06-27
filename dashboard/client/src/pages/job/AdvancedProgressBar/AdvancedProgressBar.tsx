@@ -122,13 +122,13 @@ export const AdvancedProgressBarSegment = ({
                 component={RiSubtractLine}
                 title="Collapse group"
                 onClick={onParentCollapseButtonPressed}
-                sx={(theme) => ({
+                sx={{
                   width: 16,
                   height: 16,
                   verticalAlign: "top",
-                  marginRight: theme.spacing(0.5),
-                  marginLeft: theme.spacing(3 * (nestedIndex - 1)),
-                })}
+                  marginRight: 0.5,
+                  marginLeft: 3 * (nestedIndex - 1),
+                }}
               />
             )}
             <Box
@@ -138,7 +138,7 @@ export const AdvancedProgressBarSegment = ({
                 width: 16,
                 height: 16,
                 verticalAlign: "top",
-                marginRight: (theme) => theme.spacing(0.5),
+                marginRight: 0.5,
                 visibility: children.length === 0 ? "hidden" : "visible",
               }}
               style={{

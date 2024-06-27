@@ -42,7 +42,7 @@ export const ServeProxyDetailPage = () => {
   }
 
   return (
-    <Box sx={{ padding: (theme) => theme.spacing(3) }}>
+    <Box sx={{ padding: 3 }}>
       <MainNavPageInfo
         pageInfo={
           proxy.node_id
@@ -76,7 +76,7 @@ export const ServeControllerDetailPage = () => {
   }
 
   return (
-    <Box sx={{ padding: (theme) => theme.spacing(3) }}>
+    <Box sx={{ padding: 3 }}>
       <MainNavPageInfo
         pageInfo={{
           id: "serveController",
