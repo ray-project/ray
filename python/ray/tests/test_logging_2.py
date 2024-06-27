@@ -237,13 +237,13 @@ ray.get(actor_instance.print_message.remote())
         [
             {
                 "env_vars": {
-                    "RAY_SETUP_DEFAULT_LOGGER": "1",
+                    "RAY_LOGGING_CONFIG_ENCODING": "TEXT",
                 },
             }
         ],
         indirect=True,
     )
-    def test_env_setup_default_logger(
+    def test_env_setup_logger_encoding(
         self, ray_start_cluster_head_with_env_vars, shutdown_only
     ):
         script = """
