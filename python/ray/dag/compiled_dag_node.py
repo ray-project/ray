@@ -9,6 +9,7 @@ from typing import NamedTuple
 
 import ray
 from ray.exceptions import RayTaskError, RayChannelError
+from ray.util.annotations import PublicAPI
 from ray.experimental.compiled_dag_ref import (
     CompiledDAGRef,
     CompiledDAGFuture,
