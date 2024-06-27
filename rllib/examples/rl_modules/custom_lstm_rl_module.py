@@ -41,14 +41,11 @@ Results to expect
 You should see the following output (during the experiment) in your console:
 
 """
-import gymnasium as gym
-
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
-from ray.rllib.env.wrappers.atari_wrappers import wrap_atari_for_new_api_stack
 from ray.rllib.examples.envs.classes.stateless_cartpole import StatelessCartPole
 from ray.rllib.examples.envs.classes.multi_agent import MultiAgentStatelessCartPole
 from ray.rllib.examples.rl_modules.classes.lstm_containing_rlm import (
-    LSTMContainingRLModule
+    LSTMContainingRLModule,
 )
 from ray.rllib.utils.test_utils import (
     add_rllib_example_script_args,
@@ -56,7 +53,7 @@ from ray.rllib.utils.test_utils import (
 )
 from ray.tune.registry import get_trainable_cls, register_env
 
-parser = add_rllib_example_script_args()
+parser = add_rllib_example_script_args(default_reward=300.0)
 
 
 if __name__ == "__main__":
@@ -78,19 +75,27 @@ if __name__ == "__main__":
             env="env",
             env_config={"num_agents": args.num_agents},
         )
+        .training(
+            train_batch_size_per_learner=1024,
+            num_sgd_iter=6,
+            lr=0.0009,
+            vf_loss_coeff=0.001,
+            entropy_coeff=0.0,
+        )
         .rl_module(
             # Plug-in our custom RLModule class.
             rl_module_spec=SingleAgentRLModuleSpec(
                 module_class=LSTMContainingRLModule,
                 # Feel free to specify your own `model_config_dict` settings below.
-                # The `model_config_dict` defined here will be available inside your custom
-                # RLModule class through the `self.config.model_config_dict` property.
+                # The `model_config_dict` defined here will be available inside your
+                # custom RLModule class through the `self.config.model_config_dict`
+                # property.
                 model_config_dict={
-                    "lstm_cell_size": 128,
+                    "lstm_cell_size": 256,
                     "dense_layers": [256, 256],
                 },
             ),
         )
     )
 
-    run_rllib_example_script_experiment(base_config, args, stop={})
+    run_rllib_example_script_experiment(base_config, args)

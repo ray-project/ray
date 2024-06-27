@@ -9,7 +9,6 @@ from ray.rllib.models.torch.misc import (
 from ray.rllib.models.torch.torch_distributions import TorchCategorical
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
-from ray.rllib.utils.torch_utils import convert_to_torch_tensor
 
 torch, nn = try_import_torch()
 

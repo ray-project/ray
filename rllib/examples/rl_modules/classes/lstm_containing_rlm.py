@@ -1,14 +1,12 @@
 from typing import Any
 
 import numpy as np
-import tree  # pip install dm_tree
 
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.rl_module.torch import TorchRLModule
 from ray.rllib.models.torch.torch_distributions import TorchCategorical
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
-from ray.rllib.utils.torch_utils import convert_to_torch_tensor
 
 torch, nn = try_import_torch()
 
@@ -36,7 +34,9 @@ class LSTMContainingRLModule(TorchRLModule):
         my_net = LSTMContainingRLModule(rl_module_config)
 
         # Create some dummy input.
-        obs = torch.from_numpy(np.random.random_sample(size=(B, T, f)).astype(np.float32))
+        obs = torch.from_numpy(
+            np.random.random_sample(size=(B, T, f)
+        ).astype(np.float32))
         state_in = my_net.get_initial_state()
         # Repeat state_in across batch.
         state_in = tree.map_structure(
@@ -56,6 +56,7 @@ class LSTMContainingRLModule(TorchRLModule):
         num_all_params = sum(int(np.prod(p.size())) for p in my_net.parameters())
         print(f"num params = {num_all_params}")
     """
+
     @override(TorchRLModule)
     def setup(self):
         """Use this method to create all the model components that you require.
@@ -164,10 +165,12 @@ class LSTMContainingRLModule(TorchRLModule):
         state_in = batch[Columns.STATE_IN]
         h, c = state_in["h"], state_in["c"]
         # Unsqueeze the layer dim (we only have 1 LSTM layer.
-        features, (h, c) = self._lstm(
+        features, _ = self._lstm(
             obs.permute(1, 0, 2),  # we have to permute, b/c our LSTM is time-major
             (h.unsqueeze(0), c.unsqueeze(0)),
         )
+        # Make batch-major again.
+        features = features.permute(1, 0, 2)
         # Push through our FC net.
         features = self._fc_net(features)
         return self._values(features).squeeze(-1)
@@ -181,6 +184,8 @@ class LSTMContainingRLModule(TorchRLModule):
             obs.permute(1, 0, 2),  # we have to permute, b/c our LSTM is time-major
             (h.unsqueeze(0), c.unsqueeze(0)),
         )
+        # Make batch-major again.
+        features = features.permute(1, 0, 2)
         # Push through our FC net.
         features = self._fc_net(features)
         logits = self._logits(features)
