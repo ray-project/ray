@@ -25,10 +25,10 @@ config = (
     )
     .environment("multi_cart", env_config={"num_agents": args.num_agents})
     .training(
-        train_batch_size_per_learner=750,
+        train_batch_size_per_learner=1000,
         grad_clip=30.0,
         grad_clip_by="global_norm",
-        lr=0.00065,
+        lr=0.0005,
         vf_loss_coeff=0.01,
         entropy_coeff=0.0,
     )
