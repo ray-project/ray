@@ -53,7 +53,10 @@ from ray.rllib.utils.test_utils import (
 )
 from ray.tune.registry import get_trainable_cls, register_env
 
-parser = add_rllib_example_script_args(default_reward=300.0)
+parser = add_rllib_example_script_args(
+    default_reward=300.0,
+    default_timesteps=2000000,
+)
 
 
 if __name__ == "__main__":
