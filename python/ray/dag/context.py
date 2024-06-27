@@ -24,6 +24,23 @@ DEFAULT_MAX_BUFFERED_RESULTS = int(os.environ.get("RAY_DAG_max_buffered_results"
 class DAGContext:
     """Global settings for Ray DAG.
 
+    You can configure parameters in the DAGContext by setting the environment
+    variables, `RAY_DAG_<param>` (e.g., `RAY_DAG_buffer_size_bytes`) or Python.
+
+    Examples:
+        >>> from ray.dag import DAGContext
+        >>> DAGContext.get_current().buffer_size_bytes
+        1000000
+        >>> DAGContext.get_current().buffer_size_bytes = 500
+        >>> DAGContext.get_current().buffer_size_bytes
+        500
+
+        >>> import os
+        >>> os.environ["RAY_DAG_buffer_size_bytes"] = "900"
+        >>> from ray.dag import DAGContext
+        >>> DAGContext.get_current().buffer_size_bytes
+        900
+
     Args:
         buffer_size_bytes: The maximum size of messages that can be passed
             between tasks in the DAG.
