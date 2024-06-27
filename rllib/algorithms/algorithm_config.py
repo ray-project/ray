@@ -2370,6 +2370,7 @@ class AlgorithmConfig(_Config):
         *,
         input_=NotProvided,
         input_read_method=NotProvided,
+        input_read_method_kwargs=NotProvided,
         input_config=NotProvided,
         actions_in_input_normalized=NotProvided,
         input_evaluation=NotProvided,
@@ -2398,6 +2399,8 @@ class AlgorithmConfig(_Config):
                 offline data from `input_`. The default is `read_json` for JSON files.
                 See https://docs.ray.io/en/latest/data/api/input_output.html for more
                 info about available read methods in `ray.data`.
+            input_read_method_kwargs: kwargs for the `input_read_method`. These will be
+                passed into the read method without checking.
             input_config: Arguments that describe the settings for reading the input.
                 If input is `sample`, this will be environment configuation, e.g.
                 `env_name` and `env_config`, etc. See `EnvContext` for more info.
@@ -2438,6 +2441,10 @@ class AlgorithmConfig(_Config):
             self.input_ = input_
         if input_read_method is not NotProvided:
             self.input_read_method = input_read_method
+        if input_read_method_kwargs is not NotProvided:
+            self.input_read_method_kwargs = input_read_method_kwargs
+        else:
+            self.input_read_method_kwargs = {}
         if input_config is not NotProvided:
             if not isinstance(input_config, dict):
                 raise ValueError(

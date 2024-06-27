@@ -49,15 +49,17 @@ class OfflineData:
             else Path(config.get("input_"))
         )
         # Use `read_json` as default data read method.
-        self.data_read_method = config.get("input_read_method", "read_json")
+        self.data_read_method = config.get("input_read_method", "read_parquet")
+        self.data_read_method_kwargs = config.get("input_read_method_kwargs", {})
         # If the observation data is compressed. Note, if compressed, the
         # data must have been compressed with the `pack_if_needed` function.
         self.compressed = config.get("compressed", False)
         try:
-            # TODO (simon): Add support for `kwargs`.
+            # Load the dataset.
             self.data = getattr(ray.data, self.data_read_method)(
-                self.path, override_num_blocks=4
+                self.path, **self.data_read_method_kwargs
             )
+            # Include locality hints.
             ctx = ray.data.DataContext.get_current()
             ctx.execution_options.locality_with_output = True
             logger.info("Reading data from {}".format(self.path))
@@ -66,6 +68,7 @@ class OfflineData:
             logger.error(e)
         # Avoids reinstantiating the batch iterator each time we sample.
         self.batch_iterator = None
+        # For remote learner setups.
         self.locality_hints = None
         self.learner_handles = None
         self.module_spec = None

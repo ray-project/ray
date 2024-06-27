@@ -1200,9 +1200,9 @@ class Learner:
             if i == num_iters:
                 break
 
-        # Call `_after_gradient_based_update` to allow for non-gradient based
+        # Call `after_gradient_based_update` to allow for non-gradient based
         # cleanups-, logging-, and update logic to happen.
-        self._after_gradient_based_update(timesteps)
+        self.after_gradient_based_update(timesteps=timesteps or {})
 
         # Reduce results across all minibatch update steps.
         return self.metrics.reduce()

@@ -160,11 +160,11 @@ class BC(MARWIL):
 
             with self.metrics.log_time((TIMERS, LEARNER_UPDATE_TIMER)):
                 # Updating the policy.
+                # TODO (simon, sven): Check, if we should execute directly s.th. like
+                # update_from_iterator.
                 learner_results = self.learner_group.update_from_batch(batch)
-                # learner_results = self.learner_group.update_from_episodes(
-                #     episodes=episodes
-                # )
 
+                # Log training results.
                 self.metrics.merge_and_log_n_dicts(learner_results, key=LEARNER_RESULTS)
                 self.metrics.log_value(
                     NUM_ENV_STEPS_TRAINED_LIFETIME,
