@@ -602,6 +602,8 @@ class JobSupervisor:
 
             if isinstance(e, ActorDiedError):
                 failure_reason = f"Job executor actor is dead: {repr(e)}"
+            elif isinstance(e, RuntimeEnvSetupError):
+                failure_reason = f"Job executor actor failed to provision runtime env: {str(e)}"
             else:
                 failure_reason = (
                     f"Unexpected failure in supervisor monitoring loop: {repr(e)}"
