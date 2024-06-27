@@ -1,5 +1,6 @@
 from typing import Any
 
+import numpy as np
 import tree  # pip install dm_tree
 
 from ray.rllib.core.columns import Columns
@@ -158,9 +159,17 @@ class LSTMContainingRLModule(TorchRLModule):
     #  simplicity and to keep some generality). We might change even get rid of algo-
     #  specific RLModule subclasses altogether in the future and replace them
     #  by mere algo-specific APIs (w/o any actual implementations).
-    def _compute_values(self, batch, device):
-        obs = convert_to_torch_tensor(batch[Columns.OBS], device=device)
-        features = self._net(obs)
+    def _compute_values(self, batch):
+        obs = batch[Columns.OBS]
+        state_in = batch[Columns.STATE_IN]
+        h, c = state_in["h"], state_in["c"]
+        # Unsqueeze the layer dim (we only have 1 LSTM layer.
+        features, (h, c) = self._lstm(
+            obs.permute(1, 0, 2),  # we have to permute, b/c our LSTM is time-major
+            (h.unsqueeze(0), c.unsqueeze(0)),
+        )
+        # Push through our FC net.
+        features = self._fc_net(features)
         return self._values(features).squeeze(-1)
 
     def _compute_features_state_out_and_logits(self, batch):
@@ -172,8 +181,6 @@ class LSTMContainingRLModule(TorchRLModule):
             obs.permute(1, 0, 2),  # we have to permute, b/c our LSTM is time-major
             (h.unsqueeze(0), c.unsqueeze(0)),
         )
-        # Reshape our features from (B, T, f) to (BxT, f).
-        features = features.reshape((-1, features.shape[-1]))
         # Push through our FC net.
         features = self._fc_net(features)
         logits = self._logits(features)

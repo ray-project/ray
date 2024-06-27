@@ -24,6 +24,31 @@ class TinyAtariCNN(TorchRLModule):
     and n 1x1 filters, where n is the number of actions in the (discrete) action space.
     Simple reshaping (no flattening or extra linear layers necessary) lead to the
     action logits, which can directly be used inside a distribution or loss.
+
+        import numpy as np
+    import gymnasium as gym
+    from ray.rllib.core.rl_module.rl_module import RLModuleConfig
+
+    rl_module_config = RLModuleConfig(
+        observation_space=gym.spaces.Box(-1.0, 1.0, (42, 42, 4), np.float32),
+        action_space=gym.spaces.Discrete(4),
+    )
+    my_net = TinyAtariCNN(rl_module_config)
+
+    B = 10
+    w = 42
+    h = 42
+    c = 4
+    data = torch.from_numpy(
+        np.random.random_sample(size=(B, w, h, c)).astype(np.float32)
+    )
+    print(my_net.forward_inference({"obs": data}))
+    print(my_net.forward_exploration({"obs": data}))
+    print(my_net.forward_train({"obs": data}))
+
+    num_all_params = sum(int(np.prod(p.size())) for p in my_net.parameters())
+    print(f"num params = {num_all_params}")
+
     """
 
     @override(TorchRLModule)
@@ -124,8 +149,8 @@ class TinyAtariCNN(TorchRLModule):
     #  simplicity and to keep some generality). We might even get rid of algo-
     #  specific RLModule subclasses altogether in the future and replace them
     #  by mere algo-specific APIs (w/o any actual implementations).
-    def _compute_values(self, batch, device):
-        obs = convert_to_torch_tensor(batch[Columns.OBS], device=device)
+    def _compute_values(self, batch):
+        obs = batch[Columns.OBS]
         features = self._base_cnn_stack(obs.permute(0, 3, 1, 2))
         features = torch.squeeze(features, dim=[-1, -2])
         return self._values(features).squeeze(-1)
@@ -156,29 +181,3 @@ class TinyAtariCNN(TorchRLModule):
     @override(RLModule)
     def get_inference_action_dist_cls(self):
         return TorchCategorical
-
-
-if __name__ == "__main__":
-    import numpy as np
-    import gymnasium as gym
-    from ray.rllib.core.rl_module.rl_module import RLModuleConfig
-
-    rl_module_config = RLModuleConfig(
-        observation_space=gym.spaces.Box(-1.0, 1.0, (42, 42, 4), np.float32),
-        action_space=gym.spaces.Discrete(4),
-    )
-    my_net = TinyAtariCNN(rl_module_config)
-
-    B = 10
-    w = 42
-    h = 42
-    c = 4
-    data = torch.from_numpy(
-        np.random.random_sample(size=(B, w, h, c)).astype(np.float32)
-    )
-    print(my_net.forward_inference({"obs": data}))
-    print(my_net.forward_exploration({"obs": data}))
-    print(my_net.forward_train({"obs": data}))
-
-    num_all_params = sum(int(np.prod(p.size())) for p in my_net.parameters())
-    print(f"num params = {num_all_params}")

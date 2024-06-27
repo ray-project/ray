@@ -2,22 +2,24 @@
 
 This example:
     - demonstrates how you can subclass the TorchRLModule base class and set up your
-    own CNN-stack architecture by overriding the `setup()` method.
-    - how to override the 3 forward methods: `_forward_inference()`,
+    own LSTM-containing NN architecture by overriding the `setup()` method.
+    - shows how to override the 3 forward methods: `_forward_inference()`,
     `_forward_exploration()`, and `forward_train()` to implement your own custom forward
-    logic(s). You will also learn, when each of these 3 methods is called by RLlib or
-    the users of your RLModule.
+    logic(s), including how to handle STATE in- and outputs to and from these calls.
+    - explains when each of these 3 methods is called by RLlib or the users of your
+    RLModule.
     - shows how you then configure an RLlib Algorithm such that it uses your custom
     RLModule (instead of a default RLModule).
 
-We implement a tiny CNN stack here, the exact same one that is used by the old API
-stack as default CNN net. It comprises 4 convolutional layers, the last of which
-ends in a 1x1 filter size and the number of filters exactly matches the number of
-discrete actions (logits). This way, the (non-activated) output of the last layer only
-needs to be reshaped in order to receive the policy's logit outputs. No flattening
-or additional dense layer required.
+We implement a simple LSTM layer here, followed by a series of Linear layers.
+After the last Linear layer, we add fork of 2 Linear (non-activated) layers, one for the
+action logits and one for the value function output.
 
-The network is then used in a fast ALE/Pong-v5 experiment.
+We test the LSTM containing RLModule on the StatelessCartPole environment, a variant
+of CartPole that is non-Markovian (partially observable). Only an RNN-network can learn
+a decent policy in this environment due to the lack of any velocity information. By
+looking at one observation, one cannot know whether the cart is currently moving left or
+right and whether the pole is currently moving up or down).
 
 
 How to run this script
@@ -38,33 +40,23 @@ Results to expect
 -----------------
 You should see the following output (during the experiment) in your console:
 
-Number of trials: 1/1 (1 RUNNING)
-+---------------------+----------+----------------+--------+------------------+
-| Trial name          | status   | loc            |   iter |   total time (s) |
-|                     |          |                |        |                  |
-|---------------------+----------+----------------+--------+------------------+
-| PPO_env_82b44_00000 | RUNNING  | 127.0.0.1:9718 |      1 |          98.3585 |
-+---------------------+----------+----------------+--------+------------------+
-+------------------------+------------------------+------------------------+
-|   num_env_steps_sample |   num_env_steps_traine |   num_episodes_lifetim |
-|             d_lifetime |             d_lifetime |                      e |
-|------------------------+------------------------+------------------------|
-|                   4000 |                   4000 |                      4 |
-+------------------------+------------------------+------------------------+
 """
 import gymnasium as gym
 
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.env.wrappers.atari_wrappers import wrap_atari_for_new_api_stack
-from ray.rllib.examples.rl_modules.classes.tiny_atari_cnn_rlm import TinyAtariCNN
+from ray.rllib.examples.envs.classes.stateless_cartpole import StatelessCartPole
+from ray.rllib.examples.envs.classes.multi_agent import MultiAgentStatelessCartPole
+from ray.rllib.examples.rl_modules.classes.lstm_containing_rlm import (
+    LSTMContainingRLModule
+)
 from ray.rllib.utils.test_utils import (
     add_rllib_example_script_args,
     run_rllib_example_script_experiment,
 )
 from ray.tune.registry import get_trainable_cls, register_env
 
-parser = add_rllib_example_script_args(default_iters=100, default_timesteps=600000)
-parser.set_defaults(env="ALE/Pong-v5")
+parser = add_rllib_example_script_args()
 
 
 if __name__ == "__main__":
@@ -74,43 +66,30 @@ if __name__ == "__main__":
         args.enable_new_api_stack
     ), "Must set --enable-new-api-stack when running this script!"
 
-    register_env(
-        "env",
-        lambda cfg: wrap_atari_for_new_api_stack(
-            gym.make(args.env, **cfg),
-            dim=42,  # <- need images to be "tiny" for our custom model
-            framestack=4,
-        ),
-    )
+    if args.num_agents == 0:
+        register_env("env", lambda cfg: StatelessCartPole())
+    else:
+        register_env("env", lambda cfg: MultiAgentStatelessCartPole(cfg))
 
     base_config = (
         get_trainable_cls(args.algo)
         .get_default_config()
         .environment(
             env="env",
-            env_config=dict(
-                frameskip=1,
-                full_action_space=False,
-                repeat_action_probability=0.0,
-            ),
+            env_config={"num_agents": args.num_agents},
         )
         .rl_module(
             # Plug-in our custom RLModule class.
             rl_module_spec=SingleAgentRLModuleSpec(
-                module_class=TinyAtariCNN,
-                model_config_dict={"a": "b"},
+                module_class=LSTMContainingRLModule,
+                # Feel free to specify your own `model_config_dict` settings below.
+                # The `model_config_dict` defined here will be available inside your custom
+                # RLModule class through the `self.config.model_config_dict` property.
+                model_config_dict={
+                    "lstm_cell_size": 128,
+                    "dense_layers": [256, 256],
+                },
             ),
-            # Feel free to specify your own `model_config_dict` settings below.
-            # The `model_config_dict` defined here will be available inside your custom
-            # RLModule class through the `self.config.model_config_dict` property.
-            model_config_dict={
-                "conv_filters": [
-                    # num filters, kernel wxh, stride wxh, padding type
-                    [16, 4, 2, "same"],
-                    [32, 4, 2, "same"],
-                    [64, 4, 2, "same"],
-                ],
-            },
         )
     )
 
