@@ -32,6 +32,7 @@ steps:
       - ./ci/lint/lint.sh {{matrix}}
     matrix:
       - api_annotations
+      - api_policy_check core
       - api_policy_check data
 
   - label: ":lint-roller: lint: linkcheck"

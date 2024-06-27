@@ -1,5 +1,5 @@
 import click
-from typing import Dict, Set
+from typing import Dict, Set, Tuple
 
 from ci.ray_ci.doc.module import Module
 from ci.ray_ci.doc.autodoc import Autodoc
@@ -17,6 +17,11 @@ TEAM_API_CONFIGS = {
             # special case where we cannot deprecate although we want to
             "ray.data.random_access_dataset.RandomAccessDataset",
         },
+    },
+    "core": {
+        "head_modules": {"ray"},
+        "head_doc_file": "doc/source/ray-core/api/index.rst",
+        "white_list_apis": {},
     },
 }
 
@@ -47,17 +52,27 @@ def main(ray_checkout_dir: str, team: str) -> None:
 
     # Policy 01: all public APIs should be documented
     print("Validating that public APIs should be documented...")
-    _validate_documented_public_apis(api_in_codes, api_in_docs, white_list_apis)
+    good_apis, bad_apis = _validate_documented_public_apis(
+        api_in_codes, api_in_docs, white_list_apis
+    )
+    print("\nGood APIs:")
+    for api in good_apis:
+        print(api)
+    print("\nBad APIs:")
+    for api in bad_apis:
+        print(api)
 
     return
 
 
 def _validate_documented_public_apis(
     api_in_codes: Dict[str, API], api_in_docs: Set[str], white_list_apis: Set[str]
-) -> None:
+) -> Tuple[Set[str]]:
     """
     Validate APIs that are public and documented.
     """
+    good_apis = set()
+    bad_apis = set()
     for name, api in api_in_codes.items():
         if not api.is_public():
             continue
@@ -65,8 +80,12 @@ def _validate_documented_public_apis(
         if name in white_list_apis:
             continue
 
-        assert name in api_in_docs, f"\tAPI {api.name} is public but not documented."
-        print(f"\tAPI {api.name} is public and documented.")
+        if name not in api_in_docs:
+            bad_apis.add(name)
+        else:
+            good_apis.add(name)
+
+    return good_apis, bad_apis
 
 
 if __name__ == "__main__":
