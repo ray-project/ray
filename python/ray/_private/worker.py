@@ -1584,9 +1584,8 @@ def init(
     # processes belonging to the job.
     if logging_config or ray_constants.RAY_LOGGING_CONFIG_ENCODING:
         job_config.set_py_logging_config(
-            logging_config or LoggingConfig(
-                encoding=ray_constants.RAY_LOGGING_CONFIG_ENCODING
-            )
+            logging_config
+            or LoggingConfig(encoding=ray_constants.RAY_LOGGING_CONFIG_ENCODING)
         )
 
     redis_address, gcs_address = None, None
