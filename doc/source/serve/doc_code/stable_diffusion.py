@@ -72,7 +72,7 @@ if __name__ == "__main__":
         runtime_env={
             "pip": [
                 "diffusers==0.14.0",
-                "transformers==4.25.1",
+                "transformers==4.42.1",
                 "accelerate==0.17.1",
             ]
         }
