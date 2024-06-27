@@ -148,7 +148,7 @@ Schema
    :nosignatures:
    :toctree: doc/
 
-   ~dataset.Schema
+   Schema
 
 .. _block-api:
 
