@@ -5010,7 +5010,7 @@ class Schema:
         return self.base_schema.names
 
     @property
-    def types(self) -> List[Union[Type[object], "pyarrow.lib.DataType"]]:
+    def types(self) -> List[Union[type[object], "pyarrow.lib.DataType"]]:
         """Lists the types of this Dataset in Arrow format
 
         For non-Arrow compatible types, we return "object".
