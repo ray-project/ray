@@ -41,7 +41,7 @@ from ray.rllib.utils.metrics import (
 )
 from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
 from ray.rllib.utils.spaces.space_utils import unbatch
-from ray.rllib.utils.typing import EpisodeID, ModelWeights, ResultDict
+from ray.rllib.utils.typing import EpisodeID, ModelWeights, ModuleID, ResultDict
 from ray.tune.registry import ENV_CREATOR, _global_registry
 from ray.util.annotations import PublicAPI
 
@@ -63,7 +63,8 @@ class SingleAgentEnvRunner(EnvRunner):
         """
         super().__init__(config=config)
 
-        self.worker_index = kwargs.get("worker_index")
+        self.worker_index: int = kwargs.get("worker_index")
+        self.tune_trial_id: str = kwargs.get("tune_trial_id")
 
         # Create a MetricsLogger object for logging custom stats.
         self.metrics = MetricsLogger()
@@ -643,8 +644,8 @@ class SingleAgentEnvRunner(EnvRunner):
         self,
         components: Optional[Container[str]] = None,
         *,
+        module_ids: Optional[Container[ModuleID]] = None,
         inference_only: bool = True,
-        module_ids=None,
     ) -> Dict[str, Any]:
         components = force_list(
             components

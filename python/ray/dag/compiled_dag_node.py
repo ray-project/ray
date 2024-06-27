@@ -36,13 +36,6 @@ from ray.experimental.channel.torch_tensor_nccl_channel import (
 
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
-MAX_BUFFER_SIZE = int(100 * 1e6)  # 100MB
-
-# The maximum total memory that can be used to buffer DAG execution results.
-MAX_BUFFER_TOTAL_MEMORY = int(10 * 1e9)  # 10GB
-
-MAX_BUFFER_COUNT = MAX_BUFFER_TOTAL_MEMORY // MAX_BUFFER_SIZE
-
 logger = logging.getLogger(__name__)
 
 
@@ -182,7 +175,7 @@ def _exec_task(self, task: "ExecutableTask", idx: int) -> bool:
         resolved_inputs.append(task_input.resolve(res))
 
     try:
-        output_val = method(*resolved_inputs)
+        output_val = method(*resolved_inputs, **task.resolved_kwargs)
     except Exception as exc:
         output_val = _wrap_exception(exc)
 
@@ -215,6 +208,10 @@ class CompiledTask:
     @property
     def args(self) -> Tuple[Any]:
         return self.dag_node.get_args()
+
+    @property
+    def kwargs(self) -> Dict[str, Any]:
+        return self.dag_node.get_kwargs()
 
     @property
     def num_readers(self) -> int:
@@ -259,7 +256,7 @@ class DAGInputAdapter:
             return extract_arg
 
         if input_attr_node:
-            key = input_attr_node.get_other_args_to_resolve()["key"]
+            key = input_attr_node.key
         else:
             key = 0
         self._adapt_method = extractor(key)
@@ -316,6 +313,7 @@ class ExecutableTask:
         self,
         task: "CompiledTask",
         resolved_args: List[Any],
+        resolved_kwargs: Dict[str, Any],
     ):
         """
         Args:
@@ -324,6 +322,9 @@ class ExecutableTask:
                 not Channels will get passed through to the actor method.
                 If the argument is a channel, it will be replaced by the
                 value read from the channel before the method executes.
+            resolved_kwargs: The keyword arguments to the method. Currently, we
+                do not support binding kwargs to other DAG nodes, so the values
+                of the dictionary cannot be Channels.
         """
         self.method_name = task.dag_node.get_method_name()
         self.bind_index = task.dag_node._get_bind_index()
@@ -333,6 +334,7 @@ class ExecutableTask:
 
         self.input_channels: List[ChannelInterface] = []
         self.task_inputs: List[_ExecutableTaskInput] = []
+        self.resolved_kwargs: Dict[str, Any] = resolved_kwargs
 
         # Reverse map for input_channels: maps an input channel to
         # its index in input_channels.
@@ -359,6 +361,11 @@ class ExecutableTask:
             else:
                 task_input = _ExecutableTaskInput(arg, None)
             self.task_inputs.append(task_input)
+
+        # Currently DAGs do not support binding kwargs to other DAG nodes.
+        for val in self.resolved_kwargs.values():
+            assert not isinstance(val, ChannelInterface)
+            assert not isinstance(val, DAGInputAdapter)
 
 
 @DeveloperAPI
@@ -393,7 +400,7 @@ class CompiledDAG:
         self,
         buffer_size_bytes: Optional[int],
         enable_asyncio: bool = False,
-        async_max_queue_size: Optional[int] = None,
+        asyncio_max_queue_size: Optional[int] = None,
         max_buffered_results: Optional[int] = None,
     ):
         """
@@ -405,13 +412,13 @@ class CompiledDAG:
                 be running in an event loop and must use `execute_async` to
                 invoke the DAG. Otherwise, the caller should use `execute` to
                 invoke the DAG.
-            async_max_queue_size: Optional parameter to limit how many DAG
+            asyncio_max_queue_size: Optional parameter to limit how many DAG
                 inputs can be queued at a time. The actual number of concurrent
                 DAG invocations may be higher than this, if there are already
                 inputs being processed by the DAG executors. If used, the
                 caller is responsible for preventing deadlock, i.e. if the
                 input queue is full, another asyncio task is reading from the
-                DAG output.
+                DAG output. It is only used when enable_asyncio=True.
             max_buffered_results: The maximum number of execution results that
                 are allowed to be buffered. Setting a higher value allows more
                 DAGs to be executed before `ray.get()` must be called but also
@@ -423,10 +430,14 @@ class CompiledDAG:
         Returns:
             Channel: A wrapper around ray.ObjectRef.
         """
+        from ray.dag import DAGContext
+
+        ctx = DAGContext.get_current()
+
         self._dag_id = uuid.uuid4().hex
         self._buffer_size_bytes: Optional[int] = buffer_size_bytes
         if self._buffer_size_bytes is None:
-            self._buffer_size_bytes = MAX_BUFFER_SIZE
+            self._buffer_size_bytes = ctx.buffer_size_bytes
         self._default_type_hint: ChannelOutputType = SharedMemoryType(
             self._buffer_size_bytes
         )
@@ -438,11 +449,11 @@ class CompiledDAG:
 
         self._enable_asyncio: bool = enable_asyncio
         self._fut_queue = asyncio.Queue()
-        self._async_max_queue_size: Optional[int] = async_max_queue_size
-        # TODO(rui): consider unify it with async_max_queue_size
+        self._asyncio_max_queue_size: Optional[int] = asyncio_max_queue_size
+        # TODO(rui): consider unify it with asyncio_max_queue_size
         self._max_buffered_results: Optional[int] = max_buffered_results
         if self._max_buffered_results is None:
-            self._max_buffered_results = MAX_BUFFER_COUNT
+            self._max_buffered_results = ctx.max_buffered_results
         # Used to ensure that the future returned to the
         # caller corresponds to the correct DAG output. I.e.
         # order of futures added to fut_queue should match the
@@ -461,6 +472,10 @@ class CompiledDAG:
         self.input_task_idx: Optional[int] = None
         self.output_task_idx: Optional[int] = None
         self._has_single_output: bool = False
+        # Number of expected positional args and kwargs that may be passed to
+        # dag.execute.
+        self._input_num_positional_args: Optional[int] = None
+        self._input_kwargs: Tuple[str, ...] = None
         self.actor_task_count: Dict["ray._raylet.ActorID", int] = defaultdict(int)
 
         # Cached attributes that are set during compilation.
@@ -560,6 +575,14 @@ class CompiledDAG:
                 "Compiled DAGs currently require exactly one InputNode"
             )
 
+        # Whether the DAG binds directly to the InputNode(), versus binding to
+        # a positional arg or kwarg of the input. For example, a.foo.bind(inp)
+        # instead of a.foo.bind(inp[0]) or a.foo.bind(inp.key).
+        direct_input: Optional[bool] = None
+        # Collect the set of InputNode keys bound to DAG node args.
+        input_positional_args: Set[int] = set()
+        input_kwargs: Set[str] = set()
+
         # For each task node, set its upstream and downstream task nodes.
         # Also collect the set of tasks that produce torch.tensors.
         for node_idx, task in self.idx_to_task.items():
@@ -587,6 +610,13 @@ class CompiledDAG:
                         "Compiled DAGs can only bind methods to an actor "
                         "that is already created with Actor.remote()"
                     )
+
+                if dag_node.num_returns != 1:
+                    raise ValueError(
+                        "Compiled DAGs only supports actor methods with "
+                        "num_returns=1"
+                    )
+
                 self.actor_task_count[actor_handle._actor_id] += 1
 
                 if dag_node.type_hint.requires_nccl():
@@ -604,6 +634,13 @@ class CompiledDAG:
                 # with the default type hint for this DAG.
                 task.dag_node.with_type_hint(self._default_type_hint)
 
+            for kwarg, val in task.kwargs.items():
+                if isinstance(val, DAGNode):
+                    raise ValueError(
+                        "Compiled DAG currently does not support binding to "
+                        "other DAG nodes as kwargs"
+                    )
+
             for arg_idx, arg in enumerate(task.args):
                 if not isinstance(arg, DAGNode):
                     continue
@@ -614,10 +651,39 @@ class CompiledDAG:
                 if isinstance(task.dag_node, ClassMethodNode):
                     downstream_actor_handle = task.dag_node._get_actor_handle()
 
-                # If the upstream node is an InputAttributeNode, treat the
-                # DAG's input node as the actual upstream node
                 if isinstance(upstream_node.dag_node, InputAttributeNode):
+                    # Record all of the keys used to index the InputNode.
+                    # During execution, we will check that the user provides
+                    # the same args and kwargs.
+                    if isinstance(upstream_node.dag_node.key, int):
+                        input_positional_args.add(upstream_node.dag_node.key)
+                    elif isinstance(upstream_node.dag_node.key, str):
+                        input_kwargs.add(upstream_node.dag_node.key)
+                    else:
+                        raise ValueError(
+                            "InputNode() can only be indexed using int "
+                            "for positional args or str for kwargs."
+                        )
+
+                    if direct_input is not None and direct_input:
+                        raise ValueError(
+                            "All tasks must either use InputNode() "
+                            "directly, or they must index to specific args or "
+                            "kwargs."
+                        )
+                    direct_input = False
+
+                    # If the upstream node is an InputAttributeNode, treat the
+                    # DAG's input node as the actual upstream node
                     upstream_node = self.idx_to_task[self.input_task_idx]
+
+                elif isinstance(upstream_node.dag_node, InputNode):
+                    if direct_input is not None and not direct_input:
+                        raise ValueError(
+                            "All tasks must either use InputNode() directly, "
+                            "or they must index to specific args or kwargs."
+                        )
+                    direct_input = True
 
                 upstream_node.downstream_node_idxs[node_idx] = downstream_actor_handle
                 task.arg_type_hints.append(upstream_node.dag_node.type_hint)
@@ -658,6 +724,14 @@ class CompiledDAG:
             raise ValueError("Driver cannot participate in the NCCL group.")
         if nccl_actors and self._nccl_group_id is None:
             self._nccl_group_id = _init_nccl_group(nccl_actors)
+
+        if direct_input:
+            self._input_num_positional_args = 1
+        elif not input_positional_args:
+            self._input_num_positional_args = 0
+        else:
+            self._input_num_positional_args = max(input_positional_args) + 1
+        self._input_kwargs = tuple(input_kwargs)
 
     def _get_or_compile(
         self,
@@ -769,17 +843,6 @@ class CompiledDAG:
             for idx in task.downstream_node_idxs:
                 frontier.append(idx)
 
-        from ray.dag.constants import RAY_ADAG_ENABLE_DETECT_DEADLOCK
-
-        if RAY_ADAG_ENABLE_DETECT_DEADLOCK and not self._detect_deadlock():
-            raise ValueError(
-                "This DAG cannot be compiled because it will deadlock on NCCL "
-                "calls. If you believe this is a false positive, please disable "
-                "the graph verification by setting the environment variable "
-                "RAY_ADAG_ENABLE_DETECT_DEADLOCK to 0 and file an issue at "
-                "https://github.com/ray-project/ray/issues/new/."
-            )
-
         # Validate input channels for tasks that have not been visited
         for node_idx, task in self.idx_to_task.items():
             if (
@@ -798,6 +861,17 @@ class CompiledDAG:
                         "Compiled DAGs require each task to take a ray.dag.InputNode "
                         "or at least one other DAGNode as an input"
                     )
+
+        from ray.dag.constants import RAY_ADAG_ENABLE_DETECT_DEADLOCK
+
+        if RAY_ADAG_ENABLE_DETECT_DEADLOCK and not self._detect_deadlock():
+            raise ValueError(
+                "This DAG cannot be compiled because it will deadlock on NCCL "
+                "calls. If you believe this is a false positive, please disable "
+                "the graph verification by setting the environment variable "
+                "RAY_ADAG_ENABLE_DETECT_DEADLOCK to 0 and file an issue at "
+                "https://github.com/ray-project/ray/issues/new/."
+            )
 
         input_task = self.idx_to_task[self.input_task_idx]
         # Register custom serializers for inputs provided to dag.execute().
@@ -838,6 +912,7 @@ class CompiledDAG:
                 executable_task = ExecutableTask(
                     task,
                     resolved_args,
+                    task.kwargs,
                 )
                 executable_tasks.append(executable_task)
                 if worker_fn is None:
@@ -878,7 +953,7 @@ class CompiledDAG:
         self._monitor = self._monitor_failures()
         if self._enable_asyncio:
             self._dag_submitter = AwaitableBackgroundWriter(
-                self.dag_input_channel, self._async_max_queue_size
+                self.dag_input_channel, self._asyncio_max_queue_size
             )
             self._dag_output_fetcher = AwaitableBackgroundReader(
                 self.dag_output_channels,
@@ -1187,12 +1262,32 @@ class CompiledDAG:
 
         self._get_or_compile()
 
+        self._check_inputs(args, kwargs)
         inp = (args, kwargs)
         self._dag_submitter.write(inp)
 
         ref = CompiledDAGRef(self, self._execution_index)
         self._execution_index += 1
         return ref
+
+    def _check_inputs(self, args: Tuple[Any, ...], kwargs: Dict[str, Any]) -> None:
+        """
+        Helper method to check that the DAG args provided by the user during
+        execution are valid according to the defined DAG.
+        """
+        if len(args) != self._input_num_positional_args:
+            raise ValueError(
+                "dag.execute() or dag.execute_async() must be "
+                f"called with {self._input_num_positional_args} positional args, got "
+                f"{len(args)}"
+            )
+
+        for kwarg in self._input_kwargs:
+            if kwarg not in kwargs:
+                raise ValueError(
+                    "dag.execute() or dag.execute_async() "
+                    f"must be called with kwarg `{kwarg}`"
+                )
 
     async def execute_async(
         self,
@@ -1214,6 +1309,7 @@ class CompiledDAG:
             raise ValueError("Use execute if enable_asyncio=False")
 
         self._get_or_compile()
+        self._check_inputs(args, kwargs)
         async with self._dag_submission_lock:
             inp = (args, kwargs)
             await self._dag_submitter.write(inp)
@@ -1246,13 +1342,13 @@ def build_compiled_dag_from_ray_dag(
     dag: "ray.dag.DAGNode",
     buffer_size_bytes: Optional[int],
     enable_asyncio: bool = False,
-    async_max_queue_size: Optional[int] = None,
+    asyncio_max_queue_size: Optional[int] = None,
     max_buffered_results: Optional[int] = None,
 ) -> "CompiledDAG":
     compiled_dag = CompiledDAG(
         buffer_size_bytes,
         enable_asyncio,
-        async_max_queue_size,
+        asyncio_max_queue_size,
         max_buffered_results,
     )
 
