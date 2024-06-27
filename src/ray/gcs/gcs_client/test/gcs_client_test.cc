@@ -89,10 +89,6 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
     while (!gcs_server_->IsStarted()) {
       std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
-
-    // Create GCS client.
-    gcs::GcsClientOptions options("127.0.0.1:5397");
-    gcs_client_ = std::make_unique<gcs::GcsClient>(options);
     ReconnectClient();
   }
 
@@ -113,9 +109,17 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
     rpc::ResetServerCallExecutor();
   }
 
+  // Each GcsClient has its own const cluster_id, so to reconnect we re-create the client.
   void ReconnectClient() {
+    if (gcs_client_ != nullptr) {
+      gcs_client_->Disconnect();
+      gcs_client_.reset();
+    }
     ClusterID cluster_id = gcs_server_->GetClusterId();
-    RAY_CHECK_OK(gcs_client_->Connect(*client_io_service_, cluster_id));
+    gcs::GcsClientOptions options("127.0.0.1", gcs_server_->GetPort(), cluster_id);
+    gcs_client_ = std::make_unique<gcs::GcsClient>(options);
+
+    RAY_CHECK_OK(gcs_client_->Connect(*client_io_service_));
   }
 
   void StampContext(grpc::ClientContext &context) {
@@ -337,6 +341,7 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
     std::promise<bool> promise;
     std::vector<rpc::GcsNodeInfo> nodes;
     RAY_CHECK_OK(gcs_client_->Nodes().AsyncGetAll(
+        gcs::GetGcsTimeoutMs(),
         [&nodes, &promise](Status status, std::vector<rpc::GcsNodeInfo> &&result) {
           assert(!result.empty());
           nodes = std::move(result);
