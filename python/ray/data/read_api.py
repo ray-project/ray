@@ -627,6 +627,7 @@ def read_parquet(
     meta_provider: Optional[ParquetMetadataProvider] = None,
     partition_filter: Optional[PathPartitionFilter] = None,
     shuffle: Union[Literal["files"], None] = None,
+    seed: Optional[int] = None,
     include_paths: bool = False,
     file_extensions: Optional[List[str]] = None,
     concurrency: Optional[int] = None,
@@ -733,6 +734,7 @@ def read_parquet(
             with a custom callback to read only selected partitions of a dataset.
         shuffle: If setting to "files", randomly shuffle input files order before read.
             Defaults to not shuffle with ``None``.
+        seed: The seed for shuffle. Default to be ``None``.
         arrow_parquet_args: Other parquet read options to pass to PyArrow. For the full
             set of arguments, see the `PyArrow API <https://arrow.apache.org/docs/\
                 python/generated/pyarrow.dataset.Scanner.html\
@@ -774,6 +776,7 @@ def read_parquet(
         meta_provider=meta_provider,
         partition_filter=partition_filter,
         shuffle=shuffle,
+        seed = seed,
         include_paths=include_paths,
         file_extensions=file_extensions,
     )
