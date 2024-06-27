@@ -4,7 +4,7 @@ import unittest
 import gymnasium as gym
 
 import ray
-from ray import tune
+from ray import train, tune
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.env.env_runner import EnvRunner
@@ -49,6 +49,7 @@ class OnEnvironmentCreatedCallback(DefaultCallbacks):
     def on_environment_created(self, *, env_runner, env, env_context, **kwargs):
         assert isinstance(env_runner, EnvRunner)
         assert isinstance(env, gym.Env)
+        assert env_runner.tune_trial_id is not None
         # Create a vector-index-sum property per remote worker.
         if not hasattr(env_runner, "sum_sub_env_vector_indices"):
             env_runner.sum_sub_env_vector_indices = 0
@@ -57,7 +58,8 @@ class OnEnvironmentCreatedCallback(DefaultCallbacks):
         print(
             f"sub-env {env} created; "
             f"worker={env_runner.worker_index}; "
-            f"vector-idx={env_context.vector_index}"
+            f"vector-idx={env_context.vector_index}; "
+            f"tune-trial-id={env_runner.tune_trial_id}; "
         )
 
 
@@ -82,7 +84,7 @@ class OnEpisodeCreatedCallback(DefaultCallbacks):
 class TestCallbacks(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        tune.register_env("ma_cart", lambda _: MultiAgentCartPole({"num_agents": 2}))
+        tune.register_env("multi_cart", lambda _: MultiAgentCartPole({"num_agents": 2}))
         ray.init()
 
     @classmethod
@@ -115,7 +117,7 @@ class TestCallbacks(unittest.TestCase):
                     policies={"p0", "p1"},
                     policy_mapping_fn=lambda aid, *a, **kw: f"p{aid}",
                 )
-                config.environment("ma_cart")
+                config.environment("multi_cart")
             algo = config.build()
             callback_obj = algo.workers.local_worker()._callbacks
 
@@ -167,7 +169,7 @@ class TestCallbacks(unittest.TestCase):
                     policies={"p0", "p1"},
                     policy_mapping_fn=lambda aid, *a, **kw: f"p{aid}",
                 )
-                config.environment("ma_cart")
+                config.environment("multi_cart")
 
             algo = config.build()
             callback_obj = algo.workers.local_worker()._callbacks
@@ -195,7 +197,7 @@ class TestCallbacks(unittest.TestCase):
             algo.stop()
 
     def test_overriding_on_episode_created_throws_error_on_new_api_stack(self):
-        """Tests, whw"""
+        """Tests whether overriding `on_episode_created` raises error w/ SAEnvRunner."""
         config = (
             PPOConfig()
             .api_stack(
@@ -205,6 +207,26 @@ class TestCallbacks(unittest.TestCase):
             .callbacks(OnEpisodeCreatedCallback)
         )
         self.assertRaises(ValueError, lambda: config.validate())
+
+    def test_tune_trial_id_visible_in_callbacks(self):
+        config = (
+            PPOConfig()
+            .api_stack(
+                enable_rl_module_and_learner=True,
+                enable_env_runner_and_connector_v2=True,
+            )
+            .environment("multi_cart", env_config={"num_agents": 2})
+            .callbacks(OnEnvironmentCreatedCallback)
+            .multi_agent(
+                policies={"default_policy", "p1"},
+                policy_mapping_fn=lambda *a, **kw: "default_policy",
+            )
+        )
+        tune.Tuner(
+            trainable=config.algo_class,
+            param_space=config,
+            run_config=train.RunConfig(stop={"training_iteration": 1}),
+        ).fit()
 
 
 if __name__ == "__main__":

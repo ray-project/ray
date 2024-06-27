@@ -3153,15 +3153,6 @@ py_test(
 # subdirectory: rl_modules/
 # ....................................
 py_test(
-    name = "examples/rl_modules/custom_rl_module",
-    main = "examples/rl_modules/custom_rl_module.py",
-    tags = ["team:rllib", "examples"],
-    size = "medium",
-    srcs = ["examples/rl_modules/custom_rl_module.py"],
-    args = ["--enable-new-api-stack", "--stop-iters=3"],
-)
-
-py_test(
     name = "examples/rl_modules/action_masking_rlm",
     main = "examples/rl_modules/action_masking_rlm.py",
     tags = ["team:rllib", "examples"],
@@ -3177,6 +3168,22 @@ py_test(
     size = "medium",
     srcs = ["examples/rl_modules/autoregressive_actions_rlm.py"],
     args = ["--enable-new-api-stack"],
+)
+py_test(
+    name = "examples/rl_modules/custom_cnn_rl_module",
+    main = "examples/rl_modules/custom_cnn_rl_module.py",
+    tags = ["team:rllib", "examples"],
+    size = "medium",
+    srcs = ["examples/rl_modules/custom_cnn_rl_module.py"],
+    args = ["--enable-new-api-stack", "--stop-iters=3"],
+)
+py_test(
+    name = "examples/rl_modules/custom_lstm_rl_module",
+    main = "examples/rl_modules/custom_lstm_rl_module.py",
+    tags = ["team:rllib", "examples"],
+    size = "medium",
+    srcs = ["examples/rl_modules/custom_lstm_rl_module.py"],
+    args = ["--as-test", "--enable-new-api-stack"],
 )
 
 #@OldAPIStack @HybridAPIStack
