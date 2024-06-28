@@ -203,7 +203,7 @@ class TestRuntimeEnv:
             should_fail=True,
         )
         assert "Tailing logs until the job exits" in stdout
-        assert "runtime_env setup failed" in stdout
+        assert "Job executor actor failed to provision runtime env" in stdout
         assert "No matching distribution found for does-not-exist" in stdout
 
 
