@@ -31,6 +31,7 @@ class Module:
         """
         if module.__hash__ in self._visited:
             return
+
         self._visited.add(module.__hash__)
 
         if not self._is_valid_child(module):
