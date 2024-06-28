@@ -1,6 +1,5 @@
 import sys
 import pytest
-import importlib
 
 from ci.ray_ci.doc.module import Module
 from ci.ray_ci.doc.api import AnnotationType, CodeType
