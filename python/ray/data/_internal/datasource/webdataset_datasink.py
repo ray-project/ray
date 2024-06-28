@@ -15,7 +15,7 @@ from ray.data.block import BlockAccessor
 from ray.data.datasource.file_datasink import BlockBasedFileDatasink
 
 
-class _WebDatasetDatasink(BlockBasedFileDatasink):
+class WebDatasetDatasink(BlockBasedFileDatasink):
     def __init__(
         self,
         path: str,
