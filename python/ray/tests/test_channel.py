@@ -884,8 +884,9 @@ def test_payload_too_large(ray_start_cluster):
     with pytest.raises(
         ValueError,
         match=re.escape(
-            "The object written to the channel must have a size less than or equal to "
-            "the max gRPC payload size (471859200 bytes)."
+            "The reader and writer are on different nodes, so the object written to "
+            "the channel must have a size less than or equal to the max gRPC payload "
+            "size (471859200 bytes)."
         ),
     ):
         ray_channel.Channel(None, [a], 1024 * 1024 * 512)
@@ -935,8 +936,9 @@ def test_payload_resize_too_large(ray_start_cluster):
     with pytest.raises(
         ValueError,
         match=re.escape(
-            "The object written to the channel must have a size less than or equal to "
-            "the max gRPC payload size (471859200 bytes)."
+            "The reader and writer are on different nodes, so the object written to "
+            "the channel must have a size less than or equal to the max gRPC payload "
+            "size (471859200 bytes)."
         ),
     ):
         chan.write(b"x" * (1024 * 1024 * 512))

@@ -300,8 +300,9 @@ class Channel(ChannelInterface):
 
             if typ.buffer_size_bytes > GRPC_MAX_PAYLOAD:
                 raise ValueError(
-                    "The object written to the channel must have a size less than or "
-                    f"equal to the max gRPC payload size ({GRPC_MAX_PAYLOAD} bytes)."
+                    "The reader and writer are on different nodes, so the object "
+                    "written to the channel must have a size less than or equal to "
+                    f"the max gRPC payload size ({GRPC_MAX_PAYLOAD} bytes)."
                 )
             self._num_readers = 1
 
@@ -408,8 +409,9 @@ class Channel(ChannelInterface):
 
         if size > GRPC_MAX_PAYLOAD and self.is_remote():
             raise ValueError(
-                "The object written to the channel must have a size less than or equal "
-                f"to the max gRPC payload size ({GRPC_MAX_PAYLOAD} bytes)."
+                "The reader and writer are on different nodes, so the object written "
+                "to the channel must have a size less than or equal to the max gRPC "
+                f"payload size ({GRPC_MAX_PAYLOAD} bytes)."
             )
         if size > self._typ.buffer_size_bytes:
             # Now make the channel backing store larger.
