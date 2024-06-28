@@ -49,7 +49,6 @@ from ray.data.datasource.sql_datasink import _SQLDatasink
 from ray.data.datasource.sql_datasource import Connection, SQLDatasource
 from ray.data.datasource.text_datasource import TextDatasource
 from ray.data.datasource.tfrecords_datasink import _TFRecordDatasink
-from ray.data.datasource.tfrecords_datasource import TFRecordDatasource
 from ray.data.datasource.torch_datasource import TorchDatasource
 from ray.data.datasource.webdataset_datasink import _WebDatasetDatasink
 from ray.data.datasource.webdataset_datasource import WebDatasetDatasource
@@ -100,7 +99,6 @@ __all__ = [
     "RowBasedFileDatasink",
     "TextDatasource",
     "_TFRecordDatasink",
-    "TFRecordDatasource",
     "TorchDatasource",
     "_WebDatasetDatasink",
     "WebDatasetDatasource",
