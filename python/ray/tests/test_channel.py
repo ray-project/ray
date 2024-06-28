@@ -1,6 +1,7 @@
 # coding: utf-8
 import logging
 import os
+import re
 import sys
 import time
 import traceback
@@ -845,26 +846,98 @@ def test_put_error(ray_start_cluster):
     sys.platform != "linux" and sys.platform != "darwin",
     reason="Requires Linux or Mac.",
 )
-def test_payload_too_large(ray_start_regular):
+def test_payload_too_large(ray_start_cluster):
+    cluster = ray_start_cluster
+    # This node is for the driver.
+    cluster.add_node(num_cpus=1)
+    # This node is for the reader.
+    cluster.add_node(num_cpus=1)
+    ray.init(address=cluster.address)
+
+    @ray.remote(num_cpus=1)
+    class Actor:
+        def get_node_id(self) -> "ray.NodeID":
+            return ray.get_runtime_context().get_node_id()
+
+    @ray.remote(num_cpus=1)
+    def get_node_id() -> "ray.NodeID":
+        time.sleep(1)
+        return ray.get_runtime_context().get_node_id()
+
+    nodes = ray.get([get_node_id.options(num_cpus=1).remote() for _ in range(2)])
+    # We want to check that there are two nodes. Thus, we convert `nodes` to a set and
+    # then back to a list to remove duplicates. Then we check that the length of `nodes`
+    # is 2.
+    nodes = list(set(nodes))
+    assert len(nodes) == 2
+
+    def create_actor(node):
+        return Actor.options(
+            scheduling_strategy=NodeAffinitySchedulingStrategy(node, soft=False)
+        ).remote()
+
+    driver_node = ray.get_runtime_context().get_node_id()
+    actor_node = nodes[0] if nodes[0] != driver_node else nodes[1]
+    assert driver_node != actor_node
+    a = create_actor(actor_node)
+
     with pytest.raises(
         ValueError,
-        match="typ.buffer_size_bytes must be at least MIN_BUFFER_SIZE (471859200 "
-        "bytes)",
+        match=re.escape(
+            "The object written to the channel must have a size less than or equal to "
+            "the max gRPC payload size (471859200 bytes)."
+        ),
     ):
-        ray_channel.Channel(None, [create_driver_actor()], 1024 * 1024 * 512)
+        ray_channel.Channel(None, [a], 1024 * 1024 * 512)
 
 
 @pytest.mark.skipif(
     sys.platform != "linux" and sys.platform != "darwin",
     reason="Requires Linux or Mac.",
 )
-def test_payload_resize_too_large(ray_start_regular):
-    chan = ray_channel.Channel(None, [create_driver_actor()], 1000)
+def test_payload_resize_too_large(ray_start_cluster):
+    cluster = ray_start_cluster
+    # This node is for the driver.
+    cluster.add_node(num_cpus=1)
+    # This node is for the reader.
+    cluster.add_node(num_cpus=1)
+    ray.init(address=cluster.address)
+
+    @ray.remote(num_cpus=1)
+    class Actor:
+        def get_node_id(self) -> "ray.NodeID":
+            return ray.get_runtime_context().get_node_id()
+
+    @ray.remote(num_cpus=1)
+    def get_node_id() -> "ray.NodeID":
+        time.sleep(1)
+        return ray.get_runtime_context().get_node_id()
+
+    nodes = ray.get([get_node_id.options(num_cpus=1).remote() for _ in range(2)])
+    # We want to check that there are two nodes. Thus, we convert `nodes` to a set and
+    # then back to a list to remove duplicates. Then we check that the length of `nodes`
+    # is 2.
+    nodes = list(set(nodes))
+    assert len(nodes) == 2
+
+    def create_actor(node):
+        return Actor.options(
+            scheduling_strategy=NodeAffinitySchedulingStrategy(node, soft=False)
+        ).remote()
+
+    driver_node = ray.get_runtime_context().get_node_id()
+    actor_node = nodes[0] if nodes[0] != driver_node else nodes[1]
+    assert driver_node != actor_node
+    a = create_actor(actor_node)
+
+    chan = ray_channel.Channel(None, [a], 1000)
 
     with pytest.raises(
         ValueError,
-        match="typ.buffer_size_bytes must be at least MIN_BUFFER_SIZE (471859200 "
-        "bytes)",
+        match=re.escape(
+            "The object written to the channel must have a size less than or equal to "
+            "the max gRPC payload size (471859200 bytes)."
+        ),
     ):
         chan.write(b"x" * (1024 * 1024 * 512))
 
