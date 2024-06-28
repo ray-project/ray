@@ -1,6 +1,4 @@
 from ray.data._internal.datasource.sql_datasource import Connection
-from ray.data._internal.datasource.bigquery_datasink import BigQueryDatasink
-from ray.data._internal.datasource.csv_datasink import CSVDatasink
 from ray.data.datasource.datasink import Datasink, DummyOutputDatasink
 from ray.data.datasource.datasource import (
     Datasource,
@@ -23,11 +21,6 @@ from ray.data.datasource.file_meta_provider import (
     FileMetadataProvider,
 )
 from ray.data.datasource.filename_provider import FilenameProvider
-from ray.data._internal.datasource.image_datasink import ImageDatasink
-from ray.data._internal.datasource.json_datasink import JSONDatasink
-from ray.data._internal.datasource.mongo_datasink import MongoDatasink
-from ray.data._internal.datasource.numpy_datasink import NumpyDatasink
-from ray.data._internal.datasource.parquet_datasink import ParquetDatasink
 from ray.data.datasource.parquet_meta_provider import ParquetMetadataProvider
 from ray.data.datasource.partitioning import (
     Partitioning,
@@ -35,9 +28,6 @@ from ray.data.datasource.partitioning import (
     PathPartitionFilter,
     PathPartitionParser,
 )
-from ray.data._internal.datasource.sql_datasink import SQLDatasink
-from ray.data._internal.datasource.tfrecords_datasink import TFRecordDatasink
-from ray.data._internal.datasource.webdataset_datasink import WebDatasetDatasink
 from ray.data.datasource.tfrecords_datasource import TFRecordDatasource
 
 # Note: HuggingFaceDatasource should NOT be imported here, because

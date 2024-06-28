@@ -13,13 +13,13 @@ import pytest
 
 import ray
 from ray.data._internal.block_builder import BlockBuilder
+from ray.data._internal.datasource.csv_datasink import CSVDatasink
 from ray.data._internal.datasource.csv_datasource import CSVDatasource
 from ray.data._internal.datasource.range_datasource import RangeDatasource
 from ray.data._internal.util import _check_pyarrow_version
 from ray.data.block import BlockAccessor, BlockMetadata
 from ray.data.context import DataContext
 from ray.data.dataset import Dataset, MaterializedDataset
-from ray.data._internal.datasource.csv_datasink import CSVDatasink
 from ray.data.datasource.datasource import Datasource, ReadTask
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.conftest import (

@@ -8,6 +8,7 @@ import pyarrow as pa
 import pytest
 
 import ray
+from ray.data._internal.datasource.parquet_datasink import ParquetDatasink
 from ray.data._internal.execution.interfaces import ExecutionOptions
 from ray.data._internal.execution.operators.base_physical_operator import (
     AllToAllOperator,
@@ -57,7 +58,6 @@ from ray.data._internal.planner.planner import Planner
 from ray.data._internal.stats import DatasetStats
 from ray.data.aggregate import Count
 from ray.data.context import DataContext
-from ray.data._internal.datasource.parquet_datasink import ParquetDatasink
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.test_util import get_parquet_read_logical_op
 from ray.data.tests.util import column_udf, extract_values, named_values

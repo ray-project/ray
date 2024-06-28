@@ -29,6 +29,16 @@ from ray._private.thirdparty.tabulate.tabulate import tabulate
 from ray._private.usage import usage_lib
 from ray.air.util.tensor_extensions.utils import _create_possibly_ragged_ndarray
 from ray.data._internal.compute import ComputeStrategy
+from ray.data._internal.datasource.bigquery_datasink import BigQueryDatasink
+from ray.data._internal.datasource.csv_datasink import CSVDatasink
+from ray.data._internal.datasource.image_datasink import ImageDatasink
+from ray.data._internal.datasource.json_datasink import JSONDatasink
+from ray.data._internal.datasource.mongo_datasink import MongoDatasink
+from ray.data._internal.datasource.numpy_datasink import NumpyDatasink
+from ray.data._internal.datasource.parquet_datasink import ParquetDatasink
+from ray.data._internal.datasource.sql_datasink import SQLDatasink
+from ray.data._internal.datasource.tfrecords_datasink import TFRecordDatasink
+from ray.data._internal.datasource.webdataset_datasink import WebDatasetDatasink
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.equalize import _equalize
 from ray.data._internal.execution.interfaces import RefBundle
@@ -74,22 +84,7 @@ from ray.data.block import (
     _apply_batch_size,
 )
 from ray.data.context import DataContext
-from ray.data._internal.datasource.image_datasink import ImageDatasink
-from ray.data._internal.datasource.json_datasink import JSONDatasink
-from ray.data._internal.datasource.mongo_datasink import MongoDatasink
-from ray.data._internal.datasource.numpy_datasink import NumpyDatasink
-from ray.data._internal.datasource.parquet_datasink import ParquetDatasink
-from ray.data._internal.datasource.sql_datasink import SQLDatasink
-from ray.data._internal.datasource.tfrecords_datasink import TFRecordDatasink
-from ray.data._internal.datasource.webdataset_datasink import WebDatasetDatasink
-from ray.data._internal.datasource.csv_datasink import CSVDatasink
-from ray.data._internal.bigquery_datasink import BigQueryDatasink
-
-from ray.data.datasource import (
-    Connection,
-    Datasink,
-    FilenameProvider,
-)
+from ray.data.datasource import Connection, Datasink, FilenameProvider
 from ray.data.iterator import DataIterator
 from ray.data.random_access_dataset import RandomAccessDataset
 from ray.types import ObjectRef
@@ -3409,7 +3404,7 @@ class Dataset:
             ValueError: if ``database`` doesn't exist.
             ValueError: if ``collection`` doesn't exist.
         """
-        datasink = _MongoDatasink(
+        datasink = MongoDatasink(
             uri=uri,
             database=database,
             collection=collection,
