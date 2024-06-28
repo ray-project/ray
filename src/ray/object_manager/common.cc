@@ -75,26 +75,24 @@ Status PlasmaObjectHeader::CheckHasError() const {
 #if defined(__APPLE__) || defined(__linux__)
 
 Status PlasmaObjectHeader::TryToAcquireSemaphore(
-    sem_t *sem, std::chrono::steady_clock::time_point *timeout_point) const {
+    sem_t *sem,
+    const std::unique_ptr<std::chrono::steady_clock::time_point> &timeout_point) const {
   // Check `has_error` first to avoid blocking forever on the semaphore.
   RAY_RETURN_NOT_OK(CheckHasError());
-  auto now = std::chrono::steady_clock::now();
 
-  if (timeout_point == nullptr) {
+  if (!timeout_point) {
     RAY_CHECK_EQ(sem_wait(sem), 0);
-  } else if (now >= *timeout_point) {
-    if (sem_trywait(sem) != 0) {
-      return Status::ChannelTimeoutError("Timed out acquiring semaphore.");
-    }
   } else {
     bool got_sem = false;
-    // macOS does not support sem_timedwait, so we implement a unified solution here.
-    while (std::chrono::steady_clock::now() < *timeout_point) {
+    // try to acquire the semaphore at least once even if the timeout_point is passed
+    do {
+      // macOS does not support sem_timedwait, so we implement a unified,
+      // spinning-based solution here
       if (sem_trywait(sem) == 0) {
         got_sem = true;
         break;
       }
-    }
+    } while (std::chrono::steady_clock::now() < *timeout_point);
     if (!got_sem) {
       return Status::ChannelTimeoutError("Timed out waiting for semaphore.");
     }
@@ -131,7 +129,7 @@ Status PlasmaObjectHeader::WriteAcquire(
     uint64_t write_data_size,
     uint64_t write_metadata_size,
     int64_t write_num_readers,
-    std::chrono::steady_clock::time_point *timeout_point) {
+    const std::unique_ptr<std::chrono::steady_clock::time_point> &timeout_point) {
   RAY_CHECK(sem.object_sem);
   RAY_CHECK(sem.header_sem);
 
@@ -167,7 +165,7 @@ Status PlasmaObjectHeader::ReadAcquire(
     Semaphores &sem,
     int64_t version_to_read,
     int64_t &version_read,
-    std::chrono::steady_clock::time_point *timeout_point) {
+    const std::unique_ptr<std::chrono::steady_clock::time_point> &timeout_point) {
   RAY_CHECK(sem.header_sem);
 
   RAY_RETURN_NOT_OK(TryToAcquireSemaphore(sem.header_sem, timeout_point));
@@ -177,7 +175,8 @@ Status PlasmaObjectHeader::ReadAcquire(
   while (version < version_to_read || !is_sealed) {
     RAY_CHECK_EQ(sem_post(sem.header_sem), 0);
     sched_yield();
-    if (timeout_point != nullptr && std::chrono::steady_clock::now() >= *timeout_point) {
+    // We need to get the desired version before timeout
+    if (timeout_point && std::chrono::steady_clock::now() >= *timeout_point) {
       return Status::ChannelTimeoutError(
           "Timed out waiting for object available to read.");
     }
@@ -235,16 +234,19 @@ Status PlasmaObjectHeader::ReadRelease(Semaphores &sem, int64_t read_version) {
 #else  // defined(__APPLE__) || defined(__linux__)
 
 Status PlasmaObjectHeader::TryToAcquireSemaphore(
-    sem_t *sem, std::chrono::steady_clock::time_point *timeout_point) const {
+    sem_t *sem,
+    const std::unique_ptr<std::chrono::steady_clock::time_point> &timeout_point) const {
   return Status::NotImplemented("Not supported on Windows.");
 }
 
 void PlasmaObjectHeader::SetErrorUnlocked(Semaphores &sem) {}
 
-Status PlasmaObjectHeader::WriteAcquire(Semaphores &sem,
-                                        uint64_t write_data_size,
-                                        uint64_t write_metadata_size,
-                                        int64_t write_num_readers) {
+Status PlasmaObjectHeader::WriteAcquire(
+    Semaphores &sem,
+    uint64_t write_data_size,
+    uint64_t write_metadata_size,
+    int64_t write_num_readers,
+    const std::unique_ptr<std::chrono::steady_clock::time_point> &timeout_point) {
   return Status::NotImplemented("Not supported on Windows.");
 }
 
@@ -252,9 +254,11 @@ Status PlasmaObjectHeader::WriteRelease(Semaphores &sem) {
   return Status::NotImplemented("Not supported on Windows.");
 }
 
-Status PlasmaObjectHeader::ReadAcquire(Semaphores &sem,
-                                       int64_t version_to_read,
-                                       int64_t &version_read) {
+Status PlasmaObjectHeader::ReadAcquire(
+    Semaphores &sem,
+    int64_t version_to_read,
+    int64_t &version_read,
+    const std::unique_ptr<std::chrono::steady_clock::time_point> &timeout_point) {
   return Status::NotImplemented("Not supported on Windows.");
 }
 

@@ -234,16 +234,9 @@ Status MutableObjectManager::WriteAcquire(const ObjectID &object_id,
   RAY_RETURN_NOT_OK(object->header->CheckHasError());
   RAY_CHECK(!channel->written) << "You must call WriteRelease() before WriteAcquire()";
 
-  auto now = std::chrono::steady_clock::now();
-  auto timeout_duration = std::chrono::milliseconds(timeout_ms);
-  auto timeout_point = now + timeout_duration;
-  std::chrono::steady_clock::time_point *timeout_point_ptr = nullptr;
-  if (timeout_ms != -1) {
-    RAY_CHECK_GE(timeout_ms, 0);
-    timeout_point_ptr = &timeout_point;
-  }
+  auto timeout_point = ToTimeoutPoint(timeout_ms);
   RAY_RETURN_NOT_OK(object->header->WriteAcquire(
-      sem, data_size, metadata_size, num_readers, timeout_point_ptr));
+      sem, data_size, metadata_size, num_readers, timeout_point));
   data = SharedMemoryBuffer::Slice(object->buffer, 0, data_size);
   if (metadata) {
     // Copy the metadata to the buffer.
@@ -299,15 +292,8 @@ Status MutableObjectManager::ReadAcquire(const ObjectID &object_id,
   // Check whether the channel has an error set before checking that we are the only
   // reader. If the channel is already closed, then it's OK to ReadAcquire and
   // ReadRelease in any order.
-  auto now = std::chrono::steady_clock::now();
-  auto timeout_duration = std::chrono::milliseconds(timeout_ms);
-  auto timeout_point = now + timeout_duration;
-  std::chrono::steady_clock::time_point *timeout_point_ptr = nullptr;
-  if (timeout_ms != -1) {
-    RAY_CHECK_GE(timeout_ms, 0);
-    timeout_point_ptr = &timeout_point;
-  }
 
+  auto timeout_point = ToTimeoutPoint(timeout_ms);
   bool locked = false;
   bool expired = false;
   do {
@@ -315,7 +301,7 @@ Status MutableObjectManager::ReadAcquire(const ObjectID &object_id,
     // The channel is still open. This lock ensures that there is only one reader
     // at a time. The lock is released in `ReadRelease()`.
     locked = channel->lock->try_lock();
-    expired = timeout_point_ptr && std::chrono::steady_clock::now() >= *timeout_point_ptr;
+    expired = timeout_point && std::chrono::steady_clock::now() >= *timeout_point;
   } while (!locked && !expired);
   if (!locked) {
     // If timeout_ms == 0, we want to try once to get the lock,
@@ -326,7 +312,7 @@ Status MutableObjectManager::ReadAcquire(const ObjectID &object_id,
   channel->reading = true;
   int64_t version_read = 0;
   Status s = object->header->ReadAcquire(
-      sem, channel->next_version_to_read, version_read, timeout_point_ptr);
+      sem, channel->next_version_to_read, version_read, timeout_point);
   if (!s.ok()) {
     RAY_LOG(DEBUG) << "ReadAcquire error was set, returning " << object_id;
     // Failed because the error bit was set on the mutable object.
@@ -456,6 +442,18 @@ Status MutableObjectManager::SetErrorAll() {
   return ret;
 }
 
+std::unique_ptr<std::chrono::steady_clock::time_point>
+MutableObjectManager::ToTimeoutPoint(int64_t timeout_ms) {
+  if (timeout_ms == -1) {
+    return nullptr;
+  }
+  auto now = std::chrono::steady_clock::now();
+  auto timeout_duration = std::chrono::milliseconds(timeout_ms);
+  auto timeout_point =
+      std::make_unique<std::chrono::steady_clock::time_point>(now + timeout_duration);
+  return timeout_point;
+}
+
 #else  // defined(__APPLE__) || defined(__linux__)
 
 MutableObjectManager::~MutableObjectManager() {}
@@ -524,6 +522,11 @@ Status MutableObjectManager::SetErrorInternal(const ObjectID &object_id) {
 
 Status MutableObjectManager::SetErrorAll() {
   return Status::NotImplemented("Not supported on Windows.");
+}
+
+std::unique_ptr<std::chrono::steady_clock::time_point>
+MutableObjectManager::ToTimeoutPoint(int64_t timeout_ms) {
+  return nullptr;
 }
 
 #endif

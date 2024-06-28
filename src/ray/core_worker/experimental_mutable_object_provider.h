@@ -104,7 +104,7 @@ class MutableObjectProvider {
                       int64_t metadata_size,
                       int64_t num_readers,
                       std::shared_ptr<Buffer> &data,
-                      int64_t expiration_ms = -1);
+                      int64_t timeout_ms = -1);
 
   /// Releases an acquired write lock on the object, allowing readers to read.
   /// This is the equivalent of "Seal" for normal objects.

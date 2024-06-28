@@ -25,8 +25,14 @@ from ray._private.utils import (
 
 logger = logging.getLogger(__name__)
 
-if sys.platform != "linux" and sys.platform != "darwin":
-    pytest.skip("Skipping, requires Linux or Mac.", allow_module_level=True)
+
+pytestmark = [
+    pytest.mark.skipif(
+        os.name != "posix",
+        reason="Accelerated DAGs only support running on POSIX system.",
+    ),
+    pytest.mark.timeout(800),
+]
 
 
 @ray.remote
@@ -466,38 +472,30 @@ def test_execution_timeout(ray_start_regular):
     with InputNode() as inp:
         dag = a.inc.bind(inp)
 
-    compiled_dag = dag.experimental_compile(execution_timeout=3)
+    compiled_dag = dag.experimental_compile(execution_timeout=2)
     refs = []
     timed_out = False
+    epsilon = 0.1  # Allow for some slack in the timeout checking
     for i in range(5):
         try:
+            start_time = time.monotonic()
             ref = compiled_dag.execute(1)
             # Hold the refs to avoid get() being called on the ref
-            # when it goes out of scope
+            # in `__del__()` when it goes out of scope
             refs.append(ref)
         except RayChannelTimeoutError:
+            duration = time.monotonic() - start_time
+            assert duration > 2 - epsilon
+            assert duration < 2 + epsilon
             # The first 3 tasks should complete, and the 4th one
             # should block then time out because the max possible
-            # concurrent executions for the DAG is 3.
+            # concurrent executions for the DAG is 3. See the
+            # following diagram:
+            # driver -(3)-> a.inc (2) -(1)-> driver
             assert i == 3
             timed_out = True
             break
     assert timed_out
-
-    compiled_dag.teardown()
-
-
-def test_execution_with_tiny_timeout(ray_start_regular):
-    a = Actor.remote(0)
-    with InputNode() as inp:
-        dag = a.inc.bind(inp)
-
-    compiled_dag = dag.experimental_compile(execution_timeout=0.001)  # 1ms
-    for i in range(5):
-        # Test this would not raise timeout exception.
-        ref = compiled_dag.execute(1)
-        result = ray.get(ref)
-        assert result == i + 1
 
     compiled_dag.teardown()
 
@@ -509,8 +507,40 @@ def test_get_timeout(ray_start_regular):
 
     compiled_dag = dag.experimental_compile()
     ref = compiled_dag.execute(10)
-    with pytest.raises(RayChannelTimeoutError):
+
+    timed_out = False
+    epsilon = 0.1  # Allow for some slack in the timeout checking
+    try:
+        start_time = time.monotonic()
         ray.get(ref, timeout=3)
+    except RayChannelTimeoutError:
+        duration = time.monotonic() - start_time
+        assert duration > 3 - epsilon
+        assert duration < 3 + epsilon
+        timed_out = True
+    assert timed_out
+
+    compiled_dag.teardown()
+
+
+def test_buffered_get_timeout(ray_start_regular):
+    a = Actor.remote(0)
+    with InputNode() as inp:
+        dag = a.sleep.bind(inp)
+
+    compiled_dag = dag.experimental_compile()
+    refs = []
+    for i in range(3):
+        # sleeps 1, 2, 3 seconds, respectively
+        ref = compiled_dag.execute(i + 1)
+        refs.append(ref)
+
+    with pytest.raises(RayChannelTimeoutError):
+        # Since the first two sleep() tasks need to complete before
+        # the last one, the total time needed is 1 + 2 + 3 = 6 seconds,
+        # therefore with a timeout of 3.5 seconds, an exception will
+        # be raised.
+        ray.get(refs[-1], timeout=3.5)
 
     compiled_dag.teardown()
 
@@ -524,6 +554,7 @@ def test_get_with_zero_timeout(ray_start_regular):
     ref = compiled_dag.execute(1)
     # Give enough time for DAG execution result to be ready
     time.sleep(1)
+    # Use timeout=0 to either get result immediately or raise an exception
     result = ray.get(ref, timeout=0)
     assert result == 1
 

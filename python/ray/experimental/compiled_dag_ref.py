@@ -5,9 +5,6 @@ import ray
 from ray.exceptions import RayTaskError
 from ray.util.annotations import PublicAPI
 
-DEFAULT_ADAG_PUT_TIMEOUT_S = 10
-DEFAULT_ADAG_GET_TIMEOUT_S = 10
-
 
 def _process_return_vals(return_vals: List[Any], return_single_output: bool):
     """
@@ -80,7 +77,7 @@ class CompiledDAGRef:
         if not self._ray_get_called:
             self.get()
 
-    def get(self, timeout: Optional[float] = DEFAULT_ADAG_GET_TIMEOUT_S):
+    def get(self, timeout: Optional[float] = None):
         if self._ray_get_called:
             raise ValueError(
                 "ray.get() can only be called once "

@@ -840,7 +840,7 @@ class RayChannelError(RaySystemError):
 
 @PublicAPI(stability="alpha")
 class RayChannelTimeoutError(RayChannelError, TimeoutError):
-    """Raised when the channel operation times out."""
+    """Raised when the accelerated DAG channel operation times out."""
 
     pass
 
@@ -871,4 +871,5 @@ RAY_EXCEPTION_TYPES = [
     ActorUnschedulableError,
     ActorUnavailableError,
     RayChannelError,
+    RayChannelTimeoutError,
 ]

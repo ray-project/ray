@@ -12,7 +12,6 @@ import ray
 from ray.exceptions import RayTaskError, RayChannelError
 from ray.util.annotations import PublicAPI
 from ray.experimental.compiled_dag_ref import (
-    DEFAULT_ADAG_PUT_TIMEOUT_S,
     CompiledDAGRef,
     CompiledDAGFuture,
     _process_return_vals,
@@ -417,7 +416,7 @@ class CompiledDAG:
 
     def __init__(
         self,
-        execution_timeout: Optional[float] = DEFAULT_ADAG_PUT_TIMEOUT_S,
+        execution_timeout: Optional[float] = None,
         buffer_size_bytes: Optional[int] = None,
         enable_asyncio: bool = False,
         asyncio_max_queue_size: Optional[int] = None,
@@ -426,6 +425,9 @@ class CompiledDAG:
         """
         Args:
             execution_timeout: The maximum time in seconds to wait for execute() calls.
+                None means using default timeout (DAGContext.execution_timeout),
+                0 means immediate timeout (immediate success or timeout without
+                blocking), -1 means infinite timeout (block indefinitely).
             buffer_size_bytes: The number of bytes to allocate for object data and
                 metadata. Each argument passed to a task in the DAG must be
                 less than or equal to this value when serialized.
@@ -456,7 +458,9 @@ class CompiledDAG:
         ctx = DAGContext.get_current()
 
         self._dag_id = uuid.uuid4().hex
-        self._execution_timeout = execution_timeout
+        self._execution_timeout: Optional[float] = execution_timeout
+        if self._execution_timeout is None:
+            self._execution_timeout = ctx.execution_timeout
         self._buffer_size_bytes: Optional[int] = buffer_size_bytes
         if self._buffer_size_bytes is None:
             self._buffer_size_bytes = ctx.buffer_size_bytes
@@ -1238,12 +1242,21 @@ class CompiledDAG:
         Args:
             execution_index: The execution index to execute until.
             timeout: The maximum time in seconds to wait for the result.
+                None means using default timeout (DAGContext.retrieval_timeout),
+                0 means immediate timeout (immediate success or timeout without
+                blocking), -1 means infinite timeout (block indefinitely).
 
         Returns:
             The execution result corresponding to the given execution index.
 
         TODO(rui): catch the case that user holds onto the CompiledDAGRefs
         """
+        from ray.dag import DAGContext
+
+        ctx = DAGContext.get_current()
+        if timeout is None:
+            timeout = ctx.retrieval_timeout
+
         while self._max_execution_index < execution_index:
             if self._max_execution_index + 1 == execution_index:
                 # Directly fetch and return without buffering
@@ -1261,8 +1274,9 @@ class CompiledDAG:
             self._result_buffer[
                 self._max_execution_index
             ] = self._dag_output_fetcher.read(timeout)
-            if timeout is not None:
+            if timeout != -1:
                 timeout -= time.monotonic() - start_time
+                timeout = max(timeout, 0)
 
         # CompiledDAGRef guarantees that the same execution index will not
         # be requested multiple times

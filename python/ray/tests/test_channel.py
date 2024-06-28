@@ -61,7 +61,6 @@ def test_write_timeout(ray_start_regular):
     val = 1
     bytes = val.to_bytes(8, "little")
     chan.write(bytes, timeout=1)
-    print("wrote first")
     with pytest.raises(RayChannelTimeoutError):
         chan.write(bytes, timeout=1)
 

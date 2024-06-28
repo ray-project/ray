@@ -198,9 +198,9 @@ class ChannelInterface:
         Args:
             value: The value to write.
             timeout: The maximum time in seconds to wait to write the value.
-                If this is 0, either write immediately without blocking
-                (if possible) or raise an exception immediately.
-                Must be non-negative.
+                None means using default timeout, 0 means immediate timeout
+                (immediate success or timeout without blocking), -1 means
+                infinite timeout (block indefinitely).
         """
         raise NotImplementedError
 
@@ -214,9 +214,9 @@ class ChannelInterface:
 
         Args:
             timeout: The maximum time in seconds to wait to read the value.
-                If this is 0, either return the result immediately
-                (if already available) or raise an exception immediately.
-                Must be non-negative.
+                None means using default timeout, 0 means immediate timeout
+                (immediate success or timeout without blocking), -1 means
+                infinite timeout (block indefinitely).
 
         Returns:
             Any: The deserialized value. If the deserialized value is an
@@ -256,9 +256,9 @@ class ReaderInterface:
 
         Args:
             timeout: The maximum time in seconds to wait for reading.
-                If this is 0, either return the result immediately
-                (if already available) or raise an exception immediately.
-                Must be non-negative.
+                None means using default timeout, 0 means immediate timeout
+                (immediate success or timeout without blocking), -1 means
+                infinite timeout (block indefinitely).
 
         """
         raise NotImplementedError
@@ -269,9 +269,9 @@ class ReaderInterface:
 
         Args:
             timeout: The maximum time in seconds to wait for reading.
-                If this is 0, either return the result immediately
-                (if already available) or raise an exception immediately.
-                Must be non-negative.
+                None means using default timeout, 0 means immediate timeout
+                (immediate success or timeout without blocking), -1 means
+                infinite timeout (block indefinitely).
         """
         assert timeout is None or timeout >= 0, "Timeout must be non-negative."
         outputs = self._read_list(timeout)
@@ -365,6 +365,15 @@ class WriterInterface:
         raise NotImplementedError()
 
     def write(self, val: Any, timeout: Optional[float] = None) -> None:
+        """
+        Write the value.
+
+        Args:
+            timeout: The maximum time in seconds to wait for writing.
+                None means using default timeout, 0 means immediate timeout
+                (immediate success or timeout without blocking), -1 means
+                infinite timeout (block indefinitely).
+        """
         raise NotImplementedError()
 
     def close(self) -> None:

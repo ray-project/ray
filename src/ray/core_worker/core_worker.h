@@ -1749,7 +1749,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param[out] results Result list of objects data.
   /// \return Status.
   Status GetExperimentalMutableObjects(const std::vector<ObjectID> &ids,
-                                       int64_t expiration_ms,
+                                       int64_t timeout_ms,
                                        std::vector<std::shared_ptr<RayObject>> &results);
 
   /// Sends AnnounceWorkerPort to the GCS. Called in ctor and also in ConnectToRaylet.
