@@ -5,9 +5,11 @@ import logging
 import threading
 import uuid
 import traceback
+from typing import NamedTuple
 
 import ray
 from ray.exceptions import RayTaskError, RayChannelError
+from ray.util.annotations import PublicAPI
 from ray.experimental.compiled_dag_ref import (
     CompiledDAGRef,
     CompiledDAGFuture,
@@ -35,6 +37,14 @@ from ray.experimental.channel.torch_tensor_nccl_channel import (
 )
 
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
+
+
+# Holds the input arguments for an accelerated DAG node.
+@PublicAPI(stability="alpha")
+class RayDAGArgs(NamedTuple):
+    args: Tuple[Any, ...]
+    kwargs: Dict[str, Any]
+
 
 logger = logging.getLogger(__name__)
 
@@ -246,10 +256,17 @@ class DAGInputAdapter:
         self._dag_input_channel = dag_input_channel
 
         def extractor(key: Union[int, str]):
-            def extract_arg(args_tuple):
-                positional_args, kwargs = args_tuple
+            def extract_arg(raw_args):
+                if not isinstance(raw_args, RayDAGArgs):
+                    # Fast path for a single input.
+                    return raw_args
+                else:
+                    assert isinstance(raw_args, RayDAGArgs)
+                    args = raw_args.args
+                    kwargs = raw_args.kwargs
+
                 if isinstance(key, int):
-                    return positional_args[key]
+                    return args[key]
                 else:
                     return kwargs[key]
 
@@ -1263,7 +1280,16 @@ class CompiledDAG:
         self._get_or_compile()
 
         self._check_inputs(args, kwargs)
-        inp = (args, kwargs)
+        if len(args) == 1 and len(kwargs) == 0:
+            # When serializing a tuple, the Ray serializer invokes pickle5, which adds
+            # several microseconds of overhead. One common case for accelerated DAGs is
+            # passing a single argument (oftentimes of of type `bytes`, which requires
+            # no serialization). To avoid imposing this overhead on this common case, we
+            # create a fast path for this case that avoids pickle5.
+            inp = args[0]
+        else:
+            inp = RayDAGArgs(args=args, kwargs=kwargs)
+
         self._dag_submitter.write(inp)
 
         ref = CompiledDAGRef(self, self._execution_index)
@@ -1311,7 +1337,17 @@ class CompiledDAG:
         self._get_or_compile()
         self._check_inputs(args, kwargs)
         async with self._dag_submission_lock:
-            inp = (args, kwargs)
+            if len(args) == 1 and len(kwargs) == 0:
+                # When serializing a tuple, the Ray serializer invokes pickle5, which
+                # adds several microseconds of overhead. One common case for accelerated
+                # DAGs is passing a single argument (oftentimes of of type `bytes`,
+                # which requires no serialization). To avoid imposing this overhead on
+                # this common case, we create a fast path for this case that avoids
+                # pickle5.
+                inp = args[0]
+            else:
+                inp = RayDAGArgs(args=args, kwargs=kwargs)
+
             await self._dag_submitter.write(inp)
             # Allocate a future that the caller can use to get the result.
             fut = asyncio.Future()
