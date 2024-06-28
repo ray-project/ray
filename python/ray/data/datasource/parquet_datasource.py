@@ -166,6 +166,7 @@ class ParquetDatasource(Datasource):
         meta_provider: ParquetMetadataProvider = ParquetMetadataProvider(),
         partition_filter: PathPartitionFilter = None,
         shuffle: Union[Literal["files"], None] = None,
+        seed: Optional[int] = None,
         include_paths: bool = False,
         file_extensions: Optional[List[str]] = None,
     ):
@@ -301,7 +302,7 @@ class ParquetDatasource(Datasource):
         self._file_metadata_shuffler = None
         self._include_paths = include_paths
         if shuffle == "files":
-            self._file_metadata_shuffler = np.random.default_rng()
+            self._file_metadata_shuffler = np.random.default_rng(seed)
 
         sample_infos = self._sample_fragments()
         self._encoding_ratio = _estimate_files_encoding_ratio(sample_infos)
