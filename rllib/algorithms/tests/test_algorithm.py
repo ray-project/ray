@@ -10,6 +10,7 @@ import ray
 import ray.rllib.algorithms.dqn as dqn
 from ray.rllib.algorithms.bc import BCConfig
 import ray.rllib.algorithms.ppo as ppo
+from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.examples.envs.classes.multi_agent import MultiAgentCartPole
 from ray.rllib.examples.evaluation.evaluation_parallel_to_training import (
     AssertEvalCallback,
@@ -79,7 +80,9 @@ class TestAlgorithm(unittest.TestCase):
 
         # Pre-generate a policy instance to test adding these directly to an
         # existing algorithm.
-        rl_module_obj = ppo.PPOTorchPolicy(obs_space, act_space, config.to_dict())
+        ma_setup = config.get_multi_agent_setup(spaces={"p0": (obs_space, act_space)})
+        ma_spec = config.get_marl_module_spec(policy_dict=ma_setup[0])
+        rl_module_obj = ma_spec.build("p0")
 
         # Construct the Algorithm with a single policy in it.
         algo = config.build()
@@ -92,12 +95,12 @@ class TestAlgorithm(unittest.TestCase):
                 return f"p{choice([i, i - 1])}"
 
             # Add a new policy either by class (and options) or by instance.
-            pid = f"p{i}"
-            print(f"Adding policy {pid} ...")
+            mid = f"p{i}"
+            print(f"Adding new RLModule {mid} ...")
             # By (already instantiated) instance.
             if i == 2:
-                new_pol = algo.add_module(
-                    pid,
+                new_module = algo.add_module(
+                    mid,
                     # Pass in an already existing policy instance.
                     policy=rl_module_obj,
                     # Test changing the mapping fn.
@@ -107,41 +110,39 @@ class TestAlgorithm(unittest.TestCase):
                 )
             # By class (and options).
             else:
-                new_pol = algo.add_policy(
-                    pid,
-                    algo.get_default_policy_class(config),
-                    observation_space=obs_space,
-                    action_space=act_space,
+                new_module = algo.add_module(
+                    module_id=mid,
+                    module_spec=SingleAgentRLModuleSpec.from_module(mod0),
                     # Test changing the mapping fn.
-                    policy_mapping_fn=new_mapping_fn,
-                    # Change the list of policies to train.
-                    policies_to_train=[f"p{i}", f"p{i-1}"],
+                    new_agent_to_module_mapping_fn=new_mapping_fn,
+                    # Change the list of modules to train.
+                    new_should_module_be_updated=[f"p{i}", f"p{i-1}"],
                 )
 
-            # Make sure new policy is part of remote workers in the
-            # worker set and the eval worker set.
+            # Make sure new module is part of remote EnvRunners in the
+            # EnvRunnerGroup and the eval EnvRunnerGroup.
             self.assertTrue(
                 all(
                     algo.workers.foreach_worker(
-                        func=lambda w, pid=pid: pid in w.policy_map
+                        func=lambda w, mid=mid: mid in w.module
                     )
                 )
             )
             self.assertTrue(
                 all(
                     algo.evaluation_workers.foreach_worker(
-                        func=lambda w, pid=pid: pid in w.policy_map
+                        func=lambda w, mid=mid: mid in w.module
                     )
                 )
             )
 
             # Assert new policy is part of local worker (eval worker set does NOT
             # have a local worker, only the main EnvRunnerGroup does).
-            pol_map = algo.workers.local_worker().policy_map
-            self.assertTrue(new_pol is not pol0)
+            marl_module = algo.workers.local_worker().module
+            self.assertTrue(new_module is not mod0)
             for j in range(i + 1):
-                self.assertTrue(f"p{j}" in pol_map)
-            self.assertTrue(len(pol_map) == i + 1)
+                self.assertTrue(f"p{j}" in marl_module)
+            self.assertTrue(len(marl_module) == i + 1)
             algo.train()
             checkpoint = algo.save().checkpoint
 
@@ -150,23 +151,23 @@ class TestAlgorithm(unittest.TestCase):
             test = ppo.PPO.from_checkpoint(checkpoint)
 
             # Make sure evaluation worker also got the restored, added policy.
-            def _has_policies(w, pid=pid):
+            def _has_modules(w, mid=mid):
                 return (
-                    w.get_policy("p0") is not None and w.get_policy(pid) is not None
+                    w.module.get("p0") is not None and w.module.get(mid) is not None
                 )
 
             self.assertTrue(
-                all(test.evaluation_workers.foreach_worker(_has_policies))
+                all(test.evaluation_workers.foreach_worker(_has_modules))
             )
 
             # Make sure algorithm can continue training the restored policy.
-            pol0 = test.get_policy("p0")
+            mod0 = test.get_module("p0")
             test.train()
             # Test creating an action with the added (and restored) policy.
             a = test.compute_single_action(
-                np.zeros_like(pol0.observation_space.sample()), policy_id=pid
+                np.zeros_like(mod0.observation_space.sample()), policy_id=pid
             )
-            self.assertTrue(pol0.action_space.contains(a))
+            self.assertTrue(mod0.action_space.contains(a))
             test.stop()
 
             # After having added 2 policies, try to restore the Algorithm,
