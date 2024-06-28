@@ -431,8 +431,8 @@ Status MutableObjectManager::SetErrorAll() {
 Status MutableObjectManager::IsErrorSet(const ObjectID &object_id) {
   Channel *channel = GetChannel(object_id);
   if (!channel) {
-    return Status::NotFound(absl::StrFormat("Could not find channel for object ID %s.",
-                                            object_id.Hex()));
+    return Status::NotFound(
+        absl::StrFormat("Could not find channel for object ID %s.", object_id.Hex()));
   }
   return channel->mutable_object->header->CheckHasError();
 }

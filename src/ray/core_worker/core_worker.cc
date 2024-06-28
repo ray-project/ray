@@ -1565,9 +1565,9 @@ Status CoreWorker::Get(const std::vector<ObjectID> &ids,
       // channel was previously open and then was closed), so we should return an error.
       return error_set;
     } else if (is_experimental_channel) {
-        return Status::NotImplemented(
-            "ray.get can only be called on all normal objects, or all "
-            "experimental.Channel objects");
+      return Status::NotImplemented(
+          "ray.get can only be called on all normal objects, or all "
+          "experimental.Channel objects");
     }
   }
 

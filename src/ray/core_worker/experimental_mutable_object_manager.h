@@ -197,7 +197,8 @@ class MutableObjectManager : public std::enable_shared_from_this<MutableObjectMa
   Status IsErrorSet(const ObjectID &object_id);
 
  private:
-  // Returns the channel for object_id. If not channel exists for object_id, returns nullptr.
+  // Returns the channel for object_id. If no channel exists for object_id, returns
+  // nullptr.
   Channel *GetChannel(const ObjectID &object_id);
 
   // Returns the plasma object header for the object.
