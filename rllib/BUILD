@@ -190,7 +190,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "torch_only"],
     size = "large",
     srcs = ["tuned_examples/appo/multi_agent_cartpole_appo.py"],
-    args = ["--as-test", "--enable-new-api-stack", "--num-agents=2", "--num-gpus=1"]
+    args = ["--as-test", "--enable-new-api-stack", "--num-agents=2", "--num-gpus=1", "--num-cpus=6"]
 )
 py_test(
     name = "learning_tests_multi_agent_cartpole_appo_gpu",
