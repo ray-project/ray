@@ -14,24 +14,233 @@ from ray.rllib.examples.envs.classes.multi_agent import MultiAgentCartPole
 from ray.rllib.examples.evaluation.evaluation_parallel_to_training import (
     AssertEvalCallback,
 )
+from ray.rllib.utils.annotations import OldAPIStack
 from ray.rllib.utils.metrics import (
     ENV_RUNNER_RESULTS,
     EPISODE_RETURN_MEAN,
     EVALUATION_RESULTS,
+    LEARNER_RESULTS,
 )
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO
 from ray.rllib.utils.test_utils import check, framework_iterator
+from ray.tune import register_env
 
 
 class TestAlgorithm(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         ray.init()
+        register_env("multi_cart", lambda cfg: MultiAgentCartPole(cfg))
 
     @classmethod
     def tearDownClass(cls):
         ray.shutdown()
 
+    def test_add_delete_rl_module(self):
+        config = (
+            ppo.PPOConfig()
+            .api_stack(
+                enable_rl_module_and_learner=True,
+                enable_env_runner_and_connector_v2=True,
+            )
+            .environment(
+                env="multi_cart",
+                env_config={"num_agents": 4},
+            )
+            .env_runners(num_cpus_per_env_runner=0.1)
+            .training(
+                train_batch_size=100,
+                sgd_minibatch_size=50,
+                num_sgd_iter=1,
+            )
+            .rl_module(
+                model_config_dict={
+                    "fcnet_hiddens": [5],
+                    "fcnet_activation": "linear",
+                },
+            )
+            .multi_agent(
+                # Start with a single policy.
+                policies={"p0"},
+                policy_mapping_fn=lambda *a, **kw: "p0",
+                # TODO (sven): Support object store caching on new API stack.
+                # # And only two policies that can be stored in memory at a
+                # # time.
+                # policy_map_capacity=2,
+            )
+            .evaluation(
+                evaluation_num_env_runners=1,
+                evaluation_config=ppo.PPOConfig.overrides(num_cpus_per_env_runner=0.1),
+            )
+        )
+
+        obs_space = gym.spaces.Box(-2.0, 2.0, (4,))
+        act_space = gym.spaces.Discrete(2)
+
+        # Pre-generate a policy instance to test adding these directly to an
+        # existing algorithm.
+        rl_module_obj = ppo.PPOTorchPolicy(obs_space, act_space, config.to_dict())
+
+        # Construct the Algorithm with a single policy in it.
+        algo = config.build()
+        mod0 = algo.get_module("p0")
+        r = algo.train()
+        self.assertTrue("p0" in r[LEARNER_RESULTS])
+        for i in range(1, 3):
+
+            def new_mapping_fn(agent_id, episode, i=i, **kwargs):
+                return f"p{choice([i, i - 1])}"
+
+            # Add a new policy either by class (and options) or by instance.
+            pid = f"p{i}"
+            print(f"Adding policy {pid} ...")
+            # By (already instantiated) instance.
+            if i == 2:
+                new_pol = algo.add_module(
+                    pid,
+                    # Pass in an already existing policy instance.
+                    policy=rl_module_obj,
+                    # Test changing the mapping fn.
+                    policy_mapping_fn=new_mapping_fn,
+                    # Change the list of policies to train.
+                    policies_to_train=[f"p{i}", f"p{i - 1}"],
+                )
+            # By class (and options).
+            else:
+                new_pol = algo.add_policy(
+                    pid,
+                    algo.get_default_policy_class(config),
+                    observation_space=obs_space,
+                    action_space=act_space,
+                    # Test changing the mapping fn.
+                    policy_mapping_fn=new_mapping_fn,
+                    # Change the list of policies to train.
+                    policies_to_train=[f"p{i}", f"p{i-1}"],
+                )
+
+            # Make sure new policy is part of remote workers in the
+            # worker set and the eval worker set.
+            self.assertTrue(
+                all(
+                    algo.workers.foreach_worker(
+                        func=lambda w, pid=pid: pid in w.policy_map
+                    )
+                )
+            )
+            self.assertTrue(
+                all(
+                    algo.evaluation_workers.foreach_worker(
+                        func=lambda w, pid=pid: pid in w.policy_map
+                    )
+                )
+            )
+
+            # Assert new policy is part of local worker (eval worker set does NOT
+            # have a local worker, only the main EnvRunnerGroup does).
+            pol_map = algo.workers.local_worker().policy_map
+            self.assertTrue(new_pol is not pol0)
+            for j in range(i + 1):
+                self.assertTrue(f"p{j}" in pol_map)
+            self.assertTrue(len(pol_map) == i + 1)
+            algo.train()
+            checkpoint = algo.save().checkpoint
+
+            # Test restoring from the checkpoint (which has more policies
+            # than what's defined in the config dict).
+            test = ppo.PPO.from_checkpoint(checkpoint)
+
+            # Make sure evaluation worker also got the restored, added policy.
+            def _has_policies(w, pid=pid):
+                return (
+                    w.get_policy("p0") is not None and w.get_policy(pid) is not None
+                )
+
+            self.assertTrue(
+                all(test.evaluation_workers.foreach_worker(_has_policies))
+            )
+
+            # Make sure algorithm can continue training the restored policy.
+            pol0 = test.get_policy("p0")
+            test.train()
+            # Test creating an action with the added (and restored) policy.
+            a = test.compute_single_action(
+                np.zeros_like(pol0.observation_space.sample()), policy_id=pid
+            )
+            self.assertTrue(pol0.action_space.contains(a))
+            test.stop()
+
+            # After having added 2 policies, try to restore the Algorithm,
+            # but only with 1 of the originally added policies (plus the initial
+            # p0).
+            if i == 2:
+
+                def new_mapping_fn(agent_id, episode, worker, **kwargs):
+                    return f"p{choice([0, 2])}"
+
+                test2 = ppo.PPO.from_checkpoint(
+                    checkpoint=checkpoint,
+                    policy_ids=["p0", "p2"],
+                    policy_mapping_fn=new_mapping_fn,
+                    policies_to_train=["p0"],
+                )
+
+                # Make sure evaluation workers have the same policies.
+                def _has_policies(w):
+                    return (
+                        w.get_policy("p0") is not None
+                        and w.get_policy("p2") is not None
+                        and w.get_policy("p1") is None
+                    )
+
+                self.assertTrue(
+                    all(test2.evaluation_workers.foreach_worker(_has_policies))
+                )
+
+                # Make sure algorithm can continue training the restored policy.
+                pol2 = test2.get_policy("p2")
+                test2.train()
+                # Test creating an action with the added (and restored) policy.
+                a = test2.compute_single_action(
+                    np.zeros_like(pol2.observation_space.sample()), policy_id=pid
+                )
+                self.assertTrue(pol2.action_space.contains(a))
+                test2.stop()
+
+        # Delete all added policies again from Algorithm.
+        for i in range(2, 0, -1):
+            pid = f"p{i}"
+            algo.remove_policy(
+                pid,
+                # Note that the complete signature of a policy_mapping_fn
+                # is: `agent_id, episode, worker, **kwargs`.
+                policy_mapping_fn=(
+                    lambda agent_id, episode, worker, i=i, **kwargs: f"p{i - 1}"
+                ),
+                # Update list of policies to train.
+                policies_to_train=[f"p{i - 1}"],
+            )
+            # Make sure removed policy is no longer part of remote workers in the
+            # worker set and the eval worker set.
+            self.assertTrue(
+                algo.workers.foreach_worker(
+                    func=lambda w, pid=pid: pid not in w.policy_map
+                )[0]
+            )
+            self.assertTrue(
+                algo.evaluation_workers.foreach_worker(
+                    func=lambda w, pid=pid: pid not in w.policy_map
+                )[0]
+            )
+            # Assert removed policy is no longer part of local worker
+            # (eval worker set does NOT have a local worker, only the main
+            # EnvRunnerGroup does).
+            pol_map = algo.workers.local_worker().policy_map
+            self.assertTrue(pid not in pol_map)
+            self.assertTrue(len(pol_map) == i)
+
+        algo.stop()
+
+    @OldAPIStack
     def test_add_delete_policy(self):
         config = (
             ppo.PPOConfig()
