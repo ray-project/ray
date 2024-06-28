@@ -384,6 +384,7 @@ def test_metrics_export_end_to_end(_setup_cluster_for_test):
         test_cases()  # Should fail assert
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Not working in Windows.")
 @pytest.mark.skipif(prometheus_client is None, reason="Prometheus not installed")
 def test_metrics_export_node_metrics(shutdown_only):
     # Verify node metrics are available.
@@ -644,6 +645,7 @@ def test_counter_without_export_counter_as_gauge(monkeypatch, shutdown_only):
     wait_for_condition(check_metrics, timeout=60)
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Not working in Windows.")
 def test_per_func_name_stats(shutdown_only):
     # Test operation stats are available when flag is on.
     comp_metrics = [
