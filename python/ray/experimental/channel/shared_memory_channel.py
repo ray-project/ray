@@ -32,7 +32,7 @@ def _get_reader_node_id(self, reader_actor: "ray.actor.ActorHandle") -> "ray.Nod
     """
     current_actor_id = ray.get_runtime_context().get_actor_id()
     if current_actor_id is None:
-        # We are calling from the driver, make a remote call
+        # We are calling from the driver, so make a remote call.
         fn = reader_actor.__ray_call__
         return ray.get(fn.remote(_get_node_id))
 
@@ -218,24 +218,6 @@ class Channel(ChannelInterface):
                 f"({MIN_BUFFER_SIZE} bytes)"
             )
 
-        # For now, all readers must be on the same node. Note that the writer can still
-        # be on a different node than the readers though.
-        # TODO(jhumphri): Allow different readers for the same channel to be on
-        # different nodes.
-        prev_reader_node = None
-        prev_reader = None
-        for reader in readers:
-            node = _get_reader_node_id(self, reader)
-            if prev_reader_node is None:
-                prev_reader_node = node
-            elif prev_reader_node != node:
-                raise ValueError(
-                    f"All reader actors must be on the same node. Actor {prev_reader} "
-                    f"is on node {prev_reader_node} while actor {reader} is on node "
-                    f"{node}"
-                )
-            prev_reader = reader
-
         self._writer = writer
         self._readers = readers
         self._typ = typ
@@ -255,6 +237,33 @@ class Channel(ChannelInterface):
             # someone other than the writer or remove it from the args.
             self_actor = _get_self_actor()
             assert writer == self_actor
+
+            # For now, all readers must be on the same node. Note that the writer can
+            # still be on a different node than the readers though.
+            #
+            # Note that we only check this when the writer is creating the channel.
+            # Ideally, when each reader constructs its own instance of the channel, it
+            # would check this as well. However, this could result in deadlock as two
+            # readers attempt to execute a remote function on each other to get each
+            # other's node ID. We cannot use a separate concurrency group to execute the
+            # function because reader actors may not have been declared with an
+            # additional concurrency group beyond default.
+            #
+            # TODO(jhumphri): Allow different readers for the same channel to be on
+            # different nodes.
+            prev_reader_node = None
+            prev_reader = None
+            for reader in readers:
+                node = _get_reader_node_id(self, reader)
+                if prev_reader_node is None:
+                    prev_reader_node = node
+                elif prev_reader_node != node:
+                    raise ValueError(
+                        f"All reader actors must be on the same node. Actor "
+                        f"{prev_reader} is on node {prev_reader_node} while actor "
+                        f"{reader} is on node {node}."
+                    )
+                prev_reader = reader
 
             self._writer_node_id = (
                 ray.runtime_context.get_runtime_context().get_node_id()
