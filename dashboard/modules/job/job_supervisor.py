@@ -329,14 +329,14 @@ class JobSupervisor:
                     f"({self._job_id}) Failed to set up runtime environment for job runner: {repr(e)}",
                     exc_info=e,
                 )
-                error_message = f"Runtime environment setup failed: {repr(e)}"
+                error_message = f"Job executor actor failed to provision runtime env: {repr(e)}"
 
             elif isinstance(e, ActorUnschedulableError):
                 self._logger.error(
                     f"({self._job_id}) Failed to schedule job runner actor: {repr(e)}",
                     exc_info=e,
                 )
-                error_message = f"Job running actor could not be scheduled: {repr(e)}"
+                error_message = f"Job executor actor could not be scheduled: {repr(e)}"
 
             else:
                 self._logger.error(
@@ -603,7 +603,7 @@ class JobSupervisor:
             if isinstance(e, ActorDiedError):
                 failure_reason = f"Job executor actor is dead: {repr(e)}"
             elif isinstance(e, RuntimeEnvSetupError):
-                failure_reason = f"Job executor actor failed to provision runtime env: {str(e)}"
+                failure_reason = f"Job executor actor failed to provision runtime env: {repr(e)}"
             else:
                 failure_reason = (
                     f"Unexpected failure in supervisor monitoring loop: {repr(e)}"
