@@ -2633,6 +2633,7 @@ class Dataset:
         *,
         filesystem: Optional["pyarrow.fs.FileSystem"] = None,
         try_create_dir: bool = True,
+        delete_dir_contents: bool = False,
         arrow_open_stream_args: Optional[Dict[str, Any]] = None,
         filename_provider: Optional[FilenameProvider] = None,
         arrow_parquet_args_fn: Callable[[], Dict[str, Any]] = lambda: {},
@@ -2675,6 +2676,9 @@ class Dataset:
             try_create_dir: If ``True``, attempts to create all directories in the
                 destination path. Does nothing if all directories already
                 exist. Defaults to ``True``.
+            delete_dir_contents: If ``True``, attempts to delete all contents in the
+                destination path. Does nothing if the directory does not exist.
+                Defaults to ``False``.
             arrow_open_stream_args: kwargs passed to
                 `pyarrow.fs.FileSystem.open_output_stream <https://arrow.apache.org\
                 /docs/python/generated/pyarrow.fs.FileSystem.html\
@@ -2714,6 +2718,7 @@ class Dataset:
             num_rows_per_file=num_rows_per_file,
             filesystem=filesystem,
             try_create_dir=try_create_dir,
+            delete_dir_contents=delete_dir_contents,
             open_stream_args=arrow_open_stream_args,
             filename_provider=filename_provider,
             dataset_uuid=self._uuid,
@@ -2731,6 +2736,7 @@ class Dataset:
         *,
         filesystem: Optional["pyarrow.fs.FileSystem"] = None,
         try_create_dir: bool = True,
+        delete_dir_contents: bool = False,
         arrow_open_stream_args: Optional[Dict[str, Any]] = None,
         filename_provider: Optional[FilenameProvider] = None,
         pandas_json_args_fn: Callable[[], Dict[str, Any]] = lambda: {},
@@ -2782,6 +2788,9 @@ class Dataset:
             try_create_dir: If ``True``, attempts to create all directories in the
                 destination path. Does nothing if all directories already
                 exist. Defaults to ``True``.
+            delete_dir_contents: If ``True``, attempts to delete all contents in the
+                destination path. Does nothing if the directory does not exist.
+                Defaults to ``False``.
             arrow_open_stream_args: kwargs passed to
                 `pyarrow.fs.FileSystem.open_output_stream <https://arrow.apache.org\
                 /docs/python/generated/pyarrow.fs.FileSystem.html\
@@ -2822,6 +2831,7 @@ class Dataset:
             num_rows_per_file=num_rows_per_file,
             filesystem=filesystem,
             try_create_dir=try_create_dir,
+            delete_dir_contents=delete_dir_contents,
             open_stream_args=arrow_open_stream_args,
             filename_provider=filename_provider,
             dataset_uuid=self._uuid,
@@ -2842,6 +2852,7 @@ class Dataset:
         *,
         filesystem: Optional["pyarrow.fs.FileSystem"] = None,
         try_create_dir: bool = True,
+        delete_dir_contents: bool = False,
         arrow_open_stream_args: Optional[Dict[str, Any]] = None,
         filename_provider: Optional[FilenameProvider] = None,
         ray_remote_args: Dict[str, Any] = None,
@@ -2874,6 +2885,9 @@ class Dataset:
             try_create_dir: If ``True``, attempts to create all directories in the
                 destination path. Does nothing if all directories already
                 exist. Defaults to ``True``.
+            delete_dir_contents: If ``True``, attempts to delete all contents in the
+                destination path. Does nothing if the directory does not exist.
+                Defaults to ``False``.
             arrow_open_stream_args: kwargs passed to
                 `pyarrow.fs.FileSystem.open_output_stream <https://arrow.apache.org\
                 /docs/python/generated/pyarrow.fs.FileSystem.html\
@@ -2894,6 +2908,7 @@ class Dataset:
             file_format,
             filesystem=filesystem,
             try_create_dir=try_create_dir,
+            delete_dir_contents=delete_dir_contents,
             open_stream_args=arrow_open_stream_args,
             filename_provider=filename_provider,
             dataset_uuid=self._uuid,
@@ -2911,6 +2926,7 @@ class Dataset:
         *,
         filesystem: Optional["pyarrow.fs.FileSystem"] = None,
         try_create_dir: bool = True,
+        delete_dir_contents: bool = False,
         arrow_open_stream_args: Optional[Dict[str, Any]] = None,
         filename_provider: Optional[FilenameProvider] = None,
         arrow_csv_args_fn: Callable[[], Dict[str, Any]] = lambda: {},
@@ -2963,6 +2979,9 @@ class Dataset:
             try_create_dir: If ``True``, attempts to create all directories in the
                 destination path if ``True``. Does nothing if all directories already
                 exist. Defaults to ``True``.
+            delete_dir_contents: If ``True``, attempts to delete all contents in the
+                destination path. Does nothing if the directory does not exist.
+                Defaults to ``False``.
             arrow_open_stream_args: kwargs passed to
                 `pyarrow.fs.FileSystem.open_output_stream <https://arrow.apache.org\
                 /docs/python/generated/pyarrow.fs.FileSystem.html\
@@ -3000,6 +3019,7 @@ class Dataset:
             num_rows_per_file=num_rows_per_file,
             filesystem=filesystem,
             try_create_dir=try_create_dir,
+            delete_dir_contents=delete_dir_contents,
             open_stream_args=arrow_open_stream_args,
             filename_provider=filename_provider,
             dataset_uuid=self._uuid,
@@ -3018,6 +3038,7 @@ class Dataset:
         tf_schema: Optional["schema_pb2.Schema"] = None,
         filesystem: Optional["pyarrow.fs.FileSystem"] = None,
         try_create_dir: bool = True,
+        delete_dir_contents: bool = False,
         arrow_open_stream_args: Optional[Dict[str, Any]] = None,
         filename_provider: Optional[FilenameProvider] = None,
         num_rows_per_file: Optional[int] = None,
@@ -3070,6 +3091,9 @@ class Dataset:
             try_create_dir: If ``True``, attempts to create all directories in the
                 destination path. Does nothing if all directories already
                 exist. Defaults to ``True``.
+            delete_dir_contents: If ``True``, attempts to delete all contents in the
+                destination path. Does nothing if the directory does not exist.
+                Defaults to ``False``.
             arrow_open_stream_args: kwargs passed to
                 `pyarrow.fs.FileSystem.open_output_stream <https://arrow.apache.org\
                 /docs/python/generated/pyarrow.fs.FileSystem.html\
@@ -3095,6 +3119,7 @@ class Dataset:
             num_rows_per_file=num_rows_per_file,
             filesystem=filesystem,
             try_create_dir=try_create_dir,
+            delete_dir_contents=delete_dir_contents,
             open_stream_args=arrow_open_stream_args,
             filename_provider=filename_provider,
             dataset_uuid=self._uuid,
@@ -3113,6 +3138,7 @@ class Dataset:
         *,
         filesystem: Optional["pyarrow.fs.FileSystem"] = None,
         try_create_dir: bool = True,
+        delete_dir_contents: bool = False,
         arrow_open_stream_args: Optional[Dict[str, Any]] = None,
         filename_provider: Optional[FilenameProvider] = None,
         num_rows_per_file: Optional[int] = None,
@@ -3158,6 +3184,9 @@ class Dataset:
             try_create_dir: If ``True``, attempts to create all
                 directories in the destination path. Does nothing if all directories
                 already exist. Defaults to ``True``.
+            delete_dir_contents: If ``True``, attempts to delete all contents in the
+                destination path. Does nothing if the directory does not exist.
+                Defaults to ``False``.
             arrow_open_stream_args: kwargs passed to
                 ``pyarrow.fs.FileSystem.open_output_stream``
             filename_provider: A :class:`~ray.data.datasource.FilenameProvider`
@@ -3180,6 +3209,7 @@ class Dataset:
             num_rows_per_file=num_rows_per_file,
             filesystem=filesystem,
             try_create_dir=try_create_dir,
+            delete_dir_contents=delete_dir_contents,
             open_stream_args=arrow_open_stream_args,
             filename_provider=filename_provider,
             dataset_uuid=self._uuid,
@@ -3198,6 +3228,7 @@ class Dataset:
         column: str,
         filesystem: Optional["pyarrow.fs.FileSystem"] = None,
         try_create_dir: bool = True,
+        delete_dir_contents: bool = False,
         arrow_open_stream_args: Optional[Dict[str, Any]] = None,
         filename_provider: Optional[FilenameProvider] = None,
         num_rows_per_file: Optional[int] = None,
@@ -3242,6 +3273,9 @@ class Dataset:
             try_create_dir: If ``True``, attempts to create all directories in
                 destination path. Does nothing if all directories already
                 exist. Defaults to ``True``.
+            delete_dir_contents: If ``True``, attempts to delete all contents in the
+                destination path. Does nothing if the directory does not exist.
+                Defaults to ``False``.
             arrow_open_stream_args: kwargs passed to
                 `pyarrow.fs.FileSystem.open_output_stream <https://arrow.apache.org\
                 /docs/python/generated/pyarrow.fs.FileSystem.html\
@@ -3267,6 +3301,7 @@ class Dataset:
             num_rows_per_file=num_rows_per_file,
             filesystem=filesystem,
             try_create_dir=try_create_dir,
+            delete_dir_contents=delete_dir_contents,
             open_stream_args=arrow_open_stream_args,
             filename_provider=filename_provider,
             dataset_uuid=self._uuid,

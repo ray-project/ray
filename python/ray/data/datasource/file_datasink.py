@@ -34,6 +34,7 @@ class _FileDatasink(Datasink):
         *,
         filesystem: Optional["pyarrow.fs.FileSystem"] = None,
         try_create_dir: bool = True,
+        delete_dir_contents: bool = False,
         open_stream_args: Optional[Dict[str, Any]] = None,
         filename_provider: Optional[FilenameProvider] = None,
         dataset_uuid: Optional[str] = None,
@@ -46,6 +47,8 @@ class _FileDatasink(Datasink):
             filesystem: The filesystem to write files to. If not provided, the
                 filesystem is inferred from the path.
             try_create_dir: Whether to create the directory to write files to.
+            delete_dir_contents: Whether to delete all contents in the directory
+                to write files to.
             open_stream_args: Arguments to pass to ``filesystem.open_output_stream``.
             filename_provider: A :class:`ray.data.datasource.FilenameProvider` that
                 generates filenames for each row or block.
@@ -68,6 +71,7 @@ class _FileDatasink(Datasink):
         self.path = paths[0]
 
         self.try_create_dir = try_create_dir
+        self.delete_dir_contents = delete_dir_contents
         self.open_stream_args = open_stream_args
         self.filename_provider = filename_provider
         self.dataset_uuid = dataset_uuid
@@ -109,6 +113,10 @@ class _FileDatasink(Datasink):
                 tmp = _add_creatable_buckets_param_if_s3_uri(self.path)
                 self.filesystem.create_dir(tmp, recursive=True)
                 self.has_created_dir = True
+
+        if self.delete_dir_contents:
+            tmp = _add_creatable_buckets_param_if_s3_uri(self.path)
+            self.filesystem.delete_dir_contents(tmp)
 
     def write(
         self,
