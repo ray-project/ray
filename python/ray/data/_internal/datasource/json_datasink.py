@@ -7,7 +7,7 @@ from ray.data.datasource.file_based_datasource import _resolve_kwargs
 from ray.data.datasource.file_datasink import BlockBasedFileDatasink
 
 
-class _JSONDatasink(BlockBasedFileDatasink):
+class JSONDatasink(BlockBasedFileDatasink):
     def __init__(
         self,
         path: str,
