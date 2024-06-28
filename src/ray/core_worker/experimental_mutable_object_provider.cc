@@ -166,6 +166,10 @@ Status MutableObjectProvider::SetError(const ObjectID &object_id) {
   return object_manager_->SetError(object_id);
 }
 
+Status MutableObjectProvider::IsErrorSet(const ObjectID &object_id) {
+  return object_manager_->IsErrorSet(object_id);
+}
+
 void MutableObjectProvider::PollWriterClosure(
     instrumented_io_context &io_context,
     const ObjectID &object_id,

@@ -131,6 +131,13 @@ class MutableObjectProvider {
   /// \param[in] object_id The ID of the object.
   Status SetError(const ObjectID &object_id);
 
+  /// Checks if the error bit is set for the channel.
+  ///
+  /// \param[in] object_id The ID of the object.
+  /// \return Status indicating whether the object (if a channel for it exists) has its
+  ///         error bit set.
+  Status IsErrorSet(const ObjectID &object_id);
+
  private:
   struct LocalReaderInfo {
     int64_t num_readers;

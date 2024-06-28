@@ -103,14 +103,15 @@ class MutableObjectManager : public std::enable_shared_from_this<MutableObjectMa
   /// Checks if a channel is registered for an object.
   ///
   /// \param[in] object_id The ID of the object.
-  /// The return status. True if the channel is registered for object_id, false otherwise.
+  /// \return The return status. True if the channel is registered for object_id, false
+  ///         otherwise.
   bool ChannelRegistered(const ObjectID &object_id) { return GetChannel(object_id); }
 
   /// Checks if a reader channel is registered for an object.
   ///
   /// \param[in] object_id The ID of the object.
-  /// The return status. True if the channel is registered as a reader for object_id,
-  /// false otherwise.
+  /// \return The return status. True if the channel is registered as a reader for
+  ///         object_id, false otherwise.
   bool ReaderChannelRegistered(const ObjectID &object_id) {
     Channel *c = GetChannel(object_id);
     if (!c) {
@@ -122,8 +123,8 @@ class MutableObjectManager : public std::enable_shared_from_this<MutableObjectMa
   /// Checks if a writer channel is registered for an object.
   ///
   /// \param[in] object_id The ID of the object.
-  /// The return status. True if the channel is registered as a writer for object_id,
-  /// false otherwise.
+  /// \return The return status. True if the channel is registered as a writer for
+  ///         object_id, false otherwise.
   bool WriterChannelRegistered(const ObjectID &object_id) {
     Channel *c = GetChannel(object_id);
     if (!c) {
@@ -188,9 +189,17 @@ class MutableObjectManager : public std::enable_shared_from_this<MutableObjectMa
   /// an error on acquire.
   Status SetErrorAll();
 
-  Channel *GetChannel(const ObjectID &object_id);
+  /// Checks if the error bit is set for the channel.
+  ///
+  /// \param[in] object_id The ID of the object.
+  /// \return Status indicating whether the object (if a channel for it exists) has its
+  ///         error bit set.
+  Status IsErrorSet(const ObjectID &object_id);
 
  private:
+  // Returns the channel for object_id. If not channel exists for object_id, returns nullptr.
+  Channel *GetChannel(const ObjectID &object_id);
+
   // Returns the plasma object header for the object.
   PlasmaObjectHeader *GetHeader(const ObjectID &object_id);
 

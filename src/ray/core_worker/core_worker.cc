@@ -1556,10 +1556,20 @@ Status CoreWorker::Get(const std::vector<ObjectID> &ids,
   for (const ObjectID &id : ids) {
     if (experimental_mutable_object_provider_->ReaderChannelRegistered(id)) {
       is_experimental_channel = true;
-    } else if (is_experimental_channel) {
-      return Status::NotImplemented(
-          "ray.get can only be called on all normal objects, or all "
-          "experimental.Channel objects");
+      continue;
+    }
+
+    Status error_set = experimental_mutable_object_provider_->IsErrorSet(id);
+    if (error_set.IsChannelError()) {
+      // The channel is not registered but the error bit is set (likely because the
+      // channel was previously open and then was closed), so we should return an error.
+      return error_set;
+    } else {
+      if (is_experimental_channel) {
+        return Status::NotImplemented(
+            "ray.get can only be called on all normal objects, or all "
+            "experimental.Channel objects");
+      }
     }
   }
 
