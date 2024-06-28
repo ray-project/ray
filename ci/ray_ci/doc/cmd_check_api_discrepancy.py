@@ -50,16 +50,19 @@ def main(ray_checkout_dir: str, team: str) -> None:
     # Load the white list APIs
     white_list_apis = TEAM_API_CONFIGS[team]["white_list_apis"]
 
-    # Policy 01: all public APIs should be documented
-    print("Validating that public APIs should be documented...")
-    good_apis, bad_apis = _validate_documented_public_apis(
+    # Policy 01+02: all public and deprecated APIs should be documented
+    print("Validating that public and deprecated APIs should be documented...")
+    good_apis, bad_public_apis, bad_deprecated_apis = _validate_documented_public_apis(
         api_in_codes, api_in_docs, white_list_apis
     )
     print("\nGood APIs:")
     for api in good_apis:
         print(api)
-    print("\nBad APIs:")
-    for api in bad_apis:
+    print("\nBad public APIs:")
+    for api in bad_public_apis:
+        print(api)
+    print("\nBad deprecated APIs:")
+    for api in bad_deprecated_apis:
         print(api)
 
     return
@@ -72,20 +75,23 @@ def _validate_documented_public_apis(
     Validate APIs that are public and documented.
     """
     good_apis = set()
-    bad_apis = set()
+    bad_public_apis = set()
+    bad_deprecated_apis = set()
     for name, api in api_in_codes.items():
-        if not api.is_public():
+        if not api.is_public() and not api.is_deprecated():
             continue
 
         if name in white_list_apis:
             continue
 
         if name not in api_in_docs:
-            bad_apis.add(name)
+            bad_public_apis.add(name) if api.is_public() else bad_deprecated_apis.add(
+                name
+            )
         else:
             good_apis.add(name)
 
-    return good_apis, bad_apis
+    return good_apis, bad_public_apis, bad_deprecated_apis
 
 
 if __name__ == "__main__":
