@@ -28,7 +28,7 @@ config = (
     .training(
         vf_loss_coeff=0.01,
         lr=0.001,
-        entropy_coeff=0.05,
+        entropy_coeff=0.1,
     )
     .rl_module(
         model_config_dict={
