@@ -131,7 +131,7 @@ To build Ray on Ubuntu, run the following commands:
   sudo apt-get install -y build-essential curl clang-12 pkg-config psmisc unzip
 
   # Install Bazelisk.
-  ci/env/install-bazel.sh
+  ray/cienv/install-bazel.sh
 
   # Install node version manager and node 14
   $(curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.0/install.sh)
@@ -164,7 +164,7 @@ To build Ray on MacOS, first install these dependencies:
   brew install wget
 
   # Install Bazel.
-  ci/env/install-bazel.sh
+  ray/cienv/install-bazel.sh
 
 Building Ray on Linux & MacOS (full)
 ------------------------------------
