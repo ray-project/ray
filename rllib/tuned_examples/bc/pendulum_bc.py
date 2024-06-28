@@ -66,31 +66,3 @@ stop = {
 
 if __name__ == "__main__":
     run_rllib_example_script_experiment(config, args, stop=stop)
-
-num_iterations = 350
-min_reward = 120.0
-
-# TODO (simon): Add support for recurrent modules.
-# algo = config.build()
-# learnt = False
-# start = time.perf_counter()
-# for i in range(num_iterations):
-#     results = algo.train()
-
-#     eval_results = results.get("evaluation", {})
-#     if eval_results:
-#         episode_return_mean = eval_results[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN]
-#         print(f"iter={i}, R={episode_return_mean}")
-#         if episode_return_mean > min_reward:
-#             print("BC has learnt the task!")
-#             learnt = True
-#             break
-
-# if not learnt:
-#     raise ValueError(
-#         f"`BC` did not reach {min_reward} reward from expert offline data!"
-#     )
-
-# stop = time.perf_counter()
-# print(f"Time needed: {(stop - start)} secs.")
-# algo.stop()

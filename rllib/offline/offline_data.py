@@ -91,12 +91,12 @@ class OfflineData:
             # sampling later with a different batch size would need a
             # reinstantiation of the iterator.
             self.batch_iterator = self.data.map_batches(
-                PreprocessEpisodes,
+                OfflinePreLearner,
                 fn_constructor_kwargs={
                     "config": self.config,
                     "learner": self.learner_handles[0],
                 },
-                concurrency=4,
+                concurrency=(1, 2),
                 batch_size=num_samples,
             ).iter_batches(
                 batch_size=num_samples,
@@ -113,7 +113,7 @@ class OfflineData:
                     # TODO (cheng su): At best the learner handle passed in here should
                     # be the one from the learner that is nearest, but here we cannot
                     # provide locality hints.
-                    PreprocessEpisodes,
+                    OfflinePreLearner,
                     fn_constructor_kwargs={
                         "config": self.config,
                         "learner": self.learner_handles,
@@ -134,7 +134,7 @@ class OfflineData:
             return next(iter(self.batch_iterator))["batch"][0]
 
 
-class PreprocessEpisodes:
+class OfflinePreLearner:
     def __init__(
         self,
         config,
@@ -152,6 +152,8 @@ class PreprocessEpisodes:
             self._module = self._learner._module
         # Otherwise we have remote `Learner`s.
         else:
+            # TODO (simon): Check with the data team how to get at
+            # initialization the data block location.
             # loc = ray.experimental.get_object_locations([self])
             # logger.warning(f"loc: {loc}")
             # nodes = loc[""]
@@ -160,23 +162,32 @@ class PreprocessEpisodes:
             #         self._learner = learner[i]
             node_id = ray.get_runtime_context().get_node_id()
             # Shuffle indices such that not each data block syncs weights
-            # with the same learner.
+            # with the same learner in case there are multiple learners
+            # on the same node like the `PreLearner`.
             indices = list(range(len(locality_hints)))
             random.shuffle(indices)
             locality_hints = [locality_hints[i] for i in indices]
             learner = [learner[i] for i in indices]
+            # Choose a learner from the same node.
             for i, hint in enumerate(locality_hints):
                 if hint == node_id:
                     self._learner = learner[i]
+            # If no learner has been chosen, there is none on the same node.
+            if not self._learner:
+                # Then choose a learner randomly.
+                self._learner = learner[random.randint(0, len(learner) - 1)]
             self.learner_is_remote = True
+            # Build the module from spec. Note, this will be a MARL module.
             self._module = module_spec.build()
-
+        # Build the learner connector pipeline.
         self._learner_connector = self.config.build_learner_connector(
             input_observation_space=None,
             input_action_space=None,
         )
+        # Cache the policies to be trained to update weights only for these.
         self._policies_to_train = self.config.policies_to_train
         self._is_multi_agent = config.is_multi_agent()
+        # Set the counter to zero.
         self.iter_since_last_module_update = 0
 
     def __call__(self, batch: Dict[str, np.ndarray]) -> Dict[str, List[EpisodeType]]:
@@ -225,8 +236,9 @@ class PreprocessEpisodes:
         return {"batch": [batch]}
 
     def _should_module_be_updated(self, module_id, multi_agent_batch=None):
-
+        """Checks which modules in a MARL module should be updated."""
         if not self._policies_to_train:
+            # In case of no update information, the module is updated.
             return True
         elif not callable(self._policies_to_train):
             return module_id in set(self._policies_to_train)

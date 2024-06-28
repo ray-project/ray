@@ -628,7 +628,11 @@ class Algorithm(Trainable, AlgorithmBase):
 
         # Ensure remote workers are initially in sync with the local worker.
         self.workers.sync_weights(inference_only=True)
-        if self.config.input_ and self.config._enable_new_api_stack:
+        if (
+            self.config.input_
+            and self.config.input_ != "sampler"
+            and self.config._enable_new_api_stack
+        ):
             from ray.rllib.offline.offline_data import OfflineData
 
             self.offline_data = OfflineData(self.config)
@@ -715,6 +719,7 @@ class Algorithm(Trainable, AlgorithmBase):
 
         # TODO (sven): Probably obsolete b/c the learner group is already None.
         self.learner_group = None
+        logger.warning(f"ENABLE LEARNER: {self.config.enable_rl_module_and_learner}")
         if self.config.enable_rl_module_and_learner:
             local_worker = self.workers.local_worker()
             env = spaces = None
