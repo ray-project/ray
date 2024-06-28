@@ -207,6 +207,13 @@ steps:
         --gpus 4
         --build-name rllibgpubuild
         --only-tags multi_gpu
+        --except-tags multi_gpu_all_core
+      - bazel run //ci/ray_ci:test_in_docker -- //rllib/... rllib 
+        --parallelism-per-worker 2
+        --gpus 4
+        --build-name rllibgpubuild
+        --only-tags multi_gpu_all_core
+        --skip-ray-installation
     depends_on: rllibgpubuild
 
   - label: ":brain: rllib: flaky multi-gpu tests"
@@ -222,6 +229,13 @@ steps:
         --gpus 4
         --build-name rllibgpubuild
         --only-tags multi_gpu
+        --except-tags multi_gpu_all_core
+      - bazel run //ci/ray_ci:test_in_docker -- //rllib/... rllib --run-flaky-tests
+        --parallelism-per-worker 2
+        --gpus 4
+        --build-name rllibgpubuild
+        --only-tags multi_gpu_all_core
+        --skip-ray-installation
     depends_on: rllibgpubuild
     soft_fail: true
 
