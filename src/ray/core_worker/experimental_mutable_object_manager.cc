@@ -437,7 +437,6 @@ Status MutableObjectManager::IsErrorSet(const ObjectID &object_id) {
   return channel->mutable_object->header->CheckHasError();
 }
 
-
 #else  // defined(__APPLE__) || defined(__linux__)
 
 MutableObjectManager::~MutableObjectManager() {}
