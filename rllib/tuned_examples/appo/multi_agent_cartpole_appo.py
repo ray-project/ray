@@ -26,8 +26,9 @@ config = (
     )
     .environment("env", env_config={"num_agents": args.num_agents})
     .training(
-        vf_loss_coeff=0.005,
-        entropy_coeff=0.0,
+        vf_loss_coeff=0.01,
+        lr=0.001,
+        entropy_coeff=0.05,
     )
     .rl_module(
         model_config_dict={
