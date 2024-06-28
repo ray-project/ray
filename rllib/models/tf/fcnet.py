@@ -99,9 +99,7 @@ class FullyConnectedNetwork(TFModelV2):
                 )(last_layer)
             # Adjust num_outputs to be the number of nodes in the last layer.
             else:
-                self.num_outputs = ([int(np.prod(obs_space.shape))] + hiddens[-1:])[
-                    -1
-                ]
+                self.num_outputs = ([int(np.prod(obs_space.shape))] + hiddens[-1:])[-1]
 
         # Concat the log std vars to the end of the state-dependent means.
         if free_log_std and logits_out is not None:
