@@ -120,7 +120,7 @@ def test_is_private_name():
             "output": True,
         },
         {
-            "input": "a.b.internal.public_function",
+            "input": "a.b._internal.public_function",
             "output": True,
         },
         {
@@ -146,7 +146,7 @@ def test_is_public():
         code_type=CodeType.FUNCTION,
     ).is_public()
     assert not API(
-        name="a.b.internal.public_function",
+        name="a.b._internal.public_function",
         annotation_type=AnnotationType.PUBLIC_API,
         code_type=CodeType.FUNCTION,
     ).is_public()

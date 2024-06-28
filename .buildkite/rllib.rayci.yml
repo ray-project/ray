@@ -107,7 +107,7 @@ steps:
     tags: 
       - rllib
       - gpu
-    parallelism: 2
+    parallelism: 3
     instance_type: gpu
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //rllib/... rllib 
@@ -199,6 +199,7 @@ steps:
     tags: 
       - rllib
       - gpu
+    parallelism: 2
     instance_type: gpu-large
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //rllib/... rllib 
