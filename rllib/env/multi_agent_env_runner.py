@@ -68,6 +68,7 @@ class MultiAgentEnvRunner(EnvRunner):
 
         # Get the worker index on which this instance is running.
         self.worker_index: int = kwargs.get("worker_index")
+        self.tune_trial_id: str = kwargs.get("tune_trial_id")
 
         # Set up all metrics-related structures and counters.
         self.metrics: Optional[MetricsLogger] = None
