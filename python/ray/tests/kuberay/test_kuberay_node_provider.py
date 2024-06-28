@@ -161,11 +161,11 @@ def test_create_node_cap_at_max(
                     ip="10.4.0.6",
                     status="up-to-date",
                 ),
-                "raycluster-autoscaler-worker-fake-tpu-group-3rlvy": NodeData(
+                "raycluster-autoscaler-worker-fake-tpu-group-xtpcl": NodeData(
                     kind="worker",
-                    type="fake-tpu-group",
-                    replica_index="fake-tpu-group-0",
-                    ip="10.4.3.6",
+                    type="tpu-group",
+                    replica_index="tpu-group-0",
+                    ip="10.136.1.29",
                     status="up-to-date",
                 ),
                 "raycluster-autoscaler-worker-small-group-dkz2r": NodeData(
