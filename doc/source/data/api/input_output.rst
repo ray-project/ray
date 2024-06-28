@@ -177,6 +177,15 @@ Databricks
 
    read_databricks_tables
 
+Hudi
+----
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   read_hudi_table
+
 Lance
 -----
 

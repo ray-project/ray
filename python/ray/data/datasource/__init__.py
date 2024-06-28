@@ -25,6 +25,7 @@ from ray.data.datasource.file_meta_provider import (
     FileMetadataProvider,
 )
 from ray.data.datasource.filename_provider import FilenameProvider
+from ray.data.datasource.hudi_datasource import HudiDatasource
 from ray.data.datasource.image_datasink import _ImageDatasink
 from ray.data.datasource.image_datasource import ImageDatasource
 from ray.data.datasource.json_datasink import _JSONDatasink
@@ -75,6 +76,7 @@ __all__ = [
     "FileBasedDatasource",
     "FileMetadataProvider",
     "FilenameProvider",
+    "HudiDatasource",
     "_ImageDatasink",
     "ImageDatasource",
     "_JSONDatasink",
