@@ -998,7 +998,7 @@ class TestCompositeChannel:
         compiled_dag.teardown()
 
 
-def test_channel_access_after_close(ray_start_regular):
+def test_channel_access_after_close(ray_start_regular_shared):
     # Tests that an access to a channel after accelerated DAG teardown raises a
     # RayChannelError exception as the channel is closed (see issue #46284).
     @ray.remote
