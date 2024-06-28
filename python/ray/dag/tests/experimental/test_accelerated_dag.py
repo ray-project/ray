@@ -1011,11 +1011,11 @@ def test_channel_access_after_close(ray_start_regular_shared):
         dag = a.foo.bind(inp)
 
     dag = dag.experimental_compile()
-    x = dag.execute(1)
+    ref = dag.execute(1)
     dag.teardown()
 
     with pytest.raises(RayChannelError, match="Channel closed."):
-        ray.get(x)
+        ray.get(ref)
 
 
 if __name__ == "__main__":
