@@ -19,7 +19,7 @@ def make_ddpg_models(policy: Policy) -> ModelV2:
         default_model = (
             TorchNoopModel if policy.config["framework"] == "torch" else NoopModel
         )
-        num_outputs = int(np.product(policy.observation_space.shape))
+        num_outputs = int(np.prod(policy.observation_space.shape))
 
     model = ModelCatalog.get_model_v2(
         obs_space=policy.observation_space,
