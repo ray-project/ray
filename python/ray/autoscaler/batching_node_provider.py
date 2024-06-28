@@ -259,7 +259,7 @@ class BatchingNodeProvider(NodeProvider):
                 if worker_id not in self.scale_request.workers_to_delete:
                     self.scale_request.workers_to_delete.add(worker_id)
                     logger.info(
-                        f"Autoscaler terminating node {node_id} "
+                        f"Autoscaler terminating node {worker_id} "
                         f"in multi-host replica {node_replica_index}."
                     )
         self.scale_change_needed = True
