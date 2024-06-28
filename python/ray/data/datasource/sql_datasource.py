@@ -1,3 +1,4 @@
+import logging
 import math
 from contextlib import contextmanager
 from typing import Any, Callable, Iterable, Iterator, List, Optional
@@ -8,6 +9,8 @@ from ray.util.annotations import PublicAPI
 
 Connection = Any  # A Python DB API2-compliant `Connection` object.
 Cursor = Any  # A Python DB API2-compliant `Cursor` object.
+
+logger = logging.getLogger(__name__)
 
 
 def _cursor_to_block(cursor) -> Block:
@@ -107,6 +110,10 @@ class SQLDatasource(Datasource):
             is_limit_supported = False
 
         if not is_limit_supported:
+            logger.warning(
+                "Ray Data uses the 'LIMIT' clause to read data in parallel, but the "
+                "queried database doesn't support 'LIMIT'. Forcing parallelism of 1."
+            )
             metadata = BlockMetadata(None, None, None, None, None)
             return [ReadTask(fallback_read_fn, metadata)]
 
