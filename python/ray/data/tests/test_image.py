@@ -9,10 +9,12 @@ from fsspec.implementations.local import LocalFileSystem
 from PIL import Image
 
 import ray
+from ray.data._internal.datasource.image_datasource import (
+    ImageDatasource,
+    _ImageFileMetadataProvider,
+)
 from ray.data.datasource import Partitioning
 from ray.data.datasource.file_meta_provider import FastFileMetadataProvider
-from ray.data._internal.datasource.image_datasource import ImageDatasource
-from ray.data.datasource.image_datasource import _ImageFileMetadataProvider
 from ray.data.extensions import ArrowTensorType
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.mock_http_server import *  # noqa

@@ -39,9 +39,6 @@ from ray.data.datasource.sql_datasink import _SQLDatasink
 from ray.data.datasource.tfrecords_datasink import _TFRecordDatasink
 from ray.data.datasource.tfrecords_datasource import TFRecordDatasource
 from ray.data.datasource.webdataset_datasink import _WebDatasetDatasink
-from ray.data._internal.datasource.image_datasource import ImageDatasource
-from ray.data._internal.datasource.lance_datasource import LanceDatasource
-from ray.data._internal.datasource.torch_datasource import TorchDatasource
 
 # Note: HuggingFaceDatasource should NOT be imported here, because
 # we want to only import the Hugging Face datasets library when we use
