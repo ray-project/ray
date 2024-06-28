@@ -166,8 +166,23 @@ Status MutableObjectProvider::SetError(const ObjectID &object_id) {
   return object_manager_->SetError(object_id);
 }
 
-Status MutableObjectProvider::IsErrorSet(const ObjectID &object_id) {
-  return object_manager_->IsErrorSet(object_id);
+Status MutableObjectProvider::IsChannelClosed(const ObjectID &object_id) {
+  return object_manager_->IsChannelClosed(object_id);
+}
+
+Status MutableObjectProvider::IsExperimentalChannel(const ObjectID &object_id) {
+  if (ReaderChannelRegistered(object_id)) {
+    return Status::OK();
+  }
+
+  Status closed = IsChannelClosed(object_id);
+  if (closed.IsChannelError()) {
+    // The channel is not registered but the error bit is set (likely because the
+    // channel was previously open and then was closed), so we should return an error.
+    return closed;
+  }
+  return Status::ObjectNotFound(
+      "This object is not registered as an experimental channel.");
 }
 
 void MutableObjectProvider::PollWriterClosure(

@@ -131,12 +131,21 @@ class MutableObjectProvider {
   /// \param[in] object_id The ID of the object.
   Status SetError(const ObjectID &object_id);
 
-  /// Checks if the error bit is set for the channel.
+  /// Checks if the channel is closed.
   ///
   /// \param[in] object_id The ID of the object.
   /// \return Status indicating whether the object (if a channel for it exists) has its
-  ///         error bit set.
-  Status IsErrorSet(const ObjectID &object_id);
+  ///         error bit set (i.e., the channel is closed).
+  Status IsChannelClosed(const ObjectID &object_id);
+
+  /// Checks if the object is a ref for an experimental channel.
+  ///
+  /// param[in] object_id The ID of the object.
+  /// \return Status indicating whether the object is a ref for an experimental channel
+  ///         (Status::OK()), a ref for a closed experimental channel
+  ///         (Status::ChannelError()), or not a ref for an experimental channel
+  ///         (Status::ObjectNotFound()).
+  Status IsExperimentalChannel(const ObjectID &object_id);
 
  private:
   struct LocalReaderInfo {

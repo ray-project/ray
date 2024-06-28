@@ -428,7 +428,7 @@ Status MutableObjectManager::SetErrorAll() {
   return ret;
 }
 
-Status MutableObjectManager::IsErrorSet(const ObjectID &object_id) {
+Status MutableObjectManager::IsChannelClosed(const ObjectID &object_id) {
   Channel *channel = GetChannel(object_id);
   if (!channel) {
     return Status::NotFound(
@@ -507,7 +507,7 @@ Status MutableObjectManager::SetErrorAll() {
   return Status::NotImplemented("Not supported on Windows.");
 }
 
-Status MutableObjectManager::IsErrorSet(const ObjectID &object_id) {
+Status MutableObjectManager::IsChannelClosed(const ObjectID &object_id) {
   return Status::NotImplemented("Not supported on Windows.");
 }
 

@@ -189,12 +189,12 @@ class MutableObjectManager : public std::enable_shared_from_this<MutableObjectMa
   /// an error on acquire.
   Status SetErrorAll();
 
-  /// Checks if the error bit is set for the channel.
+  /// Checks if the channel is closed.
   ///
   /// \param[in] object_id The ID of the object.
   /// \return Status indicating whether the object (if a channel for it exists) has its
-  ///         error bit set.
-  Status IsErrorSet(const ObjectID &object_id);
+  ///         error bit set (i.e., the channel is closed).
+  Status IsChannelClosed(const ObjectID &object_id);
 
  private:
   // Returns the channel for object_id. If no channel exists for object_id, returns
