@@ -120,7 +120,7 @@ def exec_ray_dag(
         dag = receiver.recv.bind(dag)
 
     if use_adag:
-        dag = dag.experimental_compile(buffer_size_bytes=int(SHAPE[0] * 3))
+        dag = dag.experimental_compile(_buffer_size_bytes=int(SHAPE[0] * 3))
 
         def _run():
             i = np.random.randint(100)
@@ -162,7 +162,7 @@ def exec_ray_dag_ipc(label, sender, receiver, use_nccl=False):
             nccl_util.TORCH_NUMPY_DTYPE_MAP[DTYPE],
         )
 
-    compiled_dag = dag.experimental_compile(buffer_size_bytes=int(SHAPE[0] * 3))
+    compiled_dag = dag.experimental_compile(_buffer_size_bytes=int(SHAPE[0] * 3))
     # Flag that each run can set if it sees incorrect results.
     ok = [True]
 

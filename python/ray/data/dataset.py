@@ -4998,9 +4998,6 @@ class Schema:
     """Dataset schema.
 
     Attributes:
-        names: List of column names of this Dataset.
-        types: List of Arrow types of the Dataset. Note that the "object" type is
-            not Arrow compatible and hence is returned as `object`.
         base_schema: The underlying Arrow or Pandas schema.
     """
 
@@ -5013,7 +5010,7 @@ class Schema:
         return self.base_schema.names
 
     @property
-    def types(self) -> List[Union[Literal[object], "pyarrow.DataType"]]:
+    def types(self) -> List[Union[type[object], "pyarrow.lib.DataType"]]:
         """Lists the types of this Dataset in Arrow format
 
         For non-Arrow compatible types, we return "object".

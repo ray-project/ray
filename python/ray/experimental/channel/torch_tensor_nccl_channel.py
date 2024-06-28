@@ -312,14 +312,14 @@ class TorchTensorNcclChannel(ChannelInterface):
         if not self.has_static_type():
             # User did not declare a static type, so we must send the metadata
             # for this tensor.
-            meta = TorchTensorType(shape=tensor.shape, dtype=tensor.dtype)
-        elif tensor.shape != self._typ.shape:
+            meta = TorchTensorType(_shape=tensor.shape, _dtype=tensor.dtype)
+        elif tensor.shape != self._typ._shape:
             raise ValueError(
-                f"torch.Tensor has shape {tensor.shape}, expected {self._typ.shape}"
+                f"torch.Tensor has shape {tensor.shape}, expected {self._typ._shape}"
             )
-        elif tensor.dtype != self._typ.dtype:
+        elif tensor.dtype != self._typ._dtype:
             raise ValueError(
-                f"torch.Tensor has dtype {tensor.dtype}, expected {self._typ.dtype}"
+                f"torch.Tensor has dtype {tensor.dtype}, expected {self._typ._dtype}"
             )
 
         return meta
@@ -343,8 +343,8 @@ class TorchTensorNcclChannel(ChannelInterface):
                 if meta_list != [None]:
                     raise ValueError(
                         "DAGNode annotated with "
-                        "TorchTensorType(shape=shape, dtype=dtype))` can return at "
-                        "most one tensor with the declared `shape` and `dtype`. "
+                        "TorchTensorType(_shape=shape, _dtype=dtype))` can return at "
+                        "most one tensor with the declared `_shape` and `_dtype`. "
                         "Use TorchTensorType() if value contains more than one "
                         "tensor or tensor of dynamic size."
                     )
@@ -369,7 +369,7 @@ class TorchTensorNcclChannel(ChannelInterface):
                 self._nccl_group.send(tensor, rank)
 
     def _read_single_tensor(self, typ: "TorchTensorType") -> "torch.Tensor":
-        buf = self._torch_tensor_allocator(typ.shape, typ.dtype)
+        buf = self._torch_tensor_allocator(typ._shape, typ._dtype)
         self._nccl_group.recv(buf, self._writer_rank)
         return buf
 
@@ -402,8 +402,8 @@ class TorchTensorNcclChannel(ChannelInterface):
         from ray.experimental.channel.torch_tensor_type import TorchTensorType
 
         return (
-            self._typ.shape != TorchTensorType.AUTO
-            and self._typ.dtype != TorchTensorType.AUTO
+            self._typ._shape != TorchTensorType.AUTO
+            and self._typ._dtype != TorchTensorType.AUTO
         )
 
 
