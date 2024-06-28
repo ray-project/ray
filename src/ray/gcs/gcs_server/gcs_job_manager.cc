@@ -217,7 +217,9 @@ void GcsJobManager::HandleGetAllJobInfo(rpc::GetAllJobInfoRequest request,
         // Get is_running_tasks from the core worker for the driver.
         auto client = core_worker_clients_.GetOrConnect(data.second.driver_address());
         auto request = std::make_unique<rpc::NumPendingTasksRequest>();
-        RAY_LOG(DEBUG) << "Send NumPendingTasksRequest to worker " << worker_id;
+        constexpr int64_t kNumPendingTasksRequestTimeoutMs = 1000;
+        RAY_LOG(DEBUG) << "Send NumPendingTasksRequest to worker " << worker_id
+                       << ", timeout " << kNumPendingTasksRequestTimeoutMs << " ms.";
         client->NumPendingTasks(
             std::move(request),
             [worker_id, reply, i, num_processed_jobs, try_send_reply](
@@ -226,14 +228,16 @@ void GcsJobManager::HandleGetAllJobInfo(rpc::GetAllJobInfoRequest request,
               RAY_LOG(DEBUG) << "Received NumPendingTasksReply from worker " << worker_id;
               if (!status.ok()) {
                 RAY_LOG(WARNING) << "Failed to get is_running_tasks from core worker: "
-                                 << status.ToString();
+                                 << status.ToString()
+                                 << ", this job will be marked as no running tasks.";
+              } else {
+                bool is_running_tasks = num_pending_tasks_reply.num_pending_tasks() > 0;
+                reply->mutable_job_info_list(i)->set_is_running_tasks(is_running_tasks);
               }
-              bool is_running_tasks = num_pending_tasks_reply.num_pending_tasks() > 0;
-              reply->mutable_job_info_list(i)->set_is_running_tasks(is_running_tasks);
               (*num_processed_jobs)++;
-              ;
               try_send_reply();
-            });
+            },
+            kNumPendingTasksRequestTimeoutMs);
       }
       i++;
     }
