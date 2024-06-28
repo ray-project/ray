@@ -5,7 +5,7 @@ from ray.data.block import BlockAccessor
 from ray.data.datasource.file_datasink import BlockBasedFileDatasink
 
 
-class _NumpyDatasink(BlockBasedFileDatasink):
+class NumpyDatasink(BlockBasedFileDatasink):
     def __init__(
         self,
         path: str,
