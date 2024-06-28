@@ -32,7 +32,11 @@ from ray.rllib.utils.annotations import (
 )
 from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.utils.framework import try_import_torch
-from ray.rllib.utils.metrics import ALL_MODULES
+from ray.rllib.utils.metrics import (
+    ALL_MODULES,
+    NUM_TRAINABLE_PARAMETERS,
+    NUM_NON_TRAINABLE_PARAMETERS,
+)
 from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.torch_utils import (
     convert_to_torch_tensor,
@@ -123,13 +127,21 @@ class TorchLearner(Learner):
         **kwargs,
     ):
         """Performs a single update given a batch of data."""
+        # Activate tensor-mode on our MetricsLogger.
+        self.metrics.activate_tensor_mode()
+
         fwd_out = self.module.forward_train(batch)
         loss_per_module = self.compute_loss(fwd_out=fwd_out, batch=batch)
 
         gradients = self.compute_gradients(loss_per_module)
         postprocessed_gradients = self.postprocess_gradients(gradients)
         self.apply_gradients(postprocessed_gradients)
-        return fwd_out, loss_per_module, self.metrics.deactivate_tensor_mode()
+
+        # Deactivate tensor-mode on our MetricsLogger and collect the (tensor)
+        # results.
+        collected_tensor_metrics = self.metrics.deactivate_tensor_mode()
+
+        return fwd_out, loss_per_module, collected_tensor_metrics
 
     @override(Learner)
     def compute_gradients(
@@ -353,11 +365,38 @@ class TorchLearner(Learner):
 
         self._make_modules_ddp_if_necessary()
 
+        # Log number of non-trainable and trainable parameters of our RLModule.
+        num_trainable_params = {
+            (mid, NUM_TRAINABLE_PARAMETERS): sum(
+                p.numel() for p in rlm.parameters() if p.requires_grad
+            )
+            for mid, rlm in self.module._rl_modules.items()
+            if isinstance(rlm, TorchRLModule)
+        }
+        num_non_trainable_params = {
+            (mid, NUM_NON_TRAINABLE_PARAMETERS): sum(
+                p.numel() for p in rlm.parameters() if not p.requires_grad
+            )
+            for mid, rlm in self.module._rl_modules.items()
+            if isinstance(rlm, TorchRLModule)
+        }
+        self.metrics.log_dict(
+            {
+                **{
+                    (ALL_MODULES, NUM_TRAINABLE_PARAMETERS): sum(
+                        num_trainable_params.values()
+                    ),
+                    (ALL_MODULES, NUM_NON_TRAINABLE_PARAMETERS): sum(
+                        num_non_trainable_params.values()
+                    ),
+                },
+                **num_trainable_params,
+                **num_non_trainable_params,
+            }
+        )
+
     @override(Learner)
     def _update(self, batch: NestedDict) -> Tuple[Any, Any, Any]:
-        # Activate tensor-mode on our MetricsLogger.
-        self.metrics.activate_tensor_mode()
-
         # The first time we call _update after building the learner or
         # adding/removing models, we update with the uncompiled update method.
         # This makes it so that any variables that may be created during the first

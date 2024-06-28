@@ -3,6 +3,7 @@ import re
 import glob
 import requests
 import logging
+from functools import lru_cache
 from typing import Dict, Optional, List, Tuple
 
 from ray._private.accelerators.accelerator import AcceleratorManager
@@ -93,6 +94,7 @@ class TPUAcceleratorManager(AcceleratorManager):
         return list(tpu_visible_chips.split(","))
 
     @staticmethod
+    @lru_cache()
     def get_current_node_num_accelerators() -> int:
         """Attempt to detect the number of TPUs on this machine.
 

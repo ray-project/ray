@@ -1,8 +1,10 @@
 import pytest
 import sys
 import ray
+import time
 import ray.cluster_utils
 from ray._private.test_utils import get_other_nodes, wait_for_condition
+from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 MB = 1024 * 1024
 
@@ -14,6 +16,40 @@ class Actor(object):
 
     def value(self):
         return self.n
+
+
+def test_placement_group_recover_prepare_failure(monkeypatch, ray_start_cluster):
+    # Test to make sure that gcs can handle the prepare pg failure
+    # by retrying on other nodes.
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=1)
+    ray.init(address=cluster.address)
+
+    monkeypatch.setenv(
+        "RAY_testing_asio_delay_us",
+        "NodeManagerService.grpc_server.PrepareBundleResources=500000000:500000000",
+    )
+    worker1 = cluster.add_node(num_cpus=1)
+    pg = ray.util.placement_group(
+        strategy="STRICT_SPREAD", bundles=[{"CPU": 1}, {"CPU": 1}]
+    )
+    # actor will wait for the pg to be created
+    actor = Actor.options(
+        scheduling_strategy=PlacementGroupSchedulingStrategy(placement_group=pg)
+    ).remote()
+
+    # wait for the prepare rpc to be sent
+    time.sleep(1)
+
+    # prepare will fail
+    cluster.remove_node(worker1)
+
+    monkeypatch.delenv("RAY_testing_asio_delay_us")
+    # prepare will retry on this node
+    cluster.add_node(num_cpus=1)
+
+    # pg can be created successfully
+    ray.get(actor.value.remote())
 
 
 # Test whether the bundles spread on two nodes can be rescheduled successfully

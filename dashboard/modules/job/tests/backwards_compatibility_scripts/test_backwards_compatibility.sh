@@ -37,8 +37,8 @@ do
     conda activate "${env_name}"
 
     # Pin pydantic version due to: https://github.com/ray-project/ray/issues/36990.
-    # ray<2.9 is only compatible with pydantic<2.
-    pip install -U "pydantic<2" ray=="${RAY_VERSION}" ray[default]=="${RAY_VERSION}"
+    # ray<2.9 is only compatible with pydantic<2 and setuptools < 70.
+    pip install -U "pydantic<2" ray=="${RAY_VERSION}" ray[default]=="${RAY_VERSION}" setuptools==69.5.1
 
     printf "\n\n\n"
     echo "========================================================="
@@ -73,7 +73,7 @@ do
     # Get directory of current file. https://stackoverflow.com/questions/59895/
     DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
 
-    if ! ray job submit --job-id="${JOB_ID}" --working-dir="${DIR}" --runtime-env-json='{"pip": ["requests==2.26.0"]}' -- python script.py; then
+    if ! ray job submit --job-id="${JOB_ID}" --working-dir="${DIR}" --runtime-env-json='{"pip": ["requests==2.26.0", "setuptools==69.5.1"]}' -- python script.py; then
         cleanup
         exit 1
     fi

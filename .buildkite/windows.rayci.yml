@@ -111,6 +111,7 @@ steps:
     depends_on: windowsbuild
 
   - label: "flaky :windows: tests"
+    key: windows_flaky_tests
     tags: skip-on-premerge
     job_env: WINDOWS
     instance_type: windows

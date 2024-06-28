@@ -1726,7 +1726,6 @@ def get_or_create_event_loop() -> asyncio.AbstractEventLoop:
         # This follows the implementation of the deprecating `get_event_loop`
         # in python3.10's asyncio. See python3.10/asyncio/events.py
         # _get_event_loop()
-        loop = None
         try:
             loop = asyncio.get_running_loop()
             assert loop is not None

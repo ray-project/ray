@@ -160,6 +160,16 @@ class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient> {
     return *placement_group_accessor_;
   }
 
+  RuntimeEnvAccessor &RuntimeEnvs() {
+    RAY_CHECK(runtime_env_accessor_ != nullptr);
+    return *runtime_env_accessor_;
+  }
+
+  AutoscalerStateAccessor &Autoscaler() {
+    RAY_CHECK(autoscaler_state_accessor_ != nullptr);
+    return *autoscaler_state_accessor_;
+  }
+
   const ClusterID &GetClusterId() {
     RAY_CHECK(client_call_manager_) << "Cannot retrieve cluster ID before it is set.";
     return client_call_manager_->GetClusterId();
@@ -184,8 +194,9 @@ class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient> {
   std::unique_ptr<WorkerInfoAccessor> worker_accessor_;
   std::unique_ptr<PlacementGroupInfoAccessor> placement_group_accessor_;
   std::unique_ptr<InternalKVAccessor> internal_kv_accessor_;
-
   std::unique_ptr<TaskInfoAccessor> task_accessor_;
+  std::unique_ptr<RuntimeEnvAccessor> runtime_env_accessor_;
+  std::unique_ptr<AutoscalerStateAccessor> autoscaler_state_accessor_;
 
  private:
   const UniqueID gcs_client_id_ = UniqueID::FromRandom();

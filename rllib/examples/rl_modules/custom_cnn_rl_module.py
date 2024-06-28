@@ -1,9 +1,9 @@
-"""Example of implementing and configuring a custom (torch) RLModule.
+"""Example of implementing and configuring a custom (torch) CNN containing RLModule.
 
 This example:
-    - demonstrates how you can subclass the TorchRLModule base class and setup your
-    own neural network architecture by overriding `setup()`.
-    - how to override the 3 forward methods: `_forward_inference()`,
+    - demonstrates how you can subclass the TorchRLModule base class and set up your
+    own CNN-stack architecture by overriding the `setup()` method.
+    - shows how to override the 3 forward methods: `_forward_inference()`,
     `_forward_exploration()`, and `forward_train()` to implement your own custom forward
     logic(s). You will also learn, when each of these 3 methods is called by RLlib or
     the users of your RLModule.
@@ -56,7 +56,7 @@ import gymnasium as gym
 
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.env.wrappers.atari_wrappers import wrap_atari_for_new_api_stack
-from ray.rllib.examples.rl_modules.classes.tiny_atari_cnn import TinyAtariCNN
+from ray.rllib.examples.rl_modules.classes.tiny_atari_cnn_rlm import TinyAtariCNN
 from ray.rllib.utils.test_utils import (
     add_rllib_example_script_args,
     run_rllib_example_script_experiment,
@@ -98,20 +98,20 @@ if __name__ == "__main__":
             # Plug-in our custom RLModule class.
             rl_module_spec=SingleAgentRLModuleSpec(
                 module_class=TinyAtariCNN,
-                model_config_dict={"a": "b"},
+                # Feel free to specify your own `model_config_dict` settings below.
+                # The `model_config_dict` defined here will be available inside your
+                # custom RLModule class through the `self.config.model_config_dict`
+                # property.
+                model_config_dict={
+                    "conv_filters": [
+                        # num filters, kernel wxh, stride wxh, padding type
+                        [16, 4, 2, "same"],
+                        [32, 4, 2, "same"],
+                        [256, 11, 1, "valid"],
+                    ],
+                },
             ),
-            # Feel free to specify your own `model_config_dict` settings below.
-            # The `model_config_dict` defined here will be available inside your custom
-            # RLModule class through the `self.config.model_config_dict` property.
-            model_config_dict={
-                "conv_filters": [
-                    # num filters, kernel wxh, stride wxh, padding type
-                    [16, 4, 2, "same"],
-                    [32, 4, 2, "same"],
-                    [64, 4, 2, "same"],
-                ],
-            },
         )
     )
 
-    run_rllib_example_script_experiment(base_config, args, stop={})
+    run_rllib_example_script_experiment(base_config, args)

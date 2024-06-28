@@ -42,7 +42,7 @@ are represented by slightly different maps that the agent has to navigate.
    :end-before: __END_curriculum_learning_example_env_options__
 
 Then, define the central piece controlling the curriculum, which is a custom callbacks class
-overriding the :py:meth:`~ray.rllib.algorithms.callbacks.Callbacks.on_train_result`.
+overriding the :py:meth:`~ray.rllib.algorithms.callbacks.DefaultCallbacks.on_train_result`.
 
 
 .. TODO move to doc_code and make it use algo configs.

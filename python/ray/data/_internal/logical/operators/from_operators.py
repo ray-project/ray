@@ -49,6 +49,10 @@ class AbstractFrom(LogicalOperator, metaclass=abc.ABCMeta):
     def output_data(self) -> Optional[List[RefBundle]]:
         return self._input_data
 
+    def is_lineage_serializable(self) -> bool:
+        # This operator isn't serializable because it contains ObjectRefs.
+        return False
+
 
 class FromItems(AbstractFrom):
     """Logical operator for `from_items`."""

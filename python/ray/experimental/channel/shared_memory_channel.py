@@ -361,7 +361,7 @@ class Channel(ChannelInterface):
             self._reader_ref,
         )
 
-    def __repr__(self) -> str:
+    def __str__(self) -> str:
         return f"Channel(_reader_ref={self._reader_ref})"
 
     def _resize_channel_if_needed(self, serialized_value: str):
@@ -419,27 +419,20 @@ class Channel(ChannelInterface):
             self._num_readers,
         )
 
-    def begin_read(self) -> Any:
+    def read(self) -> Any:
         self.ensure_registered_as_reader()
-        ret = ray.get(self._reader_ref)
+        ret = self._worker.get_objects([self._reader_ref], return_exceptions=True)[0][0]
 
         if isinstance(ret, _ResizeChannel):
-            # The writer says we need to update the channel backing store (due to a
-            # resize).
-            self._worker.core_worker.experimental_channel_read_release(
-                [self._reader_ref]
-            )
             self._reader_ref = ret._reader_ref
             # We need to register the new reader_ref.
             self._reader_registered = False
             self.ensure_registered_as_reader()
-            ret = ray.get(self._reader_ref)
+            ret = self._worker.get_objects([self._reader_ref], return_exceptions=True)[
+                0
+            ][0]
 
         return ret
-
-    def end_read(self):
-        self.ensure_registered_as_reader()
-        self._worker.core_worker.experimental_channel_read_release([self._reader_ref])
 
     def close(self) -> None:
         """
@@ -557,17 +550,9 @@ class CompositeChannel(ChannelInterface):
             channel.write(value)
 
     def read(self) -> Any:
-        return self.begin_read()
-
-    def begin_read(self) -> Any:
         self.ensure_registered_as_reader()
         actor_id = self._get_self_actor_id()
-        return self._channel_dict[actor_id].begin_read()
-
-    def end_read(self):
-        self.ensure_registered_as_reader()
-        actor_id = self._get_self_actor_id()
-        return self._channel_dict[actor_id].end_read()
+        return self._channel_dict[actor_id].read()
 
     def close(self) -> None:
         for channel in self._channels:

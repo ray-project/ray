@@ -16,6 +16,9 @@ worker_node_types:
       min_workers: 32
       max_workers: 32
       use_spot: false
+      resources:
+        custom_resources:
+          worker: 1
 
 aws:
   TagSpecifications:

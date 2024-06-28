@@ -2,7 +2,6 @@ import json
 import logging
 import asyncio
 import aiohttp.web
-from concurrent.futures import ThreadPoolExecutor
 from typing import Optional, Tuple, List
 
 
@@ -68,9 +67,6 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
         )
         self._gcs_aio_client = dashboard_head.gcs_aio_client
         self._state_api = None
-        self.thread_pool_executor = ThreadPoolExecutor(
-            max_workers=1, thread_name_prefix="reporter_head_worker"
-        )
 
     async def _update_stubs(self, change):
         if change.old:
@@ -632,6 +628,8 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
         )
         self.cluster_metadata = json.loads(cluster_metadata.decode("utf-8"))
 
+        loop = get_or_create_event_loop()
+
         while True:
             try:
                 # The key is b'RAY_REPORTER:{node id hex}',
@@ -639,12 +637,11 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
                 key, data = await subscriber.poll()
                 if key is None:
                     continue
-                # The JSON Parsing can be CPU heavy. Offload to another thread to avoid
-                # blocking the event loop.
-                loop = get_or_create_event_loop()
-                parsed_data = await loop.run_in_executor(
-                    self.thread_pool_executor, json.loads, data
-                )
+
+                # NOTE: Every iteration is executed inside the thread-pool executor
+                #       (TPE) to avoid blocking the Dashboard's event-loop
+                parsed_data = await loop.run_in_executor(None, json.loads, data)
+
                 node_id = key.split(":")[-1]
                 DataSource.node_physical_stats[node_id] = parsed_data
             except Exception:

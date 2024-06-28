@@ -194,7 +194,7 @@ ModelWeights = dict
 ModelInputDict = Dict[str, TensorType]
 
 # Some kind of sample batch.
-SampleBatchType = Union["SampleBatch", "MultiAgentBatch"]
+SampleBatchType = Union["SampleBatch", "MultiAgentBatch", Dict[str, Any]]
 
 # A (possibly nested) space struct: Either a gym.spaces.Space or a
 # (possibly nested) dict|tuple of gym.space.Spaces.

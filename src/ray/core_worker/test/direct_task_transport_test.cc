@@ -287,7 +287,7 @@ class MockRayletClient : public WorkerLeaseInterface {
       return false;
     } else {
       auto callback = callbacks.front();
-      callback(Status::GrpcUnavailable("unavailable"), reply);
+      callback(Status::RpcError("unavailable", grpc::StatusCode::UNAVAILABLE), reply);
       callbacks.pop_front();
       return true;
     }

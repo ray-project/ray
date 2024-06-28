@@ -88,7 +88,7 @@ class TestDeploymentConfig:
             DeploymentConfig(num_replicas=-1)
 
         # Test dynamic default for max_ongoing_requests.
-        assert DeploymentConfig().max_ongoing_requests == 100
+        assert DeploymentConfig().max_ongoing_requests == 5
 
     def test_deployment_config_update(self):
         b = DeploymentConfig(num_replicas=1, max_ongoing_requests=1)
@@ -460,7 +460,7 @@ class TestReplicaConfig:
 class TestAutoscalingConfig:
     def test_target_ongoing_requests(self):
         autoscaling_config = AutoscalingConfig()
-        assert autoscaling_config.get_target_ongoing_requests() == 1
+        assert autoscaling_config.get_target_ongoing_requests() == 2
 
         autoscaling_config = AutoscalingConfig(target_ongoing_requests=7)
         assert autoscaling_config.get_target_ongoing_requests() == 7

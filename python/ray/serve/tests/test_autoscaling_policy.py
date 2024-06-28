@@ -297,7 +297,7 @@ class TestAutoscalingMetrics:
                 await signal.wait.remote()
                 return "sup"
 
-        @serve.deployment(graceful_shutdown_timeout_s=1)
+        @serve.deployment(graceful_shutdown_timeout_s=1, max_ongoing_requests=50)
         class Router:
             def __init__(self, handle: DeploymentHandle):
                 if use_get_handle_api:
@@ -1144,8 +1144,9 @@ def test_max_ongoing_requests_set_to_one(
 
     @serve.deployment(
         autoscaling_config=AutoscalingConfig(
+            target_ongoing_requests=1.0,
             min_replicas=1,
-            max_replicas=5,
+            max_replicas=3,
             upscale_delay_s=0.5,
             downscale_delay_s=0.5,
             metrics_interval_s=0.5,
@@ -1171,11 +1172,12 @@ def test_max_ongoing_requests_set_to_one(
     # 2. Wait for the number of waiters on signal to increase by 1.
     # 3. Assert the number of replicas has increased by 1.
     refs = []
-    for i in range(5):
+    for i in range(3):
         refs.append(h.remote())
 
         def check_num_waiters(target: int):
-            assert ray.get(signal.cur_num_waiters.remote()) == target
+            num_waiters = ray.get(signal.cur_num_waiters.remote())
+            assert num_waiters == target
             return True
 
         wait_for_condition(check_num_waiters, target=i + 1)

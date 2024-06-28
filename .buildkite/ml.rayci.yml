@@ -223,6 +223,7 @@ steps:
     depends_on: [ "mllightning2gpubuild", "forge" ]
 
   - label: ":train: ml: flaky tests"
+    key: ml_flaky_tests
     tags: 
       - train
       - skip-on-premerge
@@ -252,6 +253,7 @@ steps:
     soft_fail: true
 
   - label: ":train: ml: train gpu flaky tests"
+    key: ml_flaky_gpu_tests
     tags: 
       - train
       - skip-on-premerge

@@ -1,6 +1,8 @@
 import logging
 from typing import Dict
 
+import numpy as np
+
 from ray.rllib.algorithms.ppo.ppo import (
     LEARNER_RESULTS_KL_KEY,
     LEARNER_RESULTS_CURR_KL_COEFF_KEY,
@@ -17,6 +19,7 @@ from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.tf_utils import explained_variance
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.nested_dict import NestedDict
+from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.typing import ModuleID, TensorType
 
 _, tf, _ = try_import_tf()
@@ -145,35 +148,37 @@ class PPOTfLearner(PPOLearner, TfLearner):
         return total_loss
 
     @override(PPOLearner)
-    def additional_update_for_module(
+    def _update_module_kl_coeff(
         self,
         *,
         module_id: ModuleID,
         config: PPOConfig,
-        timestep: int,
-        sampled_kl_values: dict,
     ) -> None:
+        kl = convert_to_numpy(self.metrics.peek((module_id, LEARNER_RESULTS_KL_KEY)))
 
-        super().additional_update_for_module(
-            module_id=module_id,
-            config=config,
-            timestep=timestep,
-        )
-
-        # Update KL coefficient.
-        if config.use_kl_loss:
-            assert sampled_kl_values, "Sampled KL values are empty."
-            sampled_kl = sampled_kl_values[module_id]
-            curr_var = self.curr_kl_coeffs_per_module[module_id]
-            if sampled_kl > 2.0 * config.kl_target:
-                # TODO (Kourosh) why not 2?
-                curr_var.assign(curr_var * 1.5)
-            elif sampled_kl < 0.5 * config.kl_target:
-                curr_var.assign(curr_var * 0.5)
-
-            # Log the updated KL-coeff value.
-            self.metrics.log_value(
-                (module_id, LEARNER_RESULTS_CURR_KL_COEFF_KEY),
-                curr_var.numpy(),
-                window=1,
+        if np.isnan(kl):
+            logger.warning(
+                f"KL divergence for Module {module_id} is non-finite, this "
+                "will likely destabilize your model and the training "
+                "process. Action(s) in a specific state have near-zero "
+                "probability. This can happen naturally in deterministic "
+                "environments where the optimal policy has zero mass for a "
+                "specific action. To fix this issue, consider setting "
+                "`kl_coeff` to 0.0 or increasing `entropy_coeff` in your "
+                "config."
             )
+
+        # Update the KL coefficient.
+        curr_var = self.curr_kl_coeffs_per_module[module_id]
+        if kl > 2.0 * config.kl_target:
+            # TODO (Kourosh) why not 2?
+            curr_var.assign(curr_var * 1.5)
+        elif kl < 0.5 * config.kl_target:
+            curr_var.assign(curr_var * 0.5)
+
+        # Log the updated KL-coeff value.
+        self.metrics.log_value(
+            (module_id, LEARNER_RESULTS_CURR_KL_COEFF_KEY),
+            curr_var.numpy(),
+            window=1,
+        )

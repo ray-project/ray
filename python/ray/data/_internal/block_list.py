@@ -8,9 +8,7 @@ from ray.types import ObjectRef
 class BlockList:
     """A list of blocks that may be computed or pending computation.
 
-    In the basic version of BlockList, all blocks are known ahead of time. In
-    LazyBlockList, blocks are not yet computed, so the number of blocks may
-    change after execution due to block splitting.
+    All blocks are known ahead of time
     """
 
     def __init__(
@@ -69,7 +67,6 @@ class BlockList:
         The length of this iterator is not known until execution.
         """
         self._check_if_cleared()
-        # Overriden in LazyBlockList for bulk evaluation.
         return list(self._blocks)
 
     def get_blocks_with_metadata(self) -> List[Tuple[ObjectRef[Block], BlockMetadata]]:
@@ -78,7 +75,7 @@ class BlockList:
         Prefer calling this instead of the iter form for performance if you
         don't need lazy evaluation.
         """
-        self.get_blocks()  # Force bulk evaluation in LazyBlockList.
+        self.get_blocks()
         return list(self.iter_blocks_with_metadata())
 
     def iter_blocks_with_metadata(

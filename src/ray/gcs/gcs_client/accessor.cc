@@ -1294,5 +1294,111 @@ Status InternalKVAccessor::Exists(const std::string &ns,
   return ret_promise.get_future().get();
 }
 
+RuntimeEnvAccessor::RuntimeEnvAccessor(GcsClient *client_impl)
+    : client_impl_(client_impl) {}
+
+Status RuntimeEnvAccessor::PinRuntimeEnvUri(const std::string &uri,
+                                            int expiration_s,
+                                            int64_t timeout_ms) {
+  rpc::PinRuntimeEnvURIRequest request;
+  request.set_uri(uri);
+  request.set_expiration_s(expiration_s);
+  rpc::PinRuntimeEnvURIReply reply;
+  auto status =
+      client_impl_->GetGcsRpcClient().SyncPinRuntimeEnvURI(request, &reply, timeout_ms);
+  return status;
+}
+
+AutoscalerStateAccessor::AutoscalerStateAccessor(GcsClient *client_impl)
+    : client_impl_(client_impl) {}
+
+Status AutoscalerStateAccessor::RequestClusterResourceConstraint(
+    int64_t timeout_ms,
+    const std::vector<std::unordered_map<std::string, double>> &bundles,
+    const std::vector<int64_t> &count_array) {
+  rpc::autoscaler::RequestClusterResourceConstraintRequest request;
+  rpc::autoscaler::RequestClusterResourceConstraintReply reply;
+  RAY_CHECK_EQ(bundles.size(), count_array.size());
+  for (size_t i = 0; i < bundles.size(); ++i) {
+    const auto &bundle = bundles[i];
+    auto count = count_array[i];
+
+    auto new_resource_requests_by_count =
+        request.mutable_cluster_resource_constraint()->add_min_bundles();
+
+    new_resource_requests_by_count->mutable_request()->mutable_resources_bundle()->insert(
+        bundle.begin(), bundle.end());
+    new_resource_requests_by_count->set_count(count);
+  }
+
+  return client_impl_->GetGcsRpcClient().SyncRequestClusterResourceConstraint(
+      request, &reply, timeout_ms);
+}
+
+Status AutoscalerStateAccessor::GetClusterResourceState(int64_t timeout_ms,
+                                                        std::string &serialized_reply) {
+  rpc::autoscaler::GetClusterResourceStateRequest request;
+  rpc::autoscaler::GetClusterResourceStateReply reply;
+
+  RAY_RETURN_NOT_OK(client_impl_->GetGcsRpcClient().SyncGetClusterResourceState(
+      request, &reply, timeout_ms));
+
+  if (!reply.SerializeToString(&serialized_reply)) {
+    return Status::IOError("Failed to serialize GetClusterResourceState");
+  }
+  return Status::OK();
+}
+
+Status AutoscalerStateAccessor::GetClusterStatus(int64_t timeout_ms,
+                                                 std::string &serialized_reply) {
+  rpc::autoscaler::GetClusterStatusRequest request;
+  rpc::autoscaler::GetClusterStatusReply reply;
+
+  RAY_RETURN_NOT_OK(
+      client_impl_->GetGcsRpcClient().SyncGetClusterStatus(request, &reply, timeout_ms));
+
+  if (!reply.SerializeToString(&serialized_reply)) {
+    return Status::IOError("Failed to serialize GetClusterStatusReply");
+  }
+  return Status::OK();
+}
+
+Status AutoscalerStateAccessor::ReportAutoscalingState(
+    int64_t timeout_ms, const std::string &serialized_state) {
+  rpc::autoscaler::ReportAutoscalingStateRequest request;
+  rpc::autoscaler::ReportAutoscalingStateReply reply;
+
+  if (!request.mutable_autoscaling_state()->ParseFromString(serialized_state)) {
+    return Status::IOError("Failed to parse ReportAutoscalingState");
+  }
+  return client_impl_->GetGcsRpcClient().SyncReportAutoscalingState(
+      request, &reply, timeout_ms);
+}
+
+Status AutoscalerStateAccessor::DrainNode(const std::string &node_id,
+                                          int32_t reason,
+                                          const std::string &reason_message,
+                                          int64_t deadline_timestamp_ms,
+                                          int64_t timeout_ms,
+                                          bool &is_accepted,
+                                          std::string &rejection_reason_message) {
+  rpc::autoscaler::DrainNodeRequest request;
+  request.set_node_id(NodeID::FromHex(node_id).Binary());
+  request.set_reason(static_cast<rpc::autoscaler::DrainNodeReason>(reason));
+  request.set_reason_message(reason_message);
+  request.set_deadline_timestamp_ms(deadline_timestamp_ms);
+
+  rpc::autoscaler::DrainNodeReply reply;
+
+  RAY_RETURN_NOT_OK(
+      client_impl_->GetGcsRpcClient().SyncDrainNode(request, &reply, timeout_ms));
+
+  is_accepted = reply.is_accepted();
+  if (!is_accepted) {
+    rejection_reason_message = reply.rejection_reason_message();
+  }
+  return Status::OK();
+}
+
 }  // namespace gcs
 }  // namespace ray

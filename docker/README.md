@@ -1,9 +1,9 @@
 Overview of how the ray images are built:
 
-Images without a "-cpu" or "-gpu" tag are built on ``ubuntu/focal``. They are just an alias for **-cpu** (e.g. ``ray:latest`` is the same as ``ray:latest-cpu``).
+Images without a "-cpu" or "-gpu" tag are built on ``ubuntu:22.04``. They are just an alias for **-cpu** (e.g. ``ray:latest`` is the same as ``ray:latest-cpu``).
 
 ```
-ubuntu/focal
+ubuntu:22.04
 └── base-deps:cpu
     └── ray-deps:cpu
         └── ray:cpu

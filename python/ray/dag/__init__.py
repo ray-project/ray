@@ -13,6 +13,7 @@ from ray.dag.constants import (
     DAGNODE_TYPE_KEY,
 )
 from ray.dag.vis_utils import plot
+from ray.dag.context import DAGContext
 
 __all__ = [
     "ClassNode",
@@ -27,4 +28,5 @@ __all__ = [
     "DAGNODE_TYPE_KEY",
     "plot",
     "MultiOutputNode",
+    "DAGContext",
 ]

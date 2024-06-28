@@ -6,7 +6,7 @@
 set -x
 
 GPU=""
-BASE_IMAGE="ubuntu:focal"
+BASE_IMAGE="ubuntu:22.04"
 WHEEL_URL="https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp39-cp39-manylinux2014_x86_64.whl"
 PYTHON_VERSION="3.9.19"
 
@@ -17,7 +17,7 @@ key="$1"
 case $key in
     --gpu)
     GPU="-gpu"
-    BASE_IMAGE="nvidia/cuda:11.8.0-cudnn8-devel-ubuntu20.04"
+    BASE_IMAGE="nvidia/cuda:11.8.0-cudnn8-devel-ubuntu22.04"
     ;;
     --base-image)
     # Override for the base image.

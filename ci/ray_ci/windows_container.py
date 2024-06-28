@@ -13,6 +13,8 @@ class WindowsContainer(Container):
     def install_ray(self, build_type: Optional[str] = None) -> List[str]:
         assert build_type is None, f"Windows does not support build types {build_type}"
         bazel_cache = os.environ.get("BUILDKITE_BAZEL_CACHE_URL", "")
+        pipeline_id = os.environ.get("BUILDKITE_PIPELINE_ID", "")
+        cache_readonly = os.environ.get("BUILDKITE_CACHE_READONLY", "")
         subprocess.check_call(
             [
                 "docker",
@@ -22,7 +24,9 @@ class WindowsContainer(Container):
                 "--build-arg",
                 f"BUILDKITE_BAZEL_CACHE_URL={bazel_cache}",
                 "--build-arg",
-                f"BUILDKITE_PIPELINE_ID={os.environ.get('BUILDKITE_PIPELINE_ID')}",
+                f"BUILDKITE_PIPELINE_ID={pipeline_id}",
+                "--build-arg",
+                f"BUILDKITE_CACHE_READONLY={cache_readonly}",
                 "-t",
                 self._get_docker_image(),
                 "-f",

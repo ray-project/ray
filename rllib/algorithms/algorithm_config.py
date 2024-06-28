@@ -452,7 +452,6 @@ class AlgorithmConfig(_Config):
         self.ope_split_batch_by_episode = True
         self.evaluation_num_env_runners = 0
         self.custom_evaluation_function = None
-        self.always_attach_evaluation_results = True
         # TODO: Set this flag still in the config or - much better - in the
         #  RolloutWorker as a property.
         self.in_evaluation = False
@@ -520,6 +519,7 @@ class AlgorithmConfig(_Config):
         self._disable_preprocessor_api = False
         self._disable_action_flattening = False
         self._disable_initialize_loss_from_dummy_batch = False
+        self._dont_auto_sync_env_runner_states = False
 
         # Has this config object been frozen (cannot alter its attributes anymore).
         self._is_frozen = False
@@ -546,6 +546,7 @@ class AlgorithmConfig(_Config):
         self._enable_rl_module_api = DEPRECATED_VALUE
         self.auto_wrap_old_gym_envs = DEPRECATED_VALUE
         self.disable_env_checking = DEPRECATED_VALUE
+        self.always_attach_evaluation_results = DEPRECATED_VALUE
 
         # The following values have moved because of the new ReplayBuffer API
         self.buffer_size = DEPRECATED_VALUE
@@ -928,7 +929,7 @@ class AlgorithmConfig(_Config):
                     )
                 )
             # Batch all data.
-            pipeline.append(BatchIndividualItems())
+            pipeline.append(BatchIndividualItems(multi_agent=self.is_multi_agent()))
             # Convert to Tensors.
             pipeline.append(NumpyToTensor())
 
@@ -1011,7 +1012,12 @@ class AlgorithmConfig(_Config):
 
         return pipeline
 
-    def build_learner_connector(self, input_observation_space, input_action_space):
+    def build_learner_connector(
+        self,
+        input_observation_space,
+        input_action_space,
+        device=None,
+    ):
         from ray.rllib.connectors.learner import (
             AddColumnsFromEpisodesToTrainBatch,
             AddObservationsFromEpisodesToBatch,
@@ -1019,13 +1025,18 @@ class AlgorithmConfig(_Config):
             AgentToModuleMapping,
             BatchIndividualItems,
             LearnerConnectorPipeline,
+            NumpyToTensor,
         )
 
         custom_connectors = []
         # Create a learner connector pipeline (including RLlib's default
         # learner connector piece) and return it.
         if self._learner_connector is not None:
-            val_ = self._learner_connector(input_observation_space, input_action_space)
+            val_ = self._learner_connector(
+                input_observation_space,
+                input_action_space,
+                # device,  # TODO (sven): Also pass device into custom builder.
+            )
 
             from ray.rllib.connectors.connector_v2 import ConnectorV2
 
@@ -1074,7 +1085,9 @@ class AlgorithmConfig(_Config):
                     )
                 )
             # Batch all data.
-            pipeline.append(BatchIndividualItems())
+            pipeline.append(BatchIndividualItems(multi_agent=self.is_multi_agent()))
+            # Convert to Tensors.
+            pipeline.append(NumpyToTensor(as_learner_connector=True, device=device))
         return pipeline
 
     def build_learner_group(
@@ -2199,9 +2212,8 @@ class AlgorithmConfig(_Config):
         ope_split_batch_by_episode: Optional[bool] = NotProvided,
         evaluation_num_env_runners: Optional[int] = NotProvided,
         custom_evaluation_function: Optional[Callable] = NotProvided,
-        always_attach_evaluation_results: Optional[bool] = NotProvided,
         # Deprecated args.
-        evaluation_num_episodes=DEPRECATED_VALUE,
+        always_attach_evaluation_results=DEPRECATED_VALUE,
         evaluation_num_workers=DEPRECATED_VALUE,
     ) -> "AlgorithmConfig":
         """Sets the config's evaluation settings.
@@ -2284,22 +2296,22 @@ class AlgorithmConfig(_Config):
                 for training.
             custom_evaluation_function: Customize the evaluation method. This must be a
                 function of signature (algo: Algorithm, eval_workers: EnvRunnerGroup) ->
-                metrics: dict. See the Algorithm.evaluate() method to see the default
+                (metrics: dict, env_steps: int, agent_steps: int) (metrics: dict if
+                `enable_env_runner_and_connector_v2=True`), where `env_steps` and
+                `agent_steps` define the number of sampled steps during the evaluation
+                iteration. See the Algorithm.evaluate() method to see the default
                 implementation. The Algorithm guarantees all eval workers have the
                 latest policy state before this function is called.
-            always_attach_evaluation_results: Make sure the latest available evaluation
-                results are always attached to a step result dict. This may be useful
-                if Tune or some other meta controller needs access to evaluation metrics
-                all the time.
 
         Returns:
             This updated AlgorithmConfig object.
         """
-        if evaluation_num_episodes != DEPRECATED_VALUE:
+        if always_attach_evaluation_results != DEPRECATED_VALUE:
             deprecation_warning(
-                old="AlgorithmConfig.evaluation(evaluation_num_episodes=..)",
-                new="AlgorithmConfig.evaluation(evaluation_duration=.., "
-                "evaluation_duration_unit='episodes')",
+                old="AlgorithmConfig.evaluation(always_attach_evaluation_results=..)",
+                help="This setting is no longer needed, b/c Tune does not error "
+                "anymore (only warns) when a metrics key can't be found in the "
+                "results.",
                 error=True,
             )
         if evaluation_num_workers != DEPRECATED_VALUE:
@@ -2347,8 +2359,6 @@ class AlgorithmConfig(_Config):
             self.evaluation_num_env_runners = evaluation_num_env_runners
         if custom_evaluation_function is not NotProvided:
             self.custom_evaluation_function = custom_evaluation_function
-        if always_attach_evaluation_results is not NotProvided:
-            self.always_attach_evaluation_results = always_attach_evaluation_results
         if ope_split_batch_by_episode is not NotProvided:
             self.ope_split_batch_by_episode = ope_split_batch_by_episode
 
@@ -3130,7 +3140,10 @@ class AlgorithmConfig(_Config):
 
     @property
     def total_train_batch_size(self):
-        if self.train_batch_size_per_learner is not None:
+        if (
+            self.train_batch_size_per_learner is not None
+            and self.enable_rl_module_and_learner
+        ):
             return self.train_batch_size_per_learner * (self.num_learners or 1)
         else:
             return self.train_batch_size

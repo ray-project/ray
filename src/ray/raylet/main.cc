@@ -272,6 +272,7 @@ int main(int argc, char *argv[]) {
         RAY_CHECK_OK(status);
         RAY_CHECK(stored_raylet_config.has_value());
         RayConfig::instance().initialize(stored_raylet_config.get());
+        ray::asio::testing::init();
 
         // Core worker tries to kill child processes when it exits. But they can't do
         // it perfectly: if the core worker is killed by SIGKILL, the child processes

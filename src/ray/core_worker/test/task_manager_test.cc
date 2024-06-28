@@ -20,6 +20,7 @@
 #include "mock/ray/pubsub/publisher.h"
 #include "mock/ray/pubsub/subscriber.h"
 #include "ray/common/task/task_spec.h"
+#include "ray/common/task/task_util.h"
 #include "ray/common/test_util.h"
 #include "ray/core_worker/reference_count.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
@@ -653,6 +654,68 @@ TEST_F(TaskManagerTest, TestLocalityDataAdded) {
   worker_addr.set_raylet_id(node_id.Binary());
   manager_.AddPendingTask(rpc::Address(), spec, "", 0);
   manager_.CompletePendingTask(spec.TaskId(), reply, worker_addr, false);
+}
+
+// Test to make sure that the task spec and actor
+// for an actor task return object are
+// pinned when lineage pinning is enabled in the ReferenceCounter.
+TEST_F(TaskManagerLineageTest, TestActorLineagePinned) {
+  rpc::Address caller_address;
+  ActorID actor_id = ActorID::FromHex("f4ce02420592ca68c1738a0d01000000");
+  const ObjectID actor_creation_dummy_object_id =
+      ObjectID::FromIndex(TaskID::ForActorCreationTask(actor_id), /*index=*/1);
+  int num_retries = 3;
+  TaskSpecBuilder builder;
+  builder.SetCommonTaskSpec(
+      TaskID::ForActorTask(JobID::Nil(), TaskID::Nil(), 0, actor_id),
+      "dummy_actor_task",
+      Language::PYTHON,
+      FunctionDescriptorBuilder::BuildPython("a", "", "", ""),
+      JobID::Nil(),
+      rpc::JobConfig(),
+      TaskID::Nil(),
+      0,
+      TaskID::Nil(),
+      rpc::Address(),
+      1,
+      false,
+      false,
+      -1,
+      {},
+      {},
+      "",
+      0,
+      TaskID::Nil());
+  builder.SetActorTaskSpec(
+      actor_id, actor_creation_dummy_object_id, num_retries, false, "", 0);
+  TaskSpecification spec = builder.Build();
+
+  ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 0);
+  manager_.AddPendingTask(caller_address, spec, "", num_retries);
+  auto return_id = spec.ReturnId(0);
+  ASSERT_TRUE(manager_.IsTaskPending(spec.TaskId()));
+  // 2 objects are in scope: actor handle and actor task return object.
+  ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 2);
+
+  // The task completes.
+  rpc::PushTaskReply reply;
+  auto return_object = reply.add_return_objects();
+  return_object->set_object_id(return_id.Binary());
+  auto data = GenerateRandomBuffer();
+  return_object->set_data(data->Data(), data->Size());
+  return_object->set_in_plasma(true);
+  manager_.CompletePendingTask(spec.TaskId(), reply, rpc::Address(), false);
+
+  // The task should still be in the lineage because its return ID is in scope.
+  ASSERT_TRUE(manager_.IsTaskSubmissible(spec.TaskId()));
+  ASSERT_TRUE(reference_counter_->HasReference(spec.ActorCreationDummyObjectId()));
+  ASSERT_TRUE(reference_counter_->HasReference(return_id));
+
+  // All lineage should be erased.
+  reference_counter_->RemoveLocalReference(return_id, nullptr);
+  ASSERT_FALSE(manager_.IsTaskSubmissible(spec.TaskId()));
+  ASSERT_FALSE(reference_counter_->HasReference(spec.ActorCreationDummyObjectId()));
+  ASSERT_FALSE(reference_counter_->HasReference(return_id));
 }
 
 // Test to make sure that the task spec and dependencies for an object are

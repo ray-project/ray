@@ -14,7 +14,10 @@ from ray._private.pydantic_compat import BaseModel, ValidationError
 from ray._private.test_utils import SignalActor, wait_for_condition
 from ray.serve._private.api import call_app_builder_with_args_if_necessary
 from ray.serve._private.common import DeploymentID
-from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
+from ray.serve._private.constants import (
+    DEFAULT_MAX_ONGOING_REQUESTS,
+    SERVE_DEFAULT_APP_NAME,
+)
 from ray.serve.deployment import Application
 from ray.serve.exceptions import RayServeException
 from ray.serve.handle import DeploymentHandle
@@ -410,6 +413,52 @@ def test_delete_application(serve_instance):
     # make sure no affect to app_g
     assert g_handle.remote().result() == "got g"
     assert requests.get("http://127.0.0.1:8000/app_g").text == "got g"
+
+
+@pytest.mark.asyncio
+async def test_delete_while_initializing(serve_instance):
+    """Test that __del__ runs when a replica terminates while initializing."""
+
+    @ray.remote
+    class Counter:
+        def __init__(self):
+            self.count = 0
+
+        def incr(self):
+            self.count += 1
+
+        def get_count(self) -> int:
+            return self.count
+
+    signal = SignalActor.remote()
+    counter = Counter.remote()
+
+    @serve.deployment(graceful_shutdown_timeout_s=0.01)
+    class HangingStart:
+        async def __init__(
+            self, signal: ray.actor.ActorHandle, counter: ray.actor.ActorHandle
+        ):
+            self.signal = signal
+            self.counter = counter
+            await signal.send.remote()
+            print("HangingStart set the EventHolder.")
+            await asyncio.sleep(10000)
+
+        async def __del__(self):
+            print("Running __del__")
+            await self.counter.incr.remote()
+
+    serve._run(HangingStart.bind(signal, counter), _blocking=False)
+
+    print("Waiting for the deployment to start initialization.")
+    await signal.wait.remote()
+
+    print("Calling serve.delete().")
+    serve.delete(name=SERVE_DEFAULT_APP_NAME)
+
+    # Ensure that __del__ ran once, even though the deployment terminated
+    # during initialization.
+    assert (await counter.get_count.remote()) == 1
 
 
 def test_deployment_name_with_app_name(serve_instance):
@@ -1034,10 +1083,10 @@ def test_max_ongoing_requests_none(serve_instance):
         ).bind()
 
     serve.run(serve.deployment(max_concurrent_queries=None)(A).bind())
-    assert get_max_ongoing_requests() == 100
+    assert get_max_ongoing_requests() == DEFAULT_MAX_ONGOING_REQUESTS
 
     serve.run(serve.deployment(A).options(max_concurrent_queries=None).bind())
-    assert get_max_ongoing_requests() == 100
+    assert get_max_ongoing_requests() == DEFAULT_MAX_ONGOING_REQUESTS
 
     serve.run(
         serve.deployment(max_ongoing_requests=8, max_concurrent_queries=None)(A).bind()

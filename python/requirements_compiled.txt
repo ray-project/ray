@@ -292,6 +292,7 @@ click==8.1.7
     #   databricks-cli
     #   distributed
     #   flask
+    #   jupyter-cache
     #   mlflow
     #   ray
     #   semgrep
@@ -325,7 +326,6 @@ cmdstanpy==1.2.0
 colorama==0.4.6
     # via
     #   bayesian-optimization
-    #   nbdime
     #   semgrep
 coloredlogs==15.0.1
     # via onnxruntime
@@ -592,7 +592,6 @@ gitdb==4.0.11
 gitpython==3.1.40
     # via
     #   mlflow
-    #   nbdime
     #   wandb
 glfw==2.6.3
     # via
@@ -790,9 +789,9 @@ imagesize==1.4.1
 importlib-metadata==6.11.0
     # via
     #   -r /ray/ci/../python/requirements/test-requirements.txt
+    #   jupyter-cache
     #   mlflow
     #   mosaicml
-    #   myst-nb
 importlib-resources==5.13.0
     # via
     #   ale-py
@@ -817,17 +816,15 @@ ipython==8.12.3
     #   myst-nb
 ipython-genutils==0.2.0
     # via
-    #   ipywidgets
     #   nbclassic
     #   notebook
-ipywidgets==7.7.2
+ipywidgets==8.0.6
     # via
     #   -r /ray/ci/../python/requirements/anyscale-requirements.txt
     #   -r /ray/ci/../python/requirements/docker/ray-docker-requirements.txt
     #   -r /ray/ci/../python/requirements/test-requirements.txt
     #   ax-platform
     #   jupyter-sphinx
-    #   myst-nb
 isodate==0.6.1
     # via msrest
 isoduration==20.11.0
@@ -875,7 +872,6 @@ jinja2==3.1.2
     #   myst-parser
     #   nbclassic
     #   nbconvert
-    #   nbdime
     #   notebook
     #   sphinx
     #   torch
@@ -926,7 +922,7 @@ jsonschema-spec==0.1.6
     # via openapi-spec-validator
 junit-xml==1.9
     # via cfn-lint
-jupyter-cache==0.4.3
+jupyter-cache==0.6.1
     # via myst-nb
 jupyter-client==7.3.4
     # via
@@ -950,19 +946,15 @@ jupyter-events==0.6.3
 jupyter-server==1.24.0
     # via
     #   jupyter-server-fileid
-    #   jupyter-server-mathjax
     #   jupyterlab
     #   jupyterlab-server
     #   nbclassic
-    #   nbdime
     #   notebook-shim
 jupyter-server-fileid==0.9.0
     # via jupyter-server-ydoc
-jupyter-server-mathjax==0.2.6
-    # via nbdime
 jupyter-server-ydoc==0.6.1
     # via jupyterlab
-jupyter-sphinx==0.3.2
+jupyter-sphinx==0.2.4a1
     # via myst-nb
 jupyter-ydoc==0.2.5
     # via
@@ -976,7 +968,7 @@ jupyterlab-pygments==0.3.0
     # via nbconvert
 jupyterlab-server==2.24.0
     # via jupyterlab
-jupyterlab-widgets==1.1.7
+jupyterlab-widgets==3.0.11
     # via ipywidgets
 jupytext==1.13.6
     # via -r /ray/ci/../python/requirements/test-requirements.txt
@@ -1151,9 +1143,9 @@ mypy-extensions==1.0.0
     # via
     #   black
     #   mypy
-myst-nb==0.13.1
+myst-nb==0.6.0
     # via -r /ray/ci/../python/requirements/test-requirements.txt
-myst-parser==0.15.2
+myst-parser==0.14.0
     # via
     #   -r /ray/ci/../python/requirements/test-requirements.txt
     #   myst-nb
@@ -1164,6 +1156,7 @@ nbclassic==1.0.0
 nbclient==0.5.13
     # via
     #   jupyter-cache
+    #   myst-nb
     #   nbconvert
 nbconvert==6.5.4
     # via
@@ -1172,8 +1165,6 @@ nbconvert==6.5.4
     #   myst-nb
     #   nbclassic
     #   notebook
-nbdime==4.0.1
-    # via jupyter-cache
 nbformat==5.9.2
     # via
     #   jupyter-cache
@@ -1184,7 +1175,6 @@ nbformat==5.9.2
     #   nbclassic
     #   nbclient
     #   nbconvert
-    #   nbdime
     #   notebook
 nest-asyncio==1.5.8
     # via
@@ -1209,9 +1199,7 @@ nevergrad==0.4.3.post7
 ninja==1.11.1.1
     # via deepspeed
 notebook==6.5.6
-    # via
-    #   jupyterlab
-    #   widgetsnbextension
+    # via jupyterlab
 notebook-shim==0.2.3
     # via nbclassic
     # via vsphere-automation-sdk
@@ -1678,7 +1666,6 @@ pygments==2.13.0
     #   ipython
     #   knack
     #   nbconvert
-    #   nbdime
     #   rich
     #   sphinx
 pyjwt==2.8.0
@@ -1834,6 +1821,7 @@ pyyaml==6.0.1
     #   gradio
     #   huggingface-hub
     #   jsonschema-spec
+    #   jupyter-cache
     #   jupyter-events
     #   jupytext
     #   knack
@@ -1910,7 +1898,6 @@ requests==2.31.0
     #   moto
     #   msal
     #   msrest
-    #   nbdime
     #   ray
     #   requests-oauthlib
     #   requests-toolbelt
@@ -2127,7 +2114,7 @@ soundfile==0.12.1
     # via -r /ray/ci/../python/requirements/ml/data-test-requirements.txt
 soupsieve==2.5
     # via beautifulsoup4
-sphinx==4.3.2
+sphinx==2.4.5
     # via
     #   -r /ray/ci/../python/requirements/test-requirements.txt
     #   jupyter-sphinx
@@ -2187,6 +2174,7 @@ sympy==1.12
 tabulate==0.9.0
     # via
     #   databricks-cli
+    #   jupyter-cache
     #   knack
     #   mosaicml
 tblib==3.0.0
@@ -2341,7 +2329,6 @@ tornado==6.1
     #   jupyter-server
     #   jupyterlab
     #   nbclassic
-    #   nbdime
     #   notebook
     #   pymars
     #   terminado
@@ -2526,7 +2513,7 @@ wheel==0.42.0
     #   astunparse
     #   lightgbm
     #   sphinx-togglebutton
-widgetsnbextension==3.6.6
+widgetsnbextension==4.0.11
     # via ipywidgets
 wrapt==1.14.1
     # via

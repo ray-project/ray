@@ -35,22 +35,36 @@ def make_time_major(
         trajectory_len is None or recurrent_seq_len is None
     ), "Either trajectory_len or recurrent_seq_len must be set."
 
+    # Figure out the sizes of the final B and T axes.
     if recurrent_seq_len:
         B = recurrent_seq_len.shape[0]
         T = tensor.shape[0] // B
     else:
-        # Important: chop the tensor into batches at known episode cut
-        # boundaries.
-        # TODO: (sven) this is kind of a hack and won't work for
-        #  batch_mode=complete_episodes.
         T = trajectory_len
-        B = tensor.shape[0] // T
-    rs = torch.reshape(tensor, [B, T] + list(tensor.shape[1:]))
+        # Zero-pad, if necessary.
+        tensor_0 = tensor.shape[0]
+        B = tensor_0 // T
+        if B != (tensor_0 / T):
+            assert len(tensor.shape) == 1
+            tensor = torch.cat(
+                [
+                    tensor,
+                    torch.zeros(
+                        trajectory_len - tensor_0 % T,
+                        dtype=tensor.dtype,
+                        device=tensor.device,
+                    ),
+                ]
+            )
+            B += 1
+
+    # Reshape tensor (break up B axis into 2 axes: B and T).
+    tensor = torch.reshape(tensor, [B, T] + list(tensor.shape[1:]))
 
     # Swap B and T axes.
-    res = torch.transpose(rs, 1, 0)
+    tensor = torch.transpose(tensor, 1, 0)
 
-    return res
+    return tensor
 
 
 def vtrace_torch(

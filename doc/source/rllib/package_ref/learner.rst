@@ -81,10 +81,9 @@ Performing Updates
 
     Learner.update_from_batch
     Learner.update_from_episodes
+    Learner.before_gradient_based_update
     Learner._update
-    Learner.additional_update
-    Learner.additional_update_for_module
-    Learner._convert_batch_type
+    Learner.after_gradient_based_update
 
 
 Computing Losses

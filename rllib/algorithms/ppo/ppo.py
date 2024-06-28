@@ -31,7 +31,6 @@ from ray.rllib.utils.deprecation import DEPRECATED_VALUE
 from ray.rllib.utils.metrics import (
     ENV_RUNNER_RESULTS,
     ENV_RUNNER_SAMPLING_TIMER,
-    LEARNER_ADDITIONAL_UPDATE_TIMER,
     LEARNER_RESULTS,
     LEARNER_UPDATE_TIMER,
     NUM_AGENT_STEPS_SAMPLED,
@@ -48,7 +47,6 @@ from ray.rllib.utils.metrics import (
     ALL_MODULES,
 )
 from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
-from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.schedules.scheduler import Scheduler
 from ray.rllib.utils.typing import ResultDict
 from ray.util.debug import log_once
@@ -526,37 +524,6 @@ class PPO(Algorithm):
                 weights = self.learner_group.get_weights(inference_only=True)
                 self.workers.local_worker().set_weights(weights)
 
-        with self.metrics.log_time((TIMERS, LEARNER_ADDITIONAL_UPDATE_TIMER)):
-            kl_dict = {}
-            if self.config.use_kl_loss:
-                for mid in modules_to_update:
-                    kl = convert_to_numpy(
-                        self.metrics.peek(
-                            (LEARNER_RESULTS, mid, LEARNER_RESULTS_KL_KEY)
-                        )
-                    )
-                    if np.isnan(kl):
-                        logger.warning(
-                            f"KL divergence for Module {mid} is non-finite, this "
-                            "will likely destabilize your model and the training "
-                            "process. Action(s) in a specific state have near-zero "
-                            "probability. This can happen naturally in deterministic "
-                            "environments where the optimal policy has zero mass for a "
-                            "specific action. To fix this issue, consider setting "
-                            "`kl_coeff` to 0.0 or increasing `entropy_coeff` in your "
-                            "config."
-                        )
-                    kl_dict[mid] = kl
-
-            # TODO (sven): Move to Learner._after_gradient_based_update().
-            # Triggers a special update method on RLOptimizer to update the KL values.
-            additional_results = self.learner_group.additional_update(
-                module_ids_to_update=modules_to_update,
-                sampled_kl_values=kl_dict,
-                timestep=self.metrics.peek(NUM_ENV_STEPS_SAMPLED_LIFETIME),
-            )
-            self.metrics.merge_and_log_n_dicts(additional_results, key=LEARNER_RESULTS)
-
         return self.metrics.reduce()
 
     def _training_step_old_and_hybrid_api_stacks(self) -> ResultDict:
@@ -649,15 +616,6 @@ class PPO(Algorithm):
                             "action. To fix this issue, consider setting `kl_coeff` to "
                             "0.0 or increasing `entropy_coeff` in your config."
                         )
-
-            # triggers a special update method on RLOptimizer to update the KL values.
-            additional_results = self.learner_group.additional_update(
-                module_ids_to_update=policies_to_update,
-                sampled_kl_values=kl_dict,
-                timestep=self._counters[NUM_AGENT_STEPS_SAMPLED],
-            )
-            for pid, res in additional_results.items():
-                train_results[pid].update(res)
 
             return train_results
 

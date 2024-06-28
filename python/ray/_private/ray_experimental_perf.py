@@ -4,6 +4,8 @@ import logging
 from ray._private.ray_microbenchmark_helpers import timeit, asyncio_timeit
 import multiprocessing
 import ray
+from ray.dag.compiled_dag_node import CompiledDAG
+from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 import ray.experimental.channel as ray_channel
 from ray.dag import InputNode, MultiOutputNode
@@ -34,6 +36,14 @@ def check_optimized_build():
         logger.warning(msg)
 
 
+def create_driver_actor():
+    return CompiledDAG.DAGDriverProxyActor.options(
+        scheduling_strategy=NodeAffinitySchedulingStrategy(
+            ray.get_runtime_context().get_node_id(), soft=False
+        )
+    ).remote()
+
+
 def main(results=None):
     results = results or []
     loop = get_or_create_event_loop()
@@ -47,13 +57,11 @@ def main(results=None):
     #################################################
     ray.init()
 
-    def put_channel_small(chans, do_get=False, do_release=False):
+    def put_channel_small(chans, do_get=False):
         for chan in chans:
             chan.write(b"0")
             if do_get:
-                chan.begin_read()
-            if do_release:
-                chan.end_read()
+                chan.read()
 
     @ray.remote
     class ChannelReader:
@@ -63,13 +71,12 @@ def main(results=None):
         def read(self, chans):
             while True:
                 for chan in chans:
-                    chan.begin_read()
-                    chan.end_read()
+                    chan.read()
 
-    chans = [ray_channel.Channel(None, [None], 1000)]
+    chans = [ray_channel.Channel(None, [create_driver_actor()], 1000)]
     results += timeit(
         "[unstable] local put:local get, single channel calls",
-        lambda: put_channel_small(chans, do_get=True, do_release=True),
+        lambda: put_channel_small(chans, do_get=True),
     )
 
     reader = ChannelReader.remote()
@@ -122,16 +129,13 @@ def main(results=None):
     # Tests for compiled DAGs.
 
     def _exec(dag):
-        output_channel = dag.execute(b"x")
-        output_channel.begin_read()
-        output_channel.end_read()
+        output_ref = dag.execute(b"x")
+        ray.get(output_ref)
 
     async def exec_async(tag):
         async def _exec_async():
-            output_channel = await compiled_dag.execute_async(b"x")
-            # Using context manager.
-            async with output_channel as _:
-                pass
+            output_ref = await compiled_dag.execute_async(b"x")
+            await output_ref.get()
 
         return await asyncio_timeit(
             tag,

@@ -255,3 +255,35 @@ class ShardEpisodesIterator:
 
         for sublist in sublists:
             yield sublist
+
+
+@DeveloperAPI
+class ShardObjectRefIterator:
+    """Iterator for sharding a list of ray ObjectRefs into num_shards sub-lists.
+
+    Args:
+        object_refs: The input list of ray ObjectRefs.
+        num_shards: The number of shards to split the references into.
+
+    Yields:
+        A sub-list of ray ObjectRefs with lengths as equal as possible.
+    """
+
+    def __init__(self, object_refs, num_shards: int):
+        self._object_refs = object_refs
+        self._num_shards = num_shards
+
+    def __iter__(self):
+        # Calculate the size of each sublist
+        n = len(self._object_refs)
+        sublist_size = n // self._num_shards
+        remaining_elements = n % self._num_shards
+
+        start = 0
+        for i in range(self._num_shards):
+            # Determine the end index for the current sublist
+            end = start + sublist_size + (1 if i < remaining_elements else 0)
+            # Append the sublist to the result
+            yield self._object_refs[start:end]
+            # Update the start index for the next sublist
+            start = end

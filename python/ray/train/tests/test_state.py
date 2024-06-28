@@ -45,7 +45,7 @@ RUN_INFO_JSON_SAMPLE = """{
     "id": "ad5256bc64c04c83833a8b006f531799",
     "job_id": "0000000001",
     "controller_actor_id": "3abd1972a19148d78acc78dd9414736e",
-    "start_time": 1717448423.0,
+    "start_time_ms": 1717448423000,
     "workers": [
         {
         "actor_id": "3d86c25634a71832dac32c8802000000",
@@ -112,7 +112,7 @@ def _get_run_info_sample(run_id=None, run_name=None) -> TrainRunInfo:
         controller_actor_id="3abd1972a19148d78acc78dd9414736e",
         workers=[worker_info_0, worker_info_1],
         datasets=[dataset_info],
-        start_time=1717448423.0,
+        start_time_ms=1717448423000,
     )
     return run_info
 
@@ -172,7 +172,7 @@ def test_state_manager(ray_start_gpu_cluster):
         controller_actor_id="3abd1972a19148d78acc78dd9414736e",
         datasets={},
         worker_group=worker_group,
-        start_time=time.time(),
+        start_time_ms=int(time.time() * 1000),
     )
 
     # Register 100 runs with 10 TrainRunStateManagers
@@ -191,7 +191,7 @@ def test_state_manager(ray_start_gpu_cluster):
                     "eval": ray.data.from_items(list(range(4))),
                 },
                 worker_group=worker_group,
-                start_time=time.time(),
+                start_time_ms=int(time.time() * 1000),
             )
 
     runs = ray.get(state_actor.get_all_train_runs.remote())

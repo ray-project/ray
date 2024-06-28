@@ -230,6 +230,12 @@ cdef class JobID(BaseID):
         check_id(id, CJobID.Size())
         self.data = CJobID.FromBinary(<c_string>id)
 
+    @classmethod
+    def from_binary(cls, id_bytes):
+        if not isinstance(id_bytes, bytes):
+            raise TypeError("Expect bytes, got " + str(type(id_bytes)))
+        return cls(id_bytes)
+
     cdef CJobID native(self):
         return <CJobID>self.data
 

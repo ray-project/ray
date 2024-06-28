@@ -1218,7 +1218,6 @@ TEST_F(ClusterTaskManagerTest, TaskCancellationTest) {
   callback_called = false;
   reply.Clear();
   ASSERT_FALSE(task_manager_.CancelTask(task2.GetTaskSpecification().TaskId()));
-  // Task2 will not execute.
   ASSERT_FALSE(reply.canceled());
   ASSERT_FALSE(callback_called);
   ASSERT_EQ(pool_.workers.size(), 0);
@@ -1228,6 +1227,22 @@ TEST_F(ClusterTaskManagerTest, TaskCancellationTest) {
   local_task_manager_->TaskFinished(leased_workers_.begin()->second, &finished_task);
   ASSERT_EQ(finished_task.GetTaskSpecification().TaskId(),
             task2.GetTaskSpecification().TaskId());
+
+  RayTask task3 = CreateTask({{ray::kCPU_ResourceLabel, 2}});
+  rpc::RequestWorkerLeaseReply reply3;
+  RayTask task4 = CreateTask({{ray::kCPU_ResourceLabel, 200}});
+  rpc::RequestWorkerLeaseReply reply4;
+  // Task 3 should be popping worker
+  task_manager_.QueueAndScheduleTask(task3, false, false, &reply3, callback);
+  // Task 4 is infeasible
+  task_manager_.QueueAndScheduleTask(task4, false, false, &reply4, callback);
+  pool_.TriggerCallbacks();
+  ASSERT_TRUE(task_manager_.CancelTasks(
+      [](const std::shared_ptr<internal::Work> &work) { return true; },
+      rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_INTENDED,
+      ""));
+  ASSERT_TRUE(reply3.canceled());
+  ASSERT_TRUE(reply4.canceled());
 
   AssertNoLeaks();
 }

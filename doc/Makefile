@@ -55,12 +55,19 @@ help:
 
 clean:
 	rm -rf $(BUILDDIR)/*
+	rm -rf ./source/__pycache__/
+	rm -rf ./source/_ext/__pycache__/
 	rm -rf ./source/*/api/doc/*
 	rm -rf ./source/ray-references/api/*/doc/*
 	rm -rf ./source/cluster/running_applications/doc/*
 	rm -rf ./source/cluster/running_applications/job-submission/doc/*
 	rm -rf ./source/ray-observability/api/state/doc*
 	rm -rf ./source/rllib/package_ref/doc*
+	rm -rf ./source/ray-more-libs/doc/*
+	rm -rf ./source/ray-observability/reference/doc/*
+	rm -f ./source/data/examples.rst
+	rm -f ./source/serve/examples.rst
+	rm -f ./source/train/examples.rst
 
 html:
 	$(SPHINXBUILD) -W --keep-going -b html $(ALLSPHINXOPTS) $(BUILDDIR)/html

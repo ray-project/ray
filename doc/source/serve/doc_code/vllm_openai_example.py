@@ -42,16 +42,12 @@ class VLLMDeployment:
         chat_template: Optional[str] = None,
     ):
         logger.info(f"Starting with engine args: {engine_args}")
+        self.openai_serving_chat = None
+        self.engine_args = engine_args
+        self.response_role = response_role
+        self.lora_modules = lora_modules
+        self.chat_template = chat_template
         self.engine = AsyncLLMEngine.from_engine_args(engine_args)
-
-        # Determine the name of the served model for the OpenAI client.
-        if engine_args.served_model_name is not None:
-            served_model_names = engine_args.served_model_name
-        else:
-            served_model_names = [engine_args.model]
-        self.openai_serving_chat = OpenAIServingChat(
-            self.engine, served_model_names, response_role, lora_modules, chat_template
-        )
 
     @app.post("/v1/chat/completions")
     async def create_chat_completion(
@@ -62,6 +58,21 @@ class VLLMDeployment:
         API reference:
             - https://docs.vllm.ai/en/latest/serving/openai_compatible_server.html
         """
+        if not self.openai_serving_chat:
+            model_config = await self.engine.get_model_config()
+            # Determine the name of the served model for the OpenAI client.
+            if self.engine_args.served_model_name is not None:
+                served_model_names = self.engine_args.served_model_name
+            else:
+                served_model_names = [self.engine_args.model]
+            self.openai_serving_chat = OpenAIServingChat(
+                self.engine,
+                model_config,
+                served_model_names,
+                self.response_role,
+                self.lora_modules,
+                self.chat_template,
+            )
         logger.info(f"Request: {request}")
         generator = await self.openai_serving_chat.create_chat_completion(
             request, raw_request

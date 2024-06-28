@@ -447,7 +447,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
           if (spec.IsActorTask()) {
             if (update_seqno) {
               auto actor_handle = actor_manager_->GetActorHandle(spec.ActorId());
-              actor_handle->SetResubmittedActorTaskSpec(spec, spec.ActorDummyObject());
+              actor_handle->SetResubmittedActorTaskSpec(spec);
             }
             RAY_CHECK_OK(direct_actor_submitter_->SubmitTask(spec));
           } else {
@@ -1075,7 +1075,7 @@ void CoreWorker::InternalHeartbeat() {
     if (spec.IsActorTask()) {
       if (task_to_retry.update_seqno) {
         auto actor_handle = actor_manager_->GetActorHandle(spec.ActorId());
-        actor_handle->SetResubmittedActorTaskSpec(spec, spec.ActorDummyObject());
+        actor_handle->SetResubmittedActorTaskSpec(spec);
       }
       RAY_CHECK_OK(direct_actor_submitter_->SubmitTask(spec));
     } else {
@@ -1550,6 +1550,7 @@ Status CoreWorker::Get(const std::vector<ObjectID> &ids,
   }
   results.resize(ids.size(), nullptr);
 
+#if defined(__APPLE__) || defined(__linux__)
   // Check whether these are experimental.Channel objects.
   bool is_experimental_channel = false;
   for (const ObjectID &id : ids) {
@@ -1570,6 +1571,7 @@ Status CoreWorker::Get(const std::vector<ObjectID> &ids,
     }
     return GetExperimentalMutableObjects(ids, results);
   }
+#endif
 
   return GetObjects(ids, timeout_ms, results);
 }

@@ -44,7 +44,7 @@ from ray.rllib.core.models.catalog import Catalog
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.examples.envs.classes.correlated_actions_env import CorrelatedActionsEnv
 from ray.rllib.examples.rl_modules.classes.autoregressive_actions_rlm import (
-    AutoregressiveActionTorchRLM,
+    AutoregressiveActionsTorchRLM,
 )
 from ray.rllib.utils.metrics import (
     ENV_RUNNER_RESULTS,
@@ -84,7 +84,7 @@ if __name__ == "__main__":
             # We need to explicitly specify here RLModule to use and
             # the catalog needed to build it.
             rl_module_spec=SingleAgentRLModuleSpec(
-                module_class=AutoregressiveActionTorchRLM,
+                module_class=AutoregressiveActionsTorchRLM,
                 catalog_class=Catalog,
             ),
         )

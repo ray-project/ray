@@ -1,13 +1,24 @@
-import { Box, Button, MenuItem, Paper, TextField } from "@mui/material";
+import {
+  Box,
+  Button,
+  InputAdornment,
+  MenuItem,
+  Paper,
+  TextField,
+} from "@mui/material";
 import createStyles from "@mui/styles/createStyles";
 import makeStyles from "@mui/styles/makeStyles";
 import React, { useContext, useEffect, useState } from "react";
+import { BiRefresh, BiTime } from "react-icons/bi";
 import { RiExternalLinkLine } from "react-icons/ri";
 import { GlobalContext } from "../../App";
 import { CollapsibleSection } from "../../common/CollapsibleSection";
 import { ClassNameProps } from "../../common/props";
+import { HelpInfo } from "../../components/Tooltip";
 import {
   MetricConfig,
+  REFRESH_VALUE,
+  RefreshOptions,
   TIME_RANGE_TO_FROM_VALUE,
   TimeRangeOptions,
 } from "../metrics";
@@ -86,13 +97,23 @@ export const ServeReplicaMetricsSection = ({
   const grafanaServeDashboardUid =
     dashboardUids?.serveDeployment ?? "rayServeDashboard";
 
+  const [refreshOption, setRefreshOption] = useState<RefreshOptions>(
+    RefreshOptions.FIVE_SECONDS,
+  );
+
   const [timeRangeOption, setTimeRangeOption] = useState<TimeRangeOptions>(
     TimeRangeOptions.FIVE_MINS,
   );
+
+  const [refresh, setRefresh] = useState<string | null>(null);
+
   const [[from, to], setTimeRange] = useState<[string | null, string | null]>([
     null,
     null,
   ]);
+  useEffect(() => {
+    setRefresh(REFRESH_VALUE[refreshOption]);
+  }, [refreshOption]);
   useEffect(() => {
     const from = TIME_RANGE_TO_FROM_VALUE[timeRangeOption];
     setTimeRange([from, "now"]);
@@ -101,6 +122,7 @@ export const ServeReplicaMetricsSection = ({
   const fromParam = from !== null ? `&from=${from}` : "";
   const toParam = to !== null ? `&to=${to}` : "";
   const timeRangeParams = `${fromParam}${toParam}`;
+  const refreshParams = refresh ? `&refresh=${refresh}` : "";
 
   const replicaButtonUrl = useViewServeDeploymentMetricsButtonUrl(
     deploymentName,
@@ -125,10 +147,43 @@ export const ServeReplicaMetricsSection = ({
             className={classes.timeRangeButton}
             select
             size="small"
-            style={{ width: 120 }}
+            sx={{ width: 80 }}
+            value={refreshOption}
+            onChange={({ target: { value } }) => {
+              setRefreshOption(value as RefreshOptions);
+            }}
+            variant="standard"
+            InputProps={{
+              startAdornment: (
+                <InputAdornment position="start">
+                  <BiRefresh style={{ fontSize: 25, paddingBottom: 5 }} />
+                </InputAdornment>
+              ),
+            }}
+          >
+            {Object.entries(RefreshOptions).map(([key, value]) => (
+              <MenuItem key={key} value={value}>
+                {value}
+              </MenuItem>
+            ))}
+          </TextField>
+          <HelpInfo>Auto-refresh interval</HelpInfo>
+          <TextField
+            className={classes.timeRangeButton}
+            select
+            size="small"
+            style={{ width: 140 }}
             value={timeRangeOption}
             onChange={({ target: { value } }) => {
               setTimeRangeOption(value as TimeRangeOptions);
+            }}
+            variant="standard"
+            InputProps={{
+              startAdornment: (
+                <InputAdornment position="start">
+                  <BiTime style={{ fontSize: 22, paddingBottom: 5 }} />
+                </InputAdornment>
+              ),
             }}
           >
             {Object.entries(TimeRangeOptions).map(([key, value]) => (
@@ -137,12 +192,13 @@ export const ServeReplicaMetricsSection = ({
               </MenuItem>
             ))}
           </TextField>
+          <HelpInfo>Time range picker</HelpInfo>
         </Box>
         <div className={classes.grafanaEmbedsContainer}>
           {METRICS_CONFIG.map(({ title, pathParams }) => {
             const path =
               `/d-solo/${grafanaServeDashboardUid}?${pathParams}` +
-              `&refresh${timeRangeParams}&var-Deployment=${encodeURIComponent(
+              `${refreshParams}${timeRangeParams}&var-Deployment=${encodeURIComponent(
                 deploymentName,
               )}&var-Replica=${encodeURIComponent(
                 replicaId,

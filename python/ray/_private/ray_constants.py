@@ -192,9 +192,6 @@ RESOURCE_CONSTRAINT_PREFIX = "accelerator_type:"
 RESOURCES_ENVIRONMENT_VARIABLE = "RAY_OVERRIDE_RESOURCES"
 LABELS_ENVIRONMENT_VARIABLE = "RAY_OVERRIDE_LABELS"
 
-# The reporter will report its statistics this often (milliseconds).
-REPORTER_UPDATE_INTERVAL_MS = env_integer("REPORTER_UPDATE_INTERVAL_MS", 2500)
-
 # Temporary flag to disable log processing in the dashboard.  This is useful
 # if the dashboard is overloaded by logs and failing to process other
 # dashboard API requests (e.g. Job Submission).

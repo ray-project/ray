@@ -1,7 +1,32 @@
 import logging
 import json
-from ray._private.ray_logging.constants import LogKey, LOGRECORD_STANDARD_ATTRS
+from ray._private.ray_logging.constants import (
+    LogKey,
+    LOGRECORD_STANDARD_ATTRS,
+    LOGGER_FLATTEN_KEYS,
+)
 from ray._private.ray_constants import LOGGER_FORMAT
+from typing import Any, Dict
+
+
+def _append_flatten_attributes(formatted_attrs: Dict[str, Any], key: str, value: Any):
+    """Flatten the dictionary values for special keys and append the values in place.
+
+    If the key is in `LOGGER_FLATTEN_KEYS`, the value will be flattened and appended
+    to the `formatted_attrs` dictionary. Otherwise, the key-value pair will be appended
+    directly.
+    """
+    if key in LOGGER_FLATTEN_KEYS:
+        if not isinstance(value, dict):
+            raise ValueError(
+                f"Expected a dictionary passing into {key}, but got {type(value)}"
+            )
+        for k, v in value.items():
+            if k in formatted_attrs:
+                raise KeyError(f"Found duplicated key in the log record: {k}")
+            formatted_attrs[k] = v
+    else:
+        formatted_attrs[key] = value
 
 
 def generate_record_format_attrs(
@@ -28,7 +53,7 @@ def generate_record_format_attrs(
     for key, value in record.__dict__.items():
         # Both Ray and user-provided context are stored in `record_format`.
         if key not in LOGRECORD_STANDARD_ATTRS:
-            record_format_attrs[key] = value
+            _append_flatten_attributes(record_format_attrs, key, value)
     return record_format_attrs
 
 

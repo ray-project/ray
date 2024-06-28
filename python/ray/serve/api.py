@@ -306,9 +306,9 @@ def deployment(
             can be updated dynamically without restarting the replicas of the
             deployment. The user_config must be fully JSON-serializable.
         max_concurrent_queries: [DEPRECATED] Maximum number of queries that are sent to
-            a replica of this deployment without receiving a response. Defaults to 100.
+            a replica of this deployment without receiving a response. Defaults to 5.
         max_ongoing_requests: Maximum number of requests that are sent to a
-            replica of this deployment without receiving a response. Defaults to 100.
+            replica of this deployment without receiving a response. Defaults to 5.
         max_queued_requests: [EXPERIMENTAL] Maximum number of requests to this
             deployment that will be queued at each *caller* (proxy or DeploymentHandle).
             Once this limit is reached, subsequent requests will raise a
@@ -350,10 +350,30 @@ def deployment(
                 "version."
             )
 
+        if (
+            isinstance(autoscaling_config, dict)
+            and "target_num_ongoing_requests_per_replica" not in autoscaling_config
+            and "target_ongoing_requests" not in autoscaling_config
+        ) or (
+            isinstance(autoscaling_config, AutoscalingConfig)
+            and "target_num_ongoing_requests_per_replica"
+            not in autoscaling_config.dict(exclude_unset=True)
+            and "target_ongoing_requests"
+            not in autoscaling_config.dict(exclude_unset=True)
+        ):
+            logger.warning(
+                "The default value for `target_ongoing_requests` has changed from 1.0 "
+                "to 2.0 in Ray 2.32.0."
+            )
+
     if max_ongoing_requests is None:
         raise ValueError("`max_ongoing_requests` must be non-null, got None.")
     elif max_ongoing_requests is DEFAULT.VALUE:
         if max_concurrent_queries is None:
+            logger.warning(
+                "The default value for `max_ongoing_requests` has changed from "
+                "100 to 5 in Ray 2.32.0."
+            )
             max_ongoing_requests = DEFAULT_MAX_ONGOING_REQUESTS
         else:
             max_ongoing_requests = max_concurrent_queries
@@ -406,6 +426,12 @@ def deployment(
         logger.warning(
             "DeprecationWarning: `max_concurrent_queries` in `@serve.deployment` has "
             "been deprecated and replaced by `max_ongoing_requests`."
+        )
+
+    if max_ongoing_requests is DEFAULT.VALUE:
+        logger.warning(
+            "The default value for `max_ongoing_requests` has changed from 100 to 5 in "
+            "Ray 2.32.0."
         )
 
     if isinstance(logging_config, LoggingConfig):
