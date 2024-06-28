@@ -431,6 +431,7 @@ class AlgorithmConfig(_Config):
         # `self.offline_data()`
         self.input_ = "sampler"
         self.input_read_method = "read_parquet"
+        self.input_read_method_kwargs = {}
         self.input_config = {}
         self.actions_in_input_normalized = False
         self.postprocess_inputs = False
@@ -2443,8 +2444,6 @@ class AlgorithmConfig(_Config):
             self.input_read_method = input_read_method
         if input_read_method_kwargs is not NotProvided:
             self.input_read_method_kwargs = input_read_method_kwargs
-        else:
-            self.input_read_method_kwargs = {}
         if input_config is not NotProvided:
             if not isinstance(input_config, dict):
                 raise ValueError(

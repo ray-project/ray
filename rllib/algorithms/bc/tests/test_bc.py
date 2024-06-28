@@ -40,6 +40,8 @@ class TestBC(unittest.TestCase):
                 evaluation_duration=5,
                 evaluation_parallel_to_training=True,
             )
+            # Note, the `input_` argument is the major argument for the
+            # new offline API.
             .offline_data(input_=[data_path])
             .training(
                 lr=0.0008,

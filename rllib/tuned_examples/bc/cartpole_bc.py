@@ -36,16 +36,21 @@ config = (
         enable_rl_module_and_learner=True,
         enable_env_runner_and_connector_v2=True,
     )
-    .learners(
-        num_learners=args.num_gpus,
-    )
     .evaluation(
         evaluation_interval=3,
         evaluation_num_env_runners=1,
         evaluation_duration=5,
         evaluation_parallel_to_training=True,
     )
-    .offline_data(input_=[data_path])
+    # Note, the `input_` argument is the major argument for the
+    # new offline API. Via the `input_read_method_kwargs` the
+    # arguments for the `ray.data.Dataset` read method can be
+    # configured. The read method needs at least as many blocks
+    # as remote learners.
+    .offline_data(
+        input_=[data_path],
+        input_read_method_kwargs={"override_num_blocks": args.num_gpus},
+    )
     .training(
         # To increase learning speed with multiple learners,
         # increase the learning rate correspondingly.
@@ -66,7 +71,7 @@ if __name__ == "__main__":
 # min_reward = 120.0
 
 # # TODO (simon): Add support for recurrent modules.
-algo = config.build()
+# algo = config.build()
 # learnt = False
 # start = time.perf_counter()
 # for i in range(num_iterations):
