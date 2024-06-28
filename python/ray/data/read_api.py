@@ -22,11 +22,12 @@ import ray
 from ray._private.auto_init_hook import wrap_auto_init
 from ray.air.util.tensor_extensions.utils import _create_possibly_ragged_ndarray
 from ray.data._internal.datasource.avro_datasource import AvroDatasource
-from ray.data._internal.datasource.tfrecords_datasource import TFRecordDatasource
 from ray.data._internal.datasource.bigquery_datasource import BigQueryDatasource
 from ray.data._internal.datasource.binary_datasource import BinaryDatasource
 from ray.data._internal.datasource.csv_datasource import CSVDatasource
+from ray.data._internal.datasource.image_datasource import ImageDatasource
 from ray.data._internal.datasource.json_datasource import JSONDatasource
+from ray.data._internal.datasource.lance_datasource import LanceDatasource
 from ray.data._internal.datasource.mongo_datasource import MongoDatasource
 from ray.data._internal.datasource.numpy_datasource import NumpyDatasource
 from ray.data._internal.datasource.parquet_bulk_datasource import ParquetBulkDatasource
@@ -34,6 +35,8 @@ from ray.data._internal.datasource.parquet_datasource import ParquetDatasource
 from ray.data._internal.datasource.range_datasource import RangeDatasource
 from ray.data._internal.datasource.sql_datasource import SQLDatasource
 from ray.data._internal.datasource.text_datasource import TextDatasource
+from ray.data._internal.datasource.tfrecords_datasource import TFRecordDatasource
+from ray.data._internal.datasource.torch_datasource import TorchDatasource
 from ray.data._internal.datasource.webdataset_datasource import WebDatasetDatasource
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.logical.operators.from_operators import (
@@ -63,11 +66,8 @@ from ray.data.datasource import (
     BaseFileMetadataProvider,
     Connection,
     Datasource,
-    ImageDatasource,
-    LanceDatasource,
     ParquetMetadataProvider,
     PathPartitionFilter,
-    TorchDatasource,
 )
 from ray.data.datasource._default_metadata_providers import (
     get_generic_metadata_provider,
