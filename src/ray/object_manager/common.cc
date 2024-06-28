@@ -96,7 +96,7 @@ Status PlasmaObjectHeader::TryToAcquireSemaphore(
       }
     }
     if (!got_sem) {
-      return Status::ChannelTimeoutError("Timed out acquiring semaphore.");
+      return Status::ChannelTimeoutError("Timed out waiting for semaphore.");
     }
   }
 

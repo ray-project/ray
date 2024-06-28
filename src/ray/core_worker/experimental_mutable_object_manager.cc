@@ -234,12 +234,12 @@ Status MutableObjectManager::WriteAcquire(const ObjectID &object_id,
   RAY_RETURN_NOT_OK(object->header->CheckHasError());
   RAY_CHECK(!channel->written) << "You must call WriteRelease() before WriteAcquire()";
 
+  auto now = std::chrono::steady_clock::now();
+  auto timeout_duration = std::chrono::milliseconds(timeout_ms);
+  auto timeout_point = now + timeout_duration;
   std::chrono::steady_clock::time_point *timeout_point_ptr = nullptr;
   if (timeout_ms != -1) {
     RAY_CHECK_GE(timeout_ms, 0);
-    auto now = std::chrono::steady_clock::now();
-    auto timeout_duration = std::chrono::milliseconds(timeout_ms);
-    auto timeout_point = now + timeout_duration;
     timeout_point_ptr = &timeout_point;
   }
   RAY_RETURN_NOT_OK(object->header->WriteAcquire(
@@ -299,12 +299,12 @@ Status MutableObjectManager::ReadAcquire(const ObjectID &object_id,
   // Check whether the channel has an error set before checking that we are the only
   // reader. If the channel is already closed, then it's OK to ReadAcquire and
   // ReadRelease in any order.
+  auto now = std::chrono::steady_clock::now();
+  auto timeout_duration = std::chrono::milliseconds(timeout_ms);
+  auto timeout_point = now + timeout_duration;
   std::chrono::steady_clock::time_point *timeout_point_ptr = nullptr;
   if (timeout_ms != -1) {
     RAY_CHECK_GE(timeout_ms, 0);
-    auto now = std::chrono::steady_clock::now();
-    auto timeout_duration = std::chrono::milliseconds(timeout_ms);
-    auto timeout_point = now + timeout_duration;
     timeout_point_ptr = &timeout_point;
   }
 
