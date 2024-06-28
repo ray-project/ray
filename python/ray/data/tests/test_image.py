@@ -15,6 +15,8 @@ from ray.data._internal.datasource.image_datasource import (
 )
 from ray.data.datasource import Partitioning
 from ray.data.datasource.file_meta_provider import FastFileMetadataProvider
+from ray.data.datasource import Partitioning
+from ray.data.datasource.file_meta_provider import FastFileMetadataProvider
 from ray.data.extensions import ArrowTensorType
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.mock_http_server import *  # noqa
