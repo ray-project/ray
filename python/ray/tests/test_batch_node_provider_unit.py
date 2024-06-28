@@ -448,9 +448,8 @@ def test_terminate_node_in_multihost_replica():
         tag_filters={TAG_RAY_NODE_KIND: NODE_KIND_WORKER}
     )
     assert len(workers) == num_tpu_workers
-    index = 0
-    for node_id in workers:
-        if index < num_tpu_workers / 2:
+    for index, node_id in enumerate(workers):
+        if index < num_tpu_workers // 2:
             node_provider.set_node_replica_index(node_id, "tpu-group-0")
         else:
             node_provider.set_node_replica_index(node_id, "tpu-group-1")
@@ -459,15 +458,15 @@ def test_terminate_node_in_multihost_replica():
     # Verify RAY_REPLICA_INDEX tag has been set
     replicaIndexFilter = {TAG_RAY_REPLICA_INDEX: "tpu-group-0"}
     replicaWorkers1 = node_provider.non_terminated_nodes(tag_filters=replicaIndexFilter)
-    assert len(replicaWorkers1) == num_tpu_workers / 2
+    assert len(replicaWorkers1) == num_tpu_workers // 2
 
     replicaIndexFilter[TAG_RAY_REPLICA_INDEX] = "tpu-group-1"
     replicaWorkers2 = node_provider.non_terminated_nodes(tag_filters=replicaIndexFilter)
-    assert len(replicaWorkers2) == num_tpu_workers / 2
+    assert len(replicaWorkers2) == num_tpu_workers // 2
 
     # Verify replica_to_nodes mapping has been populated
-    assert len(node_provider.replicas_to_nodes["tpu-group-0"]) == num_tpu_workers / 2
-    assert len(node_provider.replicas_to_nodes["tpu-group-1"]) == num_tpu_workers / 2
+    assert len(node_provider.replicas_to_nodes["tpu-group-0"]) == num_tpu_workers // 2
+    assert len(node_provider.replicas_to_nodes["tpu-group-1"]) == num_tpu_workers // 2
 
     worker_0 = replicaWorkers1[0]  # tpu-group-0
     worker_2 = replicaWorkers2[0]  # tpu-group-1
@@ -475,7 +474,7 @@ def test_terminate_node_in_multihost_replica():
     # BatchingNodeProvider should scale down all nodes in the replica
     assert worker_0 in node_provider.node_data_dict
     node_provider.terminate_node(worker_0)
-    assert len(node_provider.scale_request.workers_to_delete) == num_tpu_workers / 2
+    assert len(node_provider.scale_request.workers_to_delete) == num_tpu_workers // 2
 
     # Scale down the tpu-group-1 replica
     assert worker_2 in node_provider.node_data_dict
