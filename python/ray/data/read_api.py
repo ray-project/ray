@@ -62,12 +62,9 @@ from ray.data.datasource import (
     BaseFileMetadataProvider,
     Connection,
     Datasource,
-    ImageDatasource,
-    LanceDatasource,
     ParquetMetadataProvider,
     PathPartitionFilter,
     TFRecordDatasource,
-    TorchDatasource,
 )
 from ray.data.datasource._default_metadata_providers import (
     get_generic_metadata_provider,

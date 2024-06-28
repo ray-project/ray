@@ -15,7 +15,6 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-@DeveloperAPI
 class LanceDatasource(Datasource):
     """Lance datasource, for reading Lance dataset."""
 

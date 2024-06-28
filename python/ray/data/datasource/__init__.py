@@ -24,9 +24,7 @@ from ray.data.datasource.file_meta_provider import (
 )
 from ray.data.datasource.filename_provider import FilenameProvider
 from ray.data.datasource.image_datasink import _ImageDatasink
-from ray.data.datasource.image_datasource import ImageDatasource
 from ray.data.datasource.json_datasink import _JSONDatasink
-from ray.data.datasource.lance_datasource import LanceDatasource
 from ray.data.datasource.mongo_datasink import _MongoDatasink
 from ray.data.datasource.numpy_datasink import _NumpyDatasink
 from ray.data.datasource.parquet_datasink import _ParquetDatasink
@@ -40,8 +38,10 @@ from ray.data.datasource.partitioning import (
 from ray.data.datasource.sql_datasink import _SQLDatasink
 from ray.data.datasource.tfrecords_datasink import _TFRecordDatasink
 from ray.data.datasource.tfrecords_datasource import TFRecordDatasource
-from ray.data.datasource.torch_datasource import TorchDatasource
 from ray.data.datasource.webdataset_datasink import _WebDatasetDatasink
+from ray.data._internal.datasource.image_datasource import ImageDatasource
+from ray.data._internal.datasource.lance_datasource import LanceDatasource
+from ray.data._internal.datasource.torch_datasource import TorchDatasource
 
 # Note: HuggingFaceDatasource should NOT be imported here, because
 # we want to only import the Hugging Face datasets library when we use
@@ -62,9 +62,7 @@ __all__ = [
     "FileMetadataProvider",
     "FilenameProvider",
     "_ImageDatasink",
-    "ImageDatasource",
     "_JSONDatasink",
-    "LanceDatasource",
     "_NumpyDatasink",
     "_ParquetDatasink",
     "ParquetMetadataProvider",
@@ -79,7 +77,6 @@ __all__ = [
     "RowBasedFileDatasink",
     "_TFRecordDatasink",
     "TFRecordDatasource",
-    "TorchDatasource",
     "_WebDatasetDatasink",
     "_S3FileSystemWrapper",
 ]

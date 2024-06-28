@@ -27,7 +27,6 @@ IMAGE_ENCODING_RATIO_ESTIMATE_DEFAULT = 1
 IMAGE_ENCODING_RATIO_ESTIMATE_LOWER_BOUND = 0.5
 
 
-@DeveloperAPI
 class ImageDatasource(FileBasedDatasource):
     """A datasource that lets you read images."""
 

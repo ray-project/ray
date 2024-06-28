@@ -11,10 +11,8 @@ from PIL import Image
 import ray
 from ray.data.datasource import Partitioning
 from ray.data.datasource.file_meta_provider import FastFileMetadataProvider
-from ray.data.datasource.image_datasource import (
-    ImageDatasource,
-    _ImageFileMetadataProvider,
-)
+from ray.data._internal.datasource.image_datasource import ImageDatasource
+from ray.data.datasource.image_datasource import _ImageFileMetadataProvider
 from ray.data.extensions import ArrowTensorType
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.mock_http_server import *  # noqa
@@ -33,7 +31,7 @@ class TestReadImages:
     @pytest.mark.parametrize("num_threads", [-1, 0, 1, 2, 4])
     def test_multi_threading(self, ray_start_regular_shared, num_threads, monkeypatch):
         monkeypatch.setattr(
-            ray.data.datasource.image_datasource.ImageDatasource,
+            ray.data._internal.datasource.image_datasource.ImageDatasource,
             "_NUM_THREADS_PER_TASK",
             num_threads,
         )

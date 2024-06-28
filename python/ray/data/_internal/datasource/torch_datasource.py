@@ -12,7 +12,6 @@ if TYPE_CHECKING:
 TORCH_DATASOURCE_READER_BATCH_SIZE = 32
 
 
-@DeveloperAPI
 class TorchDatasource(Datasource):
     """Torch datasource, for reading from `Torch
     datasets <https://pytorch.org/docs/stable/data.html/>`_.
