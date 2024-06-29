@@ -84,7 +84,6 @@ for ((i=0; i<${#PY_MMS[@]}; ++i)); do
     fi
 
     sed -i .bak "s/{{RAY_COMMIT_SHA}}/$TRAVIS_COMMIT/g" ray/_version.py && rm ray/_version.py.bak
-    sed -i "s/{{RAY_COMMIT_SHA}}/$TRAVIS_COMMIT/g" ../src/ray/common/constants.h && rm ../src/ray/common/constants.h.bak
 
     # Add the correct Python to the path and build the wheel. This is only
     # needed so that the installation finds the cython executable.
