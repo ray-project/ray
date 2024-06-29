@@ -315,15 +315,17 @@ class RayLog {
     }
   }
 
-  /// Convenience functions to add log context by type.
-  RayLog &With(const JobID &job_id) { return WithField(kLogKeyJobID, job_id); }
-  RayLog &With(const WorkerID &worker_id) {
+  /// Convenience method to find the log key by type.
+  RayLog &WithField(const JobID &job_id) { return WithField(kLogKeyJobID, job_id); }
+  RayLog &WithField(const WorkerID &worker_id) {
     return WithField(kLogKeyWorkerID, worker_id);
   }
-  RayLog &With(const NodeID &node_id) { return WithField(kLogKeyNodeID, node_id); }
-  RayLog &With(const ActorID &actor_id) { return WithField(kLogKeyActorID, actor_id); }
-  RayLog &With(const TaskID &task_id) { return WithField(kLogKeyTaskID, task_id); }
-  RayLog &With(const ObjectID &object_id) {
+  RayLog &WithField(const NodeID &node_id) { return WithField(kLogKeyNodeID, node_id); }
+  RayLog &WithField(const ActorID &actor_id) {
+    return WithField(kLogKeyActorID, actor_id);
+  }
+  RayLog &WithField(const TaskID &task_id) { return WithField(kLogKeyTaskID, task_id); }
+  RayLog &WithField(const ObjectID &object_id) {
     return WithField(kLogKeyObjectID, object_id);
   }
 
