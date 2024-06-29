@@ -23,6 +23,7 @@ import yaml
 
 import ray
 import ray._private.ray_constants as ray_constants
+import ray._private.path_timer as path_timer
 import ray._private.services as services
 from ray._private.utils import (
     check_ray_client_dependencies_installed,
@@ -614,7 +615,7 @@ def start(
     labels,
 ):
     """Start Ray processes manually on the local machine."""
-
+    path_timer.tick("ray_start")
     if gcs_server_port is not None:
         cli_logger.error(
             "`{}` is deprecated and ignored. Use {} to specify "
@@ -879,6 +880,7 @@ def start(
                     )
                 )
         ray_params.gcs_address = bootstrap_address
+        path_timer.tick("ray_start_head_done")
     else:
         # Start worker node.
         if not ray_constants.ENABLE_RAY_CLUSTER:
@@ -966,9 +968,11 @@ def start(
         cli_logger.print("To terminate the Ray runtime, run")
         cli_logger.print(cf.bold("  ray stop"))
         cli_logger.flush()
+        path_timer.tick("ray_start_worker_done")
 
     assert ray_params.gcs_address is not None
     ray._private.utils.write_ray_address(ray_params.gcs_address, temp_dir)
+    path_timer.tick("write_ray_address_done")
 
     if block:
         cli_logger.newline()
@@ -1023,6 +1027,8 @@ def start(
                 node.kill_all_processes(check_alive=False, allow_graceful=False)
                 os._exit(1)
         # not-reachable
+    path_timer.tick("ray_start_done")
+    path_timer.summary()
 
 
 @cli.command()
