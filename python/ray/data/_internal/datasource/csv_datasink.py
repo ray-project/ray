@@ -7,7 +7,7 @@ from ray.data.datasource.file_based_datasource import _resolve_kwargs
 from ray.data.datasource.file_datasink import BlockBasedFileDatasink
 
 
-class _CSVDatasink(BlockBasedFileDatasink):
+class CSVDatasink(BlockBasedFileDatasink):
     def __init__(
         self,
         path: str,

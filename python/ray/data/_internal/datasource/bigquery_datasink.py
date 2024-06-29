@@ -20,7 +20,7 @@ DEFAULT_MAX_RETRY_CNT = 10
 RATE_LIMIT_EXCEEDED_SLEEP_TIME = 11
 
 
-class _BigQueryDatasink(Datasink):
+class BigQueryDatasink(Datasink):
     def __init__(
         self,
         project_id: str,

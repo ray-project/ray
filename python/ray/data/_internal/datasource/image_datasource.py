@@ -10,7 +10,6 @@ from ray.data._internal.util import _check_import
 from ray.data.block import Block, BlockMetadata
 from ray.data.datasource.file_based_datasource import FileBasedDatasource
 from ray.data.datasource.file_meta_provider import DefaultFileMetadataProvider
-from ray.util.annotations import DeveloperAPI
 
 if TYPE_CHECKING:
     import pyarrow
@@ -27,7 +26,6 @@ IMAGE_ENCODING_RATIO_ESTIMATE_DEFAULT = 1
 IMAGE_ENCODING_RATIO_ESTIMATE_LOWER_BOUND = 0.5
 
 
-@DeveloperAPI
 class ImageDatasource(FileBasedDatasource):
     """A datasource that lets you read images."""
 

@@ -3,7 +3,6 @@ from typing import TYPE_CHECKING, Dict, List, Optional
 
 from ray.data.block import Block, BlockMetadata
 from ray.data.datasource.datasource import Datasource, ReadTask
-from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
     import pymongoarrow.api
@@ -11,7 +10,6 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-@PublicAPI(stability="alpha")
 class MongoDatasource(Datasource):
     """Datasource for reading from and writing to MongoDB."""
 
