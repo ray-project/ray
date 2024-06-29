@@ -275,7 +275,14 @@ def add_rllib_example_script_args(
     # Learner scaling options.
     # Old API stack: config.num_gpus.
     # New API stack: config.num_learners (w/ num_gpus_per_learner=1).
-    parser.add_argument("--num-gpus", type=int, default=0)
+    parser.add_argument(
+        "--num-gpus",
+        type=int,
+        default=0,
+        help="The number of GPUs/Learners to use. If none or not enough GPUs "
+        "are available, will still create `--num-gpus` Learners, but place them on one "
+        "CPU each, instead.",
+    )
 
     # Ray init options.
     parser.add_argument("--num-cpus", type=int, default=0)
@@ -1360,6 +1367,8 @@ def run_rllib_example_script_experiment(
     trainable: Optional[Type] = None,
     tune_callbacks: Optional[List] = None,
     keep_config: bool = False,
+    scheduler=None,
+    progress_reporter=None,
 ) -> Union[ResultDict, tune.result_grid.ResultGrid]:
     """Given an algorithm config and some command line args, runs an experiment.
 
@@ -1408,7 +1417,7 @@ def run_rllib_example_script_experiment(
         trainable: The Trainable sub-class to run in the tune.Tuner. If None (default),
             use the registered RLlib Algorithm class specified by args.algo.
         tune_callbacks: A list of Tune callbacks to configure with the tune.Tuner.
-            In case `args.wandb_key` is provided, will append a WandB logger to this
+            In case `args.wandb_key` is provided, appends a WandB logger to this
             list.
         keep_config: Set this to True, if you don't want this utility to change the
             given `base_config` in any way and leave it as-is. This is helpful
@@ -1434,7 +1443,7 @@ def run_rllib_example_script_experiment(
     # Define one or more stopping criteria.
     if stop is None:
         stop = {
-            f"{ENV_RUNNER_RESULTS}/episode_return_mean": args.stop_reward,
+            f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": args.stop_reward,
             f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}": args.stop_timesteps,
             TRAINING_ITERATION: args.stop_iters,
         }
@@ -1468,14 +1477,16 @@ def run_rllib_example_script_experiment(
             config.resources(num_gpus=0)
             config.learners(
                 num_learners=args.num_gpus,
-                num_gpus_per_learner=1 if torch.cuda.is_available() else 0,
+                num_gpus_per_learner=(
+                    1
+                    if torch and torch.cuda.is_available() and args.num_gpus > 0
+                    else 0
+                ),
             )
+            config.resources(num_gpus=0)
         # Old stack.
         else:
-            config.resources(
-                num_gpus=args.num_gpus,
-                num_cpus_for_main_process=1,
-            )
+            config.resources(num_gpus=args.num_gpus)
 
         # Evaluation setup.
         if args.evaluation_interval > 0:
@@ -1539,8 +1550,7 @@ def run_rllib_example_script_experiment(
 
     # Auto-configure a CLIReporter (to log the results to the console).
     # Use better ProgressReporter for multi-agent cases: List individual policy rewards.
-    progress_reporter = None
-    if args.num_agents > 0:
+    if progress_reporter is None and args.num_agents > 0:
         progress_reporter = CLIReporter(
             metric_columns={
                 **{
@@ -1577,7 +1587,10 @@ def run_rllib_example_script_experiment(
             ),
             progress_reporter=progress_reporter,
         ),
-        tune_config=tune.TuneConfig(num_samples=args.num_samples),
+        tune_config=tune.TuneConfig(
+            num_samples=args.num_samples,
+            scheduler=scheduler,
+        ),
     ).fit()
     time_taken = time.time() - start_time
 

@@ -140,7 +140,7 @@ To build Ray on Ubuntu, run the following commands:
 
 .. note::
   The `install-bazel.sh` script installs `bazelisk` for building Ray. 
-  If you prefer to use `bazel`, only version `5.4.1` is currently supported.
+  If you prefer to use `bazel`, only version `6.5.0` is currently supported.
 
 For RHELv8 (Redhat EL 8.0-64 Minimal), run the following commands:
 
@@ -238,7 +238,7 @@ Building Ray on Windows (full)
 
 The following links were correct during the writing of this section. In case the URLs changed, search at the organizations' sites.
 
-- Bazel 5.4.1 (https://github.com/bazelbuild/bazel/releases/tag/5.4.1)
+- Bazel 6.5.0 (https://github.com/bazelbuild/bazel/releases/tag/6.5.0)
 - Microsoft Visual Studio 2019 (or Microsoft Build Tools 2019 - https://visualstudio.microsoft.com/downloads/#build-tools-for-visual-studio-2019)
 - JDK 15 (https://www.oracle.com/java/technologies/javase-jdk15-downloads.html)
 - Miniconda 3 (https://docs.conda.io/en/latest/miniconda.html)
@@ -270,7 +270,7 @@ You can also use the included script to install Bazel:
 
 3. Define an environment variable ``BAZEL_SH`` to point to ``bash.exe``. If git for Windows was installed for all users, bash's path should be ``C:\Program Files\Git\bin\bash.exe``. If git was installed for a single user, adjust the path accordingly.
 
-4. Bazel 5.4.1 installation. Go to Bazel 5.4.1 release web page and download
+4. Bazel 6.5.0 installation. Go to Bazel 6.5.0 release web page and download
 bazel-4.2.1-windows-x86_64.exe. Copy the exe into the directory of your choice.
 Define an environment variable BAZEL_PATH to full exe path (example:
 ``set BAZEL_PATH=C:\bazel\bazel.exe``). Also add the Bazel directory to the

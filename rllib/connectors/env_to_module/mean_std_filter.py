@@ -1,7 +1,7 @@
 from typing import Any, Dict, List, Optional
-from gymnasium.spaces import Discrete, MultiDiscrete
 
 import gymnasium as gym
+from gymnasium.spaces import Discrete, MultiDiscrete
 import numpy as np
 import tree
 
@@ -121,13 +121,10 @@ class MeanStdFilter(ConnectorV2):
                 sa_obs, update=self._update_stats
             )
             sa_episode.set_observations(at_indices=-1, new_data=normalized_sa_obs)
-
-            if len(sa_episode) == 0:
-                # TODO (sven): This is kind of a hack.
-                #  We set the Episode's observation space to ours so that we can safely
-                #  set the last obs to the new value (without causing a space mismatch
-                #  error).
-                sa_episode.observation_space = self.observation_space
+            #  We set the Episode's observation space to ours so that we can safely
+            #  set the last obs to the new value (without causing a space mismatch
+            #  error).
+            sa_episode.observation_space = self.observation_space
 
         # Leave `data` as is. RLlib's default connector will automatically
         # populate the OBS column therein from the episodes' now transformed

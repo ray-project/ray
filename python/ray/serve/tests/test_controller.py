@@ -156,15 +156,15 @@ def test_get_serve_instance_details_json_serializable(serve_instance, policy):
                             "message": "",
                             "deployment_config": {
                                 "name": "autoscaling_app",
-                                "max_concurrent_queries": 100,
-                                "max_ongoing_requests": 100,
+                                "max_concurrent_queries": 5,
+                                "max_ongoing_requests": 5,
                                 "max_queued_requests": -1,
                                 "user_config": None,
                                 "autoscaling_config": {
                                     "min_replicas": 1,
                                     "initial_replicas": None,
                                     "max_replicas": 10,
-                                    "target_num_ongoing_requests_per_replica": 1.0,
+                                    "target_num_ongoing_requests_per_replica": 2.0,
                                     "target_ongoing_requests": None,
                                     "metrics_interval_s": 10.0,
                                     "look_back_period_s": 30.0,

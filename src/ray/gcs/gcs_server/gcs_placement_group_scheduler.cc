@@ -243,9 +243,9 @@ void GcsPlacementGroupScheduler::CancelResourceReserve(
   auto node_id = NodeID::FromBinary(node.value()->node_id());
 
   if (max_retry == current_retry_cnt) {
-    RAY_LOG(INFO) << "Failed to cancel resource reserved for bundle because the max "
-                     "retry count is reached. "
-                  << bundle_spec->DebugString() << " at node " << node_id;
+    RAY_LOG(ERROR) << "Failed to cancel resource reserved for bundle because the max "
+                      "retry count is reached. "
+                   << bundle_spec->DebugString() << " at node " << node_id;
     return;
   }
 
@@ -261,11 +261,10 @@ void GcsPlacementGroupScheduler::CancelResourceReserve(
           RAY_LOG(INFO) << "Finished cancelling the resource reserved for bundle: "
                         << bundle_spec->DebugString() << " at node " << node_id;
         } else {
-          // We couldn't delete the pg resources either becuase it is in use
-          // or network issue. Retry.
-          RAY_LOG(INFO) << "Failed to cancel the resource reserved for bundle: "
-                        << bundle_spec->DebugString() << " at node " << node_id
-                        << ". Status: " << status;
+          // We couldn't delete the pg resources because of network issue. Retry.
+          RAY_LOG(WARNING) << "Failed to cancel the resource reserved for bundle: "
+                           << bundle_spec->DebugString() << " at node " << node_id
+                           << ". Status: " << status;
           execute_after(
               io_context_,
               [this, bundle_spec, node, max_retry, current_retry_cnt] {
@@ -357,7 +356,6 @@ void GcsPlacementGroupScheduler::OnAllBundlePrepareRequestReturned(
       << "This method can be called only after all bundle scheduling requests are "
          "returned.";
   const auto &placement_group = lease_status_tracker->GetPlacementGroup();
-  const auto &bundles = lease_status_tracker->GetBundlesToSchedule();
   const auto &prepared_bundle_locations =
       lease_status_tracker->GetPreparedBundleLocations();
   const auto &placement_group_id = placement_group->GetPlacementGroupID();
@@ -383,22 +381,8 @@ void GcsPlacementGroupScheduler::OnAllBundlePrepareRequestReturned(
         ->set_node_id(location.first.Binary());
   }
 
-  // Store data to GCS.
-  rpc::ScheduleData data;
-  for (const auto &iter : bundles) {
-    // TODO(ekl) this is a hack to get a string key for the proto
-    auto key = iter->PlacementGroupId().Hex() + "_" + std::to_string(iter->Index());
-    data.mutable_schedule_plan()->insert(
-        {key, (*prepared_bundle_locations)[iter->BundleId()].first.Binary()});
-  }
-  RAY_CHECK_OK(gcs_table_storage_->PlacementGroupScheduleTable().Put(
-      placement_group_id,
-      data,
-      [this, schedule_success_handler, schedule_failure_handler, lease_status_tracker](
-          Status status) {
-        CommitAllBundles(
-            lease_status_tracker, schedule_failure_handler, schedule_success_handler);
-      }));
+  CommitAllBundles(
+      lease_status_tracker, schedule_failure_handler, schedule_success_handler);
 }
 
 void GcsPlacementGroupScheduler::OnAllBundleCommitRequestReturned(
@@ -583,14 +567,10 @@ void GcsPlacementGroupScheduler::DestroyPlacementGroupPreparedBundleResources(
     for (const auto &iter : *(leasing_bundle_locations)) {
       auto &bundle_spec = iter.second.second;
       auto &node_id = iter.second.first;
-      CancelResourceReserve(
-          bundle_spec,
-          gcs_node_manager_.GetAliveNode(node_id),
-          // Retry 10 * worker registeration timeout to avoid race condition.
-          // See https://github.com/ray-project/ray/pull/42942
-          // for more details.
-          /*max_retry*/ RayConfig::instance().worker_register_timeout_seconds() * 10,
-          /*num_retry*/ 0);
+      CancelResourceReserve(bundle_spec,
+                            gcs_node_manager_.GetAliveNode(node_id),
+                            /*max_retry*/ 5,
+                            /*num_retry*/ 0);
     }
   }
 }
@@ -609,14 +589,10 @@ void GcsPlacementGroupScheduler::DestroyPlacementGroupCommittedBundleResources(
     for (const auto &iter : *(committed_bundle_locations)) {
       auto &bundle_spec = iter.second.second;
       auto &node_id = iter.second.first;
-      CancelResourceReserve(
-          bundle_spec,
-          gcs_node_manager_.GetAliveNode(node_id),
-          // Retry 10 * worker registeration timeout to avoid race condition.
-          // See https://github.com/ray-project/ray/pull/42942
-          // for more details.
-          /*max_retry*/ RayConfig::instance().worker_register_timeout_seconds() * 10,
-          /*num_retry*/ 0);
+      CancelResourceReserve(bundle_spec,
+                            gcs_node_manager_.GetAliveNode(node_id),
+                            /*max_retry*/ 5,
+                            /*num_retry*/ 0);
     }
     committed_bundle_location_index_.Erase(placement_group_id);
     cluster_resource_scheduler_.GetClusterResourceManager()
