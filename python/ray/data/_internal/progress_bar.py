@@ -54,9 +54,7 @@ class ProgressBar:
         elif tqdm:
             ctx = ray.data.context.DataContext.get_current()
             if ctx.use_ray_tqdm:
-                # Set `leave==True` to leave progress bars rendered after termination.
-                # This matches the default behavior used below in vanilla tqdm.
-                self._bar = tqdm_ray.tqdm(total=total, position=position, leave=True)
+                self._bar = tqdm_ray.tqdm(total=total, position=position)
             else:
                 self._bar = tqdm.tqdm(
                     total=total,
