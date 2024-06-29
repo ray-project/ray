@@ -233,8 +233,8 @@ void GcsJobManager::HandleGetAllJobInfo(rpc::GetAllJobInfoRequest request,
                         .WithField(kLogKeyJobID, job_id)
                         .WithField(kLogKeyWorkerID, worker_id)
                     << "Failed to get num_pending_tasks from core worker: " << status
-                    << ", this job will be marked as is_running_tasks=true.";
-                reply->mutable_job_info_list(i)->set_is_running_tasks(true);
+                    << ", is_running_tasks is unset.";
+                reply->mutable_job_info_list(i)->clear_is_running_tasks();
               } else {
                 bool is_running_tasks = num_pending_tasks_reply.num_pending_tasks() > 0;
                 reply->mutable_job_info_list(i)->set_is_running_tasks(is_running_tasks);
