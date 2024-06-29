@@ -10,6 +10,7 @@ cd python
 # Set the commit SHA in _version.py.
 if [[ -n "$TRAVIS_COMMIT" ]]; then
   sed -i.bak "s/{{RAY_COMMIT_SHA}}/$TRAVIS_COMMIT/g" ray/_version.py && rm ray/_version.py.bak
+  sed -i.bak "s/{{RAY_COMMIT_SHA}}/$TRAVIS_COMMIT/g" ../src/ray/common/constants.h && rm ../src/ray/common/constants.h.bak
 else
   echo "TRAVIS_COMMIT variable not set - required to populated ray.__commit__."
   exit 1

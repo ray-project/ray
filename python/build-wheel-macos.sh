@@ -44,7 +44,7 @@ mkdir -p .whl
 for ((i=0; i<${#PY_MMS[@]}; ++i)); do
   PY_MM=${PY_MMS[i]}
   CONDA_ENV_NAME="p$PY_MM"
- 
+
   # The -f flag is passed twice to also run git clean in the arrow subdirectory.
   # The -d flag removes directories. The -x flag ignores the .gitignore file,
   # and the -e flag ensures that we don't remove the .whl directory.
@@ -84,6 +84,7 @@ for ((i=0; i<${#PY_MMS[@]}; ++i)); do
     fi
 
     sed -i .bak "s/{{RAY_COMMIT_SHA}}/$TRAVIS_COMMIT/g" ray/_version.py && rm ray/_version.py.bak
+    sed -i "s/{{RAY_COMMIT_SHA}}/$TRAVIS_COMMIT/g" ../src/ray/common/constants.h && rm ../src/ray/common/constants.h.bak
 
     # Add the correct Python to the path and build the wheel. This is only
     # needed so that the installation finds the cython executable.

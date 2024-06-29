@@ -46,6 +46,9 @@ int main(int argc, char *argv[]) {
   ray::RayLog::InstallFailureSignalHandler(argv[0]);
   ray::RayLog::InstallTerminateHandler();
 
+  RAY_LOG(INFO).WithField("ray_version", kRayVersion).WithField("ray_commit", kRayCommit)
+      << "Ray cluster metadata";
+
   gflags::ParseCommandLineFlags(&argc, &argv, true);
   const std::string redis_address = FLAGS_redis_address;
   const int redis_port = static_cast<int>(FLAGS_redis_port);

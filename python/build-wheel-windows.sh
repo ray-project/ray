@@ -90,7 +90,7 @@ build_wheel_windows() {
 
   local local_dir="python/dist"
   {
-    echo "build --announce_rc";  
+    echo "build --announce_rc";
     echo "build --config=ci";
     echo "startup --output_user_root=c:/raytmp";
     echo "build --remote_cache=${BUILDKITE_BAZEL_CACHE_URL}";
@@ -126,6 +126,7 @@ build_wheel_windows() {
       # Set the commit SHA in _version.py.
       if [ -n "$BUILDKITE_COMMIT" ]; then
         sed -i.bak "s/{{RAY_COMMIT_SHA}}/$BUILDKITE_COMMIT/g" ray/_version.py && rm ray/_version.py.bak
+        sed -i.bak "s/{{RAY_COMMIT_SHA}}/$TRAVIS_COMMIT/g" ../src/ray/common/constants.h && rm ../src/ray/common/constants.h.bak
       else
         echo "BUILDKITE_COMMIT variable not set - required to populated ray.__commit__."
         exit 1

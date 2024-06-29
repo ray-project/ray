@@ -65,6 +65,8 @@ constexpr char kSetupWorkerFilename[] = "setup_worker.py";
 
 /// The version of Ray
 constexpr char kRayVersion[] = "3.0.0.dev0";
+/// The commit hash of Ray
+constexpr char kRayCommit[] = "{{RAY_COMMIT_SHA}}";
 
 /*****************************/
 /* ENV labels for autoscaler */
