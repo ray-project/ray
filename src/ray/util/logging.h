@@ -97,6 +97,7 @@ constexpr std::string_view kLogKeyWorkerID = "worker_id";
 constexpr std::string_view kLogKeyNodeID = "node_id";
 constexpr std::string_view kLogKeyActorID = "actor_id";
 constexpr std::string_view kLogKeyTaskID = "task_id";
+constexpr std::string_view kLogKeyObjectID = "object_id";
 
 class StackTrace {
   /// This dumps the current stack trace information.
@@ -312,6 +313,18 @@ class RayLog {
     } else {
       return WithFieldTextFormat<T>(key, value);
     }
+  }
+
+  /// Convenience functions to add log context by type.
+  RayLog &With(const JobID &job_id) { return WithField(kLogKeyJobID, job_id); }
+  RayLog &With(const WorkerID &worker_id) {
+    return WithField(kLogKeyWorkerID, worker_id);
+  }
+  RayLog &With(const NodeID &node_id) { return WithField(kLogKeyNodeID, node_id); }
+  RayLog &With(const ActorID &actor_id) { return WithField(kLogKeyActorID, actor_id); }
+  RayLog &With(const TaskID &task_id) { return WithField(kLogKeyTaskID, task_id); }
+  RayLog &With(const ObjectID &object_id) {
+    return WithField(kLogKeyObjectID, object_id);
   }
 
  private:
