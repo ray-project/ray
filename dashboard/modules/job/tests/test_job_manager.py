@@ -721,7 +721,7 @@ class TestRuntimeEnv:
         )
 
         data = await job_manager.get_job_info(job_id)
-        assert "Job executor actor failed to provision runtime env" in data.message
+        assert "Failed to set up runtime environment" in data.message
         assert data.driver_exit_code is None
         log_path = JobLogStorageClient().get_log_file_path(job_id=job_id)
         with open(log_path, "r") as f:
