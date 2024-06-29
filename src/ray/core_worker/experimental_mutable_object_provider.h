@@ -135,7 +135,7 @@ class MutableObjectProvider {
   /// 1. Status::OK()
   //     - The channel is registered and open.
   /// 2. Status::ChannelError()
-  ///    - The channel was is registered and was previously open, is now closed.
+  ///    - The channel was registered and previously open, but is now closed.
   /// 3. Status::NotFound()
   ///    - No channel exists for this object.
   ///
