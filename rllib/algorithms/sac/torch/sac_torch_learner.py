@@ -164,6 +164,7 @@ class SACTorchLearner(DQNRainbowTorchLearner, SACLearner):
                 Columns.ACTIONS: actions_curr,
             }
         )
+
         q_curr = self.module[module_id]._qf_forward_train(q_batch_curr)[QF_PREDS]
         # If a twin Q network should be used, calculate twin Q-values and use the
         # minimum.

@@ -25,7 +25,7 @@ config = (
     .environment(env="multi_agent_cartpole")
     .training(
         # Settings identical to old stack.
-        train_batch_size_per_learner=32,
+        train_batch_size_per_learner=64,
         replay_buffer_config={
             "type": "MultiAgentPrioritizedEpisodeReplayBuffer",
             "capacity": 50000,
