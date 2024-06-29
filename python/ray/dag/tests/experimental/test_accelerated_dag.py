@@ -1028,7 +1028,8 @@ def test_driver_and_actor_as_readers(ray_start_cluster):
 
     with pytest.raises(
         ValueError,
-        match="DAG outputs currently cannot be read by other actor tasks.",
+        match="DAG outputs currently can only be read by the driver--not the driver "
+        "and actors.",
     ):
         dag.experimental_compile()
 
@@ -1037,20 +1038,13 @@ def test_readers_on_different_nodes(ray_start_cluster):
     cluster = ray_start_cluster
     # This node is for the driver (including the DriverHelperActor) and one of the
     # readers.
-    cluster.add_node(num_cpus=2)
+    first_node_handle = cluster.add_node(num_cpus=2)
     # This node is for the other reader.
-    cluster.add_node(num_cpus=1)
+    second_node_handle = cluster.add_node(num_cpus=1)
     ray.init(address=cluster.address)
+    cluster.wait_for_nodes()
 
-    def _get_node_id(self) -> "ray.NodeID":
-        return ray.get_runtime_context().get_node_id()
-
-    @ray.remote(num_cpus=1)
-    def get_node_id() -> "ray.NodeID":
-        time.sleep(1)
-        return _get_node_id(None)
-
-    nodes = ray.get([get_node_id.options(num_cpus=1).remote() for _ in range(3)])
+    nodes = [first_node_handle.node_id, second_node_handle.node_id]
     # We want to check that the readers are on different nodes. Thus, we convert `nodes`
     # to a set and then back to a list to remove duplicates. Then we check that the
     # length of `nodes` is 2.
@@ -1065,6 +1059,9 @@ def test_readers_on_different_nodes(ray_start_cluster):
     a = create_actor(nodes[0])
     b = create_actor(nodes[1])
     actors = [a, b]
+
+    def _get_node_id(self) -> "ray.NodeID":
+        return ray.get_runtime_context().get_node_id()
 
     nodes_check = ray.get([act.__ray_call__.remote(_get_node_id) for act in actors])
     a_node = nodes_check[0]
@@ -1087,20 +1084,13 @@ def test_bunch_readers_on_different_nodes(ray_start_cluster):
     cluster = ray_start_cluster
     # This node is for the driver (including the DriverHelperActor) and two of the
     # readers.
-    cluster.add_node(num_cpus=3)
+    first_node_handle = cluster.add_node(num_cpus=3)
     # This node is for the other two readers.
-    cluster.add_node(num_cpus=2)
+    second_node_handle = cluster.add_node(num_cpus=2)
     ray.init(address=cluster.address)
+    cluster.wait_for_nodes()
 
-    def _get_node_id(self) -> "ray.NodeID":
-        return ray.get_runtime_context().get_node_id()
-
-    @ray.remote(num_cpus=1)
-    def get_node_id() -> "ray.NodeID":
-        time.sleep(1)
-        return _get_node_id(None)
-
-    nodes = ray.get([get_node_id.options(num_cpus=1).remote() for _ in range(3)])
+    nodes = [first_node_handle.node_id, second_node_handle.node_id]
     # We want to check that the readers are on different nodes. Thus, we convert `nodes`
     # to a set and then back to a list to remove duplicates. Then we check that the
     # length of `nodes` is 2.
@@ -1117,6 +1107,9 @@ def test_bunch_readers_on_different_nodes(ray_start_cluster):
     c = create_actor(nodes[1])
     d = create_actor(nodes[1])
     actors = [a, b, c, d]
+
+    def _get_node_id(self) -> "ray.NodeID":
+        return ray.get_runtime_context().get_node_id()
 
     nodes_check = ray.get([act.__ray_call__.remote(_get_node_id) for act in actors])
     a_node = nodes_check[0]

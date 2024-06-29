@@ -809,7 +809,8 @@ class CompiledDAG:
                 if read_by_driver:
                     if len(readers) != 1:
                         raise ValueError(
-                            "DAG outputs currently cannot be read by other actor tasks."
+                            "DAG outputs currently can only be read by the driver--not "
+                            "the driver and actors."
                         )
                     # This node is a multi-output node, which means that it will only be
                     # read by the driver, not an actor. Thus, we handle this case by

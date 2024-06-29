@@ -849,27 +849,23 @@ def test_put_error(ray_start_cluster):
 def test_payload_too_large(ray_start_cluster):
     cluster = ray_start_cluster
     # This node is for the driver.
-    cluster.add_node(num_cpus=1)
+    first_node_handle = cluster.add_node(num_cpus=1)
     # This node is for the reader.
-    cluster.add_node(num_cpus=1)
+    second_node_handle = cluster.add_node(num_cpus=1)
     ray.init(address=cluster.address)
+    cluster.wait_for_nodes()
 
-    @ray.remote(num_cpus=1)
-    class Actor:
-        def get_node_id(self) -> "ray.NodeID":
-            return ray.get_runtime_context().get_node_id()
-
-    @ray.remote(num_cpus=1)
-    def get_node_id() -> "ray.NodeID":
-        time.sleep(1)
-        return ray.get_runtime_context().get_node_id()
-
-    nodes = ray.get([get_node_id.options(num_cpus=1).remote() for _ in range(2)])
+    nodes = [first_node_handle.node_id, second_node_handle.node_id]
     # We want to check that there are two nodes. Thus, we convert `nodes` to a set and
     # then back to a list to remove duplicates. Then we check that the length of `nodes`
     # is 2.
     nodes = list(set(nodes))
     assert len(nodes) == 2
+
+    @ray.remote(num_cpus=1)
+    class Actor:
+        def get_node_id(self):
+            return ray.get_runtime_context().get_node_id()
 
     def create_actor(node):
         return Actor.options(
@@ -880,6 +876,7 @@ def test_payload_too_large(ray_start_cluster):
     actor_node = nodes[0] if nodes[0] != driver_node else nodes[1]
     assert driver_node != actor_node
     a = create_actor(actor_node)
+    assert driver_node != ray.get(a.get_node_id.remote())
 
     with pytest.raises(
         ValueError,
@@ -899,27 +896,23 @@ def test_payload_too_large(ray_start_cluster):
 def test_payload_resize_too_large(ray_start_cluster):
     cluster = ray_start_cluster
     # This node is for the driver.
-    cluster.add_node(num_cpus=1)
+    first_node_handle = cluster.add_node(num_cpus=1)
     # This node is for the reader.
-    cluster.add_node(num_cpus=1)
+    second_node_handle = cluster.add_node(num_cpus=1)
     ray.init(address=cluster.address)
+    cluster.wait_for_nodes()
 
-    @ray.remote(num_cpus=1)
-    class Actor:
-        def get_node_id(self) -> "ray.NodeID":
-            return ray.get_runtime_context().get_node_id()
-
-    @ray.remote(num_cpus=1)
-    def get_node_id() -> "ray.NodeID":
-        time.sleep(1)
-        return ray.get_runtime_context().get_node_id()
-
-    nodes = ray.get([get_node_id.options(num_cpus=1).remote() for _ in range(2)])
+    nodes = [first_node_handle.node_id, second_node_handle.node_id]
     # We want to check that there are two nodes. Thus, we convert `nodes` to a set and
     # then back to a list to remove duplicates. Then we check that the length of `nodes`
     # is 2.
     nodes = list(set(nodes))
     assert len(nodes) == 2
+
+    @ray.remote(num_cpus=1)
+    class Actor:
+        def get_node_id(self):
+            return ray.get_runtime_context().get_node_id()
 
     def create_actor(node):
         return Actor.options(
@@ -930,6 +923,7 @@ def test_payload_resize_too_large(ray_start_cluster):
     actor_node = nodes[0] if nodes[0] != driver_node else nodes[1]
     assert driver_node != actor_node
     a = create_actor(actor_node)
+    assert driver_node != ray.get(a.get_node_id.remote())
 
     chan = ray_channel.Channel(None, [a], 1000)
 
@@ -952,27 +946,23 @@ def test_readers_on_different_nodes(ray_start_cluster):
     cluster = ray_start_cluster
     # This node is for the driver (including the DriverHelperActor) and one of the
     # readers.
-    cluster.add_node(num_cpus=2)
+    first_node_handle = cluster.add_node(num_cpus=2)
     # This node is for the other reader.
-    cluster.add_node(num_cpus=1)
+    second_node_handle = cluster.add_node(num_cpus=1)
     ray.init(address=cluster.address)
+    cluster.wait_for_nodes()
+
+    nodes = [first_node_handle.node_id, second_node_handle.node_id]
+    # We want to check that there are two nodes. Thus, we convert `nodes` to a set and
+    # then back to a list to remove duplicates. Then we check that the length of `nodes`
+    # is 2.
+    nodes = list(set(nodes))
+    assert len(nodes) == 2
 
     @ray.remote(num_cpus=1)
     class Actor:
-        def get_node_id(self) -> "ray.NodeID":
+        def get_node_id(self):
             return ray.get_runtime_context().get_node_id()
-
-    @ray.remote(num_cpus=1)
-    def get_node_id() -> "ray.NodeID":
-        time.sleep(1)
-        return ray.get_runtime_context().get_node_id()
-
-    nodes = ray.get([get_node_id.options(num_cpus=1).remote() for _ in range(5)])
-    # We want to check that the readers are on different nodes. Thus, we convert `nodes`
-    # to a set and then back to a list to remove duplicates. Then we check that the
-    # length of `nodes` is 2.
-    nodes = list(set(nodes))
-    assert len(nodes) == 2
 
     def create_actor(node):
         return Actor.options(
@@ -1002,27 +992,23 @@ def test_bunch_readers_on_different_nodes(ray_start_cluster):
     cluster = ray_start_cluster
     # This node is for the driver (including the DriverHelperActor) and two of the
     # readers.
-    cluster.add_node(num_cpus=3)
+    first_node_handle = cluster.add_node(num_cpus=3)
     # This node is for the other two readers.
-    cluster.add_node(num_cpus=2)
+    second_node_handle = cluster.add_node(num_cpus=2)
     ray.init(address=cluster.address)
+    cluster.wait_for_nodes()
 
-    @ray.remote(num_cpus=1)
-    class Actor:
-        def get_node_id(self) -> "ray.NodeID":
-            return ray.get_runtime_context().get_node_id()
-
-    @ray.remote(num_cpus=1)
-    def get_node_id() -> "ray.NodeID":
-        time.sleep(1)
-        return ray.get_runtime_context().get_node_id()
-
-    nodes = ray.get([get_node_id.options(num_cpus=1).remote() for _ in range(5)])
+    nodes = [first_node_handle.node_id, second_node_handle.node_id]
     # We want to check that the readers are on different nodes. Thus, we convert `nodes`
     # to a set and then back to a list to remove duplicates. Then we check that the
     # length of `nodes` is 2.
     nodes = list(set(nodes))
     assert len(nodes) == 2
+
+    @ray.remote(num_cpus=1)
+    class Actor:
+        def get_node_id(self):
+            return ray.get_runtime_context().get_node_id()
 
     def create_actor(node):
         return Actor.options(
