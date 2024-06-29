@@ -330,7 +330,9 @@ class JobSupervisor:
             )
 
             if isinstance(e, RuntimeEnvSetupError):
-                failure_reason = f"Job executor actor failed to provision runtime environment: {repr(e)}"
+                # NOTE: We're simply serializing exception as failure reason to maintain
+                #       compatibility with the previous response format
+                failure_reason = str(e)
             elif isinstance(e, ActorUnschedulableError):
                 failure_reason = f"Job executor actor could not be scheduled: {repr(e)}"
             else:
@@ -594,7 +596,9 @@ class JobSupervisor:
             if isinstance(e, ActorDiedError):
                 failure_reason = f"Job executor actor is dead: {repr(e)}"
             elif isinstance(e, RuntimeEnvSetupError):
-                failure_reason = f"Job executor actor failed to provision runtime environment: {repr(e)}"
+                # NOTE: We're simply serializing exception as failure reason to maintain
+                #       compatibility with the previous response format
+                failure_reason = str(e)
             else:
                 failure_reason = (
                     f"Unexpected failure in supervisor monitoring loop: {repr(e)}"
