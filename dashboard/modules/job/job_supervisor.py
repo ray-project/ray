@@ -270,7 +270,7 @@ class JobSupervisor:
         status: JobStatus = None
         exit_code: Optional[int] = None
 
-        error_message: Optional[str] = None
+        failure_reason: Optional[str] = None
 
         try:
             self._logger.info(f"({self._job_id}) Creating executor actor for job")
@@ -324,28 +324,19 @@ class JobSupervisor:
                 status = JobStatus.FAILED
 
         except Exception as e:
+            self._logger.error(
+                f"({self._job_id}) Unexpected failure while executing job",
+                exc_info=e,
+            )
+
             if isinstance(e, RuntimeEnvSetupError):
-                self._logger.error(
-                    f"({self._job_id}) Failed to set up runtime environment for job executor",
-                    exc_info=e,
-                )
-                error_message = f"Job executor actor failed to provision runtime environment: {repr(e)}"
-
+                failure_reason = f"Job executor actor failed to provision runtime environment: {repr(e)}"
             elif isinstance(e, ActorUnschedulableError):
-                self._logger.error(
-                    f"({self._job_id}) Failed to schedule job runner actor",
-                    exc_info=e,
-                )
-                error_message = f"Job executor actor could not be scheduled: {repr(e)}"
-
+                failure_reason = f"Job executor actor could not be scheduled: {repr(e)}"
             else:
-                self._logger.error(
-                    f"({self._job_id}) Unexpected failure while executing job",
-                    exc_info=e,
-                )
-                error_message = f"Unexpected failure while executing job: {repr(e)}"
+                failure_reason = f"Unexpected failure while executing job: {repr(e)}"
 
-            message = error_message
+            message = failure_reason
             status = JobStatus.FAILED
             exit_code = None
 
@@ -363,9 +354,9 @@ class JobSupervisor:
             )
             # Record corresponding job's event
             if self.event_logger:
-                if error_message:
+                if failure_reason:
                     self.event_logger.error(
-                        f"Ray job {self._job_id} completed with status {status}: {error_message}",
+                        f"Ray job {self._job_id} completed with status {status}: {failure_reason}",
                         submission_id=self._job_id,
                     )
                 else:
