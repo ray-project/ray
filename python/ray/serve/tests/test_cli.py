@@ -145,9 +145,8 @@ def test_deploy_with_http_options(ray_start_stop):
     info_response = subprocess.check_output(["serve", "config"])
     info = yaml.safe_load(info_response)
 
-    # TODO(zcin): the assertion should just be `info == config` here but the output
-    # formatting removes a lot of info.
-    assert info == config["applications"][0]
+    assert info["applications"] == config["applications"]
+    assert all(v == info["http_options"][k] for k, v in config["http_options"].items())
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
@@ -350,10 +349,9 @@ def test_config_multi_app(ray_start_stop):
 
     # Config should be immediately ready
     info_response = subprocess.check_output(["serve", "config"])
-    fetched_configs = list(yaml.safe_load_all(info_response))
+    fetched_config = yaml.safe_load(info_response)
 
-    assert config["applications"][0] == fetched_configs[0]
-    assert config["applications"][1] == fetched_configs[1]
+    assert config["applications"] == fetched_config["applications"]
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
@@ -371,11 +369,12 @@ def test_cli_without_config_deploy(ray_start_stop):
     def check_cli():
         info_response = subprocess.check_output(["serve", "config"])
         status_response = subprocess.check_output(["serve", "status"])
+        fetched_config = yaml.safe_load(info_response)
         fetched_status = yaml.safe_load(status_response)["applications"][
             SERVE_DEFAULT_APP_NAME
         ]
 
-        assert len(info_response) == 0
+        assert len(fetched_config["applications"]) == 0
         assert fetched_status["status"] == "RUNNING"
         assert fetched_status["deployments"]["fn"]["status"] == "HEALTHY"
         return True
@@ -409,7 +408,7 @@ def test_config_with_deleting_app(ray_start_stop):
     def check_cli(expected_configs: List, expected_statuses: int):
         info_response = subprocess.check_output(["serve", "config"])
         status_response = subprocess.check_output(["serve", "status"])
-        fetched_configs = list(yaml.safe_load_all(info_response))
+        fetched_config = yaml.safe_load(info_response)
         statuses = yaml.safe_load(status_response)
 
         return (
@@ -421,7 +420,7 @@ def test_config_with_deleting_app(ray_start_stop):
                 ]
             )
             == expected_statuses
-            and fetched_configs == expected_configs
+            and fetched_config["applications"] == expected_configs
         )
 
     with NamedTemporaryFile(mode="w+", suffix=".yaml") as tmp:
