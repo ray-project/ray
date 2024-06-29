@@ -9,7 +9,7 @@ two-step-game-maddpg:
         timesteps_total: 20000
     config:
         # MADDPG only supports tf for now.
-        framework: torch
+        framework: tf
 
         env_config:
             env_config:
