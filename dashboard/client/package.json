@@ -48,6 +48,11 @@
   "resolutions": {
     "@types/react": "16.9.26"
   },
+  "jest": {
+    "transformIgnorePatterns": [
+      "/node_modules/(?!lowlight)/"
+    ]
+  },
   "scripts": {
     "start": "react-scripts start",
     "build": "react-scripts build",
