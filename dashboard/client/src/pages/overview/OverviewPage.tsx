@@ -15,20 +15,6 @@ import { RecentJobsCard } from "./cards/RecentJobsCard";
 import { RecentServeCard } from "./cards/RecentServeCard";
 
 const styles = {
-  root: {
-    padding: 3,
-    backgroundColor: "white",
-  },
-  overviewCardsContainer: (theme: Theme) => ({
-    display: "flex",
-    flexDirection: "row",
-    flexWrap: "wrap",
-    marginBottom: 4,
-    gap: 3,
-    [theme.breakpoints.up("md")]: {
-      flexWrap: "nowrap",
-    },
-  }),
   overviewCard: (theme: Theme) => ({
     flex: "1 0 448px",
     maxWidth: "100%",
@@ -37,20 +23,33 @@ const styles = {
       maxWidth: `calc((100% - ${theme.spacing(3)} * 2) / 3)`,
     },
   }),
-  autoscalerCard: (theme: Theme) => ({
-    padding: theme.spacing(2, 3),
-  }),
+  autoscalerCard: {
+    backgroundColor: "white",
+    paddingX: 3,
+    paddingY: 2,
+  },
 };
 
 export const OverviewPage = () => {
   const { clusterStatus } = useRayStatus();
 
   return (
-    <Box sx={styles.root}>
+    <Box sx={{ padding: 3, backgroundColor: "white" }}>
       <MainNavPageInfo
         pageInfo={{ title: "Overview", id: "overview", path: "/overview" }}
       />
-      <Box sx={styles.overviewCardsContainer}>
+      <Box
+        sx={(theme: Theme) => ({
+          display: "flex",
+          flexDirection: "row",
+          flexWrap: "wrap",
+          marginBottom: 4,
+          gap: 3,
+          [theme.breakpoints.up("md")]: {
+            flexWrap: "nowrap",
+          },
+        })}
+      >
         <ClusterUtilizationCard sx={styles.overviewCard} />
         <RecentJobsCard sx={styles.overviewCard} />
         <RecentServeCard sx={styles.overviewCard} />
@@ -62,16 +61,23 @@ export const OverviewPage = () => {
         startExpanded
       >
         {
-          <Box sx={styles.overviewCardsContainer}>
+          <Box
+            sx={(theme: Theme) => ({
+              display: "flex",
+              flexDirection: "row",
+              flexWrap: "wrap",
+              marginBottom: 4,
+              gap: 3,
+              [theme.breakpoints.up("md")]: {
+                flexWrap: "nowrap",
+              },
+            })}
+          >
             <NodeCountCard sx={styles.overviewCard} />
-            <OverviewCard
-              sx={[styles.root, styles.overviewCard, styles.autoscalerCard]}
-            >
+            <OverviewCard sx={[styles.overviewCard, styles.autoscalerCard]}>
               <NodeStatusCard clusterStatus={clusterStatus} />
             </OverviewCard>
-            <OverviewCard
-              sx={[styles.root, styles.overviewCard, styles.autoscalerCard]}
-            >
+            <OverviewCard sx={[styles.overviewCard, styles.autoscalerCard]}>
               <ResourceStatusCard clusterStatus={clusterStatus} />
             </OverviewCard>
           </Box>

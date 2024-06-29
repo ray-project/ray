@@ -40,7 +40,8 @@ export const ListItemCard = ({
         {
           display: "flex",
           flexDirection: "column",
-          padding: (theme) => theme.spacing(2, 3),
+          paddingX: 3,
+          paddingY: 2,
         },
         ...(Array.isArray(sx) ? sx : [sx]),
       ]}

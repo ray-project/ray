@@ -41,7 +41,7 @@ export const ClusterUtilizationCard = ({
       {/* TODO (aguo): Switch this to overall utilization graph */}
       {/* TODO (aguo): Handle grafana not running */}
       {grafanaHost === undefined || !prometheusHealth ? (
-        <Box sx={{ flex: 1, padding: (theme) => theme.spacing(2, 3) }}>
+        <Box sx={{ flex: 1, paddingX: 3, paddingY: 2 }}>
           <Typography variant="h3">Cluster utilization</Typography>
           <GrafanaNotRunningAlert sx={{ marginTop: 2 }} severity="info" />
         </Box>
@@ -59,7 +59,9 @@ export const ClusterUtilizationCard = ({
               display: "flex",
               flexDirection: "row",
               flexWrap: "nowrap",
-              margin: (theme) => theme.spacing(1, 3, 2),
+              marginX: 3,
+              marginTop: 1,
+              marginBottom: 2,
             }}
           >
             <LinkWithArrow text="View all metrics" to="/metrics" />

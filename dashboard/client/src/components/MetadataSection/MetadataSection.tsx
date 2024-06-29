@@ -145,12 +145,12 @@ const MetadataList: React.FC<{
   );
   return (
     <Box
-      sx={(theme) => ({
+      sx={{
         display: "grid",
         gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
-        rowGap: theme.spacing(1),
-        columnGap: theme.spacing(4),
-      })}
+        rowGap: 1,
+        columnGap: 4,
+      }}
     >
       {filteredMetadataList.map(({ label, labelTooltip, content }, idx) => (
         <Box key={idx} flex={1} paddingTop={0.5} paddingBottom={0.5}>

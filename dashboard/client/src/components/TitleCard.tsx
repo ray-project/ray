@@ -10,7 +10,8 @@ const TitleCard = ({
       sx={{
         padding: 2,
         paddingTop: 1.5,
-        margin: (theme) => theme.spacing(2, 1),
+        marginX: 1,
+        marginY: 2,
       }}
       elevation={0}
     >
