@@ -1,36 +1,41 @@
 (kuberay-mnist-training-example)=
 
-# Train MNIST on a Neural Network with CPUs on Kubernetes
+# Train a PyTorch Model on Fashion MNIST with CPUs on Kubernetes
 
-This guide runs a sample Ray Train workload with CPUs on Kubernetes infrastructure.
+This example runs distributed training of a PyTorch model on Fashion MNIST with Ray Train. See [Train a PyTorch Model on Fashion MNIST](../../../train/examples/pytorch/torch_fashion_mnist_example.rst) for more details.
 
-## Step 1: Install KubeRay operator
+## Step 1: Create a Kubernetes cluster
 
-Follow [this document](kuberay-operator-deploy) to install the latest stable KubeRay operator from the Helm repository. After installation, you should see the operator running:
+This step creates a local Kubernetes cluster using [Kind](https://kind.sigs.k8s.io/). If you already have a Kubernetes cluster, you can skip this step.
 
 ```sh
-# Confirm that the operator is running in the namespace `default`.
-kubectl get pods
-# NAME                                                      READY   STATUS              RESTARTS   AGE
-# kuberay-operator-6dddd689fb-ksmcs                         1/1     Running             0          48s
+kind create cluster --image=kindest/node:v1.26.0
 ```
 
-## Step 2: Create a RayJob
+## Step 2: Install KubeRay operator
 
-A RayJob consists of a RayCluster custom resource and a job that can be submitted to the RayCluster. With RayJob, KubeRay creates a RayCluster and submit a job when the cluster is ready. Here, we provide a CPU-only RayJob description yaml file for the MNIST training on a Neural Network.
+Follow [this document](kuberay-operator-deploy) to install the latest stable KubeRay operator from the Helm repository.
+
+## Step 3: Create a RayJob
+
+A RayJob consists of a RayCluster custom resource and a job that can be submitted to the RayCluster. With RayJob, KubeRay creates a RayCluster and submits a job when the cluster is ready. Here is a CPU-only RayJob description YAML file for MNIST training on a PyTorch model.
 
 ```sh
 # Download `ray-job.pytorch-mnist.yaml`
 curl -LO https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/samples/pytorch-mnist/ray-job.pytorch-mnist.yaml
-
-# Create a RayJob
-kubectl apply -f ray-job.pytorch-mnist.yaml
 ```
 
-Feel free to adjust the `NUM_WORKERS` field and the `replicas` field under `workerGroupSpecs` in `rayClusterSpec` in the yaml file such that all the worker pods can reach `Running` status.
+You might need to adjust some fields in the RayJob description YAML file so that it can run in your environment:
+* `replicas` under `workerGroupSpecs` in `rayClusterSpec`: This field specifies the number of worker Pods that will be scheduled to the Kubernetes cluster. Each worker Pod and the head Pod, as described in the `template` field, require 2 CPUs. A RayJob submitter Pod requires 1 CPU. For example, if your machine has 8 CPUs, the maximum `replicas` value will be 2 to allow all Pods to reach the `Running` status.
+* `NUM_WORKERS` under `runtimeEnvYAML` in `spec`: This field indicates the number of Ray actors to launch (see [Document](../../../train/api/doc/ray.train.ScalingConfig.rst) for more information). Each Ray actor must be served by a worker Pod in the Kubernetes cluster. Therefore, `NUM_WORKERS` must be less than or equal to `replicas`.
 
 ```sh
 # `replicas` and `NUM_WORKERS` set to 2
+# Create a RayJob
+kubectl apply -f ray-job.pytorch-mnist.yaml
+
+# Check existing Pods: According to `replicas`, there should be 2 worker Pods
+# Make sure all the Pods are in the `Running` status
 kubectl get pods
 # NAME                                                      READY   STATUS    RESTARTS   AGE
 # kuberay-operator-6dddd689fb-ksmcs                         1/1     Running   0          6m8s
@@ -40,7 +45,7 @@ kubectl get pods
 # rayjob-pytorch-mnist-raycluster-rkdmq-head-m4dsl          1/1     Running   0          5m32s
 ```
 
-Check that the job is in the `RUNNING` status:
+Check that the RayJob is in the `RUNNING` status:
 
 ```sh
 kubectl get rayjob
@@ -48,9 +53,9 @@ kubectl get rayjob
 # rayjob-pytorch-mnist   RUNNING      Running             2024-06-17T04:08:25Z              11m
 ```
 
-## Step 3: Wait until the job is completed and check the training results
+## Step 4: Wait until the RayJob completes and check the training results
 
-Wait until the job is completed. It might take several minutes.
+Wait until the RayJob completes. It might take several minutes.
 
 ```sh
 kubectl get rayjob
@@ -61,7 +66,7 @@ kubectl get rayjob
 After seeing `JOB_STATUS` marked as `SUCCEEDED`, you can check the training logs:
 
 ```sh
-# check pods name
+# Check Pods name
 kubectl get pods
 # NAME                                                      READY   STATUS      RESTARTS   AGE
 # kuberay-operator-6dddd689fb-ksmcs                         1/1     Running     0          113m
@@ -70,7 +75,7 @@ kubectl get pods
 # rayjob-pytorch-mnist-nxmj2                                0/1     Completed   0          38m
 # rayjob-pytorch-mnist-raycluster-rkdmq-head-m4dsl          1/1     Running     0          38m
 
-# check training logs
+# Check training logs
 kubectl logs -f rayjob-pytorch-mnist-nxmj2
 
 # 2024-06-16 22:23:01,047 INFO cli.py:36 -- Job submission server address: http://rayjob-pytorch-mnist-raycluster-rkdmq-head-svc.default.svc.cluster.local:8265
@@ -108,15 +113,8 @@ kubectl logs -f rayjob-pytorch-mnist-nxmj2
 
 ## Clean-up
 
-Delete your RayCluster and KubeRay with the following commands:
+Delete your RayJob with the following command:
 
 ```sh
-# check <raycluster-name> by `kubectl get raycluster`
-kubectl delete raycluster <raycluster-name>
-
-# Please make sure the ray cluster has already been removed before delete the operator.
-helm uninstall kuberay-operator
-
-# remove kubernetes cluster created by kind
-kind delete cluster
+kubectl delete -f ray-job.pytorch-mnist.yaml
 ```
