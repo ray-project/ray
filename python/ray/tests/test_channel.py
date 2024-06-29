@@ -56,8 +56,8 @@ def test_driver_as_reader(ray_start_cluster, remote):
         # This node is for the writer actor.
         cluster.add_node(num_cpus=1)
     else:
-        # This node is for both the driver (including the DriverHelperActor) and the
-        # writer actor.
+        # This node is for both the driver (including the
+        # CompiledDAG.DAGDriverProxyActor) and the writer actor.
         cluster.add_node(num_cpus=2)
         ray.init(address=cluster.address)
 
@@ -95,8 +95,8 @@ def test_driver_as_reader_with_resize(ray_start_cluster, remote):
         # This node is for the writer actor.
         cluster.add_node(num_cpus=1)
     else:
-        # This node is for both the driver (including the DriverHelperActor) and the
-        # writer actor.
+        # This node is for both the driver (including the
+        # CompiledDAG.DAGDriverProxyActor) and the writer actor.
         cluster.add_node(num_cpus=2)
         ray.init(address=cluster.address)
 
@@ -785,8 +785,8 @@ def test_composite_channel_multiple_readers(ray_start_cluster):
 )
 def test_put_error(ray_start_cluster):
     cluster = ray_start_cluster
-    # This node is for both the driver (including the DriverHelperActor) and the
-    # writer actor.
+    # This node is for both the driver (including the CompiledDAG.DAGDriverProxyActor)
+    # and the writer actor.
     cluster.add_node(num_cpus=2)
     ray.init(address=cluster.address)
 
@@ -944,8 +944,8 @@ def test_payload_resize_too_large(ray_start_cluster):
 )
 def test_readers_on_different_nodes(ray_start_cluster):
     cluster = ray_start_cluster
-    # This node is for the driver (including the DriverHelperActor) and one of the
-    # readers.
+    # This node is for the driver (including the CompiledDAG.DAGDriverProxyActor) and
+    # one of the readers.
     first_node_handle = cluster.add_node(num_cpus=2)
     # This node is for the other reader.
     second_node_handle = cluster.add_node(num_cpus=1)

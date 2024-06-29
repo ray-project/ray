@@ -1036,8 +1036,8 @@ def test_driver_and_actor_as_readers(ray_start_cluster):
 
 def test_readers_on_different_nodes(ray_start_cluster):
     cluster = ray_start_cluster
-    # This node is for the driver (including the DriverHelperActor) and one of the
-    # readers.
+    # This node is for the driver (including the CompiledDAG.DAGDriverProxyActor) and
+    # one of the readers.
     first_node_handle = cluster.add_node(num_cpus=2)
     # This node is for the other reader.
     second_node_handle = cluster.add_node(num_cpus=1)
@@ -1082,8 +1082,8 @@ def test_readers_on_different_nodes(ray_start_cluster):
 
 def test_bunch_readers_on_different_nodes(ray_start_cluster):
     cluster = ray_start_cluster
-    # This node is for the driver (including the DriverHelperActor) and two of the
-    # readers.
+    # This node is for the driver (including the CompiledDAG.DAGDriverProxyActor) and
+    # two of the readers.
     first_node_handle = cluster.add_node(num_cpus=3)
     # This node is for the other two readers.
     second_node_handle = cluster.add_node(num_cpus=2)

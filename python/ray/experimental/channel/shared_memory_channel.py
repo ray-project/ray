@@ -296,13 +296,14 @@ class Channel(ChannelInterface):
 
         self._num_readers = len(self._readers)
         if self.is_remote():
-            from ray.dag.context import GRPC_MAX_PAYLOAD
+            from ray.dag.context import DAGContext
 
-            if typ.buffer_size_bytes > GRPC_MAX_PAYLOAD:
+            if typ.buffer_size_bytes > DAGContext.get_current().max_grpc_payload:
                 raise ValueError(
                     "The reader and writer are on different nodes, so the object "
                     "written to the channel must have a size less than or equal to "
-                    f"the max gRPC payload size ({GRPC_MAX_PAYLOAD} bytes)."
+                    "the max gRPC payload size "
+                    f"({DAGContext.get_current().max_grpc_payload} bytes)."
                 )
             self._num_readers = 1
 
@@ -405,13 +406,13 @@ class Channel(ChannelInterface):
         # metadata explicitly.
         size = serialized_value.total_bytes + len(serialized_value.metadata)
 
-        from ray.dag.context import GRPC_MAX_PAYLOAD
+        from ray.dag.context import DAGContext
 
-        if size > GRPC_MAX_PAYLOAD and self.is_remote():
+        if size > DAGContext.get_current().max_grpc_payload and self.is_remote():
             raise ValueError(
                 "The reader and writer are on different nodes, so the object written "
                 "to the channel must have a size less than or equal to the max gRPC "
-                f"payload size ({GRPC_MAX_PAYLOAD} bytes)."
+                f"payload size ({DAGContext.get_current().max_grpc_payload} bytes)."
             )
         if size > self._typ.buffer_size_bytes:
             # Now make the channel backing store larger.
