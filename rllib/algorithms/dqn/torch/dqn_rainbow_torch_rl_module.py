@@ -35,13 +35,10 @@ class DQNRainbowTorchRLModule(TorchRLModule, DQNRainbowRLModule):
         # space is a flat space we can use a noisy encoder.
         self.uses_noisy_encoder = isinstance(self.encoder, TorchNoisyMLPEncoder)
 
-        # If we have target networks ,we need to make them not trainable.
-        if not self.inference_only:
-            self.target_encoder.requires_grad_(False)
-            self.af_target.requires_grad_(False)
-            if self.uses_dueling:
-                self.vf_target.requires_grad_(False)
-
+        # If not an inference-only module (e.g., for evaluation), set up the
+        # parameter names to be removed or renamed when syncing from the state dict
+        # when syncing.
+        if not self.config.inference_only:
             # Set the expected and unexpected keys for the inference-only module.
             self._set_inference_only_state_dict_keys()
 
@@ -50,7 +47,7 @@ class DQNRainbowTorchRLModule(TorchRLModule, DQNRainbowRLModule):
     def get_state(self, inference_only: bool = False) -> Dict[str, Any]:
         state_dict = self.state_dict()
         # If this module is not for inference, but the state dict is.
-        if not self.inference_only and inference_only:
+        if not self.config.inference_only and inference_only:
             # Call the local hook to remove or rename the parameters.
             return self._inference_only_get_state_hook(state_dict)
         # Otherwise, the state dict is for checkpointing or saving the model.
@@ -140,11 +137,6 @@ class DQNRainbowTorchRLModule(TorchRLModule, DQNRainbowRLModule):
     def _forward_train(
         self, batch: Dict[str, TensorType]
     ) -> Dict[str, TensorStructType]:
-        if self.inference_only:
-            raise RuntimeError(
-                "Trying to train a module that is not a learner module. Set the "
-                "flag `inference_only=False` when building the module."
-            )
         output = {}
 
         # Set module into training mode.

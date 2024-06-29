@@ -29,12 +29,12 @@ class PPORLModule(RLModule, abc.ABC):
             catalog.actor_critic_encoder_config.base_encoder_config,
             RecurrentEncoderConfig,
         )
-        self.inference_only &= not is_stateful
+        self.config.inference_only &= not is_stateful
         # If this is not a learner module, we use only a single value network. This
         # network is then either the share encoder network from the learner module
         # or the actor encoder network from the learner module (if the value network
         # is not shared with the actor network).
-        if self.inference_only and self.framework == "torch":
+        if self.config.inference_only and self.framework == "torch":
             # We need to set the shared flag in the encoder config
             # b/c the catalog has already been built at this point.
             catalog.actor_critic_encoder_config.shared = True
@@ -43,7 +43,7 @@ class PPORLModule(RLModule, abc.ABC):
         self.encoder = catalog.build_actor_critic_encoder(framework=self.framework)
         self.pi = catalog.build_pi_head(framework=self.framework)
         # Only build the critic network when this is a learner module.
-        if not self.inference_only or self.framework != "torch":
+        if not self.config.inference_only or self.framework != "torch":
             self.vf = catalog.build_vf_head(framework=self.framework)
             # Holds the parameter names to be removed or renamed when synching
             # from the learner to the inference module.

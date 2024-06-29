@@ -19,7 +19,7 @@ from ray.rllib.utils.typing import ModuleID
 class AppoLearner(ImpalaLearner):
     """Adds KL coeff updates via `after_gradient_based_update()` to Impala logic.
 
-    Framework-specific sub-classes must override `_update_module_kl_coeff()`.
+    Framework-specific subclasses must override `_update_module_kl_coeff()`.
     """
 
     @override(ImpalaLearner)
@@ -27,9 +27,13 @@ class AppoLearner(ImpalaLearner):
         super().build()
 
         # Initially sync target networks (w/ tau=1.0 -> full overwrite).
-        self.module.foreach_module(
-            lambda mid, module: module.sync_target_networks(tau=1.0)
-        )
+        # Make target nets non-trainable.
+        def _setup_target_nets(mid, module):
+            module.sync_target_networks(tau=1.0)
+            for target_net, _ in module.get_target_network_pairs():
+                target_net.requires_grad_(False)
+
+        self.module.foreach_module(_setup_target_nets)
 
         # The current kl coefficients per module as (framework specific) tensor
         # variables.

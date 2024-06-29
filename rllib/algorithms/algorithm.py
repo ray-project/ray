@@ -39,7 +39,7 @@ import ray.cloudpickle as pickle
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.registry import ALGORITHMS_CLASS_TO_NAME as ALL_ALGORITHMS
 from ray.rllib.connectors.agent.obs_preproc import ObsPreprocessorConnector
-from ray.rllib.core import DEFAULT_MODULE_ID
+from ray.rllib.core import COMPONENT_LEARNER, COMPONENT_RL_MODULE, DEFAULT_MODULE_ID
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.rl_module.marl_module import MultiAgentRLModuleSpec
 from ray.rllib.core.rl_module.rl_module import RLModule, SingleAgentRLModuleSpec
@@ -764,16 +764,19 @@ class Algorithm(Trainable, AlgorithmBase):
                     lambda w: w.set_is_policy_to_train(policies_to_train),
                 )
                 # Sync the weights from the learner group to the rollout workers.
-                weights = self.learner_group.get_weights()
+                weights = self.learner_group.get_state(components=COMPONENT_RL_MODULE)[
+                    COMPONENT_LEARNER
+                ][COMPONENT_RL_MODULE]
                 local_worker.set_weights(weights)
                 self.workers.sync_weights(inference_only=True)
-            # New stack/EnvRunner APIs: Use get/set_state (no more get/set_weights).
+            # New stack/EnvRunner APIs: Use get/set_state.
             else:
-                # Sync the weights from the learner group to the rollout workers.
-                weights = self.learner_group.get_weights(
-                    inference_only=self.config.enable_env_runner_and_connector_v2
-                )
-                local_worker.set_state({"rl_module": weights})
+                # Sync the weights from the learner group to the EnvRunners.
+                weights = self.learner_group.get_state(
+                    components=COMPONENT_RL_MODULE,
+                    inference_only=True,
+                )[COMPONENT_LEARNER][COMPONENT_RL_MODULE]
+                local_worker.set_state({COMPONENT_RL_MODULE: weights})
                 self.workers.sync_env_runner_states(
                     config=self.config,
                     env_steps_sampled=self.metrics.peek(
@@ -1549,11 +1552,6 @@ class Algorithm(Trainable, AlgorithmBase):
             from_worker = workers.local_worker() or self.workers.local_worker()
             # Get the state of the correct (reference) worker. E.g. The local worker
             # of the training EnvRunnerGroup.
-            # TODO (sven): EnvRunners currently return an empty dict from `get_state()`.
-            #  Once this API has been implemented properly (and replaced the
-            #  `get/set_weights()` APIs), re-visit the test cases that check, whether
-            #  all single-agent RLModules added on-the-fly are properly restored as
-            #  well.
             state_ref = ray.put(from_worker.get_state())
 
             # By default, entire local worker state is synced after restoration
@@ -2129,7 +2127,7 @@ class Algorithm(Trainable, AlgorithmBase):
                 )
 
             weights = policy.get_weights()
-            self.learner_group.set_weights({policy_id: weights})
+            self.learner_group.set_state({COMPONENT_RL_MODULE: {policy_id: weights}})
 
         # Add to evaluation workers, if necessary.
         if evaluation_workers is True and self.evaluation_workers is not None:
@@ -2218,7 +2216,9 @@ class Algorithm(Trainable, AlgorithmBase):
         # Create RLModule on all Learner workers.
         new_module = self.workers.local_worker().module[module_id]
         self.learner_group.foreach_learner(_add)
-        self.learner_group.set_weights({module_id: new_module.get_state()})
+        self.learner_group.set_state(
+            {COMPONENT_RL_MODULE: {module_id: new_module.get_state()}}
+        )
 
         # Return newly added RLModule (from the local EnvRunner).
         return new_module
@@ -2427,10 +2427,11 @@ class Algorithm(Trainable, AlgorithmBase):
             learner_state_dir = os.path.join(checkpoint_dir, "learner")
             self.learner_group.load_state(learner_state_dir)
             # Make also sure, all training EnvRunners get the just loaded weights.
-            weights = self.learner_group.get_weights(
-                inference_only=self.config.enable_env_runner_and_connector_v2
-            )
-            self.workers.local_worker().set_weights(weights)
+            weights = self.learner_group.get_state(
+                components=COMPONENT_RL_MODULE,
+                inference_only=True,
+            )[COMPONENT_LEARNER][COMPONENT_RL_MODULE]
+            self.workers.local_worker().set_state({COMPONENT_RL_MODULE: weights})
             self.workers.sync_weights(inference_only=True)
 
         # Call the `on_checkpoint_loaded` callback.

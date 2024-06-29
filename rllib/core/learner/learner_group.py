@@ -18,6 +18,7 @@ import tree  # pip install dm_tree
 
 import ray
 from ray import ObjectRef
+from ray.rllib.core import COMPONENT_LEARNER, COMPONENT_RL_MODULE
 from ray.rllib.core.learner.learner import Learner
 from ray.rllib.core.rl_module.rl_module import (
     SingleAgentRLModuleSpec,
@@ -37,7 +38,6 @@ from ray.rllib.utils.minibatch_utils import (
     ShardEpisodesIterator,
     ShardObjectRefIterator,
 )
-from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.typing import (
     EpisodeType,
     ModuleID,
@@ -384,8 +384,8 @@ class LearnerGroup:
                 )
             if _return_state:
                 result["_rl_module_state_after_update"] = _learner.get_state(
-                    components="rl_module", inference_only=True
-                )["rl_module"]
+                    components=COMPONENT_RL_MODULE, inference_only=True
+                )[COMPONENT_RL_MODULE]
 
             return result
 
@@ -672,50 +672,6 @@ class LearnerGroup:
         ):
             del self._metrics_logger_old_and_hybrid_stack.stats[module_id]
 
-    def get_weights(
-        self, module_ids: Optional[Set[str]] = None, inference_only: bool = False
-    ) -> Dict[str, Any]:
-        """Get the weights of the MultiAgentRLModule maintained by each Learner.
-
-        Args:
-            module_ids: The ids of the modules to get the weights of.
-
-        Returns:
-            A mapping of module ids to their weights.
-
-        """
-        if self.is_local:
-            state = self._learner.get_module_state(module_ids, inference_only)
-        else:
-            worker = self._worker_manager.healthy_actor_ids()[0]
-            assert len(self._workers) == self._worker_manager.num_healthy_actors()
-            state = self._worker_manager.foreach_actor(
-                lambda w: w.get_module_state(module_ids, inference_only),
-                remote_actor_ids=[worker],
-            )
-            state = self._get_results(state)[0]
-
-        return convert_to_numpy(state)
-
-    def set_weights(self, weights: Dict[str, Any]) -> None:
-        """Set the weights of the MultiAgentRLModule maintained by each Learner.
-
-        The weights don't have to include all the modules in the MARLModule.
-        This way the weights of only some of the Agents can be set.
-
-        Args:
-            weights: The weights to set each RLModule in the MARLModule to.
-
-        """
-        if self.is_local:
-            self._learner.set_module_state(weights)
-        else:
-            results_or_errors = self._worker_manager.foreach_actor(
-                lambda w: w.set_module_state(weights)
-            )
-            # raise errors if any
-            self._get_results(results_or_errors)
-
     def get_state(
         self,
         components: Optional[Container[str]] = None,
@@ -763,7 +719,7 @@ class LearnerGroup:
             )
             learner_state = self._get_results(results)[0]
 
-        return {"learner_state": learner_state}
+        return {COMPONENT_LEARNER: learner_state}
 
     def set_state(self, state: Dict[str, Any]) -> None:
         """Sets the state of this LearnerGroup.
@@ -773,7 +729,7 @@ class LearnerGroup:
         Args:
             state: The state dict mapping str keys to state information.
         """
-        learner_state = state.get("learner_state")
+        learner_state = state.get(COMPONENT_LEARNER)
         if learner_state is not None:
             if self.is_local:
                 self._learner.set_state(learner_state)
@@ -1154,3 +1110,15 @@ class LearnerGroup:
         # Just in case, we would like to revert this API retirement, we can do so
         # easily.
         return self._update(*args, **kwargs, async_update=True)
+
+    @Deprecated(
+        new="LearnerGroup.get_state(components='rl_module', inference_only=..., "
+        "module_ids=...)",
+        error=True,
+    )
+    def get_weights(self, *args, **kwargs):
+        pass
+
+    @Deprecated(new="LearnerGroup.set_state(...)", error=True)
+    def set_weights(self, *args, **kwargs):
+        pass

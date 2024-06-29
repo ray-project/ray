@@ -94,38 +94,23 @@ class TestAlgorithm(unittest.TestCase):
             def new_mapping_fn(agent_id, episode, i=i, **kwargs):
                 return f"p{choice([i, i - 1])}"
 
-            # Add a new policy either by class (and options) or by instance.
+            # Add a new RLModule by class (and options).
             mid = f"p{i}"
             print(f"Adding new RLModule {mid} ...")
-            # By (already instantiated) instance.
-            if i == 2:
-                new_module = algo.add_module(
-                    mid,
-                    # Pass in an already existing policy instance.
-                    policy=rl_module_obj,
-                    # Test changing the mapping fn.
-                    policy_mapping_fn=new_mapping_fn,
-                    # Change the list of policies to train.
-                    policies_to_train=[f"p{i}", f"p{i - 1}"],
-                )
-            # By class (and options).
-            else:
-                new_module = algo.add_module(
-                    module_id=mid,
-                    module_spec=SingleAgentRLModuleSpec.from_module(mod0),
-                    # Test changing the mapping fn.
-                    new_agent_to_module_mapping_fn=new_mapping_fn,
-                    # Change the list of modules to train.
-                    new_should_module_be_updated=[f"p{i}", f"p{i-1}"],
-                )
+            new_module = algo.add_module(
+                module_id=mid,
+                module_spec=SingleAgentRLModuleSpec.from_module(mod0),
+                # Test changing the mapping fn.
+                new_agent_to_module_mapping_fn=new_mapping_fn,
+                # Change the list of modules to train.
+                new_should_module_be_updated=[f"p{i}", f"p{i-1}"],
+            )
 
             # Make sure new module is part of remote EnvRunners in the
             # EnvRunnerGroup and the eval EnvRunnerGroup.
             self.assertTrue(
                 all(
-                    algo.workers.foreach_worker(
-                        func=lambda w, mid=mid: mid in w.module
-                    )
+                    algo.workers.foreach_worker(func=lambda w, mid=mid: mid in w.module)
                 )
             )
             self.assertTrue(
@@ -152,13 +137,9 @@ class TestAlgorithm(unittest.TestCase):
 
             # Make sure evaluation worker also got the restored, added policy.
             def _has_modules(w, mid=mid):
-                return (
-                    w.module.get("p0") is not None and w.module.get(mid) is not None
-                )
+                return w.module.get("p0") is not None and w.module.get(mid) is not None
 
-            self.assertTrue(
-                all(test.evaluation_workers.foreach_worker(_has_modules))
-            )
+            self.assertTrue(all(test.evaluation_workers.foreach_worker(_has_modules)))
 
             # Make sure algorithm can continue training the restored policy.
             mod0 = test.get_module("p0")

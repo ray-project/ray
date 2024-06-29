@@ -14,6 +14,10 @@ from ray import ObjectRef
 from ray.rllib import SampleBatch
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
+from ray.rllib.core import (
+    COMPONENT_ENV_TO_MODULE_CONNECTOR,
+    COMPONENT_MODULE_TO_ENV_CONNECTOR,
+)
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.env.env_runner_group import _handle_remote_call_result_errors
 from ray.rllib.execution.buffers.mixin_replay_buffer import MixInMultiAgentReplayBuffer
@@ -811,7 +815,10 @@ class Impala(Algorithm):
             _episodes = _worker.sample()
             # Get the EnvRunner's connector states.
             _connector_states = _worker.get_state(
-                components=["env_to_module_connector", "module_to_env_connector"]
+                components=[
+                    COMPONENT_ENV_TO_MODULE_CONNECTOR,
+                    COMPONENT_MODULE_TO_ENV_CONNECTOR,
+                ]
             )
             _metrics = _worker.get_metrics()
             # Return episode lists by reference so we don't have to send them to the
@@ -851,7 +858,10 @@ class Impala(Algorithm):
             episode_refs = [ray.put(episodes)]
             connector_states = [
                 self.workers.local_worker().get_state(
-                    components=["env_to_module_connector", "module_to_env_connector"]
+                    components=[
+                        COMPONENT_ENV_TO_MODULE_CONNECTOR,
+                        COMPONENT_MODULE_TO_ENV_CONNECTOR,
+                    ]
                 )
             ]
 

@@ -26,7 +26,12 @@ import ray
 from ray.rllib.connectors.learner.learner_connector_pipeline import (
     LearnerConnectorPipeline,
 )
-from ray.rllib.core import DEFAULT_MODULE_ID
+from ray.rllib.core import (
+    COMPONENT_MODULES_TO_BE_UPDATED,
+    COMPONENT_OPTIMIZER,
+    COMPONENT_RL_MODULE,
+    DEFAULT_MODULE_ID,
+)
 from ray.rllib.core.rl_module.marl_module import (
     MultiAgentRLModule,
     MultiAgentRLModuleSpec,
@@ -1051,8 +1056,8 @@ class Learner:
         """
         self._check_is_built()
 
-        # TODO (sven): Deprecate old state keys and create constants for new ones.
-        module_state = state.get("rl_module", state.get("module_state"))
+        # TODO (sven): Deprecate old state keys.
+        module_state = state.get(COMPONENT_RL_MODULE, state.get("module_state"))
         # TODO: once we figure out the optimizer format, we can set/get the state
         if module_state is None:
             raise ValueError(
@@ -1095,19 +1100,19 @@ class Learner:
         """
         self._check_is_built()
         components = force_list(components) or [
-            "rl_module",
-            "optimizer",
-            "modules_to_be_updated",
+            COMPONENT_RL_MODULE,
+            COMPONENT_OPTIMIZER,
+            COMPONENT_MODULES_TO_BE_UPDATED,
         ]
         state = {}
-        if "rl_module" in components:
-            state["rl_module"] = self.get_module_state(
+        if COMPONENT_RL_MODULE in components:
+            state[COMPONENT_RL_MODULE] = self.get_module_state(
                 inference_only=inference_only, module_ids=module_ids
             )
-        if "optimizer" in components:
-            state["optimizer"] = self.get_optimizer_state()
-        if "modules_to_be_updated" in components:
-            state["modules_to_be_updated"] = self.config.policies_to_train
+        if COMPONENT_OPTIMIZER in components:
+            state[COMPONENT_OPTIMIZER] = self.get_optimizer_state()
+        if COMPONENT_MODULES_TO_BE_UPDATED in components:
+            state[COMPONENT_MODULES_TO_BE_UPDATED] = self.config.policies_to_train
         return state
 
     def set_optimizer_state(self, state: Dict[str, Any]) -> None:

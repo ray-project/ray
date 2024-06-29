@@ -8,7 +8,13 @@ import gymnasium as gym
 
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
-from ray.rllib.core import DEFAULT_AGENT_ID, DEFAULT_MODULE_ID
+from ray.rllib.core import (
+    COMPONENT_ENV_TO_MODULE_CONNECTOR,
+    COMPONENT_MODULE_TO_ENV_CONNECTOR,
+    COMPONENT_RL_MODULE,
+    DEFAULT_AGENT_ID,
+    DEFAULT_MODULE_ID,
+)
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.rl_module import INFERENCE_ONLY
 from ray.rllib.core.rl_module.rl_module import RLModule, SingleAgentRLModuleSpec
@@ -41,7 +47,7 @@ from ray.rllib.utils.metrics import (
 )
 from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
 from ray.rllib.utils.spaces.space_utils import unbatch
-from ray.rllib.utils.typing import EpisodeID, ModelWeights, ModuleID, ResultDict
+from ray.rllib.utils.typing import EpisodeID, ModuleID, ResultDict
 from ray.tune.registry import ENV_CREATOR, _global_registry
 from ray.util.annotations import PublicAPI
 
@@ -650,7 +656,11 @@ class SingleAgentEnvRunner(EnvRunner):
         components = force_list(
             components
             if components is not None
-            else ["rl_module", "env_to_module_connector", "module_to_env_connector"]
+            else [
+                COMPONENT_RL_MODULE,
+                COMPONENT_ENV_TO_MODULE_CONNECTOR,
+                COMPONENT_MODULE_TO_ENV_CONNECTOR,
+            ]
         )
         state = {
             WEIGHTS_SEQ_NO: self._weights_seq_no,
@@ -658,24 +668,26 @@ class SingleAgentEnvRunner(EnvRunner):
                 self.metrics.peek(NUM_ENV_STEPS_SAMPLED_LIFETIME, default=0)
             ),
         }
-        if "rl_module" in components:
-            state["rl_module"] = self.module.get_state(inference_only=inference_only)
-        if "env_to_module_connector" in components:
-            state["env_to_module_connector"] = self._env_to_module.get_state()
-        if "module_to_env_connector" in components:
-            state["module_to_env_connector"] = self._module_to_env.get_state()
+        if COMPONENT_RL_MODULE in components:
+            state[COMPONENT_RL_MODULE] = self.module.get_state(
+                inference_only=inference_only
+            )
+        if COMPONENT_ENV_TO_MODULE_CONNECTOR in components:
+            state[COMPONENT_ENV_TO_MODULE_CONNECTOR] = self._env_to_module.get_state()
+        if COMPONENT_MODULE_TO_ENV_CONNECTOR in components:
+            state[COMPONENT_MODULE_TO_ENV_CONNECTOR] = self._module_to_env.get_state()
 
         return state
 
     @override(EnvRunner)
     def set_state(self, state: Dict[str, Any]) -> None:
-        if "env_to_module_connector" in state:
-            self._env_to_module.set_state(state["env_to_module_connector"])
-        if "module_to_env_connector" in state:
-            self._module_to_env.set_state(state["module_to_env_connector"])
+        if COMPONENT_ENV_TO_MODULE_CONNECTOR in state:
+            self._env_to_module.set_state(state[COMPONENT_ENV_TO_MODULE_CONNECTOR])
+        if COMPONENT_MODULE_TO_ENV_CONNECTOR in state:
+            self._module_to_env.set_state(state[COMPONENT_MODULE_TO_ENV_CONNECTOR])
 
         # Update the RLModule state.
-        if "rl_module" in state:
+        if COMPONENT_RL_MODULE in state:
             # A missing value for WEIGHTS_SEQ_NO or a value of 0 means: Force the
             # update.
             weights_seq_no = state.get(WEIGHTS_SEQ_NO, 0)
@@ -683,7 +695,7 @@ class SingleAgentEnvRunner(EnvRunner):
             # Only update the weigths, if this is the first synchronization or
             # if the weights of this `EnvRunner` lacks behind the actual ones.
             if weights_seq_no == 0 or self._weights_seq_no < weights_seq_no:
-                weights = state["rl_module"]
+                weights = state[COMPONENT_RL_MODULE]
                 if isinstance(weights, dict) and DEFAULT_MODULE_ID in weights:
                     weights = weights[DEFAULT_MODULE_ID]
                 weights = self._convert_to_tensor(weights)
@@ -859,22 +871,11 @@ class SingleAgentEnvRunner(EnvRunner):
 
     @Deprecated(
         new="SingleAgentEnvRunner.get_state(components='rl_module')",
-        error=False,
+        error=True,
     )
-    def get_weights(self, modules=None):
-        return self.get_state(components="rl_module")["rl_module"]
+    def get_weights(self, *args, **kwargs):
+        pass
 
-    @Deprecated(new="SingleAgentEnvRunner.set_state()", error=False)
-    def set_weights(
-        self,
-        weights: ModelWeights,
-        global_vars: Optional[Dict] = None,
-        weights_seq_no: int = 0,
-    ) -> None:
-        assert global_vars is None
-        return self.set_state(
-            {
-                "rl_module": weights,
-                WEIGHTS_SEQ_NO: weights_seq_no,
-            }
-        )
+    @Deprecated(new="SingleAgentEnvRunner.set_state()", error=True)
+    def set_weights(self, *args, **kwargs):
+        pass

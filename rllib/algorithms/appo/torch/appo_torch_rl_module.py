@@ -17,18 +17,6 @@ from ray.rllib.utils.typing import NetworkType
 
 
 class APPOTorchRLModule(PPOTorchRLModule, APPORLModule):
-    @override(PPOTorchRLModule)
-    def setup(self):
-        super().setup()
-
-        # If the module is not for inference only, update the target networks.
-        if not self.inference_only:
-            self.old_pi.load_state_dict(self.pi.state_dict())
-            self.old_encoder.load_state_dict(self.encoder.state_dict())
-            # We do not train the targets.
-            self.old_pi.requires_grad_(False)
-            self.old_encoder.requires_grad_(False)
-
     @override(RLModuleWithTargetNetworksInterface)
     def get_target_network_pairs(self) -> List[Tuple[NetworkType, NetworkType]]:
         return [(self.old_pi, self.pi), (self.old_encoder, self.encoder)]

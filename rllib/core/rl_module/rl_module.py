@@ -3,7 +3,7 @@ import datetime
 import json
 import pathlib
 from dataclasses import dataclass, field
-from typing import Mapping, Any, TYPE_CHECKING, Optional, Type, Dict, Union
+from typing import Any, Dict, Optional, Type, TYPE_CHECKING, Union
 
 import gymnasium as gym
 import tree  # pip install dm_tree
@@ -197,12 +197,16 @@ class RLModuleConfig:
             observation space of an environment, would usually correspond to a
             one-hot encoded observation space of the RLModule because of preprocessing.
         action_space: The action space of the RLModule.
+        inference_only: Whether the RLModule should be configured in its inference-only
+            state, in which any components not needed for pure action computing (such as
+            a value function or a target network) might be missing.
         model_config_dict: The model config dict to use.
         catalog_class: The Catalog class to use.
     """
 
     observation_space: gym.Space = None
     action_space: gym.Space = None
+    inference_only: bool = None
     model_config_dict: Dict[str, Any] = field(default_factory=dict)
     catalog_class: Type["Catalog"] = None
 
@@ -227,6 +231,7 @@ class RLModuleConfig:
         return {
             "observation_space": gym_space_to_dict(self.observation_space),
             "action_space": gym_space_to_dict(self.action_space),
+            "inference_only": self.inference_only,
             "model_config_dict": self.model_config_dict,
             "catalog_class_path": catalog_class_path,
         }
@@ -242,6 +247,7 @@ class RLModuleConfig:
         return cls(
             observation_space=gym_space_from_dict(d["observation_space"]),
             action_space=gym_space_from_dict(d["action_space"]),
+            inference_only=d["inference_only"],
             model_config_dict=d["model_config_dict"],
             catalog_class=catalog_class,
         )
@@ -374,27 +380,9 @@ class RLModule(abc.ABC):
     """
 
     framework: str = None
-    inference_only: bool = None
 
     def __init__(self, config: RLModuleConfig):
         self.config = config
-
-        from ray.rllib.core.rl_module.marl_module import MultiAgentRLModule
-
-        if isinstance(self, MultiAgentRLModule) or not hasattr(
-            self.config, "model_config_dict"
-        ):
-            # A MARL module is always a learner module b/c it only contains
-            # the single-agent modules. Each of the contained modules can be
-            # single.
-            self.inference_only = False
-        else:
-            # By default, each module is a learner module and contains all
-            # building blocks, such as target networks or critic networks
-            # used in the training process.
-            self.inference_only = self.config.model_config_dict.get(
-                "_inference_only", False
-            )
 
         # Make sure, `setup()` is only called once, no matter what. In some cases
         # of multiple inheritance (and with our __post_init__ functionality in place,
@@ -532,7 +520,7 @@ class RLModule(abc.ABC):
     @OverrideToImplementCustomLogic
     def update_default_view_requirements(
         self, defaults: ViewRequirementsDict
-    ) -> Mapping[str, ViewRequirement]:
+    ) -> Dict[str, ViewRequirement]:
         """Updates default view requirements with the view requirements of this module.
 
         This method should be called with view requirements that already contain
@@ -632,7 +620,7 @@ class RLModule(abc.ABC):
 
     @check_input_specs("_input_specs_inference")
     @check_output_specs("_output_specs_inference")
-    def forward_inference(self, batch: SampleBatchType, **kwargs) -> Mapping[str, Any]:
+    def forward_inference(self, batch: SampleBatchType, **kwargs) -> Dict[str, Any]:
         """Forward-pass during evaluation, called from the sampler.
 
         This method should not be overriden to implement a custom forward inference
@@ -650,14 +638,12 @@ class RLModule(abc.ABC):
         return self._forward_inference(batch, **kwargs)
 
     @abc.abstractmethod
-    def _forward_inference(self, batch: NestedDict, **kwargs) -> Mapping[str, Any]:
+    def _forward_inference(self, batch: NestedDict, **kwargs) -> Dict[str, Any]:
         """Forward-pass during evaluation. See forward_inference for details."""
 
     @check_input_specs("_input_specs_exploration")
     @check_output_specs("_output_specs_exploration")
-    def forward_exploration(
-        self, batch: SampleBatchType, **kwargs
-    ) -> Mapping[str, Any]:
+    def forward_exploration(self, batch: SampleBatchType, **kwargs) -> Dict[str, Any]:
         """Forward-pass during exploration, called from the sampler.
 
         This method should not be overriden to implement a custom forward exploration
@@ -675,12 +661,12 @@ class RLModule(abc.ABC):
         return self._forward_exploration(batch, **kwargs)
 
     @abc.abstractmethod
-    def _forward_exploration(self, batch: NestedDict, **kwargs) -> Mapping[str, Any]:
+    def _forward_exploration(self, batch: NestedDict, **kwargs) -> Dict[str, Any]:
         """Forward-pass during exploration. See forward_exploration for details."""
 
     @check_input_specs("_input_specs_train")
     @check_output_specs("_output_specs_train")
-    def forward_train(self, batch: SampleBatchType, **kwargs) -> Mapping[str, Any]:
+    def forward_train(self, batch: SampleBatchType, **kwargs) -> Dict[str, Any]:
         """Forward-pass during training called from the learner. This method should
         not be overriden. Instead, override the _forward_train method.
 
@@ -693,20 +679,44 @@ class RLModule(abc.ABC):
             The output of the forward pass. This output should comply with the
             output_specs_train().
         """
+        if self.config.inference_only:
+            raise RuntimeError(
+                "Calling `forward_train` on an inference_only module is not allowed! "
+                "Set the `inference_only=False` flag in the RLModule's config when "
+                "building the module."
+            )
         return self._forward_train(batch, **kwargs)
 
     @abc.abstractmethod
-    def _forward_train(self, batch: NestedDict, **kwargs) -> Mapping[str, Any]:
+    def _forward_train(self, batch: NestedDict, **kwargs) -> Dict[str, Any]:
         """Forward-pass during training. See forward_train for details."""
 
     @OverrideToImplementCustomLogic
-    def get_state(self, inference_only: bool = False) -> Mapping[str, Any]:
-        """Returns the state dict of the module."""
+    def get_state(self, inference_only: bool = False) -> Dict[str, Any]:
+        """Returns the state dict of the module.
+
+        Args:
+            inference_only: Whether the returned state should be an inference-only
+                state (w/o those model components that are not needed for action
+                computations, such as a value function or a target network).
+                Note that setting this to `False` might raise an error if
+                `self.config.inference_only` is True.
+
+        Returns:
+            This RLModule's state dict.
+        """
         return {}
 
     @OverrideToImplementCustomLogic
-    def set_state(self, state_dict: Mapping[str, Any]) -> None:
-        """Sets the state dict of the module."""
+    def set_state(self, state: Dict[str, Any]) -> None:
+        """Sets the state dict of the module.
+
+        Args:
+            state: The state dict to set this RLModule's state to. Note that if `state`
+                contains components that are not needed for an inference_only RLModule
+                and `self.config.inference_only` is True, these provided components'
+                states will be ignored.
+        """
         return None
 
     @OverrideToImplementCustomLogic
@@ -735,8 +745,8 @@ class RLModule(abc.ABC):
         module_spec_class: Union[
             Type[SingleAgentRLModuleSpec], Type["MultiAgentRLModuleSpec"]
         ],
-        additional_metadata: Optional[Mapping[str, Any]] = None,
-    ) -> Mapping[str, Any]:
+        additional_metadata: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
         """Returns the metadata of the module.
 
         This method is used to save the metadata of the module to the checkpoint.
@@ -779,7 +789,7 @@ class RLModule(abc.ABC):
         module_spec_class: Union[
             Type[SingleAgentRLModuleSpec], Type["MultiAgentRLModuleSpec"]
         ],
-        additional_metadata: Mapping[str, Any] = None,
+        additional_metadata: Dict[str, Any] = None,
     ):
         """Saves the metadata of the module to checkpoint_dir.
 

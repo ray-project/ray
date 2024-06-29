@@ -9,7 +9,10 @@ import tree  # pip install dm_tree
 import ray
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.ppo.tests.test_ppo_learner import FAKE_BATCH
-from ray.rllib.core import DEFAULT_MODULE_ID
+from ray.rllib.core import (
+    COMPONENT_LEARNER,
+    DEFAULT_MODULE_ID,
+)
 from ray.rllib.core.learner.learner import Learner
 from ray.rllib.core.rl_module.marl_module import MultiAgentRLModule
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
@@ -67,8 +70,8 @@ class RemoteTrainingHelper:
         local_learner = config.build_learner(env=env)
 
         # make the state of the learner and the local learner_group identical
-        local_learner.set_state(learner_group.get_state()["learner_state"])
-        check(local_learner.get_state(), learner_group.get_state()["learner_state"])
+        local_learner.set_state(learner_group.get_state()[COMPONENT_LEARNER])
+        check(local_learner.get_state(), learner_group.get_state()[COMPONENT_LEARNER])
         reader = get_cartpole_dataset_reader(batch_size=500)
         batch = reader.next()
         batch = batch.as_multi_agent()
@@ -87,8 +90,8 @@ class RemoteTrainingHelper:
         )
 
         # make the state of the learner and the local learner_group identical
-        local_learner.set_state(learner_group.get_state()["learner_state"])
-        check(local_learner.get_state(), learner_group.get_state()["learner_state"])
+        local_learner.set_state(learner_group.get_state()[COMPONENT_LEARNER])
+        check(local_learner.get_state(), learner_group.get_state()[COMPONENT_LEARNER])
 
         # do another update
         batch = reader.next()
@@ -101,7 +104,7 @@ class RemoteTrainingHelper:
         local_learner.update_from_batch(batch=ma_batch)
         learner_group.update_from_batch(batch=ma_batch)
 
-        check(local_learner.get_state(), learner_group.get_state()["learner_state"])
+        check(local_learner.get_state(), learner_group.get_state()[COMPONENT_LEARNER])
         local_learner_results = local_learner.update_from_batch(batch=ma_batch)
         local_learner_results = tree.map_structure(
             lambda s: s.peek(), local_learner_results
@@ -110,7 +113,7 @@ class RemoteTrainingHelper:
 
         check(local_learner_results, learner_group_results)
 
-        check(local_learner.get_state(), learner_group.get_state()["learner_state"])
+        check(local_learner.get_state(), learner_group.get_state()[COMPONENT_LEARNER])
 
 
 class TestLearnerGroupSyncUpdate(unittest.TestCase):

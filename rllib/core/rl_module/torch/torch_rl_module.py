@@ -1,5 +1,5 @@
 import pathlib
-from typing import Any, Mapping, Union, Type
+from typing import Any, Dict, Union, Type
 
 from packaging import version
 
@@ -43,7 +43,7 @@ class TorchRLModule(nn.Module, RLModule):
         nn.Module.__init__(self)
         RLModule.__init__(self, *args, **kwargs)
 
-    def forward(self, batch: Mapping[str, Any], **kwargs) -> Mapping[str, Any]:
+    def forward(self, batch: Dict[str, Any], **kwargs) -> Dict[str, Any]:
         """forward pass of the module.
 
         This is aliased to forward_train because Torch DDP requires a forward method to
@@ -63,11 +63,11 @@ class TorchRLModule(nn.Module, RLModule):
         return compile_wrapper(self, compile_config)
 
     @override(RLModule)
-    def get_state(self, inference_only: bool = False) -> Mapping[str, Any]:
+    def get_state(self, inference_only: bool = False) -> Dict[str, Any]:
         return self.state_dict()
 
     @override(RLModule)
-    def set_state(self, state_dict: Mapping[str, Any]) -> None:
+    def set_state(self, state: Dict[str, Any]) -> None:
         state_dict = convert_to_torch_tensor(state_dict)
         self.load_state_dict(state_dict)
 
@@ -96,8 +96,8 @@ class TorchRLModule(nn.Module, RLModule):
         pass
 
     def _inference_only_get_state_hook(
-        self, state_dict: Mapping[str, Any]
-    ) -> Mapping[str, Any]:
+        self, state_dict: Dict[str, Any]
+    ) -> Dict[str, Any]:
         """Removes or renames the parameters in the state dict for the inference module.
 
         This hook is called when the state dict is created on a learner module for an
@@ -138,11 +138,11 @@ class TorchDDPRLModule(RLModule, nn.parallel.DistributedDataParallel):
         return self(*args, **kwargs)
 
     @override(RLModule)
-    def _forward_inference(self, *args, **kwargs) -> Mapping[str, Any]:
+    def _forward_inference(self, *args, **kwargs) -> Dict[str, Any]:
         return self.unwrapped()._forward_inference(*args, **kwargs)
 
     @override(RLModule)
-    def _forward_exploration(self, *args, **kwargs) -> Mapping[str, Any]:
+    def _forward_exploration(self, *args, **kwargs) -> Dict[str, Any]:
         return self.unwrapped()._forward_exploration(*args, **kwargs)
 
     @override(RLModule)

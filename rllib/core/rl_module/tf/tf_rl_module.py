@@ -1,5 +1,5 @@
 import pathlib
-from typing import Any, Mapping, Union
+from typing import Any, Dict, Union
 
 from ray.rllib.core.rl_module import RLModule
 from ray.rllib.utils.annotations import override
@@ -17,7 +17,7 @@ class TfRLModule(tf.keras.Model, RLModule):
         tf.keras.Model.__init__(self)
         RLModule.__init__(self, *args, **kwargs)
 
-    def call(self, batch: Mapping[str, Any], **kwargs) -> Mapping[str, Any]:
+    def call(self, batch: Dict[str, Any], **kwargs) -> Dict[str, Any]:
         """Forward pass of the module.
 
         Note:
@@ -36,12 +36,12 @@ class TfRLModule(tf.keras.Model, RLModule):
         return self.forward_train(batch)
 
     @override(RLModule)
-    def get_state(self, inference_only: bool = False) -> Mapping[str, Any]:
+    def get_state(self, inference_only: bool = False) -> Dict[str, Any]:
         return self.get_weights()
 
     @override(RLModule)
-    def set_state(self, state_dict: Mapping[str, Any]) -> None:
-        self.set_weights(state_dict)
+    def set_state(self, state: Dict[str, Any]) -> None:
+        self.set_weights(state)
 
     @override(RLModule)
     def _module_state_file_name(self) -> pathlib.Path:
