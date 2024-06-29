@@ -196,11 +196,14 @@ class MutableObjectManager : public std::enable_shared_from_this<MutableObjectMa
   ///         error bit set (i.e., the channel is closed).
   Status IsChannelClosed(const ObjectID &object_id);
 
- private:
-  // Returns the channel for object_id. If no channel exists for object_id, returns
-  // nullptr.
+  /// Returns the channel for object_id. If no channel exists for object_id, returns
+  /// nullptr.
+  ///
+  /// \param[in] object_id The ID of the object.
+  /// \return The channel or nullptr.
   Channel *GetChannel(const ObjectID &object_id);
 
+ private:
   // Returns the plasma object header for the object.
   PlasmaObjectHeader *GetHeader(const ObjectID &object_id);
 
