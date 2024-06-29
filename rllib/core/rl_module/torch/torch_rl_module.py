@@ -1,5 +1,5 @@
 import pathlib
-from typing import Any, List, Mapping, Tuple, Union, Type
+from typing import Any, Mapping, Union, Type
 
 from packaging import version
 
@@ -16,50 +16,8 @@ from ray.rllib.utils.torch_utils import (
     convert_to_torch_tensor,
     TORCH_COMPILE_REQUIRED_VERSION,
 )
-from ray.rllib.utils.typing import NetworkType
 
 torch, nn = try_import_torch()
-
-
-def compile_wrapper(rl_module: "TorchRLModule", compile_config: TorchCompileConfig):
-    """A wrapper that compiles the forward methods of a TorchRLModule."""
-
-    # TODO(Artur): Remove this once our requirements enforce torch >= 2.0.0
-    # Check if torch framework supports torch.compile.
-    if (
-        torch is not None
-        and version.parse(torch.__version__) < TORCH_COMPILE_REQUIRED_VERSION
-    ):
-        raise ValueError("torch.compile is only supported from torch 2.0.0")
-
-    compiled_forward_train = torch.compile(
-        rl_module._forward_train,
-        backend=compile_config.torch_dynamo_backend,
-        mode=compile_config.torch_dynamo_mode,
-        **compile_config.kwargs
-    )
-
-    rl_module._forward_train = compiled_forward_train
-
-    compiled_forward_inference = torch.compile(
-        rl_module._forward_inference,
-        backend=compile_config.torch_dynamo_backend,
-        mode=compile_config.torch_dynamo_mode,
-        **compile_config.kwargs
-    )
-
-    rl_module._forward_inference = compiled_forward_inference
-
-    compiled_forward_exploration = torch.compile(
-        rl_module._forward_exploration,
-        backend=compile_config.torch_dynamo_backend,
-        mode=compile_config.torch_dynamo_mode,
-        **compile_config.kwargs
-    )
-
-    rl_module._forward_exploration = compiled_forward_exploration
-
-    return rl_module
 
 
 class TorchRLModule(nn.Module, RLModule):
@@ -110,7 +68,8 @@ class TorchRLModule(nn.Module, RLModule):
 
     @override(RLModule)
     def set_state(self, state_dict: Mapping[str, Any]) -> None:
-        self.load_state_dict(convert_to_torch_tensor(state_dict))
+        state_dict = convert_to_torch_tensor(state_dict)
+        self.load_state_dict(state_dict)
 
     def _module_state_file_name(self) -> pathlib.Path:
         return pathlib.Path("module_state.pt")
@@ -231,5 +190,50 @@ class TorchDDPRLModuleWithTargetNetworksInterface(
     RLModuleWithTargetNetworksInterface,
 ):
     @override(RLModuleWithTargetNetworksInterface)
-    def get_target_network_pairs(self) -> List[Tuple[NetworkType, NetworkType]]:
-        return self.module.get_target_network_pairs()
+    def get_target_network_pairs(self, *args, **kwargs):
+        return self.module.get_target_network_pairs(*args, **kwargs)
+
+    @override(RLModuleWithTargetNetworksInterface)
+    def sync_target_networks(self, *args, **kwargs):
+        return self.module.sync_target_networks(*args, **kwargs)
+
+
+def compile_wrapper(rl_module: "TorchRLModule", compile_config: TorchCompileConfig):
+    """A wrapper that compiles the forward methods of a TorchRLModule."""
+
+    # TODO(Artur): Remove this once our requirements enforce torch >= 2.0.0
+    # Check if torch framework supports torch.compile.
+    if (
+        torch is not None
+        and version.parse(torch.__version__) < TORCH_COMPILE_REQUIRED_VERSION
+    ):
+        raise ValueError("torch.compile is only supported from torch 2.0.0")
+
+    compiled_forward_train = torch.compile(
+        rl_module._forward_train,
+        backend=compile_config.torch_dynamo_backend,
+        mode=compile_config.torch_dynamo_mode,
+        **compile_config.kwargs,
+    )
+
+    rl_module._forward_train = compiled_forward_train
+
+    compiled_forward_inference = torch.compile(
+        rl_module._forward_inference,
+        backend=compile_config.torch_dynamo_backend,
+        mode=compile_config.torch_dynamo_mode,
+        **compile_config.kwargs,
+    )
+
+    rl_module._forward_inference = compiled_forward_inference
+
+    compiled_forward_exploration = torch.compile(
+        rl_module._forward_exploration,
+        backend=compile_config.torch_dynamo_backend,
+        mode=compile_config.torch_dynamo_mode,
+        **compile_config.kwargs,
+    )
+
+    rl_module._forward_exploration = compiled_forward_exploration
+
+    return rl_module

@@ -271,7 +271,7 @@ ActorID GcsActorScheduler::CancelOnWorker(const NodeID &node_id,
   return assigned_actor_id;
 }
 
-void GcsActorScheduler::ReleaseUnusedWorkers(
+void GcsActorScheduler::ReleaseUnusedActorWorkers(
     const absl::flat_hash_map<NodeID, std::vector<WorkerID>> &node_to_workers) {
   // The purpose of this function is to release leased workers that may be leaked.
   // When GCS restarts, it doesn't know which workers it has leased in the previous
@@ -291,7 +291,7 @@ void GcsActorScheduler::ReleaseUnusedWorkers(
     auto lease_client = GetOrConnectLeaseClient(address);
     auto release_unused_workers_callback =
         [this, node_id](const Status &status,
-                        const rpc::ReleaseUnusedWorkersReply &reply) {
+                        const rpc::ReleaseUnusedActorWorkersReply &reply) {
           nodes_of_releasing_unused_workers_.erase(node_id);
         };
     auto iter = node_to_workers.find(alive_node.first);
@@ -300,7 +300,8 @@ void GcsActorScheduler::ReleaseUnusedWorkers(
     // nodes do not have leased workers. In this case, GCS will send an empty list.
     auto workers_in_use =
         iter != node_to_workers.end() ? iter->second : std::vector<WorkerID>{};
-    lease_client->ReleaseUnusedWorkers(workers_in_use, release_unused_workers_callback);
+    lease_client->ReleaseUnusedActorWorkers(workers_in_use,
+                                            release_unused_workers_callback);
   }
 }
 
@@ -313,7 +314,7 @@ void GcsActorScheduler::LeaseWorkerFromNode(std::shared_ptr<GcsActor> actor,
                 << actor->GetActorID() << ", job id = " << actor->GetActorID().JobId();
 
   // We need to ensure that the RequestWorkerLease won't be sent before the reply of
-  // ReleaseUnusedWorkers is returned.
+  // ReleaseUnusedActorWorkers is returned.
   if (nodes_of_releasing_unused_workers_.contains(node_id)) {
     RetryLeasingWorkerFromNode(actor, node);
     return;

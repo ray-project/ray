@@ -33,11 +33,7 @@ import gymnasium as gym
 from pettingzoo.classic import rps_v2
 
 from ray.air.constants import TRAINING_ITERATION
-from ray.rllib.connectors.env_to_module import (
-    AddObservationsFromEpisodesToBatch,
-    FlattenObservations,
-    WriteObservationsToEpisodes,
-)
+from ray.rllib.connectors.env_to_module import FlattenObservations
 from ray.rllib.core.rl_module.marl_module import MultiAgentRLModuleSpec
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.env.wrappers.pettingzoo_env import ParallelPettingZooEnv
@@ -61,6 +57,7 @@ parser = add_rllib_example_script_args(
     default_timesteps=200000,
     default_reward=6.0,
 )
+parser.set_defaults(num_agents=2)
 parser.add_argument(
     "--use-lstm",
     action="store_true",
@@ -89,10 +86,8 @@ if __name__ == "__main__":
         .environment("RockPaperScissors")
         .env_runners(
             env_to_module_connector=lambda env: (
-                AddObservationsFromEpisodesToBatch(),
-                # Only flatten obs for the learning RLModul
+                # `agent_ids=...`: Only flatten obs for the learning RLModule.
                 FlattenObservations(multi_agent=True, agent_ids={"player_0"}),
-                WriteObservationsToEpisodes(),
             ),
         )
         .multi_agent(

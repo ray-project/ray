@@ -140,15 +140,18 @@ class TaskCounter {
       float running = 0.0;
       float in_get = 0.0;
       float in_wait = 0.0;
+      float idle = 0.0;
       if (running_in_wait_counter_.Total() > 0) {
         in_wait = 1.0;
       } else if (running_in_get_counter_.Total() > 0) {
         in_get = 1.0;
       } else if (num_tasks_running_ > 0) {
         running = 1.0;
+      } else {
+        idle = 1.0;
       }
-      ray::stats::STATS_actors.Record(-(running + in_get + in_wait),
-                                      {{"State", "ALIVE"},
+      ray::stats::STATS_actors.Record(idle,
+                                      {{"State", "IDLE"},
                                        {"Name", actor_name_},
                                        {"Source", "executor"},
                                        {"JobId", job_id_}});
@@ -1062,9 +1065,15 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param[in] serialized The serialized actor handle.
   /// \param[in] outer_object_id The object ID that contained the serialized
   /// actor handle, if any.
+  /// \param[in] add_local_ref Whether to add a local reference for this actor
+  /// handle. Handles that were created out-of-band (i.e. via getting actor by
+  /// name or getting a handle to self) should not add a local reference
+  /// because the distributed reference counting protocol does not ensure that
+  /// the owner will learn of this reference.
   /// \return The ActorID of the deserialized handle.
   ActorID DeserializeAndRegisterActorHandle(const std::string &serialized,
-                                            const ObjectID &outer_object_id);
+                                            const ObjectID &outer_object_id,
+                                            bool add_local_ref);
 
   /// Serialize an actor handle.
   ///

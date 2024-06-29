@@ -7,6 +7,11 @@ from ci.ray_ci.doc.api import API, AnnotationType, CodeType
 
 
 class Module:
+    """
+    Module class represents the top level module to walk through and find annotated
+    APIs.
+    """
+
     def __init__(self, module: str):
         self._module = importlib.import_module(module)
         self._visited = set()
@@ -24,7 +29,7 @@ class Module:
         Depth-first search through the module and its children to find annotated classes
         and functions.
         """
-        if module in self._visited:
+        if module.__hash__ in self._visited:
             return
         self._visited.add(module.__hash__)
 

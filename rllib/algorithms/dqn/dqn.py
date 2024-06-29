@@ -43,7 +43,6 @@ from ray.rllib.utils.metrics import (
     ENV_RUNNER_RESULTS,
     ENV_RUNNER_SAMPLING_TIMER,
     LAST_TARGET_UPDATE_TS,
-    LEARNER_ADDITIONAL_UPDATE_TIMER,
     LEARNER_RESULTS,
     LEARNER_UPDATE_TIMER,
     NUM_AGENT_STEPS_SAMPLED,
@@ -629,23 +628,28 @@ class DQN(Algorithm):
                 env_runner_results, key=ENV_RUNNER_RESULTS
             )
 
+        self.metrics.log_dict(
+            self.metrics.peek(
+                (ENV_RUNNER_RESULTS, NUM_AGENT_STEPS_SAMPLED), default={}
+            ),
+            key=NUM_AGENT_STEPS_SAMPLED_LIFETIME,
+            reduce="sum",
+        )
         self.metrics.log_value(
             NUM_ENV_STEPS_SAMPLED_LIFETIME,
-            self.metrics.peek(ENV_RUNNER_RESULTS, NUM_ENV_STEPS_SAMPLED, default=0),
+            self.metrics.peek((ENV_RUNNER_RESULTS, NUM_ENV_STEPS_SAMPLED), default=0),
             reduce="sum",
         )
         self.metrics.log_value(
             NUM_EPISODES_LIFETIME,
-            self.metrics.peek(ENV_RUNNER_RESULTS, NUM_EPISODES, default=0),
+            self.metrics.peek((ENV_RUNNER_RESULTS, NUM_EPISODES), default=0),
             reduce="sum",
         )
         self.metrics.log_dict(
-            self.metrics.peek(ENV_RUNNER_RESULTS, NUM_AGENT_STEPS_SAMPLED, default={}),
-            key=NUM_AGENT_STEPS_SAMPLED_LIFETIME,
-            reduce="sum",
-        )
-        self.metrics.log_dict(
-            self.metrics.peek(ENV_RUNNER_RESULTS, NUM_MODULE_STEPS_SAMPLED, default={}),
+            self.metrics.peek(
+                (ENV_RUNNER_RESULTS, NUM_MODULE_STEPS_SAMPLED),
+                default={},
+            ),
             key=NUM_MODULE_STEPS_SAMPLED_LIFETIME,
             reduce="sum",
         )
@@ -680,6 +684,14 @@ class DQN(Algorithm):
                 with self.metrics.log_time((TIMERS, LEARNER_UPDATE_TIMER)):
                     learner_results = self.learner_group.update_from_episodes(
                         episodes=episodes,
+                        timesteps={
+                            NUM_ENV_STEPS_SAMPLED_LIFETIME: (
+                                self.metrics.peek(NUM_ENV_STEPS_SAMPLED_LIFETIME)
+                            ),
+                            NUM_AGENT_STEPS_SAMPLED_LIFETIME: (
+                                self.metrics.peek(NUM_AGENT_STEPS_SAMPLED_LIFETIME)
+                            ),
+                        },
                     )
                     # Isolate TD-errors from result dicts (we should not log these to
                     # disk or WandB, they might be very large).
@@ -700,7 +712,7 @@ class DQN(Algorithm):
                     self.metrics.log_value(
                         NUM_ENV_STEPS_TRAINED_LIFETIME,
                         self.metrics.peek(
-                            LEARNER_RESULTS, ALL_MODULES, NUM_ENV_STEPS_TRAINED
+                            (LEARNER_RESULTS, ALL_MODULES, NUM_ENV_STEPS_TRAINED)
                         ),
                         reduce="sum",
                     )
@@ -717,7 +729,7 @@ class DQN(Algorithm):
                     # TODO (sven): Uncomment this once agent steps are available in the
                     #  Learner stats.
                     # self.metrics.log_dict(self.metrics.peek(
-                    #   LEARNER_RESULTS, NUM_AGENT_STEPS_TRAINED, default={}
+                    #   (LEARNER_RESULTS, NUM_AGENT_STEPS_TRAINED), default={}
                     # ), key=NUM_AGENT_STEPS_TRAINED_LIFETIME, reduce="sum")
 
                 # Update replay buffer priorities.
@@ -727,22 +739,11 @@ class DQN(Algorithm):
                         td_errors=td_errors,
                     )
 
-                # Update the target networks, if necessary.
-                with self.metrics.log_time((TIMERS, LEARNER_ADDITIONAL_UPDATE_TIMER)):
-                    modules_to_update = set(learner_results[0].keys()) - {ALL_MODULES}
-                    additional_results = self.learner_group.additional_update(
-                        module_ids_to_update=modules_to_update,
-                        timestep=current_ts,
-                    )
-                    # log the additional results as well.
-                    self.metrics.merge_and_log_n_dicts(
-                        additional_results, key=LEARNER_RESULTS
-                    )
-
             # Update weights and global_vars - after learning on the local worker -
             # on all remote workers.
             with self.metrics.log_time((TIMERS, SYNCH_WORKER_WEIGHTS_TIMER)):
                 if self.workers.num_remote_workers() > 0:
+                    modules_to_update = set(learner_results[0].keys()) - {ALL_MODULES}
                     # NOTE: the new API stack does not use global vars.
                     self.workers.sync_weights(
                         from_worker_or_learner_group=self.learner_group,

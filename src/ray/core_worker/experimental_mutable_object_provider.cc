@@ -23,17 +23,20 @@ namespace experimental {
 MutableObjectProvider::MutableObjectProvider(
     std::shared_ptr<plasma::PlasmaClientInterface> plasma, RayletFactory factory)
     : plasma_(plasma),
-      raylet_client_factory_(factory),
-      io_work_(io_service_),
-      client_call_manager_(std::make_unique<rpc::ClientCallManager>(io_service_)),
-      io_thread_([this]() { RunIOService(); }) {}
+      object_manager_(std::make_shared<ray::experimental::MutableObjectManager>()),
+      raylet_client_factory_(factory) {}
 
 MutableObjectProvider::~MutableObjectProvider() {
-  io_service_.stop();
-  RAY_CHECK(object_manager_.SetErrorAll().code() == StatusCode::OK);
+  for (std::unique_ptr<boost::asio::executor_work_guard<
+           boost::asio::io_context::executor_type>> &io_work : io_works_) {
+    io_work->reset();
+  }
+  RAY_CHECK(object_manager_->SetErrorAll().code() == StatusCode::OK);
 
-  RAY_CHECK(io_thread_.joinable());
-  io_thread_.join();
+  for (std::unique_ptr<std::thread> &io_thread : io_threads_) {
+    RAY_CHECK(io_thread->joinable());
+    io_thread->join();
+  }
 }
 
 void MutableObjectProvider::RegisterWriterChannel(const ObjectID &object_id,
@@ -42,21 +45,33 @@ void MutableObjectProvider::RegisterWriterChannel(const ObjectID &object_id,
     std::unique_ptr<plasma::MutableObject> object;
     RAY_CHECK_OK(plasma_->GetExperimentalMutableObject(object_id, &object));
     RAY_CHECK_OK(
-        object_manager_.RegisterChannel(object_id, std::move(object), /*reader=*/false));
+        object_manager_->RegisterChannel(object_id, std::move(object), /*reader=*/false));
     // `object` is now a nullptr.
   }
 
   if (node_id) {
     // Start a thread that repeatedly listens for values on this object and then sends
     // them via RPC to the remote reader.
+    io_contexts_.push_back(std::make_unique<instrumented_io_context>());
+    instrumented_io_context &io_context = *io_contexts_.back();
+    io_works_.push_back(
+        std::make_unique<
+            boost::asio::executor_work_guard<boost::asio::io_context::executor_type>>(
+            io_context.get_executor()));
+    client_call_managers_.push_back(std::make_unique<rpc::ClientCallManager>(io_context));
     std::shared_ptr<MutableObjectReaderInterface> reader =
-        raylet_client_factory_(*node_id);
+        raylet_client_factory_(*node_id, *client_call_managers_.back());
     RAY_CHECK(reader);
     // TODO(jhumphri): Extend this to support multiple channels. Currently, we must have
     // one thread per channel because the thread blocks on the channel semaphore.
-    io_service_.post(
-        [this, object_id, reader]() { PollWriterClosure(object_id, reader); },
+
+    io_context.post(
+        [this, &io_context, object_id, reader]() {
+          PollWriterClosure(io_context, object_id, reader);
+        },
         "experimental::MutableObjectProvider.PollWriter");
+    io_threads_.push_back(std::make_unique<std::thread>(
+        &MutableObjectProvider::RunIOContext, this, std::ref(io_context)));
   }
 }
 
@@ -64,7 +79,7 @@ void MutableObjectProvider::RegisterReaderChannel(const ObjectID &object_id) {
   std::unique_ptr<plasma::MutableObject> object;
   RAY_CHECK_OK(plasma_->GetExperimentalMutableObject(object_id, &object));
   RAY_CHECK_OK(
-      object_manager_.RegisterChannel(object_id, std::move(object), /*reader=*/true));
+      object_manager_->RegisterChannel(object_id, std::move(object), /*reader=*/true));
   // `object` is now a nullptr.
 }
 
@@ -74,20 +89,14 @@ void MutableObjectProvider::HandleRegisterMutableObject(
     const ObjectID &reader_object_id) {
   absl::MutexLock guard(&remote_writer_object_to_local_reader_lock_);
 
-  if (remote_writer_object_to_local_reader_.count(writer_object_id)) {
-    // Channel already exists.
-    remote_writer_object_to_local_reader_[writer_object_id].num_readers += num_readers;
-  } else {
-    // Channel does not exist.
-    LocalReaderInfo info;
-    info.num_readers = num_readers;
-    info.local_object_id = reader_object_id;
-    bool success =
-        remote_writer_object_to_local_reader_.insert({writer_object_id, info}).second;
-    RAY_CHECK(success);
+  LocalReaderInfo info;
+  info.num_readers = num_readers;
+  info.local_object_id = reader_object_id;
+  bool success =
+      remote_writer_object_to_local_reader_.insert({writer_object_id, info}).second;
+  RAY_CHECK(success);
 
-    RegisterReaderChannel(reader_object_id);
-  }
+  RegisterReaderChannel(reader_object_id);
 }
 
 void MutableObjectProvider::HandlePushMutableObject(
@@ -107,27 +116,27 @@ void MutableObjectProvider::HandlePushMutableObject(
   std::shared_ptr<Buffer> data;
   const uint8_t *metadata_ptr =
       reinterpret_cast<const uint8_t *>(request.data().data()) + request.data_size();
-  RAY_CHECK_OK(object_manager_.WriteAcquire(info.local_object_id,
-                                            data_size,
-                                            metadata_ptr,
-                                            metadata_size,
-                                            info.num_readers,
-                                            data));
+  RAY_CHECK_OK(object_manager_->WriteAcquire(info.local_object_id,
+                                             data_size,
+                                             metadata_ptr,
+                                             metadata_size,
+                                             info.num_readers,
+                                             data));
   RAY_CHECK(data);
 
   size_t total_size = data_size + metadata_size;
   // The buffer has the data immediately followed by the metadata. `WriteAcquire()`
   // above checks that the buffer size is at least `total_size`.
   memcpy(data->Data(), request.data().data(), total_size);
-  RAY_CHECK_OK(object_manager_.WriteRelease(info.local_object_id));
+  RAY_CHECK_OK(object_manager_->WriteRelease(info.local_object_id));
 }
 
 bool MutableObjectProvider::ReaderChannelRegistered(const ObjectID &object_id) {
-  return object_manager_.ReaderChannelRegistered(object_id);
+  return object_manager_->ReaderChannelRegistered(object_id);
 }
 
 bool MutableObjectProvider::WriterChannelRegistered(const ObjectID &object_id) {
-  return object_manager_.WriterChannelRegistered(object_id);
+  return object_manager_->WriterChannelRegistered(object_id);
 }
 
 Status MutableObjectProvider::WriteAcquire(const ObjectID &object_id,
@@ -136,34 +145,38 @@ Status MutableObjectProvider::WriteAcquire(const ObjectID &object_id,
                                            int64_t metadata_size,
                                            int64_t num_readers,
                                            std::shared_ptr<Buffer> &data) {
-  return object_manager_.WriteAcquire(
+  return object_manager_->WriteAcquire(
       object_id, data_size, metadata, metadata_size, num_readers, data);
 }
 
 Status MutableObjectProvider::WriteRelease(const ObjectID &object_id) {
-  return object_manager_.WriteRelease(object_id);
+  return object_manager_->WriteRelease(object_id);
 }
 
 Status MutableObjectProvider::ReadAcquire(const ObjectID &object_id,
                                           std::shared_ptr<RayObject> &result) {
-  return object_manager_.ReadAcquire(object_id, result);
+  return object_manager_->ReadAcquire(object_id, result);
 }
 
 Status MutableObjectProvider::ReadRelease(const ObjectID &object_id) {
-  return object_manager_.ReadRelease(object_id);
+  return object_manager_->ReadRelease(object_id);
 }
 
 Status MutableObjectProvider::SetError(const ObjectID &object_id) {
-  return object_manager_.SetError(object_id);
+  return object_manager_->SetError(object_id);
 }
 
 void MutableObjectProvider::PollWriterClosure(
-    const ObjectID &object_id, std::shared_ptr<MutableObjectReaderInterface> reader) {
+    instrumented_io_context &io_context,
+    const ObjectID &object_id,
+    std::shared_ptr<MutableObjectReaderInterface> reader) {
   std::shared_ptr<RayObject> object;
-  Status status = object_manager_.ReadAcquire(object_id, object);
+  // The corresponding ReadRelease() will be automatically called when
+  // `object` goes out of scope.
+  Status status = object_manager_->ReadAcquire(object_id, object);
   // Check if the thread returned from ReadAcquire() because the process is exiting, not
   // because there is something to read.
-  if (status.code() == StatusCode::IOError) {
+  if (status.code() == StatusCode::ChannelError) {
     // The process is exiting.
     return;
   }
@@ -177,14 +190,17 @@ void MutableObjectProvider::PollWriterClosure(
       object->GetData()->Size(),
       object->GetMetadata()->Size(),
       object->GetData()->Data(),
-      [this, object_id, reader](const Status &status,
-                                const rpc::PushMutableObjectReply &reply) {
-        RAY_CHECK_OK(object_manager_.ReadRelease(object_id));
-        PollWriterClosure(object_id, reader);
+      [this, &io_context, object_id, reader](const Status &status,
+                                             const rpc::PushMutableObjectReply &reply) {
+        io_context.post(
+            [this, &io_context, object_id, reader]() {
+              PollWriterClosure(io_context, object_id, reader);
+            },
+            "experimental::MutableObjectProvider.PollWriter");
       });
 }
 
-void MutableObjectProvider::RunIOService() {
+void MutableObjectProvider::RunIOContext(instrumented_io_context &io_context) {
   // TODO(jhumphri): Decompose this.
 #ifndef _WIN32
   // Block SIGINT and SIGTERM so they will be handled by the main thread.
@@ -196,7 +212,7 @@ void MutableObjectProvider::RunIOService() {
 #endif
 
   SetThreadName("worker.channel_io");
-  io_service_.run();
+  io_context.run();
   RAY_LOG(INFO) << "Core worker channel io service stopped.";
 }
 

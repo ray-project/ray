@@ -727,8 +727,13 @@ if __name__ == "__main__":
         test_driver = os.path.join(tmpdir, "test_load_code_from_local.py")
         with open(test_driver, "w") as f:
             f.write(code_test.format(repr(ray_start_regular_shared["address"])))
-        output = subprocess.check_output([sys.executable, test_driver])
-        assert b"OK" in output
+
+        # Ray's handling of sys.path does not work with PYTHONSAFEPATH.
+        env = os.environ.copy()
+        if env.get("PYTHONSAFEPATH", "") != "":
+            env["PYTHONSAFEPATH"] = ""  # Set to empty string to disable.
+        output = subprocess.check_output([sys.executable, test_driver], env=env)
+        assert b"OK" in output, f"Output has no 'OK': {output.decode()}"
 
 
 @pytest.mark.skipif(

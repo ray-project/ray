@@ -28,6 +28,22 @@ from ray.dashboard.optional_deps import aiohttp, hdrs
 logger = logging.getLogger(__name__)
 routes = dashboard_optional_utils.DashboardHeadRouteTable
 
+# Env var that enables follow_symlinks for serving UI static files.
+# This is an advanced setting that should only be used with special Ray installations
+# where the dashboard build files are symlinked to a different directory.
+# This is not recommended for most users and can pose a security risk.
+# Please reference the aiohttp docs here:
+# https://docs.aiohttp.org/en/stable/web_reference.html#aiohttp.web.UrlDispatcher.add_static
+ENV_VAR_FOLLOW_SYMLINKS = "RAY_DASHBOARD_BUILD_FOLLOW_SYMLINKS"
+FOLLOW_SYMLINKS_ENABLED = os.environ.get(ENV_VAR_FOLLOW_SYMLINKS) == "1"
+if FOLLOW_SYMLINKS_ENABLED:
+    logger.warning(
+        "Enabling RAY_DASHBOARD_BUILD_FOLLOW_SYMLINKS is not recommended as it "
+        "allows symlinks to directories outside the dashboard build folder. "
+        "You may accidentally expose files on your system outside of the "
+        "build directory."
+    )
+
 
 def setup_static_dir():
     build_dir = os.path.join(
@@ -47,7 +63,7 @@ def setup_static_dir():
         )
 
     static_dir = os.path.join(build_dir, "static")
-    routes.static("/static", static_dir)
+    routes.static("/static", static_dir, follow_symlinks=FOLLOW_SYMLINKS_ENABLED)
     return build_dir
 
 

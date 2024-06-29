@@ -556,7 +556,7 @@ def get_total_num_nodes_to_report(gcs_client, timeout=None) -> Optional[int]:
         result = gcs_client.get_all_node_info(timeout=timeout)
         total_num_nodes = 0
         for node_id, node_info in result.items():
-            if node_info["state"] == gcs_pb2.GcsNodeInfo.GcsNodeState.ALIVE:
+            if node_info.state == gcs_pb2.GcsNodeInfo.GcsNodeState.ALIVE:
                 total_num_nodes += 1
         return total_num_nodes
     except Exception as e:

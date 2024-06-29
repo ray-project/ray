@@ -331,8 +331,8 @@ class StreamingExecutor(Executor, threading.Thread):
         limits = self._resource_manager.get_global_limits()
         resources_status = (
             "Running: "
-            f"{cur_usage.cpu}/{limits.cpu} CPU, "
-            f"{cur_usage.gpu}/{limits.gpu} GPU, "
+            f"{cur_usage.cpu:.4g}/{limits.cpu:.4g} CPU, "
+            f"{cur_usage.gpu:.4g}/{limits.gpu:.4g} GPU, "
             f"{cur_usage.object_store_memory_str()}/"
             f"{limits.object_store_memory_str()} object_store_memory"
         )
