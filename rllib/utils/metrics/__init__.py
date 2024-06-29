@@ -94,6 +94,7 @@ SYNCH_EVAL_ENV_CONNECTOR_STATES_TIMER = "synch_eval_env_connectors"
 GRAD_WAIT_TIMER = "grad_wait"
 SAMPLE_TIMER = "sample"  # @OldAPIStack
 ENV_RUNNER_SAMPLING_TIMER = "env_runner_sampling_timer"
+OFFLINE_SAMPLING_TIMER = "offline_sampling_timer"
 REPLAY_BUFFER_SAMPLE_TIMER = "replay_buffer_sampling_timer"
 REPLAY_BUFFER_UPDATE_PRIOS_TIMER = "replay_buffer_update_prios_timer"
 LEARNER_UPDATE_TIMER = "learner_update_timer"

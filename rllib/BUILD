@@ -783,6 +783,14 @@ py_test(
 
 # BC
 py_test(
+    name = "test_bc_old_stack",
+    tags = ["team:rllib", "algorithms_dir"],
+    size = "medium",
+    # Include the json data file.
+    data = ["tests/data/cartpole/large.json"],
+    srcs = ["algorithms/bc/tests/test_bc_old_stack.py"]
+)
+py_test(
     name = "test_bc",
     tags = ["team:rllib", "algorithms_dir"],
     size = "medium",
@@ -1529,6 +1537,16 @@ py_test(
     tags = ["team:rllib", "offline"],
     size = "large",
     srcs = ["offline/estimators/tests/test_dr_learning.py"],
+)
+
+py_test(
+    name = "test_offline_data",
+    tags = ["team:rllib", "offline"],
+    size = "small",
+    srcs = ["offline/tests/test_offline_data.py"],
+    data = [
+        "tests/data/pendulum/small.json",
+    ],
 )
 
 # --------------------------------------------------------------------

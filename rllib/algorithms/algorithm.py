@@ -620,11 +620,22 @@ class Algorithm(Trainable, AlgorithmBase):
             validate_env=self.validate_env,
             default_policy_class=self.get_default_policy_class(self.config),
             config=self.config,
-            num_env_runners=self.config.num_env_runners,
+            num_env_runners=0 if self.config.input_ else self.config.num_env_runners,
             local_env_runner=True,
             logdir=self.logdir,
             tune_trial_id=self.trial_id,
         )
+
+        # Ensure remote workers are initially in sync with the local worker.
+        self.workers.sync_weights(inference_only=True)
+        if (
+            self.config.input_
+            and self.config.input_ != "sampler"
+            and self.config._enable_new_api_stack
+        ):
+            from ray.rllib.offline.offline_data import OfflineData
+
+            self.offline_data = OfflineData(self.config)
 
         # Compile, validate, and freeze an evaluation config.
         self.evaluation_config = self.config.get_evaluation_config_object()
@@ -706,6 +717,9 @@ class Algorithm(Trainable, AlgorithmBase):
             # Need to add back method_type in case Algorithm is restored from checkpoint
             method_config["type"] = method_type
 
+        # TODO (sven): Probably obsolete b/c the learner group is already None.
+        self.learner_group = None
+        logger.warning(f"ENABLE LEARNER: {self.config.enable_rl_module_and_learner}")
         if self.config.enable_rl_module_and_learner:
             local_worker = self.workers.local_worker()
             env = spaces = None
@@ -780,6 +794,29 @@ class Algorithm(Trainable, AlgorithmBase):
                         NUM_ENV_STEPS_SAMPLED_LIFETIME, default=0
                     ),
                 )
+
+            if self.offline_data:
+                # If the learners are remote we need to provide specific
+                # information and the learner's actor handles.
+                if self.learner_group.is_remote:
+                    # If learners run on different nodes, locality hints help
+                    # to use the nearest learner in the workers that do the
+                    # data preprocessing.
+                    learner_node_ids = self.learner_group.foreach_learner(
+                        lambda l: ray.get_runtime_context().get_node_id()
+                    )
+                    self.offline_data.locality_hints = [
+                        node_id.get() for node_id in learner_node_ids
+                    ]
+                    # Provide the actor handles for the learners for module
+                    # updating during preprocessing.
+                    self.offline_data.learner_handles = self.learner_group._workers
+                    # Provide the module_spec. Note, in the remote case this is needed
+                    # because the learner module cannot be copied, but must be built.
+                    self.offline_data.module_spec = module_spec
+                # Otherwise we can simply pass in the local learner.
+                else:
+                    self.offline_data.learner_handles = [self.learner_group._learner]
 
         # Run `on_algorithm_init` callback after initialization is done.
         self.callbacks.on_algorithm_init(algorithm=self, metrics_logger=self.metrics)
