@@ -691,7 +691,7 @@ class _WrappedDataLoader(DataLoader):
         # https://pytorch.org/docs/stable/generated/torch.Tensor.record_stream.html
         # The training stream (current) needs to wait until
         # the memory copy stream finishes.
-        curr_stream = self.device_manager.current_stream()
+        curr_stream = self.device_manager.get_current_stream()
         curr_stream.wait_stream(self._memcpy_stream)
         # When a tensor is used by CUDA streams different from
         # its original allocator, we need to call ``record_stream``
