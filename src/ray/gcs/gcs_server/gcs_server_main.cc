@@ -49,7 +49,9 @@ int main(int argc, char *argv[]) {
 
   gflags::ParseCommandLineFlags(&argc, &argv, true);
 
-  RAY_LOG(INFO).WithField("ray_version", kRayVersion).WithField("ray_commit", FLAGS_ray_commit)
+  RAY_LOG(INFO)
+          .WithField("ray_version", kRayVersion)
+          .WithField("ray_commit", FLAGS_ray_commit)
       << "Ray cluster metadata";
 
   const std::string redis_address = FLAGS_redis_address;
