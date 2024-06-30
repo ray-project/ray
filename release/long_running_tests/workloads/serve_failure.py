@@ -1,4 +1,5 @@
 import asyncio
+import click
 import logging
 import os
 import random
@@ -16,19 +17,18 @@ from ray._private.test_utils import safe_write_to_results_json
 
 # Global variables / constants appear only right after imports.
 # Ray serve deployment setup constants
-NUM_REPLICAS = 7
-MAX_BATCH_SIZE = 16
+DEFAULT_MAX_BATCH_SIZE = 16
 
 # Cluster setup constants
-NUM_REDIS_SHARDS = 1
-REDIS_MAX_MEMORY = 10**8
-OBJECT_STORE_MEMORY = 10**8
-NUM_NODES = 4
+DEFAULT_NUM_REDIS_SHARDS = 1
+DEFAULT_REDIS_MAX_MEMORY = 10**8
+DEFAULT_OBJECT_STORE_MEMORY = 10**8
+DEFAULT_NUM_NODES = 4
 
 # RandomTest setup constants
-CPUS_PER_NODE = 10
-NUM_ITERATIONS = 350
-ACTIONS_PER_ITERATION = 20
+DEFAULT_CPUS_PER_NODE = 10
+DEFAULT_NUM_ITERATIONS = 350
+DEFAULT_ACTIONS_PER_ITERATION = 20
 
 RAY_UNIT_TEST = "RAY_UNIT_TEST" in os.environ
 
@@ -45,62 +45,6 @@ def update_progress(result):
     """
     result["last_update"] = time.time()
     safe_write_to_results_json(result)
-
-
-cluster = Cluster()
-for i in range(NUM_NODES):
-    cluster.add_node(
-        redis_port=6379 if i == 0 else None,
-        num_redis_shards=NUM_REDIS_SHARDS if i == 0 else None,
-        num_cpus=16,
-        num_gpus=0,
-        resources={str(i): 2},
-        object_store_memory=OBJECT_STORE_MEMORY,
-        redis_max_memory=REDIS_MAX_MEMORY,
-        dashboard_host="0.0.0.0",
-    )
-
-ray.init(
-    namespace="serve_failure_test",
-    address=cluster.address,
-    dashboard_host="0.0.0.0",
-    log_to_driver=True,
-)
-serve.start(proxy_location="HeadOnly")
-
-
-@ray.remote(max_restarts=-1, max_task_retries=-1)
-class RandomKiller:
-    def __init__(self, kill_period_s=1):
-        self.kill_period_s = kill_period_s
-        self.sanctuary = set()
-
-    async def run(self):
-        while True:
-            chosen = random.choice(self._get_serve_actors())
-            print(f"Killing {chosen}")
-            ray.kill(chosen, no_restart=False)
-            await asyncio.sleep(self.kill_period_s)
-
-    async def spare(self, app_name: str):
-        print(f'Sparing application "{app_name}" replicas.')
-        self.sanctuary.add(app_name)
-
-    async def stop_spare(self, app_name: str):
-        print(f'No longer sparing application "{app_name}" replicas.')
-        self.sanctuary.discard(app_name)
-
-    def _get_serve_actors(self):
-        controller = _get_global_client()._controller
-        routers = list(ray.get(controller.get_proxies.remote()).values())
-        all_handles = routers + [controller]
-        replica_dict = ray.get(controller._all_running_replicas.remote())
-        for deployment_id, replica_info_list in replica_dict.items():
-            if deployment_id.app not in self.sanctuary:
-                for replica_info in replica_info_list:
-                    all_handles.append(replica_info.actor_handle)
-
-        return all_handles
 
 
 class RandomTest:
@@ -169,11 +113,11 @@ class RandomTest:
                 print("Request to {} failed.".format(app))
                 time.sleep(0.1)
 
-    def run(self):
+    def run(self, num_iterations: int, actions_per_iteration: int):
         start_time = time.time()
         previous_time = start_time
-        for iteration in range(NUM_ITERATIONS):
-            for _ in range(ACTIONS_PER_ITERATION):
+        for iteration in range(num_iterations):
+            for _ in range(actions_per_iteration):
                 actions, weights = zip(*self.weighted_actions)
                 action_chosen = random.choices(actions, weights=weights)[0]
                 print(f"Executing {action_chosen}")
@@ -200,6 +144,86 @@ class RandomTest:
                 break
 
 
-random_killer = RandomKiller.remote()
-tester = RandomTest(random_killer, max_applications=NUM_NODES * CPUS_PER_NODE)
-tester.run()
+@ray.remote(max_restarts=-1, max_task_retries=-1)
+class RandomKiller:
+    def __init__(self, kill_period_s=1):
+        self.kill_period_s = kill_period_s
+        self.sanctuary = set()
+
+    async def run(self):
+        while True:
+            chosen = random.choice(self._get_serve_actors())
+            print(f"Killing {chosen}")
+            ray.kill(chosen, no_restart=False)
+            await asyncio.sleep(self.kill_period_s)
+
+    async def spare(self, app_name: str):
+        print(f'Sparing application "{app_name}" replicas.')
+        self.sanctuary.add(app_name)
+
+    async def stop_spare(self, app_name: str):
+        print(f'No longer sparing application "{app_name}" replicas.')
+        self.sanctuary.discard(app_name)
+
+    def _get_serve_actors(self):
+        controller = _get_global_client()._controller
+        routers = list(ray.get(controller.get_proxies.remote()).values())
+        all_handles = routers + [controller]
+        replica_dict = ray.get(controller._all_running_replicas.remote())
+        for deployment_id, replica_info_list in replica_dict.items():
+            if deployment_id.app not in self.sanctuary:
+                for replica_info in replica_info_list:
+                    all_handles.append(replica_info.actor_handle)
+
+        return all_handles
+
+
+@click.command()
+@click.option("--num-redis-shards", type=int, default=DEFAULT_NUM_REDIS_SHARDS)
+@click.option("--num-nodes", type=int, default=DEFAULT_NUM_NODES)
+@click.option("--cpus-per-node", type=int, default=DEFAULT_CPUS_PER_NODE)
+@click.option("--num-iterations", type=int, default=DEFAULT_NUM_ITERATIONS)
+@click.option(
+    "--actions-per-iteration", type=int, default=DEFAULT_ACTIONS_PER_ITERATION
+)
+@click.option("--object-store-memory", type=int, default=DEFAULT_OBJECT_STORE_MEMORY)
+@click.option("--redis-max-memory", type=int, default=DEFAULT_REDIS_MAX_MEMORY)
+def main(
+    num_redis_shards: int,
+    num_nodes: int,
+    cpus_per_node: int,
+    num_iterations: int,
+    actions_per_iteration: int,
+    object_store_memory: int,
+    redis_max_memory: int,
+):
+    cluster = Cluster()
+    for i in range(num_nodes):
+        cluster.add_node(
+            redis_port=6379 if i == 0 else None,
+            num_redis_shards=num_redis_shards if i == 0 else None,
+            num_cpus=16,
+            num_gpus=0,
+            resources={str(i): 2},
+            object_store_memory=object_store_memory,
+            redis_max_memory=redis_max_memory,
+            dashboard_host="0.0.0.0",
+        )
+
+    ray.init(
+        namespace="serve_failure_test",
+        address=cluster.address,
+        dashboard_host="0.0.0.0",
+        log_to_driver=True,
+    )
+    serve.start(proxy_location="HeadOnly")
+
+    random_killer = RandomKiller.remote()
+    tester = RandomTest(random_killer, max_applications=num_nodes * cpus_per_node)
+    tester.run(
+        num_iterations=num_iterations, actions_per_iteration=actions_per_iteration
+    )
+
+
+if __name__ == "__main__":
+    main()
