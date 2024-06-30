@@ -64,6 +64,7 @@ def test_client_disconnect(serve_instance):
 
             try:
                 await ws.receive_text()
+
             except WebSocketDisconnect:
                 print("Client disconnected.")
                 self._disconnected.set()
@@ -71,7 +72,7 @@ def test_client_disconnect(serve_instance):
     h = serve.run(WebSocketServer.bind())
     wait_response = h.wait_for_disconnect.remote()
 
-    with connect("ws://localhost:8000"):
+    with connect("ws://localhost:8000", open_timeout=1, close_timeout=1):
         print("Client connected.")
 
     wait_response.result()
