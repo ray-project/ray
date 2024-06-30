@@ -4927,6 +4927,7 @@
   stable: true
 
   env: gce
+  python: "3.8"
   frequency: nightly
   team: clusters
   cluster:
@@ -4944,6 +4945,7 @@
   stable: true
 
   env: gce
+  python: "3.8"
   frequency: nightly
   team: clusters
   cluster:
