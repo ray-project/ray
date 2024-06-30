@@ -3,6 +3,7 @@
 # cython: embedsignature = True
 # cython: language_level = 3
 # cython: c_string_encoding = default
+from datetime import datetime
 
 from cpython.exc cimport PyErr_CheckSignals
 
@@ -198,7 +199,6 @@ from ray.core.generated.common_pb2 import ActorDiedErrorContext
 from ray.core.generated.gcs_pb2 import JobTableData, GcsNodeInfo
 from ray.core.generated.gcs_service_pb2 import GetAllResourceUsageReply
 from ray._private.async_compat import (
-    sync_to_async,
     get_new_event_loop,
     is_async_func
 )
@@ -1803,7 +1803,12 @@ cdef void execute_task(
         def function_executor(*arguments, **kwarguments):
             function = execution_info.function
 
-            if core_worker.current_actor_is_asyncio():
+            # Just execute the method if either of the following is true
+            #   - It's Ray's internal method
+            #   - Target actor is NOT an async actor (ie all of its methods are sync ones)
+            if not core_worker.current_actor_is_asyncio() or function.name.startswith("__ray"):
+                return function(actor, *arguments, **kwarguments)
+            else:
                 if len(inspect.getmembers(
                         actor.__class__,
                         predicate=is_async_func)) == 0:
@@ -1819,25 +1824,19 @@ cdef void execute_task(
                             )
                         )
 
-                if is_async_func(function.method):
-                    async_function = function
-                else:
-                    # Just execute the method if it's ray internal method.
-                    if function.name.startswith("__ray"):
-                        return function(actor, *arguments, **kwarguments)
-                    async_function = sync_to_async(function)
-
-                if inspect.isasyncgenfunction(function.method):
+                if inspect.isgeneratorfunction(function.method) or inspect.isasyncgenfunction(function.method):
                     # The coroutine will be handled separately by
                     # execute_dynamic_generator_and_store_task_outputs
-                    return async_function(actor, *arguments, **kwarguments)
+                    return function(actor, *arguments, **kwarguments)
                 else:
                     return core_worker.run_async_func_or_coro_in_event_loop(
-                        async_function, function_descriptor,
-                        name_of_concurrency_group_to_execute, task_id=task_id,
-                        func_args=(actor, *arguments), func_kwargs=kwarguments)
-
-            return function(actor, *arguments, **kwarguments)
+                        function,
+                        function_descriptor,
+                        name_of_concurrency_group_to_execute,
+                        task_id=task_id,
+                        func_args=(actor, *arguments),
+                        func_kwargs=kwarguments
+                    )
 
     with core_worker.profile_event(b"task::" + name, extra_data=extra_data), \
          ray._private.worker._changeproctitle(title, next_title):
@@ -1852,15 +1851,15 @@ cdef void execute_task(
                             c_arg_refs,
                             skip_adding_local_ref=False)
                     if core_worker.current_actor_is_asyncio():
+                        # TODO update
                         # We deserialize objects in event loop thread to
                         # prevent segfaults. See #7799
-                        async def deserialize_args():
-                            return (ray._private.worker.global_worker
-                                    .deserialize_objects(
-                                        metadata_pairs, object_refs))
                         args = core_worker.run_async_func_or_coro_in_event_loop(
-                            deserialize_args, function_descriptor,
-                            name_of_concurrency_group_to_execute)
+                            ray._private.worker.global_worker.deserialize_objects,
+                            function_descriptor,
+                            name_of_concurrency_group_to_execute,
+                            func_args=(metadata_pairs, object_refs),
+                        )
                     else:
                         # Defer task cancellation (SIGINT) until after the task argument
                         # deserialization context has been left.
@@ -1947,7 +1946,8 @@ cdef void execute_task(
                                 execute_streaming_generator_async(context),
                                 function_descriptor,
                                 name_of_concurrency_group_to_execute,
-                                task_id=task_id)
+                                task_id=task_id,
+                            )
                         else:
                             execute_streaming_generator_sync(context)
 
@@ -4779,7 +4779,7 @@ cdef class CoreWorker:
 
     def run_async_func_or_coro_in_event_loop(
           self,
-          func_or_coro: Union[Callable[[Any, Any], Awaitable[Any]], Awaitable],
+          func_or_coro: Union[Callable[[Any, Any], Any], typing.Coroutine],
           function_descriptor: FunctionDescriptor,
           specified_cgname: str,
           *,
@@ -4792,7 +4792,7 @@ cdef class CoreWorker:
         The event loop is running in a separate thread.
 
         Args:
-            func_or_coro: Async function (not a generator) or awaitable objects.
+            func: Function (not a generator!) that could either be sync or async
             function_descriptor: The function descriptor.
             specified_cgname: The name of a concurrent group.
             task_id: The task ID to track the future. If None is provided
@@ -4823,24 +4823,44 @@ cdef class CoreWorker:
         # transport with max_concurrency flag.
         increase_recursion_limit()
 
-        eventloop, async_thread = self.get_event_loop(
-            function_descriptor, specified_cgname)
+        eventloop, _ = self.get_event_loop(function_descriptor, specified_cgname)
 
-        async def async_func():
+        async def _async_function():
             try:
+                # TODO fix
                 if task_id:
                     async_task_id.set(task_id)
 
+                # In cases when coroutine is passed in for execution, we handle it
+                # by directly submitting it into the event-loop 
                 if inspect.isawaitable(func_or_coro):
-                    coroutine = func_or_coro
+                    awaitable = func_or_coro
                 else:
-                    coroutine = func_or_coro(*func_args, **func_kwargs)
+                    # Extract target method wrapped into `ray.remote` decorator (to be 
+                    # able to analyze whether target method is async or not)
+                    target_method = _try_unwrap_remote_decorator(func_or_coro)
+                    
+                    assert not inspect.isgeneratorfunction(target_method) and not inspect.isasyncgenfunction(target_method), "Functions returning generator/asyncgen should not be submitted into the event-loop directly"
 
-                return await coroutine
+                    # At this stage passed in function/method will be either of
+                    #   - Async function: in which case we execute provided method directly on the event-loop
+                    #   - Sync function: in which case we submit provided function for execution on the event-loop's
+                    #     (default) internal executor to make sure that user's code can not block the event-loop,
+                    #     potentially resulting in unexpected behavior (see attached ticket).
+                    #
+                    # For more context please check out https://github.com/ray-project/ray/issues/44354
+                    if is_async_func(target_method):
+                        awaitable = func_or_coro(*func_args, **func_kwargs)
+                    else:
+                        awaitable = eventloop.run_in_executor(None, func_or_coro, *func_args, **func_kwargs)
+
+                return await awaitable
             finally:
+                # TODO elaborate
                 event.Notify()
 
-        future = asyncio.run_coroutine_threadsafe(async_func(), eventloop)
+        future = asyncio.run_coroutine_threadsafe(_async_function(), eventloop)
+
         if task_id:
             with self._task_id_to_future_lock:
                 self._task_id_to_future[task_id] = future
@@ -4848,7 +4868,9 @@ cdef class CoreWorker:
         with nogil:
             (CCoreWorkerProcess.GetCoreWorker()
                 .YieldCurrentFiber(event))
+
         try:
+            # TODO elaborate that this might block
             result = future.result()
         except concurrent.futures.CancelledError:
             raise TaskCancelledError(task_id)
@@ -4856,6 +4878,7 @@ cdef class CoreWorker:
             if task_id:
                 with self._task_id_to_future_lock:
                     self._task_id_to_future.pop(task_id)
+
         return result
 
     def stop_and_join_asyncio_threads_if_exist(self):
@@ -5140,6 +5163,12 @@ cdef class CoreWorker:
                     c_object_ref_and_is_ready_pair.first.object_id(),
                     c_object_ref_and_is_ready_pair.first.owner_address().SerializeAsString()), # noqa
                 c_object_ref_and_is_ready_pair.second)
+
+
+def _try_unwrap_remote_decorator(func):
+    """TODO elaborate"""
+    return getattr(func, "method", func)
+
 
 cdef void async_callback(shared_ptr[CRayObject] obj,
                          CObjectID object_ref,
