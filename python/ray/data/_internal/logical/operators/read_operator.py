@@ -51,3 +51,6 @@ class Read(AbstractMap):
 
     def input_files(self) -> Optional[List[str]]:
         return self._datasource.input_files()
+
+    def is_read(self) -> bool:
+        return True
