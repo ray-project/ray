@@ -473,8 +473,8 @@ def test_cluster_status_formatter():
             ),
         ],
         cluster_resource_usage=[
-            ResourceUsage(resource_name="CPU", total=3.0, used=0.5),
-            ResourceUsage(resource_name="GPU", total=4.0, used=0.0),
+            ResourceUsage(resource_name="CPU", total=3.0, used=0.499),
+            ResourceUsage(resource_name="GPU", total=4.0, used=0.099),
             ResourceUsage(
                 resource_name="object_store_memory", total=10282.0, used=5555.0
             ),
@@ -563,8 +563,8 @@ Recent failures:
 Resources
 --------------------------------------------------------
 Total Usage:
- 0.5/3.0 CPU
- 0.0/4.0 GPU
+ 0.50/3 CPU
+ 0.01/4 GPU
  5.42KiB/10.04KiB object_store_memory
 
 Total Demands:
@@ -575,18 +575,18 @@ Total Demands:
 
 Node: fffffffffffffffffffffffffffffffffffffffffffffffffff00001
  Usage:
-  0.5/1.0 CPU
-  0.0/2.0 GPU
+  0.50/1 CPU
+  0.01/2 GPU
   5.42KiB/10.04KiB object_store_memory
 
 Node: fffffffffffffffffffffffffffffffffffffffffffffffffff00002
  Usage:
-  0/1.0 CPU
-  0/2.0 GPU
+  0/1 CPU
+  0/2 GPU
 
 Node: fffffffffffffffffffffffffffffffffffffffffffffffffff00003
  Usage:
-  0.0/1.0 CPU"""
+  0/1 CPU"""
     assert actual == expected
 
 
