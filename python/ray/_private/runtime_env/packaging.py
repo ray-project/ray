@@ -89,13 +89,14 @@ class Protocol(Enum):
     HTTPS = "https", "Remote https path, assumes everything packed in one zip file."
     S3 = "s3", "Remote s3 path, assumes everything packed in one zip file."
     GS = "gs", "Remote google storage path, assumes everything packed in one zip file."
+    OBS = "obs", "Remote huawei obs path, assumes everything packed in one zip file."
     FILE = "file", "File storage path, assumes everything packed in one zip file."
 
     @classmethod
     def remote_protocols(cls):
         # Returns a list of protocols that support remote storage
         # These protocols should only be used with paths that end in ".zip" or ".whl"
-        return [cls.HTTPS, cls.S3, cls.GS, cls.FILE]
+        return [cls.HTTPS, cls.S3, cls.GS, cls.FILE, cls.OBS]
 
 
 def _xor_bytes(left: bytes, right: bytes) -> bytes:
@@ -718,6 +719,16 @@ async def download_and_unpack_package(
                             "`pip install google-cloud-storage` "
                             "to fetch URIs in Google Cloud Storage bucket."
                             + install_warning
+                        )
+                elif protocol == Protocol.OBS:
+                    try:
+                        from obs import ObsClient  # noqa: F401
+                        from smart_open import open as open_file
+                    except ImportError:
+                        raise ImportError(
+                            "You must `pip install smart_open` and "
+                            "`pip install esdk-obs-python` to fetch URIs in obs "
+                            "bucket. " + install_warning
                         )
                 elif protocol == Protocol.FILE:
                     pkg_uri = pkg_uri[len("file://") :]
