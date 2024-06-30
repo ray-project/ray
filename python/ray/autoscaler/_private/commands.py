@@ -869,7 +869,7 @@ def get_or_create_head_node(
         modifiers = ""
 
     cli_logger.newline()
-    with cli_logger.group("Useful commands:"):
+    with cli_logger.group("Useful commands to run from your local machine"):
         printable_config_file = os.path.abspath(printable_config_file)
 
         cli_logger.print("To terminate the cluster:")
@@ -900,7 +900,7 @@ def get_or_create_head_node(
         )
         cli_logger.newline()
 
-        cli_logger.print("To connect to a terminal on the cluster head for debugging:")
+        cli_logger.print("To connect to a terminal on the head node:")
         cli_logger.print(cf.bold(f"  ray attach {printable_config_file}{modifiers}"))
         cli_logger.newline()
 
