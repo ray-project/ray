@@ -28,10 +28,10 @@ logger = logging.getLogger(__name__)
 
 pytestmark = [
     pytest.mark.skipif(
-        os.name != "posix",
-        reason="Accelerated DAGs only support running on POSIX system.",
+        sys.platform != "linux" and sys.platform != "darwin",
+        reason="Requires Linux or MacOS",
     ),
-    pytest.mark.timeout(800),
+    pytest.mark.timeout(500),
 ]
 
 
