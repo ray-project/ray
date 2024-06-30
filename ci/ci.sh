@@ -278,13 +278,9 @@ test_cpp() {
   bazel test //cpp:cluster_mode_test --test_arg=--external_cluster=true --test_arg=--redis_password="1234" \
     --test_arg=--ray_redis_password="1234"
   bazel test --test_output=all //cpp:test_python_call_cpp
-
-  # run the cpp example, currently does not work on mac
-  if [[ "${OSTYPE}" != darwin* ]]; then
-    rm -rf ray-template
-    ray cpp --generate-bazel-project-template-to ray-template
-    pushd ray-template && bash run.sh
-  fi
+  rm -rf ray-template
+  ray cpp --generate-bazel-project-template-to ray-template
+  pushd ray-template && bash run.sh
 }
 
 test_wheels() {
