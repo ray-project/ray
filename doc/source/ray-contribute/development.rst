@@ -133,10 +133,10 @@ To build Ray on Ubuntu, run the following commands:
   # Install Bazelisk.
   ci/env/install-bazel.sh
 
-  # Install node version manager and node 14
-  $(curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.0/install.sh)
-  nvm install 14
-  nvm use 14
+  # Install node version manager and node 20
+  curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | bash
+  nvm install 20
+  nvm use 20
 
 .. note::
   The `install-bazel.sh` script installs `bazelisk` for building Ray. 

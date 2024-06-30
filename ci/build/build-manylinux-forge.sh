@@ -25,10 +25,10 @@ if [[ "${RAY_INSTALL_JAVA}" == "1" ]]; then
 fi
 
 # Install ray dashboard dependencies.
-curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.34.0/install.sh | bash
+curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | bash
 source "$HOME"/.nvm/nvm.sh
 
-NODE_VERSION="14"
+NODE_VERSION="20"
 nvm install "$NODE_VERSION"
 nvm use "$NODE_VERSION"
 
