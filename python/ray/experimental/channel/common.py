@@ -273,7 +273,9 @@ class ReaderInterface:
                 (immediate success or timeout without blocking), -1 means
                 infinite timeout (block indefinitely).
         """
-        assert timeout is None or timeout >= 0, "Timeout must be non-negative."
+        assert (
+            timeout is None or timeout >= 0 or timeout == -1
+        ), "Timeout must be non-negative or -1."
         outputs = self._read_list(timeout)
         self._num_reads += 1
         return outputs

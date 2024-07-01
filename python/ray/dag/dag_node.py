@@ -128,7 +128,7 @@ class DAGNode(DAGNodeBase):
 
     def experimental_compile(
         self,
-        execution_timeout: Optional[float] = None,
+        _execution_timeout: Optional[float] = None,
         _buffer_size_bytes: Optional[int] = None,
         enable_asyncio: bool = False,
         _asyncio_max_queue_size: Optional[int] = None,
@@ -137,7 +137,7 @@ class DAGNode(DAGNodeBase):
         """Compile an accelerated execution path for this DAG.
 
         Args:
-            execution_timeout: The maximum time in seconds to wait for execute() calls.
+            _execution_timeout: The maximum time in seconds to wait for execute() calls.
                 None means using default timeout, 0 means immediate timeout
                 (immediate success or timeout without blocking), -1 means
                 infinite timeout (block indefinitely).
@@ -169,7 +169,7 @@ class DAGNode(DAGNodeBase):
 
         return build_compiled_dag_from_ray_dag(
             self,
-            execution_timeout,
+            _execution_timeout,
             _buffer_size_bytes,
             enable_asyncio,
             _asyncio_max_queue_size,

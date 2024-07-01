@@ -398,7 +398,9 @@ class Channel(ChannelInterface):
 
     def write(self, value: Any, timeout: Optional[float] = None) -> None:
         self.ensure_registered_as_writer()
-        assert timeout is None or timeout >= 0, "Timeout must be non-negative."
+        assert (
+            timeout is None or timeout >= 0 or timeout == -1
+        ), "Timeout must be non-negative or -1."
         # -1 means no timeout (block indefinitely)
         timeout_ms = int(timeout * 1000) if timeout is not None else -1
 
@@ -433,7 +435,9 @@ class Channel(ChannelInterface):
         )
 
     def read(self, timeout: Optional[float] = None) -> Any:
-        assert timeout is None or timeout >= 0, "Timeout must be non-negative."
+        assert (
+            timeout is None or timeout >= 0 or timeout == -1
+        ), "Timeout must be non-negative or -1."
         self.ensure_registered_as_reader()
 
         start_time = time.monotonic()
