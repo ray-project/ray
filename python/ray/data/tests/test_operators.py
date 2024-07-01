@@ -569,7 +569,7 @@ def test_actor_pool_map_operator_num_active_tasks_and_completed(shutdown_only):
     # Let the data tasks complete.
     signal_actor.send.remote()
     while len(op._data_tasks) > 0:
-       run_one_op_task(op)
+        run_one_op_task(op)
     assert op.num_active_tasks() == 0
     assert actor_pool.num_pending_actors() == num_actors
 
