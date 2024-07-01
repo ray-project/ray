@@ -18,7 +18,7 @@ WRITE_FILE_RETRY_MAX_BACKOFF_SECONDS = 32
 logger = logging.getLogger(__name__)
 
 
-class _ParquetDatasink(_FileDatasink):
+class ParquetDatasink(_FileDatasink):
     def __init__(
         self,
         path: str,

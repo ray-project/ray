@@ -76,7 +76,7 @@ click==8.1.7
 cloudpickle==2.2.0
 cma==3.2.2
 cmaes==0.10.0
-cmake==3.29.5.1
+cmake==3.29.6
 cmdstanpy==1.2.0
 colorama==0.4.6
 coloredlogs==15.0.1
@@ -121,7 +121,7 @@ docker==6.1.3
 docker-pycreds==0.4.0
 dopamine-rl==4.0.5
 dulwich==0.21.6
-email_validator==2.1.2
+email_validator==2.2.0
 entrypoints==0.4
 etils==1.3.0
 evaluate==0.4.0
@@ -199,7 +199,7 @@ iniconfig==2.0.0
 ipykernel==6.27.1
 ipython==8.12.3
 ipython-genutils==0.2.0
-ipywidgets==7.7.2
+ipywidgets==8.0.6
 isodate==0.6.1
 isoduration==20.11.0
 itsdangerous==2.1.2
@@ -223,9 +223,9 @@ jupyter_core==5.5.0
 jupyter_server_fileid==0.9.0
 jupyter_server_ydoc==0.6.1
 jupyterlab==3.6.1
-jupyterlab-widgets==1.1.7
 jupyterlab_pygments==0.3.0
 jupyterlab_server==2.24.0
+jupyterlab_widgets==3.0.11
 kaggle-environments==1.7.11
 keras==2.15.0
 kiwisolver==1.4.5
@@ -328,12 +328,12 @@ pkginfo==1.11.1
 platformdirs==3.11.0
 plotly==5.18.0
 pluggy==1.3.0
-portalocker==2.8.2
+portalocker==2.10.0
 prometheus-client==0.19.0
 promise==2.3
 prompt-toolkit==3.0.41
 prophet==1.1.5
-proto-plus==1.23.0
+proto-plus==1.24.0
 protobuf==3.20.3
 psutil==5.9.6
 ptyprocess==0.7.0
@@ -383,7 +383,7 @@ PyYAML==6.0.1
 pyzmq==24.0.1
 qpd==0.4.4
 querystring-parser==1.2.4
-ray @ file:///home/ray/ray-3.0.0.dev0-cp39-cp39-manylinux2014_x86_64.whl#sha256=7b3555c897015e5035acc88ecfe71848a0e18731036b80d13889ece487c74855
+ray @ file:///home/ray/ray-3.0.0.dev0-cp39-cp39-manylinux2014_x86_64.whl#sha256=2d7c022c1796166fcd34a01db84f0f3f84fe81d498579291202eda031fb416d7
 recsim==0.2.4
 redis==3.5.3
 referencing==0.35.1
@@ -500,7 +500,7 @@ webencodings==0.5.1
 websocket-client==1.6.4
 websockets==11.0.3
 Werkzeug==2.3.8
-widgetsnbextension==3.6.6
+widgetsnbextension==4.0.11
 wrapt==1.14.1
 wurlitzer==3.0.3
 xgboost==1.7.6

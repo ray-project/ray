@@ -166,6 +166,13 @@ Status MutableObjectProvider::SetError(const ObjectID &object_id) {
   return object_manager_->SetError(object_id);
 }
 
+Status MutableObjectProvider::GetChannelStatus(const ObjectID &object_id) {
+  if (ReaderChannelRegistered(object_id)) {
+    return Status::OK();
+  }
+  return object_manager_->IsChannelClosed(object_id);
+}
+
 void MutableObjectProvider::PollWriterClosure(
     instrumented_io_context &io_context,
     const ObjectID &object_id,

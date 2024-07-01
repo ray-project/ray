@@ -13,7 +13,7 @@ if TYPE_CHECKING:
     from tensorflow_metadata.proto.v0 import schema_pb2
 
 
-class _TFRecordDatasink(BlockBasedFileDatasink):
+class TFRecordDatasink(BlockBasedFileDatasink):
     def __init__(
         self,
         path: str,
