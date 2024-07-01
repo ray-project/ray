@@ -2,13 +2,13 @@ import logging
 from typing import List, Optional
 
 from ray._private.ray_constants import env_bool
+from ray.data._internal.datasource.image_datasource import (
+    ImageDatasource,
+    _ImageFileMetadataProvider,
+)
 from ray.data.datasource.file_meta_provider import (
     DefaultFileMetadataProvider,
     FastFileMetadataProvider,
-)
-from ray.data.datasource.image_datasource import (
-    ImageDatasource,
-    _ImageFileMetadataProvider,
 )
 from ray.data.datasource.parquet_meta_provider import ParquetMetadataProvider
 

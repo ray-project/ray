@@ -7,17 +7,14 @@ from ray.anyscale.data._internal.logical.operators.expand_paths_operator import 
 )
 from ray.anyscale.data._internal.logical.operators.read_files_operator import ReadFiles
 from ray.anyscale.data.datasource.file_reader import FileReader
+from ray.data._internal.datasource.image_datasource import ImageDatasource
+from ray.data._internal.datasource.json_datasource import JSONDatasource
+from ray.data._internal.datasource.numpy_datasource import NumpyDatasource
 from ray.data._internal.logical.interfaces import LogicalPlan
 from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.stats import DatasetStats
 from ray.data.dataset import Dataset
-from ray.data.datasource import (
-    ImageDatasource,
-    JSONDatasource,
-    NumpyDatasource,
-    Partitioning,
-    PathPartitionFilter,
-)
+from ray.data.datasource import Partitioning, PathPartitionFilter
 from ray.data.datasource.file_meta_provider import BaseFileMetadataProvider
 from ray.data.datasource.path_util import _resolve_paths_and_filesystem
 

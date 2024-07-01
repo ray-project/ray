@@ -1,13 +1,13 @@
 from typing import TYPE_CHECKING, Iterable, Optional, Union
 
 from ray.anyscale.data.datasource.file_reader import FileReader
-from ray.data.block import DataBatch
-from ray.data.datasource.webdataset_datasource import (
+from ray.data._internal.datasource.webdataset_datasource import (
     _apply_list,
     _default_decoder,
     _group_by_keys,
     _tar_file_iterator,
 )
+from ray.data.block import DataBatch
 
 if TYPE_CHECKING:
     import pyarrow
