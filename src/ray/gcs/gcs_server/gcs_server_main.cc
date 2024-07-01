@@ -36,6 +36,7 @@ DEFINE_string(node_ip_address, "", "The ip address of the node.");
 DEFINE_string(session_name,
               "",
               "session_name: The session name (ClusterID) of the cluster.");
+DEFINE_string(ray_commit, "", "The commit hash of Ray.");
 
 int main(int argc, char *argv[]) {
   InitShutdownRAII ray_log_shutdown_raii(ray::RayLog::StartRayLog,
@@ -47,6 +48,12 @@ int main(int argc, char *argv[]) {
   ray::RayLog::InstallTerminateHandler();
 
   gflags::ParseCommandLineFlags(&argc, &argv, true);
+
+  RAY_LOG(INFO)
+          .WithField("ray_version", kRayVersion)
+          .WithField("ray_commit", FLAGS_ray_commit)
+      << "Ray cluster metadata";
+
   const std::string redis_address = FLAGS_redis_address;
   const int redis_port = static_cast<int>(FLAGS_redis_port);
   const std::string log_dir = FLAGS_log_dir;

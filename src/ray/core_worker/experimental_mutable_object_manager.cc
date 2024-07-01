@@ -454,6 +454,15 @@ MutableObjectManager::ToTimeoutPoint(int64_t timeout_ms) {
   return timeout_point;
 }
 
+Status MutableObjectManager::IsChannelClosed(const ObjectID &object_id) {
+  Channel *channel = GetChannel(object_id);
+  if (!channel) {
+    return Status::NotFound(
+        absl::StrFormat("Could not find channel for object ID %s.", object_id.Hex()));
+  }
+  return channel->mutable_object->header->CheckHasError();
+}
+
 #else  // defined(__APPLE__) || defined(__linux__)
 
 MutableObjectManager::~MutableObjectManager() {}
@@ -527,6 +536,10 @@ Status MutableObjectManager::SetErrorAll() {
 std::unique_ptr<std::chrono::steady_clock::time_point>
 MutableObjectManager::ToTimeoutPoint(int64_t timeout_ms) {
   return nullptr;
+}
+
+Status MutableObjectManager::IsChannelClosed(const ObjectID &object_id) {
+  return Status::NotImplemented("Not supported on Windows.");
 }
 
 #endif
