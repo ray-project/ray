@@ -413,10 +413,8 @@ class LongPollHost:
         except KeyError:
             # Initial snapshot id must be >= 0, so that the long poll client
             # can send a negative initial snapshot id to get a fast update.
-            # They should also be randomized to try to avoid situations where,
-            # if the controller restarts and a client has a now-invalid snapshot id
-            # that happens to match what the controller restarts with,
-            # the client wouldn't receive an update.
+            # They should also be randomized;
+            # see https://github.com/ray-project/ray/pull/45881#discussion_r1645243485
             self.snapshot_ids[object_key] = random.randint(0, 1_000_000)
         self.object_snapshots[object_key] = updated_object
         logger.debug(f"LongPollHost: Notify change for key {object_key}.")
