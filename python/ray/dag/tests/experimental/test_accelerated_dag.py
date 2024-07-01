@@ -1018,6 +1018,7 @@ def test_channel_access_after_close(ray_start_regular_shared):
     with pytest.raises(RayChannelError, match="Channel closed."):
         ray.get(ref)
 
+
 def test_driver_and_actor_as_readers(ray_start_cluster):
     a = Actor.remote(0)
     b = Actor.remote(10)
