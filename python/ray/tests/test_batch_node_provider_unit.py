@@ -453,7 +453,6 @@ def test_terminate_node_in_multihost_replica():
             node_provider.set_node_replica_index(node_id, "tpu-group-0")
         else:
             node_provider.set_node_replica_index(node_id, "tpu-group-1")
-        index += 1
 
     # Verify RAY_REPLICA_INDEX tag has been set
     replicaIndexFilter = {TAG_RAY_REPLICA_INDEX: "tpu-group-0"}
