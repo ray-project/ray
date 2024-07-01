@@ -205,13 +205,20 @@ Status PythonGcsClient::Connect(int64_t timeout_ms, size_t num_retries) {
       connect_status =
           GrpcStatusToRayStatus(node_info_stub_->GetClusterId(&context, request, &reply));
 
+      // On RpcError: retry
+      // On GCS side error: return error
+      // On success: set cluster_id_ and break
       if (connect_status.ok()) {
-        cluster_id_ = ClusterID::FromBinary(reply.cluster_id());
-        RAY_LOG(DEBUG) << "Received cluster ID from GCS server: " << cluster_id_;
-        RAY_CHECK(!cluster_id_.IsNil());
-        break;
+        if (reply.status().code() == static_cast<int>(StatusCode::OK)) {
+          cluster_id_ = ClusterID::FromBinary(reply.cluster_id());
+          RAY_LOG(DEBUG) << "Received cluster ID from GCS server: " << cluster_id_;
+          RAY_CHECK(!cluster_id_.IsNil());
+          break;
+        } else {
+          return HandleGcsError(reply.status());
+        }
       } else if (!connect_status.IsRpcError()) {
-        return HandleGcsError(reply.status());
+        return connect_status;
       }
       std::this_thread::sleep_for(std::chrono::milliseconds(1000));
       channel_ =
