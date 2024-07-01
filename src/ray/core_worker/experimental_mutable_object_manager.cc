@@ -428,6 +428,15 @@ Status MutableObjectManager::SetErrorAll() {
   return ret;
 }
 
+Status MutableObjectManager::IsChannelClosed(const ObjectID &object_id) {
+  Channel *channel = GetChannel(object_id);
+  if (!channel) {
+    return Status::NotFound(
+        absl::StrFormat("Could not find channel for object ID %s.", object_id.Hex()));
+  }
+  return channel->mutable_object->header->CheckHasError();
+}
+
 #else  // defined(__APPLE__) || defined(__linux__)
 
 MutableObjectManager::~MutableObjectManager() {}
@@ -495,6 +504,10 @@ Status MutableObjectManager::SetErrorInternal(const ObjectID &object_id) {
 }
 
 Status MutableObjectManager::SetErrorAll() {
+  return Status::NotImplemented("Not supported on Windows.");
+}
+
+Status MutableObjectManager::IsChannelClosed(const ObjectID &object_id) {
   return Status::NotImplemented("Not supported on Windows.");
 }
 
