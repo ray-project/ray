@@ -40,7 +40,7 @@ def has_async_methods(cls: object) -> bool:
 
 
 @lru_cache(maxsize=2**10)
-def sync_to_async(func) -> bool:
+def sync_to_async(func):
     """Wrap a blocking function in an async function"""
 
     if is_async_func(func):
