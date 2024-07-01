@@ -86,6 +86,8 @@ if __name__ == "__main__":
     RAY_CI_RELEASE_TESTS_AFFECTED = 0
     RAY_CI_COMPILED_PYTHON_AFFECTED = 0
     RAY_CI_ACCELERATED_DAG_AFFECTED = 0
+    # Whether to run jobs that are affected by any changes
+    RAY_CI_ANY_CHANGE_AFFECTED = 1
 
     if is_pull_request():
         commit_range = get_commit_range()
@@ -425,6 +427,7 @@ if __name__ == "__main__":
             "RAY_CI_ACCELERATED_DAG_AFFECTED={}".format(
                 RAY_CI_ACCELERATED_DAG_AFFECTED
             ),
+            "RAY_CI_ANY_CHANGE_AFFECTED={}".format(RAY_CI_ANY_CHANGE_AFFECTED),
         ]
     )
 
