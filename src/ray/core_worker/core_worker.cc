@@ -1554,8 +1554,16 @@ Status CoreWorker::Get(const std::vector<ObjectID> &ids,
   // Check whether these are experimental.Channel objects.
   bool is_experimental_channel = false;
   for (const ObjectID &id : ids) {
-    if (experimental_mutable_object_provider_->ReaderChannelRegistered(id)) {
+    Status status = experimental_mutable_object_provider_->GetChannelStatus(id);
+    if (status.ok()) {
       is_experimental_channel = true;
+      // We continue rather than break because we want to check that *all* of the
+      // objects are either experimental or not experimental. We cannot have a mix of
+      // the two.
+      continue;
+    } else if (status.IsChannelError()) {
+      // The channel has been closed.
+      return status;
     } else if (is_experimental_channel) {
       return Status::NotImplemented(
           "ray.get can only be called on all normal objects, or all "
