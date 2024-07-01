@@ -444,7 +444,7 @@ def test_map_operator_shutdown(shutdown_only, use_actors):
 
     # Create with inputs.
     input_op = InputDataBuffer(make_ref_bundles([[i] for i in range(10)]))
-    compute_strategy = ActorPoolStrategy() if use_actors else TaskPoolStrategy()
+    compute_strategy = ActorPoolStrategy(size=1) if use_actors else TaskPoolStrategy()
     op = MapOperator.create(
         create_map_transformer_from_block_fn(_sleep),
         input_op=input_op,
@@ -455,9 +455,11 @@ def test_map_operator_shutdown(shutdown_only, use_actors):
 
     # Start one task and then cancel.
     op.start(ExecutionOptions())
+    if use_actors:
+        # Wait for the actor to start.
+        run_op_tasks_sync(op)
     op.add_input(input_op.get_next(), 0)
-    # num_active_tasks should be 0, because the actor cannot be started.
-    assert op.num_active_tasks() == 0
+    assert op.num_active_tasks() == 1
     op.shutdown()
 
     # Tasks/actors should be cancelled/killed.
