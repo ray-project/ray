@@ -227,6 +227,7 @@ class JobHead(dashboard_utils.DashboardHeadModule):
             version=CURRENT_VERSION,
             ray_version=ray.__version__,
             ray_commit=ray.__commit__,
+            session_name=self.session_name,
         )
         return Response(
             text=json.dumps(dataclasses.asdict(resp)),

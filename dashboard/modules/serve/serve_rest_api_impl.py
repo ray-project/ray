@@ -89,6 +89,7 @@ def create_serve_rest_api(
             # If the lock is already acquired by another async task, the async task
             # will asynchronously wait for the lock.
             self._controller_start_lock = asyncio.Lock()
+            self._session_name = dashboard_head_or_agent.session_name
 
         # TODO: It's better to use `/api/version`.
         # It requires a refactor of ClassMethodRouteTable to differentiate the server.
@@ -100,6 +101,7 @@ def create_serve_rest_api(
                 version=CURRENT_VERSION,
                 ray_version=ray.__version__,
                 ray_commit=ray.__commit__,
+                session_name=self._session_name,
             )
             return Response(
                 text=json.dumps(dataclasses.asdict(resp)),
@@ -296,4 +298,4 @@ def create_serve_rest_api(
         def is_minimal_module():
             return False
 
-    return ServeRestApiImpl(dashboard_module_superclass)
+    return ServeRestApiImpl

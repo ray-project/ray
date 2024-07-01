@@ -15,3 +15,4 @@ class VersionResponse:
     version: str
     ray_version: str
     ray_commit: str
+    session_name: str
