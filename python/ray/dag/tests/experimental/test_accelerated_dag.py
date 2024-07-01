@@ -472,7 +472,7 @@ def test_execution_timeout(ray_start_regular):
     with InputNode() as inp:
         dag = a.inc.bind(inp)
 
-    compiled_dag = dag.experimental_compile(execution_timeout=2)
+    compiled_dag = dag.experimental_compile(_execution_timeout=2)
     refs = []
     timed_out = False
     epsilon = 0.1  # Allow for some slack in the timeout checking
