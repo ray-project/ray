@@ -383,13 +383,12 @@ cdef extern from "ray/gcs/gcs_client/gcs_client.h" nogil:
         UNIMPLEMENTED "grpc::StatusCode::UNIMPLEMENTED",
 
     cdef cppclass CGcsClientOptions "ray::gcs::GcsClientOptions":
-        CGcsClientOptions(const c_string &gcs_address, int port)
+        CGcsClientOptions(const c_string &gcs_address, int port, CClusterID cluster_id)
 
     cdef cppclass CPythonGcsClient "ray::gcs::PythonGcsClient":
         CPythonGcsClient(const CGcsClientOptions &options)
 
         CRayStatus Connect(
-            const CClusterID &cluster_id,
             int64_t timeout_ms,
             size_t num_retries)
         CRayStatus CheckAlive(

@@ -17,8 +17,9 @@
 namespace ray {
 namespace gcs {
 UsageStatsClient::UsageStatsClient(const std::string &gcs_address,
+                                   ClusterID cluster_id,
                                    instrumented_io_context &io_service) {
-  GcsClientOptions options(gcs_address);
+  GcsClientOptions options(gcs_address, cluster_id);
   gcs_client_ = std::make_unique<GcsClient>(options);
   RAY_CHECK_OK(gcs_client_->Connect(io_service));
 }
