@@ -141,3 +141,10 @@ class API:
             self.annotation_type == AnnotationType.PUBLIC_API
             and not self._is_private_name()
         )
+
+    def is_deprecated(self) -> bool:
+        """
+        Check if this API is deprecated. Deprecated APIs are those that are annotated as
+        deprecated.
+        """
+        return self.annotation_type == AnnotationType.DEPRECATED
