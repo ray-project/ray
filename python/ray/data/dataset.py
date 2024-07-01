@@ -12,6 +12,7 @@ from typing import (
     Dict,
     Generic,
     Iterable,
+    Iterator,
     List,
     Literal,
     Mapping,
@@ -2486,11 +2487,12 @@ class Dataset:
 
         get_num_rows = cached_remote_fn(_get_num_rows)
 
-        return sum(
-            ray.get(
-                [get_num_rows.remote(block) for block in self.get_internal_block_refs()]
-            )
-        )
+        # Directly loop over the iterator of `BlockRef`s instead of first
+        # retrieving a list of `BlockRef`s.
+        total_rows = 0
+        for block_ref in self.iter_internal_block_refs():
+            total_rows += ray.get(get_num_rows.remote(block_ref))
+        return total_rows
 
     @ConsumptionAPI(
         if_more_than_read=True,
@@ -4563,7 +4565,29 @@ class Dataset:
     def _get_stats_summary(self) -> DatasetStatsSummary:
         return self._plan.stats_summary()
 
-    @ConsumptionAPI(pattern="Time complexity:")
+    @ConsumptionAPI(pattern="")
+    @DeveloperAPI
+    def iter_internal_block_refs(self) -> Iterator[ObjectRef[Block]]:
+        """Get an iterator over references to the underlying blocks of this Dataset.
+
+        This function can be used for zero-copy access to the data. It does not
+        keep the data materialized in-memory.
+
+        Examples:
+            >>> import ray
+            >>> ds = ray.data.range(1)
+            >>> for block_ref in ds.get_internal_block_refs():
+            ...     block = ray.get(block_ref)
+
+        Returns:
+            An iterator over references to this Dataset's blocks.
+        """
+        iter_block_refs_md, _, _ = self._plan.execute_to_iterator()
+        iter_block_refs = (block_ref for block_ref, _ in iter_block_refs_md)
+        self._synchronize_progress_bar()
+        return iter_block_refs
+
+    @ConsumptionAPI(pattern="")
     @DeveloperAPI
     def get_internal_block_refs(self) -> List[ObjectRef[Block]]:
         """Get a list of references to the underlying blocks of this dataset.
@@ -4576,8 +4600,6 @@ class Dataset:
             >>> ds = ray.data.range(1)
             >>> ds.get_internal_block_refs()
             [ObjectRef(...)]
-
-        Time complexity: O(1)
 
         Returns:
             A list of references to this dataset's blocks.
