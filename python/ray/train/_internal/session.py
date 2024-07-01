@@ -406,7 +406,7 @@ class _TrainSession:
 
             if contains_tensor(metrics):
                 raise ValueError(
-                    "Passing objects containg Torch tensors as metrics "
+                    "Passing objects containing Torch tensors as metrics "
                     "is not supported as it will throw an exception on "
                     "deserialization. You can either convert the tensors "
                     "to Python objects or report a `train.Checkpoint` "
