@@ -2405,24 +2405,20 @@ def from_pandas(
     if isinstance(dfs, pd.DataFrame):
         dfs = [dfs]
 
-    context = DataContext.get_current()
-    num_blocks = override_num_blocks
-    if num_blocks is None:
-        total_size = sum(_estimate_dataframe_size(df) for df in dfs)
-        num_blocks = max(math.ceil(total_size / context.target_max_block_size), 1)
-
-    if len(dfs) > 1:
-        # I assume most users pass a single DataFrame as input. For simplicity, I'm
-        # concatenating DataFrames, even though it's not efficient.
-        ary = pd.concat(dfs, axis=0)
-    else:
-        ary = dfs[0]
-    dfs = np.array_split(ary, num_blocks)
+    if override_num_blocks is not None:
+        if len(dfs) > 1:
+            # I assume most users pass a single DataFrame as input. For simplicity, I'm
+            # concatenating DataFrames, even though it's not efficient.
+            ary = pd.concat(dfs, axis=0)
+        else:
+            ary = dfs[0]
+        dfs = np.array_split(ary, override_num_blocks)
 
     from ray.air.util.data_batch_conversion import (
         _cast_ndarray_columns_to_tensor_extension,
     )
 
+    context = DataContext.get_current()
     if context.enable_tensor_extension_casting:
         dfs = [_cast_ndarray_columns_to_tensor_extension(df.copy()) for df in dfs]
 
