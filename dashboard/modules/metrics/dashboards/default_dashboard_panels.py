@@ -71,7 +71,19 @@ DEFAULT_GRAFANA_PANELS = [
         unit="actors",
         targets=[
             Target(
-                expr="sum(ray_actors{{{global_filters}}}) by (State)",
+                expr='sum(ray_actors{{Source="gcs",{global_filters}}}) by (State)',
+                legend="{{State}}",
+            )
+        ],
+    ),
+    Panel(
+        id=42,
+        title="Alive Actor State",
+        description="Current number of alive actors in a particular state.\n\nState: IDLE, RUNNING_TASK, RUNNING_IN_RAY_GET, RUNNING_IN_RAY_WAIT",
+        unit="actors",
+        targets=[
+            Target(
+                expr='sum(ray_actors{{Source="executor",{global_filters}}}) by (State)',
                 legend="{{State}}",
             )
         ],
@@ -83,7 +95,7 @@ DEFAULT_GRAFANA_PANELS = [
         unit="actors",
         targets=[
             Target(
-                expr='sum(ray_actors{{State!="DEAD",{global_filters}}}) by (Name)',
+                expr='sum(ray_actors{{State!="DEAD",Source="gcs",{global_filters}}}) by (Name)',
                 legend="{{Name}}",
             )
         ],

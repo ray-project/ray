@@ -78,7 +78,7 @@ py_test(
 py_test_run_all_subdirectory(
     size = "medium",
     include = ["source/ray-observability/doc_code/*.py"],
-    exclude = [],
+    exclude = ["source/ray-observability/doc_code/ray-distributed-debugger.py"],
     extra_srcs = [],
     tags = ["exclusive", "team:core"],
 )

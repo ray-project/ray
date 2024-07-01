@@ -81,6 +81,7 @@ def test_basic_states(shutdown_only):
     # Test creation states.
     expected = {
         "ALIVE": 3,
+        "IDLE": 3,
         "PENDING_CREATION": 1,
     }
     wait_for_condition(
@@ -94,6 +95,7 @@ def test_basic_states(shutdown_only):
     b.get.remote()
     c.wait.remote()
     expected = {
+        "ALIVE": 3,
         "RUNNING_TASK": 1,
         "RUNNING_IN_RAY_GET": 1,
         "RUNNING_IN_RAY_WAIT": 1,
@@ -123,6 +125,7 @@ def test_destroy_actors(shutdown_only):
 
     expected = {
         "ALIVE": 1,
+        "IDLE": 1,
         "DEAD": 2,
     }
     wait_for_condition(
@@ -137,6 +140,7 @@ def test_destroy_actors_from_driver(monkeypatch, shutdown_only):
     with monkeypatch.context() as m:
         # Dead actors are not cached.
         m.setenv("RAY_maximum_gcs_destroyed_actor_cached_count", 5)
+        m.setenv("RAY_WORKER_TIMEOUT_S", 5)
         driver = """
 import ray
 ray.init("auto")
@@ -218,6 +222,7 @@ def test_async_actor(shutdown_only):
     a = AsyncActor.remote()
     a.sleep.remote()
     expected = {
+        "ALIVE": 1,
         "RUNNING_TASK": 1,
     }
     wait_for_condition(
@@ -230,6 +235,7 @@ def test_async_actor(shutdown_only):
     a.do_get.remote()
     a.do_get.remote()
     expected = {
+        "ALIVE": 1,
         "RUNNING_IN_RAY_GET": 1,
     }
     wait_for_condition(
@@ -258,10 +264,11 @@ def test_tracking_by_name(shutdown_only):
     a = Actor1.remote()
     b = Actor2.remote()
 
-    # Test the GCS recorded case.
     expected = {
-        "Actor1": 1,
-        "Actor2": 1,
+        # one reported by gcs as ALIVE
+        # another reported by core worker as IDLE
+        "Actor1": 2,
+        "Actor2": 2,
     }
     wait_for_condition(
         lambda: actors_by_name(info) == expected,
@@ -269,15 +276,8 @@ def test_tracking_by_name(shutdown_only):
         retry_interval_ms=500,
     )
 
-    # Also test the core worker recorded case.
-    a.sleep.remote()
-    b.sleep.remote()
-    time.sleep(1)
-    wait_for_condition(
-        lambda: actors_by_name(info) == expected,
-        timeout=20,
-        retry_interval_ms=500,
-    )
+    del a
+    del b
 
 
 def test_get_all_actors_info(shutdown_only):
