@@ -456,7 +456,8 @@ def test_map_operator_shutdown(shutdown_only, use_actors):
     # Start one task and then cancel.
     op.start(ExecutionOptions())
     op.add_input(input_op.get_next(), 0)
-    wait_for_condition(lambda: op.num_active_tasks() == 1)
+    # num_active_tasks should be 0, because the actor cannot be started.
+    assert op.num_active_tasks() == 0
     op.shutdown()
 
     # Tasks/actors should be cancelled/killed.
