@@ -528,19 +528,6 @@ class Algorithm(Trainable, AlgorithmBase):
         self.evaluation_config: Optional[AlgorithmConfig] = None
         # Evaluation EnvRunnerGroup and metrics last returned by `self.evaluate()`.
         self.evaluation_workers: Optional[EnvRunnerGroup] = None
-        # Initialize common evaluation_metrics to nan, before they become
-        # available. We want to make sure the metrics are always present
-        # (although their values may be nan), so that Tune doesn't complain
-        # when we use these as stopping criteria.
-        self.evaluation_metrics = {
-            EVALUATION_RESULTS: {
-                ENV_RUNNER_RESULTS: {
-                    EPISODE_RETURN_MAX: np.nan,
-                    EPISODE_RETURN_MIN: np.nan,
-                    EPISODE_RETURN_MEAN: np.nan,
-                },
-            },
-        }
 
         super().__init__(
             config=config,
@@ -636,6 +623,7 @@ class Algorithm(Trainable, AlgorithmBase):
             num_env_runners=self.config.num_env_runners,
             local_env_runner=True,
             logdir=self.logdir,
+            tune_trial_id=self.trial_id,
         )
 
         # Compile, validate, and freeze an evaluation config.
@@ -662,6 +650,7 @@ class Algorithm(Trainable, AlgorithmBase):
                 config=self.evaluation_config,
                 num_env_runners=self.config.evaluation_num_env_runners,
                 logdir=self.logdir,
+                tune_trial_id=self.trial_id,
             )
 
         self.evaluation_dataset = None
@@ -836,8 +825,6 @@ class Algorithm(Trainable, AlgorithmBase):
             self.config.evaluation_interval
             and (self.iteration + 1) % self.config.evaluation_interval == 0
         )
-        evaluate_in_general = bool(self.config.evaluation_interval)
-
         # Results dict for training (and if appolicable: evaluation).
         train_results: ResultDict = {}
         eval_results: ResultDict = {}
@@ -872,19 +859,6 @@ class Algorithm(Trainable, AlgorithmBase):
         # Sequential: Train (already done above), then evaluate.
         if evaluate_this_iter and not self.config.evaluation_parallel_to_training:
             eval_results = self._run_one_evaluation(parallel_train_future=None)
-
-        # Attach latest available evaluation results to train results, if necessary.
-        if (
-            evaluate_in_general
-            and not evaluate_this_iter
-            and self.config.always_attach_evaluation_results
-        ):
-            if not isinstance(self.evaluation_metrics, dict):
-                raise ValueError(
-                    "Algorithm.evaluate() needs to return a ResultDict, but returned "
-                    f"{self.evaluation_metrics}!"
-                )
-            eval_results = self.evaluation_metrics
 
         # Sync EnvRunner workers.
         # TODO (sven): For the new API stack, the common execution pattern for any algo
@@ -1140,9 +1114,8 @@ class Algorithm(Trainable, AlgorithmBase):
     def _evaluate_on_local_env_runner(self, env_runner):
         if hasattr(env_runner, "input_reader") and env_runner.input_reader is None:
             raise ValueError(
-                "Cannot evaluate on a local worker (wether there is no evaluation "
-                "EnvRunnerGroup OR no remote evaluation workers) in the Algorithm or "
-                "w/o an environment on that local worker!\nTry one of the following:"
+                "Can't evaluate on a local worker if this local worker does not have "
+                "an environment!\nTry one of the following:"
                 "\n1) Set `evaluation_interval` > 0 to force creating a separate "
                 "evaluation EnvRunnerGroup.\n2) Set `create_env_on_driver=True` to "
                 "force the local (non-eval) EnvRunner to have an environment to "
@@ -3225,17 +3198,7 @@ class Algorithm(Trainable, AlgorithmBase):
                 "num_remote_worker_restarts"
             ] = self.evaluation_workers.num_remote_worker_restarts()
 
-        # Evaluation does not run for every step.
-        # Save evaluation metrics on Algorithm, so it can be attached to
-        # subsequent step results as latest evaluation result.
-        self.evaluation_metrics = {EVALUATION_RESULTS: eval_results}
-        # To make the old stack forward compatible with the new API stack metrics
-        # structure, we add everything under the new key (EVALUATION_RESULTS) as well as
-        # the old one ("evaluation").
-        if not self.config.enable_env_runner_and_connector_v2:
-            self.evaluation_metrics["evaluation"] = eval_results
-
-        return self.evaluation_metrics
+        return {EVALUATION_RESULTS: eval_results}
 
     def _run_one_training_iteration_and_evaluation_in_parallel(
         self,

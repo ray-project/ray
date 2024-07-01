@@ -103,14 +103,15 @@ class MutableObjectManager : public std::enable_shared_from_this<MutableObjectMa
   /// Checks if a channel is registered for an object.
   ///
   /// \param[in] object_id The ID of the object.
-  /// The return status. True if the channel is registered for object_id, false otherwise.
+  /// \return The return status. True if the channel is registered for object_id, false
+  ///         otherwise.
   bool ChannelRegistered(const ObjectID &object_id) { return GetChannel(object_id); }
 
   /// Checks if a reader channel is registered for an object.
   ///
   /// \param[in] object_id The ID of the object.
-  /// The return status. True if the channel is registered as a reader for object_id,
-  /// false otherwise.
+  /// \return The return status. True if the channel is registered as a reader for
+  ///         object_id, false otherwise.
   bool ReaderChannelRegistered(const ObjectID &object_id) {
     Channel *c = GetChannel(object_id);
     if (!c) {
@@ -122,8 +123,8 @@ class MutableObjectManager : public std::enable_shared_from_this<MutableObjectMa
   /// Checks if a writer channel is registered for an object.
   ///
   /// \param[in] object_id The ID of the object.
-  /// The return status. True if the channel is registered as a writer for object_id,
-  /// false otherwise.
+  /// \return The return status. True if the channel is registered as a writer for
+  ///         object_id, false otherwise.
   bool WriterChannelRegistered(const ObjectID &object_id) {
     Channel *c = GetChannel(object_id);
     if (!c) {
@@ -188,6 +189,18 @@ class MutableObjectManager : public std::enable_shared_from_this<MutableObjectMa
   /// an error on acquire.
   Status SetErrorAll();
 
+  /// Checks if the channel is closed.
+  ///
+  /// \param[in] object_id The ID of the object.
+  /// \return Status indicating whether the object (if a channel for it exists) has its
+  ///         error bit set (i.e., the channel is closed).
+  Status IsChannelClosed(const ObjectID &object_id);
+
+  /// Returns the channel for object_id. If no channel exists for object_id, returns
+  /// nullptr.
+  ///
+  /// \param[in] object_id The ID of the object.
+  /// \return The channel or nullptr.
   Channel *GetChannel(const ObjectID &object_id);
 
  private:

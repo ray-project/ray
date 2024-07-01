@@ -4,7 +4,7 @@ import logging
 import platform
 import queue
 import random
-from typing import Callable, List, Optional, Set, Tuple, Type, Union
+from typing import List, Optional, Set, Tuple, Type, Union
 
 import numpy as np
 import tree  # pip install dm_tree
@@ -28,6 +28,7 @@ from ray.rllib.utils.actor_manager import (
 )
 from ray.rllib.utils.actors import create_colocated_actors
 from ray.rllib.utils.annotations import OldAPIStack, override
+from ray.rllib.utils.deprecation import DEPRECATED_VALUE, deprecation_warning
 from ray.rllib.utils.metrics import (
     ALL_MODULES,
     ENV_RUNNER_RESULTS,
@@ -161,7 +162,6 @@ class ImpalaConfig(AlgorithmConfig):
         self.entropy_coeff_schedule = None
         self._separate_vf_optimizer = False  # @OldAPIstack
         self._lr_vf = 0.0005  # @OldAPIstack
-        self.after_train_step = None
 
         # Override some of AlgorithmConfig's default values with IMPALA-specific values.
         self.rollout_fragment_length = 50
@@ -218,7 +218,8 @@ class ImpalaConfig(AlgorithmConfig):
         entropy_coeff_schedule: Optional[List[List[Union[int, float]]]] = NotProvided,
         _separate_vf_optimizer: Optional[bool] = NotProvided,
         _lr_vf: Optional[float] = NotProvided,
-        after_train_step: Optional[Callable[[dict], None]] = NotProvided,
+        # Deprecated args.
+        after_train_step=DEPRECATED_VALUE,
         **kwargs,
     ) -> "ImpalaConfig":
         """Sets the training related configuration.
@@ -301,14 +302,15 @@ class ImpalaConfig(AlgorithmConfig):
                 algorithms (APPO, IMPALA) on the old API stack.
             _lr_vf: If _separate_vf_optimizer is True, define separate learning rate
                 for the value network.
-            after_train_step: Callback for APPO to use to update KL, target network
-                periodically. The input to the callback is the learner fetches dict.
 
         Returns:
             This updated AlgorithmConfig object.
         """
         # Pass kwargs onto super's `training()` method.
         super().training(**kwargs)
+
+        if after_train_step != DEPRECATED_VALUE:
+            deprecation_warning(old="config.training(after_train_step=...)", error=True)
 
         if vtrace is not NotProvided:
             self.vtrace = vtrace
@@ -368,8 +370,6 @@ class ImpalaConfig(AlgorithmConfig):
             self._separate_vf_optimizer = _separate_vf_optimizer
         if _lr_vf is not NotProvided:
             self._lr_vf = _lr_vf
-        if after_train_step is not NotProvided:
-            self.after_train_step = after_train_step
         if minibatch_size is not NotProvided:
             self._minibatch_size = minibatch_size
 
@@ -651,7 +651,7 @@ class Impala(Algorithm):
         if not self.config.enable_rl_module_and_learner:
             return self._training_step_old_api_stack()
 
-        do_async_updates = self.config.num_learner_workers > 0
+        do_async_updates = self.config.num_learners > 0
 
         # Asynchronously request all EnvRunners to sample and return their current
         # (e.g. ConnectorV2) states and sampling metrics/stats.

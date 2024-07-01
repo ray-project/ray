@@ -190,6 +190,10 @@ class TorchDDPRLModuleWithTargetNetworksInterface(
     RLModuleWithTargetNetworksInterface,
 ):
     @override(RLModuleWithTargetNetworksInterface)
+    def get_target_network_pairs(self, *args, **kwargs):
+        return self.module.get_target_network_pairs(*args, **kwargs)
+
+    @override(RLModuleWithTargetNetworksInterface)
     def sync_target_networks(self, *args, **kwargs):
         return self.module.sync_target_networks(*args, **kwargs)
 
