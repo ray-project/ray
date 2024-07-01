@@ -45,7 +45,7 @@ steps:
 
   - label: ":brain: rllib: learning tests pytorch"
     tags: rllib
-    parallelism: 3
+    parallelism: 4
     instance_type: large
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //rllib/... rllib 
@@ -107,7 +107,7 @@ steps:
     tags: 
       - rllib
       - gpu
-    parallelism: 2
+    parallelism: 3
     instance_type: gpu
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //rllib/... rllib 
@@ -199,6 +199,7 @@ steps:
     tags: 
       - rllib
       - gpu
+    parallelism: 2
     instance_type: gpu-large
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //rllib/... rllib 
@@ -209,6 +210,7 @@ steps:
     depends_on: rllibgpubuild
 
   - label: ":brain: rllib: flaky multi-gpu tests"
+    key: rllib_flaky_gpu_tests
     tags: 
       - rllib
       - skip-on-premerge
@@ -224,6 +226,7 @@ steps:
     soft_fail: true
 
   - label: ":brain: rllib: flaky tests (learning tests)"
+    key: rllib_flaky_tests_01
     tags: 
       - rllib
       - skip-on-premerge
@@ -252,6 +255,7 @@ steps:
     soft_fail: true
 
   - label: ":brain: rllib: flaky tests (examples/rlmodule/models/tests_dir)"
+    key: rllib_flaky_tests_02
     tags: 
       - rllib
       - skip-on-premerge
@@ -286,6 +290,7 @@ steps:
     soft_fail: true
 
   - label: ":brain: rllib: flaky tests (memory leak)"
+    key: rllib_flaky_tests_03
     tags: 
       - rllib
       - skip-on-premerge
