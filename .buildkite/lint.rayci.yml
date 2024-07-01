@@ -30,7 +30,7 @@ steps:
     job_env: oss-ci-base_build
     matrix:
       - api_annotations
-      - api_discrepancy
+      - api_policy_check data
 
   - label: ":lint-roller: lint: linkcheck"
     instance_type: medium

@@ -285,14 +285,15 @@ Status MutableObjectManager::ReadAcquire(const ObjectID &object_id,
         "Channel has not been registered (cannot get semaphores)");
   }
 
+  std::unique_ptr<plasma::MutableObject> &object = channel->mutable_object;
   // Check whether the channel has an error set before checking that we are the only
   // reader. If the channel is already closed, then it's OK to ReadAcquire and
   // ReadRelease in any order.
-  std::unique_ptr<plasma::MutableObject> &object = channel->mutable_object;
-  RAY_RETURN_NOT_OK(object->header->CheckHasError());
-  // The channel is still open. This lock ensures that there is only one reader
-  // at a time. The lock is released in `ReadRelease()`.
-  channel->lock->lock();
+  do {
+    RAY_RETURN_NOT_OK(object->header->CheckHasError());
+    // The channel is still open. This lock ensures that there is only one reader
+    // at a time. The lock is released in `ReadRelease()`.
+  } while (!channel->lock->try_lock());
   channel->reading = true;
 
   int64_t version_read = 0;
@@ -427,6 +428,15 @@ Status MutableObjectManager::SetErrorAll() {
   return ret;
 }
 
+Status MutableObjectManager::IsChannelClosed(const ObjectID &object_id) {
+  Channel *channel = GetChannel(object_id);
+  if (!channel) {
+    return Status::NotFound(
+        absl::StrFormat("Could not find channel for object ID %s.", object_id.Hex()));
+  }
+  return channel->mutable_object->header->CheckHasError();
+}
+
 #else  // defined(__APPLE__) || defined(__linux__)
 
 MutableObjectManager::~MutableObjectManager() {}
@@ -494,6 +504,10 @@ Status MutableObjectManager::SetErrorInternal(const ObjectID &object_id) {
 }
 
 Status MutableObjectManager::SetErrorAll() {
+  return Status::NotImplemented("Not supported on Windows.");
+}
+
+Status MutableObjectManager::IsChannelClosed(const ObjectID &object_id) {
   return Status::NotImplemented("Not supported on Windows.");
 }
 

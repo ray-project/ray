@@ -104,7 +104,7 @@ Pillow==9.2.0
 pkginfo==1.11.1
 platformdirs==3.11.0
 pluggy @ file:///tmp/build/80754af9/pluggy_1648024445381/work
-portalocker==2.8.2
+portalocker==2.10.0
 prometheus-client==0.19.0
 protobuf==3.20.3
 psutil==5.9.8
@@ -128,7 +128,7 @@ python-dotenv==1.0.1
 pytz==2022.7.1
 PyWavelets==1.5.0
 PyYAML==6.0.1
-ray @ file:///home/ray/ray-3.0.0.dev0-cp39-cp39-manylinux2014_x86_64.whl#sha256=27c93e51f2264e4cde8a9c1b61a65b54c075a67289c35bbe921256e3612c35ad
+ray @ file:///home/ray/ray-3.0.0.dev0-cp39-cp39-manylinux2014_x86_64.whl#sha256=40bf2df5b8c8682d339cc2876aff669e96872cd98c52defea63c6b698e528f23
 redis==3.5.3
 requests==2.31.0
 requests-oauthlib==2.0.0

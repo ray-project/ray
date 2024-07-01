@@ -277,7 +277,8 @@ inline bool IsTaskTerminated(const rpc::TaskEvents &task_event) {
   }
 
   const auto &state_updates = task_event.state_updates();
-  return state_updates.has_finished_ts() || state_updates.has_failed_ts();
+  return state_updates.state_ts().contains(rpc::TaskStatus::FINISHED) ||
+         state_updates.state_ts().contains(rpc::TaskStatus::FAILED);
 }
 
 inline size_t NumProfileEvents(const rpc::TaskEvents &task_event) {
@@ -308,7 +309,7 @@ inline bool IsTaskFinished(const rpc::TaskEvents &task_event) {
   }
 
   const auto &state_updates = task_event.state_updates();
-  return state_updates.has_finished_ts();
+  return state_updates.state_ts().contains(rpc::TaskStatus::FINISHED);
 }
 
 /// Fill the rpc::TaskStateUpdate with the timestamps according to the status change.
@@ -319,39 +320,11 @@ inline bool IsTaskFinished(const rpc::TaskEvents &task_event) {
 inline void FillTaskStatusUpdateTime(const ray::rpc::TaskStatus &task_status,
                                      int64_t timestamp,
                                      ray::rpc::TaskStateUpdate *state_updates) {
-  switch (task_status) {
-  case rpc::TaskStatus::PENDING_ARGS_AVAIL: {
-    state_updates->set_pending_args_avail_ts(timestamp);
-    break;
-  }
-  case rpc::TaskStatus::SUBMITTED_TO_WORKER: {
-    state_updates->set_submitted_to_worker_ts(timestamp);
-    break;
-  }
-  case rpc::TaskStatus::PENDING_NODE_ASSIGNMENT: {
-    state_updates->set_pending_node_assignment_ts(timestamp);
-    break;
-  }
-  case rpc::TaskStatus::FINISHED: {
-    state_updates->set_finished_ts(timestamp);
-    break;
-  }
-  case rpc::TaskStatus::FAILED: {
-    state_updates->set_failed_ts(timestamp);
-    break;
-  }
-  case rpc::TaskStatus::RUNNING: {
-    state_updates->set_running_ts(timestamp);
-    break;
-  }
-  case rpc::TaskStatus::NIL: {
+  if (task_status == rpc::TaskStatus::NIL) {
     // Not status change.
-    break;
+    return;
   }
-  default: {
-    UNREACHABLE;
-  }
-  }
+  (*state_updates->mutable_state_ts())[task_status] = timestamp;
 }
 
 inline std::string FormatPlacementGroupLabelName(const std::string &pg_id) {

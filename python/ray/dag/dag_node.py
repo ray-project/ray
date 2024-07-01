@@ -128,19 +128,20 @@ class DAGNode(DAGNodeBase):
 
     def experimental_compile(
         self,
-        buffer_size_bytes: Optional[int] = None,
+        _buffer_size_bytes: Optional[int] = None,
         enable_asyncio: bool = False,
-        async_max_queue_size: Optional[int] = None,
-        max_buffered_results: Optional[int] = None,
+        _asyncio_max_queue_size: Optional[int] = None,
+        _max_buffered_results: Optional[int] = None,
     ) -> "ray.dag.CompiledDAG":
         """Compile an accelerated execution path for this DAG.
 
         Args:
-            buffer_size_bytes: The maximum size of messages that can be passed
+            _buffer_size_bytes: The maximum size of messages that can be passed
                 between tasks in the DAG.
             enable_asyncio: Whether to enable asyncio for this DAG.
-            async_max_queue_size: The max queue size for the async execution.
-            max_buffered_results: The maximum number of execution results that
+            _asyncio_max_queue_size: The max queue size for the async execution.
+                It is only used when enable_asyncio=True.
+            _max_buffered_results: The maximum number of execution results that
                 are allowed to be buffered. Setting a higher value allows more
                 DAGs to be executed before `ray.get()` must be called but also
                 increases the memory usage. Note that if the number of ongoing
@@ -151,12 +152,22 @@ class DAGNode(DAGNodeBase):
         Returns:
             A compiled DAG.
         """
+        from ray.dag import DAGContext
+
+        ctx = DAGContext.get_current()
+        if _buffer_size_bytes is None:
+            _buffer_size_bytes = ctx.buffer_size_bytes
+        if _asyncio_max_queue_size is None:
+            _asyncio_max_queue_size = ctx.asyncio_max_queue_size
+        if _max_buffered_results is None:
+            _max_buffered_results = ctx.max_buffered_results
+
         return build_compiled_dag_from_ray_dag(
             self,
-            buffer_size_bytes,
+            _buffer_size_bytes,
             enable_asyncio,
-            async_max_queue_size,
-            max_buffered_results,
+            _asyncio_max_queue_size,
+            _max_buffered_results,
         )
 
     def execute(
