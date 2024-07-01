@@ -140,22 +140,35 @@ Status GcsClient::Connect(instrumented_io_context &io_service, int64_t timeout_m
                  << options_.gcs_port_;
 
   if (options_.cluster_id_.IsNil()) {
-    rpc::GetClusterIdRequest request;
-    rpc::GetClusterIdReply reply;
-    RAY_LOG(DEBUG) << "Cluster ID is nil, getting cluster ID from GCS server.";
-
-    Status s = gcs_rpc_client_->SyncGetClusterId(request, &reply, timeout_ms);
-    if (!s.ok()) {
-      RAY_LOG(WARNING) << "Failed to get cluster ID from GCS server: " << s;
-      gcs_rpc_client_->Shutdown();
-      gcs_rpc_client_.reset();
-      client_call_manager_.reset();
-      return s;
+    if (options_.fetch_cluster_id_if_nil_) {
+      RAY_RETURN_NOT_OK(FetchClusterId(timeout_ms));
+    } else {
+      RAY_LOG(WARNING)
+          << "GcsClient Cluster ID is nil, but not fetching from GCS server.";
     }
-    const auto reply_cluster_id = ClusterID::FromBinary(reply.cluster_id());
-    RAY_LOG(DEBUG) << "Retrieved cluster ID from GCS server: " << reply_cluster_id;
-    client_call_manager_->SetClusterId(reply_cluster_id);
   }
+  return Status::OK();
+}
+
+Status GcsClient::FetchClusterId(int64_t timeout_ms) {
+  if (!GetClusterId().IsNil()) {
+    return Status::OK();
+  }
+  rpc::GetClusterIdRequest request;
+  rpc::GetClusterIdReply reply;
+  RAY_LOG(DEBUG) << "Cluster ID is nil, getting cluster ID from GCS server.";
+
+  Status s = gcs_rpc_client_->SyncGetClusterId(request, &reply, timeout_ms);
+  if (!s.ok()) {
+    RAY_LOG(WARNING) << "Failed to get cluster ID from GCS server: " << s;
+    gcs_rpc_client_->Shutdown();
+    gcs_rpc_client_.reset();
+    client_call_manager_.reset();
+    return s;
+  }
+  const auto reply_cluster_id = ClusterID::FromBinary(reply.cluster_id());
+  RAY_LOG(DEBUG) << "Retrieved cluster ID from GCS server: " << reply_cluster_id;
+  client_call_manager_->SetClusterId(reply_cluster_id);
   return Status::OK();
 }
 
@@ -191,6 +204,8 @@ Status PythonGcsClient::Connect(int64_t timeout_ms, size_t num_retries) {
   node_info_stub_ = rpc::NodeInfoGcsService::NewStub(channel_);
   ClusterID cluster_id = options_.cluster_id_;
   if (cluster_id.IsNil()) {
+    RAY_CHECK(options_.fetch_cluster_id_if_nil_)
+        << "PythonGcsClient always fetches cluster ID from GCS server if not set.";
     size_t tries = num_retries + 1;
     RAY_CHECK(tries > 0) << "Expected positive retries, but got " << tries;
 

@@ -62,7 +62,8 @@ void ProcessHelper::StopRayNode() {
 
 std::unique_ptr<ray::gcs::GlobalStateAccessor> ProcessHelper::CreateGlobalStateAccessor(
     const std::string &gcs_address) {
-  ray::gcs::GcsClientOptions client_options(gcs_address);
+  ray::gcs::GcsClientOptions client_options(
+      gcs_address, ClusterID::Nil(), /*fetch_cluster_id_if_nil=*/true);
   auto global_state_accessor =
       std::make_unique<ray::gcs::GlobalStateAccessor>(client_options);
   RAY_CHECK(global_state_accessor->Connect()) << "Failed to connect to GCS.";

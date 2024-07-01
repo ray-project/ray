@@ -42,16 +42,19 @@ namespace gcs {
 /// password.
 class GcsClientOptions {
  public:
-  GcsClientOptions(const std::string gcs_address,
+  GcsClientOptions(const std::string &gcs_address,
                    int port,
-                   const ClusterID &cluster_id = ClusterID::Nil())
-      : gcs_address_(gcs_address), gcs_port_(port), cluster_id_(cluster_id) {}
+                   const ClusterID &cluster_id,
+                   bool fetch_cluster_id_if_nil)
+      : gcs_address_(gcs_address),
+        gcs_port_(port),
+        cluster_id_(cluster_id),
+        fetch_cluster_id_if_nil_(fetch_cluster_id_if_nil) {}
 
   /// Constructor of GcsClientOptions from gcs address
   ///
   /// \param gcs_address gcs address, including port
-  GcsClientOptions(const std::string &gcs_address,
-                   const ClusterID &cluster_id = ClusterID::Nil())
+  GcsClientOptions(const std::string &gcs_address, const ClusterID &cluster_id)
       : cluster_id_(cluster_id) {
     std::vector<std::string> address = absl::StrSplit(gcs_address, ':');
     RAY_LOG(DEBUG) << "Connect to gcs server via address: " << gcs_address;
@@ -66,6 +69,7 @@ class GcsClientOptions {
   std::string gcs_address_;
   int gcs_port_ = 0;
   ClusterID cluster_id_;
+  bool fetch_cluster_id_if_nil_;
 };
 
 /// \class GcsClient
@@ -209,6 +213,10 @@ class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient> {
   std::unique_ptr<AutoscalerStateAccessor> autoscaler_state_accessor_;
 
  private:
+  /// If client_call_manager_ does not have a cluster ID, fetches it from GCS. The
+  /// fetched cluster ID is set to client_call_manager_.
+  Status FetchClusterId(int64_t timeout_ms);
+
   const UniqueID gcs_client_id_ = UniqueID::FromRandom();
 
   std::unique_ptr<GcsSubscriber> gcs_subscriber_;

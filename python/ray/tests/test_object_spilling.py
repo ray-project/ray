@@ -62,7 +62,7 @@ def is_dir_empty(temp_folder, node_id, append_path=True):
 
 def assert_no_thrashing(address):
     state = ray._private.state.GlobalState()
-    options = GcsClientOptions.create(address)
+    options = GcsClientOptions.from_gcs_address(address)
     state._initialize_global_state(options)
     summary = memory_summary(address=address, stats_only=True)
     restored_bytes = 0

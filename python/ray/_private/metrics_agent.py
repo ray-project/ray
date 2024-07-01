@@ -605,7 +605,7 @@ class PrometheusServiceDiscoveryWriter(threading.Thread):
     """
 
     def __init__(self, gcs_address, temp_dir):
-        gcs_client_options = ray._raylet.GcsClientOptions.create(gcs_address)
+        gcs_client_options = ray._raylet.GcsClientOptions.from_gcs_address(gcs_address)
         self.gcs_address = gcs_address
 
         ray._private.state.state._initialize_global_state(gcs_client_options)
