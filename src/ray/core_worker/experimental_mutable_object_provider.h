@@ -131,6 +131,18 @@ class MutableObjectProvider {
   /// \param[in] object_id The ID of the object.
   Status SetError(const ObjectID &object_id);
 
+  /// Returns the current status of the channel for the object. Possible statuses are:
+  /// 1. Status::OK()
+  //     - The channel is registered and open.
+  /// 2. Status::ChannelError()
+  ///    - The channel was registered and previously open, but is now closed.
+  /// 3. Status::NotFound()
+  ///    - No channel exists for this object.
+  ///
+  /// \param[in] object_id The ID of the object.
+  /// \return Current status of the channel.
+  Status GetChannelStatus(const ObjectID &object_id);
+
  private:
   struct LocalReaderInfo {
     int64_t num_readers;
