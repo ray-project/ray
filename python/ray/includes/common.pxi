@@ -54,7 +54,6 @@ cdef class GcsClientOptions:
             raise ValueError(f"Invalid gcs_address: {gcs_address}")
         return self
 
-
     cdef CGcsClientOptions* native(self):
         return <CGcsClientOptions*>(self.inner.get())
 
