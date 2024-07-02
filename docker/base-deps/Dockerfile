@@ -38,6 +38,9 @@ RUN sudo apt-get update -y && sudo apt-get upgrade -y \
         wget \
         cmake \
         g++ \ 
+        libssl-dev \
+        build-essential \
+        pkg-config \
         zlib1g-dev \
         $(if [ "$AUTOSCALER" = "autoscaler" ]; then echo \
         tmux \
@@ -66,10 +69,7 @@ RUN sudo apt-get update -y && sudo apt-get upgrade -y \
     # AttributeError: 'numpy.ufunc' object has no attribute '__module__'
     && $HOME/anaconda3/bin/pip uninstall -y dask \ 
     # We install cmake temporarily to get psutil
-    && sudo apt-get autoremove -y cmake zlib1g-dev \
-        # We keep g++ on GPU images, because uninstalling removes CUDA Devel tooling
-        $(if [[ "$BASE_IMAGE" == "ubuntu:22.04" && "$HOSTTYPE" == "x86_64" ]]; then echo \
-        g++; fi) \
+    && sudo apt-get autoremove -y cmake \
     && sudo rm -rf /var/lib/apt/lists/* \
     && sudo apt-get clean \
     && (if [ "$AUTOSCALER" = "autoscaler" ]; \
@@ -89,4 +89,24 @@ RUN sudo apt-get update -y && sudo apt-get upgrade -y \
         "msrestazure==0.6.4"; \
     fi;)
 
+# RUN mkdir /tmp/cmake \
+#     && cd /tmp/cmake \
+#     && wget https://cmake.org/files/v3.29/cmake-3.29.6.tar.gz \
+#     && tar -xzvf cmake-3.29.6.tar.gz \
+#     && cd cmake-3.29.6/ \
+#     && ./bootstrap && make -j4 && sudo make install \
+#     && cmake --version
+#
+#     # install mimalloc
+# RUN cd /tmp \
+#     && git clone https://github.com/microsoft/mimalloc.git \
+#     && cd mimalloc \
+#     && mkdir -p out/release \
+#     && cd out/release \
+#     && cmake ../.. \
+#     && make \
+#     && sudo make install
+
+ENV LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so:$LD_PRELOAD
+# ENV LD_PRELOAD=/usr/local/lib/libmimalloc.so:$LD_PRELOAD
 WORKDIR $HOME
