@@ -85,6 +85,23 @@ def test_get_internal_block_refs(ray_start_regular_shared):
     assert out == list(range(10)), out
 
 
+def test_iter_internal_block_refs(ray_start_regular_shared):
+    n = 10
+    iter_block_refs = ray.data.range(
+        n, override_num_blocks=n
+    ).iter_internal_block_refs()
+
+    out = []
+    block_ref_count = 0
+    for block_ref in iter_block_refs:
+        b = ray.get(block_ref)
+        out.extend(extract_values("id", BlockAccessor.for_block(b).iter_rows(True)))
+        block_ref_count += 1
+    out = sorted(out)
+    assert block_ref_count == n
+    assert out == list(range(n)), out
+
+
 def test_fsspec_filesystem(ray_start_regular_shared, tmp_path):
     """Same as `test_parquet_write` but using a custom, fsspec filesystem.
 
