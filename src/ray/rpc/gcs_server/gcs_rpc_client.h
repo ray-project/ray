@@ -241,7 +241,7 @@ class GcsRpcClient {
           callback(status, reply);
         }
         delete executor;
-      } else if (!status.IsRpcError()) {
+      } else if (!IsGrpcRetryableStatus(status)) {
         callback(status, reply);
         delete executor;
       } else {

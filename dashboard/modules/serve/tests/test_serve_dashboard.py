@@ -4,6 +4,7 @@ import re
 import os
 import sys
 from typing import Dict
+import importlib
 
 import pytest
 import requests
@@ -661,6 +662,8 @@ def test_get_applications_while_gcs_down(
 ):
     # Test serve REST API availability when the GCS is down.
     monkeypatch.setenv("RAY_SERVE_KV_TIMEOUT_S", "3")
+    importlib.reload(ray.serve._private.constants)  # to reload the constants set above
+
     serve.start(detached=True)
 
     get_response = requests.get(url, timeout=15)

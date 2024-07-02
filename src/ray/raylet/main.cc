@@ -193,10 +193,10 @@ int main(int argc, char *argv[]) {
 
   // Initialize gcs client
   std::shared_ptr<ray::gcs::GcsClient> gcs_client;
-  ray::gcs::GcsClientOptions client_options(FLAGS_gcs_address);
+  ray::gcs::GcsClientOptions client_options(FLAGS_gcs_address, cluster_id);
   gcs_client = std::make_shared<ray::gcs::GcsClient>(client_options);
 
-  RAY_CHECK_OK(gcs_client->Connect(main_service, cluster_id));
+  RAY_CHECK_OK(gcs_client->Connect(main_service));
   std::unique_ptr<ray::raylet::Raylet> raylet;
 
   // Enable subreaper. This is called in `AsyncGetInternalConfig` below, but MSVC does

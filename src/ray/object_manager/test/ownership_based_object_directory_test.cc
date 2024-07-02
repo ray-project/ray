@@ -101,8 +101,7 @@ class MockGcsClient : public gcs::GcsClient {
     return *node_accessor_;
   }
 
-  MOCK_METHOD2(Connect,
-               Status(instrumented_io_context &io_service, const ClusterID &cluster_id));
+  MOCK_METHOD2(Connect, Status(instrumented_io_context &io_service, int64_t timeout_ms));
 
   MOCK_METHOD0(Disconnect, void());
 };
