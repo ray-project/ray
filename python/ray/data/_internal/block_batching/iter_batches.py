@@ -21,6 +21,11 @@ from ray.data.block import Block, BlockMetadata, DataBatch
 from ray.data.context import DataContext
 from ray.types import ObjectRef
 
+# The number of threads to resolve blocks object references.
+# NOTE: Keep this value low to avoid bring too many blocks to heap memory,
+# which would cause OOM.
+NUM_THREADS_RESOLVE_BLOCK_REF = 1
+
 
 def iter_batches(
     block_refs: Iterator[Tuple[ObjectRef[Block], BlockMetadata]],
@@ -133,7 +138,11 @@ def iter_batches(
         )
 
         # Step 2: Resolve the blocks.
-        block_iter = resolve_block_refs(block_ref_iter=block_refs, stats=stats)
+        block_iter = resolve_block_refs(
+            block_ref_iter=block_refs,
+            stats=stats,
+            num_threadpool_workers=NUM_THREADS_RESOLVE_BLOCK_REF,
+        )
 
         # Step 3: Batch and shuffle the resolved blocks.
         batch_iter = blocks_to_batches(
