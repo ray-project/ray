@@ -414,6 +414,17 @@ class MapOperator(OneToOneOperator, ABC):
     def supports_fusion(self) -> bool:
         return self._supports_fusion
 
+    def num_active_tasks(self) -> int:
+        # Override `num_active_tasks` to only include data tasks and exclude
+        # metadata tasks, which are used by the actor-pool map operator to
+        # check if a newly created actor is ready.
+        # The reasons are because:
+        # 1. `PhysicalOperator.completed` checks `num_active_tasks`. The operator
+        #   should be considered completed if there are still pending actors.
+        # 2. The number of active tasks in the progress bar will be more accurate
+        #   to reflect the actual data processing tasks.
+        return len(self._data_tasks)
+
 
 def _map_task(
     map_transformer: MapTransformer,
