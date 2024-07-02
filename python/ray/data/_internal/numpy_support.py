@@ -83,7 +83,7 @@ def convert_udf_returns_to_numpy(udf_return_col: Any) -> Any:
             for e in udf_return_col:
                 if isinstance(e, np.ndarray):
                     shapes.add((e.dtype, e.shape))
-                elif isinstance(e, bytes):
+                elif isinstance(e, (bytes, str)):
                     # Don't convert variable length binary data to Numpy arrays as it
                     # treats zero encoding as termination by default.
                     # Per recommendation from
@@ -97,7 +97,11 @@ def convert_udf_returns_to_numpy(udf_return_col: Any) -> Any:
                 # This util works around some limitations of np.array(dtype=object).
                 udf_return_col = create_ragged_ndarray(udf_return_col)
             else:
-                udf_return_col = np.array(udf_return_col)
+                try:
+                    udf_return_col = np.array(udf_return_col)
+                except ValueError as e:
+                    # (Python) objects
+                    udf_return_col = np.array(udf_return_col, dtype=np.dtype('O'))
         except Exception as e:
             raise ValueError(
                 "Failed to convert column values to numpy array: "
