@@ -63,6 +63,10 @@ class GcsJobManager : public rpc::JobInfoHandler {
                              rpc::MarkJobFinishedReply *reply,
                              rpc::SendReplyCallback send_reply_callback) override;
 
+  void HandleDeleteJob(rpc::DeleteJobRequest request,
+                       rpc::DeleteJobReply *reply,
+                       rpc::SendReplyCallback send_reply_callback) override;
+
   void HandleGetAllJobInfo(rpc::GetAllJobInfoRequest request,
                            rpc::GetAllJobInfoReply *reply,
                            rpc::SendReplyCallback send_reply_callback) override;

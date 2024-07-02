@@ -28,6 +28,14 @@ message AddJobReply {
   GcsStatus status = 1;
 }
 
+message DeleteJobRequest {
+  bytes job_id = 1;
+}
+
+message DeleteJobReply {
+  GcsStatus status = 1;
+}
+
 message MarkJobFinishedRequest {
   bytes job_id = 1;
 }
@@ -63,6 +71,8 @@ message GetNextJobIDReply {
 service JobInfoGcsService {
   // Add job to GCS Service.
   rpc AddJob(AddJobRequest) returns (AddJobReply);
+  // Delete job to GCS Service.
+  rpc DeleteJob(DeleteJobRequest) returns (DeleteJobReply);
   // Mark job as finished to GCS Service.
   rpc MarkJobFinished(MarkJobFinishedRequest) returns (MarkJobFinishedReply);
   // Get information of all jobs from GCS Service.
