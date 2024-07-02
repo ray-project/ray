@@ -1,5 +1,8 @@
 # Production requirements. This is what readthedocs.com picks up
 
+# Required to build the docs on 3.12 due to pkg_resources deprecation
+setuptools>=70.0.0
+
 # Syntax highlighting
 Pygments==2.16.1
 
