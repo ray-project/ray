@@ -265,7 +265,10 @@ const LogVirtualView: React.FC<LogVirtualViewProps> = ({
           },
         }}
         onClick={() => {
-          handleLogLineClick(formattedLogLine, message);
+          if ((window.getSelection()?.toString().length ?? 0) === 0) {
+            // Only open if user is not selecting text
+            handleLogLineClick(formattedLogLine, message);
+          }
         }}
       >
         {low
