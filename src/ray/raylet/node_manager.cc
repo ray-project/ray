@@ -492,6 +492,12 @@ ray::Status NodeManager::RegisterGcs() {
   RAY_RETURN_NOT_OK(
       gcs_client_->Jobs().AsyncSubscribeAll(job_subscribe_handler, nullptr));
 
+  RAY_RETURN_NOT_OK(gcs_client_->Actors().AsyncSubscribeAll(
+      [this](const ActorID &actor_id, const rpc::ActorTableData &actor_data) {
+        HandleActorUpdate(actor_id, actor_data);
+      },
+      nullptr));
+
   periodical_runner_.RunFnPeriodically(
       [this] {
         DumpDebugState();
@@ -617,20 +623,13 @@ void NodeManager::HandleJobStarted(const JobID &job_id, const JobTableData &job_
   cluster_task_manager_->ScheduleAndDispatchTasks();
 }
 
-void NodeManager::HandleJobFinished(const JobID &job_id, const JobTableData &job_data) {
-  RAY_LOG(DEBUG) << "HandleJobFinished " << job_id;
-  RAY_CHECK(job_data.is_dead());
+void NodeManager::KillLeasedWorkersByPredicate(
+    std::function<bool(const WorkerInterface &)> predicate) {
   // Force kill all the worker processes belonging to the finished job
   // so that no worker processes is leaked.
   for (const auto &pair : leased_workers_) {
     auto &worker = pair.second;
-    RAY_CHECK(!worker->GetAssignedJobId().IsNil());
-    if (worker->GetRootDetachedActorId().IsNil() &&
-        (worker->GetAssignedJobId() == job_id)) {
-      // Don't kill worker processes belonging to the detached actor
-      // since those are expected to outlive the job.
-      RAY_LOG(INFO) << "The leased worker " << worker->WorkerId()
-                    << " is killed because the job " << job_id << " finished.";
+    if (predicate(*worker)) {
       rpc::ExitRequest request;
       request.set_force_exit(true);
       worker->rpc_client()->Exit(
@@ -645,7 +644,40 @@ void NodeManager::HandleJobFinished(const JobID &job_id, const JobTableData &job
           });
     }
   }
+}
+void NodeManager::HandleJobFinished(const JobID &job_id, const JobTableData &job_data) {
+  RAY_LOG(DEBUG) << "HandleJobFinished " << job_id;
+  RAY_CHECK(job_data.is_dead());
+  KillLeasedWorkersByPredicate([job_id](const WorkerInterface &worker) {
+    RAY_CHECK(!worker.GetAssignedJobId().IsNil());
+    bool should_kill =
+        worker.GetRootDetachedActorId().IsNil() && (worker.GetAssignedJobId() == job_id);
+    if (should_kill) {
+      RAY_LOG(INFO) << "The leased worker " << worker.WorkerId()
+                    << " is killed because the job " << job_id << " finished.";
+    }
+    return should_kill;
+  });
   worker_pool_.HandleJobFinished(job_id);
+}
+
+void NodeManager::HandleActorUpdate(const ActorID &actor_id,
+                                    const rpc::ActorTableData &actor_data) {
+  // If the actor is detached and dead, kill all its transitive children.
+  // Running workers are in the leased_workers_, while idle workers are in the
+  // worker_pool_.
+  if (actor_data.is_detached() && actor_data.state() == rpc::ActorTableData::DEAD) {
+    KillLeasedWorkersByPredicate([actor_id](const WorkerInterface &worker) {
+      bool should_kill = worker.GetRootDetachedActorId() == actor_id;
+      if (should_kill) {
+        RAY_LOG(INFO) << "The leased worker " << worker.WorkerId()
+                      << " is killed because the root detached actor " << actor_id
+                      << " is dead.";
+      }
+      return should_kill;
+    });
+    worker_pool_.OnDetachedActorDied(actor_id);
+  }
 }
 
 void NodeManager::DoLocalGC(bool triggered_by_global_gc) {

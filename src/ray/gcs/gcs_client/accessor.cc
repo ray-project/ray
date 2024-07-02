@@ -404,10 +404,26 @@ void ActorInfoAccessor::AsyncResubscribe() {
       }
     }));
   }
+  if (subscribe_all_operation_) {
+    RAY_CHECK_OK(subscribe_all_operation_(nullptr));
+  }
 }
 
 bool ActorInfoAccessor::IsActorUnsubscribed(const ActorID &actor_id) {
   return client_impl_->GetGcsSubscriber().IsActorUnsubscribed(actor_id);
+}
+
+Status ActorInfoAccessor::AsyncSubscribeAll(
+    const SubscribeCallback<ActorID, rpc::ActorTableData> &subscribe,
+    const StatusCallback &done) {
+  RAY_LOG(DEBUG) << "Subscribing update operations of all actors.";
+  RAY_CHECK(subscribe) << "subcribe callback must not be empty.";
+
+  absl::MutexLock lock(&mutex_);
+  subscribe_all_operation_ = [this, subscribe](const StatusCallback &done) {
+    return client_impl_->GetGcsSubscriber().SubscribeAllActors(subscribe, done);
+  };
+  return subscribe_all_operation_(done);
 }
 
 NodeInfoAccessor::NodeInfoAccessor(GcsClient *client_impl) : client_impl_(client_impl) {}
