@@ -623,6 +623,7 @@ class Algorithm(Trainable, AlgorithmBase):
             num_env_runners=self.config.num_env_runners,
             local_env_runner=True,
             logdir=self.logdir,
+            tune_trial_id=self.trial_id,
         )
 
         # Compile, validate, and freeze an evaluation config.
@@ -649,6 +650,7 @@ class Algorithm(Trainable, AlgorithmBase):
                 config=self.evaluation_config,
                 num_env_runners=self.config.evaluation_num_env_runners,
                 logdir=self.logdir,
+                tune_trial_id=self.trial_id,
             )
 
         self.evaluation_dataset = None
@@ -1112,9 +1114,8 @@ class Algorithm(Trainable, AlgorithmBase):
     def _evaluate_on_local_env_runner(self, env_runner):
         if hasattr(env_runner, "input_reader") and env_runner.input_reader is None:
             raise ValueError(
-                "Cannot evaluate on a local worker (wether there is no evaluation "
-                "EnvRunnerGroup OR no remote evaluation workers) in the Algorithm or "
-                "w/o an environment on that local worker!\nTry one of the following:"
+                "Can't evaluate on a local worker if this local worker does not have "
+                "an environment!\nTry one of the following:"
                 "\n1) Set `evaluation_interval` > 0 to force creating a separate "
                 "evaluation EnvRunnerGroup.\n2) Set `create_env_on_driver=True` to "
                 "force the local (non-eval) EnvRunner to have an environment to "

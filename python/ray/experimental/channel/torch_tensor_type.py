@@ -19,19 +19,6 @@ logger = logging.getLogger(__name__)
 TENSOR_METADATA_SIZE_BYTES = 100_000
 
 
-def _get_default_torch_device() -> "torch.device":
-    from ray.air._internal import torch_utils
-
-    if not ray.get_gpu_ids():
-        import torch
-
-        # torch_utils defaults to returning GPU 0 if no GPU IDs were assigned
-        # by Ray. We instead want the default to be CPU.
-        return torch.device("cpu")
-
-    return torch_utils.get_devices()[0]
-
-
 @PublicAPI(stability="alpha")
 class TorchTensorType(ChannelOutputType):
     AUTO = "auto"
@@ -39,10 +26,10 @@ class TorchTensorType(ChannelOutputType):
 
     def __init__(
         self,
-        shape: Union[int, Tuple[int], str] = AUTO,
-        dtype: "torch.dtype" = AUTO,
+        _shape: Union[int, Tuple[int], str] = AUTO,
+        _dtype: "torch.dtype" = AUTO,
         transport: Optional[str] = AUTO,
-        direct_return: Optional[bool] = False,
+        _direct_return: Optional[bool] = False,
     ):
         """
         A type hint that can be used to annotate DAG nodes that return a
@@ -55,7 +42,7 @@ class TorchTensorType(ChannelOutputType):
         using ray.util.serialization.deregister_serializer(torch.Tensor).
 
         Args:
-            shape: The expected shape of the torch.Tensor. "auto" (default)
+            _shape: The expected shape of the torch.Tensor. "auto" (default)
                 means that the shape will be dynamically inferred. For tensors
                 passed via host memory (default), the shape is a hint for the
                 maximum size of the tensor. If a DAG node's returned serialized
@@ -64,27 +51,27 @@ class TorchTensorType(ChannelOutputType):
                 shape; if it does not match, the task will error. Specifying
                 the shape and dtype ahead of time will eliminate the
                 performance overhead from an additional metadata transfer.
-            dtype: The expected dtype of the torch.Tensor. Similar to the
+            _dtype: The expected dtype of the torch.Tensor. Similar to the
                 shape, this may be statically or dynamically declared.
             transport: "auto" (default) means that tensors will be passed via
                 host memory, using numpy as the serialization format. Pass
                 TorchTensorType.NCCL or "nccl" to use NCCL instead, avoiding
                 the host memory copy.
-            direct_return: Whether the tensor is sent directly or inside of
+            _direct_return: Whether the tensor is sent directly or inside of
                 other data. If a non-default `transport` is used, this allows
                 the sender and receiver to eliminate performance overhead from
                 an additional data transfer.
         """
         super().__init__()
 
-        if isinstance(shape, str):
-            shape = shape.lower()
-        if isinstance(dtype, str):
-            dtype = dtype.lower()
+        if isinstance(_shape, str):
+            _shape = _shape.lower()
+        if isinstance(_dtype, str):
+            _dtype = _dtype.lower()
 
-        self.shape = shape
-        self.dtype = dtype
-        self.direct_return = direct_return
+        self._shape = _shape
+        self._dtype = _dtype
+        self._direct_return = _direct_return
 
         if transport not in [self.AUTO, self.NCCL]:
             raise ValueError(
@@ -94,15 +81,15 @@ class TorchTensorType(ChannelOutputType):
 
         self._nccl_group_id: Optional[str] = None
 
-        if self.direct_return and self.transport == self.AUTO:
+        if self._direct_return and self.transport == self.AUTO:
             logger.info(
-                "TorchTensorType(direct_return=True) has no effect when "
+                "TorchTensorType(_direct_return=True) has no effect when "
                 "`transport` is TorchTensorType.AUTO (default)."
             )
 
     @property
     def is_direct_return(self) -> bool:
-        return self.direct_return
+        return self._direct_return
 
     def register_custom_serializer(self) -> None:
         super().register_custom_serializer()
@@ -164,14 +151,14 @@ class TorchTensorType(ChannelOutputType):
             torch.double: 8,
         }
 
-        shape = self.shape
+        shape = self._shape
         if isinstance(shape, int):
             shape = (shape,)
 
         num_elements = 1
         for dim in shape:
             num_elements *= dim
-        element_size_bytes = TORCH_DTYPE_ITEMSIZE_MAP[self.dtype]
+        element_size_bytes = TORCH_DTYPE_ITEMSIZE_MAP[self._dtype]
         buffer_size_bytes = int(num_elements * element_size_bytes)
         buffer_size_bytes += TENSOR_METADATA_SIZE_BYTES
 

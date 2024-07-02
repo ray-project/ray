@@ -129,6 +129,10 @@ class MultiAgentRLModule(RLModule):
         """Returns a keys view over the module IDs in this MultiAgentRLModule."""
         return self._rl_modules.keys()
 
+    def __len__(self) -> int:
+        """Returns the number of RLModules within this MultiAgentRLModule."""
+        return len(self._rl_modules)
+
     @override(RLModule)
     def as_multi_agent(self) -> "MultiAgentRLModule":
         """Returns a multi-agent wrapper around this module.

@@ -7,7 +7,7 @@ import time
 
 import pytest
 
-from ray.exceptions import RayTaskError, RayChannelError
+from ray.exceptions import RayChannelError
 import ray
 from ray.air._internal import torch_utils
 import ray.cluster_utils
@@ -88,8 +88,8 @@ def test_torch_tensor_p2p(ray_start_regular):
     with InputNode() as inp:
         dag = sender.send.bind(shape, dtype, inp)
         # TODO(swang): Test that we are using the minimum number of
-        # channels/messages when direct_return=True.
-        dag = dag.with_type_hint(TorchTensorType(shape, dtype, direct_return=True))
+        # channels/messages when _direct_return=True.
+        dag = dag.with_type_hint(TorchTensorType(shape, dtype, _direct_return=True))
         dag = receiver.recv.bind(dag)
 
     compiled_dag = dag.experimental_compile()
@@ -104,8 +104,8 @@ def test_torch_tensor_p2p(ray_start_regular):
     with InputNode() as inp:
         dag = sender.send.bind(shape, dtype, inp)
         # TODO(swang): Test that we are using the minimum number of
-        # channels/messages when direct_return=True.
-        dag = dag.with_type_hint(TorchTensorType((20,), dtype, direct_return=True))
+        # channels/messages when _direct_return=True.
+        dag = dag.with_type_hint(TorchTensorType((20,), dtype, _direct_return=True))
         dag = receiver.recv.bind(dag)
     compiled_dag = dag.experimental_compile()
     for i in range(3):
@@ -115,14 +115,14 @@ def test_torch_tensor_p2p(ray_start_regular):
     compiled_dag.teardown()
 
     # Passing a torch.tensor inside of other data is okay even if
-    # direct_return=True, if `transport` is not set.
+    # _direct_return=True, if `transport` is not set.
     with InputNode() as inp:
         dag = sender.send_dict_with_tuple_args.bind(inp)
         dag = dag.with_type_hint(
             TorchTensorType(
-                shape=shape,
-                dtype=dtype,
-                direct_return=True,
+                _shape=shape,
+                _dtype=dtype,
+                _direct_return=True,
             )
         )
         dag = receiver.recv_dict.bind(dag)
@@ -151,9 +151,9 @@ def test_torch_tensor_as_dag_input(ray_start_regular):
     # Test torch.Tensor as input.
     with InputNode() as inp:
         # TODO(swang): Test that we are using the minimum number of
-        # channels/messages when direct_return=True.
+        # channels/messages when _direct_return=True.
         torch_inp = inp.with_type_hint(
-            TorchTensorType(shape, dtype, direct_return=True)
+            TorchTensorType(shape, dtype, _direct_return=True)
         )
         dag = receiver.recv.bind(torch_inp)
 
@@ -192,9 +192,9 @@ def test_torch_tensor_nccl(ray_start_regular):
     with InputNode() as inp:
         dag = sender.send.bind(shape, dtype, inp)
         # TODO(swang): Test that we are using the minimum number of
-        # channels/messages when direct_return=True.
+        # channels/messages when _direct_return=True.
         dag = dag.with_type_hint(
-            TorchTensorType(shape, dtype, transport="nccl", direct_return=True)
+            TorchTensorType(shape, dtype, transport="nccl", _direct_return=True)
         )
         dag = receiver.recv.bind(dag)
 
@@ -257,8 +257,8 @@ def test_torch_tensor_nccl_dynamic(ray_start_regular):
     with InputNode() as inp:
         dag = sender.send_with_tuple_args.bind(inp)
         # TODO(swang): Test that we are using the minimum number of
-        # channels/messages when direct_return=True.
-        dag = dag.with_type_hint(TorchTensorType(transport="nccl", direct_return=True))
+        # channels/messages when _direct_return=True.
+        dag = dag.with_type_hint(TorchTensorType(transport="nccl", _direct_return=True))
         dag = receiver.recv.bind(dag)
 
     compiled_dag = dag.experimental_compile()
@@ -350,7 +350,7 @@ def test_torch_tensor_nccl_nested(ray_start_regular):
     with InputNode() as inp:
         dag = sender.send_dict_with_tuple_args.bind(inp)
         dag = dag.with_type_hint(
-            TorchTensorType(shape=shape, dtype=dtype, transport="nccl")
+            TorchTensorType(_shape=shape, _dtype=dtype, transport="nccl")
         )
         dag = receiver.recv_dict.bind(dag)
 
@@ -424,14 +424,14 @@ def test_torch_tensor_nccl_direct_return_error(ray_start_regular):
     shape = (10,)
     dtype = torch.float16
 
-    # Passing a non-tensor value when direct_return=True and tranport="nccl"
+    # Passing a non-tensor value when _direct_return=True and tranport="nccl"
     # fails.
     with InputNode() as inp:
         dag = sender.send.bind(inp.shape, inp.dtype, inp.value, inp.send_tensor)
         dag = dag.with_type_hint(
             TorchTensorType(
                 transport=TorchTensorType.NCCL,
-                direct_return=True,
+                _direct_return=True,
             )
         )
         dag = receiver.recv.bind(dag)
@@ -508,9 +508,8 @@ def test_torch_tensor_exceptions(ray_start_regular):
         value=i,
         raise_exception=True,
     )
-    with pytest.raises(RayTaskError) as exc_info:
+    with pytest.raises(RuntimeError):
         ray.get(ref)
-    assert isinstance(exc_info.value.as_instanceof_cause(), RuntimeError)
 
     # If using dynamic shape or dtype is used and direct_return=False, then the
     # DAG should still be usable after application-level exceptions.

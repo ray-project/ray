@@ -12,12 +12,13 @@ import numpy as np
 
 import pytest
 
-from ray.exceptions import RayTaskError, RayChannelError
+from ray.exceptions import RayChannelError, RayChannelTimeoutError
 import ray
 import ray._private
 import ray.cluster_utils
 from ray.dag import InputNode, MultiOutputNode
 from ray.tests.conftest import *  # noqa
+from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 from ray._private.utils import (
     get_or_create_event_loop,
 )
@@ -25,8 +26,14 @@ from ray._private.utils import (
 
 logger = logging.getLogger(__name__)
 
-if sys.platform != "linux" and sys.platform != "darwin":
-    pytest.skip("Skipping, requires Linux or Mac.", allow_module_level=True)
+
+pytestmark = [
+    pytest.mark.skipif(
+        sys.platform != "linux" and sys.platform != "darwin",
+        reason="Requires Linux or MacOS",
+    ),
+    pytest.mark.timeout(500),
+]
 
 
 @ray.remote
@@ -76,6 +83,10 @@ class Actor:
         time.sleep(x)
         return x
 
+    @ray.method(num_returns=2)
+    def return_two(self, x):
+        return x, x + 1
+
 
 @ray.remote
 class Collector:
@@ -120,6 +131,53 @@ def test_basic(ray_start_regular):
 
     # Note: must teardown before starting a new Ray session, otherwise you'll get
     # a segfault from the dangling monitor thread upon the new Ray init.
+    compiled_dag.teardown()
+
+
+def test_multiple_returns_not_supported(ray_start_regular):
+    a = Actor.remote(0)
+    b = Actor.remote(0)
+    with InputNode() as i:
+        dag = a.return_two.bind(i)
+        dag = b.echo.bind(dag)
+
+    with pytest.raises(
+        ValueError,
+        match="Compiled DAGs only supports actor methods with " "num_returns=1",
+    ):
+        dag.experimental_compile()
+
+
+def test_kwargs_not_supported(ray_start_regular):
+    a = Actor.remote(0)
+
+    # Binding InputNode as kwarg is not supported.
+    with InputNode() as i:
+        dag = a.inc_two.bind(x=i, y=1)
+    with pytest.raises(
+        ValueError,
+        match=r"Compiled DAG currently does not support binding to other DAG "
+        "nodes as kwargs",
+    ):
+        compiled_dag = dag.experimental_compile()
+
+    # Binding another DAG node as kwarg is not supported.
+    with InputNode() as i:
+        dag = a.inc.bind(i)
+        dag = a.inc_two.bind(x=dag, y=1)
+    with pytest.raises(
+        ValueError,
+        match=r"Compiled DAG currently does not support binding to other DAG "
+        "nodes as kwargs",
+    ):
+        compiled_dag = dag.experimental_compile()
+
+    # Binding normal Python value as a kwarg is supported.
+    with InputNode() as i:
+        dag = a.inc_two.bind(i, y=1)
+    compiled_dag = dag.experimental_compile()
+    assert ray.get(compiled_dag.execute(2)) == 3
+
     compiled_dag.teardown()
 
 
@@ -250,6 +308,27 @@ def test_multi_args_single_actor(ray_start_regular):
         result = ray.get(ref)
         assert result == [3, 2] * (i + 1)
 
+    with pytest.raises(
+        ValueError,
+        match=r"dag.execute\(\) or dag.execute_async\(\) must be called with 2 "
+        "positional args, got 1",
+    ):
+        compiled_dag.execute((2, 3))
+
+    with pytest.raises(
+        ValueError,
+        match=r"dag.execute\(\) or dag.execute_async\(\) must be called with 2 "
+        "positional args, got 0",
+    ):
+        compiled_dag.execute()
+
+    with pytest.raises(
+        ValueError,
+        match=r"dag.execute\(\) or dag.execute_async\(\) must be called with 2 "
+        "positional args, got 0",
+    ):
+        compiled_dag.execute(args=(2, 3))
+
     compiled_dag.teardown()
 
 
@@ -298,6 +377,24 @@ def test_kwargs_single_actor(ray_start_regular):
         ref = compiled_dag.execute(x=2, y=3)
         result = ray.get(ref)
         assert result == [3, 2] * (i + 1)
+
+    with pytest.raises(
+        ValueError,
+        match=r"dag.execute\(\) or dag.execute_async\(\) must be called with kwarg",
+    ):
+        compiled_dag.execute()
+
+    with pytest.raises(
+        ValueError,
+        match=r"dag.execute\(\) or dag.execute_async\(\) must be called with kwarg `x`",
+    ):
+        compiled_dag.execute(y=3)
+
+    with pytest.raises(
+        ValueError,
+        match=r"dag.execute\(\) or dag.execute_async\(\) must be called with kwarg `y`",
+    ):
+        compiled_dag.execute(x=3)
 
     compiled_dag.teardown()
 
@@ -371,6 +468,100 @@ def test_chain_dag(ray_start_regular, num_actors):
     compiled_dag.teardown()
 
 
+def test_execution_timeout(ray_start_regular):
+    a = Actor.remote(0)
+    with InputNode() as inp:
+        dag = a.inc.bind(inp)
+
+    compiled_dag = dag.experimental_compile(_execution_timeout=2)
+    refs = []
+    timed_out = False
+    epsilon = 0.1  # Allow for some slack in the timeout checking
+    for i in range(5):
+        try:
+            start_time = time.monotonic()
+            ref = compiled_dag.execute(1)
+            # Hold the refs to avoid get() being called on the ref
+            # in `__del__()` when it goes out of scope
+            refs.append(ref)
+        except RayChannelTimeoutError:
+            duration = time.monotonic() - start_time
+            assert duration > 2 - epsilon
+            assert duration < 2 + epsilon
+            # The first 3 tasks should complete, and the 4th one
+            # should block then time out because the max possible
+            # concurrent executions for the DAG is 3. See the
+            # following diagram:
+            # driver -(3)-> a.inc (2) -(1)-> driver
+            assert i == 3
+            timed_out = True
+            break
+    assert timed_out
+
+    compiled_dag.teardown()
+
+
+def test_get_timeout(ray_start_regular):
+    a = Actor.remote(0)
+    with InputNode() as inp:
+        dag = a.sleep.bind(inp)
+
+    compiled_dag = dag.experimental_compile()
+    ref = compiled_dag.execute(10)
+
+    timed_out = False
+    epsilon = 0.1  # Allow for some slack in the timeout checking
+    try:
+        start_time = time.monotonic()
+        ray.get(ref, timeout=3)
+    except RayChannelTimeoutError:
+        duration = time.monotonic() - start_time
+        assert duration > 3 - epsilon
+        assert duration < 3 + epsilon
+        timed_out = True
+    assert timed_out
+
+    compiled_dag.teardown()
+
+
+def test_buffered_get_timeout(ray_start_regular):
+    a = Actor.remote(0)
+    with InputNode() as inp:
+        dag = a.sleep.bind(inp)
+
+    compiled_dag = dag.experimental_compile()
+    refs = []
+    for i in range(3):
+        # sleeps 1, 2, 3 seconds, respectively
+        ref = compiled_dag.execute(i + 1)
+        refs.append(ref)
+
+    with pytest.raises(RayChannelTimeoutError):
+        # Since the first two sleep() tasks need to complete before
+        # the last one, the total time needed is 1 + 2 + 3 = 6 seconds,
+        # therefore with a timeout of 3.5 seconds, an exception will
+        # be raised.
+        ray.get(refs[-1], timeout=3.5)
+
+    compiled_dag.teardown()
+
+
+def test_get_with_zero_timeout(ray_start_regular):
+    a = Actor.remote(0)
+    with InputNode() as inp:
+        dag = a.inc.bind(inp)
+
+    compiled_dag = dag.experimental_compile()
+    ref = compiled_dag.execute(1)
+    # Give enough time for DAG execution result to be ready
+    time.sleep(1)
+    # Use timeout=0 to either get result immediately or raise an exception
+    result = ray.get(ref, timeout=0)
+    assert result == 1
+
+    compiled_dag.teardown()
+
+
 def test_dag_exception_basic(ray_start_regular, capsys):
     # Test application throwing exceptions with a single task.
     a = Actor.remote(0)
@@ -380,17 +571,15 @@ def test_dag_exception_basic(ray_start_regular, capsys):
     # Can throw an error.
     compiled_dag = dag.experimental_compile()
     ref = compiled_dag.execute("hello")
-    with pytest.raises(RayTaskError) as exc_info:
+    with pytest.raises(TypeError) as exc_info:
         ray.get(ref)
-    assert isinstance(exc_info.value.as_instanceof_cause(), TypeError)
     # Traceback should match the original actor class definition.
     assert "self.i += x" in str(exc_info.value)
 
     # Can throw an error multiple times.
     ref = compiled_dag.execute("hello")
-    with pytest.raises(RayTaskError) as exc_info:
+    with pytest.raises(TypeError) as exc_info:
         ray.get(ref)
-    assert isinstance(exc_info.value.as_instanceof_cause(), TypeError)
     # Traceback should match the original actor class definition.
     assert "self.i += x" in str(exc_info.value)
 
@@ -411,17 +600,15 @@ def test_dag_exception_chained(ray_start_regular, capsys):
     # Can throw an error.
     compiled_dag = dag.experimental_compile()
     ref = compiled_dag.execute("hello")
-    with pytest.raises(RayTaskError) as exc_info:
+    with pytest.raises(TypeError) as exc_info:
         ray.get(ref)
-    assert isinstance(exc_info.value.as_instanceof_cause(), TypeError)
     # Traceback should match the original actor class definition.
     assert "self.i += x" in str(exc_info.value)
 
     # Can throw an error multiple times.
     ref = compiled_dag.execute("hello")
-    with pytest.raises(RayTaskError) as exc_info:
+    with pytest.raises(TypeError) as exc_info:
         ray.get(ref)
-    assert isinstance(exc_info.value.as_instanceof_cause(), TypeError)
     # Traceback should match the original actor class definition.
     assert "self.i += x" in str(exc_info.value)
 
@@ -442,17 +629,15 @@ def test_dag_exception_multi_output(ray_start_regular, capsys):
 
     # Can throw an error.
     ref = compiled_dag.execute("hello")
-    with pytest.raises(RayTaskError) as exc_info:
+    with pytest.raises(TypeError) as exc_info:
         ray.get(ref)
-    assert isinstance(exc_info.value.as_instanceof_cause(), TypeError)
     # Traceback should match the original actor class definition.
     assert "self.i += x" in str(exc_info.value)
 
     # Can throw an error multiple times.
     ref = compiled_dag.execute("hello")
-    with pytest.raises(RayTaskError) as exc_info:
+    with pytest.raises(TypeError) as exc_info:
         ray.get(ref)
-    assert isinstance(exc_info.value.as_instanceof_cause(), TypeError)
     # Traceback should match the original actor class definition.
     assert "self.i += x" in str(exc_info.value)
 
@@ -549,7 +734,7 @@ def test_dag_errors(ray_start_regular):
         ValueError,
         match=(
             "ray.get\(\) can only be called once "
-            "on a CompiledDAGRef and it was already called."
+            "on a CompiledDAGRef, and it was already called."
         ),
     ):
         ray.get(ref)
@@ -561,7 +746,7 @@ def test_exceed_max_buffered_results(ray_start_regular):
     with InputNode() as i:
         dag = a.inc.bind(i)
 
-    compiled_dag = dag.experimental_compile(max_buffered_results=1)
+    compiled_dag = dag.experimental_compile(_max_buffered_results=1)
 
     refs = []
     for i in range(3):
@@ -617,12 +802,11 @@ def test_dag_fault_tolerance_chain(ray_start_regular_shared):
         ref = compiled_dag.execute(i)
         results = ray.get(ref)
 
-    with pytest.raises(RayTaskError) as exc_info:
+    with pytest.raises(RuntimeError):
         for i in range(99):
             ref = compiled_dag.execute(i)
             results = ray.get(ref)
             assert results == i
-    assert isinstance(exc_info.value.as_instanceof_cause(), RuntimeError)
 
     compiled_dag.teardown()
 
@@ -661,12 +845,11 @@ def test_dag_fault_tolerance(ray_start_regular_shared):
         results = ray.get(ref)
         assert results == [i + 1] * 4
 
-    with pytest.raises(RayTaskError) as exc_info:
+    with pytest.raises(RuntimeError):
         for i in range(99, 200):
             ref = compiled_dag.execute(1)
             results = ray.get(ref)
             assert results == [i + 1] * 4
-    assert isinstance(exc_info.value.as_instanceof_cause(), RuntimeError)
 
     compiled_dag.teardown()
 
@@ -761,7 +944,7 @@ def test_asyncio(ray_start_regular_shared, max_queue_size):
 
     loop = get_or_create_event_loop()
     compiled_dag = dag.experimental_compile(
-        enable_asyncio=True, async_max_queue_size=max_queue_size
+        enable_asyncio=True, _asyncio_max_queue_size=max_queue_size
     )
 
     async def main(i):
@@ -787,7 +970,7 @@ def test_asyncio_exceptions(ray_start_regular_shared, max_queue_size):
 
     loop = get_or_create_event_loop()
     compiled_dag = dag.experimental_compile(
-        enable_asyncio=True, async_max_queue_size=max_queue_size
+        enable_asyncio=True, _asyncio_max_queue_size=max_queue_size
     )
 
     async def main():
@@ -796,17 +979,15 @@ def test_asyncio_exceptions(ray_start_regular_shared, max_queue_size):
         assert result == 1
 
         fut = await compiled_dag.execute_async("hello")
-        with pytest.raises(RayTaskError) as exc_info:
+        with pytest.raises(TypeError) as exc_info:
             await fut
-        assert isinstance(exc_info.value.as_instanceof_cause(), TypeError)
         # Traceback should match the original actor class definition.
         assert "self.i += x" in str(exc_info.value)
 
         # Can throw an error multiple times.
         fut = await compiled_dag.execute_async("hello")
-        with pytest.raises(RayTaskError) as exc_info:
+        with pytest.raises(TypeError) as exc_info:
             await fut
-        assert isinstance(exc_info.value.as_instanceof_cause(), TypeError)
         # Traceback should match the original actor class definition.
         assert "self.i += x" in str(exc_info.value)
 
@@ -916,6 +1097,142 @@ class TestCompositeChannel:
         assert ray.get(ref) == [10, 106]
 
         compiled_dag.teardown()
+
+
+def test_channel_access_after_close(ray_start_regular_shared):
+    # Tests that an access to a channel after accelerated DAG teardown raises a
+    # RayChannelError exception as the channel is closed (see issue #46284).
+    @ray.remote
+    class Actor:
+        def foo(self, arg):
+            return arg
+
+    a = Actor.remote()
+    with InputNode() as inp:
+        dag = a.foo.bind(inp)
+
+    dag = dag.experimental_compile()
+    ref = dag.execute(1)
+    dag.teardown()
+
+    with pytest.raises(RayChannelError, match="Channel closed."):
+        ray.get(ref)
+
+
+def test_driver_and_actor_as_readers(ray_start_cluster):
+    a = Actor.remote(0)
+    b = Actor.remote(10)
+    with InputNode() as inp:
+        x = a.inc.bind(inp)
+        y = b.inc.bind(x)
+        dag = MultiOutputNode([x, y])
+
+    with pytest.raises(
+        ValueError,
+        match="DAG outputs currently can only be read by the driver--not the driver "
+        "and actors.",
+    ):
+        dag.experimental_compile()
+
+
+def test_readers_on_different_nodes(ray_start_cluster):
+    cluster = ray_start_cluster
+    # This node is for the driver (including the CompiledDAG.DAGDriverProxyActor) and
+    # one of the readers.
+    first_node_handle = cluster.add_node(num_cpus=2)
+    # This node is for the other reader.
+    second_node_handle = cluster.add_node(num_cpus=1)
+    ray.init(address=cluster.address)
+    cluster.wait_for_nodes()
+
+    nodes = [first_node_handle.node_id, second_node_handle.node_id]
+    # We want to check that the readers are on different nodes. Thus, we convert `nodes`
+    # to a set and then back to a list to remove duplicates. Then we check that the
+    # length of `nodes` is 2.
+    nodes = list(set(nodes))
+    assert len(nodes) == 2
+
+    def create_actor(node):
+        return Actor.options(
+            scheduling_strategy=NodeAffinitySchedulingStrategy(node, soft=False)
+        ).remote(0)
+
+    a = create_actor(nodes[0])
+    b = create_actor(nodes[1])
+    actors = [a, b]
+
+    def _get_node_id(self) -> "ray.NodeID":
+        return ray.get_runtime_context().get_node_id()
+
+    nodes_check = ray.get([act.__ray_call__.remote(_get_node_id) for act in actors])
+    a_node = nodes_check[0]
+    b_node = nodes_check[1]
+    assert a_node != b_node
+
+    with InputNode() as inp:
+        x = a.inc.bind(inp)
+        y = b.inc.bind(inp)
+        dag = MultiOutputNode([x, y])
+
+    with pytest.raises(
+        ValueError,
+        match="All reader actors must be on the same node.*",
+    ):
+        dag.experimental_compile()
+
+
+def test_bunch_readers_on_different_nodes(ray_start_cluster):
+    cluster = ray_start_cluster
+    # This node is for the driver (including the CompiledDAG.DAGDriverProxyActor) and
+    # two of the readers.
+    first_node_handle = cluster.add_node(num_cpus=3)
+    # This node is for the other two readers.
+    second_node_handle = cluster.add_node(num_cpus=2)
+    ray.init(address=cluster.address)
+    cluster.wait_for_nodes()
+
+    nodes = [first_node_handle.node_id, second_node_handle.node_id]
+    # We want to check that the readers are on different nodes. Thus, we convert `nodes`
+    # to a set and then back to a list to remove duplicates. Then we check that the
+    # length of `nodes` is 2.
+    nodes = list(set(nodes))
+    assert len(nodes) == 2
+
+    def create_actor(node):
+        return Actor.options(
+            scheduling_strategy=NodeAffinitySchedulingStrategy(node, soft=False)
+        ).remote(0)
+
+    a = create_actor(nodes[0])
+    b = create_actor(nodes[0])
+    c = create_actor(nodes[1])
+    d = create_actor(nodes[1])
+    actors = [a, b, c, d]
+
+    def _get_node_id(self) -> "ray.NodeID":
+        return ray.get_runtime_context().get_node_id()
+
+    nodes_check = ray.get([act.__ray_call__.remote(_get_node_id) for act in actors])
+    a_node = nodes_check[0]
+    b_node = nodes_check[1]
+    c_node = nodes_check[2]
+    d_node = nodes_check[3]
+    assert a_node == b_node
+    assert b_node != c_node
+    assert c_node == d_node
+
+    with InputNode() as inp:
+        w = a.inc.bind(inp)
+        x = b.inc.bind(inp)
+        y = c.inc.bind(inp)
+        z = d.inc.bind(inp)
+        dag = MultiOutputNode([w, x, y, z])
+
+    with pytest.raises(
+        ValueError,
+        match="All reader actors must be on the same node.*",
+    ):
+        dag.experimental_compile()
 
 
 if __name__ == "__main__":
