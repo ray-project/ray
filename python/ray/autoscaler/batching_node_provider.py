@@ -121,7 +121,7 @@ class BatchingNodeProvider(NodeProvider):
         self.scale_request = ScaleRequest()
 
         # Initialize map of replica indices to nodes in that replica
-        self.replicas_to_nodes = defaultdict(list)
+        self.replica_index_to_nodes = defaultdict(list[str])
 
     def get_node_data(self) -> Dict[NodeID, NodeData]:
         """Queries cluster manager for node info. Returns a mapping from node id to
@@ -167,12 +167,12 @@ class BatchingNodeProvider(NodeProvider):
             workers_to_delete=set(),  # No workers to delete yet
         )
         all_nodes = list(self.node_data_dict.keys())
-        self.replicas_to_nodes.clear()
+        self.replica_index_to_nodes.clear()
         for node_id in all_nodes:
             replica_index = self.node_data_dict[node_id].replica_index
             # Only add node to map if it belongs to a multi-host podslice
             if replica_index is not None:
-                self.replicas_to_nodes[replica_index].append(node_id)
+                self.replica_index_to_nodes[replica_index].append(node_id)
         # Support filtering by TAG_RAY_NODE_KIND, TAG_RAY_NODE_STATUS, and
         # TAG_RAY_USER_NODE_TYPE.
         # The autoscaler only uses tag_filters={},
@@ -254,7 +254,7 @@ class BatchingNodeProvider(NodeProvider):
         tags = self.node_tags(node_id)
         if TAG_RAY_REPLICA_INDEX in tags:
             node_replica_index = tags[TAG_RAY_REPLICA_INDEX]
-            for worker_id in self.replicas_to_nodes[node_replica_index]:
+            for worker_id in self.replica_index_to_nodes[node_replica_index]:
                 # Check if worker has already been scheduled to delete
                 if worker_id not in self.scale_request.workers_to_delete:
                     self.scale_request.workers_to_delete.add(worker_id)

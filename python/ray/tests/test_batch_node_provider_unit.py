@@ -464,8 +464,12 @@ def test_terminate_node_in_multihost_replica():
     assert len(replicaWorkers2) == num_tpu_workers // 2
 
     # Verify replica_to_nodes mapping has been populated
-    assert len(node_provider.replicas_to_nodes["tpu-group-0"]) == num_tpu_workers // 2
-    assert len(node_provider.replicas_to_nodes["tpu-group-1"]) == num_tpu_workers // 2
+    assert (
+        len(node_provider.replica_index_to_nodes["tpu-group-0"]) == num_tpu_workers // 2
+    )
+    assert (
+        len(node_provider.replica_index_to_nodes["tpu-group-1"]) == num_tpu_workers // 2
+    )
 
     worker_0 = replicaWorkers1[0]  # tpu-group-0
     worker_2 = replicaWorkers2[0]  # tpu-group-1

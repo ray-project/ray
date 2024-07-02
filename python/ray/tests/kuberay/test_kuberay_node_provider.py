@@ -203,7 +203,7 @@ def test_get_node_data(podlist_file: str, expected_node_data):
     ), mock.patch.object(KubeRayNodeProvider, "_get", mock_get):
         kr_node_provider = KubeRayNodeProvider(provider_config={}, cluster_name="fake")
         kr_node_provider.cluster_name = "fake"
-        kr_node_provider.replicas_to_nodes = defaultdict(list)
+        kr_node_provider.replica_index_to_nodes = defaultdict(list[str])
         nodes = kr_node_provider.non_terminated_nodes({})
         assert kr_node_provider.node_data_dict == expected_node_data
         assert set(nodes) == set(expected_node_data.keys())
