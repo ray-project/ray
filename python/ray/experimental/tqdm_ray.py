@@ -177,7 +177,6 @@ class _Bar:
             desc=state["desc"] + " " + str(state["pos"]),
             total=state["total"],
             position=pos_offset + state["pos"],
-            leave=False,
             dynamic_ncols=True,
         )
         if state["x"]:
@@ -327,11 +326,15 @@ class _BarManager:
         state["desc"] = prefix + state["desc"]
         process = self._get_or_allocate_bar_group(state)
         if process.has_bar(state["uuid"]):
+            # Always call `update_bar` to sync any last remaining updates
+            # prior to closing. Otherwise, the displayed progress bars
+            # can be left incomplete, even after execution finishes.
+            # Fixes https://github.com/ray-project/ray/issues/44983
+            process.update_bar(state)
+
             if state["closed"]:
                 process.close_bar(state)
                 self._update_offsets()
-            else:
-                process.update_bar(state)
         else:
             process.allocate_bar(state)
             self._update_offsets()
