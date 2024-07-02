@@ -477,6 +477,7 @@ class BackendExecutor:
             dataset_shard,
             metadata,
             storage,
+            device_manager,
         ):
             try:
                 init_session(
@@ -492,6 +493,7 @@ class BackendExecutor:
                     checkpoint=checkpoint,
                     detailed_autofilled_metrics=use_detailed_autofilled_metrics,
                     storage=storage,
+                    device_manager=device_manager,
                 )
             except ValueError:
                 raise TrainBackendError(
@@ -534,6 +536,7 @@ class BackendExecutor:
                     metadata=metadata,
                     checkpoint=checkpoint,
                     storage=storage,
+                    device_manager=None,
                 )
             )
 
