@@ -123,10 +123,7 @@ class TfLearner(Learner):
             optimizer.apply_gradients(zip(gradient_list, variable_list))
 
     @override(Learner)
-    def load_state(
-        self,
-        path: Union[str, pathlib.Path],
-    ) -> None:
+    def restore(self, path: Union[str, pathlib.Path]) -> None:
         # This operation is potentially very costly because a MARL Module is created at
         # build time, destroyed, and then a new one is created from a checkpoint.
         # However, it is necessary due to complications with the way that Ray Tune
@@ -135,7 +132,7 @@ class TfLearner(Learner):
         # made to the learner's modules, the module created by Tune is destroyed and
         # then rebuilt from the checkpoint.
         with self._strategy.scope():
-            super().load_state(path)
+            super().restore(path)
 
     def _save_optimizer_hparams(
         self,

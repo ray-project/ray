@@ -92,6 +92,10 @@ class EnvRunner(FaultAwareApply, metaclass=abc.ABCMeta):
                 of the state is expensive (e.g. reading/compiling the weights of a large
                 NN) and at the same time, these components are not required by the
                 caller.
+            not_components: An optional list of string keys to be excluded in the
+                returned state, even if the same string is part of `components`.
+                This is useful to get the complete state of the EnvRunner, except
+                one or a few components.
             module_ids: An optional container of ModuleIDs to return. Only applies, if
                 components contains the "rl_module" key. Allows for selecting only
                 specific single-agent RLModules within a MultiAgentRLModule.
@@ -100,12 +104,9 @@ class EnvRunner(FaultAwareApply, metaclass=abc.ABCMeta):
                 components is None or the string "rl_module" is in components.
 
         Returns:
-            The current state (or only the components specified) of this EnvRunner.
+            The current state of this EnvRunner (or only the components specified, w/o
+            those in `not_components`).
         """
-        # TODO (sven, simon): `Algorithm.save_checkpoint()` will store with
-        #  this an empty worker state and in `Algorithm.from_checkpoint()`
-        #  the empty state (not `None`) must be ensured separately. Shall we
-        #  return here as a default `None`?
         return {}
 
     def set_state(self, state: Dict[str, Any]) -> None:

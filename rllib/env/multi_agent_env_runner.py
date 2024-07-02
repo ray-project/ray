@@ -8,6 +8,7 @@ import gymnasium as gym
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.core import (
+    COMPONENT_AGENT_TO_MODULE_MAPPING_FN,
     COMPONENT_ENV_TO_MODULE_CONNECTOR,
     COMPONENT_MODULE_TO_ENV_CONNECTOR,
     COMPONENT_RL_MODULE,
@@ -658,32 +659,44 @@ class MultiAgentEnvRunner(EnvRunner):
         self,
         components: Optional[Container[str]] = None,
         *,
+        not_components: Optional[Container[str]] = None,
         inference_only: bool = True,
         module_ids=None,
     ) -> Dict[str, Any]:
-        components = force_list(
-            components
-            if components is not None
-            else [
-                COMPONENT_RL_MODULE,
-                COMPONENT_ENV_TO_MODULE_CONNECTOR,
-                COMPONENT_MODULE_TO_ENV_CONNECTOR,
-            ]
-        )
+        # If components=None, add all components to state (unless a component is in
+        # `not_components`).
+        components = force_list(components) or None
+        not_components = force_list(not_components)
+
         state = {
             WEIGHTS_SEQ_NO: self._weights_seq_no,
             NUM_ENV_STEPS_SAMPLED_LIFETIME: (
                 self.metrics.peek(NUM_ENV_STEPS_SAMPLED_LIFETIME, default=0)
             ),
         }
-        if COMPONENT_RL_MODULE in components:
+
+        if (
+            (components is None or COMPONENT_RL_MODULE in components)
+            and COMPONENT_RL_MODULE not in not_components
+        ):
             state[COMPONENT_RL_MODULE] = self.module.get_state(
                 inference_only=inference_only, module_ids=module_ids
             )
-        if COMPONENT_ENV_TO_MODULE_CONNECTOR in components:
+        if (
+            (components is None or COMPONENT_ENV_TO_MODULE_CONNECTOR in components)
+            and COMPONENT_ENV_TO_MODULE_CONNECTOR not in not_components
+        ):
             state[COMPONENT_ENV_TO_MODULE_CONNECTOR] = self._env_to_module.get_state()
-        if COMPONENT_MODULE_TO_ENV_CONNECTOR in components:
+        if (
+            (components is None or COMPONENT_MODULE_TO_ENV_CONNECTOR in components)
+            and COMPONENT_MODULE_TO_ENV_CONNECTOR not in not_components
+        ):
             state[COMPONENT_MODULE_TO_ENV_CONNECTOR] = self._module_to_env.get_state()
+        if (
+            (components is None or COMPONENT_AGENT_TO_MODULE_MAPPING_FN in components)
+            and COMPONENT_AGENT_TO_MODULE_MAPPING_FN not in not_components
+        ):
+            state[COMPONENT_AGENT_TO_MODULE_MAPPING_FN] = self.config.policy_mapping_fn
 
         return state
 
@@ -694,7 +707,7 @@ class MultiAgentEnvRunner(EnvRunner):
         if COMPONENT_MODULE_TO_ENV_CONNECTOR in state:
             self._module_to_env.set_state(state[COMPONENT_MODULE_TO_ENV_CONNECTOR])
 
-        # Update the RLModule state.
+        # Update RLModule state.
         if COMPONENT_RL_MODULE in state:
             # A missing value for WEIGHTS_SEQ_NO or a value of 0 means: Force the
             # update.
@@ -703,20 +716,24 @@ class MultiAgentEnvRunner(EnvRunner):
             # Only update the weigths, if this is the first synchronization or
             # if the weights of this `EnvRunner` lacks behind the actual ones.
             if weights_seq_no == 0 or self._weights_seq_no < weights_seq_no:
-                weights = state[COMPONENT_RL_MODULE]
-                weights = self._convert_to_tensor(weights)
-                self.module.set_state(weights)
+                self.module.set_state(state[COMPONENT_RL_MODULE])
 
-            # Update our weights_seq_no, if the new one is > 0.
+            # Update weights_seq_no, if the new one is > 0.
             if weights_seq_no > 0:
                 self._weights_seq_no = weights_seq_no
 
-        # Update our lifetime counters.
+        # Update lifetime counters.
         if NUM_ENV_STEPS_SAMPLED_LIFETIME in state:
             self.metrics.set_value(
                 key=NUM_ENV_STEPS_SAMPLED_LIFETIME,
                 value=state[NUM_ENV_STEPS_SAMPLED_LIFETIME],
                 reduce="sum",
+            )
+
+        # Update `agent_to_module_mapping_fn`.
+        if COMPONENT_AGENT_TO_MODULE_MAPPING_FN in state:
+            self.config.multi_agent(
+                policy_mapping_fn=state[COMPONENT_AGENT_TO_MODULE_MAPPING_FN]
             )
 
     @override(EnvRunner)
@@ -947,7 +964,10 @@ class MultiAgentEnvRunner(EnvRunner):
         error=False,
     )
     def get_weights(self, modules=None):
-        return self.get_state(components=COMPONENT_RL_MODULE)[COMPONENT_RL_MODULE]
+        rl_module_state = self.get_state(
+            components=COMPONENT_RL_MODULE
+        )[COMPONENT_RL_MODULE]
+        return rl_module_state["weights"]
 
     @Deprecated(new="MultiAgentEnvRunner.set_state()", error=False)
     def set_weights(

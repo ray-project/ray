@@ -16,7 +16,6 @@ from ray.rllib.core import (
     DEFAULT_MODULE_ID,
 )
 from ray.rllib.core.columns import Columns
-from ray.rllib.core.rl_module import INFERENCE_ONLY
 from ray.rllib.core.rl_module.rl_module import RLModule, SingleAgentRLModuleSpec
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.env_runner import EnvRunner
@@ -107,8 +106,8 @@ class SingleAgentEnvRunner(EnvRunner):
             # if the the module has target or critic networks not needed in sampling
             # or inference.
             # TODO (simon): Once we use `get_marl_module_spec` here, we can remove
-            # this line here as the function takes care of this flag.
-            module_spec.model_config_dict[INFERENCE_ONLY] = True
+            #  this line here as the function takes care of this flag.
+            module_spec.inference_only = True
             self.module: RLModule = module_spec.build()
         except NotImplementedError:
             self.module = None
@@ -650,31 +649,37 @@ class SingleAgentEnvRunner(EnvRunner):
         self,
         components: Optional[Container[str]] = None,
         *,
+        not_components: Optional[Container[str]] = None,
         module_ids: Optional[Container[ModuleID]] = None,
         inference_only: bool = True,
     ) -> Dict[str, Any]:
-        components = force_list(
-            components
-            if components is not None
-            else [
-                COMPONENT_RL_MODULE,
-                COMPONENT_ENV_TO_MODULE_CONNECTOR,
-                COMPONENT_MODULE_TO_ENV_CONNECTOR,
-            ]
-        )
+        # If components=None, add all components to state (unless a component is in
+        # `not_components`).
+        components = force_list(components) or None
+        not_components = force_list(not_components)
+
         state = {
             WEIGHTS_SEQ_NO: self._weights_seq_no,
             NUM_ENV_STEPS_SAMPLED_LIFETIME: (
                 self.metrics.peek(NUM_ENV_STEPS_SAMPLED_LIFETIME, default=0)
             ),
         }
-        if COMPONENT_RL_MODULE in components:
+        if (
+            (components is not None or COMPONENT_RL_MODULE in components)
+            and COMPONENT_RL_MODULE not in not_components
+        ):
             state[COMPONENT_RL_MODULE] = self.module.get_state(
                 inference_only=inference_only
             )
-        if COMPONENT_ENV_TO_MODULE_CONNECTOR in components:
+        if (
+            (components is not None or COMPONENT_ENV_TO_MODULE_CONNECTOR in components)
+            and COMPONENT_ENV_TO_MODULE_CONNECTOR not in not_components
+        ):
             state[COMPONENT_ENV_TO_MODULE_CONNECTOR] = self._env_to_module.get_state()
-        if COMPONENT_MODULE_TO_ENV_CONNECTOR in components:
+        if (
+            (components is not None or COMPONENT_MODULE_TO_ENV_CONNECTOR in components)
+            and COMPONENT_MODULE_TO_ENV_CONNECTOR not in not_components
+        ):
             state[COMPONENT_MODULE_TO_ENV_CONNECTOR] = self._module_to_env.get_state()
 
         return state
@@ -695,11 +700,13 @@ class SingleAgentEnvRunner(EnvRunner):
             # Only update the weigths, if this is the first synchronization or
             # if the weights of this `EnvRunner` lacks behind the actual ones.
             if weights_seq_no == 0 or self._weights_seq_no < weights_seq_no:
-                weights = state[COMPONENT_RL_MODULE]
-                if isinstance(weights, dict) and DEFAULT_MODULE_ID in weights:
-                    weights = weights[DEFAULT_MODULE_ID]
-                weights = self._convert_to_tensor(weights)
-                self.module.set_state(weights)
+                rl_module_state = state[COMPONENT_RL_MODULE]
+                if (
+                    isinstance(rl_module_state, dict)
+                    and DEFAULT_MODULE_ID in rl_module_state
+                ):
+                    rl_module_state = rl_module_state[DEFAULT_MODULE_ID]
+                self.module.set_state(rl_module_state)
             # Update our weights_seq_no, if the new one is > 0.
             if weights_seq_no > 0:
                 self._weights_seq_no = weights_seq_no

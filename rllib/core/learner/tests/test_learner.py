@@ -240,7 +240,7 @@ class TestLearner(unittest.TestCase):
 
             check(params, expected)
 
-    def test_save_load_state(self):
+    def test_save_and_restore(self):
         """Tests, whether a Learner's state is properly saved and restored."""
         config = BaseTestingAlgorithmConfig()
 
@@ -248,10 +248,10 @@ class TestLearner(unittest.TestCase):
             # Get a Learner instance for the framework and env.
             learner1 = config.build_learner(env=self.ENV)
             with tempfile.TemporaryDirectory() as tmpdir:
-                learner1.save_state(tmpdir)
+                learner1.save(tmpdir)
 
                 learner2 = config.build_learner(env=self.ENV)
-                learner2.load_state(tmpdir)
+                learner2.restore(tmpdir)
                 self._check_learner_states(fw, learner1, learner2)
 
             # Add a module then save/load and check states.
@@ -263,15 +263,15 @@ class TestLearner(unittest.TestCase):
                     module_id="test",
                     module_spec=rl_module_spec,
                 )
-                learner1.save_state(tmpdir)
-                learner2.load_state(tmpdir)
+                learner1.save(tmpdir)
+                learner2.restore(tmpdir)
                 self._check_learner_states(fw, learner1, learner2)
 
             # Remove a module then save/load and check states.
             with tempfile.TemporaryDirectory() as tmpdir:
                 learner1.remove_module(module_id=DEFAULT_MODULE_ID)
-                learner1.save_state(tmpdir)
-                learner2.load_state(tmpdir)
+                learner1.save(tmpdir)
+                learner2.restore(tmpdir)
                 self._check_learner_states(fw, learner1, learner2)
 
     def _check_learner_states(self, framework, learner1, learner2):

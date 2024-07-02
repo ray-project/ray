@@ -28,16 +28,18 @@ class PPOTorchRLModule(TorchRLModule, PPORLModule):
 
     @override(TorchRLModule)
     def get_state(self, inference_only: bool = False) -> Dict[str, Any]:
-        state_dict = self.state_dict()
+        state = super(PPOTorchRLModule, self).get_state(inference_only=inference_only)
         # If this module is not for inference, but the state dict is.
         # Note, for stateful modules, we need the full state dict.
         if not self.config.inference_only and not self.is_stateful() and inference_only:
-            # Call the local hook to remove or rename the parameters.
-            return self._inference_only_get_state_hook(state_dict)
+            # Call the local hook to remove parameters not needed in `inference_only`
+            # mode.
+            state["weights"] = self._inference_only_get_state_hook(state["weights"])
+            state["spec"].inference_only = True
+            return state
+
         # Otherwise, the state dict is for checkpointing or saving the model.
-        else:
-            # Return the state dict as is.
-            return state_dict
+        return state
 
     @override(RLModule)
     def _forward_inference(self, batch: NestedDict) -> Dict[str, Any]:
@@ -139,16 +141,16 @@ class PPOTorchRLModule(TorchRLModule, PPORLModule):
         ]
         # Do we use a separate encoder for the actor and critic?
         # if not self.config.model_config_dict.get("vf_share_layers", True):
-        if not self.encoder.config.shared:
-            # If we use separate encoder networks for the actor and critic, we need to
-            # rename the actor encoder parameters to encoder parameters b/c the
-            # inference-only modules uses a plain encoder network
-            # (`shared_layers=True`).
-            self._inference_only_state_dict_keys["expected_keys"] = {
-                name: name.replace("actor_encoder", "encoder")
-                for name in state_dict
-                if name.startswith("encoder.actor_encoder")
-            }
+        #if not self.encoder.config.shared:
+        #    # If we use separate encoder networks for the actor and critic, we need to
+        #    # rename the actor encoder parameters to encoder parameters b/c the
+        #    # inference-only modules uses a plain encoder network
+        #    # (`shared_layers=True`).
+        #    self._inference_only_state_dict_keys["expected_keys"] = {
+        #        name: name.replace("actor_encoder", "encoder")
+        #        for name in state_dict
+        #        if name.startswith("encoder.actor_encoder")
+        #    }
 
     @override(TorchRLModule)
     def _inference_only_get_state_hook(
@@ -161,9 +163,9 @@ class PPOTorchRLModule(TorchRLModule, PPORLModule):
                 for param in self._inference_only_state_dict_keys["unexpected_keys"]:
                     del state_dict[param]
             # If we have expected keys, rename.
-            if self._inference_only_state_dict_keys.get("expected_keys"):
-                for param in self._inference_only_state_dict_keys["expected_keys"]:
-                    state_dict[
-                        self._inference_only_state_dict_keys["expected_keys"][param]
-                    ] = state_dict.pop(param)
+            #if self._inference_only_state_dict_keys.get("expected_keys"):
+            #    for param in self._inference_only_state_dict_keys["expected_keys"]:
+            #        state_dict[
+            #            self._inference_only_state_dict_keys["expected_keys"][param]
+            #        ] = state_dict.pop(param)
         return state_dict

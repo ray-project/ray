@@ -5,6 +5,7 @@ import pprint
 from typing import (
     Any,
     Callable,
+    Collection,
     Dict,
     KeysView,
     List,
@@ -18,7 +19,6 @@ from ray.rllib.core.models.specs.typing import SpecType
 from ray.rllib.core.rl_module.rl_module import (
     RLModule,
     RLMODULE_METADATA_FILE_NAME,
-    RLMODULE_STATE_DIR_NAME,
     SingleAgentRLModuleSpec,
 )
 
@@ -28,11 +28,11 @@ from ray.rllib.utils.annotations import (
     override,
     OverrideToImplementCustomLogic,
 )
+from ray.rllib.utils.deprecation import DEPRECATED_VALUE, deprecation_warning
 from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.policy import validate_policy_id
 from ray.rllib.utils.serialization import serialize_type, deserialize_type
 from ray.rllib.utils.typing import ModuleID, T
-from ray.util import log_once
 from ray.util.annotations import PublicAPI
 
 logger = logging.getLogger("ray.rllib")
@@ -171,6 +171,10 @@ class MultiAgentRLModule(RLModule):
                 f"Module ID {module_id} already exists. If your intention is to "
                 "override, set override=True."
             )
+        # Set our own inference_only flag to False as soon as any added Module
+        # has `inference_only=False`.
+        if not module.config.inference_only:
+            self.config.inference_only = False
         self._rl_modules[module_id] = module
 
     def remove_module(
@@ -212,15 +216,36 @@ class MultiAgentRLModule(RLModule):
         return item in self._rl_modules
 
     def __getitem__(self, module_id: ModuleID) -> RLModule:
-        """Returns the module with the given module ID.
+        """Returns the RLModule with the given module ID.
 
         Args:
             module_id: The module ID to get.
 
         Returns:
-            The module with the given module ID.
+            The RLModule with the given module ID.
+        
+        Raises:
+            KeyError: If `module_id` cannot be found in self.
         """
         self._check_module_exists(module_id)
+        return self._rl_modules[module_id]
+
+    def get(
+        self,
+        module_id: ModuleID,
+        default: Optional[RLModule] = None,
+    ) -> Optional[RLModule]:
+        """Returns the module with the given module ID or default if not found in self.
+
+        Args:
+            module_id: The module ID to get.
+
+        Returns:
+            The RLModule with the given module ID or `default` if `module_id` not found
+            in `self`.
+        """
+        if module_id not in self._rl_modules:
+            return default
         return self._rl_modules[module_id]
 
     @override(RLModule)
@@ -340,70 +365,73 @@ class MultiAgentRLModule(RLModule):
         for module_id, state in state_dict.items():
             if module_id in self:
                 self._rl_modules[module_id].set_state(state)
-            elif log_once("mid_in_state_but_not_in_marl_module"):
-                logger.warning(
-                    f"ModuleID '{module_id}' found in `state`, but not in `self`!"
-                )
+            else:
+                if "spec" not in state:
+                    raise KeyError(
+                        "No 'spec' key found in RLModule state! Spec information is "
+                        "required in order to create missing RLModule with ModuleID "
+                        f"'{module_id}'."
+                    )
+                new_module = state["spec"].build()
+                self.add_module(module_id, new_module, override=False)
 
     @override(RLModule)
-    def save_state(self, path: Union[str, pathlib.Path]) -> None:
-        """Saves the weights of this MultiAgentRLModule to dir.
-
-        Args:
-            path: The path to the directory to save the checkpoint to.
-
-        """
+    def save(self, path: Union[str, pathlib.Path]) -> None:
         path = pathlib.Path(path)
         path.mkdir(parents=True, exist_ok=True)
+        # Call `save` on all individual RLModules in self.
         for module_id, module in self._rl_modules.items():
-            module.save_to_checkpoint(str(path / module_id))
+            module.save(str(path / module_id))
+        # Save our own (multi-agent) meta-data.
+        self._save_module_metadata(path, MultiAgentRLModuleSpec)
 
     @override(RLModule)
-    def load_state(
+    def restore(
         self,
         path: Union[str, pathlib.Path],
-        modules_to_load: Optional[Set[ModuleID]] = None,
+        *,
+        module_ids: Optional[Collection[ModuleID]] = None,
+        modules_to_load=DEPRECATED_VALUE,
     ) -> None:
-        """Loads the weights of an MultiAgentRLModule from dir.
+        """Resotres/loads the weights of a MultiAgentRLModule from path.
 
-        NOTE:
-            If you want to load a module that is not already
-            in this MultiAgentRLModule, you should add it to this MultiAgentRLModule
-            before loading the checkpoint.
+        NOTE: If you want to load a module that is not already in this
+        MultiAgentRLModule, you should add it to this MultiAgentRLModule
+        before loading the checkpoint through
+        `self.add_module([module_id], [RLModule instance])`.
 
         Args:
             path: The path to the directory to load the state from.
-            modules_to_load: The modules whose state is to be loaded from the path. If
-                this is None, all modules that are checkpointed will be loaded into this
-                marl module.
-
-
+            module_ids: The module IDs whose state is to be loaded from the path.
+                If this is None, all modules that are checkpointed will be loaded into
+                self.
         """
+        if modules_to_load != DEPRECATED_VALUE:
+            deprecation_warning(
+                old="MultiAgentRLModule.restore(modules_to_load=...)",
+                new="MultiAgentRLModule.restore(module_ids=...)",
+                error=False,
+            )
+            module_ids = modules_to_load
+
         path = pathlib.Path(path)
-        if not modules_to_load:
-            modules_to_load = set(self._rl_modules.keys())
+        if not module_ids:
+            module_ids = set(self._rl_modules.keys())
         path.mkdir(parents=True, exist_ok=True)
-        for submodule_id in modules_to_load:
+        for submodule_id in module_ids:
             if submodule_id not in self._rl_modules:
                 raise ValueError(
-                    f"Module {submodule_id} from `modules_to_load`: "
-                    f"{modules_to_load} not found in this MultiAgentRLModule."
+                    f"Module {submodule_id} from `module_ids`: "
+                    f"{module_ids} not found in this MultiAgentRLModule."
                 )
             submodule = self._rl_modules[submodule_id]
-            submodule_weights_dir = path / submodule_id / RLMODULE_STATE_DIR_NAME
+            submodule_weights_dir = path / submodule_id
             if not submodule_weights_dir.exists():
                 raise ValueError(
                     f"Submodule {submodule_id}'s module state directory: "
                     f"{submodule_weights_dir} not found in checkpoint dir {path}."
                 )
-            submodule.load_state(submodule_weights_dir)
-
-    @override(RLModule)
-    def save_to_checkpoint(self, checkpoint_dir_path: Union[str, pathlib.Path]) -> None:
-        path = pathlib.Path(checkpoint_dir_path)
-        path.mkdir(parents=True, exist_ok=True)
-        self.save_state(path)
-        self._save_module_metadata(path, MultiAgentRLModuleSpec)
+            submodule.restore(submodule_weights_dir)
 
     @classmethod
     @override(RLModule)
@@ -414,7 +442,7 @@ class MultiAgentRLModule(RLModule):
         path = pathlib.Path(checkpoint_dir_path)
         metadata_path = path / RLMODULE_METADATA_FILE_NAME
         marl_module = cls._from_metadata_file(metadata_path)
-        marl_module.load_state(path)
+        marl_module.restore(path)
         return marl_module
 
     def __repr__(self) -> str:
@@ -496,6 +524,7 @@ class MultiAgentRLModuleSpec:
     """
 
     marl_module_class: Type[MultiAgentRLModule] = MultiAgentRLModule
+    inference_only: bool = False
     module_specs: Union[
         SingleAgentRLModuleSpec, Dict[ModuleID, SingleAgentRLModuleSpec]
     ] = None
@@ -512,7 +541,14 @@ class MultiAgentRLModuleSpec:
 
     def get_marl_config(self) -> "MultiAgentRLModuleConfig":
         """Returns the MultiAgentRLModuleConfig for this spec."""
-        return MultiAgentRLModuleConfig(modules=self.module_specs)
+        return MultiAgentRLModuleConfig(
+            # Only set `inference_only=True` if all single-agent specs are
+            # `inference_only`.
+            inference_only=all(
+                spec.inference_only for spec in self.module_specs.values()
+            ),
+            modules=self.module_specs
+        )
 
     @OverrideToImplementCustomLogic
     def build(self, module_id: Optional[ModuleID] = None) -> RLModule:
@@ -560,6 +596,10 @@ class MultiAgentRLModuleSpec:
             self.module_specs = {}
         for module_id, module_spec in module_specs.items():
             if override or module_id not in self.module_specs:
+                # Disable our `inference_only` as soon as any single-agent module has
+                # `inference_only=False`.
+                if not module_spec.inference_only:
+                    self.inference_only = False
                 self.module_specs[module_id] = module_spec
             else:
                 self.module_specs[module_id].update(module_spec)
@@ -584,7 +624,9 @@ class MultiAgentRLModuleSpec:
         }
         marl_module_class = module.__class__
         return MultiAgentRLModuleSpec(
-            marl_module_class=marl_module_class, module_specs=module_specs
+            marl_module_class=marl_module_class,
+            inference_only=module.config.inference_only,
+            module_specs=module_specs
         )
 
     def _check_before_build(self):
@@ -599,6 +641,7 @@ class MultiAgentRLModuleSpec:
         """Converts the MultiAgentRLModuleSpec to a dictionary."""
         return {
             "marl_module_class": serialize_type(self.marl_module_class),
+            "inference_only": self.inference_only,
             "module_specs": {
                 module_id: module_spec.to_dict()
                 for module_id, module_spec in self.module_specs.items()
@@ -610,6 +653,7 @@ class MultiAgentRLModuleSpec:
         """Creates a MultiAgentRLModuleSpec from a dictionary."""
         return MultiAgentRLModuleSpec(
             marl_module_class=deserialize_type(d["marl_module_class"]),
+            inference_only=d["inference_only"],
             module_specs={
                 module_id: SingleAgentRLModuleSpec.from_dict(module_spec)
                 for module_id, module_spec in d["module_specs"].items()
@@ -632,14 +676,22 @@ class MultiAgentRLModuleSpec:
                 exist. If False, they are only updated.
         """
         if isinstance(other, SingleAgentRLModuleSpec):
+            # Disable our `inference_only` as soon as any single-agent module has
+            # `inference_only=False`.
+            if not other.inference_only:
+                self.inference_only = False
             for mid, spec in self.module_specs.items():
                 self.module_specs[mid].update(other, override=False)
         elif isinstance(other.module_specs, dict):
             self.add_modules(other.module_specs, override=override)
         else:
+            assert isinstance(other, MultiAgentRLModuleSpec)
             if not self.module_specs:
+                self.inference_only = other.inference_only
                 self.module_specs = other.module_specs
             else:
+                if not other.inference_only:
+                    self.inference_only = False
                 self.module_specs.update(other.module_specs)
 
     def as_multi_agent(self) -> "MultiAgentRLModuleSpec":
@@ -647,13 +699,19 @@ class MultiAgentRLModuleSpec:
         return self
 
 
+# TODO (sven): Shouldn't we simply use this class inside MultiAgentRLModuleSpec instead
+#  of duplicating all data records (e.g. `inference_only`) in `MultiAgentRLModuleSpec`?
+#  Same for SingleAgentRLModuleSpec, which should use RLModuleConfig instead of
+#  duplicating all settings, e.g. `observation_space`, `inference_only`, ...
 @ExperimentalAPI
 @dataclass
 class MultiAgentRLModuleConfig:
+    inference_only: bool = False
     modules: Dict[ModuleID, SingleAgentRLModuleSpec] = field(default_factory=dict)
 
     def to_dict(self):
         return {
+            "inference_only": self.inference_only,
             "modules": {
                 module_id: module_spec.to_dict()
                 for module_id, module_spec in self.modules.items()
@@ -663,6 +721,7 @@ class MultiAgentRLModuleConfig:
     @classmethod
     def from_dict(cls, d) -> "MultiAgentRLModuleConfig":
         return cls(
+            inference_only=d["inference_only"],
             modules={
                 module_id: SingleAgentRLModuleSpec.from_dict(module_spec)
                 for module_id, module_spec in d["modules"].items()

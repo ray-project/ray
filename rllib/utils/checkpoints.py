@@ -33,6 +33,7 @@ logger = logging.getLogger(__name__)
 
 CHECKPOINT_VERSION = version.Version("1.1")
 CHECKPOINT_VERSION_LEARNER = version.Version("1.2")
+CHECKPOINT_VERSION_ENV_RUNNERS = version.Version("1.3")
 
 
 @PublicAPI(stability="alpha")
@@ -66,6 +67,7 @@ def get_checkpoint_info(checkpoint: Union[str, Checkpoint]) -> Dict[str, Any]:
         "checkpoint_dir": None,
         "state_file": None,
         "policy_ids": None,
+        "module_ids": None,
     }
 
     # `checkpoint` is a Checkpoint instance: Translate to directory and continue.
@@ -155,6 +157,17 @@ def get_checkpoint_info(checkpoint: Union[str, Checkpoint]) -> Dict[str, Any]:
             for policy_id in os.listdir(policies_dir):
                 policy_ids.add(policy_id)
             info.update({"policy_ids": policy_ids})
+
+        # Collect all module IDs in the sub-dir "learner/module_state/".
+        modules_dir = os.path.join(checkpoint, "learner", "module_state")
+        if os.path.isdir(modules_dir):
+            module_ids = set()
+            for module_id in os.listdir(modules_dir):
+                # Only add subdirs (those are the ones where the RLModule data
+                # is stored, not files (could be json metadata files).
+                if os.path.isdir(os.path.join(modules_dir, module_id)):
+                    module_ids.add(module_id)
+            info.update({"module_ids": module_ids})
 
     # Checkpoint is a file: Use as-is (interpreting it as old Algorithm checkpoint
     # version).

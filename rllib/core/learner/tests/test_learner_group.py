@@ -305,7 +305,7 @@ class TestLearnerGroupCheckpointRestore(unittest.TestCase):
 
             # Check if we can load just the MARL Module
             with tempfile.TemporaryDirectory() as tmpdir:
-                marl_module.save_to_checkpoint(tmpdir)
+                marl_module.save(tmpdir)
                 old_learner_weights = learner_group.get_weights()
                 learner_group.load_module_state(marl_module_ckpt_dir=tmpdir)
                 # check the weights of the module in the learner group are the
@@ -315,10 +315,10 @@ class TestLearnerGroupCheckpointRestore(unittest.TestCase):
 
             # Check if we can load just single agent RL Modules
             with tempfile.TemporaryDirectory() as tmpdir:
-                module_0.save_to_checkpoint(tmpdir)
+                module_0.save(tmpdir)
                 with tempfile.TemporaryDirectory() as tmpdir2:
                     temp_module = spec.build()
-                    temp_module.save_to_checkpoint(tmpdir2)
+                    temp_module.save(tmpdir2)
 
                     old_learner_weights = learner_group.get_weights()
                     learner_group.load_module_state(
@@ -340,10 +340,10 @@ class TestLearnerGroupCheckpointRestore(unittest.TestCase):
                 marl_module = MultiAgentRLModule()
                 marl_module.add_module(module_id="0", module=module_0)
                 marl_module.add_module(module_id="1", module=spec.build())
-                marl_module.save_to_checkpoint(tmpdir)
+                marl_module.save(tmpdir)
                 with tempfile.TemporaryDirectory() as tmpdir2:
                     module_1 = spec.build()
-                    module_1.save_to_checkpoint(tmpdir2)
+                    module_1.save(tmpdir2)
                     learner_group.load_module_state(
                         marl_module_ckpt_dir=tmpdir, rl_module_ckpt_dirs={"1": tmpdir2}
                     )
@@ -381,16 +381,16 @@ class TestLearnerGroupCheckpointRestore(unittest.TestCase):
         marl_module.add_module(module_id="1", module=module_1)
 
         with tempfile.TemporaryDirectory() as tmpdir:
-            module_0.save_to_checkpoint(tmpdir)
+            module_0.save(tmpdir)
             with tempfile.TemporaryDirectory() as tmpdir:
                 module_0 = rl_module_spec.build()
                 marl_module = MultiAgentRLModule()
                 marl_module.add_module(module_id="0", module=module_0)
                 marl_module.add_module(module_id="1", module=rl_module_spec.build())
-                marl_module.save_to_checkpoint(tmpdir)
+                marl_module.save(tmpdir)
                 with tempfile.TemporaryDirectory() as tmpdir2:
                     module_1 = rl_module_spec.build()
-                    module_1.save_to_checkpoint(tmpdir2)
+                    module_1.save(tmpdir2)
                     with self.assertRaisesRegex(
                         (ValueError,),
                         ".*`modules_to_load` AND `rl_module_ckpt_dirs`!.*",
@@ -417,7 +417,7 @@ class TestLearnerGroupSaveLoadState(unittest.TestCase):
     def tearDownClass(cls) -> None:
         ray.shutdown()
 
-    def test_save_load_state(self):
+    def test_save_and_restore(self):
         """Check that saving and loading learner group state works."""
         fws = ["torch", "tf2"]
         # this is expanded to more scaling modes on the release ci.
@@ -436,7 +436,7 @@ class TestLearnerGroupSaveLoadState(unittest.TestCase):
 
             # checkpoint the initial learner state for later comparison
             initial_learner_checkpoint_dir = tempfile.TemporaryDirectory().name
-            initial_learner_group.save_state(initial_learner_checkpoint_dir)
+            initial_learner_group.save(initial_learner_checkpoint_dir)
             initial_learner_group_weights = initial_learner_group.get_weights()
 
             # do a single update
@@ -444,32 +444,32 @@ class TestLearnerGroupSaveLoadState(unittest.TestCase):
 
             # checkpoint the learner state after 1 update for later comparison
             learner_after_1_update_checkpoint_dir = tempfile.TemporaryDirectory().name
-            initial_learner_group.save_state(learner_after_1_update_checkpoint_dir)
+            initial_learner_group.save(learner_after_1_update_checkpoint_dir)
 
             # remove that learner, construct a new one, and load the state of the old
             # learner into the new one
             initial_learner_group.shutdown()
             del initial_learner_group
             new_learner_group = config.build_learner_group(env=env)
-            new_learner_group.load_state(learner_after_1_update_checkpoint_dir)
+            new_learner_group.restore(learner_after_1_update_checkpoint_dir)
 
             # do another update
             results_with_break = new_learner_group.update_from_batch(
                 batch=batch.as_multi_agent()
             )
-            weights_after_1_update_with_break = new_learner_group.get_weights()
+            weights_after_1_update_with_break = new_learner_group.get_state()
             new_learner_group.shutdown()
             del new_learner_group
 
             # construct a new learner group and load the initial state of the learner
             learner_group = config.build_learner_group(env=env)
-            learner_group.load_state(initial_learner_checkpoint_dir)
-            check(learner_group.get_weights(), initial_learner_group_weights)
+            learner_group.restore(initial_learner_checkpoint_dir)
+            check(learner_group.get_state(), initial_learner_group_weights)
             learner_group.update_from_batch(batch.as_multi_agent())
             results_without_break = learner_group.update_from_batch(
                 batch=batch.as_multi_agent()
             )
-            weights_after_1_update_without_break = learner_group.get_weights()
+            weights_after_1_update_without_break = learner_group.get_state()
             learner_group.shutdown()
             del learner_group
 
@@ -555,7 +555,10 @@ def _check_multi_worker_weights(learner_group, results):
         # which all should have the same weights after updating) with the actual
         # current mean weights.
         reported_mean_weights = mod_results["mean_weight"]
-        parameters = learner_group.get_weights(module_ids=[module_id])[module_id]
+        parameters = learner_group.get_state(
+            components="rl_module",
+            module_ids=module_id,
+        )["learner"]["rl_module"][module_id]["weights"]
         actual_mean_weights = np.mean([w.mean() for w in parameters.values()])
         check(reported_mean_weights, actual_mean_weights, rtol=0.02)
 

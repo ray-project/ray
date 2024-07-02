@@ -33,6 +33,7 @@ from ray.rllib.utils.annotations import (
     OverrideToImplementCustomLogic,
     OverrideToImplementCustomLogic_CallToSuperRecommended,
 )
+from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.serialization import (
@@ -65,6 +66,9 @@ class SingleAgentRLModuleSpec:
             observation space of an environment, would usually correspond to a
             one-hot encoded observation space of the RLModule because of preprocessing.
         action_space: The action space of the RLModule.
+        inference_only: Whether the RLModule should be configured in its inference-only
+            state, in which any components not needed for pure action computing (such as
+            a value function or a target network) might be missing.
         model_config_dict: The model config dict to use.
         catalog_class: The Catalog class to use.
         load_state_path: The path to the module state to load from. NOTE: This must be
@@ -74,6 +78,7 @@ class SingleAgentRLModuleSpec:
     module_class: Optional[Type["RLModule"]] = None
     observation_space: Optional[gym.Space] = None
     action_space: Optional[gym.Space] = None
+    inference_only: bool = False
     model_config_dict: Optional[Dict[str, Any]] = None
     catalog_class: Optional[Type["Catalog"]] = None
     load_state_path: Optional[str] = None
@@ -83,6 +88,7 @@ class SingleAgentRLModuleSpec:
         return RLModuleConfig(
             observation_space=self.observation_space,
             action_space=self.action_space,
+            inference_only=self.inference_only,
             model_config_dict=self.model_config_dict,
             catalog_class=self.catalog_class,
         )
@@ -115,6 +121,7 @@ class SingleAgentRLModuleSpec:
             module_class=type(module),
             observation_space=module.config.observation_space,
             action_space=module.config.action_space,
+            inference_only=module.config.inference_only,
             model_config_dict=module.config.model_config_dict,
             catalog_class=module.config.catalog_class,
         )
@@ -131,19 +138,15 @@ class SingleAgentRLModuleSpec:
     def from_dict(cls, d):
         """Returns a single agent RLModule spec from a serialized representation."""
         module_class = deserialize_type(d["module_class"])
-
         module_config = RLModuleConfig.from_dict(d["module_config"])
-        observation_space = module_config.observation_space
-        action_space = module_config.action_space
-        model_config_dict = module_config.model_config_dict
-        catalog_class = module_config.catalog_class
 
         spec = SingleAgentRLModuleSpec(
             module_class=module_class,
-            observation_space=observation_space,
-            action_space=action_space,
-            model_config_dict=model_config_dict,
-            catalog_class=catalog_class,
+            observation_space=module_config.observation_space,
+            action_space=module_config.action_space,
+            inference_only=module_config.inference_only,
+            model_config_dict=module_config.model_config_dict,
+            catalog_class=module_config.catalog_class,
         )
         return spec
 
@@ -164,6 +167,7 @@ class SingleAgentRLModuleSpec:
             self.module_class = other.module_class or self.module_class
             self.observation_space = other.observation_space or self.observation_space
             self.action_space = other.action_space or self.action_space
+            self.inference_only = other.inference_only or self.inference_only
             self.model_config_dict = other.model_config_dict or self.model_config_dict
             self.catalog_class = other.catalog_class or self.catalog_class
             self.load_state_path = other.load_state_path or self.load_state_path
@@ -206,7 +210,7 @@ class RLModuleConfig:
 
     observation_space: gym.Space = None
     action_space: gym.Space = None
-    inference_only: bool = None
+    inference_only: bool = False
     model_config_dict: Dict[str, Any] = field(default_factory=dict)
     catalog_class: Type["Catalog"] = None
 
@@ -720,25 +724,28 @@ class RLModule(abc.ABC):
         return None
 
     @OverrideToImplementCustomLogic
-    def save_state(self, dir: Union[str, pathlib.Path]) -> None:
-        """Saves the weights of this RLModule to the directory dir.
+    def save(self, path: Union[str, pathlib.Path]) -> None:
+        """Saves the state (weights and spec) of this RLModule to path.
 
         Args:
-            dir: The directory to save the checkpoint to.
+            path: The directory to save the checkpoint to.
+
+        Raises:
+            ValueError: If path is not an absolute path.
         """
-        return None
+        pass
 
     @OverrideToImplementCustomLogic
-    def load_state(
+    def restore(
         self,
-        dir: Union[str, pathlib.Path],
+        path: Union[str, pathlib.Path],
     ) -> None:
-        """Loads the weights of an RLModule from the directory dir.
+        """Restores/loads the state of this RLModule from path.
 
         Args:
-            dir: The directory to load the checkpoint from.
+            path: The (checkpoint) directory to restore the state from.
         """
-        return None
+        pass
 
     def _module_metadata(
         self,
@@ -833,28 +840,18 @@ class RLModule(abc.ABC):
         """The name of the file to save the module state to while checkpointing."""
         raise NotImplementedError
 
-    def save_to_checkpoint(self, checkpoint_dir_path: Union[str, pathlib.Path]) -> None:
-        """Saves the module to a checkpoint directory.
-
-        Args:
-            checkpoint_dir_path: The directory to save the checkpoint to.
-
-        Raises:
-            ValueError: If dir_path is not an absolute path.
-        """
-        path = pathlib.Path(checkpoint_dir_path)
-        path.mkdir(parents=True, exist_ok=True)
-        module_state_dir = path / RLMODULE_STATE_DIR_NAME
-        module_state_dir.mkdir(parents=True, exist_ok=True)
-        self.save_state(module_state_dir)
-        self._save_module_metadata(path, SingleAgentRLModuleSpec)
-
     @classmethod
-    def from_checkpoint(cls, checkpoint_dir_path: Union[str, pathlib.Path]) -> None:
-        """Loads the module from a checkpoint directory.
+    def from_checkpoint(
+        cls,
+        checkpoint_dir_path: Union[str, pathlib.Path],
+    ) -> "RLModule":
+        """Creates a new RLModule from a checkpoint directory.
 
         Args:
             checkpoint_dir_path: The directory to load the checkpoint from.
+
+        Returns:
+            The new RLModule created from the given checkpoint dir.
         """
         path = pathlib.Path(checkpoint_dir_path)
         if not path.exists():
@@ -869,8 +866,7 @@ class RLModule(abc.ABC):
             )
         metadata_path = path / RLMODULE_METADATA_FILE_NAME
         module = cls._from_metadata_file(metadata_path)
-        module_state_dir = path / RLMODULE_STATE_DIR_NAME
-        module.load_state(module_state_dir)
+        module.restore(path)
         return module
 
     def as_multi_agent(self) -> "MultiAgentRLModule":
@@ -891,3 +887,15 @@ class RLModule(abc.ABC):
             The underlying module.
         """
         return self
+
+    @Deprecated(new="RLModule.save(...)", error=True)
+    def save_state(self, *args, **kwargs):
+        pass
+
+    @Deprecated(new="RLModule.restore(...)", error=True)
+    def load_state(self, *args, **kwargs):
+        pass
+
+    @Deprecated(new="RLModule.save(...)", error=True)
+    def save_to_checkpoint(self, *args, **kwargs):
+        pass

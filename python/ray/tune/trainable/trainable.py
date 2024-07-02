@@ -398,15 +398,15 @@ class Trainable:
 
         return result
 
-    def get_state(self):
-        return {
-            "iteration": self._iteration,
-            "timesteps_total": self._timesteps_total,
-            "time_total": self._time_total,
-            "episodes_total": self._episodes_total,
-            "last_result": self._last_result,
-            "ray_version": ray.__version__,
-        }
+    #def get_state(self):
+    #    return {
+    #        "iteration": self._iteration,
+    #        "timesteps_total": self._timesteps_total,
+    #        "time_total": self._time_total,
+    #        "episodes_total": self._episodes_total,
+    #        "last_result": self._last_result,
+    #        "ray_version": ray.__version__,
+    #    }
 
     def _report_class_trainable_checkpoint(
         self, checkpoint_dir: str, checkpoint_dict_or_path: Union[str, Dict]

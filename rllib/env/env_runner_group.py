@@ -571,7 +571,7 @@ class EnvRunnerGroup:
             )
 
         # Only sync if we have remote workers or `from_worker_or_trainer` is provided.
-        weights = None
+        rl_module_state = None
         if self.num_remote_workers() or from_worker_or_learner_group is not None:
             weights_src = from_worker_or_learner_group or self.local_worker()
 
@@ -582,33 +582,35 @@ class EnvRunnerGroup:
                 )
             # New API stack: Use the unified `get_state` API.
             if self._remote_config.enable_env_runner_and_connector_v2:
-                weights = weights_src.get_state(
+                rl_module_state = weights_src.get_state(
                     components=COMPONENT_RL_MODULE,
                     inference_only=inference_only,
                     module_ids=policies,
                 )
                 if isinstance(weights_src, LearnerGroup):
-                    weights = weights[COMPONENT_LEARNER][COMPONENT_RL_MODULE]
+                    rl_module_state = (
+                        rl_module_state[COMPONENT_LEARNER][COMPONENT_RL_MODULE]
+                    )
                 else:
-                    weights = weights[COMPONENT_RL_MODULE]
+                    rl_module_state = rl_module_state[COMPONENT_RL_MODULE]
             # Old API stack: Use `get_weights`.
             else:
-                weights = weights_src.get_weights(policies, inference_only)
+                rl_module_state = weights_src.get_weights(policies, inference_only)
 
             # Move weights to the object store to avoid having to make n pickled copies
             # of the weights dict for each worker.
-            weights_ref = ray.put(weights)
+            rl_module_state_ref = ray.put(rl_module_state)
 
             if self._remote_config.enable_env_runner_and_connector_v2:
 
                 def _set_weights(env_runner):
-                    _weights = ray.get(weights_ref)
-                    env_runner.set_state({COMPONENT_RL_MODULE: _weights})
+                    _rl_module_state = ray.get(rl_module_state_ref)
+                    env_runner.set_state({COMPONENT_RL_MODULE: _rl_module_state})
 
             else:
 
                 def _set_weights(env_runner):
-                    _weights = ray.get(weights_ref)
+                    _weights = ray.get(rl_module_state_ref)
                     env_runner.set_weights(_weights, global_vars)
 
             # Sync to specified remote workers in this EnvRunnerGroup.
@@ -623,10 +625,10 @@ class EnvRunnerGroup:
         # EnvRunnerGroup's local worker.
         if self.local_worker() is not None:
             if from_worker_or_learner_group is not None:
-                self.local_worker().set_weights(weights, global_vars=global_vars)
+                self.local_worker().set_state({COMPONENT_RL_MODULE: rl_module_state})
             # If `global_vars` is provided and local worker exists  -> Update its
             # global_vars.
-            elif global_vars is not None:
+            if global_vars is not None:
                 self.local_worker().set_global_vars(global_vars)
 
     @DeveloperAPI

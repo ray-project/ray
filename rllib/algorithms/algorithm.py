@@ -39,8 +39,17 @@ import ray.cloudpickle as pickle
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.registry import ALGORITHMS_CLASS_TO_NAME as ALL_ALGORITHMS
 from ray.rllib.connectors.agent.obs_preproc import ObsPreprocessorConnector
-from ray.rllib.core import COMPONENT_LEARNER, COMPONENT_RL_MODULE, DEFAULT_MODULE_ID
+from ray.rllib.core import (
+    COMPONENT_AGENT_TO_MODULE_MAPPING_FN,
+    COMPONENT_ENV_RUNNER,
+    COMPONENT_EVAL_ENV_RUNNER,
+    COMPONENT_LEARNER,
+    COMPONENT_METRICS_LOGGER,
+    COMPONENT_RL_MODULE,
+    DEFAULT_MODULE_ID,
+)
 from ray.rllib.core.columns import Columns
+from ray.rllib.core.learner.learner import Learner
 from ray.rllib.core.rl_module.marl_module import MultiAgentRLModuleSpec
 from ray.rllib.core.rl_module.rl_module import RLModule, SingleAgentRLModuleSpec
 from ray.rllib.env.env_context import EnvContext
@@ -76,6 +85,7 @@ from ray.rllib.utils.annotations import (
 )
 from ray.rllib.utils.checkpoints import (
     CHECKPOINT_VERSION,
+    CHECKPOINT_VERSION_ENV_RUNNERS,
     CHECKPOINT_VERSION_LEARNER,
     get_checkpoint_info,
     try_import_msgpack,
@@ -285,6 +295,11 @@ class Algorithm(Trainable, AlgorithmBase):
     @staticmethod
     def from_checkpoint(
         checkpoint: Union[str, Checkpoint],
+        *,
+        module_ids: Optional[Container[ModuleID]] = None,
+        new_agent_to_module_mapping_fn: Optional[AgentToModuleMappingFn] = None,
+        new_should_module_be_updated: Optional[ShouldModuleBeUpdatedFn] = None,
+        # @OldAPIStack
         policy_ids: Optional[Container[PolicyID]] = None,
         policy_mapping_fn: Optional[Callable[[AgentID, EpisodeID], PolicyID]] = None,
         policies_to_train: Optional[
@@ -301,6 +316,22 @@ class Algorithm(Trainable, AlgorithmBase):
         Args:
             checkpoint: The path (str) to the checkpoint directory to use
                 or an AIR Checkpoint instance to restore from.
+            module_ids: ID of the RLModules from recover from the checkpoint. This
+                allows users to restore an Algorithm with only a subset of the
+                originally present RLModules.
+                IMPORTANT: Must not contain characters that
+                are also not allowed in Unix/Win filesystems, such as: `<>:"/|?*`,
+                or a dot, space or backslash at the end of the ID.
+            new_agent_to_module_mapping_fn: An optional (updated) AgentID to ModuleID
+                mapping function to use from here on. Note that already ongoing
+                episodes will not change their mapping but will use the old mapping till
+                the end of the episode.
+            new_should_module_be_updated: An optional sequence of ModuleIDs or a
+                callable taking ModuleID and MultiAgentBatch and returning whether the
+                ModuleID should be updated (trained).
+                If None, will keep the existing setup in place. RLModules,
+                whose IDs are not in the sequence (or for which the callable
+                returns False) will not be updated.
             policy_ids: Optional list of PolicyIDs to recover. This allows users to
                 restore an Algorithm with only a subset of the originally present
                 Policies.
@@ -360,6 +391,9 @@ class Algorithm(Trainable, AlgorithmBase):
 
         state = Algorithm._checkpoint_info_to_algorithm_state(
             checkpoint_info=checkpoint_info,
+            module_ids=module_ids,
+            new_agent_to_module_mapping_fn=new_agent_to_module_mapping_fn,
+            new_should_module_be_updated=new_should_module_be_updated,
             policy_ids=policy_ids,
             policy_mapping_fn=policy_mapping_fn,
             policies_to_train=policies_to_train,
@@ -766,17 +800,17 @@ class Algorithm(Trainable, AlgorithmBase):
                 # Sync the weights from the learner group to the rollout workers.
                 weights = self.learner_group.get_state(components=COMPONENT_RL_MODULE)[
                     COMPONENT_LEARNER
-                ][COMPONENT_RL_MODULE]
+                ][COMPONENT_RL_MODULE]["weights"]
                 local_worker.set_weights(weights)
                 self.workers.sync_weights(inference_only=True)
             # New stack/EnvRunner APIs: Use get/set_state.
             else:
                 # Sync the weights from the learner group to the EnvRunners.
-                weights = self.learner_group.get_state(
+                rl_module_state = self.learner_group.get_state(
                     components=COMPONENT_RL_MODULE,
                     inference_only=True,
                 )[COMPONENT_LEARNER][COMPONENT_RL_MODULE]
-                local_worker.set_state({COMPONENT_RL_MODULE: weights})
+                local_worker.set_state({COMPONENT_RL_MODULE: rl_module_state})
                 self.workers.sync_env_runner_states(
                     config=self.config,
                     env_steps_sampled=self.metrics.peek(
@@ -2188,20 +2222,34 @@ class Algorithm(Trainable, AlgorithmBase):
         """
         validate_policy_id(module_id, error=True)
 
-        def _add(env_runner_or_learner):
+        def _add(env_runner_or_learner, _module_spec=module_spec):
+            # For Learners only:
+            # - update `should_module_be_updated` function/collection.
+            # - force-set inference-only = False.
+            if isinstance(env_runner_or_learner, Learner):
+                if new_should_module_be_updated is not None:
+                    env_runner_or_learner.config.multi_agent(
+                        policies_to_train=new_should_module_be_updated
+                    )
+                _module_spec = copy.deepcopy(_module_spec)
+                _module_spec.inference_only = False
+
+            # Add the RLModule to the existing one on the EnvRunner or Learner.
             env_runner_or_learner.module.add_module(
-                module_id=module_id, module=module_spec.build()
+                module_id=module_id, module=_module_spec.build()
             )
+            # For Learners only: Register the optimizer(s) for the new Module.
+            if isinstance(env_runner_or_learner, Learner):
+                env_runner_or_learner.configure_optimizers_for_module(
+                    module_id=module_id,
+                    config=env_runner_or_learner.config.get_config_for_module(
+                        module_id
+                    ),
+                )
+            # Update the `agent_to_module_mapping_fn` on the EnvRunner or Learner.
             if new_agent_to_module_mapping_fn is not None:
                 env_runner_or_learner.config.multi_agent(
                     policy_mapping_fn=new_agent_to_module_mapping_fn
-                )
-            # This setting doesn't really matter for EnvRunners (no
-            # training going on there, but we'll update this as well
-            # here for good measure).
-            if new_should_module_be_updated is not None:
-                env_runner_or_learner.config.multi_agent(
-                    policies_to_train=new_should_module_be_updated
                 )
 
         # Create RLModule on all EnvRunners.
@@ -2365,9 +2413,27 @@ class Algorithm(Trainable, AlgorithmBase):
         Args:
             checkpoint_dir: The directory where the checkpoint files will be stored.
         """
-        state = self.__getstate__()
+        # New API stack: Save individual components to disk via their 
+        if (
+            self.config.enable_rl_module_and_learner
+            and self.config.enable_env_runner_and_connector_v2
+        ):
+            module_states = {}
+            state = {
+                "checkpoint_version": CHECKPOINT_VERSION_ENV_RUNNERS,
+            }
+            # Save the LearnerGroup's state to disk.
+            self.learner_group.save(os.path.join(checkpoint_dir, COMPONENT_LEARNER))
+            # Save the (local) EnvRunner's state to disk.
+            self.workers.local_worker().save(
+                os.path.join(checkpoint_dir, COMPONENT_ENV_RUNNER)
+            )
+            if self.evaluation_workers:
+                self.evaluation_workers.local_worker().save(
+                    os.path.join(checkpoint_dir, COMPONENT_EVAL_ENV_RUNNER)
+                )
 
-        # TODO (sven): Move LearnerGroup `get_state` call here as well.
+        state = self.__getstate__()
 
         # Extract policy states from worker state (Policies get their own
         # checkpoint sub-dirs).
@@ -2395,13 +2461,15 @@ class Algorithm(Trainable, AlgorithmBase):
                     "format": "cloudpickle",
                     "state_file": state_file,
                     "policy_ids": list(policy_states.keys()),
+                    "module_ids": list(module_states.keys()),
                     "ray_version": ray.__version__,
                     "ray_commit": ray.__commit__,
                 },
                 f,
             )
 
-        # Write individual policies to disk, each in their own sub-directory.
+        # Old API stack: Write individual policies to disk, each in their own
+        # sub-directory.
         for pid, policy_state in policy_states.items():
             # From here on, disallow policyIDs that would not work as directory names.
             validate_policy_id(pid, error=True)
@@ -2409,11 +2477,6 @@ class Algorithm(Trainable, AlgorithmBase):
             os.makedirs(policy_dir, exist_ok=True)
             policy = self.get_policy(pid)
             policy.export_checkpoint(policy_dir, policy_state=policy_state)
-
-        # if we are using the learner API, save the learner group state
-        if self.config.enable_rl_module_and_learner:
-            learner_state_dir = os.path.join(checkpoint_dir, "learner")
-            self.learner_group.save_state(learner_state_dir)
 
     @override(Trainable)
     def load_checkpoint(self, checkpoint_dir: str) -> None:
@@ -2425,13 +2488,17 @@ class Algorithm(Trainable, AlgorithmBase):
         self.__setstate__(checkpoint_data)
         if self.config.enable_rl_module_and_learner:
             learner_state_dir = os.path.join(checkpoint_dir, "learner")
-            self.learner_group.load_state(learner_state_dir)
+            self.learner_group.restore(learner_state_dir)
             # Make also sure, all training EnvRunners get the just loaded weights.
-            weights = self.learner_group.get_state(
+            learner_group_state = self.learner_group.get_state(
                 components=COMPONENT_RL_MODULE,
                 inference_only=True,
-            )[COMPONENT_LEARNER][COMPONENT_RL_MODULE]
-            self.workers.local_worker().set_state({COMPONENT_RL_MODULE: weights})
+            )
+            self.workers.local_worker().set_state({
+                COMPONENT_RL_MODULE: (
+                    learner_group_state[COMPONENT_LEARNER][COMPONENT_RL_MODULE]
+                ),
+            })
             self.workers.sync_weights(inference_only=True)
 
         # Call the `on_checkpoint_loaded` callback.
@@ -2839,7 +2906,19 @@ class Algorithm(Trainable, AlgorithmBase):
         # New API stack.
         if self.config.enable_env_runner_and_connector_v2:
             # Save entire MetricsLogger state.
-            state["metrics_logger"] = self.metrics.get_state()
+            state[COMPONENT_METRICS_LOGGER] = self.metrics.get_state()
+            # Save (local) EnvRunner state (w/o RLModule).
+            state[COMPONENT_ENV_RUNNER] = self.workers.local_worker().get_state(
+                not_components=COMPONENT_RL_MODULE
+            )
+            if self.evaluation_workers:
+                state[COMPONENT_EVAL_ENV_RUNNER] = (
+                    self.evaluation_workers.local_worker().get_state(
+                        not_components=COMPONENT_RL_MODULE
+                    )
+                )
+            # Save Learner state (w/ RLModule).
+            state[COMPONENT_LEARNER] = self.learner_group.get_state()
 
         # Old API stack.
         else:
@@ -2884,6 +2963,8 @@ class Algorithm(Trainable, AlgorithmBase):
         #  Also, what should the behavior be if e.g. some training parameter
         #  (e.g. lr) changed?
 
+        # Old API stack: The local worker stores its state (together with all the
+        # Module information) in state['worker'].
         if hasattr(self, "workers") and "worker" in state and state["worker"]:
             self.workers.local_worker().set_state(state["worker"])
             remote_state_ref = ray.put(state["worker"])
@@ -2905,11 +2986,11 @@ class Algorithm(Trainable, AlgorithmBase):
                 # there in case they are used for evaluation purpose.
                 self.evaluation_workers.foreach_worker(_setup_eval_worker)
 
-        # If necessary, restore replay data as well.
+        # Restore replay buffer data.
         if self.local_replay_buffer is not None:
             # TODO: Experimental functionality: Restore contents of replay
             #  buffer from checkpoint, only if user has configured this.
-            if self.config.get("store_buffer_in_checkpoints"):
+            if self.config.store_buffer_in_checkpoints:
                 if "local_replay_buffer" in state:
                     self.local_replay_buffer.set_state(state["local_replay_buffer"])
                 else:
@@ -2925,17 +3006,37 @@ class Algorithm(Trainable, AlgorithmBase):
                     "data found in state!"
                 )
 
+        # New API stack: Load Module state from the Learner state dir.
         if self.config.enable_rl_module_and_learner:
-            if "learner_state_dir" in state:
-                self.learner_group.load_state(state["learner_state_dir"])
-            else:
-                logger.warning(
-                    "You configured `enable_rl_module_and_learner=True`, but no "
-                    "`learner_state_dir` key could be found in the state dict!"
+            if COMPONENT_LEARNER in state:
+                self.learner_group.set_state(state[COMPONENT_LEARNER])
+
+            if COMPONENT_ENV_RUNNER in state:
+                env_runner_state = ray.put(state[COMPONENT_ENV_RUNNER])
+                self.workers.foreach_worker(
+                    lambda w: w.set_state(ray.get(env_runner_state))
                 )
+
+            if COMPONENT_EVAL_ENV_RUNNER in state and self.evaluation_workers:
+                state_ref = ray.put(state[COMPONENT_EVAL_ENV_RUNNER])
+                self.evaluation_workers.foreach_worker(
+                    lambda w: w.set_state(ray.get(state_ref))
+                )
+
+            # Sync RLModule state from Learner to all EnvRunners.
+            self.workers.sync_weights(
+                from_worker_or_learner_group=self.learner_group,
+                inference_only=True,
+            )
+            if self.evaluation_workers:
+                self.evaluation_workers.sync_weights(
+                    from_worker_or_learner_group=self.learner_group,
+                    inference_only=True,
+                )
+
             # Recover MetricsLogger state.
-            if "metrics_logger" in state:
-                self.metrics.set_state(state["metrics_logger"])
+            if COMPONENT_METRICS_LOGGER in state:
+                self.metrics.set_state(state[COMPONENT_METRICS_LOGGER])
 
         if "counters" in state:
             self._counters = state["counters"]
@@ -2946,6 +3047,10 @@ class Algorithm(Trainable, AlgorithmBase):
     @staticmethod
     def _checkpoint_info_to_algorithm_state(
         checkpoint_info: dict,
+        *,
+        module_ids: Optional[Container[ModuleID]] = None,
+        new_agent_to_module_mapping_fn: Optional[AgentToModuleMappingFn] = None,
+        new_should_module_be_updated: Optional[ShouldModuleBeUpdatedFn] = None,
         policy_ids: Optional[Container[PolicyID]] = None,
         policy_mapping_fn: Optional[Callable[[AgentID, EpisodeID], PolicyID]] = None,
         policies_to_train: Optional[
@@ -2963,6 +3068,22 @@ class Algorithm(Trainable, AlgorithmBase):
             checkpoint_info: A checkpoint info dict as returned by
                 `ray.rllib.utils.checkpoints.get_checkpoint_info(
                 [checkpoint dir or AIR Checkpoint])`.
+            module_ids: ID of the RLModules from recover from the checkpoint. This
+                allows users to restore an Algorithm with only a subset of the
+                originally present RLModules.
+                IMPORTANT: Must not contain characters that
+                are also not allowed in Unix/Win filesystems, such as: `<>:"/|?*`,
+                or a dot, space or backslash at the end of the ID.
+            new_agent_to_module_mapping_fn: An optional (updated) AgentID to ModuleID
+                mapping function to use from here on. Note that already ongoing
+                episodes will not change their mapping but will use the old mapping till
+                the end of the episode.
+            new_should_module_be_updated: An optional sequence of ModuleIDs or a
+                callable taking ModuleID and MultiAgentBatch and returning whether the
+                ModuleID should be updated (trained).
+                If None, will keep the existing setup in place. RLModules,
+                whose IDs are not in the sequence (or for which the callable
+                returns False) will not be updated.
             policy_ids: Optional list/set of PolicyIDs. If not None, only those policies
                 listed here will be included in the returned state. Note that
                 state items such as filters, the `is_policy_to_train` function, as
@@ -2994,10 +3115,44 @@ class Algorithm(Trainable, AlgorithmBase):
             else:
                 state = pickle.load(f)
 
-        # New checkpoint format: Policies are in separate sub-dirs.
-        # Note: Algorithms like ES/ARS don't have an EnvRunnerGroup, so we just return
-        # the plain state here.
-        if (
+        # New API stack checkpoint.
+        if checkpoint_info["checkpoint_version"] >= CHECKPOINT_VERSION_ENV_RUNNERS:
+            # Retrieve the set of all required Module IDs, but limit by `module_ids`,
+            # if provided.
+            if module_ids is None:
+                module_ids = checkpoint_info["module_ids"]
+            else:
+                module_ids = set(module_ids) & checkpoint_info["module_ids"]
+
+            # Get Algorithm class.
+            if isinstance(state["algorithm_class"], str):
+                # Try deserializing from a full classpath.
+                # Or as a last resort: Tune registered algorithm name.
+                state["algorithm_class"] = deserialize_type(
+                    state["algorithm_class"]
+                ) or get_trainable_cls(state["algorithm_class"])
+            # Compile actual config object.
+            default_config = state["algorithm_class"].get_default_config()
+            new_config = default_config.update_from_dict(state["config"])
+
+            # Remove modules from `policies` dict that are not in `module_ids`.
+            new_modules = new_config.policies
+            if isinstance(new_modules, (set, list, tuple)):
+                new_modules = {mid for mid in new_modules if mid in module_ids}
+            else:
+                new_modules = {
+                    mid: spec for mid, spec in new_modules.items() if mid in module_ids
+                }
+            new_config.multi_agent(
+                policies=new_modules,
+                policies_to_train=new_should_module_be_updated,
+            )
+            if new_agent_to_module_mapping_fn is not None:
+                new_config.multi_agent(policy_mapping_fn=new_agent_to_module_mapping_fn)
+            state["config"] = new_config
+
+        # Old API stack: Policies are in separate sub-dirs.
+        elif (
             checkpoint_info["checkpoint_version"] > version.Version("0.1")
             and state.get("worker") is not None
             and state.get("worker")

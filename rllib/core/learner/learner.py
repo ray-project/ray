@@ -1,4 +1,5 @@
 import abc
+import pickle
 from collections import defaultdict
 from dataclasses import dataclass
 from functools import partial
@@ -27,7 +28,7 @@ from ray.rllib.connectors.learner.learner_connector_pipeline import (
     LearnerConnectorPipeline,
 )
 from ray.rllib.core import (
-    COMPONENT_MODULES_TO_BE_UPDATED,
+    COMPONENT_SHOULD_MODULE_BE_UPDATED,
     COMPONENT_OPTIMIZER,
     COMPONENT_RL_MODULE,
     DEFAULT_MODULE_ID,
@@ -437,7 +438,6 @@ class Learner:
 
         This method is called once during building (`self.build()`).
         """
-
         # The default implementation simply calls `self.configure_optimizers_for_module`
         # on each RLModule within `self.module`.
         for module_id in self.module.keys():
@@ -673,29 +673,6 @@ class Learner:
             for ref in self._optimizer_parameters[optimizer]
             if ref in param_dict and param_dict[ref] is not None
         }
-
-    def get_module_state(
-        self, module_ids: Optional[Set[str]] = None, inference_only: bool = False
-    ) -> Dict[str, Any]:
-        """Returns the state of the underlying MultiAgentRLModule.
-
-        The output should be numpy-friendly for easy serialization, not framework
-        specific tensors.
-
-        Args:
-            module_ids: The ids of the modules to get the weights for. If None, all
-                modules will be returned.
-
-        Returns:
-            A dictionary that holds the state of the modules in a numpy-friendly
-            format.
-        """
-        module_states = self.module.get_state(module_ids, inference_only)
-        return convert_to_numpy({k: v for k, v in module_states.items()})
-
-    @abc.abstractmethod
-    def set_module_state(self, state: Dict[str, Any]) -> None:
-        """Sets the state of the underlying MultiAgentRLModule"""
 
     @abc.abstractmethod
     def get_param_ref(self, param: Param) -> Hashable:
@@ -1043,44 +1020,11 @@ class Learner:
 
         """
 
-    def set_state(self, state: Dict[str, Any]) -> None:
-        """Set the state of the learner.
-
-        Args:
-            state: The state of the optimizer and module. Can be obtained
-                from `get_state`. State is a dictionary with two keys:
-                "module_state" and "optimizer_state". The value of each key
-                is a dictionary that can be passed to `set_module_state` and
-                `set_optimizer_state` respectively.
-
-        """
-        self._check_is_built()
-
-        # TODO (sven): Deprecate old state keys.
-        module_state = state.get(COMPONENT_RL_MODULE, state.get("module_state"))
-        # TODO: once we figure out the optimizer format, we can set/get the state
-        if module_state is None:
-            raise ValueError(
-                "state must have a key 'module_state' for the module weights"
-            )
-        self.set_module_state(module_state)
-
-        # TODO (sven): Deprecate old state keys and create constants for new ones.
-        optimizer_state = state.get("optimizer", state.get("optimizer_state"))
-        if optimizer_state is None:
-            raise ValueError(
-                "state must have a key 'optimizer_state' for the optimizer weights"
-            )
-        self.set_optimizer_state(optimizer_state)
-
-        # Update our trainable Modules information/function via our config.
-        # If not provided in state (None), all Modules will be trained by default.
-        self.config.multi_agent(policies_to_train=state.get("modules_to_train"))
-
     def get_state(
         self,
         components: Optional[Union[str, List[str]]] = None,
         *,
+        not_components: Optional[Union[str, List[str]]] = None,
         inference_only: bool = False,
         module_ids: Optional[Container[ModuleID]] = None,
     ) -> Dict[str, Any]:
@@ -1089,6 +1033,10 @@ class Learner:
         Args:
             components: Either None (return all components) or one of "rl_module",
                 "optimizer", or "modules_to_be_updated", or a list of either of these.
+            not_components: An optional list of string keys to be excluded in the
+                returned state, even if the same string is part of `components`.
+                This is useful to get the complete state of the Learner, except
+                one or a few components.
             inference_only: Whether to return the inference-only weight set of the
                 underlying RLModule. Note that this setting only has an effect if
                 components is None or the string "rl_module" is in components.
@@ -1099,11 +1047,9 @@ class Learner:
             The state (or select components thereof) of this Learner.
         """
         self._check_is_built()
-        components = force_list(components) or [
-            COMPONENT_RL_MODULE,
-            COMPONENT_OPTIMIZER,
-            COMPONENT_MODULES_TO_BE_UPDATED,
-        ]
+        components = force_list(components) or None
+        not_components = force_list(not_components)
+
         state = {}
         if COMPONENT_RL_MODULE in components:
             state[COMPONENT_RL_MODULE] = self.get_module_state(
@@ -1111,23 +1057,73 @@ class Learner:
             )
         if COMPONENT_OPTIMIZER in components:
             state[COMPONENT_OPTIMIZER] = self.get_optimizer_state()
-        if COMPONENT_MODULES_TO_BE_UPDATED in components:
-            state[COMPONENT_MODULES_TO_BE_UPDATED] = self.config.policies_to_train
+        if COMPONENT_SHOULD_MODULE_BE_UPDATED in components:
+            state[COMPONENT_SHOULD_MODULE_BE_UPDATED] = self.config.policies_to_train
         return state
 
-    def set_optimizer_state(self, state: Dict[str, Any]) -> None:
-        """Sets the state of all optimizers currently registered in this Learner.
+    def set_state(self, state: Dict[str, Any]) -> None:
+        """Set the state of the learner.
 
         Args:
-            state: The state of the optimizers.
+            state: The state of the optimizer and module. Can be obtained
+                from `get_state`. State is a dictionary with component keys, for example
+                COMPONENT_RL_MODULE and COMPONENT_OPTIMIZER.
         """
-        raise NotImplementedError
+        self._check_is_built()
+
+        # TODO (sven): Deprecate old state keys.
+        module_state = state.get(COMPONENT_RL_MODULE, state.get("module_state"))
+        if module_state is not None:
+            self.set_module_state(module_state)
+
+        # TODO (sven): Deprecate old state keys.
+        optimizer_state = state.get(COMPONENT_OPTIMIZER, state.get("optimizer_state"))
+        if optimizer_state is not None:
+            self.set_optimizer_state(optimizer_state)
+
+        # Update our trainable Modules information/function via our config.
+        # If not provided in state (None), all Modules will be trained by default.
+        if COMPONENT_SHOULD_MODULE_BE_UPDATED in state:
+            self.config.multi_agent(
+                policies_to_train=state[COMPONENT_SHOULD_MODULE_BE_UPDATED]
+            )
+
+    def get_module_state(
+        self, module_ids: Optional[Set[str]] = None, inference_only: bool = False
+    ) -> Dict[str, Any]:
+        """Returns the state of the underlying MultiAgentRLModule.
+
+        The output should be numpy-friendly for easy serialization, not framework
+        specific tensors.
+
+        Args:
+            module_ids: The ids of the modules to get the weights for. If None, all
+                modules will be returned.
+
+        Returns:
+            A dictionary that holds the state of the modules in a numpy-friendly
+            format.
+        """
+        module_states = self.module.get_state(module_ids, inference_only)
+        return convert_to_numpy({k: v for k, v in module_states.items()})
+
+    @abc.abstractmethod
+    def set_module_state(self, state: Dict[str, Any]) -> None:
+        """Sets the state of the underlying MultiAgentRLModule"""
 
     def get_optimizer_state(self) -> Dict[str, Any]:
         """Returns the state of all optimizers currently registered in this Learner.
 
         Returns:
             The current state of all optimizers currently registered in this Learner.
+        """
+        raise NotImplementedError
+
+    def set_optimizer_state(self, state: Dict[str, Any]) -> None:
+        """Sets the state of all optimizers currently registered in this Learner.
+
+        Args:
+            state: The state of the optimizers.
         """
         raise NotImplementedError
 
@@ -1391,8 +1387,8 @@ class Learner:
         """
         pass
 
-    def save_state(self, path: Union[str, pathlib.Path]) -> None:
-        """Save the state of the learner to path
+    def save(self, path: Union[str, pathlib.Path]) -> None:
+        """Save the state of the learner to path.
 
         NOTE: if path doesn't exist, then a new directory will be created. otherwise, it
         will be appended to.
@@ -1417,17 +1413,23 @@ class Learner:
         self._check_is_built()
         path = pathlib.Path(path)
         path.mkdir(parents=True, exist_ok=True)
-        self.module.save_to_checkpoint(path / "module_state")
+
+        state = self.get_state(
+            not_components=[COMPONENT_RL_MODULE, COMPONENT_OPTIMIZER]
+        )
+
+        self.module.save(path / "module_state")
         self._save_optimizers(path / "optimizer_state")
+
+        with open(path / "learner_state.pkl", "wb") as f:
+            pickle.dump(state, f)
+
         with open(path / "learner_state.json", "w") as f:
             metadata = self._get_metadata()
             json.dump(metadata, f)
 
-    def load_state(
-        self,
-        path: Union[str, pathlib.Path],
-    ) -> None:
-        """Load the state of the learner from path
+    def restore(self, path: Union[str, pathlib.Path]) -> None:
+        """Restores/loads the state of the learner from path.
 
         Note: The learner must be constructed ahead of time before its state is loaded.
 
@@ -1443,6 +1445,9 @@ class Learner:
         self._reset()
         self.build()
         self._load_optimizers(path / "optimizer_state")
+
+        state_dict = pickle.load(open(path / "learner_state.pkl", "rb"))
+        self.set_state(state_dict)
 
     @abc.abstractmethod
     def _is_module_compatible_with_learner(self, module: RLModule) -> bool:
@@ -1632,4 +1637,12 @@ class Learner:
         error=True,
     )
     def additional_update_for_module(self, *args, **kwargs):
+        pass
+
+    @Deprecated(new="Learner.save(...)", error=True)
+    def save_state(self, *args, **kwargs):
+        pass
+
+    @Deprecated(new="Learner.restore(...)", error=True)
+    def load_state(self, *args, **kwargs):
         pass

@@ -3,7 +3,8 @@ from typing import Any, Dict, Union, Type
 
 from packaging import version
 
-from ray.rllib.core.rl_module import RLModule
+import ray.cloudpickle as pickle
+from ray.rllib.core.rl_module.rl_module import RLModule, SingleAgentRLModuleSpec
 from ray.rllib.core.rl_module.rl_module_with_target_networks_interface import (
     RLModuleWithTargetNetworksInterface,
 )
@@ -43,6 +44,7 @@ class TorchRLModule(nn.Module, RLModule):
         nn.Module.__init__(self)
         RLModule.__init__(self, *args, **kwargs)
 
+    @override(nn.Module)
     def forward(self, batch: Dict[str, Any], **kwargs) -> Dict[str, Any]:
         """forward pass of the module.
 
@@ -64,25 +66,38 @@ class TorchRLModule(nn.Module, RLModule):
 
     @override(RLModule)
     def get_state(self, inference_only: bool = False) -> Dict[str, Any]:
-        return self.state_dict()
+        return {
+            "spec": SingleAgentRLModuleSpec.from_module(self),
+            "weights": self.state_dict(),
+        }
 
     @override(RLModule)
     def set_state(self, state: Dict[str, Any]) -> None:
-        state_dict = convert_to_torch_tensor(state_dict)
-        self.load_state_dict(state_dict)
+        if "weights" in state:
+            state_dict = convert_to_torch_tensor(state["weights"])
+            self.load_state_dict(state_dict)
 
     def _module_state_file_name(self) -> pathlib.Path:
         return pathlib.Path("module_state.pt")
 
     @override(RLModule)
-    def save_state(self, dir: Union[str, pathlib.Path]) -> None:
-        path = str(pathlib.Path(dir) / self._module_state_file_name())
-        torch.save(convert_to_numpy(self.state_dict()), path)
+    def save(self, path: Union[str, pathlib.Path]) -> None:
+        state = self.get_state()
+
+        path = pathlib.Path(path)
+        path.mkdir(parents=True, exist_ok=True)
+
+        # Save the weights to one file (so that users can load the model simply
+        # by using the torch.nn.Module API.
+        weights_file = str(pathlib.Path(path) / self._module_state_file_name())
+        torch.save(convert_to_numpy(state["weights"]), weights_file)
+        # Save the meta-data (spec and other meta-data) to a separate file.
+        self._save_module_metadata(path, SingleAgentRLModuleSpec)
 
     @override(RLModule)
-    def load_state(self, dir: Union[str, pathlib.Path]) -> None:
-        path = str(pathlib.Path(dir) / self._module_state_file_name())
-        self.set_state(torch.load(path))
+    def restore(self, path: Union[str, pathlib.Path]) -> None:
+        path = str(pathlib.Path(path) / self._module_state_file_name())
+        self.set_state({"weights": torch.load(path)})
 
     def _set_inference_only_state_dict_keys(self) -> None:
         """Sets expected and unexpected keys for the inference-only module.
@@ -154,16 +169,12 @@ class TorchDDPRLModule(RLModule, nn.parallel.DistributedDataParallel):
         self.unwrapped().set_state(*args, **kwargs)
 
     @override(RLModule)
-    def save_state(self, *args, **kwargs):
-        self.unwrapped().save_state(*args, **kwargs)
+    def save(self, *args, **kwargs):
+        self.unwrapped().save(*args, **kwargs)
 
     @override(RLModule)
-    def load_state(self, *args, **kwargs):
-        self.unwrapped().load_state(*args, **kwargs)
-
-    @override(RLModule)
-    def save_to_checkpoint(self, *args, **kwargs):
-        self.unwrapped().save_to_checkpoint(*args, **kwargs)
+    def restore(self, *args, **kwargs):
+        self.unwrapped().restore(*args, **kwargs)
 
     @override(RLModule)
     def _save_module_metadata(self, *args, **kwargs):
