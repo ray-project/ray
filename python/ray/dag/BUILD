@@ -115,7 +115,7 @@ py_test_module_list(
 )
 
 py_test_module_list(
-    size = "medium",
+    size = "large",
     files = [
         "tests/experimental/test_accelerated_dag.py",
     ],
