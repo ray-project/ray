@@ -56,7 +56,7 @@ export const MainNavContext =
 export const useMainNavState = (): MainNavContextType => {
   const [pageHierarchy, setPageHierarchy] = useState<MainNavPage[]>([]);
 
-  const addPage = useCallback((pageId) => {
+  const addPage = useCallback((pageId: string) => {
     setPageHierarchy((hierarchy) => [
       ...hierarchy,
       // Use dummy values for title and pageTitle to start. This gets filled by the next callback.
@@ -64,18 +64,26 @@ export const useMainNavState = (): MainNavContextType => {
     ]);
   }, []);
 
-  const updatePage = useCallback((title, id, path, pageTitle) => {
-    setPageHierarchy((hierarchy) => {
-      const pageIndex = hierarchy.findIndex((page) => page.id === id);
-      return [
-        ...hierarchy.slice(0, pageIndex),
-        { title, pageTitle, id, path },
-        ...hierarchy.slice(pageIndex + 1),
-      ];
-    });
-  }, []);
+  const updatePage = useCallback(
+    (
+      title: string,
+      id: string,
+      path: string | undefined,
+      pageTitle: string | undefined,
+    ) => {
+      setPageHierarchy((hierarchy) => {
+        const pageIndex = hierarchy.findIndex((page) => page.id === id);
+        return [
+          ...hierarchy.slice(0, pageIndex),
+          { title, pageTitle, id, path },
+          ...hierarchy.slice(pageIndex + 1),
+        ];
+      });
+    },
+    [],
+  );
 
-  const removePage = useCallback((pageId) => {
+  const removePage = useCallback((pageId: string) => {
     setPageHierarchy((hierarchy) => {
       console.assert(
         hierarchy.length > 0,

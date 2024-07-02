@@ -1,47 +1,18 @@
-import { Typography } from "@mui/material";
-import createStyles from "@mui/styles/createStyles";
-import makeStyles from "@mui/styles/makeStyles";
-import classNames from "classnames";
+import { Box, SxProps, Theme, Typography } from "@mui/material";
 import React, { useContext } from "react";
 import { GlobalContext } from "../../../App";
 import { GrafanaNotRunningAlert } from "../../metrics";
 import { LinkWithArrow, OverviewCard } from "./OverviewCard";
 
-const useStyles = makeStyles((theme) =>
-  createStyles({
-    root: {
-      display: "flex",
-      flexDirection: "column",
-      flexWrap: "nowrap",
-    },
-    graph: {
-      flex: 1,
-    },
-    noGraph: {
-      flex: 1,
-      padding: theme.spacing(2, 3),
-    },
-    alert: {
-      marginTop: theme.spacing(2),
-    },
-    links: {
-      display: "flex",
-      flexDirection: "row",
-      flexWrap: "nowrap",
-      margin: theme.spacing(1, 3, 2),
-    },
-  }),
-);
-
 type ClusterUtilizationCardProps = {
   className?: string;
+  sx?: SxProps<Theme>;
 };
 
 export const ClusterUtilizationCard = ({
   className,
+  sx,
 }: ClusterUtilizationCardProps) => {
-  const classes = useStyles();
-
   const {
     metricsContextLoaded,
     grafanaHost,
@@ -60,25 +31,41 @@ export const ClusterUtilizationCard = ({
   }
 
   return (
-    <OverviewCard className={classNames(classes.root, className)}>
+    <OverviewCard
+      className={className}
+      sx={[
+        { display: "flex", flexDirection: "column", flexWrap: "nowrap" },
+        ...(Array.isArray(sx) ? sx : [sx]),
+      ]}
+    >
       {/* TODO (aguo): Switch this to overall utilization graph */}
       {/* TODO (aguo): Handle grafana not running */}
       {grafanaHost === undefined || !prometheusHealth ? (
-        <div className={classes.noGraph}>
+        <Box sx={{ flex: 1, paddingX: 3, paddingY: 2 }}>
           <Typography variant="h3">Cluster utilization</Typography>
-          <GrafanaNotRunningAlert className={classes.alert} severity="info" />
-        </div>
+          <GrafanaNotRunningAlert sx={{ marginTop: 2 }} severity="info" />
+        </Box>
       ) : (
         <React.Fragment>
-          <iframe
+          <Box
+            component="iframe"
             title="Cluster Utilization"
-            className={classes.graph}
+            sx={{ flex: 1 }}
             src={`${grafanaHost}${path}&refresh${timeRangeParams}&var-SessionName=${sessionName}`}
             frameBorder="0"
           />
-          <div className={classes.links}>
+          <Box
+            sx={{
+              display: "flex",
+              flexDirection: "row",
+              flexWrap: "nowrap",
+              marginX: 3,
+              marginTop: 1,
+              marginBottom: 2,
+            }}
+          >
             <LinkWithArrow text="View all metrics" to="/metrics" />
-          </div>
+          </Box>
         </React.Fragment>
       )}
     </OverviewCard>

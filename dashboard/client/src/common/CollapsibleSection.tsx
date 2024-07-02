@@ -1,7 +1,4 @@
-import { Box, Typography } from "@mui/material";
-import createStyles from "@mui/styles/createStyles";
-import makeStyles from "@mui/styles/makeStyles";
-import classNames from "classnames";
+import { Box, SxProps, Theme, Typography } from "@mui/material";
 import React, {
   forwardRef,
   PropsWithChildren,
@@ -10,25 +7,6 @@ import React, {
 } from "react";
 import { RiArrowDownSLine, RiArrowRightSLine } from "react-icons/ri";
 import { ClassNameProps } from "./props";
-
-const useStyles = makeStyles((theme) =>
-  createStyles({
-    title: {
-      display: "flex",
-      flexDirection: "row",
-      flexWrap: "nowrap",
-      alignItems: "center",
-      fontWeight: 500,
-      cursor: "pointer",
-      marginRight: theme.spacing(1),
-    },
-    icon: {
-      marginRight: theme.spacing(1),
-      width: 24,
-      height: 24,
-    },
-  }),
-);
 
 type CollapsibleSectionProps = PropsWithChildren<
   {
@@ -49,6 +27,7 @@ type CollapsibleSectionProps = PropsWithChildren<
      * When enabled, we will keep the content around when collapsing but hide it via css.
      */
     keepRendered?: boolean;
+    sx?: SxProps<Theme>;
   } & ClassNameProps
 >;
 
@@ -66,10 +45,10 @@ export const CollapsibleSection = forwardRef<
       children,
       keepRendered,
       icon,
+      sx,
     },
     ref,
   ) => {
-    const classes = useStyles();
     const [internalExpanded, setInternalExpanded] = useState(startExpanded);
     const finalExpanded = expanded !== undefined ? expanded : internalExpanded;
 
@@ -79,17 +58,39 @@ export const CollapsibleSection = forwardRef<
     };
 
     return (
-      <div ref={ref} className={className}>
+      <Box ref={ref} className={className} sx={sx}>
         <Box display="flex" flexDirection="row" alignItems="center">
           <Typography
-            className={classes.title}
+            sx={{
+              display: "flex",
+              flexDirection: "row",
+              flexWrap: "nowrap",
+              alignItems: "center",
+              fontWeight: 500,
+              cursor: "pointer",
+              marginRight: 1,
+            }}
             variant="h4"
             onClick={handleExpandClick}
           >
             {finalExpanded ? (
-              <RiArrowDownSLine className={classes.icon} />
+              <Box
+                component={RiArrowDownSLine}
+                sx={{
+                  marginRight: 1,
+                  width: 24,
+                  height: 24,
+                }}
+              />
             ) : (
-              <RiArrowRightSLine className={classes.icon} />
+              <Box
+                component={RiArrowRightSLine}
+                sx={{
+                  marginRight: 1,
+                  width: 24,
+                  height: 24,
+                }}
+              />
             )}
             {title}
           </Typography>
@@ -98,20 +99,9 @@ export const CollapsibleSection = forwardRef<
         <HideableBlock visible={finalExpanded} keepRendered={keepRendered}>
           {children}
         </HideableBlock>
-      </div>
+      </Box>
     );
   },
-);
-
-const useHideableBlockStyles = makeStyles((theme) =>
-  createStyles({
-    body: {
-      marginTop: theme.spacing(1),
-    },
-    bodyHidden: {
-      display: "none",
-    },
-  }),
 );
 
 type HideableBlockProps = PropsWithChildren<
@@ -135,8 +125,6 @@ export const HideableBlock = ({
   keepRendered,
   children,
 }: HideableBlockProps) => {
-  const classes = useHideableBlockStyles();
-
   // visible represents whether the component is viewable in the browser.
   // Rendered represents whether the DOM elements exist in the DOM tree.
   // If !visible && rendered, then the elements are in the DOM but are
@@ -152,12 +140,13 @@ export const HideableBlock = ({
   // Optimization to keep the component rendered (but not visible) when hidden
   // to avoid re-rendering when component is shown again.
   return visible || (keepRendered && rendered) ? (
-    <div
-      className={classNames(classes.body, {
-        [classes.bodyHidden]: !visible,
-      })}
+    <Box
+      sx={{
+        marginTop: 1,
+        display: !visible ? "none" : "block",
+      }}
     >
       {children}
-    </div>
+    </Box>
   ) : null;
 };

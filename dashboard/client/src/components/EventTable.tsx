@@ -1,5 +1,6 @@
 import { SearchOutlined } from "@mui/icons-material";
 import {
+  Box,
   Button,
   Chip,
   Grid,
@@ -11,7 +12,6 @@ import {
 } from "@mui/material";
 import Autocomplete from "@mui/material/Autocomplete";
 import Pagination from "@mui/material/Pagination";
-import makeStyles from "@mui/styles/makeStyles";
 import dayjs from "dayjs";
 import React, { useContext, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
@@ -26,40 +26,6 @@ import { StatusChip } from "./StatusChip";
 type EventTableProps = {
   job_id?: string;
 };
-
-const useStyles = makeStyles((theme) => ({
-  table: {
-    marginTop: theme.spacing(4),
-    padding: theme.spacing(2),
-  },
-  pageMeta: {
-    padding: theme.spacing(2),
-    marginTop: theme.spacing(2),
-  },
-  filterContainer: {
-    display: "flex",
-    alignItems: "center",
-  },
-  search: {
-    margin: theme.spacing(1),
-    display: "inline-block",
-    fontSize: 12,
-  },
-  infokv: {
-    margin: theme.spacing(1),
-  },
-  li: {
-    color: theme.palette.text.secondary,
-    fontSize: 12,
-  },
-  code: {
-    wordBreak: "break-all",
-    whiteSpace: "pre-line",
-    margin: 12,
-    fontSize: 14,
-    color: theme.palette.text.primary,
-  },
-}));
 
 const useEventTable = (props: EventTableProps) => {
   const { job_id } = props;
@@ -148,7 +114,6 @@ const useEventTable = (props: EventTableProps) => {
 };
 
 const EventTable = (props: EventTableProps) => {
-  const classes = useStyles();
   const {
     events,
     changeFilter,
@@ -169,9 +134,14 @@ const EventTable = (props: EventTableProps) => {
 
   return (
     <div style={{ position: "relative" }}>
-      <div className={classes.filterContainer}>
+      <Box
+        sx={{
+          display: "flex",
+          alignItems: "center",
+        }}
+      >
         <Autocomplete
-          className={classes.search}
+          sx={{ margin: 1, display: "inline-block", fontSize: 12 }}
           style={{ width: 200 }}
           options={labelOptions}
           onInputChange={(_: any, value: string) => {
@@ -182,7 +152,7 @@ const EventTable = (props: EventTableProps) => {
           )}
         />
         <Autocomplete
-          className={classes.search}
+          sx={{ margin: 1, display: "inline-block", fontSize: 12 }}
           style={{ width: 200 }}
           options={hostOptions}
           onInputChange={(_: any, value: string) => {
@@ -193,7 +163,7 @@ const EventTable = (props: EventTableProps) => {
           )}
         />
         <Autocomplete
-          className={classes.search}
+          sx={{ margin: 1, display: "inline-block", fontSize: 12 }}
           style={{ width: 100 }}
           options={sourceOptions}
           onInputChange={(_: any, value: string) => {
@@ -204,7 +174,7 @@ const EventTable = (props: EventTableProps) => {
           )}
         />
         <Autocomplete
-          className={classes.search}
+          sx={{ margin: 1, display: "inline-block", fontSize: 12 }}
           style={{ width: 140 }}
           options={severityOptions}
           onInputChange={(_: any, value: string) => {
@@ -215,7 +185,7 @@ const EventTable = (props: EventTableProps) => {
           )}
         />
         <TextField
-          className={classes.search}
+          sx={{ margin: 1, display: "inline-block", fontSize: 12 }}
           label="Msg"
           InputProps={{
             onChange: ({ target: { value } }) => {
@@ -243,14 +213,14 @@ const EventTable = (props: EventTableProps) => {
           }}
         />
         <Button
-          className={classes.search}
+          sx={{ margin: 1, display: "inline-block", fontSize: 12 }}
           size="small"
           variant="contained"
           onClick={() => reverseEvents()}
         >
           Reverse
         </Button>
-      </div>
+      </Box>
       <div>
         <Pagination
           count={pagination.total}
@@ -260,7 +230,7 @@ const EventTable = (props: EventTableProps) => {
           }}
         />
       </div>
-      <div className={classes.pageMeta}>
+      <Box sx={{ padding: 2, marginTop: 2 }}>
         {!events.length
           ? "No Events Yet."
           : events.map(
@@ -289,7 +259,14 @@ const EventTable = (props: EventTableProps) => {
                 const hostname = sourceHostname || hostName;
                 const realPid = pid || sourcePid;
                 return (
-                  <article className={classes.li} key={eventId}>
+                  <Box
+                    component="article"
+                    sx={(theme) => ({
+                      color: theme.palette.text.secondary,
+                      fontSize: 12,
+                    })}
+                    key={eventId}
+                  >
                     <Grid container spacing={4}>
                       <Grid item>
                         <StatusChip status={severity} type={severity} />
@@ -310,13 +287,13 @@ const EventTable = (props: EventTableProps) => {
                       )}
                     </Grid>
                     <Grid container>
-                      <Grid item className={classes.infokv}>
+                      <Grid item sx={{ margin: 1 }}>
                         severity: {severity}
                       </Grid>
-                      <Grid item className={classes.infokv}>
+                      <Grid item sx={{ margin: 1 }}>
                         source: {sourceType}
                       </Grid>
-                      <Grid item className={classes.infokv}>
+                      <Grid item sx={{ margin: 1 }}>
                         hostname:{" "}
                         {nodeMap[hostname] ? (
                           <Link to={`/node/${nodeMap[hostname]}`}>
@@ -326,36 +303,36 @@ const EventTable = (props: EventTableProps) => {
                           hostname
                         )}
                       </Grid>
-                      <Grid item className={classes.infokv}>
+                      <Grid item sx={{ margin: 1 }}>
                         pid: {realPid}
                       </Grid>
                       {jobId && (
-                        <Grid item className={classes.infokv}>
+                        <Grid item sx={{ margin: 1 }}>
                           jobId: <Link to={`/job/${jobId}`}>{jobId}</Link>
                         </Grid>
                       )}
                       {jobName && (
-                        <Grid item className={classes.infokv}>
+                        <Grid item sx={{ margin: 1 }}>
                           jobId: {jobName}
                         </Grid>
                       )}
                       {eventId && (
-                        <Grid item className={classes.infokv}>
+                        <Grid item sx={{ margin: 1 }}>
                           eventId: {eventId}
                         </Grid>
                       )}
                       {nodeId && (
-                        <Grid item className={classes.infokv}>
+                        <Grid item sx={{ margin: 1 }}>
                           nodeId: {nodeId}
                         </Grid>
                       )}
                     </Grid>
                     <LogVirtualView content={message} language="prolog" />
-                  </article>
+                  </Box>
                 );
               },
             )}
-      </div>
+      </Box>
       <div>
         <Pagination
           count={pagination.total}

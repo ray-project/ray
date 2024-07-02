@@ -12,8 +12,6 @@ import {
   TextFieldProps,
   Typography,
 } from "@mui/material";
-import createStyles from "@mui/styles/createStyles";
-import makeStyles from "@mui/styles/makeStyles";
 import React, { ReactElement } from "react";
 import { Outlet, useParams } from "react-router-dom";
 import { CodeDialogButton } from "../../common/CodeDialogButton";
@@ -29,24 +27,6 @@ import { MainNavPageInfo } from "../layout/mainNavContext";
 import { useServeApplicationDetails } from "./hook/useServeApplications";
 import { ServeDeploymentRow } from "./ServeDeploymentRow";
 
-const useStyles = makeStyles((theme) =>
-  createStyles({
-    root: {
-      padding: theme.spacing(3),
-    },
-    table: {
-      tableLayout: "fixed",
-    },
-    helpInfo: {
-      marginLeft: theme.spacing(1),
-    },
-    statusMessage: {
-      display: "inline-flex",
-      maxWidth: "100%",
-    },
-  }),
-);
-
 const columns: { label: string; helpInfo?: ReactElement; width?: string }[] = [
   { label: "Deployment name" },
   { label: "Status" },
@@ -59,7 +39,6 @@ const columns: { label: string; helpInfo?: ReactElement; width?: string }[] = [
 ];
 
 export const ServeApplicationDetailPage = () => {
-  const classes = useStyles();
   const { applicationName } = useParams();
 
   const {
@@ -88,7 +67,7 @@ export const ServeApplicationDetailPage = () => {
   } = sliceToPage(filteredDeployments, page.pageNo, page.pageSize);
 
   return (
-    <div className={classes.root}>
+    <Box sx={{ padding: 3 }}>
       <MetadataSection
         metadataList={[
           {
@@ -233,9 +212,7 @@ export const ServeApplicationDetailPage = () => {
                     >
                       {label}
                       {helpInfo && (
-                        <HelpInfo className={classes.helpInfo}>
-                          {helpInfo}
-                        </HelpInfo>
+                        <HelpInfo sx={{ marginLeft: 1 }}>{helpInfo}</HelpInfo>
                       )}
                     </Box>
                   </TableCell>
@@ -255,7 +232,7 @@ export const ServeApplicationDetailPage = () => {
           </Table>
         </TableContainer>
       </CollapsibleSection>
-    </div>
+    </Box>
   );
 };
 

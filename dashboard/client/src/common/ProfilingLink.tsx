@@ -1,4 +1,5 @@
 import {
+  Box,
   Button,
   Checkbox,
   Dialog,
@@ -12,28 +13,9 @@ import {
   TextField,
   Typography,
 } from "@mui/material";
-import createStyles from "@mui/styles/createStyles";
-import makeStyles from "@mui/styles/makeStyles";
 import React, { PropsWithChildren, useState } from "react";
 import { HelpInfo } from "../components/Tooltip";
 import { ClassNameProps } from "./props";
-
-const useStyles = makeStyles((theme) =>
-  createStyles({
-    buttonLink: {
-      cursor: "pointer",
-    },
-    dialogContent: {
-      padding: "12px",
-      display: "flex",
-      justifyContent: "flex-end",
-    },
-    secondaryButton: {
-      textTransform: "capitalize",
-      color: "#5F6469",
-    },
-  }),
-);
 
 type CpuProfilingLinkProps = PropsWithChildren<
   {
@@ -168,14 +150,12 @@ export const ProfilerButton = ({
     setOpen(false);
   };
 
-  const buttonLinkClasses = useStyles();
-
   return (
     <div>
       <Link
         onClick={handleOpen}
         aria-label="Memory Profiling"
-        className={buttonLinkClasses.buttonLink}
+        sx={{ cursor: "pointer" }}
       >
         Memory&nbsp;Profiling{type ? ` (${type})` : ""}
       </Link>
@@ -266,11 +246,13 @@ export const ProfilerButton = ({
             }
           />
         </DialogContent>
-        <div className={buttonLinkClasses.dialogContent}>
+        <Box
+          sx={{ padding: "12px", display: "flex", justifyContent: "flex-end" }}
+        >
           <Button
             onClick={handleClose}
             variant="text"
-            className={buttonLinkClasses.secondaryButton}
+            sx={{ textTransform: "capitalize", color: "#5F6469" }}
           >
             Cancel
           </Button>
@@ -293,7 +275,7 @@ export const ProfilerButton = ({
               Generate&nbsp;report
             </Link>
           </Button>
-        </div>
+        </Box>
       </Dialog>
     </div>
   );

@@ -1,6 +1,7 @@
 import {
   Box,
   InputAdornment,
+  SxProps,
   Table,
   TableBody,
   TableCell,
@@ -8,6 +9,7 @@ import {
   TableRow,
   TextField,
   TextFieldProps,
+  Theme,
   Tooltip,
 } from "@mui/material";
 import Autocomplete from "@mui/material/Autocomplete";
@@ -20,15 +22,21 @@ import { useFilter } from "../util/hook";
 import StateCounter from "./StatesCounter";
 import { StatusChip } from "./StatusChip";
 
-const BundleResourceRequirements = ({ bundles }: { bundles: Bundle[] }) => {
+const BundleResourceRequirements = ({
+  bundles,
+  sx,
+}: {
+  bundles: Bundle[];
+  sx?: SxProps<Theme>;
+}) => {
   return (
-    <div>
+    <Box sx={sx}>
       {bundles.map(({ unit_resources }, index) => {
         return `{${Object.entries(unit_resources || {})
           .map(([key, val]) => `${key}: ${val}`)
           .join(", ")}}, `;
       })}
-    </div>
+    </Box>
   );
 };
 
@@ -48,7 +56,6 @@ const PlacementGroupTable = ({
     constrainedPage,
     maxPage,
   } = sliceToPage(placementGroupList, pageNo, pageSize);
-  const classes = rowStyles();
 
   const columns = [
     { label: "ID" },
@@ -134,7 +141,7 @@ const PlacementGroupTable = ({
           <StateCounter type="placementGroup" list={placementGroupList} />
         </div>
       </div>
-      <div className={classes.tableContainer}>
+      <Box sx={{ overflowX: "scroll" }}>
         <Table>
           <TableHead>
             <TableRow>
@@ -163,12 +170,8 @@ const PlacementGroupTable = ({
               }) => (
                 <TableRow key={placement_group_id}>
                   <TableCell align="center">
-                    <Tooltip
-                      className={classes.idCol}
-                      title={placement_group_id}
-                      arrow
-                    >
-                      <div>{placement_group_id}</div>
+                    <Tooltip title={placement_group_id} arrow>
+                      <Box sx={rowStyles.idCol}>{placement_group_id}</Box>
                     </Tooltip>
                   </TableCell>
                   <TableCell align="center">{name ? name : "-"}</TableCell>
@@ -178,11 +181,19 @@ const PlacementGroupTable = ({
                   </TableCell>
                   <TableCell align="center">
                     <Tooltip
-                      className={classes.OverflowCol}
                       title={<BundleResourceRequirements bundles={bundles} />}
                       arrow
                     >
-                      <BundleResourceRequirements bundles={bundles} />
+                      <BundleResourceRequirements
+                        sx={{
+                          display: "block",
+                          width: "100px",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                        }}
+                        bundles={bundles}
+                      />
                     </Tooltip>
                   </TableCell>
                   <TableCell align="center">
@@ -193,7 +204,7 @@ const PlacementGroupTable = ({
             )}
           </TableBody>
         </Table>
-      </div>
+      </Box>
     </div>
   );
 };

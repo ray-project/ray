@@ -1,9 +1,6 @@
-import { Typography } from "@mui/material";
-import createStyles from "@mui/styles/createStyles";
-import makeStyles from "@mui/styles/makeStyles";
-import classNames from "classnames";
+import { Box, Link, SxProps, Theme, Typography } from "@mui/material";
 import React, { ReactNode } from "react";
-import { Link } from "react-router-dom";
+import { Link as RouterLink } from "react-router-dom";
 import { ClassNameProps } from "../common/props";
 import {
   LinkWithArrow,
@@ -16,6 +13,7 @@ type ListItemCardProps = {
   emptyListText: string;
   footerText: string;
   footerLink: string;
+  sx?: SxProps<Theme>;
 } & ClassNameProps;
 
 type ListItemProps = {
@@ -23,27 +21,8 @@ type ListItemProps = {
   subtitle: string;
   link: string | undefined;
   icon: ReactNode;
+  sx?: SxProps<Theme>;
 } & ClassNameProps;
-
-const useStyles = makeStyles((theme) =>
-  createStyles({
-    root: {
-      display: "flex",
-      flexDirection: "column",
-      padding: theme.spacing(2, 3),
-    },
-    listContainer: {
-      marginTop: theme.spacing(2),
-      flex: 1,
-      overflow: "hidden",
-    },
-    listItem: {
-      "&:not(:first-child)": {
-        marginTop: theme.spacing(1),
-      },
-    },
-  }),
-);
 
 export const ListItemCard = ({
   className,
@@ -52,50 +31,58 @@ export const ListItemCard = ({
   emptyListText: itemEmptyTip,
   footerText,
   footerLink,
+  sx,
 }: ListItemCardProps) => {
-  const classes = useStyles();
-
   return (
-    <OverviewCard className={classNames(classes.root, className)}>
+    <OverviewCard
+      className={className}
+      sx={[
+        {
+          display: "flex",
+          flexDirection: "column",
+          paddingX: 3,
+          paddingY: 2,
+        },
+        ...(Array.isArray(sx) ? sx : [sx]),
+      ]}
+    >
       <Typography variant="h3">{headerTitle}</Typography>
-      <div className={classes.listContainer}>
+      <Box
+        sx={{
+          marginTop: 2,
+          flex: 1,
+          overflow: "hidden",
+        }}
+      >
         {items.map((item: ListItemProps) => (
-          <ListItem {...item} className={classes.listItem} key={item.title} />
+          <ListItem
+            {...item}
+            sx={{
+              "&:not(:first-child)": {
+                marginTop: 1,
+              },
+            }}
+            key={item.title}
+          />
         ))}
         {items.length === 0 && (
           <Typography variant="h4">{itemEmptyTip}</Typography>
         )}
-      </div>
+      </Box>
       <LinkWithArrow text={footerText} to={footerLink} />
     </OverviewCard>
   );
 };
 
-const useListItemStyles = makeStyles((theme) =>
-  createStyles({
-    root: {
-      display: "flex",
-      flexDirection: "row",
-      flexWrap: "nowrap",
-      alignItems: "center",
-      textDecoration: "none",
-    },
-
-    textContainer: {
-      flex: "1 1 auto",
-      width: `calc(100% - calc(${theme.spacing(1)} + 20px))`,
-    },
-    title: {
-      color: "#036DCF",
-    },
-    entrypoint: {
-      overflow: "hidden",
-      textOverflow: "ellipsis",
-      whiteSpace: "nowrap",
-      color: "#5F6469",
-    },
-  }),
-);
+const listItemStyles = {
+  root: {
+    display: "flex",
+    flexDirection: "row",
+    flexWrap: "nowrap",
+    alignItems: "center",
+    textDecoration: "none",
+  },
+};
 
 const ListItem = ({
   icon,
@@ -103,35 +90,44 @@ const ListItem = ({
   subtitle,
   className,
   link,
+  sx,
 }: ListItemProps) => {
-  const classes = useListItemStyles();
-
   const cardContent = (
     <React.Fragment>
       {icon}
-      <div className={classes.textContainer}>
-        <Typography className={classes.title} variant="body2">
+      <Box
+        sx={(theme) => ({
+          flex: "1 1 auto",
+          width: `calc(100% - calc(${theme.spacing(1)} + 20px))`,
+        })}
+      >
+        <Typography sx={{ color: "#036DCF" }} variant="body2">
           {title}
         </Typography>
         <Typography
-          className={classes.entrypoint}
+          sx={{
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+            color: "#5F6469",
+          }}
           title={subtitle}
           variant="caption"
         >
           {subtitle}
         </Typography>
-      </div>
+      </Box>
     </React.Fragment>
   );
   return (
-    <div className={className}>
+    <Box className={className} sx={sx}>
       {link !== undefined ? (
-        <Link className={classes.root} to={link}>
+        <Link component={RouterLink} sx={listItemStyles.root} to={link}>
           {cardContent}
         </Link>
       ) : (
-        <div className={classes.root}>{cardContent}</div>
+        <Box sx={listItemStyles.root}>{cardContent}</Box>
       )}
-    </div>
+    </Box>
   );
 };

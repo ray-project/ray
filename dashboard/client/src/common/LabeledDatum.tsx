@@ -1,5 +1,4 @@
 import { Box, Grid, Tooltip } from "@mui/material";
-import makeStyles from "@mui/styles/makeStyles";
 import React, { ReactChild } from "react";
 
 type LabeledDatumProps = {
@@ -8,26 +7,29 @@ type LabeledDatumProps = {
   tooltip?: string;
 };
 
-const useLabeledDatumStyles = makeStyles({
-  tooltipLabel: {
-    textDecorationLine: "underline",
-    textDecorationColor: "#a6c3e3",
-    textDecorationThickness: "1px",
-    textDecorationStyle: "dotted",
-    cursor: "help",
-  },
-});
-
 const LabeledDatum: React.FC<LabeledDatumProps> = ({
   label,
   datum,
   tooltip,
 }) => {
-  const classes = useLabeledDatumStyles();
   const innerHtml = (
     <Grid container item xs={12}>
       <Grid item xs={6}>
-        <Box className={tooltip && classes.tooltipLabel}>{label}</Box>
+        <Box
+          sx={
+            tooltip
+              ? {
+                  textDecorationLine: "underline",
+                  textDecorationColor: "#a6c3e3",
+                  textDecorationThickness: "1px",
+                  textDecorationStyle: "dotted",
+                  cursor: "help",
+                }
+              : {}
+          }
+        >
+          {label}
+        </Box>
       </Grid>
       <Grid item xs={6}>
         <span>{datum}</span>
