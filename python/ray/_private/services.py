@@ -1254,7 +1254,7 @@ def start_api_server(
 
         # Start the dashboard process.
         dashboard_dir = "dashboard"
-        dashboard_filepath = os.path.join(RAY_PATH, dashboard_dir, "dashboard.py")
+        dashboard_filepath = os.path.join(RAY_PATH, dashboard_dir, "dashboard_proxy.py")
 
         command = [
             *_build_python_executable_command_memory_profileable(
@@ -1265,6 +1265,8 @@ def start_api_server(
             dashboard_filepath,
             f"--host={host}",
             f"--port={port}",
+            # TODO: HttpServerDashboardHead how to?
+            "--modules-per-process=HealthzHead,ServeRestApiImpl,JobHead,APIHead;DataHead,MetricsHead,UsageStatsHead;StateHead,ActorHead,EventHead,NodeHead,ReportHead",
             f"--port-retries={port_retries}",
             f"--temp-dir={temp_dir}",
             f"--log-dir={logdir}",

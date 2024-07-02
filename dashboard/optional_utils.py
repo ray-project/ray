@@ -12,7 +12,7 @@ import os
 import time
 import traceback
 from collections import namedtuple
-from typing import Any, Callable
+from typing import Any, Callable, Dict
 
 from aiohttp.web import Response
 
@@ -39,14 +39,14 @@ def method_route_table_factory():
     class MethodRouteTable:
         """A helper class to bind http route to class method."""
 
-        _bind_map = collections.defaultdict(dict)
-        _routes = aiohttp.web.RouteTableDef()
-
         class _BindInfo:
             def __init__(self, filename, lineno, instance):
                 self.filename = filename
                 self.lineno = lineno
                 self.instance = instance
+
+        _bind_map: Dict[str, Dict[str, _BindInfo]] = collections.defaultdict(dict)
+        _routes = aiohttp.web.RouteTableDef()
 
         @classmethod
         def routes(cls):
