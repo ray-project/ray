@@ -7,7 +7,7 @@ import ray
 from ray.cluster_utils import Cluster
 from ray.train import BackendConfig
 from ray.train.backend import Backend
-from ray.train.v2._internal.accelerators import (
+from ray.train.v2._internal.callbacks.accelerators import (
     AcceleratorSetupCallback,
     _get_visible_accelerator_ids_per_worker,
 )

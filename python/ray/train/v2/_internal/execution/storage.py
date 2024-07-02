@@ -29,6 +29,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Callable, List, Optional, Tuple, Type, Union
 
 from ray.air._internal.filelock import TempFileLock
+from ray.train.constants import _get_ray_train_session_dir
 from ray.train.v2._internal.util import date_str
 from ray.util.annotations import DeveloperAPI
 
@@ -497,10 +498,19 @@ class StorageContext:
         """
         return Path(self.storage_fs_path, self.experiment_dir_name).as_posix()
 
+    @property
+    def local_working_directory(self) -> str:
+        """Every ray train worker will set this directory as its working directory."""
+        if self.experiment_dir_name is None:
+            raise RuntimeError(
+                "Cannot access `local_working_directory` without "
+                "setting `experiment_dir_name`"
+            )
+        return Path(_get_ray_train_session_dir(), self.experiment_dir_name).as_posix()
+
     @staticmethod
     def get_experiment_dir_name(run_obj: Union[str, Callable, Type]) -> str:
         from ray.tune.experiment import Experiment
-        from ray.tune.utils import date_str
 
         run_identifier = Experiment.get_trainable_name(run_obj)
 

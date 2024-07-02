@@ -1,3 +1,4 @@
+import os
 import tempfile
 from pathlib import Path
 
@@ -7,6 +8,7 @@ import pytest
 import ray
 from ray.train import BackendConfig, Checkpoint
 from ray.train.backend import Backend
+from ray.train.constants import RAY_CHDIR_TO_TRIAL_DIR, _get_ray_train_session_dir
 from ray.train.tests.util import create_dict_checkpoint
 from ray.train.v2._internal.exceptions import TrainingFailedError
 from ray.train.v2.api.config import RunConfig, ScalingConfig
@@ -149,6 +151,33 @@ def test_error(tmp_path):
     result = trainer.fit()
     assert isinstance(result.error, TrainingFailedError)
     assert isinstance(result.error.worker_failures[0], ValueError)
+
+
+@pytest.mark.parametrize("env_disabled", [True, False])
+def test_setup_working_directory(tmp_path, monkeypatch, env_disabled):
+    # Set the environment variable to control the working directory setup
+    monkeypatch.setenv(RAY_CHDIR_TO_TRIAL_DIR, str(int(not env_disabled)))
+
+    experiment_dir_name = "test"
+    reference_working_dir = (
+        Path(_get_ray_train_session_dir(), "test").resolve().as_posix()
+    )
+
+    def _check_same_working_directory():
+        worker_working_dir = os.getcwd()
+        assert worker_working_dir == reference_working_dir
+
+    trainer = DataParallelTrainer(
+        _check_same_working_directory,
+        scaling_config=ScalingConfig(num_workers=2),
+        run_config=RunConfig(name=experiment_dir_name, storage_path=str(tmp_path)),
+    )
+    result = trainer.fit()
+
+    if not env_disabled:
+        assert result.error is None
+    else:
+        assert isinstance(result.error, TrainingFailedError)
 
 
 if __name__ == "__main__":

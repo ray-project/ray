@@ -1,16 +1,21 @@
 import logging
 from typing import Any, Callable, Dict, Optional, Union
 
+from ray._private.ray_constants import env_bool
 from ray.train import BackendConfig, Checkpoint
 from ray.train._internal.data_config import DataConfig
 from ray.train.base_trainer import GenDataset
-from ray.train.v2._internal.accelerators import AcceleratorSetupCallback
+from ray.train.constants import RAY_CHDIR_TO_TRIAL_DIR
+from ray.train.v2._internal.callbacks import (
+    AcceleratorSetupCallback,
+    BackendSetupCallback,
+    WorkingDirectorySetupCallback,
+)
 from ray.train.v2._internal.constants import _UNSUPPORTED
 from ray.train.v2._internal.execution.controller import TrainController
 from ray.train.v2._internal.execution.failure_handling import DefaultFailurePolicy
 from ray.train.v2._internal.execution.scaling_policy import create_scaling_policy
 from ray.train.v2._internal.util import construct_train_func
-from ray.train.v2.api.backend_setup import BackendSetupCallback
 from ray.train.v2.api.config import RunConfig, ScalingConfig
 
 logger = logging.getLogger(__name__)
@@ -59,7 +64,13 @@ class DataParallelTrainer:
             self.backend_config, self.scaling_config
         )
         backend_setup_callback = BackendSetupCallback(self.backend_config)
-        callbacks = [accelerator_setup_callback, backend_setup_callback]
+        callbacks = [
+            accelerator_setup_callback,
+            backend_setup_callback,
+        ]
+        if env_bool(RAY_CHDIR_TO_TRIAL_DIR, True):
+            working_directory_setup_callback = WorkingDirectorySetupCallback()
+            callbacks.append(working_directory_setup_callback)
 
         controller = TrainController(
             train_fn=train_fn,
