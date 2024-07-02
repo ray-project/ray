@@ -3,7 +3,9 @@ from collections import deque
 from typing import Iterator, List, Tuple
 
 import ray
-from ray.dashboard.modules.job.common import JOB_LOGS_PATH_TEMPLATE
+from ray.dashboard.modules.job.common import (
+    JOB_LOGS_PATH_TEMPLATE,
+)
 from ray.dashboard.modules.job.utils import file_tail_iterator
 
 
@@ -51,7 +53,8 @@ class JobLogStorageClient:
 
         return "".join(log_tail_deque)[-self.MAX_LOG_SIZE :]
 
-    def get_log_file_path(self, job_id: str) -> Tuple[str, str]:
+    @staticmethod
+    def get_log_file_path(job_id: str) -> str:
         """
         Get the file path to the logs of a given job. Example:
             /tmp/ray/session_date/logs/job-driver-{job_id}.log
