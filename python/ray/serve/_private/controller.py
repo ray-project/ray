@@ -900,6 +900,7 @@ class ServeController:
                 # serve.run, the app is in deleting state,
                 # or a checkpoint hasn't been set yet
                 deployed_app_config=app_configs.get(app_name),
+                source=self.application_state_manager.get_app_source(app_name),
                 deployments=self.application_state_manager.list_deployment_details(
                     app_name
                 ),
