@@ -5,6 +5,13 @@ from ray.exceptions import GetTimeoutError
 from ray.train.v2._internal.execution.checkpoint.sync_actor import SynchronizationActor
 
 
+@pytest.fixture(autouse=True, scope="module")
+def ray_start_4_cpus():
+    ray.init(num_cpus=4)
+    yield
+    ray.shutdown()
+
+
 @pytest.mark.parametrize("world_size", [1, 10])
 def test_broadcast_from_rank_0(world_size):
     """The test checks if all workers can reach a consensus on a data.
@@ -48,7 +55,7 @@ def test_hang():
     with pytest.raises(GetTimeoutError) as excinfo:
         ray.get(remote_tasks, timeout=1)
     assert "GetTimeoutError" in str(excinfo.type)
-    # Ensure the counter is 9  while the barrier enforces hanging of workers
+    # Ensure the counter is 9 while the barrier enforces hanging of workers
     assert ray.get(sync_actor.get_counter.remote()) == 9
 
 

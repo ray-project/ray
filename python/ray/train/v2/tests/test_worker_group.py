@@ -8,8 +8,11 @@ import ray
 from ray.train.v2._internal.constants import (
     ENV_VARS_TO_PROPAGATE,
     MAX_CONSECUTIVE_HEALTH_CHECK_MISSES_ENV_VAR,
+    WORKER_GROUP_START_TIMEOUT_S_ENV_VAR,
 )
 from ray.train.v2._internal.exceptions import (
+    WorkerGroupStartupFailedError,
+    WorkerGroupStartupTimeoutError,
     WorkerHealthCheckFailedError,
     WorkerHealthCheckMissedError,
 )
@@ -28,6 +31,33 @@ def ray_start_4_cpus():
     ray.init(num_cpus=4)
     yield
     ray.shutdown()
+
+
+def test_start_failure():
+    class FailingWorker(RayTrainWorker):
+        def __init__(self):
+            raise RuntimeError("Worker failed to start.")
+
+    wg = WorkerGroup()
+    wg._worker_cls = FailingWorker
+
+    with pytest.raises(WorkerGroupStartupFailedError):
+        wg.start(num_workers=4, resources_per_worker={"CPU": 1})
+
+
+def test_start_timeout(ray_start_4_cpus, monkeypatch):
+    monkeypatch.setenv(WORKER_GROUP_START_TIMEOUT_S_ENV_VAR, "0")
+
+    class HangingWorker(RayTrainWorker):
+        def __init__(self):
+            super().__init__()
+            time.sleep(60)
+
+    wg = WorkerGroup()
+    wg._worker_cls = HangingWorker
+
+    with pytest.raises(WorkerGroupStartupTimeoutError):
+        wg.start(num_workers=4, resources_per_worker={"CPU": 1})
 
 
 def test_poll_status_running(ray_start_4_cpus):

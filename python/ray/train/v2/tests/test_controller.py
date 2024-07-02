@@ -4,6 +4,10 @@ from unittest.mock import MagicMock
 import pytest
 
 from ray.train.v2._internal.constants import HEALTH_CHECK_INTERVAL_S_ENV_VAR
+from ray.train.v2._internal.exceptions import (
+    WorkerGroupStartupFailedError,
+    WorkerGroupStartupTimeoutError,
+)
 from ray.train.v2._internal.execution.controller import (
     TrainController,
     TrainControllerState,
@@ -19,7 +23,6 @@ from ray.train.v2._internal.execution.scaling_policy import (
     ScalingPolicy,
 )
 from ray.train.v2._internal.execution.worker_group import (
-    WorkerGroup,
     WorkerGroupStatus,
     WorkerStatus,
 )
@@ -27,12 +30,14 @@ from ray.train.v2._internal.util import time_monotonic
 from ray.train.v2.api.config import ScalingConfig
 
 
-class DummyWorkerGroup(WorkerGroup):
+class DummyWorkerGroup:
     def __init__(self, run_config=None):
         self._active = False
         self._num_workers = 0
         self._latest_start_time = float("-inf")
         self._worker_statuses = {}
+
+        self._start_failure = None
 
     def run_train_fn(self, train_fn):
         pass
@@ -45,6 +50,9 @@ class DummyWorkerGroup(WorkerGroup):
         )
 
     def start(self, num_workers, resources_per_worker, checkpoint=None):
+        if self._start_failure:
+            raise self._start_failure
+
         self._num_workers = num_workers
         self._latest_start_time = time_monotonic()
         self._worker_statuses = {
@@ -58,6 +66,9 @@ class DummyWorkerGroup(WorkerGroup):
     def has_started(self) -> bool:
         return self._num_workers > 0
 
+    def __len__(self) -> int:
+        return self._num_workers
+
     # === Test methods ===
     def error_worker(self, worker_index):
         status = self._worker_statuses[worker_index]
@@ -66,6 +77,9 @@ class DummyWorkerGroup(WorkerGroup):
     def finish_worker(self, worker_index):
         status = self._worker_statuses[worker_index]
         status.running = False
+
+    def set_start_failure(self, start_failure):
+        self._start_failure = start_failure
 
 
 class MockScalingPolicy(ScalingPolicy):
@@ -200,6 +214,41 @@ def test_failure_handling():
     failure_policy.queue_decision(FailureDecision.RAISE)
     controller._run_control_loop_iteration()
     assert controller.get_state() == TrainControllerState.ERRORED
+
+
+@pytest.mark.parametrize(
+    "error_type", [WorkerGroupStartupFailedError, WorkerGroupStartupTimeoutError(2)]
+)
+def test_worker_group_start_failure(error_type):
+    """Check that controller can gracefully handle worker group start failures."""
+    scaling_policy = MockScalingPolicy(scaling_config=ScalingConfig())
+    failure_policy = MockFailurePolicy(failure_config=None)
+    controller = TrainController(
+        train_fn=lambda: None,
+        scaling_policy=scaling_policy,
+        failure_policy=failure_policy,
+    )
+    controller._checkpoint_handler = MagicMock()
+    controller._system_callbacks = []
+
+    worker_group: DummyWorkerGroup = controller.get_worker_group()
+    worker_group.set_start_failure(error_type)
+
+    scaling_policy.queue_recovery_decision(
+        ResizeDecision(num_workers=2, resources_per_worker={})
+    )
+    # Worker group will fail to start, but controller should not raise
+    # and should go into RECOVERING state.
+    controller._run_control_loop_iteration()
+    assert controller.get_state() == TrainControllerState.RECOVERING
+
+    # Let the worker group start successfully the 2nd time.
+    worker_group.set_start_failure(None)
+    scaling_policy.queue_recovery_decision(
+        ResizeDecision(num_workers=2, resources_per_worker={})
+    )
+    controller._run_control_loop_iteration()
+    assert controller.get_state() == TrainControllerState.RUNNING
 
 
 def test_poll_frequency(monkeypatch):

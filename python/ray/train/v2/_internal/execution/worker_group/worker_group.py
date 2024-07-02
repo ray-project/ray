@@ -1,17 +1,24 @@
 import collections
 import logging
 import os
+import traceback
 from dataclasses import dataclass
-from typing import Callable, Dict, List, Optional, TypeVar
+from typing import Callable, Dict, List, Optional, Type, TypeVar
 
 import ray
+from ray._private.ray_constants import env_integer
+from ray.exceptions import GetTimeoutError, RayActorError
 from ray.train import Checkpoint
 from ray.train.v2._internal.constants import (
     DEFAULT_MAX_CONSECUTIVE_HEALTH_CHECK_MISSES,
+    DEFAULT_WORKER_GROUP_START_TIMEOUT_S,
     MAX_CONSECUTIVE_HEALTH_CHECK_MISSES_ENV_VAR,
+    WORKER_GROUP_START_TIMEOUT_S_ENV_VAR,
     get_env_vars_to_propagate,
 )
 from ray.train.v2._internal.exceptions import (
+    WorkerGroupStartupFailedError,
+    WorkerGroupStartupTimeoutError,
     WorkerHealthCheckFailedError,
     WorkerHealthCheckMissedError,
 )
@@ -58,6 +65,8 @@ class WorkerGroupStatus:
 
 
 class WorkerGroup:
+    _worker_cls = RayTrainWorker
+
     def __init__(
         self,
         run_config: Optional[RunConfig] = None,
@@ -78,15 +87,74 @@ class WorkerGroup:
 
         # Maps world rank to the number of consecutive health check misses.
         self._num_consecutive_poll_misses: Dict[int, int] = collections.defaultdict(int)
-        self._max_consecutive_poll_misses = int(
-            os.getenv(
-                MAX_CONSECUTIVE_HEALTH_CHECK_MISSES_ENV_VAR,
-                DEFAULT_MAX_CONSECUTIVE_HEALTH_CHECK_MISSES,
-            )
+        self._max_consecutive_poll_misses = env_integer(
+            MAX_CONSECUTIVE_HEALTH_CHECK_MISSES_ENV_VAR,
+            DEFAULT_MAX_CONSECUTIVE_HEALTH_CHECK_MISSES,
         )
 
         # Maps world rank to the ongoing poll task.
         self._world_rank_to_ongoing_poll: Dict[int, ObjectRef] = {}
+
+        self._worker_group_start_timeout_s = float(
+            os.environ.get(
+                WORKER_GROUP_START_TIMEOUT_S_ENV_VAR,
+                DEFAULT_WORKER_GROUP_START_TIMEOUT_S,
+            )
+        )
+
+    def _create_workers(
+        self,
+        num_workers: int,
+        worker_actor_cls: Type[RayTrainWorker],
+    ) -> List[Worker]:
+        assert self._pg, "Placement group must be initialized before creating workers."
+
+        actors = [
+            worker_actor_cls.options(
+                scheduling_strategy=PlacementGroupSchedulingStrategy(
+                    placement_group=self._pg, placement_group_bundle_index=i
+                ),
+                runtime_env={"env_vars": get_env_vars_to_propagate()},
+            ).remote()
+            for i in range(num_workers)
+        ]
+
+        try:
+            actor_metadatas = ray.get([actor.get_metadata.remote() for actor in actors])
+        except RayActorError as actor_error:
+            for actor in actors:
+                ray.kill(actor)
+
+            # Make sure to clear any other state (e.g., placement group) that was set.
+            self.shutdown()
+
+            error_msg = (
+                "One of the worker actors failed to initialize due to error:\n"
+                f"{traceback.format_exc()}"
+            )
+            raise WorkerGroupStartupFailedError(error_msg) from actor_error
+
+        workers = [Worker(actor, meta) for actor, meta in zip(actors, actor_metadatas)]
+        return self._assign_worker_ranks(workers)
+
+    def _init_train_context_on_workers(
+        self, checkpoint: Optional[Checkpoint] = None
+    ) -> None:
+        context_init_tasks = [
+            worker.actor.init_train_context.remote(
+                run_config=self._run_config,
+                distributed_context=worker.distributed_context,
+                synchronization_actor=self._sync_actor,
+                storage_context=self._storage_context,
+                checkpoint=checkpoint,
+            )
+            for worker in self._workers
+        ]
+        try:
+            ray.get(context_init_tasks)
+        except RayActorError as actor_error:
+            self.shutdown()
+            raise WorkerGroupStartupFailedError from actor_error
 
     def start(
         self,
@@ -96,29 +164,41 @@ class WorkerGroup:
     ):
         """Start the a number of workers with the given resources.
 
-        This should also also handle rank assignment.
+        Assign ranks, and initialize the train context on the workers.
+
+        Raises:
+            ValueError: If workers are already started.
+            WorkerGroupStartupTimeoutError: If the worker group startup times out
+                when requesting resources.
+                `RAY_TRAIN_WORKER_GROUP_START_TIMEOUT_S` can configure the timeout.
+            WorkerGroupStartupFailedError: If the worker group fails to start
+                due to actors dying/failing during initialization.
         """
         if self._workers:
             raise ValueError("Workers already started.")
 
         remote_actor_cls = ray.remote(**bundle_to_remote_args(resources_per_worker))(
-            RayTrainWorker
+            self._worker_cls
         )
-        pg = self._pg = placement_group([resources_per_worker] * num_workers)
+        pg = placement_group([resources_per_worker] * num_workers)
 
         logger.info(f"Starting worker group of size {num_workers}.")
-        actors = [
-            remote_actor_cls.options(
-                scheduling_strategy=PlacementGroupSchedulingStrategy(
-                    placement_group=pg, placement_group_bundle_index=i
-                ),
-                runtime_env={"env_vars": get_env_vars_to_propagate()},
-            ).remote()
-            for i in range(num_workers)
-        ]
-        actor_metadatas = ray.get([actor.get_metadata.remote() for actor in actors])
-        workers = [Worker(actor, meta) for actor, meta in zip(actors, actor_metadatas)]
-        self._workers = self._sort_workers_by_node_id_and_gpu_id(workers)
+
+        # Wait for the placement group to be ready before proceeding
+        # to create actors.
+        # This could hang if the resources are not available, so we should
+        # time out if this hangs for a while to try again with a different size.
+        # For example, the controller may try to set a worker group size
+        # based on stale information about cluster resources.
+        try:
+            ray.get(pg.ready(), timeout=self._worker_group_start_timeout_s)
+        except GetTimeoutError as timeout_exc:
+            remove_placement_group(pg)
+            raise WorkerGroupStartupTimeoutError(
+                num_workers=num_workers
+            ) from timeout_exc
+
+        self._pg = pg
 
         # Initialize the synchronization actor on the driver node
         self._sync_actor = SynchronizationActor.options(
@@ -128,15 +208,14 @@ class WorkerGroup:
             )
         ).remote()
 
-        self._init_train_context_on_workers(checkpoint=checkpoint)
+        self._workers = self._create_workers(num_workers, remote_actor_cls)
+        self._init_train_context_on_workers(checkpoint)
 
     @classmethod
     def _sort_workers_by_node_id_and_gpu_id(
         cls, workers: List[Worker], _first_id: Optional[str] = None
     ) -> List[Worker]:
         """Reorder the workers by their node id and the lowest GPU id.
-
-        This sorted order should be used to assign world ranks to the workers.
 
         Example:
             Given workers with the following attributes:
@@ -190,6 +269,35 @@ class WorkerGroup:
             sorted_workers.extend(workers)
         return sorted_workers
 
+    @classmethod
+    def _assign_worker_ranks(cls, workers: List[Worker]) -> List[Worker]:
+        """Assign world ranks to workers by increasing node id and GPU id.
+
+        Initializes the `DistributedContext` for each worker.
+
+        Returns:
+            workers: Workers sorted by increasing world rank,
+                with the `DistributedContext` set.
+        """
+        workers = cls._sort_workers_by_node_id_and_gpu_id(workers)
+
+        node_ip_to_workers = collections.defaultdict(list)
+        for worker in workers:
+            node_ip_to_workers[worker.metadata.node_ip].append(worker)
+        node_ips = list(node_ip_to_workers.keys())
+
+        for world_rank, worker in enumerate(workers):
+            distributed_context = DistributedContext(
+                local_rank=node_ip_to_workers[worker.metadata.node_ip].index(worker),
+                local_world_size=len(node_ip_to_workers[worker.metadata.node_ip]),
+                world_rank=world_rank,
+                world_size=len(workers),
+                node_rank=node_ips.index(worker.metadata.node_ip),
+            )
+            worker.distributed_context = distributed_context
+
+        return workers
+
     def has_started(self) -> bool:
         return bool(self._workers)
 
@@ -203,9 +311,6 @@ class WorkerGroup:
                 this is less than or equal to 0, immediately force kill all
                 workers.
         """
-        if not self._workers:
-            return
-
         logger.debug(f"Shutting down {len(self._workers)} workers.")
         if patience_s <= 0:
             for worker in self._workers:
@@ -220,11 +325,15 @@ class WorkerGroup:
                 for worker in self._workers:
                     ray.kill(worker.actor)
 
-        remove_placement_group(self._pg)
-        ray.kill(self._sync_actor)
+        if self._pg:
+            remove_placement_group(self._pg)
 
-        logger.debug("Shutdown successful.")
+        if self._sync_actor:
+            ray.kill(self._sync_actor)
+
         self._clear_state()
+
+        logger.debug("Worker group shutdown successful.")
 
     def _clear_state(self):
         self._workers = []
@@ -337,9 +446,9 @@ class WorkerGroup:
             except Exception as e:
                 error_msg = (
                     "A worker health check failed.\n"
-                    f"Worker info: {self._workers[done_rank]}"
+                    f"Worker info: {self._workers[done_rank]}\n"
+                    f"{traceback.format_exc()}"
                 )
-                logger.exception(error_msg)
 
                 poll_task_to_result[done_poll] = WorkerStatus(
                     running=False,
@@ -448,46 +557,3 @@ class WorkerGroup:
 
     def get_workers(self) -> List[Worker]:
         return self._workers
-
-    def _set_worker_group_distributed_contexts(self) -> None:
-        node_ip_to_workers = collections.defaultdict(list)
-        for worker in self._workers:
-            node_ip_to_workers[worker.metadata.node_ip].append(worker)
-        node_ips = list(node_ip_to_workers.keys())
-
-        distributed_contexts = []
-        worker_info_str = ""
-        for world_rank, worker in enumerate(self._workers):
-            worker_distributed_context = DistributedContext(
-                local_rank=node_ip_to_workers[worker.metadata.node_ip].index(worker),
-                local_world_size=len(node_ip_to_workers[worker.metadata.node_ip]),
-                world_rank=world_rank,
-                world_size=len(self._workers),
-                node_rank=node_ips.index(worker.metadata.node_ip),
-            )
-            distributed_contexts.append(worker_distributed_context)
-
-            worker_info_str += (
-                f"\n- (ip={worker.metadata.node_ip}, pid={worker.metadata.pid}) "
-                f"world_rank={world_rank}, "
-                f"local_rank={worker_distributed_context.local_rank}, "
-                f"node_rank={worker_distributed_context.node_rank}"
-            )
-
-        self._distributed_contexts = distributed_contexts
-        logger.info(f"Started distributed worker group:{worker_info_str}")
-
-    def _init_train_context_on_workers(self, checkpoint: Optional[Checkpoint] = None):
-        # Set up worker group distributed contexts
-        self._set_worker_group_distributed_contexts()
-        context_init_tasks = [
-            worker.actor.init_train_context.remote(
-                run_config=self._run_config,
-                distributed_context=self._distributed_contexts[i],
-                synchronization_actor=self._sync_actor,
-                storage_context=self._storage_context,
-                checkpoint=checkpoint,
-            )
-            for i, worker in enumerate(self._workers)
-        ]
-        ray.get(context_init_tasks)

@@ -10,10 +10,10 @@ from ray.train.v2._internal.execution.checkpoint.checkpoint_handler import (
     CheckpointHandler,
 )
 from ray.train.v2._internal.execution.worker_group import (
-    WorkerGroup,
     WorkerGroupStatus,
     WorkerStatus,
 )
+from ray.train.v2.tests.test_controller import DummyWorkerGroup
 
 
 def generate_worker_group_status(num_workers, num_ckpt, num_dummy, num_none):
@@ -54,7 +54,7 @@ def test_checkpoint_handler(num_workers, num_ckpt, num_dummy, num_none, expected
     checkpoint_manager = _CheckpointManager(checkpoint_config=None)
     checkpoint_handler = CheckpointHandler(checkpoint_manager)
 
-    worker_group = WorkerGroup()
+    worker_group = DummyWorkerGroup()
     worker_group.start(num_workers=10, resources_per_worker={"CPU": 1})
     checkpoint_handler.after_worker_group_start(worker_group)
 

@@ -10,7 +10,7 @@ _UNSUPPORTED = "UNSUPPORTED"
 # This determines how many seconds the controller will wait between
 # polling the worker group for its status.
 HEALTH_CHECK_INTERVAL_S_ENV_VAR = "RAY_TRAIN_HEALTH_CHECK_INTERVAL_S"
-DEFAULT_HEALTH_CHECK_INTERVAL_S = 2.0
+DEFAULT_HEALTH_CHECK_INTERVAL_S: float = 2.0
 
 # The number of consecutive health check that a worker must miss
 # before the controller marks the worker as dead and handles the failure.
@@ -19,7 +19,11 @@ DEFAULT_HEALTH_CHECK_INTERVAL_S = 2.0
 MAX_CONSECUTIVE_HEALTH_CHECK_MISSES_ENV_VAR = (
     "RAY_TRAIN_MAX_CONSECUTIVE_HEALTH_CHECK_MISSES"
 )
-DEFAULT_MAX_CONSECUTIVE_HEALTH_CHECK_MISSES = 5
+DEFAULT_MAX_CONSECUTIVE_HEALTH_CHECK_MISSES: int = 5
+
+# Timeout in seconds for the worker group to start.
+WORKER_GROUP_START_TIMEOUT_S_ENV_VAR = "RAY_TRAIN_WORKER_GROUP_START_TIMEOUT_S"
+DEFAULT_WORKER_GROUP_START_TIMEOUT_S: float = 30.0
 
 # V2 feature flag.
 V2_ENABLED_ENV_VAR = "RAY_TRAIN_V2_ENABLED"

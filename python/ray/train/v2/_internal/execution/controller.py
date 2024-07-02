@@ -11,7 +11,11 @@ from ray.train.v2._internal.constants import (
     DEFAULT_HEALTH_CHECK_INTERVAL_S,
     HEALTH_CHECK_INTERVAL_S_ENV_VAR,
 )
-from ray.train.v2._internal.exceptions import TrainingFailedError
+from ray.train.v2._internal.exceptions import (
+    TrainingFailedError,
+    WorkerGroupStartupFailedError,
+    WorkerGroupStartupTimeoutError,
+)
 from ray.train.v2._internal.execution.callback import Callback, SystemCallback
 from ray.train.v2._internal.execution.checkpoint.checkpoint_handler import (
     CheckpointHandler,
@@ -116,6 +120,10 @@ class TrainController:
         """Executes failure handling decisions (ex: restart, terminate)."""
         assert worker_group_status.errors
 
+        if failure_decision == FailureDecision.NOOP:
+            assert self._state == TrainControllerState.RUNNING
+            return
+
         errors_str = "\n".join(
             [
                 f"[Rank {worker_rank}] {error}"
@@ -126,7 +134,7 @@ class TrainController:
         if failure_decision == FailureDecision.RESTART:
             logger.error(
                 "Restarting worker group after encountering "
-                f"{len(worker_group_status.errors)} failure(s) on workers:\n"
+                f"failures on {len(worker_group_status.errors)} worker(s):\n"
                 f"{errors_str}"
             )
             # Shutdown the worker group so that we don't keep polling errored tasks.
@@ -135,15 +143,13 @@ class TrainController:
         elif failure_decision == FailureDecision.RAISE:
             logger.error(
                 "Terminating worker group after encountering "
-                f"{len(worker_group_status.errors)} failure(s) on workers:\n"
+                f"failure(s) on {len(worker_group_status.errors)} worker(s):\n"
                 f"{errors_str}"
             )
             self._set_state(TrainControllerState.ERRORED)
             self._training_failed_error = TrainingFailedError(
                 worker_failures=worker_group_status.errors
             )
-        elif failure_decision == FailureDecision.NOOP:
-            assert self._state == TrainControllerState.RUNNING
         else:
             raise ValueError(f"Unexpected failure decision: {failure_decision}")
 
@@ -170,13 +176,21 @@ class TrainController:
         latest_checkpoint = (
             latest_checkpoint_result.checkpoint if latest_checkpoint_result else None
         )
+
         # Start the worker group with the latest checkpoint.
-        # TODO: Handle failures in starting the worker group.
-        self._worker_group.start(
-            num_workers=num_workers,
-            resources_per_worker=resources_per_worker,
-            checkpoint=latest_checkpoint,
-        )
+        try:
+            self._worker_group.start(
+                num_workers=num_workers,
+                resources_per_worker=resources_per_worker,
+                checkpoint=latest_checkpoint,
+            )
+        except (WorkerGroupStartupTimeoutError, WorkerGroupStartupFailedError):
+            logger.exception("Worker group startup failed:")
+
+            # TODO: Should this logic go through the failure policy?
+            self._set_state(TrainControllerState.RECOVERING)
+            return
+
         for callback in self._system_callbacks:
             callback.after_worker_group_start(self._worker_group)
 

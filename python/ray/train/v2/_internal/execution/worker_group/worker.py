@@ -43,6 +43,7 @@ class ActorMetadata:
 class Worker:
     actor: ActorHandle
     metadata: ActorMetadata
+    distributed_context: Optional[DistributedContext] = None
 
 
 class RayTrainWorker:
