@@ -34,7 +34,7 @@ def _get_reader_node_id(self, reader_actor: "ray.actor.ActorHandle") -> "ray.Nod
     """
     current_actor_id = ray.get_runtime_context().get_actor_id()
     if current_actor_id is None:
-        # We are calling from the driver, make a remote call
+        # We are calling from the driver, so make a remote call.
         fn = reader_actor.__ray_call__
         return ray.get(fn.remote(_get_node_id))
 
@@ -240,6 +240,33 @@ class Channel(ChannelInterface):
             self_actor = _get_self_actor()
             assert writer == self_actor
 
+            # For now, all readers must be on the same node. Note that the writer can
+            # still be on a different node than the readers though.
+            #
+            # Note that we only check this when the writer is creating the channel.
+            # Ideally, when each reader constructs its own instance of the channel, it
+            # would check this as well. However, this could result in deadlock as two
+            # readers attempt to execute a remote function on each other to get each
+            # other's node ID. We cannot use a separate concurrency group to execute the
+            # function because reader actors may not have been declared with an
+            # additional concurrency group beyond default.
+            #
+            # TODO(jhumphri): Allow different readers for the same channel to be on
+            # different nodes.
+            prev_reader_node = None
+            prev_reader = None
+            for reader in readers:
+                node = _get_reader_node_id(self, reader)
+                if prev_reader_node is None:
+                    prev_reader_node = node
+                elif prev_reader_node != node:
+                    raise ValueError(
+                        f"All reader actors must be on the same node. Actor "
+                        f"{prev_reader} is on node {prev_reader_node} while actor "
+                        f"{reader} is on node {node}."
+                    )
+                prev_reader = reader
+
             self._writer_node_id = (
                 ray.runtime_context.get_runtime_context().get_node_id()
             )
@@ -271,6 +298,15 @@ class Channel(ChannelInterface):
 
         self._num_readers = len(self._readers)
         if self.is_remote():
+            from ray.dag.context import DAGContext
+
+            if typ.buffer_size_bytes > DAGContext.get_current().max_grpc_payload:
+                raise ValueError(
+                    "The reader and writer are on different nodes, so the object "
+                    "written to the channel must have a size less than or equal to "
+                    "the max gRPC payload size "
+                    f"({DAGContext.get_current().max_grpc_payload} bytes)."
+                )
             self._num_readers = 1
 
     def _create_reader_ref(
@@ -373,6 +409,15 @@ class Channel(ChannelInterface):
         # include the size of the metadata, so we must account for the size of the
         # metadata explicitly.
         size = serialized_value.total_bytes + len(serialized_value.metadata)
+
+        from ray.dag.context import DAGContext
+
+        if size > DAGContext.get_current().max_grpc_payload and self.is_remote():
+            raise ValueError(
+                "The reader and writer are on different nodes, so the object written "
+                "to the channel must have a size less than or equal to the max gRPC "
+                f"payload size ({DAGContext.get_current().max_grpc_payload} bytes)."
+            )
         if size > self._typ.buffer_size_bytes:
             # Now make the channel backing store larger.
             self._typ.buffer_size_bytes = size
