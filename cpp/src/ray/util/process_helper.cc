@@ -97,7 +97,7 @@ void ProcessHelper::RayStart(CoreWorkerOptions::TaskExecutionCallback callback) 
   }
 
   std::unique_ptr<ray::gcs::GlobalStateAccessor> global_state_accessor =
-      CreateGlobalStateAccessor(bootstrap_address);
+      CreateGlobalStateAccessor(bootstrap_ip, bootstrap_port);
   if (ConfigInternal::Instance().worker_type == WorkerType::DRIVER) {
     std::string node_to_connect;
     auto status =
