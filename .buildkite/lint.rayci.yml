@@ -23,6 +23,7 @@ steps:
   - label: ":lint-roller: lint: {{matrix}}"
     tags:
       - oss
+      - lint
     key: lint-medium
     instance_type: medium
     depends_on:
