@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.3-labs
 
-FROM ubuntu:focal
+FROM ubuntu:22.04
 
 ARG BUILDKITE_BAZEL_CACHE_URL
 ARG PYTHON=3.9
