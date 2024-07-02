@@ -2249,9 +2249,7 @@ def connect(
     assert worker.gcs_client is not None
     _initialize_internal_kv(worker.gcs_client)
     ray._private.state.state._initialize_global_state(
-        ray._raylet.GcsClientOptions.create(
-            node.gcs_address, node._ray_params.cluster_id
-        )
+        ray._raylet.GcsClientOptions.create(node.gcs_address, node.cluster_id.hex())
     )
     worker.gcs_publisher = ray._raylet.GcsPublisher(address=worker.gcs_client.address)
     # Initialize some fields.
