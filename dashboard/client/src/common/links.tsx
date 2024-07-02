@@ -1,4 +1,4 @@
-import { Link } from "@mui/material";
+import { Link, SxProps, Theme } from "@mui/material";
 import React, { PropsWithChildren } from "react";
 import { Link as RouterLink } from "react-router-dom";
 import { ClassNameProps } from "./props";
@@ -10,6 +10,7 @@ type ActorLinkProps = PropsWithChildren<
      * This can be provided to override where we link to.
      */
     to?: string;
+    sx?: SxProps<Theme>;
   } & ClassNameProps
 >;
 
@@ -23,10 +24,12 @@ export const ActorLink = ({
   to,
   children,
   className,
+  sx,
 }: ActorLinkProps) => {
   return (
     <Link
       className={className}
+      sx={sx}
       component={RouterLink}
       to={to ?? generateActorLink(actorId)}
     >
@@ -42,6 +45,7 @@ type NodeLinkProps = PropsWithChildren<
      * This can be provided to override where we link to.
      */
     to?: string;
+    sx?: SxProps<Theme>;
   } & ClassNameProps
 >;
 
@@ -55,10 +59,12 @@ export const NodeLink = ({
   to,
   children,
   className,
+  sx,
 }: NodeLinkProps) => {
   return (
     <Link
       className={className}
+      sx={sx}
       component={RouterLink}
       to={to ?? generateNodeLink(nodeId)}
     >
