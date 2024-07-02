@@ -5,6 +5,12 @@ import time
 from typing import Dict
 
 import ray
+from ray.util.scheduling_strategies import (
+    DoesNotExist,
+    NodeAffinitySchedulingStrategy,
+    NodeLabelSchedulingStrategy,
+    PlacementGroupSchedulingStrategy,
+)
 
 from ray.util.state import list_actors
 from ray._private.test_utils import (
@@ -313,6 +319,56 @@ def test_get_all_actors_info(shutdown_only):
 
     with pytest.raises(ValueError, match="not a valid actor state name"):
         actors_info = ray.state.actors(actor_state_name="UNKONWN_STATE")
+
+
+def test_get_actor_scheduling_strategy_info(ray_start_cluster_head):
+    @ray.remote
+    class Actor:
+        def ping(self):
+            pass
+
+    # DEFAULT
+    actor = Actor.remote()
+    ray.get(actor.ping.remote())
+    actor_info = ray.state.actors(actor._actor_id.hex())
+    assert actor_info["SchedulingStrategy"] == "DEFAULT"
+
+    # SPREAD
+    actor = Actor.options(scheduling_strategy="SPREAD").remote()
+    ray.get(actor.ping.remote())
+    actor_info = ray.state.actors(actor._actor_id.hex())
+    assert actor_info["SchedulingStrategy"] == "SPREAD"
+
+    # PlacementGroupSchedulingStrategy
+    pg = ray.util.placement_group(bundles=[{"CPU": 1}])
+    ray.get(pg.ready(), timeout=5)
+    placement_group_scheduling_strategy = PlacementGroupSchedulingStrategy(pg, 0, False)
+    actor = Actor.options(
+        scheduling_strategy=placement_group_scheduling_strategy
+    ).remote()
+    ray.get(actor.ping.remote())
+    actor_info = ray.state.actors(actor._actor_id.hex())
+    assert actor_info["SchedulingStrategy"] == placement_group_scheduling_strategy
+
+    # NodeAffinitySchedulingStrategy
+    node_affinity_scheduling_strategy = NodeAffinitySchedulingStrategy(
+        ray.get_runtime_context().get_node_id(), soft=True
+    )
+    actor = Actor.options(
+        scheduling_strategy=node_affinity_scheduling_strategy
+    ).remote()
+    ray.get(actor.ping.remote())
+    actor_info = ray.state.actors(actor._actor_id.hex())
+    assert actor_info["SchedulingStrategy"] == node_affinity_scheduling_strategy
+
+    # NodeLabelSchedulingStrategy
+    node_label_scheduling_strategy = NodeLabelSchedulingStrategy(
+        hard={"key": DoesNotExist()}
+    )
+    actor = Actor.options(scheduling_strategy=node_label_scheduling_strategy).remote()
+    ray.get(actor.ping.remote())
+    actor_info = ray.state.actors(actor._actor_id.hex())
+    assert actor_info["SchedulingStrategy"] == node_label_scheduling_strategy
 
 
 if __name__ == "__main__":
