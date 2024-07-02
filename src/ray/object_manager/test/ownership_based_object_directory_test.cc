@@ -109,7 +109,11 @@ class MockGcsClient : public gcs::GcsClient {
 class OwnershipBasedObjectDirectoryTest : public ::testing::Test {
  public:
   OwnershipBasedObjectDirectoryTest()
-      : options_("localhost:6973"),
+      : options_("localhost",
+                 6973,
+                 ClusterID::Nil(),
+                 /*allow_nil=*/true,
+                 /*fetch_cluster_id_if_nil=*/false),
         node_info_accessor_(new gcs::MockNodeInfoAccessor()),
         gcs_client_mock_(new MockGcsClient(options_, node_info_accessor_)),
         subscriber_(std::make_shared<pubsub::MockSubscriber>()),
