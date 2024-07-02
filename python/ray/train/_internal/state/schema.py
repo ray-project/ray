@@ -1,8 +1,16 @@
+from enum import Enum
 from typing import List, Optional
 
 from ray._private.pydantic_compat import BaseModel, Field
 from ray.dashboard.modules.job.pydantic_models import JobDetails
 from ray.util.annotations import DeveloperAPI
+
+
+@DeveloperAPI
+class RunStatusEnum(str, Enum):
+    STARTED = "STARTED"
+    FINISHED = "FINISHED"
+    ERRORED = "ERRORED"
 
 
 @DeveloperAPI
@@ -46,8 +54,15 @@ class TrainRunInfo(BaseModel):
     datasets: List[TrainDatasetInfo] = Field(
         description="A List of dataset info for this Train run."
     )
+    status: RunStatusEnum = Field(
+        description="The current status of the train run. It can be one of the "
+        "following: STARTED, FINISHED, or ERRORED."
+    )
     start_time_ms: int = Field(
         description="The UNIX timestamp of the start time of this Train run."
+    )
+    end_time_ms: Optional[int] = Field(
+        description="The UNIX timestamp of the end time of this Train run."
     )
 
 

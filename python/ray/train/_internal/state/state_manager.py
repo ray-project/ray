@@ -23,6 +23,7 @@ class TrainRunStateManager:
 
     def __init__(self, state_actor) -> None:
         self.state_actor = state_actor
+        self.train_run_info = None
 
     def register_train_run(
         self,
@@ -82,7 +83,7 @@ class TrainRunStateManager:
             for ds_name, ds in datasets.items()
         ]
 
-        train_run_info = TrainRunInfo(
+        self.train_run_info = TrainRunInfo(
             id=run_id,
             job_id=job_id,
             name=run_name,
@@ -92,4 +93,11 @@ class TrainRunStateManager:
             start_time_ms=start_time_ms,
         )
 
-        ray.get(self.state_actor.register_train_run.remote(train_run_info))
+        ray.get(self.state_actor.register_train_run.remote(self.train_run_info))
+
+    def update_train_run(self, run_id: str, status: str, end_time_ms: int) -> None:
+        """Update the Train Run status on finish or error."""
+        if self.train_run_info and run_id == self.train_run_info.run_id:
+            self.train_run_info.status = status
+            self.train_run_info.end_time_ms = end_time_ms
+            ray.get(self.state_actor.register_train_run.remote(self.train_run_info))
