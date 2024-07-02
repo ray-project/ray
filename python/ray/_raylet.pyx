@@ -573,8 +573,11 @@ cdef int check_status(const CRayStatus& status) nogil except -1:
     elif status.IsInterrupted():
         raise KeyboardInterrupt()
     elif status.IsTimedOut():
-        raise GetTimeoutError(message)
+        raise RpcError(message, rpc_code=GRPC_STATUS_CODE_DEADLINE_EXCEEDED)
     elif status.IsNotFound():
+        # Note: this should really be KeyError or LookupError, but we have too many call
+        # sites Expecting ValueError. For example, the @PublicAPI ray.get_actor raises
+        # ValueError so we will never be able to change this.
         raise ValueError(message)
     elif status.IsObjectNotFound():
         raise ValueError(message)
@@ -2788,7 +2791,7 @@ cdef class GcsClient:
             CRayStatus status
         with nogil:
             status = self.inner.get().InternalKVGet(ns, key, timeout_ms, value)
-        if status.IsKeyError():
+        if status.IsNotFound():
             return None
         else:
             check_status(status)
@@ -3009,10 +3012,14 @@ cdef class GcsClient:
             c_bool is_accepted = False
             c_string rejection_reason_message
         with nogil:
-            check_status(self.inner.get().DrainNode(
+            status = self.inner.get().DrainNode(
                 node_id, reason, reason_message,
                 deadline_timestamp_ms, timeout_ms, is_accepted,
-                rejection_reason_message))
+                rejection_reason_message)
+            # Invalid arguments
+            if status.IsInvalid():
+                raise ValueError(status.message())
+            check_status(status)
 
         return (is_accepted, rejection_reason_message.decode())
 
@@ -3505,7 +3512,12 @@ cdef class CoreWorker:
         with nogil:
             op_status = CCoreWorkerProcess.GetCoreWorker().Get(
                 c_object_ids, timeout_ms, results)
-        check_status(op_status)
+        try:
+            check_status(op_status)
+        except RpcError as e:
+            if e.rpc_code == GRPC_STATUS_CODE_DEADLINE_EXCEEDED:
+                raise GetTimeoutError(e.message)
+            raise
 
         return RayObjectsToDataMetadataPairs(results)
 
@@ -3885,9 +3897,14 @@ cdef class CoreWorker:
             c_vector[CObjectID] lookup_ids = ObjectRefsToVector(object_refs)
 
         with nogil:
-            check_status(
-                CCoreWorkerProcess.GetCoreWorker().GetLocationFromOwner(
-                    lookup_ids, timeout_ms, &results))
+            status = CCoreWorkerProcess.GetCoreWorker().GetLocationFromOwner(
+                lookup_ids, timeout_ms, &results)
+        try:
+            check_status(status)
+        except RpcError as e:
+            if e.rpc_code == GRPC_STATUS_CODE_DEADLINE_EXCEEDED:
+                raise GetTimeoutError(e.message)
+            raise
 
         object_locations = {}
         for i in range(results.size()):
@@ -4460,7 +4477,12 @@ cdef class CoreWorker:
             named_actor_handle_pair = (
                 CCoreWorkerProcess.GetCoreWorker().GetNamedActorHandle(
                     name, ray_namespace))
-        check_status(named_actor_handle_pair.second)
+        try:
+            check_status(named_actor_handle_pair.second)
+        except RpcError as e:
+            if e.rpc_code == GRPC_STATUS_CODE_DEADLINE_EXCEEDED:
+                raise GetTimeoutError(e.message)
+            raise
 
         return self.make_actor_handle(named_actor_handle_pair.first,
                                       weak_ref=True)
@@ -4484,7 +4506,13 @@ cdef class CoreWorker:
         with nogil:
             result_pair = CCoreWorkerProcess.GetCoreWorker().ListNamedActors(
                 all_namespaces)
-        check_status(result_pair.second)
+        try:
+            check_status(result_pair.second)
+        except RpcError as e:
+            if e.rpc_code == GRPC_STATUS_CODE_DEADLINE_EXCEEDED:
+                raise GetTimeoutError(e.message)
+            raise
+
         return [
             (namespace.decode("utf-8"),
              name.decode("utf-8")) for namespace, name in result_pair.first]

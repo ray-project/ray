@@ -100,7 +100,7 @@ inline Status GrpcStatusToRayStatus(const grpc::Status &grpc_status) {
   if (grpc_status.ok()) {
     return Status::OK();
   } else if (grpc_status.error_code() == grpc::StatusCode::DEADLINE_EXCEEDED) {
-    // DEADLINE_EXCEEDED means the gRPC request has timedout. Convert it to Ray timeout
+    // DEADLINE_EXCEEDED means the gRPC request has timed out. Convert it to Ray timeout
     // status code.
     return Status(StatusCode::TimedOut, GrpcStatusToRayStatusMessage(grpc_status));
   } else if (grpc_status.error_code() == grpc::StatusCode::ABORTED) {
