@@ -800,8 +800,18 @@ class CompiledDAG:
                 # in the DAG.
                 readers = [self.idx_to_task[idx] for idx in task.downstream_node_idxs]
 
-                if isinstance(readers[0].dag_node, MultiOutputNode):
-                    assert len(readers) == 1
+                dag_nodes = [reader.dag_node for reader in readers]
+                read_by_driver = False
+                for dag_node in dag_nodes:
+                    if isinstance(dag_node, MultiOutputNode):
+                        read_by_driver = True
+                        break
+                if read_by_driver:
+                    if len(readers) != 1:
+                        raise ValueError(
+                            "DAG outputs currently can only be read by the driver--not "
+                            "the driver and actors."
+                        )
                     # This node is a multi-output node, which means that it will only be
                     # read by the driver, not an actor. Thus, we handle this case by
                     # setting `reader_handles` to `[self._driver_actor]`.
