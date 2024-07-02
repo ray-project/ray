@@ -45,7 +45,7 @@ steps:
     key: doc_build
     instance_type: medium
     commands:
-      - FAST=True make -C doc/ html
+      - make -C doc/ html
     depends_on: docbuild
     job_env: docbuild
 
