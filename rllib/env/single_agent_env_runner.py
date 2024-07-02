@@ -2,7 +2,7 @@ import time
 from collections import defaultdict
 from functools import partial
 import logging
-from typing import Any, Container, DefaultDict, Dict, List, Optional
+from typing import Any, Collection, DefaultDict, Dict, List, Optional
 
 import gymnasium as gym
 
@@ -23,6 +23,7 @@ from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 from ray.rllib.env.utils import _gym_env_creator
 from ray.rllib.utils import force_list
 from ray.rllib.utils.annotations import override
+from ray.rllib.utils.checkpoints import Checkpointable
 from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.metrics import (
@@ -54,8 +55,10 @@ _, tf, _ = try_import_tf()
 logger = logging.getLogger("ray.rllib")
 
 
+# TODO (sven): As soon as RolloutWorker is no longer supported, make `EnvRunner` itself
+#  a Checkpointable. Currently, only some of its subclasses are Checkpointables.
 @PublicAPI(stability="alpha")
-class SingleAgentEnvRunner(EnvRunner):
+class SingleAgentEnvRunner(EnvRunner, Checkpointable):
     """The generic environment runner for the single agent case."""
 
     @override(EnvRunner)
@@ -644,15 +647,37 @@ class SingleAgentEnvRunner(EnvRunner):
         # Return reduced metrics.
         return self.metrics.reduce()
 
-    @override(EnvRunner)
+    @override(Checkpointable)
     def get_state(
         self,
-        components: Optional[Container[str]] = None,
+        components: Optional[Collection[str]] = None,
         *,
-        not_components: Optional[Container[str]] = None,
-        module_ids: Optional[Container[ModuleID]] = None,
+        not_components: Optional[Collection[str]] = None,
         inference_only: bool = True,
+        **kwargs,
     ) -> Dict[str, Any]:
+        """Returns this EnvRunners current state as a dict.
+
+        Args:
+            components: An optional list of string keys to be included in the
+                returned state. This might be useful, if getting certain components
+                of the state is expensive (e.g. reading/compiling the weights of a large
+                NN) and at the same time, these components are not required by the
+                caller.
+            not_components: An optional list of string keys to be excluded in the
+                returned state, even if the same string is part of `components`.
+                This is useful to get the complete state of the class, except
+                one or a few components.
+            inference_only: Whether to return the inference-only weight set of the
+                EnvRunner's RLModule. Note that this setting only has an effect if
+                components is None or the string "rl_module" is in `components` (and not
+                in `not_components`).
+            kwargs: Forward-compatibility kwargs.
+
+        Returns:
+            The current state of the implementing class (or only the `components`
+            specified, w/o those in `not_components`).
+        """
         # If components=None, add all components to state (unless a component is in
         # `not_components`).
         components = force_list(components) or None
@@ -684,7 +709,7 @@ class SingleAgentEnvRunner(EnvRunner):
 
         return state
 
-    @override(EnvRunner)
+    @override(Checkpointable)
     def set_state(self, state: Dict[str, Any]) -> None:
         if COMPONENT_ENV_TO_MODULE_CONNECTOR in state:
             self._env_to_module.set_state(state[COMPONENT_ENV_TO_MODULE_CONNECTOR])
@@ -718,6 +743,29 @@ class SingleAgentEnvRunner(EnvRunner):
                 value=state[NUM_ENV_STEPS_SAMPLED_LIFETIME],
                 reduce="sum",
             )
+
+    @override(Checkpointable)
+    def get_ctor_args_and_kwargs(self):
+        return (
+            (),  # *args
+            {"config": self.config},  # **kwargs
+        )
+
+    @override(Checkpointable)
+    def get_metadata(self):
+        metadata = Checkpointable.get_metadata(self)
+        metadata.update({
+            # TODO (sven): Maybe add serialized (JSON-writable) config here?
+        })
+        return metadata
+
+    @override(Checkpointable)
+    def get_checkpointable_components(self):
+        return [
+            (COMPONENT_RL_MODULE, self.module),
+            (COMPONENT_ENV_TO_MODULE_CONNECTOR, self._env_to_module),
+            (COMPONENT_MODULE_TO_ENV_CONNECTOR, self._module_to_env),
+        ]
 
     @override(EnvRunner)
     def assert_healthy(self):

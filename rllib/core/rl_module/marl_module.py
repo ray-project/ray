@@ -11,6 +11,7 @@ from typing import (
     List,
     Optional,
     Set,
+    Tuple,
     Type,
     Union,
 )
@@ -28,11 +29,11 @@ from ray.rllib.utils.annotations import (
     override,
     OverrideToImplementCustomLogic,
 )
-from ray.rllib.utils.deprecation import DEPRECATED_VALUE, deprecation_warning
+from ray.rllib.utils.checkpoints import Checkpointable
 from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.policy import validate_policy_id
 from ray.rllib.utils.serialization import serialize_type, deserialize_type
-from ray.rllib.utils.typing import ModuleID, T
+from ray.rllib.utils.typing import ModuleID, StateDict, T
 from ray.util.annotations import PublicAPI
 
 logger = logging.getLogger("ray.rllib")
@@ -44,7 +45,7 @@ class MultiAgentRLModule(RLModule):
 
     This class holds a mapping from module_ids to the underlying RLModules. It provides
     a convenient way of accessing each individual module, as well as accessing all of
-    them with only one API call. Whether or not a given module is trainable is
+    them with only one API call. Whether a given module is trainable is
     determined by the caller of this class (not the instance of this class itself).
 
     The extension of this class can include any arbitrary neural networks as part of
@@ -67,7 +68,8 @@ class MultiAgentRLModule(RLModule):
         """Initializes a MultiagentRLModule instance.
 
         Args:
-            config: The MultiAgentRLModuleConfig to use.
+            config: An optional MultiAgentRLModuleConfig to use. If None, will use
+                `MultiAgentRLModuleConfig()` as default config.
         """
         super().__init__(config or MultiAgentRLModuleConfig())
 
@@ -321,8 +323,14 @@ class MultiAgentRLModule(RLModule):
 
     @override(RLModule)
     def get_state(
-        self, module_ids: Optional[Set[ModuleID]] = None, inference_only: bool = False
-    ) -> Dict[ModuleID, Any]:
+        self,
+        components: Optional[Collection[str]],
+        *,
+        not_components: Optional[Collection[str]],
+        module_ids: Optional[Set[ModuleID]] = None,
+        inference_only: bool = False,
+        **kwargs,
+    ) -> StateDict:
         """Returns the state of the multi-agent module.
 
         This method returns the state of each module specified by module_ids. If
@@ -349,89 +357,93 @@ class MultiAgentRLModule(RLModule):
         }
 
     @override(RLModule)
-    def set_state(self, state_dict: Dict[ModuleID, Any]) -> None:
+    def set_state(self, state: StateDict) -> None:
         """Sets the state of the multi-agent module.
 
-        It is assumed that the state_dict is a mapping from module IDs to their
-        corressponding state. This method sets the state of each module by calling
-        their set_state method. If you want to set the state of some of the RLModules
-        within this MultiAgentRLModule your state_dict can only include the state of
-        those RLModules. Override this method to customize the state_dict for custom
-        more advanced multi-agent use cases.
+        It is assumed that the state_dict is a mapping from module IDs to the
+        corresponding module's state. This method sets the state of each module by
+        calling their set_state method. If you want to set the state of some of the
+        RLModules within this MultiAgentRLModule your state_dict can only include the
+        state of those RLModules. Override this method to customize the state_dict for
+        custom more advanced multi-agent use cases.
 
         Args:
-            state_dict: The state dict to set.
+            state: The state dict to set.
         """
-        for module_id, state in state_dict.items():
+        for module_id, module_state in state.items():
             if module_id in self:
-                self._rl_modules[module_id].set_state(state)
+                self._rl_modules[module_id].set_state(module_state)
             else:
-                if "spec" not in state:
+                if "spec" not in module_state:
                     raise KeyError(
                         "No 'spec' key found in RLModule state! Spec information is "
-                        "required in order to create missing RLModule with ModuleID "
-                        f"'{module_id}'."
+                        "required in order to create the missing RLModule with ModuleID"
+                        f" '{module_id}'."
                     )
-                new_module = state["spec"].build()
+                new_module = module_state["spec"].build()
                 self.add_module(module_id, new_module, override=False)
 
-    @override(RLModule)
-    def save(self, path: Union[str, pathlib.Path]) -> None:
-        path = pathlib.Path(path)
-        path.mkdir(parents=True, exist_ok=True)
-        # Call `save` on all individual RLModules in self.
-        for module_id, module in self._rl_modules.items():
-            module.save(str(path / module_id))
-        # Save our own (multi-agent) meta-data.
-        self._save_module_metadata(path, MultiAgentRLModuleSpec)
+    @override(Checkpointable)
+    def get_checkpointable_components(self) -> List[Tuple[str, Checkpointable], ...]:
+        return list(self._rl_modules.items())
 
-    @override(RLModule)
-    def restore(
-        self,
-        path: Union[str, pathlib.Path],
-        *,
-        module_ids: Optional[Collection[ModuleID]] = None,
-        modules_to_load=DEPRECATED_VALUE,
-    ) -> None:
-        """Resotres/loads the weights of a MultiAgentRLModule from path.
+    #@override(RLModule)
+    #def save(self, path: Union[str, pathlib.Path]) -> None:
+    #    path = pathlib.Path(path)
+    #    path.mkdir(parents=True, exist_ok=True)
+    #    # Call `save` on all individual RLModules in self.
+    #    for module_id, module in self._rl_modules.items():
+    #        module.save(str(path / module_id))
+    #    # Save our own (multi-agent) meta-data.
+    #    self._save_module_metadata(path, MultiAgentRLModuleSpec)
 
-        NOTE: If you want to load a module that is not already in this
-        MultiAgentRLModule, you should add it to this MultiAgentRLModule
-        before loading the checkpoint through
-        `self.add_module([module_id], [RLModule instance])`.
-
-        Args:
-            path: The path to the directory to load the state from.
-            module_ids: The module IDs whose state is to be loaded from the path.
-                If this is None, all modules that are checkpointed will be loaded into
-                self.
-        """
-        if modules_to_load != DEPRECATED_VALUE:
-            deprecation_warning(
-                old="MultiAgentRLModule.restore(modules_to_load=...)",
-                new="MultiAgentRLModule.restore(module_ids=...)",
-                error=False,
-            )
-            module_ids = modules_to_load
-
-        path = pathlib.Path(path)
-        if not module_ids:
-            module_ids = set(self._rl_modules.keys())
-        path.mkdir(parents=True, exist_ok=True)
-        for submodule_id in module_ids:
-            if submodule_id not in self._rl_modules:
-                raise ValueError(
-                    f"Module {submodule_id} from `module_ids`: "
-                    f"{module_ids} not found in this MultiAgentRLModule."
-                )
-            submodule = self._rl_modules[submodule_id]
-            submodule_weights_dir = path / submodule_id
-            if not submodule_weights_dir.exists():
-                raise ValueError(
-                    f"Submodule {submodule_id}'s module state directory: "
-                    f"{submodule_weights_dir} not found in checkpoint dir {path}."
-                )
-            submodule.restore(submodule_weights_dir)
+    #@override(RLModule)
+    #def restore(
+    #    self,
+    #    path: Union[str, pathlib.Path],
+    #    *,
+    #    module_ids: Optional[Collection[ModuleID]] = None,
+    #    modules_to_load=DEPRECATED_VALUE,
+    #) -> None:
+    #    """Resotres/loads the weights of a MultiAgentRLModule from path.
+    #
+    #    NOTE: If you want to load a module that is not already in this
+    #    MultiAgentRLModule, you should add it to this MultiAgentRLModule
+    #    before loading the checkpoint through
+    #    `self.add_module([module_id], [RLModule instance])`.
+    #
+    #    Args:
+    #        path: The path to the directory to load the state from.
+    #        module_ids: The module IDs whose state is to be loaded from the path.
+    #            If this is None, all modules that are checkpointed will be loaded into
+    #            self.
+    #    """
+    #    if modules_to_load != DEPRECATED_VALUE:
+    #        deprecation_warning(
+    #            old="MultiAgentRLModule.restore(modules_to_load=...)",
+    #            new="MultiAgentRLModule.restore(module_ids=...)",
+    #            error=False,
+    #        )
+    #        module_ids = modules_to_load
+    #
+    #    path = pathlib.Path(path)
+    #    if not module_ids:
+    #        module_ids = set(self._rl_modules.keys())
+    #    path.mkdir(parents=True, exist_ok=True)
+    #    for submodule_id in module_ids:
+    #        if submodule_id not in self._rl_modules:
+    #            raise ValueError(
+    #                f"Module {submodule_id} from `module_ids`: "
+    #                f"{module_ids} not found in this MultiAgentRLModule."
+    #            )
+    #        submodule = self._rl_modules[submodule_id]
+    #        submodule_weights_dir = path / submodule_id
+    #        if not submodule_weights_dir.exists():
+    #            raise ValueError(
+    #                f"Submodule {submodule_id}'s module state directory: "
+    #                f"{submodule_weights_dir} not found in checkpoint dir {path}."
+    #            )
+    #        submodule.restore(submodule_weights_dir)
 
     @classmethod
     @override(RLModule)

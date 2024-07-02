@@ -1365,7 +1365,6 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
                 f.reset_buffer()
         return return_filters
 
-    @override(EnvRunner)
     def get_state(self) -> dict:
         filters = self.get_filters(flush_after=True)
         policy_states = {}
@@ -1396,7 +1395,6 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
             "filters": filters,
         }
 
-    @override(EnvRunner)
     def set_state(self, state: dict) -> None:
         # Backward compatibility (old checkpoints' states would have the local
         # worker state as a bytes object, not a dict).
