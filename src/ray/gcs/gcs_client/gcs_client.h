@@ -318,8 +318,8 @@ class RAY_EXPORT PythonGcsClient {
     }
   }
 
-  ClusterID cluster_id_;
   const GcsClientOptions options_;
+  ClusterID cluster_id_;
   std::unique_ptr<rpc::InternalKVGcsService::Stub> kv_stub_;
   std::unique_ptr<rpc::RuntimeEnvGcsService::Stub> runtime_env_stub_;
   std::unique_ptr<rpc::NodeInfoGcsService::Stub> node_info_stub_;
