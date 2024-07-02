@@ -17,7 +17,7 @@ from ray._private.runtime_env.packaging import (
     package_exists,
     parse_uri,
     upload_package_if_needed,
-    upload_package_to_gcs,
+    upload_package_to_gcs_plasma,
 )
 from ray._private.runtime_env.plugin import RuntimeEnvPlugin
 from ray._private.runtime_env.working_dir import set_pythonpath_in_context
@@ -47,6 +47,7 @@ def upload_py_modules_if_needed(
     runtime_env: Dict[str, Any],
     scratch_dir: Optional[str] = os.getcwd(),
     logger: Optional[logging.Logger] = default_logger,
+    protocol=Protocol.GCS,
     upload_fn=None,
 ) -> Dict[str, Any]:
     """Uploads the entries in py_modules and replaces them with a list of URIs.
@@ -92,7 +93,9 @@ def upload_py_modules_if_needed(
             # module_path is a local path.
             if Path(module_path).is_dir():
                 excludes = runtime_env.get("excludes", None)
-                module_uri = get_uri_for_directory(module_path, excludes=excludes)
+                module_uri = get_uri_for_directory(
+                    module_path, excludes=excludes, protocol=protocol
+                )
                 if upload_fn is None:
                     try:
                         upload_package_if_needed(
@@ -120,11 +123,11 @@ def upload_py_modules_if_needed(
                 else:
                     upload_fn(module_path, excludes=excludes)
             elif Path(module_path).suffix == ".whl":
-                module_uri = get_uri_for_package(Path(module_path))
+                module_uri = get_uri_for_package(Path(module_path), protocol=protocol)
                 if upload_fn is None:
                     if not package_exists(module_uri):
                         try:
-                            upload_package_to_gcs(
+                            upload_package_to_gcs_plasma(
                                 module_uri, Path(module_path).read_bytes()
                             )
                         except Exception as e:
