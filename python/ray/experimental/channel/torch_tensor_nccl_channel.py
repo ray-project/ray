@@ -115,7 +115,7 @@ class NestedTorchTensorNcclChannel(ChannelInterface):
         if self._cpu_data_channel is not None:
             self._cpu_data_channel.ensure_registered_as_reader()
 
-    def write(self, value: Any):
+    def write(self, value: Any, timeout: Optional[float] = None) -> None:
         self.serialization_ctx.reset_tensors([])
         # All tensors found in `value` will be transferred via NCCL.
         self.serialization_ctx.set_use_external_transport(True)
@@ -149,7 +149,7 @@ class NestedTorchTensorNcclChannel(ChannelInterface):
         # tensors, through a CPU-specific channel.
         self._cpu_data_channel.write(serialized_cpu_data)
 
-    def read(self) -> Any:
+    def read(self, timeout: Optional[float] = None) -> Any:
         tensors = self._gpu_data_channel.read()
 
         if self._gpu_data_channel.has_static_type():
@@ -327,6 +327,7 @@ class TorchTensorNcclChannel(ChannelInterface):
     def write(
         self,
         tensors: Union["torch.Tensor", List["torch.Tensor"], Exception],
+        timeout: Optional[float] = None,
     ):
         if isinstance(tensors, ray.exceptions.RayTaskError):
             # TODO(swang): Write exceptions to the meta channel if it is
@@ -373,7 +374,9 @@ class TorchTensorNcclChannel(ChannelInterface):
         self._nccl_group.recv(buf, self._writer_rank)
         return buf
 
-    def read(self) -> Union["torch.Tensor", List["torch.Tensor"]]:
+    def read(
+        self, timeout: Optional[float] = None
+    ) -> Union["torch.Tensor", List["torch.Tensor"]]:
         if self._meta_channel is not None:
             meta = self._meta_channel.read()
         else:

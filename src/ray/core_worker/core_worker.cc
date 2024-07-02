@@ -1415,9 +1415,15 @@ Status CoreWorker::ExperimentalChannelWriteAcquire(
     const std::shared_ptr<Buffer> &metadata,
     uint64_t data_size,
     int64_t num_readers,
+    int64_t timeout_ms,
     std::shared_ptr<Buffer> *data) {
-  return experimental_mutable_object_provider_->WriteAcquire(
-      object_id, data_size, metadata->Data(), metadata->Size(), num_readers, *data);
+  return experimental_mutable_object_provider_->WriteAcquire(object_id,
+                                                             data_size,
+                                                             metadata->Data(),
+                                                             metadata->Size(),
+                                                             num_readers,
+                                                             *data,
+                                                             timeout_ms);
 }
 
 Status CoreWorker::ExperimentalChannelWriteRelease(const ObjectID &object_id) {
@@ -1573,11 +1579,7 @@ Status CoreWorker::Get(const std::vector<ObjectID> &ids,
 
   // ray.get path for experimental.Channel objects.
   if (is_experimental_channel) {
-    if (timeout_ms >= 0) {
-      return Status::NotImplemented(
-          "non-infinity timeout_ms not supported for experimental channels");
-    }
-    return GetExperimentalMutableObjects(ids, results);
+    return GetExperimentalMutableObjects(ids, timeout_ms, results);
   }
 #endif
 
@@ -1585,10 +1587,12 @@ Status CoreWorker::Get(const std::vector<ObjectID> &ids,
 }
 
 Status CoreWorker::GetExperimentalMutableObjects(
-    const std::vector<ObjectID> &ids, std::vector<std::shared_ptr<RayObject>> &results) {
+    const std::vector<ObjectID> &ids,
+    int64_t timeout_ms,
+    std::vector<std::shared_ptr<RayObject>> &results) {
   for (size_t i = 0; i < ids.size(); i++) {
-    RAY_RETURN_NOT_OK(
-        experimental_mutable_object_provider_->ReadAcquire(ids[i], results[i]));
+    RAY_RETURN_NOT_OK(experimental_mutable_object_provider_->ReadAcquire(
+        ids[i], results[i], timeout_ms));
   }
   return Status::OK();
 }

@@ -2640,7 +2640,7 @@ def get(
             return object_refs
 
         if isinstance(object_refs, CompiledDAGRef):
-            return object_refs.get()
+            return object_refs.get(timeout=timeout)
 
         is_individual_id = isinstance(object_refs, ray.ObjectRef)
         if is_individual_id:
