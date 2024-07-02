@@ -213,6 +213,9 @@ const LogVirtualView: React.FC<LogVirtualViewProps> = ({
       // Keep the `origin` as message and formattedLogLine, if json parsing failed.
     }
 
+    // Replace newline characters with "\n" to prevent the text from breaking into
+    // multiple lines.
+    message = message.replaceAll("\n", "\\n");
     return (
       <Box
         key={`${index}list`}
