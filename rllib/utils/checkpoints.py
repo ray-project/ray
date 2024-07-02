@@ -57,7 +57,7 @@ class Checkpointable(abc.ABC):
     - from_checkpoint()
     - get_state()
     - set_state()
-    - ctor_args_and_kwargs()
+    - get_ctor_args_and_kwargs()
     - get_metadata()
     - get_checkpointable_components()
     """
@@ -141,7 +141,7 @@ class Checkpointable(abc.ABC):
             json.dump(
                 {
                     "class": type(self),
-                    "ctor_args_and_kwargs": self.ctor_args_and_kwargs(),
+                    "ctor_args_and_kwargs": self.get_ctor_args_and_kwargs(),
                 },
                 f,
             )
@@ -208,8 +208,9 @@ class Checkpointable(abc.ABC):
         state = pickle.load(open(path / self.STATE_FILE_NAME, "rb"))
         self.set_state(state)
 
+    @classmethod
     def from_checkpoint(
-        self, path: Union[str, pathlib.Path], **kwargs
+        cls, path: Union[str, pathlib.Path], **kwargs
     ) -> "Checkpointable":
         """Creates a new Checkpointable instance from the given location and returns it.
 
@@ -227,7 +228,7 @@ class Checkpointable(abc.ABC):
         path = pathlib.Path(path)
 
         # Get the class constructor to call.
-        ctor_info = pickle.load(open(path / self.CLASS_AND_CTOR_ARGS_FILE_NAME, "rb"))
+        ctor_info = pickle.load(open(path / cls.CLASS_AND_CTOR_ARGS_FILE_NAME, "rb"))
         # Construct an initial object.
         obj = ctor_info["class"](
             *ctor_info["ctor_args_and_kwargs"][0],
@@ -242,6 +243,8 @@ class Checkpointable(abc.ABC):
     def get_state(
         self,
         components: Optional[Collection[str]] = None,
+        *,
+        not_components: Optional[Collection[str]] = None,
         **kwargs,
     ) -> StateDict:
         """Returns the implementing class's current state as a dict.
@@ -276,7 +279,7 @@ class Checkpointable(abc.ABC):
         """
 
     @abc.abstractmethod
-    def ctor_args_and_kwargs(self) -> Tuple[Tuple, Dict[str, Any]]:
+    def get_ctor_args_and_kwargs(self) -> Tuple[Tuple, Dict[str, Any]]:
         """Returns the args/kwargs used to create `self` from its constructor.
 
         Returns:
