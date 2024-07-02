@@ -676,6 +676,14 @@ def test_variable_shaped_tensor_array_uniform_dim():
         np.testing.assert_array_equal(a, expected)
 
 
+def test_large_arrow_tensor_array():
+    test_arr = np.ones((1000, 550), dtype=np.uint8)
+    ta = ArrowTensorArray.from_numpy([test_arr] * 4000)
+    assert len(ta) == 4000
+    for arr in ta:
+        assert np.asarray(arr).shape == (1000, 550)
+
+
 if __name__ == "__main__":
     import sys
 
