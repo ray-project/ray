@@ -6,7 +6,7 @@ import pyarrow
 from ray.data.datasource.file_datasink import RowBasedFileDatasink
 
 
-class _ImageDatasink(RowBasedFileDatasink):
+class ImageDatasink(RowBasedFileDatasink):
     def __init__(
         self, path: str, column: str, file_format: str, **file_datasink_kwargs
     ):

@@ -181,6 +181,7 @@ from ray.exceptions import (
     RpcError,
     ObjectRefStreamEndOfStreamError,
     RayChannelError,
+    RayChannelTimeoutError,
 )
 from ray._private import external_storage
 from ray.util.scheduling_strategies import (
@@ -591,6 +592,8 @@ cdef int check_status(const CRayStatus& status) nogil except -1:
                 message, exit_code=1)
     elif status.IsChannelError():
         raise RayChannelError(message)
+    elif status.IsChannelTimeoutError():
+        raise RayChannelTimeoutError(message)
     else:
         raise RaySystemError(message)
 
@@ -3641,13 +3644,15 @@ cdef class CoreWorker:
 
     def experimental_channel_put_serialized(self, serialized_object,
                                             ObjectRef object_ref,
-                                            num_readers):
+                                            num_readers,
+                                            timeout_ms):
         cdef:
             CObjectID c_object_id = object_ref.native()
             shared_ptr[CBuffer] data
             unique_ptr[CAddress] null_owner_address
             uint64_t data_size = serialized_object.total_bytes
             int64_t c_num_readers = num_readers
+            int64_t c_timeout_ms = timeout_ms
 
         metadata = string_to_buffer(serialized_object.metadata)
         with nogil:
@@ -3657,6 +3662,7 @@ cdef class CoreWorker:
                              metadata,
                              data_size,
                              c_num_readers,
+                             c_timeout_ms,
                              &data,
                              ))
         if data_size > 0:
