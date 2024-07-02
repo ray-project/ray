@@ -199,7 +199,7 @@ class Checkpointable(abc.ABC):
             component_dir = path / component_name
             # If subcomponent's dir is not in path, ignore it and don't restore this
             # subcomponent's state from disk.
-            if not os.path.isdir(component_dir):
+            if not component_dir.is_dir():
                 continue
             # Call `restore_from_path()` on subcomponent, thereby passing in the
             # **kwargs.
