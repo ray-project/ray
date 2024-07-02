@@ -385,6 +385,10 @@
                             "worker_run_options": {
                                 "type": "array",
                                 "description": "analogous to head_run_options, merged with the global docker run_options."
+                            },
+                            "container_name": {
+                                "type": "string",
+                                "description": "overrides top-level docker container_name."
                             }
                         },
                         "additionalProperties": false
