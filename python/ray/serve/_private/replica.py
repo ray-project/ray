@@ -213,12 +213,13 @@ class ReplicaMetricsManager:
 
     def _push_autoscaling_metrics(self) -> Dict[str, Any]:
         look_back_period = self._autoscaling_config.look_back_period_s
+        now = time.time()
         self._controller_handle.record_autoscaling_metrics.remote(
             replica_id=self._replica_id,
             window_avg=self._metrics_store.window_average(
-                self._replica_id, time.time() - look_back_period
+                self._replica_id, now - look_back_period
             ),
-            send_timestamp=time.time(),
+            send_timestamp=now,
         )
 
     def _add_autoscaling_metrics_point(self) -> None:
