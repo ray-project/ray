@@ -47,7 +47,7 @@
 namespace plasma {
 
 void *fake_mmap(size_t);
-int fake_munmap(void *, int64_t);
+int fake_munmap(void *, size_t);
 
 #define MMAP(s) fake_mmap(s)
 #define MUNMAP(a, s) fake_munmap(a, s)
@@ -138,7 +138,7 @@ void create_and_mmap_buffer(int64_t size, void **pointer, HANDLE *handle) {
   }
 }
 #else
-void create_and_mmap_buffer(int64_t size, void **pointer, int *fd) {
+void create_and_mmap_buffer(const int64_t size, void **pointer, int *fd) {
   // Create a buffer. This is creating a temporary file and then
   // immediately unlinking it so we do not leave traces in the system.
   std::string file_template = dlmalloc_config.directory;
@@ -274,7 +274,7 @@ void *fake_mmap(size_t size) {
   return pointer;
 }
 
-int fake_munmap(void *addr, int64_t size) {
+int fake_munmap(void *addr, size_t size) {
   addr = pointer_retreat(addr, kMmapRegionsGap);
   size += kMmapRegionsGap;
 
@@ -283,6 +283,8 @@ int fake_munmap(void *addr, int64_t size) {
   if (entry == mmap_records.end() || entry->second.size != size) {
     // Reject requests to munmap that don't directly match previous
     // calls to mmap, to prevent dlmalloc from trimming.
+    RAY_LOG(INFO) << "fake_munmap failed, can't find mmap_records entry by addr " << addr
+                  << ", or the size does not match.";
     return -1;
   }
   RAY_LOG(INFO) << "fake_munmap(" << addr << ", " << size << ")";
@@ -290,15 +292,15 @@ int fake_munmap(void *addr, int64_t size) {
   int r;
 #ifdef _WIN32
   r = UnmapViewOfFile(addr) ? 0 : -1;
-  if (r == 0) {
-    CloseHandle(entry->second.fd.first);
-  }
+  CloseHandle(entry->second.fd.first);
 #else
   r = munmap(addr, size);
-  if (r == 0) {
-    close(entry->second.fd.first);
-  }
+  close(entry->second.fd.first);
 #endif
+  if (r == -1) {
+    RAY_LOG(ERROR) << "munmap failed with error: " << std::strerror(errno) << " for addr "
+                   << addr << ", size " << size;
+  }
 
   mmap_records.erase(entry);
   return r;

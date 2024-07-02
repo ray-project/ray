@@ -35,7 +35,7 @@ static ptrdiff_t pointer_distance(void const *pfrom, void const *pto) {
 
 bool GetMallocMapinfo(const void *const addr,
                       MEMFD_TYPE *fd,
-                      int64_t *map_size,
+                      size_t *map_size,
                       ptrdiff_t *offset) {
   // TODO(rshin): Implement a more efficient search through mmap_records.
   for (const auto &[from_addr, record] : mmap_records) {
