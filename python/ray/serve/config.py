@@ -20,7 +20,6 @@ from ray.serve._private.constants import (
     DEFAULT_GRPC_PORT,
     DEFAULT_HTTP_HOST,
     DEFAULT_HTTP_PORT,
-    DEFAULT_TARGET_ONGOING_REQUESTS,
     DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_S,
     SERVE_LOGGER_NAME,
 )
@@ -43,7 +42,7 @@ class AutoscalingConfig(BaseModel):
 
     # DEPRECATED: replaced by target_ongoing_requests
     target_num_ongoing_requests_per_replica: PositiveFloat = Field(
-        default=DEFAULT_TARGET_ONGOING_REQUESTS,
+        default=1.0,
         description="[DEPRECATED] Please use `target_ongoing_requests` instead.",
     )
     # Will default to 1.0 in the future.
@@ -135,10 +134,10 @@ class AutoscalingConfig(BaseModel):
     @classmethod
     def default(cls):
         return cls(
-            target_num_ongoing_requests_per_replica=DEFAULT_TARGET_ONGOING_REQUESTS,
-            target_ongoing_requests=DEFAULT_TARGET_ONGOING_REQUESTS,
             min_replicas=1,
             max_replicas=100,
+            target_num_ongoing_requests_per_replica=2,
+            target_ongoing_requests=2,
         )
 
     def get_policy(self) -> Callable:
