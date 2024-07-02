@@ -4896,7 +4896,7 @@ class Dataset:
         raise TypeError(
             "`Dataset` objects aren't iterable. To iterate records, call "
             "`ds.iter_rows()` or `ds.iter_batches()`. For more information, read "
-            "https://docs.ray.io/en/latest/data/consuming-datasets.html."
+            "https://docs.ray.io/en/latest/data/iterating-over-data.html."
         )
 
     def _block_num_rows(self) -> List[int]:
