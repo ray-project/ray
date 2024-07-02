@@ -199,6 +199,13 @@ def job_cli_group():
     default=False,
     help="If set, will not stream logs and wait for the job to exit.",
 )
+@click.option(
+    "--allow-exists",
+    is_flag=True,
+    type=bool,
+    default=False,
+    help="If set, stream logs of existing job instead of raising an exception",
+)
 @add_common_job_options
 @add_click_logging_options
 @click.argument("entrypoint", nargs=-1, required=True, type=click.UNPROCESSED)
@@ -217,6 +224,7 @@ def submit(
     entrypoint_memory: Optional[int],
     entrypoint_resources: Optional[str],
     no_wait: bool,
+    allow_exists: bool,
     verify: Union[bool, str],
     headers: Optional[str],
 ):
@@ -270,18 +278,32 @@ def submit(
         runtime_env_json=runtime_env_json,
         working_dir=working_dir,
     )
-    job_id = client.submit_job(
-        entrypoint=list2cmdline(entrypoint),
-        submission_id=submission_id,
-        runtime_env=final_runtime_env,
-        metadata=metadata_json,
-        entrypoint_num_cpus=entrypoint_num_cpus,
-        entrypoint_num_gpus=entrypoint_num_gpus,
-        entrypoint_memory=entrypoint_memory,
-        entrypoint_resources=entrypoint_resources,
-    )
 
-    _log_big_success_msg(f"Job '{job_id}' submitted successfully")
+    if os.environ.get("RAY_JOB_SUBMISSION_ALLOW_EXISTS", "false") == "true":
+        allow_exists = True
+
+    try:
+        job_id = client.submit_job(
+            entrypoint=list2cmdline(entrypoint),
+            submission_id=submission_id,
+            runtime_env=final_runtime_env,
+            metadata=metadata_json,
+            entrypoint_num_cpus=entrypoint_num_cpus,
+            entrypoint_num_gpus=entrypoint_num_gpus,
+            entrypoint_memory=entrypoint_memory,
+            entrypoint_resources=entrypoint_resources,
+        )
+
+        _log_big_success_msg(f"Job '{job_id}' submitted successfully")
+    except Exception as e:
+        if (
+            allow_exists
+            and f"Job with submission_id {submission_id} already exists" in str(e)
+        ):
+            job_id = submission_id
+            _log_big_success_msg(f"Job '{job_id}' already exists")
+        else:
+            raise e
 
     with cli_logger.group("Next steps"):
         cli_logger.print("Query the logs of the job:")
