@@ -2310,7 +2310,7 @@ def connect(
         raise ValueError("Invalid worker mode. Expected DRIVER, WORKER or LOCAL.")
 
     gcs_options = ray._raylet.GcsClientOptions.create(
-        node.gcs_address, node._ray_params.cluster_id
+        node.gcs_address, node.cluster_id.hex()
     )
     if job_config is None:
         job_config = ray.job_config.JobConfig()

@@ -162,7 +162,7 @@ class ActorManagerTest : public ::testing::Test {
       : options_("localhost",
                  6793,
                  ClusterID::Nil(),
-                 /*allow_nil=*/true,
+                 /*allow_cluster_id_nil=*/true,
                  /*fetch_cluster_id_if_nil=*/false),
         gcs_client_mock_(new MockGcsClient(options_)),
         actor_info_accessor_(new MockActorInfoAccessor(gcs_client_mock_.get())),

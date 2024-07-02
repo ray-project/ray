@@ -22,7 +22,7 @@ def get_state_from_address(address=None):
     address = services.canonicalize_bootstrap_address_or_die(address)
 
     state = GlobalState()
-    options = GcsClientOptions.from_gcs_address(address)
+    options = GcsClientOptions.create(address, None)
     state._initialize_global_state(options)
     return state
 

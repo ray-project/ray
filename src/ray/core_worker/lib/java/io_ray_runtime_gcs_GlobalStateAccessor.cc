@@ -33,7 +33,7 @@ Java_io_ray_runtime_gcs_GlobalStateAccessor_nativeCreateGlobalStateAccessor(
   gcs::GlobalStateAccessor *gcs_accessor = nullptr;
   ray::gcs::GcsClientOptions client_options(bootstrap_address,
                                             ray::ClusterID::Nil(),
-                                            /*allow_nil=*/true,
+                                            /*allow_cluster_id_nil=*/true,
                                             /*fetch_cluster_id_if_nil=*/false);
   gcs_accessor = new gcs::GlobalStateAccessor(client_options);
   return reinterpret_cast<jlong>(gcs_accessor);

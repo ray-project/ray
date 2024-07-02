@@ -65,7 +65,7 @@ std::unique_ptr<ray::gcs::GlobalStateAccessor> ProcessHelper::CreateGlobalStateA
   ray::gcs::GcsClientOptions client_options(gcs_ip,
                                             gcs_port,
                                             ray::ClusterID::Nil(),
-                                            /*allow_nil=*/true,
+                                            /*allow_cluster_id_nil=*/true,
                                             /*fetch_cluster_id_if_nil=*/false);
   auto global_state_accessor =
       std::make_unique<ray::gcs::GlobalStateAccessor>(client_options);
@@ -123,7 +123,7 @@ void ProcessHelper::RayStart(CoreWorkerOptions::TaskExecutionCallback callback) 
       gcs::GcsClientOptions(bootstrap_ip,
                             bootstrap_port,
                             ClusterID::Nil(),
-                            /*allow_nil=*/true,
+                            /*allow_cluster_id_nil=*/true,
                             /*fetch_cluster_id_if_nil=*/false);
 
   CoreWorkerOptions options;

@@ -94,7 +94,7 @@ class GcsClientReconnectionTest : public ::testing::Test {
     gcs::GcsClientOptions options("127.0.0.1",
                                   config_.grpc_server_port,
                                   ClusterID::Nil(),
-                                  /*allow_nil=*/true,
+                                  /*allow_cluster_id_nil=*/true,
                                   /*fetch_cluster_id_if_nil=*/false);
     gcs_client_ = std::make_unique<gcs::GcsClient>(options);
     RAY_CHECK_OK(gcs_client_->Connect(*client_io_service_));

@@ -22,7 +22,7 @@ UsageStatsClient::UsageStatsClient(const std::string &gcs_address,
   // This client lives in GCS itself so it must not allow nil cluster_id.
   GcsClientOptions options(gcs_address,
                            cluster_id,
-                           /*allow_nil=*/false,
+                           /*allow_cluster_id_nil=*/false,
                            /*fetch_cluster_id_if_nil=*/false);
   gcs_client_ = std::make_unique<GcsClient>(options);
   RAY_CHECK_OK(gcs_client_->Connect(io_service));

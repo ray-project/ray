@@ -73,7 +73,7 @@ class GlobalStateAccessorTest : public ::testing::TestWithParam<bool> {
     gcs::GcsClientOptions options("127.0.0.1",
                                   6379,
                                   ClusterID::Nil(),
-                                  /*allow_nil=*/true,
+                                  /*allow_cluster_id_nil=*/true,
                                   /*fetch_cluster_id_if_nil=*/false);
     gcs_client_ = std::make_unique<gcs::GcsClient>(options);
     global_state_ = std::make_unique<gcs::GlobalStateAccessor>(options);

@@ -46,24 +46,24 @@ class GcsClientOptions {
   GcsClientOptions(const std::string &gcs_address,
                    int port,
                    const ClusterID &cluster_id,
-                   bool allow_nil,
+                   bool allow_cluster_id_nil,
                    bool fetch_cluster_id_if_nil)
       : gcs_address_(gcs_address),
         gcs_port_(port),
         cluster_id_(cluster_id),
-        should_fetch_cluster_id_(
-            ShouldFetchClusterId(cluster_id, allow_nil, fetch_cluster_id_if_nil)) {}
+        should_fetch_cluster_id_(ShouldFetchClusterId(
+            cluster_id, allow_cluster_id_nil, fetch_cluster_id_if_nil)) {}
 
   /// Constructor of GcsClientOptions from gcs address
   ///
   /// \param gcs_address gcs address, including port
   GcsClientOptions(const std::string &gcs_address,
                    const ClusterID &cluster_id,
-                   bool allow_nil,
+                   bool allow_cluster_id_nil,
                    bool fetch_cluster_id_if_nil)
       : cluster_id_(cluster_id),
-        should_fetch_cluster_id_(
-            ShouldFetchClusterId(cluster_id, allow_nil, fetch_cluster_id_if_nil)) {
+        should_fetch_cluster_id_(ShouldFetchClusterId(
+            cluster_id, allow_cluster_id_nil, fetch_cluster_id_if_nil)) {
     std::vector<std::string> address = absl::StrSplit(gcs_address, ':');
     RAY_LOG(DEBUG) << "Connect to gcs server via address: " << gcs_address;
     RAY_CHECK(address.size() == 2);
@@ -73,12 +73,12 @@ class GcsClientOptions {
 
   GcsClientOptions() {}
 
-  // - CHECK-fails if invalid (cluster_id_ is nil but !allow_nil_)
+  // - CHECK-fails if invalid (cluster_id_ is nil but !allow_cluster_id_nil_)
   // - Returns false if no need to fetch (cluster_id_ is not nil, or
   //    !fetch_cluster_id_if_nil_).
   // - Returns true if needs to fetch.
   static bool ShouldFetchClusterId(ClusterID cluster_id,
-                                   bool allow_nil,
+                                   bool allow_cluster_id_nil,
                                    bool fetch_cluster_id_if_nil);
 
   // Gcs address

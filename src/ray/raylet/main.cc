@@ -195,7 +195,7 @@ int main(int argc, char *argv[]) {
   std::shared_ptr<ray::gcs::GcsClient> gcs_client;
   ray::gcs::GcsClientOptions client_options(FLAGS_gcs_address,
                                             cluster_id,
-                                            /*allow_nil=*/false,
+                                            /*allow_cluster_id_nil=*/false,
                                             /*fetch_cluster_id_if_nil=*/false);
   gcs_client = std::make_shared<ray::gcs::GcsClient>(client_options);
 

@@ -81,20 +81,21 @@ void GcsSubscriberClient::PubsubCommandBatch(
 }  // namespace
 
 bool GcsClientOptions::ShouldFetchClusterId(ClusterID cluster_id,
-                                            bool allow_nil,
+                                            bool allow_cluster_id_nil,
                                             bool fetch_cluster_id_if_nil) {
-  RAY_CHECK(!((!allow_nil) && fetch_cluster_id_if_nil))
-      << " invalid config combination: if allow_nil == false, fetch_cluster_id_if_nil "
+  RAY_CHECK(!((!allow_cluster_id_nil) && fetch_cluster_id_if_nil))
+      << " invalid config combination: if allow_cluster_id_nil == false, "
+         "fetch_cluster_id_if_nil "
          "must false";
   if (!cluster_id.IsNil()) {
     // ClusterID non nil is always good.
     return false;
   }
-  RAY_CHECK(allow_nil) << "Unexpected nil Cluster ID.";
+  RAY_CHECK(allow_cluster_id_nil) << "Unexpected nil Cluster ID.";
   if (fetch_cluster_id_if_nil) {
     return true;
   } else {
-    RAY_LOG(WARNING) << "GcsClient has no Cluster ID set, and won't fetch from GCS.";
+    RAY_LOG(INFO) << "GcsClient has no Cluster ID set, and won't fetch from GCS.";
     return false;
   }
 }

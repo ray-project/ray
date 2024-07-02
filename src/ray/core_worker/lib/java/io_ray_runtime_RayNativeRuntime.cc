@@ -44,7 +44,7 @@ inline gcs::GcsClientOptions ToGcsClientOptions(JNIEnv *env, jobject gcs_client_
   return gcs::GcsClientOptions(ip,
                                port,
                                ray::ClusterID::Nil(),
-                               /*allow_nil=*/true,
+                               /*allow_cluster_id_nil=*/true,
                                /*fetch_cluster_id_if_nil=*/false);
 }
 

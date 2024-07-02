@@ -2727,7 +2727,7 @@ cdef class GcsClient:
         if cluster_id:
             gcs_options = GcsClientOptions.create(address, cluster_id)
         else:
-            gcs_options = GcsClientOptions.from_gcs_address(address)
+            gcs_options = GcsClientOptions.create(address, None)
         self.inner.reset(new CPythonGcsClient(dereference(gcs_options.native())))
         self.address = address
         self._nums_reconnect_retry = nums_reconnect_retry

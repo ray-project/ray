@@ -94,7 +94,7 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
     gcs::GcsClientOptions options("127.0.0.1",
                                   5397,
                                   ClusterID::Nil(),
-                                  /*allow_nil=*/true,
+                                  /*allow_cluster_id_nil=*/true,
                                   /*fetch_cluster_id_if_nil=*/false);
     gcs_client_ = std::make_unique<gcs::GcsClient>(options);
     ReconnectClient();

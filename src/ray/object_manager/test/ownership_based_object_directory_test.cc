@@ -112,7 +112,7 @@ class OwnershipBasedObjectDirectoryTest : public ::testing::Test {
       : options_("localhost",
                  6973,
                  ClusterID::Nil(),
-                 /*allow_nil=*/true,
+                 /*allow_cluster_id_nil=*/true,
                  /*fetch_cluster_id_if_nil=*/false),
         node_info_accessor_(new gcs::MockNodeInfoAccessor()),
         gcs_client_mock_(new MockGcsClient(options_, node_info_accessor_)),
