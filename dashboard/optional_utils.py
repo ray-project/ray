@@ -43,10 +43,11 @@ def method_route_table_factory():
         _routes = aiohttp.web.RouteTableDef()
 
         class _BindInfo:
-            def __init__(self, filename, lineno, instance):
+            def __init__(self, filename, lineno, instance, event_loop):
                 self.filename = filename
                 self.lineno = lineno
                 self.instance = instance
+                self.event_loop = event_loop
 
         @classmethod
         def routes(cls):
@@ -80,7 +81,10 @@ def method_route_table_factory():
                     )
 
                 bind_info = cls._BindInfo(
-                    handler.__code__.co_filename, handler.__code__.co_firstlineno, None
+                    handler.__code__.co_filename,
+                    handler.__code__.co_firstlineno,
+                    None,
+                    None,
                 )
 
                 @functools.wraps(handler)
@@ -91,7 +95,28 @@ def method_route_table_factory():
                         #   * (Request, )
                         #   * (self, Request)
                         req = args[-1]
-                        return await handler(bind_info.instance, req)
+
+                        # FIXME: this is a hack to intercept `handler` to print to debug.
+                        # Remove this before merge.
+                        async def handler_hack(*args, **kwargs):
+                            import threading
+
+                            logger.error(
+                                f"handler_hack {args} {kwargs}, event loop = {asyncio.get_event_loop()}, thread = {threading.current_thread()}, tid = {threading.get_ident()}"
+                            )
+                            return await handler(*args, **kwargs)
+
+                        coro = handler_hack(bind_info.instance, req)
+                        # The handler is run on another event loop if bind_info.event_loop is set.
+                        # Otherwise it's just run on the current event loop.
+                        if bind_info.event_loop is None:
+                            return await coro
+                        else:
+                            future = asyncio.run_coroutine_threadsafe(
+                                coro, bind_info.event_loop
+                            )
+                            wrapped_future = asyncio.wrap_future(future)
+                            return await wrapped_future
                     except Exception:
                         logger.exception("Handle %s %s failed.", method, path)
                         return rest_response(
@@ -138,7 +163,7 @@ def method_route_table_factory():
             cls._routes.static(prefix, path, **kwargs)
 
         @classmethod
-        def bind(cls, instance):
+        def bind(cls, instance, event_loop=None):
             def predicate(o):
                 if inspect.ismethod(o):
                     return hasattr(o, "__route_method__") and hasattr(
@@ -148,9 +173,11 @@ def method_route_table_factory():
 
             handler_routes = inspect.getmembers(instance, predicate)
             for _, h in handler_routes:
-                cls._bind_map[h.__func__.__route_method__][
+                bind_info = cls._bind_map[h.__func__.__route_method__][
                     h.__func__.__route_path__
-                ].instance = instance
+                ]
+                bind_info.instance = instance
+                bind_info.event_loop = event_loop
 
     return MethodRouteTable
 
