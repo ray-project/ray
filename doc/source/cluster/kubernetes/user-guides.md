@@ -17,6 +17,7 @@ user-guides/kuberay-gcs-ft
 user-guides/gke-gcs-bucket
 user-guides/logging
 user-guides/gpu
+user-guides/tpu
 user-guides/rayserve-dev-doc
 user-guides/pod-command
 user-guides/pod-security
@@ -41,6 +42,7 @@ at the {ref}`introductory guide <kuberay-quickstart>` first.
 * {ref}`kuberay-config`
 * {ref}`kuberay-autoscaling`
 * {ref}`kuberay-gpu`
+* {ref}`kuberay-tpu`
 * {ref}`kuberay-gcs-ft`
 * {ref}`kuberay-logging`
 * {ref}`kuberay-dev-serve`
