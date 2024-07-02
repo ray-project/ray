@@ -29,6 +29,10 @@ LOGRECORD_STANDARD_ATTRS = {
     "taskName",
 }
 
+LOGGER_FLATTEN_KEYS = {
+    "ray_serve_extra_fields",
+}
+
 
 class LogKey(str, Enum):
     # Core context

@@ -3014,7 +3014,6 @@
     byod:
       runtime_env:
         - RAY_worker_killing_policy=retriable_lifo
-      post_build_script: byod_dask_test.sh
     cluster_compute: dask_on_ray/dask_on_ray_sort_compute_template.yaml
 
   run:
@@ -3045,7 +3044,6 @@
     byod:
       runtime_env:
         - RAY_worker_killing_policy=retriable_lifo
-      post_build_script: byod_dask_test.sh
     cluster_compute: dask_on_ray/dask_on_ray_stress_compute.yaml
 
   run:
@@ -3367,7 +3365,6 @@
     byod:
       runtime_env:
         - RAY_worker_killing_policy=retriable_lifo
-      post_build_script: byod_dask_test.sh
     cluster_compute: dask_on_ray/1tb_sort_compute.yaml
 
   run:
@@ -4614,7 +4611,6 @@
     byod:
       runtime_env:
         - RAY_lineage_pinning_enabled=1
-      post_build_script: byod_dask_test.sh
     cluster_compute: dask_on_ray/chaos_dask_on_ray_stress_compute.yaml
 
   run:
@@ -4644,7 +4640,6 @@
     byod:
       runtime_env:
         - RAY_lineage_pinning_enabled=1
-      post_build_script: byod_dask_test.sh
     cluster_compute: dask_on_ray/dask_on_ray_stress_compute.yaml
 
   run:

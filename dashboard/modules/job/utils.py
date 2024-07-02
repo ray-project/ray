@@ -1,3 +1,4 @@
+import asyncio
 import dataclasses
 import logging
 import os
@@ -151,10 +152,15 @@ async def get_driver_jobs(
     Only the last driver of a submission job is returned.
     """
     job_infos = await gcs_aio_client.get_all_job_info(timeout=timeout)
+    # Sort jobs from GCS to follow convention of returning only last driver
+    # of submission job.
+    sorted_job_infos = sorted(
+        job_infos.values(), key=lambda job_table_entry: job_table_entry.job_id.hex()
+    )
 
     jobs = {}
     submission_job_drivers = {}
-    for job_table_entry in job_infos.values():
+    for job_table_entry in sorted_job_infos:
         if job_table_entry.config.ray_namespace.startswith(
             ray_constants.RAY_INTERNAL_NAMESPACE_PREFIX
         ):
@@ -237,3 +243,45 @@ async def find_job_by_ids(
         return job
 
     return None
+
+
+async def find_jobs_by_job_ids(
+    gcs_aio_client: GcsAioClient,
+    job_info_client: JobInfoStorageClient,
+    job_ids: List[str],
+) -> Dict[str, JobDetails]:
+    """
+    Returns a dictionary of submission jobs with the given job ids, keyed by the job id.
+
+    This only accepts job ids and not submission ids.
+    """
+    driver_jobs, submission_job_drivers = await get_driver_jobs(gcs_aio_client)
+
+    # Filter down to the request job_ids
+    driver_jobs = {key: job for key, job in driver_jobs.items() if key in job_ids}
+    submission_job_drivers = {
+        key: job for key, job in submission_job_drivers.items() if job.id in job_ids
+    }
+
+    # Fetch job details for each job
+    job_submission_ids = submission_job_drivers.keys()
+    job_infos = await asyncio.gather(
+        *[
+            job_info_client.get_info(submission_id)
+            for submission_id in job_submission_ids
+        ]
+    )
+
+    return {
+        **driver_jobs,
+        **{
+            submission_job_drivers.get(submission_id).id: JobDetails(
+                **dataclasses.asdict(job_info),
+                submission_id=submission_id,
+                job_id=submission_job_drivers.get(submission_id).id,
+                driver_info=submission_job_drivers.get(submission_id),
+                type=JobType.SUBMISSION,
+            )
+            for job_info, submission_id in zip(job_infos, job_submission_ids)
+        },
+    }

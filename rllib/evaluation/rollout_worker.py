@@ -68,7 +68,6 @@ from ray.rllib.policy.torch_policy_v2 import TorchPolicyV2
 from ray.rllib.utils import force_list
 from ray.rllib.utils.annotations import OldAPIStack, override
 from ray.rllib.utils.debug import summarize, update_global_seed_if_necessary
-from ray.rllib.utils.deprecation import DEPRECATED_VALUE, deprecation_warning
 from ray.rllib.utils.error import ERR_MSG_NO_GPUS, HOWTO_CHANGE_CONFIG
 from ray.rllib.utils.filter import Filter, NoFilter, get_filter
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
@@ -233,8 +232,7 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
         spaces: Optional[Dict[PolicyID, Tuple[Space, Space]]] = None,
         default_policy_class: Optional[Type[Policy]] = None,
         dataset_shards: Optional[List[ray.data.Dataset]] = None,
-        # Deprecated: This is all specified in `config` anyways.
-        tf_session_creator=DEPRECATED_VALUE,  # Use config.tf_session_options instead.
+        **kwargs,
     ):
         """Initializes a RolloutWorker instance.
 
@@ -256,15 +254,6 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
                 to (obs_space, action_space)-tuples. This is used in case no
                 Env is created on this RolloutWorker.
         """
-        # Deprecated args.
-        if tf_session_creator != DEPRECATED_VALUE:
-            deprecation_warning(
-                old="RolloutWorker(.., tf_session_creator=.., ..)",
-                new="config.framework(tf_session_args={..}); "
-                "RolloutWorker(config=config, ..)",
-                error=True,
-            )
-
         self._original_kwargs: dict = locals().copy()
         del self._original_kwargs["self"]
 
@@ -541,17 +530,19 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
             ):
                 pol._update_model_view_requirements_from_init_state()
 
-        self.multiagent: bool = set(self.policy_map.keys()) != {DEFAULT_POLICY_ID}
-        if self.multiagent and self.env is not None:
-            if not isinstance(
+        if (
+            self.config.is_multi_agent()
+            and self.env is not None
+            and not isinstance(
                 self.env,
                 (BaseEnv, ExternalMultiAgentEnv, MultiAgentEnv, ray.actor.ActorHandle),
-            ):
-                raise ValueError(
-                    f"Have multiple policies {self.policy_map}, but the "
-                    f"env {self.env} is not a subclass of BaseEnv, "
-                    f"MultiAgentEnv, ActorHandle, or ExternalMultiAgentEnv!"
-                )
+            )
+        ):
+            raise ValueError(
+                f"You are running a multi-agent setup, but the env {self.env} is not a "
+                f"subclass of BaseEnv, MultiAgentEnv, ActorHandle, or "
+                f"ExternalMultiAgentEnv!"
+            )
 
         if self.worker_index == 0:
             logger.info("Built filter map: {}".format(self.filters))

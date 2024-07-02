@@ -4,12 +4,12 @@ Placement Groups
 .. _ray-placement-group-doc-ref:
 
 Placement groups allow users to atomically reserve groups of resources across multiple nodes (i.e., gang scheduling).
-They can be then used to schedule Ray tasks and actors packed as close as possible for locality (PACK), or spread apart 
+They can then be used to schedule Ray tasks and actors packed together for locality (PACK), or spread apart
 (SPREAD). Placement groups are generally used for gang-scheduling actors, but also support tasks.
 
 Here are some real-world use cases:
 
-- **Distributed Machine Learning Training**: Distributed Training (e.g., :ref:`Ray Train <train-docs>` and :ref:`Ray Tune <tune-main>`) uses the placement group APIs to enable gang scheduling. In these settings, all resources for a trial must be available at the same time. Gang scheduling is a critical technique to enable all-or-nothing scheduling for deep learning training. 
+- **Distributed Machine Learning Training**: Distributed Training (e.g., :ref:`Ray Train <train-docs>` and :ref:`Ray Tune <tune-main>`) uses the placement group APIs to enable gang scheduling. In these settings, all resources for a trial must be available at the same time. Gang scheduling is a critical technique to enable all-or-nothing scheduling for deep learning training.
 - **Fault tolerance in distributed training**: Placement groups can be used to configure fault tolerance. In Ray Tune, it can be beneficial to pack related resources from a single trial together, so that a node failure impacts a low number of trials. In libraries that support elastic training (e.g., XGBoost-Ray), spreading the resources across multiple nodes can help to ensure that training continues even when a node dies.
 
 Key Concepts
@@ -18,8 +18,8 @@ Key Concepts
 Bundles
 ~~~~~~~
 
-A **bundle** is a collection of "resources". It could be a single resource, ``{"CPU": 1}``, or a group of resources, ``{"CPU": 1, "GPU": 4}``. 
-A bundle is a unit of reservation for placement groups. "Scheduling a bundle" means we find a node that fits the bundle and reserve the resources specified by the bundle. 
+A **bundle** is a collection of "resources". It could be a single resource, ``{"CPU": 1}``, or a group of resources, ``{"CPU": 1, "GPU": 4}``.
+A bundle is a unit of reservation for placement groups. "Scheduling a bundle" means we find a node that fits the bundle and reserve the resources specified by the bundle.
 A bundle must be able to fit on a single node on the Ray cluster. For example, if you only have an 8 CPU node, and if you have a bundle that requires ``{"CPU": 9}``, this bundle cannot be scheduled.
 
 Placement Group
@@ -34,8 +34,8 @@ A **placement group** reserves the resources from the cluster. The reserved reso
 Create a Placement Group (Reserve Resources)
 --------------------------------------------
 
-You can create a placement group using :func:`ray.util.placement_group`. 
-Placement groups take in a list of bundles and a :ref:`placement strategy <pgroup-strategy>`. 
+You can create a placement group using :func:`ray.util.placement_group`.
+Placement groups take in a list of bundles and a :ref:`placement strategy <pgroup-strategy>`.
 Note that each bundle must be able to fit on a single node on the Ray cluster.
 For example, if you only have a 8 CPU node, and if you have a bundle that requires ``{"CPU": 9}``,
 this bundle cannot be scheduled.
@@ -156,14 +156,14 @@ Let's verify the placement group is successfully created.
       PLACEMENT_GROUP_ID                    NAME      CREATOR_JOB_ID  STATE
   0  3cd6174711f47c14132155039c0501000000                  01000000  CREATED
 
-The placement group is successfully created. Out of the ``{"CPU": 2, "GPU": 2}`` resources, the placement group reserves ``{"CPU": 1, "GPU": 1}``. 
+The placement group is successfully created. Out of the ``{"CPU": 2, "GPU": 2}`` resources, the placement group reserves ``{"CPU": 1, "GPU": 1}``.
 The reserved resources can only be used when you schedule tasks or actors with a placement group.
 The diagram below demonstrates the "1 CPU and 1 GPU" bundle that the placement group reserved.
 
 .. image:: ../images/pg_image_1.png
     :align: center
 
-Placement groups are atomically created; if a bundle cannot fit in any of the current nodes, 
+Placement groups are atomically created; if a bundle cannot fit in any of the current nodes,
 the entire placement group is not ready and no resources are reserved.
 To illustrate, let's create another placement group that requires ``{"CPU":1}, {"GPU": 2}`` (2 bundles).
 
@@ -222,11 +222,11 @@ Since we cannot create every bundle on the cluster, the placement group is not c
 .. image:: ../images/pg_image_2.png
     :align: center
 
-When the placement group cannot be scheduled in any way, it is called "infeasible". 
+When the placement group cannot be scheduled in any way, it is called "infeasible".
 Imagine you schedule ``{"CPU": 4}`` bundle, but you only have a single node with 2 CPUs. There's no way to create this bundle in your cluster.
-The Ray Autoscaler is aware of placement groups, and auto-scales the cluster to ensure pending groups can be placed as needed. 
+The Ray Autoscaler is aware of placement groups, and auto-scales the cluster to ensure pending groups can be placed as needed.
 
-If Ray Autoscaler cannot provide resources to schedule a placement group, Ray does *not* print a warning about infeasible groups and tasks and actors that use the groups. 
+If Ray Autoscaler cannot provide resources to schedule a placement group, Ray does *not* print a warning about infeasible groups and tasks and actors that use the groups.
 You can observe the scheduling state of the placement group from the :ref:`dashboard or state APIs <ray-placement-group-observability-ref>`.
 
 .. _ray-placement-group-schedule-tasks-actors-ref:
@@ -236,7 +236,7 @@ Schedule Tasks and Actors to Placement Groups (Use Reserved Resources)
 
 In the previous section, we created a placement group that reserved ``{"CPU": 1, "GPU: 1"}`` from a 2 CPU and 2 GPU node.
 
-Now let's schedule an actor to the placement group. 
+Now let's schedule an actor to the placement group.
 You can schedule actors or tasks to a placement group using
 :class:`options(scheduling_strategy=PlacementGroupSchedulingStrategy(...)) <ray.util.scheduling_strategies.PlacementGroupSchedulingStrategy>`.
 
@@ -307,21 +307,15 @@ You can schedule actors or tasks to a placement group using
 
 .. note::
 
-  When you use an actor with a placement group, always specify ``num_cpus``.
+  By default, Ray actors require 1 logical CPU at schedule time, but after being scheduled, they do not acquire any CPU resources.
+  In other words, by default, actors cannot get scheduled on a zero-cpu node, but an infinite number of them can run on any non-zero cpu node.
+  Thus, when scheduling an actor with the default resource requirements and a placement group, the placement group has to be created with a bundle containing at least 1 CPU
+  (since the actor requires 1 CPU for scheduling). However, after the actor is created, it doesn't consume any placement group resources.
 
-  When you don't specify (e.g., ``num_cpus=0``), a placement group option is ignored,
-  and the task and actor don't use the reserved resources.
-  
-  Note that by default (with no arguments to ``ray.remote``),
+  To avoid any surprises, always specify resource requirements explicitly for actors. If resources are specified explicitly, they are required both at schedule time and at execution time.
 
-  - Ray task requires 1 CPU
-  - Ray actor requires 1 CPU when it is scheduled. But after it is created, it occupies 0 CPU.
-
-  When scheduling an actor without resource requirements and a placement group, the placement group has to be created (since it requires 1 CPU to be scheduled).
-  However, when the actor is created, it ignores the placement group.
-
-The actor is scheduled now! One bundle can be used by multiple tasks and actors (i.e., the bundle to task (or actor) is a one-to-many relationship). 
-In this case, since the actor uses 1 CPU, 1 GPU remains from the bundle. 
+The actor is scheduled now! One bundle can be used by multiple tasks and actors (i.e., the bundle to task (or actor) is a one-to-many relationship).
+In this case, since the actor uses 1 CPU, 1 GPU remains from the bundle.
 You can verify this from the CLI command ``ray status``. You can see the 1 CPU is reserved by the placement group, and 1.0 is used (by the actor we created).
 
 .. code-block:: bash
@@ -368,7 +362,7 @@ You can also verify the actor is created using ``ray list actors``.
 
 Since 1 GPU remains, let's create a new actor that requires 1 GPU.
 This time, we also specify the ``placement_group_bundle_index``. Each bundle is given an "index" within the placement group.
-For example, a placement group of 2 bundles ``[{"CPU": 1}, {"GPU": 1}]`` has index 0 bundle ``{"CPU": 1}`` 
+For example, a placement group of 2 bundles ``[{"CPU": 1}, {"GPU": 1}]`` has index 0 bundle ``{"CPU": 1}``
 and index 1 bundle ``{"GPU": 1}``. Since we only have 1 bundle, we only have index 0. If you don't specify a bundle, the actor (or task)
 is scheduled on a random bundle that has unallocated reserved resources.
 
@@ -381,7 +375,7 @@ is scheduled on a random bundle that has unallocated reserved resources.
             :start-after: __schedule_pg_3_start__
             :end-before: __schedule_pg_3_end__
 
-We succeed to schedule the GPU actor! The below image describes 2 actors scheduled into the placement group. 
+We succeed to schedule the GPU actor! The below image describes 2 actors scheduled into the placement group.
 
 .. image:: ../images/pg_image_3.png
     :align: center
@@ -415,7 +409,7 @@ This way, you can make sure your actors and tasks can be scheduled with certain 
 
 The example below creates a placement group with 2 bundles with a PACK strategy;
 both bundles have to be created in the same node. Note that it is a soft policy. If the bundles cannot be packed
-into a single node, they are spread to other nodes. If you'd like to avoid the problem, you can instead use `STRICT_PACK` 
+into a single node, they are spread to other nodes. If you'd like to avoid the problem, you can instead use `STRICT_PACK`
 policies, which fail to create placement groups if placement requirements cannot be satisfied.
 
 .. literalinclude:: ../doc_code/placement_group_example.py
@@ -456,7 +450,7 @@ If strict spreading is not feasible, bundles can be placed on overlapping nodes.
 Remove Placement Groups (Free Reserved Resources)
 -------------------------------------------------
 
-By default, a placement group's lifetime is scoped to the driver that creates placement groups 
+By default, a placement group's lifetime is scoped to the driver that creates placement groups
 (unless you make it a :ref:`detached placement group <placement-group-detached>`). When the placement group is created from
 a :ref:`detached actor <actor-lifetimes>`, the lifetime is scoped to the detached actor.
 In Ray, the driver is the Python script that calls ``ray.init``.
@@ -705,17 +699,17 @@ It is recommended to always specify the name when creating the detached placemen
 Rescheduling Bundles on a Dead Node
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-If nodes that contain some bundles of a placement group die, all the bundles are rescheduled on different nodes by 
-GCS (i.e., we try reserving resources again). This means that the initial creation of placement group is "atomic", 
-but once it is created, there could be partial placement groups. 
+If nodes that contain some bundles of a placement group die, all the bundles are rescheduled on different nodes by
+GCS (i.e., we try reserving resources again). This means that the initial creation of placement group is "atomic",
+but once it is created, there could be partial placement groups.
 Rescheduling bundles have higher scheduling priority than other placement group scheduling.
 
 Provide Resources for Partially Lost Bundles
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-If there are not enough resources to schedule the partially lost bundles, 
-the placement group waits, assuming Ray Autoscaler will start a new node to satisfy the resource requirements. 
-If the additional resources cannot be provided (e.g., you don't use the Autoscaler or the Autoscaler hits the resource limit), 
+If there are not enough resources to schedule the partially lost bundles,
+the placement group waits, assuming Ray Autoscaler will start a new node to satisfy the resource requirements.
+If the additional resources cannot be provided (e.g., you don't use the Autoscaler or the Autoscaler hits the resource limit),
 the placement group remains in the partially created state indefinitely.
 
 Fault Tolerance of Actors and Tasks that Use the Bundle

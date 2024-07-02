@@ -23,6 +23,18 @@ One can change the value of `BUILDKITE_COMMIT` to generate wheels with
 different built-in commit string (the code is not changed) and
 `BUILD_ONE_PYTHON_ONLY` to build wheels of different Python versions.
 
+For arm64 / aarch64 architecture, use the `quay.io/pypa/manylinux2014_aarch64`
+image:
+
+```
+docker run -ti --rm \
+    -e BUILDKITE_COMMIT="$(git rev-parse HEAD)" \
+    -e BUILD_ONE_PYTHON_ONLY=py39 \
+    -w /ray -v `pwd`:/ray \
+    quay.io/pypa/manylinux2014_aarch64 \
+    /ray/python/build-wheel-manylinux2014.sh
+```
+
 ## Building MacOS wheels
 
 To build wheels for MacOS, run the following inside the root directory (i.e.,

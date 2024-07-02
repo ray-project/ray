@@ -355,6 +355,7 @@ class SACConfig(AlgorithmConfig):
             "EpisodeReplayBuffer",
             "PrioritizedEpisodeReplayBuffer",
             "MultiAgentEpisodeReplayBuffer",
+            "MultiAgentPrioritizedEpisodeReplayBuffer",
         ]:
             raise ValueError(
                 "When using the new `EnvRunner API` the replay buffer must be of type "
