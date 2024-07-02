@@ -362,7 +362,7 @@ Implementation
      - set up any optimizers for a RLModule.
    * - :py:meth:`~ray.rllib.core.learner.learner.Learner.compute_loss_for_module()`
      - calculate the loss for gradient based update to a module.
-   * - :py:meth:`~ray.rllib.core.learner.learner.Learner.TODO examplebefore_gradient_based_update()`
+   * - :py:meth:`~ray.rllib.core.learner.learner.Learner.before_gradient_based_update()`
      - do any non-gradient based updates to a RLModule before(!) the gradient based ones, e.g. add noise to your network.
 
 Starter Example

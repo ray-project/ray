@@ -6,7 +6,6 @@ import numpy as np
 from ray.data._internal.util import _check_import
 from ray.data.block import BlockMetadata
 from ray.data.datasource.datasource import Datasource, ReadTask
-from ray.util.annotations import DeveloperAPI
 
 if TYPE_CHECKING:
     import pyarrow
@@ -15,7 +14,6 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-@DeveloperAPI
 class LanceDatasource(Datasource):
     """Lance datasource, for reading Lance dataset."""
 

@@ -92,11 +92,21 @@ SERVE_ROOT_URL_ENV_KEY = "RAY_SERVE_ROOT_URL"
 
 #: Limit the number of cached handles because each handle has long poll
 #: overhead. See https://github.com/ray-project/ray/issues/18980
-MAX_CACHED_HANDLES = 100
+MAX_CACHED_HANDLES = int(os.getenv("MAX_CACHED_HANDLES", 100))
+assert MAX_CACHED_HANDLES > 0, (
+    f"Got unexpected value {MAX_CACHED_HANDLES} for "
+    "MAX_CACHED_HANDLES environment variable. "
+    "MAX_CACHED_HANDLES must be positive."
+)
 
 #: Because ServeController will accept one long poll request per handle, its
 #: concurrency needs to scale as O(num_handles)
-CONTROLLER_MAX_CONCURRENCY = 15000
+CONTROLLER_MAX_CONCURRENCY = int(os.getenv("CONTROLLER_MAX_CONCURRENCY", 15_000))
+assert CONTROLLER_MAX_CONCURRENCY > 0, (
+    f"Got unexpected value {CONTROLLER_MAX_CONCURRENCY} for "
+    "CONTROLLER_MAX_CONCURRENCY environment variable. "
+    "CONTROLLER_MAX_CONCURRENCY must be positive."
+)
 
 DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT_S = 20
 DEFAULT_GRACEFUL_SHUTDOWN_WAIT_LOOP_S = 2

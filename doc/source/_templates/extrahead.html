@@ -38,3 +38,10 @@ both in the usual template (layout.html) as well as (index.html). -->
 <!-- Fathom - beautiful, simple website analytics -->
 <script src="https://deer.ray.io/script.js" data-site="WYYANYOS" defer></script>
 <!-- / Fathom -->
+
+<!-- Data to be shared with JS on every page -->
+<script>
+  window.data = {
+      copyIconSrc: "{{ pathto('_static/copy-button.svg', 1) }}"
+  };
+</script>

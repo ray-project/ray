@@ -1,5 +1,5 @@
 import asyncio
-from typing import Any, List
+from typing import Any, List, Optional
 
 import ray
 from ray.exceptions import RayTaskError
@@ -16,7 +16,7 @@ def _process_return_vals(return_vals: List[Any], return_single_output: bool):
     # Check for exceptions.
     for val in return_vals:
         if isinstance(val, RayTaskError):
-            raise val
+            raise val.as_instanceof_cause()
 
     if return_single_output:
         assert len(return_vals) == 1
@@ -77,14 +77,14 @@ class CompiledDAGRef:
         if not self._ray_get_called:
             self.get()
 
-    def get(self):
+    def get(self, timeout: Optional[float] = None):
         if self._ray_get_called:
             raise ValueError(
                 "ray.get() can only be called once "
                 "on a CompiledDAGRef, and it was already called."
             )
         self._ray_get_called = True
-        return_vals = self._dag._execute_until(self._execution_index)
+        return_vals = self._dag._execute_until(self._execution_index, timeout)
         return _process_return_vals(
             return_vals,
             self._dag.has_single_output,
