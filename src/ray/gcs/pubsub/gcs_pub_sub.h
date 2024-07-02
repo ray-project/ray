@@ -115,6 +115,10 @@ class GcsSubscriber {
 
   bool IsActorUnsubscribed(const ActorID &id);
 
+  Status SubscribeAllActors(
+      const SubscribeCallback<ActorID, rpc::ActorTableData> &subscribe,
+      const StatusCallback &done);
+
   Status SubscribeAllJobs(const SubscribeCallback<JobID, rpc::JobTableData> &subscribe,
                           const StatusCallback &done);
 
