@@ -731,6 +731,19 @@ void WorkerPool::HandleJobFinished(const JobID &job_id) {
     DeleteRuntimeEnvIfPossible(job_config->runtime_env_info().serialized_runtime_env());
   }
   finished_jobs_.insert(job_id);
+  size_t num_killed = KillIdleWorkersByPredicate(
+      [job_id](const WorkerInterface &worker, int64_t last_time_used_ms) -> bool {
+        bool should_kill = worker.GetAssignedJobId() == job_id &&
+                           worker.GetRootDetachedActorId().IsNil();
+        if (should_kill) {
+          RAY_LOG(DEBUG) << "Killing idle worker " << worker.WorkerId() << " with PID "
+                         << worker.GetProcess().GetId()
+                         << " because its job has finished.";
+        }
+        return should_kill;
+      });
+  RAY_LOG(DEBUG) << "Killed " << num_killed << " idle workers for finished job "
+                 << job_id;
 }
 
 boost::optional<const rpc::JobConfig &> WorkerPool::GetJobConfig(
@@ -1052,60 +1065,82 @@ void WorkerPool::PushWorker(const std::shared_ptr<WorkerInterface> &worker) {
 void WorkerPool::TryKillingIdleWorkers() {
   int64_t now = get_time_();
 
-  // Filter out all idle workers that are already dead and/or associated with
-  // jobs that have already finished.
+  const size_t before_total_idle_workers = idle_of_all_languages_.size();
+  const int64_t num_desired_idle_workers = get_num_cpus_available_();
+
   int64_t num_killable_idle_workers = 0;
-  for (auto it = idle_of_all_languages_.begin(); it != idle_of_all_languages_.end();) {
-    const auto &idle_worker = it->first;
-    if (idle_worker->IsDead()) {
-      it = idle_of_all_languages_.erase(it);
-      continue;
-    }
 
-    const auto &job_id = idle_worker->GetAssignedJobId();
-    if (finished_jobs_.count(job_id) > 0) {
-      // The job has finished, so we should kill the worker immediately.
-      KillIdleWorker(idle_worker, it->second);
-      it = idle_of_all_languages_.erase(it);
-    } else {
-      if (it->second == -1 ||
-          now - it->second >
-              RayConfig::instance().idle_worker_killing_time_threshold_ms()) {
-        // The job has not yet finished and the worker has been idle for longer
-        // than the timeout.
-        num_killable_idle_workers++;
-      }
-      it++;
-    }
-  }
+  // Kills workers that:
+  // 1. whose job has finished and has no root detached actor, OR
+  // 2.1 has been idle for long, AND
+  // 2.2 is more than the desired number of long-idle workers.
+  //
+  // To do that, the first `desired` long-idle workers are not killed, and the rest are
+  // killed.
+  //
+  // For the job-finished workers, we already kill them in `HandleJobFinished`, but we
+  // still need to kill here in idle loop because the workers may get popped to the
+  // idle workers, after the job finished.
+  size_t num_killed = KillIdleWorkersByPredicate(
+      [this, now, num_desired_idle_workers, &num_killable_idle_workers](
+          const WorkerInterface &worker, int64_t last_time_used_ms) {
+        // First handles workers whose job has finished.
+        if (this->finished_jobs_.contains(worker.GetAssignedJobId()) &&
+            worker.GetRootDetachedActorId().IsNil()) {
+          RAY_LOG(DEBUG) << "Killing idle worker " << worker.WorkerId() << " with PID"
+                         << worker.GetProcess().GetId()
+                         << " because its job has finished.";
+          return true;
+        }
 
-  // Compute the soft limit for the number of idle workers to keep around.
-  // This assumes the common case where each task requires 1 CPU.
-  const auto num_desired_idle_workers = get_num_cpus_available_();
-  RAY_LOG(DEBUG) << "Idle workers: " << idle_of_all_languages_.size()
-                 << ", idle workers that are eligible to kill: "
+        // Then, handles workers that have been idle for long.
+        if (last_time_used_ms == -1 ||
+            now - last_time_used_ms >
+                RayConfig::instance().idle_worker_killing_time_threshold_ms()) {
+          // The job has not yet finished and the worker has been idle for longer
+          // than the timeout.
+          bool should_kill = num_killable_idle_workers >= num_desired_idle_workers;
+          if (should_kill) {
+            RAY_LOG(DEBUG) << "Killing the idle worker number "
+                           << num_killable_idle_workers << " with worker id "
+                           << worker.WorkerId() << " with PID "
+                           << worker.GetProcess().GetId() << " because it has "
+                           << "been idle for " << now - last_time_used_ms
+                           << " ms, and the desired "
+                           << "number of idle workers is " << num_desired_idle_workers
+                           << ".";
+          }
+          num_killable_idle_workers++;
+          return should_kill;
+        }
+        return false;
+      });
+
+  RAY_LOG(DEBUG) << "Idle workers was: " << before_total_idle_workers
+                 << ", idle workers that was eligible to kill: "
                  << num_killable_idle_workers
-                 << ", num desired workers : " << num_desired_idle_workers;
+                 << ", num desired workers : " << num_desired_idle_workers
+                 << ", killed or removed: " << num_killed;
+}
 
-  // Iterate through the list and try to kill enough workers so that we are at
-  // the soft limit.
-  auto it = idle_of_all_languages_.begin();
-  while (num_killable_idle_workers > num_desired_idle_workers &&
-         it != idle_of_all_languages_.end()) {
-    if (it->second == -1 ||
-        now - it->second >
-            RayConfig::instance().idle_worker_killing_time_threshold_ms()) {
-      RAY_LOG(DEBUG) << "Number of idle workers " << num_killable_idle_workers
-                     << " is larger than the number of desired workers "
-                     << num_desired_idle_workers << " killing idle worker with PID "
-                     << it->first->GetProcess().GetId();
-      KillIdleWorker(it->first, it->second);
+size_t WorkerPool::KillIdleWorkersByPredicate(
+    std::function<bool(const WorkerInterface &, int64_t)> should_kill) {
+  size_t num_killed = 0;
+  for (auto it = idle_of_all_languages_.begin(); it != idle_of_all_languages_.end();) {
+    const auto &[idle_worker, last_time_used_ms] = *it;
+    if (idle_worker->IsDead()) {
+      // Alread dead, remove it from the idle pool.
       it = idle_of_all_languages_.erase(it);
-      num_killable_idle_workers--;
+    } else if (should_kill(*idle_worker, last_time_used_ms)) {
+      RAY_LOG(DEBUG) << "Killing idle worker " << idle_worker->WorkerId();
+      KillIdleWorker(idle_worker, last_time_used_ms);
+      it = idle_of_all_languages_.erase(it);
+      num_killed++;
     } else {
       it++;
     }
   }
+  return num_killed;
 }
 
 void WorkerPool::KillIdleWorker(std::shared_ptr<WorkerInterface> idle_worker,
