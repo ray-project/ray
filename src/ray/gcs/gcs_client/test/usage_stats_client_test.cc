@@ -51,7 +51,11 @@ class UsageStatsClientTest : public ::testing::Test {
           new boost::asio::io_service::work(*client_io_service_));
       client_io_service_->run();
     });
-    gcs::GcsClientOptions options("127.0.0.1:" + std::to_string(gcs_server_->GetPort()));
+    gcs::GcsClientOptions options("127.0.0.1:",
+                                  gcs_server_->GetPort(),
+                                  ClusterID::Nil(),
+                                  /*allow_nil=*/true,
+                                  /*fetch_cluster_id_if_nil=*/false);
     gcs_client_ = std::make_unique<gcs::GcsClient>(options);
     RAY_CHECK_OK(gcs_client_->Connect(*client_io_service_));
   }

@@ -31,7 +31,7 @@ cdef class GcsClientOptions:
             ip, port = gcs_address.split(":", 2)
             port = int(port)
             self.inner.reset(
-                new CGcsClientOptions(ip, port, CClusterID.Nil(), True))
+                new CGcsClientOptions(ip, port, CClusterID.Nil(), True, True))
         except Exception:
             raise ValueError(f"Invalid gcs_address: {gcs_address}")
         return self
@@ -39,15 +39,17 @@ cdef class GcsClientOptions:
     @classmethod
     def create(cls, gcs_address, cluster_id_hex):
         """
-        Creates a GcsClientOption with a non-Nil cluster_id.
+        Creates a GcsClientOption with a maybe-Nil cluster_id, and may fetch from GCS.
         """
-        cdef CClusterID c_cluster_id = CClusterID.FromHex(cluster_id_hex)
+        cdef CClusterID c_cluster_id = CClusterID.Nil()
+        if cluster_id_hex:
+            c_cluster_id = CClusterID.FromHex(cluster_id_hex)
         self = GcsClientOptions()
         try:
             ip, port = gcs_address.split(":", 2)
             port = int(port)
             self.inner.reset(
-                new CGcsClientOptions(ip, port, c_cluster_id, False))
+                new CGcsClientOptions(ip, port, c_cluster_id, True, True))
         except Exception:
             raise ValueError(f"Invalid gcs_address: {gcs_address}")
         return self

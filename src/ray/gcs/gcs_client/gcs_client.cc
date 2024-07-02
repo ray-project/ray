@@ -80,6 +80,25 @@ void GcsSubscriberClient::PubsubCommandBatch(
 
 }  // namespace
 
+bool GcsClientOptions::ShouldFetchClusterId(ClusterID cluster_id,
+                                            bool allow_nil,
+                                            bool fetch_cluster_id_if_nil) {
+  RAY_CHECK(!((!allow_nil) && fetch_cluster_id_if_nil))
+      << " invalid config combination: if allow_nil == false, fetch_cluster_id_if_nil "
+         "must false";
+  if (!cluster_id.IsNil()) {
+    // ClusterID non nil is always good.
+    return false;
+  }
+  RAY_CHECK(allow_nil) << "Unexpected nil Cluster ID.";
+  if (fetch_cluster_id_if_nil) {
+    return true;
+  } else {
+    RAY_LOG(WARNING) << "GcsClient has no Cluster ID set, and won't fetch from GCS.";
+    return false;
+  }
+}
+
 GcsClient::GcsClient(const GcsClientOptions &options, UniqueID gcs_client_id)
     : options_(options), gcs_client_id_(gcs_client_id) {}
 
@@ -139,13 +158,8 @@ Status GcsClient::Connect(instrumented_io_context &io_service, int64_t timeout_m
   RAY_LOG(DEBUG) << "GcsClient connected " << options_.gcs_address_ << ":"
                  << options_.gcs_port_;
 
-  if (options_.cluster_id_.IsNil()) {
-    if (options_.fetch_cluster_id_if_nil_) {
-      RAY_RETURN_NOT_OK(FetchClusterId(timeout_ms));
-    } else {
-      RAY_LOG(WARNING)
-          << "GcsClient Cluster ID is nil, but not fetching from GCS server.";
-    }
+  if (options_.should_fetch_cluster_id_) {
+    RAY_RETURN_NOT_OK(FetchClusterId(timeout_ms));
   }
   return Status::OK();
 }
@@ -203,9 +217,7 @@ Status PythonGcsClient::Connect(int64_t timeout_ms, size_t num_retries) {
       rpc::GcsRpcClient::CreateGcsChannel(options_.gcs_address_, options_.gcs_port_);
   node_info_stub_ = rpc::NodeInfoGcsService::NewStub(channel_);
   ClusterID cluster_id = options_.cluster_id_;
-  if (cluster_id.IsNil()) {
-    RAY_CHECK(options_.fetch_cluster_id_if_nil_)
-        << "PythonGcsClient always fetches cluster ID from GCS server if not set.";
+  if (options_.should_fetch_cluster_id_) {
     size_t tries = num_retries + 1;
     RAY_CHECK(tries > 0) << "Expected positive retries, but got " << tries;
 

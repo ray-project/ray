@@ -61,9 +61,12 @@ void ProcessHelper::StopRayNode() {
 }
 
 std::unique_ptr<ray::gcs::GlobalStateAccessor> ProcessHelper::CreateGlobalStateAccessor(
-    const std::string &gcs_address) {
-  ray::gcs::GcsClientOptions client_options(
-      gcs_address, ClusterID::Nil(), /*fetch_cluster_id_if_nil=*/true);
+    const std::string &gcs_ip, int gcs_port) {
+  ray::gcs::GcsClientOptions client_options(gcs_ip,
+                                            gcs_port,
+                                            ray::ClusterID::Nil(),
+                                            /*allow_nil=*/true,
+                                            /*fetch_cluster_id_if_nil=*/false);
   auto global_state_accessor =
       std::make_unique<ray::gcs::GlobalStateAccessor>(client_options);
   RAY_CHECK(global_state_accessor->Connect()) << "Failed to connect to GCS.";
@@ -116,7 +119,12 @@ void ProcessHelper::RayStart(CoreWorkerOptions::TaskExecutionCallback callback) 
     ConfigInternal::Instance().UpdateSessionDir(session_dir);
   }
 
-  gcs::GcsClientOptions gcs_options = gcs::GcsClientOptions(bootstrap_address);
+  gcs::GcsClientOptions gcs_options =
+      gcs::GcsClientOptions(bootstrap_ip,
+                            bootstrap_port,
+                            ClusterID::Nil(),
+                            /*allow_nil=*/true,
+                            /*fetch_cluster_id_if_nil=*/false);
 
   CoreWorkerOptions options;
   options.worker_type = ConfigInternal::Instance().worker_type;

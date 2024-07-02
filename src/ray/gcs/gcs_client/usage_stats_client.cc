@@ -19,7 +19,11 @@ namespace gcs {
 UsageStatsClient::UsageStatsClient(const std::string &gcs_address,
                                    ClusterID cluster_id,
                                    instrumented_io_context &io_service) {
-  GcsClientOptions options(gcs_address, cluster_id);
+  // This client lives in GCS itself so it must not allow nil cluster_id.
+  GcsClientOptions options(gcs_address,
+                           cluster_id,
+                           /*allow_nil=*/false,
+                           /*fetch_cluster_id_if_nil=*/false);
   gcs_client_ = std::make_unique<GcsClient>(options);
   RAY_CHECK_OK(gcs_client_->Connect(io_service));
 }
