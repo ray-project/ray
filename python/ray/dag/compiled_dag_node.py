@@ -3,6 +3,7 @@ from collections import defaultdict, deque
 from typing import Any, Dict, List, Tuple, Union, Optional, Set
 import logging
 import threading
+import time
 import uuid
 import traceback
 from typing import NamedTuple
@@ -415,13 +416,18 @@ class CompiledDAG:
 
     def __init__(
         self,
-        buffer_size_bytes: Optional[int],
+        execution_timeout: Optional[float] = None,
+        buffer_size_bytes: Optional[int] = None,
         enable_asyncio: bool = False,
         asyncio_max_queue_size: Optional[int] = None,
         max_buffered_results: Optional[int] = None,
     ):
         """
         Args:
+            execution_timeout: The maximum time in seconds to wait for execute() calls.
+                None means using default timeout (DAGContext.execution_timeout),
+                0 means immediate timeout (immediate success or timeout without
+                blocking), -1 means infinite timeout (block indefinitely).
             buffer_size_bytes: The number of bytes to allocate for object data and
                 metadata. Each argument passed to a task in the DAG must be
                 less than or equal to this value when serialized.
@@ -452,6 +458,9 @@ class CompiledDAG:
         ctx = DAGContext.get_current()
 
         self._dag_id = uuid.uuid4().hex
+        self._execution_timeout: Optional[float] = execution_timeout
+        if self._execution_timeout is None:
+            self._execution_timeout = ctx.execution_timeout
         self._buffer_size_bytes: Optional[int] = buffer_size_bytes
         if self._buffer_size_bytes is None:
             self._buffer_size_bytes = ctx.buffer_size_bytes
@@ -1233,6 +1242,7 @@ class CompiledDAG:
     def _execute_until(
         self,
         execution_index: int,
+        timeout: Optional[float] = None,
     ) -> Any:
         """Repeatedly execute this DAG until the given execution index,
         and buffer all results up to that index. If the DAG has already
@@ -1241,17 +1251,27 @@ class CompiledDAG:
 
         Args:
             execution_index: The execution index to execute until.
+            timeout: The maximum time in seconds to wait for the result.
+                None means using default timeout (DAGContext.retrieval_timeout),
+                0 means immediate timeout (immediate success or timeout without
+                blocking), -1 means infinite timeout (block indefinitely).
 
         Returns:
             The execution result corresponding to the given execution index.
 
         TODO(rui): catch the case that user holds onto the CompiledDAGRefs
         """
+        from ray.dag import DAGContext
+
+        ctx = DAGContext.get_current()
+        if timeout is None:
+            timeout = ctx.retrieval_timeout
+
         while self._max_execution_index < execution_index:
             if self._max_execution_index + 1 == execution_index:
                 # Directly fetch and return without buffering
                 self._max_execution_index += 1
-                return self._dag_output_fetcher.read()
+                return self._dag_output_fetcher.read(timeout)
             # Otherwise, buffer the result
             if len(self._result_buffer) >= self._max_buffered_results:
                 raise ValueError(
@@ -1260,9 +1280,13 @@ class CompiledDAG:
                     "on previous CompiledDAGRefs to free them up from buffer."
                 )
             self._max_execution_index += 1
+            start_time = time.monotonic()
             self._result_buffer[
                 self._max_execution_index
-            ] = self._dag_output_fetcher.read()
+            ] = self._dag_output_fetcher.read(timeout)
+            if timeout != -1:
+                timeout -= time.monotonic() - start_time
+                timeout = max(timeout, 0)
 
         # CompiledDAGRef guarantees that the same execution index will not
         # be requested multiple times
@@ -1282,6 +1306,10 @@ class CompiledDAG:
         Returns:
             A list of Channels that can be used to read the DAG result.
 
+        Raises:
+            RayChannelTimeoutError: If the execution does not complete within
+                self._execution_timeout seconds.
+
         NOTE: Not threadsafe due to _execution_index etc.
         """
         if self._enable_asyncio:
@@ -1300,7 +1328,7 @@ class CompiledDAG:
         else:
             inp = RayDAGArgs(args=args, kwargs=kwargs)
 
-        self._dag_submitter.write(inp)
+        self._dag_submitter.write(inp, self._execution_timeout)
 
         ref = CompiledDAGRef(self, self._execution_index)
         self._execution_index += 1
@@ -1386,12 +1414,14 @@ class CompiledDAG:
 @DeveloperAPI
 def build_compiled_dag_from_ray_dag(
     dag: "ray.dag.DAGNode",
-    buffer_size_bytes: Optional[int],
+    execution_timeout: Optional[float] = None,
+    buffer_size_bytes: Optional[int] = None,
     enable_asyncio: bool = False,
     asyncio_max_queue_size: Optional[int] = None,
     max_buffered_results: Optional[int] = None,
 ) -> "CompiledDAG":
     compiled_dag = CompiledDAG(
+        execution_timeout,
         buffer_size_bytes,
         enable_asyncio,
         asyncio_max_queue_size,

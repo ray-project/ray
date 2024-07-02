@@ -1,8 +1,10 @@
 import io
 import logging
+import time
 from typing import Any, Dict, List, Optional, Set, Union
 
 import ray
+import ray.exceptions
 from ray._raylet import SerializedObject
 from ray.experimental.channel.common import ChannelInterface, ChannelOutputType
 from ray.experimental.channel.intra_process_channel import IntraProcessChannel
@@ -398,9 +400,11 @@ class Channel(ChannelInterface):
         )
 
     def __str__(self) -> str:
-        return f"Channel(_reader_ref={self._reader_ref})"
+        return (
+            f"Channel(_reader_ref={self._reader_ref}, _writer_ref={self._writer_ref})"
+        )
 
-    def _resize_channel_if_needed(self, serialized_value: str):
+    def _resize_channel_if_needed(self, serialized_value: str, timeout_ms: int):
         # serialized_value.total_bytes *only* includes the size of the data. It does not
         # include the size of the metadata, so we must account for the size of the
         # metadata explicitly.
@@ -434,10 +438,16 @@ class Channel(ChannelInterface):
                 special_message_serialized,
                 prev_writer_ref,
                 self._num_readers,
+                timeout_ms,
             )
 
-    def write(self, value: Any):
+    def write(self, value: Any, timeout: Optional[float] = None) -> None:
         self.ensure_registered_as_writer()
+        assert (
+            timeout is None or timeout >= 0 or timeout == -1
+        ), "Timeout must be non-negative or -1."
+        # -1 means no timeout (block indefinitely)
+        timeout_ms = int(timeout * 1000) if timeout is not None else -1
 
         if not isinstance(value, SerializedObject):
             try:
@@ -456,26 +466,41 @@ class Channel(ChannelInterface):
         else:
             serialized_value = value
 
-        self._resize_channel_if_needed(serialized_value)
+        start_time = time.monotonic()
+        self._resize_channel_if_needed(serialized_value, timeout_ms)
+        if timeout is not None:
+            timeout_ms -= int((time.monotonic() - start_time) * 1000)
+            timeout_ms = max(timeout_ms, 0)
 
         self._worker.core_worker.experimental_channel_put_serialized(
             serialized_value,
             self._writer_ref,
             self._num_readers,
+            timeout_ms,
         )
 
-    def read(self) -> Any:
+    def read(self, timeout: Optional[float] = None) -> Any:
+        assert (
+            timeout is None or timeout >= 0 or timeout == -1
+        ), "Timeout must be non-negative or -1."
         self.ensure_registered_as_reader()
-        ret = self._worker.get_objects([self._reader_ref], return_exceptions=True)[0][0]
+
+        start_time = time.monotonic()
+        ret = self._worker.get_objects(
+            [self._reader_ref], timeout=timeout, return_exceptions=True
+        )[0][0]
 
         if isinstance(ret, _ResizeChannel):
             self._reader_ref = ret._reader_ref
             # We need to register the new reader_ref.
             self._reader_registered = False
             self.ensure_registered_as_reader()
-            ret = self._worker.get_objects([self._reader_ref], return_exceptions=True)[
-                0
-            ][0]
+            if timeout is not None:
+                timeout -= time.monotonic() - start_time
+                timeout = max(timeout, 0)
+            ret = self._worker.get_objects(
+                [self._reader_ref], timeout=timeout, return_exceptions=True
+            )[0][0]
 
         return ret
 
@@ -589,15 +614,15 @@ class CompositeChannel(ChannelInterface):
     def __str__(self) -> str:
         return f"CompositeChannel(_channels={self._channels})"
 
-    def write(self, value: Any):
+    def write(self, value: Any, timeout: Optional[float] = None) -> None:
         self.ensure_registered_as_writer()
         for channel in self._channels:
-            channel.write(value)
+            channel.write(value, timeout)
 
-    def read(self) -> Any:
+    def read(self, timeout: Optional[float] = None) -> Any:
         self.ensure_registered_as_reader()
         actor_id = self._get_self_actor_id()
-        return self._channel_dict[actor_id].read()
+        return self._channel_dict[actor_id].read(timeout)
 
     def close(self) -> None:
         for channel in self._channels:
