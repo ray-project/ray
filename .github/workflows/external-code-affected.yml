@@ -9,7 +9,8 @@ on: pull_request_target
 
 jobs:
   check-changes:
-    permissions: write-all
+    permissions:
+      issues: write
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
