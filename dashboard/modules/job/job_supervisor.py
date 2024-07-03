@@ -494,7 +494,7 @@ class JobSupervisor:
             # Empty fields may be set to None, so we need to check for None explicitly.
             if config is None:
                 config = RuntimeEnvConfig()
-            config["log_files"] = [JobLogStorageClient.get_log_file_path(submission_id)]
+            config["log_files"] = [JobLogStorageClient.get_job_driver_log_file_path(submission_id)]
             runtime_env["config"] = config
         return runtime_env
 
@@ -960,7 +960,7 @@ class JobExecutor:
 
             self._logger.info(f"({self._job_id}) Executing job driver's entrypoint")
 
-            log_path = self._log_client.get_log_file_path(self._job_id)
+            log_path = self._log_client.get_job_driver_log_file_path(self._job_id)
 
             # Execute job's entrypoint in the subprocess
             self._driver_process = self._exec_entrypoint(log_path)
