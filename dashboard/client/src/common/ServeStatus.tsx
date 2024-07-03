@@ -1,6 +1,4 @@
-import createStyles from "@mui/styles/createStyles";
-import makeStyles from "@mui/styles/makeStyles";
-import classNames from "classnames";
+import { Box, SxProps, Theme } from "@mui/material";
 import React from "react";
 import { RiCloseCircleFill, RiRecordCircleFill } from "react-icons/ri";
 import { ServeDeployment } from "../type/serve";
@@ -10,54 +8,57 @@ import { ClassNameProps } from "./props";
 type ServeStatusIconProps = {
   deployment: ServeDeployment;
   small: boolean;
+  sx?: SxProps<Theme>;
 } & ClassNameProps;
-
-const useServeStatusIconStyles = makeStyles((theme) =>
-  createStyles({
-    icon: {
-      width: 20,
-      height: 20,
-      marginRight: 8,
-    },
-    iconSmall: {
-      width: 16,
-      height: 16,
-    },
-    colorSuccess: {
-      color: theme.palette.success.main,
-    },
-    colorError: {
-      color: theme.palette.error.main,
-    },
-  }),
-);
 
 export const ServeStatusIcon = ({
   deployment,
   small,
   className,
+  sx,
 }: ServeStatusIconProps) => {
-  const classes = useServeStatusIconStyles();
-
   switch (deployment.status) {
     case "HEALTHY":
       return (
-        <RiRecordCircleFill
-          className={classNames(classes.icon, classes.colorSuccess)}
+        <Box
+          component={RiRecordCircleFill}
+          sx={[
+            {
+              width: 20,
+              height: 20,
+              marginRight: 1,
+              color: (theme) => theme.palette.success.main,
+            },
+            ...(Array.isArray(sx) ? sx : [sx]),
+          ]}
           title="Healthy"
         />
       );
     case "UNHEALTHY":
       return (
-        <RiCloseCircleFill
-          className={classNames(classes.icon, classes.colorError)}
+        <Box
+          component={RiCloseCircleFill}
+          sx={[
+            {
+              width: 20,
+              height: 20,
+              marginRight: 1,
+              color: (theme) => theme.palette.error.main,
+            },
+            ...(Array.isArray(sx) ? sx : [sx]),
+          ]}
           title="Unhealthy"
         />
       );
     default:
       // UPDATING
       return (
-        <JobRunningIcon className={className} small={small} title="Updating" />
+        <JobRunningIcon
+          className={className}
+          sx={sx}
+          small={small}
+          title="Updating"
+        />
       );
   }
 };

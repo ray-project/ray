@@ -113,20 +113,20 @@ def exec_ray_dag(
                 TorchTensorType(
                     "auto" if dynamic_shape else SHAPE,
                     "auto" if dynamic_shape else DTYPE,
-                    transport="nccl" if use_nccl else None,
+                    transport="nccl" if use_nccl else "auto",
                 )
             )
 
         dag = receiver.recv.bind(dag)
 
     if use_adag:
-        dag = dag.experimental_compile(buffer_size_bytes=int(SHAPE[0] * 3))
+        dag = dag.experimental_compile(_buffer_size_bytes=int(SHAPE[0] * 3))
 
         def _run():
             i = np.random.randint(100)
-            output_channel = dag.execute(i)
+            ref = dag.execute(i)
             # TODO(swang): Replace with fake ObjectRef.
-            result = output_channel.read()
+            result = ray.get(ref)
             assert result == (i, SHAPE, DTYPE)
 
     else:
@@ -162,7 +162,7 @@ def exec_ray_dag_ipc(label, sender, receiver, use_nccl=False):
             nccl_util.TORCH_NUMPY_DTYPE_MAP[DTYPE],
         )
 
-    compiled_dag = dag.experimental_compile(buffer_size_bytes=int(SHAPE[0] * 3))
+    compiled_dag = dag.experimental_compile(_buffer_size_bytes=int(SHAPE[0] * 3))
     # Flag that each run can set if it sees incorrect results.
     ok = [True]
 

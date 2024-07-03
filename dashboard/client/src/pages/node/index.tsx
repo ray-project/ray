@@ -15,7 +15,6 @@ import {
   Typography,
 } from "@mui/material";
 import Pagination from "@mui/material/Pagination";
-import makeStyles from "@mui/styles/makeStyles";
 import React from "react";
 import { Outlet, Link as RouterLink } from "react-router-dom";
 import { sliceToPage } from "../../common/util";
@@ -31,17 +30,6 @@ import { memoryConverter } from "../../util/converter";
 import { MainNavPageInfo } from "../layout/mainNavContext";
 import { useNodeList } from "./hook/useNodeList";
 import { NodeRows } from "./NodeRow";
-
-const useStyles = makeStyles((theme) => ({
-  root: {
-    padding: theme.spacing(2),
-    width: "100%",
-    position: "relative",
-  },
-  helpInfo: {
-    marginLeft: theme.spacing(1),
-  },
-}));
 
 const codeTextStyle = {
   fontFamily: "Roboto Mono, monospace",
@@ -239,7 +227,6 @@ export const NodeCard = (props: { node: NodeDetail }) => {
 };
 
 const Nodes = () => {
-  const classes = useStyles();
   const {
     msg,
     isLoading,
@@ -262,7 +249,13 @@ const Nodes = () => {
   } = sliceToPage(nodeList, page.pageNo, page.pageSize);
 
   return (
-    <div className={classes.root}>
+    <Box
+      sx={{
+        padding: 2,
+        width: "100%",
+        position: "relative",
+      }}
+    >
       <Loading loading={isLoading} />
       <TitleCard title="NODES">
         Auto Refresh:
@@ -368,9 +361,7 @@ const Nodes = () => {
                       >
                         {label}
                         {helpInfo && (
-                          <HelpInfo className={classes.helpInfo}>
-                            {helpInfo}
-                          </HelpInfo>
+                          <HelpInfo sx={{ marginLeft: 1 }}>{helpInfo}</HelpInfo>
                         )}
                       </Box>
                     </TableCell>
@@ -400,7 +391,7 @@ const Nodes = () => {
           </Grid>
         )}
       </TitleCard>
-    </div>
+    </Box>
   );
 };
 

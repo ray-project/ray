@@ -113,6 +113,11 @@ enum class StatusCode : char {
   AuthError = 33,
   // Indicates the input value is not valid.
   InvalidArgument = 34,
+  // Indicates that a channel (a mutable plasma object) is closed and cannot be
+  // read or written to.
+  ChannelError = 35,
+  // Indicates that a read or write on a channel (a mutable plasma object) timed out.
+  ChannelTimeoutError = 36,
 };
 
 #if defined(__clang__)
@@ -248,6 +253,14 @@ class RAY_EXPORT Status {
     return Status(StatusCode::AuthError, msg);
   }
 
+  static Status ChannelError(const std::string &msg) {
+    return Status(StatusCode::ChannelError, msg);
+  }
+
+  static Status ChannelTimeoutError(const std::string &msg) {
+    return Status(StatusCode::ChannelTimeoutError, msg);
+  }
+
   static StatusCode StringToCode(const std::string &str);
 
   // Returns true iff the status indicates success.
@@ -297,6 +310,10 @@ class RAY_EXPORT Status {
   bool IsOutOfResource() const { return code() == StatusCode::OutOfResource; }
 
   bool IsAuthError() const { return code() == StatusCode::AuthError; }
+
+  bool IsChannelError() const { return code() == StatusCode::ChannelError; }
+
+  bool IsChannelTimeoutError() const { return code() == StatusCode::ChannelTimeoutError; }
 
   // Return a string representation of this status suitable for printing.
   // Returns the string "OK" for success.
