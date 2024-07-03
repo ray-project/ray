@@ -4571,7 +4571,7 @@ class Dataset:
     @ConsumptionAPI(pattern="Examples:")
     @DeveloperAPI
     def iter_internal_ref_bundles(self) -> Iterator[RefBundle]:
-        """Get an iterator over ``RefBundle``s
+        """Get an iterator over ``RefBundles``
         belonging to this Dataset. Calling this function doesn't keep
         the data materialized in-memory.
 
@@ -4583,7 +4583,7 @@ class Dataset:
             ...         block = ray.get(block_ref)
 
         Returns:
-            An iterator over this Dataset's ``RefBundle``s.
+            An iterator over this Dataset's ``RefBundles``.
         """
 
         def _build_ref_bundle(

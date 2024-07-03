@@ -131,6 +131,7 @@ Inspecting Metadata
    Dataset.input_files
    Dataset.stats
    Dataset.get_internal_block_refs
+   Dataset.iter_internal_ref_bundles
 
 Execution
 ---------
