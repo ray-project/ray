@@ -295,7 +295,7 @@ async def test_job_supervisor_logs_saved(
         ray._private.worker._global_node.get_logs_dir_path(),
         f"jobs/job-supervisor-{job_id}.log",
     )
-    expected_supervisor_file_contents = "(job_1) Starting job monitoring loop (interval 1s)\n(job_1) Starting job\n(job_1) Creating executor actor for job\n(job_1) Updating job status to SUCCEEDED (exit code is 0)\n"
+    expected_supervisor_file_contents = "(job_1) Starting job\n(job_1) Starting job monitoring loop (interval 1s)\n(job_1) Creating executor actor for job\n(job_1) Updating job status to SUCCEEDED (exit code is 0)\n"
 
     with open(supervisor_log_path, "r") as f:
         logs = f.read()
