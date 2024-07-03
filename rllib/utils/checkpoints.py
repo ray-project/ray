@@ -1,13 +1,23 @@
+import abc
 import logging
 import json
 import os
 from packaging import version
+import pathlib
 import re
-from typing import Any, Dict, Union
+import tempfile
+from typing import Any, Collection, Dict, List, Optional, Tuple, Union
 
 import ray
+import ray.cloudpickle as pickle
+from ray.rllib.utils.actor_manager import FaultTolerantActorManager
+from ray.rllib.utils.annotations import (
+    OverrideToImplementCustomLogic_CallToSuperRecommended,
+)
 from ray.rllib.utils.serialization import NOT_SERIALIZABLE, serialize_type
+from ray.rllib.utils.typing import StateDict
 from ray.train import Checkpoint
+from ray.tune.utils.file_transfer import sync_dir_between_nodes
 from ray.util import log_once
 from ray.util.annotations import PublicAPI
 
@@ -29,15 +39,358 @@ logger = logging.getLogger(__name__)
 # 1.1: Same as 1.0, but has a new "format" field in the rllib_checkpoint.json file
 # indicating, whether the checkpoint is `cloudpickle` (default) or `msgpack`.
 
-# 1.2: Introduces the checkpoint for the new Learner API if the Learner api is enabled.
+# 1.2: Introduces the checkpoint for the new Learner API if the Learner API is enabled.
+
+# 2.0: Introduces the Checkpointable API for all components on the new API stack
+# (if the Learner-, RLModule, EnvRunner, and ConnectorV2 APIs are enabled).
 
 CHECKPOINT_VERSION = version.Version("1.1")
 CHECKPOINT_VERSION_LEARNER = version.Version("1.2")
+CHECKPOINT_VERSION_LEARNER_AND_ENV_RUNNER = version.Version("2.0")
+
+
+@PublicAPI(stability="alpha")
+class Checkpointable(abc.ABC):
+    """Abstract base class for a component of RLlib that can be checkpointed to disk.
+
+    Subclasses must implement the following APIs:
+    - save_to_path()
+    - restore_from_path()
+    - from_checkpoint()
+    - get_state()
+    - set_state()
+    - get_ctor_args_and_kwargs()
+    - get_metadata()
+    - get_checkpointable_components()
+    """
+
+    # The state file for the implementing class.
+    # This file contains any state information that does NOT belong to any subcomponent
+    # of the implementing class (which are `Checkpointable` themselves and thus should
+    # have their own state- and metadata files).
+    # After a `save_to_path([path])` this file can be found directly in: `path/`.
+    STATE_FILE_NAME = "state.pkl"
+
+    # The filename of the pickle file that contains the class information of the
+    # Checkpointable as well as all constructor args to be passed to such a class in
+    # order to construct a new instance.
+    CLASS_AND_CTOR_ARGS_FILE_NAME = "class_and_ctor_args.pkl"
+
+    # Subclasses may set this to their own metadata filename.
+    # The dict returned by self.get_metadata() is stored in this JSON file.
+    METADATA_FILE_NAME = "metadata.json"
+
+    def save_to_path(
+        self,
+        path: Optional[Union[str, pathlib.Path]] = None,
+        state: Optional[StateDict] = None,
+    ) -> str:
+        """Saves the state of the implementing class (or `state`) to `path`.
+
+        The state of the implementing class is always saved in the following format:
+
+        .. testcode::
+            :skipif: True
+
+            path/
+                [component1]/
+                    [component1 subcomponentA]/
+                        ...
+                    [component1 subcomponentB]/
+                        ...
+                [component2]/
+                        ...
+                [cls.METADATA_FILE_NAME].json
+                [cls.STATE_FILE_NAME].pkl
+
+        Args:
+            path: The path to the directory to save the state of the implementing class
+                to. If `path` doesn't exist or is None, then a new directory will be
+                created (and returned).
+            state: An optional state dict to be used instead of getting a new state of
+                the implementing class through `self.get_state()`.
+
+        Returns:
+            The path (str) where the state has been saved.
+        """
+        # Create path, if necessary.
+        if path is None:
+            path = path or tempfile.mkdtemp()
+
+        # Make sure, path exists.
+        path = pathlib.Path(path)
+        path.mkdir(parents=True, exist_ok=True)
+
+        # Write metadata file to disk.
+        metadata = self.get_metadata()
+        if "checkpoint_version" not in metadata:
+            metadata["checkpoint_version"] = str(
+                CHECKPOINT_VERSION_LEARNER_AND_ENV_RUNNER
+            )
+        with open(path / self.METADATA_FILE_NAME, "w") as f:
+            json.dump(metadata, f)
+
+        # Write the class and constructor args information to disk.
+        with open(path / self.CLASS_AND_CTOR_ARGS_FILE_NAME, "wb") as f:
+            pickle.dump(
+                {
+                    "class": type(self),
+                    "ctor_args_and_kwargs": self.get_ctor_args_and_kwargs(),
+                },
+                f,
+            )
+
+        # Get the entire state of this Checkpointable, or use provided `state`.
+        state = state or self.get_state()
+
+        # Write components of `self` that themselves are `Checkpointable`.
+        for component_name, component in self.get_checkpointable_components():
+            # If subcomponent's name is not in `state`, ignore it and don't write this
+            # subcomponent's state to disk.
+            if component_name not in state:
+                continue
+            component_state = state.pop(component_name)
+            component_path = path / component_name
+
+            # If component is an ActorManager, save the manager's first healthy
+            # actor's state to disk (even if it's on another node, in which case, we'll
+            # sync the generated file(s) back to this node).
+            if isinstance(component, FaultTolerantActorManager):
+                actor_to_use = component.healthy_actor_ids()[0]
+
+                def _get_ip(_=None):
+                    import ray
+
+                    return ray.util.get_node_ip_address()
+
+                _result = next(
+                    iter(
+                        component.foreach_actor(
+                            _get_ip,
+                            remote_actor_ids=[actor_to_use],
+                        )
+                    )
+                )
+                if not _result.ok:
+                    raise _result.get()
+                worker_ip_addr = _result.get()
+                self_ip_addr = _get_ip()
+
+                # Save the state to a temporary location on the `actor_to_use`'s
+                # node.
+                component_state_ref = ray.put(component_state)
+
+                if worker_ip_addr == self_ip_addr:
+                    component.foreach_actor(
+                        lambda w, _path=component_path, _state=component_state_ref: (
+                            w.save_to_path(_path, state=ray.get(_state))
+                        ),
+                        remote_actor_ids=[actor_to_use],
+                    )
+                else:
+                    # Save the checkpoint to the temporary directory on the worker.
+                    def _save(_worker, _state=component_state_ref):
+                        import tempfile
+
+                        # Create a temporary directory on the worker.
+                        tmpdir = tempfile.mkdtemp()
+                        _worker.save_to_path(tmpdir, state=ray.get(_state))
+                        return tmpdir
+
+                    _result = next(
+                        iter(
+                            component.foreach_actor(
+                                _save, remote_actor_ids=[actor_to_use]
+                            )
+                        )
+                    )
+                    if not _result.ok:
+                        raise _result.get()
+                    worker_temp_dir = _result.get()
+
+                    # Sync the temporary directory from the worker to this node.
+                    sync_dir_between_nodes(
+                        worker_ip_addr,
+                        worker_temp_dir,
+                        self_ip_addr,
+                        str(component_path),
+                    )
+
+                    # Remove the temporary directory on the worker.
+                    def _rmdir(w, _dir=worker_temp_dir):
+                        import shutil
+
+                        shutil.rmtree(_dir)
+
+                    component.foreach_actor(_rmdir, remote_actor_ids=[actor_to_use])
+
+            # Local component (instance stored in a property of `self`).
+            else:
+                # By providing the `state` arg, we make sure that the component does not
+                # have to call its own `get_state()` anymore, but uses what's provided
+                # here.
+                component.save_to_path(path / component_name, state=component_state)
+
+        # Write all the remaining state to disk.
+        with open(path / self.STATE_FILE_NAME, "wb") as f:
+            pickle.dump(state, f)
+
+        return str(path)
+
+    def restore_from_path(self, path: Union[str, pathlib.Path], **kwargs) -> None:
+        """Restores the state of the implementing class from the given path.
+
+        The given `path` should have the following structure and contain the following
+        files:
+
+        .. testcode::
+            :skipif: True
+
+            path/
+                [component1]/
+                    [component1 subcomponentA]/
+                        ...
+                    [component1 subcomponentB]/
+                        ...
+                [component2]/
+                        ...
+                [cls.STATE_FILE_NAME].pkl
+
+        Note that the self.METADATA_FILE_NAME file is not required to restore the state.
+
+        Args:
+            path: The path to load the implementing class' state from.
+            **kwargs: Forward compatibility kwargs.
+        """
+        path = pathlib.Path(path)
+
+        # Restore components of `self` that themselves are `Checkpointable`.
+        for component_name, component in self.get_checkpointable_components():
+            component_dir = path / component_name
+            # If subcomponent's dir is not in path, ignore it and don't restore this
+            # subcomponent's state from disk.
+            if not component_dir.is_dir():
+                continue
+            # Call `restore_from_path()` on subcomponent, thereby passing in the
+            # **kwargs.
+            component.restore_from_path(component_dir, **kwargs)
+
+        state = pickle.load(open(path / self.STATE_FILE_NAME, "rb"))
+        self.set_state(state)
+
+    @classmethod
+    def from_checkpoint(
+        cls, path: Union[str, pathlib.Path], **kwargs
+    ) -> "Checkpointable":
+        """Creates a new Checkpointable instance from the given location and returns it.
+
+        Args:
+            path: The checkpoint path to load (a) the information on how to construct
+                a new instance of the implementing class and (b) the state to restore
+                the created instance to.
+            kwargs: Forward compatibility kwargs. Note that these kwargs are sent to
+                each subcomponent's `from_checkpoint()` call.
+
+        Returns:
+             A new instance of the implementing class, already set to the state stored
+             under `path`.
+        """
+        path = pathlib.Path(path)
+
+        # Get the class constructor to call.
+        ctor_info = pickle.load(open(path / cls.CLASS_AND_CTOR_ARGS_FILE_NAME, "rb"))
+        # Construct an initial object.
+        obj = ctor_info["class"](
+            *ctor_info["ctor_args_and_kwargs"][0],
+            **ctor_info["ctor_args_and_kwargs"][1],
+        )
+        # Restore the state of the constructed object.
+        obj.restore_from_path(path, **kwargs)
+        # Return the new object.
+        return obj
+
+    @abc.abstractmethod
+    def get_state(
+        self,
+        components: Optional[Collection[str]] = None,
+        *,
+        not_components: Optional[Collection[str]] = None,
+        **kwargs,
+    ) -> StateDict:
+        """Returns the implementing class's current state as a dict.
+
+        Args:
+            components: An optional list of string keys to be included in the
+                returned state. This might be useful, if getting certain components
+                of the state is expensive (e.g. reading/compiling the weights of a large
+                NN) and at the same time, these components are not required by the
+                caller.
+            not_components: An optional list of string keys to be excluded in the
+                returned state, even if the same string is part of `components`.
+                This is useful to get the complete state of the class, except
+                one or a few components.
+            kwargs: Forward-compatibility kwargs.
+
+        Returns:
+            The current state of the implementing class (or only the `components`
+            specified, w/o those in `not_components`).
+        """
+
+    @abc.abstractmethod
+    def set_state(self, state: StateDict) -> None:
+        """Sets the implementing class' state to the given state dict.
+
+        If component keys are missing in `state`, these components of the implementing
+        class will not be updated/set.
+
+        Args:
+            state: The state dict to restore the state from. Maps component keys
+                to the corresponding subcomponent's own state.
+        """
+
+    @abc.abstractmethod
+    def get_ctor_args_and_kwargs(self) -> Tuple[Tuple, Dict[str, Any]]:
+        """Returns the args/kwargs used to create `self` from its constructor.
+
+        Returns:
+            A tuple of the args (as a tuple) and kwargs (as a Dict[str, Any]) used to
+            construct `self` from its class constructor.
+        """
+
+    @OverrideToImplementCustomLogic_CallToSuperRecommended
+    def get_metadata(self) -> Dict:
+        """Returns JSON writable metadata further describing the implementing class.
+
+        Note that this metadata is NOT part of any state and is thus NOT needed to
+        restore the state of a Checkpointable instance from a directory. Rather, the
+        metadata will be written into `self.METADATA_FILE_NAME` when calling
+        `self.save_to_path()` for the user's convenience.
+
+        Returns:
+            A JSON-encodable dict of metadata information.
+        """
+        return {
+            "class_and_ctor_args_file": self.CLASS_AND_CTOR_ARGS_FILE_NAME,
+            "state_file": self.STATE_FILE_NAME,
+            "ray_version": ray.__version__,
+            "ray_commit": ray.__commit__,
+        }
+
+    def get_checkpointable_components(self) -> List[Tuple[str, "Checkpointable"]]:
+        """Returns the implementing class's own Checkpointable subcomponents.
+
+        Returns:
+            A list of 2-tuples (name, subcomponent) describing the implementing class'
+            subcomponents, all of which have to be `Checkpointable` themselves and
+            whose state is therefore written into subdirectories (rather than the main
+            state file (self.STATE_FILE_NAME) when calling `self.save_to_path()`).
+        """
+        return []
 
 
 @PublicAPI(stability="alpha")
 def get_checkpoint_info(checkpoint: Union[str, Checkpoint]) -> Dict[str, Any]:
-    """Returns a dict with information about a Algorithm/Policy checkpoint.
+    """Returns a dict with information about an Algorithm/Policy checkpoint.
 
     If the given checkpoint is a >=v1.0 checkpoint directory, try reading all
     information from the contained `rllib_checkpoint.json` file.
@@ -248,7 +601,7 @@ def convert_to_msgpack_checkpoint(
             f,
         )
 
-    # Write individual policies to disk, each in their own sub-directory.
+    # Write individual policies to disk, each in their own subdirectory.
     for pid, policy_state in policy_states.items():
         # From here on, disallow policyIDs that would not work as directory names.
         validate_policy_id(pid, error=True)

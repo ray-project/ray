@@ -16,7 +16,7 @@ from typing import (
 import numpy as np
 import gymnasium as gym
 
-from ray.rllib.utils.annotations import ExperimentalAPI
+from ray.rllib.utils.annotations import OldAPIStack
 
 if TYPE_CHECKING:
     from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
@@ -55,18 +55,18 @@ NetworkType = Union["torch.nn.Module", "tf.keras.Model"]
 # An RLModule spec (single-agent or multi-agent).
 RLModuleSpec = Union["SingleAgentRLModuleSpec", "MultiAgentRLModuleSpec"]
 
-# An RLModule spec (single-agent or multi-agent).
-RLModuleSpec = Union["SingleAgentRLModuleSpec", "MultiAgentRLModuleSpec"]
+# A state dict of an RLlib component (e.g. EnvRunner, Learner, RLModule).
+StateDict = Dict[str, Any]
 
 # Represents a fully filled out config of a Algorithm class.
 # Note: Policy config dicts are usually the same as AlgorithmConfigDict, but
 # parts of it may sometimes be altered in e.g. a multi-agent setup,
 # where we have >1 Policies in the same Algorithm.
-AlgorithmConfigDict = dict
+AlgorithmConfigDict = dict  # @OldAPIStack
 
 # An algorithm config dict that only has overrides. It needs to be combined with
 # the default algorithm config to be used.
-PartialAlgorithmConfigDict = dict
+PartialAlgorithmConfigDict = dict  # @OldAPIStack
 
 # Represents the model config sub-dict of the algo config that is passed to
 # the model catalog.
@@ -99,18 +99,20 @@ EnvCreator = Callable[["EnvContext"], Optional[EnvType]]
 AgentID = Any
 
 # Represents a generic identifier for a policy (e.g., "pol1").
-PolicyID = str
+PolicyID = str  # @OldAPIStack
 # Represents a generic identifier for a (single-agent) RLModule.
 ModuleID = str
 
 # Type of the config.policies dict for multi-agent training.
-MultiAgentPolicyConfigDict = Dict[PolicyID, "PolicySpec"]
+MultiAgentPolicyConfigDict = Dict[PolicyID, "PolicySpec"]  # @OldAPIStack
 
 # A new stack Episode type: Either single-agent or multi-agent.
 EpisodeType = Union["SingleAgentEpisode", "MultiAgentEpisode"]
 
 # Is Policy to train callable.
+# @OldAPIStack
 IsPolicyToTrain = Callable[[PolicyID, Optional["MultiAgentBatch"]], bool]
+
 # Agent to module mapping and should-module-be-updated.
 AgentToModuleMappingFn = Callable[[AgentID, EpisodeType], ModuleID]
 ShouldModuleBeUpdatedFn = Union[
@@ -120,16 +122,16 @@ ShouldModuleBeUpdatedFn = Union[
 
 # State dict of a Policy, mapping strings (e.g. "weights") to some state
 # data (TensorStructType).
-PolicyState = Dict[str, TensorStructType]
+PolicyState = Dict[str, TensorStructType]  # @OldAPIStack
 
 # Any tf Policy type (static-graph or eager Policy).
-TFPolicyV2Type = Type[Union["DynamicTFPolicyV2", "EagerTFPolicyV2"]]
+TFPolicyV2Type = Type[Union["DynamicTFPolicyV2", "EagerTFPolicyV2"]]  # @OldAPIStack
 
 # Represents an episode id (old and new API stack).
 EpisodeID = Union[int, str]
 
 # Represents an "unroll" (maybe across different sub-envs in a vector env).
-UnrollID = int
+UnrollID = int  # @OldAPIStack
 
 # A dict keyed by agent ids, e.g. {"agent-1": value}.
 MultiAgentDict = Dict[AgentID, Any]
@@ -153,7 +155,7 @@ FileType = Any
 
 # Represents a ViewRequirements dict mapping column names (str) to
 # ViewRequirement objects.
-ViewRequirementsDict = Dict[str, "ViewRequirement"]
+ViewRequirementsDict = Dict[str, "ViewRequirement"]  # @OldAPIStack
 
 # Represents the result dict returned by Algorithm.train() and algorithm components,
 # such as EnvRunners, LearnerGroup, etc.. Also, the MetricsLogger used by all these
@@ -202,16 +204,16 @@ SpaceStruct = Union[gym.spaces.Space, dict, tuple]
 
 # A list of batches of RNN states.
 # Each item in this list has dimension [B, S] (S=state vector size)
-StateBatches = List[List[Any]]
+StateBatches = List[List[Any]]  # @OldAPIStack
 
 # Format of data output from policy forward pass.
 # __sphinx_doc_begin_policy_output_type__
-PolicyOutputType = Tuple[TensorStructType, StateBatches, Dict]
+PolicyOutputType = Tuple[TensorStructType, StateBatches, Dict]  # @OldAPIStack
 # __sphinx_doc_end_policy_output_type__
 
 
 # __sphinx_doc_begin_agent_connector_data_type__
-@ExperimentalAPI
+@OldAPIStack
 class AgentConnectorDataType:
     """Data type that is fed into and yielded from agent connectors.
 
@@ -233,7 +235,7 @@ class AgentConnectorDataType:
 
 
 # __sphinx_doc_begin_action_connector_output__
-@ExperimentalAPI
+@OldAPIStack
 class ActionConnectorDataType:
     """Data type that is fed into and yielded from agent connectors.
 
@@ -265,7 +267,7 @@ class ActionConnectorDataType:
 
 
 # __sphinx_doc_begin_agent_connector_output__
-@ExperimentalAPI
+@OldAPIStack
 class AgentConnectorsOutput:
     """Final output data type of agent connectors.
 
