@@ -6,8 +6,8 @@ steps:
     key: check-release-blockers
     instance_type: small_branch
     commands:
-      - bazel run //ci/ray_ci/automation:weekly_green_metric -- --check
       - exit 1
+      - bazel run //ci/ray_ci/automation:weekly_green_metric -- --check
 
   - label: "Check commit hash"
     key: check-commit-hash
