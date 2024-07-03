@@ -17,6 +17,7 @@ fi
 MAC_ARCH="$1" # First argument is the architecture of the machine, e.g. x86_64, arm64
 export USE_BAZEL_VERSION="${USE_BAZEL_VERSION:-6.5.0}"
 
+# Sets RAY_VERSION and RAY_COMMIT
 source .buildkite/release-automation/set-ray-version.sh
 
 install_bazel() {
@@ -48,14 +49,6 @@ install_miniconda() {
 
 run_sanity_check() {
     local PYTHON_VERSION="$1"
-
-    if [[ "${RAY_COMMIT:-}" == "" ]]; then
-        if [[ "${BUILDKITE_COMMIT:-}" == "" ]]; then
-            echo "neither BUILDKITE_COMMIT nor RAY_COMMIT is set"
-            exit 1
-        fi
-        RAY_COMMIT="${BUILDKITE_COMMIT:-}"
-    fi
 
     conda create -n "rayio_${PYTHON_VERSION}" python="${PYTHON_VERSION}" -y
     conda activate "rayio_${PYTHON_VERSION}"
