@@ -4590,8 +4590,6 @@ class Dataset:
         def _build_ref_bundle(
             blocks: Tuple[ObjectRef[Block], BlockMetadata],
         ) -> RefBundle:
-            # Set `owns_blocks=True` so we can destroy the blocks eagerly
-            # after getting count from metadata.
             return RefBundle((blocks,), owns_blocks=True)
 
         iter_block_refs_md, _, _ = self._plan.execute_to_iterator()
@@ -4616,6 +4614,7 @@ class Dataset:
         Returns:
             A list of references to this dataset's blocks.
         """
+        # TODO(scottjlee): replace get_internal_block_refs() usages with iter_internal_ref_bundles()
         block_refs = self._plan.execute().block_refs
         self._synchronize_progress_bar()
         return block_refs
