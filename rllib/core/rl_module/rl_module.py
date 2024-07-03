@@ -3,7 +3,7 @@ import datetime
 import json
 import pathlib
 from dataclasses import dataclass, field
-from typing import Mapping, Any, TYPE_CHECKING, Optional, Type, Dict, Union
+from typing import Any, Dict, Optional, Type, TYPE_CHECKING, Union
 
 import gymnasium as gym
 import tree  # pip install dm_tree
@@ -41,7 +41,8 @@ from ray.rllib.utils.serialization import (
     serialize_type,
     deserialize_type,
 )
-from ray.rllib.utils.typing import SampleBatchType, ViewRequirementsDict
+from ray.rllib.utils.typing import SampleBatchType, StateDict, ViewRequirementsDict
+from ray.util.annotations import PublicAPI
 
 
 RLMODULE_METADATA_FILE_NAME = "rl_module_metadata.json"
@@ -247,7 +248,7 @@ class RLModuleConfig:
         )
 
 
-@ExperimentalAPI
+@PublicAPI(stability="alpha")
 class RLModule(abc.ABC):
     """Base class for RLlib modules.
 
@@ -532,7 +533,7 @@ class RLModule(abc.ABC):
     @OverrideToImplementCustomLogic
     def update_default_view_requirements(
         self, defaults: ViewRequirementsDict
-    ) -> Mapping[str, ViewRequirement]:
+    ) -> Dict[str, ViewRequirement]:
         """Updates default view requirements with the view requirements of this module.
 
         This method should be called with view requirements that already contain
@@ -632,7 +633,7 @@ class RLModule(abc.ABC):
 
     @check_input_specs("_input_specs_inference")
     @check_output_specs("_output_specs_inference")
-    def forward_inference(self, batch: SampleBatchType, **kwargs) -> Mapping[str, Any]:
+    def forward_inference(self, batch: SampleBatchType, **kwargs) -> Dict[str, Any]:
         """Forward-pass during evaluation, called from the sampler.
 
         This method should not be overriden to implement a custom forward inference
@@ -650,14 +651,12 @@ class RLModule(abc.ABC):
         return self._forward_inference(batch, **kwargs)
 
     @abc.abstractmethod
-    def _forward_inference(self, batch: NestedDict, **kwargs) -> Mapping[str, Any]:
+    def _forward_inference(self, batch: NestedDict, **kwargs) -> Dict[str, Any]:
         """Forward-pass during evaluation. See forward_inference for details."""
 
     @check_input_specs("_input_specs_exploration")
     @check_output_specs("_output_specs_exploration")
-    def forward_exploration(
-        self, batch: SampleBatchType, **kwargs
-    ) -> Mapping[str, Any]:
+    def forward_exploration(self, batch: SampleBatchType, **kwargs) -> Dict[str, Any]:
         """Forward-pass during exploration, called from the sampler.
 
         This method should not be overriden to implement a custom forward exploration
@@ -675,12 +674,12 @@ class RLModule(abc.ABC):
         return self._forward_exploration(batch, **kwargs)
 
     @abc.abstractmethod
-    def _forward_exploration(self, batch: NestedDict, **kwargs) -> Mapping[str, Any]:
+    def _forward_exploration(self, batch: NestedDict, **kwargs) -> Dict[str, Any]:
         """Forward-pass during exploration. See forward_exploration for details."""
 
     @check_input_specs("_input_specs_train")
     @check_output_specs("_output_specs_train")
-    def forward_train(self, batch: SampleBatchType, **kwargs) -> Mapping[str, Any]:
+    def forward_train(self, batch: SampleBatchType, **kwargs) -> Dict[str, Any]:
         """Forward-pass during training called from the learner. This method should
         not be overriden. Instead, override the _forward_train method.
 
@@ -696,16 +695,16 @@ class RLModule(abc.ABC):
         return self._forward_train(batch, **kwargs)
 
     @abc.abstractmethod
-    def _forward_train(self, batch: NestedDict, **kwargs) -> Mapping[str, Any]:
+    def _forward_train(self, batch: NestedDict, **kwargs) -> Dict[str, Any]:
         """Forward-pass during training. See forward_train for details."""
 
     @OverrideToImplementCustomLogic
-    def get_state(self, inference_only: bool = False) -> Mapping[str, Any]:
+    def get_state(self, inference_only: bool = False) -> StateDict:
         """Returns the state dict of the module."""
         return {}
 
     @OverrideToImplementCustomLogic
-    def set_state(self, state_dict: Mapping[str, Any]) -> None:
+    def set_state(self, state_dict: StateDict) -> None:
         """Sets the state dict of the module."""
         return None
 
@@ -735,8 +734,8 @@ class RLModule(abc.ABC):
         module_spec_class: Union[
             Type[SingleAgentRLModuleSpec], Type["MultiAgentRLModuleSpec"]
         ],
-        additional_metadata: Optional[Mapping[str, Any]] = None,
-    ) -> Mapping[str, Any]:
+        additional_metadata: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
         """Returns the metadata of the module.
 
         This method is used to save the metadata of the module to the checkpoint.
@@ -779,7 +778,7 @@ class RLModule(abc.ABC):
         module_spec_class: Union[
             Type[SingleAgentRLModuleSpec], Type["MultiAgentRLModuleSpec"]
         ],
-        additional_metadata: Mapping[str, Any] = None,
+        additional_metadata: Dict[str, Any] = None,
     ):
         """Saves the metadata of the module to checkpoint_dir.
 

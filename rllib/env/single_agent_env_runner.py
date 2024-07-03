@@ -2,7 +2,7 @@ import time
 from collections import defaultdict
 from functools import partial
 import logging
-from typing import Any, Container, DefaultDict, Dict, List, Optional
+from typing import Any, Collection, DefaultDict, Dict, List, Optional
 
 import gymnasium as gym
 
@@ -642,9 +642,9 @@ class SingleAgentEnvRunner(EnvRunner):
     @override(EnvRunner)
     def get_state(
         self,
-        components: Optional[Container[str]] = None,
+        components: Optional[Collection[str]] = None,
         *,
-        module_ids: Optional[Container[ModuleID]] = None,
+        module_ids: Optional[Collection[ModuleID]] = None,
         inference_only: bool = True,
     ) -> Dict[str, Any]:
         components = force_list(
