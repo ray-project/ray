@@ -4568,11 +4568,10 @@ class Dataset:
     def _get_stats_summary(self) -> DatasetStatsSummary:
         return self._plan.stats_summary()
 
-    @ConsumptionAPI(pattern="")
+    @ConsumptionAPI(pattern="Examples:")
     @DeveloperAPI
     def iter_internal_ref_bundles(self) -> Iterator[RefBundle]:
-        """Get an iterator over
-        :class:`~ray.data._internal.execution.interfaces.RefBundle`s
+        """Get an iterator over ``RefBundle``s
         belonging to this Dataset. Calling this function doesn't keep
         the data materialized in-memory.
 
@@ -4584,8 +4583,7 @@ class Dataset:
             ...         block = ray.get(block_ref)
 
         Returns:
-            An iterator over this Dataset's
-            :class:`~ray.data._internal.execution.interfaces.RefBundle`s.
+            An iterator over this Dataset's ``RefBundle``s.
         """
 
         def _build_ref_bundle(
