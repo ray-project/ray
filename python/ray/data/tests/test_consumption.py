@@ -13,12 +13,13 @@ import pytest
 
 import ray
 from ray.data._internal.block_builder import BlockBuilder
+from ray.data._internal.datasource.csv_datasink import CSVDatasink
+from ray.data._internal.datasource.csv_datasource import CSVDatasource
+from ray.data._internal.datasource.range_datasource import RangeDatasource
 from ray.data._internal.util import _check_pyarrow_version
 from ray.data.block import BlockAccessor, BlockMetadata
 from ray.data.context import DataContext
 from ray.data.dataset import Dataset, MaterializedDataset
-from ray.data.datasource.csv_datasink import _CSVDatasink
-from ray.data.datasource.csv_datasource import CSVDatasource
 from ray.data.datasource.datasource import Datasource, ReadTask
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.conftest import (
@@ -1700,7 +1701,7 @@ class FlakyCSVDatasource(CSVDatasource):
                 yield block
 
 
-class FlakyCSVDatasink(_CSVDatasink):
+class FlakyCSVDatasink(CSVDatasink):
     def __init__(self, path, **csv_datasink_kwargs):
         super().__init__(path, **csv_datasink_kwargs)
 
@@ -1717,7 +1718,7 @@ class FlakyCSVDatasink(_CSVDatasink):
 def test_datasource(ray_start_regular):
     source = ray.data.datasource.RandomIntRowDatasource(n=10, num_columns=2)
     assert len(ray.data.read_datasource(source).take()) == 10
-    source = ray.data.datasource.RangeDatasource(n=10)
+    source = RangeDatasource(n=10)
     assert extract_values(
         "value",
         ray.data.read_datasource(source).take(),

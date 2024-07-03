@@ -1,4 +1,4 @@
-from typing import Dict, Any
+from typing import Set, Dict, Any
 from datetime import datetime
 from importlib import import_module
 import os
@@ -6,9 +6,13 @@ import sys
 from jinja2.filters import FILTERS
 import sphinx
 from sphinx.ext import autodoc
+from sphinx.ext.autosummary import generate
+from sphinx.util.inspect import safe_getattr
 from docutils import nodes
 import pathlib
 import logging
+
+DEFAULT_API_GROUP = "others"
 
 logger = logging.getLogger(__name__)
 
@@ -179,13 +183,21 @@ release = find_version("ray", "_version.py")
 
 language = "en"
 
+# autogen files are only used to auto-generate public API documentation.
+# They are not included in the toctree to avoid warnings such as documents not included
+# in any toctree.
+autogen_files = [
+    "data/api/_autogen.rst",
+]
+
 # List of patterns, relative to source directory, that match files and
 # directories to ignore when looking for source files.
 # Also helps resolve warnings about documents not included in any toctree.
 exclude_patterns = [
     "templates/*",
     "cluster/running-applications/doc/ray.*",
-]
+    "data/api/ray.data.*.rst",
+] + autogen_files
 
 # If "DOC_LIB" is found, only build that top-level navigation item.
 build_one_lib = os.getenv("DOC_LIB")
@@ -385,7 +397,40 @@ def filter_out_undoc_class_members(member_name, class_name, module_name):
         return ""
 
 
+def get_api_groups(method_names, class_name, module_name):
+    api_groups = set()
+    cls = getattr(import_module(module_name), class_name)
+    for method_name in method_names:
+        method = getattr(cls, method_name)
+        api_groups.add(safe_getattr(method, "_annotated_api_group", DEFAULT_API_GROUP))
+
+    return sorted(api_groups)
+
+
+def select_api_group(method_names, class_name, module_name, api_group):
+    cls = getattr(import_module(module_name), class_name)
+    return [
+        method_name
+        for method_name in method_names
+        if _is_public_api(getattr(cls, method_name))
+        and _is_api_group(getattr(cls, method_name), api_group)
+    ]
+
+
+def _is_public_api(obj):
+    api_type = safe_getattr(obj, "_annotated_type", None)
+    if not api_type:
+        return False
+    return api_type.value == "PublicAPI"
+
+
+def _is_api_group(obj, group):
+    return safe_getattr(obj, "_annotated_api_group", DEFAULT_API_GROUP) == group
+
+
 FILTERS["filter_out_undoc_class_members"] = filter_out_undoc_class_members
+FILTERS["get_api_groups"] = get_api_groups
+FILTERS["select_api_group"] = select_api_group
 
 
 def add_custom_assets(
@@ -423,6 +468,16 @@ def add_custom_assets(
         app.add_css_file("css/ray-libraries.css")
     elif pagename == "ray-overview/use-cases":
         app.add_css_file("css/use_cases.css")
+
+
+def _autogen_apis(app: sphinx.application.Sphinx):
+    """
+    Auto-generate public API documentation.
+    """
+    generate.generate_autosummary_docs(
+        [os.path.join(app.srcdir, file) for file in autogen_files],
+        app=app,
+    )
 
 
 def setup(app):
@@ -465,6 +520,9 @@ def setup(app):
     linkcheck_summarizer = LinkcheckSummarizer()
     app.connect("builder-inited", linkcheck_summarizer.add_handler_to_linkcheck)
     app.connect("build-finished", linkcheck_summarizer.summarize)
+
+    # Hook into the auto generation of public apis
+    app.connect("builder-inited", _autogen_apis)
 
 
 redoc = [

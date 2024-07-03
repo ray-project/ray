@@ -1,6 +1,7 @@
 # coding: utf-8
 import logging
 import os
+import re
 import sys
 import time
 import traceback
@@ -11,7 +12,7 @@ import pytest
 import ray
 import ray.cluster_utils
 import ray.experimental.channel as ray_channel
-from ray.exceptions import RayChannelError
+from ray.exceptions import RayChannelError, RayChannelTimeoutError
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 from ray.dag.compiled_dag_node import CompiledDAG
 
@@ -44,6 +45,31 @@ def test_put_local_get(ray_start_regular):
     sys.platform != "linux" and sys.platform != "darwin",
     reason="Requires Linux or Mac.",
 )
+def test_read_timeout(ray_start_regular):
+    chan = ray_channel.Channel(None, [create_driver_actor()], 1000)
+
+    with pytest.raises(RayChannelTimeoutError):
+        chan.read(timeout=1)
+
+
+@pytest.mark.skipif(
+    sys.platform != "linux" and sys.platform != "darwin",
+    reason="Requires Linux or Mac.",
+)
+def test_write_timeout(ray_start_regular):
+    chan = ray_channel.Channel(None, [create_driver_actor()], 1000)
+
+    val = 1
+    bytes = val.to_bytes(8, "little")
+    chan.write(bytes, timeout=1)
+    with pytest.raises(RayChannelTimeoutError):
+        chan.write(bytes, timeout=1)
+
+
+@pytest.mark.skipif(
+    sys.platform != "linux" and sys.platform != "darwin",
+    reason="Requires Linux or Mac.",
+)
 @pytest.mark.parametrize("remote", [True, False])
 def test_driver_as_reader(ray_start_cluster, remote):
     cluster = ray_start_cluster
@@ -55,8 +81,8 @@ def test_driver_as_reader(ray_start_cluster, remote):
         # This node is for the writer actor.
         cluster.add_node(num_cpus=1)
     else:
-        # This node is for both the driver (including the DriverHelperActor) and the
-        # writer actor.
+        # This node is for both the driver (including the
+        # CompiledDAG.DAGDriverProxyActor) and the writer actor.
         cluster.add_node(num_cpus=2)
         ray.init(address=cluster.address)
 
@@ -94,8 +120,8 @@ def test_driver_as_reader_with_resize(ray_start_cluster, remote):
         # This node is for the writer actor.
         cluster.add_node(num_cpus=1)
     else:
-        # This node is for both the driver (including the DriverHelperActor) and the
-        # writer actor.
+        # This node is for both the driver (including the
+        # CompiledDAG.DAGDriverProxyActor) and the writer actor.
         cluster.add_node(num_cpus=2)
         ray.init(address=cluster.address)
 
@@ -784,8 +810,8 @@ def test_composite_channel_multiple_readers(ray_start_cluster):
 )
 def test_put_error(ray_start_cluster):
     cluster = ray_start_cluster
-    # This node is for both the driver (including the DriverHelperActor) and the
-    # writer actor.
+    # This node is for both the driver (including the CompiledDAG.DAGDriverProxyActor)
+    # and the writer actor.
     cluster.add_node(num_cpus=2)
     ray.init(address=cluster.address)
 
@@ -839,6 +865,200 @@ def test_put_error(ray_start_cluster):
         except Exception as exc:
             assert isinstance(exc, ValueError)
             assert isinstance(exc, ray.exceptions.RayTaskError)
+
+
+@pytest.mark.skipif(
+    sys.platform != "linux" and sys.platform != "darwin",
+    reason="Requires Linux or Mac.",
+)
+def test_payload_too_large(ray_start_cluster):
+    cluster = ray_start_cluster
+    # This node is for the driver.
+    first_node_handle = cluster.add_node(num_cpus=1)
+    # This node is for the reader.
+    second_node_handle = cluster.add_node(num_cpus=1)
+    ray.init(address=cluster.address)
+    cluster.wait_for_nodes()
+
+    nodes = [first_node_handle.node_id, second_node_handle.node_id]
+    # We want to check that there are two nodes. Thus, we convert `nodes` to a set and
+    # then back to a list to remove duplicates. Then we check that the length of `nodes`
+    # is 2.
+    nodes = list(set(nodes))
+    assert len(nodes) == 2
+
+    @ray.remote(num_cpus=1)
+    class Actor:
+        def get_node_id(self):
+            return ray.get_runtime_context().get_node_id()
+
+    def create_actor(node):
+        return Actor.options(
+            scheduling_strategy=NodeAffinitySchedulingStrategy(node, soft=False)
+        ).remote()
+
+    driver_node = ray.get_runtime_context().get_node_id()
+    actor_node = nodes[0] if nodes[0] != driver_node else nodes[1]
+    assert driver_node != actor_node
+    a = create_actor(actor_node)
+    assert driver_node != ray.get(a.get_node_id.remote())
+
+    with pytest.raises(
+        ValueError,
+        match=re.escape(
+            "The reader and writer are on different nodes, so the object written to "
+            "the channel must have a size less than or equal to the max gRPC payload "
+            "size (471859200 bytes)."
+        ),
+    ):
+        ray_channel.Channel(None, [a], 1024 * 1024 * 512)
+
+
+@pytest.mark.skipif(
+    sys.platform != "linux" and sys.platform != "darwin",
+    reason="Requires Linux or Mac.",
+)
+def test_payload_resize_too_large(ray_start_cluster):
+    cluster = ray_start_cluster
+    # This node is for the driver.
+    first_node_handle = cluster.add_node(num_cpus=1)
+    # This node is for the reader.
+    second_node_handle = cluster.add_node(num_cpus=1)
+    ray.init(address=cluster.address)
+    cluster.wait_for_nodes()
+
+    nodes = [first_node_handle.node_id, second_node_handle.node_id]
+    # We want to check that there are two nodes. Thus, we convert `nodes` to a set and
+    # then back to a list to remove duplicates. Then we check that the length of `nodes`
+    # is 2.
+    nodes = list(set(nodes))
+    assert len(nodes) == 2
+
+    @ray.remote(num_cpus=1)
+    class Actor:
+        def get_node_id(self):
+            return ray.get_runtime_context().get_node_id()
+
+    def create_actor(node):
+        return Actor.options(
+            scheduling_strategy=NodeAffinitySchedulingStrategy(node, soft=False)
+        ).remote()
+
+    driver_node = ray.get_runtime_context().get_node_id()
+    actor_node = nodes[0] if nodes[0] != driver_node else nodes[1]
+    assert driver_node != actor_node
+    a = create_actor(actor_node)
+    assert driver_node != ray.get(a.get_node_id.remote())
+
+    chan = ray_channel.Channel(None, [a], 1000)
+
+    with pytest.raises(
+        ValueError,
+        match=re.escape(
+            "The reader and writer are on different nodes, so the object written to "
+            "the channel must have a size less than or equal to the max gRPC payload "
+            "size (471859200 bytes)."
+        ),
+    ):
+        chan.write(b"x" * (1024 * 1024 * 512))
+
+
+@pytest.mark.skipif(
+    sys.platform != "linux" and sys.platform != "darwin",
+    reason="Requires Linux or Mac.",
+)
+def test_readers_on_different_nodes(ray_start_cluster):
+    cluster = ray_start_cluster
+    # This node is for the driver (including the CompiledDAG.DAGDriverProxyActor) and
+    # one of the readers.
+    first_node_handle = cluster.add_node(num_cpus=2)
+    # This node is for the other reader.
+    second_node_handle = cluster.add_node(num_cpus=1)
+    ray.init(address=cluster.address)
+    cluster.wait_for_nodes()
+
+    nodes = [first_node_handle.node_id, second_node_handle.node_id]
+    # We want to check that there are two nodes. Thus, we convert `nodes` to a set and
+    # then back to a list to remove duplicates. Then we check that the length of `nodes`
+    # is 2.
+    nodes = list(set(nodes))
+    assert len(nodes) == 2
+
+    @ray.remote(num_cpus=1)
+    class Actor:
+        def get_node_id(self):
+            return ray.get_runtime_context().get_node_id()
+
+    def create_actor(node):
+        return Actor.options(
+            scheduling_strategy=NodeAffinitySchedulingStrategy(node, soft=False)
+        ).remote()
+
+    a = create_actor(nodes[0])
+    b = create_actor(nodes[1])
+    actors = [a, b]
+
+    nodes_check = ray.get([act.get_node_id.remote() for act in actors])
+    a_node = nodes_check[0]
+    b_node = nodes_check[1]
+    assert a_node != b_node
+
+    with pytest.raises(
+        ValueError, match="All reader actors must be on the same node.*"
+    ):
+        ray_channel.Channel(None, [create_driver_actor(), a, b], 1000)
+
+
+@pytest.mark.skipif(
+    sys.platform != "linux" and sys.platform != "darwin",
+    reason="Requires Linux or Mac.",
+)
+def test_bunch_readers_on_different_nodes(ray_start_cluster):
+    cluster = ray_start_cluster
+    # This node is for the driver (including the DriverHelperActor) and two of the
+    # readers.
+    first_node_handle = cluster.add_node(num_cpus=3)
+    # This node is for the other two readers.
+    second_node_handle = cluster.add_node(num_cpus=2)
+    ray.init(address=cluster.address)
+    cluster.wait_for_nodes()
+
+    nodes = [first_node_handle.node_id, second_node_handle.node_id]
+    # We want to check that the readers are on different nodes. Thus, we convert `nodes`
+    # to a set and then back to a list to remove duplicates. Then we check that the
+    # length of `nodes` is 2.
+    nodes = list(set(nodes))
+    assert len(nodes) == 2
+
+    @ray.remote(num_cpus=1)
+    class Actor:
+        def get_node_id(self):
+            return ray.get_runtime_context().get_node_id()
+
+    def create_actor(node):
+        return Actor.options(
+            scheduling_strategy=NodeAffinitySchedulingStrategy(node, soft=False)
+        ).remote()
+
+    a = create_actor(nodes[0])
+    b = create_actor(nodes[0])
+    c = create_actor(nodes[1])
+    d = create_actor(nodes[1])
+    actors = [a, b, c, d]
+
+    nodes_check = ray.get([act.get_node_id.remote() for act in actors])
+    a_node = nodes_check[0]
+    b_node = nodes_check[1]
+    c_node = nodes_check[2]
+    d_node = nodes_check[3]
+    assert a_node == b_node
+    assert b_node != c_node
+    assert c_node == d_node
+
+    with pytest.raises(
+        ValueError, match="All reader actors must be on the same node.*"
+    ):
+        ray_channel.Channel(None, [create_driver_actor(), a, b, c, d], 1000)
 
 
 if __name__ == "__main__":

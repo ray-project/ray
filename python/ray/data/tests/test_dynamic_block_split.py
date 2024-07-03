@@ -10,9 +10,9 @@ import pytest
 import ray
 from ray.data import Dataset
 from ray.data._internal.arrow_block import ArrowBlockAccessor
+from ray.data._internal.datasource.csv_datasource import CSVDatasource
 from ray.data.block import BlockMetadata
 from ray.data.datasource import Datasource
-from ray.data.datasource.csv_datasource import CSVDatasource
 from ray.data.datasource.datasource import ReadTask
 from ray.data.tests.conftest import (
     CoreExecutionMetrics,

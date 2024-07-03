@@ -701,11 +701,16 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// current data size.
   /// \param[in] num_readers The number of readers that must read and release
   /// the object before the caller can write again.
+  /// \param[in] timeout_ms The timeout in milliseconds to acquire the write lock.
+  /// If this is 0, the method will try to acquire the write lock once immediately,
+  /// and return either OK or TimedOut without blocking. If this is -1, the method
+  /// will block indefinitely until the write lock is acquired.
   /// \param[out] data The mutable object buffer in plasma that can be written to.
   Status ExperimentalChannelWriteAcquire(const ObjectID &object_id,
                                          const std::shared_ptr<Buffer> &metadata,
                                          uint64_t data_size,
                                          int64_t num_readers,
+                                         int64_t timeout_ms,
                                          std::shared_ptr<Buffer> *data);
 
   /// Experimental method for mutable objects. Releases a write lock on the
@@ -1740,9 +1745,11 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Helper for Get, used only to read experimental mutable objects.
   ///
   /// \param[in] ids IDs of the objects to get.
+  /// \param[in] timeout_ms Time out in milliseconds to get the objects.
   /// \param[out] results Result list of objects data.
   /// \return Status.
   Status GetExperimentalMutableObjects(const std::vector<ObjectID> &ids,
+                                       int64_t timeout_ms,
                                        std::vector<std::shared_ptr<RayObject>> &results);
 
   /// Sends AnnounceWorkerPort to the GCS. Called in ctor and also in ConnectToRaylet.

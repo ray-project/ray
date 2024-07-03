@@ -1,12 +1,12 @@
 from typing import Any, Callable, Iterable
 
+from ray.data._internal.datasource.sql_datasource import Connection, _connect
 from ray.data._internal.execution.interfaces import TaskContext
 from ray.data.block import Block, BlockAccessor
 from ray.data.datasource.datasink import Datasink
-from ray.data.datasource.sql_datasource import Connection, _connect
 
 
-class _SQLDatasink(Datasink):
+class SQLDatasink(Datasink):
 
     _MAX_ROWS_PER_WRITE = 128
 

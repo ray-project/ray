@@ -20,6 +20,7 @@ def test_from_autosummary():
                     "\t:toc\n"
                     "\n"
                     "\tfun_01\n"
+                    "\t.. this is a comment\n"
                     "\tfun_02\n"
                     "something else"
                 ),
