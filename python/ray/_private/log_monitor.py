@@ -235,6 +235,7 @@ class LogMonitor:
 
         # If gcs server restarts, there can be multiple log files.
         monitor_log_paths += glob.glob(f"{self.logs_dir}/gcs_server*.err")
+        monitor_log_paths += glob.glob(f"{self.logs_dir}/gcs_server*.out")
 
         # runtime_env setup process is logged here
         if RAY_RUNTIME_ENV_LOG_TO_DRIVER_ENABLED:
