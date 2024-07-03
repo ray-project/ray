@@ -1425,6 +1425,7 @@ def init(
         "_redis_password", ray_constants.REDIS_DEFAULT_PASSWORD
     )
     _temp_dir: Optional[str] = kwargs.pop("_temp_dir", None)
+    _session_name: Optional[str] = kwargs.pop("_session_name", None)
     _metrics_export_port: Optional[int] = kwargs.pop("_metrics_export_port", None)
     _system_config: Optional[Dict[str, str]] = kwargs.pop("_system_config", None)
     _tracing_startup_hook: Optional[Callable] = kwargs.pop(
@@ -1658,6 +1659,7 @@ def init(
             redis_max_memory=_redis_max_memory,
             plasma_store_socket_name=None,
             temp_dir=_temp_dir,
+            session_name=_session_name,
             storage=storage,
             _system_config=_system_config,
             enable_object_reconstruction=_enable_object_reconstruction,
@@ -1727,6 +1729,7 @@ def init(
             redis_password=_redis_password,
             object_ref_seed=None,
             temp_dir=_temp_dir,
+            session_name=_session_name,
             _system_config=_system_config,
             enable_object_reconstruction=_enable_object_reconstruction,
             metrics_export_port=_metrics_export_port,
