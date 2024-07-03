@@ -41,9 +41,11 @@ from ray.rllib.core.rl_module.rl_module import RLModule, SingleAgentRLModuleSpec
 from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
 from ray.rllib.utils import force_list
 from ray.rllib.utils.annotations import (
+    override,
     OverrideToImplementCustomLogic,
     OverrideToImplementCustomLogic_CallToSuperRecommended,
 )
+from ray.rllib.utils.checkpoints import Checkpointable
 from ray.rllib.utils.debug import update_global_seed_if_necessary
 from ray.rllib.utils.deprecation import (
     Deprecated,
@@ -74,6 +76,7 @@ from ray.rllib.utils.typing import (
     ParamRef,
     ParamDict,
     ResultDict,
+    StateDict,
     TensorType,
 )
 from ray.util.annotations import PublicAPI
@@ -114,7 +117,7 @@ class LearnerHyperparameters:
 
 
 @PublicAPI(stability="alpha")
-class Learner:
+class Learner(Checkpointable):
     """Base class for Learners.
 
     This class will be used to train RLModules. It is responsible for defining the loss
@@ -231,29 +234,7 @@ class Learner:
             Union[SingleAgentRLModuleSpec, MultiAgentRLModuleSpec]
         ] = None,
         module: Optional[RLModule] = None,
-        # Deprecated args.
-        learner_group_scaling_config=None,
-        learner_hyperparameters=None,
-        framework_hyperparameters=None,
     ):
-        if learner_group_scaling_config is not None:
-            deprecation_warning(
-                old="Learner(.., learner_group_scaling_config=..)",
-                help="Deprecated argument. Use `config` (AlgorithmConfig) instead.",
-                error=True,
-            )
-        if learner_hyperparameters is not None:
-            deprecation_warning(
-                old="Learner(.., learner_hyperparameters=..)",
-                help="Deprecated argument. Use `config` (AlgorithmConfig) instead.",
-                error=True,
-            )
-        if framework_hyperparameters is not None:
-            deprecation_warning(
-                old="Learner(.., framework_hyperparameters=..)",
-                help="Deprecated argument. Use `config` (AlgorithmConfig) instead.",
-                error=True,
-            )
         # TODO (sven): Figure out how to do this
         self.config = config.copy(copy_frozen=False)
         self._module_spec = module_spec
@@ -721,18 +702,31 @@ class Learner:
         *,
         module_id: ModuleID,
         module_spec: SingleAgentRLModuleSpec,
+        config_overrides: Optional[Dict] = None,
     ) -> None:
         """Add a module to the underlying MultiAgentRLModule and the Learner.
 
         Args:
             module_id: The id of the module to add.
             module_spec: The module spec of the module to add.
+            config_overrides: The `AlgorithmConfig` overrides that should apply to
+                the new Module, if any.
         """
         self._check_is_built()
-        module = module_spec.build()
 
+        # Build the new RLModule and add it to self.module.
+        module = module_spec.build()
         self.module.add_module(module_id, module)
 
+        # Change our config (AlgorithmConfig) to contain the new Module.
+        self.config.multi_agent(policies={module_id})
+        if config_overrides is not None:
+            self.config.multi_agent(
+                algorithm_config_overrides_per_module={module_id: config_overrides}
+            )
+        self.config.rl_module(
+            rl_module_spec=MultiAgentRLModuleSpec.from_module(self.module)
+        )
         # Allow the user to configure one or more optimizers for this new module.
         self.configure_optimizers_for_module(
             module_id=module_id,
@@ -766,6 +760,13 @@ class Learner:
             del self._module_optimizers[module_id]
 
         self.module.remove_module(module_id)
+        # TODO (sven): This is a hack to manipulate the AlgorithmConfig directly,
+        #  but we'll deprecate config.policies soon anyway.
+        del self.config.policies[module_id]
+        self.config.algorithm_config_overrides_per_module.pop(module_id, None)
+        self.config.rl_module(
+            rl_module_spec=MultiAgentRLModuleSpec.from_module(self.module)
+        )
 
         # Remove all stats from the module from our metrics logger, so we don't report
         # results from this module again.
@@ -1020,6 +1021,7 @@ class Learner:
 
         """
 
+    @override(Checkpointable)
     def get_state(
         self,
         components: Optional[Union[str, List[str]]] = None,
@@ -1027,7 +1029,8 @@ class Learner:
         not_components: Optional[Union[str, List[str]]] = None,
         inference_only: bool = False,
         module_ids: Optional[Container[ModuleID]] = None,
-    ) -> Dict[str, Any]:
+        **kwargs,
+    ) -> StateDict:
         """Get (select components of) the state of this Learner.
 
         Args:
@@ -1051,35 +1054,34 @@ class Learner:
         not_components = force_list(not_components)
 
         state = {}
-        if COMPONENT_RL_MODULE in components:
-            state[COMPONENT_RL_MODULE] = self.get_module_state(
+        if (
+            (components is None or COMPONENT_RL_MODULE in components)
+            and COMPONENT_RL_MODULE not in not_components
+        ):
+            state[COMPONENT_RL_MODULE] = self.module.get_state(
                 inference_only=inference_only, module_ids=module_ids
             )
-        if COMPONENT_OPTIMIZER in components:
-            state[COMPONENT_OPTIMIZER] = self.get_optimizer_state()
-        if COMPONENT_SHOULD_MODULE_BE_UPDATED in components:
+        if (
+            (components is None or COMPONENT_OPTIMIZER in components)
+            and COMPONENT_OPTIMIZER not in not_components
+        ):
+            state[COMPONENT_OPTIMIZER] = self._get_optimizer_state()
+        if (
+            (components is None or COMPONENT_SHOULD_MODULE_BE_UPDATED in components)
+            and COMPONENT_SHOULD_MODULE_BE_UPDATED not in not_components
+        ):
             state[COMPONENT_SHOULD_MODULE_BE_UPDATED] = self.config.policies_to_train
         return state
 
-    def set_state(self, state: Dict[str, Any]) -> None:
-        """Set the state of the learner.
-
-        Args:
-            state: The state of the optimizer and module. Can be obtained
-                from `get_state`. State is a dictionary with component keys, for example
-                COMPONENT_RL_MODULE and COMPONENT_OPTIMIZER.
-        """
+    @override(Checkpointable)
+    def set_state(self, state: StateDict) -> None:
         self._check_is_built()
 
-        # TODO (sven): Deprecate old state keys.
-        module_state = state.get(COMPONENT_RL_MODULE, state.get("module_state"))
-        if module_state is not None:
-            self.set_module_state(module_state)
+        if COMPONENT_RL_MODULE in state:
+            self.module.set_state(state[COMPONENT_RL_MODULE])
 
-        # TODO (sven): Deprecate old state keys.
-        optimizer_state = state.get(COMPONENT_OPTIMIZER, state.get("optimizer_state"))
-        if optimizer_state is not None:
-            self.set_optimizer_state(optimizer_state)
+        if COMPONENT_OPTIMIZER in state:
+            self._set_optimizer_state(state[COMPONENT_OPTIMIZER])
 
         # Update our trainable Modules information/function via our config.
         # If not provided in state (None), all Modules will be trained by default.
@@ -1088,30 +1090,49 @@ class Learner:
                 policies_to_train=state[COMPONENT_SHOULD_MODULE_BE_UPDATED]
             )
 
-    def get_module_state(
-        self, module_ids: Optional[Set[str]] = None, inference_only: bool = False
-    ) -> Dict[str, Any]:
-        """Returns the state of the underlying MultiAgentRLModule.
+    @override(Checkpointable)
+    def get_ctor_args_and_kwargs(self):
+        return (
+            (),  # *args,
+            {
+                "config": self.config,
+                "module_spec": self._module_spec,
+                "module": self._module_obj,
+            },  # **kwargs
+        )
 
-        The output should be numpy-friendly for easy serialization, not framework
-        specific tensors.
+    @override(Checkpointable)
+    def get_checkpointable_components(self):
+        if not self._check_is_built(error=False):
+            self.build()
+        return [
+            ("marl_module", self.module),
+        ]
 
-        Args:
-            module_ids: The ids of the modules to get the weights for. If None, all
-                modules will be returned.
+    #def get_module_state(
+    #    self, module_ids: Optional[Set[str]] = None, inference_only: bool = False
+    #) -> Dict[str, Any]:
+    #    """Returns the state of the underlying MultiAgentRLModule.
+    #
+    #    The output should be numpy-friendly for easy serialization, not framework
+    #    specific tensors.
+    #
+    #    Args:
+    #        module_ids: The ids of the modules to get the weights for. If None, all
+    #            modules will be returned.
+    #
+    #    Returns:
+    #        A dictionary that holds the state of the modules in a numpy-friendly
+    #        format.
+    #    """
+    #    module_states = self.module.get_state(module_ids, inference_only)
+    #    return convert_to_numpy({k: v for k, v in module_states.items()})
 
-        Returns:
-            A dictionary that holds the state of the modules in a numpy-friendly
-            format.
-        """
-        module_states = self.module.get_state(module_ids, inference_only)
-        return convert_to_numpy({k: v for k, v in module_states.items()})
+    #@abc.abstractmethod
+    #def set_module_state(self, state: Dict[str, Any]) -> None:
+    #    """Sets the state of the underlying MultiAgentRLModule"""
 
-    @abc.abstractmethod
-    def set_module_state(self, state: Dict[str, Any]) -> None:
-        """Sets the state of the underlying MultiAgentRLModule"""
-
-    def get_optimizer_state(self) -> Dict[str, Any]:
+    def _get_optimizer_state(self) -> StateDict:
         """Returns the state of all optimizers currently registered in this Learner.
 
         Returns:
@@ -1119,7 +1140,7 @@ class Learner:
         """
         raise NotImplementedError
 
-    def set_optimizer_state(self, state: Dict[str, Any]) -> None:
+    def _set_optimizer_state(self, state: StateDict) -> None:
         """Sets the state of all optimizers currently registered in this Learner.
 
         Args:
@@ -1358,97 +1379,6 @@ class Learner:
 
         return batch
 
-    def _get_metadata(self) -> Dict[str, Any]:
-        metadata = {
-            "learner_class": serialize_type(self.__class__),
-            "ray_version": ray.__version__,
-            "ray_commit": ray.__commit__,
-            "module_state_dir": "module_state",
-            "optimizer_state_dir": "optimizer_state",
-        }
-        return metadata
-
-    def _save_optimizers(self, path: Union[str, pathlib.Path]) -> None:
-        """Save the state of the optimizer to path
-
-        NOTE: if path doesn't exist, then a new directory will be created. otherwise, it
-        will be appended to.
-
-        Args:
-            path: The path to the directory to save the state to.
-        """
-        pass
-
-    def _load_optimizers(self, path: Union[str, pathlib.Path]) -> None:
-        """Load the state of the optimizer from path
-
-        Args:
-            path: The path to the directory to load the state from.
-        """
-        pass
-
-    def save(self, path: Union[str, pathlib.Path]) -> None:
-        """Save the state of the learner to path.
-
-        NOTE: if path doesn't exist, then a new directory will be created. otherwise, it
-        will be appended to.
-
-        the state of the learner is saved in the following format:
-
-        .. testcode::
-            :skipif: True
-
-            checkpoint_dir/
-                learner_state.json
-                module_state/
-                    module_1/
-                        ...
-                optimizer_state/
-                    optimizers_module_1/
-                        ...
-
-        Args:
-            path: The path to the directory to save the state to.
-        """
-        self._check_is_built()
-        path = pathlib.Path(path)
-        path.mkdir(parents=True, exist_ok=True)
-
-        state = self.get_state(
-            not_components=[COMPONENT_RL_MODULE, COMPONENT_OPTIMIZER]
-        )
-
-        self.module.save(path / "module_state")
-        self._save_optimizers(path / "optimizer_state")
-
-        with open(path / "learner_state.pkl", "wb") as f:
-            pickle.dump(state, f)
-
-        with open(path / "learner_state.json", "w") as f:
-            metadata = self._get_metadata()
-            json.dump(metadata, f)
-
-    def restore(self, path: Union[str, pathlib.Path]) -> None:
-        """Restores/loads the state of the learner from path.
-
-        Note: The learner must be constructed ahead of time before its state is loaded.
-
-        Args:
-            path: The path to the directory to load the state from.
-        """
-        self._check_is_built()
-        path = pathlib.Path(path)
-        del self._module
-        # TODO (avnishn): from checkpoint doesn't currently support modules_to_load,
-        #  but it should, so we will add it later.
-        self._module_obj = MultiAgentRLModule.from_checkpoint(path / "module_state")
-        self._reset()
-        self.build()
-        self._load_optimizers(path / "optimizer_state")
-
-        state_dict = pickle.load(open(path / "learner_state.pkl", "rb"))
-        self.set_state(state_dict)
-
     @abc.abstractmethod
     def _is_module_compatible_with_learner(self, module: RLModule) -> bool:
         """Check whether the module is compatible with the learner.
@@ -1509,12 +1439,15 @@ class Learner:
                 "(variables)!"
             )
 
-    def _check_is_built(self):
+    def _check_is_built(self, error: bool = True) -> bool:
         if self.module is None:
-            raise ValueError(
-                "Learner.build() must be called after constructing a "
-                "Learner and before calling any methods on it."
-            )
+            if error:
+                raise ValueError(
+                    "Learner.build() must be called after constructing a "
+                    "Learner and before calling any methods on it."
+                )
+            return False
+        return True
 
     def _reset(self):
         self._params = {}
@@ -1645,4 +1578,20 @@ class Learner:
 
     @Deprecated(new="Learner.restore(...)", error=True)
     def load_state(self, *args, **kwargs):
+        pass
+
+    @Deprecated(new="Learner.module.get_state()", error=True)
+    def get_module_state(self, *args, **kwargs):
+        pass
+
+    @Deprecated(new="Learner.module.set_state()", error=True)
+    def set_module_state(self, *args, **kwargs):
+        pass
+
+    @Deprecated(new="Learner._get_optimizer_state()", error=True)
+    def get_optimizer_state(self, *args, **kwargs):
+        pass
+
+    @Deprecated(new="Learner._set_optimizer_state()", error=True)
+    def set_optimizer_state(self, *args, **kwargs):
         pass

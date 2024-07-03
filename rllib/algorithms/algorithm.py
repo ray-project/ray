@@ -85,8 +85,8 @@ from ray.rllib.utils.annotations import (
 )
 from ray.rllib.utils.checkpoints import (
     CHECKPOINT_VERSION,
-    CHECKPOINT_VERSION_ENV_RUNNERS,
     CHECKPOINT_VERSION_LEARNER,
+    CHECKPOINT_VERSION_LEARNER_AND_ENV_RUNNER,
     get_checkpoint_info,
     try_import_msgpack,
 )
@@ -800,7 +800,7 @@ class Algorithm(Trainable, AlgorithmBase):
                 # Sync the weights from the learner group to the rollout workers.
                 weights = self.learner_group.get_state(components=COMPONENT_RL_MODULE)[
                     COMPONENT_LEARNER
-                ][COMPONENT_RL_MODULE]["weights"]
+                ][COMPONENT_RL_MODULE]
                 local_worker.set_weights(weights)
                 self.workers.sync_weights(inference_only=True)
             # New stack/EnvRunner APIs: Use get/set_state.
@@ -2420,7 +2420,7 @@ class Algorithm(Trainable, AlgorithmBase):
         ):
             module_states = {}
             state = {
-                "checkpoint_version": CHECKPOINT_VERSION_ENV_RUNNERS,
+                "checkpoint_version": CHECKPOINT_VERSION_LEARNER_AND_ENV_RUNNER,
             }
             # Save the LearnerGroup's state to disk.
             self.learner_group.save(os.path.join(checkpoint_dir, COMPONENT_LEARNER))
@@ -3116,7 +3116,9 @@ class Algorithm(Trainable, AlgorithmBase):
                 state = pickle.load(f)
 
         # New API stack checkpoint.
-        if checkpoint_info["checkpoint_version"] >= CHECKPOINT_VERSION_ENV_RUNNERS:
+        if checkpoint_info["checkpoint_version"] >= (
+            CHECKPOINT_VERSION_LEARNER_AND_ENV_RUNNER
+        ):
             # Retrieve the set of all required Module IDs, but limit by `module_ids`,
             # if provided.
             if module_ids is None:

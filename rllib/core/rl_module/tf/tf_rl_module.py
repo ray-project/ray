@@ -4,6 +4,7 @@ from typing import Any, Dict, Union
 from ray.rllib.core.rl_module.rl_module import RLModule, SingleAgentRLModuleSpec
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
+from ray.rllib.utils.typing import StateDict
 
 _, tf, _ = try_import_tf()
 
@@ -36,36 +37,25 @@ class TfRLModule(tf.keras.Model, RLModule):
         return self.forward_train(batch)
 
     @override(RLModule)
-    def get_state(self, inference_only: bool = False) -> Dict[str, Any]:
-        return {
-            "spec": SingleAgentRLModuleSpec.from_module(self),
-            "weights": self.get_weights(),
-        }
+    def get_state(self, inference_only: bool = False) -> StateDict:
+        return self.get_weights()
 
     @override(RLModule)
-    def set_state(self, state: Dict[str, Any]) -> None:
-        if "weights" in state:
-            self.set_weights(state["weights"])
+    def set_state(self, state: StateDict) -> None:
+        self.set_weights(state)
 
-    @override(RLModule)
-    def _module_state_file_name(self) -> pathlib.Path:
-        # TF checkpointing in the native tf format saves the weights as multiple
-        # files, and when calling save_weights, the name passed should have no
-        # file ending (e.g. .h5).
-        return pathlib.Path("module_state")
+    #@override(RLModule)
+    #def save(self, path: Union[str, pathlib.Path]) -> None:
+    #    # NOTE: For this TfRLModule, we save the weights in the TF checkpoint
+    #    # format, so the file name should have no ending and should be a plain string.
+    #    # e.g. "my_checkpoint" instead of "my_checkpoint.h5". This method of
+    #    # checkpointing saves the module weights as multiple files, so we recommend
+    #    # passing a file path relative to a directory, e.g.
+    #    # "my_checkpoint/module_state".
+    #    path = str(pathlib.Path(path) / self._module_state_file_name())
+    #    self.save_weights(path, save_format="tf")
 
-    @override(RLModule)
-    def save(self, path: Union[str, pathlib.Path]) -> None:
-        # NOTE: For this TfRLModule, we save the weights in the TF checkpoint
-        # format, so the file name should have no ending and should be a plain string.
-        # e.g. "my_checkpoint" instead of "my_checkpoint.h5". This method of
-        # checkpointing saves the module weights as multiple files, so we recommend
-        # passing a file path relative to a directory, e.g.
-        # "my_checkpoint/module_state".
-        path = str(pathlib.Path(path) / self._module_state_file_name())
-        self.save_weights(path, save_format="tf")
-
-    @override(RLModule)
-    def restore(self, path: Union[str, pathlib.Path]) -> None:
-        path = str(pathlib.Path(path) / self._module_state_file_name())
-        self.load_weights(path)
+    #@override(RLModule)
+    #def restore(self, path: Union[str, pathlib.Path]) -> None:
+    #    path = str(pathlib.Path(path) / self._module_state_file_name())
+    #    self.load_weights(path)

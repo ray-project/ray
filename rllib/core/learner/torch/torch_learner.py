@@ -42,7 +42,14 @@ from ray.rllib.utils.torch_utils import (
     convert_to_torch_tensor,
     copy_torch_tensors,
 )
-from ray.rllib.utils.typing import ModuleID, Optimizer, Param, ParamDict, TensorType
+from ray.rllib.utils.typing import (
+    ModuleID,
+    Optimizer,
+    Param,
+    ParamDict,
+    StateDict,
+    TensorType,
+)
 
 torch, nn = try_import_torch()
 
@@ -54,6 +61,7 @@ logger = logging.getLogger(__name__)
 
 
 class TorchLearner(Learner):
+
     framework: str = "torch"
 
     def __init__(self, **kwargs):
@@ -169,32 +177,32 @@ class TorchLearner(Learner):
         for optim in self._optimizer_parameters:
             optim.step()
 
-    @override(Learner)
-    def set_module_state(self, state: Dict[str, Any]) -> None:
-        """Sets the weights of the underlying MultiAgentRLModule"""
-        state = convert_to_torch_tensor(state, device=self._device)
-        return self._module.set_state(state)
+    #@override(Learner)
+    #def set_module_state(self, state: Dict[str, Any]) -> None:
+    #    """Sets the weights of the underlying MultiAgentRLModule"""
+    #    state = convert_to_torch_tensor(state, device=self._device)
+    #    return self._module.set_state(state)
+
+    #@override(Learner)
+    #def _save_optimizers(self, path: Union[str, pathlib.Path]) -> None:
+    #    path = pathlib.Path(path)
+    #    path.mkdir(parents=True, exist_ok=True)
+    #    optim_state = self.get_optimizer_state()
+    #    for name, state in optim_state.items():
+    #        torch.save(state, path / f"{name}.pt")
+
+    #@override(Learner)
+    #def _load_optimizers(self, path: Union[str, pathlib.Path]) -> None:
+    #    path = pathlib.Path(path)
+    #    if not path.exists():
+    #        raise ValueError(f"Directory {path} does not exist.")
+    #    state = {}
+    #    for name in self._named_optimizers.keys():
+    #        state[name] = torch.load(path / f"{name}.pt")
+    #    self._set_optimizer_state(state)
 
     @override(Learner)
-    def _save_optimizers(self, path: Union[str, pathlib.Path]) -> None:
-        path = pathlib.Path(path)
-        path.mkdir(parents=True, exist_ok=True)
-        optim_state = self.get_optimizer_state()
-        for name, state in optim_state.items():
-            torch.save(state, path / f"{name}.pt")
-
-    @override(Learner)
-    def _load_optimizers(self, path: Union[str, pathlib.Path]) -> None:
-        path = pathlib.Path(path)
-        if not path.exists():
-            raise ValueError(f"Directory {path} does not exist.")
-        state = {}
-        for name in self._named_optimizers.keys():
-            state[name] = torch.load(path / f"{name}.pt")
-        self.set_optimizer_state(state)
-
-    @override(Learner)
-    def get_optimizer_state(self) -> Dict[str, Any]:
+    def _get_optimizer_state(self) -> StateDict:
         optimizer_name_state = {}
         for name, optim in self._named_optimizers.items():
             optim_state_dict = optim.state_dict()
@@ -203,7 +211,7 @@ class TorchLearner(Learner):
         return optimizer_name_state
 
     @override(Learner)
-    def set_optimizer_state(self, state: Dict[str, Any]) -> None:
+    def _set_optimizer_state(self, state: StateDict) -> None:
         for name, state_dict in state.items():
             if name not in self._named_optimizers:
                 raise ValueError(

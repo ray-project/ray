@@ -11,13 +11,14 @@ from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.ppo.tests.test_ppo_learner import FAKE_BATCH
 from ray.rllib.core import (
     COMPONENT_LEARNER,
+    COMPONENT_RL_MODULE,
     DEFAULT_MODULE_ID,
 )
 from ray.rllib.core.learner.learner import Learner
 from ray.rllib.core.rl_module.marl_module import MultiAgentRLModule
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
-from ray.rllib.core.testing.tf.bc_learner import BCTfLearner
-from ray.rllib.core.testing.tf.bc_module import DiscreteBCTFModule
+from ray.rllib.core.testing.torch.bc_learner import BCTorchLearner
+from ray.rllib.core.testing.torch.bc_module import DiscreteBCTorchModule
 from ray.rllib.core.testing.utils import (
     add_module_to_learner_or_learner_group,
 )
@@ -139,10 +140,10 @@ class TestLearnerGroupSyncUpdate(unittest.TestCase):
         # Config for which user defines custom learner class and RLModule spec.
         config = (
             BaseTestingAlgorithmConfig()
-            .training(learner_class=BCTfLearner)
+            .training(learner_class=BCTorchLearner)
             .rl_module(
                 rl_module_spec=SingleAgentRLModuleSpec(
-                    module_class=DiscreteBCTFModule,
+                    module_class=DiscreteBCTorchModule,
                     model_config_dict={"fcnet_hiddens": [32]},
                 )
             )
@@ -165,7 +166,7 @@ class TestLearnerGroupSyncUpdate(unittest.TestCase):
             ray.get(training_helper.local_training_helper.remote(fw, scaling_mode))
             del training_helper
 
-    def test_update_multigpu(self):
+    def test_update_multi_gpu(self):
         return
 
         fws = ["torch", "tf2"]
@@ -305,15 +306,17 @@ class TestLearnerGroupCheckpointRestore(unittest.TestCase):
 
             # Check if we can load just the MARL Module
             with tempfile.TemporaryDirectory() as tmpdir:
-                marl_module.save(tmpdir)
-                old_learner_weights = learner_group.get_weights()
-                learner_group.load_module_state(marl_module_ckpt_dir=tmpdir)
+                marl_module.save_to_path(tmpdir)
+                old_learner_weights = learner_group.get_state(
+                    components=COMPONENT_RL_MODULE
+                )[COMPONENT_RL_MODULE]
+                learner_group.restore_from_path(tmpdir, component=COMPONENT_RL_MODULE)
                 # check the weights of the module in the learner group are the
                 # same as the weights of the newly created marl module
                 check(learner_group.get_weights(), marl_module.get_state())
                 learner_group.set_weights(old_learner_weights)
 
-            # Check if we can load just single agent RL Modules
+            # Check if we can load just single agent RL Modules.
             with tempfile.TemporaryDirectory() as tmpdir:
                 module_0.save(tmpdir)
                 with tempfile.TemporaryDirectory() as tmpdir2:
@@ -558,7 +561,7 @@ def _check_multi_worker_weights(learner_group, results):
         parameters = learner_group.get_state(
             components="rl_module",
             module_ids=module_id,
-        )["learner"]["rl_module"][module_id]["weights"]
+        )["learner"]["rl_module"][module_id]
         actual_mean_weights = np.mean([w.mean() for w in parameters.values()])
         check(reported_mean_weights, actual_mean_weights, rtol=0.02)
 

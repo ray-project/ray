@@ -34,8 +34,8 @@ class PPOTorchRLModule(TorchRLModule, PPORLModule):
         if not self.config.inference_only and not self.is_stateful() and inference_only:
             # Call the local hook to remove parameters not needed in `inference_only`
             # mode.
-            state["weights"] = self._inference_only_get_state_hook(state["weights"])
-            state["spec"].inference_only = True
+            state = self._inference_only_get_state_hook(state)
+            #state["spec"].inference_only = True
             return state
 
         # Otherwise, the state dict is for checkpointing or saving the model.

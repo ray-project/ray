@@ -385,6 +385,8 @@ class RLModule(Checkpointable, abc.ABC):
 
     framework: str = None
 
+    STATE_FILE_NAME = "module_state.pkl"
+
     def __init__(self, config: RLModuleConfig):
         self.config = config
 

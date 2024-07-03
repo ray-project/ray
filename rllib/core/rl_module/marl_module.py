@@ -178,6 +178,9 @@ class MultiAgentRLModule(RLModule):
         if not module.config.inference_only:
             self.config.inference_only = False
         self._rl_modules[module_id] = module
+        # Update our `MultiAgentRLModuleConfig`, such that - if written to disk -
+        # it'll allow for proper restoring this instance through `.from_checkpoint()`.
+        self.config.modules[module_id] = SingleAgentRLModuleSpec.from_module(module)
 
     def remove_module(
         self, module_id: ModuleID, *, raise_err_if_not_found: bool = True
@@ -195,6 +198,7 @@ class MultiAgentRLModule(RLModule):
         if raise_err_if_not_found:
             self._check_module_exists(module_id)
         del self._rl_modules[module_id]
+        del self.config.modules[module_id]
 
     def foreach_module(
         self, func: Callable[[ModuleID, RLModule, Optional[Any]], T], **kwargs
@@ -324,9 +328,9 @@ class MultiAgentRLModule(RLModule):
     @override(RLModule)
     def get_state(
         self,
-        components: Optional[Collection[str]],
+        components: Optional[Collection[str]] = None,
         *,
-        not_components: Optional[Collection[str]],
+        not_components: Optional[Collection[str]] = None,
         module_ids: Optional[Set[ModuleID]] = None,
         inference_only: bool = False,
         **kwargs,
@@ -384,7 +388,7 @@ class MultiAgentRLModule(RLModule):
                 self.add_module(module_id, new_module, override=False)
 
     @override(Checkpointable)
-    def get_checkpointable_components(self) -> List[Tuple[str, Checkpointable], ...]:
+    def get_checkpointable_components(self) -> List[Tuple[str, Checkpointable]]:
         return list(self._rl_modules.items())
 
     #@override(RLModule)
@@ -445,17 +449,17 @@ class MultiAgentRLModule(RLModule):
     #            )
     #        submodule.restore(submodule_weights_dir)
 
-    @classmethod
-    @override(RLModule)
-    def from_checkpoint(
-        cls,
-        checkpoint_dir_path: Union[str, pathlib.Path],
-    ) -> None:
-        path = pathlib.Path(checkpoint_dir_path)
-        metadata_path = path / RLMODULE_METADATA_FILE_NAME
-        marl_module = cls._from_metadata_file(metadata_path)
-        marl_module.restore(path)
-        return marl_module
+    #@classmethod
+    #@override(RLModule)
+    #def from_checkpoint(
+    #    cls,
+    #    checkpoint_dir_path: Union[str, pathlib.Path],
+    #) -> None:
+    #    path = pathlib.Path(checkpoint_dir_path)
+    #    metadata_path = path / RLMODULE_METADATA_FILE_NAME
+    #    marl_module = cls._from_metadata_file(metadata_path)
+    #    marl_module.restore(path)
+    #    return marl_module
 
     def __repr__(self) -> str:
         return f"MARL({pprint.pformat(self._rl_modules)})"

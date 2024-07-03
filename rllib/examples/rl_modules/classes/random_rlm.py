@@ -44,9 +44,6 @@ class RandomRLModule(RLModule):
         )
         return {SampleBatch.ACTIONS: actions}
 
-    def _module_state_file_name(self) -> pathlib.Path:
-        return pathlib.Path("random_rl_module_dummy_state")
-
     def compile(self, *args, **kwargs):
         """Dummy method for compatibility with TorchRLModule.
 

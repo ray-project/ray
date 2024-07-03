@@ -7,7 +7,7 @@ import sys
 from typing import (
     Any,
     Callable,
-    Container,
+    Collection,
     Dict,
     List,
     Optional,
@@ -2491,7 +2491,9 @@ class AlgorithmConfig(_Config):
     def multi_agent(
         self,
         *,
-        policies=NotProvided,
+        policies: Optional[
+            Union[MultiAgentPolicyConfigDict, Collection[PolicyID]]
+        ] = NotProvided,
         algorithm_config_overrides_per_module: Optional[
             Dict[ModuleID, PartialAlgorithmConfigDict]
         ] = NotProvided,
@@ -2500,7 +2502,7 @@ class AlgorithmConfig(_Config):
             Callable[[AgentID, "OldEpisode"], PolicyID]
         ] = NotProvided,
         policies_to_train: Optional[
-            Union[Container[PolicyID], Callable[[PolicyID, SampleBatchType], bool]]
+            Union[Collection[PolicyID], Callable[[PolicyID, SampleBatchType], bool]]
         ] = NotProvided,
         policy_states_are_swappable: Optional[bool] = NotProvided,
         observation_fn: Optional[Callable] = NotProvided,
@@ -2579,8 +2581,11 @@ class AlgorithmConfig(_Config):
             for pid in policies:
                 validate_policy_id(pid, error=True)
 
+            # Collection: Convert to dict.
+            if isinstance(policies, (set, tuple, list)):
+                policies = {p: PolicySpec() for p in policies}
             # Validate each policy spec in a given dict.
-            if isinstance(policies, dict):
+            elif isinstance(policies, dict):
                 for pid, spec in policies.items():
                     # If not a PolicySpec object, values must be lists/tuples of len 4.
                     if not isinstance(spec, PolicySpec):
@@ -2600,7 +2605,16 @@ class AlgorithmConfig(_Config):
                             f"Multi-agent policy config for {pid} must be a dict or "
                             f"AlgorithmConfig object, but got {type(spec.config)}!"
                         )
-            self.policies = policies
+                # If this config is already multi-agent, update the policies dict.
+                if self.is_multi_agent():
+                    self.policies.update(policies)
+                else:
+                    self.policies = policies
+            else:
+                raise ValueError(
+                    "`policies` must be dict mapping PolicyID to PolicySpec OR a "
+                    "set/tuple/list of PolicyIDs!"
+                )
 
         if algorithm_config_overrides_per_module is not NotProvided:
             if not isinstance(algorithm_config_overrides_per_module, dict):
@@ -2609,7 +2623,7 @@ class AlgorithmConfig(_Config):
                     "module IDs to config override dicts! You provided "
                     f"{algorithm_config_overrides_per_module}."
                 )
-            self.algorithm_config_overrides_per_module = (
+            self.algorithm_config_overrides_per_module.update(
                 algorithm_config_overrides_per_module
             )
 

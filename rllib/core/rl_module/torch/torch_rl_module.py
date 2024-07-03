@@ -40,6 +40,9 @@ class TorchRLModule(nn.Module, RLModule):
 
     framework: str = "torch"
 
+    # Stick with torch default.
+    STATE_FILE_NAME = "module_state.pt"
+
     def __init__(self, *args, **kwargs) -> None:
         nn.Module.__init__(self)
         RLModule.__init__(self, *args, **kwargs)
@@ -66,38 +69,34 @@ class TorchRLModule(nn.Module, RLModule):
 
     @override(RLModule)
     def get_state(self, inference_only: bool = False) -> Dict[str, Any]:
-        return {
-            "spec": SingleAgentRLModuleSpec.from_module(self),
-            "weights": self.state_dict(),
-        }
+        return self.state_dict()
 
     @override(RLModule)
     def set_state(self, state: Dict[str, Any]) -> None:
-        if "weights" in state:
-            state_dict = convert_to_torch_tensor(state["weights"])
-            self.load_state_dict(state_dict)
+        # If state contains more keys than `self.state_dict()`, then we simply ignore
+        # these keys (strict=False). This is most likely due to `state` coming from
+        # an `inference_only=False` RLModule, while `self` is an `inference_only=True`
+        # RLModule.
+        self.load_state_dict(convert_to_torch_tensor(state), strict=False)
 
-    def _module_state_file_name(self) -> pathlib.Path:
-        return pathlib.Path("module_state.pt")
+    #@override(RLModule)
+    #def save_to_path(self, path: Union[str, pathlib.Path]) -> None:
+    #    #state = self.get_state()
 
-    @override(RLModule)
-    def save(self, path: Union[str, pathlib.Path]) -> None:
-        state = self.get_state()
+    #    path = pathlib.Path(path)
+    #    path.mkdir(parents=True, exist_ok=True)
 
-        path = pathlib.Path(path)
-        path.mkdir(parents=True, exist_ok=True)
+    #    # Save the weights to one file (so that users can load the model simply
+    #    # by using the torch.nn.Module API.
+    #    weights_file = str(pathlib.Path(path) / self._module_state_file_name())
+    #    torch.save(convert_to_numpy(state["weights"]), weights_file)
+    #    # Save the meta-data (spec and other meta-data) to a separate file.
+    #    self._save_module_metadata(path, SingleAgentRLModuleSpec)
 
-        # Save the weights to one file (so that users can load the model simply
-        # by using the torch.nn.Module API.
-        weights_file = str(pathlib.Path(path) / self._module_state_file_name())
-        torch.save(convert_to_numpy(state["weights"]), weights_file)
-        # Save the meta-data (spec and other meta-data) to a separate file.
-        self._save_module_metadata(path, SingleAgentRLModuleSpec)
-
-    @override(RLModule)
-    def restore(self, path: Union[str, pathlib.Path]) -> None:
-        path = str(pathlib.Path(path) / self._module_state_file_name())
-        self.set_state({"weights": torch.load(path)})
+    #@override(RLModule)
+    #def restore_from_path(self, path: Union[str, pathlib.Path]) -> None:
+    #    path = str(pathlib.Path(path) / self._module_state_file_name())
+    #    self.set_state({"weights": torch.load(path)})
 
     def _set_inference_only_state_dict_keys(self) -> None:
         """Sets expected and unexpected keys for the inference-only module.
@@ -169,20 +168,20 @@ class TorchDDPRLModule(RLModule, nn.parallel.DistributedDataParallel):
         self.unwrapped().set_state(*args, **kwargs)
 
     @override(RLModule)
-    def save(self, *args, **kwargs):
+    def save_to_path(self, *args, **kwargs):
         self.unwrapped().save(*args, **kwargs)
 
     @override(RLModule)
-    def restore(self, *args, **kwargs):
+    def restore_from_path(self, *args, **kwargs):
         self.unwrapped().restore(*args, **kwargs)
 
     @override(RLModule)
-    def _save_module_metadata(self, *args, **kwargs):
-        self.unwrapped()._save_module_metadata(*args, **kwargs)
+    def get_metadata(self, *args, **kwargs):
+        self.unwrapped().get_metadata(*args, **kwargs)
 
-    @override(RLModule)
-    def _module_metadata(self, *args, **kwargs):
-        return self.unwrapped()._module_metadata(*args, **kwargs)
+    #@override(RLModule)
+    #def _module_metadata(self, *args, **kwargs):
+    #    return self.unwrapped()._module_metadata(*args, **kwargs)
 
     # TODO (sven): Figure out a better way to avoid having to method-spam this wrapper
     #  class, whenever we add a new API to any wrapped RLModule here. We could try

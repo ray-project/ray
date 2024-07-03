@@ -4,7 +4,7 @@ import pathlib
 from typing import (
     Any,
     Callable,
-    Container,
+    Collection,
     Dict,
     List,
     Optional,
@@ -18,7 +18,7 @@ import tree  # pip install dm_tree
 
 import ray
 from ray import ObjectRef
-from ray.rllib.core import COMPONENT_LEARNER, COMPONENT_RL_MODULE
+from ray.rllib.core import COMPONENT_RL_MODULE
 from ray.rllib.core.learner.learner import Learner
 from ray.rllib.core.rl_module.rl_module import (
     SingleAgentRLModuleSpec,
@@ -27,6 +27,8 @@ from ray.rllib.core.rl_module.rl_module import (
 from ray.rllib.env.multi_agent_episode import MultiAgentEpisode
 from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.actor_manager import FaultTolerantActorManager
+from ray.rllib.utils.annotations import override
+from ray.rllib.utils.checkpoints import Checkpointable
 from ray.rllib.utils.deprecation import (
     Deprecated,
     DEPRECATED_VALUE,
@@ -42,6 +44,7 @@ from ray.rllib.utils.typing import (
     EpisodeType,
     ModuleID,
     RLModuleSpec,
+    StateDict,
     T,
 )
 from ray.train._internal.backend_executor import BackendExecutor
@@ -71,7 +74,7 @@ def _get_backend_config(learner_class: Type[Learner]) -> str:
 
 
 @PublicAPI(stability="alpha")
-class LearnerGroup:
+class LearnerGroup(Checkpointable):
     """Coordinator of n (possibly remote) Learner workers.
 
     Each Learner worker has a copy of the RLModule, the loss function(s), and
@@ -102,6 +105,7 @@ class LearnerGroup:
         """
         # scaling_config = learner_spec.learner_group_scaling_config
         self.config = config
+        self._module_spec = module_spec
 
         learner_class = self.config.learner_class
         module_spec = module_spec or self.config.get_marl_module_spec()
@@ -574,6 +578,7 @@ class LearnerGroup:
 
         return results
 
+    # TODO (sven): Move this into FaultTolerantActorManager?
     def _get_results(self, results):
         processed_results = []
         for result in results:
@@ -672,39 +677,19 @@ class LearnerGroup:
         ):
             del self._metrics_logger_old_and_hybrid_stack.stats[module_id]
 
+    @override(Checkpointable)
     def get_state(
         self,
-        components: Optional[Container[str]] = None,
+        components: Optional[Collection[str]] = None,
         *,
-        inference_only: bool = False,
-        module_ids: Container[ModuleID] = None,
-    ) -> Dict[str, Any]:
-        """Get the states of this LearnerGroup.
-
-        Contains the Learners' state (which should be the same across Learners) and
-        some other information.
-
-        Args:
-            components: An optional list of string keys to be included in the
-                returned state. This might be useful, if getting certain components
-                of the state is expensive (e.g. reading/compiling the weights of a large
-                NN) and at the same time, these components are not required by the
-                caller.
-            inference_only: Return weights with workers that keep inference-only
-                modules. This is needed for algorithms in the new stack that
-                use inference-only modules. In this case only a part of the
-                parameters are synced to the workers. Default is False.
-            module_ids: Optional container of ModuleIDs to be returned only within the
-                state dict. If None (default), all module IDs' weights are returned.
-
-        Returns:
-            The state dict mapping str keys to state information.
-        """
+        not_components: Optional[Collection[str]] = None,
+        **kwargs,
+    ) -> StateDict:
         if self.is_local:
             learner_state = self._learner.get_state(
                 components=components,
-                inference_only=inference_only,
-                module_ids=module_ids,
+                not_components=not_components,
+                **kwargs,
             )
         else:
             worker = self._worker_manager.healthy_actor_ids()[0]
@@ -712,8 +697,8 @@ class LearnerGroup:
             results = self._worker_manager.foreach_actor(
                 lambda w: w.get_state(
                     components=components,
-                    inference_only=inference_only,
-                    module_ids=module_ids,
+                    not_components=not_components,
+                    **kwargs,
                 ),
                 remote_actor_ids=[worker],
             )
@@ -721,18 +706,31 @@ class LearnerGroup:
 
         return learner_state
 
-    def set_state(self, state: Dict[str, Any]) -> None:
-        """Sets the state of this LearnerGroup.
-
-        Note that all Learners share the same state.
-
-        Args:
-            state: The state dict mapping str keys to state information.
-        """
+    @override(Checkpointable)
+    def set_state(self, state: StateDict) -> None:
         if self.is_local:
-            self._learner.set_state(learner_state)
+            self._learner.set_state(state)
         else:
-            self._worker_manager.foreach_actor(lambda w: w.set_state(learner_state))
+            self._worker_manager.foreach_actor(lambda w: w.set_state(state))
+
+    @override(Checkpointable)
+    def get_ctor_args_and_kwargs(self):
+        return (
+            (),  # *args
+            {
+                "config": self.config,
+                "module_spec": self._module_spec,
+            },  # **kwargs
+        )
+
+    @override(Checkpointable)
+    def get_checkpointable_components(self):
+        # Return the entire ActorManager, if remote. Otherwise, return the
+        # local worker. Also, don't give the component (Learner) a name ("")
+        # as it's the only component in this LearnerGroup to be saved.
+        return [
+            ("", self._learner if self.is_local else self._worker_manager)
+        ]
 
     def foreach_learner(
         self, func: Callable[[Learner, Optional[Any]], T], **kwargs
@@ -748,58 +746,6 @@ class LearnerGroup:
         if self.is_local:
             return [func(self._learner, **kwargs)]
         return self._worker_manager.foreach_actor(partial(func, **kwargs))
-
-    def save(self, path: str) -> None:
-        """Saves the state of the LearnerGroup.
-
-        Args:
-            path: The path to save the state to.
-        """
-        if self.is_local:
-            self._learner.save(path)
-        else:
-            worker = self._worker_manager.healthy_actor_ids()[0]
-            worker_ip_addr = self._worker_manager.foreach_actor(
-                self._get_ip_address, remote_actor_ids=[worker]
-            )
-            worker_ip_addr = self._get_results(worker_ip_addr)[0]
-            self_ip_addr = self._get_ip_address()
-
-            if worker_ip_addr == self_ip_addr:
-                self._worker_manager.foreach_actor(
-                    lambda w: w.save(path), remote_actor_ids=[worker]
-                )
-            else:
-                # save the checkpoint to a temporary location on the worker
-
-                # create a temporary directory on the worker
-                worker_temp_dir = self._worker_manager.foreach_actor(
-                    self._create_temporary_dir, remote_actor_ids=[worker]
-                )
-                worker_temp_dir = self._get_results(worker_temp_dir)[0]
-
-                # save the checkpoint to the temporary directory on the worker
-                self._worker_manager.foreach_actor(
-                    lambda w: w.save(worker_temp_dir), remote_actor_ids=[worker]
-                )
-
-                # sync the temporary directory on the worker to the local directory
-                sync_dir_between_nodes(
-                    worker_ip_addr, worker_temp_dir, self_ip_addr, path
-                )
-
-                # Creating this function here instead of making it a member function
-                # because it uses the worker_temp_dir variable, and this can't
-                # be passed in as an argument to foreach_actor
-                def remove_dir(w):
-                    import shutil
-
-                    shutil.rmtree(worker_temp_dir)
-
-                # remove the temporary directory on the worker
-                self._worker_manager.foreach_actor(
-                    remove_dir, remote_actor_ids=[worker]
-                )
 
     def restore(self, path: str) -> None:
         """Restores/loads the state of the LearnerGroup from a path.
@@ -1038,37 +984,6 @@ class LearnerGroup:
             raise ValueError(f"Path {path} does not exist.")
         path = path.absolute()
         return path
-
-    @staticmethod
-    def _create_temporary_dir(_=None) -> str:
-        """Creates a temporary directory.
-
-        Args:
-            _: Unused arg. Exists to make this function compatible with foreach_actor
-            calls.
-
-        Returns:
-            The path to the temporary directory.
-        """
-        import tempfile
-
-        return tempfile.mkdtemp()
-
-    @staticmethod
-    def _get_ip_address(_=None) -> str:
-        """Returns this process's address.
-
-        Args:
-            _: Unused arg. Exists to make this function compatible with foreach_actor
-            calls.
-
-        Returns:
-            The address of this process.
-
-        """
-        import ray
-
-        return ray.util.get_node_ip_address()
 
     def shutdown(self):
         """Shuts down the LearnerGroup."""

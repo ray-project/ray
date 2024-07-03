@@ -1020,7 +1020,7 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
         rl_module_state = self.get_state(
             components=COMPONENT_RL_MODULE
         )[COMPONENT_RL_MODULE]
-        return rl_module_state["weights"]
+        return rl_module_state
 
     @Deprecated(new="MultiAgentEnvRunner.set_state()", error=False)
     def set_weights(
