@@ -30,14 +30,14 @@ install_bazel() {
     fi
 
     TARGET="$TMP_DIR/bin/bazel"
-    curl -f -s -L -R -o "${TARGET}" "${URL}"
+    curl -sfL -R -o "${TARGET}" "${URL}"
     chmod +x "${TARGET}"
 }
 
 install_miniconda() {
     # Install miniconda3 based on the architecture used
     mkdir -p "$TMP_DIR/miniconda3"
-    curl https://repo.anaconda.com/miniconda/Miniconda3-py311_24.4.0-0-MacOSX-"$MAC_ARCH".sh -o "$TMP_DIR/miniconda3/miniconda.sh"
+    curl -sfL https://repo.anaconda.com/miniconda/Miniconda3-py311_24.4.0-0-MacOSX-"$MAC_ARCH".sh -o "$TMP_DIR/miniconda3/miniconda.sh"
     bash "$TMP_DIR/miniconda3/miniconda.sh" -b -u -p "$TMP_DIR/miniconda3"
     rm -rf "$TMP_DIR/miniconda3/miniconda.sh"
 
