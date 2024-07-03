@@ -49,14 +49,17 @@ class IntraProcessChannel(ChannelInterface):
     def __str__(self) -> str:
         return f"IntraProcessChannel(channel_id={self._channel_id})"
 
-    def write(self, value: Any):
+    def write(self, value: Any, timeout: Optional[float] = None):
+        # No need to check timeout as the operation is non-blocking.
+
         # Because both the reader and writer are in the same worker process,
         # we can directly store the data in the context instead of storing
         # it in the channel object. This removes the serialization overhead of `value`.
         ctx = ChannelContext.get_current().serialization_context
         ctx.set_data(self._channel_id, value)
 
-    def read(self) -> Any:
+    def read(self, timeout: Optional[float] = None) -> Any:
+        # No need to check timeout as the operation is non-blocking.
         ctx = ChannelContext.get_current().serialization_context
         return ctx.get_data(self._channel_id)
 
