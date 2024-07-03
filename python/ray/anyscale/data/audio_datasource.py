@@ -32,12 +32,12 @@ class AudioDatasource(FileBasedDatasource):
         # `soundfile` doesn't support reading from a `pyarrow.NativeFile` directly, so
         # we need to read the file into memory first.
         stream = io.BytesIO(f.read())
-        amplitude, _ = soundfile.read(stream, always_2d=True, dtype="float32")
+        amplitude, sample_rate = soundfile.read(stream, always_2d=True, dtype="float32")
 
         # (amplitude, channels) -> (channels, amplitude)
         amplitude = amplitude.transpose((1, 0))
 
-        item = {"amplitude": amplitude}
+        item = {"amplitude": amplitude, "sample_rate": sample_rate}
         if self.include_paths:
             item["path"] = path
 
