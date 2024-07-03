@@ -2461,7 +2461,7 @@ class Dataset:
     @ConsumptionAPI(
         if_more_than_read=True,
         datasource_metadata="row count",
-        pattern="without reading in the entire data.",
+        pattern="Examples:",
     )
     def count(self) -> int:
         """Count the number of records in the dataset. For `Dataset`s
