@@ -4,16 +4,15 @@ set -euo pipefail
 
 set -x
 
-export PYTHON_VERSION="${PYTHON_VERSION}"
+# Sets RAY_COMMIT and RAY_VERSION
 source .buildkite/release-automation/set-ray-version.sh
 
-if [[ "${RAY_COMMIT:-}" == "" ]]; then
-    if [[ "${BUILDKITE_COMMIT:-}" == "" ]]; then
-        echo "neither BUILDKITE_COMMIT nor RAY_COMMIT is set"
-        exit 1
-    fi
-    RAY_COMMIT="${BUILDKITE_COMMIT:-}"
+if [[ "${PYTHON_VERSION}" == "" ]]; then
+	echo "Python version not set" >/dev/stderr
+	exit 1
 fi
+
+export PYTHON_VERSION
 
 export PATH="/usr/local/bin/miniconda3/bin:${PATH}"
 source "/usr/local/bin/miniconda3/etc/profile.d/conda.sh"
