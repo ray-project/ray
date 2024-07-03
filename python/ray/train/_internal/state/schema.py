@@ -14,6 +14,12 @@ class RunStatusEnum(str, Enum):
 
 
 @DeveloperAPI
+class ActorStatusEnum(str, Enum):
+    DEAD = "DEAD"
+    ALIVE = "ALIVE"
+
+
+@DeveloperAPI
 class TrainWorkerInfo(BaseModel):
     """Metadata of a Ray Train worker."""
 
@@ -28,6 +34,9 @@ class TrainWorkerInfo(BaseModel):
     pid: int = Field(description="Process ID of the worker.")
     gpu_ids: List[int] = Field(
         description="A list of GPU ids allocated to that worker."
+    )
+    actor_status: Optional[ActorStatusEnum] = Field(
+        description="The status of the train worker actor. It can be ALIVE or DEAD."
     )
 
 
@@ -54,7 +63,7 @@ class TrainRunInfo(BaseModel):
     datasets: List[TrainDatasetInfo] = Field(
         description="A List of dataset info for this Train run."
     )
-    status: RunStatusEnum = Field(
+    run_status: RunStatusEnum = Field(
         description="The current status of the train run. It can be one of the "
         "following: STARTED, FINISHED, or ERRORED."
     )
@@ -63,6 +72,9 @@ class TrainRunInfo(BaseModel):
     )
     end_time_ms: Optional[int] = Field(
         description="The UNIX timestamp of the end time of this Train run."
+    )
+    actor_status: Optional[ActorStatusEnum] = Field(
+        description="The status of the controller actor. It can be ALIVE or DEAD."
     )
 
 

@@ -655,16 +655,17 @@ class BackendExecutor:
             error = e
         finally:
             if self.state_tracking_enabled:
-                from ray.train._internal.state.schema import RunStatusEnum
-
                 end_time_ms = int(time.time() * 1000)
+
+                from ray.train._internal.state.schema import RunStatusEnum
 
                 status = RunStatusEnum.ERRORED if error else RunStatusEnum.FINISHED
 
-                self.state_manager.update_train_run(
-                    run_id=self._trial_info.run_id,
-                    status=status,
-                    end_time_ms=end_time_ms,
+                self.state_manager.update_train_run_info(
+                    updates=dict(
+                        status=status,
+                        end_time_ms=end_time_ms,
+                    )
                 )
 
             if error:

@@ -1,6 +1,6 @@
 import logging
 import os
-from typing import Dict
+from typing import Any, Dict
 
 import ray
 from ray.data import Dataset
@@ -30,6 +30,7 @@ class TrainRunStateManager:
         run_id: str,
         job_id: str,
         run_name: str,
+        run_status: str,
         controller_actor_id: str,
         datasets: Dict[str, Dataset],
         worker_group: WorkerGroup,
@@ -91,13 +92,15 @@ class TrainRunStateManager:
             workers=worker_info_list,
             datasets=dataset_info_list,
             start_time_ms=start_time_ms,
+            run_status=run_status,
         )
 
         ray.get(self.state_actor.register_train_run.remote(self.train_run_info))
 
-    def update_train_run(self, run_id: str, status: str, end_time_ms: int) -> None:
-        """Update the Train Run status on finish or error."""
-        if self.train_run_info and run_id == self.train_run_info.run_id:
-            self.train_run_info.status = status
-            self.train_run_info.end_time_ms = end_time_ms
+    def update_train_run_info(self, updates: Dict[str, Any]) -> TrainRunInfo:
+        """Update specific fields of a registered TrainRunInfo instance."""
+        if self.train_run_info:
+            run_info_dict = self.train_run_info.dict()
+            run_info_dict.update(updates)
+            self.train_run_info = TrainRunInfo(**run_info_dict)
             ray.get(self.state_actor.register_train_run.remote(self.train_run_info))

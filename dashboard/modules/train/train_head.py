@@ -12,6 +12,7 @@ from ray.dashboard.modules.job.common import (
 from ray.dashboard.modules.job.utils import (
     find_jobs_by_job_ids,
 )
+from ray.experimental.state.api import list_actors
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -61,6 +62,8 @@ class TrainHead(dashboard_utils.DashboardHeadModule):
         else:
             try:
                 train_runs = await stats_actor.get_all_train_runs.remote()
+                self._update_actor_status(train_runs)
+
                 # Sort train runs in reverse chronological order
                 train_runs = sorted(
                     train_runs.values(),
@@ -95,6 +98,19 @@ class TrainHead(dashboard_utils.DashboardHeadModule):
             text=details.json(),
             content_type="application/json",
         )
+
+    def _update_actor_status(self, train_runs):
+        actor_status_table = {actor.actor_id: actor.state for actor in list_actors()}
+
+        for train_run in train_runs:
+            train_run.actor_status = actor_status_table.get(
+                train_run.controller_actor_id, None
+            )
+
+            for worker_info in train_run.workers:
+                worker_info.actor_status = actor_status_table.get(
+                    worker_info.actor_id, None
+                )
 
     @staticmethod
     def is_minimal_module():
