@@ -58,6 +58,9 @@ class API:
             if line.strip().startswith(":"):
                 # option lines
                 continue
+            if line.strip().startswith(".."):
+                # comment lines
+                continue
             if not line.strip():
                 # empty lines
                 continue
