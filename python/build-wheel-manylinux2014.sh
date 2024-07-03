@@ -2,6 +2,17 @@
 
 set -exuo pipefail
 
+if [[ ! -f /opt/centos-mirror-fixed ]]; then
+  sed -i 's/enabled=1/enabled=0/g' /etc/yum/pluginconf.d/fastestmirror.conf
+  sed -i 's/^mirrorlist/#mirrorlist/g' /etc/yum.repos.d/*.repo
+  sed -i 's;^.*baseurl=http://mirror;baseurl=https://vault;g' /etc/yum.repos.d/*.repo
+  if [[ "${HOSTTYPE}" == "aarch64" ]]; then
+    sed -i 's;/centos/7/;/altarch/7/;g' /etc/yum.repos.d/*.repo
+  fi
+
+  touch /opt/centos-mirror-fixed  # So that we only fix once.
+fi
+
 export RAY_INSTALL_JAVA="${RAY_INSTALL_JAVA:-0}"
 
 # Python version key, interpreter version code
