@@ -22,7 +22,9 @@ def get_state_from_address(address=None):
     address = services.canonicalize_bootstrap_address_or_die(address)
 
     state = GlobalState()
-    options = GcsClientOptions.create(address, None)
+    options = GcsClientOptions.create(
+        address, None, allow_cluster_id_nil=True, fetch_cluster_id_if_nil=True
+    )
     state._initialize_global_state(options)
     return state
 
