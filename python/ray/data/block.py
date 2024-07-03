@@ -297,6 +297,15 @@ class BlockAccessor:
         """Return the default data format for this accessor."""
         return self.to_block()
 
+    def to(self, type: BlockType) -> Block:
+        """Return the block in the provided type."""
+        if type == BlockType.PANDAS:
+            return self.to_pandas()
+        elif type == BlockType.ARROW:
+            return self.to_arrow()
+        else:
+            self.to_default()
+
     def to_batch_format(self, batch_format: Optional[str]) -> DataBatch:
         """Convert this block into the provided batch format.
 
