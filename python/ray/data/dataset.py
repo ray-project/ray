@@ -78,6 +78,7 @@ from ray.data.block import (
     VALID_BATCH_FORMATS,
     Block,
     BlockAccessor,
+    BlockMetadata,
     DataBatch,
     T,
     U,
@@ -2460,12 +2461,13 @@ class Dataset:
     @ConsumptionAPI(
         if_more_than_read=True,
         datasource_metadata="row count",
-        pattern="Time complexity:",
+        pattern="without reading in the entire data.",
     )
     def count(self) -> int:
-        """Count the number of records in the dataset.
-
-        Time complexity: O(dataset size / parallelism), O(1) for parquet
+        """Count the number of records in the dataset. For `Dataset`s
+        which only read Parquet files (created with :meth:`~ray.data.read_parquet`),
+        this method reads the file metadata to efficiently count the number of records
+        without reading in the entire data.
 
         Examples:
             >>> import ray
@@ -2485,13 +2487,14 @@ class Dataset:
         if meta_count is not None:
             return meta_count
 
-        get_num_rows = cached_remote_fn(_get_num_rows)
-
-        # Directly loop over the iterator of `BlockRef`s instead of first
-        # retrieving a list of `BlockRef`s.
+        # Directly loop over the iterator of `RefBundle`s instead of
+        # retrieving a full list of `BlockRef`s.
         total_rows = 0
-        for block_ref in self.iter_internal_block_refs():
-            total_rows += ray.get(get_num_rows.remote(block_ref))
+        for ref_bundle in self.iter_internal_ref_bundles():
+            num_rows = ref_bundle.num_rows()
+            # Executing the dataset always returns blocks with valid `num_rows`.
+            assert num_rows is not None
+            total_rows += num_rows
         return total_rows
 
     @ConsumptionAPI(
@@ -4567,25 +4570,35 @@ class Dataset:
 
     @ConsumptionAPI(pattern="")
     @DeveloperAPI
-    def iter_internal_block_refs(self) -> Iterator[ObjectRef[Block]]:
-        """Get an iterator over references to the underlying blocks of this Dataset.
-
-        This function can be used for zero-copy access to the data. It does not
-        keep the data materialized in-memory.
+    def iter_internal_ref_bundles(self) -> Iterator[RefBundle]:
+        """Get an iterator over
+        :class:`~ray.data._internal.execution.interfaces.RefBundle`s
+        belonging to this Dataset. Calling this function doesn't keep
+        the data materialized in-memory.
 
         Examples:
             >>> import ray
             >>> ds = ray.data.range(1)
-            >>> for block_ref in ds.get_internal_block_refs():
-            ...     block = ray.get(block_ref)
+            >>> for ref_bundle in ds.get_internal_block_refs():
+            ...     for block_ref, block_md in ref_bundle.blocks:
+            ...         block = ray.get(block_ref)
 
         Returns:
-            An iterator over references to this Dataset's blocks.
+            An iterator over this Dataset's
+            :class:`~ray.data._internal.execution.interfaces.RefBundle`s.
         """
+
+        def _build_ref_bundle(
+            blocks: Tuple[ObjectRef[Block], BlockMetadata],
+        ) -> RefBundle:
+            # Set `owns_blocks=True` so we can destroy the blocks eagerly
+            # after getting count from metadata.
+            return RefBundle((blocks,), owns_blocks=True)
+
         iter_block_refs_md, _, _ = self._plan.execute_to_iterator()
-        iter_block_refs = (block_ref for block_ref, _ in iter_block_refs_md)
+        iter_ref_bundles = map(_build_ref_bundle, iter_block_refs_md)
         self._synchronize_progress_bar()
-        return iter_block_refs
+        return iter_ref_bundles
 
     @ConsumptionAPI(pattern="")
     @DeveloperAPI

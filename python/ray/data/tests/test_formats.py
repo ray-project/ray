@@ -85,20 +85,20 @@ def test_get_internal_block_refs(ray_start_regular_shared):
     assert out == list(range(10)), out
 
 
-def test_iter_internal_block_refs(ray_start_regular_shared):
+def test_iter_internal_ref_bundles(ray_start_regular_shared):
     n = 10
-    iter_block_refs = ray.data.range(
-        n, override_num_blocks=n
-    ).iter_internal_block_refs()
+    ds = ray.data.range(n, override_num_blocks=n)
+    iter_ref_bundles = ds.iter_internal_ref_bundles()
 
     out = []
-    block_ref_count = 0
-    for block_ref in iter_block_refs:
-        b = ray.get(block_ref)
-        out.extend(extract_values("id", BlockAccessor.for_block(b).iter_rows(True)))
-        block_ref_count += 1
+    ref_bundle_count = 0
+    for ref_bundle in iter_ref_bundles:
+        for block_ref, block_md in ref_bundle.blocks:
+            b = ray.get(block_ref)
+            out.extend(extract_values("id", BlockAccessor.for_block(b).iter_rows(True)))
+        ref_bundle_count += 1
     out = sorted(out)
-    assert block_ref_count == n
+    assert ref_bundle_count == n
     assert out == list(range(n)), out
 
 
