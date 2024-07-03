@@ -10,12 +10,14 @@ from typing import Any, Collection, Dict, List, Optional, Tuple, Union
 
 import ray
 import ray.cloudpickle as pickle
+from ray.rllib.utils.actor_manager import FaultTolerantActorManager
 from ray.rllib.utils.annotations import (
     OverrideToImplementCustomLogic_CallToSuperRecommended,
 )
 from ray.rllib.utils.serialization import NOT_SERIALIZABLE, serialize_type
 from ray.rllib.utils.typing import StateDict
 from ray.train import Checkpoint
+from ray.tune.utils.file_transfer import sync_dir_between_nodes
 from ray.util import log_once
 from ray.util.annotations import PublicAPI
 
@@ -62,13 +64,6 @@ class Checkpointable(abc.ABC):
     - get_checkpointable_components()
     """
 
-    # The subdirectory of this class (if it's a subcomponent of another Checkpointable).
-    # For example, if A is-a Checkpointable and contains an instance
-    # of class B (also a Checkpointable), then class B should set this to something like
-    # "component_B". When class A's `save_to_path([path])` is called, the state of
-    # class B can then be found in the dir: `path/component_B/`.
-    COMPONENT_DIR_NAME = ""
-
     # The state file for the implementing class.
     # This file contains any state information that does NOT belong to any subcomponent
     # of the implementing class (which are `Checkpointable` themselves and thus should
@@ -82,8 +77,7 @@ class Checkpointable(abc.ABC):
     CLASS_AND_CTOR_ARGS_FILE_NAME = "class_and_ctor_args.pkl"
 
     # Subclasses may set this to their own metadata filename.
-    # The dict returned by self.get_metadata() is stored in this JSON file inside
-    # `COMPONENT_DIR_NAME/`.
+    # The dict returned by self.get_metadata() is stored in this JSON file.
     METADATA_FILE_NAME = "metadata.json"
 
     def save_to_path(
@@ -137,8 +131,8 @@ class Checkpointable(abc.ABC):
             json.dump(metadata, f)
 
         # Write the class and constructor args information to disk.
-        with open(path / self.CLASS_AND_CTOR_ARGS_FILE_NAME, "w") as f:
-            json.dump(
+        with open(path / self.CLASS_AND_CTOR_ARGS_FILE_NAME, "wb") as f:
+            pickle.dump(
                 {
                     "class": type(self),
                     "ctor_args_and_kwargs": self.get_ctor_args_and_kwargs(),
@@ -156,12 +150,88 @@ class Checkpointable(abc.ABC):
             if component_name not in state:
                 continue
             component_state = state.pop(component_name)
-            # By providing the `state` arg, we make sure that the component does not
-            # have to call its own `get_state()` anymore, but uses what's provided here.
-            component.save_to_path(path / component_name, state=component_state)
+            component_path = path / component_name
+
+            # If component is an ActorManager, save the manager's first healthy
+            # actor's state to disk (even if it's on another node, in which case, we'll
+            # sync the generated file(s) back to this node).
+            if isinstance(component, FaultTolerantActorManager):
+                actor_to_use = component.healthy_actor_ids()[0]
+
+                def _get_ip(_=None):
+                    import ray
+
+                    return ray.util.get_node_ip_address()
+
+                _result = next(
+                    iter(
+                        component.foreach_actor(
+                            _get_ip,
+                            remote_actor_ids=[actor_to_use],
+                        )
+                    )
+                )
+                if not _result.ok:
+                    raise _result.get()
+                worker_ip_addr = _result.get()
+                self_ip_addr = _get_ip()
+
+                # Save the state to a temporary location on the `actor_to_use`'s
+                # node.
+                component_state_ref = ray.put(component_state)
+
+                if worker_ip_addr == self_ip_addr:
+                    component.foreach_actor(
+                        lambda w, _path=component_path, _state=component_state_ref: (
+                            w.save_to_path(_path, state=ray.get(_state))
+                        ),
+                        remote_actor_ids=[actor_to_use],
+                    )
+                else:
+                    # Save the checkpoint to the temporary directory on the worker.
+                    def _save(_worker, _state=component_state_ref):
+                        import tempfile
+
+                        # Create a temporary directory on the worker.
+                        tmpdir = tempfile.mkdtemp()
+                        _worker.save_to_path(tmpdir, state=ray.get(_state))
+                        return tmpdir
+
+                    _result = next(
+                        iter(
+                            component.foreach_actor(
+                                _save, remote_actor_ids=[actor_to_use]
+                            )
+                        )
+                    )
+                    if not _result.ok:
+                        raise _result.get()
+                    worker_temp_dir = _result.get()
+
+                    # Sync the temporary directory from the worker to this node.
+                    sync_dir_between_nodes(
+                        worker_ip_addr,
+                        worker_temp_dir,
+                        self_ip_addr,
+                        str(component_path),
+                    )
+
+                    # Remove the temporary directory on the worker.
+                    def _rmdir(w, _dir=worker_temp_dir):
+                        import shutil
+
+                        shutil.rmtree(_dir)
+
+                    component.foreach_actor(_rmdir, remote_actor_ids=[actor_to_use])
+
+            # Local component (instance stored in a property of `self`).
+            else:
+                # By providing the `state` arg, we make sure that the component does not
+                # have to call its own `get_state()` anymore, but uses what's provided
+                # here.
+                component.save_to_path(path / component_name, state=component_state)
 
         # Write all the remaining state to disk.
-        # Write state (w/o policies) to disk.
         with open(path / self.STATE_FILE_NAME, "wb") as f:
             pickle.dump(state, f)
 
@@ -306,7 +376,7 @@ class Checkpointable(abc.ABC):
             "ray_commit": ray.__commit__,
         }
 
-    def get_checkpointable_components(self) -> List[Tuple[str, "Checkpointable"], ...]:
+    def get_checkpointable_components(self) -> List[Tuple[str, "Checkpointable"]]:
         """Returns the implementing class's own Checkpointable subcomponents.
 
         Returns:
