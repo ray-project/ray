@@ -95,11 +95,14 @@ If using the command line, connect to the Ray cluster as follow:
 Logging and Debugging
 ---------------------
 
-Each Ray session will have a unique name. By default, the name is
+Each Ray session will have a unique name. By default, the name is given automatically like 
 ``session_{timestamp}_{pid}``. The format of ``timestamp`` is
 ``%Y-%m-%d_%H-%M-%S_%f`` (See `Python time format <strftime.org>`__ for details);
 the pid belongs to the startup process (the process calling ``ray.init()`` or
 the Ray process executed by a shell in ``ray start``).
+
+Change the *session name* by passing ``--session-name={unique session name}`` to ``ray start``.
+If the given session name is not unique, the old data with the same session name may be overwritten.
 
 For each session, Ray will place all its temporary files under the
 *session directory*. A *session directory* is a subdirectory of the
