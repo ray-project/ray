@@ -13,7 +13,7 @@ steps:
     instance_type: small_branch
     commands:
       - export RAY_VERSION="$RAY_VERSION"
-      - source .buildkite/release-automation/set_ray_version.sh
+      - source .buildkite/release-automation/set-ray-version.sh
       - bazel run //ci/ray_ci/automation:upload_wheels_pypi -- 
         --ray_version="$$RAY_VERSION"
         --commit_hash="$BUILDKITE_COMMIT"

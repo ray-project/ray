@@ -17,7 +17,7 @@ fi
 MAC_ARCH="$1" # First argument is the architecture of the machine, e.g. x86_64, arm64
 export USE_BAZEL_VERSION="${USE_BAZEL_VERSION:-6.5.0}"
 
-source .buildkite/release-automation/set_ray_version.sh
+source .buildkite/release-automation/set-ray-version.sh
 
 install_bazel() {
     if [[ "${MAC_ARCH}" == "arm64" ]]; then

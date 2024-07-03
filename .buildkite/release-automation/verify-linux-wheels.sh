@@ -5,7 +5,7 @@ set -euo pipefail
 set -x
 
 export PYTHON_VERSION="${PYTHON_VERSION}"
-source .buildkite/release-automation/set_ray_version.sh
+source .buildkite/release-automation/set-ray-version.sh
 
 if [[ "${RAY_COMMIT:-}" == "" ]]; then
     if [[ "${BUILDKITE_COMMIT:-}" == "" ]]; then
