@@ -505,6 +505,12 @@ Windows powershell users need additional escaping:
     "works when --head is specified",
 )
 @click.option(
+    "--session-name",
+    default=None,
+    help="The session name of the Ray process, only works when --head "
+    "is specified. If it is not unique, the old data will be overwritten.",
+)
+@click.option(
     "--storage",
     default=None,
     help="the persistent storage URI for the cluster. Experimental.",
@@ -603,6 +609,7 @@ def start(
     plasma_store_socket_name,
     raylet_socket_name,
     temp_dir,
+    session_name,
     storage,
     system_config,
     enable_object_reconstruction,
@@ -653,6 +660,13 @@ def start(
             "All the worker nodes will use the same temp_dir as a head node. "
         )
         temp_dir = None
+    if session_name and not head:
+        cli_logger.warning(
+            f"`--session-name={session_name}` option will be ignored. "
+            "`--head` is a required flag to use `--session-name`. "
+            "All the worker nodes will use the same session_name as a head node. "
+        )
+        session_name = None
 
     redirect_output = None if not no_redirect_output else True
 
@@ -687,6 +701,7 @@ def start(
         plasma_store_socket_name=plasma_store_socket_name,
         raylet_socket_name=raylet_socket_name,
         temp_dir=temp_dir,
+        session_name=session_name,
         storage=storage,
         include_dashboard=include_dashboard,
         dashboard_host=dashboard_host,
