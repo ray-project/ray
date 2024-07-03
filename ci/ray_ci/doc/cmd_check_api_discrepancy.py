@@ -16,21 +16,14 @@ TEAM_API_CONFIGS = {
             "ray.data.dataset.MaterializedDataset",
             # special case where we cannot deprecate although we want to
             "ray.data.random_access_dataset.RandomAccessDataset",
-            # TODO(can): fix these
-            "ray.data.datasource.bigquery_datasource.BigQueryDatasource",
-            "ray.data.datasource.binary_datasource.BinaryDatasource",
-            "ray.data.datasource.csv_datasource.CSVDatasource",
-            "ray.data.datasource.json_datasource.JSONDatasource",
-            "ray.data.datasource.mongo_datasource.MongoDatasource",
-            "ray.data.datasource.numpy_datasource.NumpyDatasource",
-            "ray.data.datasource.parquet_bulk_datasource.ParquetBulkDatasource",
-            "ray.data.datasource.parquet_datasource.ParquetDatasource",
-            "ray.data.datasource.range_datasource.RangeDatasource",
-            "ray.data.datasource.sql_datasource.SQLDatasource",
-            "ray.data.datasource.text_datasource.TextDatasource",
-            "ray.data.datasource.webdataset_datasource.WebDatasetDatasource",
-            "ray.data.datasource.tfrecords_datasource.TFRecordDatasource",
-            "ray.data.datasource.tfrecords_datasource.TFXReadOptions",
+            # TODO(can): apis that are auto-generated so falsely classified as not
+            # documented with the current logic
+            "ray.data.iterator.DataIterator",
+            "ray.data.iterator.DataIterator.iter_batches",
+            "ray.data.iterator.DataIterator.iter_torch_batches",
+            "ray.data.iterator.DataIterator.to_tf",
+            "ray.data.iterator.DataIterator.materialize",
+            "ray.data.iterator.DataIterator.stats",
         },
     },
 }

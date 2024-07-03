@@ -41,6 +41,7 @@ from ray.data._internal.execution.util import make_ref_bundles
 from ray.data.block import Block, BlockAccessor
 from ray.data.context import DataContext
 from ray.data.tests.util import run_one_op_task, run_op_tasks_sync
+from ray.tests.client_test_utils import create_remote_signal_actor
 from ray.tests.conftest import *  # noqa
 
 
@@ -443,7 +444,7 @@ def test_map_operator_shutdown(shutdown_only, use_actors):
 
     # Create with inputs.
     input_op = InputDataBuffer(make_ref_bundles([[i] for i in range(10)]))
-    compute_strategy = ActorPoolStrategy() if use_actors else TaskPoolStrategy()
+    compute_strategy = ActorPoolStrategy(size=1) if use_actors else TaskPoolStrategy()
     op = MapOperator.create(
         create_map_transformer_from_block_fn(_sleep),
         input_op=input_op,
@@ -454,6 +455,9 @@ def test_map_operator_shutdown(shutdown_only, use_actors):
 
     # Start one task and then cancel.
     op.start(ExecutionOptions())
+    if use_actors:
+        # Wait for the actor to start.
+        run_op_tasks_sync(op)
     op.add_input(input_op.get_next(), 0)
     assert op.num_active_tasks() == 1
     op.shutdown()
@@ -515,6 +519,67 @@ def test_actor_pool_map_operator_should_add_input(ray_start_regular_shared):
         assert op.should_add_input()
         op.add_input(input_op.get_next(), 0)
     assert not op.should_add_input()
+
+
+def test_actor_pool_map_operator_num_active_tasks_and_completed(shutdown_only):
+    """Tests ActorPoolMapOperator's num_active_tasks and completed methods."""
+    num_actors = 2
+    ray.shutdown()
+    ray.init(num_cpus=num_actors)
+
+    signal_actor = create_remote_signal_actor(ray).options(num_cpus=0).remote()
+
+    def _map_transfom_fn(block_iter: Iterable[Block], _) -> Iterable[Block]:
+        ray.get(signal_actor.wait.remote())
+        yield from block_iter
+
+    input_op = InputDataBuffer(make_ref_bundles([[i] for i in range(num_actors)]))
+    compute_strategy = ActorPoolStrategy(min_size=num_actors, max_size=2 * num_actors)
+
+    # Create an operator with [num_actors, 2 * num_actors] actors.
+    # Resources are limited to num_actors, so the second half will be pending.
+    op = MapOperator.create(
+        create_map_transformer_from_block_fn(_map_transfom_fn),
+        input_op=input_op,
+        name="TestMapper",
+        compute_strategy=compute_strategy,
+    )
+    actor_pool = op._actor_pool
+
+    # Wait for the op to scale up to the min size.
+    op.start(ExecutionOptions())
+    run_op_tasks_sync(op)
+    assert actor_pool.num_running_actors() == num_actors
+    assert op.num_active_tasks() == 0
+
+    # Scale up to the max size, the second half of the actors will be pending.
+    actor_pool.scale_up(num_actors)
+    assert actor_pool.num_pending_actors() == num_actors
+    # `num_active_tasks` should exclude the metadata tasks for the pending actors.
+    assert op.num_active_tasks() == 0
+
+    # Add inputs.
+    for _ in range(num_actors):
+        assert op.should_add_input()
+        op.add_input(input_op.get_next(), 0)
+    # Still `num_active_tasks` should only include data tasks.
+    assert op.num_active_tasks() == num_actors
+    assert actor_pool.num_pending_actors() == num_actors
+
+    # Let the data tasks complete.
+    signal_actor.send.remote()
+    while len(op._data_tasks) > 0:
+        run_one_op_task(op)
+    assert op.num_active_tasks() == 0
+    assert actor_pool.num_pending_actors() == num_actors
+
+    # Mark the inputs done and take all outputs.
+    # The operator should be completed, even if there are pending actors.
+    op.all_inputs_done()
+    while op.has_next():
+        op.get_next()
+    assert actor_pool.num_pending_actors() == num_actors
+    assert op.completed()
 
 
 @pytest.mark.parametrize(

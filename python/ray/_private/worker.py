@@ -1406,8 +1406,14 @@ def init(
         logging.getLogger("ray").handlers.clear()
 
     # Configure the logging settings for the driver process.
-    if logging_config:
-        dict_config = logging_config._get_dict_config()
+    if logging_config or ray_constants.RAY_LOGGING_CONFIG_ENCODING:
+        dict_config = (
+            logging_config._get_dict_config()
+            if logging_config
+            else LoggingConfig(
+                encoding=ray_constants.RAY_LOGGING_CONFIG_ENCODING
+            )._get_dict_config()
+        )
         logging.config.dictConfig(dict_config)
 
     # Parse the hidden options:
@@ -1584,8 +1590,11 @@ def init(
 
     # Pass the logging_config to job_config to configure loggers of all worker
     # processes belonging to the job.
-    if logging_config:
-        job_config.set_py_logging_config(logging_config)
+    if logging_config or ray_constants.RAY_LOGGING_CONFIG_ENCODING:
+        job_config.set_py_logging_config(
+            logging_config
+            or LoggingConfig(encoding=ray_constants.RAY_LOGGING_CONFIG_ENCODING)
+        )
 
     redis_address, gcs_address = None, None
     bootstrap_address = services.canonicalize_bootstrap_address(address, _temp_dir)
@@ -2631,7 +2640,7 @@ def get(
             return object_refs
 
         if isinstance(object_refs, CompiledDAGRef):
-            return object_refs.get()
+            return object_refs.get(timeout=timeout)
 
         is_individual_id = isinstance(object_refs, ray.ObjectRef)
         if is_individual_id:

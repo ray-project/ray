@@ -4,7 +4,7 @@ import pathlib
 from typing import (
     Any,
     Callable,
-    Container,
+    Collection,
     Dict,
     List,
     Optional,
@@ -42,6 +42,7 @@ from ray.rllib.utils.typing import (
     EpisodeType,
     ModuleID,
     RLModuleSpec,
+    StateDict,
     T,
 )
 from ray.train._internal.backend_executor import BackendExecutor
@@ -718,11 +719,11 @@ class LearnerGroup:
 
     def get_state(
         self,
-        components: Optional[Container[str]] = None,
+        components: Optional[Collection[str]] = None,
         *,
         inference_only: bool = False,
-        module_ids: Container[ModuleID] = None,
-    ) -> Dict[str, Any]:
+        module_ids: Collection[ModuleID] = None,
+    ) -> StateDict:
         """Get the states of this LearnerGroup.
 
         Contains the Learners' state (which should be the same across Learners) and
@@ -738,7 +739,7 @@ class LearnerGroup:
                 modules. This is needed for algorithms in the new stack that
                 use inference-only modules. In this case only a part of the
                 parameters are synced to the workers. Default is False.
-            module_ids: Optional container of ModuleIDs to be returned only within the
+            module_ids: Optional collection of ModuleIDs to be returned only within the
                 state dict. If None (default), all module IDs' weights are returned.
 
         Returns:
@@ -765,7 +766,7 @@ class LearnerGroup:
 
         return {"learner_state": learner_state}
 
-    def set_state(self, state: Dict[str, Any]) -> None:
+    def set_state(self, state: StateDict) -> None:
         """Sets the state of this LearnerGroup.
 
         Note that all Learners share the same state.
