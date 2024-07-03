@@ -1,6 +1,4 @@
-import { IconButton, Link, TableCell, TableRow } from "@mui/material";
-import createStyles from "@mui/styles/createStyles";
-import makeStyles from "@mui/styles/makeStyles";
+import { Box, IconButton, Link, TableCell, TableRow } from "@mui/material";
 import React, { useState } from "react";
 import { RiArrowDownSLine, RiArrowRightSLine } from "react-icons/ri";
 import { Link as RouterLink } from "react-router-dom";
@@ -18,18 +16,7 @@ export type ServeApplicationRowsProps = {
   application: ServeApplication;
   startExpanded?: boolean;
 };
-const useStyles = makeStyles((theme) =>
-  createStyles({
-    applicationName: {
-      fontWeight: 500,
-    },
-    expandCollapseIcon: {
-      color: theme.palette.text.secondary,
-      fontSize: "1.5em",
-      verticalAlign: "middle",
-    },
-  }),
-);
+
 export const ServeApplicationRows = ({
   application,
   startExpanded = true,
@@ -48,8 +35,6 @@ export const ServeApplicationRows = ({
 
   const deploymentsList = Object.values(deployments);
 
-  const classes = useStyles();
-
   const onExpandButtonClick = () => {
     setExpanded(!isExpanded);
   };
@@ -61,13 +46,27 @@ export const ServeApplicationRows = ({
         <TableCell>
           <IconButton size="small" onClick={onExpandButtonClick}>
             {!isExpanded ? (
-              <RiArrowRightSLine className={classes.expandCollapseIcon} />
+              <Box
+                component={RiArrowRightSLine}
+                sx={{
+                  color: (theme) => theme.palette.text.secondary,
+                  fontSize: "1.5em",
+                  verticalAlign: "middle",
+                }}
+              />
             ) : (
-              <RiArrowDownSLine className={classes.expandCollapseIcon} />
+              <Box
+                component={RiArrowDownSLine}
+                sx={{
+                  color: (theme) => theme.palette.text.secondary,
+                  fontSize: "1.5em",
+                  verticalAlign: "middle",
+                }}
+              />
             )}
           </IconButton>
         </TableCell>
-        <TableCell align="center" className={classes.applicationName}>
+        <TableCell align="center" sx={{ fontWeight: 500 }}>
           <Link
             component={RouterLink}
             to={`applications/${name ? encodeURIComponent(name) : "-"}`}

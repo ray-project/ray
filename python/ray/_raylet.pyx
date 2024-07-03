@@ -180,6 +180,8 @@ from ray.exceptions import (
     PendingCallsLimitExceeded,
     RpcError,
     ObjectRefStreamEndOfStreamError,
+    RayChannelError,
+    RayChannelTimeoutError,
 )
 from ray._private import external_storage
 from ray.util.scheduling_strategies import (
@@ -199,7 +201,8 @@ from ray.core.generated.gcs_service_pb2 import GetAllResourceUsageReply
 from ray._private.async_compat import (
     sync_to_async,
     get_new_event_loop,
-    is_async_func
+    is_async_func,
+    has_async_methods,
 )
 from ray._private.client_mode_hook import disable_client_hook
 import ray.core.generated.common_pb2 as common_pb2
@@ -588,6 +591,10 @@ cdef int check_status(const CRayStatus& status) nogil except -1:
         with gil:
             raise_sys_exit_with_custom_error_message(
                 message, exit_code=1)
+    elif status.IsChannelError():
+        raise RayChannelError(message)
+    elif status.IsChannelTimeoutError():
+        raise RayChannelTimeoutError(message)
     else:
         raise RaySystemError(message)
 
@@ -1801,9 +1808,7 @@ cdef void execute_task(
             function = execution_info.function
 
             if core_worker.current_actor_is_asyncio():
-                if len(inspect.getmembers(
-                        actor.__class__,
-                        predicate=is_async_func)) == 0:
+                if not has_async_methods(actor.__class__):
                     error_message = (
                         "Failed to create actor. You set the async flag, "
                         "but the actor does not "
@@ -3638,13 +3643,15 @@ cdef class CoreWorker:
 
     def experimental_channel_put_serialized(self, serialized_object,
                                             ObjectRef object_ref,
-                                            num_readers):
+                                            num_readers,
+                                            timeout_ms):
         cdef:
             CObjectID c_object_id = object_ref.native()
             shared_ptr[CBuffer] data
             unique_ptr[CAddress] null_owner_address
             uint64_t data_size = serialized_object.total_bytes
             int64_t c_num_readers = num_readers
+            int64_t c_timeout_ms = timeout_ms
 
         metadata = string_to_buffer(serialized_object.metadata)
         with nogil:
@@ -3654,6 +3661,7 @@ cdef class CoreWorker:
                              metadata,
                              data_size,
                              c_num_readers,
+                             c_timeout_ms,
                              &data,
                              ))
         if data_size > 0:

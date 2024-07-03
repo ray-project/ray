@@ -5,7 +5,7 @@ import time
 import tqdm
 
 from ray.util.state import summarize_tasks
-from dashboard_test import DashboardTestAtScale
+from many_nodes_tests.dashboard_test import DashboardTestAtScale
 from ray._private.state_api_test_utils import (
     StateAPICallSpec,
     periodic_invoke_state_apis_with_actor,

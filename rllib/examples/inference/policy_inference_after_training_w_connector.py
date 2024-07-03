@@ -178,7 +178,7 @@ if __name__ == "__main__":
         connectors=[
             AddObservationsFromEpisodesToBatch(),
             AddStatesFromEpisodesToBatch(),
-            BatchIndividualItems(),
+            BatchIndividualItems(multi_agent=args.num_agents > 0),
             NumpyToTensor(),
         ],
     )

@@ -1,8 +1,7 @@
 import { Box, Typography } from "@mui/material";
-import createStyles from "@mui/styles/createStyles";
-import makeStyles from "@mui/styles/makeStyles";
 import dayjs from "dayjs";
-import low from "lowlight";
+import prolog from "highlight.js/lib/languages/prolog";
+import { lowlight } from "lowlight";
 import React, {
   MutableRefObject,
   useCallback,
@@ -16,6 +15,8 @@ import "./darcula.css";
 import "./github.css";
 import "./index.css";
 import { MAX_LINES_FOR_LOGS } from "../../service/log";
+
+lowlight.registerLanguage("prolog", prolog);
 
 const uniqueKeySelector = () => Math.random().toString(16).slice(-8);
 
@@ -91,14 +92,6 @@ export type LogVirtualViewProps = {
   startTime?: string;
   endTime?: string;
 };
-
-const useStyles = makeStyles((theme) =>
-  createStyles({
-    warningInfo: {
-      color: theme.palette.error.main,
-    },
-  }),
-);
 
 type LogLineDetailDialogProps = {
   formattedLogLine: string;
@@ -180,7 +173,6 @@ const LogVirtualView: React.FC<LogVirtualViewProps> = ({
   const timmer = useRef<ReturnType<typeof setTimeout>>();
   const el = useRef<List>(null);
   const outter = useRef<HTMLDivElement>(null);
-  const classes = useStyles();
   if (listRef) {
     listRef.current = outter.current;
   }
@@ -232,9 +224,9 @@ const LogVirtualView: React.FC<LogVirtualViewProps> = ({
           handleLogLineClick(formattedLogLine);
         }}
       >
-        {low
+        {lowlight
           .highlight(language, message)
-          .value.map((v) => value2react(v, index.toString(), keywords))}
+          .children.map((v) => value2react(v, index.toString(), keywords))}
         <br />
       </Box>
     );
@@ -307,11 +299,11 @@ const LogVirtualView: React.FC<LogVirtualViewProps> = ({
   return (
     <div>
       {logs && logs.length > MAX_LINES_FOR_LOGS && (
-        <p className={classes.warningInfo}>
+        <Box component="p" sx={{ color: (theme) => theme.palette.error.main }}>
           [Truncation warning] This log has been truncated and only the latest{" "}
           {MAX_LINES_FOR_LOGS} lines are displayed. Click "Download" button
           above to see the full log
-        </p>
+        </Box>
       )}
       <List
         height={height || (content.split("\n").length + 1) * 18}
