@@ -164,7 +164,7 @@ To build Ray on MacOS, first install these dependencies:
   brew install wget
 
   # Install Bazel.
-  ray/cienv/install-bazel.sh
+  ray/ci/env/install-bazel.sh
 
 Building Ray on Linux & MacOS (full)
 ------------------------------------
