@@ -10,6 +10,7 @@ class DeviceManager(ABC):
     @abstractmethod
     def get_accelerator_name() -> str:
         """Gets the corresponding accelerator type, e.g. GPU, NPU."""
+        ...
 
     @staticmethod
     @abstractmethod
@@ -17,3 +18,4 @@ class DeviceManager(ABC):
         """Gets the device type in deeplearning framwork,
         e.g. cuda, hpu, npu in torch.
         """
+        ...

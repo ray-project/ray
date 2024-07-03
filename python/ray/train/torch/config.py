@@ -214,11 +214,12 @@ class _TorchBackend(Backend):
     def on_training_start(
         self, worker_group: WorkerGroup, backend_config: BackendConfig
     ):
+        device_manager = get_torch_device_manager_cls_by_resources(
+            self.resources_per_worker
+        )()
         def _set_torch_device_manager():
             session = get_session()
-            session.device_manager = get_torch_device_manager_cls_by_resources(
-                ray.get_runtime_context().get_accelerator_ids()
-            )()
+            session.device_manager = device_manager
 
         worker_group.execute(_set_torch_distributed_env_vars)
         worker_group.execute(_set_torch_device_manager)

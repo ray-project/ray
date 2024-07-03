@@ -4,7 +4,6 @@ from typing import TYPE_CHECKING, Dict, Optional, Union
 import numpy as np
 import torch
 
-from ray.air._internal.device_manager.utils import try_register_torch_accelerator_module
 from ray.air._internal.torch_utils import convert_ndarray_batch_to_torch_tensor_batch
 from ray.train._internal.dl_predictor import DLPredictor
 from ray.train.predictor import DataBatchType
@@ -15,7 +14,6 @@ from ray.util.annotations import DeveloperAPI, PublicAPI
 if TYPE_CHECKING:
     from ray.data.preprocessor import Preprocessor
 
-try_register_torch_accelerator_module()
 logger = logging.getLogger(__name__)
 
 
@@ -36,7 +34,6 @@ class TorchPredictor(DLPredictor):
         model: torch.nn.Module,
         preprocessor: Optional["Preprocessor"] = None,
         use_gpu: bool = False,
-        device_type: str = "cpu",
     ):
         self.model = model
         self.model.eval()
@@ -46,7 +43,7 @@ class TorchPredictor(DLPredictor):
             # TODO (jiaodong): #26249 Use multiple GPU devices with sharded input
             self.device = torch.device("cuda")
         else:
-            self.device = torch.device(device_type)
+            self.device = torch.device("cpu")
 
         # Ensure input tensor and model live on the same device
         self.model.to(self.device)
@@ -79,7 +76,6 @@ class TorchPredictor(DLPredictor):
         checkpoint: TorchCheckpoint,
         model: Optional[torch.nn.Module] = None,
         use_gpu: bool = False,
-        device_type: str = "cpu",
     ) -> "TorchPredictor":
         """Instantiate the predictor from a TorchCheckpoint.
 
@@ -94,12 +90,7 @@ class TorchPredictor(DLPredictor):
         """
         model = checkpoint.get_model(model)
         preprocessor = checkpoint.get_preprocessor()
-        return cls(
-            model=model,
-            preprocessor=preprocessor,
-            use_gpu=use_gpu,
-            device_type=device_type,
-        )
+        return cls(model=model, preprocessor=preprocessor, use_gpu=use_gpu)
 
     @DeveloperAPI
     def call_model(

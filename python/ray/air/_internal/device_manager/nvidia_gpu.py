@@ -1,5 +1,5 @@
 import os
-from typing import List
+from typing import List, Union
 
 import torch
 
@@ -71,10 +71,14 @@ class CUDATorchDeviceManager(TorchDeviceManager):
 
         return devices
 
-    def set_device(self, device):
+    def set_device(self, device: Union[torch.device, int, str, None]):
         torch.cuda.set_device(device)
 
-    def create_stream(self, deivce):
+    def is_support_stream(self) -> bool:
+        """Validate if the device type support create a stream"""
+        return True
+
+    def create_stream(self, deivce: torch.device) -> torch.cuda.Stream:
         """Create a CUDA Stream"""
         return torch.cuda.Stream(deivce)
 
@@ -82,13 +86,6 @@ class CUDATorchDeviceManager(TorchDeviceManager):
         """Get a torch.cuda.stream context"""
         return torch.cuda.stream(stream)
 
-    def get_current_stream(self):
+    def get_current_stream(self) -> torch.cuda.Stream:
         """Get a current stream for cuda"""
         return torch.cuda.current_stream()
-
-    def cleanup(self):
-        devices = self.get_devices()
-        if torch.cuda.is_available():
-            for device in devices:
-                with torch.cuda.device(device):
-                    torch.cuda.empty_cache()

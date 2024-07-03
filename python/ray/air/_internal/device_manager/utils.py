@@ -1,4 +1,5 @@
 import logging
+from typing import Optional
 
 from ray._private.accelerators.hpu import HPU_PACKAGE_AVAILABLE
 from ray.air._internal.device_manager.hpu import HPUTorchDeviceManager
@@ -12,7 +13,7 @@ from ray.air._internal.device_manager.torch_device_manager import TorchDeviceMan
 logger = logging.getLogger(__name__)
 
 
-ACCELERATOR_TORCH_DEVICE_MANAGER = {
+SUPPORTED_ACCELERATOR_TORCH_DEVICE_MANAGER = {
     "GPU": CUDATorchDeviceManager,
     "HPU": HPUTorchDeviceManager,
     "NPU": NPUTorchDeviceManager,
@@ -31,11 +32,16 @@ def try_register_torch_accelerator_module() -> None:
         raise ImportError("Could not import PyTorch")
 
 
-def get_torch_device_manager_cls_by_resources(resources) -> TorchDeviceManager:
+def get_torch_device_manager_cls_by_resources(resources: Optional[dict]) -> TorchDeviceManager:
     device_manager = None
 
+    # input resources may be None
+    if not resources:
+        return CUDATorchDeviceManager
+
+    # select correct accelerator type from resources
     for resource_type, resource_value in resources.items():
         if resource_value and resource_type != "CPU":
-            device_manager = ACCELERATOR_TORCH_DEVICE_MANAGER.get(resource_type, None)
+            device_manager = SUPPORTED_ACCELERATOR_TORCH_DEVICE_MANAGER.get(resource_type, None)
 
     return device_manager or CUDATorchDeviceManager

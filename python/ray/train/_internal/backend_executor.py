@@ -98,6 +98,7 @@ class BackendExecutor:
 
         self._backend_config = backend_config
         self._backend = backend_config.backend_cls()
+        self._backend.resources_per_worker=self._resources_per_worker
         self._num_workers = num_workers
         self._max_failures = max_retries
         if self._max_failures < 0:

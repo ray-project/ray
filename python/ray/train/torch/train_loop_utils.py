@@ -20,6 +20,7 @@ from torch.utils.data import (
 )
 
 from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
+from ray.air._internal.device_manager.nvidia_gpu import CUDATorchDeviceManager
 from ray.air._internal.device_manager.utils import try_register_torch_accelerator_module
 from ray.train._internal import session
 from ray.train._internal.accelerator import Accelerator
@@ -369,7 +370,11 @@ class _TorchAccelerator(Accelerator):
         self.scaler = GradScaler() if amp else None
         self._seed = None
         # default is CUDADeviceManager
-        self.device_manager = get_session().device_manager
+        session = get_session()
+        if session and session.device_manager:
+            self.device_manager = session.device_manager
+        else:
+            self.device_manager = CUDATorchDeviceManager()
 
     def prepare_model(
         self,
@@ -638,20 +643,20 @@ class _WrappedDataLoader(DataLoader):
         self.dataloader_iter = None
         self.device = device
 
-        self.device_manager = get_session().device_manager
+        self.device_manager = get_session().device_manager or CUDATorchDeviceManager()
         # reset device is needed for npu in a new thread so far.
         if device.type == "npu":
             self.device_manager.set_device(device)
 
         # disable auto transfer (host->device) if cpu is used
-        if device.type == "cuda" or device.type == "npu":
+        if device.type != "cpu" and self.device_manager.is_support_stream():
             self._auto_transfer = auto_transfer
         else:
             self._auto_transfer = False
         # create a new CUDA/NPU stream to move data from host to device concurrently
         self._memcpy_stream = (
             self.device_manager.create_stream(device)
-            if device.type == "cuda" and self._auto_transfer
+            if device.type != "cpu" and self._auto_transfer
             else None
         )
         self.next_batch = None

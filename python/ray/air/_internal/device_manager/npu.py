@@ -1,7 +1,7 @@
 import os
 from functools import lru_cache
 from importlib.util import find_spec
-from typing import List
+from typing import List, Union
 
 import torch
 
@@ -36,13 +36,13 @@ class NPUTorchDeviceManager(TorchDeviceManager):
     def get_device_type() -> str:
         return "npu"
 
-    def is_device_available() -> bool:
+    def is_device_available(self) -> bool:
         if not NPU_TORCH_PACKAGE_AVAILABLE:
             return False
 
         return torch.npu.is_available()
 
-    def get_devices() -> List[torch.device]:
+    def get_devices(self) -> List[torch.device]:
         """Gets the correct torch device list configured for this process.
 
         Returns a list of torch NPU devices allocated for the current worker.
@@ -83,8 +83,12 @@ class NPUTorchDeviceManager(TorchDeviceManager):
 
         return devices
 
-    def set_device(device):
-        torch.npu.set_device("npu")
+    def set_device(self, device: Union[torch.device, int]):
+        torch.npu.set_device(device)
+
+    def is_support_stream(self) -> bool:
+        """Validate if the device type support create a stream"""
+        return True
 
     def create_stream(self, deivce):
         """Create a NPU Stream"""
@@ -97,9 +101,3 @@ class NPUTorchDeviceManager(TorchDeviceManager):
     def get_current_stream(self):
         """Get current stream for npu"""
         return torch.npu.current_stream()
-
-    def cleanup(devices):
-        if torch.npu.is_available():
-            for device in devices:
-                with torch.cuda.device(device):
-                    torch.cuda.empty_cache()
