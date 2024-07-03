@@ -85,7 +85,7 @@ class TestCallbacks(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         tune.register_env("multi_cart", lambda _: MultiAgentCartPole({"num_agents": 2}))
-        ray.init(local_mode=True)
+        ray.init()
 
     @classmethod
     def tearDownClass(cls):
