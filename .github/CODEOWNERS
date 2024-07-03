@@ -38,10 +38,8 @@
 # Dependencies
 /python/setup.py @richardliaw @ericl @edoakes
 
-# Formatting tool
-/ci/lint/format.sh @richardliaw @ericl @edoakes
-
-# Docker image and build scripts.
+# CI
+/ci/lint/format.sh @ray-project/ray-ci
 /ci/docker @ray-project/ray-ci
 /ci/ray_ci @ray-project/ray-ci
 
