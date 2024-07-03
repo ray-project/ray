@@ -27,6 +27,7 @@ import ray._private.ray_constants as ray_constants
 from ray._raylet import GcsClient, GcsClientOptions
 from ray.core.generated.common_pb2 import Language
 from ray._private.ray_constants import RAY_NODE_IP_FILENAME
+from ray._private.utils import get_num_cpus
 
 resource = None
 if sys.platform != "win32":
@@ -1609,9 +1610,7 @@ def start_raylet(
     # Limit the number of workers that can be started in parallel by the
     # raylet. However, make sure it is at least 1.
     num_cpus_static = static_resources.get("CPU", 0)
-    maximum_startup_concurrency = max(
-        1, min(multiprocessing.cpu_count(), num_cpus_static)
-    )
+    maximum_startup_concurrency = max(1, min(get_num_cpus(), num_cpus_static))
 
     # Format the resource argument in a form like 'CPU,1.0,GPU,0,Custom,3'.
     resource_argument = ",".join(

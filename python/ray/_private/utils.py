@@ -546,7 +546,7 @@ def get_num_cpus(
 ) -> int:
     """
     Get the number of CPUs available on this node.
-    Depending on the situation, use multiprocessing.cpu_count() or cgroups.
+    Depending on the situation, use os.sched_getaffinity(), multiprocessing.cpu_count() or cgroups.
 
     Args:
         override_docker_cpu_warning: An extra flag to explicitly turn off the Docker
@@ -555,7 +555,6 @@ def get_num_cpus(
             the warning is determined by the env variable
             RAY_DISABLE_DOCKER_CPU_WARNING.
     """
-    cpu_count = multiprocessing.cpu_count()
     if os.environ.get("RAY_USE_MULTIPROCESSING_CPU_COUNT"):
         logger.info(
             "Detected RAY_USE_MULTIPROCESSING_CPU_COUNT=1: Using "
@@ -564,7 +563,15 @@ def get_num_cpus(
             "To correctly detect CPUs, unset the env var: "
             "`RAY_USE_MULTIPROCESSING_CPU_COUNT`."
         )
-        return cpu_count
+        return multiprocessing.cpu_count()
+
+    if hasattr(os, "sched_getaffinity"):
+        # This reflects the real CPU count available to the calling thread of the process.
+        # https://docs.python.org/3/library/multiprocessing.html#multiprocessing.cpu_count
+        cpu_count = len(os.sched_getaffinity(0))
+    else:  # As a fallback for systems that do not implement sched_getaffinity
+        cpu_count = multiprocessing.cpu_count()
+
     try:
         # Not easy to get cpu count in docker, see:
         # https://bugs.python.org/issue36054
