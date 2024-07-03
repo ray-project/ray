@@ -59,7 +59,7 @@
 /cpp/include/ray @SongGuyang @raulchen @kfstorm @ray-project/ray-core
 
 # Ray Client
-/src/ray/protobuf/ray_client.proto @ameerhajali @ckw017 @ray-project/ray-core
+/src/ray/protobuf/ray_client.proto @ray-project/ray-core
 
 # Runtime Env
 # TODO(SongGuyang): Add new items to guarantee runtime env API compatibility in multiple languages.
