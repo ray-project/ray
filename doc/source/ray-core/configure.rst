@@ -112,7 +112,7 @@ You can sort by their names to find the latest session.
 
 Change the *root temporary directory* by passing ``--temp-dir={your temp path}`` to ``ray start``.
 
-(There is not currently a stable way to change the root temporary directory when calling ``ray.init()``, but if you need to, you can provide the ``_temp_dir`` argument to ``ray.init()``.)
+(There is not currently a stable way to change the root temporary directory when calling ``ray.init()``, but if you need to, you can provide the ``_temp_dir`` argument to ``ray.init()``. The session name is also changable when calling ``ray.init()`` by providing ``_session_name`` argument.)
 
 Look :ref:`Logging Directory Structure <logging-directory-structure>` for more details.
 

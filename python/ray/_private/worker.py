@@ -1373,6 +1373,8 @@ def init(
         _temp_dir: If provided, specifies the root temporary
             directory for the Ray process. Must be an absolute path. Defaults to an
             OS-specific conventional location, e.g., "/tmp/ray".
+        _session_name: The session name of the Ray process, only works when --head is 
+            specified. If it is not unique, the old data will be overwritten.
         _metrics_export_port: Port number Ray exposes system metrics
             through a Prometheus endpoint. It is currently under active
             development, and the API is subject to change.
