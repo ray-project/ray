@@ -4614,7 +4614,8 @@ class Dataset:
         Returns:
             A list of references to this dataset's blocks.
         """
-        # TODO(scottjlee): replace get_internal_block_refs() usages with iter_internal_ref_bundles()
+        # TODO(scottjlee): replace get_internal_block_refs() usages with
+        # iter_internal_ref_bundles()
         block_refs = self._plan.execute().block_refs
         self._synchronize_progress_bar()
         return block_refs
