@@ -44,6 +44,7 @@ class DashboardAgentModule(abc.ABC):
         :param dashboard_agent: The DashboardAgent instance.
         """
         self._dashboard_agent = dashboard_agent
+        self.session_name = dashboard_agent.session_name
 
     @abc.abstractmethod
     async def run(self, server):
@@ -73,6 +74,7 @@ class DashboardHeadModule(abc.ABC):
         :param dashboard_head: The DashboardHead instance.
         """
         self._dashboard_head = dashboard_head
+        self.session_name = dashboard_head.session_name
 
     @abc.abstractmethod
     async def run(self, server):

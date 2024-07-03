@@ -16,7 +16,7 @@ import tempfile
 import time
 from typing import (
     Callable,
-    Container,
+    Collection,
     DefaultDict,
     Dict,
     List,
@@ -296,15 +296,15 @@ class Algorithm(Trainable, AlgorithmBase):
     def from_checkpoint(
         checkpoint: Union[str, Checkpoint],
         *,
-        module_ids: Optional[Container[ModuleID]] = None,
+        module_ids: Optional[Collection[ModuleID]] = None,
         new_agent_to_module_mapping_fn: Optional[AgentToModuleMappingFn] = None,
         new_should_module_be_updated: Optional[ShouldModuleBeUpdatedFn] = None,
         # @OldAPIStack
-        policy_ids: Optional[Container[PolicyID]] = None,
+        policy_ids: Optional[Collection[PolicyID]] = None,
         policy_mapping_fn: Optional[Callable[[AgentID, EpisodeID], PolicyID]] = None,
         policies_to_train: Optional[
             Union[
-                Container[PolicyID],
+                Collection[PolicyID],
                 Callable[[PolicyID, Optional[SampleBatchType]], bool],
             ]
         ] = None,
@@ -2070,7 +2070,7 @@ class Algorithm(Trainable, AlgorithmBase):
         policy_mapping_fn: Optional[Callable[[AgentID, EpisodeID], PolicyID]] = None,
         policies_to_train: Optional[
             Union[
-                Container[PolicyID],
+                Collection[PolicyID],
                 Callable[[PolicyID, Optional[SampleBatchType]], bool],
             ]
         ] = None,
@@ -2279,7 +2279,7 @@ class Algorithm(Trainable, AlgorithmBase):
         policy_mapping_fn: Optional[Callable[[AgentID], PolicyID]] = None,
         policies_to_train: Optional[
             Union[
-                Container[PolicyID],
+                Collection[PolicyID],
                 Callable[[PolicyID, Optional[SampleBatchType]], bool],
             ]
         ] = None,
@@ -2413,7 +2413,7 @@ class Algorithm(Trainable, AlgorithmBase):
         Args:
             checkpoint_dir: The directory where the checkpoint files will be stored.
         """
-        # New API stack: Save individual components to disk via their 
+        # New API stack: Save individual components to disk via their
         if (
             self.config.enable_rl_module_and_learner
             and self.config.enable_env_runner_and_connector_v2
@@ -3048,14 +3048,14 @@ class Algorithm(Trainable, AlgorithmBase):
     def _checkpoint_info_to_algorithm_state(
         checkpoint_info: dict,
         *,
-        module_ids: Optional[Container[ModuleID]] = None,
+        module_ids: Optional[Collection[ModuleID]] = None,
         new_agent_to_module_mapping_fn: Optional[AgentToModuleMappingFn] = None,
         new_should_module_be_updated: Optional[ShouldModuleBeUpdatedFn] = None,
-        policy_ids: Optional[Container[PolicyID]] = None,
+        policy_ids: Optional[Collection[PolicyID]] = None,
         policy_mapping_fn: Optional[Callable[[AgentID, EpisodeID], PolicyID]] = None,
         policies_to_train: Optional[
             Union[
-                Container[PolicyID],
+                Collection[PolicyID],
                 Callable[[PolicyID, Optional[SampleBatchType]], bool],
             ]
         ] = None,

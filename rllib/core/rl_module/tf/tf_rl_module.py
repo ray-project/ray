@@ -43,19 +43,3 @@ class TfRLModule(tf.keras.Model, RLModule):
     @override(RLModule)
     def set_state(self, state: StateDict) -> None:
         self.set_weights(state)
-
-    #@override(RLModule)
-    #def save(self, path: Union[str, pathlib.Path]) -> None:
-    #    # NOTE: For this TfRLModule, we save the weights in the TF checkpoint
-    #    # format, so the file name should have no ending and should be a plain string.
-    #    # e.g. "my_checkpoint" instead of "my_checkpoint.h5". This method of
-    #    # checkpointing saves the module weights as multiple files, so we recommend
-    #    # passing a file path relative to a directory, e.g.
-    #    # "my_checkpoint/module_state".
-    #    path = str(pathlib.Path(path) / self._module_state_file_name())
-    #    self.save_weights(path, save_format="tf")
-
-    #@override(RLModule)
-    #def restore(self, path: Union[str, pathlib.Path]) -> None:
-    #    path = str(pathlib.Path(path) / self._module_state_file_name())
-    #    self.load_weights(path)

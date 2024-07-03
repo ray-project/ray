@@ -17,6 +17,7 @@ from ray.rllib.utils.torch_utils import (
     convert_to_torch_tensor,
     TORCH_COMPILE_REQUIRED_VERSION,
 )
+from ray.rllib.utils.typing import StateDict
 
 torch, nn = try_import_torch()
 
@@ -68,35 +69,16 @@ class TorchRLModule(nn.Module, RLModule):
         return compile_wrapper(self, compile_config)
 
     @override(RLModule)
-    def get_state(self, inference_only: bool = False) -> Dict[str, Any]:
+    def get_state(self, inference_only: bool = False) -> StateDict:
         return self.state_dict()
 
     @override(RLModule)
-    def set_state(self, state: Dict[str, Any]) -> None:
+    def set_state(self, state: StateDict) -> None:
         # If state contains more keys than `self.state_dict()`, then we simply ignore
         # these keys (strict=False). This is most likely due to `state` coming from
         # an `inference_only=False` RLModule, while `self` is an `inference_only=True`
         # RLModule.
         self.load_state_dict(convert_to_torch_tensor(state), strict=False)
-
-    #@override(RLModule)
-    #def save_to_path(self, path: Union[str, pathlib.Path]) -> None:
-    #    #state = self.get_state()
-
-    #    path = pathlib.Path(path)
-    #    path.mkdir(parents=True, exist_ok=True)
-
-    #    # Save the weights to one file (so that users can load the model simply
-    #    # by using the torch.nn.Module API.
-    #    weights_file = str(pathlib.Path(path) / self._module_state_file_name())
-    #    torch.save(convert_to_numpy(state["weights"]), weights_file)
-    #    # Save the meta-data (spec and other meta-data) to a separate file.
-    #    self._save_module_metadata(path, SingleAgentRLModuleSpec)
-
-    #@override(RLModule)
-    #def restore_from_path(self, path: Union[str, pathlib.Path]) -> None:
-    #    path = str(pathlib.Path(path) / self._module_state_file_name())
-    #    self.set_state({"weights": torch.load(path)})
 
     def _set_inference_only_state_dict_keys(self) -> None:
         """Sets expected and unexpected keys for the inference-only module.
@@ -109,9 +91,7 @@ class TorchRLModule(nn.Module, RLModule):
         """
         pass
 
-    def _inference_only_get_state_hook(
-        self, state_dict: Dict[str, Any]
-    ) -> Dict[str, Any]:
+    def _inference_only_get_state_hook(self, state_dict: StateDict) -> StateDict:
         """Removes or renames the parameters in the state dict for the inference module.
 
         This hook is called when the state dict is created on a learner module for an

@@ -9,7 +9,7 @@ import pathlib
 from typing import (
     Any,
     Callable,
-    Container,
+    Collection,
     Dict,
     List,
     Hashable,
@@ -788,7 +788,7 @@ class Learner(Checkpointable):
         # If None, return True (by default, all modules should be updated).
         if should_module_be_updated_fn is None:
             return True
-        # If container given, return whether `module_id` is in that container.
+        # If collection given, return whether `module_id` is in that container.
         elif not callable(should_module_be_updated_fn):
             return module_id in set(should_module_be_updated_fn)
 
@@ -1028,7 +1028,7 @@ class Learner(Checkpointable):
         *,
         not_components: Optional[Union[str, List[str]]] = None,
         inference_only: bool = False,
-        module_ids: Optional[Container[ModuleID]] = None,
+        module_ids: Optional[Collection[ModuleID]] = None,
         **kwargs,
     ) -> StateDict:
         """Get (select components of) the state of this Learner.
@@ -1043,7 +1043,7 @@ class Learner(Checkpointable):
             inference_only: Whether to return the inference-only weight set of the
                 underlying RLModule. Note that this setting only has an effect if
                 components is None or the string "rl_module" is in components.
-            module_ids: Optional container of ModuleIDs to be returned only within the
+            module_ids: Optional collection of ModuleIDs to be returned only within the
                 state dict. If None (default), all module IDs' weights are returned.
 
         Returns:
@@ -1108,29 +1108,6 @@ class Learner(Checkpointable):
         return [
             ("marl_module", self.module),
         ]
-
-    #def get_module_state(
-    #    self, module_ids: Optional[Set[str]] = None, inference_only: bool = False
-    #) -> Dict[str, Any]:
-    #    """Returns the state of the underlying MultiAgentRLModule.
-    #
-    #    The output should be numpy-friendly for easy serialization, not framework
-    #    specific tensors.
-    #
-    #    Args:
-    #        module_ids: The ids of the modules to get the weights for. If None, all
-    #            modules will be returned.
-    #
-    #    Returns:
-    #        A dictionary that holds the state of the modules in a numpy-friendly
-    #        format.
-    #    """
-    #    module_states = self.module.get_state(module_ids, inference_only)
-    #    return convert_to_numpy({k: v for k, v in module_states.items()})
-
-    #@abc.abstractmethod
-    #def set_module_state(self, state: Dict[str, Any]) -> None:
-    #    """Sets the state of the underlying MultiAgentRLModule"""
 
     def _get_optimizer_state(self) -> StateDict:
         """Returns the state of all optimizers currently registered in this Learner.

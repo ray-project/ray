@@ -1,5 +1,5 @@
 import abc
-from typing import Any, Container, Dict, Optional, TYPE_CHECKING
+from typing import Any, Collection, Dict, Optional, TYPE_CHECKING
 
 import tree  # pip install dm_tree
 

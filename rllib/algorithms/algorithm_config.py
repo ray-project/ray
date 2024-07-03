@@ -3512,7 +3512,7 @@ class AlgorithmConfig(_Config):
                     policies[pid].config or {}
                 )
 
-        # If container given, construct a simple default callable returning True
+        # If collection given, construct a simple default callable returning True
         # if the PolicyID is found in the list/set of IDs.
         if self.policies_to_train is not None and not callable(self.policies_to_train):
             pols = set(self.policies_to_train)

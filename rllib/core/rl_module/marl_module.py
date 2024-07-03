@@ -229,7 +229,7 @@ class MultiAgentRLModule(RLModule):
 
         Returns:
             The RLModule with the given module ID.
-        
+
         Raises:
             KeyError: If `module_id` cannot be found in self.
         """
@@ -331,7 +331,7 @@ class MultiAgentRLModule(RLModule):
         components: Optional[Collection[str]] = None,
         *,
         not_components: Optional[Collection[str]] = None,
-        module_ids: Optional[Set[ModuleID]] = None,
+        module_ids: Optional[Collection[ModuleID]] = None,
         inference_only: bool = False,
         **kwargs,
     ) -> StateDict:
@@ -390,76 +390,6 @@ class MultiAgentRLModule(RLModule):
     @override(Checkpointable)
     def get_checkpointable_components(self) -> List[Tuple[str, Checkpointable]]:
         return list(self._rl_modules.items())
-
-    #@override(RLModule)
-    #def save(self, path: Union[str, pathlib.Path]) -> None:
-    #    path = pathlib.Path(path)
-    #    path.mkdir(parents=True, exist_ok=True)
-    #    # Call `save` on all individual RLModules in self.
-    #    for module_id, module in self._rl_modules.items():
-    #        module.save(str(path / module_id))
-    #    # Save our own (multi-agent) meta-data.
-    #    self._save_module_metadata(path, MultiAgentRLModuleSpec)
-
-    #@override(RLModule)
-    #def restore(
-    #    self,
-    #    path: Union[str, pathlib.Path],
-    #    *,
-    #    module_ids: Optional[Collection[ModuleID]] = None,
-    #    modules_to_load=DEPRECATED_VALUE,
-    #) -> None:
-    #    """Resotres/loads the weights of a MultiAgentRLModule from path.
-    #
-    #    NOTE: If you want to load a module that is not already in this
-    #    MultiAgentRLModule, you should add it to this MultiAgentRLModule
-    #    before loading the checkpoint through
-    #    `self.add_module([module_id], [RLModule instance])`.
-    #
-    #    Args:
-    #        path: The path to the directory to load the state from.
-    #        module_ids: The module IDs whose state is to be loaded from the path.
-    #            If this is None, all modules that are checkpointed will be loaded into
-    #            self.
-    #    """
-    #    if modules_to_load != DEPRECATED_VALUE:
-    #        deprecation_warning(
-    #            old="MultiAgentRLModule.restore(modules_to_load=...)",
-    #            new="MultiAgentRLModule.restore(module_ids=...)",
-    #            error=False,
-    #        )
-    #        module_ids = modules_to_load
-    #
-    #    path = pathlib.Path(path)
-    #    if not module_ids:
-    #        module_ids = set(self._rl_modules.keys())
-    #    path.mkdir(parents=True, exist_ok=True)
-    #    for submodule_id in module_ids:
-    #        if submodule_id not in self._rl_modules:
-    #            raise ValueError(
-    #                f"Module {submodule_id} from `module_ids`: "
-    #                f"{module_ids} not found in this MultiAgentRLModule."
-    #            )
-    #        submodule = self._rl_modules[submodule_id]
-    #        submodule_weights_dir = path / submodule_id
-    #        if not submodule_weights_dir.exists():
-    #            raise ValueError(
-    #                f"Submodule {submodule_id}'s module state directory: "
-    #                f"{submodule_weights_dir} not found in checkpoint dir {path}."
-    #            )
-    #        submodule.restore(submodule_weights_dir)
-
-    #@classmethod
-    #@override(RLModule)
-    #def from_checkpoint(
-    #    cls,
-    #    checkpoint_dir_path: Union[str, pathlib.Path],
-    #) -> None:
-    #    path = pathlib.Path(checkpoint_dir_path)
-    #    metadata_path = path / RLMODULE_METADATA_FILE_NAME
-    #    marl_module = cls._from_metadata_file(metadata_path)
-    #    marl_module.restore(path)
-    #    return marl_module
 
     def __repr__(self) -> str:
         return f"MARL({pprint.pformat(self._rl_modules)})"
