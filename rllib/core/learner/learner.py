@@ -27,12 +27,7 @@ import ray
 from ray.rllib.connectors.learner.learner_connector_pipeline import (
     LearnerConnectorPipeline,
 )
-from ray.rllib.core import (
-    COMPONENT_SHOULD_MODULE_BE_UPDATED,
-    COMPONENT_OPTIMIZER,
-    COMPONENT_RL_MODULE,
-    DEFAULT_MODULE_ID,
-)
+from ray.rllib.core import COMPONENT_OPTIMIZER, COMPONENT_RL_MODULE, DEFAULT_MODULE_ID
 from ray.rllib.core.rl_module.marl_module import (
     MultiAgentRLModule,
     MultiAgentRLModuleSpec,
@@ -1024,9 +1019,9 @@ class Learner(Checkpointable):
     @override(Checkpointable)
     def get_state(
         self,
-        components: Optional[Union[str, List[str]]] = None,
+        components: Optional[List[str]] = None,
         *,
-        not_components: Optional[Union[str, List[str]]] = None,
+        not_components: Optional[List[str]] = None,
         inference_only: bool = False,
         module_ids: Optional[Collection[ModuleID]] = None,
         **kwargs,
@@ -1050,27 +1045,18 @@ class Learner(Checkpointable):
             The state (or select components thereof) of this Learner.
         """
         self._check_is_built()
-        components = force_list(components) or None
-        not_components = force_list(not_components)
 
-        state = {}
-        if (
-            (components is None or COMPONENT_RL_MODULE in components)
-            and COMPONENT_RL_MODULE not in not_components
-        ):
+        state = {
+            "should_module_be_updated": self.config.policies_to_train,
+        }
+
+        if self._check_component(COMPONENT_RL_MODULE, components, not_components):
             state[COMPONENT_RL_MODULE] = self.module.get_state(
                 inference_only=inference_only, module_ids=module_ids
             )
-        if (
-            (components is None or COMPONENT_OPTIMIZER in components)
-            and COMPONENT_OPTIMIZER not in not_components
-        ):
+        if self._check_component(COMPONENT_OPTIMIZER, components, not_components):
             state[COMPONENT_OPTIMIZER] = self._get_optimizer_state()
-        if (
-            (components is None or COMPONENT_SHOULD_MODULE_BE_UPDATED in components)
-            and COMPONENT_SHOULD_MODULE_BE_UPDATED not in not_components
-        ):
-            state[COMPONENT_SHOULD_MODULE_BE_UPDATED] = self.config.policies_to_train
+
         return state
 
     @override(Checkpointable)
@@ -1085,9 +1071,9 @@ class Learner(Checkpointable):
 
         # Update our trainable Modules information/function via our config.
         # If not provided in state (None), all Modules will be trained by default.
-        if COMPONENT_SHOULD_MODULE_BE_UPDATED in state:
+        if "should_module_be_updated" in state:
             self.config.multi_agent(
-                policies_to_train=state[COMPONENT_SHOULD_MODULE_BE_UPDATED]
+                policies_to_train=state["should_module_be_updated"]
             )
 
     @override(Checkpointable)
@@ -1106,7 +1092,7 @@ class Learner(Checkpointable):
         if not self._check_is_built(error=False):
             self.build()
         return [
-            ("marl_module", self.module),
+            (COMPONENT_RL_MODULE, self.module),
         ]
 
     def _get_optimizer_state(self) -> StateDict:

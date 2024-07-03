@@ -17,11 +17,7 @@ from typing import (
 )
 
 from ray.rllib.core.models.specs.typing import SpecType
-from ray.rllib.core.rl_module.rl_module import (
-    RLModule,
-    RLMODULE_METADATA_FILE_NAME,
-    SingleAgentRLModuleSpec,
-)
+from ray.rllib.core.rl_module.rl_module import RLModule, SingleAgentRLModuleSpec
 
 from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.annotations import (
@@ -328,9 +324,9 @@ class MultiAgentRLModule(RLModule):
     @override(RLModule)
     def get_state(
         self,
-        components: Optional[Collection[str]] = None,
+        components: Optional[List[str]] = None,
         *,
-        not_components: Optional[Collection[str]] = None,
+        not_components: Optional[List[str]] = None,
         module_ids: Optional[Collection[ModuleID]] = None,
         inference_only: bool = False,
         **kwargs,

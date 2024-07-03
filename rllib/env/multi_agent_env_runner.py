@@ -8,7 +8,6 @@ import gymnasium as gym
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.core import (
-    COMPONENT_AGENT_TO_MODULE_MAPPING_FN,
     COMPONENT_ENV_TO_MODULE_CONNECTOR,
     COMPONENT_MODULE_TO_ENV_CONNECTOR,
     COMPONENT_RL_MODULE,
@@ -660,9 +659,9 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
     @override(Checkpointable)
     def get_state(
         self,
-        components: Optional[Collection[str]] = None,
+        components: Optional[List[str]] = None,
         *,
-        not_components: Optional[Collection[str]] = None,
+        not_components: Optional[List[str]] = None,
         module_ids=None,
         inference_only: bool = True,
         **kwargs,
@@ -693,40 +692,26 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
             The current state of the implementing class (or only the `components`
             specified, w/o those in `not_components`).
         """
-        # If components=None, add all components to state (unless a component is in
-        # `not_components`).
-        components = force_list(components) or None
-        not_components = force_list(not_components)
-
         state = {
             WEIGHTS_SEQ_NO: self._weights_seq_no,
             NUM_ENV_STEPS_SAMPLED_LIFETIME: (
                 self.metrics.peek(NUM_ENV_STEPS_SAMPLED_LIFETIME, default=0)
             ),
+            "agent_to_module_mapping_fn": self.config.policy_mapping_fn,
         }
 
-        if (
-            (components is None or COMPONENT_RL_MODULE in components)
-            and COMPONENT_RL_MODULE not in not_components
-        ):
+        if self._check_component(COMPONENT_RL_MODULE, components, not_components):
             state[COMPONENT_RL_MODULE] = self.module.get_state(
                 module_ids=module_ids, inference_only=inference_only
             )
-        if (
-            (components is None or COMPONENT_ENV_TO_MODULE_CONNECTOR in components)
-            and COMPONENT_ENV_TO_MODULE_CONNECTOR not in not_components
+        if self._check_component(
+            COMPONENT_ENV_TO_MODULE_CONNECTOR, components, not_components
         ):
             state[COMPONENT_ENV_TO_MODULE_CONNECTOR] = self._env_to_module.get_state()
-        if (
-            (components is None or COMPONENT_MODULE_TO_ENV_CONNECTOR in components)
-            and COMPONENT_MODULE_TO_ENV_CONNECTOR not in not_components
+        if self._check_component(
+            COMPONENT_MODULE_TO_ENV_CONNECTOR, components, not_components
         ):
             state[COMPONENT_MODULE_TO_ENV_CONNECTOR] = self._module_to_env.get_state()
-        if (
-            (components is None or COMPONENT_AGENT_TO_MODULE_MAPPING_FN in components)
-            and COMPONENT_AGENT_TO_MODULE_MAPPING_FN not in not_components
-        ):
-            state[COMPONENT_AGENT_TO_MODULE_MAPPING_FN] = self.config.policy_mapping_fn
 
         return state
 
@@ -761,9 +746,9 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
             )
 
         # Update `agent_to_module_mapping_fn`.
-        if COMPONENT_AGENT_TO_MODULE_MAPPING_FN in state:
+        if "agent_to_module_mapping_fn" in state:
             self.config.multi_agent(
-                policy_mapping_fn=state[COMPONENT_AGENT_TO_MODULE_MAPPING_FN]
+                policy_mapping_fn=state["agent_to_module_mapping_fn"]
             )
 
     @override(Checkpointable)
@@ -1013,12 +998,12 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
         )
 
     @Deprecated(
-        new="MultiAgentEnvRunner.get_state(components='rl_module')",
+        new="MultiAgentEnvRunner.get_state(components=['rl_module'])",
         error=False,
     )
     def get_weights(self, modules=None):
         rl_module_state = self.get_state(
-            components=COMPONENT_RL_MODULE
+            components=[COMPONENT_RL_MODULE]
         )[COMPONENT_RL_MODULE]
         return rl_module_state
 

@@ -583,7 +583,7 @@ class EnvRunnerGroup:
             # New API stack: Use the unified `get_state` API.
             if self._remote_config.enable_env_runner_and_connector_v2:
                 rl_module_state = weights_src.get_state(
-                    components=COMPONENT_RL_MODULE,
+                    components=[COMPONENT_RL_MODULE],
                     inference_only=inference_only,
                     module_ids=policies,
                 )

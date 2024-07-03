@@ -40,7 +40,6 @@ from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.registry import ALGORITHMS_CLASS_TO_NAME as ALL_ALGORITHMS
 from ray.rllib.connectors.agent.obs_preproc import ObsPreprocessorConnector
 from ray.rllib.core import (
-    COMPONENT_AGENT_TO_MODULE_MAPPING_FN,
     COMPONENT_ENV_RUNNER,
     COMPONENT_EVAL_ENV_RUNNER,
     COMPONENT_LEARNER,
@@ -798,16 +797,16 @@ class Algorithm(Trainable, AlgorithmBase):
                     lambda w: w.set_is_policy_to_train(policies_to_train),
                 )
                 # Sync the weights from the learner group to the rollout workers.
-                weights = self.learner_group.get_state(components=COMPONENT_RL_MODULE)[
-                    COMPONENT_LEARNER
-                ][COMPONENT_RL_MODULE]
+                weights = self.learner_group.get_state(
+                    components=[COMPONENT_RL_MODULE]
+                )[COMPONENT_LEARNER][COMPONENT_RL_MODULE]
                 local_worker.set_weights(weights)
                 self.workers.sync_weights(inference_only=True)
             # New stack/EnvRunner APIs: Use get/set_state.
             else:
                 # Sync the weights from the learner group to the EnvRunners.
                 rl_module_state = self.learner_group.get_state(
-                    components=COMPONENT_RL_MODULE,
+                    components=[COMPONENT_RL_MODULE],
                     inference_only=True,
                 )[COMPONENT_LEARNER][COMPONENT_RL_MODULE]
                 local_worker.set_state({COMPONENT_RL_MODULE: rl_module_state})
@@ -2491,7 +2490,7 @@ class Algorithm(Trainable, AlgorithmBase):
             self.learner_group.restore(learner_state_dir)
             # Make also sure, all training EnvRunners get the just loaded weights.
             learner_group_state = self.learner_group.get_state(
-                components=COMPONENT_RL_MODULE,
+                components=[COMPONENT_RL_MODULE],
                 inference_only=True,
             )
             self.workers.local_worker().set_state({
@@ -2909,12 +2908,12 @@ class Algorithm(Trainable, AlgorithmBase):
             state[COMPONENT_METRICS_LOGGER] = self.metrics.get_state()
             # Save (local) EnvRunner state (w/o RLModule).
             state[COMPONENT_ENV_RUNNER] = self.workers.local_worker().get_state(
-                not_components=COMPONENT_RL_MODULE
+                not_components=[COMPONENT_RL_MODULE]
             )
             if self.evaluation_workers:
                 state[COMPONENT_EVAL_ENV_RUNNER] = (
                     self.evaluation_workers.local_worker().get_state(
-                        not_components=COMPONENT_RL_MODULE
+                        not_components=[COMPONENT_RL_MODULE]
                     )
                 )
             # Save Learner state (w/ RLModule).

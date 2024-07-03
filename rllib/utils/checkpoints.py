@@ -7,7 +7,7 @@ import pathlib
 import re
 import tempfile
 from types import MappingProxyType
-from typing import Any, Collection, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import ray
 import ray.cloudpickle as pickle
@@ -158,18 +158,18 @@ class Checkpointable(abc.ABC):
         )
 
         # Write components of `self` that themselves are `Checkpointable`.
-        for component_name, component in self.get_checkpointable_components():
+        for comp_name, comp in self.get_checkpointable_components():
             # If subcomponent's name is not in `state`, ignore it and don't write this
             # subcomponent's state to disk.
-            if _state_provided and component_name not in state:
+            if _state_provided and comp_name not in state:
                 continue
-            component_path = path / component_name
+            comp_path = path / comp_name
 
             # If component is an ActorManager, save the manager's first healthy
             # actor's state to disk (even if it's on another node, in which case, we'll
             # sync the generated file(s) back to this node).
-            if isinstance(component, FaultTolerantActorManager):
-                actor_to_use = component.healthy_actor_ids()[0]
+            if isinstance(comp, FaultTolerantActorManager):
+                actor_to_use = comp.healthy_actor_ids()[0]
 
                 def _get_ip(_=None):
                     import ray
@@ -178,7 +178,7 @@ class Checkpointable(abc.ABC):
 
                 _result = next(
                     iter(
-                        component.foreach_actor(
+                        comp.foreach_actor(
                             _get_ip,
                             remote_actor_ids=[actor_to_use],
                         )
@@ -191,13 +191,13 @@ class Checkpointable(abc.ABC):
 
                 # Save the state to a temporary location on the `actor_to_use`'s
                 # node.
-                component_state_ref = None
+                comp_state_ref = None
                 if _state_provided:
-                    component_state_ref = ray.put(state.pop(component_name))
+                    comp_state_ref = ray.put(state.pop(comp_name))
 
                 if worker_ip_addr == self_ip_addr:
-                    component.foreach_actor(
-                        lambda w, _path=component_path, _state=component_state_ref: (
+                    comp.foreach_actor(
+                        lambda w, _path=comp_path, _state=comp_state_ref: (
                             w.save_to_path(
                                 _path,
                                 state=(
@@ -210,7 +210,7 @@ class Checkpointable(abc.ABC):
                     )
                 else:
                     # Save the checkpoint to the temporary directory on the worker.
-                    def _save(w, _state=component_state_ref):
+                    def _save(w, _state=comp_state_ref):
                         import tempfile
 
                         # Create a temporary directory on the worker.
@@ -224,13 +224,9 @@ class Checkpointable(abc.ABC):
                         )
                         return tmpdir
 
-                    _result = next(
-                        iter(
-                            component.foreach_actor(
-                                _save, remote_actor_ids=[actor_to_use]
-                            )
-                        )
-                    )
+                    _result = next(iter(comp.foreach_actor(
+                        _save, remote_actor_ids=[actor_to_use]
+                    )))
                     if not _result.ok:
                         raise _result.get()
                     worker_temp_dir = _result.get()
@@ -240,7 +236,7 @@ class Checkpointable(abc.ABC):
                         worker_ip_addr,
                         worker_temp_dir,
                         self_ip_addr,
-                        str(component_path),
+                        str(comp_path),
                     )
 
                     # Remove the temporary directory on the worker.
@@ -249,18 +245,18 @@ class Checkpointable(abc.ABC):
 
                         shutil.rmtree(_dir)
 
-                    component.foreach_actor(_rmdir, remote_actor_ids=[actor_to_use])
+                    comp.foreach_actor(_rmdir, remote_actor_ids=[actor_to_use])
 
             # Local component (instance stored in a property of `self`).
             else:
                 if _state_provided:
-                    component_state = state.pop(component_name)
+                    comp_state = state.pop(comp_name)
                 else:
-                    component_state = self.get_state(components=component_name)
+                    comp_state = self.get_state(components=[comp_name])[comp_name]
                 # By providing the `state` arg, we make sure that the component does not
                 # have to call its own `get_state()` anymore, but uses what's provided
                 # here.
-                component.save_to_path(component_path, state=component_state)
+                comp.save_to_path(comp_path, state=comp_state)
 
         # Write all the remaining state to disk.
         with open(path / self.STATE_FILE_NAME, "wb") as f:
@@ -406,9 +402,9 @@ class Checkpointable(abc.ABC):
     @abc.abstractmethod
     def get_state(
         self,
-        components: Optional[Collection[str]] = None,
+        components: Optional[List[str]] = None,
         *,
-        not_components: Optional[Collection[str]] = None,
+        not_components: Optional[List[str]] = None,
         **kwargs,
     ) -> StateDict:
         """Returns the implementing class's current state as a dict.
@@ -480,6 +476,33 @@ class Checkpointable(abc.ABC):
             state file (self.STATE_FILE_NAME) when calling `self.save_to_path()`).
         """
         return []
+
+    def _check_component(self, name, components, not_components) -> bool:
+        if (
+            (
+                components is None
+                or any(c.startswith(name + "/") for c in components)
+                or name in components
+            )
+            and (not_components is None or name not in not_components)
+        ):
+            #if not_components is not None:
+            #    for i in range(len(not_components) - 1, -1, -1):
+            #        if not_components[i].startswith(name + "/"):
+            #            not_components[i] = not_components[i][len(name) + 1:]
+            return True
+        return False
+    
+    def _get_subcomponents(self, name, components):
+        if components is not None:
+            subcomponents = []
+            for i in range(len(components)):
+                if components[i].startswith(name + "/"):
+                    subcomponents.append(components[i][len(name) + 1:])
+                elif name != components[i]:
+                    subcomponents.append(components[i])
+
+            return None if not subcomponents else subcomponents
 
 
 @PublicAPI(stability="alpha")

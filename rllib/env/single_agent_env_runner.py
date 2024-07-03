@@ -650,9 +650,9 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
     @override(Checkpointable)
     def get_state(
         self,
-        components: Optional[Collection[str]] = None,
+        components: Optional[List[str]] = None,
         *,
-        not_components: Optional[Collection[str]] = None,
+        not_components: Optional[List[str]] = None,
         inference_only: bool = True,
         **kwargs,
     ) -> Dict[str, Any]:
@@ -678,10 +678,11 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
             The current state of the implementing class (or only the `components`
             specified, w/o those in `not_components`).
         """
-        # If components=None, add all components to state (unless a component is in
-        # `not_components`).
-        components = force_list(components) or None
-        not_components = force_list(not_components)
+        #TODO: Use self._check_component
+        ## If components=None, add all components to state (unless a component is in
+        ## `not_components`).
+        #components = force_list(components) or None
+        #not_components = force_list(not_components)
 
         state = {
             WEIGHTS_SEQ_NO: self._weights_seq_no,
@@ -689,21 +690,16 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
                 self.metrics.peek(NUM_ENV_STEPS_SAMPLED_LIFETIME, default=0)
             ),
         }
-        if (
-            (components is not None or COMPONENT_RL_MODULE in components)
-            and COMPONENT_RL_MODULE not in not_components
-        ):
+        if self._check_component(COMPONENT_RL_MODULE, components, not_components):
             state[COMPONENT_RL_MODULE] = self.module.get_state(
                 inference_only=inference_only
             )
-        if (
-            (components is not None or COMPONENT_ENV_TO_MODULE_CONNECTOR in components)
-            and COMPONENT_ENV_TO_MODULE_CONNECTOR not in not_components
+        if self._check_component(
+            COMPONENT_ENV_TO_MODULE_CONNECTOR, components, not_components
         ):
             state[COMPONENT_ENV_TO_MODULE_CONNECTOR] = self._env_to_module.get_state()
-        if (
-            (components is not None or COMPONENT_MODULE_TO_ENV_CONNECTOR in components)
-            and COMPONENT_MODULE_TO_ENV_CONNECTOR not in not_components
+        if self._check_component(
+            COMPONENT_MODULE_TO_ENV_CONNECTOR, components, not_components
         ):
             state[COMPONENT_MODULE_TO_ENV_CONNECTOR] = self._module_to_env.get_state()
 
@@ -925,7 +921,7 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
         self.metrics.log_value(EPISODE_RETURN_MAX, ret, reduce="max", window=win)
 
     @Deprecated(
-        new="SingleAgentEnvRunner.get_state(components='rl_module')",
+        new="SingleAgentEnvRunner.get_state(components=['rl_module'])",
         error=True,
     )
     def get_weights(self, *args, **kwargs):

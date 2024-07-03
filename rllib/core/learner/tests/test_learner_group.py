@@ -308,7 +308,7 @@ class TestLearnerGroupCheckpointRestore(unittest.TestCase):
             with tempfile.TemporaryDirectory() as tmpdir:
                 marl_module.save_to_path(tmpdir)
                 old_learner_weights = learner_group.get_state(
-                    components=COMPONENT_RL_MODULE
+                    components=[COMPONENT_RL_MODULE]
                 )[COMPONENT_RL_MODULE]
                 learner_group.restore_from_path(tmpdir, component=COMPONENT_RL_MODULE)
                 # check the weights of the module in the learner group are the
@@ -441,17 +441,17 @@ class TestLearnerGroupSaveLoadState(unittest.TestCase):
             initial_learner_checkpoint_dir = tempfile.TemporaryDirectory().name
             initial_learner_group.save_to_path(initial_learner_checkpoint_dir)
             initial_learner_group_weights = initial_learner_group.get_state(
-                components=COMPONENT_RL_MODULE
-            )[COMPONENT_RL_MODULE]
+                components=[COMPONENT_LEARNER + "/" + COMPONENT_RL_MODULE]
+            )[COMPONENT_LEARNER][COMPONENT_RL_MODULE]
 
             # Do a single update.
             initial_learner_group.update_from_batch(batch.as_multi_agent())
             # Weights after the update must be different from original ones.
             check(
                 initial_learner_group_weights,
-                initial_learner_group.get_state(components=COMPONENT_RL_MODULE)[
-                    COMPONENT_RL_MODULE
-                ],
+                initial_learner_group.get_state(
+                    components=[COMPONENT_LEARNER + "/" + COMPONENT_RL_MODULE]
+                )[COMPONENT_LEARNER][COMPONENT_RL_MODULE],
                 false=True,
             )
 
@@ -478,8 +478,10 @@ class TestLearnerGroupSaveLoadState(unittest.TestCase):
             learner_group = config.build_learner_group(env=env)
             learner_group.restore_from_path(initial_learner_checkpoint_dir)
             check(
-                learner_group.get_state(components=COMPONENT_RL_MODULE)[COMPONENT_RL_MODULE],
                 initial_learner_group_weights,
+                learner_group.get_state(
+                    components=[COMPONENT_LEARNER + "/" + COMPONENT_RL_MODULE]
+                )[COMPONENT_LEARNER][COMPONENT_RL_MODULE],
             )
             learner_group.update_from_batch(batch.as_multi_agent())
             results_without_break = learner_group.update_from_batch(
@@ -572,9 +574,9 @@ def _check_multi_worker_weights(learner_group, results):
         # current mean weights.
         reported_mean_weights = mod_results["mean_weight"]
         parameters = learner_group.get_state(
-            components="rl_module",
+            components=[COMPONENT_RL_MODULE],
             module_ids=module_id,
-        )["learner"]["rl_module"][module_id]
+        )[COMPONENT_LEARNER][COMPONENT_RL_MODULE][module_id]
         actual_mean_weights = np.mean([w.mean() for w in parameters.values()])
         check(reported_mean_weights, actual_mean_weights, rtol=0.02)
 
