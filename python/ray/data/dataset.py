@@ -4579,7 +4579,7 @@ class Dataset:
         Examples:
             >>> import ray
             >>> ds = ray.data.range(1)
-            >>> for ref_bundle in ds.get_internal_block_refs():
+            >>> for ref_bundle in ds.iter_internal_ref_bundles():
             ...     for block_ref, block_md in ref_bundle.blocks:
             ...         block = ray.get(block_ref)
 
