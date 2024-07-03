@@ -1,9 +1,10 @@
 from typing import Any, Dict, Iterable, List, Optional, Tuple, Union
 
+from ray.data._internal.aggregate import Count, Max, Mean, Min, Std, Sum
 from ray.data._internal.compute import ComputeStrategy
 from ray.data._internal.logical.interfaces import LogicalPlan
 from ray.data._internal.logical.operators.all_to_all_operator import Aggregate
-from ray.data.aggregate import AggregateFn, Count, Max, Mean, Min, Std, Sum
+from ray.data.aggregate import AggregateFn
 from ray.data.block import BlockAccessor, CallableClass, UserDefinedFunction
 from ray.data.dataset import DataBatch, Dataset
 from ray.util.annotations import PublicAPI

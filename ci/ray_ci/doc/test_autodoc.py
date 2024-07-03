@@ -16,7 +16,7 @@ def test_walk():
             f.write("\tapi_02.rst\n")
         with open(os.path.join(tmp, "api_01.rst"), "w") as f:
             f.write(".. currentmodule:: ci.ray_ci.doc\n")
-            f.write(".. autosummary::\n\n")
+            f.write(".. autosummary::\n")
             f.write("\t~mock.mock_function\n")
             f.write("\tmock.mock_module.mock_w00t\n")
         with open(os.path.join(tmp, "api_02.rst"), "w") as f:

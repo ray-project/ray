@@ -28,7 +28,18 @@ import ray.cloudpickle as pickle
 from ray._private.thirdparty.tabulate.tabulate import tabulate
 from ray._private.usage import usage_lib
 from ray.air.util.tensor_extensions.utils import _create_possibly_ragged_ndarray
+from ray.data._internal.aggregate import Max, Mean, Min, Std, Sum
 from ray.data._internal.compute import ComputeStrategy
+from ray.data._internal.datasource.bigquery_datasink import BigQueryDatasink
+from ray.data._internal.datasource.csv_datasink import CSVDatasink
+from ray.data._internal.datasource.image_datasink import ImageDatasink
+from ray.data._internal.datasource.json_datasink import JSONDatasink
+from ray.data._internal.datasource.mongo_datasink import MongoDatasink
+from ray.data._internal.datasource.numpy_datasink import NumpyDatasink
+from ray.data._internal.datasource.parquet_datasink import ParquetDatasink
+from ray.data._internal.datasource.sql_datasink import SQLDatasink
+from ray.data._internal.datasource.tfrecords_datasink import TFRecordDatasink
+from ray.data._internal.datasource.webdataset_datasink import WebDatasetDatasink
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.equalize import _equalize
 from ray.data._internal.execution.interfaces import RefBundle
@@ -61,7 +72,7 @@ from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.split import _get_num_rows, _split_at_indices
 from ray.data._internal.stats import DatasetStats, DatasetStatsSummary, StatsManager
 from ray.data._internal.util import AllToAllAPI, ConsumptionAPI, get_compute_strategy
-from ray.data.aggregate import AggregateFn, Max, Mean, Min, Std, Sum
+from ray.data.aggregate import AggregateFn
 from ray.data.block import (
     VALID_BATCH_FORMATS,
     Block,
@@ -74,21 +85,7 @@ from ray.data.block import (
     _apply_batch_size,
 )
 from ray.data.context import DataContext
-from ray.data.datasource import (
-    Connection,
-    Datasink,
-    FilenameProvider,
-    _BigQueryDatasink,
-    _CSVDatasink,
-    _ImageDatasink,
-    _JSONDatasink,
-    _MongoDatasink,
-    _NumpyDatasink,
-    _ParquetDatasink,
-    _SQLDatasink,
-    _TFRecordDatasink,
-    _WebDatasetDatasink,
-)
+from ray.data.datasource import Connection, Datasink, FilenameProvider
 from ray.data.iterator import DataIterator
 from ray.data.random_access_dataset import RandomAccessDataset
 from ray.types import ObjectRef
@@ -2706,7 +2703,7 @@ class Dataset:
                         #pyarrow.parquet.write_table>`_, which is used to write out each
                 block to a file.
         """  # noqa: E501
-        datasink = _ParquetDatasink(
+        datasink = ParquetDatasink(
             path,
             arrow_parquet_args_fn=arrow_parquet_args_fn,
             arrow_parquet_args=arrow_parquet_args,
@@ -2814,7 +2811,7 @@ class Dataset:
                 :class:`~ray.data.Dataset` block. These
                 are dict(orient="records", lines=True) by default.
         """
-        datasink = _JSONDatasink(
+        datasink = JSONDatasink(
             path,
             pandas_json_args_fn=pandas_json_args_fn,
             pandas_json_args=pandas_json_args,
@@ -2887,7 +2884,7 @@ class Dataset:
                 total number of tasks run. By default, concurrency is dynamically
                 decided based on the available resources.
         """  # noqa: E501
-        datasink = _ImageDatasink(
+        datasink = ImageDatasink(
             path,
             column,
             file_format,
@@ -2992,7 +2989,7 @@ class Dataset:
                     #pyarrow.csv.write_csv>`_
                 when writing each block to a file.
         """
-        datasink = _CSVDatasink(
+        datasink = CSVDatasink(
             path,
             arrow_csv_args_fn=arrow_csv_args_fn,
             arrow_csv_args=arrow_csv_args,
@@ -3088,7 +3085,7 @@ class Dataset:
                 decided based on the available resources.
 
         """
-        datasink = _TFRecordDatasink(
+        datasink = TFRecordDatasink(
             path=path,
             tf_schema=tf_schema,
             num_rows_per_file=num_rows_per_file,
@@ -3173,7 +3170,7 @@ class Dataset:
                 decided based on the available resources.
 
         """
-        datasink = _WebDatasetDatasink(
+        datasink = WebDatasetDatasink(
             path,
             encoder=encoder,
             num_rows_per_file=num_rows_per_file,
@@ -3260,7 +3257,7 @@ class Dataset:
                 decided based on the available resources.
         """
 
-        datasink = _NumpyDatasink(
+        datasink = NumpyDatasink(
             path,
             column,
             num_rows_per_file=num_rows_per_file,
@@ -3337,7 +3334,7 @@ class Dataset:
                 total number of tasks run. By default, concurrency is dynamically
                 decided based on the available resources.
         """  # noqa: E501
-        datasink = _SQLDatasink(sql=sql, connection_factory=connection_factory)
+        datasink = SQLDatasink(sql=sql, connection_factory=connection_factory)
         self.write_datasink(
             datasink,
             ray_remote_args=ray_remote_args,
@@ -3408,7 +3405,7 @@ class Dataset:
             ValueError: if ``database`` doesn't exist.
             ValueError: if ``collection`` doesn't exist.
         """
-        datasink = _MongoDatasink(
+        datasink = MongoDatasink(
             uri=uri,
             database=database,
             collection=collection,
@@ -3481,7 +3478,7 @@ class Dataset:
         else:
             ray_remote_args["max_retries"] = 0
 
-        datasink = _BigQueryDatasink(
+        datasink = BigQueryDatasink(
             project_id=project_id,
             dataset=dataset,
             max_retry_cnt=max_retry_cnt,
@@ -4607,7 +4604,10 @@ class Dataset:
             >>> ray.data.read_csv("s3://anonymous@ray-example-data/iris.csv").has_serializable_lineage()
             True
         """  # noqa: E501
-        return self._plan.has_lazy_input()
+        return all(
+            op.is_lineage_serializable()
+            for op in self._logical_plan.dag.post_order_iter()
+        )
 
     @DeveloperAPI
     def serialize_lineage(self) -> bytes:
@@ -4896,7 +4896,7 @@ class Dataset:
         raise TypeError(
             "`Dataset` objects aren't iterable. To iterate records, call "
             "`ds.iter_rows()` or `ds.iter_batches()`. For more information, read "
-            "https://docs.ray.io/en/latest/data/consuming-datasets.html."
+            "https://docs.ray.io/en/latest/data/iterating-over-data.html."
         )
 
     def _block_num_rows(self) -> List[int]:
@@ -4994,9 +4994,6 @@ class Schema:
     """Dataset schema.
 
     Attributes:
-        names: List of column names of this Dataset.
-        types: List of Arrow types of the Dataset. Note that the "object" type is
-            not Arrow compatible and hence is returned as `object`.
         base_schema: The underlying Arrow or Pandas schema.
     """
 
@@ -5009,7 +5006,7 @@ class Schema:
         return self.base_schema.names
 
     @property
-    def types(self) -> List[Union[Literal[object], "pyarrow.DataType"]]:
+    def types(self) -> List[Union[type[object], "pyarrow.lib.DataType"]]:
         """Lists the types of this Dataset in Arrow format
 
         For non-Arrow compatible types, we return "object".

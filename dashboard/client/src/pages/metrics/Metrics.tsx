@@ -1,49 +1,42 @@
 import {
   Alert,
   AlertProps,
+  Box,
   Button,
+  InputAdornment,
   Link,
   Menu,
   MenuItem,
   Paper,
+  SxProps,
   TextField,
+  Theme,
   Tooltip,
 } from "@mui/material";
-import createStyles from "@mui/styles/createStyles";
-import makeStyles from "@mui/styles/makeStyles";
 import React, { useContext, useEffect, useState } from "react";
+import { BiRefresh, BiTime } from "react-icons/bi";
 import { RiExternalLinkLine } from "react-icons/ri";
 
 import { GlobalContext } from "../../App";
 import { CollapsibleSection } from "../../common/CollapsibleSection";
 import { ClassNameProps } from "../../common/props";
+import { HelpInfo } from "../../components/Tooltip";
 import { MainNavPageInfo } from "../layout/mainNavContext";
 import { MAIN_NAV_HEIGHT } from "../layout/MainNavLayout";
 
-const useStyles = makeStyles((theme) =>
-  createStyles({
-    metricsRoot: { margin: theme.spacing(1) },
-    topBar: {
-      position: "sticky",
-      top: MAIN_NAV_HEIGHT,
-      width: "100%",
-      display: "flex",
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "flex-end",
-      padding: theme.spacing(1),
-      boxShadow: "0px 1px 0px #D2DCE6",
-      zIndex: 1,
-      height: 36,
-    },
-    timeRangeButton: {
-      marginLeft: theme.spacing(2),
-    },
-    alert: {
-      marginTop: 30,
-    },
-  }),
-);
+export enum RefreshOptions {
+  OFF = "off",
+  FIVE_SECONDS = "5s",
+  TEN_SECONDS = "10s",
+  THIRTY_SECONDS = "30s",
+  ONE_MIN = "1m",
+  FIVE_MINS = "5m",
+  FIFTEEN_MINS = "15m",
+  THIRTY_MINS = "30m",
+  ONE_HOUR = "1h",
+  TWO_HOURS = "2h",
+  ONE_DAY = "1d",
+}
 
 export enum TimeRangeOptions {
   FIVE_MINS = "Last 5 minutes",
@@ -56,6 +49,20 @@ export enum TimeRangeOptions {
   TWO_DAYS = "Last 2 days",
   SEVEN_DAYS = "Last 7 days",
 }
+
+export const REFRESH_VALUE: Record<RefreshOptions, string> = {
+  [RefreshOptions.OFF]: "",
+  [RefreshOptions.FIVE_SECONDS]: "5s",
+  [RefreshOptions.TEN_SECONDS]: "10s",
+  [RefreshOptions.THIRTY_SECONDS]: "30s",
+  [RefreshOptions.ONE_MIN]: "1m",
+  [RefreshOptions.FIVE_MINS]: "5m",
+  [RefreshOptions.FIFTEEN_MINS]: "15m",
+  [RefreshOptions.THIRTY_MINS]: "30m",
+  [RefreshOptions.ONE_HOUR]: "1h",
+  [RefreshOptions.TWO_HOURS]: "2h",
+  [RefreshOptions.ONE_DAY]: "1d",
+};
 
 export const TIME_RANGE_TO_FROM_VALUE: Record<TimeRangeOptions, string> = {
   [TimeRangeOptions.FIVE_MINS]: "now-5m",
@@ -349,7 +356,6 @@ const DATA_METRICS_CONFIG: MetricsSectionConfig[] = [
 ];
 
 export const Metrics = () => {
-  const classes = useStyles();
   const { grafanaHost, prometheusHealth, dashboardUids, dashboardDatasource } =
     useContext(GlobalContext);
 
@@ -358,13 +364,25 @@ export const Metrics = () => {
 
   const grafanaDefaultDatasource = dashboardDatasource ?? "Prometheus";
 
+  const [refreshOption, setRefreshOption] = useState<RefreshOptions>(
+    RefreshOptions.FIVE_SECONDS,
+  );
+
   const [timeRangeOption, setTimeRangeOption] = useState<TimeRangeOptions>(
     TimeRangeOptions.FIVE_MINS,
   );
+
+  const [refresh, setRefresh] = useState<string | null>(null);
+
   const [[from, to], setTimeRange] = useState<[string | null, string | null]>([
     null,
     null,
   ]);
+
+  useEffect(() => {
+    setRefresh(REFRESH_VALUE[refreshOption]);
+  }, [refreshOption]);
+
   useEffect(() => {
     const from = TIME_RANGE_TO_FROM_VALUE[timeRangeOption];
     setTimeRange([from, "now"]);
@@ -377,6 +395,8 @@ export const Metrics = () => {
   const toParam = to !== null ? `&to=${to}` : "";
   const timeRangeParams = `${fromParam}${toParam}`;
 
+  const refreshParams = refresh ? `&refresh=${refresh}` : "";
+
   return (
     <div>
       <MainNavPageInfo
@@ -387,10 +407,24 @@ export const Metrics = () => {
         }}
       />
       {grafanaHost === undefined || !prometheusHealth ? (
-        <GrafanaNotRunningAlert className={classes.alert} />
+        <GrafanaNotRunningAlert sx={{ marginTop: "30px" }} />
       ) : (
         <div>
-          <Paper className={classes.topBar}>
+          <Paper
+            sx={{
+              position: "sticky",
+              top: MAIN_NAV_HEIGHT,
+              width: "100%",
+              display: "flex",
+              flexDirection: "row",
+              alignItems: "center",
+              justifyContent: "flex-end",
+              padding: 1,
+              boxShadow: "0px 1px 0px #D2DCE6",
+              zIndex: 1,
+              height: 36,
+            }}
+          >
             <Button
               onClick={({ currentTarget }) => {
                 setViewInGrafanaMenuRef(currentTarget);
@@ -432,15 +466,45 @@ export const Metrics = () => {
               </Menu>
             )}
             <TextField
-              className={classes.timeRangeButton}
+              sx={{ marginLeft: 2, width: 80 }}
               select
               size="small"
-              style={{ width: 120 }}
+              value={refreshOption}
+              onChange={({ target: { value } }) => {
+                setRefreshOption(value as RefreshOptions);
+              }}
+              variant="standard"
+              InputProps={{
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <BiRefresh style={{ fontSize: 25, paddingBottom: 5 }} />
+                  </InputAdornment>
+                ),
+              }}
+            >
+              {Object.entries(RefreshOptions).map(([key, value]) => (
+                <MenuItem key={key} value={value}>
+                  {value}
+                </MenuItem>
+              ))}
+            </TextField>
+            <HelpInfo>Auto-refresh interval</HelpInfo>
+            <TextField
+              sx={{ marginLeft: 2, width: 140 }}
+              select
+              size="small"
               value={timeRangeOption}
               onChange={({ target: { value } }) => {
                 setTimeRangeOption(value as TimeRangeOptions);
               }}
               variant="standard"
+              InputProps={{
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <BiTime style={{ fontSize: 22, paddingBottom: 5 }} />
+                  </InputAdornment>
+                ),
+              }}
             >
               {Object.entries(TimeRangeOptions).map(([key, value]) => (
                 <MenuItem key={key} value={value}>
@@ -448,17 +512,19 @@ export const Metrics = () => {
                 </MenuItem>
               ))}
             </TextField>
+            <HelpInfo>Time range picker</HelpInfo>
           </Paper>
           <Alert severity="info">
             Tip: You can click on the legend to focus on a specific line in the
             time-series graph. You can use control/cmd + click to filter out a
             line in the time-series graph.
           </Alert>
-          <div className={classes.metricsRoot}>
+          <Box sx={{ margin: 1 }}>
             {METRICS_CONFIG.map((config) => (
               <MetricsSection
                 key={config.title}
                 metricConfig={config}
+                refreshParams={refreshParams}
                 timeRangeParams={timeRangeParams}
                 dashboardUid={grafanaDefaultDashboardUid}
                 dashboardDatasource={grafanaDefaultDatasource}
@@ -469,48 +535,22 @@ export const Metrics = () => {
                 <MetricsSection
                   key={config.title}
                   metricConfig={config}
+                  refreshParams={refreshParams}
                   timeRangeParams={timeRangeParams}
                   dashboardUid={dashboardUids["data"]}
                   dashboardDatasource={grafanaDefaultDatasource}
                 />
               ))}
-          </div>
+          </Box>
         </div>
       )}
     </div>
   );
 };
 
-const useMetricsSectionStyles = makeStyles((theme) =>
-  createStyles({
-    metricsSection: {
-      marginTop: theme.spacing(3),
-    },
-    grafanaEmbedsContainer: {
-      display: "flex",
-      flexDirection: "row",
-      flexWrap: "wrap",
-      gap: theme.spacing(3),
-      marginTop: theme.spacing(2),
-    },
-    chart: {
-      width: "100%",
-      height: 400,
-      overflow: "hidden",
-      [theme.breakpoints.up("md")]: {
-        // Calculate max width based on 1/3 of the total width minus padding between cards
-        width: `calc((100% - ${theme.spacing(3)} * 2) / 3)`,
-      },
-    },
-    grafanaEmbed: {
-      width: "100%",
-      height: "100%",
-    },
-  }),
-);
-
 type MetricsSectionProps = {
   metricConfig: MetricsSectionConfig;
+  refreshParams: string;
   timeRangeParams: string;
   dashboardUid: string;
   dashboardDatasource: string;
@@ -518,73 +558,81 @@ type MetricsSectionProps = {
 
 const MetricsSection = ({
   metricConfig: { title, contents },
+  refreshParams,
   timeRangeParams,
   dashboardUid,
   dashboardDatasource,
 }: MetricsSectionProps) => {
   const { grafanaHost, sessionName } = useContext(GlobalContext);
 
-  const classes = useMetricsSectionStyles();
-
   return (
     <CollapsibleSection
       key={title}
       title={title}
       startExpanded
-      className={classes.metricsSection}
+      sx={{ marginTop: 3 }}
       keepRendered
     >
-      <div className={classes.grafanaEmbedsContainer}>
+      <Box
+        sx={{
+          display: "flex",
+          flexDirection: "row",
+          flexWrap: "wrap",
+          gap: 3,
+          marginTop: 2,
+        }}
+      >
         {contents.map(({ title, pathParams }) => {
           const path =
             `/d-solo/${dashboardUid}?${pathParams}` +
-            `&refresh${timeRangeParams}&var-SessionName=${sessionName}&var-datasource=${dashboardDatasource}`;
+            `&${refreshParams}${timeRangeParams}&var-SessionName=${sessionName}&var-datasource=${dashboardDatasource}`;
           return (
             <Paper
               key={pathParams}
-              className={classes.chart}
+              sx={(theme) => ({
+                width: "100%",
+                height: 400,
+                overflow: "hidden",
+                [theme.breakpoints.up("md")]: {
+                  // Calculate max width based on 1/3 of the total width minus padding between cards
+                  width: `calc((100% - ${theme.spacing(3)} * 2) / 3)`,
+                },
+              })}
               variant="outlined"
               elevation={0}
             >
-              <iframe
+              <Box
+                component="iframe"
                 key={title}
                 title={title}
-                className={classes.grafanaEmbed}
+                sx={{ width: "100%", height: "100%" }}
                 src={`${grafanaHost}${path}`}
                 frameBorder="0"
               />
             </Paper>
           );
         })}
-      </div>
+      </Box>
     </CollapsibleSection>
   );
 };
 
-const useGrafanaNotRunningAlertStyles = makeStyles((theme) =>
-  createStyles({
-    heading: {
-      fontWeight: 500,
-    },
-  }),
-);
-
 export type GrafanaNotRunningAlertProps = {
   severity?: AlertProps["severity"];
+  sx?: SxProps<Theme>;
 } & ClassNameProps;
 
 export const GrafanaNotRunningAlert = ({
   className,
   severity = "warning",
+  sx,
 }: GrafanaNotRunningAlertProps) => {
-  const classes = useGrafanaNotRunningAlertStyles();
-
   const { grafanaHost, prometheusHealth } = useContext(GlobalContext);
   return grafanaHost === undefined || !prometheusHealth ? (
-    <Alert className={className} severity={severity}>
-      <span className={classes.heading}>
+    <Alert className={className} sx={sx} severity={severity}>
+      <Box component="span" sx={{ fontWeight: 500 }}>
         Set up Prometheus and Grafana for better Ray Dashboard experience
-      </span>
+      </Box>
       <br />
       <br />
       Time-series charts are hidden because either Prometheus or Grafana server
