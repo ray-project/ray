@@ -95,11 +95,13 @@ export type LogVirtualViewProps = {
 
 type LogLineDetailDialogProps = {
   formattedLogLine: string;
+  message?: string;
   onClose: () => void;
 };
 
 const LogLineDetailDialog = ({
   formattedLogLine,
+  message,
   onClose,
 }: LogLineDetailDialogProps) => {
   return (
@@ -139,11 +141,41 @@ const LogLineDetailDialog = ({
               sx={{
                 whiteSpace: "pre",
                 overflow: "auto",
-                height: "600px",
+                height: "300px",
               }}
               data-testid="raw-log-line"
             >
               {formattedLogLine}
+            </Typography>
+          </Box>
+          <Typography
+            variant="h5"
+            sx={{
+              marginTop: 2,
+              marginBottom: 2,
+            }}
+          >
+            Formatted message
+          </Typography>
+          <Box
+            sx={(theme) => ({
+              padding: 1,
+              bgcolor: "#EEEEEE",
+              borderRadius: 1,
+              border: `1px solid ${theme.palette.divider}`,
+            })}
+          >
+            <Typography
+              component="pre"
+              variant="body2"
+              sx={{
+                whiteSpace: "pre",
+                overflow: "auto",
+                height: "300px",
+              }}
+              data-testid="raw-log-line"
+            >
+              {message}
             </Typography>
           </Box>
         </Box>
@@ -176,10 +208,14 @@ const LogVirtualView: React.FC<LogVirtualViewProps> = ({
   if (listRef) {
     listRef.current = outter.current;
   }
-  const [selectedLogLine, setSelectedLogLine] = useState<string>();
-  const handleLogLineClick = useCallback((logLine: string) => {
-    setSelectedLogLine(logLine);
-  }, []);
+  const [selectedLogLine, setSelectedLogLine] =
+    useState<[string, string | undefined]>();
+  const handleLogLineClick = useCallback(
+    (logLine: string, message?: string) => {
+      setSelectedLogLine([logLine, message]);
+    },
+    [],
+  );
 
   const itemRenderer = ({ index, style }: { index: number; style: any }) => {
     const { i, origin } = logs[revert ? logs.length - 1 - index : index];
@@ -211,7 +247,7 @@ const LogVirtualView: React.FC<LogVirtualViewProps> = ({
         style={style}
         sx={{
           overflowX: "visible",
-          whiteSpace: "pre",
+          whiteSpace: "nowrap",
           "&::before": {
             content: `"${i + 1}"`,
             marginRight: 0.5,
@@ -221,7 +257,10 @@ const LogVirtualView: React.FC<LogVirtualViewProps> = ({
           },
         }}
         onClick={() => {
-          handleLogLineClick(formattedLogLine);
+          if ((window.getSelection()?.toString().length ?? 0) === 0) {
+            // Only open if user is not selecting text
+            handleLogLineClick(formattedLogLine, message);
+          }
         }}
       >
         {lowlight
@@ -306,7 +345,7 @@ const LogVirtualView: React.FC<LogVirtualViewProps> = ({
         </Box>
       )}
       <List
-        height={height || (content.split("\n").length + 1) * 18}
+        height={height || 600}
         width={width}
         ref={el}
         outerRef={outter}
@@ -323,7 +362,8 @@ const LogVirtualView: React.FC<LogVirtualViewProps> = ({
       </List>
       {selectedLogLine && (
         <LogLineDetailDialog
-          formattedLogLine={selectedLogLine}
+          formattedLogLine={selectedLogLine[0]}
+          message={selectedLogLine[1]}
           onClose={() => {
             setSelectedLogLine(undefined);
           }}
