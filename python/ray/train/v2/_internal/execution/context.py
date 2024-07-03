@@ -20,16 +20,16 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__file__)
 
 
-@dataclass
+@dataclass(frozen=True)
 class DistributedContext:
-    local_rank: int
-    local_world_size: int
     world_rank: int
     world_size: int
+    local_rank: int
+    local_world_size: int
     node_rank: int
 
 
-@dataclass
+@dataclass(frozen=True)
 class ExecutionContext:
     """Holds the execution context for the current worker process.
 

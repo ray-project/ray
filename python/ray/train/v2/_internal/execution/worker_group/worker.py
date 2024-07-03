@@ -2,6 +2,7 @@ import os
 import queue
 import socket
 from dataclasses import dataclass
+from functools import cached_property
 from typing import Any, Callable, Dict, List, Optional, TypeVar, Union
 
 import ray
@@ -30,7 +31,7 @@ class WorkerStatus:
     training_result: Optional[_TrainingResult] = None
 
 
-@dataclass
+@dataclass(frozen=True)
 class ActorMetadata:
     hostname: str
     node_id: str
@@ -38,12 +39,49 @@ class ActorMetadata:
     pid: int
     accelerator_ids: Dict[str, List[Union[int, str]]]
 
+    @cached_property
+    def _repr(self) -> str:
+        indent = "  "
+        repr_lines = [
+            "ActorMetadata(",
+            f"{indent}hostname={repr(self.hostname)},",
+            f"{indent}node_id={repr(self.node_id)},",
+            f"{indent}node_ip={repr(self.node_ip)},",
+            f"{indent}pid={repr(self.pid)},",
+        ]
+        non_empty_accelerator_ids = {k: v for k, v in self.accelerator_ids.items() if v}
+        if non_empty_accelerator_ids:
+            repr_lines.append(f"{indent}accelerator_ids={non_empty_accelerator_ids},")
+        repr_lines.append(")")
+        return "\n".join(repr_lines)
+
+    def __repr__(self) -> str:
+        return self._repr
+
 
 @dataclass
 class Worker:
     actor: ActorHandle
     metadata: ActorMetadata
     distributed_context: Optional[DistributedContext] = None
+
+    @cached_property
+    def _repr(self) -> str:
+        indent = "  "
+        metadata_repr = repr(self.metadata).replace("\n", f"\n{indent}")
+        context_repr = repr(self.distributed_context).replace("\n", f"\n{indent}")
+
+        repr_lines = [
+            "Worker(",
+            f"{indent}actor={repr(self.actor)},",
+            f"{indent}metadata={metadata_repr},",
+            f"{indent}distributed_context={context_repr},",
+            ")",
+        ]
+        return "\n".join(repr_lines)
+
+    def __repr__(self) -> str:
+        return self._repr
 
 
 class RayTrainWorker:
