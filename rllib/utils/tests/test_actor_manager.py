@@ -20,7 +20,8 @@ def load_random_numbers():
         "tests",
         "random_numbers.pkl",
     )
-    return pickle.load(open(pkl_file, "rb"))
+    with open(pkl_file, "rb") as f:
+        return pickle.load(f)
 
 
 RANDOM_NUMS = load_random_numbers()

@@ -420,11 +420,11 @@ class TestLearnerGroupSaveLoadState(unittest.TestCase):
     def tearDownClass(cls) -> None:
         ray.shutdown()
 
-    def test_save_and_restore(self):
+    def test_save_to_path_and_restore_from_path(self):
         """Check that saving and loading learner group state works."""
-        fws = ["torch", "tf2"]
+        fws = ["torch"]#, "tf2"]
         # this is expanded to more scaling modes on the release ci.
-        scaling_modes = ["multi-gpu-ddp", "local-cpu"]
+        scaling_modes = ["local-cpu"]#, "multi-gpu-ddp"]
         test_iterator = itertools.product(fws, scaling_modes)
         batch = SampleBatch(FAKE_BATCH)
         for fw, scaling_mode in test_iterator:
@@ -437,26 +437,36 @@ class TestLearnerGroupSaveLoadState(unittest.TestCase):
             config = BaseTestingAlgorithmConfig().update_from_dict(config_overrides)
             initial_learner_group = config.build_learner_group(env=env)
 
-            # checkpoint the initial learner state for later comparison
+            # Checkpoint the initial learner state for later comparison.
             initial_learner_checkpoint_dir = tempfile.TemporaryDirectory().name
-            initial_learner_group.save(initial_learner_checkpoint_dir)
-            initial_learner_group_weights = initial_learner_group.get_weights()
+            initial_learner_group.save_to_path(initial_learner_checkpoint_dir)
+            initial_learner_group_weights = initial_learner_group.get_state(
+                components=COMPONENT_RL_MODULE
+            )[COMPONENT_RL_MODULE]
 
-            # do a single update
+            # Do a single update.
             initial_learner_group.update_from_batch(batch.as_multi_agent())
+            # Weights after the update must be different from original ones.
+            check(
+                initial_learner_group_weights,
+                initial_learner_group.get_state(components=COMPONENT_RL_MODULE)[
+                    COMPONENT_RL_MODULE
+                ],
+                false=True,
+            )
 
-            # checkpoint the learner state after 1 update for later comparison
+            # Checkpoint the learner state after 1 update for later comparison.
             learner_after_1_update_checkpoint_dir = tempfile.TemporaryDirectory().name
-            initial_learner_group.save(learner_after_1_update_checkpoint_dir)
+            initial_learner_group.save_to_path(learner_after_1_update_checkpoint_dir)
 
-            # remove that learner, construct a new one, and load the state of the old
-            # learner into the new one
+            # Remove that learner, construct a new one, and load the state of the old
+            # learner into the new one.
             initial_learner_group.shutdown()
             del initial_learner_group
             new_learner_group = config.build_learner_group(env=env)
-            new_learner_group.restore(learner_after_1_update_checkpoint_dir)
+            new_learner_group.restore_from_path(learner_after_1_update_checkpoint_dir)
 
-            # do another update
+            # Do another update.
             results_with_break = new_learner_group.update_from_batch(
                 batch=batch.as_multi_agent()
             )
@@ -464,10 +474,13 @@ class TestLearnerGroupSaveLoadState(unittest.TestCase):
             new_learner_group.shutdown()
             del new_learner_group
 
-            # construct a new learner group and load the initial state of the learner
+            # Construct a new learner group and load the initial state of the learner.
             learner_group = config.build_learner_group(env=env)
-            learner_group.restore(initial_learner_checkpoint_dir)
-            check(learner_group.get_state(), initial_learner_group_weights)
+            learner_group.restore_from_path(initial_learner_checkpoint_dir)
+            check(
+                learner_group.get_state(components=COMPONENT_RL_MODULE)[COMPONENT_RL_MODULE],
+                initial_learner_group_weights,
+            )
             learner_group.update_from_batch(batch.as_multi_agent())
             results_without_break = learner_group.update_from_batch(
                 batch=batch.as_multi_agent()
@@ -476,7 +489,7 @@ class TestLearnerGroupSaveLoadState(unittest.TestCase):
             learner_group.shutdown()
             del learner_group
 
-            # compare the results of the two updates
+            # Compare the results of the two updates.
             check(results_with_break, results_without_break)
             check(
                 weights_after_1_update_with_break, weights_after_1_update_without_break

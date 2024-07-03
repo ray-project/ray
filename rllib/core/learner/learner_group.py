@@ -685,26 +685,31 @@ class LearnerGroup(Checkpointable):
         not_components: Optional[Collection[str]] = None,
         **kwargs,
     ) -> StateDict:
-        if self.is_local:
-            learner_state = self._learner.get_state(
-                components=components,
-                not_components=not_components,
-                **kwargs,
-            )
-        else:
-            worker = self._worker_manager.healthy_actor_ids()[0]
-            assert len(self._workers) == self._worker_manager.num_healthy_actors()
-            results = self._worker_manager.foreach_actor(
-                lambda w: w.get_state(
+        state = {}
+        if (
+            (components is None or COMPONENT_LEARNER in components)
+            and COMPONENT_LEARNER not in not_components
+        ):
+            if self.is_local:
+                state[COMPONENT_LEARNER] = self._learner.get_state(
                     components=components,
                     not_components=not_components,
                     **kwargs,
-                ),
-                remote_actor_ids=[worker],
-            )
-            learner_state = self._get_results(results)[0]
+                )
+            else:
+                worker = self._worker_manager.healthy_actor_ids()[0]
+                assert len(self._workers) == self._worker_manager.num_healthy_actors()
+                results = self._worker_manager.foreach_actor(
+                    lambda w: w.get_state(
+                        components=components,
+                        not_components=not_components,
+                        **kwargs,
+                    ),
+                    remote_actor_ids=[worker],
+                )
+                state[COMPONENT_LEARNER] =  self._get_results(results)[0]
 
-        return learner_state
+        return state
 
     @override(Checkpointable)
     def set_state(self, state: StateDict) -> None:
@@ -747,229 +752,191 @@ class LearnerGroup(Checkpointable):
             return [func(self._learner, **kwargs)]
         return self._worker_manager.foreach_actor(partial(func, **kwargs))
 
-    def restore(self, path: str) -> None:
-        """Restores/loads the state of the LearnerGroup from a path.
-
-        Args:
-            path: The path to load the state from.
-        """
-        path = str(self._resolve_checkpoint_path(path))
-
-        if self.is_local:
-            self._learner.restore(path)
-        else:
-            assert len(self._workers) == self._worker_manager.num_healthy_actors()
-            head_node_ip = ray.util.get_node_ip_address()
-            workers = self._worker_manager.healthy_actor_ids()
-
-            def _restore_learner(_learner):
-                # Doing imports here since they might not be imported on the Learner
-                # actor.
-                import ray
-                import tempfile
-
-                worker_node_ip = ray.util.get_node_ip_address()
-                # If the worker is on the same node as the head, load the checkpoint
-                # directly from the path otherwise sync the checkpoint from the head
-                # to the worker and load it from there.
-                if worker_node_ip == head_node_ip:
-                    _learner.restore(path)
-                else:
-                    with tempfile.TemporaryDirectory() as temp_dir:
-                        sync_dir_between_nodes(
-                            head_node_ip, path, worker_node_ip, temp_dir
-                        )
-                        _learner.restore(temp_dir)
-
-            self._worker_manager.foreach_actor(
-                _restore_learner, remote_actor_ids=workers
-            )
-
-    def load_module_state(
-        self,
-        *,
-        marl_module_ckpt_dir: Optional[str] = None,
-        modules_to_load: Optional[Set[str]] = None,
-        rl_module_ckpt_dirs: Optional[Dict[ModuleID, str]] = None,
-    ) -> None:
-        """Load the checkpoints of the modules being trained by this LearnerGroup.
-
-        `load_module_state` can be used 3 ways:
-            1. Load a checkpoint for the MultiAgentRLModule being trained by this
-                LearnerGroup. Limit the modules that are loaded from the checkpoint
-                by specifying the `modules_to_load` argument.
-            2. Load the checkpoint(s) for single agent RLModules that
-                are in the MultiAgentRLModule being trained by this LearnerGroup.
-            3. Load a checkpoint for the MultiAgentRLModule being trained by this
-                LearnerGroup and load the checkpoint(s) for single agent RLModules
-                that are in the MultiAgentRLModule. The checkpoints for the single
-                agent RLModules take precedence over the module states in the
-                MultiAgentRLModule checkpoint.
-
-        NOTE: At lease one of marl_module_ckpt_dir or rl_module_ckpt_dirs is
-            must be specified. modules_to_load can only be specified if
-            marl_module_ckpt_dir is specified.
-
-        Args:
-            marl_module_ckpt_dir: The path to the checkpoint for the
-                MultiAgentRLModule.
-            modules_to_load: A set of module ids to load from the checkpoint.
-            rl_module_ckpt_dirs: A mapping from module ids to the path to a
-                checkpoint for a single agent RLModule.
-        """
-        if not (marl_module_ckpt_dir or rl_module_ckpt_dirs):
-            raise ValueError(
-                "At least one of multi_agent_module_state or "
-                "single_agent_module_states must be specified."
-            )
-        if marl_module_ckpt_dir:
-            if not isinstance(marl_module_ckpt_dir, str):
-                raise ValueError("multi_agent_module_state must be a string path.")
-            marl_module_ckpt_dir = self._resolve_checkpoint_path(marl_module_ckpt_dir)
-        if rl_module_ckpt_dirs:
-            if not isinstance(rl_module_ckpt_dirs, dict):
-                raise ValueError("single_agent_module_states must be a dictionary.")
-            for module_id, path in rl_module_ckpt_dirs.items():
-                if not isinstance(path, str):
-                    raise ValueError(
-                        "rl_module_ckpt_dirs must be a dictionary "
-                        "mapping module ids to string paths."
-                    )
-                rl_module_ckpt_dirs[module_id] = self._resolve_checkpoint_path(path)
-        if modules_to_load:
-            if not isinstance(modules_to_load, set):
-                raise ValueError("modules_to_load must be a set.")
-            for module_id in modules_to_load:
-                if not isinstance(module_id, str):
-                    raise ValueError("modules_to_load must be a list of strings.")
-
-        if self.is_local:
-            module_keys = set(self._learner.module.keys())
-        else:
-            workers = self._worker_manager.healthy_actor_ids()
-            module_keys = set(
-                self._get_results(
-                    self._worker_manager.foreach_actor(
-                        lambda w: w.module.keys(), remote_actor_ids=[workers[0]]
-                    )
-                )[0]
-            )
-
-        if marl_module_ckpt_dir and rl_module_ckpt_dirs:
-            # If both a MARLModule checkpoint and RLModule checkpoints are specified,
-            # the RLModule checkpoints take precedence over the MARLModule checkpoint,
-            # so we should not load any modules in the MARLModule checkpoint that are
-            # also in the RLModule checkpoints.
-            if modules_to_load:
-                for module_id in rl_module_ckpt_dirs.keys():
-                    if module_id in modules_to_load:
-                        raise ValueError(
-                            f"module_id {module_id} was specified in both "
-                            "`modules_to_load` AND `rl_module_ckpt_dirs`! "
-                            "Specify a module to be loaded either in `modules_to_load` "
-                            "or `rl_module_ckpt_dirs`, but not in both."
-                        )
-            else:
-                modules_to_load = module_keys - set(rl_module_ckpt_dirs.keys())
-
-        # No need to do any file transfer operations if we are running training
-        # on the experiment head node.
-        if self.is_local:
-            if marl_module_ckpt_dir:
-                # load the MARLModule checkpoint if they were specified
-                self._learner.module.restore(
-                    marl_module_ckpt_dir, modules_to_load=modules_to_load
-                )
-            if rl_module_ckpt_dirs:
-                # load the RLModule if they were specified
-                for module_id, path in rl_module_ckpt_dirs.items():
-                    self._learner.module[module_id].restore(
-                        path / RLMODULE_STATE_DIR_NAME
-                    )
-        else:
-            self._distributed_load_module_state(
-                marl_module_ckpt_dir=marl_module_ckpt_dir,
-                modules_to_load=modules_to_load,
-                rl_module_ckpt_dirs=rl_module_ckpt_dirs,
-            )
-
-    def _distributed_load_module_state(
-        self,
-        *,
-        marl_module_ckpt_dir: Optional[str] = None,
-        modules_to_load: Optional[Set[str]] = None,
-        rl_module_ckpt_dirs: Optional[Dict[ModuleID, str]] = None,
-    ):
-        """Load the checkpoints of the modules being trained by this LearnerGroup.
-
-           This method only needs to be called if the LearnerGroup is training
-           distributed learners (e.g num_learners > 0).
-
-        Args:
-            marl_module_ckpt_dir: The path to the checkpoint for the
-                MultiAgentRLModule.
-            modules_to_load: A set of module ids to load from the checkpoint.
-            rl_module_ckpt_dirs: A mapping from module ids to the path to a
-                checkpoint for a single agent RLModule.
-
-        """
-
-        assert len(self._workers) == self._worker_manager.num_healthy_actors()
-        workers = self._worker_manager.healthy_actor_ids()
-        head_node_ip = ray.util.get_node_ip_address()
-
-        def _load_module_state(w):
-            # doing imports here since they might not be imported on the worker
-            import ray
-            import tempfile
-            import shutil
-
-            worker_node_ip = ray.util.get_node_ip_address()
-            # sync the checkpoints from the head to the worker if the worker is not
-            # on the same node as the head
-            tmp_marl_module_ckpt_dir = marl_module_ckpt_dir
-            tmp_rl_module_ckpt_dirs = rl_module_ckpt_dirs
-            if worker_node_ip != head_node_ip:
-                if marl_module_ckpt_dir:
-                    tmp_marl_module_ckpt_dir = tempfile.mkdtemp()
-                    sync_dir_between_nodes(
-                        source_ip=head_node_ip,
-                        source_path=marl_module_ckpt_dir,
-                        target_ip=worker_node_ip,
-                        target_path=tmp_marl_module_ckpt_dir,
-                    )
-                if rl_module_ckpt_dirs:
-                    tmp_rl_module_ckpt_dirs = {}
-                    for module_id, path in rl_module_ckpt_dirs.items():
-                        tmp_rl_module_ckpt_dirs[module_id] = tempfile.mkdtemp()
-                        sync_dir_between_nodes(
-                            source_ip=head_node_ip,
-                            source_path=path,
-                            target_ip=worker_node_ip,
-                            target_path=tmp_rl_module_ckpt_dirs[module_id],
-                        )
-                        tmp_rl_module_ckpt_dirs[module_id] = pathlib.Path(
-                            tmp_rl_module_ckpt_dirs[module_id]
-                        )
-            if marl_module_ckpt_dir:
-                # load the MARLModule checkpoint if they were specified
-                w.module.restore(
-                    tmp_marl_module_ckpt_dir, modules_to_load=modules_to_load
-                )
-            if rl_module_ckpt_dirs:
-                # load the RLModule if they were specified
-                for module_id, path in tmp_rl_module_ckpt_dirs.items():
-                    w.module[module_id].restore(path / RLMODULE_STATE_DIR_NAME)
-
-            # remove the temporary directories on the worker if any were created
-            if worker_node_ip != head_node_ip:
-                if marl_module_ckpt_dir:
-                    shutil.rmtree(tmp_marl_module_ckpt_dir)
-                if rl_module_ckpt_dirs:
-                    for module_id, path in tmp_rl_module_ckpt_dirs.items():
-                        shutil.rmtree(path)
-
-        self._worker_manager.foreach_actor(_load_module_state, remote_actor_ids=workers)
+    #def load_module_state(
+    #    self,
+    #    *,
+    #    marl_module_ckpt_dir: Optional[str] = None,
+    #    modules_to_load: Optional[Set[str]] = None,
+    #    rl_module_ckpt_dirs: Optional[Dict[ModuleID, str]] = None,
+    #) -> None:
+    #    """Load the checkpoints of the modules being trained by this LearnerGroup.
+    #
+    #    `load_module_state` can be used 3 ways:
+    #        1. Load a checkpoint for the MultiAgentRLModule being trained by this
+    #            LearnerGroup. Limit the modules that are loaded from the checkpoint
+    #            by specifying the `modules_to_load` argument.
+    #        2. Load the checkpoint(s) for single agent RLModules that
+    #            are in the MultiAgentRLModule being trained by this LearnerGroup.
+    #        3. Load a checkpoint for the MultiAgentRLModule being trained by this
+    #            LearnerGroup and load the checkpoint(s) for single agent RLModules
+    #            that are in the MultiAgentRLModule. The checkpoints for the single
+    #            agent RLModules take precedence over the module states in the
+    #            MultiAgentRLModule checkpoint.
+    #
+    #    NOTE: At lease one of marl_module_ckpt_dir or rl_module_ckpt_dirs is
+    #        must be specified. modules_to_load can only be specified if
+    #        marl_module_ckpt_dir is specified.
+    #
+    #    Args:
+    #        marl_module_ckpt_dir: The path to the checkpoint for the
+    #            MultiAgentRLModule.
+    #        modules_to_load: A set of module ids to load from the checkpoint.
+    #        rl_module_ckpt_dirs: A mapping from module ids to the path to a
+    #            checkpoint for a single agent RLModule.
+    #    """
+    #    if not (marl_module_ckpt_dir or rl_module_ckpt_dirs):
+    #        raise ValueError(
+    #            "At least one of multi_agent_module_state or "
+    #            "single_agent_module_states must be specified."
+    #        )
+    #    if marl_module_ckpt_dir:
+    #        if not isinstance(marl_module_ckpt_dir, str):
+    #            raise ValueError("multi_agent_module_state must be a string path.")
+    #        marl_module_ckpt_dir = self._resolve_checkpoint_path(marl_module_ckpt_dir)
+    #    if rl_module_ckpt_dirs:
+    #        if not isinstance(rl_module_ckpt_dirs, dict):
+    #            raise ValueError("single_agent_module_states must be a dictionary.")
+    #        for module_id, path in rl_module_ckpt_dirs.items():
+    #            if not isinstance(path, str):
+    #                raise ValueError(
+    #                    "rl_module_ckpt_dirs must be a dictionary "
+    #                    "mapping module ids to string paths."
+    #                )
+    #            rl_module_ckpt_dirs[module_id] = self._resolve_checkpoint_path(path)
+    #    if modules_to_load:
+    #        if not isinstance(modules_to_load, set):
+    #            raise ValueError("modules_to_load must be a set.")
+    #        for module_id in modules_to_load:
+    #            if not isinstance(module_id, str):
+    #                raise ValueError("modules_to_load must be a list of strings.")
+    #
+    #    if self.is_local:
+    #        module_keys = set(self._learner.module.keys())
+    #    else:
+    #        workers = self._worker_manager.healthy_actor_ids()
+    #        module_keys = set(
+    #            self._get_results(
+    #                self._worker_manager.foreach_actor(
+    #                    lambda w: w.module.keys(), remote_actor_ids=[workers[0]]
+    #                )
+    #            )[0]
+    #        )
+    #
+    #    if marl_module_ckpt_dir and rl_module_ckpt_dirs:
+    #        # If both a MARLModule checkpoint and RLModule checkpoints are specified,
+    #        # the RLModule checkpoints take precedence over the MARLModule checkpoint,
+    #        # so we should not load any modules in the MARLModule checkpoint that are
+    #        # also in the RLModule checkpoints.
+    #        if modules_to_load:
+    #            for module_id in rl_module_ckpt_dirs.keys():
+    #                if module_id in modules_to_load:
+    #                    raise ValueError(
+    #                        f"module_id {module_id} was specified in both "
+    #                        "`modules_to_load` AND `rl_module_ckpt_dirs`! "
+    #                        "Specify a module to be loaded either in `modules_to_load` "
+    #                        "or `rl_module_ckpt_dirs`, but not in both."
+    #                    )
+    #        else:
+    #            modules_to_load = module_keys - set(rl_module_ckpt_dirs.keys())
+    #
+    #    # No need to do any file transfer operations if we are running training
+    #    # on the experiment head node.
+    #    if self.is_local:
+    #        if marl_module_ckpt_dir:
+    #            # load the MARLModule checkpoint if they were specified
+    #            self._learner.module.restore(
+    #                marl_module_ckpt_dir, modules_to_load=modules_to_load
+    #            )
+    #        if rl_module_ckpt_dirs:
+    #            # load the RLModule if they were specified
+    #            for module_id, path in rl_module_ckpt_dirs.items():
+    #                self._learner.module[module_id].restore(
+    #                    path / RLMODULE_STATE_DIR_NAME
+    #                )
+    #    else:
+    #        self._distributed_load_module_state(
+    #            marl_module_ckpt_dir=marl_module_ckpt_dir,
+    #            modules_to_load=modules_to_load,
+    #            rl_module_ckpt_dirs=rl_module_ckpt_dirs,
+    #        )
+    #
+    #def _distributed_load_module_state(
+    #    self,
+    #    *,
+    #    marl_module_ckpt_dir: Optional[str] = None,
+    #    modules_to_load: Optional[Set[str]] = None,
+    #    rl_module_ckpt_dirs: Optional[Dict[ModuleID, str]] = None,
+    #):
+    #    """Load the checkpoints of the modules being trained by this LearnerGroup.
+    #
+    #       This method only needs to be called if the LearnerGroup is training
+    #       distributed learners (e.g num_learners > 0).
+    #
+    #    Args:
+    #        marl_module_ckpt_dir: The path to the checkpoint for the
+    #            MultiAgentRLModule.
+    #        modules_to_load: A set of module ids to load from the checkpoint.
+    #        rl_module_ckpt_dirs: A mapping from module ids to the path to a
+    #            checkpoint for a single agent RLModule.
+    #
+    #    """
+    #
+    #    assert len(self._workers) == self._worker_manager.num_healthy_actors()
+    #    workers = self._worker_manager.healthy_actor_ids()
+    #    head_node_ip = ray.util.get_node_ip_address()
+    #
+    #    def _load_module_state(w):
+    #        # doing imports here since they might not be imported on the worker
+    #        import ray
+    #        import tempfile
+    #        import shutil
+    #
+    #        worker_node_ip = ray.util.get_node_ip_address()
+    #        # sync the checkpoints from the head to the worker if the worker is not
+    #        # on the same node as the head
+    #        tmp_marl_module_ckpt_dir = marl_module_ckpt_dir
+    #        tmp_rl_module_ckpt_dirs = rl_module_ckpt_dirs
+    #        if worker_node_ip != head_node_ip:
+    #            if marl_module_ckpt_dir:
+    #                tmp_marl_module_ckpt_dir = tempfile.mkdtemp()
+    #                sync_dir_between_nodes(
+    #                    source_ip=head_node_ip,
+    #                    source_path=marl_module_ckpt_dir,
+    #                    target_ip=worker_node_ip,
+    #                    target_path=tmp_marl_module_ckpt_dir,
+    #                )
+    #            if rl_module_ckpt_dirs:
+    #                tmp_rl_module_ckpt_dirs = {}
+    #                for module_id, path in rl_module_ckpt_dirs.items():
+    #                    tmp_rl_module_ckpt_dirs[module_id] = tempfile.mkdtemp()
+    #                    sync_dir_between_nodes(
+    #                        source_ip=head_node_ip,
+    #                        source_path=path,
+    #                        target_ip=worker_node_ip,
+    #                        target_path=tmp_rl_module_ckpt_dirs[module_id],
+    #                    )
+    #                    tmp_rl_module_ckpt_dirs[module_id] = pathlib.Path(
+    #                        tmp_rl_module_ckpt_dirs[module_id]
+    #                    )
+    #        if marl_module_ckpt_dir:
+    #            # load the MARLModule checkpoint if they were specified
+    #            w.module.restore(
+    #                tmp_marl_module_ckpt_dir, modules_to_load=modules_to_load
+    #            )
+    #        if rl_module_ckpt_dirs:
+    #            # load the RLModule if they were specified
+    #            for module_id, path in tmp_rl_module_ckpt_dirs.items():
+    #                w.module[module_id].restore(path / RLMODULE_STATE_DIR_NAME)
+    #
+    #        # remove the temporary directories on the worker if any were created
+    #        if worker_node_ip != head_node_ip:
+    #            if marl_module_ckpt_dir:
+    #                shutil.rmtree(tmp_marl_module_ckpt_dir)
+    #            if rl_module_ckpt_dirs:
+    #                for module_id, path in tmp_rl_module_ckpt_dirs.items():
+    #                    shutil.rmtree(path)
+    #
+    #    self._worker_manager.foreach_actor(_load_module_state, remote_actor_ids=workers)
 
     @staticmethod
     def _resolve_checkpoint_path(path: str) -> pathlib.Path:
