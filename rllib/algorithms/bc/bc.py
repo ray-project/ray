@@ -79,6 +79,7 @@ class BCConfig(MARWILConfig):
         # Set RLModule as default if the `EnvRUnner`'s are used.
         if self.enable_env_runner_and_connector_v2:
             self.api_stack(enable_rl_module_and_learner=True)
+
         # __sphinx_doc_end__
         # fmt: on
 
@@ -154,7 +155,7 @@ class BC(MARWIL):
             with self.metrics.log_time((TIMERS, OFFLINE_SAMPLING_TIMER)):
                 # Sampling from offline data.
                 batch = self.offline_data.sample(
-                    num_samples=self.config.train_batch_size,
+                    num_samples=self.config.train_batch_size_per_learner,
                     num_shards=self.config.num_learners,
                     return_iterator=True if self.config.num_learners > 1 else False,
                 )
@@ -163,7 +164,11 @@ class BC(MARWIL):
                 # Updating the policy.
                 # TODO (simon, sven): Check, if we should execute directly s.th. like
                 # update_from_iterator.
-                learner_results = self.learner_group.update_from_batch(batch)
+                learner_results = self.learner_group.update_from_batch(
+                    batch,
+                    minibatch_size=self.config.train_batch_size_per_learner,
+                    num_iters=self.config.dataset_num_iters_per_learner,
+                )
 
                 # Log training results.
                 self.metrics.merge_and_log_n_dicts(learner_results, key=LEARNER_RESULTS)

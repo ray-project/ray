@@ -4,7 +4,7 @@ from pathlib import Path
 import random
 import ray
 from ray.actor import ActorHandle
-from typing import Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Union
 
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.core.columns import Columns
@@ -13,7 +13,7 @@ from ray.rllib.core.rl_module.marl_module import MultiAgentRLModuleSpec
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
 from ray.rllib.utils.compression import unpack_if_needed
-from ray.rllib.utils.typing import EpisodeType
+from ray.rllib.utils.typing import EpisodeType, ModuleID
 
 logger = logging.getLogger(__name__)
 
@@ -49,11 +49,11 @@ class OfflineData:
             else Path(config.get("input_"))
         )
         # Use `read_json` as default data read method.
-        self.data_read_method = config.get("input_read_method", "read_parquet")
-        self.data_read_method_kwargs = config.get("input_read_method_kwargs", {})
-        # If the observation data is compressed. Note, if compressed, the
-        # data must have been compressed with the `pack_if_needed` function.
-        self.compressed = config.get("compressed", False)
+        self.data_read_method = config.input_read_method
+        # Override default arguments for the data read method.
+        self.data_read_method_kwargs = (
+            self.default_read_method_kwargs | config.input_read_method_kwargs
+        )
         try:
             # Load the dataset.
             self.data = getattr(ray.data, self.data_read_method)(
@@ -109,6 +109,12 @@ class OfflineData:
             # In case of multiple shards, we return multiple
             # `StreamingSplitIterator` instances.
             if num_shards > 1:
+                # Call here the learner to get an up-to-date module state.
+                # TODO (simon): This is a workaround as along as learners cannot
+                # receive any calls from another actor.
+                module_state = ray.get(
+                    self.learner_handles[0].get_module_state.remote()
+                )
                 return self.data.map_batches(
                     # TODO (cheng su): At best the learner handle passed in here should
                     # be the one from the learner that is nearest, but here we cannot
@@ -119,9 +125,11 @@ class OfflineData:
                         "learner": self.learner_handles,
                         "locality_hints": self.locality_hints,
                         "module_spec": self.module_spec,
+                        "module_state": module_state,
                     },
                     concurrency=(num_shards, num_shards * 2),
                     batch_size=num_samples,
+                    zero_copy_batch=True,
                 ).streaming_split(
                     n=num_shards, equal=False, locality_hints=self.locality_hints
                 )
@@ -133,6 +141,12 @@ class OfflineData:
             # Return a single batch from the iterator.
             return next(iter(self.batch_iterator))["batch"][0]
 
+    @property
+    def default_read_method_kwargs(self):
+        return {
+            "override_num_blocks": self.config.num_learners * 2,
+        }
+
 
 class OfflinePreLearner:
     def __init__(
@@ -141,6 +155,7 @@ class OfflinePreLearner:
         learner: Union[Learner, list[ActorHandle]],
         locality_hints: Optional[list] = None,
         module_spec: Optional[MultiAgentRLModuleSpec] = None,
+        module_state: Optional[Dict[ModuleID, Any]] = None,
     ):
 
         self.config = config
@@ -154,12 +169,6 @@ class OfflinePreLearner:
         else:
             # TODO (simon): Check with the data team how to get at
             # initialization the data block location.
-            # loc = ray.experimental.get_object_locations([self])
-            # logger.warning(f"loc: {loc}")
-            # nodes = loc[""]
-            # for i, hint in enumerate(locality_hints):
-            #     if hint == loc:
-            #         self._learner = learner[i]
             node_id = ray.get_runtime_context().get_node_id()
             # Shuffle indices such that not each data block syncs weights
             # with the same learner in case there are multiple learners
@@ -179,6 +188,7 @@ class OfflinePreLearner:
             self.learner_is_remote = True
             # Build the module from spec. Note, this will be a MARL module.
             self._module = module_spec.build()
+            self._module.set_state(module_state)
         # Build the learner connector pipeline.
         self._learner_connector = self.config.build_learner_connector(
             input_observation_space=None,
@@ -189,21 +199,37 @@ class OfflinePreLearner:
         self._is_multi_agent = config.is_multi_agent()
         # Set the counter to zero.
         self.iter_since_last_module_update = 0
+        # self._future = None
 
     def __call__(self, batch: Dict[str, np.ndarray]) -> Dict[str, List[EpisodeType]]:
         # Map the batch to episodes.
         episodes = self._map_to_episodes(self._is_multi_agent, batch)
+        # TODO (simon): Make synching work. Right now this becomes blocking or never
+        # receives weights. Learners appear to be non accessable via other actors.
+        # Increase the counter for updating the module.
+        # self.iter_since_last_module_update += 1
 
-        # Synch the learner module, if necessary. Note, in case of a local learner
-        # we have a reference to the module and therefore an up-to-date module.
-        if self.learner_is_remote and self.iter_since_last_module_update > 5:
-            # Reset the iteration counter.
-            self.iter_since_last_module_update = 0
-            # Request the module weights from the remote learner.
-            weights_ref = self._learner.get_module_state.remote(inference_only=False)
-            weights = ray.get(weights_ref)
-            # Load the new module weights.
-            self._module.load_state_dict(weights)
+        # if self._future:
+        #     refs, _ = ray.wait([self._future], timeout=0)
+        #     print(f"refs: {refs}")
+        #     if refs:
+        #         module_state = ray.get(self._future)
+        #
+        #         self._module.set_state(module_state)
+        #         self._future = None
+
+        # # Synch the learner module, if necessary. Note, in case of a local learner
+        # # we have a reference to the module and therefore an up-to-date module.
+        # if self.learner_is_remote and self.iter_since_last_module_update
+        # > self.config.prelearner_module_synch_period:
+        #     # Reset the iteration counter.
+        #     self.iter_since_last_module_update = 0
+        #     # Request the module weights from the remote learner.
+        #     self._future =
+        # self._learner.get_module_state.remote(inference_only=False)
+        #     # module_state =
+        # ray.get(self._learner.get_module_state.remote(inference_only=False))
+        #     # self._module.set_state(module_state)
 
         # Run the `Learner`'s connector pipeline.
         batch = self._learner_connector(
@@ -220,7 +246,7 @@ class OfflinePreLearner:
             },
             # TODO (simon): This can be run once for the batch and the
             # metrics, but we run it twice: here and later in the learner.
-            env_steps=sum(len(e) for e in episodes["episodes"]),
+            env_steps=sum(e.env_steps() for e in episodes["episodes"]),
         )
         # Remove all data from modules that should not be trained. We do
         # not want to pass around more data than necessaty.

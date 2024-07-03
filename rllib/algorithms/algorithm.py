@@ -719,7 +719,6 @@ class Algorithm(Trainable, AlgorithmBase):
 
         # TODO (sven): Probably obsolete b/c the learner group is already None.
         self.learner_group = None
-        logger.warning(f"ENABLE LEARNER: {self.config.enable_rl_module_and_learner}")
         if self.config.enable_rl_module_and_learner:
             local_worker = self.workers.local_worker()
             env = spaces = None

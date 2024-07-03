@@ -1138,6 +1138,10 @@ class Learner:
         self._check_is_built()
         minibatch_size = minibatch_size or 32
 
+        # Call `before_gradient_based_update` to allow for non-gradient based
+        # preparations-, logging-, and update logic to happen.
+        self.before_gradient_based_update(timesteps=timesteps or {})
+
         def _finalize_fn(batch: Dict[str, numpy.ndarray]) -> Dict[str, Any]:
             # Note, the incoming batch is a dictionary with a numpy array
             # holding the `MultiAgentBatch`.
@@ -1153,6 +1157,7 @@ class Learner:
         ):
             # Update the iteration counter.
             i += 1
+
             # Note, `_finalize_fn`  must return a dictionary.
             batch = batch["batch"]
             # Check the MultiAgentBatch, whether our RLModule contains all ModuleIDs
@@ -1165,6 +1170,7 @@ class Learner:
                     "Batch contains one or more ModuleIDs that are not in this "
                     f"Learner! Found IDs: {unknown_module_ids}"
                 )
+
             # Log metrics.
             self.metrics.log_dict(
                 {
@@ -1185,24 +1191,23 @@ class Learner:
                 batch.policy_batches
             )
 
-            # Convert logged tensor metrics (logged during tensor-mode of MetricsLogger)
-            # to actual (numpy) values.
-            self.metrics.tensors_to_numpy(tensor_metrics)
-
-            # Log all individual RLModules' loss terms and its registered optimizers'
-            # current learning rates.
-            for mid, loss in convert_to_numpy(loss_per_module).items():
-                self.metrics.log_value(
-                    key=(mid, self.TOTAL_LOSS_KEY),
-                    value=loss,
-                    window=1,
-                )
-
             self._set_slicing_by_batch_id(batch, value=False)
             # If `num_iters` is reached break and return.
-            if i == num_iters:
+            if num_iters and i == num_iters:
                 break
 
+        # Convert logged tensor metrics (logged during tensor-mode of MetricsLogger)
+        # to actual (numpy) values.
+        self.metrics.tensors_to_numpy(tensor_metrics)
+
+        # Log all individual RLModules' loss terms and its registered optimizers'
+        # current learning rates.
+        for mid, loss in convert_to_numpy(loss_per_module).items():
+            self.metrics.log_value(
+                key=(mid, self.TOTAL_LOSS_KEY),
+                value=loss,
+                window=1,
+            )
         # Call `after_gradient_based_update` to allow for non-gradient based
         # cleanups-, logging-, and update logic to happen.
         self.after_gradient_based_update(timesteps=timesteps or {})

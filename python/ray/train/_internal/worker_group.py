@@ -187,6 +187,7 @@ class WorkerGroup:
             num_gpus=self.num_gpus_per_worker,
             memory=self.memory_per_worker,
             resources=resources_per_worker,
+            max_concurrency=2,
         )(self._base_cls)
         self.start()
 
