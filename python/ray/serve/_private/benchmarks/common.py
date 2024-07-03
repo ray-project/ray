@@ -114,7 +114,7 @@ class Blackhole:
         pass
 
 
-@serve.deployment(max_ongoing_requests=100)
+@serve.deployment
 class Noop:
     def __init__(self):
         logging.getLogger("ray.serve").setLevel(logging.WARNING)
@@ -123,7 +123,7 @@ class Noop:
         return b""
 
 
-@serve.deployment(max_ongoing_requests=100)
+@serve.deployment
 class Benchmarker:
     def __init__(self, handle: DeploymentHandle):
         logging.getLogger("ray.serve").setLevel(logging.WARNING)
