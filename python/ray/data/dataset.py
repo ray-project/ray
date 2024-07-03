@@ -2464,10 +2464,11 @@ class Dataset:
         pattern="Examples:",
     )
     def count(self) -> int:
-        """Count the number of records in the dataset. For `Dataset`s
-        which only read Parquet files (created with :meth:`~ray.data.read_parquet`),
-        this method reads the file metadata to efficiently count the number of records
-        without reading in the entire data.
+        """Count the number of records in the dataset.
+
+        For Datasets which only read Parquet files (created with
+        :meth:`~ray.data.read_parquet`), this method reads the file metadata to
+        efficiently count the number of records without reading in the entire data.
 
         Examples:
             >>> import ray
@@ -4598,7 +4599,7 @@ class Dataset:
         self._synchronize_progress_bar()
         return iter_ref_bundles
 
-    @ConsumptionAPI(pattern="")
+    @ConsumptionAPI(pattern="Examples:")
     @DeveloperAPI
     def get_internal_block_refs(self) -> List[ObjectRef[Block]]:
         """Get a list of references to the underlying blocks of this dataset.
