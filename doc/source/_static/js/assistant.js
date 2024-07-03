@@ -90,7 +90,7 @@ function renderCopyButtons(resultDiv) {
     copyButton.style.opacity = 'inherit';
 
     let imgElement = document.createElement('img');
-    imgElement.src = './_static/copy-button.svg';
+    imgElement.src = window.data.copyIconSrc;
     imgElement.alt = 'Copy to clipboard';
 
     copyButton.appendChild(imgElement);

@@ -1,6 +1,4 @@
 import { Box, Typography } from "@mui/material";
-import createStyles from "@mui/styles/createStyles";
-import makeStyles from "@mui/styles/makeStyles";
 import React from "react";
 import { useParams } from "react-router-dom";
 import { CodeDialogButtonWithPreview } from "../../common/CodeDialogButton";
@@ -25,23 +23,12 @@ import { Task } from "../../type/task";
 import { MainNavPageInfo } from "../layout/mainNavContext";
 import { useStateApiTask } from "../state/hook/useStateApi";
 
-const useStyles = makeStyles((theme) =>
-  createStyles({
-    root: {
-      padding: theme.spacing(2),
-      backgroundColor: "white",
-    },
-  }),
-);
-
 export const TaskPage = () => {
   const { taskId } = useParams();
   const { task, isLoading } = useStateApiTask(taskId);
 
-  const classes = useStyles();
-
   return (
-    <div className={classes.root}>
+    <Box sx={{ padding: 2, backgroundColor: "white" }}>
       <MainNavPageInfo
         pageInfo={
           task
@@ -59,7 +46,7 @@ export const TaskPage = () => {
         }
       />
       <TaskPageContents taskId={taskId} task={task} isLoading={isLoading} />
-    </div>
+    </Box>
   );
 };
 

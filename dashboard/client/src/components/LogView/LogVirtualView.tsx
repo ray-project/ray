@@ -1,8 +1,7 @@
 import { Box, Typography } from "@mui/material";
-import createStyles from "@mui/styles/createStyles";
-import makeStyles from "@mui/styles/makeStyles";
 import dayjs from "dayjs";
-import low from "lowlight";
+import prolog from "highlight.js/lib/languages/prolog";
+import { lowlight } from "lowlight";
 import React, {
   MutableRefObject,
   useCallback,
@@ -16,6 +15,8 @@ import "./darcula.css";
 import "./github.css";
 import "./index.css";
 import { MAX_LINES_FOR_LOGS } from "../../service/log";
+
+lowlight.registerLanguage("prolog", prolog);
 
 const uniqueKeySelector = () => Math.random().toString(16).slice(-8);
 
@@ -92,21 +93,15 @@ export type LogVirtualViewProps = {
   endTime?: string;
 };
 
-const useStyles = makeStyles((theme) =>
-  createStyles({
-    warningInfo: {
-      color: theme.palette.error.main,
-    },
-  }),
-);
-
 type LogLineDetailDialogProps = {
   formattedLogLine: string;
+  message?: string;
   onClose: () => void;
 };
 
 const LogLineDetailDialog = ({
   formattedLogLine,
+  message,
   onClose,
 }: LogLineDetailDialogProps) => {
   return (
@@ -146,11 +141,41 @@ const LogLineDetailDialog = ({
               sx={{
                 whiteSpace: "pre",
                 overflow: "auto",
-                height: "600px",
+                height: "300px",
               }}
               data-testid="raw-log-line"
             >
               {formattedLogLine}
+            </Typography>
+          </Box>
+          <Typography
+            variant="h5"
+            sx={{
+              marginTop: 2,
+              marginBottom: 2,
+            }}
+          >
+            Formatted message
+          </Typography>
+          <Box
+            sx={(theme) => ({
+              padding: 1,
+              bgcolor: "#EEEEEE",
+              borderRadius: 1,
+              border: `1px solid ${theme.palette.divider}`,
+            })}
+          >
+            <Typography
+              component="pre"
+              variant="body2"
+              sx={{
+                whiteSpace: "pre",
+                overflow: "auto",
+                height: "300px",
+              }}
+              data-testid="raw-log-line"
+            >
+              {message}
             </Typography>
           </Box>
         </Box>
@@ -180,14 +205,17 @@ const LogVirtualView: React.FC<LogVirtualViewProps> = ({
   const timmer = useRef<ReturnType<typeof setTimeout>>();
   const el = useRef<List>(null);
   const outter = useRef<HTMLDivElement>(null);
-  const classes = useStyles();
   if (listRef) {
     listRef.current = outter.current;
   }
-  const [selectedLogLine, setSelectedLogLine] = useState<string>();
-  const handleLogLineClick = useCallback((logLine: string) => {
-    setSelectedLogLine(logLine);
-  }, []);
+  const [selectedLogLine, setSelectedLogLine] =
+    useState<[string, string | undefined]>();
+  const handleLogLineClick = useCallback(
+    (logLine: string, message?: string) => {
+      setSelectedLogLine([logLine, message]);
+    },
+    [],
+  );
 
   const itemRenderer = ({ index, style }: { index: number; style: any }) => {
     const { i, origin } = logs[revert ? logs.length - 1 - index : index];
@@ -219,7 +247,7 @@ const LogVirtualView: React.FC<LogVirtualViewProps> = ({
         style={style}
         sx={{
           overflowX: "visible",
-          whiteSpace: "pre",
+          whiteSpace: "nowrap",
           "&::before": {
             content: `"${i + 1}"`,
             marginRight: 0.5,
@@ -229,12 +257,15 @@ const LogVirtualView: React.FC<LogVirtualViewProps> = ({
           },
         }}
         onClick={() => {
-          handleLogLineClick(formattedLogLine);
+          if ((window.getSelection()?.toString().length ?? 0) === 0) {
+            // Only open if user is not selecting text
+            handleLogLineClick(formattedLogLine, message);
+          }
         }}
       >
-        {low
+        {lowlight
           .highlight(language, message)
-          .value.map((v) => value2react(v, index.toString(), keywords))}
+          .children.map((v) => value2react(v, index.toString(), keywords))}
         <br />
       </Box>
     );
@@ -307,14 +338,14 @@ const LogVirtualView: React.FC<LogVirtualViewProps> = ({
   return (
     <div>
       {logs && logs.length > MAX_LINES_FOR_LOGS && (
-        <p className={classes.warningInfo}>
+        <Box component="p" sx={{ color: (theme) => theme.palette.error.main }}>
           [Truncation warning] This log has been truncated and only the latest{" "}
           {MAX_LINES_FOR_LOGS} lines are displayed. Click "Download" button
           above to see the full log
-        </p>
+        </Box>
       )}
       <List
-        height={height || (content.split("\n").length + 1) * 18}
+        height={height || 600}
         width={width}
         ref={el}
         outerRef={outter}
@@ -331,7 +362,8 @@ const LogVirtualView: React.FC<LogVirtualViewProps> = ({
       </List>
       {selectedLogLine && (
         <LogLineDetailDialog
-          formattedLogLine={selectedLogLine}
+          formattedLogLine={selectedLogLine[0]}
+          message={selectedLogLine[1]}
           onClose={() => {
             setSelectedLogLine(undefined);
           }}

@@ -216,18 +216,6 @@ message TaskLogInfo {
 message TaskStateUpdate {
   // Node that runs the task.
   optional bytes node_id = 1;
-  // Timestamp when status changes to PENDING_ARGS_AVAIL.
-  optional int64 pending_args_avail_ts = 2;
-  // Timestamp when status changes to PENDING_NODE_ASSIGNMENT.
-  optional int64 pending_node_assignment_ts = 3;
-  // Timestamp when status changes to SUBMITTED_TO_WORKER.
-  optional int64 submitted_to_worker_ts = 4;
-  // Timestamp when status changes to RUNNING.
-  optional int64 running_ts = 5;
-  // Timestamp when status changes to FINISHED.
-  optional int64 finished_ts = 6;
-  // Timestamp when status changes to FAILED.
-  optional int64 failed_ts = 7;
   // Worker that runs the task.
   optional bytes worker_id = 8;
   // Task faulure info.
@@ -240,6 +228,9 @@ message TaskStateUpdate {
   optional int32 worker_pid = 12;
   // Is task paused by debugger.
   optional bool is_debugger_paused = 13;
+  // Key is the integer value of TaskStatus enum (protobuf doesn't support Enum as key).
+  // Value is the timestamp when status changes to the target status indicated by the key.
+  map<int32, int64> state_ts = 14;
 }
 
 // Represents events and state changes from a single task run.

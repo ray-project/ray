@@ -80,6 +80,7 @@ class EnvRunnerGroup:
         local_env_runner: bool = True,
         logdir: Optional[str] = None,
         _setup: bool = True,
+        tune_trial_id: Optional[str] = None,
         # Deprecated args.
         num_workers=DEPRECATED_VALUE,
         local_worker=DEPRECATED_VALUE,
@@ -132,6 +133,7 @@ class EnvRunnerGroup:
             "resources": self._remote_config.custom_resources_per_env_runner,
             "max_restarts": config.max_num_env_runner_restarts,
         }
+        self._tune_trial_id = tune_trial_id
 
         # Set the EnvRunner subclass to be used as "workers". Default: RolloutWorker.
         self.env_runner_cls = config.env_runner_cls
@@ -1166,6 +1168,7 @@ class EnvRunnerGroup:
             log_dir=self._logdir,
             spaces=spaces,
             dataset_shards=self._ds_shards,
+            tune_trial_id=self._tune_trial_id,
         )
 
         return worker
