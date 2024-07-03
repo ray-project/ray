@@ -102,7 +102,7 @@ class DashboardHead:
             gcs_address: The GCS address in the {address}:{port} format.
             log_dir: The log directory. E.g., /tmp/session_latest/logs.
             temp_dir: The temp directory. E.g., /tmp.
-            session_dir: The session directory. E.g., tmp/session_latest.
+            session_dir: The session directory. E.g., /tmp/session_latest.
             minimal: Whether or not it will load the minimal modules.
             serve_frontend: If configured, frontend HTML is
                 served from the dashboard.
