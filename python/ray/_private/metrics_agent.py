@@ -606,7 +606,7 @@ class PrometheusServiceDiscoveryWriter(threading.Thread):
 
     def __init__(self, gcs_address, temp_dir):
         gcs_client_options = ray._raylet.GcsClientOptions.create(
-            gcs_address, None, allow_cluster_id_nil=True, fetch_cluster_id_if_nil=True
+            gcs_address, None, allow_cluster_id_nil=True, fetch_cluster_id_if_nil=False
         )
         self.gcs_address = gcs_address
 

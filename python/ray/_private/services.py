@@ -181,7 +181,7 @@ def _get_gcs_client_options(gcs_server_address):
         gcs_server_address,
         None,
         allow_cluster_id_nil=True,
-        fetch_cluster_id_if_nil=True,
+        fetch_cluster_id_if_nil=False,
     )
 
 
@@ -454,7 +454,7 @@ def wait_for_node(
             the node appears in the client table.
     """
     gcs_options = GcsClientOptions.create(
-        gcs_address, None, allow_cluster_id_nil=True, fetch_cluster_id_if_nil=True
+        gcs_address, None, allow_cluster_id_nil=True, fetch_cluster_id_if_nil=False
     )
     global_state = ray._private.state.GlobalState()
     global_state._initialize_global_state(gcs_options)

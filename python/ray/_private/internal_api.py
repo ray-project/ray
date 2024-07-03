@@ -23,7 +23,7 @@ def get_state_from_address(address=None):
 
     state = GlobalState()
     options = GcsClientOptions.create(
-        address, None, allow_cluster_id_nil=True, fetch_cluster_id_if_nil=True
+        address, None, allow_cluster_id_nil=True, fetch_cluster_id_if_nil=False
     )
     state._initialize_global_state(options)
     return state
