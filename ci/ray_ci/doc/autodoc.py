@@ -1,6 +1,6 @@
 import os
 import re
-from typing import List
+from typing import List, Set
 
 from ci.ray_ci.doc.api import (
     API,
@@ -11,6 +11,7 @@ from ci.ray_ci.doc.api import (
 
 _SPHINX_CURRENTMODULE_HEADER = ".. currentmodule::"
 _SPHINX_TOCTREE_HEADER = ".. toctree::"
+_SPHINX_INCLUDE_HEADER = ".. include::"
 
 
 class Autodoc:
@@ -42,7 +43,7 @@ class Autodoc:
         for rst in rsts:
             self._apis.extend(self._parse_autodoc_rst(rst))
 
-    def _get_autodoc_rsts(self) -> List[str]:
+    def _get_autodoc_rsts(self) -> Set[str]:
         """
         Parse the list of rst declared in the head_rst_file, for example:
 
@@ -55,11 +56,28 @@ class Autodoc:
         if self._autodoc_rsts is not None:
             return self._autodoc_rsts
 
-        dir = os.path.dirname(self._head_rst_file)
-        self._autodoc_rsts = [self._head_rst_file]
-        with open(self._head_rst_file, "r") as f:
+        self._autodoc_rsts = {self._head_rst_file}
+        visited = set()
+        while len(self._autodoc_rsts) > len(visited):
+            not_visited = self._autodoc_rsts - visited
+            for rst in not_visited:
+                visited.add(rst)
+                self._autodoc_rsts.update(self._get_autodoc_rsts_from_single_file(rst))
+
+        return self._autodoc_rsts
+
+    def _get_autodoc_rsts_from_single_file(self, rst_file: str) -> Set[str]:
+        rsts = set()
+        dir = os.path.dirname(rst_file)
+        with open(rst_file, "r") as f:
             line = f.readline()
             while line:
+                # look for the include block
+                if line.strip().startswith(_SPHINX_INCLUDE_HEADER):
+                    rsts.add(os.path.join(dir, line.strip().split("::")[1].strip()))
+                    line = f.readline()
+                    continue
+
                 # look for the toctree block
                 if not line.strip() == _SPHINX_TOCTREE_HEADER:
                     line = f.readline()
@@ -73,10 +91,10 @@ class Autodoc:
                         # the line is not empty and not starting with empty space
                         break
                     if line.strip().endswith(".rst"):
-                        self._autodoc_rsts.append(os.path.join(dir, line.strip()))
+                        rsts.add(os.path.join(dir, line.strip()))
                     line = f.readline()
 
-        return self._autodoc_rsts
+        return rsts
 
     def _parse_autodoc_rst(self, rst_file: str) -> List[API]:
         """
