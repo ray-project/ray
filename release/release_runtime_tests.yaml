@@ -140,3 +140,30 @@
       frequency: manual
       cluster:
         cluster_compute: multi_node_ckpt_training_compute_config_gce.yaml
+
+###############
+# Train tests
+###############
+- name: train_elastic_e2e_with_node_killing
+  group: Train tests
+  working_dir: anyscale/train/elastic_e2e
+
+  frequency: weekly
+  team: ml
+
+  cluster:
+    byod:
+      type: gpu
+    cluster_compute: compute_gpu_aws.yaml
+
+  run:
+    timeout: 4800
+    script: RAY_TRAIN_V2_ENABLED=1 python torch_elastic_e2e.py run --num-epochs 60
+
+    wait_for_nodes:
+      num_nodes: 1
+
+  variations:
+    - __suffix__: aws
+
+  alert: default
