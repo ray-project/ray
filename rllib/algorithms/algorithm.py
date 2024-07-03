@@ -628,6 +628,8 @@ class Algorithm(Trainable, AlgorithmBase):
 
         # Ensure remote workers are initially in sync with the local worker.
         self.workers.sync_weights(inference_only=True)
+        # If and input path is available and we are on the new API stack generate
+        # an `OfflineData` instance.
         if (
             self.config.input_
             and self.config.input_ != "sampler"
@@ -636,6 +638,9 @@ class Algorithm(Trainable, AlgorithmBase):
             from ray.rllib.offline.offline_data import OfflineData
 
             self.offline_data = OfflineData(self.config)
+        # Otherwise set the attribute to `None`.
+        else:
+            self.offline_data = None
 
         # Compile, validate, and freeze an evaluation config.
         self.evaluation_config = self.config.get_evaluation_config_object()
