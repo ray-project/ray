@@ -99,6 +99,11 @@ constexpr std::string_view kLogKeyActorID = "actor_id";
 constexpr std::string_view kLogKeyTaskID = "task_id";
 constexpr std::string_view kLogKeyObjectID = "object_id";
 
+// Define your specialization DefaultLogKey<your_type>::key to get .WithField(t)
+// See src/ray/common/id.h
+template <typename T>
+struct DefaultLogKey {};
+
 class StackTrace {
   /// This dumps the current stack trace information.
   friend std::ostream &operator<<(std::ostream &os, const StackTrace &stack_trace);
@@ -315,18 +320,9 @@ class RayLog {
     }
   }
 
-  /// Convenience method to find the log key by type.
-  RayLog &WithField(const JobID &job_id) { return WithField(kLogKeyJobID, job_id); }
-  RayLog &WithField(const WorkerID &worker_id) {
-    return WithField(kLogKeyWorkerID, worker_id);
-  }
-  RayLog &WithField(const NodeID &node_id) { return WithField(kLogKeyNodeID, node_id); }
-  RayLog &WithField(const ActorID &actor_id) {
-    return WithField(kLogKeyActorID, actor_id);
-  }
-  RayLog &WithField(const TaskID &task_id) { return WithField(kLogKeyTaskID, task_id); }
-  RayLog &WithField(const ObjectID &object_id) {
-    return WithField(kLogKeyObjectID, object_id);
+  template <typename T, typename enable = decltype(DefaultLogKey<T>::key)>
+  RayLog &WithField(const T &t) {
+    return WithField(DefaultLogKey<T>::key, t);
   }
 
  private:
