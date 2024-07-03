@@ -5,6 +5,7 @@ import sys
 import jsonpatch
 import pytest
 
+from collections import defaultdict
 from ray.autoscaler.batching_node_provider import NodeData
 from ray.autoscaler._private.kuberay.node_provider import (
     _worker_group_index,
@@ -22,7 +23,9 @@ from typing import Set, List
 
 
 def _get_basic_ray_cr_workers_to_delete(
-    cpu_workers_to_delete: List[NodeID], gpu_workers_to_delete: List[NodeID]
+    cpu_workers_to_delete: List[NodeID],
+    gpu_workers_to_delete: List[NodeID],
+    tpu_workers_to_delete: List[NodeID],
 ):
     """Generate a Ray cluster with non-empty workersToDelete field."""
     raycluster = get_basic_ray_cr()
@@ -31,6 +34,9 @@ def _get_basic_ray_cr_workers_to_delete(
     }
     raycluster["spec"]["workerGroupSpecs"][1]["scaleStrategy"] = {
         "workersToDelete": gpu_workers_to_delete
+    }
+    raycluster["spec"]["workerGroupSpecs"][2]["scaleStrategy"] = {
+        "workersToDelete": tpu_workers_to_delete
     }
     return raycluster
 
@@ -119,10 +125,18 @@ def test_create_node_cap_at_max(
             "podlist1.yaml",
             {
                 "raycluster-autoscaler-head-8zsc8": NodeData(
-                    kind="head", type="head-group", ip="10.4.2.6", status="up-to-date"
+                    kind="head",
+                    type="head-group",
+                    replica_index=None,
+                    ip="10.4.2.6",
+                    status="up-to-date",
                 ),  # up-to-date status because the Ray container is in running status
                 "raycluster-autoscaler-worker-small-group-dkz2r": NodeData(
-                    kind="worker", type="small-group", ip="10.4.1.8", status="waiting"
+                    kind="worker",
+                    type="small-group",
+                    replica_index=None,
+                    ip="10.4.1.8",
+                    status="waiting",
                 ),  # waiting status, because Ray container's state is "waiting".
                 # The pod list includes a worker with non-null deletion timestamp.
                 # It is excluded from the node data because it is considered
@@ -134,23 +148,37 @@ def test_create_node_cap_at_max(
             "podlist2.yaml",
             {
                 "raycluster-autoscaler-head-8zsc8": NodeData(
-                    kind="head", type="head-group", ip="10.4.2.6", status="up-to-date"
+                    kind="head",
+                    type="head-group",
+                    replica_index=None,
+                    ip="10.4.2.6",
+                    status="up-to-date",
                 ),
                 "raycluster-autoscaler-worker-fake-gpu-group-2qnhv": NodeData(
                     kind="worker",
                     type="fake-gpu-group",
+                    replica_index=None,
                     ip="10.4.0.6",
+                    status="up-to-date",
+                ),
+                "raycluster-autoscaler-worker-fake-tpu-group-xtpcl": NodeData(
+                    kind="worker",
+                    type="tpu-group",
+                    replica_index="tpu-group-0",
+                    ip="10.136.1.29",
                     status="up-to-date",
                 ),
                 "raycluster-autoscaler-worker-small-group-dkz2r": NodeData(
                     kind="worker",
                     type="small-group",
+                    replica_index=None,
                     ip="10.4.1.8",
                     status="up-to-date",
                 ),
                 "raycluster-autoscaler-worker-small-group-lbfm4": NodeData(
                     kind="worker",
                     type="small-group",
+                    replica_index=None,
                     ip="10.4.0.5",
                     status="up-to-date",
                 ),
@@ -175,6 +203,7 @@ def test_get_node_data(podlist_file: str, expected_node_data):
     ), mock.patch.object(KubeRayNodeProvider, "_get", mock_get):
         kr_node_provider = KubeRayNodeProvider(provider_config={}, cluster_name="fake")
         kr_node_provider.cluster_name = "fake"
+        kr_node_provider.replica_index_to_nodes = defaultdict(list[str])
         nodes = kr_node_provider.non_terminated_nodes({})
         assert kr_node_provider.node_data_dict == expected_node_data
         assert set(nodes) == set(expected_node_data.keys())
@@ -187,23 +216,30 @@ def test_get_node_data(podlist_file: str, expected_node_data):
         (
             {
                 "raycluster-autoscaler-head-8zsc8": NodeData(
-                    kind="head", type="head-group", ip="10.4.2.6", status="up-to-date"
+                    kind="head",
+                    type="head-group",
+                    replica_index=None,
+                    ip="10.4.2.6",
+                    status="up-to-date",
                 ),
                 "raycluster-autoscaler-worker-fake-gpu-group-2qnhv": NodeData(
                     kind="worker",
                     type="fake-gpu-group",
+                    replica_index=None,
                     ip="10.4.0.6",
                     status="up-to-date",
                 ),
                 "raycluster-autoscaler-worker-small-group-dkz2r": NodeData(
                     kind="worker",
                     type="small-group",
+                    replica_index=None,
                     ip="10.4.1.8",
                     status="up-to-date",
                 ),
                 "raycluster-autoscaler-worker-small-group-lbfm4": NodeData(
                     kind="worker",
                     type="small-group",
+                    replica_index=None,
                     ip="10.4.0.5",
                     status="up-to-date",
                 ),
@@ -258,18 +294,20 @@ def test_submit_scale_request(node_data_dict, scale_request, expected_patch_payl
 @pytest.mark.parametrize("node_set", [{"A", "B", "C", "D", "E"}])
 @pytest.mark.parametrize("cpu_workers_to_delete", ["A", "Z"])
 @pytest.mark.parametrize("gpu_workers_to_delete", ["B", "Y"])
+@pytest.mark.parametrize("tpu_workers_to_delete", ["C", "X"])
 @pytest.mark.skipif(sys.platform.startswith("win"), reason="Not relevant on Windows.")
 def test_safe_to_scale(
     node_set: Set[NodeID],
     cpu_workers_to_delete: List[NodeID],
     gpu_workers_to_delete: List[NodeID],
+    tpu_workers_to_delete: List[NodeID],
 ):
     # NodeData values unimportant for this test.
-    mock_node_data = NodeData("-", "-", "-", "-")
+    mock_node_data = NodeData("-", "-", "-", "-", "-")
     node_data_dict = {node_id: mock_node_data for node_id in node_set}
 
     raycluster = _get_basic_ray_cr_workers_to_delete(
-        cpu_workers_to_delete, gpu_workers_to_delete
+        cpu_workers_to_delete, gpu_workers_to_delete, tpu_workers_to_delete
     )
 
     def mock_patch(kuberay_provider, path, patch_payload):
@@ -286,12 +324,19 @@ def test_safe_to_scale(
         kr_node_provider.node_data_dict = node_data_dict
         actual_safe = kr_node_provider.safe_to_scale()
 
-    expected_safe = not any(
-        cpu_worker_to_delete in node_set
-        for cpu_worker_to_delete in cpu_workers_to_delete
-    ) and not any(
-        gpu_worker_to_delete in node_set
-        for gpu_worker_to_delete in gpu_workers_to_delete
+    expected_safe = (
+        not any(
+            cpu_worker_to_delete in node_set
+            for cpu_worker_to_delete in cpu_workers_to_delete
+        )
+        and not any(
+            gpu_worker_to_delete in node_set
+            for gpu_worker_to_delete in gpu_workers_to_delete
+        )
+        and not any(
+            tpu_worker_to_delete in node_set
+            for tpu_worker_to_delete in tpu_workers_to_delete
+        )
     )
     assert expected_safe is actual_safe
     patched_cpu_workers_to_delete = kr_node_provider._patched_raycluster["spec"][
@@ -300,15 +345,20 @@ def test_safe_to_scale(
     patched_gpu_workers_to_delete = kr_node_provider._patched_raycluster["spec"][
         "workerGroupSpecs"
     ][1]["scaleStrategy"]["workersToDelete"]
+    patched_tpu_workers_to_delete = kr_node_provider._patched_raycluster["spec"][
+        "workerGroupSpecs"
+    ][2]["scaleStrategy"]["workersToDelete"]
 
     if expected_safe:
         # Cleaned up workers to delete
         assert patched_cpu_workers_to_delete == []
         assert patched_gpu_workers_to_delete == []
+        assert patched_tpu_workers_to_delete == []
     else:
         # Did not clean up workers to delete
         assert patched_cpu_workers_to_delete == cpu_workers_to_delete
         assert patched_gpu_workers_to_delete == gpu_workers_to_delete
+        assert patched_tpu_workers_to_delete == tpu_workers_to_delete
 
 
 if __name__ == "__main__":
