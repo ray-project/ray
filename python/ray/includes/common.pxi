@@ -22,7 +22,7 @@ cdef class GcsClientOptions:
 
     @classmethod
     def create(
-        cls, gcs_address, cluster_id_hex, allow_cluster_id_nil,fetch_cluster_id_if_nil
+        cls, gcs_address, cluster_id_hex, allow_cluster_id_nil, fetch_cluster_id_if_nil
     ):
         """
         Creates a GcsClientOption with a maybe-Nil cluster_id, and may fetch from GCS.
