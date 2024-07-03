@@ -320,7 +320,7 @@ class RayLog {
     }
   }
 
-  template <typename T, typename enable = decltype(DefaultLogKey<T>::key)>
+  template <typename T>
   RayLog &WithField(const T &t) {
     return WithField(DefaultLogKey<T>::key, t);
   }
