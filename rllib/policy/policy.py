@@ -7,7 +7,7 @@ from typing import (
     TYPE_CHECKING,
     Any,
     Callable,
-    Container,
+    Collection,
     Dict,
     List,
     Mapping,
@@ -262,7 +262,7 @@ class Policy(metaclass=ABCMeta):
     @staticmethod
     def from_checkpoint(
         checkpoint: Union[str, Checkpoint],
-        policy_ids: Optional[Container[PolicyID]] = None,
+        policy_ids: Optional[Collection[PolicyID]] = None,
     ) -> Union["Policy", Dict[PolicyID, "Policy"]]:
         """Creates new Policy instance(s) from a given Policy or Algorithm checkpoint.
 

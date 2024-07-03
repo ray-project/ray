@@ -619,10 +619,12 @@ def test_version_endpoint(job_sdk_client):
 
     r = client._do_request("GET", "/api/version")
     assert r.status_code == 200
-    assert r.json() == {
+    body = r.json()
+    assert body == {
         "version": CURRENT_VERSION,
         "ray_version": ray.__version__,
         "ray_commit": ray.__commit__,
+        "session_name": body["session_name"],
     }
 
 

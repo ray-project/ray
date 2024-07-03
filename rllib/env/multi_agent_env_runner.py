@@ -1,7 +1,7 @@
 from collections import defaultdict
 from functools import partial
 import logging
-from typing import Any, Container, DefaultDict, Dict, List, Optional
+from typing import Any, Collection, DefaultDict, Dict, List, Optional
 
 import gymnasium as gym
 
@@ -651,7 +651,7 @@ class MultiAgentEnvRunner(EnvRunner):
     @override(EnvRunner)
     def get_state(
         self,
-        components: Optional[Container[str]] = None,
+        components: Optional[Collection[str]] = None,
         *,
         inference_only: bool = True,
         module_ids=None,
