@@ -1,14 +1,13 @@
-from typing import Any, Dict
+from typing import Any, Collection, Dict, Optional, Union
 
 from ray.rllib.algorithms.ppo.ppo_rl_module import PPORLModule
-
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.models.base import ACTOR, CRITIC, ENCODER_OUT
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.core.rl_module.torch import TorchRLModule
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
-from ray.rllib.utils.nested_dict import NestedDict
+from ray.rllib.utils.typing import StateDict
 
 torch, nn = try_import_torch()
 
@@ -27,7 +26,14 @@ class PPOTorchRLModule(TorchRLModule, PPORLModule):
             self._set_inference_only_state_dict_keys()
 
     @override(TorchRLModule)
-    def get_state(self, inference_only: bool = False) -> Dict[str, Any]:
+    def get_state(
+        self,
+        components: Optional[Union[str, Collection[str]]] = None,
+        *,
+        not_components: Optional[Union[str, Collection[str]]] = None,
+        inference_only: bool = False,
+        **kwargs,
+    ) -> StateDict:
         state = super(PPOTorchRLModule, self).get_state(inference_only=inference_only)
         # If this module is not for inference, but the state dict is.
         # Note, for stateful modules, we need the full state dict.
@@ -41,7 +47,7 @@ class PPOTorchRLModule(TorchRLModule, PPORLModule):
         return state
 
     @override(RLModule)
-    def _forward_inference(self, batch: NestedDict) -> Dict[str, Any]:
+    def _forward_inference(self, batch: Dict[str, Any]) -> Dict[str, Any]:
         output = {}
 
         # Encoder forward pass.
@@ -55,7 +61,7 @@ class PPOTorchRLModule(TorchRLModule, PPORLModule):
         return output
 
     @override(RLModule)
-    def _forward_exploration(self, batch: NestedDict, **kwargs) -> Dict[str, Any]:
+    def _forward_exploration(self, batch: Dict[str, Any], **kwargs) -> Dict[str, Any]:
         """PPO forward pass during exploration.
 
         Besides the action distribution, this method also returns the parameters of
@@ -88,7 +94,7 @@ class PPOTorchRLModule(TorchRLModule, PPORLModule):
         return output
 
     @override(RLModule)
-    def _forward_train(self, batch: NestedDict) -> Dict[str, Any]:
+    def _forward_train(self, batch: Dict[str, Any]) -> Dict[str, Any]:
         output = {}
 
         # Shared encoder.
@@ -138,18 +144,6 @@ class PPOTorchRLModule(TorchRLModule, PPORLModule):
             for name in state_dict
             if "vf" in name or name.startswith("encoder.critic_encoder")
         ]
-        # Do we use a separate encoder for the actor and critic?
-        # if not self.config.model_config_dict.get("vf_share_layers", True):
-        # if not self.encoder.config.shared:
-        #    # If we use separate encoder networks for the actor and critic, we need to
-        #    # rename the actor encoder parameters to encoder parameters b/c the
-        #    # inference-only modules uses a plain encoder network
-        #    # (`shared_layers=True`).
-        #    self._inference_only_state_dict_keys["expected_keys"] = {
-        #        name: name.replace("actor_encoder", "encoder")
-        #        for name in state_dict
-        #        if name.startswith("encoder.actor_encoder")
-        #    }
 
     @override(TorchRLModule)
     def _inference_only_get_state_hook(
@@ -161,10 +155,4 @@ class PPOTorchRLModule(TorchRLModule, PPORLModule):
             if self._inference_only_state_dict_keys.get("unexpected_keys"):
                 for param in self._inference_only_state_dict_keys["unexpected_keys"]:
                     del state_dict[param]
-            # If we have expected keys, rename.
-            # if self._inference_only_state_dict_keys.get("expected_keys"):
-            #    for param in self._inference_only_state_dict_keys["expected_keys"]:
-            #        state_dict[
-            #            self._inference_only_state_dict_keys["expected_keys"][param]
-            #        ] = state_dict.pop(param)
         return state_dict

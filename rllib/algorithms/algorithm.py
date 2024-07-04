@@ -11,6 +11,7 @@ import logging
 import numpy as np
 import os
 from packaging import version
+import pathlib
 import re
 import tempfile
 import time
@@ -2036,6 +2037,7 @@ class Algorithm(Trainable, AlgorithmBase):
         """
         return self.workers.local_worker().get_policy(policy_id)
 
+    # TODO (sven): Bring Algorithm into `Checkpointable` API.
     @PublicAPI
     def get_weights(self, policies: Optional[List[PolicyID]] = None) -> dict:
         """Return a dictionary of policy ids to weights.
@@ -2046,6 +2048,7 @@ class Algorithm(Trainable, AlgorithmBase):
         """
         return self.workers.local_worker().get_weights(policies)
 
+    # TODO (sven): Bring Algorithm into `Checkpointable` API.
     @PublicAPI
     def set_weights(self, weights: Dict[PolicyID, dict]):
         """Set policy weights by policy id.
@@ -2160,7 +2163,7 @@ class Algorithm(Trainable, AlgorithmBase):
                 )
 
             weights = policy.get_weights()
-            self.learner_group.set_state({COMPONENT_RL_MODULE: {policy_id: weights}})
+            self.learner_group.set_weights({policy_id: weights})
 
         # Add to evaluation workers, if necessary.
         if evaluation_workers is True and self.evaluation_workers is not None:
@@ -2263,9 +2266,7 @@ class Algorithm(Trainable, AlgorithmBase):
         # Create RLModule on all Learner workers.
         new_module = self.workers.local_worker().module[module_id]
         self.learner_group.foreach_learner(_add)
-        self.learner_group.set_state(
-            {COMPONENT_RL_MODULE: {module_id: new_module.get_state()}}
-        )
+        self.learner_group.set_weights({module_id: new_module.get_state()})
 
         # Return newly added RLModule (from the local EnvRunner).
         return new_module
@@ -2383,6 +2384,7 @@ class Algorithm(Trainable, AlgorithmBase):
             raise KeyError(f"Policy with ID {policy_id} not found in Algorithm!")
         policy.export_checkpoint(export_dir)
 
+    # TODO (sven): Bring Algorithm into `Checkpointable` API.
     @override(Trainable)
     def save_checkpoint(self, checkpoint_dir: str) -> None:
         """Exports checkpoint to a local directory.
@@ -2412,7 +2414,11 @@ class Algorithm(Trainable, AlgorithmBase):
         Args:
             checkpoint_dir: The directory where the checkpoint files will be stored.
         """
-        # New API stack: Save individual components to disk via their
+        checkpoint_dir = pathlib.Path(checkpoint_dir)
+
+        # New API stack: Save individual components to disk via their `Checkpointable`
+        # capabilities.
+        # TODO (sven): Bring Algorithm itself into the `Checkpointable` API.
         if (
             self.config.enable_rl_module_and_learner
             and self.config.enable_env_runner_and_connector_v2
@@ -2422,14 +2428,14 @@ class Algorithm(Trainable, AlgorithmBase):
                 "checkpoint_version": CHECKPOINT_VERSION_LEARNER_AND_ENV_RUNNER,
             }
             # Save the LearnerGroup's state to disk.
-            self.learner_group.save(os.path.join(checkpoint_dir, COMPONENT_LEARNER))
+            self.learner_group.save_to_path(checkpoint_dir / COMPONENT_LEARNER)
             # Save the (local) EnvRunner's state to disk.
-            self.workers.local_worker().save(
-                os.path.join(checkpoint_dir, COMPONENT_ENV_RUNNER)
+            self.workers.local_worker().save_to_path(
+                checkpoint_dir / COMPONENT_ENV_RUNNER
             )
             if self.evaluation_workers:
-                self.evaluation_workers.local_worker().save(
-                    os.path.join(checkpoint_dir, COMPONENT_EVAL_ENV_RUNNER)
+                self.evaluation_workers.local_worker().save_to_path(
+                    checkpoint_dir / COMPONENT_EVAL_ENV_RUNNER
                 )
 
         state = self.__getstate__()
@@ -2447,12 +2453,12 @@ class Algorithm(Trainable, AlgorithmBase):
             state["checkpoint_version"] = CHECKPOINT_VERSION
 
         # Write state (w/o policies) to disk.
-        state_file = os.path.join(checkpoint_dir, "algorithm_state.pkl")
+        state_file = checkpoint_dir / "algorithm_state.pkl"
         with open(state_file, "wb") as f:
             pickle.dump(state, f)
 
         # Write rllib_checkpoint.json.
-        with open(os.path.join(checkpoint_dir, "rllib_checkpoint.json"), "w") as f:
+        with open(checkpoint_dir / "rllib_checkpoint.json", "w") as f:
             json.dump(
                 {
                     "type": "Algorithm",
@@ -2472,11 +2478,12 @@ class Algorithm(Trainable, AlgorithmBase):
         for pid, policy_state in policy_states.items():
             # From here on, disallow policyIDs that would not work as directory names.
             validate_policy_id(pid, error=True)
-            policy_dir = os.path.join(checkpoint_dir, "policies", pid)
+            policy_dir = checkpoint_dir / "policies" / pid
             os.makedirs(policy_dir, exist_ok=True)
             policy = self.get_policy(pid)
             policy.export_checkpoint(policy_dir, policy_state=policy_state)
 
+    # TODO (sven): Bring Algorithm into `Checkpointable` API.
     @override(Trainable)
     def load_checkpoint(self, checkpoint_dir: str) -> None:
         # Checkpoint is provided as a local directory.
@@ -2487,18 +2494,13 @@ class Algorithm(Trainable, AlgorithmBase):
         self.__setstate__(checkpoint_data)
         if self.config.enable_rl_module_and_learner:
             learner_state_dir = os.path.join(checkpoint_dir, "learner")
-            self.learner_group.restore(learner_state_dir)
-            # Make also sure, all training EnvRunners get the just loaded weights.
-            learner_group_weights = self.learner_group.get_state(
-                components=COMPONENT_LEARNER + "/" + COMPONENT_RL_MODULE,
+            self.learner_group.restore_from_path(learner_state_dir)
+            # Make also sure, all (training) EnvRunners get the just loaded weights, but
+            # only the inference-only ones.
+            self.workers.sync_weights(
+                from_worker_or_learner_group=self.learner_group,
                 inference_only=True,
-            )[COMPONENT_LEARNER][COMPONENT_RL_MODULE]
-            self.workers.local_worker().set_state(
-                {
-                    COMPONENT_RL_MODULE: learner_group_weights,
-                }
             )
-            self.workers.sync_weights(inference_only=True)
 
         # Call the `on_checkpoint_loaded` callback.
         self.callbacks.on_checkpoint_loaded(algorithm=self)
