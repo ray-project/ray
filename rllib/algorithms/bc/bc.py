@@ -4,16 +4,21 @@ from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.bc.bc_catalog import BCCatalog
 from ray.rllib.algorithms.marwil.marwil import MARWIL, MARWILConfig
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
+from ray.rllib.execution.rollout_ops import synchronous_parallel_sample
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.metrics import (
     ALL_MODULES,
     LEARNER_RESULTS,
     LEARNER_UPDATE_TIMER,
     OFFLINE_SAMPLING_TIMER,
+    NUM_AGENT_STEPS_SAMPLED,
+    NUM_AGENT_STEPS_TRAINED,
+    NUM_ENV_STEPS_SAMPLED,
     NUM_ENV_STEPS_TRAINED,
     NUM_ENV_STEPS_TRAINED_LIFETIME,
     NUM_MODULE_STEPS_TRAINED,
     NUM_MODULE_STEPS_TRAINED_LIFETIME,
+    SAMPLE_TIMER,
     SYNCH_WORKER_WEIGHTS_TIMER,
     TIMERS,
 )
@@ -143,69 +148,167 @@ class BC(MARWIL):
 
     @override(MARWIL)
     def training_step(self) -> ResultDict:
-        if not self.config.enable_env_runner_and_connector_v2:
-            # Using ModelV2.
-            return super().training_step()
+        # Check, which stack is run.
+        if self.config.enable_env_runner_and_connector_v2:
+            # Using `EnvRunner`s, `OfflineData` and `RLModule`s.
+            return self._training_step_new_stack()
+        elif self.config.enable_rl_module_and_learner:
+            # Using `RLModule`s, but `RolloutWorker`s.
+            return self._training_step_hybrid_stack()
         else:
-            # Implement logic using RLModule and Learner API.
-            # TODO (simon): Take care of sampler metrics: right
-            # now all rewards are `nan`, which possibly confuses
-            # the user that sth. is not right, although it is as
-            # we do not step the env.
-            with self.metrics.log_time((TIMERS, OFFLINE_SAMPLING_TIMER)):
-                # Sampling from offline data.
-                batch = self.offline_data.sample(
-                    num_samples=self.config.train_batch_size_per_learner,
-                    num_shards=self.config.num_learners,
-                    return_iterator=True if self.config.num_learners > 1 else False,
-                )
+            # Using ModelV2 and `RolloutWorker`s.
+            return super().training_step()
 
-            with self.metrics.log_time((TIMERS, LEARNER_UPDATE_TIMER)):
-                # Updating the policy.
-                # TODO (simon, sven): Check, if we should execute directly s.th. like
-                # update_from_iterator.
-                learner_results = self.learner_group.update_from_batch(
-                    batch,
-                    minibatch_size=self.config.train_batch_size_per_learner,
-                    num_iters=self.config.dataset_num_iters_per_learner,
-                )
+    def _training_step_new_stack(self) -> ResultDict:
+        """Implements training logic for the new stack
 
-                # Log training results.
-                self.metrics.merge_and_log_n_dicts(learner_results, key=LEARNER_RESULTS)
-                self.metrics.log_value(
-                    NUM_ENV_STEPS_TRAINED_LIFETIME,
-                    self.metrics.peek(
-                        (LEARNER_RESULTS, ALL_MODULES, NUM_ENV_STEPS_TRAINED)
-                    ),
-                    reduce="sum",
-                )
-                self.metrics.log_dict(
-                    {
-                        (LEARNER_RESULTS, mid, NUM_MODULE_STEPS_TRAINED_LIFETIME): (
-                            stats[NUM_MODULE_STEPS_TRAINED]
-                        )
-                        for mid, stats in self.metrics.peek(LEARNER_RESULTS).items()
-                    },
-                    reduce="sum",
-                )
-            # Synchronize weights.
-            # As the results contain for each policy the loss and in addition the
-            # total loss over all policies is returned, this total loss has to be
-            # removed.
-            modules_to_update = set(learner_results[0].keys()) - {ALL_MODULES}
+        Note, this includes so far training with the `OfflineData`
+        class (multi-/single-learner setup) and evaluation on
+        `EnvRunner`s. Note further, evaluation on the dataset itself
+        using estimators is not implemented, yet.
+        """
+        # Implement logic using RLModule and Learner API.
+        # TODO (simon): Take care of sampler metrics: right
+        # now all rewards are `nan`, which possibly confuses
+        # the user that sth. is not right, although it is as
+        # we do not step the env.
+        with self.metrics.log_time((TIMERS, OFFLINE_SAMPLING_TIMER)):
+            # Sampling from offline data.
+            batch = self.offline_data.sample(
+                num_samples=self.config.train_batch_size_per_learner,
+                num_shards=self.config.num_learners,
+                return_iterator=True if self.config.num_learners > 1 else False,
+            )
 
-            # Update weights - after learning on the local worker -
-            # on all remote workers.
-            with self.metrics.log_time((TIMERS, SYNCH_WORKER_WEIGHTS_TIMER)):
-                if self.workers.num_remote_workers() > 0:
-                    self.workers.sync_weights(
-                        from_worker_or_learner_group=self.learner_group,
-                        policies=modules_to_update,
-                        inference_only=True,
+        with self.metrics.log_time((TIMERS, LEARNER_UPDATE_TIMER)):
+            # Updating the policy.
+            # TODO (simon, sven): Check, if we should execute directly s.th. like
+            # update_from_iterator.
+            learner_results = self.learner_group.update_from_batch(
+                batch,
+                minibatch_size=self.config.train_batch_size_per_learner,
+                num_iters=self.config.dataset_num_iters_per_learner,
+            )
+
+            # Log training results.
+            self.metrics.merge_and_log_n_dicts(learner_results, key=LEARNER_RESULTS)
+            self.metrics.log_value(
+                NUM_ENV_STEPS_TRAINED_LIFETIME,
+                self.metrics.peek(
+                    (LEARNER_RESULTS, ALL_MODULES, NUM_ENV_STEPS_TRAINED)
+                ),
+                reduce="sum",
+            )
+            self.metrics.log_dict(
+                {
+                    (LEARNER_RESULTS, mid, NUM_MODULE_STEPS_TRAINED_LIFETIME): (
+                        stats[NUM_MODULE_STEPS_TRAINED]
                     )
-                # Then we must have a local worker.
-                else:
-                    weights = self.learner_group.get_weights(inference_only=True)
-                    self.workers.local_worker().set_weights(weights)
+                    for mid, stats in self.metrics.peek(LEARNER_RESULTS).items()
+                },
+                reduce="sum",
+            )
+        # Synchronize weights.
+        # As the results contain for each policy the loss and in addition the
+        # total loss over all policies is returned, this total loss has to be
+        # removed.
+        modules_to_update = set(learner_results[0].keys()) - {ALL_MODULES}
 
-            return self.metrics.reduce()
+        # Update weights - after learning on the local worker -
+        # on all remote workers.
+        with self.metrics.log_time((TIMERS, SYNCH_WORKER_WEIGHTS_TIMER)):
+            if self.workers.num_remote_workers() > 0:
+                self.workers.sync_weights(
+                    from_worker_or_learner_group=self.learner_group,
+                    policies=modules_to_update,
+                    inference_only=True,
+                )
+            # Then we must have a local worker.
+            else:
+                weights = self.learner_group.get_weights(inference_only=True)
+                self.workers.local_worker().set_weights(weights)
+
+        return self.metrics.reduce()
+
+    def _training_step_hybrid_stack(self) -> ResultDict:
+        """Implements training logic for the hybrid stack.
+
+        Note, the hybrid stack cannot fall back on MARWIL b/c MARWIL
+        is still on the old stack. Instead it needs to use `RolloutWorkers`
+        for evaluation and the `RLModule`s for inference and training.
+        Specifically it cannot use the new `OfflineData` class for
+        training.
+        """
+        # Implement logic using RLModule and Learner API.
+        # TODO (sven): Remove RolloutWorkers/EnvRunners for
+        # datasets. Use RolloutWorker/EnvRunner only for
+        # env stepping.
+        # TODO (simon): Take care of sampler metrics: right
+        # now all rewards are `nan`, which possibly confuses
+        # the user that sth. is not right, although it is as
+        # we do not step the env.
+        with self._timers[SAMPLE_TIMER]:
+            # Sampling from offline data.
+            # TODO (simon): We have to remove the `RolloutWorker`
+            # here and just use the already distributed `dataset`
+            # for sampling. Only in online evaluation
+            # `RolloutWorker/EnvRunner` should be used.
+            if self.config.count_steps_by == "agent_steps":
+                train_batch = synchronous_parallel_sample(
+                    worker_set=self.workers,
+                    max_agent_steps=self.config.train_batch_size,
+                )
+            else:
+                train_batch = synchronous_parallel_sample(
+                    worker_set=self.workers,
+                    max_env_steps=self.config.train_batch_size,
+                )
+
+            # TODO (sven): Use metrics API as soon as we moved to new API stack
+            #  (from currently hybrid stack).
+            # self.metrics.log_dict(
+            #    {
+            #        NUM_AGENT_STEPS_SAMPLED_LIFETIME: len(train_batch),
+            #        NUM_ENV_STEPS_SAMPLED_LIFETIME: len(train_batch),
+            #    },
+            #    reduce="sum",
+            # )
+            self._counters[NUM_AGENT_STEPS_SAMPLED] += len(train_batch)
+            self._counters[NUM_ENV_STEPS_SAMPLED] += len(train_batch)
+
+        # Updating the policy.
+        train_results = self.learner_group.update_from_batch(batch=train_batch)
+        # TODO (sven): Use metrics API as soon as we moved to new API stack
+        #  (from currently hybrid stack).
+        # self.metrics.log_dict(
+        #    {
+        #        NUM_AGENT_STEPS_TRAINED_LIFETIME: len(train_batch),
+        #        NUM_ENV_STEPS_TRAINED_LIFETIME: len(train_batch),
+        #    },
+        #    reduce="sum",
+        # )
+        self._counters[NUM_AGENT_STEPS_TRAINED] += len(train_batch)
+        self._counters[NUM_ENV_STEPS_TRAINED] += len(train_batch)
+
+        # Synchronize weights.
+        # As the results contain for each policy the loss and in addition the
+        # total loss over all policies is returned, this total loss has to be
+        # removed.
+        policies_to_update = set(train_results.keys()) - {ALL_MODULES}
+
+        # with self.metrics.log_time((TIMERS, SYNCH_WORKER_WEIGHTS_TIMER)):
+        with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
+            if self.workers.num_remote_workers() > 0:
+                self.workers.sync_weights(
+                    from_worker_or_learner_group=self.learner_group,
+                    policies=policies_to_update,
+                )
+            # Get weights from Learner to local worker.
+            else:
+                self.workers.local_worker().set_weights(
+                    self.learner_group.get_weights()
+                )
+
+        # TODO (sven): Use metrics API as soon as we moved to new API stack
+        #  (from currently hybrid stack).
+        return train_results
