@@ -102,7 +102,7 @@ def train_ppo_module_with_bc_finetune(
         print(f"Epoch {epoch} loss: {loss.detach().item()}")
 
     checkpoint_dir = tempfile.mkdtemp()
-    module.save(checkpoint_dir)
+    module.save_to_path(checkpoint_dir)
     return checkpoint_dir
 
 

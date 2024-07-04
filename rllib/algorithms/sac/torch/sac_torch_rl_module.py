@@ -28,8 +28,50 @@ class SACTorchRLModule(TorchRLModule, SACRLModule):
         # parameter names to be removed or renamed when syncing from the state dict
         # when syncing.
         if not self.config.inference_only:
+            # We do not want to train the target networks. Instead, we sync them
+            # with the actual (trained) ones.
+            self.qf_target_encoder.requires_grad_(False)
+            self.qf_target_encoder.load_state_dict(self.qf_encoder.state_dict())
+            self.qf_target.requires_grad_(False)
+            self.qf_target.load_state_dict(self.qf.state_dict())
+
+            # If necessary, also synchronize the twin networks.
+            if self.twin_q:
+                self.qf_target_twin_encoder.requires_grad_(False)
+                self.qf_target_twin_encoder.load_state_dict(
+                    self.qf_twin_encoder.state_dict()
+                )
+                self.qf_target_twin.requires_grad_(False)
+                self.qf_target_twin.load_state_dict(self.qf_twin.state_dict())
+
             # Set the expected and unexpected keys for the inference-only module.
             self._set_inference_only_state_dict_keys()
+
+    # @override(RLModuleWithTargetNetworksInterface)
+    # def sync_target_networks(self, tau: float) -> None:
+    #    pairs = [
+    #        (self.qf_target_encoder, self.qf_encoder),
+    #        (self.qf_target, self.qf),
+    #    ] + (
+    #        # If we have twin networks we need to update them, too.
+    #        [
+    #            (self.qf_target_twin_encoder, self.qf_twin_encoder),
+    #            (self.qf_target_twin, self.qf_twin),
+    #        ]
+    #        if self.twin_q
+    #        else []
+    #    )
+    #    # Loop through all individual networks that have a corresponding target net.
+    #    for target_net, main_net in pairs:
+    #        # Get the current parameters from the main network.
+    #        state_dict = main_net.state_dict()
+    #        # Use here Polyak averaging.
+    #        new_target_state_dict = {
+    #            k: tau * state_dict[k] + (1 - tau) * v
+    #            for k, v in target_net.state_dict().items()
+    #        }
+    #        # Apply the new parameters to the target Q network.
+    #        target_net.load_state_dict(new_target_state_dict)
 
     @override(TorchRLModule)
     def get_state(self, inference_only: bool = False) -> Dict[str, Any]:

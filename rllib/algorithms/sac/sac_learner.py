@@ -39,15 +39,6 @@ class SACLearner(DQNRainbowLearner):
         # for the alpha already defined.
         super().build()
 
-        # Initially sync target networks (w/ tau=1.0 -> full overwrite).
-        # Make target nets non-trainable.
-        def _setup_target_nets(mid, module):
-            module.sync_target_networks(tau=1.0)
-            for target_net, _ in module.get_target_network_pairs():
-                target_net.requires_grad_(False)
-
-        self.module.foreach_module(_setup_target_nets)
-
         def get_target_entropy(module_id):
             """Returns the target entropy to use for the loss.
 
