@@ -2,7 +2,7 @@ import time
 from collections import defaultdict
 from functools import partial
 import logging
-from typing import Any, Container, DefaultDict, Dict, List, Optional
+from typing import Any, Collection, DefaultDict, Dict, List, Optional
 
 import gymnasium as gym
 
@@ -41,7 +41,7 @@ from ray.rllib.utils.metrics import (
 )
 from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
 from ray.rllib.utils.spaces.space_utils import unbatch
-from ray.rllib.utils.typing import EpisodeID, ModelWeights, ResultDict
+from ray.rllib.utils.typing import EpisodeID, ModelWeights, ModuleID, ResultDict
 from ray.tune.registry import ENV_CREATOR, _global_registry
 from ray.util.annotations import PublicAPI
 
@@ -63,12 +63,11 @@ class SingleAgentEnvRunner(EnvRunner):
         """
         super().__init__(config=config)
 
-        self.worker_index = kwargs.get("worker_index")
+        self.worker_index: int = kwargs.get("worker_index")
+        self.tune_trial_id: str = kwargs.get("tune_trial_id")
 
         # Create a MetricsLogger object for logging custom stats.
         self.metrics = MetricsLogger()
-        # Initialize lifetime counts.
-        self.metrics.log_value(NUM_ENV_STEPS_SAMPLED_LIFETIME, 0, reduce="sum")
 
         # Create our callbacks object.
         self._callbacks: DefaultCallbacks = self.config.callbacks_class()
@@ -643,10 +642,10 @@ class SingleAgentEnvRunner(EnvRunner):
     @override(EnvRunner)
     def get_state(
         self,
-        components: Optional[Container[str]] = None,
+        components: Optional[Collection[str]] = None,
         *,
+        module_ids: Optional[Collection[ModuleID]] = None,
         inference_only: bool = True,
-        module_ids=None,
     ) -> Dict[str, Any]:
         components = force_list(
             components

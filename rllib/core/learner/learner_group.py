@@ -4,7 +4,7 @@ import pathlib
 from typing import (
     Any,
     Callable,
-    Container,
+    Collection,
     Dict,
     List,
     Optional,
@@ -42,6 +42,7 @@ from ray.rllib.utils.typing import (
     EpisodeType,
     ModuleID,
     RLModuleSpec,
+    StateDict,
     T,
 )
 from ray.train._internal.backend_executor import BackendExecutor
@@ -175,8 +176,6 @@ class LearnerGroup:
             self._update_request_tags = Counter()
             self._update_request_tag = 0
             self._update_request_results = {}
-            self._additional_update_request_tags = Counter()
-            self._additional_update_request_tag = 0
 
         # A special MetricsLogger object (not exposed to the user) for reducing
         # the n results dicts returned by our n Learner workers in case we are on
@@ -618,63 +617,11 @@ class LearnerGroup:
                             del self._update_request_results[tag]
                     else:
                         assert False
-                        assert tag in self._additional_update_request_tags
-                        self._additional_update_request_tags[tag] -= 1
-                        if self._additional_update_request_tags[tag] == 0:
-                            del self._additional_update_request_tags[tag]
 
                 else:
                     raise result_or_error
 
         return list(unprocessed_results.values())
-
-    def additional_update(
-        self,
-        *,
-        reduce_fn=DEPRECATED_VALUE,
-        **kwargs,
-    ) -> Union[Dict[str, Any], List[Dict[str, Any]]]:
-        """Apply additional non-gradient based updates to the Learners.
-
-        For example, this could be used to do a polyak averaging update
-        of a target network in off policy algorithms like SAC or DQN.
-
-        By default, this is a pass through that calls all Learner workers'
-        `additional_update(**kwargs)` method.
-
-        Returns:
-            A list of dictionaries of results returned by the
-            `Learner.additional_update()` calls.
-        """
-        if reduce_fn != DEPRECATED_VALUE:
-            deprecation_warning(
-                old="LearnerGroup.additional_update(reduce_fn=..)",
-                new="Learner.metrics.[log_value|log_dict|log_time](key=..., value=..., "
-                "reduce=[mean|min|max|sum], window=..., ema_coeff=...)",
-                help="Use the new ray.rllib.utils.metrics.metrics_logger::MetricsLogger"
-                " API in your custom Learner methods for logging your custom values "
-                "and time-reducing (or parallel-reducing) them.",
-                error=True,
-            )
-
-        if self.is_local:
-            results = [self._learner.additional_update(**kwargs)]
-        else:
-            results = self._worker_manager.foreach_actor(
-                [lambda w: w.additional_update(**kwargs) for _ in self._workers]
-            )
-            results = self._get_results(results)
-
-        # If we are on hybrid API stack (no EnvRunners), we need to emulate
-        # the existing behavior of returning an already reduced dict (as if we had a
-        # reduce_fn).
-        if not self.config.enable_env_runner_and_connector_v2:
-            self._metrics_logger_old_and_hybrid_stack.merge_and_log_n_dicts(results)
-            results = self._metrics_logger_old_and_hybrid_stack.reduce(
-                return_stats_obj=False
-            )
-
-        return results
 
     def add_module(
         self,
@@ -772,11 +719,11 @@ class LearnerGroup:
 
     def get_state(
         self,
-        components: Optional[Container[str]] = None,
+        components: Optional[Collection[str]] = None,
         *,
         inference_only: bool = False,
-        module_ids: Container[ModuleID] = None,
-    ) -> Dict[str, Any]:
+        module_ids: Collection[ModuleID] = None,
+    ) -> StateDict:
         """Get the states of this LearnerGroup.
 
         Contains the Learners' state (which should be the same across Learners) and
@@ -792,7 +739,7 @@ class LearnerGroup:
                 modules. This is needed for algorithms in the new stack that
                 use inference-only modules. In this case only a part of the
                 parameters are synced to the workers. Default is False.
-            module_ids: Optional container of ModuleIDs to be returned only within the
+            module_ids: Optional collection of ModuleIDs to be returned only within the
                 state dict. If None (default), all module IDs' weights are returned.
 
         Returns:
@@ -819,7 +766,7 @@ class LearnerGroup:
 
         return {"learner_state": learner_state}
 
-    def set_state(self, state: Dict[str, Any]) -> None:
+    def set_state(self, state: StateDict) -> None:
         """Sets the state of this LearnerGroup.
 
         Note that all Learners share the same state.

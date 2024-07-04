@@ -86,6 +86,8 @@ if __name__ == "__main__":
     RAY_CI_RELEASE_TESTS_AFFECTED = 0
     RAY_CI_COMPILED_PYTHON_AFFECTED = 0
     RAY_CI_ACCELERATED_DAG_AFFECTED = 0
+    # Whether to run jobs that are affected by any changes
+    RAY_CI_LINT_AFFECTED = 1
 
     if is_pull_request():
         commit_range = get_commit_range()
@@ -341,6 +343,8 @@ if __name__ == "__main__":
                 RAY_CI_DASHBOARD_AFFECTED = 1
                 RAY_CI_RELEASE_TESTS_AFFECTED = 1
                 RAY_CI_ACCELERATED_DAG_AFFECTED = 1
+            elif changed_file.startswith(".github/"):
+                pass
             else:
                 print(
                     "Unhandled source code change: {changed_file}".format(
@@ -425,6 +429,7 @@ if __name__ == "__main__":
             "RAY_CI_ACCELERATED_DAG_AFFECTED={}".format(
                 RAY_CI_ACCELERATED_DAG_AFFECTED
             ),
+            "RAY_CI_LINT_AFFECTED={}".format(RAY_CI_LINT_AFFECTED),
         ]
     )
 

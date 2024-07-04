@@ -251,7 +251,7 @@ METRICS_GAUGES = {
     ),
     "component_num_fds": Gauge(
         "component_num_fds",
-        "Number of open fds of all components on the node.",
+        "Number of open fds of all components on the node (Not available on Windows).",
         "count",
         COMPONENT_METRICS_TAG_KEYS,
     ),
@@ -274,6 +274,21 @@ METRICS_GAUGES = {
         ["node_type", "Version", "SessionName"],
     ),
 }
+
+PSUTIL_PROCESS_ATTRS = (
+    [
+        "pid",
+        "create_time",
+        "cpu_percent",
+        "cpu_times",
+        "cmdline",
+        "memory_info",
+        "memory_full_info",
+    ]
+    + ["num_fds"]
+    if sys.platform != "win32"
+    else []
+)
 
 MB = 1024 * 1024
 
@@ -626,20 +641,7 @@ class ReporterAgent(
                     # the process may have terminated due to race condition.
                     continue
 
-                result.append(
-                    w.as_dict(
-                        attrs=[
-                            "pid",
-                            "create_time",
-                            "cpu_percent",
-                            "cpu_times",
-                            "cmdline",
-                            "memory_info",
-                            "memory_full_info",
-                            "num_fds",
-                        ]
-                    )
-                )
+                result.append(w.as_dict(attrs=PSUTIL_PROCESS_ATTRS))
             return result
 
     def _get_raylet_proc(self):
@@ -665,35 +667,13 @@ class ReporterAgent(
         if raylet_proc is None:
             return {}
         else:
-            return raylet_proc.as_dict(
-                attrs=[
-                    "pid",
-                    "create_time",
-                    "cpu_percent",
-                    "cpu_times",
-                    "cmdline",
-                    "memory_info",
-                    "memory_full_info",
-                    "num_fds",
-                ]
-            )
+            return raylet_proc.as_dict(attrs=PSUTIL_PROCESS_ATTRS)
 
     def _get_agent(self):
         # Current proc == agent proc
         if not self._agent_proc:
             self._agent_proc = psutil.Process()
-        return self._agent_proc.as_dict(
-            attrs=[
-                "pid",
-                "create_time",
-                "cpu_percent",
-                "cpu_times",
-                "cmdline",
-                "memory_info",
-                "memory_full_info",
-                "num_fds",
-            ]
-        )
+        return self._agent_proc.as_dict(attrs=PSUTIL_PROCESS_ATTRS)
 
     def _get_load_avg(self):
         if sys.platform == "win32":

@@ -22,6 +22,22 @@ import ray
 from ray._private.auto_init_hook import wrap_auto_init
 from ray.air.util.tensor_extensions.utils import _create_possibly_ragged_ndarray
 from ray.data._internal.datasource.avro_datasource import AvroDatasource
+from ray.data._internal.datasource.bigquery_datasource import BigQueryDatasource
+from ray.data._internal.datasource.binary_datasource import BinaryDatasource
+from ray.data._internal.datasource.csv_datasource import CSVDatasource
+from ray.data._internal.datasource.image_datasource import ImageDatasource
+from ray.data._internal.datasource.json_datasource import JSONDatasource
+from ray.data._internal.datasource.lance_datasource import LanceDatasource
+from ray.data._internal.datasource.mongo_datasource import MongoDatasource
+from ray.data._internal.datasource.numpy_datasource import NumpyDatasource
+from ray.data._internal.datasource.parquet_bulk_datasource import ParquetBulkDatasource
+from ray.data._internal.datasource.parquet_datasource import ParquetDatasource
+from ray.data._internal.datasource.range_datasource import RangeDatasource
+from ray.data._internal.datasource.sql_datasource import SQLDatasource
+from ray.data._internal.datasource.text_datasource import TextDatasource
+from ray.data._internal.datasource.tfrecords_datasource import TFRecordDatasource
+from ray.data._internal.datasource.torch_datasource import TorchDatasource
+from ray.data._internal.datasource.webdataset_datasource import WebDatasetDatasource
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.logical.operators.from_operators import (
     FromArrow,
@@ -48,26 +64,10 @@ from ray.data.context import DataContext
 from ray.data.dataset import Dataset, MaterializedDataset
 from ray.data.datasource import (
     BaseFileMetadataProvider,
-    BigQueryDatasource,
-    BinaryDatasource,
     Connection,
-    CSVDatasource,
     Datasource,
-    ImageDatasource,
-    JSONDatasource,
-    LanceDatasource,
-    MongoDatasource,
-    NumpyDatasource,
-    ParquetBulkDatasource,
-    ParquetDatasource,
     ParquetMetadataProvider,
     PathPartitionFilter,
-    RangeDatasource,
-    SQLDatasource,
-    TextDatasource,
-    TFRecordDatasource,
-    TorchDatasource,
-    WebDatasetDatasource,
 )
 from ray.data.datasource._default_metadata_providers import (
     get_generic_metadata_provider,
@@ -1760,7 +1760,7 @@ def read_tfrecords(
                     #pyarrow.fs.FileSystem.open_input_stream>`_.
             when opening input files to read. To read a compressed TFRecord file,
             pass the corresponding compression type (e.g., for ``GZIP`` or ``ZLIB``),
-            use ``arrow_open_stream_args={'compression_type': 'gzip'}``).
+            use ``arrow_open_stream_args={'compression': 'gzip'}``).
         meta_provider: A :ref:`file metadata provider <metadata_provider>`. Custom
             metadata providers may be able to resolve file metadata more quickly and/or
             accurately. In most cases, you do not need to set this. If ``None``, this
@@ -1883,7 +1883,7 @@ def read_webdataset(
             `pyarrow.fs.FileSystem.open_input_stream <https://arrow.apache.org/docs/python/generated/pyarrow.fs.FileSystem.html>`_.
             To read a compressed TFRecord file,
             pass the corresponding compression type (e.g. for ``GZIP`` or ``ZLIB``, use
-            ``arrow_open_stream_args={'compression_type': 'gzip'}``).
+            ``arrow_open_stream_args={'compression': 'gzip'}``).
         meta_provider: File metadata provider. Custom metadata providers may
             be able to resolve file metadata more quickly and/or accurately. If
             ``None``, this function uses a system-chosen implementation.

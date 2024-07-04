@@ -1472,6 +1472,7 @@ def start_gcs_server(
         f"--metrics-agent-port={metrics_agent_port}",
         f"--node-ip-address={node_ip_address}",
         f"--session-name={session_name}",
+        f"--ray-commit={ray.__commit__}",
     ]
     if redis_address:
         redis_ip_address, redis_port, enable_redis_ssl = get_address(redis_address)
