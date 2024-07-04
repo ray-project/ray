@@ -101,9 +101,11 @@ def build_app(cli_args: Dict[str, str]) -> serve.Application:
 
     Supported engine arguments: https://docs.vllm.ai/en/latest/models/engine_args.html.
     """  # noqa: E501
-    if "device" in cli_args.keys():
-        device = cli_args.pop("device")
+    if "accelerator" in cli_args.keys():
+        accelerator = cli_args.pop("accelerator")
     else:
+        accelerator = "GPU"
+    if accelerator == "HPU":
         try:
             from habana_frameworks.torch.distributed.hccl import (
                 initialize_distributed_hpu,
@@ -111,9 +113,8 @@ def build_app(cli_args: Dict[str, str]) -> serve.Application:
 
             initialize_distributed_hpu()
             torch.zeros(1).to("hpu")
-            device = "HPU"
         except Exception:
-            device = "GPU"
+            raise Exception("Please check the environment: HPU devices not available.")
     parsed_args = parse_vllm_args(cli_args)
     engine_args = AsyncEngineArgs.from_cli_args(parsed_args)
     engine_args.worker_use_ray = True
@@ -123,7 +124,7 @@ def build_app(cli_args: Dict[str, str]) -> serve.Application:
     pg_resources = []
     pg_resources.append({"CPU": 1})  # for the deployment replica
     for i in range(tp):
-        pg_resources.append({"CPU": 1, device: 1})  # for the vLLM actors
+        pg_resources.append({"CPU": 1, accelerator: 1})  # for the vLLM actors
 
     # We use the "STRICT_PACK" strategy below to ensure all vLLM actors are placed on
     # the same Ray node.
@@ -145,6 +146,7 @@ if __name__ == "__main__":
             {
                 "model": "NousResearch/Meta-Llama-3-8B-Instruct",
                 "tensor-parallel-size": "1",
+                "accelerator": "HPU"
             }
         )
     )
