@@ -1,4 +1,3 @@
-import multiprocessing
 import time
 import warnings
 from collections import defaultdict
@@ -9,13 +8,9 @@ import pytest
 import ray
 from ray.cluster_utils import Cluster, cluster_not_supported
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
+from ray._private.utils import get_num_cpus, get_system_memory
 
-from ray.python.ray._private.utils import get_num_cpus, get_system_memory
-
-if (
-    get_num_cpus() < 40
-    or get_system_memory() < 50 * 10**9
-):
+if get_num_cpus() < 40 or get_system_memory() < 50 * 10**9:
     warnings.warn("This test must be run on large machines.")
 
 

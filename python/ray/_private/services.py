@@ -5,7 +5,6 @@ import io
 import json
 import logging
 import mmap
-import multiprocessing
 import os
 import random
 import shutil
