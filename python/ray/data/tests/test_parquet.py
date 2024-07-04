@@ -11,16 +11,16 @@ import pytest
 from pytest_lazyfixture import lazy_fixture
 
 import ray
-from ray.data.block import BlockAccessor
-from ray.data.context import DataContext
-from ray.data.datasource import DefaultFileMetadataProvider, ParquetMetadataProvider
-from ray.data.datasource.parquet_bulk_datasource import ParquetBulkDatasource
-from ray.data.datasource.parquet_datasource import (
+from ray.data._internal.datasource.parquet_bulk_datasource import ParquetBulkDatasource
+from ray.data._internal.datasource.parquet_datasource import (
     NUM_CPUS_FOR_META_FETCH_TASK,
     ParquetDatasource,
     _deserialize_fragments_with_retry,
     _SerializedFragment,
 )
+from ray.data.block import BlockAccessor
+from ray.data.context import DataContext
+from ray.data.datasource import DefaultFileMetadataProvider, ParquetMetadataProvider
 from ray.data.datasource.parquet_meta_provider import PARALLELIZE_META_FETCH_THRESHOLD
 from ray.data.datasource.path_util import _unwrap_protocol
 from ray.data.tests.conftest import *  # noqa
@@ -93,7 +93,7 @@ def test_parquet_deserialize_fragments_with_retry(
         ]
     )
     monkeypatch.setattr(
-        ray.data.datasource.parquet_datasource,
+        ray.data._internal.datasource.parquet_datasource,
         "_deserialize_fragments",
         mock_deserializer,
     )

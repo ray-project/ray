@@ -1,6 +1,6 @@
 import asyncio
 import logging
-
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import fields
 import dataclasses
 from itertools import islice
@@ -9,6 +9,7 @@ from datetime import datetime
 
 from ray._private.ray_constants import env_integer
 from ray._private.profiling import chrome_tracing_dump
+from ray._private.utils import get_or_create_event_loop
 
 import ray.dashboard.memory_utils as memory_utils
 from ray.dashboard.utils import compose_state_message
@@ -146,6 +147,8 @@ class StateAPIManager:
 
     def __init__(self, state_data_source_client: StateDataSourceClient):
         self._client = state_data_source_client
+
+        self._thread_pool_executor = ThreadPoolExecutor(thread_name_prefix="state_head")
 
     @property
     def data_source_client(self):
@@ -421,26 +424,38 @@ class StateAPIManager:
         except DataSourceUnavailable:
             raise DataSourceUnavailable(GCS_QUERY_FAILURE_WARNING)
 
-        result = [
-            protobuf_to_task_state_dict(message) for message in reply.events_by_task
-        ]
+        def transform(reply):
+            """
+            Transforms from proto to dict, applies filters, sorts, and truncates.
+            This function is executed in a separate thread.
 
-        # Num pre-truncation is the number of tasks returned from
-        # source + num filtered on source
-        num_after_truncation = len(result) + reply.num_filtered_on_gcs
-        num_total = reply.num_total_stored + reply.num_status_task_events_dropped
+            Returns the ListApiResponse.
+            """
+            result = [
+                protobuf_to_task_state_dict(message) for message in reply.events_by_task
+            ]
 
-        result = self._filter(result, option.filters, TaskState, option.detail)
-        num_filtered = len(result)
+            # Num pre-truncation is the number of tasks returned from
+            # source + num filtered on source
+            num_after_truncation = len(result) + reply.num_filtered_on_gcs
+            num_total = reply.num_total_stored + reply.num_status_task_events_dropped
 
-        result.sort(key=lambda entry: entry["task_id"])
-        result = list(islice(result, option.limit))
-        # TODO(rickyx): we could do better with the warning logic. It's messy now.
-        return ListApiResponse(
-            result=result,
-            total=num_total,
-            num_after_truncation=num_after_truncation,
-            num_filtered=num_filtered,
+            result = self._filter(result, option.filters, TaskState, option.detail)
+            num_filtered = len(result)
+
+            result.sort(key=lambda entry: entry["task_id"])
+            result = list(islice(result, option.limit))
+
+            # TODO(rickyx): we could do better with the warning logic. It's messy now.
+            return ListApiResponse(
+                result=result,
+                total=num_total,
+                num_after_truncation=num_after_truncation,
+                num_filtered=num_filtered,
+            )
+
+        return await get_or_create_event_loop().run_in_executor(
+            self._thread_pool_executor, transform, reply
         )
 
     async def list_objects(self, *, option: ListApiOptions) -> ListApiResponse:

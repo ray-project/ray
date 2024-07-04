@@ -351,11 +351,24 @@ class PhysicalOperator(Operator):
         raise NotImplementedError
 
     def get_active_tasks(self) -> List[OpTask]:
-        """Get a list of the active tasks of this operator."""
+        """Get a list of the active tasks of this operator.
+
+        Subclasses should return *all* running normal/actor tasks. The
+        StreamingExecutor will wait on these tasks and trigger callbacks.
+        """
         return []
 
     def num_active_tasks(self) -> int:
         """Return the number of active tasks.
+
+        This method is used for 2 purposes:
+        * Determine if this operator is completed.
+        * Displaying active task info in the progress bar.
+        Thus, the return value can be less than `len(get_active_tasks())`,
+        if some tasks are not needed for the above purposes. E.g., for the
+        actor pool map operator, readiness checking tasks can be excluded
+        from `num_active_tasks`, but they should be included in
+        `get_active_tasks`.
 
         Subclasses can override this as a performance optimization.
         """
@@ -440,4 +453,8 @@ class PhysicalOperator(Operator):
         # TODO(hchen): Currently we only enable `ReservationOpResourceAllocator` when
         # all operators in the dataset have implemented accurate memory accounting.
         # Eventually all operators should implement accurate memory accounting.
+        return False
+
+    def supports_fusion(self) -> bool:
+        """Returns ```True``` if this operator can be fused with other operators."""
         return False
