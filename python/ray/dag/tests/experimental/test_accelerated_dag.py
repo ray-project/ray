@@ -1098,6 +1098,47 @@ class TestCompositeChannel:
 
         compiled_dag.teardown()
 
+    def test_intra_process_channel_with_multi_readers(self, ray_start_regular_shared):
+        """
+        In this test, there are three 'echo' tasks on the same Ray actor.
+        The DAG will look like this:
+
+        Driver -> a.echo -> a.echo -> Driver
+                         |         |
+                         -> a.echo -
+
+        All communication between the driver and the actor will be done through remote
+        channels, i.e., shared memory channels. All communication between the actor
+        tasks will be conducted through local channels, i.e., IntraProcessChannel in
+        this case.
+
+        This pattern simulates the case of pipeline parallelism training, where the
+        first task reads data from the driver, and the fan-out tasks use
+        IntraProcessChannel to read the data as the input of the forward pass.
+
+        Compared to read data from shared memory channels for each forward pass, using
+        IntraProcessChannel may be more efficient because it avoids the overhead of
+        context switch and deserialization for each forward pass.
+        """
+        a = Actor.remote(0)
+        with InputNode() as inp:
+            dag = a.echo.bind(inp)
+            x = a.echo.bind(dag)
+            y = a.echo.bind(dag)
+            dag = MultiOutputNode([x, y])
+
+        compiled_dag = dag.experimental_compile()
+        ref = compiled_dag.execute(1)
+        assert ray.get(ref) == [1, 1]
+
+        ref = compiled_dag.execute(2)
+        assert ray.get(ref) == [2, 2]
+
+        ref = compiled_dag.execute(3)
+        assert ray.get(ref) == [3, 3]
+
+        compiled_dag.teardown()
+
 
 def test_channel_access_after_close(ray_start_regular_shared):
     # Tests that an access to a channel after accelerated DAG teardown raises a

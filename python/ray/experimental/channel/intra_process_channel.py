@@ -16,21 +16,18 @@ class IntraProcessChannel(ChannelInterface):
     overhead and the need for reading/writing from shared memory.
 
     Args:
-        actor_handle: The actor handle of the worker process.
+        num_readers: The number of readers that will read from this channel.
     """
 
     def __init__(
         self,
-        actor_handle: ray.actor.ActorHandle,
+        num_readers: int = 0,
         _channel_id: Optional[str] = None,
     ):
-        # TODO (kevin85421): Currently, if we don't pass `actor_handle` to
-        # `IntraProcessChannel`, the actor will die due to the reference count of
-        # `actor_handle` is 0. We should fix this issue in the future.
-        self._actor_handle = actor_handle
         # Generate a unique ID for the channel. The writer and reader will use
         # this ID to store and retrieve data from the _SerializationContext.
         self._channel_id = _channel_id
+        self._num_readers = num_readers
         if self._channel_id is None:
             self._channel_id = str(uuid.uuid4())
 
@@ -42,7 +39,7 @@ class IntraProcessChannel(ChannelInterface):
 
     def __reduce__(self):
         return IntraProcessChannel, (
-            self._actor_handle,
+            self._num_readers,
             self._channel_id,
         )
 
@@ -56,7 +53,7 @@ class IntraProcessChannel(ChannelInterface):
         # we can directly store the data in the context instead of storing
         # it in the channel object. This removes the serialization overhead of `value`.
         ctx = ChannelContext.get_current().serialization_context
-        ctx.set_data(self._channel_id, value)
+        ctx.set_data(self._channel_id, value, self._num_readers)
 
     def read(self, timeout: Optional[float] = None) -> Any:
         # No need to check timeout as the operation is non-blocking.
