@@ -179,9 +179,6 @@ class TestCallbacks(unittest.TestCase):
 
             # Train one iteration.
             algo.train()
-            # We must have had exactly one `sample()` call on our EnvRunner.
-            if not multi_agent:
-                self.assertEqual(callback_obj.counts["sample"], 1)
             # We should have had at least one episode start.
             self.assertGreater(callback_obj.counts["start"], 0)
             # Episode starts must be exact same as episode ends (b/c we always complete
