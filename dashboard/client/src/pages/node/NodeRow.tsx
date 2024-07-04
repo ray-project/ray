@@ -244,7 +244,11 @@ type WorkerRowProps = {
 /**
  * A single row that represents the data of a Worker
  */
-export const WorkerRow = ({ resourceFlag = [], node, worker }: WorkerRowProps) => {
+export const WorkerRow = ({
+  resourceFlag = [],
+  node,
+  worker,
+}: WorkerRowProps) => {
   const {
     ip,
     mem,
