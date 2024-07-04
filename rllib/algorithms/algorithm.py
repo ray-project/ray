@@ -633,7 +633,8 @@ class Algorithm(Trainable, AlgorithmBase):
         if (
             self.config.input_
             and self.config.input_ != "sampler"
-            and self.config._enable_new_api_stack
+            and self.config.enable_rl_module_and_learner
+            and self.config.enable_env_runner_and_connector_v2
         ):
             from ray.rllib.offline.offline_data import OfflineData
 
