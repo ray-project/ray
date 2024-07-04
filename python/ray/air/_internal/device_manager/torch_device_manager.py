@@ -21,7 +21,7 @@ class TorchDeviceManager(DeviceManager):
     def set_device(self, device: Union[torch.device, int, str, None]):
         """Set the correct device for this process"""
         ...
-    
+
     def is_support_stream(self) -> bool:
         """Validate if the device type support create a stream"""
         ...

@@ -34,7 +34,7 @@ class HPUTorchDeviceManager(TorchDeviceManager):
 
         return devices
 
-    def set_device(self,  device: Union[torch.device, int, str, None]):
+    def set_device(self, device: Union[torch.device, int, str, None]):
         torch_hpu.set_device(device)
 
     def is_support_stream(self) -> bool:

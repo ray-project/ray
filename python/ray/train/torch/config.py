@@ -217,6 +217,7 @@ class _TorchBackend(Backend):
         device_manager = get_torch_device_manager_cls_by_resources(
             self.resources_per_worker
         )()
+
         def _set_torch_device_manager():
             session = get_session()
             session.device_manager = device_manager

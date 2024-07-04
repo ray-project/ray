@@ -32,7 +32,9 @@ def try_register_torch_accelerator_module() -> None:
         raise ImportError("Could not import PyTorch")
 
 
-def get_torch_device_manager_cls_by_resources(resources: Optional[dict]) -> TorchDeviceManager:
+def get_torch_device_manager_cls_by_resources(
+    resources: Optional[dict],
+) -> TorchDeviceManager:
     device_manager = None
 
     # input resources may be None
@@ -42,6 +44,8 @@ def get_torch_device_manager_cls_by_resources(resources: Optional[dict]) -> Torc
     # select correct accelerator type from resources
     for resource_type, resource_value in resources.items():
         if resource_value and resource_type != "CPU":
-            device_manager = SUPPORTED_ACCELERATOR_TORCH_DEVICE_MANAGER.get(resource_type, None)
+            device_manager = SUPPORTED_ACCELERATOR_TORCH_DEVICE_MANAGER.get(
+                resource_type, None
+            )
 
     return device_manager or CUDATorchDeviceManager
