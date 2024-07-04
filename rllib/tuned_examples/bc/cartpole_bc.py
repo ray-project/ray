@@ -29,6 +29,8 @@ data_path = "local://" + base_path.joinpath(data_path).as_posix()
 print(f"data_path={data_path}")
 
 # Define the BC config.
+args.num_gpus = 4
+
 config = (
     BCConfig()
     .environment(env="CartPole-v1")
@@ -50,7 +52,7 @@ config = (
     .offline_data(
         input_=[data_path],
         input_read_method_kwargs={"override_num_blocks": max(args.num_gpus, 1) * 2},
-        learner_connector_module_sync_period=20,
+        prelearner_module_synch_period=20,
     )
     .training(
         # To increase learning speed with multiple learners,

@@ -18,7 +18,7 @@ class TestOfflineData(unittest.TestCase):
 
     def test_offline_data_load(self):
 
-        data_path = "tests/data/cartpole/cartpole-v1.jsonl"
+        data_path = "tests/data/cartpole/cartpole-v1_large"
         base_path = Path(__file__).parents[2]
         data_path = "local://" + base_path.joinpath(data_path).as_posix()
 

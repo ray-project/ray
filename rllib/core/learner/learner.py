@@ -1153,7 +1153,7 @@ class Learner:
         for batch in iterator.iter_batches(
             batch_size=minibatch_size,
             _finalize_fn=_finalize_fn,
-            prefetch_batches=2,
+            prefetch_batches=4,
             local_shuffle_buffer_size=minibatch_size * 10,
         ):
             # Update the iteration counter.
