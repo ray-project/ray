@@ -2464,10 +2464,11 @@ class Dataset:
         pattern="Examples:",
     )
     def count(self) -> int:
-        """Count the number of rows in the dataset. For `Dataset`s
-        which only read Parquet files (created with :meth:`~ray.data.read_parquet`),
-        this method reads the file metadata to efficiently count the number of rows
-        without reading in the entire data.
+        """Count the number of rows in the dataset.
+
+        For Datasets which only read Parquet files (created with
+        :meth:`~ray.data.read_parquet`), this method reads the file metadata to
+        efficiently count the number of rows without reading in the entire data.
 
         Examples:
             >>> import ray
@@ -4590,8 +4591,6 @@ class Dataset:
         def _build_ref_bundle(
             blocks: Tuple[ObjectRef[Block], BlockMetadata],
         ) -> RefBundle:
-            # Set `owns_blocks=True` so we can destroy the blocks eagerly
-            # after getting count from metadata.
             return RefBundle((blocks,), owns_blocks=True)
 
         iter_block_refs_md, _, _ = self._plan.execute_to_iterator()
@@ -4599,7 +4598,7 @@ class Dataset:
         self._synchronize_progress_bar()
         return iter_ref_bundles
 
-    @ConsumptionAPI(pattern="")
+    @ConsumptionAPI(pattern="Examples:")
     @DeveloperAPI
     def get_internal_block_refs(self) -> List[ObjectRef[Block]]:
         """Get a list of references to the underlying blocks of this dataset.
@@ -4616,6 +4615,8 @@ class Dataset:
         Returns:
             A list of references to this dataset's blocks.
         """
+        # TODO(scottjlee): replace get_internal_block_refs() usages with
+        # iter_internal_ref_bundles()
         block_refs = self._plan.execute().block_refs
         self._synchronize_progress_bar()
         return block_refs

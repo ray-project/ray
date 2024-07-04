@@ -414,6 +414,8 @@ class ExecutionPlan:
 
         metrics_tag = create_dataset_tag(self._dataset_name, self._dataset_uuid)
         executor = StreamingExecutor(copy.deepcopy(ctx.execution_options), metrics_tag)
+        # TODO(scottjlee): replace with `execute_to_legacy_bundle_iterator` and
+        # update execute_to_iterator usages to handle RefBundles instead of Blocks
         block_iter = execute_to_legacy_block_iterator(
             executor,
             self,
