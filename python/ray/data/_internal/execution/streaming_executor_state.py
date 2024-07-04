@@ -211,7 +211,8 @@ class OpState:
         self.progress_bar = ProgressBar(
             "- " + self.op.name,
             self.op.num_outputs_total(),
-            index,
+            unit="blocks",
+            position=index,
             enabled=progress_bar_enabled,
         )
         num_progress_bars = 1
