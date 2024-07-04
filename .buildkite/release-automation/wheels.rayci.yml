@@ -36,6 +36,7 @@ steps:
       - "3.9"
       - "3.10"
       - "3.11"
+      - "3.12"
 
   - block: "Download & validate Ray wheels from TestPyPI Linux arm64"
     key: block-validate-linux-arm64-wheels
@@ -57,6 +58,7 @@ steps:
       - "3.9"
       - "3.10"
       - "3.11"
+      - "3.12"
 
   - block: "Download & validate Ray wheels from TestPyPI Mac"
     key: block-validate-macos-wheels
