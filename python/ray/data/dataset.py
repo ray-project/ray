@@ -2464,9 +2464,9 @@ class Dataset:
         pattern="Examples:",
     )
     def count(self) -> int:
-        """Count the number of records in the dataset. For `Dataset`s
+        """Count the number of rows in the dataset. For `Dataset`s
         which only read Parquet files (created with :meth:`~ray.data.read_parquet`),
-        this method reads the file metadata to efficiently count the number of records
+        this method reads the file metadata to efficiently count the number of rows
         without reading in the entire data.
 
         Examples:
@@ -4333,14 +4333,15 @@ class Dataset:
             ValueError: if the number of rows in the :class:`~ray.data.Dataset` exceeds
                 ``limit``.
         """
-        count = self.count()
-        if limit is not None and count > limit:
-            raise ValueError(
-                f"the dataset has more than the given limit of {limit} "
-                f"rows: {count}. If you are sure that a DataFrame with "
-                f"{count} rows will fit in local memory, set ds.to_pandas(limit=None) "
-                "to disable limits."
-            )
+        if limit is not None:
+            count = self.count()
+            if count > limit:
+                raise ValueError(
+                    f"the dataset has more than the given limit of {limit} "
+                    f"rows: {count}. If you are sure that a DataFrame with "
+                    f"{count} rows will fit in local memory, set "
+                    "ds.to_pandas(limit=None) to disable limits."
+                )
         blocks = self.get_internal_block_refs()
         output = DelegatingBlockBuilder()
         for block in blocks:

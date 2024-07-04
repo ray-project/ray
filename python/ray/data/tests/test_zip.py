@@ -99,16 +99,24 @@ def test_zip_arrow(ray_start_regular_shared):
     ds2 = ray.data.range(5).map(lambda r: {"a": r["id"] + 1, "b": r["id"] + 2})
     ds = ds1.zip(ds2)
     assert ds.count() == 5
-    assert "{id: int64, a: int64, b: int64}" in str(ds)
+
     result = list(ds.take())
     assert result[0] == {"id": 0, "a": 1, "b": 2}
+
+    # Execute the dataset to get full schema.
+    ds = ds.materialize()
+    assert "{id: int64, a: int64, b: int64}" in str(ds)
 
     # Test duplicate column names.
     ds = ds1.zip(ds1).zip(ds1)
     assert ds.count() == 5
-    assert "{id: int64, id_1: int64, id_2: int64}" in str(ds)
+
     result = list(ds.take())
     assert result[0] == {"id": 0, "id_1": 0, "id_2": 0}
+
+    # Execute the dataset to get full schema.
+    ds = ds.materialize()
+    assert "{id: int64, id_1: int64, id_2: int64}" in str(ds)
 
 
 def test_zip_multiple_block_types(ray_start_regular_shared):
