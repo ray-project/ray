@@ -343,6 +343,8 @@ if __name__ == "__main__":
                 RAY_CI_DASHBOARD_AFFECTED = 1
                 RAY_CI_RELEASE_TESTS_AFFECTED = 1
                 RAY_CI_ACCELERATED_DAG_AFFECTED = 1
+            elif changed_file.startswith(".github/"):
+                pass
             else:
                 print(
                     "Unhandled source code change: {changed_file}".format(
