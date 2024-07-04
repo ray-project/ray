@@ -100,7 +100,11 @@ class TestAlgorithm(unittest.TestCase):
                 new_should_module_be_updated=[f"p{i}", f"p{i-1}"],
             )
             self._assert_modules_added(
-                algo, ["p0", mid], trainable=[i, i-1], mapped=[i, i-1], not_mapped=[i-2]
+                algo,
+                ["p0", mid],
+                trainable=[i, i - 1],
+                mapped=[i, i - 1],
+                not_mapped=[i - 2],
             )
 
             # Assert new policy is part of local worker (eval worker set does NOT
@@ -117,7 +121,11 @@ class TestAlgorithm(unittest.TestCase):
             # than what's defined in the config dict).
             test = Algorithm.from_checkpoint(checkpoint)
             self._assert_modules_added(
-                test, ["p0", mid], trainable=[i, i-1], mapped=[i, i-1], not_mapped=[i-2]
+                test,
+                ["p0", mid],
+                trainable=[i, i - 1],
+                mapped=[i, i - 1],
+                not_mapped=[i - 2],
             )
             # Make sure algorithm can continue training the restored policy.
             test.train()
@@ -189,14 +197,18 @@ class TestAlgorithm(unittest.TestCase):
             # Make sure removed policy is no longer part of remote workers in the
             # worker set and the eval worker set.
             self.assertTrue(
-                all(algo.workers.foreach_worker(
-                    func=lambda w, mid=mid: mid not in w.module
-                ))
+                all(
+                    algo.workers.foreach_worker(
+                        func=lambda w, mid=mid: mid not in w.module
+                    )
+                )
             )
             self.assertTrue(
-                all(algo.evaluation_workers.foreach_worker(
-                    func=lambda w, mid=mid: mid not in w.module
-                ))
+                all(
+                    algo.evaluation_workers.foreach_worker(
+                        func=lambda w, mid=mid: mid not in w.module
+                    )
+                )
             )
             # Assert removed policy is no longer part of local worker
             # (eval worker set does NOT have a local worker, only the main
@@ -647,9 +659,11 @@ class TestAlgorithm(unittest.TestCase):
         # Make sure module is part of remote EnvRunners in the
         # EnvRunnerGroup and the eval EnvRunnerGroup.
         self.assertTrue(
-            all(algo.workers.foreach_worker(
-                lambda w, mids=mids: all(i in w.module for i in mids)
-            ))
+            all(
+                algo.workers.foreach_worker(
+                    lambda w, mids=mids: all(i in w.module for i in mids)
+                )
+            )
         )
         self.assertTrue(
             all(
@@ -659,12 +673,12 @@ class TestAlgorithm(unittest.TestCase):
             )
         )
         # Make sure that EnvRunners have received the correct mapping fn.
-        l = list(
+        mapped_pols = list(
             algo.workers.local_worker().config.policy_mapping_fn(0, None)
             for _ in range(100)
         )
-        self.assertTrue(all(f"p{i}" in l for i in mapped))
-        self.assertTrue(not any (f"p{i}" in l for i in not_mapped))
+        self.assertTrue(all(f"p{i}" in mapped_pols for i in mapped))
+        self.assertTrue(not any(f"p{i}" in mapped_pols for i in not_mapped))
 
 
 if __name__ == "__main__":

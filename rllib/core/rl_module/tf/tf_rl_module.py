@@ -1,8 +1,7 @@
-import pathlib
-from typing import Any, Dict, Union
+from typing import Any, Collection, Dict, Optional, Union
 
-from ray.rllib.core.rl_module.rl_module import RLModule, SingleAgentRLModuleSpec
-from ray.rllib.utils.annotations import override
+from ray.rllib.core.rl_module.rl_module import RLModule
+from ray.rllib.utils.annotations import override, OverrideToImplementCustomLogic
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.typing import StateDict
 
@@ -36,10 +35,19 @@ class TfRLModule(tf.keras.Model, RLModule):
         """
         return self.forward_train(batch)
 
+    @OverrideToImplementCustomLogic
     @override(RLModule)
-    def get_state(self, inference_only: bool = False) -> StateDict:
+    def get_state(
+        self,
+        components: Optional[Union[str, Collection[str]]] = None,
+        *,
+        not_components: Optional[Union[str, Collection[str]]] = None,
+        inference_only: bool = False,
+        **kwargs,
+    ) -> StateDict:
         return self.get_weights()
 
+    @OverrideToImplementCustomLogic
     @override(RLModule)
     def set_state(self, state: StateDict) -> None:
         self.set_weights(state)

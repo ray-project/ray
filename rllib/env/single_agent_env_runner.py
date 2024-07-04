@@ -2,7 +2,7 @@ import time
 from collections import defaultdict
 from functools import partial
 import logging
-from typing import Any, Collection, DefaultDict, Dict, List, Optional
+from typing import Any, Collection, DefaultDict, Dict, List, Optional, Union
 
 import gymnasium as gym
 
@@ -21,7 +21,6 @@ from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.env_runner import EnvRunner
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 from ray.rllib.env.utils import _gym_env_creator
-from ray.rllib.utils import force_list
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.checkpoints import Checkpointable
 from ray.rllib.utils.deprecation import Deprecated
@@ -47,7 +46,7 @@ from ray.rllib.utils.metrics import (
 )
 from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
 from ray.rllib.utils.spaces.space_utils import unbatch
-from ray.rllib.utils.typing import EpisodeID, ModuleID, ResultDict
+from ray.rllib.utils.typing import EpisodeID, ResultDict
 from ray.tune.registry import ENV_CREATOR, _global_registry
 from ray.util.annotations import PublicAPI
 
@@ -650,49 +649,25 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
     @override(Checkpointable)
     def get_state(
         self,
-        components: Optional[List[str]] = None,
+        components: Optional[Union[str, Collection[str]]] = None,
         *,
-        not_components: Optional[List[str]] = None,
-        inference_only: bool = True,
+        not_components: Optional[Union[str, Collection[str]]] = None,
         **kwargs,
     ) -> Dict[str, Any]:
-        """Returns this EnvRunners current state as a dict.
-
-        Args:
-            components: An optional list of string keys to be included in the
-                returned state. This might be useful, if getting certain components
-                of the state is expensive (e.g. reading/compiling the weights of a large
-                NN) and at the same time, these components are not required by the
-                caller.
-            not_components: An optional list of string keys to be excluded in the
-                returned state, even if the same string is part of `components`.
-                This is useful to get the complete state of the class, except
-                one or a few components.
-            inference_only: Whether to return the inference-only weight set of the
-                EnvRunner's RLModule. Note that this setting only has an effect if
-                components is None or the string "rl_module" is in `components` (and not
-                in `not_components`).
-            kwargs: Forward-compatibility kwargs.
-
-        Returns:
-            The current state of the implementing class (or only the `components`
-            specified, w/o those in `not_components`).
-        """
-        #TODO: Use self._check_component
-        ## If components=None, add all components to state (unless a component is in
-        ## `not_components`).
-        #components = force_list(components) or None
-        #not_components = force_list(not_components)
-
         state = {
             WEIGHTS_SEQ_NO: self._weights_seq_no,
             NUM_ENV_STEPS_SAMPLED_LIFETIME: (
                 self.metrics.peek(NUM_ENV_STEPS_SAMPLED_LIFETIME, default=0)
             ),
         }
+
         if self._check_component(COMPONENT_RL_MODULE, components, not_components):
             state[COMPONENT_RL_MODULE] = self.module.get_state(
-                inference_only=inference_only
+                components=self._get_subcomponents(COMPONENT_RL_MODULE, components),
+                not_components=self._get_subcomponents(
+                    COMPONENT_RL_MODULE, not_components
+                ),
+                **kwargs,
             )
         if self._check_component(
             COMPONENT_ENV_TO_MODULE_CONNECTOR, components, not_components
@@ -750,9 +725,11 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
     @override(Checkpointable)
     def get_metadata(self):
         metadata = Checkpointable.get_metadata(self)
-        metadata.update({
-            # TODO (sven): Maybe add serialized (JSON-writable) config here?
-        })
+        metadata.update(
+            {
+                # TODO (sven): Maybe add serialized (JSON-writable) config here?
+            }
+        )
         return metadata
 
     @override(Checkpointable)
@@ -921,7 +898,7 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
         self.metrics.log_value(EPISODE_RETURN_MAX, ret, reduce="max", window=win)
 
     @Deprecated(
-        new="SingleAgentEnvRunner.get_state(components=['rl_module'])",
+        new="SingleAgentEnvRunner.get_state(components='rl_module')",
         error=True,
     )
     def get_weights(self, *args, **kwargs):

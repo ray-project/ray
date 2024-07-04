@@ -2585,7 +2585,7 @@ class AlgorithmConfig(_Config):
             if isinstance(policies, (set, tuple, list)):
                 policies = {p: PolicySpec() for p in policies}
             # Validate each policy spec in a given dict.
-            elif isinstance(policies, dict):
+            if isinstance(policies, dict):
                 for pid, spec in policies.items():
                     # If not a PolicySpec object, values must be lists/tuples of len 4.
                     if not isinstance(spec, PolicySpec):
@@ -2605,11 +2605,7 @@ class AlgorithmConfig(_Config):
                             f"Multi-agent policy config for {pid} must be a dict or "
                             f"AlgorithmConfig object, but got {type(spec.config)}!"
                         )
-                # If this config is already multi-agent, update the policies dict.
-                if self.is_multi_agent():
-                    self.policies.update(policies)
-                else:
-                    self.policies = policies
+                self.policies = policies
             else:
                 raise ValueError(
                     "`policies` must be dict mapping PolicyID to PolicySpec OR a "
@@ -3020,7 +3016,7 @@ class AlgorithmConfig(_Config):
         if rl_module_spec is not NotProvided:
             self._rl_module_spec = rl_module_spec
 
-        if _enable_rl_module_api is not NotProvided:
+        if _enable_rl_module_api != DEPRECATED_VALUE:
             deprecation_warning(
                 old="AlgorithmConfig.rl_module(_enable_rl_module_api=..)",
                 new="AlgorithmConfig.api_stack(enable_rl_module_and_learner=..)",

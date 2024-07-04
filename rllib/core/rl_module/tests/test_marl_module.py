@@ -94,7 +94,7 @@ class TestMARLModule(unittest.TestCase):
 
         module2.set_state(state)
         state2_after = module2.get_state()
-        check(state, state2)
+        check(state, state2_after)
 
     def test_add_remove_modules(self):
         # TODO (Avnish): Modify this test to make sure that the distributed

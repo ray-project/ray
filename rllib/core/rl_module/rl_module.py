@@ -1,6 +1,6 @@
 import abc
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Type, TYPE_CHECKING
+from typing import Any, Collection, Dict, Optional, Type, TYPE_CHECKING, Union
 
 import gymnasium as gym
 import tree  # pip install dm_tree
@@ -691,9 +691,9 @@ class RLModule(Checkpointable, abc.ABC):
     @override(Checkpointable)
     def get_state(
         self,
-        components: Optional[List[str]] = None,
+        components: Optional[Union[str, Collection[str]]] = None,
         *,
-        not_components: Optional[List[str]] = None,
+        not_components: Optional[Union[str, Collection[str]]] = None,
         inference_only: bool = False,
         **kwargs,
     ) -> StateDict:
@@ -709,8 +709,21 @@ class RLModule(Checkpointable, abc.ABC):
         Returns:
             This RLModule's state dict.
         """
+        if components is not None or not_components is not None:
+            raise ValueError(
+                "`component` arg and `not_component` arg not supported in "
+                "`RLModule.get_state()` base implementation! Override this method in "
+                "your custom RLModule subclass."
+            )
+        elif inference_only is True:
+            raise ValueError(
+                "`inference_only=True` not supported in "
+                "`RLModule.get_state()` base implementation! Override this method in "
+                "your custom RLModule subclass."
+            )
         return {}
 
+    @override(Checkpointable)
     def get_ctor_args_and_kwargs(self):
         return (
             (self.config,),  # *args

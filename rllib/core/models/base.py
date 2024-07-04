@@ -342,9 +342,9 @@ class ActorCriticEncoder(Encoder):
                 ENCODER_OUT: {
                     ACTOR: encoder_outs[ENCODER_OUT],
                     **(
-                        {
-                            CRITIC: encoder_outs[ENCODER_OUT]
-                        } if self.critic_encoder else {}
+                        {CRITIC: encoder_outs[ENCODER_OUT]}
+                        if self.critic_encoder
+                        else {}
                     ),
                 }
             }
@@ -358,9 +358,7 @@ class ActorCriticEncoder(Encoder):
                 ENCODER_OUT: {
                     ACTOR: actor_out[ENCODER_OUT],
                     **(
-                        {
-                            CRITIC: critic_out[ENCODER_OUT]
-                        } if self.critic_encoder else {}
+                        {CRITIC: critic_out[ENCODER_OUT]} if self.critic_encoder else {}
                     ),
                 }
             }

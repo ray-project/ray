@@ -1,11 +1,8 @@
 import abc
-import pickle
 from collections import defaultdict
 from dataclasses import dataclass
 from functools import partial
-import json
 import logging
-import pathlib
 from typing import (
     Any,
     Callable,
@@ -15,7 +12,6 @@ from typing import (
     Hashable,
     Optional,
     Sequence,
-    Set,
     Tuple,
     TYPE_CHECKING,
     Union,
@@ -33,8 +29,8 @@ from ray.rllib.core.rl_module.marl_module import (
     MultiAgentRLModuleSpec,
 )
 from ray.rllib.core.rl_module.rl_module import RLModule, SingleAgentRLModuleSpec
+from ray.rllib.policy.policy import PolicySpec
 from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
-from ray.rllib.utils import force_list
 from ray.rllib.utils.annotations import (
     override,
     OverrideToImplementCustomLogic,
@@ -61,7 +57,6 @@ from ray.rllib.utils.minibatch_utils import (
 )
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.schedules.scheduler import Scheduler
-from ray.rllib.utils.serialization import serialize_type
 from ray.rllib.utils.typing import (
     EpisodeType,
     LearningRateOrSchedule,
@@ -714,7 +709,9 @@ class Learner(Checkpointable):
         self.module.add_module(module_id, module)
 
         # Change our config (AlgorithmConfig) to contain the new Module.
-        self.config.multi_agent(policies={module_id})
+        self.config.multi_agent(
+            policies=self.config.policies | {module_id: PolicySpec()},
+        )
         if config_overrides is not None:
             self.config.multi_agent(
                 algorithm_config_overrides_per_module={module_id: config_overrides}
@@ -1019,31 +1016,11 @@ class Learner(Checkpointable):
     @override(Checkpointable)
     def get_state(
         self,
-        components: Optional[List[str]] = None,
+        components: Optional[Union[str, Collection[str]]] = None,
         *,
-        not_components: Optional[List[str]] = None,
-        inference_only: bool = False,
-        module_ids: Optional[Collection[ModuleID]] = None,
+        not_components: Optional[Union[str, Collection[str]]] = None,
         **kwargs,
     ) -> StateDict:
-        """Get (select components of) the state of this Learner.
-
-        Args:
-            components: Either None (return all components) or one of "rl_module",
-                "optimizer", or "modules_to_be_updated", or a list of either of these.
-            not_components: An optional list of string keys to be excluded in the
-                returned state, even if the same string is part of `components`.
-                This is useful to get the complete state of the Learner, except
-                one or a few components.
-            inference_only: Whether to return the inference-only weight set of the
-                underlying RLModule. Note that this setting only has an effect if
-                components is None or the string "rl_module" is in components.
-            module_ids: Optional collection of ModuleIDs to be returned only within the
-                state dict. If None (default), all module IDs' weights are returned.
-
-        Returns:
-            The state (or select components thereof) of this Learner.
-        """
         self._check_is_built()
 
         state = {
@@ -1052,7 +1029,11 @@ class Learner(Checkpointable):
 
         if self._check_component(COMPONENT_RL_MODULE, components, not_components):
             state[COMPONENT_RL_MODULE] = self.module.get_state(
-                inference_only=inference_only, module_ids=module_ids
+                components=self._get_subcomponents(COMPONENT_RL_MODULE, components),
+                not_components=self._get_subcomponents(
+                    COMPONENT_RL_MODULE, not_components
+                ),
+                **kwargs,
             )
         if self._check_component(COMPONENT_OPTIMIZER, components, not_components):
             state[COMPONENT_OPTIMIZER] = self._get_optimizer_state()
@@ -1072,9 +1053,7 @@ class Learner(Checkpointable):
         # Update our trainable Modules information/function via our config.
         # If not provided in state (None), all Modules will be trained by default.
         if "should_module_be_updated" in state:
-            self.config.multi_agent(
-                policies_to_train=state["should_module_be_updated"]
-            )
+            self.config.multi_agent(policies_to_train=state["should_module_be_updated"])
 
     @override(Checkpointable)
     def get_ctor_args_and_kwargs(self):

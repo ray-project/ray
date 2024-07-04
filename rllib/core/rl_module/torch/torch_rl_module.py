@@ -1,16 +1,14 @@
-import pathlib
-from typing import Any, Dict, Union, Type
+from typing import Any, Collection, Dict, Optional, Union, Type
 
 from packaging import version
 
-import ray.cloudpickle as pickle
-from ray.rllib.core.rl_module.rl_module import RLModule, SingleAgentRLModuleSpec
+from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.core.rl_module.rl_module_with_target_networks_interface import (
     RLModuleWithTargetNetworksInterface,
 )
 from ray.rllib.core.rl_module.torch.torch_compile_config import TorchCompileConfig
 from ray.rllib.models.torch.torch_distributions import TorchDistribution
-from ray.rllib.utils.annotations import override
+from ray.rllib.utils.annotations import override, OverrideToImplementCustomLogic
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.torch_utils import (
@@ -68,10 +66,19 @@ class TorchRLModule(nn.Module, RLModule):
         """
         return compile_wrapper(self, compile_config)
 
+    @OverrideToImplementCustomLogic
     @override(RLModule)
-    def get_state(self, inference_only: bool = False) -> StateDict:
-        return self.state_dict()
+    def get_state(
+        self,
+        components: Optional[Union[str, Collection[str]]] = None,
+        *,
+        not_components: Optional[Union[str, Collection[str]]] = None,
+        inference_only: bool = False,
+        **kwargs,
+    ) -> StateDict:
+        return convert_to_numpy(self.state_dict())
 
+    @OverrideToImplementCustomLogic
     @override(RLModule)
     def set_state(self, state: StateDict) -> None:
         # If state contains more keys than `self.state_dict()`, then we simply ignore
@@ -158,10 +165,6 @@ class TorchDDPRLModule(RLModule, nn.parallel.DistributedDataParallel):
     @override(RLModule)
     def get_metadata(self, *args, **kwargs):
         self.unwrapped().get_metadata(*args, **kwargs)
-
-    #@override(RLModule)
-    #def _module_metadata(self, *args, **kwargs):
-    #    return self.unwrapped()._module_metadata(*args, **kwargs)
 
     # TODO (sven): Figure out a better way to avoid having to method-spam this wrapper
     #  class, whenever we add a new API to any wrapped RLModule here. We could try

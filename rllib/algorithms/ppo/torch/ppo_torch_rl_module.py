@@ -35,7 +35,6 @@ class PPOTorchRLModule(TorchRLModule, PPORLModule):
             # Call the local hook to remove parameters not needed in `inference_only`
             # mode.
             state = self._inference_only_get_state_hook(state)
-            #state["spec"].inference_only = True
             return state
 
         # Otherwise, the state dict is for checkpointing or saving the model.
@@ -141,7 +140,7 @@ class PPOTorchRLModule(TorchRLModule, PPORLModule):
         ]
         # Do we use a separate encoder for the actor and critic?
         # if not self.config.model_config_dict.get("vf_share_layers", True):
-        #if not self.encoder.config.shared:
+        # if not self.encoder.config.shared:
         #    # If we use separate encoder networks for the actor and critic, we need to
         #    # rename the actor encoder parameters to encoder parameters b/c the
         #    # inference-only modules uses a plain encoder network
@@ -163,7 +162,7 @@ class PPOTorchRLModule(TorchRLModule, PPORLModule):
                 for param in self._inference_only_state_dict_keys["unexpected_keys"]:
                     del state_dict[param]
             # If we have expected keys, rename.
-            #if self._inference_only_state_dict_keys.get("expected_keys"):
+            # if self._inference_only_state_dict_keys.get("expected_keys"):
             #    for param in self._inference_only_state_dict_keys["expected_keys"]:
             #        state_dict[
             #            self._inference_only_state_dict_keys["expected_keys"][param]

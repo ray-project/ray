@@ -1,6 +1,5 @@
 from collections import defaultdict, Counter
 from functools import partial
-import pathlib
 from typing import (
     Any,
     Callable,
@@ -383,7 +382,7 @@ class LearnerGroup(Checkpointable):
                 )
             if _return_state:
                 result["_rl_module_state_after_update"] = _learner.get_state(
-                    components=[COMPONENT_RL_MODULE], inference_only=True
+                    components=COMPONENT_RL_MODULE, inference_only=True
                 )[COMPONENT_RL_MODULE]
 
             return result
@@ -675,9 +674,9 @@ class LearnerGroup(Checkpointable):
     @override(Checkpointable)
     def get_state(
         self,
-        components: Optional[List[str]] = None,
+        components: Optional[Union[str, Collection[str]]] = None,
         *,
-        not_components: Optional[List[str]] = None,
+        not_components: Optional[Union[str, Collection[str]]] = None,
         **kwargs,
     ) -> StateDict:
         state = {}
@@ -686,7 +685,9 @@ class LearnerGroup(Checkpointable):
             if self.is_local:
                 state[COMPONENT_LEARNER] = self._learner.get_state(
                     components=self._get_subcomponents(COMPONENT_LEARNER, components),
-                    not_components=self._get_subcomponents(COMPONENT_LEARNER, not_components),
+                    not_components=self._get_subcomponents(
+                        COMPONENT_LEARNER, not_components
+                    ),
                     **kwargs,
                 )
             else:
@@ -694,22 +695,49 @@ class LearnerGroup(Checkpointable):
                 assert len(self._workers) == self._worker_manager.num_healthy_actors()
                 results = self._worker_manager.foreach_actor(
                     lambda w: w.get_state(
-                        components=self._get_subcomponents(COMPONENT_LEARNER, components),
-                        not_components=self._get_subcomponents(COMPONENT_LEARNER, not_components),
+                        components=self._get_subcomponents(
+                            COMPONENT_LEARNER, components
+                        ),
+                        not_components=self._get_subcomponents(
+                            COMPONENT_LEARNER, not_components
+                        ),
                         **kwargs,
                     ),
                     remote_actor_ids=[worker],
                 )
-                state[COMPONENT_LEARNER] =  self._get_results(results)[0]
+                state[COMPONENT_LEARNER] = self._get_results(results)[0]
 
         return state
 
     @override(Checkpointable)
     def set_state(self, state: StateDict) -> None:
-        if self.is_local:
-            self._learner.set_state(state)
-        else:
-            self._worker_manager.foreach_actor(lambda w: w.set_state(state))
+        if COMPONENT_LEARNER in state:
+            if self.is_local:
+                self._learner.set_state(state[COMPONENT_LEARNER])
+            else:
+                self._worker_manager.foreach_actor(
+                    lambda w: w.set_state(state[COMPONENT_LEARNER])
+                )
+
+    def get_weights(self) -> StateDict:
+        """Convenience method instead of self.get_state(components=...).
+
+        Returns:
+            The results of
+            `self.get_state(components='learner/rl_module')['learner']['rl_module']`.
+        """
+        return self.get_state(components=COMPONENT_LEARNER + "/" + COMPONENT_RL_MODULE)[
+            COMPONENT_LEARNER
+        ][COMPONENT_RL_MODULE]
+
+    def set_weights(self, weights) -> None:
+        """Convenience method instead of self.set_state({'learner': {'rl_module': ..}}).
+
+        Args:
+            weights: The weights dict of the MARLModule of a Learner inside this
+                LearnerGroup.
+        """
+        self.set_state({COMPONENT_LEARNER: {COMPONENT_RL_MODULE: weights}})
 
     @override(Checkpointable)
     def get_ctor_args_and_kwargs(self):
@@ -785,18 +813,6 @@ class LearnerGroup(Checkpointable):
         # Just in case, we would like to revert this API retirement, we can do so
         # easily.
         return self._update(*args, **kwargs, async_update=True)
-
-    @Deprecated(
-        new="LearnerGroup.get_state(components='rl_module', inference_only=..., "
-        "module_ids=...)",
-        error=True,
-    )
-    def get_weights(self, *args, **kwargs):
-        pass
-
-    @Deprecated(new="LearnerGroup.set_state(...)", error=True)
-    def set_weights(self, *args, **kwargs):
-        pass
 
     @Deprecated(new="LearnerGroup.save(...)", error=True)
     def save_state(self, *args, **kwargs):

@@ -798,7 +798,7 @@ class Algorithm(Trainable, AlgorithmBase):
                 )
                 # Sync the weights from the learner group to the rollout workers.
                 weights = self.learner_group.get_state(
-                    components=[COMPONENT_RL_MODULE]
+                    components=COMPONENT_LEARNER + "/" + COMPONENT_RL_MODULE
                 )[COMPONENT_LEARNER][COMPONENT_RL_MODULE]
                 local_worker.set_weights(weights)
                 self.workers.sync_weights(inference_only=True)
@@ -806,7 +806,7 @@ class Algorithm(Trainable, AlgorithmBase):
             else:
                 # Sync the weights from the learner group to the EnvRunners.
                 rl_module_state = self.learner_group.get_state(
-                    components=[COMPONENT_RL_MODULE],
+                    components=COMPONENT_LEARNER + "/" + COMPONENT_RL_MODULE,
                     inference_only=True,
                 )[COMPONENT_LEARNER][COMPONENT_RL_MODULE]
                 local_worker.set_state({COMPONENT_RL_MODULE: rl_module_state})
@@ -2489,15 +2489,15 @@ class Algorithm(Trainable, AlgorithmBase):
             learner_state_dir = os.path.join(checkpoint_dir, "learner")
             self.learner_group.restore(learner_state_dir)
             # Make also sure, all training EnvRunners get the just loaded weights.
-            learner_group_state = self.learner_group.get_state(
-                components=[COMPONENT_RL_MODULE],
+            learner_group_weights = self.learner_group.get_state(
+                components=COMPONENT_LEARNER + "/" + COMPONENT_RL_MODULE,
                 inference_only=True,
+            )[COMPONENT_LEARNER][COMPONENT_RL_MODULE]
+            self.workers.local_worker().set_state(
+                {
+                    COMPONENT_RL_MODULE: learner_group_weights,
+                }
             )
-            self.workers.local_worker().set_state({
-                COMPONENT_RL_MODULE: (
-                    learner_group_state[COMPONENT_LEARNER][COMPONENT_RL_MODULE]
-                ),
-            })
             self.workers.sync_weights(inference_only=True)
 
         # Call the `on_checkpoint_loaded` callback.
@@ -2908,13 +2908,13 @@ class Algorithm(Trainable, AlgorithmBase):
             state[COMPONENT_METRICS_LOGGER] = self.metrics.get_state()
             # Save (local) EnvRunner state (w/o RLModule).
             state[COMPONENT_ENV_RUNNER] = self.workers.local_worker().get_state(
-                not_components=[COMPONENT_RL_MODULE]
+                not_components=COMPONENT_RL_MODULE
             )
             if self.evaluation_workers:
-                state[COMPONENT_EVAL_ENV_RUNNER] = (
-                    self.evaluation_workers.local_worker().get_state(
-                        not_components=[COMPONENT_RL_MODULE]
-                    )
+                state[
+                    COMPONENT_EVAL_ENV_RUNNER
+                ] = self.evaluation_workers.local_worker().get_state(
+                    not_components=COMPONENT_RL_MODULE
                 )
             # Save Learner state (w/ RLModule).
             state[COMPONENT_LEARNER] = self.learner_group.get_state()

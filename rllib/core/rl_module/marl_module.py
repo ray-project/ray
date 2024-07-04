@@ -1,6 +1,5 @@
 from dataclasses import dataclass, field
 import logging
-import pathlib
 import pprint
 from typing import (
     Any,
@@ -324,37 +323,22 @@ class MultiAgentRLModule(RLModule):
     @override(RLModule)
     def get_state(
         self,
-        components: Optional[List[str]] = None,
+        components: Optional[Union[str, Collection[str]]] = None,
         *,
-        not_components: Optional[List[str]] = None,
-        module_ids: Optional[Collection[ModuleID]] = None,
+        not_components: Optional[Union[str, Collection[str]]] = None,
         inference_only: bool = False,
         **kwargs,
     ) -> StateDict:
-        """Returns the state of the multi-agent module.
+        state = {}
 
-        This method returns the state of each module specified by module_ids. If
-        module_ids is None, the state of all modules is returned.
-
-        Args:
-            module_ids: The module IDs to get the state of. If None, the state of all
-                modules is returned.
-            inference_only: If True, only a subset of parameters that are needed for
-                inference are returned. This subset is defined in the module.
-
-        Returns:
-            A nested state dict with the first layer being the module ID and the second
-            is the state of the module. The returned dict values are framework-specific
-            tensors.
-        """
-
-        if module_ids is None:
-            module_ids = self._rl_modules.keys()
-
-        return {
-            module_id: self._rl_modules[module_id].get_state(inference_only)
-            for module_id in module_ids
-        }
+        for module_id, rl_module in self.get_checkpointable_components():
+            if self._check_component(module_id, components, not_components):
+                state[module_id] = rl_module.get_state(
+                    components=self._get_subcomponents(module_id, components),
+                    not_components=self._get_subcomponents(module_id, not_components),
+                    inference_only=inference_only,
+                )
+        return state
 
     @override(RLModule)
     def set_state(self, state: StateDict) -> None:
@@ -373,15 +357,6 @@ class MultiAgentRLModule(RLModule):
         for module_id, module_state in state.items():
             if module_id in self:
                 self._rl_modules[module_id].set_state(module_state)
-            else:
-                if "spec" not in module_state:
-                    raise KeyError(
-                        "No 'spec' key found in RLModule state! Spec information is "
-                        "required in order to create the missing RLModule with ModuleID"
-                        f" '{module_id}'."
-                    )
-                new_module = module_state["spec"].build()
-                self.add_module(module_id, new_module, override=False)
 
     @override(Checkpointable)
     def get_checkpointable_components(self) -> List[Tuple[str, Checkpointable]]:
@@ -489,7 +464,7 @@ class MultiAgentRLModuleSpec:
             inference_only=all(
                 spec.inference_only for spec in self.module_specs.values()
             ),
-            modules=self.module_specs
+            modules=self.module_specs,
         )
 
     @OverrideToImplementCustomLogic
@@ -568,7 +543,7 @@ class MultiAgentRLModuleSpec:
         return MultiAgentRLModuleSpec(
             marl_module_class=marl_module_class,
             inference_only=module.config.inference_only,
-            module_specs=module_specs
+            module_specs=module_specs,
         )
 
     def _check_before_build(self):
@@ -657,7 +632,7 @@ class MultiAgentRLModuleConfig:
             "modules": {
                 module_id: module_spec.to_dict()
                 for module_id, module_spec in self.modules.items()
-            }
+            },
         }
 
     @classmethod
@@ -667,5 +642,5 @@ class MultiAgentRLModuleConfig:
             modules={
                 module_id: SingleAgentRLModuleSpec.from_dict(module_spec)
                 for module_id, module_spec in d["modules"].items()
-            }
+            },
         )

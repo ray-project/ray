@@ -1,4 +1,3 @@
-import pathlib
 from typing import Mapping, Any
 
 import gymnasium as gym

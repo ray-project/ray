@@ -1,7 +1,7 @@
 from collections import defaultdict
 from functools import partial
 import logging
-from typing import Any, Collection, DefaultDict, Dict, List, Optional
+from typing import Any, Collection, DefaultDict, Dict, List, Optional, Union
 
 import gymnasium as gym
 
@@ -19,7 +19,6 @@ from ray.rllib.env.env_runner import EnvRunner
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.env.multi_agent_episode import MultiAgentEpisode
 from ray.rllib.env.utils import _gym_env_creator
-from ray.rllib.utils import force_list
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.checkpoints import Checkpointable
 from ray.rllib.utils.deprecation import Deprecated
@@ -659,39 +658,11 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
     @override(Checkpointable)
     def get_state(
         self,
-        components: Optional[List[str]] = None,
+        components: Optional[Union[str, Collection[str]]] = None,
         *,
-        not_components: Optional[List[str]] = None,
-        module_ids=None,
-        inference_only: bool = True,
+        not_components: Optional[Union[str, Collection[str]]] = None,
         **kwargs,
     ) -> Dict[str, Any]:
-        """Returns this EnvRunners current state as a dict.
-
-        Args:
-            components: An optional list of string keys to be included in the
-                returned state. This might be useful, if getting certain components
-                of the state is expensive (e.g. reading/compiling the weights of a large
-                NN) and at the same time, these components are not required by the
-                caller.
-            not_components: An optional list of string keys to be excluded in the
-                returned state, even if the same string is part of `components`.
-                This is useful to get the complete state of the class, except
-                one or a few components.
-            module_ids: An optional collection of ModuleIDs to return. Only applies, if
-                `components` contains the "rl_module" key (and `not_components` does not
-                contain it). Allows for selecting only specific single-agent RLModules
-                within the MultiAgentRLModule of this EnvRunner.
-            inference_only: Whether to return the inference-only weight set of the
-                EnvRunner's RLModule. Note that this setting only has an effect if
-                components is None or the string "rl_module" is in `components` (and not
-                in `not_components`).
-            kwargs: Forward-compatibility kwargs.
-
-        Returns:
-            The current state of the implementing class (or only the `components`
-            specified, w/o those in `not_components`).
-        """
         state = {
             WEIGHTS_SEQ_NO: self._weights_seq_no,
             NUM_ENV_STEPS_SAMPLED_LIFETIME: (
@@ -702,7 +673,11 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
 
         if self._check_component(COMPONENT_RL_MODULE, components, not_components):
             state[COMPONENT_RL_MODULE] = self.module.get_state(
-                module_ids=module_ids, inference_only=inference_only
+                components=self._get_subcomponents(COMPONENT_RL_MODULE, components),
+                not_components=self._get_subcomponents(
+                    COMPONENT_RL_MODULE, not_components
+                ),
+                **kwargs,
             )
         if self._check_component(
             COMPONENT_ENV_TO_MODULE_CONNECTOR, components, not_components
@@ -761,9 +736,11 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
     @override(Checkpointable)
     def get_metadata(self):
         metadata = Checkpointable.get_metadata(self)
-        metadata.update({
-            # TODO (sven): Maybe add serialized (JSON-writable) config here?
-        })
+        metadata.update(
+            {
+                # TODO (sven): Maybe add serialized (JSON-writable) config here?
+            }
+        )
         return metadata
 
     @override(Checkpointable)
@@ -998,13 +975,13 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
         )
 
     @Deprecated(
-        new="MultiAgentEnvRunner.get_state(components=['rl_module'])",
+        new="MultiAgentEnvRunner.get_state(components='rl_module')",
         error=False,
     )
     def get_weights(self, modules=None):
-        rl_module_state = self.get_state(
-            components=[COMPONENT_RL_MODULE]
-        )[COMPONENT_RL_MODULE]
+        rl_module_state = self.get_state(components=COMPONENT_RL_MODULE)[
+            COMPONENT_RL_MODULE
+        ]
         return rl_module_state
 
     @Deprecated(new="MultiAgentEnvRunner.set_state()", error=False)

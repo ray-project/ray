@@ -212,29 +212,31 @@ class TestLearnerGroupSyncUpdate(unittest.TestCase):
 
     def test_add_remove_module(self):
         fws = ["torch", "tf2"]
-        scaling_modes = ["multi-gpu-ddp"]
+        scaling_modes = ["local-cpu", "multi-gpu-ddp"]
         test_iterator = itertools.product(fws, scaling_modes)
 
         for fw, scaling_mode in test_iterator:
             print(f"Testing framework: {fw}, scaling mode: {scaling_mode}.")
             env = gym.make("CartPole-v1")
-            config_overrides = REMOTE_CONFIGS[scaling_mode]
+            config_overrides = REMOTE_CONFIGS.get(scaling_mode) or LOCAL_CONFIGS.get(
+                scaling_mode
+            )
             config = BaseTestingAlgorithmConfig().update_from_dict(config_overrides)
             learner_group = config.build_learner_group(env=env)
             reader = get_cartpole_dataset_reader(batch_size=512)
             batch = reader.next()
 
-            # update once with the default policy
-            results = learner_group.update_from_batch(batch.as_multi_agent())
+            # Update once with the default policy.
+            learner_group.update_from_batch(batch.as_multi_agent())
             module_ids_before_add = {DEFAULT_MODULE_ID}
             new_module_id = "test_module"
 
-            # add a test_module
+            # Add a test_module.
             add_module_to_learner_or_learner_group(
                 config, env, new_module_id, learner_group
             )
 
-            # do training that includes the test_module
+            # Do training that includes the test_module.
             results = learner_group.update_from_batch(
                 batch=MultiAgentBatch(
                     {new_module_id: batch, DEFAULT_MODULE_ID: batch}, batch.count
@@ -248,10 +250,10 @@ class TestLearnerGroupSyncUpdate(unittest.TestCase):
             # remove the total_loss key since its not a module key
             self.assertEqual(set(results.keys()) - {ALL_MODULES}, module_ids_after_add)
 
-            # remove the test_module
+            # Remove the test_module.
             learner_group.remove_module(module_id=new_module_id)
 
-            # run training without the test_module
+            # Run training without the test_module.
             results = learner_group.update_from_batch(batch.as_multi_agent())
 
             _check_multi_worker_weights(learner_group, results)
@@ -276,8 +278,8 @@ class TestLearnerGroupCheckpointRestore(unittest.TestCase):
     def tearDownClass(cls) -> None:
         ray.shutdown()
 
-    def test_load_module_state(self):
-        """Test that module state can be loaded from a checkpoint."""
+    def test_restore_from_path_marl_module_and_individual_modules(self):
+        """Tests whether MARLModule- and single RLModule states can be restored."""
         fws = ["torch", "tf2"]
         # this is expanded to more scaling modes on the release ci.
         scaling_modes = ["local-cpu", "multi-gpu-ddp"]
@@ -304,28 +306,39 @@ class TestLearnerGroupCheckpointRestore(unittest.TestCase):
             marl_module.add_module(module_id="0", module=module_0)
             marl_module.add_module(module_id="1", module=module_1)
 
-            # Check if we can load just the MARL Module
+            # Check if we can load just the MARL Module.
             with tempfile.TemporaryDirectory() as tmpdir:
                 marl_module.save_to_path(tmpdir)
-                old_learner_weights = learner_group.get_state(
-                    components=[COMPONENT_RL_MODULE]
-                )[COMPONENT_RL_MODULE]
-                learner_group.restore_from_path(tmpdir, component=COMPONENT_RL_MODULE)
-                # check the weights of the module in the learner group are the
+                old_learner_weights = learner_group.get_weights()
+                learner_group.restore_from_path(
+                    tmpdir,
+                    component=COMPONENT_LEARNER + "/" + COMPONENT_RL_MODULE,
+                )
+                # Check the weights of the module in the learner group are the
                 # same as the weights of the newly created marl module
                 check(learner_group.get_weights(), marl_module.get_state())
-                learner_group.set_weights(old_learner_weights)
+                learner_group.set_state(
+                    {
+                        COMPONENT_LEARNER: {COMPONENT_RL_MODULE: old_learner_weights},
+                    }
+                )
+                check(learner_group.get_weights(), old_learner_weights)
 
             # Check if we can load just single agent RL Modules.
             with tempfile.TemporaryDirectory() as tmpdir:
-                module_0.save(tmpdir)
+                module_0.save_to_path(tmpdir)
                 with tempfile.TemporaryDirectory() as tmpdir2:
                     temp_module = spec.build()
-                    temp_module.save(tmpdir2)
+                    temp_module.save_to_path(tmpdir2)
 
                     old_learner_weights = learner_group.get_weights()
-                    learner_group.load_module_state(
-                        rl_module_ckpt_dirs={"0": tmpdir, "1": tmpdir2}
+                    learner_group.restore_from_path(
+                        tmpdir,
+                        component=COMPONENT_LEARNER + "/" + COMPONENT_RL_MODULE + "/0",
+                    )
+                    learner_group.restore_from_path(
+                        tmpdir2,
+                        component=COMPONENT_LEARNER + "/" + COMPONENT_RL_MODULE + "/1",
                     )
                     # check the weights of the module in the learner group are the
                     # same as the weights of the newly created marl module
@@ -335,79 +348,30 @@ class TestLearnerGroupCheckpointRestore(unittest.TestCase):
                     check(learner_group.get_weights(), new_marl_module.get_state())
                     learner_group.set_weights(old_learner_weights)
 
-            # Check if we can load a MARL Module and single agent RL Module
-            # at the same time. Check that the single agent RL Module is loaded
-            # over the sub module in the MARL Module
+            # Check if we can first load a MARLModule, then a single agent RLModule
+            # (within that MARLModule). Check that the single agent RL Module is loaded
+            # over the matching submodule in the MARL Module.
             with tempfile.TemporaryDirectory() as tmpdir:
                 module_0 = spec.build()
                 marl_module = MultiAgentRLModule()
                 marl_module.add_module(module_id="0", module=module_0)
                 marl_module.add_module(module_id="1", module=spec.build())
-                marl_module.save(tmpdir)
+                marl_module.save_to_path(tmpdir)
                 with tempfile.TemporaryDirectory() as tmpdir2:
                     module_1 = spec.build()
-                    module_1.save(tmpdir2)
-                    learner_group.load_module_state(
-                        marl_module_ckpt_dir=tmpdir, rl_module_ckpt_dirs={"1": tmpdir2}
+                    module_1.save_to_path(tmpdir2)
+                    learner_group.restore_from_path(
+                        tmpdir,
+                        component=COMPONENT_LEARNER + "/" + COMPONENT_RL_MODULE,
+                    )
+                    learner_group.restore_from_path(
+                        tmpdir2,
+                        component=COMPONENT_LEARNER + "/" + COMPONENT_RL_MODULE + "/1",
                     )
                     new_marl_module = MultiAgentRLModule()
                     new_marl_module.add_module(module_id="0", module=module_0)
                     new_marl_module.add_module(module_id="1", module=module_1)
                     check(learner_group.get_weights(), new_marl_module.get_state())
-            del learner_group
-
-    def test_load_module_state_errors(self):
-        """Check error cases for load_module_state.
-
-        check that loading marl modules and specifing a module id to
-        be loaded using modules_to_load and rl_module_ckpt_dirs raises
-        an error
-        """
-        # env will have agent ids 0 and 1
-        env = MultiAgentCartPole({"num_agents": 2})
-
-        config_overrides = LOCAL_CONFIGS["local-cpu"]
-        config = BaseTestingAlgorithmConfig().update_from_dict(config_overrides)
-        learner_group = config.build_learner_group(env=env)
-        rl_module_spec = config.get_default_rl_module_spec()
-        rl_module_spec.observation_space = env.observation_space[0]
-        rl_module_spec.action_space = env.action_space[0]
-
-        learner_group.add_module(module_id="0", module_spec=rl_module_spec)
-        learner_group.add_module(module_id="1", module_spec=rl_module_spec)
-        learner_group.remove_module(DEFAULT_MODULE_ID)
-
-        module_0 = rl_module_spec.build()
-        module_1 = rl_module_spec.build()
-        marl_module = MultiAgentRLModule()
-        marl_module.add_module(module_id="0", module=module_0)
-        marl_module.add_module(module_id="1", module=module_1)
-
-        with tempfile.TemporaryDirectory() as tmpdir:
-            module_0.save(tmpdir)
-            with tempfile.TemporaryDirectory() as tmpdir:
-                module_0 = rl_module_spec.build()
-                marl_module = MultiAgentRLModule()
-                marl_module.add_module(module_id="0", module=module_0)
-                marl_module.add_module(module_id="1", module=rl_module_spec.build())
-                marl_module.save(tmpdir)
-                with tempfile.TemporaryDirectory() as tmpdir2:
-                    module_1 = rl_module_spec.build()
-                    module_1.save(tmpdir2)
-                    with self.assertRaisesRegex(
-                        (ValueError,),
-                        ".*`modules_to_load` AND `rl_module_ckpt_dirs`!.*",
-                    ):
-                        # check that loading marl modules and specifing a module id to
-                        # be loaded using modules_to_load and rl_module_ckpt_dirs raises
-                        # an error
-                        learner_group.load_module_state(
-                            marl_module_ckpt_dir=tmpdir,
-                            rl_module_ckpt_dirs={"1": tmpdir2},
-                            modules_to_load={
-                                "1",
-                            },
-                        )
             del learner_group
 
 
@@ -422,9 +386,9 @@ class TestLearnerGroupSaveLoadState(unittest.TestCase):
 
     def test_save_to_path_and_restore_from_path(self):
         """Check that saving and loading learner group state works."""
-        fws = ["torch"]#, "tf2"]
+        fws = ["torch", "tf2"]
         # this is expanded to more scaling modes on the release ci.
-        scaling_modes = ["local-cpu"]#, "multi-gpu-ddp"]
+        scaling_modes = ["local-cpu", "multi-gpu-ddp"]
         test_iterator = itertools.product(fws, scaling_modes)
         batch = SampleBatch(FAKE_BATCH)
         for fw, scaling_mode in test_iterator:
@@ -440,9 +404,8 @@ class TestLearnerGroupSaveLoadState(unittest.TestCase):
             # Checkpoint the initial learner state for later comparison.
             initial_learner_checkpoint_dir = tempfile.TemporaryDirectory().name
             initial_learner_group.save_to_path(initial_learner_checkpoint_dir)
-            initial_learner_group_weights = initial_learner_group.get_state(
-                components=[COMPONENT_LEARNER + "/" + COMPONENT_RL_MODULE]
-            )[COMPONENT_LEARNER][COMPONENT_RL_MODULE]
+            # Test the convenience method `.get_weights()`.
+            initial_learner_group_weights = initial_learner_group.get_weights()
 
             # Do a single update.
             initial_learner_group.update_from_batch(batch.as_multi_agent())
@@ -450,7 +413,7 @@ class TestLearnerGroupSaveLoadState(unittest.TestCase):
             check(
                 initial_learner_group_weights,
                 initial_learner_group.get_state(
-                    components=[COMPONENT_LEARNER + "/" + COMPONENT_RL_MODULE]
+                    components=COMPONENT_LEARNER + "/" + COMPONENT_RL_MODULE
                 )[COMPONENT_LEARNER][COMPONENT_RL_MODULE],
                 false=True,
             )
@@ -470,7 +433,9 @@ class TestLearnerGroupSaveLoadState(unittest.TestCase):
             results_with_break = new_learner_group.update_from_batch(
                 batch=batch.as_multi_agent()
             )
-            weights_after_1_update_with_break = new_learner_group.get_state()
+            weights_after_1_update_with_break = new_learner_group.get_state(
+                components=COMPONENT_LEARNER + "/" + COMPONENT_RL_MODULE
+            )[COMPONENT_LEARNER][COMPONENT_RL_MODULE]
             new_learner_group.shutdown()
             del new_learner_group
 
@@ -480,14 +445,14 @@ class TestLearnerGroupSaveLoadState(unittest.TestCase):
             check(
                 initial_learner_group_weights,
                 learner_group.get_state(
-                    components=[COMPONENT_LEARNER + "/" + COMPONENT_RL_MODULE]
+                    components=COMPONENT_LEARNER + "/" + COMPONENT_RL_MODULE
                 )[COMPONENT_LEARNER][COMPONENT_RL_MODULE],
             )
             learner_group.update_from_batch(batch.as_multi_agent())
             results_without_break = learner_group.update_from_batch(
                 batch=batch.as_multi_agent()
             )
-            weights_after_1_update_without_break = learner_group.get_state()
+            weights_after_1_update_without_break = learner_group.get_weights()
             learner_group.shutdown()
             del learner_group
 
@@ -574,8 +539,7 @@ def _check_multi_worker_weights(learner_group, results):
         # current mean weights.
         reported_mean_weights = mod_results["mean_weight"]
         parameters = learner_group.get_state(
-            components=[COMPONENT_RL_MODULE],
-            module_ids=module_id,
+            components=COMPONENT_LEARNER + "/" + COMPONENT_RL_MODULE + "/" + module_id,
         )[COMPONENT_LEARNER][COMPONENT_RL_MODULE][module_id]
         actual_mean_weights = np.mean([w.mean() for w in parameters.values()])
         check(reported_mean_weights, actual_mean_weights, rtol=0.02)

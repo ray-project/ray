@@ -1,12 +1,12 @@
 import abc
-from typing import Any, Collection, Dict, Optional, TYPE_CHECKING
+from typing import Any, TYPE_CHECKING
 
 import tree  # pip install dm_tree
 
 from ray.rllib.utils.actor_manager import FaultAwareApply
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.torch_utils import convert_to_torch_tensor
-from ray.rllib.utils.typing import ModuleID, TensorType
+from ray.rllib.utils.typing import TensorType
 from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:

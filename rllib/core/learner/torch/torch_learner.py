@@ -1,12 +1,10 @@
 import logging
-import pathlib
 from typing import (
     Any,
     Callable,
     Dict,
     Hashable,
     Sequence,
-    Union,
     Tuple,
 )
 
@@ -176,30 +174,6 @@ class TorchLearner(Learner):
         # For each optimizer call its step function.
         for optim in self._optimizer_parameters:
             optim.step()
-
-    #@override(Learner)
-    #def set_module_state(self, state: Dict[str, Any]) -> None:
-    #    """Sets the weights of the underlying MultiAgentRLModule"""
-    #    state = convert_to_torch_tensor(state, device=self._device)
-    #    return self._module.set_state(state)
-
-    #@override(Learner)
-    #def _save_optimizers(self, path: Union[str, pathlib.Path]) -> None:
-    #    path = pathlib.Path(path)
-    #    path.mkdir(parents=True, exist_ok=True)
-    #    optim_state = self.get_optimizer_state()
-    #    for name, state in optim_state.items():
-    #        torch.save(state, path / f"{name}.pt")
-
-    #@override(Learner)
-    #def _load_optimizers(self, path: Union[str, pathlib.Path]) -> None:
-    #    path = pathlib.Path(path)
-    #    if not path.exists():
-    #        raise ValueError(f"Directory {path} does not exist.")
-    #    state = {}
-    #    for name in self._named_optimizers.keys():
-    #        state[name] = torch.load(path / f"{name}.pt")
-    #    self._set_optimizer_state(state)
 
     @override(Learner)
     def _get_optimizer_state(self) -> StateDict:
