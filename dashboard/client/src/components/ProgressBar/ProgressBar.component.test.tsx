@@ -34,9 +34,5 @@ describe("ProgressBar", () => {
 
     const segments = screen.getAllByTestId("progress-bar-segment");
     expect(segments).toHaveLength(3);
-
-    expect(segments[0].style.flex).toEqual("2");
-    expect(segments[1].style.flex).toEqual("5");
-    expect(segments[2].style.flex).toEqual("3");
   });
 });

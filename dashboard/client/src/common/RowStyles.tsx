@@ -1,34 +1,18 @@
-import createStyles from "@mui/styles/createStyles";
-import makeStyles from "@mui/styles/makeStyles";
-
-const rowStyles = makeStyles((theme) =>
-  createStyles({
-    tableContainer: {
-      overflowX: "scroll",
-    },
-    expandCollapseIcon: {
-      color: theme.palette.text.secondary,
-      fontSize: "1.5em",
-      verticalAlign: "middle",
-    },
-    idCol: {
-      display: "block",
-      width: "50px",
-      overflow: "hidden",
-      textOverflow: "ellipsis",
-      whiteSpace: "nowrap",
-    },
-    OverflowCol: {
-      display: "block",
-      width: "100px",
-      overflow: "hidden",
-      textOverflow: "ellipsis",
-      whiteSpace: "nowrap",
-    },
-    helpInfo: {
-      marginLeft: theme.spacing(1),
-    },
-  }),
-);
+const rowStyles = {
+  idCol: {
+    display: "block",
+    width: "50px",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+  },
+  OverflowCol: {
+    display: "block",
+    width: "100px",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+  },
+};
 
 export default rowStyles;
