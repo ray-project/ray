@@ -18,7 +18,10 @@ class BCLearner(Learner):
         super().build()
         # Prepend a NEXT_OBS from episodes to train batch connector piece (right
         # after the observation default piece).
-        if self.config.add_default_connectors_to_learner_pipeline:
+        if (
+            self.config.add_default_connectors_to_learner_pipeline
+            and self.config.enable_env_runner_and_connector_v2
+        ):
             self._learner_connector.insert_after(
                 AddObservationsFromEpisodesToBatch,
                 AddNextObservationsFromEpisodesToTrainBatch(),

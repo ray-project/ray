@@ -620,14 +620,14 @@ class Algorithm(Trainable, AlgorithmBase):
             validate_env=self.validate_env,
             default_policy_class=self.get_default_policy_class(self.config),
             config=self.config,
-            num_env_runners=0 if self.config.input_ else self.config.num_env_runners,
+            num_env_runners=0
+            if (self.config.input_ and self.config.input_ != "sampler")
+            else self.config.num_env_runners,
             local_env_runner=True,
             logdir=self.logdir,
             tune_trial_id=self.trial_id,
         )
 
-        # Ensure remote workers are initially in sync with the local worker.
-        self.workers.sync_weights(inference_only=True)
         # If and input path is available and we are on the new API stack generate
         # an `OfflineData` instance.
         if (
