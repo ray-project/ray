@@ -157,7 +157,6 @@ if __name__ == "__main__":
             {
                 "model": "NousResearch/Meta-Llama-3-8B-Instruct",
                 "tensor-parallel-size": "1",
-                "accelerator": "HPU"
             }
         )
     )
