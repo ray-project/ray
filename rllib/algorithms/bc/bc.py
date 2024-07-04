@@ -143,10 +143,7 @@ class BC(MARWIL):
 
     @override(MARWIL)
     def training_step(self) -> ResultDict:
-        if not (
-            self.config.enable_rl_module_and_learner
-            and self.config.enable_env_runner_and_connector_v2
-        ):
+        if not self.config.enable_env_runner_and_connector_v2:
             # Using ModelV2.
             return super().training_step()
         else:
