@@ -5,6 +5,7 @@ import pprint
 from typing import (
     Any,
     Callable,
+    Collection,
     Dict,
     KeysView,
     List,
@@ -31,7 +32,7 @@ from ray.rllib.utils.annotations import (
 from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.policy import validate_policy_id
 from ray.rllib.utils.serialization import serialize_type, deserialize_type
-from ray.rllib.utils.typing import ModuleID, T
+from ray.rllib.utils.typing import ModuleID, StateDict, T
 from ray.util import log_once
 from ray.util.annotations import PublicAPI
 
@@ -44,7 +45,7 @@ class MultiAgentRLModule(RLModule):
 
     This class holds a mapping from module_ids to the underlying RLModules. It provides
     a convenient way of accessing each individual module, as well as accessing all of
-    them with only one API call. Whether or not a given module is trainable is
+    them with only one API call. Whether a given module is trainable is
     determined by the caller of this class (not the instance of this class itself).
 
     The extension of this class can include any arbitrary neural networks as part of
@@ -67,7 +68,8 @@ class MultiAgentRLModule(RLModule):
         """Initializes a MultiagentRLModule instance.
 
         Args:
-            config: The MultiAgentRLModuleConfig to use.
+            config: An optional MultiAgentRLModuleConfig to use. If None, will use
+                `MultiAgentRLModuleConfig()` as default config.
         """
         super().__init__(config or MultiAgentRLModuleConfig())
 
@@ -212,13 +214,16 @@ class MultiAgentRLModule(RLModule):
         return item in self._rl_modules
 
     def __getitem__(self, module_id: ModuleID) -> RLModule:
-        """Returns the module with the given module ID.
+        """Returns the RLModule with the given module ID.
 
         Args:
             module_id: The module ID to get.
 
         Returns:
-            The module with the given module ID.
+            The RLModule with the given module ID.
+
+        Raises:
+            KeyError: If `module_id` cannot be found in self.
         """
         self._check_module_exists(module_id)
         return self._rl_modules[module_id]
@@ -296,8 +301,10 @@ class MultiAgentRLModule(RLModule):
 
     @override(RLModule)
     def get_state(
-        self, module_ids: Optional[Set[ModuleID]] = None, inference_only: bool = False
-    ) -> Dict[ModuleID, Any]:
+        self,
+        module_ids: Optional[Collection[ModuleID]] = None,
+        inference_only: bool = False,
+    ) -> StateDict:
         """Returns the state of the multi-agent module.
 
         This method returns the state of each module specified by module_ids. If
@@ -324,15 +331,15 @@ class MultiAgentRLModule(RLModule):
         }
 
     @override(RLModule)
-    def set_state(self, state_dict: Dict[ModuleID, Any]) -> None:
+    def set_state(self, state_dict: StateDict) -> None:
         """Sets the state of the multi-agent module.
 
-        It is assumed that the state_dict is a mapping from module IDs to their
-        corressponding state. This method sets the state of each module by calling
-        their set_state method. If you want to set the state of some of the RLModules
-        within this MultiAgentRLModule your state_dict can only include the state of
-        those RLModules. Override this method to customize the state_dict for custom
-        more advanced multi-agent use cases.
+        It is assumed that the state_dict is a mapping from module IDs to the
+        corresponding module's state. This method sets the state of each module by
+        calling their set_state method. If you want to set the state of some of the
+        RLModules within this MultiAgentRLModule your state_dict can only include the
+        state of those RLModules. Override this method to customize the state_dict for
+        custom more advanced multi-agent use cases.
 
         Args:
             state_dict: The state dict to set.
