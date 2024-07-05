@@ -279,12 +279,12 @@ Getting and setting state
             weights = learner_group.get_weights()
             learner_group.set_weights(weights)
 
-        Set/get the state dict of all learners through learner_group via 
+        Set/get the state dict of all learners through learner_group through
         :py:meth:`~ray.rllib.core.learner.learner_group.LearnerGroup.set_state` or 
         :py:meth:`~ray.rllib.core.learner.learner_group.LearnerGroup.get_state`. 
         This includes all states including both neural network weights, 
         and optimizer states on each learner. You can set and get the weights of 
-        the RLModule of all learners through learner_group via 
+        the RLModule of all learners through learner_group through
         :py:meth:`~ray.rllib.core.learner.learner_group.LearnerGroup.set_weights` or
         :py:meth:`~ray.rllib.core.learner.learner_group.LearnerGroup.get_weights`. 
         This does not include optimizer states.
