@@ -8,7 +8,6 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Type, TypeVar
 import ray
 import ray._private.ray_constants as ray_constants
 from ray._private.ray_constants import env_integer
-from ray.air.util.node import _get_node_id_from_node_ip
 from ray.data import Dataset
 from ray.exceptions import RayActorError
 from ray.train import Checkpoint, DataConfig
@@ -153,8 +152,9 @@ class BackendExecutor:
         # for more context.
         # TODO remove passing in trial_driver_ip.
 
-        trial_driver_ip = self._trial_info.driver_ip if self._trial_info else None
-        trial_driver_node_id = _get_node_id_from_node_ip(trial_driver_ip)
+        trial_driver_node_id = (
+            self._trial_info.driver_node_id if self._trial_info else None
+        )
         self.worker_group.sort_workers_by_node_id_and_gpu_id(trial_driver_node_id)
 
         try:
