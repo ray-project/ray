@@ -293,20 +293,27 @@ Getting and setting state
 
         .. testcode::
 
+            from ray.rllib.core import COMPONENT_RL_MODULE
+
             # Get the Learner's RLModule weights and optimizer states.
             state = learner.get_state()
             learner.set_state(state)
 
             # Only get the RLModule weights (as numpy arrays).
-            module_state = learner.get_module_state()
-            learner.module.set_state(module_state)
+            rl_module_only_state = learner.get_state(components=COMPONENT_RL_MODULE)
+            # Note that `rl_module_only_state` is now a dict:
+            # {COMPONENT_RL_MODULE: [RLModule's state]}
+            learner.module.set_state(rl_module_only_state)
 
-        You can set and get the weights of a :py:class:`~ray.rllib.core.learner.learner.Learner` 
+        You can set and get the entire state of a :py:class:`~ray.rllib.core.learner.learner.Learner`
         using :py:meth:`~ray.rllib.core.learner.learner.Learner.set_state` 
         and :py:meth:`~ray.rllib.core.learner.learner.Learner.get_state` .
-        For setting or getting only RLModule weights (without optimizer states), use 
-        :py:meth:`~ray.rllib.core.learner.learner.Learner.set_module_state` 
-        or :py:meth:`~ray.rllib.core.learner.learner.Learner.get_module_state` API.
+        For getting only the RLModule's weights (without optimizer states), use
+        the `components=COMPONENT_RL_MODULE` arg in :py:meth:`~ray.rllib.core.learner.learner.Learner.get_state`
+        (see code above).
+        For setting only the RLModule's weights (without touching the optimizer states), use
+        :py:meth:`~ray.rllib.core.learner.learner.Learner.get_state` and pass in a dict:
+        `{COMPONENT_RL_MODULE: [RLModule's state]}` (see code above).
 
 
 .. testcode::
@@ -327,25 +334,27 @@ Checkpointing
 
         .. testcode::
 
-            learner_group.save_state(LEARNER_GROUP_CKPT_DIR)
-            learner_group.load_state(LEARNER_GROUP_CKPT_DIR)
+            learner_group.save_to_path(LEARNER_GROUP_CKPT_DIR)
+            learner_group.restore_from_path(LEARNER_GROUP_CKPT_DIR)
         
-        Checkpoint the state of all learners in the :py:class:`~ray.rllib.core.learner.learner_group.LearnerGroup` via :py:meth:`~ray.rllib.core.learner.learner_group.LearnerGroup.save_state` and
-        :py:meth:`~ray.rllib.core.learner.learner_group.LearnerGroup.load_state`. This includes all states including neural network weights and any
-        optimizer states. Note that since the state of all of the :py:class:`~ray.rllib.core.learner.learner.Learner` instances is identical,
-        only the states from the first :py:class:`~ray.rllib.core.learner.learner.Learner` need to be saved.
+        Checkpoint the state of all learners in the :py:class:`~ray.rllib.core.learner.learner_group.LearnerGroup`
+        through :py:meth:`~ray.rllib.core.learner.learner_group.LearnerGroup.save_to_path` and restore
+        the state of a saved :py:class:`~ray.rllib.core.learner.learner_group.LearnerGroup` through :py:meth:`~ray.rllib.core.learner.learner_group.LearnerGroup.restore_from_path`.
+        A LearnerGroup's state includes the neural network weights and all optimizer states.
+        Note that since the state of all of the :py:class:`~ray.rllib.core.learner.learner.Learner` instances is identical,
+        only the states from the first :py:class:`~ray.rllib.core.learner.learner.Learner` are saved.
 
     .. tab-item:: Checkpointing a Learner
 
         .. testcode::
 
-            learner.save_state(LEARNER_CKPT_DIR)
-            learner.load_state(LEARNER_CKPT_DIR)
+            learner.save_to_path(LEARNER_CKPT_DIR)
+            learner.restore_from_path(LEARNER_CKPT_DIR)
 
         Checkpoint the state of a :py:class:`~ray.rllib.core.learner.learner.Learner` 
-        via :py:meth:`~ray.rllib.core.learner.learner.Learner.save_state` and 
-        :py:meth:`~ray.rllib.core.learner.learner.Learner.load_state`. This 
-        includes all states including neural network weights and any optimizer states.
+        through :py:meth:`~ray.rllib.core.learner.learner.Learner.save_to_path` and restore the state
+        of a saved :py:class:`~ray.rllib.core.learner.learner.Learner` through :py:meth:`~ray.rllib.core.learner.learner.Learner.restore_from_path`.
+        A Learner's state includes the neural network weights and all optimizer states.
 
 
 Implementation
@@ -364,6 +373,8 @@ Implementation
      - calculate the loss for gradient based update to a module.
    * - :py:meth:`~ray.rllib.core.learner.learner.Learner.before_gradient_based_update()`
      - do any non-gradient based updates to a RLModule before(!) the gradient based ones, e.g. add noise to your network.
+   * - :py:meth:`~ray.rllib.core.learner.learner.Learner.after_gradient_based_update()`
+     - do any non-gradient based updates to a RLModule after(!) the gradient based ones, e.g. update a loss coefficient based on some schedule.
 
 Starter Example
 ---------------
