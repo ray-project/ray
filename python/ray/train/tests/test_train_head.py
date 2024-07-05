@@ -63,13 +63,10 @@ def test_update_actor_status(monkeypatch, shutdown_only):
         time.sleep(0.5)
         check_actor_status(expected_actor_status=ActorStatusEnum.ALIVE)
 
-    datasets = {"train": ray.data.range(100), "val": ray.data.range(100)}
-
     trainer = TorchTrainer(
         train_func,
         run_config=RunConfig(name="my_train_run", storage_path="/tmp/cluster_storage"),
         scaling_config=ScalingConfig(num_workers=4, use_gpu=False),
-        datasets=datasets,
     )
     trainer.fit()
 

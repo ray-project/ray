@@ -298,9 +298,7 @@ def test_train_run_status(ray_start_gpu_cluster, raise_error):
 
     trainer = DataParallelTrainer(
         train_loop_per_worker=train_func,
-        scaling_config=ScalingConfig(
-            num_workers=1,
-        ),
+        scaling_config=ScalingConfig(num_workers=4, use_gpu=False),
     )
     trainer.fit()
 
