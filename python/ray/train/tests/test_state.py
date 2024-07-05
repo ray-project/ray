@@ -47,7 +47,9 @@ RUN_INFO_JSON_SAMPLE = """{
     "job_id": "0000000001",
     "controller_actor_id": "3abd1972a19148d78acc78dd9414736e",
     "start_time_ms": 1717448423000,
-    "run_status": "ALIVE",
+    "run_status": "STARTED",
+    "controller_actor_status": null,
+    "end_time_ms": null,
     "workers": [
         {
         "actor_id": "3d86c25634a71832dac32c8802000000",
@@ -57,7 +59,8 @@ RUN_INFO_JSON_SAMPLE = """{
         "node_id": "b1e6cbed8533ae2def4e7e7ced9d19858ceb1ed8ab9ba81ab9c07825",
         "node_ip": "10.0.208.100",
         "pid": 76071,
-        "gpu_ids": [0]
+        "gpu_ids": [0],
+        "actor_status": null
         },
         {
         "actor_id": "8f162dd8365346d1b5c98ebd7338c4f9",
@@ -67,7 +70,8 @@ RUN_INFO_JSON_SAMPLE = """{
         "node_id": "b1e6cbed8533ae2def4e7e7ced9d19858ceb1ed8ab9ba81ab9c07825",
         "node_ip": "10.0.208.100",
         "pid": 76072,
-        "gpu_ids": [1]
+        "gpu_ids": [1],
+        "actor_status": null
         }
     ],
     "datasets": [
@@ -282,11 +286,12 @@ def test_track_e2e_training(ray_start_gpu_cluster, gpus_per_worker):
 
 @pytest.mark.parametrize("raise_error", [True, False])
 def test_train_run_status(ray_start_gpu_cluster, raise_error):
-    state_actor = ray.get_actor(
-        name=TRAIN_STATE_ACTOR_NAME, namespace=TRAIN_STATE_ACTOR_NAMESPACE
-    )
+    os.environ["RAY_TRAIN_ENABLE_STATE_TRACKING"] = "1"
 
     def check_run_status(expected_status):
+        state_actor = ray.get_actor(
+            name=TRAIN_STATE_ACTOR_NAME, namespace=TRAIN_STATE_ACTOR_NAMESPACE
+        )
         runs = ray.get(state_actor.get_all_train_runs.remote())
         run = next(iter(runs.values()))
         assert run.run_status == expected_status
@@ -300,7 +305,11 @@ def test_train_run_status(ray_start_gpu_cluster, raise_error):
         train_loop_per_worker=train_func,
         scaling_config=ScalingConfig(num_workers=4, use_gpu=False),
     )
-    trainer.fit()
+
+    try:
+        trainer.fit()
+    except Exception:
+        pass
 
     if raise_error:
         check_run_status(expected_status=RunStatusEnum.ERRORED)

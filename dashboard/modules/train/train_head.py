@@ -103,7 +103,7 @@ class TrainHead(dashboard_utils.DashboardHeadModule):
         actor_status_table = {actor.actor_id: actor.state for actor in list_actors()}
 
         for train_run in train_runs:
-            train_run.actor_status = actor_status_table.get(
+            train_run.controller_actor_status = actor_status_table.get(
                 train_run.controller_actor_id, None
             )
 

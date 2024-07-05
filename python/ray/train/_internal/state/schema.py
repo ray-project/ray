@@ -73,7 +73,7 @@ class TrainRunInfo(BaseModel):
     end_time_ms: Optional[int] = Field(
         description="The UNIX timestamp of the end time of this Train run."
     )
-    actor_status: Optional[ActorStatusEnum] = Field(
+    controller_actor_status: Optional[ActorStatusEnum] = Field(
         description="The status of the controller actor. It can be ALIVE or DEAD."
     )
 

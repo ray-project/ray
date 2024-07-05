@@ -650,27 +650,22 @@ class BackendExecutor:
             return output
 
         futures = self.worker_group.execute_async(end_training)
+        results = self.get_with_failure_handling(futures)
+        return results
 
-        error = None
-        try:
-            results = self.get_with_failure_handling(futures)
-        except TrainingWorkerError as e:
-            error = e
-
+    def report_final_run_status(self, errored=False):
+        """Report the final train run status and end time to TrainStateActor."""
         if self.state_tracking_enabled:
             from ray.train._internal.state.schema import RunStatusEnum
 
             self.state_manager.update_train_run_info(
                 updates=dict(
-                    status=RunStatusEnum.ERRORED if error else RunStatusEnum.FINISHED,
+                    run_status=RunStatusEnum.ERRORED
+                    if errored
+                    else RunStatusEnum.FINISHED,
                     end_time_ms=int(time.time() * 1000),
                 )
             )
-
-        if error:
-            raise error
-
-        return results
 
     def get_with_failure_handling(self, remote_values):
         """Gets the remote values while handling for worker failures.
