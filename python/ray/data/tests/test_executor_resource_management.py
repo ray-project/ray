@@ -313,7 +313,8 @@ def test_actor_pool_resource_reporting(ray_start_10_cpus_shared, restore_data_co
         assert op.metrics.obj_store_mem_pending_task_outputs == 0
 
     # Wait for actors to start.
-    assert op.num_active_tasks() == 2
+    assert op.num_active_tasks() == 0
+    assert op._actor_pool.num_pending_actors() == 2
     run_op_tasks_sync(op, only_existing=True)
 
     # Actors have now started and the pool is actively running tasks.
@@ -411,7 +412,8 @@ def test_actor_pool_resource_reporting_with_bundling(ray_start_10_cpus_shared):
     assert op.metrics.obj_store_mem_pending_task_outputs == 0
 
     # Wait for actors to start.
-    assert op.num_active_tasks() == 2
+    assert op.num_active_tasks() == 0
+    assert op._actor_pool.num_pending_actors() == 2
     run_op_tasks_sync(op, only_existing=True)
 
     # Actors have now started and the pool is actively running tasks.

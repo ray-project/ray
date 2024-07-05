@@ -10,7 +10,7 @@ from typing import (
     TYPE_CHECKING,
     Any,
     Callable,
-    Container,
+    Collection,
     Dict,
     List,
     Optional,
@@ -68,7 +68,6 @@ from ray.rllib.policy.torch_policy_v2 import TorchPolicyV2
 from ray.rllib.utils import force_list
 from ray.rllib.utils.annotations import OldAPIStack, override
 from ray.rllib.utils.debug import summarize, update_global_seed_if_necessary
-from ray.rllib.utils.deprecation import DEPRECATED_VALUE, deprecation_warning
 from ray.rllib.utils.error import ERR_MSG_NO_GPUS, HOWTO_CHANGE_CONFIG
 from ray.rllib.utils.filter import Filter, NoFilter, get_filter
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
@@ -233,8 +232,7 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
         spaces: Optional[Dict[PolicyID, Tuple[Space, Space]]] = None,
         default_policy_class: Optional[Type[Policy]] = None,
         dataset_shards: Optional[List[ray.data.Dataset]] = None,
-        # Deprecated: This is all specified in `config` anyways.
-        tf_session_creator=DEPRECATED_VALUE,  # Use config.tf_session_options instead.
+        **kwargs,
     ):
         """Initializes a RolloutWorker instance.
 
@@ -256,15 +254,6 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
                 to (obs_space, action_space)-tuples. This is used in case no
                 Env is created on this RolloutWorker.
         """
-        # Deprecated args.
-        if tf_session_creator != DEPRECATED_VALUE:
-            deprecation_warning(
-                old="RolloutWorker(.., tf_session_creator=.., ..)",
-                new="config.framework(tf_session_args={..}); "
-                "RolloutWorker(config=config, ..)",
-                error=True,
-            )
-
         self._original_kwargs: dict = locals().copy()
         del self._original_kwargs["self"]
 
@@ -1082,7 +1071,7 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
         policy_state: Optional[PolicyState] = None,
         policy_mapping_fn: Optional[Callable[[AgentID, "Episode"], PolicyID]] = None,
         policies_to_train: Optional[
-            Union[Container[PolicyID], Callable[[PolicyID, SampleBatchType], bool]]
+            Union[Collection[PolicyID], Callable[[PolicyID, SampleBatchType], bool]]
         ] = None,
         module_spec: Optional[SingleAgentRLModuleSpec] = None,
     ) -> Policy:
@@ -1103,7 +1092,7 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
                 to use from here on. Note that already ongoing episodes will
                 not change their mapping but will use the old mapping till
                 the end of the episode.
-            policies_to_train: An optional container of policy IDs to be
+            policies_to_train: An optional collection of policy IDs to be
                 trained or a callable taking PolicyID and - optionally -
                 SampleBatchType and returning a bool (trainable or not?).
                 If None, will keep the existing setup in place.
@@ -1183,7 +1172,7 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
         policy_id: PolicyID = DEFAULT_POLICY_ID,
         policy_mapping_fn: Optional[Callable[[AgentID], PolicyID]] = None,
         policies_to_train: Optional[
-            Union[Container[PolicyID], Callable[[PolicyID, SampleBatchType], bool]]
+            Union[Collection[PolicyID], Callable[[PolicyID, SampleBatchType], bool]]
         ] = None,
     ) -> None:
         """Removes a policy from this RolloutWorker.
@@ -1195,7 +1184,7 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
                 to use from here on. Note that already ongoing episodes will
                 not change their mapping but will use the old mapping till
                 the end of the episode.
-            policies_to_train: An optional container of policy IDs to be
+            policies_to_train: An optional collection of policy IDs to be
                 trained or a callable taking PolicyID and - optionally -
                 SampleBatchType and returning a bool (trainable or not?).
                 If None, will keep the existing setup in place.
@@ -1228,20 +1217,20 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
     def set_is_policy_to_train(
         self,
         is_policy_to_train: Union[
-            Container[PolicyID], Callable[[PolicyID, Optional[SampleBatchType]], bool]
+            Collection[PolicyID], Callable[[PolicyID, Optional[SampleBatchType]], bool]
         ],
     ) -> None:
         """Sets `self.is_policy_to_train()` to a new callable.
 
         Args:
-            is_policy_to_train: A container of policy IDs to be
+            is_policy_to_train: A collection of policy IDs to be
                 trained or a callable taking PolicyID and - optionally -
                 SampleBatchType and returning a bool (trainable or not?).
                 If None, will keep the existing setup in place.
                 Policies, whose IDs are not in the list (or for which the
                 callable returns False) will not be updated.
         """
-        # If container given, construct a simple default callable returning True
+        # If collection given, construct a simple default callable returning True
         # if the PolicyID is found in the list/set of IDs.
         if not callable(is_policy_to_train):
             assert isinstance(is_policy_to_train, (list, set, tuple)), (
@@ -1463,7 +1452,7 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
 
     def get_weights(
         self,
-        policies: Optional[Container[PolicyID]] = None,
+        policies: Optional[Collection[PolicyID]] = None,
         inference_only: bool = False,
     ) -> Dict[PolicyID, ModelWeights]:
         """Returns each policies' model weights of this worker.

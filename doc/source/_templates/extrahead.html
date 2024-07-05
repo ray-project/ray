@@ -56,3 +56,9 @@ both in the usual template (layout.html) as well as (index.html). -->
   })(window, document, 'script', 'dataLayer', 'GTM-TQX5VVP7');
 </script>
 <!-- End Google Tag Manager -->
+<!-- Data to be shared with JS on every page -->
+<script>
+  window.data = {
+      copyIconSrc: "{{ pathto('_static/copy-button.svg', 1) }}"
+  };
+</script>

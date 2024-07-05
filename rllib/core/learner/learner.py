@@ -8,7 +8,7 @@ import pathlib
 from typing import (
     Any,
     Callable,
-    Container,
+    Collection,
     Dict,
     List,
     Hashable,
@@ -68,6 +68,7 @@ from ray.rllib.utils.typing import (
     ParamRef,
     ParamDict,
     ResultDict,
+    StateDict,
     TensorType,
 )
 from ray.util.annotations import PublicAPI
@@ -805,7 +806,7 @@ class Learner:
         # If None, return True (by default, all modules should be updated).
         if should_module_be_updated_fn is None:
             return True
-        # If container given, return whether `module_id` is in that container.
+        # If collection given, return whether `module_id` is in that container.
         elif not callable(should_module_be_updated_fn):
             return module_id in set(should_module_be_updated_fn)
 
@@ -1038,7 +1039,45 @@ class Learner:
 
         """
 
-    def set_state(self, state: Dict[str, Any]) -> None:
+    def get_state(
+        self,
+        components: Optional[Union[str, List[str]]] = None,
+        *,
+        inference_only: bool = False,
+        module_ids: Optional[Collection[ModuleID]] = None,
+    ) -> StateDict:
+        """Get (select components of) the state of this Learner.
+
+        Args:
+            components: Either None (return all components) or one of "rl_module",
+                "optimizer", or "modules_to_be_updated", or a list of either of these.
+            inference_only: Whether to return the inference-only weight set of the
+                underlying RLModule. Note that this setting only has an effect if
+                components is None or the string "rl_module" is in components.
+            module_ids: Optional collection of ModuleIDs to be returned only within the
+                state dict. If None (default), all module IDs' weights are returned.
+
+        Returns:
+            The state (or select components thereof) of this Learner.
+        """
+        self._check_is_built()
+        components = force_list(components) or [
+            "rl_module",
+            "optimizer",
+            "modules_to_be_updated",
+        ]
+        state = {}
+        if "rl_module" in components:
+            state["rl_module"] = self.get_module_state(
+                inference_only=inference_only, module_ids=module_ids
+            )
+        if "optimizer" in components:
+            state["optimizer"] = self.get_optimizer_state()
+        if "modules_to_be_updated" in components:
+            state["modules_to_be_updated"] = self.config.policies_to_train
+        return state
+
+    def set_state(self, state: StateDict) -> None:
         """Set the state of the learner.
 
         Args:
@@ -1071,44 +1110,6 @@ class Learner:
         # Update our trainable Modules information/function via our config.
         # If not provided in state (None), all Modules will be trained by default.
         self.config.multi_agent(policies_to_train=state.get("modules_to_train"))
-
-    def get_state(
-        self,
-        components: Optional[Union[str, List[str]]] = None,
-        *,
-        inference_only: bool = False,
-        module_ids: Optional[Container[ModuleID]] = None,
-    ) -> Dict[str, Any]:
-        """Get (select components of) the state of this Learner.
-
-        Args:
-            components: Either None (return all components) or one of "rl_module",
-                "optimizer", or "modules_to_be_updated", or a list of either of these.
-            inference_only: Whether to return the inference-only weight set of the
-                underlying RLModule. Note that this setting only has an effect if
-                components is None or the string "rl_module" is in components.
-            module_ids: Optional container of ModuleIDs to be returned only within the
-                state dict. If None (default), all module IDs' weights are returned.
-
-        Returns:
-            The state (or select components thereof) of this Learner.
-        """
-        self._check_is_built()
-        components = force_list(components) or [
-            "rl_module",
-            "optimizer",
-            "modules_to_be_updated",
-        ]
-        state = {}
-        if "rl_module" in components:
-            state["rl_module"] = self.get_module_state(
-                inference_only=inference_only, module_ids=module_ids
-            )
-        if "optimizer" in components:
-            state["optimizer"] = self.get_optimizer_state()
-        if "modules_to_be_updated" in components:
-            state["modules_to_be_updated"] = self.config.policies_to_train
-        return state
 
     def set_optimizer_state(self, state: Dict[str, Any]) -> None:
         """Sets the state of all optimizers currently registered in this Learner.

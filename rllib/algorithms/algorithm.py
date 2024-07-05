@@ -16,7 +16,7 @@ import tempfile
 import time
 from typing import (
     Callable,
-    Container,
+    Collection,
     DefaultDict,
     Dict,
     List,
@@ -285,11 +285,11 @@ class Algorithm(Trainable, AlgorithmBase):
     @staticmethod
     def from_checkpoint(
         checkpoint: Union[str, Checkpoint],
-        policy_ids: Optional[Container[PolicyID]] = None,
+        policy_ids: Optional[Collection[PolicyID]] = None,
         policy_mapping_fn: Optional[Callable[[AgentID, EpisodeID], PolicyID]] = None,
         policies_to_train: Optional[
             Union[
-                Container[PolicyID],
+                Collection[PolicyID],
                 Callable[[PolicyID, Optional[SampleBatchType]], bool],
             ]
         ] = None,
@@ -623,6 +623,7 @@ class Algorithm(Trainable, AlgorithmBase):
             num_env_runners=self.config.num_env_runners,
             local_env_runner=True,
             logdir=self.logdir,
+            tune_trial_id=self.trial_id,
         )
 
         # Compile, validate, and freeze an evaluation config.
@@ -649,6 +650,7 @@ class Algorithm(Trainable, AlgorithmBase):
                 config=self.evaluation_config,
                 num_env_runners=self.config.evaluation_num_env_runners,
                 logdir=self.logdir,
+                tune_trial_id=self.trial_id,
             )
 
         self.evaluation_dataset = None
@@ -2036,7 +2038,7 @@ class Algorithm(Trainable, AlgorithmBase):
         policy_mapping_fn: Optional[Callable[[AgentID, EpisodeID], PolicyID]] = None,
         policies_to_train: Optional[
             Union[
-                Container[PolicyID],
+                Collection[PolicyID],
                 Callable[[PolicyID, Optional[SampleBatchType]], bool],
             ]
         ] = None,
@@ -2229,7 +2231,7 @@ class Algorithm(Trainable, AlgorithmBase):
         policy_mapping_fn: Optional[Callable[[AgentID], PolicyID]] = None,
         policies_to_train: Optional[
             Union[
-                Container[PolicyID],
+                Collection[PolicyID],
                 Callable[[PolicyID, Optional[SampleBatchType]], bool],
             ]
         ] = None,
@@ -2943,11 +2945,11 @@ class Algorithm(Trainable, AlgorithmBase):
     @staticmethod
     def _checkpoint_info_to_algorithm_state(
         checkpoint_info: dict,
-        policy_ids: Optional[Container[PolicyID]] = None,
+        policy_ids: Optional[Collection[PolicyID]] = None,
         policy_mapping_fn: Optional[Callable[[AgentID, EpisodeID], PolicyID]] = None,
         policies_to_train: Optional[
             Union[
-                Container[PolicyID],
+                Collection[PolicyID],
                 Callable[[PolicyID, Optional[SampleBatchType]], bool],
             ]
         ] = None,
