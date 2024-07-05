@@ -1,4 +1,4 @@
-from typing import Union, Type, Tuple, Optional, List, TYPE_CHECKING
+from typing import Union, Type, Tuple, List, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from ray.rllib.core.models.specs.specs_base import Spec

@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Dict, Optional
 
 import tree  # pip install dm_tree
 

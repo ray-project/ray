@@ -33,9 +33,7 @@ class AbstractInterfaceClass(abc.ABC):
     def output_specs(self) -> SpecDict:
         pass
 
-    @check_input_specs(
-        "input_specs", cache=False, only_check_on_retry=False
-    )
+    @check_input_specs("input_specs", cache=False, only_check_on_retry=False)
     @check_output_specs("output_specs", cache=False)
     def check_input_and_output(self, input_dict: Dict[str, Any]) -> Dict[str, Any]:
         return self._check_input_and_output(input_dict)
@@ -44,9 +42,7 @@ class AbstractInterfaceClass(abc.ABC):
     def _check_input_and_output(self, input_dict: Dict[str, Any]) -> Dict[str, Any]:
         pass
 
-    @check_input_specs(
-        "input_specs", cache=False, only_check_on_retry=False
-    )
+    @check_input_specs("input_specs", cache=False, only_check_on_retry=False)
     def check_only_input(self, input_dict: Dict[str, Any]) -> Dict[str, Any]:
         """should not override this method"""
         return self._check_only_input(input_dict)
@@ -64,9 +60,7 @@ class AbstractInterfaceClass(abc.ABC):
     def _check_only_output(self, input_dict: Dict[str, Any]) -> Dict[str, Any]:
         pass
 
-    @check_input_specs(
-        "input_specs", cache=True, only_check_on_retry=False
-    )
+    @check_input_specs("input_specs", cache=True, only_check_on_retry=False)
     @check_output_specs("output_specs", cache=True)
     def check_input_and_output_with_cache(
         self, input_dict: Dict[str, Any]
@@ -74,9 +68,7 @@ class AbstractInterfaceClass(abc.ABC):
         """should not override this method"""
         return self._check_input_and_output(input_dict)
 
-    @check_input_specs(
-        "input_specs", cache=False, only_check_on_retry=False
-    )
+    @check_input_specs("input_specs", cache=False, only_check_on_retry=False)
     @check_output_specs("output_specs", cache=False)
     def check_input_and_output_wo_filter(self, input_dict) -> Dict[str, Any]:
         """should not override this method"""

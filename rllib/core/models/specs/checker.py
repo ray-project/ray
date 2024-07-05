@@ -1,7 +1,7 @@
 import functools
 import logging
 from collections import abc
-from typing import Dict, Union, Mapping, Any, Callable
+from typing import Any, Callable, Dict
 
 from ray.rllib.core.models.specs.specs_base import Spec, TypeSpec
 from ray.rllib.core.models.specs.specs_dict import SpecDict
@@ -34,7 +34,7 @@ def convert_to_canonical_format(spec: SpecType):
         - a list of nested_keys. nested_keys are either strings or tuples of strings
         specifying the path to a leaf in the tree.
         - a tree of constraints. The tree structure can be specified as any nested
-        hash-map structure (e.g. dict, SpecDict, NestedDict, etc.) The leaves of the
+        hash-map structure (e.g. dict, SpecDict, etc.) The leaves of the
         tree can be either a Spec object, a type, or None. If the leaf is a type, it is
         converted to a TypeSpec. If the leaf is None, only the existance of the key is
         checked and the value will be None in the canonical format.
@@ -153,8 +153,6 @@ def _validate(
     if isinstance(spec, SpecDict):
         if not isinstance(data, abc.Mapping):
             raise ValueError(f"{tag} must be a Mapping, got {type(data).__name__}")
-        #if cache_miss:
-        #    data = NestedDict(data)
 
     if cache_miss:
         try:

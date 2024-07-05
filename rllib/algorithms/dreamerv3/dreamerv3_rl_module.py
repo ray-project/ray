@@ -160,7 +160,7 @@ class DreamerV3RLModule(RLModule, abc.ABC):
         ]
 
     @override(RLModule)
-    def _forward_inference(self, batch: NestedDict) -> Dict[str, Any]:
+    def _forward_inference(self, batch: Dict[str, Any]) -> Dict[str, Any]:
         # Call the Dreamer-Model's forward_inference method and return a dict.
         actions, next_state = self.dreamer_model.forward_inference(
             observations=batch[Columns.OBS],
@@ -170,7 +170,7 @@ class DreamerV3RLModule(RLModule, abc.ABC):
         return {Columns.ACTIONS: actions, Columns.STATE_OUT: next_state}
 
     @override(RLModule)
-    def _forward_exploration(self, batch: NestedDict) -> Dict[str, Any]:
+    def _forward_exploration(self, batch: Dict[str, Any]) -> Dict[str, Any]:
         # Call the Dreamer-Model's forward_exploration method and return a dict.
         actions, next_state = self.dreamer_model.forward_exploration(
             observations=batch[Columns.OBS],
@@ -180,7 +180,7 @@ class DreamerV3RLModule(RLModule, abc.ABC):
         return {Columns.ACTIONS: actions, Columns.STATE_OUT: next_state}
 
     @override(RLModule)
-    def _forward_train(self, batch: NestedDict):
+    def _forward_train(self, batch: Dict[str, Any]):
         # Call the Dreamer-Model's forward_train method and return its outputs as-is.
         return self.dreamer_model.forward_train(
             observations=batch[Columns.OBS],

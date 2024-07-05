@@ -1,4 +1,4 @@
-from typing import List, Tuple
+from typing import Dict, List, Tuple
 
 from ray.rllib.algorithms.appo.appo import (
     OLD_ACTION_DIST_LOGITS_KEY,
