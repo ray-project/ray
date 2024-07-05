@@ -12,7 +12,9 @@ class IntraProcessChannel(ChannelInterface):
     IntraProcessChannel is a channel for communication between two tasks in the same
     worker process. It writes data directly to the worker's _SerializationContext
     and reads data from the _SerializationContext to avoid the serialization
-    overhead and the need for reading/writing from shared memory.
+    overhead and the need for reading/writing from shared memory. Note that if the
+    readers may mutate the data, users should deep copy the data themselves to avoid
+    side effects.
 
     Args:
         num_readers: The number of readers that will read from this channel.
