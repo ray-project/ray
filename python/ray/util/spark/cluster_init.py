@@ -1022,9 +1022,10 @@ def _setup_ray_cluster_internal(
     if num_cpus_worker_node is not None and num_cpus_worker_node <= 0:
         raise ValueError("Argument `num_cpus_worker_node` value must be > 0.")
 
-    num_spark_task_gpus = int(
+    # note: spark.task.resource.gpu.amount config might be fractional value like 0.5
+    num_spark_task_gpus = int(float(
         spark.sparkContext.getConf().get("spark.task.resource.gpu.amount", "0")
-    )
+    ))
     if num_spark_task_gpus > 0:
         warn_msg = (
             "You configured 'spark.task.resource.gpu.amount' to "
