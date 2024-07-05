@@ -648,28 +648,28 @@ class BackendExecutor:
 
         futures = self.worker_group.execute_async(end_training)
 
+        error = None
         try:
             results = self.get_with_failure_handling(futures)
-            error = None
         except TrainingWorkerError as e:
             error = e
-        finally:
-            if self.state_tracking_enabled:
-                end_time_ms = int(time.time() * 1000)
+            
+        if self.state_tracking_enabled:
+            end_time_ms = int(time.time() * 1000)
 
-                from ray.train._internal.state.schema import RunStatusEnum
+            from ray.train._internal.state.schema import RunStatusEnum
 
-                status = RunStatusEnum.ERRORED if error else RunStatusEnum.FINISHED
+            status = RunStatusEnum.ERRORED if error else RunStatusEnum.FINISHED
 
-                self.state_manager.update_train_run_info(
-                    updates=dict(
-                        status=status,
-                        end_time_ms=end_time_ms,
-                    )
+            self.state_manager.update_train_run_info(
+                updates=dict(
+                    status=status,
+                    end_time_ms=end_time_ms,
                 )
+            )
 
-            if error:
-                raise error
+        if error:
+            raise error
 
         return results
 
