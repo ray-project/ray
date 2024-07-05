@@ -96,7 +96,7 @@ void GcsTaskManager::GcsTaskManagerStorage::MarkTasksFailedOnWorkerDead(
 
   for (const auto &task_locator : task_attempts_itr->second) {
     MarkTaskAttemptFailedIfNeeded(
-        task_locator, worker_failure_data.end_time_ms() * 1000, error_info);
+        task_locator, worker_failure_data.end_time_ms() * 1000 * 1000, error_info);
   }
 }
 
