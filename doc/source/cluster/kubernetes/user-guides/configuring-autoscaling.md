@@ -368,7 +368,7 @@ workerGroupSpecs:
 See [(Advanced) Understanding the Ray Autoscaler in the Context of Kubernetes](ray-k8s-autoscaler-comparison) for more details about the relationship between the Ray Autoscaler and Kubernetes autoscalers.
 
 (kuberay-autoscaler-v2)=
-### Autosclaer V2 with KubeRay
+### Autoscaler V2 with KubeRay
 
 #### Prerequisites
 * Ray 2.10.0 or nightly Ray version

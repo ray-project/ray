@@ -1,5 +1,4 @@
-import { Theme } from "@mui/material";
-import { useTheme } from "@mui/styles";
+import { Theme, useTheme } from "@mui/material";
 import React from "react";
 import { ProgressBar, ProgressBarSegment } from "../../components/ProgressBar";
 import { TaskProgress } from "../../type/job";

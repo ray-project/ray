@@ -25,6 +25,7 @@ from ray.rllib.core.rl_module.rl_module_with_target_networks_interface import (
 )
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
+from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.typing import ModuleID, TensorType
 
 torch, nn = try_import_torch()
@@ -86,15 +87,19 @@ class APPOTorchLearner(AppoLearner, ImpalaTorchLearner):
             trajectory_len=rollout_frag_or_episode_len,
             recurrent_seq_len=recurrent_seq_len,
         )
-        if self.config.enable_env_runner_and_connector_v2:
-            bootstrap_values = batch[Columns.VALUES_BOOTSTRAPPED]
-        else:
-            bootstrap_values_time_major = make_time_major(
-                batch[Columns.VALUES_BOOTSTRAPPED],
-                trajectory_len=rollout_frag_or_episode_len,
-                recurrent_seq_len=recurrent_seq_len,
-            )
-            bootstrap_values = bootstrap_values_time_major[-1]
+        assert Columns.VALUES_BOOTSTRAPPED not in batch
+        # Use as bootstrap values the vf-preds in the next "batch row", except
+        # for the very last row (which doesn't have a next row), for which the
+        # bootstrap value does not matter b/c it has a +1ts value at its end
+        # anyways. So we chose an arbitrary item (for simplicity of not having to
+        # move new data to the device).
+        bootstrap_values = torch.cat(
+            [
+                values_time_major[0][1:],  # 0th ts values from "next row"
+                values_time_major[0][0:1],  # <- can use any arbitrary value here
+            ],
+            dim=0,
+        )
 
         # The discount factor that is used should be gamma except for timesteps where
         # the episode is terminated. In that case, the discount factor should be 0.
@@ -214,33 +219,17 @@ class APPOTorchLearner(AppoLearner, ImpalaTorchLearner):
                         )
 
     @override(AppoLearner)
-    def _update_module_target_networks(
-        self, module_id: ModuleID, config: APPOConfig
-    ) -> None:
-        module = self.module[module_id]
-
-        target_current_network_pairs = module.get_target_network_pairs()
-        for target_network, current_network in target_current_network_pairs:
-            current_state_dict = current_network.state_dict()
-            new_state_dict = {
-                k: config.tau * current_state_dict[k] + (1 - config.tau) * v
-                for k, v in target_network.state_dict().items()
-            }
-            target_network.load_state_dict(new_state_dict)
-
-    @override(AppoLearner)
-    def _update_module_kl_coeff(
-        self, module_id: ModuleID, config: APPOConfig, sampled_kl: float
-    ) -> None:
+    def _update_module_kl_coeff(self, module_id: ModuleID, config: APPOConfig) -> None:
         # Update the current KL value based on the recently measured value.
         # Increase.
+        kl = convert_to_numpy(self.metrics.peek((module_id, LEARNER_RESULTS_KL_KEY)))
         kl_coeff_var = self.curr_kl_coeffs_per_module[module_id]
 
-        if sampled_kl > 2.0 * config.kl_target:
+        if kl > 2.0 * config.kl_target:
             # TODO (Kourosh) why not *2.0?
             kl_coeff_var.data *= 1.5
         # Decrease.
-        elif sampled_kl < 0.5 * config.kl_target:
+        elif kl < 0.5 * config.kl_target:
             kl_coeff_var.data *= 0.5
 
         self.metrics.log_value(

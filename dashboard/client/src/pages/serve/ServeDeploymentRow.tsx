@@ -1,6 +1,4 @@
 import { Link, TableCell, TableRow } from "@mui/material";
-import createStyles from "@mui/styles/createStyles";
-import makeStyles from "@mui/styles/makeStyles";
 import React from "react";
 import { Link as RouterLink } from "react-router-dom";
 import {
@@ -17,21 +15,6 @@ import {
 } from "../../type/serve";
 import { useViewServeDeploymentMetricsButtonUrl } from "./ServeDeploymentMetricsSection";
 
-const useStyles = makeStyles((theme) =>
-  createStyles({
-    deploymentName: {
-      fontWeight: 400,
-    },
-    deploymentNameAsFirstColumn: {
-      fontWeight: 500, // bold style for when name is the first column, e.g. on the Deployment page
-    },
-    statusMessage: {
-      maxWidth: 400,
-      display: "inline-flex",
-    },
-  }),
-);
-
 export type ServeDeploymentRowProps = {
   deployment: ServeDeployment;
   application: ServeApplication;
@@ -47,13 +30,7 @@ export const ServeDeploymentRow = ({
 }: ServeDeploymentRowProps) => {
   const { name, status, message, deployment_config, replicas } = deployment;
 
-  const classes = useStyles();
-
   const metricsUrl = useViewServeDeploymentMetricsButtonUrl(name);
-
-  const deploymentNameClass = showExpandColumn
-    ? classes.deploymentName
-    : `${classes.deploymentName} ${classes.deploymentNameAsFirstColumn}`;
 
   return (
     <React.Fragment>
@@ -63,7 +40,10 @@ export const ServeDeploymentRow = ({
             {/* Empty column for expand/unexpand button in the row of the parent Serve application. */}
           </TableCell>
         )}
-        <TableCell align="center" className={deploymentNameClass}>
+        <TableCell
+          align="center"
+          sx={{ fontWeight: showExpandColumn ? 500 : 400 }}
+        >
           <Link
             component={RouterLink}
             to={`/serve/applications/${encodeURIComponent(
@@ -79,7 +59,7 @@ export const ServeDeploymentRow = ({
         <TableCell align="center">
           {message ? (
             <CodeDialogButtonWithPreview
-              className={classes.statusMessage}
+              sx={{ maxWidth: 400, display: "inline-flex" }}
               title="Message details"
               code={message}
             />

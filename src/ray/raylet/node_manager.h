@@ -130,7 +130,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
               const std::string &self_node_name,
               const NodeManagerConfig &config,
               const ObjectManagerConfig &object_manager_config,
-              std::shared_ptr<gcs::GcsClient> gcs_client);
+              std::shared_ptr<gcs::GcsClient> gcs_client,
+              std::function<void(const rpc::NodeDeathInfo &)> shutdown_raylet_gracefully);
 
   /// Process a new client connection.
   ///
@@ -222,16 +223,18 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
     return mutable_object_provider_;
   }
 
- private:
-  void ReleaseWorker(const WorkerID &worker_id) {
-    leased_workers_.erase(worker_id);
-    SetIdleIfLeaseEmpty();
+  /// Get the local drain request.
+  optional<rpc::DrainRayletRequest> GetLocalDrainRequest() const {
+    return cluster_resource_scheduler_->GetLocalResourceManager().GetLocalDrainRequest();
   }
 
-  void ReleaseWorkers(const std::vector<WorkerID> &worker_ids) {
-    for (auto &it : worker_ids) {
-      leased_workers_.erase(it);
-    }
+ private:
+  // Removes the worker from node_manager's leased_workers_ map.
+  // Warning: this does NOT release the worker's resources, or put the leased worker
+  // back to the worker pool, or destroy the worker. The caller must handle the worker's
+  // resources well.
+  void ReleaseWorker(const WorkerID &worker_id) {
+    leased_workers_.erase(worker_id);
     SetIdleIfLeaseEmpty();
   }
 
@@ -530,10 +533,14 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
                           rpc::ReturnWorkerReply *reply,
                           rpc::SendReplyCallback send_reply_callback) override;
 
-  /// Handle a `ReleaseUnusedWorkers` request.
-  void HandleReleaseUnusedWorkers(rpc::ReleaseUnusedWorkersRequest request,
-                                  rpc::ReleaseUnusedWorkersReply *reply,
-                                  rpc::SendReplyCallback send_reply_callback) override;
+  /// Handle a `ReleaseUnusedActorWorkers` request.
+  // On GCS restart, there's a pruning effort. GCS sends raylet a list of actor workers it
+  // still wants (that it keeps tracks of); and the raylet destroys all other actor
+  // workers.
+  void HandleReleaseUnusedActorWorkers(
+      rpc::ReleaseUnusedActorWorkersRequest request,
+      rpc::ReleaseUnusedActorWorkersReply *reply,
+      rpc::SendReplyCallback send_reply_callback) override;
 
   /// Handle a `ShutdownRaylet` request.
   void HandleShutdownRaylet(rpc::ShutdownRayletRequest request,
@@ -703,7 +710,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
 
   /// Creates a Raylet client. Used by `mutable_object_provider_` when a new writer
   /// channel is registered.
-  std::shared_ptr<raylet::RayletClient> CreateRayletClient(const NodeID &node_id);
+  std::shared_ptr<raylet::RayletClient> CreateRayletClient(
+      const NodeID &node_id, rpc::ClientCallManager &client_call_manager);
 
   /// ID of this node.
   NodeID self_node_id_;
@@ -712,6 +720,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   instrumented_io_context &io_service_;
   /// A client connection to the GCS.
   std::shared_ptr<gcs::GcsClient> gcs_client_;
+  /// The function to shutdown raylet gracefully.
+  std::function<void(const rpc::NodeDeathInfo &)> shutdown_raylet_gracefully_;
   /// A pool of workers.
   WorkerPool worker_pool_;
   /// The `ClientCallManager` object that is shared by all `NodeManagerClient`s

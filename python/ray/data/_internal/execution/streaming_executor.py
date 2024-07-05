@@ -30,7 +30,7 @@ from ray.data._internal.execution.streaming_executor_state import (
 from ray.data._internal.logging import get_log_directory
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.stats import DatasetStats, StatsManager
-from ray.data.context import DataContext
+from ray.data.context import OK_PREFIX, WARN_PREFIX, DataContext
 
 logger = logging.getLogger(__name__)
 
@@ -191,6 +191,16 @@ class StreamingExecutor(Executor, threading.Thread):
             # Close the progress bars from top to bottom to avoid them jumping
             # around in the console after completion.
             if self._global_info:
+                # Set the appropriate description that summarizes
+                # the result of dataset execution.
+                if execution_completed:
+                    prog_bar_msg = (
+                        f"{OK_PREFIX} Dataset execution finished in "
+                        f"{self._final_stats.time_total_s:.2f} seconds"
+                    )
+                else:
+                    prog_bar_msg = f"{WARN_PREFIX} Dataset execution failed"
+                self._global_info.set_description(prog_bar_msg)
                 self._global_info.close()
             for op, state in self._topology.items():
                 op.shutdown()
@@ -331,8 +341,8 @@ class StreamingExecutor(Executor, threading.Thread):
         limits = self._resource_manager.get_global_limits()
         resources_status = (
             "Running: "
-            f"{cur_usage.cpu}/{limits.cpu} CPU, "
-            f"{cur_usage.gpu}/{limits.gpu} GPU, "
+            f"{cur_usage.cpu:.4g}/{limits.cpu:.4g} CPU, "
+            f"{cur_usage.gpu:.4g}/{limits.gpu:.4g} GPU, "
             f"{cur_usage.object_store_memory_str()}/"
             f"{limits.object_store_memory_str()} object_store_memory"
         )

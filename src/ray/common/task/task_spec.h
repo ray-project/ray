@@ -454,8 +454,6 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 
   bool IsDetachedActor() const;
 
-  ObjectID ActorDummyObject() const;
-
   std::string DebugString() const;
 
   // A one-line summary of the runtime environment for the task. May contain sensitive

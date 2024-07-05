@@ -14,6 +14,11 @@ from ray.rllib.examples.envs.classes.multi_agent import MultiAgentCartPole
 from ray.rllib.examples.evaluation.evaluation_parallel_to_training import (
     AssertEvalCallback,
 )
+from ray.rllib.utils.metrics import (
+    ENV_RUNNER_RESULTS,
+    EPISODE_RETURN_MEAN,
+    EVALUATION_RESULTS,
+)
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO
 from ray.rllib.utils.test_utils import check, framework_iterator
 
@@ -38,7 +43,7 @@ class TestAlgorithm(unittest.TestCase):
                     },
                 },
             )
-            .resources(num_cpus_per_worker=0.1)
+            .env_runners(num_cpus_per_env_runner=0.1)
             .training(
                 train_batch_size=100,
                 sgd_minibatch_size=50,
@@ -58,7 +63,7 @@ class TestAlgorithm(unittest.TestCase):
             )
             .evaluation(
                 evaluation_num_env_runners=1,
-                evaluation_config=ppo.PPOConfig.overrides(num_cpus_per_worker=0.1),
+                evaluation_config=ppo.PPOConfig.overrides(num_cpus_per_env_runner=0.1),
             )
         )
 
@@ -245,7 +250,6 @@ class TestAlgorithm(unittest.TestCase):
                 evaluation_duration=2,
                 evaluation_duration_unit="episodes",
                 evaluation_config=dqn.DQNConfig.overrides(gamma=0.98),
-                always_attach_evaluation_results=False,
             )
             .callbacks(callbacks_class=AssertEvalCallback)
         )
@@ -264,12 +268,15 @@ class TestAlgorithm(unittest.TestCase):
             print(r3)
             algo.stop()
 
-            self.assertFalse("evaluation" in r0)
-            self.assertTrue("evaluation" in r1)
-            self.assertFalse("evaluation" in r2)
-            self.assertTrue("evaluation" in r3)
-            self.assertTrue("episode_reward_mean" in r1["evaluation"])
-            self.assertNotEqual(r1["evaluation"], r3["evaluation"])
+            self.assertFalse(EVALUATION_RESULTS in r0)
+            self.assertTrue(EVALUATION_RESULTS in r1)
+            self.assertFalse(EVALUATION_RESULTS in r2)
+            self.assertTrue(EVALUATION_RESULTS in r3)
+            self.assertTrue(ENV_RUNNER_RESULTS in r1[EVALUATION_RESULTS])
+            self.assertTrue(
+                EPISODE_RETURN_MEAN in r1[EVALUATION_RESULTS][ENV_RUNNER_RESULTS]
+            )
+            self.assertNotEqual(r1[EVALUATION_RESULTS], r3[EVALUATION_RESULTS])
 
     def test_evaluation_option_always_attach_eval_metrics(self):
         # Use a custom callback that asserts that we are running the
@@ -282,14 +289,13 @@ class TestAlgorithm(unittest.TestCase):
                 evaluation_duration=2,
                 evaluation_duration_unit="episodes",
                 evaluation_config=dqn.DQNConfig.overrides(gamma=0.98),
-                always_attach_evaluation_results=True,
             )
             .reporting(min_sample_timesteps_per_iteration=100)
             .callbacks(callbacks_class=AssertEvalCallback)
         )
         for _ in framework_iterator(config, frameworks=("torch", "tf")):
             algo = config.build()
-            # Should always see latest available eval results.
+            # Should only see eval results, when eval actually ran.
             r0 = algo.train()
             r1 = algo.train()
             r2 = algo.train()
@@ -299,10 +305,10 @@ class TestAlgorithm(unittest.TestCase):
             # Eval results are not available at step 0.
             # But step 3 should still have it, even though no eval was
             # run during that step.
-            self.assertTrue("evaluation" in r0)
-            self.assertTrue("evaluation" in r1)
-            self.assertTrue("evaluation" in r2)
-            self.assertTrue("evaluation" in r3)
+            self.assertTrue(EVALUATION_RESULTS not in r0)
+            self.assertTrue(EVALUATION_RESULTS in r1)
+            self.assertTrue(EVALUATION_RESULTS not in r2)
+            self.assertTrue(EVALUATION_RESULTS in r3)
 
     def test_evaluation_wo_evaluation_env_runner_group(self):
         # Use a custom callback that asserts that we are running the
@@ -319,7 +325,7 @@ class TestAlgorithm(unittest.TestCase):
             algo_wo_env_on_local_worker = config.build()
             self.assertRaisesRegex(
                 ValueError,
-                "Cannot evaluate on a local worker",
+                "Can't evaluate on a local worker",
                 algo_wo_env_on_local_worker.evaluate,
             )
             algo_wo_env_on_local_worker.stop()
@@ -331,7 +337,10 @@ class TestAlgorithm(unittest.TestCase):
             config.create_env_on_local_worker = True
             algo_w_env_on_local_worker = config.build()
             results = algo_w_env_on_local_worker.evaluate()
-            assert "episode_reward_mean" in results
+            assert (
+                ENV_RUNNER_RESULTS in results
+                and EPISODE_RETURN_MEAN in results[ENV_RUNNER_RESULTS]
+            )
             algo_w_env_on_local_worker.stop()
             config.create_env_on_local_worker = False
 

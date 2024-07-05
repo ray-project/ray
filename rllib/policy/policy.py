@@ -7,7 +7,7 @@ from typing import (
     TYPE_CHECKING,
     Any,
     Callable,
-    Container,
+    Collection,
     Dict,
     List,
     Mapping,
@@ -262,7 +262,7 @@ class Policy(metaclass=ABCMeta):
     @staticmethod
     def from_checkpoint(
         checkpoint: Union[str, Checkpoint],
-        policy_ids: Optional[Container[PolicyID]] = None,
+        policy_ids: Optional[Collection[PolicyID]] = None,
     ) -> Union["Policy", Dict[PolicyID, "Policy"]]:
         """Creates new Policy instance(s) from a given Policy or Algorithm checkpoint.
 
@@ -1202,7 +1202,7 @@ class Policy(metaclass=ABCMeta):
 
         Raises:
             ValueError: If a native DL-framework based model (e.g. a keras Model)
-            cannot be saved to disk for various reasons.
+                cannot be saved to disk for various reasons.
         """
         raise NotImplementedError
 
@@ -1253,7 +1253,7 @@ class Policy(metaclass=ABCMeta):
             num_gpus = 0
         elif worker_idx == 0:
             # If we are on the new RLModule/Learner stack, `num_gpus` is deprecated.
-            # so use `num_gpus_per_worker` for policy sampling
+            # so use `num_gpus_per_env_runner` for policy sampling
             # we need this .get() syntax here to ensure backwards compatibility.
             if self.config.get("enable_rl_module_and_learner", False):
                 num_gpus = self.config["num_gpus_per_worker"]
@@ -1261,7 +1261,7 @@ class Policy(metaclass=ABCMeta):
                 # If head node, take num_gpus.
                 num_gpus = self.config["num_gpus"]
         else:
-            # If worker node, take num_gpus_per_worker
+            # If worker node, take `num_gpus_per_env_runner`.
             num_gpus = self.config["num_gpus_per_worker"]
 
         if num_gpus == 0:

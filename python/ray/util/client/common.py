@@ -196,7 +196,12 @@ class ClientObjectRef(raylet.ObjectRef):
 
 
 class ClientActorRef(raylet.ActorID):
-    def __init__(self, id: Union[bytes, Future]):
+    def __init__(
+        self,
+        id: Union[bytes, Future],
+        weak_ref: Optional[bool] = False,
+    ):
+        self._weak_ref = weak_ref
         self._mutex = threading.Lock()
         self._worker = ray.get_context().client_worker
         if isinstance(id, bytes):
@@ -208,6 +213,9 @@ class ClientActorRef(raylet.ActorID):
             raise TypeError("Unexpected type for id {}".format(id))
 
     def __del__(self):
+        if self._weak_ref:
+            return
+
         if self._worker is not None and self._worker.is_connected():
             try:
                 if not self.is_nil():
@@ -432,7 +440,9 @@ class ClientActorHandle(ClientStub):
     """
 
     def __init__(
-        self, actor_ref: ClientActorRef, actor_class: Optional[ClientActorClass] = None
+        self,
+        actor_ref: ClientActorRef,
+        actor_class: Optional[ClientActorClass] = None,
     ):
         self.actor_ref = actor_ref
         self._dir: Optional[List[str]] = None

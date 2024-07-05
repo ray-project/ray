@@ -77,54 +77,60 @@ void ReplyCancelled(const internal::Work &work,
 }
 }  // namespace
 
+bool ClusterTaskManager::CancelTasks(
+    std::function<bool(const std::shared_ptr<internal::Work> &)> predicate,
+    rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type,
+    const std::string &scheduling_failure_message) {
+  bool tasks_cancelled = false;
+
+  ray::erase_if<SchedulingClass, std::shared_ptr<internal::Work>>(
+      tasks_to_schedule_, [&](const std::shared_ptr<internal::Work> &work) {
+        if (predicate(work)) {
+          RAY_LOG(DEBUG) << "Canceling task "
+                         << work->task.GetTaskSpecification().TaskId()
+                         << " from schedule queue.";
+          ReplyCancelled(*work, failure_type, scheduling_failure_message);
+          tasks_cancelled = true;
+          return true;
+        } else {
+          return false;
+        }
+      });
+
+  ray::erase_if<SchedulingClass, std::shared_ptr<internal::Work>>(
+      infeasible_tasks_, [&](const std::shared_ptr<internal::Work> &work) {
+        if (predicate(work)) {
+          RAY_LOG(DEBUG) << "Canceling task "
+                         << work->task.GetTaskSpecification().TaskId()
+                         << " from infeasible queue.";
+          ReplyCancelled(*work, failure_type, scheduling_failure_message);
+          tasks_cancelled = true;
+          return true;
+        } else {
+          return false;
+        }
+      });
+
+  if (local_task_manager_->CancelTasks(
+          predicate, failure_type, scheduling_failure_message)) {
+    tasks_cancelled = true;
+  }
+
+  return tasks_cancelled;
+}
+
 bool ClusterTaskManager::CancelAllTaskOwnedBy(
     const WorkerID &worker_id,
     rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type,
     const std::string &scheduling_failure_message) {
   // Only tasks and regular actors are canceled because their lifetime is
   // the same as the owner.
-  auto shapes_it = tasks_to_schedule_.begin();
-  while (shapes_it != tasks_to_schedule_.end()) {
-    auto &work_queue = shapes_it->second;
-    auto work_it = work_queue.begin();
-    while (work_it != work_queue.end()) {
-      const auto &task = (*work_it)->task;
-      const auto &spec = task.GetTaskSpecification();
-      if (!spec.IsDetachedActor() && spec.CallerWorkerId() == worker_id) {
-        ReplyCancelled(*(*work_it), failure_type, scheduling_failure_message);
-        work_it = work_queue.erase(work_it);
-      } else {
-        ++work_it;
-      }
-    }
-    if (work_queue.empty()) {
-      tasks_to_schedule_.erase(shapes_it++);
-    } else {
-      ++shapes_it;
-    }
-  }
+  auto predicate = [worker_id](const std::shared_ptr<internal::Work> &work) {
+    return !work->task.GetTaskSpecification().IsDetachedActor() &&
+           work->task.GetTaskSpecification().CallerWorkerId() == worker_id;
+  };
 
-  shapes_it = infeasible_tasks_.begin();
-  while (shapes_it != infeasible_tasks_.end()) {
-    auto &work_queue = shapes_it->second;
-    auto work_it = work_queue.begin();
-    while (work_it != work_queue.end()) {
-      const auto &task = (*work_it)->task;
-      const auto &spec = task.GetTaskSpecification();
-      if (!spec.IsDetachedActor() && spec.CallerWorkerId() == worker_id) {
-        ReplyCancelled(*(*work_it), failure_type, scheduling_failure_message);
-        work_it = work_queue.erase(work_it);
-      } else {
-        ++work_it;
-      }
-    }
-    if (work_queue.empty()) {
-      infeasible_tasks_.erase(shapes_it++);
-    } else {
-      ++shapes_it;
-    }
-  }
-  return true;
+  return CancelTasks(predicate, failure_type, scheduling_failure_message);
 }
 
 void ClusterTaskManager::ScheduleAndDispatchTasks() {
@@ -268,44 +274,11 @@ bool ClusterTaskManager::CancelTask(
     const TaskID &task_id,
     rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type,
     const std::string &scheduling_failure_message) {
-  // TODO(sang): There are lots of repetitive code around task backlogs. We should
-  // refactor them.
-  for (auto shapes_it = tasks_to_schedule_.begin(); shapes_it != tasks_to_schedule_.end();
-       shapes_it++) {
-    auto &work_queue = shapes_it->second;
-    for (auto work_it = work_queue.begin(); work_it != work_queue.end(); work_it++) {
-      const auto &task = (*work_it)->task;
-      if (task.GetTaskSpecification().TaskId() == task_id) {
-        RAY_LOG(DEBUG) << "Canceling task " << task_id << " from schedule queue.";
-        ReplyCancelled(*(*work_it), failure_type, scheduling_failure_message);
-        work_queue.erase(work_it);
-        if (work_queue.empty()) {
-          tasks_to_schedule_.erase(shapes_it);
-        }
-        return true;
-      }
-    }
-  }
+  auto predicate = [task_id](const std::shared_ptr<internal::Work> &work) {
+    return work->task.GetTaskSpecification().TaskId() == task_id;
+  };
 
-  for (auto shapes_it = infeasible_tasks_.begin(); shapes_it != infeasible_tasks_.end();
-       shapes_it++) {
-    auto &work_queue = shapes_it->second;
-    for (auto work_it = work_queue.begin(); work_it != work_queue.end(); work_it++) {
-      const auto &task = (*work_it)->task;
-      if (task.GetTaskSpecification().TaskId() == task_id) {
-        RAY_LOG(DEBUG) << "Canceling task " << task_id << " from infeasible queue.";
-        ReplyCancelled(*(*work_it), failure_type, scheduling_failure_message);
-        work_queue.erase(work_it);
-        if (work_queue.empty()) {
-          infeasible_tasks_.erase(shapes_it);
-        }
-        return true;
-      }
-    }
-  }
-
-  return local_task_manager_->CancelTask(
-      task_id, failure_type, scheduling_failure_message);
+  return CancelTasks(predicate, failure_type, scheduling_failure_message);
 }
 
 void ClusterTaskManager::FillResourceUsage(rpc::ResourcesData &data) {

@@ -1,11 +1,15 @@
 /* Kapa Ask AI button */
 #kapa-widget-container figure {
-    padding: 0 !important;
-  }
+  padding: 0 !important;
+}
 
-  .mantine-Modal-root figure {
-    padding: 0 !important;
-  }
+.mantine-Modal-root figure {
+  padding: 0 !important;
+}
+
+.assistant-title {
+  margin-top: 1em;
+}
 
 .container-xl.blurred {
     filter: blur(5px);
@@ -24,8 +28,8 @@
   top: 20%;
   left: 50%;
   transform: translate(-50%, -20%);
-  width: 50%;
-  height: 70%;
+  width: 55%;
+  height: 75%;
   background-color: var(--pst-color-background);
   border: 1px solid var(--pst-color-border);
   border-radius: 10px;
@@ -88,9 +92,9 @@
 }
 
 .chatContentContainer {
-    padding: 15px;
-    max-height: calc(100% - 100px);
-    overflow-y: auto;
+  padding: 15px;
+  max-height: calc(100% - 100px);
+  overflow-y: auto;
 }
 
 .chatContentContainer input {
@@ -115,13 +119,13 @@ hr {
   height: 1px;
 }
 
-#result{
+#result {
   padding: 15px;
   border-radius: 10px;
   margin-top: 10px;
   margin-bottom: 10px;
   background-color: var(--pst-color-surface);
-  max-height: calc(100% - 20px);
+  max-height: 50vh;  /* Ensure the result area does not take too much vertical space */
   overflow-y: auto;
 }
 
@@ -138,8 +142,8 @@ hr {
 }
 
 .input-group {
-    display: flex;
-    align-items: stretch;
+  display: flex;
+  align-items: stretch;
 }
 
 #blurDiv {

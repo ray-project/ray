@@ -172,6 +172,34 @@ TEST_P(GlobalStateAccessorTest, TestNodeTable) {
   }
 }
 
+TEST_P(GlobalStateAccessorTest, TestGetAllTotalResources) {
+  ASSERT_EQ(global_state_->GetAllTotalResources().size(), 0);
+
+  // Register node
+  auto node_table_data = Mocker::GenNodeInfo();
+  node_table_data->mutable_resources_total()->insert({"CPU", 1});
+  node_table_data->mutable_resources_total()->insert({"GPU", 10});
+
+  std::promise<bool> promise;
+  RAY_CHECK_OK(gcs_client_->Nodes().AsyncRegister(
+      *node_table_data, [&promise](Status status) { promise.set_value(status.ok()); }));
+  WaitReady(promise.get_future(), timeout_ms_);
+  ASSERT_EQ(global_state_->GetAllNodeInfo().size(), 1);
+
+  // Assert get total resources right.
+  std::vector<rpc::TotalResources> all_total_resources;
+  for (const auto &string_of_total_resources_by_node_id :
+       global_state_->GetAllTotalResources()) {
+    rpc::TotalResources total_resources_by_node_id;
+    total_resources_by_node_id.ParseFromString(string_of_total_resources_by_node_id);
+    all_total_resources.push_back(total_resources_by_node_id);
+  }
+  ASSERT_EQ(all_total_resources.size(), 1);
+  ASSERT_EQ(all_total_resources[0].resources_total_size(), 2);
+  ASSERT_EQ((*all_total_resources[0].mutable_resources_total())["CPU"], 1.0);
+  ASSERT_EQ((*all_total_resources[0].mutable_resources_total())["GPU"], 10.0);
+}
+
 TEST_P(GlobalStateAccessorTest, TestGetAllResourceUsage) {
   std::unique_ptr<std::string> resources = global_state_->GetAllResourceUsage();
   rpc::ResourceUsageBatchData resource_usage_batch_data;

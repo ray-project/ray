@@ -186,6 +186,8 @@ delay_after(instrumented_io_context &ioc) {
   };
 }
 
+auto dummy_shutdown_raylet_gracefully = [](const rpc::NodeDeathInfo &) {};
+
 TEST(RuntimeEnvAgentClientTest, GetOrCreateRuntimeEnvOK) {
   int port = GetFreePort();
   HttpServerThread http_server_thread(
@@ -217,6 +219,7 @@ TEST(RuntimeEnvAgentClientTest, GetOrCreateRuntimeEnvOK) {
                                             "127.0.0.1",
                                             port,
                                             delay_after(ioc),
+                                            dummy_shutdown_raylet_gracefully,
                                             /*agent_register_timeout_ms=*/10000,
                                             /*agent_manager_retry_interval_ms=*/100);
   auto job_id = JobID::FromInt(123);
@@ -277,6 +280,7 @@ TEST(RuntimeEnvAgentClientTest, GetOrCreateRuntimeEnvApplicationError) {
                                             "127.0.0.1",
                                             port,
                                             delay_after(ioc),
+                                            dummy_shutdown_raylet_gracefully,
                                             /*agent_register_timeout_ms=*/10000,
                                             /*agent_manager_retry_interval_ms=*/100);
   auto job_id = JobID::FromInt(123);
@@ -342,6 +346,7 @@ TEST(RuntimeEnvAgentClientTest, GetOrCreateRuntimeEnvRetriesOnServerNotStarted) 
         http_server_thread.start();
         return execute_after(ioc, task, std::chrono::milliseconds(delay_ms));
       },
+      dummy_shutdown_raylet_gracefully,
       /*agent_register_timeout_ms=*/10000,
       /*agent_manager_retry_interval_ms=*/100);
   auto job_id = JobID::FromInt(123);
@@ -398,6 +403,7 @@ TEST(RuntimeEnvAgentClientTest, DeleteRuntimeEnvIfPossibleOK) {
                                             "127.0.0.1",
                                             port,
                                             delay_after(ioc),
+                                            dummy_shutdown_raylet_gracefully,
                                             /*agent_register_timeout_ms=*/10000,
                                             /*agent_manager_retry_interval_ms=*/100);
 
@@ -441,6 +447,7 @@ TEST(RuntimeEnvAgentClientTest, DeleteRuntimeEnvIfPossibleApplicationError) {
                                             "127.0.0.1",
                                             port,
                                             delay_after(ioc),
+                                            dummy_shutdown_raylet_gracefully,
                                             /*agent_register_timeout_ms=*/10000,
                                             /*agent_manager_retry_interval_ms=*/100);
 
@@ -489,6 +496,7 @@ TEST(RuntimeEnvAgentClientTest, DeleteRuntimeEnvIfPossibleRetriesOnServerNotStar
         http_server_thread.start();
         return execute_after(ioc, task, std::chrono::milliseconds(delay_ms));
       },
+      dummy_shutdown_raylet_gracefully,
       /*agent_register_timeout_ms=*/10000,
       /*agent_manager_retry_interval_ms=*/100);
 
@@ -587,6 +595,7 @@ TEST(RuntimeEnvAgentClientTest, HoldsConcurrency) {
                                             "127.0.0.1",
                                             port,
                                             delay_after(ioc),
+                                            dummy_shutdown_raylet_gracefully,
                                             /*agent_register_timeout_ms=*/10000,
                                             /*agent_manager_retry_interval_ms=*/100);
 

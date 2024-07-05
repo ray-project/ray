@@ -6,6 +6,11 @@ import unittest
 import ray
 from ray.rllib.algorithms import cql
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
+from ray.rllib.utils.metrics import (
+    ENV_RUNNER_RESULTS,
+    EPISODE_RETURN_MEAN,
+    EVALUATION_RESULTS,
+)
 from ray.rllib.utils.test_utils import (
     check_compute_single_action,
     check_train_results,
@@ -59,7 +64,6 @@ class TestCQL(unittest.TestCase):
                 bc_iters=2,
             )
             .evaluation(
-                always_attach_evaluation_results=True,
                 evaluation_interval=2,
                 evaluation_duration=10,
                 evaluation_config=cql.CQLConfig.overrides(input_="sampler"),
@@ -78,10 +82,12 @@ class TestCQL(unittest.TestCase):
                 results = algo.train()
                 check_train_results(results)
                 print(results)
-                eval_results = results["evaluation"]
-                print(
-                    f"iter={algo.iteration} " f"R={eval_results['episode_reward_mean']}"
-                )
+                eval_results = results.get(EVALUATION_RESULTS)
+                if eval_results:
+                    print(
+                        f"iter={algo.iteration} "
+                        f"R={eval_results[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN]}"
+                    )
             check_compute_single_action(algo)
 
             # Get policy and model.

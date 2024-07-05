@@ -2,38 +2,53 @@ import { Box, Typography } from "@mui/material";
 import React from "react";
 import { RayStatusResp } from "../service/status";
 
-const formatNodeStatus = (cluster_status: string) => {
+const formatNodeStatus = (clusterStatus?: string) => {
   // ==== auto scaling status
   // Node status
   // ....
   // Resources
   // ....
-  const sections = cluster_status.split("Resources");
-  return formatClusterStatus(
-    "Node Status",
-    sections[0].split("Node status")[1],
-  );
+  if (!clusterStatus) {
+    return "No cluster status.";
+  }
+  try {
+    // Try to parse the node status.
+    const sections = clusterStatus.split("Resources");
+    return formatClusterStatus(
+      "Node Status",
+      sections[0].split("Node status")[1],
+    );
+  } catch (e) {
+    return "No cluster status.";
+  }
 };
 
-const formatResourcesStatus = (cluster_status: string) => {
+const formatResourcesStatus = (clusterStatus?: string) => {
   // ==== auto scaling status
   // Node status
   // ....
   // Resources
   // ....
-  const sections = cluster_status.split("Resources");
-  return formatClusterStatus("Resource Status", sections[1]);
+  if (!clusterStatus) {
+    return "No cluster status.";
+  }
+  try {
+    const sections = clusterStatus.split("Resources");
+    return formatClusterStatus("Resource Status", sections[1]);
+  } catch (e) {
+    return "No cluster status.";
+  }
 };
 
-const formatClusterStatus = (title: string, cluster_status: string) => {
-  const cluster_status_rows = cluster_status.split("\n");
+const formatClusterStatus = (title: string, clusterStatus: string) => {
+  const clusterStatusRows = clusterStatus.split("\n");
 
   return (
     <div>
       <Box marginBottom={2}>
         <Typography variant="h3">{title}</Typography>
       </Box>
-      {cluster_status_rows.map((i, key) => {
+      {clusterStatusRows.map((i, key) => {
         // Format the output.
         // See format_info_string in util.py
         if (i.startsWith("-----") || i.startsWith("=====") || i === "") {
@@ -54,10 +69,10 @@ const formatClusterStatus = (title: string, cluster_status: string) => {
 };
 
 type StatusCardProps = {
-  cluster_status: RayStatusResp | undefined;
+  clusterStatus: RayStatusResp | undefined;
 };
 
-export const NodeStatusCard = ({ cluster_status }: StatusCardProps) => {
+export const NodeStatusCard = ({ clusterStatus }: StatusCardProps) => {
   return (
     <Box
       style={{
@@ -65,14 +80,12 @@ export const NodeStatusCard = ({ cluster_status }: StatusCardProps) => {
         overflowY: "scroll",
       }}
     >
-      {cluster_status?.data && cluster_status?.data?.clusterStatus
-        ? formatNodeStatus(cluster_status?.data.clusterStatus)
-        : "No cluster status."}
+      {formatNodeStatus(clusterStatus?.data.clusterStatus)}
     </Box>
   );
 };
 
-export const ResourceStatusCard = ({ cluster_status }: StatusCardProps) => {
+export const ResourceStatusCard = ({ clusterStatus }: StatusCardProps) => {
   return (
     <Box
       style={{
@@ -80,9 +93,7 @@ export const ResourceStatusCard = ({ cluster_status }: StatusCardProps) => {
         overflowY: "scroll",
       }}
     >
-      {cluster_status?.data && cluster_status?.data?.clusterStatus
-        ? formatResourcesStatus(cluster_status?.data.clusterStatus)
-        : "No cluster status."}
+      {formatResourcesStatus(clusterStatus?.data.clusterStatus)}
     </Box>
   );
 };

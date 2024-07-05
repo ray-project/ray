@@ -84,6 +84,9 @@ cdef class GlobalStateAccessor:
                 "MetricsExportPort": c_node_info.metrics_export_port(),
                 "NodeName": c_node_info.node_name().decode(),
                 "RuntimeEnvAgentPort": c_node_info.runtime_env_agent_port(),
+                "DeathReason": c_node_info.death_info().reason(),
+                "DeathReasonMessage":
+                    c_node_info.death_info().reason_message().decode(),
             }
             node_info["alive"] = node_info["Alive"]
             c_resources = PythonGetResourcesTotal(c_node_info)
@@ -119,6 +122,12 @@ cdef class GlobalStateAccessor:
         cdef c_vector[c_string] result
         with nogil:
             result = self.inner.get().GetAllAvailableResources()
+        return result
+
+    def get_all_total_resources(self):
+        cdef c_vector[c_string] result
+        with nogil:
+            result = self.inner.get().GetAllTotalResources()
         return result
 
     def get_task_events(self):

@@ -6,6 +6,7 @@ import numpy as np
 
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
+from ray.rllib.utils.metrics import ENV_RUNNER_RESULTS
 
 
 class SelfPlayLeagueBasedCallback(DefaultCallbacks):
@@ -43,7 +44,7 @@ class SelfPlayLeagueBasedCallback(DefaultCallbacks):
         # such that evaluation always happens on the already updated policy,
         # instead of on the already used train_batch.
         league_changed = False
-        for module_id, rew in result["hist_stats"].items():
+        for module_id, rew in result[ENV_RUNNER_RESULTS]["hist_stats"].items():
             mo = re.match("^policy_(.+)_reward$", module_id)
             if mo is None:
                 continue

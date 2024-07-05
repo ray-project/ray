@@ -8,7 +8,6 @@ from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.core.rl_module.torch import TorchRLModule
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
-from ray.rllib.utils.torch_utils import convert_to_torch_tensor
 
 torch, nn = try_import_torch()
 
@@ -21,8 +20,7 @@ class PPOTorchRLModule(TorchRLModule, PPORLModule):
         super().setup()
 
         # If not an inference-only module (e.g., for evaluation), set up the
-        # parameter names to be removed or renamed when syncing from the state dict
-        # when synching.
+        # parameter names to be removed or renamed when syncing from the state dict.
         if not self.inference_only:
             # Set the expected and unexpected keys for the inference-only module.
             self._set_inference_only_state_dict_keys()
@@ -31,7 +29,8 @@ class PPOTorchRLModule(TorchRLModule, PPORLModule):
     def get_state(self, inference_only: bool = False) -> Dict[str, Any]:
         state_dict = self.state_dict()
         # If this module is not for inference, but the state dict is.
-        if not self.inference_only and inference_only:
+        # Note, for stateful modules, we need the full state dict.
+        if not self.inference_only and not self.is_stateful() and inference_only:
             # Call the local hook to remove or rename the parameters.
             return self._inference_only_get_state_hook(state_dict)
         # Otherwise, the state dict is for checkpointing or saving the model.
@@ -111,13 +110,11 @@ class PPOTorchRLModule(TorchRLModule, PPORLModule):
 
         return output
 
+    # TODO (sven): Try to move entire GAE computation into PPO's loss function (similar
+    #  to IMPALA's v-trace architecture). This would also get rid of the second
+    #  Connector pass currently necessary.
     @override(PPORLModule)
-    def _compute_values(self, batch, device=None):
-        infos = batch.pop(Columns.INFOS, None)
-        batch = convert_to_torch_tensor(batch, device=device)
-        if infos is not None:
-            batch[Columns.INFOS] = infos
-
+    def _compute_values(self, batch):
         # Separate vf-encoder.
         if hasattr(self.encoder, "critic_encoder"):
             if self.is_stateful():

@@ -42,8 +42,8 @@ class TestAlgorithmRLModuleRestore(unittest.TestCase):
             return pol_id
 
         scaling_config = {
-            "num_learner_workers": 0,
-            "num_gpus_per_learner_worker": 0,
+            "num_learners": 0,
+            "num_gpus_per_learner": 0,
         }
 
         policies = {f"policy_{i}" for i in range(num_agents)}
@@ -52,10 +52,10 @@ class TestAlgorithmRLModuleRestore(unittest.TestCase):
             PPOConfig()
             .api_stack(enable_rl_module_and_learner=True)
             .env_runners(rollout_fragment_length=4)
+            .learners(**scaling_config)
             .environment(MultiAgentCartPole, env_config={"num_agents": num_agents})
             .training(num_sgd_iter=1, train_batch_size=8, sgd_minibatch_size=8)
             .multi_agent(policies=policies, policy_mapping_fn=policy_mapping_fn)
-            .resources(**scaling_config)
         )
         return config
 
@@ -182,17 +182,17 @@ class TestAlgorithmRLModuleRestore(unittest.TestCase):
     def test_e2e_load_rl_module(self):
         """Test if we can train a PPO algorithm with a cpkt RL module e2e."""
         scaling_config = {
-            "num_learner_workers": 0,
-            "num_gpus_per_learner_worker": 0,
+            "num_learners": 0,
+            "num_gpus_per_learner": 0,
         }
 
         config = (
             PPOConfig()
             .api_stack(enable_rl_module_and_learner=True)
             .env_runners(rollout_fragment_length=4)
+            .learners(**scaling_config)
             .environment("CartPole-v1")
             .training(num_sgd_iter=1, train_batch_size=8, sgd_minibatch_size=8)
-            .resources(**scaling_config)
         )
         env = gym.make("CartPole-v1")
         for fw in framework_iterator(config, frameworks=["tf2", "torch"]):

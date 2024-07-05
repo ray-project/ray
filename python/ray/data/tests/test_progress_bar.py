@@ -17,7 +17,7 @@ def enable_tqdm_ray(request):
 
 
 def test_set_progress_bars_is_deprecated():
-    with pytest.warns(DeprecationWarning):
+    with pytest.raises(DeprecationWarning):
         ray.data.set_progress_bars(True)
 
 

@@ -37,7 +37,7 @@ from ray._private.test_utils import (
     find_available_port,
     wait_for_condition,
     find_free_port,
-    NodeKillerActor,
+    RayletKiller,
 )
 from ray.cluster_utils import AutoscalingCluster, Cluster, cluster_not_supported
 
@@ -921,7 +921,7 @@ def _ray_start_chaos_cluster(request):
     assert len(nodes) == 1
 
     if kill_interval is not None:
-        node_killer = get_and_run_resource_killer(NodeKillerActor, kill_interval)
+        node_killer = get_and_run_resource_killer(RayletKiller, kill_interval)
 
     yield cluster
 
