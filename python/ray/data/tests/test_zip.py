@@ -82,16 +82,24 @@ def test_zip_pandas(ray_start_regular_shared):
     ds2 = ray.data.from_pandas(pd.DataFrame({"col3": ["a", "b"], "col4": ["d", "e"]}))
     ds = ds1.zip(ds2)
     assert ds.count() == 2
-    assert "{col1: int64, col2: int64, col3: object, col4: object}" in str(ds)
+
     result = list(ds.take())
     assert result[0] == {"col1": 1, "col2": 4, "col3": "a", "col4": "d"}
+
+    # Execute the dataset to get full schema.
+    ds = ds.materialize()
+    assert "{col1: int64, col2: int64, col3: object, col4: object}" in str(ds)
 
     ds3 = ray.data.from_pandas(pd.DataFrame({"col2": ["a", "b"], "col4": ["d", "e"]}))
     ds = ds1.zip(ds3)
     assert ds.count() == 2
-    assert "{col1: int64, col2: int64, col2_1: object, col4: object}" in str(ds)
+
     result = list(ds.take())
     assert result[0] == {"col1": 1, "col2": 4, "col2_1": "a", "col4": "d"}
+
+    # Execute the dataset to get full schema.
+    ds = ds.materialize()
+    assert "{col1: int64, col2: int64, col2_1: object, col4: object}" in str(ds)
 
 
 def test_zip_arrow(ray_start_regular_shared):
