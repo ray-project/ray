@@ -543,6 +543,8 @@ class BackendExecutor:
 
         # Register Train Run before training starts
         if self.state_tracking_enabled:
+            from ray.train._internal.state.schema import RunStatusEnum
+
             core_context = ray.runtime_context.get_runtime_context()
 
             self.state_manager.register_train_run(
@@ -553,6 +555,7 @@ class BackendExecutor:
                 datasets=datasets,
                 worker_group=self.worker_group,
                 start_time_ms=self._start_time_ms,
+                run_status=RunStatusEnum.STARTED,
             )
 
         # Run the training function asynchronously in its own thread.
@@ -653,18 +656,14 @@ class BackendExecutor:
             results = self.get_with_failure_handling(futures)
         except TrainingWorkerError as e:
             error = e
-            
+
         if self.state_tracking_enabled:
-            end_time_ms = int(time.time() * 1000)
-
             from ray.train._internal.state.schema import RunStatusEnum
-
-            status = RunStatusEnum.ERRORED if error else RunStatusEnum.FINISHED
 
             self.state_manager.update_train_run_info(
                 updates=dict(
-                    status=status,
-                    end_time_ms=end_time_ms,
+                    status=RunStatusEnum.ERRORED if error else RunStatusEnum.FINISHED,
+                    end_time_ms=int(time.time() * 1000),
                 )
             )
 
