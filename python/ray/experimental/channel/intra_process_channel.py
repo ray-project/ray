@@ -1,7 +1,6 @@
 import uuid
 from typing import Any, Optional
 
-import ray
 from ray.experimental.channel import ChannelContext
 from ray.experimental.channel.common import ChannelInterface
 from ray.util.annotations import PublicAPI
