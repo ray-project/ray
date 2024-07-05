@@ -631,7 +631,12 @@ class EnvRunnerGroup:
         # EnvRunnerGroup's local worker.
         if self.local_worker() is not None:
             if from_worker_or_learner_group is not None:
-                self.local_worker().set_state({COMPONENT_RL_MODULE: rl_module_state})
+                if self._remote_config.enable_env_runner_and_connector_v2:
+                    self.local_worker().set_state(
+                        {COMPONENT_RL_MODULE: rl_module_state}
+                    )
+                else:
+                    self.local_worker().set_weights(rl_module_state)
             # If `global_vars` is provided and local worker exists  -> Update its
             # global_vars.
             if global_vars is not None:

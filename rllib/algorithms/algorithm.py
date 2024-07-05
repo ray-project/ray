@@ -304,7 +304,7 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
     @override(Checkpointable)
     def from_checkpoint(
         cls,
-        path: Union[str, Checkpoint],
+        path: Optional[Union[str, Checkpoint]] = None,
         *,
         # @OldAPIStack
         policy_ids: Optional[Collection[PolicyID]] = None,
@@ -315,6 +315,8 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
                 Callable[[PolicyID, Optional[SampleBatchType]], bool],
             ]
         ] = None,
+        # deprecated args
+        checkpoint=DEPRECATED_VALUE,
         **kwargs,
     ) -> "Algorithm":
         """Creates a new algorithm instance from a given checkpoint.
@@ -337,6 +339,18 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
         Returns:
             The instantiated Algorithm.
         """
+        if checkpoint != DEPRECATED_VALUE:
+            deprecation_warning(
+                old="Algorithm.from_checkpoint(checkpoint=...)",
+                new="Algorithm.from_checkpoint(path=...)",
+                error=False,
+            )
+            path = checkpoint
+        if path is None:
+            raise ValueError(
+                "`path` not provided in call to Algorithm.from_checkpoint()!"
+            )
+
         checkpoint_info = get_checkpoint_info(path)
 
         # Not possible for (v0.1) (algo class and config information missing
