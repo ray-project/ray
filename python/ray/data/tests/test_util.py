@@ -4,6 +4,7 @@ import numpy as np
 import pytest
 
 import ray
+from ray.data._internal.datasource.parquet_datasource import ParquetDatasource
 from ray.data._internal.logical.operators.read_operator import Read
 from ray.data._internal.memory_tracing import (
     leak_report,
@@ -11,7 +12,6 @@ from ray.data._internal.memory_tracing import (
     trace_deallocation,
 )
 from ray.data._internal.util import _check_pyarrow_version, _split_list
-from ray.data.datasource.parquet_datasource import ParquetDatasource
 from ray.data.tests.conftest import *  # noqa: F401, F403
 
 

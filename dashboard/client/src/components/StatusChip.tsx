@@ -1,8 +1,5 @@
 import { Box, Color } from "@mui/material";
 import { blue, blueGrey, cyan, green, red } from "@mui/material/colors";
-import createStyles from "@mui/styles/createStyles";
-import makeStyles from "@mui/styles/makeStyles";
-import classNames from "classnames";
 import React, { CSSProperties, ReactNode } from "react";
 import { TaskStatus } from "../pages/job/hook/useJobProgress";
 import { ActorEnum } from "../type/actor";
@@ -101,22 +98,6 @@ const typeMap = {
   [key: string]: Color;
 };
 
-const useStyles = makeStyles((theme) =>
-  createStyles({
-    root: {
-      padding: "2px 8px",
-      border: "solid 1px",
-      borderRadius: 4,
-      fontSize: 12,
-      display: "inline-flex",
-      alignItems: "center",
-    },
-    afterIcon: {
-      marginLeft: 4,
-    },
-  }),
-);
-
 export type StatusChipProps = {
   type: keyof typeof colorMap;
   status: string | ActorEnum | ReactNode;
@@ -125,7 +106,6 @@ export type StatusChipProps = {
 };
 
 export const StatusChip = ({ type, status, suffix, icon }: StatusChipProps) => {
-  const classes = useStyles();
   let color: Color | string = blueGrey;
 
   if (typeMap[type]) {
@@ -148,12 +128,26 @@ export const StatusChip = ({ type, status, suffix, icon }: StatusChipProps) => {
   }
 
   return (
-    <span className={classes.root} style={style}>
+    <Box
+      component="span"
+      sx={{
+        padding: "2px 8px",
+        border: "solid 1px",
+        borderRadius: "4px",
+        fontSize: 12,
+        display: "inline-flex",
+        alignItems: "center",
+      }}
+      style={style}
+    >
       {icon}
-      <span className={classNames({ [classes.afterIcon]: icon !== undefined })}>
+      <Box
+        component="span"
+        sx={icon !== undefined ? { marginLeft: "4px" } : {}}
+      >
         {status}
-      </span>
+      </Box>
       <Box sx={{ marginLeft: 0.5 }}>{suffix}</Box>
-    </span>
+    </Box>
   );
 };
