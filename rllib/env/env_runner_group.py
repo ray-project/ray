@@ -582,19 +582,21 @@ class EnvRunnerGroup:
                 )
             # New API stack: Use the unified `get_state` API.
             if self._remote_config.enable_env_runner_and_connector_v2:
+                modules = (
+                    [COMPONENT_RL_MODULE + "/" + p for p in policies]
+                    if policies is not None
+                    else [COMPONENT_RL_MODULE]
+                )
                 # LearnerGroup has-a Learner has-a RLModule.
                 if isinstance(weights_src, LearnerGroup):
                     rl_module_state = weights_src.get_state(
-                        components=[
-                            COMPONENT_LEARNER + "/" + COMPONENT_RL_MODULE + "/" + p
-                            for p in policies
-                        ],
+                        components=[COMPONENT_LEARNER + "/" + m for m in modules],
                         inference_only=inference_only,
                     )[COMPONENT_LEARNER][COMPONENT_RL_MODULE]
                 # Envrunner has-a RLModule.
                 else:
                     rl_module_state = weights_src.get_state(
-                        components=[COMPONENT_RL_MODULE + "/" + p for p in policies],
+                        components=modules,
                         inference_only=inference_only,
                     )[COMPONENT_RL_MODULE]
             # Old API stack: Use `get_weights`.

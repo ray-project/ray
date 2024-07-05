@@ -12,6 +12,7 @@ from typing import (
 )
 
 from ray.rllib.core.learner.learner import Learner
+from ray.rllib.core.rl_module.marl_module import MultiAgentRLModuleSpec
 from ray.rllib.core.rl_module.rl_module import (
     RLModule,
     SingleAgentRLModuleSpec,
@@ -222,14 +223,16 @@ class TfLearner(Learner):
             )
 
     @override(Learner)
-    def remove_module(self, module_id: ModuleID) -> None:
+    def remove_module(self, module_id: ModuleID, **kwargs) -> MultiAgentRLModuleSpec:
         with self._strategy.scope():
-            super().remove_module(module_id)
+            marl_spec = super().remove_module(module_id, **kwargs)
 
         if self._enable_tf_function:
             self._possibly_traced_update = tf.function(
                 self._untraced_update, reduce_retracing=True
             )
+
+        return marl_spec
 
     def _make_distributed_strategy_if_necessary(self) -> "tf.distribute.Strategy":
         """Create a distributed strategy for the learner.

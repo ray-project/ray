@@ -1126,7 +1126,7 @@ class AlgorithmConfig(_Config):
             rl_module_spec = self.get_marl_module_spec(env=env, spaces=spaces)
 
         # Construct the actual LearnerGroup.
-        learner_group = LearnerGroup(config=self, module_spec=rl_module_spec)
+        learner_group = LearnerGroup(config=self.copy(), module_spec=rl_module_spec)
 
         return learner_group
 

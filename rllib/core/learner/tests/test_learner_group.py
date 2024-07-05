@@ -210,7 +210,7 @@ class TestLearnerGroupSyncUpdate(unittest.TestCase):
             learner_group.shutdown()
             del learner_group
 
-    def test_add_remove_module(self):
+    def test_add_module_and_remove_module(self):
         fws = ["torch", "tf2"]
         scaling_modes = ["local-cpu", "multi-gpu-ddp"]
         test_iterator = itertools.product(fws, scaling_modes)

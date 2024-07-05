@@ -4,6 +4,7 @@ from typing import (
     Callable,
     Dict,
     Hashable,
+    Optional,
     Sequence,
     Tuple,
 )
@@ -13,7 +14,10 @@ from ray.rllib.algorithms.algorithm_config import (
     TorchCompileWhatToCompile,
 )
 from ray.rllib.core.learner.learner import Learner
-from ray.rllib.core.rl_module.marl_module import MultiAgentRLModule
+from ray.rllib.core.rl_module.marl_module import (
+    MultiAgentRLModule,
+    MultiAgentRLModuleSpec,
+)
 from ray.rllib.core.rl_module.rl_module import (
     RLModule,
     SingleAgentRLModuleSpec,
@@ -45,6 +49,7 @@ from ray.rllib.utils.typing import (
     Optimizer,
     Param,
     ParamDict,
+    ShouldModuleBeUpdatedFn,
     StateDict,
     TensorType,
 )
@@ -220,10 +225,15 @@ class TorchLearner(Learner):
         *,
         module_id: ModuleID,
         module_spec: SingleAgentRLModuleSpec,
-    ) -> None:
-        super().add_module(
+        config_overrides: Optional[Dict] = None,
+        new_should_module_be_updated: Optional[ShouldModuleBeUpdatedFn] = None,
+    ) -> MultiAgentRLModuleSpec:
+        # Call super's add_module method.
+        marl_spec = super().add_module(
             module_id=module_id,
             module_spec=module_spec,
+            config_overrides=config_overrides,
+            new_should_module_be_updated=new_should_module_be_updated,
         )
 
         # we need to ddpify the module that was just added to the pool
@@ -259,9 +269,11 @@ class TorchLearner(Learner):
                     module_id, TorchDDPRLModule(module), override=True
                 )
 
+        return marl_spec
+
     @override(Learner)
-    def remove_module(self, module_id: ModuleID) -> None:
-        super().remove_module(module_id)
+    def remove_module(self, module_id: ModuleID, **kwargs) -> MultiAgentRLModuleSpec:
+        marl_spec = super().remove_module(module_id, **kwargs)
 
         if self._torch_compile_complete_update:
             # When compiling the update, we need to reset and recompile
@@ -274,6 +286,8 @@ class TorchLearner(Learner):
                 mode=self._torch_compile_cfg.torch_dynamo_mode,
                 **self._torch_compile_cfg.kwargs,
             )
+
+        return marl_spec
 
     @override(Learner)
     def build(self) -> None:

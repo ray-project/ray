@@ -11,6 +11,11 @@ from typing import Any, Collection, Dict, List, Optional, Tuple, Union
 
 import ray
 import ray.cloudpickle as pickle
+from ray.rllib.core import (
+    COMPONENT_LEARNER,
+    COMPONENT_LEARNER_GROUP,
+    COMPONENT_RL_MODULE,
+)
 from ray.rllib.utils import force_list
 from ray.rllib.utils.actor_manager import FaultTolerantActorManager
 from ray.rllib.utils.annotations import (
@@ -555,22 +560,23 @@ def get_checkpoint_info(checkpoint: Union[str, Checkpoint]) -> Dict[str, Any]:
 
     # `checkpoint` is a Checkpoint instance: Translate to directory and continue.
     if isinstance(checkpoint, Checkpoint):
-        checkpoint: str = checkpoint.to_directory()
+        checkpoint = checkpoint.to_directory()
+    checkpoint = pathlib.Path(checkpoint)
 
     # Checkpoint is dir.
-    if os.path.isdir(checkpoint):
-        info.update({"checkpoint_dir": checkpoint})
+    if checkpoint.is_dir():
+        info.update({"checkpoint_dir": str(checkpoint)})
 
         # Figure out whether this is an older checkpoint format
         # (with a `checkpoint-\d+` file in it).
-        for file in os.listdir(checkpoint):
-            path_file = os.path.join(checkpoint, file)
-            if os.path.isfile(path_file):
-                if re.match("checkpoint-\\d+", file):
+        for file in checkpoint.iterdir():
+            path_file = checkpoint / file
+            if path_file.is_file():
+                if re.match("checkpoint-\\d+", str(file)):
                     info.update(
                         {
                             "checkpoint_version": version.Version("0.1"),
-                            "state_file": path_file,
+                            "state_file": str(path_file),
                         }
                     )
                     return info
@@ -580,8 +586,8 @@ def get_checkpoint_info(checkpoint: Union[str, Checkpoint]) -> Dict[str, Any]:
         # If rllib_checkpoint.json file present, read available information from it
         # and then continue with the checkpoint analysis (possibly overriding further
         # information).
-        if os.path.isfile(os.path.join(checkpoint, "rllib_checkpoint.json")):
-            with open(os.path.join(checkpoint, "rllib_checkpoint.json")) as f:
+        if (checkpoint / "rllib_checkpoint.json").is_file():
+            with open(checkpoint / "rllib_checkpoint.json") as f:
                 rllib_checkpoint_info = json.load(fp=f)
             if "checkpoint_version" in rllib_checkpoint_info:
                 rllib_checkpoint_info["checkpoint_version"] = version.Version(
@@ -600,15 +606,13 @@ def get_checkpoint_info(checkpoint: Union[str, Checkpoint]) -> Dict[str, Any]:
 
         # Policy checkpoint file found.
         for extension in ["pkl", "msgpck"]:
-            if os.path.isfile(os.path.join(checkpoint, "policy_state." + extension)):
+            if (checkpoint / ("policy_state." + extension)).is_file():
                 info.update(
                     {
                         "type": "Policy",
                         "format": "cloudpickle" if extension == "pkl" else "msgpack",
                         "checkpoint_version": CHECKPOINT_VERSION,
-                        "state_file": os.path.join(
-                            checkpoint, f"policy_state.{extension}"
-                        ),
+                        "state_file": str(checkpoint / f"policy_state.{extension}"),
                     }
                 )
                 return info
@@ -616,8 +620,8 @@ def get_checkpoint_info(checkpoint: Union[str, Checkpoint]) -> Dict[str, Any]:
         # Valid Algorithm checkpoint >v0 file found?
         format = None
         for extension in ["pkl", "msgpck"]:
-            state_file = os.path.join(checkpoint, f"algorithm_state.{extension}")
-            if os.path.isfile(state_file):
+            state_file = checkpoint / f"algorithm_state.{extension}"
+            if state_file.is_file():
                 format = "cloudpickle" if extension == "pkl" else "msgpack"
                 break
         if format is None:
@@ -629,43 +633,48 @@ def get_checkpoint_info(checkpoint: Union[str, Checkpoint]) -> Dict[str, Any]:
         info.update(
             {
                 "format": format,
-                "state_file": state_file,
+                "state_file": str(state_file),
             }
         )
 
         # Collect all policy IDs in the sub-dir "policies/".
-        policies_dir = os.path.join(checkpoint, "policies")
-        if os.path.isdir(policies_dir):
+        policies_dir = checkpoint / "policies"
+        if policies_dir.is_dir():
             policy_ids = set()
-            for policy_id in os.listdir(policies_dir):
-                policy_ids.add(policy_id)
+            for policy_id in policies_dir.iterdir():
+                policy_ids.add(policy_id.name)
             info.update({"policy_ids": policy_ids})
 
         # Collect all module IDs in the sub-dir "learner/module_state/".
-        modules_dir = os.path.join(checkpoint, "learner", "module_state")
-        if os.path.isdir(modules_dir):
+        modules_dir = (
+            checkpoint
+            / COMPONENT_LEARNER_GROUP
+            / COMPONENT_LEARNER
+            / COMPONENT_RL_MODULE
+        )
+        if modules_dir.is_dir():
             module_ids = set()
-            for module_id in os.listdir(modules_dir):
+            for module_id in modules_dir.iterdir():
                 # Only add subdirs (those are the ones where the RLModule data
                 # is stored, not files (could be json metadata files).
-                if os.path.isdir(os.path.join(modules_dir, module_id)):
-                    module_ids.add(module_id)
+                if (modules_dir / module_id).is_dir():
+                    module_ids.add(module_id.name)
             info.update({"module_ids": module_ids})
 
     # Checkpoint is a file: Use as-is (interpreting it as old Algorithm checkpoint
     # version).
-    elif os.path.isfile(checkpoint):
+    elif checkpoint.is_file():
         info.update(
             {
                 "checkpoint_version": version.Version("0.1"),
-                "checkpoint_dir": os.path.dirname(checkpoint),
-                "state_file": checkpoint,
+                "checkpoint_dir": str(checkpoint.parent),
+                "state_file": str(checkpoint),
             }
         )
 
     else:
         raise ValueError(
-            f"Given checkpoint ({checkpoint}) not found! Must be a "
+            f"Given checkpoint ({str(checkpoint)}) not found! Must be a "
             "checkpoint directory (or a file for older checkpoint versions)."
         )
 

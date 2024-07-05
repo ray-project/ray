@@ -1,4 +1,5 @@
 from collections import defaultdict, Counter
+import copy
 from functools import partial
 from typing import (
     Any,
@@ -18,8 +19,10 @@ import ray
 from ray import ObjectRef
 from ray.rllib.core import COMPONENT_LEARNER, COMPONENT_RL_MODULE
 from ray.rllib.core.learner.learner import Learner
+from ray.rllib.core.rl_module.marl_module import MultiAgentRLModuleSpec
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.env.multi_agent_episode import MultiAgentEpisode
+from ray.rllib.policy.policy import PolicySpec
 from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.actor_manager import FaultTolerantActorManager
 from ray.rllib.utils.annotations import override
@@ -35,10 +38,12 @@ from ray.rllib.utils.minibatch_utils import (
     ShardEpisodesIterator,
     ShardObjectRefIterator,
 )
+from ray.rllib.utils.policy import validate_policy_id
 from ray.rllib.utils.typing import (
     EpisodeType,
     ModuleID,
     RLModuleSpec,
+    ShouldModuleBeUpdatedFn,
     StateDict,
     T,
 )
@@ -97,7 +102,6 @@ class LearnerGroup(Checkpointable):
             module_spec: If not already specified in `config`, a separate overriding
                 RLModuleSpec may be provided via this argument.
         """
-        # scaling_config = learner_spec.learner_group_scaling_config
         self.config = config
         self._module_spec = module_spec
 
@@ -626,43 +630,80 @@ class LearnerGroup(Checkpointable):
         *,
         module_id: ModuleID,
         module_spec: SingleAgentRLModuleSpec,
-    ) -> None:
-        """Add a module to the Learners maintained by this LearnerGroup.
+        config_overrides: Optional[Dict] = None,
+        new_should_module_be_updated: Optional[ShouldModuleBeUpdatedFn] = None,
+    ) -> MultiAgentRLModuleSpec:
+        """Adds a module to the underlying MultiAgentRLModule.
+
+        Changes this Learner's config in order to make this architectural change
+        permanent wrt. to checkpointing.
 
         Args:
-            module_id: The id of the module to add.
-            module_spec:  #TODO (Kourosh) fill in here.
+            module_id: The ModuleID of the module to be added.
+            module_spec: The ModuleSpec of the module to be added.
+            config_overrides: The `AlgorithmConfig` overrides that should apply to
+                the new Module, if any.
+            new_should_module_be_updated: An optional sequence of ModuleIDs or a
+                callable taking ModuleID and SampleBatchType and returning whether the
+                ModuleID should be updated (trained).
+                If None, will keep the existing setup in place. RLModules,
+                whose IDs are not in the list (or for which the callable
+                returns False) will not be updated.
+
+        Returns:
+            The new MultiAgentRLModuleSpec (after the change has been performed).
         """
-        if self.is_local:
-            self._learner.add_module(
+        validate_policy_id(module_id, error=True)
+
+        # Force-set inference-only = False.
+        module_spec = copy.deepcopy(module_spec)
+        module_spec.inference_only = False
+
+        marl_spec = self.foreach_learner(
+            lambda _learner: _learner.add_module(
                 module_id=module_id,
                 module_spec=module_spec,
+                config_overrides=config_overrides,
+                new_should_module_be_updated=new_should_module_be_updated,
             )
-        else:
-            results = self._worker_manager.foreach_actor(
-                lambda w: w.add_module(
-                    module_id=module_id,
-                    module_spec=module_spec,
-                )
-            )
-            return self._get_results(results)
+        )[0]
 
-    def remove_module(self, module_id: ModuleID) -> None:
-        """Remove a module from the Learners maintained by this LearnerGroup.
+        # Change our config (AlgorithmConfig) to contain the new Module.
+        # TODO (sven): This is a hack to manipulate the AlgorithmConfig directly,
+        #  but we'll deprecate config.policies soon anyway.
+        self.config._is_frozen = False
+        self.config.policies[module_id] = PolicySpec()
+        if config_overrides is not None:
+            self.config.multi_agent(
+                algorithm_config_overrides_per_module={module_id: config_overrides}
+            )
+        self.config.rl_module(rl_module_spec=marl_spec)
+        if new_should_module_be_updated is not None:
+            self.config.multi_agent(policies_to_train=new_should_module_be_updated)
+        self.config.freeze()
+
+        return marl_spec
+
+    def remove_module(
+        self,
+        module_id: ModuleID,
+        *,
+        new_should_module_be_updated: Optional[ShouldModuleBeUpdatedFn] = None,
+    ) -> MultiAgentRLModuleSpec:
+        """Removes a module from the Learner.
 
         Args:
-            module_id: The id of the module to remove.
+            module_id: The ModuleID of the module to be removed.
+            new_should_module_be_updated: An optional sequence of ModuleIDs or a
+                callable taking ModuleID and SampleBatchType and returning whether the
+                ModuleID should be updated (trained).
+                If None, will keep the existing setup in place. RLModules,
+                whose IDs are not in the list (or for which the callable
+                returns False) will not be updated.
 
+        Returns:
+            The new MultiAgentRLModuleSpec (after the change has been performed).
         """
-        if self.is_local:
-            self._learner.remove_module(module_id)
-        else:
-            refs = []
-            for worker in self._workers:
-                ref = worker.remove_module.remote(module_id)
-                refs.append(ref)
-            ray.get(refs)
-
         # Remove all stats from the module from our metrics logger (hybrid API stack
         # only), so we don't report results from this module again.
         if (
@@ -670,6 +711,26 @@ class LearnerGroup(Checkpointable):
             and module_id in self._metrics_logger_old_and_hybrid_stack.stats
         ):
             del self._metrics_logger_old_and_hybrid_stack.stats[module_id]
+
+        marl_spec = self.foreach_learner(
+            lambda _learner: _learner.remove_module(
+                module_id=module_id,
+                new_should_module_be_updated=new_should_module_be_updated,
+            )
+        )[0]
+
+        # Change self.config to reflect the new architecture.
+        # TODO (sven): This is a hack to manipulate the AlgorithmConfig directly,
+        #  but we'll deprecate config.policies soon anyway.
+        self.config._is_frozen = False
+        del self.config.policies[module_id]
+        self.config.algorithm_config_overrides_per_module.pop(module_id, None)
+        if new_should_module_be_updated is not None:
+            self.config.multi_agent(policies_to_train=new_should_module_be_updated)
+        self.config.rl_module(rl_module_spec=marl_spec)
+        self.config.freeze()
+
+        return marl_spec
 
     @override(Checkpointable)
     def get_state(

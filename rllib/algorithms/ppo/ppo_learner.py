@@ -209,10 +209,13 @@ class PPOLearner(Learner):
         return batch, episodes
 
     @override(Learner)
-    def remove_module(self, module_id: str):
-        super().remove_module(module_id)
+    def remove_module(self, module_id: ModuleID, **kwargs):
+        marl_spec = super().remove_module(module_id, **kwargs)
+
         self.entropy_coeff_schedulers_per_module.pop(module_id, None)
         self.curr_kl_coeffs_per_module.pop(module_id, None)
+
+        return marl_spec
 
     @OverrideToImplementCustomLogic_CallToSuperRecommended
     @override(Learner)

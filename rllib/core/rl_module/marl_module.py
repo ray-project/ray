@@ -615,6 +615,10 @@ class MultiAgentRLModuleSpec:
         """Returns self to match `SingleAgentRLModuleSpec.as_multi_agent()`."""
         return self
 
+    def __contains__(self, item) -> bool:
+        """Returns whether the given `item` (ModuleID) is present in self."""
+        return item in self.module_specs
+
 
 # TODO (sven): Shouldn't we simply use this class inside MultiAgentRLModuleSpec instead
 #  of duplicating all data records (e.g. `inference_only`) in `MultiAgentRLModuleSpec`?
