@@ -1,19 +1,8 @@
 import { Box, Tooltip, Typography } from "@mui/material";
-import makeStyles from "@mui/styles/makeStyles";
 import React from "react";
 import { RightPaddedTypography } from "../../common/CustomTypography";
 import UsageBar from "../../common/UsageBar";
 import { GPUStats, NodeDetail } from "../../type/node";
-
-const useStyles = makeStyles((theme) => ({
-  gpuColumn: {
-    minWidth: 120,
-  },
-  box: {
-    display: "flex",
-    minWidth: 120,
-  },
-}));
 
 export type NodeGPUEntryProps = {
   slot: number;
@@ -21,10 +10,9 @@ export type NodeGPUEntryProps = {
 };
 
 export const NodeGPUEntry: React.FC<NodeGPUEntryProps> = ({ gpu, slot }) => {
-  const classes = useStyles();
   return (
     <Tooltip title={gpu.name}>
-      <Box className={classes.box}>
+      <Box sx={{ display: "flex", minWidth: 120 }}>
         <RightPaddedTypography variant="body1">[{slot}]:</RightPaddedTypography>
         {gpu.utilizationGpu !== undefined ? (
           <UsageBar
@@ -42,9 +30,8 @@ export const NodeGPUEntry: React.FC<NodeGPUEntryProps> = ({ gpu, slot }) => {
 };
 
 export const NodeGPUView = ({ node }: { node: NodeDetail }) => {
-  const classes = useStyles();
   return (
-    <div className={classes.gpuColumn}>
+    <Box sx={{ minWidth: 120 }}>
       {node.gpus !== undefined && node.gpus.length !== 0 ? (
         node.gpus.map((gpu, i) => (
           <NodeGPUEntry key={gpu.uuid} gpu={gpu} slot={gpu.index} />
@@ -54,7 +41,7 @@ export const NodeGPUView = ({ node }: { node: NodeDetail }) => {
           N/A
         </Typography>
       )}
-    </div>
+    </Box>
   );
 };
 
@@ -65,7 +52,6 @@ export const WorkerGpuRow = ({
   workerPID: number | null;
   gpus?: GPUStats[];
 }) => {
-  const classes = useStyles();
   const workerGPUEntries = (gpus ?? [])
     .map((gpu, i) => {
       const process = gpu.processes?.find(
@@ -83,7 +69,7 @@ export const WorkerGpuRow = ({
       N/A
     </Typography>
   ) : (
-    <div className={classes.gpuColumn}>{workerGPUEntries}</div>
+    <Box sx={{ minWidth: 120 }}>{workerGPUEntries}</Box>
   );
 };
 
