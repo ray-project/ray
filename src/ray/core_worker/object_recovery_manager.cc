@@ -19,7 +19,8 @@
 namespace ray {
 namespace core {
 
-bool ObjectRecoveryManager::RecoverObject(const ObjectID &object_id) {
+bool ObjectRecoveryManager::RecoverObject(const ObjectID &object_id,
+                                          bool delete_from_memory_store_if_recovering) {
   if (object_id.TaskId().IsForActorCreationTask()) {
     // The GCS manages all actor restarts, so we should never try to
     // reconstruct an actor here.
@@ -50,6 +51,13 @@ bool ObjectRecoveryManager::RecoverObject(const ObjectID &object_id) {
       // Mark that we are attempting recovery for this object to prevent
       // duplicate restarts of the same object.
       already_pending_recovery = !objects_pending_recovery_.insert(object_id).second;
+    }
+    if (delete_from_memory_store_if_recovering) {
+      // Delete the objects from the in-memory store to indicate that they are not
+      // available. The object recovery manager will guarantee that a new value
+      // will eventually be stored for the objects (either an
+      // UnreconstructableError or a value reconstructed from lineage).
+      in_memory_store_->Delete({object_id});
     }
   }
 
