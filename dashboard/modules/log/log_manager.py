@@ -4,7 +4,7 @@ import re
 from collections import defaultdict
 from typing import List, Optional, Dict, AsyncIterable, Tuple, Callable
 
-from ray.dashboard.modules.job.common import JOB_LOGS_PATH_TEMPLATE
+from ray.dashboard.modules.job.common import JOB_DRIVER_LOGS_PATH_TEMPLATE
 from ray.util.state.common import (
     GetLogOptions,
     protobuf_to_task_state_dict,
@@ -165,7 +165,7 @@ class LogsManager:
                 "This is likely a bug. Please file an issue."
             )
 
-        log_filename = JOB_LOGS_PATH_TEMPLATE.format(submission_id=sub_job_id)
+        log_filename = JOB_DRIVER_LOGS_PATH_TEMPLATE.format(submission_id=sub_job_id)
         return node_id, log_filename
 
     async def _resolve_worker_file(
