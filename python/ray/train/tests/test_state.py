@@ -316,6 +316,8 @@ def test_train_run_status(ray_start_gpu_cluster, raise_error):
     else:
         check_run_status(expected_status=RunStatusEnum.FINISHED)
 
+    ray.shutdown()
+
 
 if __name__ == "__main__":
     import sys
