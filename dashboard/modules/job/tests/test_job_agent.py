@@ -28,9 +28,9 @@ from ray._private.test_utils import (
 from ray.dashboard.modules.job.common import (
     JobSubmitRequest,
     validate_request_type,
-    JOB_ACTOR_NAME_TEMPLATE,
-    SUPERVISOR_ACTOR_RAY_NAMESPACE,
+    SUPERVISOR_ACTOR_RAY_NAMESPACE, JOB_EXECUTOR_ACTOR_NAME_TEMPLATE,
 )
+from ray.dashboard.modules.job.job_head import JobAgentClient
 from ray.dashboard.tests.conftest import *  # noqa
 from ray.runtime_env.runtime_env import RuntimeEnv, RuntimeEnvConfig
 from ray.util.state import (
@@ -40,7 +40,6 @@ from ray.util.state import (
 )
 from ray.job_submission import JobStatus, JobSubmissionClient
 from ray.tests.conftest import _ray_start
-from ray.dashboard.modules.job.job_head import JobAgentSubmissionClient
 
 # This test requires you have AWS credentials set up (any AWS credentials will
 # do, this test only accesses a public bucket).
@@ -51,7 +50,7 @@ DRIVER_SCRIPT_DIR = os.path.join(os.path.dirname(__file__), "subprocess_driver_s
 EVENT_LOOP = get_or_create_event_loop()
 
 
-def get_node_id_for_supervisor_actor_for_job(
+def _get_executor_actor_node_id(
     address: str, job_submission_id: str
 ) -> str:
     actors = list_actors(
@@ -59,8 +58,9 @@ def get_node_id_for_supervisor_actor_for_job(
         filters=[("ray_namespace", "=", SUPERVISOR_ACTOR_RAY_NAMESPACE)],
     )
     for actor in actors:
-        if actor.name == JOB_ACTOR_NAME_TEMPLATE.format(job_id=job_submission_id):
+        if actor.name == JOB_EXECUTOR_ACTOR_NAME_TEMPLATE.format(job_id=job_submission_id):
             return actor.node_id
+
     raise ValueError(f"actor not found for job_submission_id {job_submission_id}")
 
 
@@ -78,7 +78,7 @@ def job_sdk_client(make_sure_dashboard_http_port_unused):
         head_address = ctx.address_info["webui_url"]
         assert wait_until_server_available(head_address)
         yield (
-            JobAgentSubmissionClient(format_web_url(agent_address)),
+            JobAgentClient(format_web_url(agent_address)),
             JobSubmissionClient(format_web_url(head_address)),
         )
 
@@ -439,7 +439,7 @@ async def test_job_log_in_multiple_node(
     ip, port = cluster.webui_url.split(":")
     agent_address = f"{ip}:{DEFAULT_DASHBOARD_AGENT_LISTEN_PORT}"
     assert wait_until_server_available(agent_address)
-    client = JobAgentSubmissionClient(format_web_url(agent_address))
+    client = JobAgentClient(format_web_url(agent_address))
 
     def _check_nodes():
         try:
@@ -486,7 +486,7 @@ async def test_job_log_in_multiple_node(
                 continue
             result_log = f"hello index-{index}"
             # Try to get the node id which supervisor actor running in.
-            node_id = get_node_id_for_supervisor_actor_for_job(cluster.address, job_id)
+            node_id = _get_executor_actor_node_id(cluster.address, job_id)
             for node_info in summary:
                 if node_info["raylet"]["nodeId"] == node_id:
                     break
@@ -504,7 +504,7 @@ async def test_job_log_in_multiple_node(
             ip = get_node_ip_by_id(node_id)
             agent_address = f"{ip}:{agent_port}"
             assert wait_until_server_available(agent_address)
-            client = JobAgentSubmissionClient(format_web_url(agent_address))
+            client = JobAgentClient(format_web_url(agent_address))
             resp = await client.get_job_logs_internal(job_id)
             assert result_log in resp.logs, resp.logs
 
@@ -576,7 +576,7 @@ async def test_non_default_dashboard_agent_http_port(tmp_path):
         agent_address = f"{ip}:{dashboard_agent_listen_port}"
         print("agent address = ", agent_address)
 
-        agent_client = JobAgentSubmissionClient(format_web_url(agent_address))
+        agent_client = JobAgentClient(format_web_url(agent_address))
         head_client = JobSubmissionClient(format_web_url(address_info["webui_url"]))
 
         assert wait_until_server_available(agent_address)

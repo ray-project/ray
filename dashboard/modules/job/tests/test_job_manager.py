@@ -23,11 +23,15 @@ from ray._private.test_utils import (
     async_wait_for_condition_async_predicate,
     wait_for_condition,
 )
-from ray.dashboard.modules.job.common import JOB_ID_METADATA_KEY, JOB_NAME_METADATA_KEY
+from ray.dashboard.modules.job.common import (
+    JOB_ID_METADATA_KEY,
+    JOB_NAME_METADATA_KEY,
+    _get_executor_actor_for_job,
+)
+from ray.dashboard.modules.job.job_supervisor import JobExecutor, JobSupervisor
 from ray.dashboard.modules.job.job_manager import (
     JobLogStorageClient,
     JobManager,
-    JobSupervisor,
     generate_job_id,
 )
 from ray.dashboard.consts import (
@@ -56,34 +60,36 @@ async def test_get_scheduling_strategy(
 ):
     monkeypatch.setenv(RAY_JOB_ALLOW_DRIVER_ON_WORKER_NODES_ENV_VAR, "0")
     address_info = ray.init(address=call_ray_start)
-    gcs_aio_client = GcsAioClient(
-        address=address_info["gcs_address"], nums_reconnect_retry=0
+    gcs_address = address_info["gcs_address"]
+
+    job_supervisor = JobSupervisor(
+        job_id="job_id",
+        gcs_address=gcs_address,
+        logs_dir="/tmp/logs",
+        startup_timeout_s=1,
     )
 
-    job_manager = JobManager(gcs_aio_client, tmp_path)
-
-    # If no head node id is found, we should use "DEFAULT".
-    await gcs_aio_client.internal_kv_del(
-        "head_node_id".encode(), del_by_prefix=False, namespace=KV_NAMESPACE_JOB
-    )
-    strategy = await job_manager._get_scheduling_strategy(resources_specified)
-    assert strategy == "DEFAULT"
-
-    # Add a head node id to the internal KV to simulate what is done in node_head.py.
-    await gcs_aio_client.internal_kv_put(
-        "head_node_id".encode(), "123456".encode(), True, namespace=KV_NAMESPACE_JOB
-    )
-    strategy = await job_manager._get_scheduling_strategy(resources_specified)
+    strategy = job_supervisor._get_driver_scheduling_strategy(resources_specified)
     if resources_specified:
         assert strategy == "DEFAULT"
     else:
-        expected_strategy = NodeAffinitySchedulingStrategy("123456", soft=False)
+        gcs_aio_client = GcsAioClient(address=gcs_address)
+
+        head_node_id_bytes = await gcs_aio_client.internal_kv_get(
+            "head_node_id".encode(),
+            namespace=ray.ray_constants.KV_NAMESPACE_JOB,
+            timeout=30,
+        )
+
+        head_node_id = head_node_id_bytes.decode()
+        expected_strategy = NodeAffinitySchedulingStrategy(head_node_id, soft=True)
+
         assert expected_strategy.node_id == strategy.node_id
         assert expected_strategy.soft == strategy.soft
 
     # When the env var is set to 1, we should use DEFAULT.
     monkeypatch.setenv(RAY_JOB_ALLOW_DRIVER_ON_WORKER_NODES_ENV_VAR, "1")
-    strategy = await job_manager._get_scheduling_strategy(resources_specified)
+    strategy = job_supervisor._get_driver_scheduling_strategy(resources_specified)
     assert strategy == "DEFAULT"
 
 
@@ -264,66 +270,45 @@ async def test_get_all_job_info_with_is_running_tasks(call_ray_start):  # noqa: 
 async def test_job_supervisor_logs_saved(
     call_ray_start, tmp_path, capsys  # noqa: F811
 ):
-    """Test JobSupervisor logs are saved to jobs/supervisor-{submission_id}.log"""
+    """Test
+    - JobSupervisor logs are saved to jobs/job-supervisor-{submission_id}.log
+    - JobRunner logs are saved to jobs/job-runner-{submission_id}.log
+    """
     address_info = ray.init(address=call_ray_start)
     gcs_aio_client = GcsAioClient(
         address=address_info["gcs_address"], nums_reconnect_retry=0
     )
+
     job_manager = JobManager(gcs_aio_client, tmp_path)
     job_id = await job_manager.submit_job(
         entrypoint="echo hello 1", submission_id="job_1"
     )
+
     await async_wait_for_condition_async_predicate(
         check_job_succeeded, job_manager=job_manager, job_id=job_id
     )
 
-    # Verify logs saved to file
+    # Verify supervisor logs saved to file
     supervisor_log_path = os.path.join(
         ray._private.worker._global_node.get_logs_dir_path(),
-        f"jobs/supervisor-{job_id}.log",
+        f"jobs/job-supervisor-{job_id}.log",
     )
-    log_message = f"Job {job_id} entrypoint command exited with code 0"
+    expected_supervisor_file_contents = "(job_1) Starting job\n(job_1) Starting job monitoring loop (interval 1s)\n(job_1) Creating executor actor for job\n(job_1) Updating job status to SUCCEEDED (exit code is 0)\n"
+
     with open(supervisor_log_path, "r") as f:
         logs = f.read()
-        assert log_message in logs
+        assert expected_supervisor_file_contents in logs
 
-    # Verify logs in stderr. Run in wait_for_condition to ensure
-    # logs are flushed
-    wait_for_condition(lambda: log_message in capsys.readouterr().err)
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize(
-    "call_ray_start",
-    ["ray start --head"],
-    indirect=True,
-)
-async def test_runtime_env_setup_logged_to_job_driver_logs(
-    call_ray_start, tmp_path  # noqa: F811
-):
-    """Test runtime env setup messages are logged to jobs driver log"""
-    address_info = ray.init(address=call_ray_start)
-    gcs_aio_client = GcsAioClient(
-        address=address_info["gcs_address"], nums_reconnect_retry=0
-    )
-    job_manager = JobManager(gcs_aio_client, tmp_path)
-
-    job_id = await job_manager.submit_job(
-        entrypoint="echo hello 1", submission_id="test_runtime_env_setup_logs"
-    )
-    await async_wait_for_condition_async_predicate(
-        check_job_succeeded, job_manager=job_manager, job_id=job_id
-    )
-
-    # Verify logs saved to file
-    job_driver_log_path = os.path.join(
+    # Verify runner logs saved to file
+    runner_log_path = os.path.join(
         ray._private.worker._global_node.get_logs_dir_path(),
-        f"job-driver-{job_id}.log",
+        f"jobs/job-runner-{job_id}.log",
     )
-    start_message = "Runtime env is setting up."
-    with open(job_driver_log_path, "r") as f:
+    expected_runner_file_contents = "(job_1) Executing job driver's entrypoint\n(job_1) Job driver's entrypoint command exited with code 0\n"
+
+    with open(runner_log_path, "r") as f:
         logs = f.read()
-        assert start_message in logs
+        assert expected_runner_file_contents in logs
 
 
 @pytest.fixture(scope="module")
@@ -528,7 +513,7 @@ async def test_simultaneous_with_same_id(job_manager):
             job_manager.submit_job(entrypoint="echo hello", submission_id="1"),
             job_manager.submit_job(entrypoint="echo hello", submission_id="1"),
         )
-    assert "Job with submission_id 1 already exists" in str(excinfo.value)
+    assert "Job with submission id 1 already exists" in str(excinfo.value)
     # Check that the (first) job can still succeed.
     await async_wait_for_condition_async_predicate(
         check_job_succeeded, job_manager=job_manager, job_id="1"
@@ -577,10 +562,10 @@ class TestShellScriptExecution:
             data = await job_manager.get_job_info(job_id)
             if data.status != JobStatus.FAILED:
                 return False
-            if "Exception: Script failed with exception !" not in data.message:
-                return False
 
-            return job_manager._get_actor_for_job(job_id) is None
+            assert "Exception: Script failed with exception !" in data.message
+
+            return _get_executor_actor_for_job(job_id) is None
 
         await async_wait_for_condition_async_predicate(cleaned_up)
 
@@ -700,12 +685,8 @@ class TestRuntimeEnv:
         )
 
         data = await job_manager.get_job_info(job_id)
-        assert "runtime_env setup failed" in data.message
+        assert "Failed to set up runtime environment" in data.message
         assert data.driver_exit_code is None
-        log_path = JobLogStorageClient().get_log_file_path(job_id=job_id)
-        with open(log_path, "r") as f:
-            job_logs = f.read()
-        assert "Traceback (most recent call last):" in job_logs
 
     async def test_pass_metadata(self, job_manager):
         def dict_to_str(d):
@@ -838,7 +819,7 @@ class TestAsyncAPI:
             # Assert stopping non-existent job returns False
             assert job_manager.stop_job(str(uuid4())) is False
 
-    async def test_kill_job_actor_in_before_driver_finish(self, job_manager):
+    async def test_kill_job_executor_actor_in_before_driver_finish(self, job_manager):
         """
         Test submitting a long running / blocker driver script, and kill
         the job supervisor actor before script returns and ensure
@@ -853,8 +834,8 @@ class TestAsyncAPI:
                 pid = int(file.read())
                 assert psutil.pid_exists(pid), "driver subprocess should be running"
 
-            actor = job_manager._get_actor_for_job(job_id)
-            ray.kill(actor, no_restart=True)
+            executor_actor = _get_executor_actor_for_job(job_id)
+            ray.kill(executor_actor, no_restart=True)
             await async_wait_for_condition_async_predicate(
                 check_job_failed, job_manager=job_manager, job_id=job_id
             )
@@ -889,7 +870,7 @@ class TestAsyncAPI:
                 check_job_stopped, job_manager=job_manager, job_id=job_id
             )
 
-    async def test_kill_job_actor_in_pending(self, job_manager):
+    async def test_kill_job_executor_actor_in_pending(self, job_manager):
         """
         Kick off a job that is in PENDING state, kill the job actor and ensure
 
@@ -907,13 +888,45 @@ class TestAsyncAPI:
                 "driver subprocess should NOT be running while job is " "still PENDING."
             )
 
-            actor = job_manager._get_actor_for_job(job_id)
+            actor = _get_executor_actor_for_job(job_id)
             ray.kill(actor, no_restart=True)
             await async_wait_for_condition_async_predicate(
                 check_job_failed, job_manager=job_manager, job_id=job_id
             )
             data = await job_manager.get_job_info(job_id)
             assert data.driver_exit_code is None
+
+    async def test_failing_job_executor_actor_in_pending(self, job_manager):
+        """
+        Kick off a job that is in PENDING state, kill the job actor and ensure
+
+        1) Job can correctly be stop immediately with correct JobStatus
+        2) No dangling subprocess left.
+        """
+        start_signal_actor = SignalActor.remote(
+            error=RuntimeError("Encountered failure")
+        )
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            pid_file, _, job_id = await _run_hanging_command(
+                job_manager, tmp_dir, start_signal_actor=start_signal_actor
+            )
+
+            assert not os.path.exists(pid_file), (
+                "driver subprocess should NOT be running while job is " "still PENDING."
+            )
+
+            # Unblock signal actor to raise an error
+            start_signal_actor.send.remote()
+
+            await async_wait_for_condition_async_predicate(
+                check_job_failed, job_manager=job_manager, job_id=job_id
+            )
+
+            data = await job_manager.get_job_info(job_id)
+
+            assert data.driver_exit_code is None
+            assert "RuntimeError('Encountered failure')" in data.message
 
     async def test_stop_job_subprocess_cleanup_upon_stop(self, job_manager):
         """
@@ -956,7 +969,7 @@ class TestTailLogs:
 
     async def test_unknown_job(self, job_manager):
         with pytest.raises(RuntimeError, match="Job 'unknown' does not exist."):
-            async for _ in job_manager.tail_job_logs("unknown"):
+            async for _ in job_manager._tail_logs("unknown"):
                 pass
 
     async def test_successful_job(self, job_manager):
@@ -984,7 +997,7 @@ class TestTailLogs:
             with open(tmp_file, "w") as f:
                 print("hello", file=f)
 
-            async for lines in job_manager.tail_job_logs(job_id):
+            async for lines in job_manager._tail_logs(job_id):
                 assert all(
                     s == "Waiting..." or "Runtime env" in s
                     for s in lines.strip().split("\n")
@@ -1008,7 +1021,7 @@ class TestTailLogs:
             with open(pid_file, "r") as f:
                 os.kill(int(f.read()), signal.SIGKILL)
 
-            async for lines in job_manager.tail_job_logs(job_id):
+            async for lines in job_manager._tail_logs(job_id):
                 assert all(
                     s == "Waiting..." or "Runtime env" in s
                     for s in lines.strip().split("\n")
@@ -1034,7 +1047,7 @@ class TestTailLogs:
             # Stop the job via the API.
             job_manager.stop_job(job_id)
 
-            async for lines in job_manager.tail_job_logs(job_id):
+            async for lines in job_manager._tail_logs(job_id):
                 assert all(
                     s == "Waiting..." or s == "Terminated" or "Runtime env" in s
                     for s in lines.strip().split("\n")
@@ -1082,7 +1095,7 @@ while True:
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     "use_env_var,stop_timeout",
-    [(True, 10), (False, JobSupervisor.DEFAULT_RAY_JOB_STOP_WAIT_TIME_S)],
+    [(True, 10), (False, JobExecutor.DEFAULT_RAY_JOB_STOP_WAIT_TIME_S)],
 )
 async def test_stop_job_timeout(job_manager, use_env_var, stop_timeout):
     """
@@ -1272,10 +1285,6 @@ async def test_monitor_job_pending(job_manager):
         _start_signal_actor=start_signal_actor,
     )
 
-    # Trigger _recover_running_jobs while the job is still pending. This
-    # will pick up the new pending job.
-    await job_manager._recover_running_jobs()
-
     # Trigger the job to start.
     ray.get(start_signal_actor.send.remote())
 
@@ -1300,10 +1309,6 @@ async def test_job_pending_timeout(job_manager, monkeypatch):
         _start_signal_actor=start_signal_actor,
     )
 
-    # Trigger _recover_running_jobs while the job is still pending. This
-    # will pick up the new pending job.
-    await job_manager._recover_running_jobs()
-
     # Wait for the job to timeout.
     await async_wait_for_condition_async_predicate(
         check_job_failed, job_manager=job_manager, job_id=job_id
@@ -1311,8 +1316,12 @@ async def test_job_pending_timeout(job_manager, monkeypatch):
 
     # Check that the job timed out.
     job_info = await job_manager.get_job_info(job_id)
+
     assert job_info.status == JobStatus.FAILED
-    assert "Job supervisor actor failed to start within" in job_info.message
+    assert (
+        "Job driver failed to start within 0.1 seconds. This timeout can be configured by setting the environment variable RAY_JOB_START_TIMEOUT_SECONDS."
+        in job_info.message
+    )
     assert job_info.driver_exit_code is None
 
 
@@ -1351,21 +1360,32 @@ async def test_actor_creation_error_not_overwritten(shared_ray_instance, tmp_pat
 
     Without the fix in place, this test failed consistently.
     """
+
+    submitted_job_ids = []
+
+    job_manager = create_job_manager(shared_ray_instance, tmp_path)
+
     for _ in range(10):
         # Race condition existed when a job was submitted just after constructing the
-        # `JobManager`, so make a new one in each test iteration.
-        job_manager = create_job_manager(shared_ray_instance, tmp_path)
+        # `JobSupervisor`
         job_id = await job_manager.submit_job(
             entrypoint="doesn't matter", runtime_env={"working_dir": "path_not_exist"}
         )
 
-        # `await` many times to yield the `asyncio` loop and verify that the error
-        # message does not get overwritten.
-        for _ in range(100):
-            data = await job_manager.get_job_info(job_id)
-            assert data.status == JobStatus.FAILED
-            assert "path_not_exist is not a valid URI" in data.message
-            assert data.driver_exit_code is None
+        submitted_job_ids.append(job_id)
+
+    # `await` many times to yield the `asyncio` loop and verify that the error
+    # message does not get overwritten.
+    for job_id in submitted_job_ids:
+        await async_wait_for_condition_async_predicate(
+            check_job_failed, job_manager=job_manager, job_id=job_id
+        )
+
+        data = await job_manager.get_job_info(job_id)
+
+        assert data.status == JobStatus.FAILED
+        assert "path_not_exist is not a valid URI" in data.message
+        assert data.driver_exit_code is None
 
 
 if __name__ == "__main__":

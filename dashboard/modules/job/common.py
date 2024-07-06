@@ -1,14 +1,17 @@
 import asyncio
 import json
+import logging
 import time
 from dataclasses import dataclass, replace, asdict
 from enum import Enum
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple, Union
 
+import ray
 from ray._private import ray_constants
 from ray._private.gcs_utils import GcsAioClient
 from ray._private.runtime_env.packaging import parse_uri
+from ray.actor import ActorHandle
 
 from ray.util.annotations import PublicAPI
 
@@ -16,13 +19,17 @@ from ray.util.annotations import PublicAPI
 # they're exposed in the snapshot API.
 JOB_ID_METADATA_KEY = "job_submission_id"
 JOB_NAME_METADATA_KEY = "job_name"
-JOB_ACTOR_NAME_TEMPLATE = (
-    f"{ray_constants.RAY_INTERNAL_NAMESPACE_PREFIX}job_actor_" + "{job_id}"
+JOB_EXECUTOR_ACTOR_NAME_TEMPLATE = (
+    f"{ray_constants.RAY_INTERNAL_NAMESPACE_PREFIX}job_executor_actor_" + "{job_id}"
 )
+
 # In order to get information about SupervisorActors launched by different jobs,
 # they must be set to the same namespace.
 SUPERVISOR_ACTOR_RAY_NAMESPACE = "SUPERVISOR_ACTOR_RAY_NAMESPACE"
-JOB_LOGS_PATH_TEMPLATE = "job-driver-{submission_id}.log"
+JOB_DRIVER_LOGS_PATH_TEMPLATE = "job-driver-{submission_id}.log"
+
+
+logger = logging.getLogger(__file__)
 
 
 @PublicAPI(stability="stable")
@@ -252,7 +259,14 @@ class JobInfoStorageClient:
         )
         if old_info is not None:
             if status != old_info.status and old_info.status.is_terminal():
-                assert False, "Attempted to change job status from a terminal state."
+                logger.error(
+                    f"Trying to update job {job_id} that already reached terminal state {old_info.status}"
+                )
+
+                raise ValueError(
+                    f"Attempted to change job status from a terminal state (state: {old_info.status})"
+                )
+
             new_info = replace(old_info, **jobinfo_replace_kwargs)
         else:
             new_info = JobInfo(
@@ -454,3 +468,15 @@ class JobDeleteResponse:
 @dataclass
 class JobLogsResponse:
     logs: str
+
+
+def _get_executor_actor_for_job(job_id: str) -> Optional[ActorHandle]:
+    """Fetches JobRunner actor for job identified by Ray Job (submission) id"""
+    try:
+        return ray.get_actor(
+            JOB_EXECUTOR_ACTOR_NAME_TEMPLATE.format(job_id=job_id),
+            namespace=SUPERVISOR_ACTOR_RAY_NAMESPACE,
+        )
+    except ValueError as ve:  # Ray returns ValueError for nonexistent actor.
+        logger.warning(f"Job executor for job {job_id} not found: {str(ve)}")
+        return None
