@@ -668,7 +668,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
             // the reference went out of scope since the call to the ref counter to get
             // the lost objects. It's okay to not mark the object as failed or recover
             // the object since there are no reference holders.
-            RAY_UNUSED(object_recovery_manager_->RecoverObject(object_id, true));
+            RAY_UNUSED(object_recovery_manager_->RecoverObject(object_id));
           }
         }
       },

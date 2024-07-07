@@ -87,8 +87,7 @@ class ObjectRecoveryManager {
   /// about the object. If this returns true, then eventually recovery will
   /// either succeed (a value will be put into the memory store) or fail (the
   /// reconstruction failure callback will be called for this object).
-  bool RecoverObject(const ObjectID &object_id,
-                     bool delete_from_memory_store_if_recovering = false);
+  bool RecoverObject(const ObjectID &object_id);
 
  private:
   /// Pin a new copy for a lost object from the given locations or, if that
