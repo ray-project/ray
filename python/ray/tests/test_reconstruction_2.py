@@ -335,6 +335,7 @@ def test_memory_util(config, ray_start_cluster):
     node_to_kill = cluster.add_node(
         num_cpus=1, resources={"node1": 1}, object_store_memory=10**8
     )
+    print(f"node1 {node_to_kill.address_info} {node_to_kill.node_manager_port}")
     cluster.wait_for_nodes()
 
     @ray.remote
@@ -386,6 +387,7 @@ def test_memory_util(config, ray_start_cluster):
     node_to_kill = cluster.add_node(
         num_cpus=1, resources={"node1": 1}, object_store_memory=10**8
     )
+    print(f"node2 {node_to_kill.address_info} {node_to_kill.node_manager_port}")
 
     ref = dependent_task.remote(x, sema)
     wait_for_condition(lambda: stats() == (1, 1, 0))
