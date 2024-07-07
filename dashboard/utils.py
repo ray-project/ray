@@ -578,7 +578,7 @@ def ray_client_address_to_api_server_url(address: str):
     Returns:
         str: The API server URL of the cluster, e.g. "http://<head-node-ip>:8265".
     """
-    with ray.init(address=address) as client_context:
+    with ray.init(address=address, ignore_reinit_error=True) as client_context:
         dashboard_url = client_context.dashboard_url
 
     return f"http://{dashboard_url}"
