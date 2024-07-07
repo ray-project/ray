@@ -1631,13 +1631,6 @@ py_test(
 )
 
 py_test(
-    name = "test_nested_dict",
-    tags = ["team:rllib", "utils"],
-    size = "small",
-    srcs = ["utils/tests/test_nested_dict.py"]
-)
-
-py_test(
     name = "test_serialization",
     tags = ["team:rllib", "utils"],
     size = "small",
