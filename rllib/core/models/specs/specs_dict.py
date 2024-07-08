@@ -1,4 +1,4 @@
-from typing import Any, Dict, Mapping
+from typing import Any, Dict
 
 import tree
 from ray.rllib.core.models.specs.specs_base import Spec
@@ -19,14 +19,14 @@ _TYPE_MISMATCH = (
     "{} has type {} (expected type {})."
 )
 
-DATA_TYPE = Mapping[str, Any]
+DATA_TYPE = Dict[str, Any]
 
 IS_NOT_PROPERTY = "Spec {} must be a property of the class {}."
 
 
 @ExperimentalAPI
-class SpecDict(Dict[str, Spec], Spec):
-    """A Dict containing `TensorSpec` and `Types`.
+class SpecDict(dict, Spec):
+    """A dict containing `TensorSpec` and `Types`.
 
     It can be used to validate an incoming data against a nested dictionary of specs.
 
@@ -96,20 +96,6 @@ class SpecDict(Dict[str, Spec], Spec):
         ValueError: If the data doesn't match the spec.
     """
 
-    #def __init__(self, *args, **kwargs):
-    #    super().__init__(*args, **kwargs)
-
-        # Collect all (nested) keys in `self`.
-        #_keys_set = set()
-
-    #    def _map(path, s):
-    #        _keys_set.add(force_tuple(path))
-
-    #    tree.map_structure_with_path(_map, self)
-    #    self._keys_set = _keys_set
-
-        #self._keys_set = set(self.keys())
-
     @override(Spec)
     def validate(
         self,
@@ -126,21 +112,17 @@ class SpecDict(Dict[str, Spec], Spec):
         Raises:
             ValueError: If the data doesn't match the spec.
         """
-        # Collect all (nested) keys in `data`.
-        data_keys_set = set()
+        check = self.is_subset(data, self)
+        if not check[0]:
+            # Collect all (nested) keys in `data`.
+            data_keys_set = set()
 
-        def _map(path, s):
-            data_keys_set.add(force_tuple(path))
+            def _map(path, s):
+                data_keys_set.add(force_tuple(path))
 
-        tree.map_structure_with_path(_map, data)
+            tree.map_structure_with_path(_map, data)
 
-        # Check, whether all (nested) keys in `self` (the Spec) also exist in `data`.
-        def _check(path, s):
-            path = force_tuple(path)
-            if s not in data_keys_set:
-                raise ValueError(_MISSING_KEYS_FROM_DATA.format(path, data_keys_set))
-
-        tree.map_structure_with_path(_check, self)
+            ValueError(_MISSING_KEYS_FROM_DATA.format(check[1], data_keys_set))
 
         if exact_match:
             tree.assert_same_structure(data, self, check_types=False)
@@ -170,6 +152,22 @@ class SpecDict(Dict[str, Spec], Spec):
                     f"The spec type has to be either TensorSpec or Type. "
                     f"got {type(spec)}"
                 )
+
+    @staticmethod
+    def is_subset(a, b):
+        for key in b:
+            if key not in a:
+                return False, key
+            if isinstance(a[key], dict):
+                if not isinstance(b[key], dict):
+                    return False, key
+                res = SpecDict.is_subset(a[key], b[key])
+                if not res[0]:
+                    return res
+            elif isinstance(b[key], dict):
+                return False, key
+
+        return True, None
 
     def __repr__(self) -> str:
         return f"SpecDict({repr(self.keys())})"

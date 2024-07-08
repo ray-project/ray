@@ -79,7 +79,7 @@ def convert_to_canonical_format(spec: SpecType):
     """
     # convert spec of form list of nested_keys to model_spec with None leaves
     if isinstance(spec, list):
-        spec = [(k,) if isinstance(k, str) else k for k in spec]
+        spec = [k if isinstance(k, str) else k for k in spec]
         return SpecDict({k: None for k in spec})
 
     # convert spec of form tree of constraints to model_spec
