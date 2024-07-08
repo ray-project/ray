@@ -1,9 +1,5 @@
-import { Box } from "@mui/material";
-import createStyles from "@mui/styles/createStyles";
-import makeStyles from "@mui/styles/makeStyles";
-import classNames from "classnames";
+import { Box, keyframes, SxProps, Theme } from "@mui/material";
 import React from "react";
-import { IconBaseProps } from "react-icons";
 import {
   RiCheckboxCircleFill,
   RiCloseCircleFill,
@@ -14,132 +10,105 @@ import { StatusChip } from "../components/StatusChip";
 import { JobStatus, UnifiedJob } from "../type/job";
 import { ClassNameProps } from "./props";
 
-const useJobRunningIconStyles = makeStyles((theme) =>
-  createStyles({
-    icon: {
-      width: 20,
-      height: 20,
-    },
-    iconSmall: {
-      width: 16,
-      height: 16,
-    },
-    "@keyframes spinner": {
-      from: {
-        transform: "rotate(0deg)",
-      },
-      to: {
-        transform: "rotate(360deg)",
-      },
-    },
-    iconRunning: {
-      color: "#1E88E5",
-      animationName: "$spinner",
-      animationDuration: "1000ms",
-      animationIterationCount: "infinite",
-      animationTimingFunction: "linear",
-    },
-  }),
-);
+const spinner = keyframes`
+from {
+  transform: rotate(0deg)
+},
+to {
+  transform: rotate(360deg)
+}`;
 
-type JobRunningIconProps = { small?: boolean } & ClassNameProps & IconBaseProps;
+type JobRunningIconProps = {
+  title?: string;
+  small?: boolean;
+  sx?: SxProps<Theme>;
+} & ClassNameProps;
 
 export const JobRunningIcon = ({
   className,
+  title,
   small = false,
+  sx = [],
   ...props
 }: JobRunningIconProps) => {
-  const classes = useJobRunningIconStyles();
   return (
-    <RiLoader4Line
-      className={classNames(
-        classes.icon,
-        classes.iconRunning,
+    <Box
+      component={RiLoader4Line}
+      sx={[
         {
-          [classes.iconSmall]: small,
+          width: small ? 16 : 20,
+          height: small ? 16 : 20,
+          color: "#1E88E5",
+          animation: `${spinner} 1s linear infinite`,
         },
-        className,
-      )}
+        ...(Array.isArray(sx) ? sx : [sx]),
+      ]}
+      title={title}
       {...props}
     />
   );
 };
 
-const useJobStatusIconStyles = makeStyles((theme) =>
-  createStyles({
-    icon: {
-      width: 20,
-      height: 20,
-    },
-    iconSmall: {
-      width: 16,
-      height: 16,
-    },
-    colorSuccess: {
-      color: theme.palette.success.main,
-    },
-    colorError: {
-      color: theme.palette.error.main,
-    },
-    colorStopped: {
-      color: "#757575",
-    },
-  }),
-);
-
 type JobStatusIconProps = {
   job: UnifiedJob;
   small?: boolean;
+  sx?: SxProps<Theme>;
 } & ClassNameProps;
 
 export const JobStatusIcon = ({
   job,
   small = false,
   className,
+  sx,
 }: JobStatusIconProps) => {
-  const classes = useJobStatusIconStyles();
   switch (job.status) {
     case JobStatus.SUCCEEDED:
       return (
-        <RiCheckboxCircleFill
-          className={classNames(
-            classes.icon,
-            classes.colorSuccess,
+        <Box
+          component={RiCheckboxCircleFill}
+          className={className}
+          sx={[
             {
-              [classes.iconSmall]: small,
+              width: small ? 16 : 20,
+              height: small ? 16 : 20,
+              color: (theme) => theme.palette.success.main,
             },
-            className,
-          )}
+            ...(Array.isArray(sx) ? sx : [sx]),
+          ]}
         />
       );
     case JobStatus.FAILED:
       return (
-        <RiCloseCircleFill
-          className={classNames(
-            classes.icon,
-            classes.colorError,
+        <Box
+          component={RiCloseCircleFill}
+          className={className}
+          sx={[
             {
-              [classes.iconSmall]: small,
+              width: small ? 16 : 20,
+              height: small ? 16 : 20,
+              color: (theme) => theme.palette.error.main,
             },
-            className,
-          )}
+            ...(Array.isArray(sx) ? sx : [sx]),
+          ]}
         />
       );
     case JobStatus.STOPPED:
       return (
-        <RiStopCircleFill
-          className={classNames(
-            classes.icon,
-            classes.colorStopped,
+        <Box
+          component={RiStopCircleFill}
+          className={className}
+          sx={[
             {
-              [classes.iconSmall]: small,
+              width: small ? 16 : 20,
+              height: small ? 16 : 20,
+              color: "#757575",
             },
-            className,
-          )}
+            ...(Array.isArray(sx) ? sx : [sx]),
+          ]}
         />
       );
     default:
-      return <JobRunningIcon className={className} small={small} />;
+      return <JobRunningIcon className={className} sx={sx} small={small} />;
   }
 };
 
