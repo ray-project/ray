@@ -8,6 +8,8 @@ from ray.util.annotations import DeveloperAPI
 _default_context: "Optional[DAGContext]" = None
 _context_lock = threading.Lock()
 
+DEFAULT_EXECUTION_TIMEOUT_S = int(os.environ.get("RAY_DAG_execution_timeout", 10))
+DEFAULT_RETRIEVAL_TIMEOUT_S = int(os.environ.get("RAY_DAG_retrieval_timeout", 10))
 # Default buffer size is 1MB.
 DEFAULT_BUFFER_SIZE_BYTES = int(os.environ.get("RAY_DAG_buffer_size_bytes", 1e6))
 # Default asyncio_max_queue_size is 0, which means no limit.
@@ -17,6 +19,13 @@ DEFAULT_ASYNCIO_MAX_QUEUE_SIZE = int(
 # The default max_buffered_results is 1000, and the default buffer size is 1 MB.
 # The maximum memory usage for buffered results is 1 GB.
 DEFAULT_MAX_BUFFERED_RESULTS = int(os.environ.get("RAY_DAG_max_buffered_results", 1000))
+
+# We still need to add support for transferring objects that are larger than the gRPC
+# payload limit, which Ray sets to ~512 MiB (so we set it slightly lower here to be
+# safe).
+# TODO(jhumphri): Add support for transferring objects that are larger than the gRPC
+# payload limit. We can support this by breaking an object into multiple RPCs.
+MAX_GRPC_PAYLOAD = int(1024 * 1024 * 450)  # 450 MiB
 
 
 @DeveloperAPI
@@ -36,6 +45,10 @@ class DAGContext:
         500
 
     Args:
+        execution_timeout: The maximum time in seconds to wait for execute()
+            calls.
+        retrieval_timeout: The maximum time in seconds to wait to retrieve
+            a result from the DAG.
         buffer_size_bytes: The maximum size of messages that can be passed
             between tasks in the DAG.
         asyncio_max_queue_size: The max queue size for the async execution.
@@ -47,11 +60,17 @@ class DAGContext:
             executions is beyond the DAG capacity, the new execution would
             be blocked in the first place; therefore, this limit is only
             enforced when it is smaller than the DAG capacity.
+        max_grpc_payload: The maximum payload size that fits within a single gRPC.
+            Currently, mutable objects larger than this size cannot can sent via a
+            multi-node channel, though we plan to support this in the future.
     """
 
+    execution_timeout: int = DEFAULT_EXECUTION_TIMEOUT_S
+    retrieval_timeout: int = DEFAULT_RETRIEVAL_TIMEOUT_S
     buffer_size_bytes: int = DEFAULT_BUFFER_SIZE_BYTES
     asyncio_max_queue_size: int = DEFAULT_ASYNCIO_MAX_QUEUE_SIZE
     max_buffered_results: int = DEFAULT_MAX_BUFFERED_RESULTS
+    max_grpc_payload: int = MAX_GRPC_PAYLOAD
 
     @staticmethod
     def get_current() -> "DAGContext":

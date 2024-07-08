@@ -1,6 +1,4 @@
 import { Box, IconButton, Link, Tooltip, Typography } from "@mui/material";
-import createStyles from "@mui/styles/createStyles";
-import makeStyles from "@mui/styles/makeStyles";
 import copy from "copy-to-clipboard";
 import React, { useState } from "react";
 import { RiFileCopyLine } from "react-icons/ri";
@@ -46,36 +44,18 @@ export type Metadata = {
   readonly isAvailable?: boolean;
 };
 
-const useStyles = makeStyles((theme) =>
-  createStyles({
-    root: {
-      display: "grid",
-      gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
-      rowGap: theme.spacing(1),
-      columnGap: theme.spacing(4),
-    },
-    label: {
-      color: theme.palette.text.secondary,
-    },
-    labelTooltip: {
-      marginLeft: theme.spacing(0.5),
-    },
-    contentContainer: {
-      display: "flex",
-      alignItems: "center",
-    },
-    content: {
-      display: "block",
-      textOverflow: "ellipsis",
-      overflow: "hidden",
-      whiteSpace: "nowrap",
-    },
-    button: {
-      color: "black",
-      marginLeft: theme.spacing(0.5),
-    },
-  }),
-);
+const styles = {
+  contentContainer: {
+    display: "flex",
+    alignItems: "center",
+  },
+  content: {
+    display: "block",
+    textOverflow: "ellipsis",
+    overflow: "hidden",
+    whiteSpace: "nowrap",
+  },
+};
 
 /**
  * We style the metadata content based on the type supplied.
@@ -87,7 +67,6 @@ export const MetadataContentField: React.FC<{
   content: Metadata["content"];
   label: string;
 }> = ({ content, label }) => {
-  const classes = useStyles();
   const [copyIconClicked, setCopyIconClicked] = useState<boolean>(false);
 
   const copyElement = content && "copyableValue" in content && (
@@ -105,7 +84,7 @@ export const MetadataContentField: React.FC<{
         onMouseEnter={() => setCopyIconClicked(false)}
         onMouseLeave={() => setTimeout(() => setCopyIconClicked(false), 333)}
         size="small"
-        className={classes.button}
+        sx={{ color: "black", marginLeft: 0.5 }}
       >
         <RiFileCopyLine />
       </IconButton>
@@ -116,9 +95,9 @@ export const MetadataContentField: React.FC<{
     return content === undefined ||
       !("link" in content) ||
       content.link === undefined ? (
-      <div className={classes.contentContainer}>
+      <Box sx={styles.contentContainer}>
         <Typography
-          className={classes.content}
+          sx={styles.content}
           variant="body2"
           title={content?.value}
           data-testid={`metadata-content-for-${label}`}
@@ -126,22 +105,22 @@ export const MetadataContentField: React.FC<{
           {content?.value ?? "-"}
         </Typography>
         {copyElement}
-      </div>
+      </Box>
     ) : content.link.startsWith("http") ? (
-      <div className={classes.contentContainer}>
+      <Box sx={styles.contentContainer}>
         <Link
-          className={classes.content}
+          sx={styles.content}
           href={content.link}
           data-testid={`metadata-content-for-${label}`}
         >
           {content.value}
         </Link>
         {copyElement}
-      </div>
+      </Box>
     ) : (
-      <div className={classes.contentContainer}>
+      <Box sx={styles.contentContainer}>
         <Link
-          className={classes.content}
+          sx={styles.content}
           component={RouterLink}
           to={content.link}
           data-testid={`metadata-content-for-${label}`}
@@ -149,7 +128,7 @@ export const MetadataContentField: React.FC<{
           {content.value}
         </Link>
         {copyElement}
-      </div>
+      </Box>
     );
   }
   return <div data-testid={`metadata-content-for-${label}`}>{content}</div>;
@@ -161,23 +140,29 @@ export const MetadataContentField: React.FC<{
 const MetadataList: React.FC<{
   metadataList: Metadata[];
 }> = ({ metadataList }) => {
-  const classes = useStyles();
-
   const filteredMetadataList = metadataList.filter(
     ({ isAvailable }) => isAvailable ?? true,
   );
   return (
-    <Box className={classes.root}>
+    <Box
+      sx={{
+        display: "grid",
+        gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+        rowGap: 1,
+        columnGap: 4,
+      }}
+    >
       {filteredMetadataList.map(({ label, labelTooltip, content }, idx) => (
         <Box key={idx} flex={1} paddingTop={0.5} paddingBottom={0.5}>
           <Box display="flex" alignItems="center" marginBottom={0.5}>
-            <Typography className={classes.label} variant="body2">
+            <Typography
+              sx={{ color: (theme) => theme.palette.text.secondary }}
+              variant="body2"
+            >
               {label}
             </Typography>
             {labelTooltip && (
-              <HelpInfo className={classes.labelTooltip}>
-                {labelTooltip}
-              </HelpInfo>
+              <HelpInfo sx={{ marginLeft: 0.5 }}>{labelTooltip}</HelpInfo>
             )}
           </Box>
           <MetadataContentField content={content} label={label} />
