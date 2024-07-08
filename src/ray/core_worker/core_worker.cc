@@ -663,6 +663,11 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
           RAY_LOG(ERROR) << ":info_message: Attempting to recover " << lost_objects.size()
                          << " lost objects by resubmitting their tasks. To disable "
                          << "object reconstruction, set @ray.remote(max_retries=0).";
+          // Delete the objects from the in-memory store to indicate that they are not
+          // available. The object recovery manager will guarantee that a new value
+          // will eventually be stored for the objects (either an
+          // UnreconstructableError or a value reconstructed from lineage).
+          memory_store_->Delete(lost_objects);
           for (const auto &object_id : lost_objects) {
             // NOTE(swang): There is a race condition where this can return false if
             // the reference went out of scope since the call to the ref counter to get

@@ -45,12 +45,6 @@ bool ObjectRecoveryManager::RecoverObject(const ObjectID &object_id) {
   bool already_pending_recovery = true;
   bool requires_recovery = pinned_at.IsNil() && !spilled;
   if (requires_recovery) {
-    // Delete the objects from the in-memory store to indicate that they are not
-    // available. The object recovery manager will guarantee that a new value
-    // will eventually be stored for the objects (either an
-    // UnreconstructableError or a value reconstructed from lineage).
-    in_memory_store_->Delete({object_id});
-
     {
       absl::MutexLock lock(&mu_);
       // Mark that we are attempting recovery for this object to prevent
@@ -78,6 +72,8 @@ bool ObjectRecoveryManager::RecoverObject(const ObjectID &object_id) {
   } else {
     RAY_LOG(DEBUG) << "Object " << object_id
                    << " has a pinned or spilled location, skipping recovery";
+    RAY_CHECK(
+        in_memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA), object_id));
   }
   return true;
 }
