@@ -10,11 +10,11 @@ from math import floor
 
 from packaging.version import Version
 
+import ray
 import ray.dashboard.optional_utils as dashboard_optional_utils
 import ray.dashboard.utils as dashboard_utils
 from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
 from ray._private.utils import get_or_create_event_loop
-from ray._raylet import GcsClient
 from ray.dashboard.dashboard_metrics import DashboardPrometheusMetrics
 
 # All third-party dependencies that are not included in the minimal Ray
@@ -27,6 +27,22 @@ from ray.dashboard.optional_deps import aiohttp, hdrs
 # entry/init points.
 logger = logging.getLogger(__name__)
 routes = dashboard_optional_utils.DashboardHeadRouteTable
+
+# Env var that enables follow_symlinks for serving UI static files.
+# This is an advanced setting that should only be used with special Ray installations
+# where the dashboard build files are symlinked to a different directory.
+# This is not recommended for most users and can pose a security risk.
+# Please reference the aiohttp docs here:
+# https://docs.aiohttp.org/en/stable/web_reference.html#aiohttp.web.UrlDispatcher.add_static
+ENV_VAR_FOLLOW_SYMLINKS = "RAY_DASHBOARD_BUILD_FOLLOW_SYMLINKS"
+FOLLOW_SYMLINKS_ENABLED = os.environ.get(ENV_VAR_FOLLOW_SYMLINKS) == "1"
+if FOLLOW_SYMLINKS_ENABLED:
+    logger.warning(
+        "Enabling RAY_DASHBOARD_BUILD_FOLLOW_SYMLINKS is not recommended as it "
+        "allows symlinks to directories outside the dashboard build folder. "
+        "You may accidentally expose files on your system outside of the "
+        "build directory."
+    )
 
 
 def setup_static_dir():
@@ -47,7 +63,7 @@ def setup_static_dir():
         )
 
     static_dir = os.path.join(build_dir, "static")
-    routes.static("/static", static_dir, follow_symlinks=True)
+    routes.static("/static", static_dir, follow_symlinks=FOLLOW_SYMLINKS_ENABLED)
     return build_dir
 
 
@@ -59,7 +75,6 @@ class HttpServerDashboardHead:
         http_port: int,
         http_port_retries: int,
         gcs_address: str,
-        gcs_client: GcsClient,
         session_name: str,
         metrics: DashboardPrometheusMetrics,
     ):
@@ -67,7 +82,6 @@ class HttpServerDashboardHead:
         self.http_host = http_host
         self.http_port = http_port
         self.http_port_retries = http_port_retries
-        self.gcs_client = gcs_client
         self.head_node_ip = gcs_address.split(":")[0]
         self.metrics = metrics
         self._session_name = session_name
@@ -179,6 +193,7 @@ class HttpServerDashboardHead:
                 self.metrics.metrics_request_duration.labels(
                     endpoint=handler.__name__,
                     http_status=status_tag,
+                    Version=ray.__version__,
                     SessionName=self._session_name,
                     Component="dashboard",
                 ).observe(resp_time)
@@ -186,6 +201,7 @@ class HttpServerDashboardHead:
                     method=request.method,
                     endpoint=handler.__name__,
                     http_status=status_tag,
+                    Version=ray.__version__,
                     SessionName=self._session_name,
                     Component="dashboard",
                 ).inc()

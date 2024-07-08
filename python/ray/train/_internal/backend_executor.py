@@ -1,5 +1,6 @@
 import logging
 import os
+import time
 from collections import defaultdict
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Optional, Tuple, Type, TypeVar
@@ -25,6 +26,7 @@ from ray.train.constants import (
     ENABLE_DETAILED_AUTOFILLED_METRICS_ENV,
     ENABLE_SHARE_CUDA_VISIBLE_DEVICES_ENV,
     ENABLE_SHARE_NEURON_CORES_ACCELERATOR_ENV,
+    RAY_TRAIN_ENABLE_STATE_TRACKING,
     TRAIN_ENABLE_WORKER_SPREAD_ENV,
     TRAIN_PLACEMENT_GROUP_TIMEOUT_S_ENV,
 )
@@ -118,6 +120,12 @@ class BackendExecutor:
             )
         ]
 
+        # Record the initialization time of BackendExecutor, which is
+        # after trainer.fit() and before worker_group executes the training function.
+        self._start_time_ms = int(time.time() * 1000)
+
+        self.state_tracking_enabled = env_integer(RAY_TRAIN_ENABLE_STATE_TRACKING, 0)
+
     def start(
         self,
         initialization_hook: Optional[Callable[[], None]] = None,
@@ -193,6 +201,12 @@ class BackendExecutor:
             )
             self._increment_failures()
             self._restart()
+
+        if self.state_tracking_enabled:
+            from ray.train._internal.state import TrainRunStateManager
+            from ray.train._internal.state.state_actor import get_state_actor
+
+            self.state_manager = TrainRunStateManager(state_actor=get_state_actor())
 
     def _create_placement_group(self):
         """Creates a placement group if it does not exist.
@@ -432,7 +446,6 @@ class BackendExecutor:
         data_config: DataConfig,
         storage: StorageContext,
         checkpoint: Optional[Checkpoint] = None,
-        on_session_init: Callable[[], None] = None,
     ) -> None:
         """Executes a training function on all workers in a separate thread.
 
@@ -528,8 +541,19 @@ class BackendExecutor:
 
         self.get_with_failure_handling(futures)
 
-        if on_session_init:
-            on_session_init()
+        # Register Train Run before training starts
+        if self.state_tracking_enabled:
+            core_context = ray.runtime_context.get_runtime_context()
+
+            self.state_manager.register_train_run(
+                run_id=self._trial_info.run_id,
+                run_name=self._trial_info.experiment_name,
+                job_id=core_context.get_job_id(),
+                controller_actor_id=core_context.get_actor_id(),
+                datasets=datasets,
+                worker_group=self.worker_group,
+                start_time_ms=self._start_time_ms,
+            )
 
         # Run the training function asynchronously in its own thread.
         def train_async():

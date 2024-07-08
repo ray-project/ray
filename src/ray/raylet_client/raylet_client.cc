@@ -111,8 +111,7 @@ raylet::RayletClient::RayletClient(
     NodeID *raylet_id,
     int *port,
     const std::string &serialized_job_config,
-    StartupToken startup_token,
-    const std::string &entrypoint)
+    StartupToken startup_token)
     : grpc_client_(std::move(grpc_client)), worker_id_(worker_id) {
   conn_ = std::make_unique<raylet::RayletConnection>(io_service, raylet_socket, -1, -1);
 
@@ -129,8 +128,7 @@ raylet::RayletClient::RayletClient(
                                             language,
                                             fbb.CreateString(ip_address),
                                             /*port=*/0,
-                                            fbb.CreateString(serialized_job_config),
-                                            fbb.CreateString(entrypoint));
+                                            fbb.CreateString(serialized_job_config));
   fbb.Finish(message);
   // Register the process ID with the raylet.
   // NOTE(swang): If raylet exits and we are registered as a worker, we will get killed.
@@ -193,11 +191,30 @@ Status raylet::RayletClient::Disconnect(
   return Status::OK();
 }
 
-Status raylet::RayletClient::AnnounceWorkerPort(int port) {
+Status raylet::RayletClient::AnnounceWorkerPortForWorker(int port) {
   flatbuffers::FlatBufferBuilder fbb;
-  auto message = protocol::CreateAnnounceWorkerPort(fbb, port);
+  auto message = protocol::CreateAnnounceWorkerPort(fbb, port, fbb.CreateString(""));
   fbb.Finish(message);
   return conn_->WriteMessage(MessageType::AnnounceWorkerPort, &fbb);
+}
+
+Status raylet::RayletClient::AnnounceWorkerPortForDriver(int port,
+                                                         const std::string &entrypoint) {
+  flatbuffers::FlatBufferBuilder fbb;
+  auto message =
+      protocol::CreateAnnounceWorkerPort(fbb, port, fbb.CreateString(entrypoint));
+  fbb.Finish(message);
+  std::vector<uint8_t> reply;
+  RAY_RETURN_NOT_OK(conn_->AtomicRequestReply(MessageType::AnnounceWorkerPort,
+                                              MessageType::AnnounceWorkerPortReply,
+                                              &reply,
+                                              &fbb));
+  auto reply_message =
+      flatbuffers::GetRoot<protocol::AnnounceWorkerPortReply>(reply.data());
+  if (reply_message->success()) {
+    return Status::OK();
+  }
+  return Status::Invalid(string_from_flatbuf(*reply_message->failure_reason()));
 }
 
 Status raylet::RayletClient::ActorCreationTaskDone() {
@@ -389,16 +406,51 @@ void raylet::RayletClient::GetTaskFailureCause(
       });
 }
 
-void raylet::RayletClient::ReleaseUnusedWorkers(
+void raylet::RayletClient::RegisterMutableObjectReader(
+    const ObjectID &writer_object_id,
+    int64_t num_readers,
+    const ObjectID &reader_object_id,
+    const ray::rpc::ClientCallback<ray::rpc::RegisterMutableObjectReply> &callback) {
+  rpc::RegisterMutableObjectRequest request;
+  request.set_writer_object_id(writer_object_id.Binary());
+  request.set_num_readers(num_readers);
+  request.set_reader_object_id(reader_object_id.Binary());
+  grpc_client_->RegisterMutableObject(request, callback);
+}
+
+void raylet::RayletClient::PushMutableObject(
+    const ObjectID &writer_object_id,
+    uint64_t data_size,
+    uint64_t metadata_size,
+    void *data,
+    const ray::rpc::ClientCallback<ray::rpc::PushMutableObjectReply> &callback) {
+  rpc::PushMutableObjectRequest request;
+  request.set_writer_object_id(writer_object_id.Binary());
+  request.set_data_size(data_size);
+  request.set_metadata_size(metadata_size);
+  // This assumes that the format of the object is a contiguous buffer of (data |
+  // metadata).
+  request.set_data(data, data_size + metadata_size);
+  grpc_client_->PushMutableObject(
+      request,
+      [callback](const Status &status, const rpc::PushMutableObjectReply &reply) {
+        if (!status.ok()) {
+          RAY_LOG(INFO) << "Error pushing mutable object: " << status;
+        }
+        callback(status, reply);
+      });
+}
+
+void raylet::RayletClient::ReleaseUnusedActorWorkers(
     const std::vector<WorkerID> &workers_in_use,
-    const rpc::ClientCallback<rpc::ReleaseUnusedWorkersReply> &callback) {
-  rpc::ReleaseUnusedWorkersRequest request;
+    const rpc::ClientCallback<rpc::ReleaseUnusedActorWorkersReply> &callback) {
+  rpc::ReleaseUnusedActorWorkersRequest request;
   for (auto &worker_id : workers_in_use) {
     request.add_worker_ids_in_use(worker_id.Binary());
   }
-  grpc_client_->ReleaseUnusedWorkers(
+  grpc_client_->ReleaseUnusedActorWorkers(
       request,
-      [callback](const Status &status, const rpc::ReleaseUnusedWorkersReply &reply) {
+      [callback](const Status &status, const rpc::ReleaseUnusedActorWorkersReply &reply) {
         if (!status.ok()) {
           RAY_LOG(WARNING)
               << "Error releasing workers from raylet, the raylet may have died:"

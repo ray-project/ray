@@ -5,22 +5,17 @@ import tempfile
 import unittest
 
 import ray
-from ray.air.constants import TRAINING_ITERATION
-from ray.rllib import _register_all
-
 import ray.train
 from ray import tune
+from ray.air.constants import TRAINING_ITERATION
+from ray.rllib import _register_all
 from ray.train import Checkpoint, CheckpointConfig
-from ray.tune.logger import NoopLogger
+from ray.train.tests.util import mock_storage_context
 from ray.tune.execution.placement_groups import PlacementGroupFactory
-from ray.tune.trainable import (
-    with_parameters,
-    wrap_function,
-)
+from ray.tune.logger import NoopLogger
 from ray.tune.result import DEFAULT_METRIC
 from ray.tune.schedulers import ResourceChangingScheduler
-
-from ray.train.tests.util import mock_storage_context
+from ray.tune.trainable import with_parameters, wrap_function
 
 
 def creator_generator(logdir):

@@ -1,34 +1,34 @@
 # coding: utf-8
-import signal
-import subprocess
-from collections import Counter
 import multiprocessing
 import os
-from pathlib import Path
-
-import pytest
 import shutil
+import signal
+import subprocess
 import tempfile
 import threading
 import time
-from typing import List
 import unittest
+from collections import Counter
+from pathlib import Path
+from typing import List
 from unittest import mock
+
+import pytest
 
 import ray
 import ray.train
 from ray import tune
 from ray._private.test_utils import recursive_fnmatch, run_string_as_driver
-from ray.train import CheckpointConfig, Checkpoint
 from ray.exceptions import RayTaskError
 from ray.rllib import _register_all
+from ray.train import Checkpoint, CheckpointConfig
 from ray.train._internal.session import _TrainingResult
 from ray.tune import TuneError
 from ray.tune.callback import Callback
-from ray.tune.search.basic_variant import BasicVariantGenerator
-from ray.tune.search import Searcher
-from ray.tune.experiment import Trial
 from ray.tune.execution.tune_controller import TuneController
+from ray.tune.experiment import Trial
+from ray.tune.search import Searcher
+from ray.tune.search.basic_variant import BasicVariantGenerator
 from ray.tune.utils import validate_save_restore
 from ray.tune.utils.mock_trainable import MyTrainableClass
 
@@ -549,15 +549,17 @@ class TuneExampleTest(unittest.TestCase):
         _register_all()
 
     def testPBTKeras(self):
-        from ray.tune.examples.pbt_tune_cifar10_with_keras import Cifar10Model
         from tensorflow.keras.datasets import cifar10
+
+        from ray.tune.examples.pbt_tune_cifar10_with_keras import Cifar10Model
 
         cifar10.load_data()
         validate_save_restore(Cifar10Model)
 
     def testPyTorchMNIST(self):
-        from ray.tune.examples.mnist_pytorch_trainable import TrainMNIST
         from torchvision import datasets
+
+        from ray.tune.examples.mnist_pytorch_trainable import TrainMNIST
 
         datasets.MNIST("~/data", train=True, download=True)
         validate_save_restore(TrainMNIST)

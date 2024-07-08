@@ -303,7 +303,7 @@ pip install -U "ray[rllib]" tensorflow  # or torch
 ```
 ````
 
-```{literalinclude} ../../../rllib/examples/documentation/rllib_on_ray_readme.py
+```{literalinclude} ../rllib/doc_code/rllib_on_ray_readme.py
 :end-before: __quick_start_end__
 :language: python
 :start-after: __quick_start_begin__

@@ -84,8 +84,9 @@ class ConnectorV2(abc.ABC):
         self._action_space = None
         self._input_observation_space = None
         self._input_action_space = None
-        self.input_observation_space = input_observation_space
+
         self.input_action_space = input_action_space
+        self.input_observation_space = input_observation_space
 
     @OverrideToImplementCustomLogic
     def recompute_observation_space_from_input_spaces(self) -> gym.Space:
@@ -612,9 +613,112 @@ class ConnectorV2(abc.ABC):
     def foreach_batch_item_change_in_place(
         batch: Dict[str, Any],
         column: Union[str, List[str], Tuple[str]],
-        func: Callable[[Any, int, AgentID, ModuleID], Any],
+        func: Callable[
+            [Any, Optional[int], Optional[AgentID], Optional[ModuleID]], Any
+        ],
     ) -> None:
+        """Runs the provided `func` on all items under one or more columns in the batch.
+
+        Use this method to conveniently loop through all items in a batch
+        and transform them in place.
+
+        `func` takes the following as arguments:
+        - The item itself. If column is a list of column names, this argument is a tuple
+        of items.
+        - The EpisodeID. This value might be None.
+        - The AgentID. This value might be None in the single-agent case.
+        - The ModuleID. This value might be None in the single-agent case.
+
+        The return value(s) of `func` are used to directly override the values in the
+        given `batch`.
+
+        Args:
+            batch: The batch to process in-place.
+            column: A single column name (str) or a list thereof. If a list is provided,
+                the first argument to `func` is a tuple of items. If a single
+                str is provided, the first argument to `func` is an individual
+                item.
+            func: The function to call on each item or tuple of item(s).
+
+        .. testcode::
+
+            from ray.rllib.connectors.connector_v2 import ConnectorV2
+            from ray.rllib.utils.test_utils import check
+
+            # Simple case: Batch items are in lists directly under their column names.
+            batch = {
+                "col1": [0, 1, 2, 3],
+                "col2": [0, -1, -2, -3],
+            }
+            # Increase all ints by 1.
+            ConnectorV2.foreach_batch_item_change_in_place(
+                batch=batch,
+                column="col1",
+                func=lambda item, *args: item + 1,
+            )
+            check(batch["col1"], [1, 2, 3, 4])
+
+            # Further increase all ints by 1 in col1 and flip sign in col2.
+            ConnectorV2.foreach_batch_item_change_in_place(
+                batch=batch,
+                column=["col1", "col2"],
+                func=(lambda items, *args: (items[0] + 1, -items[1])),
+            )
+            check(batch["col1"], [2, 3, 4, 5])
+            check(batch["col2"], [0, 1, 2, 3])
+
+            # Single-agent case: Batch items are in lists under (eps_id,)-keys in a dict
+            # under their column names.
+            batch = {
+                "col1": {
+                    ("eps1",): [0, 1, 2, 3],
+                    ("eps2",): [400, 500, 600],
+                },
+            }
+            # Increase all ints of eps1 by 1 and divide all ints of eps2 by 100.
+            ConnectorV2.foreach_batch_item_change_in_place(
+                batch=batch,
+                column="col1",
+                func=lambda item, eps_id, *args: (
+                    item + 1 if eps_id == "eps1" else item / 100
+                ),
+            )
+            check(batch["col1"], {
+                ("eps1",): [1, 2, 3, 4],
+                ("eps2",): [4, 5, 6],
+            })
+
+            # Multi-agent case: Batch items are in lists under
+            # (eps_id, agent_id, module_id)-keys in a dict
+            # under their column names.
+            batch = {
+                "col1": {
+                    ("eps1", "ag1", "mod1"): [1, 2, 3, 4],
+                    ("eps2", "ag1", "mod2"): [400, 500, 600],
+                    ("eps2", "ag2", "mod3"): [-1, -2, -3, -4, -5],
+                },
+            }
+            # Decrease all ints of "eps1" by 1, divide all ints of "mod2" by 100, and
+            # flip sign of all ints of "ag2".
+            ConnectorV2.foreach_batch_item_change_in_place(
+                batch=batch,
+                column="col1",
+                func=lambda item, eps_id, ag_id, mod_id: (
+                    item - 1
+                    if eps_id == "eps1"
+                    else item / 100
+                    if mod_id == "mod2"
+                    else -item
+                ),
+            )
+            check(batch["col1"], {
+                ("eps1", "ag1", "mod1"): [0, 1, 2, 3],
+                ("eps2", "ag1", "mod2"): [4, 5, 6],
+                ("eps2", "ag2", "mod3"): [1, 2, 3, 4, 5],
+            })
+        """
         data_to_process = [batch.get(c) for c in force_list(column)]
+        single_col = isinstance(column, str)
         if any(d is None for d in data_to_process):
             raise ValueError(
                 f"Invalid column name(s) ({column})! One or more not found in "
@@ -626,11 +730,13 @@ class ConnectorV2(abc.ABC):
         if isinstance(data_to_process[0], list):
             for list_pos, data_tuple in enumerate(zip(*data_to_process)):
                 results = func(
-                    data_tuple[0] if isinstance(column, str) else data_tuple,
+                    data_tuple[0] if single_col else data_tuple,
                     None,  # episode_id
                     None,  # agent_id
                     None,  # module_id
                 )
+                # Tuple'ize results if single_col.
+                results = (results,) if single_col else results
                 for col_slot, result in enumerate(force_list(results)):
                     data_to_process[col_slot][list_pos] = result
         # Single-agent/multi-agent cases.
@@ -649,12 +755,14 @@ class ConnectorV2(abc.ABC):
                 other_lists = [d[key] for d in data_to_process[1:]]
                 for list_pos, data_tuple in enumerate(zip(d0_list, *other_lists)):
                     results = func(
-                        data_tuple[0] if isinstance(column, str) else data_tuple,
+                        data_tuple[0] if single_col else data_tuple,
                         eps_id,
                         agent_id,
                         module_id,
                     )
-                    for col_slot, result in enumerate(force_list(results)):
+                    # Tuple'ize results if single_col.
+                    results = (results,) if single_col else results
+                    for col_slot, result in enumerate(results):
                         data_to_process[col_slot][key][list_pos] = result
 
     @staticmethod
@@ -713,7 +821,7 @@ class ConnectorV2(abc.ABC):
         Args:
             state: The state dict to define this ConnectorV2's new state.
         """
-        pass
+        return
 
     def reset_state(self) -> None:
         """Resets the state of this ConnectorV2 to some initial value.
@@ -721,18 +829,23 @@ class ConnectorV2(abc.ABC):
         Note that this may NOT be the exact state that this ConnectorV2 was originally
         constructed with.
         """
-        pass
+        return
 
-    @staticmethod
-    def merge_states(states: List[Dict[str, Any]]) -> Dict[str, Any]:
-        """Computes a resulting state given a list of other state dicts.
+    def merge_states(self, states: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """Computes a resulting state given self's state and a list of other states.
 
-        Algorithms should use this method for synchronizing states between connectors
-        running on workers (of the same type, e.g. EnvRunner workers).
+        Algorithms should use this method for merging states between connectors
+        running on parallel EnvRunner workers. For example, to synchronize the connector
+        states of n remote workers and a local worker, one could:
+        - Gather all remote worker connector states in a list.
+        - Call `self.merge_states()` on the local worker passing it the states list.
+        - Broadcast the resulting local worker's connector state back to all remote
+        workers. After this, all workers (including the local one) hold a
+        merged/synchronized new connecto state.
 
         Args:
-            states: The list of n other ConnectorV2 states to merge into a single
-                resulting state.
+            states: The list of n other ConnectorV2 states to merge with self's state
+                into a single resulting state.
 
         Returns:
             The resulting state dict.

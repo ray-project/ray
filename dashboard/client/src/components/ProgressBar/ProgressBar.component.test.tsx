@@ -1,5 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import React from "react";
+import { TEST_APP_WRAPPER } from "../../util/test-utils";
 import { ProgressBar } from "./ProgressBar";
 
 describe("ProgressBar", () => {
@@ -24,6 +25,7 @@ describe("ProgressBar", () => {
           },
         ]}
       />,
+      { wrapper: TEST_APP_WRAPPER },
     );
 
     await screen.findByText(/error/);
@@ -32,9 +34,5 @@ describe("ProgressBar", () => {
 
     const segments = screen.getAllByTestId("progress-bar-segment");
     expect(segments).toHaveLength(3);
-
-    expect(segments[0].style.flex).toEqual("2");
-    expect(segments[1].style.flex).toEqual("5");
-    expect(segments[2].style.flex).toEqual("3");
   });
 });

@@ -377,7 +377,7 @@ def test_timeout(job_sdk_client):
     data = client.get_job_info(job_id)
     assert "Failed to set up runtime environment" in data.message
     assert "Timeout" in data.message
-    assert "consider increasing `setup_timeout_seconds`" in data.message
+    assert "setup_timeout_seconds" in data.message
 
 
 def test_per_task_runtime_env(job_sdk_client: JobSubmissionClient):
@@ -619,10 +619,12 @@ def test_version_endpoint(job_sdk_client):
 
     r = client._do_request("GET", "/api/version")
     assert r.status_code == 200
-    assert r.json() == {
+    body = r.json()
+    assert body == {
         "version": CURRENT_VERSION,
         "ray_version": ray.__version__,
         "ray_commit": ray.__commit__,
+        "session_name": body["session_name"],
     }
 
 

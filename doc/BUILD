@@ -78,7 +78,7 @@ py_test(
 py_test_run_all_subdirectory(
     size = "medium",
     include = ["source/ray-observability/doc_code/*.py"],
-    exclude = [],
+    exclude = ["source/ray-observability/doc_code/ray-distributed-debugger.py"],
     extra_srcs = [],
     tags = ["exclusive", "team:core"],
 )
@@ -123,11 +123,12 @@ py_test_run_all_subdirectory(
     exclude = [
         "source/serve/doc_code/aws_neuron_core_inference_serve.py",
         "source/serve/doc_code/aws_neuron_core_inference_serve_stable_diffusion.py",
-        "source/serve/doc_code/hpu_inference_serve.py",
-        "source/serve/doc_code/hpu_inference_serve_deepspeed.py",
-        "source/serve/doc_code/hpu_inference_client.py",
+        "source/serve/doc_code/intel_gaudi_inference_serve.py",
+        "source/serve/doc_code/intel_gaudi_inference_serve_deepspeed.py",
+        "source/serve/doc_code/intel_gaudi_inference_client.py",
         "source/serve/doc_code/distilbert.py",
         "source/serve/doc_code/stable_diffusion.py",
+        "source/serve/doc_code/vllm_openai_example.py",
         "source/serve/doc_code/object_detection.py",
         "source/serve/doc_code/http_guide/streaming_example.py",
         "source/serve/doc_code/http_guide/websockets_example.py",
@@ -159,9 +160,9 @@ py_test_run_all_subdirectory(
     exclude = [
         "source/serve/doc_code/aws_neuron_core_inference_serve.py",
         "source/serve/doc_code/aws_neuron_core_inference_serve_stable_diffusion.py",
-        "source/serve/doc_code/hpu_inference_serve.py",
-        "source/serve/doc_code/hpu_inference_serve_deepspeed.py",
-        "source/serve/doc_code/hpu_inference_client.py",
+        "source/serve/doc_code/intel_gaudi_inference_serve.py",
+        "source/serve/doc_code/intel_gaudi_inference_serve_deepspeed.py",
+        "source/serve/doc_code/intel_gaudi_inference_client.py",
     ],
     extra_srcs = [],
     tags = ["exclusive", "team:serve", "gpu"],

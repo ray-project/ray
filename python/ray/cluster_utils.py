@@ -289,6 +289,7 @@ class Cluster:
                     "a node that the Ray client is connected."
                 )
 
+        node.destroy_external_storage()
         if self.head_node == node:
             # We have to wait to prevent the raylet becomes a zombie which will prevent
             # worker from exiting
@@ -346,8 +347,7 @@ class Cluster:
         """
         start_time = time.time()
         while time.time() - start_time < timeout:
-            clients = self.global_state.node_table()
-            live_clients = [client for client in clients if client["Alive"]]
+            live_clients = self.global_state._live_node_ids()
 
             expected = len(self.list_all_nodes())
             if len(live_clients) == expected:

@@ -269,6 +269,10 @@ class ExecutionOptions:
             object_store_memory=value._object_store_memory,
         )
 
+    def is_resource_limits_default(self):
+        """Returns True if resource_limits is the default value."""
+        return self._resource_limits == ExecutionResources.for_limits()
+
     def validate(self) -> None:
         """Validate the options."""
         for attr in ["cpu", "gpu", "object_store_memory"]:

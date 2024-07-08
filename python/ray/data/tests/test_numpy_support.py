@@ -81,7 +81,7 @@ def test_ragged_array_like(ray_start_regular_shared):
 def test_scalar_nested_arrays(ray_start_regular_shared):
     data = [[[1]], [[2]]]
     output = do_map_batches(data)
-    assert_structure_equals(output, np.array([[[1]], [[2]]]))
+    assert_structure_equals(output, create_ragged_ndarray(data))
 
 
 def test_scalar_lists_not_converted(ray_start_regular_shared):
@@ -153,6 +153,19 @@ def test_scalar_ragged_array_like(ray_start_regular_shared):
     assert_structure_equals(
         output, create_ragged_ndarray([np.zeros((3, 5, 10)), np.zeros((3, 8, 8))])
     )
+
+
+def test_nested_ragged_arrays(ray_start_regular_shared):
+    data = [
+        {"a": [[1], [2, 3]]},
+        {"a": [[4, 5], [6]]},
+    ]
+
+    def f(row):
+        return data[row["id"]]
+
+    output = ray.data.range(2).map(f).take_all()
+    assert output == data
 
 
 # https://github.com/ray-project/ray/issues/35340

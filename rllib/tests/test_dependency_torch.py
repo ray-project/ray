@@ -23,7 +23,7 @@ if __name__ == "__main__":
         PPOConfig()
         .environment("CartPole-v1")
         .framework("tf")
-        .rollouts(num_rollout_workers=0)
+        .env_runners(num_env_runners=0)
         # Disable the logger due to a sort-import attempt of torch
         # inside the tensorboardX.SummaryWriter class.
         .debugging(logger_config={"type": "ray.tune.logger.NoopLogger"})

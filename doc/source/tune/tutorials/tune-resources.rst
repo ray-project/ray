@@ -19,9 +19,9 @@ of CPUs (cores) on your machine.
     results = tuner.fit()
 
 You can override this per trial resources with :func:`tune.with_resources <ray.tune.with_resources>`. Here you can
-specify your resource requests using either a dictionary, a :class:`~ray.train.ScalingConfig`, or a
+specify your resource requests using either a dictionary or a
 :class:`PlacementGroupFactory <ray.tune.execution.placement_groups.PlacementGroupFactory>`
-object. In any case, Ray Tune will try to start a placement group for each trial.
+object. In either case, Ray Tune will try to start a placement group for each trial.
 
 .. code-block:: python
 
@@ -109,32 +109,11 @@ This will automatically set ``CUDA_VISIBLE_DEVICES`` for each trial.
 
 You can find an example of this in the :doc:`Keras MNIST example </tune/examples/tune_mnist_keras>`.
 
-.. warning:: If 'gpu' is not set, ``CUDA_VISIBLE_DEVICES`` environment variable will be set as empty, disallowing GPU access.
+.. warning:: If ``gpu`` is not set, ``CUDA_VISIBLE_DEVICES`` environment variable will be set as empty, disallowing GPU access.
 
 **Troubleshooting**: Occasionally, you may run into GPU memory issues when running a new trial. This may be
 due to the previous trial not cleaning up its GPU state fast enough. To avoid this,
 you can use :func:`tune.utils.wait_for_gpu <ray.tune.utils.wait_for_gpu>`.
-
-How to run distributed tuning on a cluster?
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-To attach to an existing Ray cluster, simply run ``ray.init`` before ``Tuner.fit()``.
-See :ref:`start-ray-cli` for more information about ``ray.init``:
-
-.. code-block:: python
-
-    # Connect to an existing distributed Ray cluster
-    ray.init(address=<ray_address>)
-    # We choose to use a `PlacementGroupFactory` here to specify trial resources
-    resource_group = tune.PlacementGroupFactory([{"CPU": 2, "GPU": 1}])
-    trainable_with_resources = tune.with_resources(trainable, resource_group)
-    tuner = tune.Tuner(
-        trainable_with_resources,
-        tune_config=tune.TuneConfig(num_samples=100)
-    )
-
-Read more in the Tune :ref:`distributed experiments guide <tune-distributed-ref>`.
-
 
 .. _tune-dist-training:
 
@@ -143,10 +122,12 @@ How to run distributed training with Tune?
 
 To tune distributed training jobs, you can use Ray Tune with Ray Train. Ray Tune will run multiple trials in parallel, with each trial running distributed training with Ray Train.
 
+For more details, see :ref:`Ray Train Hyperparameter Optimization <train-tune>`.
+
 How to limit concurrency in Tune?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-To specifies the max number of trials to run concurrently, set `max_concurrent_trials` in :class:`TuneConfig <ray.tune.tune_config.TuneConfig>`
+To specifies the max number of trials to run concurrently, set `max_concurrent_trials` in :class:`TuneConfig <ray.tune.tune_config.TuneConfig>`.
 
 Note that actual parallelism can be less than `max_concurrent_trials` and will be determined by how many trials
 can fit in the cluster at once (i.e., if you have a trial that requires 16 GPUs, your cluster has 32 GPUs,

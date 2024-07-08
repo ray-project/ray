@@ -207,7 +207,6 @@ def test_actor_pubsub(disable_aiohttp_cache, ray_start_with_dashboard):
                 "serializedRuntimeEnv",
                 "rayNamespace",
                 "functionDescriptor",
-                "actorCreationDummyObjectId",
             }
         else:
             raise Exception("Unknown state: {}".format(actor_data_dict["state"]))

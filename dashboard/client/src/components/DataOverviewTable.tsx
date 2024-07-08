@@ -1,7 +1,5 @@
 import {
   Box,
-  createStyles,
-  makeStyles,
   Table,
   TableBody,
   TableCell,
@@ -11,13 +9,13 @@ import {
   TextField,
   TextFieldProps,
   Typography,
-} from "@material-ui/core";
-import Autocomplete from "@material-ui/lab/Autocomplete";
-import Pagination from "@material-ui/lab/Pagination";
+} from "@mui/material";
+import Autocomplete from "@mui/material/Autocomplete";
+import Pagination from "@mui/material/Pagination";
 import React, { useState } from "react";
 import { RiArrowDownSLine, RiArrowRightSLine } from "react-icons/ri";
 import { formatDateFromTimeMs } from "../common/formatUtils";
-import rowStyles from "../common/RowStyles";
+import { sliceToPage } from "../common/util";
 import { TaskProgressBar } from "../pages/job/TaskProgressBar";
 import { DatasetMetrics, OperatorMetrics } from "../type/data";
 import { memoryConverter } from "../util/converter";
@@ -30,7 +28,7 @@ const columns = [
   { label: "" }, // Empty column for dropdown icons
   { label: "Dataset / Operator Name", align: "start" },
   {
-    label: "Progress",
+    label: "Blocks Outputted",
     helpInfo: <Typography>Blocks outputted by output operator.</Typography>,
   },
   { label: "State", align: "center" },
@@ -79,9 +77,11 @@ const DataOverviewTable = ({
     Record<string, boolean>
   >({});
 
-  const list = datasetList.slice((pageNo - 1) * pageSize, pageNo * pageSize);
-
-  const classes = rowStyles();
+  const {
+    items: list,
+    constrainedPage,
+    maxPage,
+  } = sliceToPage(datasetList, pageNo, pageSize);
 
   return (
     <div>
@@ -100,9 +100,9 @@ const DataOverviewTable = ({
       <div style={{ display: "flex", alignItems: "center" }}>
         <div>
           <Pagination
-            page={pageNo}
+            page={constrainedPage}
             onChange={(e, num) => setPageNo(num)}
-            count={Math.ceil(datasetList.length / pageSize)}
+            count={maxPage}
           />
         </div>
         <div>
@@ -122,9 +122,7 @@ const DataOverviewTable = ({
                   >
                     {label}
                     {helpInfo && (
-                      <HelpInfo className={classes.helpInfo}>
-                        {helpInfo}
-                      </HelpInfo>
+                      <HelpInfo sx={{ marginLeft: 1 }}>{helpInfo}</HelpInfo>
                     )}
                   </Box>
                 </TableCell>
@@ -153,15 +151,6 @@ const DataOverviewTable = ({
   );
 };
 
-const useStyles = makeStyles((theme) =>
-  createStyles({
-    icon: {
-      width: 16,
-      height: 16,
-    },
-  }),
-);
-
 const DataRow = ({
   datasetMetrics,
   operatorMetrics,
@@ -173,7 +162,6 @@ const DataRow = ({
   isExpanded?: boolean;
   setIsExpanded?: CallableFunction;
 }) => {
-  const classes = useStyles();
   const isDatasetRow = datasetMetrics !== undefined;
   const isOperatorRow = operatorMetrics !== undefined;
   const data = datasetMetrics || operatorMetrics;
@@ -188,15 +176,17 @@ const DataRow = ({
         {isDatasetRow &&
           setIsExpanded !== undefined &&
           (isExpanded ? (
-            <RiArrowDownSLine
+            <Box
+              component={RiArrowDownSLine}
               title={"Collapse Dataset " + datasetMetrics.dataset}
-              className={classes.icon}
+              sx={{ width: 16, height: 16 }}
               onClick={() => setIsExpanded(false)}
             />
           ) : (
-            <RiArrowRightSLine
+            <Box
+              component={RiArrowRightSLine}
               title={"Expand Dataset " + datasetMetrics.dataset}
-              className={classes.icon}
+              sx={{ width: 16, height: 16 }}
               onClick={() => setIsExpanded(true)}
             />
           ))}

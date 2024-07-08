@@ -14,6 +14,8 @@ tf1, tf, tfv = try_import_tf()
 tf1.enable_eager_execution()
 
 CONFIGS = [
+    {"mini_batch_size": 256, "num_sgd_iter": 30, "agent_steps": (1652, 1463)},
+    {"mini_batch_size": 128, "num_sgd_iter": 10, "agent_steps": (1000, 2)},
     {"mini_batch_size": 128, "num_sgd_iter": 3, "agent_steps": (56, 56)},
     {"mini_batch_size": 128, "num_sgd_iter": 7, "agent_steps": (56, 56)},
     {"mini_batch_size": 128, "num_sgd_iter": 10, "agent_steps": (56, 56)},

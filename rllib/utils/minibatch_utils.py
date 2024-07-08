@@ -49,6 +49,7 @@ class MiniBatchCyclicIterator(MiniBatchIteratorBase):
         minibatch_size: int,
         num_iters: int = 1,
         uses_new_env_runners: bool = False,
+        min_total_mini_batches: int = 0,
     ) -> None:
         super().__init__(batch, minibatch_size, num_iters)
         self._batch = batch
@@ -62,8 +63,17 @@ class MiniBatchCyclicIterator(MiniBatchIteratorBase):
 
         self._uses_new_env_runners = uses_new_env_runners
 
+        self._mini_batch_count = 0
+        self._min_total_mini_batches = min_total_mini_batches
+
     def __iter__(self):
-        while min(self._num_covered_epochs.values()) < self._num_iters:
+        while (
+            # Make sure each item in the total batch gets at least iterated over
+            # `self._num_iters` times.
+            min(self._num_covered_epochs.values()) < self._num_iters
+            # Make sure we reach at least the given minimum number of mini-batches.
+            or self._mini_batch_count < self._min_total_mini_batches
+        ):
 
             minibatch = {}
             for module_id, module_batch in self._batch.policy_batches.items():
@@ -143,6 +153,8 @@ class MiniBatchCyclicIterator(MiniBatchIteratorBase):
             minibatch = MultiAgentBatch(minibatch, len(self._batch))
             yield minibatch
 
+            self._mini_batch_count += 1
+
 
 class MiniBatchDummyIterator(MiniBatchIteratorBase):
     def __init__(self, batch: MultiAgentBatch, minibatch_size: int, num_iters: int = 1):
@@ -171,6 +183,10 @@ class ShardBatchIterator:
 
     def __iter__(self):
         for i in range(self._num_shards):
+            # TODO (sven): The following way of sharding a multi-agent batch destroys
+            #  the relationship of the different agents' timesteps to each other.
+            #  Thus, in case the algorithm requires agent-synchronized data (aka.
+            #  "lockstep"), the `ShardBatchIterator` cannot be used.
             batch_to_send = {}
             for pid, sub_batch in self._batch.policy_batches.items():
                 batch_size = math.ceil(len(sub_batch) / self._num_shards)
@@ -216,13 +232,13 @@ class ShardEpisodesIterator:
             episode = self._episodes[episode_index]
             min_index = lengths.index(min(lengths))
 
+            # Add the whole episode if it fits within the target length
             if lengths[min_index] + len(episode) <= self._target_lengths[min_index]:
-                # Add the whole episode if it fits within the target length
                 sublists[min_index].append(episode)
                 lengths[min_index] += len(episode)
                 episode_index += 1
+            # Otherwise, slice the episode
             else:
-                # Otherwise, slice the episode
                 remaining_length = self._target_lengths[min_index] - lengths[min_index]
                 if remaining_length > 0:
                     slice_part, remaining_part = (
@@ -239,3 +255,35 @@ class ShardEpisodesIterator:
 
         for sublist in sublists:
             yield sublist
+
+
+@DeveloperAPI
+class ShardObjectRefIterator:
+    """Iterator for sharding a list of ray ObjectRefs into num_shards sub-lists.
+
+    Args:
+        object_refs: The input list of ray ObjectRefs.
+        num_shards: The number of shards to split the references into.
+
+    Yields:
+        A sub-list of ray ObjectRefs with lengths as equal as possible.
+    """
+
+    def __init__(self, object_refs, num_shards: int):
+        self._object_refs = object_refs
+        self._num_shards = num_shards
+
+    def __iter__(self):
+        # Calculate the size of each sublist
+        n = len(self._object_refs)
+        sublist_size = n // self._num_shards
+        remaining_elements = n % self._num_shards
+
+        start = 0
+        for i in range(self._num_shards):
+            # Determine the end index for the current sublist
+            end = start + sublist_size + (1 if i < remaining_elements else 0)
+            # Append the sublist to the result
+            yield self._object_refs[start:end]
+            # Update the start index for the next sublist
+            start = end

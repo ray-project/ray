@@ -1,20 +1,34 @@
 import os
 from typing import List
 from datetime import datetime
+from enum import Enum
 
 from ci.ray_ci.linux_container import LinuxContainer
 from ci.ray_ci.builder_container import DEFAULT_ARCHITECTURE, DEFAULT_PYTHON_VERSION
 
 
-PLATFORM = [
+PLATFORMS_RAY = [
     "cpu",
-    "cu11.5.2",
-    "cu11.6.2",
-    "cu11.7.1",
-    "cu11.8.0",
-    "cu12.1.1",
+    "cu11.7.1-cudnn8",
+    "cu11.8.0-cudnn8",
+    "cu12.1.1-cudnn8",
+    "cu12.3.2-cudnn9",
 ]
-GPU_PLATFORM = "cu11.8.0"
+PLATFORMS_RAY_ML = [
+    "cpu",
+    "cu11.8.0-cudnn8",
+]
+GPU_PLATFORM = "cu11.8.0-cudnn8"
+
+PYTHON_VERSIONS_RAY = ["3.9", "3.10", "3.11"]
+PYTHON_VERSIONS_RAY_ML = ["3.9", "3.10"]
+ARCHITECTURES_RAY = ["x86_64", "aarch64"]
+ARCHITECTURES_RAY_ML = ["x86_64"]
+
+
+class RayType(str, Enum):
+    RAY = "ray"
+    RAY_ML = "ray-ml"
 
 
 class DockerContainer(LinuxContainer):

@@ -22,7 +22,7 @@ class TestAPPO(unittest.TestCase):
 
     def test_appo_compilation(self):
         """Test whether APPO can be built with both frameworks."""
-        config = appo.APPOConfig().rollouts(num_rollout_workers=1)
+        config = appo.APPOConfig().env_runners(num_env_runners=1)
         num_iterations = 2
 
         for _ in framework_iterator(config):
@@ -38,7 +38,7 @@ class TestAPPO(unittest.TestCase):
     def test_appo_compilation_use_kl_loss(self):
         """Test whether APPO can be built with kl_loss enabled."""
         config = (
-            appo.APPOConfig().rollouts(num_rollout_workers=1).training(use_kl_loss=True)
+            appo.APPOConfig().env_runners(num_env_runners=1).training(use_kl_loss=True)
         )
         num_iterations = 2
 
@@ -56,7 +56,7 @@ class TestAPPO(unittest.TestCase):
         # config["_tf_policy_handles_more_than_one_loss"] = True
         config = (
             appo.APPOConfig()
-            .rollouts(num_rollout_workers=1)
+            .env_runners(num_env_runners=1)
             .training(
                 _separate_vf_optimizer=True,
                 _lr_vf=0.002,
@@ -84,8 +84,8 @@ class TestAPPO(unittest.TestCase):
         # Initial lr, doesn't really matter because of the schedule below.
         config = (
             appo.APPOConfig()
-            .rollouts(
-                num_rollout_workers=1,
+            .env_runners(
+                num_env_runners=1,
                 batch_mode="truncate_episodes",
                 rollout_fragment_length=10,
             )
@@ -139,8 +139,8 @@ class TestAPPO(unittest.TestCase):
     def test_appo_learning_rate_schedule(self):
         config = (
             appo.APPOConfig()
-            .rollouts(
-                num_rollout_workers=1,
+            .env_runners(
+                num_env_runners=1,
                 batch_mode="truncate_episodes",
                 rollout_fragment_length=10,
             )
@@ -186,8 +186,8 @@ class TestAPPO(unittest.TestCase):
     def test_appo_model_variables(self):
         config = (
             appo.APPOConfig()
-            .rollouts(
-                num_rollout_workers=1,
+            .env_runners(
+                num_env_runners=1,
                 batch_mode="truncate_episodes",
                 rollout_fragment_length=10,
             )

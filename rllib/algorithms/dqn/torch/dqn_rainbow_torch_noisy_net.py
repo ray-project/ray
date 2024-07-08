@@ -78,7 +78,7 @@ class TorchNoisyMLPEncoder(TorchModel, Encoder):
 
     def _reset_noise(self):
         # Reset the noise in the complete network.
-        self.net.reset_noise()
+        self.net._reset_noise()
 
 
 class TorchNoisyMLPHead(TorchModel):
@@ -127,7 +127,7 @@ class TorchNoisyMLPHead(TorchModel):
 
     def _reset_noise(self) -> None:
         # Reset the noise in the complete network.
-        self.net.reset_noise()
+        self.net._reset_noise()
 
 
 class TorchNoisyMLP(nn.Module):
@@ -305,4 +305,5 @@ class TorchNoisyMLP(nn.Module):
     def _reset_noise(self):
         # Reset the noise for all modules (layers).
         for module in self.modules():
-            module.reset_noise()
+            if hasattr(module, "reset_noise"):
+                module.reset_noise()

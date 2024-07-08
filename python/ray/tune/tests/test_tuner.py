@@ -1,23 +1,22 @@
 import os
+import unittest
 from pathlib import Path
+from typing import Optional
 from unittest.mock import patch
 
 import pytest
-import unittest
-from typing import Optional
-
 from sklearn.datasets import load_breast_cancer
 from sklearn.utils import shuffle
 
 import ray
 from ray import train, tune
+from ray.data import Dataset, Datasource, ReadTask, from_pandas, read_datasource
+from ray.data.block import BlockMetadata
 from ray.train import CheckpointConfig, RunConfig, ScalingConfig
+from ray.train.data_parallel_trainer import DataParallelTrainer
 from ray.train.examples.pytorch.torch_linear_example import (
     train_func as linear_train_func,
 )
-from ray.data import Dataset, Datasource, ReadTask, from_pandas, read_datasource
-from ray.data.block import BlockMetadata
-from ray.train.data_parallel_trainer import DataParallelTrainer
 from ray.train.torch import TorchTrainer
 from ray.train.trainer import BaseTrainer
 from ray.train.xgboost import XGBoostTrainer

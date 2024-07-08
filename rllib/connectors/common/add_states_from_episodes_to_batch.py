@@ -7,10 +7,10 @@ import numpy as np
 import tree  # pip install dm_tree
 
 from ray.rllib.connectors.connector_v2 import ConnectorV2
+from ray.rllib.core import DEFAULT_MODULE_ID
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.rl_module.marl_module import MultiAgentRLModule
 from ray.rllib.core.rl_module.rl_module import RLModule
-from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.spaces.space_utils import batch, BatchedNdArray
@@ -199,14 +199,23 @@ class AddStatesFromEpisodesToBatch(ConnectorV2):
         # Also, let module-to-env pipeline know that we had added a single timestep
         # time rank to the data (to remove it again).
         if not self._as_learner_connector:
-            data = tree.map_structure(
-                # Expand on axis 0 (the to-be-time-dim) if item has not been batched'
-                # yet, otherwise axis=1 (the time-dim).
-                lambda s: np.expand_dims(
-                    s, axis=(1 if isinstance(s, BatchedNdArray) else 0)
-                ),
-                data,
-            )
+            for column, column_data in data.copy().items():
+                self.foreach_batch_item_change_in_place(
+                    batch=data,
+                    column=column,
+                    func=lambda item, eps_id, aid, mid: (
+                        item
+                        if mid is not None and not rl_module[mid].is_stateful()
+                        # Expand on axis 0 (the to-be-time-dim) if item has not been
+                        # batched yet, otherwise axis=1 (the time-dim).
+                        else tree.map_structure(
+                            lambda s: np.expand_dims(
+                                s, axis=(1 if isinstance(s, BatchedNdArray) else 0)
+                            ),
+                            item,
+                        )
+                    ),
+                )
             shared_data["_added_single_ts_time_rank"] = True
         else:
             # Before adding STATE_IN to the `data`, zero-pad existing data and batch
@@ -235,10 +244,13 @@ class AddStatesFromEpisodesToBatch(ConnectorV2):
                     sa_module = rl_module[sa_episode.module_id]
                 else:
                     sa_module = (
-                        rl_module[DEFAULT_POLICY_ID]
+                        rl_module[DEFAULT_MODULE_ID]
                         if isinstance(rl_module, MultiAgentRLModule)
                         else rl_module
                     )
+                # This single-agent RLModule is NOT stateful -> Skip.
+                if not sa_module.is_stateful():
+                    continue
 
                 if self.max_seq_len is None:
                     raise ValueError(
@@ -298,7 +310,7 @@ class AddStatesFromEpisodesToBatch(ConnectorV2):
                 )
                 self.add_n_batch_items(
                     batch=data,
-                    column="loss_mask",
+                    column=Columns.LOSS_MASK,
                     items_to_add=mask,
                     num_items=len(mask),
                     single_agent_episode=sa_episode,
@@ -311,6 +323,9 @@ class AddStatesFromEpisodesToBatch(ConnectorV2):
                 sa_module = rl_module
                 if sa_episode.module_id is not None:
                     sa_module = rl_module[sa_episode.module_id]
+                # This single-agent RLModule is NOT stateful -> Skip.
+                if not sa_module.is_stateful():
+                    continue
 
                 # Episode just started -> Get initial state from our RLModule.
                 if sa_episode.t_started == 0 and len(sa_episode) == 0:

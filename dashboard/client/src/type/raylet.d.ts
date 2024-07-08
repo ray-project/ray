@@ -21,6 +21,7 @@ export type Raylet = {
   nodeManagerPort: number;
   brpcPort: pid;
   state: string;
+  stateMessage: string;
   startTime: number;
   terminateTime: number;
   objectStoreAvailableMemory: number;

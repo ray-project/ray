@@ -7,9 +7,8 @@ import pytest
 import ray
 from ray import train, tune
 from ray.train._internal.storage import StorageContext
-from ray.tune.trainable import wrap_function
-
 from ray.train.tests.util import create_dict_checkpoint
+from ray.tune.trainable import wrap_function
 
 
 @pytest.fixture

@@ -1,12 +1,4 @@
-import {
-  Box,
-  createStyles,
-  IconButton,
-  makeStyles,
-  Tab,
-  Tabs,
-  Typography,
-} from "@material-ui/core";
+import { Box, IconButton, Tab, Tabs, Typography } from "@mui/material";
 import React, { useEffect, useState } from "react";
 import { RiExternalLinkLine, RiSortAsc, RiSortDesc } from "react-icons/ri";
 import { Link } from "react-router-dom";
@@ -15,14 +7,6 @@ import { useStateApiLogs } from "../pages/log/hooks";
 import { LogViewer } from "../pages/log/LogViewer";
 import { HideableBlock } from "./CollapsibleSection";
 import { ClassNameProps } from "./props";
-
-const useStyles = makeStyles((theme) =>
-  createStyles({
-    tabs: {
-      borderBottom: `1px solid ${theme.palette.divider}`,
-    },
-  }),
-);
 
 export type MultiTabLogViewerTabDetails = {
   title: string;
@@ -48,8 +32,6 @@ export const MultiTabLogViewer = ({
   contextKey,
   className,
 }: MultiTabLogViewerProps) => {
-  const classes = useStyles();
-
   // DO NOT use `cachedTab` or `setCachedTab` when `contextKey` is undefined!
   const [cachedTab, setCachedTab] = useLocalStorage(
     `MultiTabLogViewer-tabMemory-${contextKey}`,
@@ -90,7 +72,9 @@ export const MultiTabLogViewer = ({
         >
           {(tabs.length > 1 || otherLogsLink) && (
             <Tabs
-              className={classes.tabs}
+              sx={{
+                borderBottom: (theme) => `1px solid ${theme.palette.divider}`,
+              }}
               value={value}
               onChange={(_, newValue) => {
                 if (contextKey) {
@@ -147,6 +131,7 @@ export const MultiTabLogViewer = ({
           onClick={() => {
             setExpanded(!expanded);
           }}
+          size="large"
         >
           {expanded ? <RiSortAsc /> : <RiSortDesc />}
         </IconButton>
@@ -264,9 +249,7 @@ const ApiLogViewer = ({
       path={path}
       downloadUrl={downloadUrl !== null ? downloadUrl : undefined}
       height={height}
-      onRefreshClick={() => {
-        refresh();
-      }}
+      onRefreshClick={refresh}
     />
   ) : (
     <Typography color="error">Failed to load</Typography>

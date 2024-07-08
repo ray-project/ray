@@ -5,9 +5,7 @@ import aiohttp.web
 from typing import Optional, Tuple, List
 
 
-import ray
-import ray._private.services
-import ray._private.utils
+from ray._private.utils import get_or_create_event_loop, init_grpc_channel
 import ray.dashboard.optional_utils as dashboard_optional_utils
 from ray.dashboard.consts import GCS_RPC_TIMEOUT_SECONDS
 import ray.dashboard.utils as dashboard_utils
@@ -79,7 +77,7 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
             node_id, ports = change.new
             ip = DataSource.node_id_to_ip[node_id]
             options = GLOBAL_GRPC_OPTIONS
-            channel = ray._private.utils.init_grpc_channel(
+            channel = init_grpc_channel(
                 f"{ip}:{ports[1]}", options=options, asynchronous=True
             )
             stub = reporter_pb2_grpc.ReporterServiceStub(channel)
@@ -630,6 +628,8 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
         )
         self.cluster_metadata = json.loads(cluster_metadata.decode("utf-8"))
 
+        loop = get_or_create_event_loop()
+
         while True:
             try:
                 # The key is b'RAY_REPORTER:{node id hex}',
@@ -637,9 +637,13 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
                 key, data = await subscriber.poll()
                 if key is None:
                     continue
-                data = json.loads(data)
+
+                # NOTE: Every iteration is executed inside the thread-pool executor
+                #       (TPE) to avoid blocking the Dashboard's event-loop
+                parsed_data = await loop.run_in_executor(None, json.loads, data)
+
                 node_id = key.split(":")[-1]
-                DataSource.node_physical_stats[node_id] = data
+                DataSource.node_physical_stats[node_id] = parsed_data
             except Exception:
                 logger.exception(
                     "Error receiving node physical stats from reporter agent."

@@ -276,9 +276,7 @@ def _generate_config_from_file_or_import_path(
         "a function that returns one. If a function is used, arguments can be "
         "passed to it in 'key=val' format after the import path, for example:\n\n"
         "serve deploy main:app model_path='/path/to/model.pkl' num_replicas=5\n\n"
-        "This command supports different 'providers'. By default, it uses a 'local'"
-        "provider that makes a REST API request to a running Ray cluster. "
-        "Not all arguments are supported by all providers."
+        "This command makes a REST API request to a running Ray cluster."
     ),
 )
 @click.argument("config_or_import_path")
@@ -303,9 +301,8 @@ def _generate_config_from_file_or_import_path(
     default=None,
     required=False,
     help=(
-        "Directory containing files that your application(s) will run in. When using "
-        "the 'local' provider, this must be a remote URI to a .zip file (e.g., S3 "
-        "bucket). Other providers may support local paths. This overrides the "
+        "Directory containing files that your application(s) will run in. This must "
+        "be a remote URI to a .zip file (e.g., S3 bucket). This overrides the "
         "working_dir in --runtime-env if both are specified."
     ),
 )
@@ -322,7 +319,7 @@ def _generate_config_from_file_or_import_path(
     default=os.environ.get("RAY_DASHBOARD_ADDRESS", "http://localhost:8265"),
     required=False,
     type=str,
-    help=RAY_DASHBOARD_ADDRESS_HELP_STR + " Only used by the 'local' provider.",
+    help=RAY_DASHBOARD_ADDRESS_HELP_STR,
 )
 def deploy(
     config_or_import_path: str,
@@ -566,17 +563,23 @@ def run(
                 yield_on_timeout=True,
             ):
                 if changes:
-                    cli_logger.info(
-                        f"Detected file change in path {watch_dir}. Redeploying app."
-                    )
-                    # The module needs to be reloaded with `importlib` in order to pick
-                    # up any changes.
-                    app = _private_api.call_app_builder_with_args_if_necessary(
-                        import_attr(import_path, reload_module=True), args_dict
-                    )
-                    serve.run(
-                        target=app, blocking=True, name=name, route_prefix=route_prefix
-                    )
+                    try:
+                        # The module needs to be reloaded with `importlib` in order to
+                        # pick up any changes.
+                        app = _private_api.call_app_builder_with_args_if_necessary(
+                            import_attr(import_path, reload_module=True), args_dict
+                        )
+                        serve.run(
+                            target=app,
+                            blocking=False,
+                            name=name,
+                            route_prefix=route_prefix,
+                        )
+                    except Exception:
+                        traceback.print_exc()
+                        cli_logger.error(
+                            "Deploying the latest version of the application failed."
+                        )
 
     except KeyboardInterrupt:
         cli_logger.info("Got KeyboardInterrupt, shutting down...")

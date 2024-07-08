@@ -12,6 +12,7 @@ import pytest
 import ray
 from ray._private.test_utils import async_wait_for_condition
 from ray._private.utils import get_or_create_event_loop
+from ray.exceptions import ActorDiedError, ActorUnavailableError
 from ray.serve._private.common import DeploymentID, ReplicaID, RequestMetadata
 from ray.serve._private.constants import RAY_SERVE_QUEUE_LENGTH_CACHE_TIMEOUT_S
 from ray.serve._private.replica_scheduler import (
@@ -56,6 +57,7 @@ class FakeReplicaWrapper(ReplicaWrapper):
 
         self.get_queue_len_was_cancelled = False
         self.queue_len_deadline_history = list()
+        self.num_get_queue_len_calls = 0
 
     @property
     def replica_id(self) -> ReplicaID:
@@ -87,6 +89,7 @@ class FakeReplicaWrapper(ReplicaWrapper):
         self._has_queue_len_response.set()
 
     async def get_queue_len(self, *, deadline_s: float) -> int:
+        self.num_get_queue_len_calls += 1
         self.queue_len_deadline_history.append(deadline_s)
         try:
             while not self._has_queue_len_response.is_set():
@@ -163,6 +166,7 @@ def fake_pending_request(
             kwargs=dict(),
             metadata=RequestMetadata(
                 request_id=str(uuid.uuid4()),
+                internal_request_id=str(uuid.uuid4()),
                 endpoint="endpoint",
                 multiplexed_model_id=model_id,
             ),
@@ -174,6 +178,7 @@ def fake_pending_request(
             kwargs=dict(),
             metadata=RequestMetadata(
                 request_id=str(uuid.uuid4()),
+                internal_request_id=str(uuid.uuid4()),
                 endpoint="endpoint",
                 multiplexed_model_id=model_id,
             ),
@@ -1625,6 +1630,80 @@ async def test_backoff_index_handling(pow_2_scheduler, backoff_index: int):
 
     r = await s.select_from_candidate_replicas([r1, r2], backoff_index)
     assert r in [r1, r2]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("pow_2_scheduler", [{}], indirect=True)
+async def test_replicas_actor_died_error(
+    pow_2_scheduler: PowerOfTwoChoicesReplicaScheduler,
+):
+    """
+    If replicas return an ActorDiedError, they should be removed from the
+    local list.
+    """
+    s = pow_2_scheduler
+
+    r1 = FakeReplicaWrapper("r1")
+    r1.set_queue_len_response(
+        queue_len=0,
+        exception=ActorDiedError(),
+    )
+
+    r2 = FakeReplicaWrapper("r2")
+    r2.set_queue_len_response(0)
+
+    s.update_replicas([r1, r2])
+
+    # After detecting that the first replica died, the scheduler should
+    # stop scheduling it.
+    await s.choose_replica_for_request(fake_pending_request())
+    assert set(pow_2_scheduler.curr_replicas.values()) == {r2}
+
+    # Check that get_queue_len is never called on r1 and always called on r2.
+    r1.num_get_queue_len_calls = 0
+    for _ in range(10):
+        assert (await s.choose_replica_for_request(fake_pending_request())) == r2
+    assert r1.num_get_queue_len_calls == 0
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("pow_2_scheduler", [{}], indirect=True)
+async def test_replicas_actor_unavailable_error(
+    pow_2_scheduler: PowerOfTwoChoicesReplicaScheduler,
+):
+    """
+    If replicas return an ActorUnavailableError, they should remain in the
+    local list.
+    """
+    s = pow_2_scheduler
+
+    r1 = FakeReplicaWrapper("r1")
+    r1.set_queue_len_response(1)
+    r1.set_queue_len_response(
+        queue_len=0,
+        exception=ActorUnavailableError(
+            error_message="Actor is temporarily unavailable",
+            actor_id=b"a" * 16,
+        ),
+    )
+
+    r2 = FakeReplicaWrapper("r2")
+    r2.set_queue_len_response(5)
+
+    s.update_replicas([r1, r2])
+
+    for _ in range(10):
+        assert (await s.choose_replica_for_request(fake_pending_request())) == r2
+
+    # The scheduler should keep r1 since it may recover.
+    assert set(pow_2_scheduler.curr_replicas.values()) == {r1, r2}
+
+    # Restore r1.
+    r1.set_queue_len_response(queue_len=0, exception=None)
+
+    # The scheduler should keep picking r1 since it has a smaller queue length.
+    for _ in range(10):
+        assert (await s.choose_replica_for_request(fake_pending_request())) == r1
 
 
 if __name__ == "__main__":

@@ -1,12 +1,17 @@
 """This is the script for `ray microbenchmark`."""
 
 import logging
-from ray._private.ray_microbenchmark_helpers import timeit
+from ray._private.ray_microbenchmark_helpers import timeit, asyncio_timeit
 import multiprocessing
 import ray
+from ray.dag.compiled_dag_node import CompiledDAG
+from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 import ray.experimental.channel as ray_channel
 from ray.dag import InputNode, MultiOutputNode
+from ray._private.utils import (
+    get_or_create_event_loop,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -31,8 +36,17 @@ def check_optimized_build():
         logger.warning(msg)
 
 
+def create_driver_actor():
+    return CompiledDAG.DAGDriverProxyActor.options(
+        scheduling_strategy=NodeAffinitySchedulingStrategy(
+            ray.get_runtime_context().get_node_id(), soft=False
+        )
+    ).remote()
+
+
 def main(results=None):
     results = results or []
+    loop = get_or_create_event_loop()
 
     check_optimized_build()
 
@@ -43,13 +57,11 @@ def main(results=None):
     #################################################
     ray.init()
 
-    def put_channel_small(chans, do_get=False, do_release=False):
+    def put_channel_small(chans, do_get=False):
         for chan in chans:
             chan.write(b"0")
             if do_get:
-                chan.begin_read()
-            if do_release:
-                chan.end_read()
+                chan.read()
 
     @ray.remote
     class ChannelReader:
@@ -59,21 +71,16 @@ def main(results=None):
         def read(self, chans):
             while True:
                 for chan in chans:
-                    chan.begin_read()
-                    chan.end_read()
+                    chan.read()
 
-    chans = [ray_channel.Channel(1000)]
-    results += timeit(
-        "[unstable] local put, single channel calls",
-        lambda: put_channel_small(chans, do_release=True),
-    )
+    chans = [ray_channel.Channel(None, [create_driver_actor()], 1000)]
     results += timeit(
         "[unstable] local put:local get, single channel calls",
-        lambda: put_channel_small(chans, do_get=True, do_release=True),
+        lambda: put_channel_small(chans, do_get=True),
     )
 
-    chans = [ray_channel.Channel(1000)]
     reader = ChannelReader.remote()
+    chans = [ray_channel.Channel(None, [reader], 1000)]
     ray.get(reader.ready.remote())
     reader.read.remote(chans)
     results += timeit(
@@ -85,8 +92,8 @@ def main(results=None):
     n_cpu = multiprocessing.cpu_count() // 2
     print(f"Testing multiple readers/channels, n={n_cpu}")
 
-    chans = [ray_channel.Channel(1000, num_readers=n_cpu)]
     readers = [ChannelReader.remote() for _ in range(n_cpu)]
+    chans = [ray_channel.Channel(None, readers, 1000)]
     ray.get([reader.ready.remote() for reader in readers])
     for reader in readers:
         reader.read.remote(chans)
@@ -97,8 +104,8 @@ def main(results=None):
     for reader in readers:
         ray.kill(reader)
 
-    chans = [ray_channel.Channel(1000) for _ in range(n_cpu)]
     reader = ChannelReader.remote()
+    chans = [ray_channel.Channel(None, [reader], 1000) for _ in range(n_cpu)]
     ray.get(reader.ready.remote())
     reader.read.remote(chans)
     results += timeit(
@@ -107,8 +114,8 @@ def main(results=None):
     )
     ray.kill(reader)
 
-    chans = [ray_channel.Channel(1000) for _ in range(n_cpu)]
     readers = [ChannelReader.remote() for _ in range(n_cpu)]
+    chans = [ray_channel.Channel(None, [readers[i]], 1000) for i in range(n_cpu)]
     ray.get([reader.ready.remote() for reader in readers])
     for chan, reader in zip(chans, readers):
         reader.read.remote([chan])
@@ -122,16 +129,18 @@ def main(results=None):
     # Tests for compiled DAGs.
 
     def _exec(dag):
-        output_channel = dag.execute(b"x")
-        output_channel.begin_read()
-        output_channel.end_read()
+        output_ref = dag.execute(b"x")
+        ray.get(output_ref)
 
-    def _exec_multi_output(dag):
-        output_channels = dag.execute(b"x")
-        for output_channel in output_channels:
-            output_channel.begin_read()
-        for output_channel in output_channels:
-            output_channel.end_read()
+    async def exec_async(tag):
+        async def _exec_async():
+            fut = await compiled_dag.execute_async(b"x")
+            await fut
+
+        return await asyncio_timeit(
+            tag,
+            _exec_async,
+        )
 
     a = DAGActor.remote()
     with InputNode() as inp:
@@ -140,8 +149,22 @@ def main(results=None):
     results += timeit(
         "[unstable] single-actor DAG calls", lambda: ray.get(dag.execute(b"x"))
     )
-    dag = dag.experimental_compile()
-    results += timeit("[unstable] compiled single-actor DAG calls", lambda: _exec(dag))
+    compiled_dag = dag.experimental_compile()
+    results += timeit(
+        "[unstable] compiled single-actor DAG calls", lambda: _exec(compiled_dag)
+    )
+    compiled_dag.teardown()
+
+    compiled_dag = dag.experimental_compile(enable_asyncio=True)
+    results += loop.run_until_complete(
+        exec_async(
+            "[unstable] compiled single-actor asyncio DAG calls",
+        )
+    )
+    # TODO: Need to explicitly tear down DAGs with enable_asyncio=True because
+    # these DAGs create a background thread that can segfault if the CoreWorker
+    # is torn down first.
+    compiled_dag.teardown()
 
     del a
     n_cpu = multiprocessing.cpu_count() // 2
@@ -149,14 +172,26 @@ def main(results=None):
     with InputNode() as inp:
         dag = MultiOutputNode([a.echo.bind(inp) for a in actors])
     results += timeit(
-        "[unstable] scatter-gather DAG calls, n={n_cpu} actors",
+        f"[unstable] scatter-gather DAG calls, n={n_cpu} actors",
         lambda: ray.get(dag.execute(b"x")),
     )
-    dag = dag.experimental_compile()
+    compiled_dag = dag.experimental_compile()
     results += timeit(
         f"[unstable] compiled scatter-gather DAG calls, n={n_cpu} actors",
-        lambda: _exec_multi_output(dag),
+        lambda: _exec(compiled_dag),
     )
+    compiled_dag.teardown()
+
+    compiled_dag = dag.experimental_compile(enable_asyncio=True)
+    results += loop.run_until_complete(
+        exec_async(
+            f"[unstable] compiled scatter-gather asyncio DAG calls, n={n_cpu} actors",
+        )
+    )
+    # TODO: Need to explicitly tear down DAGs with enable_asyncio=True because
+    # these DAGs create a background thread that can segfault if the CoreWorker
+    # is torn down first.
+    compiled_dag.teardown()
 
     actors = [DAGActor.remote() for _ in range(n_cpu)]
     with InputNode() as inp:
@@ -167,16 +202,23 @@ def main(results=None):
         f"[unstable] chain DAG calls, n={n_cpu} actors",
         lambda: ray.get(dag.execute(b"x")),
     )
-    dag = dag.experimental_compile()
+    compiled_dag = dag.experimental_compile()
     results += timeit(
-        f"[unstable] compiled chain DAG calls, n={n_cpu} actors", lambda: _exec(dag)
+        f"[unstable] compiled chain DAG calls, n={n_cpu} actors",
+        lambda: _exec(compiled_dag),
     )
+    compiled_dag.teardown()
+
+    compiled_dag = dag.experimental_compile(enable_asyncio=True)
+    results += loop.run_until_complete(
+        exec_async(f"[unstable] compiled chain asyncio DAG calls, n={n_cpu} actors")
+    )
+    # TODO: Need to explicitly tear down DAGs with enable_asyncio=True because
+    # these DAGs create a background thread that can segfault if the CoreWorker
+    # is torn down first.
+    compiled_dag.teardown()
 
     ray.shutdown()
-
-    ############################
-    # End of channel perf tests.
-    ############################
 
     return results
 

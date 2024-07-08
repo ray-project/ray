@@ -1,24 +1,11 @@
-import { createStyles, Theme, withStyles, WithStyles } from "@material-ui/core";
-import React, { HTMLAttributes } from "react";
+import { styled } from "@mui/material";
 
-const styles = (theme: Theme) =>
-  createStyles({
-    button: {
-      color: theme.palette.primary.main,
-      "&:hover": {
-        cursor: "pointer",
-        textDecoration: "underline",
-      },
+export const SpanButton = styled("span")(({ theme }) => ({
+  button: {
+    color: theme.palette.primary.main,
+    "&:hover": {
+      cursor: "pointer",
+      textDecoration: "underline",
     },
-  });
-
-class SpanButton extends React.Component<
-  HTMLAttributes<HTMLSpanElement> & WithStyles<typeof styles>
-> {
-  render() {
-    const { classes, ...otherProps } = this.props;
-    return <span className={classes.button} {...otherProps} />;
-  }
-}
-
-export default withStyles(styles)(SpanButton);
+  },
+}));

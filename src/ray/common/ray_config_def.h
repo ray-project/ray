@@ -52,13 +52,6 @@ RAY_CONFIG(int64_t, handler_warning_timeout_ms, 1000)
 /// The duration between loads pulled by GCS
 RAY_CONFIG(uint64_t, gcs_pull_resource_loads_period_milliseconds, 1000)
 
-/// If GCS restarts, before the first heatbeat is sent,
-/// gcs_failover_worker_reconnect_timeout is used for the threshold
-/// of the raylet. This is very useful given that raylet might need
-/// a while to reconnect to the GCS, for example, when GCS is available
-/// but not reachable to raylet.
-RAY_CONFIG(int64_t, gcs_failover_worker_reconnect_timeout, 120)
-
 /// The duration between reporting resources sent by the raylets.
 RAY_CONFIG(uint64_t, raylet_report_resources_period_milliseconds, 100)
 
@@ -690,8 +683,14 @@ RAY_CONFIG(float, max_task_args_memory_fraction, 0.7)
 /// The maximum number of objects to publish for each publish calls.
 RAY_CONFIG(int, publish_batch_size, 5000)
 
-/// Maximum size in bytes of buffered messages per entity, in Ray publisher.
-RAY_CONFIG(int, publisher_entity_buffer_max_bytes, 10 << 20)
+/// Maximum size in bytes of buffered messages per pubsub channel.  Large
+/// applications (1k+ nodes, 100k+ tasks or actors) may see memory pressure in
+/// the GCS due to high system-level pubsub traffic. Reducing this config value
+/// can help reduce memory pressure, at the cost of dropping some published
+/// messages (e.g., worker logs printed to driver stdout). See
+/// src/ray/pubsub/publisher.cc for the current pubsub channels that are
+/// subject to this cap.
+RAY_CONFIG(int, publisher_entity_buffer_max_bytes, 1 << 30)
 
 /// The maximum command batch size.
 RAY_CONFIG(int64_t, max_command_batch_size, 2000)
@@ -855,9 +854,6 @@ RAY_CONFIG(int64_t,
 /// the mapped plasma pages.
 RAY_CONFIG(bool, worker_core_dump_exclude_plasma_store, true)
 RAY_CONFIG(bool, raylet_core_dump_exclude_plasma_store, true)
-
-/// Whether to kill idle workers of a terminated job.
-RAY_CONFIG(bool, kill_idle_workers_of_terminated_job, true)
 
 // Instruct the Python default worker to preload the specified imports.
 // This is specified as a comma-separated list.

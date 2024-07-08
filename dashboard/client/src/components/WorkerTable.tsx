@@ -1,3 +1,4 @@
+import { KeyboardArrowDown, KeyboardArrowRight } from "@mui/icons-material";
 import {
   Button,
   Grid,
@@ -8,8 +9,7 @@ import {
   TableContainer,
   TableHead,
   TableRow,
-} from "@material-ui/core";
-import { KeyboardArrowDown, KeyboardArrowRight } from "@material-ui/icons";
+} from "@mui/material";
 import React, {
   PropsWithChildren,
   ReactNode,
@@ -67,6 +67,7 @@ export const ExpandableTableRow = ({
           <IconButton
             style={{ color: "inherit" }}
             onClick={() => setIsExpanded(!isExpanded)}
+            size="large"
           >
             {length}
             {isExpanded ? <KeyboardArrowDown /> : <KeyboardArrowRight />}

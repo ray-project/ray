@@ -1,11 +1,4 @@
-import {
-  Box,
-  createStyles,
-  makeStyles,
-  MenuItem,
-  TextField,
-  Typography,
-} from "@material-ui/core";
+import { Box, MenuItem, TextField, Typography } from "@mui/material";
 import _ from "lodash";
 import React, { useEffect } from "react";
 import { useSearchParams } from "react-router-dom";
@@ -20,14 +13,6 @@ import {
   LOG_CONTEXT_KEY_SERVE_CONTROLLER,
   LOG_CONTEXT_KEY_SERVE_PROXY,
 } from "./ServeSystemActorDetailPage";
-
-const useStyles = makeStyles((theme) =>
-  createStyles({
-    captionText: {
-      color: theme.palette.grey[600],
-    },
-  }),
-);
 
 type ServeEntityLogsProps = {
   controller?: ServeSystemActor;
@@ -44,8 +29,6 @@ export const ServeEntityLogViewer = ({
   proxies,
   deployments,
 }: ServeEntityLogsProps) => {
-  const classes = useStyles();
-
   const [params, setParams] = useSearchParams();
 
   const showEntityGroups = controller !== undefined || proxies !== undefined;
@@ -172,11 +155,11 @@ export const ServeEntityLogViewer = ({
         display="flex"
         flexDirection="row"
         alignItems="center"
-        gridGap={16}
+        gap={2}
         marginTop={4}
       >
         {showEntityGroups && (
-          <Box display="flex" flexDirection="column" gridGap={8}>
+          <Box display="flex" flexDirection="column" gap={1}>
             <Typography>View logs from</Typography>
             <TextField
               select
@@ -184,6 +167,7 @@ export const ServeEntityLogViewer = ({
               size="small"
               style={{ minWidth: 120 }}
               value={selectedEntityGroupName}
+              data-testid="entity-group-select"
               SelectProps={{
                 renderValue: (value) => _.capitalize(value as string),
               }}
@@ -200,26 +184,35 @@ export const ServeEntityLogViewer = ({
               }}
             >
               <MenuItem value="controller">
-                <Box display="flex" flexDirection="column" gridGap={4}>
+                <Box display="flex" flexDirection="column" gap={0.5}>
                   <span>Controller</span>
-                  <Typography variant="caption" className={classes.captionText}>
+                  <Typography
+                    variant="caption"
+                    sx={{ color: (theme) => theme.palette.grey[600] }}
+                  >
                     Logs for app initialization, dependency installation, and
                     autoscaling.
                   </Typography>
                 </Box>
               </MenuItem>
               <MenuItem value="proxies">
-                <Box display="flex" flexDirection="column" gridGap={4}>
+                <Box display="flex" flexDirection="column" gap={0.5}>
                   <span>Proxies</span>
-                  <Typography variant="caption" className={classes.captionText}>
+                  <Typography
+                    variant="caption"
+                    sx={{ color: (theme) => theme.palette.grey[600] }}
+                  >
                     Logs for proxy initialization and HTTP handling.
                   </Typography>
                 </Box>
               </MenuItem>
               <MenuItem value="deployments">
-                <Box display="flex" flexDirection="column" gridGap={4}>
+                <Box display="flex" flexDirection="column" gap={0.5}>
                   <span>Deployments</span>
-                  <Typography variant="caption" className={classes.captionText}>
+                  <Typography
+                    variant="caption"
+                    sx={{ color: (theme) => theme.palette.grey[600] }}
+                  >
                     Application output and logs.
                   </Typography>
                 </Box>
@@ -228,7 +221,7 @@ export const ServeEntityLogViewer = ({
           </Box>
         )}
         {selectedEntityGroupName === "proxies" && proxies?.length && (
-          <Box display="flex" flexDirection="column" gridGap={8}>
+          <Box display="flex" flexDirection="column" gap={1}>
             <Typography>HTTP Proxy</Typography>
             <TextField
               select
@@ -236,6 +229,7 @@ export const ServeEntityLogViewer = ({
               size="small"
               style={{ minWidth: 240 }}
               value={selectedProxyId}
+              data-testid="proxies-select"
               onChange={({ target: { value } }) => {
                 setParams(
                   (params) => {
@@ -257,7 +251,7 @@ export const ServeEntityLogViewer = ({
           </Box>
         )}
         {selectedEntityGroupName === "deployments" && deployments.length && (
-          <Box display="flex" flexDirection="column" gridGap={8}>
+          <Box display="flex" flexDirection="column" gap={1}>
             <Typography>Deployment replica</Typography>
             <TextField
               select
@@ -265,6 +259,7 @@ export const ServeEntityLogViewer = ({
               size="small"
               style={{ minWidth: 240 }}
               value={selectedReplicaId}
+              data-testid="replicas-select"
               onChange={({ target: { value } }) => {
                 setParams(
                   (params) => {

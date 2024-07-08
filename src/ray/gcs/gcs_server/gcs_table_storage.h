@@ -33,7 +33,6 @@ using rpc::JobTableData;
 using rpc::ObjectTableData;
 using rpc::PlacementGroupTableData;
 using rpc::ResourceUsageBatchData;
-using rpc::ScheduleData;
 using rpc::StoredConfig;
 using rpc::TaskSpec;
 using rpc::WorkerTableData;
@@ -203,22 +202,6 @@ class GcsNodeTable : public GcsTable<NodeID, GcsNodeInfo> {
   }
 };
 
-class GcsPlacementGroupScheduleTable : public GcsTable<PlacementGroupID, ScheduleData> {
- public:
-  explicit GcsPlacementGroupScheduleTable(std::shared_ptr<StoreClient> store_client)
-      : GcsTable(std::move(store_client)) {
-    table_name_ = TablePrefix_Name(TablePrefix::PLACEMENT_GROUP_SCHEDULE);
-  }
-};
-
-class GcsResourceUsageBatchTable : public GcsTable<NodeID, ResourceUsageBatchData> {
- public:
-  explicit GcsResourceUsageBatchTable(std::shared_ptr<StoreClient> store_client)
-      : GcsTable(std::move(store_client)) {
-    table_name_ = TablePrefix_Name(TablePrefix::RESOURCE_USAGE_BATCH);
-  }
-};
-
 class GcsWorkerTable : public GcsTable<WorkerID, WorkerTableData> {
  public:
   explicit GcsWorkerTable(std::shared_ptr<StoreClient> store_client)
@@ -248,10 +231,6 @@ class GcsTableStorage {
     actor_task_spec_table_ = std::make_unique<GcsActorTaskSpecTable>(store_client_);
     placement_group_table_ = std::make_unique<GcsPlacementGroupTable>(store_client_);
     node_table_ = std::make_unique<GcsNodeTable>(store_client_);
-    placement_group_schedule_table_ =
-        std::make_unique<GcsPlacementGroupScheduleTable>(store_client_);
-    resource_usage_batch_table_ =
-        std::make_unique<GcsResourceUsageBatchTable>(store_client_);
     worker_table_ = std::make_unique<GcsWorkerTable>(store_client_);
     system_config_table_ = std::make_unique<GcsInternalConfigTable>(store_client_);
   }
@@ -283,16 +262,6 @@ class GcsTableStorage {
     return *node_table_;
   }
 
-  GcsPlacementGroupScheduleTable &PlacementGroupScheduleTable() {
-    RAY_CHECK(placement_group_schedule_table_ != nullptr);
-    return *placement_group_schedule_table_;
-  }
-
-  GcsResourceUsageBatchTable &ResourceUsageBatchTable() {
-    RAY_CHECK(resource_usage_batch_table_ != nullptr);
-    return *resource_usage_batch_table_;
-  }
-
   GcsWorkerTable &WorkerTable() {
     RAY_CHECK(worker_table_ != nullptr);
     return *worker_table_;
@@ -315,8 +284,6 @@ class GcsTableStorage {
   std::unique_ptr<GcsActorTaskSpecTable> actor_task_spec_table_;
   std::unique_ptr<GcsPlacementGroupTable> placement_group_table_;
   std::unique_ptr<GcsNodeTable> node_table_;
-  std::unique_ptr<GcsPlacementGroupScheduleTable> placement_group_schedule_table_;
-  std::unique_ptr<GcsResourceUsageBatchTable> resource_usage_batch_table_;
   std::unique_ptr<GcsWorkerTable> worker_table_;
   std::unique_ptr<GcsInternalConfigTable> system_config_table_;
 };

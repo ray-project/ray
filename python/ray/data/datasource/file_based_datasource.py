@@ -1,4 +1,5 @@
 import io
+import logging
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -15,7 +16,6 @@ from typing import (
 import numpy as np
 
 import ray
-from ray.data._internal.dataset_logger import DatasetLogger
 from ray.data._internal.util import (
     _check_pyarrow_version,
     _is_local_scheme,
@@ -38,14 +38,14 @@ from ray.data.datasource.path_util import (
     _has_file_extension,
     _resolve_paths_and_filesystem,
 )
-from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
+from ray.util.annotations import DeveloperAPI
 
 if TYPE_CHECKING:
     import pandas as pd
     import pyarrow
 
 
-logger = DatasetLogger(__name__)
+logger = logging.getLogger(__name__)
 
 
 # We should parallelize file size fetch operations beyond this threshold.
@@ -62,20 +62,6 @@ OPEN_FILE_RETRY_MAX_BACKOFF_SECONDS = 32
 
 # The max number of attempts for opening file.
 OPEN_FILE_MAX_ATTEMPTS = 10
-
-
-@Deprecated
-@PublicAPI(stability="beta")
-class FileExtensionFilter(PathPartitionFilter):
-    def __init__(
-        self,
-        file_extensions: Union[str, List[str]],
-        allow_if_no_extension: bool = False,
-    ):
-        raise DeprecationWarning(
-            "`FileExtensionFilter` is deprecated. Instead, set the `file_extensions` "
-            "parameter of `read_xxx()` APIs."
-        )
 
 
 @DeveloperAPI
@@ -252,11 +238,16 @@ class FileBasedDatasource(Datasource):
             def read_task_fn():
                 nonlocal num_threads, read_paths
 
+                # TODO: We should refactor the code so that we can get the results in
+                # order even when using multiple threads.
+                if ctx.execution_options.preserve_order:
+                    num_threads = 0
+
                 if num_threads > 0:
                     if len(read_paths) < num_threads:
                         num_threads = len(read_paths)
 
-                    logger.get_logger(log_to_stdout=False).debug(
+                    logger.debug(
                         f"Reading {len(read_paths)} files with {num_threads} threads."
                     )
 
@@ -266,9 +257,7 @@ class FileBasedDatasource(Datasource):
                         num_workers=num_threads,
                     )
                 else:
-                    logger.get_logger(log_to_stdout=False).debug(
-                        f"Reading {len(read_paths)} files."
-                    )
+                    logger.debug(f"Reading {len(read_paths)} files.")
                     yield from read_files(read_paths)
 
             return read_task_fn
@@ -379,6 +368,9 @@ class FileBasedDatasource(Datasource):
     @property
     def supports_distributed_reads(self) -> bool:
         return self._supports_distributed_reads
+
+    def input_files(self) -> Optional[List[str]]:
+        return self._paths()
 
 
 def _add_partitions(

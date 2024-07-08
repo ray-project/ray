@@ -108,7 +108,7 @@ def _autodetect_parallelism(
     mem_size: Optional[int] = None,
     placement_group: Optional["PlacementGroup"] = None,
     avail_cpus: Optional[int] = None,
-) -> (int, str, int, Optional[int]):
+) -> Tuple[int, str, Optional[int]]:
     """Returns parallelism to use and the min safe parallelism to avoid OOMs.
 
     This detects parallelism using the following heuristics, applied in order:
@@ -140,9 +140,8 @@ def _autodetect_parallelism(
 
     Returns:
         Tuple of detected parallelism (only if -1 was specified), the reason
-        for the detected parallelism (only if -1 was specified), the min safe
-        parallelism (which can be used to generate warnings about large
-        blocks), and the estimated inmemory size of the dataset.
+        for the detected parallelism (only if -1 was specified), and the estimated
+        inmemory size of the dataset.
     """
     min_safe_parallelism = 1
     max_reasonable_parallelism = sys.maxsize
@@ -207,7 +206,7 @@ def _autodetect_parallelism(
             f"estimated_data_size={mem_size}."
         )
 
-    return parallelism, reason, min_safe_parallelism, mem_size
+    return parallelism, reason, mem_size
 
 
 def _estimate_avail_cpus(cur_pg: Optional["PlacementGroup"]) -> int:
@@ -650,15 +649,11 @@ def capitalize(s: str):
 def pandas_df_to_arrow_block(df: "pandas.DataFrame") -> "Block":
     from ray.data.block import BlockAccessor, BlockExecStats
 
+    block = BlockAccessor.for_block(df).to_arrow()
     stats = BlockExecStats.builder()
-    import pyarrow as pa
-
-    block = pa.table(df)
     return (
         block,
-        BlockAccessor.for_block(block).get_metadata(
-            input_files=None, exec_stats=stats.build()
-        ),
+        BlockAccessor.for_block(block).get_metadata(exec_stats=stats.build()),
     )
 
 
@@ -669,9 +664,7 @@ def ndarray_to_block(ndarray: np.ndarray, ctx: DataContext) -> "Block":
 
     stats = BlockExecStats.builder()
     block = BlockAccessor.batch_to_block({"data": ndarray})
-    metadata = BlockAccessor.for_block(block).get_metadata(
-        input_files=None, exec_stats=stats.build()
-    )
+    metadata = BlockAccessor.for_block(block).get_metadata(exec_stats=stats.build())
     return block, metadata
 
 
@@ -681,9 +674,7 @@ def get_table_block_metadata(
     from ray.data.block import BlockAccessor, BlockExecStats
 
     stats = BlockExecStats.builder()
-    return BlockAccessor.for_block(table).get_metadata(
-        input_files=None, exec_stats=stats.build()
-    )
+    return BlockAccessor.for_block(table).get_metadata(exec_stats=stats.build())
 
 
 def unify_block_metadata_schema(

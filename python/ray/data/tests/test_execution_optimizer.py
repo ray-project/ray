@@ -8,6 +8,8 @@ import pyarrow as pa
 import pytest
 
 import ray
+from ray.data._internal.aggregate import Count
+from ray.data._internal.datasource.parquet_datasink import ParquetDatasink
 from ray.data._internal.execution.interfaces import ExecutionOptions
 from ray.data._internal.execution.operators.base_physical_operator import (
     AllToAllOperator,
@@ -55,9 +57,7 @@ from ray.data._internal.logical.util import (
 from ray.data._internal.planner.exchange.sort_task_spec import SortKey
 from ray.data._internal.planner.planner import Planner
 from ray.data._internal.stats import DatasetStats
-from ray.data.aggregate import Count
 from ray.data.context import DataContext
-from ray.data.datasource.parquet_datasink import _ParquetDatasink
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.test_util import get_parquet_read_logical_op
 from ray.data.tests.util import column_udf, extract_values, named_values
@@ -972,7 +972,7 @@ def test_write_fusion(ray_start_regular_shared, tmp_path):
 def test_write_operator(ray_start_regular_shared, tmp_path):
     concurrency = 2
     planner = Planner()
-    datasink = _ParquetDatasink(tmp_path)
+    datasink = ParquetDatasink(tmp_path)
     read_op = get_parquet_read_logical_op()
     op = Write(
         read_op,
@@ -1327,11 +1327,17 @@ def test_from_huggingface_e2e(ray_start_regular_shared):
         # Check that metadata fetch is included in stats;
         # the underlying implementation uses the `ReadParquet` operator
         # as this is an un-transformed public dataset.
-        assert "ReadParquet" in ds.stats()
-        assert ds._plan._logical_plan.dag.name == "ReadParquet"
+        assert "ReadParquet" in ds.stats() or "FromArrow" in ds.stats()
+        assert (
+            ds._plan._logical_plan.dag.name == "ReadParquet"
+            or ds._plan._logical_plan.dag.name == "FromArrow"
+        )
         # use sort by 'text' to match order of rows
         hfds_assert_equals(data[ds_key], ds)
-        _check_usage_record(["ReadParquet"])
+        try:
+            _check_usage_record(["ReadParquet"])
+        except AssertionError:
+            _check_usage_record(["FromArrow"])
 
     # test transformed public dataset for fallback behavior
     base_hf_dataset = data["train"]
@@ -1543,7 +1549,7 @@ def test_schema_partial_execution(
     assert iris_schema == ray.data.dataset.Schema(pa.schema(fields))
     # Verify that ds.schema() executes only the first block, and not the
     # entire Dataset.
-    assert ds._plan._in_blocks._num_blocks == 1
+    assert not ds._plan.has_computed_output()
     assert str(ds._plan._logical_plan.dag) == (
         "Read[ReadParquet] -> MapBatches[MapBatches(<lambda>)]"
     )

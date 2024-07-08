@@ -4,6 +4,7 @@ from typing import Callable, Dict, List, Optional, Tuple
 
 from ray.serve._private.common import (
     ApplicationName,
+    DeploymentHandleSource,
     DeploymentID,
     EndpointInfo,
     RequestProtocol,
@@ -66,6 +67,7 @@ class LongestPrefixRouter(ProxyRouter):
                     # Streaming codepath isn't supported for Java.
                     stream=not info.app_is_cross_language,
                     _prefer_local_routing=RAY_SERVE_PROXY_PREFER_LOCAL_NODE_ROUTING,
+                    _source=DeploymentHandleSource.PROXY,
                 )
                 handle._set_request_protocol(self._protocol)
                 self.handles[endpoint] = handle
@@ -149,6 +151,7 @@ class EndpointRouter(ProxyRouter):
                     # Streaming codepath isn't supported for Java.
                     stream=not info.app_is_cross_language,
                     _prefer_local_routing=RAY_SERVE_PROXY_PREFER_LOCAL_NODE_ROUTING,
+                    _source=DeploymentHandleSource.PROXY,
                 )
                 handle._set_request_protocol(self._protocol)
                 self.handles[endpoint] = handle

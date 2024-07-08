@@ -1,13 +1,14 @@
 from dataclasses import dataclass, field
+import logging
 import pathlib
 import pprint
 from typing import (
     Any,
     Callable,
+    Collection,
     Dict,
     KeysView,
     List,
-    Mapping,
     Optional,
     Set,
     Type,
@@ -15,7 +16,6 @@ from typing import (
 )
 
 from ray.rllib.core.models.specs.typing import SpecType
-from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.core.rl_module.rl_module import (
     RLModule,
     RLMODULE_METADATA_FILE_NAME,
@@ -23,7 +23,7 @@ from ray.rllib.core.rl_module.rl_module import (
     SingleAgentRLModuleSpec,
 )
 
-# TODO (Kourosh): change this to module_id later to enforce consistency
+from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.annotations import (
     ExperimentalAPI,
     override,
@@ -32,13 +32,11 @@ from ray.rllib.utils.annotations import (
 from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.policy import validate_policy_id
 from ray.rllib.utils.serialization import serialize_type, deserialize_type
-from ray.rllib.utils.typing import ModuleID, T
+from ray.rllib.utils.typing import ModuleID, StateDict, T
+from ray.util import log_once
 from ray.util.annotations import PublicAPI
 
-
-# TODO (sven): This will replace all occurrences of DEFAULT_POLICY_ID on the new API
-#  stack.
-DEFAULT_MODULE_ID = "default_policy"
+logger = logging.getLogger("ray.rllib")
 
 
 @PublicAPI(stability="alpha")
@@ -47,7 +45,7 @@ class MultiAgentRLModule(RLModule):
 
     This class holds a mapping from module_ids to the underlying RLModules. It provides
     a convenient way of accessing each individual module, as well as accessing all of
-    them with only one API call. Whether or not a given module is trainable is
+    them with only one API call. Whether a given module is trainable is
     determined by the caller of this class (not the instance of this class itself).
 
     The extension of this class can include any arbitrary neural networks as part of
@@ -70,7 +68,8 @@ class MultiAgentRLModule(RLModule):
         """Initializes a MultiagentRLModule instance.
 
         Args:
-            config: The MultiAgentRLModuleConfig to use.
+            config: An optional MultiAgentRLModuleConfig to use. If None, will use
+                `MultiAgentRLModuleConfig()` as default config.
         """
         super().__init__(config or MultiAgentRLModuleConfig())
 
@@ -132,6 +131,10 @@ class MultiAgentRLModule(RLModule):
         """Returns a keys view over the module IDs in this MultiAgentRLModule."""
         return self._rl_modules.keys()
 
+    def __len__(self) -> int:
+        """Returns the number of RLModules within this MultiAgentRLModule."""
+        return len(self._rl_modules)
+
     @override(RLModule)
     def as_multi_agent(self) -> "MultiAgentRLModule":
         """Returns a multi-agent wrapper around this module.
@@ -161,8 +164,8 @@ class MultiAgentRLModule(RLModule):
 
         Raises:
             ValueError: If the module ID already exists and override is False.
-            Warnings are raised if the module id is not valid according to the logic of
-            validate_policy_id().
+                Warnings are raised if the module id is not valid according to the
+                logic of ``validate_policy_id()``.
         """
         validate_policy_id(module_id)
         if module_id in self._rl_modules and not override:
@@ -211,13 +214,16 @@ class MultiAgentRLModule(RLModule):
         return item in self._rl_modules
 
     def __getitem__(self, module_id: ModuleID) -> RLModule:
-        """Returns the module with the given module ID.
+        """Returns the RLModule with the given module ID.
 
         Args:
             module_id: The module ID to get.
 
         Returns:
-            The module with the given module ID.
+            The RLModule with the given module ID.
+
+        Raises:
+            KeyError: If `module_id` cannot be found in self.
         """
         self._check_module_exists(module_id)
         return self._rl_modules[module_id]
@@ -245,7 +251,7 @@ class MultiAgentRLModule(RLModule):
     @override(RLModule)
     def _forward_train(
         self, batch: MultiAgentBatch, **kwargs
-    ) -> Union[Mapping[str, Any], Dict[ModuleID, Mapping[str, Any]]]:
+    ) -> Union[Dict[str, Any], Dict[ModuleID, Dict[str, Any]]]:
         """Runs the forward_train pass.
 
         TODO(avnishn, kourosh): Review type hints for forward methods.
@@ -262,7 +268,7 @@ class MultiAgentRLModule(RLModule):
     @override(RLModule)
     def _forward_inference(
         self, batch: MultiAgentBatch, **kwargs
-    ) -> Union[Mapping[str, Any], Dict[ModuleID, Mapping[str, Any]]]:
+    ) -> Union[Dict[str, Any], Dict[ModuleID, Dict[str, Any]]]:
         """Runs the forward_inference pass.
 
         TODO(avnishn, kourosh): Review type hints for forward methods.
@@ -279,7 +285,7 @@ class MultiAgentRLModule(RLModule):
     @override(RLModule)
     def _forward_exploration(
         self, batch: MultiAgentBatch, **kwargs
-    ) -> Union[Mapping[str, Any], Dict[ModuleID, Mapping[str, Any]]]:
+    ) -> Union[Dict[str, Any], Dict[ModuleID, Dict[str, Any]]]:
         """Runs the forward_exploration pass.
 
         TODO(avnishn, kourosh): Review type hints for forward methods.
@@ -295,8 +301,10 @@ class MultiAgentRLModule(RLModule):
 
     @override(RLModule)
     def get_state(
-        self, module_ids: Optional[Set[ModuleID]] = None
-    ) -> Mapping[ModuleID, Any]:
+        self,
+        module_ids: Optional[Collection[ModuleID]] = None,
+        inference_only: bool = False,
+    ) -> StateDict:
         """Returns the state of the multi-agent module.
 
         This method returns the state of each module specified by module_ids. If
@@ -305,6 +313,9 @@ class MultiAgentRLModule(RLModule):
         Args:
             module_ids: The module IDs to get the state of. If None, the state of all
                 modules is returned.
+            inference_only: If True, only a subset of parameters that are needed for
+                inference are returned. This subset is defined in the module.
+
         Returns:
             A nested state dict with the first layer being the module ID and the second
             is the state of the module. The returned dict values are framework-specific
@@ -315,26 +326,31 @@ class MultiAgentRLModule(RLModule):
             module_ids = self._rl_modules.keys()
 
         return {
-            module_id: self._rl_modules[module_id].get_state()
+            module_id: self._rl_modules[module_id].get_state(inference_only)
             for module_id in module_ids
         }
 
     @override(RLModule)
-    def set_state(self, state_dict: Mapping[ModuleID, Any]) -> None:
+    def set_state(self, state_dict: StateDict) -> None:
         """Sets the state of the multi-agent module.
 
-        It is assumed that the state_dict is a mapping from module IDs to their
-        corressponding state. This method sets the state of each module by calling
-        their set_state method. If you want to set the state of some of the RLModules
-        within this MultiAgentRLModule your state_dict can only include the state of
-        those RLModules. Override this method to customize the state_dict for custom
-        more advanced multi-agent use cases.
+        It is assumed that the state_dict is a mapping from module IDs to the
+        corresponding module's state. This method sets the state of each module by
+        calling their set_state method. If you want to set the state of some of the
+        RLModules within this MultiAgentRLModule your state_dict can only include the
+        state of those RLModules. Override this method to customize the state_dict for
+        custom more advanced multi-agent use cases.
 
         Args:
             state_dict: The state dict to set.
         """
         for module_id, state in state_dict.items():
-            self._rl_modules[module_id].set_state(state)
+            if module_id in self:
+                self._rl_modules[module_id].set_state(state)
+            elif log_once("mid_in_state_but_not_in_marl_module"):
+                logger.warning(
+                    f"ModuleID '{module_id}' found in `state`, but not in `self`!"
+                )
 
     @override(RLModule)
     def save_state(self, path: Union[str, pathlib.Path]) -> None:
@@ -416,7 +432,7 @@ class MultiAgentRLModule(RLModule):
         forward_fn_name: str,
         batch: Union[NestedDict[Any], Dict[ModuleID, Any]],
         **kwargs,
-    ) -> Dict[ModuleID, Mapping[ModuleID, Any]]:
+    ) -> Dict[ModuleID, Dict[ModuleID, Any]]:
         """This is a helper method that runs the forward pass for the given module.
 
         It uses forward_fn_name to get the forward pass method from the RLModule
@@ -537,20 +553,20 @@ class MultiAgentRLModuleSpec:
     def add_modules(
         self,
         module_specs: Dict[ModuleID, SingleAgentRLModuleSpec],
-        overwrite: bool = True,
+        override: bool = True,
     ) -> None:
         """Add new module specs to the spec or updates existing ones.
 
         Args:
             module_specs: The mapping for the module_id to the single-agent module
                 specs to be added to this multi-agent module spec.
-            overwrite: Whether to overwrite the existing module specs if they already
-                exist. If False, they will be updated only.
+            override: Whether to override the existing module specs if they already
+                exist. If False, they are only updated.
         """
         if self.module_specs is None:
             self.module_specs = {}
         for module_id, module_spec in module_specs.items():
-            if overwrite or module_id not in self.module_specs:
+            if override or module_id not in self.module_specs:
                 self.module_specs[module_id] = module_spec
             else:
                 self.module_specs[module_id].update(module_spec)
@@ -607,7 +623,11 @@ class MultiAgentRLModuleSpec:
             },
         )
 
-    def update(self, other: "MultiAgentRLModuleSpec", overwrite=False) -> None:
+    def update(
+        self,
+        other: Union["MultiAgentRLModuleSpec", SingleAgentRLModuleSpec],
+        override=False,
+    ) -> None:
         """Updates this spec with the other spec.
 
         Traverses this MultiAgentRLModuleSpec's module_specs and updates them with
@@ -615,13 +635,14 @@ class MultiAgentRLModuleSpec:
 
         Args:
             other: The other spec to update this spec with.
-            overwrite: Whether to overwrite the existing module specs if they already
-                exist. If False, they will be updated only.
+            override: Whether to override the existing module specs if they already
+                exist. If False, they are only updated.
         """
-        assert type(other) is MultiAgentRLModuleSpec
-
-        if isinstance(other.module_specs, dict):
-            self.add_modules(other.module_specs, overwrite=overwrite)
+        if isinstance(other, SingleAgentRLModuleSpec):
+            for mid, spec in self.module_specs.items():
+                self.module_specs[mid].update(other, override=False)
+        elif isinstance(other.module_specs, dict):
+            self.add_modules(other.module_specs, override=override)
         else:
             if not self.module_specs:
                 self.module_specs = other.module_specs
@@ -636,7 +657,7 @@ class MultiAgentRLModuleSpec:
 @ExperimentalAPI
 @dataclass
 class MultiAgentRLModuleConfig:
-    modules: Mapping[ModuleID, SingleAgentRLModuleSpec] = field(default_factory=dict)
+    modules: Dict[ModuleID, SingleAgentRLModuleSpec] = field(default_factory=dict)
 
     def to_dict(self):
         return {

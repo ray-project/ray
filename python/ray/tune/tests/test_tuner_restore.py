@@ -9,8 +9,9 @@ import pyarrow.fs
 import pytest
 
 import ray
-from ray import train, tune
 import ray.cloudpickle as ray_pickle
+from ray import train, tune
+from ray.air._internal.uri_utils import URI
 from ray.train import (
     Checkpoint,
     CheckpointConfig,
@@ -18,9 +19,9 @@ from ray.train import (
     RunConfig,
     ScalingConfig,
 )
-from ray.air._internal.uri_utils import URI
+from ray.train._internal.storage import _download_from_fs_path, get_fs_and_path
 from ray.train.data_parallel_trainer import DataParallelTrainer
-from ray.train._internal.storage import get_fs_and_path, _download_from_fs_path
+from ray.train.tests.util import create_dict_checkpoint, load_dict_checkpoint
 from ray.tune import Callback, Trainable
 from ray.tune.analysis import ExperimentAnalysis
 from ray.tune.execution.experiment_state import _find_newest_experiment_checkpoint
@@ -30,8 +31,6 @@ from ray.tune.schedulers.async_hyperband import ASHAScheduler
 from ray.tune.search.optuna import OptunaSearch
 from ray.tune.tune_config import TuneConfig
 from ray.tune.tuner import Tuner
-
-from ray.train.tests.util import create_dict_checkpoint, load_dict_checkpoint
 
 
 @pytest.fixture

@@ -9,10 +9,31 @@ produce .whl files owned by root.
 Inside the root directory (i.e., one level above this python directory), run
 
 ```
-docker run -e TRAVIS_COMMIT=<commit_number_to_use> --rm -w /ray -v `pwd`:/ray -ti quay.io/pypa/manylinux2014_x86_64  /ray/python/build-wheel-manylinux2014.sh
+docker run -ti --rm \
+    -e BUILDKITE_COMMIT="$(git rev-parse HEAD)" \
+    -e BUILD_ONE_PYTHON_ONLY=py39 \
+    -w /ray -v "$(pwd)":/ray \
+    quay.io/pypa/manylinux2014_x86_64:2024-07-02-9ac04ee \
+    /ray/python/build-wheel-manylinux2014.sh
 ```
 
-The wheel files will be placed in the .whl directory.
+The Python 3.9 wheel files will be placed in the `.whl` directory.
+
+One can change the value of `BUILDKITE_COMMIT` to generate wheels with
+different built-in commit string (the code is not changed) and
+`BUILD_ONE_PYTHON_ONLY` to build wheels of different Python versions.
+
+For arm64 / aarch64 architecture, use the `quay.io/pypa/manylinux2014_aarch64`
+image:
+
+```
+docker run -ti --rm \
+    -e BUILDKITE_COMMIT="$(git rev-parse HEAD)" \
+    -e BUILD_ONE_PYTHON_ONLY=py39 \
+    -w /ray -v "$(pwd)":/ray \
+    quay.io/pypa/manylinux2014_aarch64:2024-07-02-9ac04ee \
+    /ray/python/build-wheel-manylinux2014.sh
+```
 
 ## Building MacOS wheels
 

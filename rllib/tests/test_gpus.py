@@ -2,6 +2,7 @@ import unittest
 
 import ray
 from ray import air
+from ray.air.constants import TRAINING_ITERATION
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.test_utils import framework_iterator
@@ -18,27 +19,27 @@ class TestGPUs(unittest.TestCase):
         actual_gpus = torch.cuda.device_count()
         print(f"Actual GPUs found (by torch): {actual_gpus}")
 
-        config = PPOConfig().rollouts(num_rollout_workers=2).environment("CartPole-v1")
+        config = PPOConfig().env_runners(num_env_runners=2).environment("CartPole-v1")
 
         # Expect errors when we run a config w/ num_gpus>0 w/o a GPU
         # and _fake_gpus=False.
         for num_gpus in [0, 0.1, 1, actual_gpus + 4]:
-            # Only allow possible num_gpus_per_worker (so test would not
+            # Only allow possible num_gpus_per_env_runner (so test would not
             # block infinitely due to a down worker).
             per_worker = (
                 [0] if actual_gpus == 0 or actual_gpus < num_gpus else [0, 0.5, 1]
             )
-            for num_gpus_per_worker in per_worker:
+            for num_gpus_per_env_runner in per_worker:
                 for fake_gpus in [False] + ([] if num_gpus == 0 else [True]):
                     config.resources(
                         num_gpus=num_gpus,
-                        num_gpus_per_worker=num_gpus_per_worker,
                         _fake_gpus=fake_gpus,
                     )
+                    config.env_runners(num_gpus_per_env_runner=num_gpus_per_env_runner)
 
                     print(
                         f"\n------------\nnum_gpus={num_gpus} "
-                        f"num_gpus_per_worker={num_gpus_per_worker} "
+                        f"num_gpus_per_env_runner={num_gpus_per_env_runner} "
                         f"_fake_gpus={fake_gpus}"
                     )
 
@@ -48,7 +49,7 @@ class TestGPUs(unittest.TestCase):
                     for _ in framework_iterator(config, frameworks=frameworks):
                         # Expect that Algorithm creation causes a num_gpu error.
                         if (
-                            actual_gpus < num_gpus + 2 * num_gpus_per_worker
+                            actual_gpus < num_gpus + 2 * num_gpus_per_env_runner
                             and not fake_gpus
                         ):
                             # "Direct" RLlib (create Algorithm on the driver).
@@ -77,7 +78,7 @@ class TestGPUs(unittest.TestCase):
                                     "PPO",
                                     param_space=config,
                                     run_config=air.RunConfig(
-                                        stop={"training_iteration": 0}
+                                        stop={TRAINING_ITERATION: 0}
                                     ),
                                 ).fit()
         ray.shutdown()
@@ -88,7 +89,7 @@ class TestGPUs(unittest.TestCase):
 
         actual_gpus_available = torch.cuda.device_count()
 
-        config = PPOConfig().rollouts(num_rollout_workers=2).environment("CartPole-v1")
+        config = PPOConfig().env_runners(num_env_runners=2).environment("CartPole-v1")
 
         # Expect no errors in local mode.
         for num_gpus in [0, 0.1, 1, actual_gpus_available + 4]:
@@ -105,7 +106,7 @@ class TestGPUs(unittest.TestCase):
                     tune.Tuner(
                         "PPO",
                         param_space=config,
-                        run_config=air.RunConfig(stop={"training_iteration": 0}),
+                        run_config=air.RunConfig(stop={TRAINING_ITERATION: 0}),
                     ).fit()
 
         ray.shutdown()

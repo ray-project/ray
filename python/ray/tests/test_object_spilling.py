@@ -39,13 +39,20 @@ def run_basic_workload():
     ray.get(ray.put(arr))
 
 
-def is_dir_empty(
-    temp_folder, append_path=ray._private.ray_constants.DEFAULT_OBJECT_PREFIX
-):
+def is_dir_empty(temp_folder, node_id, append_path=True):
+    """Test if directory temp_folder/f"{DEFAULT_OBJECT_PREFIX}_{node_id}" is empty.
+    For file based spilling, this is where the objects are spilled.
+    For other use cases, specify append_path as False so that temp_folder itself
+    is tested for emptiness.
+    """
     # append_path is used because the file based spilling will append
     # new directory path.
     num_files = 0
-    temp_folder = temp_folder / append_path
+    if append_path:
+        temp_folder = (
+            temp_folder
+            / f"{ray._private.ray_constants.DEFAULT_OBJECT_PREFIX}_{node_id}"
+        )
     if not temp_folder.exists():
         return True
     for path in temp_folder.iterdir():
@@ -73,7 +80,7 @@ def assert_no_thrashing(address):
 
 @pytest.mark.skipif(platform.system() == "Windows", reason="Doesn't support Windows.")
 def test_spill_file_uniqueness(shutdown_only):
-    ray.init(num_cpus=0, object_store_memory=75 * 1024 * 1024)
+    ray_context = ray.init(num_cpus=0, object_store_memory=75 * 1024 * 1024)
     arr = np.random.rand(128 * 1024)  # 1 MB
     refs = []
     refs.append([ray.put(arr)])
@@ -88,7 +95,7 @@ def test_spill_file_uniqueness(shutdown_only):
             StorageType, "_get_objects_from_store"
         ) as mock_get_objects_from_store:
             mock_get_objects_from_store.return_value = [(b"somedata", b"metadata")]
-            storage = StorageType("/tmp")
+            storage = StorageType(ray_context["node_id"], "/tmp")
             spilled_url_set = {
                 storage.spill_objects(refs, [b"localhost"])[0] for _ in range(10)
             }
@@ -220,11 +227,30 @@ def test_default_config_cluster(ray_start_cluster_enabled):
     ray.get([task.remote() for _ in range(2)])
 
 
+def test_node_id_in_spill_dir_name():
+    node_id = ray.NodeID.from_random().hex()
+    session_dir = "test_session_dir"
+    storage = ray._private.external_storage.setup_external_storage(
+        file_system_object_spilling_config, node_id, session_dir
+    )
+
+    import os
+
+    dir_prefix = ray._private.ray_constants.DEFAULT_OBJECT_PREFIX
+    expected_dir_name = f"{dir_prefix}_{node_id}"
+    for path in storage._directory_paths:
+        dir_name = os.path.basename(path)
+        assert dir_name == expected_dir_name
+
+    # Clean up
+    storage.destroy_external_storage()
+
+
 @pytest.mark.skipif(platform.system() == "Windows", reason="Hangs on Windows.")
 def test_spilling_not_done_for_pinned_object(object_spilling_config, shutdown_only):
     # Limit our object store to 75 MiB of memory.
     object_spilling_config, temp_folder = object_spilling_config
-    address = ray.init(
+    ray_context = ray.init(
         object_store_memory=75 * 1024 * 1024,
         _system_config={
             "max_io_workers": 4,
@@ -238,8 +264,8 @@ def test_spilling_not_done_for_pinned_object(object_spilling_config, shutdown_on
     ref = ray.get(ray.put(arr))  # noqa
     ref2 = ray.put(arr)  # noqa
 
-    wait_for_condition(lambda: is_dir_empty(temp_folder))
-    assert_no_thrashing(address["address"])
+    wait_for_condition(lambda: is_dir_empty(temp_folder, ray_context["node_id"]))
+    assert_no_thrashing(ray_context["address"])
 
 
 def test_spill_remote_object(

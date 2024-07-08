@@ -1,30 +1,10 @@
-import {
-  createStyles,
-  Link,
-  makeStyles,
-  TableCell,
-  TableRow,
-  Tooltip,
-} from "@material-ui/core";
+import { Link, TableCell, TableRow, Tooltip } from "@mui/material";
 import React from "react";
 import { Link as RouterLink } from "react-router-dom";
 import { StatusChip } from "../../components/StatusChip";
 import { ServeProxy, ServeSystemActor } from "../../type/serve";
 import { useFetchActor } from "../actor/hook/useActorDetail";
 import { convertActorStateForServeController } from "./ServeSystemActorDetailPage";
-
-const useStyles = makeStyles((theme) =>
-  createStyles({
-    idCol: {
-      display: "inline-block",
-      width: "50px",
-      overflow: "hidden",
-      textOverflow: "ellipsis",
-      whiteSpace: "nowrap",
-      verticalAlign: "bottom",
-    },
-  }),
-);
 
 export type ServeProxyRowProps = {
   proxy: ServeProxy;
@@ -81,7 +61,6 @@ const ServeSystemActorRow = ({
   status,
 }: ServeSystemActorRowProps) => {
   const { node_id, actor_id } = actor;
-  const classes = useStyles();
 
   return (
     <TableRow>
@@ -110,8 +89,19 @@ const ServeSystemActorRow = ({
       </TableCell>
       <TableCell align="center">
         {node_id ? (
-          <Tooltip className={classes.idCol} title={node_id} arrow interactive>
-            <Link component={RouterLink} to={`/cluster/nodes/${node_id}`}>
+          <Tooltip title={node_id} arrow>
+            <Link
+              sx={{
+                display: "inline-block",
+                width: "50px",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+                verticalAlign: "bottom",
+              }}
+              component={RouterLink}
+              to={`/cluster/nodes/${node_id}`}
+            >
               {node_id}
             </Link>
           </Tooltip>
@@ -121,8 +111,19 @@ const ServeSystemActorRow = ({
       </TableCell>
       <TableCell align="center">
         {actor_id ? (
-          <Tooltip className={classes.idCol} title={actor_id} arrow interactive>
-            <Link component={RouterLink} to={`/actors/${actor_id}`}>
+          <Tooltip title={actor_id} arrow>
+            <Link
+              sx={{
+                display: "inline-block",
+                width: "50px",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+                verticalAlign: "bottom",
+              }}
+              component={RouterLink}
+              to={`/actors/${actor_id}`}
+            >
               {actor_id}
             </Link>
           </Tooltip>

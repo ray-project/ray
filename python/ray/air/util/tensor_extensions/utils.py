@@ -1,5 +1,5 @@
-from typing import Any, Sequence, Union, TYPE_CHECKING
 import warnings
+from typing import TYPE_CHECKING, Any, Sequence, Union
 
 import numpy as np
 

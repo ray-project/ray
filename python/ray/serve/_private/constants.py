@@ -36,8 +36,13 @@ SERVE_DEFAULT_APP_NAME = "default"
 #: Max concurrency
 ASYNC_CONCURRENCY = int(1e6)
 
-# How often to call the control loop on the controller.
-CONTROL_LOOP_PERIOD_S = 0.1
+# How long to sleep between control loop cycles on the controller.
+CONTROL_LOOP_INTERVAL_S = float(os.getenv("RAY_SERVE_CONTROL_LOOP_INTERVAL_S", 0.1))
+assert CONTROL_LOOP_INTERVAL_S >= 0, (
+    f"Got unexpected value {CONTROL_LOOP_INTERVAL_S} for "
+    "RAY_SERVE_CONTROL_LOOP_INTERVAL_S environment variable. "
+    "RAY_SERVE_CONTROL_LOOP_INTERVAL_S cannot be negative."
+)
 
 #: Max time to wait for HTTP proxy in `serve.start()`.
 HTTP_PROXY_TIMEOUT = 60
@@ -87,18 +92,28 @@ SERVE_ROOT_URL_ENV_KEY = "RAY_SERVE_ROOT_URL"
 
 #: Limit the number of cached handles because each handle has long poll
 #: overhead. See https://github.com/ray-project/ray/issues/18980
-MAX_CACHED_HANDLES = 100
+MAX_CACHED_HANDLES = int(os.getenv("MAX_CACHED_HANDLES", 100))
+assert MAX_CACHED_HANDLES > 0, (
+    f"Got unexpected value {MAX_CACHED_HANDLES} for "
+    "MAX_CACHED_HANDLES environment variable. "
+    "MAX_CACHED_HANDLES must be positive."
+)
 
 #: Because ServeController will accept one long poll request per handle, its
 #: concurrency needs to scale as O(num_handles)
-CONTROLLER_MAX_CONCURRENCY = 15000
+CONTROLLER_MAX_CONCURRENCY = int(os.getenv("CONTROLLER_MAX_CONCURRENCY", 15_000))
+assert CONTROLLER_MAX_CONCURRENCY > 0, (
+    f"Got unexpected value {CONTROLLER_MAX_CONCURRENCY} for "
+    "CONTROLLER_MAX_CONCURRENCY environment variable. "
+    "CONTROLLER_MAX_CONCURRENCY must be positive."
+)
 
 DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT_S = 20
 DEFAULT_GRACEFUL_SHUTDOWN_WAIT_LOOP_S = 2
 DEFAULT_HEALTH_CHECK_PERIOD_S = 10
 DEFAULT_HEALTH_CHECK_TIMEOUT_S = 30
-DEFAULT_MAX_ONGOING_REQUESTS = 100
-NEW_DEFAULT_MAX_ONGOING_REQUESTS = 5
+DEFAULT_MAX_ONGOING_REQUESTS = 5
+DEFAULT_TARGET_ONGOING_REQUESTS = 2
 
 # HTTP Proxy health check configs
 PROXY_HEALTH_CHECK_TIMEOUT_S = (
@@ -135,7 +150,9 @@ CLIENT_POLLING_INTERVAL_S: float = 1
 CLIENT_CHECK_CREATION_POLLING_INTERVAL_S: float = 0.1
 
 # Handle metric push interval. (This interval will affect the cold start time period)
-HANDLE_METRIC_PUSH_INTERVAL_S = 10
+HANDLE_METRIC_PUSH_INTERVAL_S = float(
+    os.environ.get("RAY_SERVE_HANDLE_METRIC_PUSH_INTERVAL_S", "10")
+)
 
 # Timeout for GCS internal KV service
 RAY_SERVE_KV_TIMEOUT_S = float(os.environ.get("RAY_SERVE_KV_TIMEOUT_S", "0")) or None
@@ -197,6 +214,14 @@ SERVE_LOG_RECORD_FORMAT = {
     SERVE_LOG_TIME: "%(asctime)s",
 }
 
+# There are some attributes that we only use internally or don't provide values to the
+# users. Adding to this set will remove them from structured logs.
+SERVE_LOG_UNWANTED_ATTRS = {
+    "serve_access_log",
+    "task_id",
+    "job_id",
+}
+
 SERVE_LOG_EXTRA_FIELDS = "ray_serve_extra_fields"
 
 # Serve HTTP request header key for routing requests.
@@ -223,6 +248,9 @@ RAY_SERVE_CONTROLLER_CALLBACK_IMPORT_PATH = os.environ.get(
 
 # How often autoscaling metrics are recorded on Serve replicas.
 RAY_SERVE_REPLICA_AUTOSCALING_METRIC_RECORD_PERIOD_S = 0.5
+
+# How often autoscaling metrics are recorded on Serve handles.
+RAY_SERVE_HANDLE_AUTOSCALING_METRIC_RECORD_PERIOD_S = 0.5
 
 # Serve multiplexed matching timeout.
 # This is the timeout for the matching process of multiplexed requests. To avoid
