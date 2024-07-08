@@ -26,10 +26,14 @@ from ray.train.backend import BackendConfig
 from ray.train.constants import TRAIN_DATASET_KEY
 from ray.train.context import get_context
 from ray.train.trainer import TrainingIterator
-from ray.train.v2._internal.constants import V2_ENABLED
+from ray.train.v2._internal.constants import is_v2_enabled
 
-if V2_ENABLED:
-    from ray.train.v2.api.config import RunConfig, ScalingConfig  # noqa: F811
+if is_v2_enabled():
+    from ray.train.v2.api.config import (  # noqa: F811
+        FailureConfig,
+        RunConfig,
+        ScalingConfig,
+    )
     from ray.train.v2.api.result import Result  # noqa: F811
     from ray.train.v2.api.train_fn_utils import (  # noqa: F811
         get_checkpoint,
@@ -78,7 +82,7 @@ TrainingIterator.__module__ = "ray.train"
 
 
 # Append Anyscale proprietary APIs and apply patches
-if V2_ENABLED:
+if is_v2_enabled():
     from ray.anyscale.train.api.config import (  # noqa: E402, F811, isort: skip
         ScalingConfig,
     )

@@ -19,9 +19,9 @@ from ray.train.lightning._lightning_utils import (
     RayTrainReportCallback,
     prepare_trainer,
 )
-from ray.train.v2._internal.constants import V2_ENABLED
+from ray.train.v2._internal.constants import is_v2_enabled
 
-if V2_ENABLED:
+if is_v2_enabled():
     from ray.train.v2.lightning.lightning_utils import (  # noqa: F811
         RayTrainReportCallback,
     )

@@ -27,7 +27,10 @@ DEFAULT_WORKER_GROUP_START_TIMEOUT_S: float = 30.0
 
 # V2 feature flag.
 V2_ENABLED_ENV_VAR = "RAY_TRAIN_V2_ENABLED"
-V2_ENABLED = env_bool(V2_ENABLED_ENV_VAR, False)
+
+
+def is_v2_enabled() -> bool:
+    return env_bool(V2_ENABLED_ENV_VAR, False)
 
 
 ENV_VARS_TO_PROPAGATE = (V2_ENABLED_ENV_VAR,)

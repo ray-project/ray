@@ -85,4 +85,14 @@ class DataParallelTrainer:
 
     @classmethod
     def restore(cls, *args, **kwargs):
-        raise NotImplementedError
+        raise NotImplementedError(
+            "Job-level restoration is not currently supported. "
+            "This feature will be added back in a future release."
+        )
+
+    @classmethod
+    def can_restore(cls, *args, **kwargs):
+        raise NotImplementedError(
+            "Job-level restoration is not currently supported. "
+            "This feature will be added back in a future release."
+        )

@@ -1,8 +1,8 @@
 import abc
 from enum import Enum
 
-from ray.train import FailureConfig
 from ray.train.v2._internal.execution.worker_group import WorkerGroupStatus
+from ray.train.v2.api.config import FailureConfig
 
 
 class FailureDecision(Enum):

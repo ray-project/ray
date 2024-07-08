@@ -1,12 +1,12 @@
 import logging
 
 from ray.exceptions import RayActorError
-from ray.train import FailureConfig
 from ray.train.v2._internal.execution.failure_handling import (
     FailureDecision,
     FailurePolicy,
 )
 from ray.train.v2._internal.execution.worker_group import WorkerGroupStatus
+from ray.train.v2.api.config import FailureConfig
 
 logger = logging.getLogger(__name__)
 

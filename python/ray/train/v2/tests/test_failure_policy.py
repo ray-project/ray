@@ -1,7 +1,6 @@
 import pytest
 
 from ray.exceptions import RayActorError
-from ray.train import FailureConfig
 from ray.train.v2._internal.execution.failure_handling import (
     DefaultFailurePolicy,
     FailureDecision,
@@ -10,6 +9,7 @@ from ray.train.v2._internal.execution.worker_group import (
     WorkerGroupStatus,
     WorkerStatus,
 )
+from ray.train.v2.api.config import FailureConfig
 
 
 def _worker_group_status_from_errors(errors):
