@@ -1,3 +1,4 @@
+import pathlib
 from collections import defaultdict, Counter
 import copy
 from functools import partial
@@ -8,6 +9,7 @@ from typing import (
     Dict,
     List,
     Optional,
+    Set,
     Type,
     TYPE_CHECKING,
     Union,
@@ -882,3 +884,77 @@ class LearnerGroup(Checkpointable):
     @Deprecated(new="LearnerGroup.restore(...)", error=True)
     def load_state(self, *args, **kwargs):
         pass
+
+    @Deprecated(new="LearnerGroup.load_from_path(path=..., component=...)", error=False)
+    def load_module_state(
+        self,
+        *,
+        marl_module_ckpt_dir: Optional[str] = None,
+        modules_to_load: Optional[Set[str]] = None,
+        rl_module_ckpt_dirs: Optional[Dict[ModuleID, str]] = None,
+    ) -> None:
+        """Load the checkpoints of the modules being trained by this LearnerGroup.
+
+        `load_module_state` can be used 3 ways:
+            1. Load a checkpoint for the MultiAgentRLModule being trained by this
+                LearnerGroup. Limit the modules that are loaded from the checkpoint
+                by specifying the `modules_to_load` argument.
+            2. Load the checkpoint(s) for single agent RLModules that
+                are in the MultiAgentRLModule being trained by this LearnerGroup.
+            3. Load a checkpoint for the MultiAgentRLModule being trained by this
+                LearnerGroup and load the checkpoint(s) for single agent RLModules
+                that are in the MultiAgentRLModule. The checkpoints for the single
+                agent RLModules take precedence over the module states in the
+                MultiAgentRLModule checkpoint.
+
+        NOTE: At lease one of marl_module_ckpt_dir or rl_module_ckpt_dirs is
+            must be specified. modules_to_load can only be specified if
+            marl_module_ckpt_dir is specified.
+
+        Args:
+            marl_module_ckpt_dir: The path to the checkpoint for the
+                MultiAgentRLModule.
+            modules_to_load: A set of module ids to load from the checkpoint.
+            rl_module_ckpt_dirs: A mapping from module ids to the path to a
+                checkpoint for a single agent RLModule.
+        """
+        if not (marl_module_ckpt_dir or rl_module_ckpt_dirs):
+            raise ValueError(
+                "At least one of `marl_module_ckpt_dir` or "
+                "`rl_module_ckpt_dirs` must be provided!"
+            )
+        if marl_module_ckpt_dir:
+            marl_module_ckpt_dir = pathlib.Path(marl_module_ckpt_dir)
+        if rl_module_ckpt_dirs:
+            for module_id, path in rl_module_ckpt_dirs.items():
+                rl_module_ckpt_dirs[module_id] = pathlib.Path(path)
+
+        # MARLModule checkpoint is provided.
+        if marl_module_ckpt_dir:
+            # Restore the entire MARLModule state.
+            if modules_to_load is None:
+                self.restore_from_path(
+                    marl_module_ckpt_dir,
+                    component=COMPONENT_LEARNER + "/" + COMPONENT_RL_MODULE,
+                )
+            # Restore individual module IDs.
+            else:
+                for module_id in modules_to_load:
+                    self.restore_from_path(
+                        marl_module_ckpt_dir + "/" + module_id,
+                        component=(
+                            COMPONENT_LEARNER
+                            + "/"
+                            + COMPONENT_RL_MODULE
+                            + "/"
+                            + module_id
+                        ),
+                    )
+        if rl_module_ckpt_dirs:
+            for module_id, path in rl_module_ckpt_dirs.items():
+                self.restore_from_path(
+                    path,
+                    component=(
+                        COMPONENT_LEARNER + "/" + COMPONENT_RL_MODULE + "/" + module_id
+                    ),
+                )
