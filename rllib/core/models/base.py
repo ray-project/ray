@@ -331,7 +331,9 @@ class ActorCriticEncoder(Encoder):
     @override(Model)
     def get_output_specs(self) -> Optional[Spec]:
         return [(ENCODER_OUT, ACTOR)] + (
-            [(ENCODER_OUT, CRITIC)] if self.critic_encoder else []
+            [(ENCODER_OUT, CRITIC)]
+            if not self.config.shared and self.critic_encoder
+            else []
         )
 
     @override(Model)
@@ -342,9 +344,9 @@ class ActorCriticEncoder(Encoder):
                 ENCODER_OUT: {
                     ACTOR: encoder_outs[ENCODER_OUT],
                     **(
-                        {CRITIC: encoder_outs[ENCODER_OUT]}
-                        if self.critic_encoder
-                        else {}
+                        {}
+                        if self.config.inference_only
+                        else {CRITIC: encoder_outs[ENCODER_OUT]}
                     ),
                 }
             }
@@ -358,7 +360,9 @@ class ActorCriticEncoder(Encoder):
                 ENCODER_OUT: {
                     ACTOR: actor_out[ENCODER_OUT],
                     **(
-                        {CRITIC: critic_out[ENCODER_OUT]} if self.critic_encoder else {}
+                        {}
+                        if self.config.inference_only
+                        else {CRITIC: critic_out[ENCODER_OUT]}
                     ),
                 }
             }
