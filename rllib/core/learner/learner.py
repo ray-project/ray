@@ -793,7 +793,6 @@ class Learner(Checkpointable):
         # Change self.config to reflect the new architecture.
         # TODO (sven): This is a hack to manipulate the AlgorithmConfig directly,
         #  but we'll deprecate config.policies soon anyway.
-        self.config._is_frozen = False
         del self.config.policies[module_id]
         self.config.algorithm_config_overrides_per_module.pop(module_id, None)
         if new_should_module_be_updated is not None:
@@ -801,7 +800,6 @@ class Learner(Checkpointable):
         self.config.rl_module(
             rl_module_spec=MultiAgentRLModuleSpec.from_module(self.module)
         )
-        self.config.freeze()
 
         # Remove all stats from the module from our metrics logger, so we don't report
         # results from this module again.
