@@ -640,7 +640,7 @@ class TorchMultiDistribution(Distribution):
         """
         logit_lens = tree.flatten(input_lens)
         child_distribution_cls_list = tree.flatten(child_distribution_cls_struct)
-        split_logits = torch.split(logits, logit_lens, dim=1)
+        split_logits = torch.split(logits, logit_lens, dim=-1)
 
         child_distribution_list = tree.map_structure(
             lambda dist, input_: dist.from_logits(input_),

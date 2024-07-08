@@ -157,8 +157,6 @@ const ActorTable = ({
     maxPage,
   } = sliceToPage(sortedActors, pageNo, pageSize ?? 10);
 
-  const classes = rowStyles();
-
   const columns = [
     { label: "" },
     { label: "ID" },
@@ -511,7 +509,7 @@ const ActorTable = ({
           <StateCounter type="actor" list={sortedActors} />
         </div>
       </div>
-      <div className={classes.tableContainer}>
+      <Box sx={{ overflowX: "scroll" }}>
         <Table>
           <TableHead>
             <TableRow>
@@ -524,9 +522,7 @@ const ActorTable = ({
                   >
                     {label}
                     {helpInfo && (
-                      <HelpInfo className={classes.helpInfo}>
-                        {helpInfo}
-                      </HelpInfo>
+                      <HelpInfo sx={{ marginLeft: 1 }}>{helpInfo}</HelpInfo>
                     )}
                   </Box>
                 </TableCell>
@@ -576,8 +572,8 @@ const ActorTable = ({
                   key={actorId}
                 >
                   <TableCell align="center">
-                    <Tooltip className={classes.idCol} title={actorId} arrow>
-                      <div>
+                    <Tooltip title={actorId} arrow>
+                      <Box sx={rowStyles.idCol}>
                         <ActorLink
                           actorId={actorId}
                           to={
@@ -586,7 +582,7 @@ const ActorTable = ({
                               : actorId
                           }
                         />
-                      </div>
+                      </Box>
                     </Tooltip>
                   </TableCell>
                   <TableCell align="center">{actorClass}</TableCell>
@@ -642,19 +638,15 @@ const ActorTable = ({
                   </TableCell>
                   <TableCell align="center">
                     {address?.rayletId ? (
-                      <Tooltip
-                        className={classes.idCol}
-                        title={address?.rayletId}
-                        arrow
-                      >
-                        <div>
+                      <Tooltip title={address?.rayletId} arrow>
+                        <Box sx={rowStyles.idCol}>
                           <Link
                             component={RouterLink}
                             to={generateNodeLink(address.rayletId)}
                           >
                             {address?.rayletId}
                           </Link>
-                        </div>
+                        </Box>
                       </Tooltip>
                     ) : (
                       "-"
@@ -700,16 +692,16 @@ const ActorTable = ({
                   </TableCell>
                   <TableCell align="center">
                     <Tooltip
-                      className={classes.idCol}
                       title={placementGroupId ? placementGroupId : "-"}
                       arrow
                     >
-                      <div>{placementGroupId ? placementGroupId : "-"}</div>
+                      <Box sx={rowStyles.idCol}>
+                        {placementGroupId ? placementGroupId : "-"}
+                      </Box>
                     </Tooltip>
                   </TableCell>
                   <TableCell align="center">
                     <Tooltip
-                      className={classes.OverflowCol}
                       title={Object.entries(requiredResources || {}).map(
                         ([key, val]) => (
                           <div style={{ margin: 4 }}>
@@ -719,20 +711,16 @@ const ActorTable = ({
                       )}
                       arrow
                     >
-                      <div>
+                      <Box sx={rowStyles.OverflowCol}>
                         {Object.entries(requiredResources || {})
                           .map(([key, val]) => `${key}: ${val}`)
                           .join(", ")}
-                      </div>
+                      </Box>
                     </Tooltip>
                   </TableCell>
                   <TableCell align="center">
-                    <Tooltip
-                      className={classes.OverflowCol}
-                      title={exitDetail}
-                      arrow
-                    >
-                      <div>{exitDetail}</div>
+                    <Tooltip title={exitDetail} arrow>
+                      <Box sx={rowStyles.OverflowCol}>{exitDetail}</Box>
                     </Tooltip>
                   </TableCell>
                 </ExpandableTableRow>
@@ -740,7 +728,7 @@ const ActorTable = ({
             )}
           </TableBody>
         </Table>
-      </div>
+      </Box>
     </React.Fragment>
   );
 };

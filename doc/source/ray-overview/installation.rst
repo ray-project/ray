@@ -308,11 +308,8 @@ However, should you need to build from source, follow :ref:`these instructions f
 Docker Source Images
 --------------------
 
-Most users should pull a Docker image from the `Ray Docker Hub <https://hub.docker.com/r/rayproject/>`__.
-
-- The ``rayproject/ray`` `images <https://hub.docker.com/r/rayproject/ray>`__ include Ray and all required dependencies. It comes with anaconda and various versions of Python.
-- The ``rayproject/ray-ml`` `images <https://hub.docker.com/r/rayproject/ray-ml>`__ include the above as well as many additional ML libraries.
-- The ``rayproject/base-deps`` and ``rayproject/ray-deps`` images are for the Linux and Python dependencies respectively.
+Users can pull a Docker image from the ``rayproject/ray`` `Docker Hub repository <https://hub.docker.com/r/rayproject/ray>`__.
+The images include Ray and all required dependencies. It comes with anaconda and various versions of Python.
 
 Images are `tagged` with the format ``{Ray version}[-{Python version}][-{Platform}]``. ``Ray version`` tag can be one of the following:
 
@@ -325,11 +322,11 @@ Images are `tagged` with the format ``{Ray version}[-{Python version}][-{Platfor
    * - latest
      - The most recent Ray release.
    * - x.y.z
-     - A specific Ray release, e.g. 2.10.0
+     - A specific Ray release, e.g. 2.31.0
    * - nightly
      - The most recent Ray development build (a recent commit from Github ``master``)
 
-The optional ``Python version`` tag specifies the Python version in the image. All Python versions supported by Ray are available, e.g. ``py38``, ``py39`` and ``py310``. If unspecified, the tag points to an image using ``Python 3.8``.
+The optional ``Python version`` tag specifies the Python version in the image. All Python versions supported by Ray are available, e.g. ``py39``, ``py310`` and ``py311``. If unspecified, the tag points to an image of the lowest Python version that the Ray version supports.
 
 The optional ``Platform`` tag specifies the platform where the image is intended for:
 
@@ -346,11 +343,11 @@ The optional ``Platform`` tag specifies the platform where the image is intended
    * - -gpu
      - Aliases to a specific ``-cuXX`` tagged image.
    * - <no tag>
-     - Aliases to ``-cpu`` tagged images. For ``ray-ml`` image, aliases to ``-gpu`` tagged image.
+     - Aliases to ``-cpu`` tagged images.
 
-Example: for the nightly image based on ``Python 3.8`` and without GPU support, the tag is ``nightly-py38-cpu``.
+Example: for the nightly image based on ``Python 3.9`` and without GPU support, the tag is ``nightly-py39-cpu``.
 
-If you want to tweak some aspect of these images and build them locally, refer to the following script:
+If you want to tweak some aspects of these images and build them locally, refer to the following script:
 
 .. code-block:: bash
 
@@ -376,7 +373,7 @@ Output should look something like the following:
   rayproject/ray                      latest              7243a11ac068        2 days ago          1.11 GB
   rayproject/ray-deps                 latest              b6b39d979d73        8 days ago          996  MB
   rayproject/base-deps                latest              5606591eeab9        8 days ago          512  MB
-  ubuntu                              focal               1e4467b07108        3 weeks ago         73.9 MB
+  ubuntu                              22.04               1e4467b07108        3 weeks ago         73.9 MB
 
 
 Launch Ray in Docker
@@ -426,8 +423,7 @@ Installed Python dependencies
 Our docker images are shipped with pre-installed Python dependencies
 required for Ray and its libraries.
 
-We publish the dependencies that are installed in our ``ray`` and ``ray-ml``
-Docker images for Python 3.9.
+We publish the dependencies that are installed in our ``ray`` Docker images for Python 3.9.
 
 .. tab-set::
 
@@ -437,13 +433,6 @@ Docker images for Python 3.9.
         Ray version: nightly (`9a2f2c2 <https://github.com/ray-project/ray/commit/9a2f2c262a46f167eb742533966c66cc75b95743>`_)
 
         .. literalinclude:: ./pip_freeze_ray-py39-cpu.txt
-
-    .. tab-item:: ray-ml (Python 3.9)
-        :sync: ray-ml (Python 3.9)
-
-        Ray version: nightly (`9a2f2c2 <https://github.com/ray-project/ray/commit/9a2f2c262a46f167eb742533966c66cc75b95743>`_)
-
-        .. literalinclude:: ./pip_freeze_ray-ml-py39-cpu.txt
 
 .. _ray-install-java:
 
