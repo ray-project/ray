@@ -1,16 +1,10 @@
-from datetime import datetime, timedelta
-
 from ray_release.test_automation.state_machine import (
     TestStateMachine,
     WEEKLY_RELEASE_BLOCKER_TAG,
-    BUILDKITE_BISECT_PIPELINE,
-    BUILDKITE_ORGANIZATION,
 )
 from ray_release.test import Test, TestState
-from ray_release.logger import logger
 
 
-MAX_BISECT_PER_DAY = 10  # Max number of bisects to run per day for all tests
 CONTINUOUS_FAILURE_TO_JAIL = 3  # Number of continuous failures before jailing
 UNSTABLE_RELEASE_TEST_TAG = "unstable-release-test"
 
@@ -88,51 +82,3 @@ class ReleaseTestStateMachine(TestStateMachine):
             labels=labels,
         ).number
         self.test[Test.KEY_GITHUB_ISSUE_NUMBER] = issue_number
-
-    def _bisect_rate_limit_exceeded(self) -> bool:
-        """
-        Check if we have exceeded the rate limit of bisects per day.
-        """
-        builds = self.ray_buildkite.builds().list_all_for_pipeline(
-            BUILDKITE_ORGANIZATION,
-            BUILDKITE_BISECT_PIPELINE,
-            created_from=datetime.now() - timedelta(days=1),
-            branch="master",
-        )
-        return len(builds) >= MAX_BISECT_PER_DAY
-
-    def _trigger_bisect(self) -> None:
-        if self._bisect_rate_limit_exceeded():
-            logger.info(f"Skip bisect {self.test.get_name()} due to rate limit")
-            return
-        build = self.ray_buildkite.builds().create_build(
-            BUILDKITE_ORGANIZATION,
-            BUILDKITE_BISECT_PIPELINE,
-            "HEAD",
-            "master",
-            message=f"[ray-test-bot] {self.test.get_name()} failing",
-            env={
-                "UPDATE_TEST_STATE_MACHINE": "1",
-            },
-        )
-        failing_commit = self.test_results[0].commit
-        passing_commits = [r.commit for r in self.test_results if r.is_passing()]
-        if not passing_commits:
-            logger.info(f"Skip bisect {self.test.get_name()} due to no passing commit")
-            return
-        passing_commit = passing_commits[0]
-        self.ray_buildkite.jobs().unblock_job(
-            BUILDKITE_ORGANIZATION,
-            BUILDKITE_BISECT_PIPELINE,
-            build["number"],
-            build["jobs"][0]["id"],  # first job is the blocked job
-            fields={
-                "test-name": self.test.get_name(),
-                "passing-commit": passing_commit,
-                "failing-commit": failing_commit,
-                "concurrency": "3",
-                "run-per-commit": "1",
-                "test-type": "release-test",
-            },
-        )
-        self.test[Test.KEY_BISECT_BUILD_NUMBER] = build["number"]

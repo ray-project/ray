@@ -57,7 +57,8 @@ bool UpdateObjectLocations(const rpc::WorkerObjectLocationsPubMessage &location_
                            size_t *object_size) {
   bool is_updated = false;
   std::unordered_set<NodeID> new_node_ids;
-  // The size can be 0 if the update was a deletion. This assumes that an
+  // The size can be 0 if the update was a deletion. The size can also be unset if the
+  // size is unknown e.g. because the task is not finished yet. This assumes that an
   // object's size is always greater than 0.
   // TODO(swang): If that's not the case, we should use a flag to check
   // whether the size is set instead.

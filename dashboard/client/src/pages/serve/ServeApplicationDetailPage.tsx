@@ -12,14 +12,13 @@ import {
   TextFieldProps,
   Typography,
 } from "@mui/material";
-import createStyles from "@mui/styles/createStyles";
-import makeStyles from "@mui/styles/makeStyles";
 import React, { ReactElement } from "react";
 import { Outlet, useParams } from "react-router-dom";
 import { CodeDialogButton } from "../../common/CodeDialogButton";
 import { CollapsibleSection } from "../../common/CollapsibleSection";
 import { DurationText } from "../../common/DurationText";
 import { formatDateFromTimeMs } from "../../common/formatUtils";
+import { sliceToPage } from "../../common/util";
 import Loading from "../../components/Loading";
 import { MetadataSection } from "../../components/MetadataSection";
 import { StatusChip } from "../../components/StatusChip";
@@ -27,24 +26,6 @@ import { HelpInfo } from "../../components/Tooltip";
 import { MainNavPageInfo } from "../layout/mainNavContext";
 import { useServeApplicationDetails } from "./hook/useServeApplications";
 import { ServeDeploymentRow } from "./ServeDeploymentRow";
-
-const useStyles = makeStyles((theme) =>
-  createStyles({
-    root: {
-      padding: theme.spacing(3),
-    },
-    table: {
-      tableLayout: "fixed",
-    },
-    helpInfo: {
-      marginLeft: theme.spacing(1),
-    },
-    statusMessage: {
-      display: "inline-flex",
-      maxWidth: "100%",
-    },
-  }),
-);
 
 const columns: { label: string; helpInfo?: ReactElement; width?: string }[] = [
   { label: "Deployment name" },
@@ -58,7 +39,6 @@ const columns: { label: string; helpInfo?: ReactElement; width?: string }[] = [
 ];
 
 export const ServeApplicationDetailPage = () => {
-  const classes = useStyles();
   const { applicationName } = useParams();
 
   const {
@@ -80,8 +60,14 @@ export const ServeApplicationDetailPage = () => {
 
   const appName = application.name ? application.name : "-";
 
+  const {
+    items: list,
+    constrainedPage,
+    maxPage,
+  } = sliceToPage(filteredDeployments, page.pageNo, page.pageSize);
+
   return (
-    <div className={classes.root}>
+    <Box sx={{ padding: 3 }}>
       <MetadataSection
         metadataList={[
           {
@@ -205,8 +191,8 @@ export const ServeApplicationDetailPage = () => {
           </div>
           <div style={{ display: "flex", alignItems: "center" }}>
             <Pagination
-              count={Math.ceil(filteredDeployments.length / page.pageSize)}
-              page={page.pageNo}
+              count={maxPage}
+              page={constrainedPage}
               onChange={(e, pageNo) => setPage("pageNo", pageNo)}
             />
           </div>
@@ -226,9 +212,7 @@ export const ServeApplicationDetailPage = () => {
                     >
                       {label}
                       {helpInfo && (
-                        <HelpInfo className={classes.helpInfo}>
-                          {helpInfo}
-                        </HelpInfo>
+                        <HelpInfo sx={{ marginLeft: 1 }}>{helpInfo}</HelpInfo>
                       )}
                     </Box>
                   </TableCell>
@@ -236,24 +220,19 @@ export const ServeApplicationDetailPage = () => {
               </TableRow>
             </TableHead>
             <TableBody>
-              {filteredDeployments
-                .slice(
-                  (page.pageNo - 1) * page.pageSize,
-                  page.pageNo * page.pageSize,
-                )
-                .map((deployment) => (
-                  <ServeDeploymentRow
-                    key={deployment.name}
-                    deployment={deployment}
-                    application={application}
-                    showExpandColumn={false}
-                  />
-                ))}
+              {list.map((deployment) => (
+                <ServeDeploymentRow
+                  key={deployment.name}
+                  deployment={deployment}
+                  application={application}
+                  showExpandColumn={false}
+                />
+              ))}
             </TableBody>
           </Table>
         </TableContainer>
       </CollapsibleSection>
-    </div>
+    </Box>
   );
 };
 

@@ -13,13 +13,13 @@ import pytest
 
 import ray
 from ray.data._internal.block_builder import BlockBuilder
-from ray.data._internal.lazy_block_list import LazyBlockList
+from ray.data._internal.datasource.csv_datasink import CSVDatasink
+from ray.data._internal.datasource.csv_datasource import CSVDatasource
+from ray.data._internal.datasource.range_datasource import RangeDatasource
 from ray.data._internal.util import _check_pyarrow_version
 from ray.data.block import BlockAccessor, BlockMetadata
 from ray.data.context import DataContext
 from ray.data.dataset import Dataset, MaterializedDataset
-from ray.data.datasource.csv_datasink import _CSVDatasink
-from ray.data.datasource.csv_datasource import CSVDatasource
 from ray.data.datasource.datasource import Datasource, ReadTask
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.conftest import (
@@ -90,7 +90,7 @@ def test_schema_no_execution(ray_start_regular):
         last_snapshot,
     )
     # We do not kick off the read task by default.
-    assert ds._plan._in_blocks._num_computed() == 0
+    assert not ds._plan.has_started_execution
     schema = ds.schema()
     assert schema.names == ["id"]
 
@@ -99,9 +99,8 @@ def test_schema_no_execution(ray_start_regular):
     last_snapshot = assert_core_execution_metrics_equals(
         CoreExecutionMetrics(task_count={}), last_snapshot
     )
-    assert ds._plan._in_blocks._num_computed() == 0
     # Fetching the schema should not trigger execution of extra read tasks.
-    assert ds._plan.execute()._num_computed() == 0
+    assert not ds._plan.has_started_execution
 
 
 def test_schema_cached(ray_start_regular):
@@ -138,11 +137,11 @@ def test_schema_cached(ray_start_regular):
 def test_count(ray_start_regular):
     ds = ray.data.range(100, override_num_blocks=10)
     # We do not kick off the read task by default.
-    assert ds._plan._in_blocks._num_computed() == 0
+    assert not ds._plan.has_started_execution
     assert ds.count() == 100
     # Getting number of rows should not trigger execution of any read tasks
     # for ray.data.range(), as the number of rows is known beforehand.
-    assert ds._plan._in_blocks._num_computed() == 0
+    assert not ds._plan.has_started_execution
 
     assert_core_execution_metrics_equals(
         CoreExecutionMetrics(task_count={"_get_datasource_or_legacy_reader": 1})
@@ -200,7 +199,7 @@ def test_limit_execution(ray_start_regular):
     last_snapshot = assert_core_execution_metrics_equals(
         CoreExecutionMetrics(
             task_count={
-                "_execute_read_task_split": 20,
+                "ReadRange": 20,
                 "_get_datasource_or_legacy_reader": 1,
             }
         ),
@@ -236,6 +235,56 @@ def test_avoid_placement_group_capture(shutdown_only):
     )
 
 
+def test_ray_remote_args_fn(shutdown_only):
+    ray.init()
+
+    global_idx = 1
+    placement_groups = []
+
+    def _generate_ray_remote_args_with_scheduling_strategy():
+        nonlocal placement_groups
+        pg = ray.util.placement_group([{"CPU": global_idx}])
+        placement_groups.append(pg)
+
+        scheduling_strategy = PlacementGroupSchedulingStrategy(placement_group=pg)
+        return {"scheduling_strategy": scheduling_strategy}
+
+    class ActorClass:
+        def __init__(self):
+            # Each time a new actor is created with ActorClass,
+            # global_idx is incremented, and the number of CPUs in its
+            # placement group should match the saved self._idx value.
+            nonlocal global_idx
+            self._idx = global_idx
+            global_idx += 1
+
+        def __call__(self, batch):
+            pg = ray.util.get_current_placement_group()
+            if global_idx > 0:
+                assert pg.bundle_specs == [{"CPU": self._idx}]
+            else:
+                assert pg is not None
+            return batch
+
+    ray.data.range(10).map_batches(
+        ActorClass,
+        concurrency=3,
+        ray_remote_args_fn=_generate_ray_remote_args_with_scheduling_strategy,
+    ).take_all()
+
+    global_idx = -10
+    with pytest.raises(ValueError):  # cannot use -10 for pg
+        ray.data.range(10).map_batches(
+            ActorClass,
+            concurrency=3,
+            ray_remote_args_fn=_generate_ray_remote_args_with_scheduling_strategy,
+        ).take_all()
+
+    # Be sure to remove placement groups after use.
+    for pg in placement_groups:
+        ray.util.remove_placement_group(pg)
+
+
 def test_dataset_lineage_serialization(shutdown_only):
     ray.init()
     ds = ray.data.range(10)
@@ -246,12 +295,6 @@ def test_dataset_lineage_serialization(shutdown_only):
     plan_uuid = ds._plan._dataset_uuid
 
     serialized_ds = ds.serialize_lineage()
-    # Confirm that the original Dataset was properly copied before clearing/mutating.
-    in_blocks = ds._plan._in_blocks
-    # Should not raise.
-    in_blocks._check_if_cleared()
-    assert isinstance(in_blocks, LazyBlockList)
-    assert in_blocks._block_partition_refs[0] is None
 
     ray.shutdown()
     ray.init()
@@ -278,14 +321,6 @@ def test_dataset_lineage_serialization_unsupported(shutdown_only):
     # In-memory data source unions not supported.
     ds = ray.data.from_items(list(range(10)))
     ds1 = ray.data.from_items(list(range(10, 20)))
-    ds2 = ds.union(ds1)
-
-    with pytest.raises(ValueError):
-        ds2.serialize_lineage()
-
-    # Post-lazy-read unions not supported.
-    ds = ray.data.range(10).map(column_udf("id", lambda x: x + 1))
-    ds1 = ray.data.range(20).map(column_udf("id", lambda x: 2 * x))
     ds2 = ds.union(ds1)
 
     with pytest.raises(ValueError):
@@ -431,7 +466,7 @@ def test_schema_repr(ray_start_regular_shared):
 def _check_none_computed(ds):
     # In streaming executor, ds.take() will not invoke partial execution
     # in LazyBlocklist.
-    assert ds._plan.execute()._num_computed() == 0
+    assert not ds._plan.has_started_execution
 
 
 def test_lazy_loading_exponential_rampup(ray_start_regular_shared):
@@ -487,17 +522,19 @@ def test_dataset_repr(ray_start_regular_shared):
         repr(ds2) == f"MaterializedDataset(num_blocks=5, num_rows={ds2.count()}, "
         "schema={id: int64})"
     )
-    ds3 = ds1.union(ds2)
+
     # TODO(scottjlee): include all of the input datasets to union()
     # in the repr output, instead of only the resulting unioned dataset.
-    assert repr(ds3) == ("Union\n+- Dataset(num_rows=9, schema={id: int64})")
-    ds = ds.zip(ds3)
-    assert repr(ds) == (
-        "Zip\n"
-        "+- MapBatches(<lambda>)\n"
-        "+- Union\n"
-        "   +- Dataset(num_rows=9, schema={id: int64})"
-    )
+    # TODO(@bveeramani): Handle schemas for n-ary operators like `Union`.
+    # ds3 = ds1.union(ds2)
+    # assert repr(ds3) == ("Union\n+- Dataset(num_rows=9, schema={id: int64})")
+    # ds = ds.zip(ds3)
+    # assert repr(ds) == (
+    #     "Zip\n"
+    #     "+- MapBatches(<lambda>)\n"
+    #     "+- Union\n"
+    #     "   +- Dataset(num_rows=9, schema={id: int64})"
+    # )
 
     def my_dummy_fn(x):
         return x
@@ -629,6 +666,27 @@ def test_convert_types(ray_start_regular_shared):
     assert arrow_ds.map(lambda x: {"a": (x["id"],)}).take() == [{"a": [0]}]
 
 
+@pytest.mark.parametrize(
+    "input_blocks",
+    [
+        [pd.DataFrame({"column": ["spam"]}), pd.DataFrame({"column": ["ham", "eggs"]})],
+        [
+            pa.Table.from_pydict({"column": ["spam"]}),
+            pa.Table.from_pydict({"column": ["ham", "eggs"]}),
+        ],
+    ],
+)
+def test_from_blocks(input_blocks, ray_start_regular_shared):
+    ds = ray.data.from_blocks(input_blocks)
+
+    output_blocks = [ray.get(block_ref) for block_ref in ds.get_internal_block_refs()]
+    assert len(input_blocks) == len(output_blocks)
+    assert all(
+        input_block.equals(output_block)
+        for input_block, output_block in zip(input_blocks, output_blocks)
+    )
+
+
 def test_from_items(ray_start_regular_shared):
     ds = ray.data.from_items(["hello", "world"])
     assert extract_values("item", ds.take()) == ["hello", "world"]
@@ -731,7 +789,7 @@ def test_iter_batches_basic(ray_start_regular_shared):
     df3 = pd.DataFrame({"one": [7, 8, 9], "two": [8, 9, 10]})
     df4 = pd.DataFrame({"one": [10, 11, 12], "two": [11, 12, 13]})
     dfs = [df1, df2, df3, df4]
-    ds = ray.data.from_pandas(dfs)
+    ds = ray.data.from_blocks(dfs)
 
     # Default.
     for batch, df in zip(ds.iter_batches(batch_size=None, batch_format="pandas"), dfs):
@@ -1129,7 +1187,7 @@ def test_iter_batches_grid(ray_start_regular_shared):
                 )
                 running_size += block_size
             num_rows = running_size
-            ds = ray.data.from_pandas(dfs)
+            ds = ray.data.from_blocks(dfs)
             for batch_size in np.random.randint(
                 1, num_rows + 1, size=batch_size_samples
             ):
@@ -1165,15 +1223,6 @@ def test_iter_batches_grid(ray_start_regular_shared):
                     else:
                         assert all(len(batch) == batch_size for batch in batches[:-1])
                         assert len(batches[-1]) == num_rows % batch_size
-
-
-def test_lazy_loading_iter_batches_exponential_rampup(ray_start_regular_shared):
-    ds = ray.data.range(32, override_num_blocks=8)
-    expected_num_blocks = [1, 2, 4, 4, 8, 8, 8, 8]
-    for _, expected in zip(ds.iter_batches(batch_size=None), expected_num_blocks):
-        # In streaming execution of ds.iter_batches(), there is no partial
-        # execution so _num_computed() in LazyBlocklist is 0.
-        _check_none_computed(ds)
 
 
 def test_union(ray_start_regular_shared):
@@ -1652,7 +1701,7 @@ class FlakyCSVDatasource(CSVDatasource):
                 yield block
 
 
-class FlakyCSVDatasink(_CSVDatasink):
+class FlakyCSVDatasink(CSVDatasink):
     def __init__(self, path, **csv_datasink_kwargs):
         super().__init__(path, **csv_datasink_kwargs)
 
@@ -1669,7 +1718,7 @@ class FlakyCSVDatasink(_CSVDatasink):
 def test_datasource(ray_start_regular):
     source = ray.data.datasource.RandomIntRowDatasource(n=10, num_columns=2)
     assert len(ray.data.read_datasource(source).take()) == 10
-    source = ray.data.datasource.RangeDatasource(n=10)
+    source = RangeDatasource(n=10)
     assert extract_values(
         "value",
         ray.data.read_datasource(source).take(),

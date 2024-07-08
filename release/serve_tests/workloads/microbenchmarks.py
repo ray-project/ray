@@ -9,6 +9,7 @@ Throughput benchmarks:
     Calculate the average throughput achieved on 10 batches of requests.
 """
 import asyncio
+import click
 from functools import partial
 import json
 import logging
@@ -16,7 +17,7 @@ import logging
 import grpc
 import pandas as pd
 import requests
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 from ray import serve
 from ray.serve._private.benchmarks.common import (
@@ -102,7 +103,7 @@ def convert_latencies_to_perf_metrics(name: str, latencies: pd.Series) -> List[D
     ]
 
 
-async def main():
+async def _main(output_path: Optional[str]):
     # Start and configure Serve
     serve.start(
         grpc_options=gRPCOptions(
@@ -196,10 +197,54 @@ async def main():
     )
     perf_metrics.extend(convert_throughput_to_perf_metrics("handle", mean, std))
 
+    # Testing throughput using previous config `max_ongoing_requests` at 100
+    # Microbenchmark: HTTP throughput
+    serve.run(Noop.options(max_ongoing_requests=100).bind())
+    mean, std = await run_throughput_benchmark(
+        fn=partial(do_single_http_batch, batch_size=BATCH_SIZE),
+        multiplier=BATCH_SIZE,
+        num_trials=NUM_TRIALS,
+        trial_runtime=TRIAL_RUNTIME_S,
+    )
+    perf_metrics.extend(
+        convert_throughput_to_perf_metrics("http_100_max_ongoing_requests", mean, std)
+    )
+    # Microbenchmark: GRPC throughput
+    serve.run(GrpcDeployment.options(max_ongoing_requests=100).bind())
+    channel = grpc.insecure_channel("localhost:9000")
+    stub = serve_pb2_grpc.RayServeBenchmarkServiceStub(channel)
+    mean, std = await run_throughput_benchmark(
+        fn=partial(do_single_grpc_batch, batch_size=BATCH_SIZE),
+        multiplier=BATCH_SIZE,
+        num_trials=NUM_TRIALS,
+        trial_runtime=TRIAL_RUNTIME_S,
+    )
+    perf_metrics.extend(
+        convert_throughput_to_perf_metrics("grpc_100_max_ongoing_requests", mean, std)
+    )
+    # Microbenchmark: Handle throughput
+    h: DeploymentHandle = serve.run(
+        Benchmarker.options(max_ongoing_requests=100).bind(
+            Noop.options(max_ongoing_requests=100).bind()
+        )
+    )
+    mean, std = await h.run_throughput_benchmark.remote(
+        batch_size=BATCH_SIZE, num_trials=NUM_TRIALS, trial_runtime=TRIAL_RUNTIME_S
+    )
+    perf_metrics.extend(
+        convert_throughput_to_perf_metrics("handle_100_max_ongoing_requests", mean, std)
+    )
+
     logging.info(f"Perf metrics:\n {json.dumps(perf_metrics, indent=4)}")
     results = {"perf_metrics": perf_metrics}
-    save_test_results(results)
+    save_test_results(results, output_path=output_path)
+
+
+@click.command()
+@click.option("--output-path", "-o", type=str, default=None)
+def main(output_path: Optional[str]):
+    asyncio.run(_main(output_path))
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()

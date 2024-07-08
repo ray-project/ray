@@ -14,9 +14,6 @@ if TYPE_CHECKING:
 _default_context: "Optional[DataContext]" = None
 _context_lock = threading.Lock()
 
-# An estimate of what fraction of the object store a Dataset can use without too high
-# a risk of triggering spilling. This is used to generate user warnings only.
-ESTIMATED_SAFE_MEMORY_FRACTION = 0.25
 
 # We chose 128MiB for default: With streaming execution and num_cpus many concurrent
 # tasks, the memory footprint will be about 2 * num_cpus * target_max_block_size ~= RAM
@@ -76,7 +73,9 @@ DEFAULT_VERBOSE_STATS_LOG = False
 
 DEFAULT_TRACE_ALLOCATIONS = bool(int(os.environ.get("RAY_DATA_TRACE_ALLOCATIONS", "0")))
 
-DEFAULT_LOG_INTERNAL_STACK_TRACE_TO_STDOUT = False
+DEFAULT_LOG_INTERNAL_STACK_TRACE_TO_STDOUT = env_bool(
+    "RAY_DATA_LOG_INTERNAL_STACK_TRACE_TO_STDOUT", False
+)
 
 DEFAULT_USE_RAY_TQDM = bool(int(os.environ.get("RAY_TQDM", "1")))
 
@@ -124,6 +123,14 @@ DEFAULT_BATCH_SIZE = 1024
 # If the value is too small, the task may be frequently blocked due to
 # streaming generator backpressure.
 DEFAULT_MAX_NUM_BLOCKS_IN_STREAMING_GEN_BUFFER = 2
+
+# Default value for whether or not to try to create directories for write
+# calls if the URI is an S3 URI.
+DEFAULT_S3_TRY_CREATE_DIR = False
+
+DEFAULT_WAIT_FOR_MIN_ACTORS_S = env_integer(
+    "RAY_DATA_DEFAULT_WAIT_FOR_MIN_ACTORS_S", 60 * 10
+)
 
 
 def _execution_options_factory() -> "ExecutionOptions":
@@ -219,6 +226,10 @@ class DataContext:
             always written to the Ray Data log file.
         print_on_execution_start: If ``True``, print execution information when
             execution starts.
+        s3_try_create_dir: If ``True``, try to create directories on S3 when a write
+            call is made with a S3 URI.
+        wait_for_min_actors_s: The default time to wait for minimum requested
+            actors to start before raising a timeout, in seconds.
     """
 
     target_max_block_size: int = DEFAULT_TARGET_MAX_BLOCK_SIZE
@@ -263,6 +274,8 @@ class DataContext:
         DEFAULT_LOG_INTERNAL_STACK_TRACE_TO_STDOUT
     )
     print_on_execution_start: bool = True
+    s3_try_create_dir: bool = DEFAULT_S3_TRY_CREATE_DIR
+    wait_for_min_actors_s: int = DEFAULT_WAIT_FOR_MIN_ACTORS_S
 
     def __post_init__(self):
         # The additonal ray remote args that should be added to

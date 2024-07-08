@@ -1105,7 +1105,11 @@ def test_deploy_new_config_same_code_version(
     )
     check_counts(ds, total=1, by_state=[(ReplicaState.RUNNING, 1, v1)])
 
-    if option in ["user_config", "graceful_shutdown_wait_loop_s"]:
+    if option in [
+        "user_config",
+        "graceful_shutdown_wait_loop_s",
+        "max_ongoing_requests",
+    ]:
         dsm.update()
         check_counts(ds, total=1)
         check_counts(

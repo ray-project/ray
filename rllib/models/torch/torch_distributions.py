@@ -113,10 +113,11 @@ class TorchCategorical(TorchDistribution):
 
         self.probs = probs
         self.logits = logits
-        self.one_hot = torch.distributions.one_hot_categorical.OneHotCategorical(
-            logits=logits, probs=probs
-        )
         super().__init__(logits=logits, probs=probs)
+
+        # Build this distribution only if really needed (in `self.rsample()`). It's
+        # quite expensive according to cProfile.
+        self._one_hot = None
 
     @override(TorchDistribution)
     def _get_torch_distribution(
@@ -134,7 +135,11 @@ class TorchCategorical(TorchDistribution):
 
     @override(Distribution)
     def rsample(self, sample_shape=()):
-        one_hot_sample = self.one_hot.sample(sample_shape)
+        if self._one_hot is None:
+            self._one_hot = torch.distributions.one_hot_categorical.OneHotCategorical(
+                logits=self.logits, probs=self.probs
+            )
+        one_hot_sample = self._one_hot.sample(sample_shape)
         return (one_hot_sample - self.probs).detach() + self.probs
 
     @classmethod
@@ -595,8 +600,13 @@ class TorchMultiDistribution(Distribution):
 
     @staticmethod
     @override(Distribution)
-    def required_input_dim(space: gym.Space, input_lens: List[int], **kwargs) -> int:
-        return sum(input_lens)
+    def required_input_dim(
+        space: gym.Space, input_lens: List[int], as_list: bool = False, **kwargs
+    ) -> int:
+        if as_list:
+            return input_lens
+        else:
+            return sum(input_lens)
 
     @classmethod
     @override(Distribution)

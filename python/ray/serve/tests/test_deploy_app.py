@@ -687,40 +687,54 @@ def test_update_config_max_ongoing_requests(
 ):
     """Check that replicas stay alive when max_ongoing_requests is updated."""
 
+    signal = SignalActor.options(name="signal123").remote()
+
     max_ongoing_requests_field_name = (
         "max_concurrent_queries"
         if use_max_concurrent_queries
         else "max_ongoing_requests"
     )
     config_template = {
-        "import_path": "ray.serve.tests.test_config_files.pid.node",
-        "deployments": [{"name": "f"}],
+        "import_path": "ray.serve.tests.test_config_files.get_signal.app",
+        "deployments": [{"name": "A"}],
     }
     config_template["deployments"][0][max_ongoing_requests_field_name] = 1000
 
     # Deploy first time, max_concurent_queries set to 1000.
     client.deploy_apps(ServeDeploySchema.parse_obj({"applications": [config_template]}))
     wait_for_condition(check_running, timeout=15)
-
-    all_replicas = ray.get(client._controller._all_running_replicas.remote())
-    assert len(all_replicas) == 1
-    assert all_replicas[list(all_replicas.keys())[0]][0].max_ongoing_requests == 1000
-
     handle = serve.get_app_handle(SERVE_DEFAULT_APP_NAME)
 
+    # Send 10 requests. All of them should be sent to the replica immediately,
+    # but the requests should be blocked waiting for the signal
     refs = [handle.remote() for _ in range(10)]
-    pids1 = {ref.result()[0] for ref in refs}
-    assert len(pids1) == 1
+    wait_for_condition(
+        lambda: ray.get(signal.cur_num_waiters.remote()) == 10, timeout=2
+    )
 
-    # Redeploy with max concurrent queries set to 2.
-    config_template["deployments"][0][max_ongoing_requests_field_name] = 2
+    signal.send.remote()
+    pids = {ref.result() for ref in refs}
+    assert len(pids) == 1
+    pid1 = pids.pop()
+
+    # Reset for redeployment
+    signal.send.remote(clear=True)
+    # Redeploy with max concurrent queries set to 5
+    config_template["deployments"][0][max_ongoing_requests_field_name] = 5
     client.deploy_apps(ServeDeploySchema.parse_obj({"applications": [config_template]}))
-    wait_for_condition(check_running, timeout=15)
+    wait_for_condition(check_running, timeout=2)
 
-    # Verify that the PID of the replica didn't change.
+    # Send 10 requests. Only 5 of them should be sent to the replica
+    # immediately, and the remaining 5 should queue at the handle.
     refs = [handle.remote() for _ in range(10)]
-    pids2 = {ref.result()[0] for ref in refs}
-    assert pids2 == pids1
+    with pytest.raises(RuntimeError):
+        wait_for_condition(
+            lambda: ray.get(signal.cur_num_waiters.remote()) > 5, timeout=2
+        )
+
+    signal.send.remote()
+    pids = {ref.result() for ref in refs}
+    assert pids == {pid1}
 
 
 def test_update_config_health_check_period(client: ServeControllerClient):

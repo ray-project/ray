@@ -52,7 +52,12 @@ Closing
 
 from ray import air, tune
 from ray.rllib.algorithms.ppo import PPOConfig
-from ray.rllib.env.single_agent_env_runner import SingleAgentEnvRunner
+from ray.rllib.core import DEFAULT_MODULE_ID
+from ray.rllib.utils.metrics import (
+    ENV_RUNNER_RESULTS,
+    EPISODE_RETURN_MEAN,
+    LEARNER_RESULTS,
+)
 from ray.tune.logger import Logger, LegacyLoggerCallback
 
 
@@ -67,8 +72,8 @@ class MyPrintLogger(Logger):
 
     def on_result(self, result: dict):
         # Define, what should happen on receiving a `result` (dict).
-        mean_return = result["sampler_results"]["episode_reward_mean"]
-        pi_loss = result["info"]["learner"]["default_policy"]["policy_loss"]
+        mean_return = result[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN]
+        pi_loss = result[LEARNER_RESULTS][DEFAULT_MODULE_ID]["policy_loss"]
         print(f"{self.prefix} " f"Avg-return: {mean_return} " f"pi-loss: {pi_loss}")
 
     def close(self):
@@ -83,8 +88,10 @@ class MyPrintLogger(Logger):
 if __name__ == "__main__":
     config = (
         PPOConfig()
-        .experimental(_enable_new_api_stack=True)
-        .rollouts(env_runner_cls=SingleAgentEnvRunner)
+        .api_stack(
+            enable_rl_module_and_learner=True,
+            enable_env_runner_and_connector_v2=True,
+        )
         .environment("CartPole-v1")
         # Setting up a custom logger config.
         # ----------------------------------
@@ -118,7 +125,7 @@ if __name__ == "__main__":
         )
     )
 
-    stop = {"sampler_results/episode_reward_mean": 200.0}
+    stop = {f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": 200.0}
 
     # Run the actual experiment (using Tune).
     results = tune.Tuner(

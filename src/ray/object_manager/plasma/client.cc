@@ -148,6 +148,8 @@ class PlasmaClient::Impl : public std::enable_shared_from_this<PlasmaClient::Imp
              ObjectBuffer *object_buffers,
              bool is_from_worker);
 
+  Status ExperimentalMutableObjectRegisterWriter(const ObjectID &object_id);
+
   Status GetExperimentalMutableObject(const ObjectID &object_id,
                                       std::unique_ptr<MutableObject> *mutable_object);
 
@@ -378,8 +380,8 @@ Status PlasmaClient::Impl::HandleCreateReply(const ObjectID &object_id,
     // they are not evicted before the writer has a chance to register the
     // object.
     // TODO(swang): GC these once they are deleted by the
-    // experimental::MutableObjectManager. This can be done by pinning the object
-    // using the shared_ptr to the memory buffer that is held by the
+    // experimental::MutableObjectManager. This can be done by pinning the object using
+    // the shared_ptr to the memory buffer that is held by the
     // experimental::MutableObjectManager.
     IncrementObjectCount(object_id);
   }
@@ -616,6 +618,31 @@ Status PlasmaClient::Impl::GetBuffers(
   return Status::OK();
 }
 
+Status PlasmaClient::Impl::ExperimentalMutableObjectRegisterWriter(
+    const ObjectID &object_id) {
+#if 0
+  plasma::ObjectBuffer object_buffer;
+  const auto wrap_buffer = [=](const ObjectID &object_id,
+                               const std::shared_ptr<Buffer> &buffer) {
+    return std::make_shared<PlasmaBuffer>(shared_from_this(), object_id, buffer);
+  };
+  RAY_RETURN_NOT_OK(GetBuffers(&object_id,
+                    /*num_objects=*/1,
+                    /*timeout_ms=*/-1,
+                    wrap_buffer,
+                     &object_buffer,
+                     /*is_from_worker=*/false));
+
+  std::lock_guard<std::recursive_mutex> guard(client_mutex_);
+  auto object_entry = objects_in_use_.find(object_id);
+  if (object_entry == objects_in_use_.end()) {
+    return Status::Invalid(
+        "Plasma buffer for mutable object is not local.");
+  }
+#endif
+  return Status::OK();
+}
+
 Status PlasmaClient::Impl::GetExperimentalMutableObject(
     const ObjectID &object_id, std::unique_ptr<MutableObject> *mutable_object) {
 #if defined(_WIN32)
@@ -635,10 +662,9 @@ Status PlasmaClient::Impl::GetExperimentalMutableObject(
 
   // Pin experimental mutable object so that it is not evicted before the
   // caller has a chance to register the object.
-  // TODO(swang): GC once they are deleted by the
-  // experimental::MutableObjectManager. This can be done by pinning the object
-  // using the shared_ptr to the memory buffer that is held by the
-  // experimental::MutableObjectManager.
+  // TODO(swang): GC once they are deleted by the experimental::MutableObjectManager. This
+  // can be done by pinning the object using the shared_ptr to the memory buffer that is
+  // held by the experimental::MutableObjectManager.
   IncrementObjectCount(object_id);
 
   const auto &object = object_entry->second->object;
@@ -957,6 +983,10 @@ Status PlasmaClient::Get(const std::vector<ObjectID> &object_ids,
                          std::vector<ObjectBuffer> *object_buffers,
                          bool is_from_worker) {
   return impl_->Get(object_ids, timeout_ms, object_buffers, is_from_worker);
+}
+
+Status PlasmaClient::ExperimentalMutableObjectRegisterWriter(const ObjectID &object_id) {
+  return impl_->ExperimentalMutableObjectRegisterWriter(object_id);
 }
 
 Status PlasmaClient::GetExperimentalMutableObject(

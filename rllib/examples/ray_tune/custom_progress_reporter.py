@@ -44,9 +44,14 @@ You should see something similar to the following in your console output:
 
 """
 from ray import air, tune
+from ray.air.constants import TRAINING_ITERATION
 from ray.rllib.algorithms.ppo import PPOConfig
-from ray.rllib.env.multi_agent_env_runner import MultiAgentEnvRunner
 from ray.rllib.examples.envs.classes.multi_agent import MultiAgentCartPole
+from ray.rllib.utils.metrics import (
+    ENV_RUNNER_RESULTS,
+    EPISODE_RETURN_MEAN,
+    NUM_ENV_STEPS_SAMPLED_LIFETIME,
+)
 
 
 my_multi_agent_progress_reporter = tune.CLIReporter(
@@ -57,18 +62,18 @@ my_multi_agent_progress_reporter = tune.CLIReporter(
     # exact path.
     metric_columns={
         **{
-            "training_iteration": "iter",
+            TRAINING_ITERATION: "iter",
             "time_total_s": "total time (s)",
-            "timesteps_total": "ts",
+            NUM_ENV_STEPS_SAMPLED_LIFETIME: "ts",
             # RLlib always sums up all agents' rewards and reports it under:
-            # result_dict[sampler_results][episode_reward_mean].
-            "sampler_results/episode_reward_mean": "combined return",
+            # result_dict[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN].
+            f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": "combined return",
         },
         # Because RLlib sums up all returns of all agents, we would like to also
         # see the individual agents' returns. We can find these under the result dict's
-        # 'policy_reward_mean' key (then the policy ID):
+        # 'env_runners/module_episode_returns_mean/' key (then the policy ID):
         **{
-            f"policy_reward_mean/{pid}": f"return {pid}"
+            f"{ENV_RUNNER_RESULTS}/module_episode_returns_mean/{pid}": f"return {pid}"
             for pid in ["policy1", "policy2", "policy3"]
         },
     },
@@ -89,8 +94,10 @@ if __name__ == "__main__":
 
     config = (
         PPOConfig()
-        .experimental(_enable_new_api_stack=True)
-        .rollouts(env_runner_cls=MultiAgentEnvRunner)
+        .api_stack(
+            enable_rl_module_and_learner=True,
+            enable_env_runner_and_connector_v2=True,
+        )
         .environment("env")
         .multi_agent(
             # Define 3 policies. Note that in our simple setup, they are all configured
@@ -101,7 +108,7 @@ if __name__ == "__main__":
         )
     )
 
-    stop = {"sampler_results/episode_reward_mean": 200.0}
+    stop = {f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": 200.0}
 
     # Run the actual experiment (using Tune).
     results = tune.Tuner(

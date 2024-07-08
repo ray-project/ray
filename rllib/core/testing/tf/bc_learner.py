@@ -1,5 +1,5 @@
 import tensorflow as tf
-from typing import Any, Mapping, TYPE_CHECKING
+from typing import Mapping, TYPE_CHECKING
 
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.learner.tf.tf_learner import TfLearner
@@ -19,8 +19,14 @@ class BCTfLearner(TfLearner, BaseTestingLearner):
         config: "AlgorithmConfig",
         batch: NestedDict,
         fwd_out: Mapping[str, TensorType],
-    ) -> Mapping[str, Any]:
-
+    ) -> TensorType:
+        BaseTestingLearner.compute_loss_for_module(
+            self,
+            module_id=module_id,
+            config=config,
+            batch=batch,
+            fwd_out=fwd_out,
+        )
         action_dist_inputs = fwd_out[Columns.ACTION_DIST_INPUTS]
         action_dist_class = self._module[module_id].get_train_action_dist_cls()
         action_dist = action_dist_class.from_logits(action_dist_inputs)

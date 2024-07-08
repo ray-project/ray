@@ -1056,10 +1056,7 @@ def _setup_ray_cluster_internal(
         )
 
         num_cpus_spark_worker = _get_cpu_cores()
-        if num_spark_task_gpus == 0:
-            num_gpus_spark_worker = 0
-        else:
-            num_gpus_spark_worker = _get_num_physical_gpus()
+        num_gpus_spark_worker = _get_num_physical_gpus()
         total_mem_bytes = _get_spark_worker_total_physical_memory()
 
         return (

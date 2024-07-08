@@ -6,8 +6,6 @@ import {
   TableRow,
   Tooltip,
 } from "@mui/material";
-import createStyles from "@mui/styles/createStyles";
-import makeStyles from "@mui/styles/makeStyles";
 import { sortBy } from "lodash";
 import React, { useState } from "react";
 import { RiArrowDownSLine, RiArrowRightSLine } from "react-icons/ri";
@@ -21,7 +19,6 @@ import {
   CpuStackTraceLink,
   MemoryProfilingButton,
 } from "../../common/ProfilingLink";
-import rowStyles from "../../common/RowStyles";
 import PercentageBar from "../../components/PercentageBar";
 import { StatusChip } from "../../components/StatusChip";
 import { getNodeDetail } from "../../service/node";
@@ -44,42 +41,6 @@ type NodeRowProps = Pick<NodeRowsProps, "node"> & {
   onExpandButtonClick: () => void;
 };
 
-const useStyles = makeStyles((theme) =>
-  createStyles({
-    tableContainer: {
-      overflowX: "scroll",
-    },
-    expandCollapseIcon: {
-      color: theme.palette.text.secondary,
-      fontSize: "1.5em",
-      verticalAlign: "middle",
-    },
-    idCol: {
-      display: "block",
-      width: "50px",
-      overflow: "hidden",
-      textOverflow: "ellipsis",
-      whiteSpace: "nowrap",
-    },
-    OverflowCol: {
-      display: "block",
-      width: "100px",
-      overflow: "hidden",
-      textOverflow: "ellipsis",
-      whiteSpace: "nowrap",
-    },
-    helpInfo: {
-      marginLeft: theme.spacing(1),
-    },
-    logicalResources: {
-      maxWidth: 200,
-    },
-    labels: {
-      maxWidth: 200,
-    },
-  }),
-);
-
 /**
  * A single row that represents the node information only.
  * Does not show any data about the node's workers.
@@ -100,8 +61,6 @@ export const NodeRow = ({
     logicalResources,
   } = node;
 
-  const classes = useStyles();
-
   const objectStoreTotalMemory =
     raylet.objectStoreAvailableMemory + raylet.objectStoreUsedMemory;
 
@@ -115,9 +74,23 @@ export const NodeRow = ({
       <TableCell>
         <IconButton size="small" onClick={onExpandButtonClick}>
           {!expanded ? (
-            <RiArrowRightSLine className={classes.expandCollapseIcon} />
+            <Box
+              component={RiArrowRightSLine}
+              sx={{
+                color: (theme) => theme.palette.text.secondary,
+                fontSize: "1.5em",
+                verticalAlign: "middle",
+              }}
+            />
           ) : (
-            <RiArrowDownSLine className={classes.expandCollapseIcon} />
+            <Box
+              component={RiArrowDownSLine}
+              sx={{
+                color: (theme) => theme.palette.text.secondary,
+                fontSize: "1.5em",
+                verticalAlign: "middle",
+              }}
+            />
           )}
         </IconButton>
       </TableCell>
@@ -128,12 +101,29 @@ export const NodeRow = ({
         <StatusChip type="node" status={raylet.state} />
       </TableCell>
       <TableCell align="center">
+        {raylet.stateMessage ? (
+          <CodeDialogButtonWithPreview
+            sx={{ maxWidth: 200 }}
+            title="State Message"
+            code={raylet.stateMessage}
+          />
+        ) : (
+          "-"
+        )}
+      </TableCell>
+      <TableCell align="center">
         <Tooltip title={raylet.nodeId} arrow>
           <div>
             <NodeLink
               nodeId={raylet.nodeId}
               to={`nodes/${raylet.nodeId}`}
-              className={classes.idCol}
+              sx={{
+                display: "block",
+                width: "50px",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+              }}
             />
           </div>
         </Tooltip>
@@ -202,7 +192,7 @@ export const NodeRow = ({
       <TableCell align="center">
         {logicalResources ? (
           <CodeDialogButtonWithPreview
-            className={classes.logicalResources}
+            sx={{ maxWidth: 200 }}
             title="Logical Resources"
             code={logicalResources}
           />
@@ -212,7 +202,7 @@ export const NodeRow = ({
       </TableCell>
       <TableCell align="center">
         <CodeDialogButtonWithPreview
-          className={classes.labels}
+          sx={{ maxWidth: 200 }}
           title="Labels"
           code={raylet.labels}
         />
@@ -236,8 +226,6 @@ type WorkerRowProps = {
  * A single row that represents the data of a Worker
  */
 export const WorkerRow = ({ node, worker }: WorkerRowProps) => {
-  const classes = rowStyles();
-
   const {
     ip,
     mem,
@@ -265,10 +253,22 @@ export const WorkerRow = ({ node, worker }: WorkerRowProps) => {
       <TableCell>
         <StatusChip type="worker" status="ALIVE" />
       </TableCell>
+      <TableCell align="center">N/A</TableCell>
       <TableCell align="center">
         {coreWorker && (
           <Tooltip title={coreWorker.workerId} arrow>
-            <span className={classes.idCol}>{coreWorker.workerId}</span>
+            <Box
+              component="span"
+              sx={{
+                display: "block",
+                width: "50px",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {coreWorker.workerId}
+            </Box>
           </Tooltip>
         )}
       </TableCell>

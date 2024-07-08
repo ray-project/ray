@@ -61,15 +61,19 @@ def _format_failed_profiler_command(cmd, profiler, stdout, stderr) -> str:
 # If we can sudo, always try that. Otherwise, py-spy will only work if the user has
 # root privileges or has configured setuid on the py-spy script.
 async def _can_passwordless_sudo() -> bool:
-    process = await asyncio.create_subprocess_exec(
-        "sudo",
-        "-n",
-        "true",
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-    )
-    _, _ = await process.communicate()
-    return process.returncode == 0
+    try:
+        process = await asyncio.create_subprocess_exec(
+            "sudo",
+            "-n",
+            "true",
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+    except FileNotFoundError:
+        return False
+    else:
+        _, _ = await process.communicate()
+        return process.returncode == 0
 
 
 class CpuProfilingManager:

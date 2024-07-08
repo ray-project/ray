@@ -18,7 +18,7 @@ class InputDataBuffer(PhysicalOperator):
     def __init__(
         self,
         input_data: Optional[List[RefBundle]] = None,
-        input_data_factory: Callable[[int], List[RefBundle]] = None,
+        input_data_factory: Optional[Callable[[int], List[RefBundle]]] = None,
         num_output_blocks: Optional[int] = None,
     ):
         """Create an InputDataBuffer.
@@ -41,6 +41,7 @@ class InputDataBuffer(PhysicalOperator):
             self._input_data_factory = input_data_factory
             self._is_input_initialized = False
         self._num_output_blocks = num_output_blocks
+        self._input_data_index = 0
         super().__init__("Input", [], target_max_block_size=None)
 
     def start(self, options: ExecutionOptions) -> None:
@@ -57,10 +58,14 @@ class InputDataBuffer(PhysicalOperator):
         super().start(options)
 
     def has_next(self) -> bool:
-        return len(self._input_data) > 0
+        return self._input_data_index < len(self._input_data)
 
     def _get_next_inner(self) -> RefBundle:
-        return self._input_data.pop(0)
+        # We can't pop the input data. If we do, Ray might garbage collect the block
+        # references, and Ray won't be able to reconstruct downstream objects.
+        bundle = self._input_data[self._input_data_index]
+        self._input_data_index += 1
+        return bundle
 
     def _set_num_output_blocks(self, num_output_blocks):
         self._num_output_blocks = num_output_blocks
@@ -80,7 +85,10 @@ class InputDataBuffer(PhysicalOperator):
         self._num_output_bundles = len(self._input_data)
         block_metadata = []
         for bundle in self._input_data:
-            block_metadata.extend([m for (_, m) in bundle.blocks])
+            block_metadata.extend(bundle.metadata)
         self._stats = {
             "input": block_metadata,
         }
+
+    def implements_accurate_memory_accounting(self) -> bool:
+        return True

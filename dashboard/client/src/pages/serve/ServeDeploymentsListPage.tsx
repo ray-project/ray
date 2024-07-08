@@ -12,10 +12,9 @@ import {
   TextField,
   Typography,
 } from "@mui/material";
-import createStyles from "@mui/styles/createStyles";
-import makeStyles from "@mui/styles/makeStyles";
 import React, { ReactElement } from "react";
 import { CollapsibleSection } from "../../common/CollapsibleSection";
+import { sliceToPage } from "../../common/util";
 import Loading from "../../components/Loading";
 import { HelpInfo } from "../../components/Tooltip";
 import { useServeDeployments } from "./hook/useServeApplications";
@@ -26,29 +25,6 @@ import {
   ServeMetricsSection,
 } from "./ServeMetricsSection";
 import { ServeSystemPreview } from "./ServeSystemDetails";
-
-const useStyles = makeStyles((theme) =>
-  createStyles({
-    root: {
-      padding: theme.spacing(3),
-    },
-    table: {
-      tableLayout: "fixed",
-    },
-    serveInstanceWarning: {
-      marginBottom: theme.spacing(2),
-    },
-    helpInfo: {
-      marginLeft: theme.spacing(1),
-    },
-    deploymentsSection: {
-      marginTop: theme.spacing(4),
-    },
-    section: {
-      marginTop: theme.spacing(4),
-    },
-  }),
-);
 
 const columns: { label: string; helpInfo?: ReactElement; width?: string }[] = [
   { label: "" }, // Empty space for expand button
@@ -63,7 +39,6 @@ const columns: { label: string; helpInfo?: ReactElement; width?: string }[] = [
 ];
 
 export const ServeDeploymentsListPage = () => {
-  const classes = useStyles();
   const {
     serveDetails,
     error,
@@ -82,10 +57,16 @@ export const ServeDeploymentsListPage = () => {
     return <Loading loading={true} />;
   }
 
+  const {
+    items: list,
+    constrainedPage,
+    maxPage,
+  } = sliceToPage(serveApplications, page.pageNo, page.pageSize);
+
   return (
-    <div className={classes.root}>
+    <Box sx={{ padding: 3 }}>
       {serveDetails.http_options === undefined ? (
-        <Alert className={classes.serveInstanceWarning} severity="warning">
+        <Alert sx={{ marginBottom: 2 }} severity="warning">
           Serve not started. Please deploy a serve application first.
         </Alert>
       ) : (
@@ -99,7 +80,7 @@ export const ServeDeploymentsListPage = () => {
           <CollapsibleSection
             title="Applications / Deployments"
             startExpanded
-            className={classes.deploymentsSection}
+            sx={{ marginTop: 4 }}
           >
             <TableContainer>
               <TextField
@@ -117,11 +98,11 @@ export const ServeDeploymentsListPage = () => {
                 }}
               />
               <Pagination
-                count={Math.ceil(serveApplications.length / page.pageSize)}
-                page={page.pageNo}
+                count={maxPage}
+                page={constrainedPage}
                 onChange={(e, pageNo) => setPage("pageNo", pageNo)}
               />
-              <Table className={classes.table}>
+              <Table sx={{ tableLayout: "fixed" }}>
                 <TableHead>
                   <TableRow>
                     {columns.map(({ label, helpInfo, width }) => (
@@ -137,7 +118,7 @@ export const ServeDeploymentsListPage = () => {
                         >
                           {label}
                           {helpInfo && (
-                            <HelpInfo className={classes.helpInfo}>
+                            <HelpInfo sx={{ marginLeft: 1 }}>
                               {helpInfo}
                             </HelpInfo>
                           )}
@@ -147,27 +128,18 @@ export const ServeDeploymentsListPage = () => {
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {serveApplications
-                    .slice(
-                      (page.pageNo - 1) * page.pageSize,
-                      page.pageNo * page.pageSize,
-                    )
-                    .map((application) => (
-                      <ServeApplicationRows
-                        key={`${application.name}`}
-                        application={application}
-                        startExpanded
-                      />
-                    ))}
+                  {list.map((application) => (
+                    <ServeApplicationRows
+                      key={`${application.name}`}
+                      application={application}
+                      startExpanded
+                    />
+                  ))}
                 </TableBody>
               </Table>
             </TableContainer>
           </CollapsibleSection>
-          <CollapsibleSection
-            title="Logs"
-            startExpanded
-            className={classes.section}
-          >
+          <CollapsibleSection title="Logs" startExpanded sx={{ marginTop: 4 }}>
             <ServeEntityLogViewer
               controller={serveDetails.controller_info}
               proxies={proxies}
@@ -177,9 +149,9 @@ export const ServeDeploymentsListPage = () => {
         </React.Fragment>
       )}
       <ServeMetricsSection
-        className={classes.section}
+        sx={{ marginTop: 4 }}
         metricsConfig={APPS_METRICS_CONFIG}
       />
-    </div>
+    </Box>
   );
 };

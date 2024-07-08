@@ -35,7 +35,7 @@ class OnWorkersRecreatedCallbacks(DefaultCallbacks):
 
 
 class InitAndCheckpointRestoredCallbacks(DefaultCallbacks):
-    def on_algorithm_init(self, *, algorithm, **kwargs):
+    def on_algorithm_init(self, *, algorithm, metrics_logger, **kwargs):
         self._on_init_was_called = True
 
     def on_checkpoint_loaded(self, *, algorithm, **kwargs):
@@ -58,10 +58,10 @@ class TestCallbacks(unittest.TestCase):
             APPOConfig()
             .environment("env")
             .callbacks(OnWorkersRecreatedCallbacks)
-            .rollouts(num_rollout_workers=3)
+            .env_runners(num_env_runners=3)
             .fault_tolerance(
-                recreate_failed_workers=True,
-                delay_between_worker_restarts_s=0,
+                recreate_failed_env_runners=True,
+                delay_between_env_runner_restarts_s=0,
             )
         )
 

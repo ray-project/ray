@@ -25,34 +25,11 @@ class TestEnvsThatCrash(unittest.TestCase):
     def tearDownClass(cls) -> None:
         ray.shutdown()
 
-    def test_env_crash_during_pre_checking(self):
-        """Expect the env pre-checking to fail on each worker."""
-        config = (
-            PPOConfig()
-            .rollouts(num_rollout_workers=2, num_envs_per_worker=4)
-            .environment(
-                env=CartPoleCrashing,
-                env_config={
-                    # Crash prob=100% (during pre-checking's `step()` test calls).
-                    "p_crash": 1.0,
-                    "init_time_s": 0.5,
-                },
-            )
-        )
-
-        # Expect ValueError due to pre-checking failing (our pre-checker module
-        # raises a ValueError if `step()` fails).
-        self.assertRaisesRegex(
-            ValueError,
-            "Simulated env crash",
-            lambda: config.build(),
-        )
-
     def test_env_crash_during_sampling(self):
         """Expect some sub-envs to fail (and not recover)."""
         config = (
             PPOConfig()
-            .rollouts(num_rollout_workers=2, num_envs_per_worker=3)
+            .env_runners(num_env_runners=2, num_envs_per_env_runner=3)
             .environment(
                 env=CartPoleCrashing,
                 env_config={
@@ -60,7 +37,6 @@ class TestEnvsThatCrash(unittest.TestCase):
                     "p_crash": 0.2,
                     "init_time_s": 0.3,
                 },
-                disable_env_checking=True,
             )
         )
 
@@ -72,7 +48,7 @@ class TestEnvsThatCrash(unittest.TestCase):
             # Pre-checking disables, so building the Algorithm is save.
             algo = config.build()
             # Expect EnvError due to the sub-env(s) crashing on the different workers
-            # and `ignore_worker_failures=False` (so the original EnvError should
+            # and `ignore_env_runner_failures=False` (so the original EnvError should
             # just be bubbled up by RLlib Algorithm and tune.Trainable during the
             # `step()` call).
             self.assertRaisesRegex(
@@ -84,12 +60,14 @@ class TestEnvsThatCrash(unittest.TestCase):
         """Expect some sub-envs on one worker to fail (and not recover), but ignore."""
         config = (
             PPOConfig()
-            .experimental(_enable_new_api_stack=True)
-            .rollouts(
-                num_rollout_workers=2,
-                num_envs_per_worker=3,
+            .api_stack(enable_rl_module_and_learner=True)
+            .env_runners(
+                num_env_runners=2,
+                num_envs_per_env_runner=3,
+            )
+            .fault_tolerance(
                 # Ignore worker failures (continue with worker #2).
-                ignore_worker_failures=True,
+                ignore_env_runner_failures=True,
             )
             .environment(
                 env=CartPoleCrashing,
@@ -99,7 +77,6 @@ class TestEnvsThatCrash(unittest.TestCase):
                     # Only crash on worker with index 1.
                     "crash_on_worker_indices": [1],
                 },
-                disable_env_checking=True,
             )
         )
 
@@ -121,14 +98,16 @@ class TestEnvsThatCrash(unittest.TestCase):
         """Expect some sub-envs to fail (and not recover), but re-create worker."""
         config = (
             PPOConfig()
-            .experimental(_enable_new_api_stack=True)
-            .rollouts(
-                # env_runner_cls=ForwardHealthCheckToEnvWorker,
-                num_rollout_workers=2,
+            .api_stack(enable_rl_module_and_learner=True)
+            .env_runners(
+                num_env_runners=2,
                 rollout_fragment_length=10,
-                num_envs_per_worker=3,
+                num_envs_per_env_runner=3,
+            )
+            .fault_tolerance(
                 # Re-create failed workers (then continue).
-                recreate_failed_workers=True,
+                recreate_failed_env_runners=True,
+                delay_between_env_runner_restarts_s=0,
             )
             .training(train_batch_size=60, sgd_minibatch_size=60)
             .environment(
@@ -140,10 +119,7 @@ class TestEnvsThatCrash(unittest.TestCase):
                     # Only crash on worker with index 2.
                     "crash_on_worker_indices": [2],
                 },
-                # Make sure nothing happens during pre-checks.
-                disable_env_checking=True,
             )
-            .fault_tolerance(delay_between_worker_restarts_s=0)
         )
         for multi_agent in [True, False]:
             if multi_agent:
@@ -168,16 +144,18 @@ class TestEnvsThatCrash(unittest.TestCase):
         """Expect sub-envs to fail (and not recover), but re-start them individually."""
         config = (
             PPOConfig()
-            .rollouts(
-                num_rollout_workers=2,
-                num_envs_per_worker=3,
+            .env_runners(
+                num_env_runners=2,
+                num_envs_per_env_runner=3,
+            )
+            .fault_tolerance(
                 # Re-start failed individual sub-envs (then continue).
                 # This means no workers will ever fail due to individual env errors
                 # (only maybe for reasons other than the env).
                 restart_failed_sub_environments=True,
                 # If the worker was affected by an error (other than the env error),
                 # allow it to be removed, but training will continue.
-                ignore_worker_failures=True,
+                ignore_env_runner_failures=True,
             )
             .environment(
                 env=CartPoleCrashing,
@@ -185,8 +163,6 @@ class TestEnvsThatCrash(unittest.TestCase):
                     # Crash prob=1%.
                     "p_crash": 0.01,
                 },
-                # Make sure nothing happens during pre-checks.
-                disable_env_checking=True,
             )
         )
         for multi_agent in [True]:  # TODO, False]:

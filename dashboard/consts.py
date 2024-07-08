@@ -42,11 +42,6 @@ GCS_RPC_TIMEOUT_SECONDS = 3
 AIOHTTP_CACHE_TTL_SECONDS = 2
 AIOHTTP_CACHE_MAX_SIZE = 128
 AIOHTTP_CACHE_DISABLE_ENVIRONMENT_KEY = "RAY_DASHBOARD_NO_CACHE"
-# Named signals
-SIGNAL_NODE_INFO_FETCHED = "node_info_fetched"
-SIGNAL_NODE_SUMMARY_FETCHED = "node_summary_fetched"
-SIGNAL_JOB_INFO_FETCHED = "job_info_fetched"
-SIGNAL_WORKER_INFO_FETCHED = "worker_info_fetched"
 # Default value for datacenter (the default value in protobuf)
 DEFAULT_LANGUAGE = "PYTHON"
 DEFAULT_JOB_ID = "ffff"
@@ -74,7 +69,7 @@ DEFAULT_JOB_START_TIMEOUT_SECONDS = 60 * 15
 RAY_JOB_START_TIMEOUT_SECONDS_ENV_VAR = "RAY_JOB_START_TIMEOUT_SECONDS"
 # Port that dashboard prometheus metrics will be exported to
 DASHBOARD_METRIC_PORT = env_integer("DASHBOARD_METRIC_PORT", 44227)
-COMPONENT_METRICS_TAG_KEYS = ["ip", "pid", "Component", "SessionName"]
+COMPONENT_METRICS_TAG_KEYS = ["ip", "pid", "Version", "Component", "SessionName"]
 # Dashboard metrics are tracked separately at the dashboard. TODO(sang): Support GCS.
 AVAILABLE_COMPONENT_NAMES_FOR_METRICS = {
     "workers",

@@ -10,7 +10,7 @@ from typing import (
     TYPE_CHECKING,
     Any,
     Callable,
-    Container,
+    Collection,
     Dict,
     List,
     Optional,
@@ -65,10 +65,9 @@ from ray.rllib.policy.sample_batch import (
 )
 from ray.rllib.policy.torch_policy import TorchPolicy
 from ray.rllib.policy.torch_policy_v2 import TorchPolicyV2
-from ray.rllib.utils import check_env, force_list
+from ray.rllib.utils import force_list
 from ray.rllib.utils.annotations import OldAPIStack, override
 from ray.rllib.utils.debug import summarize, update_global_seed_if_necessary
-from ray.rllib.utils.deprecation import DEPRECATED_VALUE, deprecation_warning
 from ray.rllib.utils.error import ERR_MSG_NO_GPUS, HOWTO_CHANGE_CONFIG
 from ray.rllib.utils.filter import Filter, NoFilter, get_filter
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
@@ -132,11 +131,11 @@ def _update_env_seed_if_necessary(
 
     # A single RL job is unlikely to have more than 10K
     # rollout workers.
-    max_num_envs_per_workers: int = 1000
+    max_num_envs_per_env_runner: int = 1000
     assert (
-        worker_idx < max_num_envs_per_workers
+        worker_idx < max_num_envs_per_env_runner
     ), "Too many envs per worker. Random seeds may collide."
-    computed_seed: int = worker_idx * max_num_envs_per_workers + vector_idx + seed
+    computed_seed: int = worker_idx * max_num_envs_per_env_runner + vector_idx + seed
 
     # Gymnasium.env.
     # This will silently fail for most Farama-foundation gymnasium environments.
@@ -233,8 +232,7 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
         spaces: Optional[Dict[PolicyID, Tuple[Space, Space]]] = None,
         default_policy_class: Optional[Type[Policy]] = None,
         dataset_shards: Optional[List[ray.data.Dataset]] = None,
-        # Deprecated: This is all specified in `config` anyways.
-        tf_session_creator=DEPRECATED_VALUE,  # Use config.tf_session_options instead.
+        **kwargs,
     ):
         """Initializes a RolloutWorker instance.
 
@@ -247,24 +245,15 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
                 non-zero and unique value. This index is passed to created envs
                 through EnvContext so that envs can be configured per worker.
             recreated_worker: Whether this worker is a recreated one. Workers are
-                recreated by an Algorithm (via WorkerSet) in case
-                `recreate_failed_workers=True` and one of the original workers (or an
-                already recreated one) has failed. They don't differ from original
+                recreated by an Algorithm (via EnvRunnerGroup) in case
+                `recreate_failed_env_runners=True` and one of the original workers (or
+                an already recreated one) has failed. They don't differ from original
                 workers other than the value of this flag (`self.recreated_worker`).
             log_dir: Directory where logs can be placed.
             spaces: An optional space dict mapping policy IDs
                 to (obs_space, action_space)-tuples. This is used in case no
                 Env is created on this RolloutWorker.
         """
-        # Deprecated args.
-        if tf_session_creator != DEPRECATED_VALUE:
-            deprecation_warning(
-                old="RolloutWorker(.., tf_session_creator=.., ..)",
-                new="config.framework(tf_session_args={..}); "
-                "RolloutWorker(config=config, ..)",
-                error=True,
-            )
-
         self._original_kwargs: dict = locals().copy()
         del self._original_kwargs["self"]
 
@@ -295,7 +284,7 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
         EnvRunner.__init__(self, config=config)
 
         self.num_workers = (
-            num_workers if num_workers is not None else self.config.num_rollout_workers
+            num_workers if num_workers is not None else self.config.num_env_runners
         )
         # In case we are reading from distributed datasets, store the shards here
         # and pick our shard by our worker-index.
@@ -356,7 +345,7 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
             worker_index=self.worker_index
         )
         self.total_rollout_fragment_length: int = (
-            configured_rollout_fragment_length * self.config.num_envs_per_worker
+            configured_rollout_fragment_length * self.config.num_envs_per_env_runner
         )
         self.preprocessing_enabled: bool = not config._disable_preprocessor_api
         self.last_batch: Optional[SampleBatchType] = None
@@ -409,9 +398,6 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
         clip_rewards = self.config.clip_rewards
 
         if self.env is not None:
-            # Validate environment (general validation function).
-            if not self.config.disable_env_checking:
-                check_env(self.env, self.config)
             # Custom validation function given, typically a function attribute of the
             # Algorithm.
             if validate_env is not None:
@@ -491,11 +477,11 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
         num_gpus = (
             self.config.num_gpus
             if self.worker_index == 0
-            else self.config.num_gpus_per_worker
+            else self.config.num_gpus_per_env_runner
         )
 
         # This is only for the old API where local_worker was responsible for learning
-        if not self.config._enable_new_api_stack:
+        if not self.config.enable_rl_module_and_learner:
             # Error if we don't find enough GPUs.
             if (
                 ray.is_initialized()
@@ -540,21 +526,23 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
         # state.
         for pol in self.policy_map.values():
             if not pol._model_init_state_automatically_added and not pol.config.get(
-                "_enable_new_api_stack", False
+                "enable_rl_module_and_learner", False
             ):
                 pol._update_model_view_requirements_from_init_state()
 
-        self.multiagent: bool = set(self.policy_map.keys()) != {DEFAULT_POLICY_ID}
-        if self.multiagent and self.env is not None:
-            if not isinstance(
+        if (
+            self.config.is_multi_agent()
+            and self.env is not None
+            and not isinstance(
                 self.env,
                 (BaseEnv, ExternalMultiAgentEnv, MultiAgentEnv, ray.actor.ActorHandle),
-            ):
-                raise ValueError(
-                    f"Have multiple policies {self.policy_map}, but the "
-                    f"env {self.env} is not a subclass of BaseEnv, "
-                    f"MultiAgentEnv, ActorHandle, or ExternalMultiAgentEnv!"
-                )
+            )
+        ):
+            raise ValueError(
+                f"You are running a multi-agent setup, but the env {self.env} is not a "
+                f"subclass of BaseEnv, MultiAgentEnv, ActorHandle, or "
+                f"ExternalMultiAgentEnv!"
+            )
 
         if self.worker_index == 0:
             logger.info("Built filter map: {}".format(self.filters))
@@ -569,11 +557,11 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
         # further clones of self.env and creates a RLlib BaseEnv (which is
         # vectorized under the hood).
         else:
-            # Always use vector env for consistency even if num_envs_per_worker=1.
+            # Always use vector env for consistency even if num_envs_per_env_runner=1.
             self.async_env: BaseEnv = convert_to_base_env(
                 self.env,
                 make_env=self.make_sub_env_fn,
-                num_envs=self.config.num_envs_per_worker,
+                num_envs=self.config.num_envs_per_env_runner,
                 remote_envs=self.config.remote_worker_envs,
                 remote_env_batch_wait_ms=self.config.remote_env_batch_wait_ms,
                 worker=self,
@@ -634,12 +622,6 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
         # The current weights sequence number (version). May remain None for when
         # not tracking weights versions.
         self.weights_seq_no: Optional[int] = None
-
-        logger.debug(
-            "Created rollout worker with env {} ({}), policies {}".format(
-                self.async_env, self.env, self.policy_map
-            )
-        )
 
     @override(EnvRunner)
     def assert_healthy(self):
@@ -704,7 +686,7 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
             self.config.batch_mode == "truncate_episodes"
             and not self.config.offline_sampling
         ):
-            max_batches = self.config.num_envs_per_worker
+            max_batches = self.config.num_envs_per_env_runner
         else:
             max_batches = float("inf")
         while steps_so_far < self.total_rollout_fragment_length and (
@@ -1089,7 +1071,7 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
         policy_state: Optional[PolicyState] = None,
         policy_mapping_fn: Optional[Callable[[AgentID, "Episode"], PolicyID]] = None,
         policies_to_train: Optional[
-            Union[Container[PolicyID], Callable[[PolicyID, SampleBatchType], bool]]
+            Union[Collection[PolicyID], Callable[[PolicyID, SampleBatchType], bool]]
         ] = None,
         module_spec: Optional[SingleAgentRLModuleSpec] = None,
     ) -> Policy:
@@ -1110,7 +1092,7 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
                 to use from here on. Note that already ongoing episodes will
                 not change their mapping but will use the old mapping till
                 the end of the episode.
-            policies_to_train: An optional container of policy IDs to be
+            policies_to_train: An optional collection of policy IDs to be
                 trained or a callable taking PolicyID and - optionally -
                 SampleBatchType and returning a bool (trainable or not?).
                 If None, will keep the existing setup in place.
@@ -1130,7 +1112,7 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
         """
         validate_policy_id(policy_id, error=False)
 
-        if module_spec is not None and not self.config._enable_new_api_stack:
+        if module_spec is not None and not self.config.enable_rl_module_and_learner:
             raise ValueError(
                 "If you pass in module_spec to the policy, the RLModule API needs "
                 "to be enabled."
@@ -1190,7 +1172,7 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
         policy_id: PolicyID = DEFAULT_POLICY_ID,
         policy_mapping_fn: Optional[Callable[[AgentID], PolicyID]] = None,
         policies_to_train: Optional[
-            Union[Container[PolicyID], Callable[[PolicyID, SampleBatchType], bool]]
+            Union[Collection[PolicyID], Callable[[PolicyID, SampleBatchType], bool]]
         ] = None,
     ) -> None:
         """Removes a policy from this RolloutWorker.
@@ -1202,7 +1184,7 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
                 to use from here on. Note that already ongoing episodes will
                 not change their mapping but will use the old mapping till
                 the end of the episode.
-            policies_to_train: An optional container of policy IDs to be
+            policies_to_train: An optional collection of policy IDs to be
                 trained or a callable taking PolicyID and - optionally -
                 SampleBatchType and returning a bool (trainable or not?).
                 If None, will keep the existing setup in place.
@@ -1235,20 +1217,20 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
     def set_is_policy_to_train(
         self,
         is_policy_to_train: Union[
-            Container[PolicyID], Callable[[PolicyID, Optional[SampleBatchType]], bool]
+            Collection[PolicyID], Callable[[PolicyID, Optional[SampleBatchType]], bool]
         ],
     ) -> None:
         """Sets `self.is_policy_to_train()` to a new callable.
 
         Args:
-            is_policy_to_train: A container of policy IDs to be
+            is_policy_to_train: A collection of policy IDs to be
                 trained or a callable taking PolicyID and - optionally -
                 SampleBatchType and returning a bool (trainable or not?).
                 If None, will keep the existing setup in place.
                 Policies, whose IDs are not in the list (or for which the
                 callable returns False) will not be updated.
         """
-        # If container given, construct a simple default callable returning True
+        # If collection given, construct a simple default callable returning True
         # if the PolicyID is found in the list/set of IDs.
         if not callable(is_policy_to_train):
             assert isinstance(is_policy_to_train, (list, set, tuple)), (
@@ -1470,7 +1452,7 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
 
     def get_weights(
         self,
-        policies: Optional[Container[PolicyID]] = None,
+        policies: Optional[Collection[PolicyID]] = None,
         inference_only: bool = False,
     ) -> Dict[PolicyID, ModelWeights]:
         """Returns each policies' model weights of this worker.
@@ -1723,7 +1705,7 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
         updated_policy_dict = self._get_complete_policy_specs_dict(policy_dict)
 
         # Use the updated policy dict to create the marl_module_spec if necessary
-        if self.config._enable_new_api_stack:
+        if self.config.enable_rl_module_and_learner:
             spec = self.config.get_marl_module_spec(
                 policy_dict=updated_policy_dict,
                 single_agent_rl_module_spec=single_agent_rl_module_spec,
@@ -1802,7 +1784,7 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
                     obs_space,
                     merged_conf.model,
                     include_multi_binary=self.config.get(
-                        "_enable_new_api_stack", False
+                        "enable_rl_module_and_learner", False
                     ),
                 )
                 # Original observation space should be accessible at
@@ -1869,9 +1851,9 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
                 new_policy = policy
 
             # Maybe torch compile an RLModule.
-            if self.config.get("_enable_new_api_stack", False) and self.config.get(
-                "torch_compile_worker"
-            ):
+            if self.config.get(
+                "enable_rl_module_and_learner", False
+            ) and self.config.get("torch_compile_worker"):
                 if self.config.framework_str != "torch":
                     raise ValueError("Attempting to compile a non-torch RLModule.")
                 rl_module = getattr(new_policy, "model", None)
@@ -2013,8 +1995,6 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
     def _get_make_sub_env_fn(
         self, env_creator, env_context, validate_env, env_wrapper, seed
     ):
-        config = self.config
-
         def _make_sub_env_local(vector_index):
             # Used to created additional environments during environment
             # vectorization.
@@ -2024,20 +2004,6 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
             env_ctx = env_context.copy_with_overrides(vector_index=vector_index)
             # Create the sub-env.
             env = env_creator(env_ctx)
-            # Validate first.
-            if not config.disable_env_checking:
-                try:
-                    check_env(env, config)
-                except Exception as e:
-                    logger.warning(
-                        "We've added a module for checking environments that "
-                        "are used in experiments. Your env may not be set up"
-                        "correctly. You can disable env checking for now by setting "
-                        "`disable_env_checking` to True in your experiment config "
-                        "dictionary. You can run the environment checking module "
-                        "standalone by calling ray.rllib.utils.check_env(env)."
-                    )
-                    raise e
             # Custom validation function given by user.
             if validate_env is not None:
                 validate_env(env, env_ctx)

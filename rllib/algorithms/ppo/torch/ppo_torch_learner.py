@@ -1,5 +1,7 @@
 import logging
-from typing import Any, Dict
+from typing import Dict
+
+import numpy as np
 
 from ray.rllib.algorithms.ppo.ppo import (
     LEARNER_RESULTS_KL_KEY,
@@ -16,6 +18,7 @@ from ray.rllib.evaluation.postprocessing import Postprocessing
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.nested_dict import NestedDict
+from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.torch_utils import explained_variance
 from ray.rllib.utils.typing import ModuleID, TensorType
 
@@ -46,11 +49,11 @@ class PPOTorchLearner(PPOLearner, TorchLearner):
         # and for PPO's batched value function (and bootstrap value) computations,
         # for which we add an additional (artificial) timestep to each episode to
         # simplify the actual computation.
-        if "loss_mask" in batch:
-            num_valid = torch.sum(batch["loss_mask"])
+        if Columns.LOSS_MASK in batch:
+            num_valid = torch.sum(batch[Columns.LOSS_MASK])
 
             def possibly_masked_mean(data_):
-                return torch.sum(data_[batch["loss_mask"]]) / num_valid
+                return torch.sum(data_[batch[Columns.LOSS_MASK]]) / num_valid
 
         else:
             possibly_masked_mean = torch.mean
@@ -116,9 +119,8 @@ class PPOTorchLearner(PPOLearner, TorchLearner):
         if config.use_kl_loss:
             total_loss += self.curr_kl_coeffs_per_module[module_id] * mean_kl_loss
 
-        # Register important loss stats.
-        self.register_metrics(
-            module_id,
+        # Log important loss stats.
+        self.metrics.log_dict(
             {
                 POLICY_LOSS_KEY: -possibly_masked_mean(surrogate_loss),
                 VF_LOSS_KEY: mean_vf_loss,
@@ -129,37 +131,44 @@ class PPOTorchLearner(PPOLearner, TorchLearner):
                 ENTROPY_KEY: mean_entropy,
                 LEARNER_RESULTS_KL_KEY: mean_kl_loss,
             },
+            key=module_id,
+            window=1,  # <- single items (should not be mean/ema-reduced over time).
         )
         # Return the total loss.
         return total_loss
 
     @override(PPOLearner)
-    def additional_update_for_module(
+    def _update_module_kl_coeff(
         self,
         *,
         module_id: ModuleID,
         config: PPOConfig,
-        timestep: int,
-        sampled_kl_values: dict,
-    ) -> Dict[str, Any]:
-        assert sampled_kl_values, "Sampled KL values are empty."
+    ) -> None:
+        kl = convert_to_numpy(self.metrics.peek((module_id, LEARNER_RESULTS_KL_KEY)))
 
-        results = super().additional_update_for_module(
-            module_id=module_id,
-            config=config,
-            timestep=timestep,
-            sampled_kl_values=sampled_kl_values,
+        if np.isnan(kl):
+            logger.warning(
+                f"KL divergence for Module {module_id} is non-finite, this "
+                "will likely destabilize your model and the training "
+                "process. Action(s) in a specific state have near-zero "
+                "probability. This can happen naturally in deterministic "
+                "environments where the optimal policy has zero mass for a "
+                "specific action. To fix this issue, consider setting "
+                "`kl_coeff` to 0.0 or increasing `entropy_coeff` in your "
+                "config."
+            )
+
+        # Update the KL coefficient.
+        curr_var = self.curr_kl_coeffs_per_module[module_id]
+        if kl > 2.0 * config.kl_target:
+            # TODO (Kourosh) why not 2?
+            curr_var.data *= 1.5
+        elif kl < 0.5 * config.kl_target:
+            curr_var.data *= 0.5
+
+        # Log the updated KL-coeff value.
+        self.metrics.log_value(
+            (module_id, LEARNER_RESULTS_CURR_KL_COEFF_KEY),
+            curr_var.item(),
+            window=1,
         )
-
-        # Update KL coefficient.
-        if config.use_kl_loss:
-            sampled_kl = sampled_kl_values[module_id]
-            curr_var = self.curr_kl_coeffs_per_module[module_id]
-            if sampled_kl > 2.0 * config.kl_target:
-                # TODO (Kourosh) why not 2?
-                curr_var.data *= 1.5
-            elif sampled_kl < 0.5 * config.kl_target:
-                curr_var.data *= 0.5
-            results.update({LEARNER_RESULTS_CURR_KL_COEFF_KEY: curr_var.item()})
-
-        return results

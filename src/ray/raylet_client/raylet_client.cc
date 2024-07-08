@@ -406,16 +406,51 @@ void raylet::RayletClient::GetTaskFailureCause(
       });
 }
 
-void raylet::RayletClient::ReleaseUnusedWorkers(
+void raylet::RayletClient::RegisterMutableObjectReader(
+    const ObjectID &writer_object_id,
+    int64_t num_readers,
+    const ObjectID &reader_object_id,
+    const ray::rpc::ClientCallback<ray::rpc::RegisterMutableObjectReply> &callback) {
+  rpc::RegisterMutableObjectRequest request;
+  request.set_writer_object_id(writer_object_id.Binary());
+  request.set_num_readers(num_readers);
+  request.set_reader_object_id(reader_object_id.Binary());
+  grpc_client_->RegisterMutableObject(request, callback);
+}
+
+void raylet::RayletClient::PushMutableObject(
+    const ObjectID &writer_object_id,
+    uint64_t data_size,
+    uint64_t metadata_size,
+    void *data,
+    const ray::rpc::ClientCallback<ray::rpc::PushMutableObjectReply> &callback) {
+  rpc::PushMutableObjectRequest request;
+  request.set_writer_object_id(writer_object_id.Binary());
+  request.set_data_size(data_size);
+  request.set_metadata_size(metadata_size);
+  // This assumes that the format of the object is a contiguous buffer of (data |
+  // metadata).
+  request.set_data(data, data_size + metadata_size);
+  grpc_client_->PushMutableObject(
+      request,
+      [callback](const Status &status, const rpc::PushMutableObjectReply &reply) {
+        if (!status.ok()) {
+          RAY_LOG(INFO) << "Error pushing mutable object: " << status;
+        }
+        callback(status, reply);
+      });
+}
+
+void raylet::RayletClient::ReleaseUnusedActorWorkers(
     const std::vector<WorkerID> &workers_in_use,
-    const rpc::ClientCallback<rpc::ReleaseUnusedWorkersReply> &callback) {
-  rpc::ReleaseUnusedWorkersRequest request;
+    const rpc::ClientCallback<rpc::ReleaseUnusedActorWorkersReply> &callback) {
+  rpc::ReleaseUnusedActorWorkersRequest request;
   for (auto &worker_id : workers_in_use) {
     request.add_worker_ids_in_use(worker_id.Binary());
   }
-  grpc_client_->ReleaseUnusedWorkers(
+  grpc_client_->ReleaseUnusedActorWorkers(
       request,
-      [callback](const Status &status, const rpc::ReleaseUnusedWorkersReply &reply) {
+      [callback](const Status &status, const rpc::ReleaseUnusedActorWorkersReply &reply) {
         if (!status.ok()) {
           RAY_LOG(WARNING)
               << "Error releasing workers from raylet, the raylet may have died:"

@@ -88,7 +88,6 @@ class WindyMazeEnv(gym.Env):
 class HierarchicalWindyMazeEnv(MultiAgentEnv):
     def __init__(self, env_config):
         super().__init__()
-        self._skip_env_checking = True
         self.flat_env = WindyMazeEnv(env_config)
 
     def reset(self, *, seed=None, options=None):

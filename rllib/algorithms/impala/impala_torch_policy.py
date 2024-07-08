@@ -242,7 +242,7 @@ class ImpalaTorchPolicy(
         # However, we also would like to avoid creating special Policy-subclasses
         # for this as the entire Policy concept will soon not be used anymore with
         # the new Learner- and RLModule APIs.
-        if not config.get("_enable_new_api_stack"):
+        if not config.get("enable_rl_module_and_learner"):
             VTraceOptimizer.__init__(self)
             # Need to initialize learning rate variable before calling
             # TorchPolicyV2.__init__.

@@ -78,6 +78,10 @@ RAY_CHDIR_TO_TRIAL_DIR = "RAY_CHDIR_TO_TRIAL_DIR"
 # Defaults to 0, which always retries on node preemption failures.
 RAY_TRAIN_COUNT_PREEMPTION_AS_FAILURE = "RAY_TRAIN_COUNT_PREEMPTION_AS_FAILURE"
 
+# Set this to 1 to start a StateActor and collect information Train Runs
+# Defaults to 0
+RAY_TRAIN_ENABLE_STATE_TRACKING = "RAY_TRAIN_ENABLE_STATE_TRACKING"
+
 # NOTE: When adding a new environment variable, please track it in this list.
 TRAIN_ENV_VARS = {
     ENABLE_DETAILED_AUTOFILLED_METRICS_ENV,
@@ -87,6 +91,7 @@ TRAIN_ENV_VARS = {
     TRAIN_ENABLE_WORKER_SPREAD_ENV,
     RAY_CHDIR_TO_TRIAL_DIR,
     RAY_TRAIN_COUNT_PREEMPTION_AS_FAILURE,
+    RAY_TRAIN_ENABLE_STATE_TRACKING,
 }
 
 # Key for AIR Checkpoint metadata in TrainingResult metadata

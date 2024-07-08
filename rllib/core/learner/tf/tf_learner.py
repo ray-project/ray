@@ -186,7 +186,7 @@ class TfLearner(Learner):
     def _load_optimizer_from_hparams(
         self, path: pathlib.Path, optim_name: str
     ) -> "tf.keras.optimizers.Optimizer":
-        """Load an optimizer from the hyperparameters saved at path/optim_name_hparams.json.
+        """Load an optimizer from the hyperparameters saved at path/[name]_hparams.json.
 
         Args:
             path: The path to the directory to load the hyperparameters from.
@@ -418,6 +418,9 @@ class TfLearner(Learner):
         #  traced-by-ray functions (for making the TfLearner class a ray actor).
         _ray_trace_ctx=None,
     ):
+        # Activate tensor-mode on our MetricsLogger.
+        self.metrics.activate_tensor_mode()
+
         def helper(_batch):
             # TODO (Kourosh, Sven): We need to go back to NestedDict because that's the
             #  constraint on forward_train and compute_loss APIs. This seems to be
@@ -432,7 +435,7 @@ class TfLearner(Learner):
             postprocessed_gradients = self.postprocess_gradients(gradients)
             self.apply_gradients(postprocessed_gradients)
 
-            return fwd_out, loss_per_module, dict(self._metrics)
+            return fwd_out, loss_per_module, self.metrics.deactivate_tensor_mode()
 
         return self._strategy.run(helper, args=(batch,))
 

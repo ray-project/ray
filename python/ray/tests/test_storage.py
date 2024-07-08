@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+
 import os
 import subprocess
 import urllib
@@ -74,6 +76,55 @@ def test_escape_storage_uri_with_runtime_env(shutdown_only):
         assert "&" in s3_uri
         ray.init(storage=s3_uri, runtime_env={"env_vars": {"TEST_ENV": "1"}})
 
+        client = storage.get_client("foo")
+        client.put("bar", b"baz")
+
+        @ray.remote
+        def f():
+            client = storage.get_client("foo")
+            return client.get("bar")
+
+        assert ray.get(f.remote()) == b"baz"
+
+
+def test_storage_uri_semicolon(shutdown_only):
+    with simulate_storage("s3") as s3_uri:
+        # test that ';' can be used instead of '&'
+        s3_uri.replace("&", ";")
+        ray.init(storage=s3_uri, runtime_env={"env_vars": {"TEST_ENV": "1"}})
+        client = storage.get_client("foo")
+        client.put("bar", b"baz")
+
+        @ray.remote
+        def f():
+            client = storage.get_client("foo")
+            return client.get("bar")
+
+        assert ray.get(f.remote()) == b"baz"
+
+
+def test_storage_uri_special(shutdown_only):
+    # Test various non-ascii characters that can appear in a URI
+    # test that '$', '+', ' ' are passed through
+    with simulate_storage("s3", region="$value+value value") as s3_uri:
+        ray.init(storage=s3_uri, runtime_env={"env_vars": {"TEST_ENV": "1"}})
+        client = storage.get_client("foo")
+        # url parsing: '+' becomes ' '
+        assert client.fs.region == "$value value value"
+        client.put("bar", b"baz")
+
+        @ray.remote
+        def f():
+            client = storage.get_client("foo")
+            return client.get("bar").decode() + ";" + client.fs.region
+
+        assert ray.get(f.remote()) == "baz;$value value value"
+
+
+def test_storage_uri_unicode(shutdown_only):
+    # test unicode characters in URI
+    with simulate_storage("s3", region="üs-öst-2") as s3_uri:
+        ray.init(storage=s3_uri, runtime_env={"env_vars": {"TEST_ENV": "1"}})
         client = storage.get_client("foo")
         client.put("bar", b"baz")
 

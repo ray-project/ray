@@ -1,6 +1,8 @@
+import os
 import pytest
 import ray
 from ray import workflow
+from ray._private.test_utils import wait_for_condition
 from ray.tests.conftest import *  # noqa
 
 
@@ -146,6 +148,8 @@ def test_workflow_queuing_resume_all(shutdown_only, tmp_path):
 
     @ray.remote
     def long_running(x):
+        file_path = str(tmp_path / f".long_running_{x}")
+        open(file_path, "w")
         with filelock.FileLock(lock_path):
             return x
 
@@ -155,6 +159,16 @@ def test_workflow_queuing_resume_all(shutdown_only, tmp_path):
         _refs = [  # noqa: F841
             workflow.run_async(wfs[i], workflow_id=f"workflow_{i}") for i in range(4)
         ]
+
+        # Make sure workflow_0 and workflow_1 are running user code
+        # Otherwise it might run workflow code that contains
+        # ray.get() when ray.shutdown()
+        # is called and that can cause ray.get() to throw exception
+        # since raylet is stopped
+        # before worker process (this is a bug we should fix)
+        # and transition the workflow to FAILED status.
+        wait_for_condition(lambda: os.path.isfile(str(tmp_path / ".long_running_0")))
+        wait_for_condition(lambda: os.path.isfile(str(tmp_path / ".long_running_1")))
 
         assert sorted(x[0] for x in workflow.list_all({workflow.RUNNING})) == [
             "workflow_0",

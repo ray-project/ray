@@ -9,10 +9,9 @@ import {
   TableRow,
   Typography,
 } from "@mui/material";
-import createStyles from "@mui/styles/createStyles";
-import makeStyles from "@mui/styles/makeStyles";
 import _ from "lodash";
 import React, { ReactElement } from "react";
+import { sliceToPage } from "../../common/util";
 import Loading from "../../components/Loading";
 import { MetadataSection } from "../../components/MetadataSection";
 import { StatusChip, StatusChipProps } from "../../components/StatusChip";
@@ -27,18 +26,6 @@ import { useFetchActor } from "../actor/hook/useActorDetail";
 import { LinkWithArrow } from "../overview/cards/OverviewCard";
 import { convertActorStateForServeController } from "./ServeSystemActorDetailPage";
 import { ServeControllerRow, ServeProxyRow } from "./ServeSystemDetailRows";
-
-const useStyles = makeStyles((theme) =>
-  createStyles({
-    table: {},
-    title: {
-      marginBottom: theme.spacing(2),
-    },
-    helpInfo: {
-      marginLeft: theme.spacing(1),
-    },
-  }),
-);
 
 export type ServeDetails = Pick<
   ServeApplicationsRsp,
@@ -66,11 +53,15 @@ export const ServeSystemDetails = ({
   page,
   setPage,
 }: ServeSystemDetailsProps) => {
-  const classes = useStyles();
+  const {
+    items: list,
+    constrainedPage,
+    maxPage,
+  } = sliceToPage(proxies, page.pageNo, page.pageSize);
 
   return (
     <div>
-      <Typography variant="h3" className={classes.title}>
+      <Typography variant="h3" sx={{ marginBottom: 2 }}>
         System
       </Typography>
       {serveDetails.http_options && (
@@ -109,12 +100,12 @@ export const ServeSystemDetails = ({
       <TableContainer>
         <div style={{ display: "flex", alignItems: "center" }}>
           <Pagination
-            count={Math.ceil(proxies.length / page.pageSize)}
-            page={page.pageNo}
+            count={maxPage}
+            page={constrainedPage}
             onChange={(e, pageNo) => setPage("pageNo", pageNo)}
           />
         </div>
-        <Table className={classes.table}>
+        <Table>
           <TableHead>
             <TableRow>
               {columns.map(({ label, helpInfo, width }) => (
@@ -130,9 +121,7 @@ export const ServeSystemDetails = ({
                   >
                     {label}
                     {helpInfo && (
-                      <HelpInfo className={classes.helpInfo}>
-                        {helpInfo}
-                      </HelpInfo>
+                      <HelpInfo sx={{ marginLeft: 1 }}>{helpInfo}</HelpInfo>
                     )}
                   </Box>
                 </TableCell>
@@ -141,14 +130,9 @@ export const ServeSystemDetails = ({
           </TableHead>
           <TableBody>
             <ServeControllerRow controller={serveDetails.controller_info} />
-            {proxies
-              .slice(
-                (page.pageNo - 1) * page.pageSize,
-                page.pageNo * page.pageSize,
-              )
-              .map((proxy) => (
-                <ServeProxyRow key={proxy.actor_id} proxy={proxy} />
-              ))}
+            {list.map((proxy) => (
+              <ServeProxyRow key={proxy.actor_id} proxy={proxy} />
+            ))}
           </TableBody>
         </Table>
       </TableContainer>

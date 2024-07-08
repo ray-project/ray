@@ -64,7 +64,7 @@ RL Module is a neural network container that implements three public methods: :p
 Enabling RL Modules in the Configuration
 ----------------------------------------
 
-Enable RL Modules via our configuration object: ``AlgorithmConfig.experimental(_enable_new_api_stack=True)``.
+Enable RL Modules via our configuration object: ``AlgorithmConfig.api_stack(enable_rl_module_and_learner=True)``.
 
 .. literalinclude:: doc_code/rlmodule_guide.py
     :language: python
@@ -365,9 +365,8 @@ There are two possible ways to extend existing RL Modules:
             )
 
         A concrete example: If you want to replace the default encoder that RLlib builds for torch, PPO and a given observation space,
-        you can override :py:class:`~ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module.PPOTorchRLModule`'s
-        :py:meth:`~ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module.PPOTorchRLModule.__init__` to create your custom
-        encoder instead of the default one. We do this in the following example.
+        you can override the `__init__` method on the :py:class:`~ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module.PPOTorchRLModule`
+        class to create your custom encoder instead of the default one. We do this in the following example.
 
         .. literalinclude:: ../../../rllib/examples/rl_modules/classes/mobilenet_rlm.py
                 :language: python

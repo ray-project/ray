@@ -37,7 +37,7 @@ class TestErrors(unittest.TestCase):
     def test_bad_envs(self):
         """Tests different "bad env" errors."""
         config = (
-            ppo.PPOConfig().rollouts(num_rollout_workers=0)
+            ppo.PPOConfig().env_runners(num_env_runners=0)
             # Non existing/non-registered gym env string.
             .environment("Alien-Attack-v42")
         )

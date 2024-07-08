@@ -4,6 +4,10 @@ import unittest
 
 import ray
 import ray.rllib.algorithms.bc as bc
+from ray.rllib.utils.metrics import (
+    ENV_RUNNER_RESULTS,
+    EPISODE_RETURN_MEAN,
+)
 from ray.rllib.utils.test_utils import (
     check_compute_single_action,
     check_train_results,
@@ -24,7 +28,7 @@ class TestBC(unittest.TestCase):
         """Test whether BC can be built with all frameworks.
 
         And learns from a historic-data file (while being evaluated on an
-        actual env using evaluation_num_workers > 0).
+        actual env using evaluation_num_env_runners > 0).
         """
         rllib_dir = Path(__file__).parents[3]
         print("rllib_dir={}".format(rllib_dir))
@@ -36,7 +40,7 @@ class TestBC(unittest.TestCase):
             bc.BCConfig()
             .evaluation(
                 evaluation_interval=3,
-                evaluation_num_workers=1,
+                evaluation_num_env_runners=1,
                 evaluation_duration=5,
                 evaluation_parallel_to_training=True,
                 evaluation_config=bc.BCConfig.overrides(input_="sampler"),
@@ -44,11 +48,11 @@ class TestBC(unittest.TestCase):
             .offline_data(input_=[data_file])
         )
         num_iterations = 350
-        min_reward = 75.0
+        min_return_to_reach = 75.0
 
         # Test for RLModule API and ModelV2.
         for rl_modules in [True, False]:
-            config.experimental(_enable_new_api_stack=rl_modules)
+            config.api_stack(enable_rl_module_and_learner=rl_modules)
             # Old and new stack support different frameworks
             if rl_modules:
                 frameworks_to_test = ("torch", "tf2")
@@ -75,13 +79,12 @@ class TestBC(unittest.TestCase):
 
                         eval_results = results.get("evaluation")
                         if eval_results:
-                            print(
-                                "iter={} R={}".format(
-                                    i, eval_results["episode_reward_mean"]
-                                )
-                            )
+                            mean_return = eval_results[ENV_RUNNER_RESULTS][
+                                EPISODE_RETURN_MEAN
+                            ]
+                            print("iter={} R={}".format(i, mean_return))
                             # Learn until good reward is reached in the actual env.
-                            if eval_results["episode_reward_mean"] > min_reward:
+                            if mean_return > min_return_to_reach:
                                 print("learnt!")
                                 learnt = True
                                 break
@@ -89,7 +92,7 @@ class TestBC(unittest.TestCase):
                     if not learnt:
                         raise ValueError(
                             "`BC` did not reach {} reward from expert offline "
-                            "data!".format(min_reward)
+                            "data!".format(min_return_to_reach)
                         )
 
                     check_compute_single_action(algo, include_prev_action_reward=True)

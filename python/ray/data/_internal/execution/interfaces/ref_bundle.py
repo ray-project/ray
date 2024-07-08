@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Optional, Tuple
+from typing import List, Optional, Tuple
 
 import ray
 from .common import NodeIdStr
@@ -58,19 +58,29 @@ class RefBundle:
             raise ValueError(f"The `{key}` field of RefBundle cannot be updated.")
         object.__setattr__(self, key, value)
 
+    @property
+    def block_refs(self) -> List[BlockMetadata]:
+        """List of block references in this bundle."""
+        return [block_ref for block_ref, _ in self.blocks]
+
+    @property
+    def metadata(self) -> List[BlockMetadata]:
+        """List of block metadata in this bundle."""
+        return [metadata for _, metadata in self.blocks]
+
     def num_rows(self) -> Optional[int]:
         """Number of rows present in this bundle, if known."""
         total = 0
-        for b in self.blocks:
-            if b[1].num_rows is None:
+        for m in self.metadata:
+            if m.num_rows is None:
                 return None
             else:
-                total += b[1].num_rows
+                total += m.num_rows
         return total
 
     def size_bytes(self) -> int:
         """Size of the blocks of this bundle in bytes."""
-        return sum(b[1].size_bytes for b in self.blocks)
+        return sum(m.size_bytes for m in self.metadata)
 
     def destroy_if_owned(self) -> int:
         """Clears the object store memory for these blocks if owned.
@@ -79,8 +89,10 @@ class RefBundle:
             The number of bytes freed.
         """
         should_free = self.owns_blocks and DataContext.get_current().eager_free
-        for b in self.blocks:
-            trace_deallocation(b[0], "RefBundle.destroy_if_owned", free=should_free)
+        for block_ref in self.block_refs:
+            trace_deallocation(
+                block_ref, "RefBundle.destroy_if_owned", free=should_free
+            )
         return self.size_bytes() if should_free else 0
 
     def get_cached_location(self) -> Optional[NodeIdStr]:
@@ -91,7 +103,7 @@ class RefBundle:
         if self._cached_location is None:
             # Only consider the first block in the bundle for now. TODO(ekl) consider
             # taking into account other blocks.
-            ref = self.blocks[0][0]
+            ref = self.block_refs[0]
             # This call is pretty fast for owned objects (~5k/s), so we don't need to
             # batch it for now.
             locs = ray.experimental.get_object_locations([ref])

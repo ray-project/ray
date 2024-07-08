@@ -1,7 +1,7 @@
 from contextlib import contextmanager
 import logging
 import os
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 from anyscale import service
 from anyscale.service.models import ServiceState
@@ -32,6 +32,7 @@ def start_service(
     compute_config: ComputeConfig,
     applications: List[Dict],
     add_unique_suffix: bool = True,
+    cluster_env: Optional[str] = None,
 ):
     """Starts an Anyscale Service with the specified configs.
 
@@ -46,7 +47,7 @@ def start_service(
             service name.
     """
 
-    cluster_env = os.environ.get("ANYSCALE_JOB_CLUSTER_ENV_NAME", None)
+    cluster_env = cluster_env or os.environ.get("ANYSCALE_JOB_CLUSTER_ENV_NAME", None)
     if add_unique_suffix:
         ray_commit = (
             ray.__commit__[:8] if ray.__commit__ != "{{RAY_COMMIT_SHA}}" else "nocommit"

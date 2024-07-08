@@ -46,3 +46,18 @@ py_test(
         ci_require("pytest"),
     ],
 )
+
+py_test(
+    name = "test_generic_validator",
+    size = "small",
+    srcs = ["test_generic_validator.py"],
+    exec_compatible_with = ["//:hermetic_python"],
+    tags = [
+        "ci_unit",
+        "team:ci",
+    ],
+    deps = [
+        ":bisect",
+        ci_require("pytest"),
+    ],
+)

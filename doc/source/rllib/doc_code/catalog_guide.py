@@ -113,7 +113,7 @@ class MyPPOCatalog(PPOCatalog):
 
 config = (
     PPOConfig()
-    .experimental(_enable_new_api_stack=True)
+    .api_stack(enable_rl_module_and_learner=True)
     .environment("CartPole-v1")
     .framework("torch")
 )

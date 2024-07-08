@@ -100,9 +100,10 @@ struct GcsServerMocker {
     }
 
     /// WorkerLeaseInterface
-    void ReleaseUnusedWorkers(
+    void ReleaseUnusedActorWorkers(
         const std::vector<WorkerID> &workers_in_use,
-        const rpc::ClientCallback<rpc::ReleaseUnusedWorkersReply> &callback) override {
+        const rpc::ClientCallback<rpc::ReleaseUnusedActorWorkersReply> &callback)
+        override {
       num_release_unused_workers += 1;
       release_callbacks.push_back(callback);
     }
@@ -120,7 +121,20 @@ struct GcsServerMocker {
     }
 
     void GetResourceLoad(
-        const ray::rpc::ClientCallback<ray::rpc::GetResourceLoadReply> &) override {}
+        const ray::rpc::ClientCallback<rpc::GetResourceLoadReply> &) override {}
+
+    void RegisterMutableObjectReader(
+        const ObjectID &object_id,
+        int64_t num_readers,
+        const ObjectID &local_reader_object_id,
+        const rpc::ClientCallback<rpc::RegisterMutableObjectReply> &callback) override {}
+
+    void PushMutableObject(
+        const ObjectID &object_id,
+        uint64_t data_size,
+        uint64_t metadata_size,
+        void *data,
+        const rpc::ClientCallback<rpc::PushMutableObjectReply> &callback) override {}
 
     // Trigger reply to RequestWorkerLease.
     bool GrantWorkerLease(const std::string &address,
@@ -175,14 +189,27 @@ struct GcsServerMocker {
       }
     }
 
-    bool ReplyReleaseUnusedWorkers() {
-      rpc::ReleaseUnusedWorkersReply reply;
+    bool ReplyReleaseUnusedActorWorkers() {
+      rpc::ReleaseUnusedActorWorkersReply reply;
       if (release_callbacks.size() == 0) {
         return false;
       } else {
         auto callback = release_callbacks.front();
         callback(Status::OK(), reply);
         release_callbacks.pop_front();
+        return true;
+      }
+    }
+
+    bool ReplyDrainRaylet() {
+      if (drain_raylet_callbacks.size() == 0) {
+        return false;
+      } else {
+        rpc::DrainRayletReply reply;
+        reply.set_is_accepted(true);
+        auto callback = drain_raylet_callbacks.front();
+        callback(Status::OK(), reply);
+        drain_raylet_callbacks.pop_front();
         return true;
       }
     }
@@ -291,7 +318,7 @@ struct GcsServerMocker {
         const rpc::ClientCallback<rpc::DrainRayletReply> &callback) override {
       rpc::DrainRayletReply reply;
       reply.set_is_accepted(true);
-      callback(Status::OK(), reply);
+      drain_raylet_callbacks.push_back(callback);
     };
 
     void NotifyGCSRestart(
@@ -306,9 +333,11 @@ struct GcsServerMocker {
     int num_release_unused_workers = 0;
     int num_get_task_failure_causes = 0;
     NodeID node_id = NodeID::FromRandom();
+    std::list<rpc::ClientCallback<rpc::DrainRayletReply>> drain_raylet_callbacks = {};
     std::list<rpc::ClientCallback<rpc::RequestWorkerLeaseReply>> callbacks = {};
     std::list<rpc::ClientCallback<rpc::CancelWorkerLeaseReply>> cancel_callbacks = {};
-    std::list<rpc::ClientCallback<rpc::ReleaseUnusedWorkersReply>> release_callbacks = {};
+    std::list<rpc::ClientCallback<rpc::ReleaseUnusedActorWorkersReply>>
+        release_callbacks = {};
     int num_lease_requested = 0;
     int num_return_requested = 0;
     int num_commit_requested = 0;
@@ -383,8 +412,6 @@ struct GcsServerMocker {
                         const gcs::StatusCallback &callback) override {
       return Status::NotImplemented("");
     }
-
-    Status DrainSelf() override { return Status::NotImplemented(""); }
 
     const NodeID &GetSelfId() const override {
       static NodeID node_id;

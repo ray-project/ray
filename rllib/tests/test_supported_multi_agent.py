@@ -67,7 +67,7 @@ class TestSupportedMultiAgentPolicyGradient(unittest.TestCase):
             "PPO",
             (
                 PPOConfig()
-                .rollouts(num_rollout_workers=1, rollout_fragment_length=10)
+                .env_runners(num_env_runners=1, rollout_fragment_length=10)
                 .training(num_sgd_iter=1, train_batch_size=10, sgd_minibatch_size=1)
             ),
         )
@@ -98,7 +98,7 @@ class TestSupportedMultiAgentOffPolicy(unittest.TestCase):
             (
                 SACConfig()
                 .environment(normalize_actions=False)
-                .rollouts(num_rollout_workers=0)
+                .env_runners(num_env_runners=0)
                 .training(replay_buffer_config={"capacity": 1000})
             ),
         )

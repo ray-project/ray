@@ -290,6 +290,7 @@ py_library(
         bk_require("anyscale"),
         bk_require("aws-requests-auth"),
         bk_require("bazel-runfiles"),
+        bk_require("aioboto3"),
         bk_require("boto3"),
         bk_require("botocore"),
         bk_require("click"),

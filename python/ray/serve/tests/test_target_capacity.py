@@ -368,11 +368,6 @@ def test_autoscaling_scale_to_zero(
         },
     )
 
-    # TODO(edoakes): for some reason, the deployment does not actually scale down to
-    # zero here, so skipping this part for now. Instead it repeatedly scales down and
-    # then back up. Seems to have something to do with the handle-side queue metric.
-    return
-
     # Cancel all of the requests, should scale down to zero.
     [r.cancel() for r in responses]
     wait_for_condition(

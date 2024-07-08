@@ -110,7 +110,7 @@ Since we mostly build RLModules out of :py:class:`~ray.rllib.core.models.base.En
 For example, the PPOCatalog will output Encoders that output a latent vector and two Heads that take this latent vector as input.
 (That's why Catalogs have a ``latent_dims`` attribute). Heads and distributions behave accordingly.
 Whenever you create a Catalog, the decision tree is executed to find suitable configs for models and classes for distributions.
-By default this happens in :py:meth:`~ray.rllib.core.models.catalog.Catalog.get_encoder_config` and :py:meth:`~ray.rllib.core.models.catalog.Catalog._get_dist_cls_from_action_space`.
+By default this happens in :py:meth:`~ray.rllib.core.models.catalog.Catalog._get_encoder_config` and :py:meth:`~ray.rllib.core.models.catalog.Catalog._get_dist_cls_from_action_space`.
 Whenever you build a model, the config is turned into a model.
 Distributions are instantiated per forward pass of an `RLModule` and are therefore not built.
 

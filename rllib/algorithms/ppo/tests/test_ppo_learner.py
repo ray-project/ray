@@ -56,11 +56,9 @@ class TestPPO(unittest.TestCase):
     def test_loss(self):
         config = (
             ppo.PPOConfig()
-            .experimental(_enable_new_api_stack=True)
+            .api_stack(enable_rl_module_and_learner=True)
             .environment("CartPole-v1")
-            .rollouts(
-                num_rollout_workers=0,
-            )
+            .env_runners(num_env_runners=0)
             .training(
                 gamma=0.99,
                 model=dict(
@@ -104,10 +102,10 @@ class TestPPO(unittest.TestCase):
         """Tests saving and loading the state of the PPO Learner Group."""
         config = (
             ppo.PPOConfig()
-            .experimental(_enable_new_api_stack=True)
+            .api_stack(enable_rl_module_and_learner=True)
             .environment("CartPole-v1")
-            .rollouts(
-                num_rollout_workers=0,
+            .env_runners(
+                num_env_runners=0,
             )
             .training(
                 gamma=0.99,
@@ -142,11 +140,12 @@ class TestPPO(unittest.TestCase):
         initial_kl_coeff = 0.01
         config = (
             ppo.PPOConfig()
-            .experimental(_enable_new_api_stack=True)
+            .api_stack(enable_rl_module_and_learner=True)
             .environment("CartPole-v1")
-            .rollouts(
-                num_rollout_workers=0,
+            .env_runners(
+                num_env_runners=0,
                 rollout_fragment_length=50,
+                exploration_config={},
             )
             .training(
                 gamma=0.99,
@@ -157,7 +156,6 @@ class TestPPO(unittest.TestCase):
                 ),
                 kl_coeff=initial_kl_coeff,
             )
-            .exploration(exploration_config={})
             .environment("multi_agent_cartpole")
             .multi_agent(
                 policies={"p0", "p1"},

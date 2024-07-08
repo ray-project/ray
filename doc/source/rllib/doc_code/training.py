@@ -35,7 +35,7 @@ algo = (
     DQNConfig()
     .environment("CartPole-v1")
     .framework("tf2")
-    .rollouts(num_rollout_workers=0)
+    .env_runners(num_env_runners=0)
     .build()
 )
 # <ray.rllib.algorithms.ppo.PPO object at 0x7fd020186384>

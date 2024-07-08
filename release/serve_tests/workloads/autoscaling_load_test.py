@@ -3,8 +3,10 @@
 Benchmark test.
 """
 
+import click
 import json
 import logging
+from typing import Optional
 
 from anyscale import service
 from anyscale.compute_config.models import (
@@ -31,7 +33,10 @@ logging.basicConfig(level=logging.INFO)
 URI = "https://serve-resnet-benchmark-data.s3.us-west-1.amazonaws.com/000000000019.jpeg"
 
 
-def main():
+@click.command()
+@click.option("--output-path", "-o", type=str, default=None)
+@click.option("--cluster-env", type=str, default=None)
+def main(output_path: Optional[str], cluster_env: Optional[str]):
     resnet_application = {
         "import_path": "resnet_50:app",
         "deployments": [
@@ -60,6 +65,7 @@ def main():
         "autoscaling-load-test",
         compute_config=compute_config,
         applications=[resnet_application],
+        cluster_env=cluster_env,
     ) as service_name:
         ray.init(address="auto")
         status = service.status(name=service_name)
@@ -131,7 +137,7 @@ def main():
         }
         logger.info(f"Stats history: {json.dumps(stats.history, indent=4)}")
         logger.info(f"Final aggregated metrics: {json.dumps(results, indent=4)}")
-        save_test_results(results)
+        save_test_results(results, output_path=output_path)
 
 
 if __name__ == "__main__":
