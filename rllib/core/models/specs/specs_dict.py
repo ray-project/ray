@@ -96,9 +96,19 @@ class SpecDict(Dict[str, Spec], Spec):
         ValueError: If the data doesn't match the spec.
     """
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self._keys_set = set(self.keys())
+    #def __init__(self, *args, **kwargs):
+    #    super().__init__(*args, **kwargs)
+
+        # Collect all (nested) keys in `self`.
+        #_keys_set = set()
+
+    #    def _map(path, s):
+    #        _keys_set.add(force_tuple(path))
+
+    #    tree.map_structure_with_path(_map, self)
+    #    self._keys_set = _keys_set
+
+        #self._keys_set = set(self.keys())
 
     @override(Spec)
     def validate(
@@ -127,7 +137,7 @@ class SpecDict(Dict[str, Spec], Spec):
         # Check, whether all (nested) keys in `self` (the Spec) also exist in `data`.
         def _check(path, s):
             path = force_tuple(path)
-            if path not in data_keys_set:
+            if s not in data_keys_set:
                 raise ValueError(_MISSING_KEYS_FROM_DATA.format(path, data_keys_set))
 
         tree.map_structure_with_path(_check, self)
@@ -162,4 +172,4 @@ class SpecDict(Dict[str, Spec], Spec):
                 )
 
     def __repr__(self) -> str:
-        return f"SpecDict({repr(self._data)})"
+        return f"SpecDict({repr(self.keys())})"
