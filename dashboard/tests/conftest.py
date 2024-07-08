@@ -1,6 +1,8 @@
 import os
-import pytest
 import pathlib
+
+import pytest
+
 from ray.tests.conftest import *  # noqa
 
 
