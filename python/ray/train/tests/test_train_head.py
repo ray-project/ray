@@ -38,6 +38,8 @@ def test_get_train_runs(monkeypatch, shutdown_only):
     assert body["train_runs"][0]["name"] == "my_train_run"
     assert len(body["train_runs"][0]["workers"]) == 4
 
+    ray.shutdown()
+
 
 def test_update_actor_status(monkeypatch, shutdown_only):
     monkeypatch.setenv("RAY_TRAIN_ENABLE_STATE_TRACKING", "1")
@@ -71,6 +73,8 @@ def test_update_actor_status(monkeypatch, shutdown_only):
     trainer.fit()
 
     check_actor_status(expected_actor_status=ActorStatusEnum.DEAD)
+
+    ray.shutdown()
 
 
 if __name__ == "__main__":
