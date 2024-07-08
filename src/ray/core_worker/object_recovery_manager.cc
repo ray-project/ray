@@ -72,6 +72,10 @@ bool ObjectRecoveryManager::RecoverObject(const ObjectID &object_id) {
   } else {
     RAY_LOG(DEBUG) << "Object " << object_id
                    << " has a pinned or spilled location, skipping recovery";
+    // If the object doesn't exist in the memory store
+    // (core_worker.cc removes the object from memory store before calling this method),
+    // we need to add it back to indicate that it's available.
+    // If the object is already in the memory store then the put is a no-op.
     RAY_CHECK(
         in_memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA), object_id));
   }

@@ -398,6 +398,30 @@ TEST_F(ObjectRecoveryManagerTest, TestLineageEvicted) {
             rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE_LINEAGE_EVICTED);
 }
 
+TEST_F(ObjectRecoveryManagerTest, TestReconstructionSkipped) {
+  // Test that if the object is already pinned or spilled,
+  // reconstruction is skipped.
+  ObjectID object_id = ObjectID::FromRandom();
+  ref_counter_->AddOwnedObject(object_id,
+                               {},
+                               rpc::Address(),
+                               "",
+                               0,
+                               true,
+                               /*add_local_ref=*/true);
+  ref_counter_->UpdateObjectPinnedAtRaylet(object_id, NodeID::FromRandom());
+
+  memory_store_->Delete({object_id});
+  ASSERT_TRUE(manager_.RecoverObject(object_id));
+  ASSERT_TRUE(failed_reconstructions_.empty());
+  ASSERT_EQ(object_directory_->Flush(), 0);
+  ASSERT_EQ(raylet_client_->Flush(), 0);
+  ASSERT_EQ(task_resubmitter_->num_tasks_resubmitted, 0);
+  bool in_plasma = false;
+  ASSERT_TRUE(memory_store_->Contains(object_id, &in_plasma));
+  ASSERT_TRUE(in_plasma);
+}
+
 }  // namespace core
 }  // namespace ray
 
