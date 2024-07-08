@@ -147,6 +147,7 @@ if __name__ == "__main__":
         TRAINING_ITERATION: args.stop_iters,
     }
 
+    args.local_mode = True
     run_rllib_example_script_experiment(
         base_config,
         args,

@@ -16,6 +16,7 @@ from ray.rllib.utils.deprecation import Deprecated, deprecation_warning
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.torch_utils import convert_to_torch_tensor
 from ray.rllib.utils.typing import (
+    ModuleID,
     PolicyID,
     TensorType,
     SampleBatchType,
@@ -907,14 +908,20 @@ class SampleBatch(dict):
             return default
 
     @PublicAPI
-    def as_multi_agent(self) -> "MultiAgentBatch":
-        """Returns the respective MultiAgentBatch using DEFAULT_POLICY_ID.
+    def as_multi_agent(self, module_id: Optional[ModuleID] = None) -> "MultiAgentBatch":
+        """Returns the respective MultiAgentBatch
+
+        Note, if `module_id` is not provided uses `DEFAULT_POLICY`_ID`.
+
+        Args;
+            module_id: An optional module ID. If `None` the `DEFAULT_POLICY_ID`
+                is used.
 
         Returns:
             The MultiAgentBatch (using DEFAULT_POLICY_ID) corresponding
             to this SampleBatch.
         """
-        return MultiAgentBatch({DEFAULT_POLICY_ID: self}, self.count)
+        return MultiAgentBatch({module_id or DEFAULT_POLICY_ID: self}, self.count)
 
     @PublicAPI
     def __getitem__(self, key: Union[str, slice]) -> TensorType:
