@@ -88,7 +88,6 @@ from ray.rllib.utils.checkpoints import (
     Checkpointable,
     CHECKPOINT_VERSION,
     CHECKPOINT_VERSION_LEARNER,
-    CHECKPOINT_VERSION_LEARNER_AND_ENV_RUNNER,
     get_checkpoint_info,
     try_import_msgpack,
 )
@@ -3182,9 +3181,6 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
     def _checkpoint_info_to_algorithm_state(
         checkpoint_info: dict,
         *,
-        module_ids: Optional[Collection[ModuleID]] = None,
-        new_agent_to_module_mapping_fn: Optional[AgentToModuleMappingFn] = None,
-        new_should_module_be_updated: Optional[ShouldModuleBeUpdatedFn] = None,
         policy_ids: Optional[Collection[PolicyID]] = None,
         policy_mapping_fn: Optional[Callable[[AgentID, EpisodeID], PolicyID]] = None,
         policies_to_train: Optional[
@@ -3202,22 +3198,6 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
             checkpoint_info: A checkpoint info dict as returned by
                 `ray.rllib.utils.checkpoints.get_checkpoint_info(
                 [checkpoint dir or AIR Checkpoint])`.
-            module_ids: ID of the RLModules from recover from the checkpoint. This
-                allows users to restore an Algorithm with only a subset of the
-                originally present RLModules.
-                IMPORTANT: Must not contain characters that
-                are also not allowed in Unix/Win filesystems, such as: `<>:"/|?*`,
-                or a dot, space or backslash at the end of the ID.
-            new_agent_to_module_mapping_fn: An optional (updated) AgentID to ModuleID
-                mapping function to use from here on. Note that already ongoing
-                episodes will not change their mapping but will use the old mapping till
-                the end of the episode.
-            new_should_module_be_updated: An optional sequence of ModuleIDs or a
-                callable taking ModuleID and MultiAgentBatch and returning whether the
-                ModuleID should be updated (trained).
-                If None, will keep the existing setup in place. RLModules,
-                whose IDs are not in the sequence (or for which the callable
-                returns False) will not be updated.
             policy_ids: Optional list/set of PolicyIDs. If not None, only those policies
                 listed here will be included in the returned state. Note that
                 state items such as filters, the `is_policy_to_train` function, as
@@ -3249,46 +3229,8 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
             else:
                 state = pickle.load(f)
 
-        # New API stack checkpoint.
-        if checkpoint_info["checkpoint_version"] >= (
-            CHECKPOINT_VERSION_LEARNER_AND_ENV_RUNNER
-        ):
-            # Retrieve the set of all required Module IDs, but limit by `module_ids`,
-            # if provided.
-            if module_ids is None:
-                module_ids = checkpoint_info["module_ids"]
-            else:
-                module_ids = set(module_ids) & checkpoint_info["module_ids"]
-
-            # Get Algorithm class.
-            if isinstance(state["algorithm_class"], str):
-                # Try deserializing from a full classpath.
-                # Or as a last resort: Tune registered algorithm name.
-                state["algorithm_class"] = deserialize_type(
-                    state["algorithm_class"]
-                ) or get_trainable_cls(state["algorithm_class"])
-            # Compile actual config object.
-            default_config = state["algorithm_class"].get_default_config()
-            new_config = default_config.update_from_dict(state["config"])
-
-            # Remove modules from `policies` dict that are not in `module_ids`.
-            new_modules = new_config.policies
-            if isinstance(new_modules, (set, list, tuple)):
-                new_modules = {mid for mid in new_modules if mid in module_ids}
-            else:
-                new_modules = {
-                    mid: spec for mid, spec in new_modules.items() if mid in module_ids
-                }
-            new_config.multi_agent(
-                policies=new_modules,
-                policies_to_train=new_should_module_be_updated,
-            )
-            if new_agent_to_module_mapping_fn is not None:
-                new_config.multi_agent(policy_mapping_fn=new_agent_to_module_mapping_fn)
-            state["config"] = new_config
-
         # Old API stack: Policies are in separate sub-dirs.
-        elif (
+        if (
             checkpoint_info["checkpoint_version"] > version.Version("0.1")
             and state.get("worker") is not None
             and state.get("worker")
