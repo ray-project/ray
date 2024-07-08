@@ -3,7 +3,7 @@
 It should be deleted once we fully move to the new executor backend.
 """
 
-from typing import Iterator, Tuple
+from typing import Iterator, Optional, Tuple
 
 from ray.data._internal.block_list import BlockList
 from ray.data._internal.execution.interfaces import (
@@ -11,10 +11,12 @@ from ray.data._internal.execution.interfaces import (
     PhysicalOperator,
     RefBundle,
 )
+from ray.data._internal.execution.interfaces.executor import OutputIterator
 from ray.data._internal.logical.optimizers import get_execution_plan
 from ray.data._internal.logical.util import record_operators_usage
 from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.stats import DatasetStats
+from ray.data._internal.util import unify_block_metadata_schema
 from ray.data.block import Block, BlockMetadata
 from ray.types import ObjectRef
 
@@ -59,6 +61,48 @@ def execute_to_legacy_bundle_iterator(
         dag = dag_rewrite(dag)
 
     bundle_iter = executor.execute(dag, initial_stats=stats)
+
+    class CacheMetadataIterator(OutputIterator):
+        """Wrapper for `bundle_iterator` above.
+
+        For a given iterator which yields output RefBundles,
+        cache the metadata from each output bundle, and yield
+        the original RefBundle."""
+
+        def __init__(self, base_iterator: OutputIterator):
+            # Note: the base_iterator should be of type StreamIterator,
+            # defined within `StreamingExecutor.execute()`. It must
+            # support the `get_next()` method.
+            self._base_iterator = base_iterator
+
+        def get_next(self, output_split_idx: Optional[int] = None) -> RefBundle:
+            bundle = self._base_iterator.get_next(output_split_idx)
+            self._cache_metadata(bundle)
+            return bundle
+
+        def _cache_metadata(self, bundle: RefBundle) -> RefBundle:
+            """Cache the metadata from each output bundle, so we can
+            access important information, such as row count, schema, etc."""
+            if not plan._snapshot_metadata:
+                # Initialize the snapshot BlockMetadata.
+                plan._snapshot_metadata = BlockMetadata(
+                    num_rows=bundle.num_rows(),
+                    size_bytes=bundle.size_bytes(),
+                    schema=unify_block_metadata_schema(bundle.metadata),
+                    input_files=None,
+                    exec_stats=None,
+                )
+            else:
+                # Update the snapshot BlockMetadata.
+                snap_md = plan._snapshot_metadata
+                snap_md.num_rows += bundle.num_rows()
+                snap_md.size_bytes += bundle.size_bytes()
+                snap_md.schema = unify_block_metadata_schema(
+                    [snap_md, *bundle.metadata]
+                )
+            return bundle
+
+    bundle_iter = CacheMetadataIterator(bundle_iter)
     return bundle_iter
 
 
