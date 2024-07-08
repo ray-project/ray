@@ -21,6 +21,23 @@ import numpy as np
 import ray
 from ray._private.auto_init_hook import wrap_auto_init
 from ray.air.util.tensor_extensions.utils import _create_possibly_ragged_ndarray
+from ray.data._internal.datasource.avro_datasource import AvroDatasource
+from ray.data._internal.datasource.bigquery_datasource import BigQueryDatasource
+from ray.data._internal.datasource.binary_datasource import BinaryDatasource
+from ray.data._internal.datasource.csv_datasource import CSVDatasource
+from ray.data._internal.datasource.image_datasource import ImageDatasource
+from ray.data._internal.datasource.json_datasource import JSONDatasource
+from ray.data._internal.datasource.lance_datasource import LanceDatasource
+from ray.data._internal.datasource.mongo_datasource import MongoDatasource
+from ray.data._internal.datasource.numpy_datasource import NumpyDatasource
+from ray.data._internal.datasource.parquet_bulk_datasource import ParquetBulkDatasource
+from ray.data._internal.datasource.parquet_datasource import ParquetDatasource
+from ray.data._internal.datasource.range_datasource import RangeDatasource
+from ray.data._internal.datasource.sql_datasource import SQLDatasource
+from ray.data._internal.datasource.text_datasource import TextDatasource
+from ray.data._internal.datasource.tfrecords_datasource import TFRecordDatasource
+from ray.data._internal.datasource.torch_datasource import TorchDatasource
+from ray.data._internal.datasource.webdataset_datasource import WebDatasetDatasource
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.logical.operators.from_operators import (
     FromArrow,
@@ -46,12 +63,8 @@ from ray.data.block import Block, BlockAccessor, BlockExecStats, BlockMetadata
 from ray.data.context import DataContext
 from ray.data.dataset import Dataset, MaterializedDataset
 from ray.data.datasource import (
-    AvroDatasource,
     BaseFileMetadataProvider,
-    BigQueryDatasource,
-    BinaryDatasource,
     Connection,
-    CSVDatasource,
     Datasource,
     DeltaSharingDatasource,
     ImageDatasource,
@@ -63,12 +76,6 @@ from ray.data.datasource import (
     ParquetDatasource,
     ParquetMetadataProvider,
     PathPartitionFilter,
-    RangeDatasource,
-    SQLDatasource,
-    TextDatasource,
-    TFRecordDatasource,
-    TorchDatasource,
-    WebDatasetDatasource,
 )
 from ray.data.datasource._default_metadata_providers import (
     get_generic_metadata_provider,
@@ -125,10 +132,7 @@ def from_blocks(blocks: List[Block]):
     from_blocks_op = FromBlocks(block_refs, metadata)
     logical_plan = LogicalPlan(from_blocks_op)
     return MaterializedDataset(
-        ExecutionPlan(
-            DatasetStats(metadata={"FromBlocks": metadata}, parent=None),
-            run_by_consumer=False,
-        ),
+        ExecutionPlan(DatasetStats(metadata={"FromBlocks": metadata}, parent=None)),
         logical_plan,
     )
 
@@ -208,10 +212,7 @@ def from_items(
     from_items_op = FromItems(blocks, metadata)
     logical_plan = LogicalPlan(from_items_op)
     return MaterializedDataset(
-        ExecutionPlan(
-            DatasetStats(metadata={"FromItems": metadata}, parent=None),
-            run_by_consumer=False,
-        ),
+        ExecutionPlan(DatasetStats(metadata={"FromItems": metadata}, parent=None)),
         logical_plan,
     )
 
@@ -442,7 +443,7 @@ def read_datasource(
     )
     logical_plan = LogicalPlan(read_op)
     return Dataset(
-        plan=ExecutionPlan(stats, run_by_consumer=False),
+        plan=ExecutionPlan(stats),
         logical_plan=logical_plan,
     )
 
@@ -1106,7 +1107,7 @@ def read_json(
         >>> ds.schema()
         Column     Type
         ------     ----
-        timestamp  timestamp[s]
+        timestamp  timestamp[...]
         size       int64
 
         Read a JSONL file in remote storage.
@@ -1296,7 +1297,7 @@ def read_csv(
         [{'order_number': 10107, 'quantity': 30, 'year': '2022', 'month': '09'}]
 
         By default, :meth:`~ray.data.read_csv` reads all files from file paths. If you want to filter
-        files by file extensions, set the ``partition_filter`` parameter.
+        files by file extensions, set the ``file_extensions`` parameter.
 
         Read only ``*.csv`` files from a directory.
 
@@ -1767,7 +1768,7 @@ def read_tfrecords(
                     #pyarrow.fs.FileSystem.open_input_stream>`_.
             when opening input files to read. To read a compressed TFRecord file,
             pass the corresponding compression type (e.g., for ``GZIP`` or ``ZLIB``),
-            use ``arrow_open_stream_args={'compression_type': 'gzip'}``).
+            use ``arrow_open_stream_args={'compression': 'gzip'}``).
         meta_provider: A :ref:`file metadata provider <metadata_provider>`. Custom
             metadata providers may be able to resolve file metadata more quickly and/or
             accurately. In most cases, you do not need to set this. If ``None``, this
@@ -1890,7 +1891,7 @@ def read_webdataset(
             `pyarrow.fs.FileSystem.open_input_stream <https://arrow.apache.org/docs/python/generated/pyarrow.fs.FileSystem.html>`_.
             To read a compressed TFRecord file,
             pass the corresponding compression type (e.g. for ``GZIP`` or ``ZLIB``, use
-            ``arrow_open_stream_args={'compression_type': 'gzip'}``).
+            ``arrow_open_stream_args={'compression': 'gzip'}``).
         meta_provider: File metadata provider. Custom metadata providers may
             be able to resolve file metadata more quickly and/or accurately. If
             ``None``, this function uses a system-chosen implementation.
@@ -2482,10 +2483,7 @@ def from_pandas_refs(
         metadata = ray.get([get_metadata.remote(df) for df in dfs])
         logical_plan = LogicalPlan(FromPandas(dfs, metadata))
         return MaterializedDataset(
-            ExecutionPlan(
-                DatasetStats(metadata={"FromPandas": metadata}, parent=None),
-                run_by_consumer=False,
-            ),
+            ExecutionPlan(DatasetStats(metadata={"FromPandas": metadata}, parent=None)),
             logical_plan,
         )
 
@@ -2496,10 +2494,7 @@ def from_pandas_refs(
     metadata = ray.get(metadata)
     logical_plan = LogicalPlan(FromPandas(blocks, metadata))
     return MaterializedDataset(
-        ExecutionPlan(
-            DatasetStats(metadata={"FromPandas": metadata}, parent=None),
-            run_by_consumer=False,
-        ),
+        ExecutionPlan(DatasetStats(metadata={"FromPandas": metadata}, parent=None)),
         logical_plan,
     )
 
@@ -2582,10 +2577,7 @@ def from_numpy_refs(
     logical_plan = LogicalPlan(FromNumpy(blocks, metadata))
 
     return MaterializedDataset(
-        ExecutionPlan(
-            DatasetStats(metadata={"FromNumpy": metadata}, parent=None),
-            run_by_consumer=False,
-        ),
+        ExecutionPlan(DatasetStats(metadata={"FromNumpy": metadata}, parent=None)),
         logical_plan,
     )
 
@@ -2661,10 +2653,7 @@ def from_arrow_refs(
     logical_plan = LogicalPlan(FromArrow(tables, metadata))
 
     return MaterializedDataset(
-        ExecutionPlan(
-            DatasetStats(metadata={"FromArrow": metadata}, parent=None),
-            run_by_consumer=False,
-        ),
+        ExecutionPlan(DatasetStats(metadata={"FromArrow": metadata}, parent=None)),
         logical_plan,
     )
 

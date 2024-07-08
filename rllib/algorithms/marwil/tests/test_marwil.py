@@ -60,7 +60,6 @@ class TestMARWIL(unittest.TestCase):
                 evaluation_parallel_to_training=True,
                 evaluation_config=marwil.MARWILConfig.overrides(input_="sampler"),
                 off_policy_estimation_methods={},
-                always_attach_evaluation_results=True,
             )
             .offline_data(input_=[data_file])
         )

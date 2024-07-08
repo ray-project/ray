@@ -20,6 +20,7 @@ def test_from_autosummary():
                     "\t:toc\n"
                     "\n"
                     "\tfun_01\n"
+                    "\t.. this is a comment\n"
                     "\tfun_02\n"
                     "something else"
                 ),
@@ -111,6 +112,55 @@ def test_get_canonical_name():
         api.get_canonical_name()
         == f"{mock_function.__module__}.{mock_function.__qualname__}"
     )
+
+
+def test_is_private_name():
+    test_data = [
+        {
+            "input": "a.b._private_function",
+            "output": True,
+        },
+        {
+            "input": "a.b._internal.public_function",
+            "output": True,
+        },
+        {
+            "input": "b.c.public_class",
+            "output": False,
+        },
+    ]
+    for test in test_data:
+        assert (
+            API(
+                name=test["input"],
+                annotation_type=AnnotationType.UNKNOWN,
+                code_type=CodeType.FUNCTION,
+            )._is_private_name()
+            == test["output"]
+        )
+
+
+def test_is_public():
+    assert not API(
+        name="a.b._private_function",
+        annotation_type=AnnotationType.PUBLIC_API,
+        code_type=CodeType.FUNCTION,
+    ).is_public()
+    assert not API(
+        name="a.b._internal.public_function",
+        annotation_type=AnnotationType.PUBLIC_API,
+        code_type=CodeType.FUNCTION,
+    ).is_public()
+    assert not API(
+        name="a.b.public_function",
+        annotation_type=AnnotationType.DEPRECATED,
+        code_type=CodeType.FUNCTION,
+    ).is_public()
+    assert API(
+        name="a.b.public_function",
+        annotation_type=AnnotationType.PUBLIC_API,
+        code_type=CodeType.FUNCTION,
+    ).is_public()
 
 
 if __name__ == "__main__":

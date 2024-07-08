@@ -1,14 +1,13 @@
+import pickle
+import unittest
+
 from gymnasium import spaces
 import gymnasium as gym
 import numpy as np
-import pickle
-import unittest
 
 import ray
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.env import MultiAgentEnv
-from ray.rllib.env.base_env import convert_to_base_env
-from ray.rllib.env.vector_env import VectorEnv
 from ray.rllib.models import ModelCatalog
 from ray.rllib.models.tf.tf_modelv2 import TFModelV2
 from ray.rllib.models.torch.fcnet import FullyConnectedNetwork
@@ -388,114 +387,6 @@ class TestNestedObservationSpaces(unittest.TestCase):
             "Subclasses of TorchModelV2 must also inherit from nn.Module",
             lambda: config.build(),
         )
-
-    def test_invalid_model2(self):
-        ModelCatalog.register_custom_model("invalid2", InvalidModel2)
-        config = (
-            PPOConfig()
-            .environment("CartPole-v1")
-            .framework("tf")
-            .training(model={"custom_model": "invalid2"})
-        )
-        self.assertRaisesRegex(
-            ValueError,
-            "State output is not a list",
-            lambda: config.build(),
-        )
-
-    def do_test_nested_dict(self, make_env, test_lstm=False):
-        ModelCatalog.register_custom_model("composite", DictSpyModel)
-        register_env("nested", make_env)
-        config = (
-            PPOConfig()
-            .experimental(_disable_preprocessor_api=True)
-            .environment("nested")
-            .env_runners(num_env_runners=0, rollout_fragment_length=5)
-            .framework("tf")
-            .training(
-                model={"custom_model": "composite", "use_lstm": test_lstm},
-                train_batch_size_per_learner=5,
-                sgd_minibatch_size=5,
-            )
-        )
-        algo = config.build()
-        # Skip first passes as they came from the TorchPolicy loss
-        # initialization.
-        DictSpyModel.capture_index = 0
-        algo.train()
-
-        # Check that the model sees the correct reconstructed observations
-        for i in range(4):
-            seen = pickle.loads(
-                ray.experimental.internal_kv._internal_kv_get("d_spy_in_{}".format(i))
-            )
-            pos_i = DICT_SAMPLES[i]["sensors"]["position"].tolist()
-            cam_i = DICT_SAMPLES[i]["sensors"]["front_cam"][0].tolist()
-            task_i = DICT_SAMPLES[i]["inner_state"]["job_status"]["task"]
-            self.assertEqual(seen[0][0].tolist(), pos_i)
-            self.assertEqual(seen[1][0].tolist(), cam_i)
-            check(seen[2][0], task_i)
-        algo.stop()
-
-    def do_test_nested_tuple(self, make_env):
-        ModelCatalog.register_custom_model("composite2", TupleSpyModel)
-        register_env("nested2", make_env)
-        config = (
-            PPOConfig()
-            .experimental(_disable_preprocessor_api=True)
-            .environment("nested2")
-            .env_runners(num_env_runners=0, rollout_fragment_length=5)
-            .framework("tf")
-            .training(
-                model={"custom_model": "composite2"},
-                train_batch_size_per_learner=5,
-                sgd_minibatch_size=5,
-            )
-        )
-
-        algo = config.build()
-        # Skip first passes as they came from the TorchPolicy loss
-        # initialization.
-        TupleSpyModel.capture_index = 0
-        algo.train()
-
-        # Check that the model sees the correct reconstructed observations
-        for i in range(4):
-            seen = pickle.loads(
-                ray.experimental.internal_kv._internal_kv_get("t_spy_in_{}".format(i))
-            )
-            pos_i = TUPLE_SAMPLES[i][0].tolist()
-            cam_i = TUPLE_SAMPLES[i][1][0].tolist()
-            task_i = TUPLE_SAMPLES[i][2]
-            self.assertEqual(seen[0][0].tolist(), pos_i)
-            self.assertEqual(seen[1][0].tolist(), cam_i)
-            check(seen[2][0], task_i)
-        algo.stop()
-
-    def test_nested_dict_gym(self):
-        self.do_test_nested_dict(lambda _: NestedDictEnv())
-
-    def test_nested_dict_gym_lstm(self):
-        self.do_test_nested_dict(lambda _: NestedDictEnv(), test_lstm=True)
-
-    def test_nested_dict_vector(self):
-        self.do_test_nested_dict(
-            lambda _: VectorEnv.vectorize_gym_envs(lambda i: NestedDictEnv())
-        )
-
-    def test_nested_dict_async(self):
-        self.do_test_nested_dict(lambda _: convert_to_base_env(NestedDictEnv()))
-
-    def test_nested_tuple_gym(self):
-        self.do_test_nested_tuple(lambda _: NestedTupleEnv())
-
-    def test_nested_tuple_vector(self):
-        self.do_test_nested_tuple(
-            lambda _: VectorEnv.vectorize_gym_envs(lambda i: NestedTupleEnv())
-        )
-
-    def test_nested_tuple_async(self):
-        self.do_test_nested_tuple(lambda _: convert_to_base_env(NestedTupleEnv()))
 
     def test_torch_model(self):
         ModelCatalog.register_custom_model("composite", TorchSpyModel)

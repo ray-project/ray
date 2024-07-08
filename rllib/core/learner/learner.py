@@ -8,6 +8,7 @@ import pathlib
 from typing import (
     Any,
     Callable,
+    Collection,
     Dict,
     List,
     Hashable,
@@ -18,6 +19,8 @@ from typing import (
     TYPE_CHECKING,
     Union,
 )
+
+import tree  # pip install dm_tree
 
 import ray
 from ray.rllib.connectors.learner.learner_connector_pipeline import (
@@ -30,6 +33,7 @@ from ray.rllib.core.rl_module.marl_module import (
 )
 from ray.rllib.core.rl_module.rl_module import RLModule, SingleAgentRLModuleSpec
 from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
+from ray.rllib.utils import force_list
 from ray.rllib.utils.annotations import (
     OverrideToImplementCustomLogic,
     OverrideToImplementCustomLogic_CallToSuperRecommended,
@@ -52,7 +56,6 @@ from ray.rllib.utils.minibatch_utils import (
     MiniBatchDummyIterator,
     MiniBatchCyclicIterator,
 )
-from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.schedules.scheduler import Scheduler
 from ray.rllib.utils.serialization import serialize_type
@@ -65,6 +68,7 @@ from ray.rllib.utils.typing import (
     ParamRef,
     ParamDict,
     ResultDict,
+    StateDict,
     TensorType,
 )
 from ray.util.annotations import PublicAPI
@@ -313,6 +317,7 @@ class Learner:
             self._learner_connector = self.config.build_learner_connector(
                 input_observation_space=None,
                 input_action_space=None,
+                device=self._device,
             )
 
         # Build the module to be trained by this learner.
@@ -801,7 +806,7 @@ class Learner:
         # If None, return True (by default, all modules should be updated).
         if should_module_be_updated_fn is None:
             return True
-        # If container given, return whether `module_id` is in that container.
+        # If collection given, return whether `module_id` is in that container.
         elif not callable(should_module_be_updated_fn):
             return module_id in set(should_module_be_updated_fn)
 
@@ -811,8 +816,8 @@ class Learner:
     def compute_loss(
         self,
         *,
-        fwd_out: Union[MultiAgentBatch, NestedDict],
-        batch: Union[MultiAgentBatch, NestedDict],
+        fwd_out: Dict[str, Any],
+        batch: Dict[str, Any],
     ) -> Union[TensorType, Dict[str, Any]]:
         """Computes the loss for the module being optimized.
 
@@ -867,7 +872,7 @@ class Learner:
         *,
         module_id: ModuleID,
         config: Optional["AlgorithmConfig"] = None,
-        batch: NestedDict,
+        batch: Dict[str, Any],
         fwd_out: Dict[str, TensorType],
     ) -> TensorType:
         """Computes the loss for a single module.
@@ -892,156 +897,6 @@ class Learner:
             :py:class:`~ray.rllib.utils.metrics.metrics_logger.MetricsLogger` for more
             information.
         """
-
-    @OverrideToImplementCustomLogic
-    def additional_update(
-        self,
-        *,
-        module_ids_to_update: Optional[Sequence[ModuleID]] = None,
-        timestep: int,
-        **kwargs,
-    ) -> Dict[ModuleID, ResultDict]:
-        """Apply additional non-gradient based updates to this Algorithm.
-
-        For example, this could be used to do a polyak averaging update
-        of a target network in off policy algorithms like SAC or DQN.
-
-        Example:
-
-        .. testcode::
-
-            import gymnasium as gym
-
-            from ray.rllib.algorithms.ppo.ppo import (
-                LEARNER_RESULTS_CURR_KL_COEFF_KEY,
-                PPOConfig,
-            )
-            from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
-            from ray.rllib.algorithms.ppo.torch.ppo_torch_learner import (
-                PPOTorchLearner
-            )
-            from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import (
-                PPOTorchRLModule
-            )
-            from ray.rllib.core import DEFAULT_MODULE_ID
-            from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
-
-            env = gym.make("CartPole-v1")
-            config = (
-                PPOConfig()
-                .training(
-                    kl_coeff=0.2,
-                    kl_target=0.01,
-                    clip_param=0.3,
-                    vf_clip_param=10.0,
-                    # Taper down entropy coeff. from 0.01 to 0.0 over 20M ts.
-                    entropy_coeff=[
-                        [0, 0.01],
-                        [20000000, 0.0],
-                    ],
-                    vf_loss_coeff=0.5,
-                )
-            )
-
-            # Create a single agent RL module spec.
-            module_spec = SingleAgentRLModuleSpec(
-                module_class=PPOTorchRLModule,
-                observation_space=env.observation_space,
-                action_space=env.action_space,
-                model_config_dict = {"hidden": [128, 128]},
-                catalog_class = PPOCatalog,
-            )
-
-            class CustomPPOLearner(PPOTorchLearner):
-                def additional_update_for_module(
-                    self, *, module_id, config, timestep, sampled_kl_values
-                ) -> None:
-
-                    super().additional_update_for_module(
-                        module_id=module_id,
-                        config=config,
-                        timestep=timestep,
-                        sampled_kl_values=sampled_kl_values,
-                    )
-
-                    # Try something else than the PPO paper here.
-                    sampled_kl = sampled_kl_values[module_id]
-                    curr_var = self.curr_kl_coeffs_per_module[module_id]
-                    if sampled_kl > 1.2 * self.config.kl_target:
-                        curr_var.data *= 1.2
-                    elif sampled_kl < 0.8 * self.config.kl_target:
-                        curr_var.data *= 0.4
-                    self.metrics.log_value(
-                        (module_id, LEARNER_RESULTS_CURR_KL_COEFF_KEY),
-                        curr_var.item(),
-                        window=1,
-                    )
-
-            # Construct the Learner object.
-            learner = CustomPPOLearner(
-                config=config,
-                module_spec=module_spec,
-            )
-            # Note: Learners need to be built before they can be used.
-            learner.build()
-
-            # Inside a training loop, we can now call the additional update as we like:
-            for i in range(100):
-                # sample = ...
-                # learner.update(sample)
-                if i % 10 == 0:
-                    learner.additional_update(
-                        timestep=i,
-                        sampled_kl_values={DEFAULT_MODULE_ID: 0.5}
-                    )
-
-        Args:
-            module_ids_to_update: The ids of the modules to update. If None, all
-                modules will be updated.
-            timestep: The current timestep.
-            **kwargs: Keyword arguments to use for the additional update.
-
-        Returns:
-            A dictionary of results from the update
-        """
-        module_ids = (
-            module_ids_to_update
-            if module_ids_to_update is not None
-            else self.module.keys()
-        )
-        for module_id in module_ids:
-            self.additional_update_for_module(
-                module_id=module_id,
-                config=self.config.get_config_for_module(module_id),
-                timestep=timestep,
-                **kwargs,
-            )
-
-        return self.metrics.reduce()
-
-    @OverrideToImplementCustomLogic_CallToSuperRecommended
-    def additional_update_for_module(
-        self,
-        *,
-        module_id: ModuleID,
-        config: Optional["AlgorithmConfig"] = None,
-        timestep: int,
-        **kwargs,
-    ) -> None:
-        """Apply additional non-gradient based updates for a single module.
-
-        See `additional_update` for more details.
-
-        Args:
-            module_id: The id of the module to update.
-            config: The AlgorithmConfig specific to the given `module_id`.
-            timestep: The current global timestep (to be used with schedulers).
-            **kwargs: Keyword arguments to use for the additional update.
-
-        Returns:
-            A dictionary of results from the update
-        """
-        pass
 
     def update_from_batch(
         self,
@@ -1160,7 +1015,7 @@ class Learner:
     @abc.abstractmethod
     def _update(
         self,
-        batch: NestedDict,
+        batch: Dict[str, Any],
         **kwargs,
     ) -> Tuple[Any, Any, Any]:
         """Contains all logic for an in-graph/traceable update step.
@@ -1171,7 +1026,8 @@ class Learner:
         with all the individual results.
 
         Args:
-            batch: The train batch already converted in to a (tensor) NestedDict.
+            batch: The train batch already converted to a Dict mapping str to (possibly
+                nested) tensors.
             kwargs: Forward compatibility kwargs.
 
         Returns:
@@ -1183,7 +1039,45 @@ class Learner:
 
         """
 
-    def set_state(self, state: Dict[str, Any]) -> None:
+    def get_state(
+        self,
+        components: Optional[Union[str, List[str]]] = None,
+        *,
+        inference_only: bool = False,
+        module_ids: Optional[Collection[ModuleID]] = None,
+    ) -> StateDict:
+        """Get (select components of) the state of this Learner.
+
+        Args:
+            components: Either None (return all components) or one of "rl_module",
+                "optimizer", or "modules_to_be_updated", or a list of either of these.
+            inference_only: Whether to return the inference-only weight set of the
+                underlying RLModule. Note that this setting only has an effect if
+                components is None or the string "rl_module" is in components.
+            module_ids: Optional collection of ModuleIDs to be returned only within the
+                state dict. If None (default), all module IDs' weights are returned.
+
+        Returns:
+            The state (or select components thereof) of this Learner.
+        """
+        self._check_is_built()
+        components = force_list(components) or [
+            "rl_module",
+            "optimizer",
+            "modules_to_be_updated",
+        ]
+        state = {}
+        if "rl_module" in components:
+            state["rl_module"] = self.get_module_state(
+                inference_only=inference_only, module_ids=module_ids
+            )
+        if "optimizer" in components:
+            state["optimizer"] = self.get_optimizer_state()
+        if "modules_to_be_updated" in components:
+            state["modules_to_be_updated"] = self.config.policies_to_train
+        return state
+
+    def set_state(self, state: StateDict) -> None:
         """Set the state of the learner.
 
         Args:
@@ -1196,7 +1090,8 @@ class Learner:
         """
         self._check_is_built()
 
-        module_state = state.get("module_state")
+        # TODO (sven): Deprecate old state keys and create constants for new ones.
+        module_state = state.get("rl_module", state.get("module_state"))
         # TODO: once we figure out the optimizer format, we can set/get the state
         if module_state is None:
             raise ValueError(
@@ -1204,7 +1099,8 @@ class Learner:
             )
         self.set_module_state(module_state)
 
-        optimizer_state = state.get("optimizer_state")
+        # TODO (sven): Deprecate old state keys and create constants for new ones.
+        optimizer_state = state.get("optimizer", state.get("optimizer_state"))
         if optimizer_state is None:
             raise ValueError(
                 "state must have a key 'optimizer_state' for the optimizer weights"
@@ -1214,20 +1110,6 @@ class Learner:
         # Update our trainable Modules information/function via our config.
         # If not provided in state (None), all Modules will be trained by default.
         self.config.multi_agent(policies_to_train=state.get("modules_to_train"))
-
-    def get_state(self) -> Dict[str, Any]:
-        """Get the state of the learner.
-
-        Returns:
-            The state of the optimizer and module.
-
-        """
-        self._check_is_built()
-        return {
-            "module_state": self.get_module_state(),
-            "optimizer_state": self.get_optimizer_state(),
-            "modules_to_train": self.config.policies_to_train,
-        }
 
     def set_optimizer_state(self, state: Dict[str, Any]) -> None:
         """Sets the state of all optimizers currently registered in this Learner.
@@ -1263,14 +1145,29 @@ class Learner:
 
         self._check_is_built()
 
+        # Call `before_gradient_based_update` to allow for non-gradient based
+        # preparations-, logging-, and update logic to happen.
+        self.before_gradient_based_update(timesteps=timesteps or {})
+
+        # Resolve batch/episodes being ray object refs (instead of
+        # actual batch/episodes objects).
+        if isinstance(batch, ray.ObjectRef):
+            batch = ray.get(batch)
+        if isinstance(episodes, ray.ObjectRef) or (
+            isinstance(episodes, list) and isinstance(episodes[0], ray.ObjectRef)
+        ):
+            episodes = ray.get(episodes)
+            episodes = tree.flatten(episodes)
+
         # Call the learner connector.
+        shared_data = {}
         if self._learner_connector is not None and episodes is not None:
             # Call the learner connector pipeline.
             batch = self._learner_connector(
                 rl_module=self.module,
                 data=batch if batch is not None else {},
                 episodes=episodes,
-                shared_data={},
+                shared_data=shared_data,
             )
             # Convert to a batch.
             # TODO (sven): Try to not require MultiAgentBatch anymore.
@@ -1280,6 +1177,12 @@ class Learner:
                     for module_id, module_data in batch.items()
                 },
                 env_steps=sum(len(e) for e in episodes),
+            )
+        # Have to convert to MultiAgentBatch.
+        elif isinstance(batch, SampleBatch):
+            assert len(self.module) == 1
+            batch = MultiAgentBatch(
+                {next(iter(self.module.keys())): batch}, env_steps=len(batch)
             )
 
         # Check the MultiAgentBatch, whether our RLModule contains all ModuleIDs
@@ -1300,7 +1203,7 @@ class Learner:
 
         # Log all timesteps (env, agent, modules) based on given episodes.
         if self._learner_connector is not None and episodes is not None:
-            self._log_steps_trained_metrics(episodes, batch)
+            self._log_steps_trained_metrics(episodes, batch, shared_data)
         # TODO (sven): Possibly remove this if-else block entirely. We might be in a
         #  world soon where we always learn from episodes, never from an incoming batch.
         else:
@@ -1317,14 +1220,15 @@ class Learner:
                 clear_on_reduce=True,
             )
 
-        if minibatch_size and self._learner_connector is not None:
-            batch_iter = partial(
-                MiniBatchCyclicIterator,
-                uses_new_env_runners=True,
-                min_total_mini_batches=min_total_mini_batches,
-            )
-        elif minibatch_size:
-            batch_iter = MiniBatchCyclicIterator
+        if minibatch_size:
+            if self._learner_connector is not None:
+                batch_iter = partial(
+                    MiniBatchCyclicIterator,
+                    uses_new_env_runners=True,
+                    min_total_mini_batches=min_total_mini_batches,
+                )
+            else:
+                batch_iter = MiniBatchCyclicIterator
         elif num_iters > 1:
             # `minibatch_size` was not set but `num_iters` > 1.
             # Under the old training stack, users could do multiple sgd passes
@@ -1340,15 +1244,15 @@ class Learner:
         # Convert input batch into a tensor batch (MultiAgentBatch) on the correct
         # device (e.g. GPU). We move the batch already here to avoid having to move
         # every single minibatch that is created in the `batch_iter` below.
-        batch = self._convert_batch_type(batch)
+        if self._learner_connector is None:
+            batch = self._convert_batch_type(batch)
         batch = self._set_slicing_by_batch_id(batch, value=True)
 
         for tensor_minibatch in batch_iter(batch, minibatch_size, num_iters):
             # Make the actual in-graph/traced `_update` call. This should return
             # all tensor values (no numpy).
-            nested_tensor_minibatch = NestedDict(tensor_minibatch.policy_batches)
             fwd_out, loss_per_module, tensor_metrics = self._update(
-                nested_tensor_minibatch
+                tensor_minibatch.policy_batches
             )
 
             # Convert logged tensor metrics (logged during tensor-mode of MetricsLogger)
@@ -1366,15 +1270,29 @@ class Learner:
 
         self._set_slicing_by_batch_id(batch, value=False)
 
-        # Call `_after_gradient_based_update` to allow for non-gradient based
+        # Call `after_gradient_based_update` to allow for non-gradient based
         # cleanups-, logging-, and update logic to happen.
-        self._after_gradient_based_update(timesteps)
+        self.after_gradient_based_update(timesteps=timesteps or {})
 
         # Reduce results across all minibatch update steps.
         return self.metrics.reduce()
 
     @OverrideToImplementCustomLogic_CallToSuperRecommended
-    def _after_gradient_based_update(self, timesteps: Dict[str, Any]) -> None:
+    def before_gradient_based_update(self, *, timesteps: Dict[str, Any]) -> None:
+        """Called before gradient-based updates are completed.
+
+        Should be overridden to implement custom preparation-, logging-, or
+        non-gradient-based Learner/RLModule update logic before(!) gradient-based
+        updates are performed.
+
+        Args:
+            timesteps: Timesteps dict, which must have the key
+                `NUM_ENV_STEPS_SAMPLED_LIFETIME`.
+                # TODO (sven): Make this a more formal structure with its own type.
+        """
+
+    @OverrideToImplementCustomLogic_CallToSuperRecommended
+    def after_gradient_based_update(self, *, timesteps: Dict[str, Any]) -> None:
         """Called after gradient-based updates are completed.
 
         Should be overridden to implement custom cleanup-, logging-, or non-gradient-
@@ -1386,35 +1304,25 @@ class Learner:
                 `NUM_ENV_STEPS_SAMPLED_LIFETIME`.
                 # TODO (sven): Make this a more formal structure with its own type.
         """
-        timesteps = timesteps or {}
-
         # Only update this optimizer's lr, if a scheduler has been registered
         # along with it.
         for module_id, optimizer_names in self._module_optimizers.items():
             for optimizer_name in optimizer_names:
                 optimizer = self._named_optimizers[optimizer_name]
+                # Update and log learning rate of this optimizer.
                 lr_schedule = self._optimizer_lr_schedules.get(optimizer)
-                if lr_schedule is None:
-                    continue
-                new_lr = lr_schedule.update(
-                    timestep=timesteps.get(NUM_ENV_STEPS_SAMPLED_LIFETIME, 0)
+                if lr_schedule is not None:
+                    new_lr = lr_schedule.update(
+                        timestep=timesteps.get(NUM_ENV_STEPS_SAMPLED_LIFETIME, 0)
+                    )
+                    self._set_optimizer_lr(optimizer, lr=new_lr)
+                self.metrics.log_value(
+                    # Cut out the module ID from the beginning since it's already part
+                    # of the key sequence: (ModuleID, "[optim name]_lr").
+                    key=(module_id, f"{optimizer_name[len(module_id) + 1:]}_{LR_KEY}"),
+                    value=convert_to_numpy(self._get_optimizer_lr(optimizer)),
+                    window=1,
                 )
-                self._set_optimizer_lr(optimizer, lr=new_lr)
-
-        # Log all current learning rates of all our optimizers (registered under the
-        # different ModuleIDs).
-        self.metrics.log_dict(
-            {
-                # Cut out the module ID from the beginning since it's already part of
-                # the key sequence: (ModuleID, "[optim name]_lr").
-                (mid, f"{full_name[len(mid) + 1:]}_{LR_KEY}"): convert_to_numpy(
-                    self._get_optimizer_lr(self._named_optimizers[full_name])
-                )
-                for mid, full_names in self._module_optimizers.items()
-                for full_name in full_names
-            },
-            window=1,
-        )
 
     def _set_slicing_by_batch_id(
         self, batch: MultiAgentBatch, *, value: bool
@@ -1658,10 +1566,11 @@ class Learner:
     def _get_clip_function() -> Callable:
         """Returns the gradient clipping function to use, given the framework."""
 
-    def _log_steps_trained_metrics(self, episodes, batch):
+    def _log_steps_trained_metrics(self, episodes, batch, shared_data):
         # Logs this iteration's steps trained, based on given `episodes`.
         env_steps = sum(len(e) for e in episodes)
         log_dict = defaultdict(dict)
+        orig_lengths = shared_data.get("_sa_episodes_lengths", {})
         for sa_episode in self._learner_connector.single_agent_episode_iterator(
             episodes, agents_that_stepped_only=False
         ):
@@ -1674,8 +1583,11 @@ class Learner:
             if mid != ALL_MODULES and mid not in batch.policy_batches:
                 continue
 
-            _len = len(sa_episode)
-
+            _len = (
+                orig_lengths[sa_episode.id_]
+                if sa_episode.id_ in orig_lengths
+                else len(sa_episode)
+            )
             # TODO (sven): Decide, whether agent_ids should be part of LEARNER_RESULTS.
             #  Currently and historically, only ModuleID keys and ALL_MODULES were used
             #  and expected. Does it make sense to include e.g. agent steps trained?
@@ -1709,25 +1621,11 @@ class Learner:
         self.metrics.log_dict(dict(log_dict), reduce="sum", clear_on_reduce=True)
 
     @Deprecated(
-        new="self.metrics.[log_value|log_dict|log_time](key=..., value=..., "
-        "reduce=[mean|min|max|sum], window=..., ema_coeff=...)",
-        help="Use the new ray.rllib.utils.metrics.metrics_logger::MetricsLogger API "
-        "for logging your custom values and time-reducing (or parallel-reducing) them.",
+        new="Learner.before_gradient_based_update("
+        "timesteps={'num_env_steps_sampled_lifetime': ...}) and/or "
+        "Learner.after_gradient_based_update("
+        "timesteps={'num_env_steps_sampled_lifetime': ...})",
         error=True,
     )
-    def register_metric(self, *args, **kwargs):
-        pass
-
-    @Deprecated(
-        new="self.metrics.[log_value|log_dict|log_time](key=..., value=..., "
-        "reduce=[mean|min|max|sum], window=..., ema_coeff=...)",
-        help="Use the new ray.rllib.utils.metrics.metrics_logger::MetricsLogger API "
-        "for logging your custom values and time-reducing (or parallel-reducing) them.",
-        error=True,
-    )
-    def register_metrics(self, *args, **kwargs):
-        pass
-
-    @Deprecated(error=True)
-    def compile_results(self, *args, **kwargs):
+    def additional_update_for_module(self, *args, **kwargs):
         pass

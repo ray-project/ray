@@ -1,5 +1,5 @@
 import pathlib
-from typing import Any, List, Mapping, Tuple, Union, Type
+from typing import Any, Dict, Union, Type
 
 from packaging import version
 
@@ -16,7 +16,7 @@ from ray.rllib.utils.torch_utils import (
     convert_to_torch_tensor,
     TORCH_COMPILE_REQUIRED_VERSION,
 )
-from ray.rllib.utils.typing import NetworkType
+from ray.rllib.utils.typing import StateDict
 
 torch, nn = try_import_torch()
 
@@ -44,7 +44,8 @@ class TorchRLModule(nn.Module, RLModule):
         nn.Module.__init__(self)
         RLModule.__init__(self, *args, **kwargs)
 
-    def forward(self, batch: Mapping[str, Any], **kwargs) -> Mapping[str, Any]:
+    @override(nn.Module)
+    def forward(self, batch: Dict[str, Any], **kwargs) -> Dict[str, Any]:
         """forward pass of the module.
 
         This is aliased to forward_train because Torch DDP requires a forward method to
@@ -64,11 +65,11 @@ class TorchRLModule(nn.Module, RLModule):
         return compile_wrapper(self, compile_config)
 
     @override(RLModule)
-    def get_state(self, inference_only: bool = False) -> Mapping[str, Any]:
+    def get_state(self, inference_only: bool = False) -> StateDict:
         return self.state_dict()
 
     @override(RLModule)
-    def set_state(self, state_dict: Mapping[str, Any]) -> None:
+    def set_state(self, state_dict: StateDict) -> None:
         state_dict = convert_to_torch_tensor(state_dict)
         self.load_state_dict(state_dict)
 
@@ -96,9 +97,7 @@ class TorchRLModule(nn.Module, RLModule):
         """
         pass
 
-    def _inference_only_get_state_hook(
-        self, state_dict: Mapping[str, Any]
-    ) -> Mapping[str, Any]:
+    def _inference_only_get_state_hook(self, state_dict: StateDict) -> StateDict:
         """Removes or renames the parameters in the state dict for the inference module.
 
         This hook is called when the state dict is created on a learner module for an
@@ -139,11 +138,11 @@ class TorchDDPRLModule(RLModule, nn.parallel.DistributedDataParallel):
         return self(*args, **kwargs)
 
     @override(RLModule)
-    def _forward_inference(self, *args, **kwargs) -> Mapping[str, Any]:
+    def _forward_inference(self, *args, **kwargs) -> Dict[str, Any]:
         return self.unwrapped()._forward_inference(*args, **kwargs)
 
     @override(RLModule)
-    def _forward_exploration(self, *args, **kwargs) -> Mapping[str, Any]:
+    def _forward_exploration(self, *args, **kwargs) -> Dict[str, Any]:
         return self.unwrapped()._forward_exploration(*args, **kwargs)
 
     @override(RLModule)
@@ -191,8 +190,12 @@ class TorchDDPRLModuleWithTargetNetworksInterface(
     RLModuleWithTargetNetworksInterface,
 ):
     @override(RLModuleWithTargetNetworksInterface)
-    def get_target_network_pairs(self) -> List[Tuple[NetworkType, NetworkType]]:
-        return self.module.get_target_network_pairs()
+    def get_target_network_pairs(self, *args, **kwargs):
+        return self.module.get_target_network_pairs(*args, **kwargs)
+
+    @override(RLModuleWithTargetNetworksInterface)
+    def sync_target_networks(self, *args, **kwargs):
+        return self.module.sync_target_networks(*args, **kwargs)
 
 
 def compile_wrapper(rl_module: "TorchRLModule", compile_config: TorchCompileConfig):

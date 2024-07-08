@@ -4,7 +4,7 @@ from dataclasses import dataclass
 import logging
 import sys
 import time
-from typing import Any, Callable, Dict, Iterator, List, Mapping, Optional, Tuple, Union
+from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple, Union
 
 import ray
 from ray.actor import ActorHandle
@@ -261,14 +261,14 @@ class FaultTolerantActorManager:
         self._next_id = init_id
 
         # Actors are stored in a map and indexed by a unique (int) ID.
-        self._actors: Mapping[int, ActorHandle] = {}
-        self._remote_actor_states: Mapping[int, self._ActorState] = {}
+        self._actors: Dict[int, ActorHandle] = {}
+        self._remote_actor_states: Dict[int, self._ActorState] = {}
         self._restored_actors = set()
         self.add_actors(actors or [])
 
         # Maps outstanding async requests to the IDs of the actor IDs that
         # are executing them.
-        self._in_flight_req_to_actor_id: Mapping[ray.ObjectRef, int] = {}
+        self._in_flight_req_to_actor_id: Dict[ray.ObjectRef, int] = {}
 
         self._max_remote_requests_in_flight_per_actor = (
             max_remote_requests_in_flight_per_actor
@@ -592,7 +592,8 @@ class FaultTolerantActorManager:
                 `mark_healthy=True`, will send `func` to all actors and mark those
                 actors "healthy" that respond to the request within `timeout_seconds`
                 and are currently tagged as "unhealthy".
-            remote_actor_ids: Apply func on a selected set of remote actors.
+            remote_actor_ids: Apply func on a selected set of remote actors. Use None
+                (default) for all actors.
             timeout_seconds: Time to wait (in seconds) for results. Set this to 0.0 for
                 fire-and-forget. Set this to None (default) to wait infinitely (i.e. for
                 synchronous execution).

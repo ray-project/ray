@@ -101,7 +101,7 @@ TFRecords
 
    read_tfrecords
    Dataset.write_tfrecords
-
+   datasource.tfrecords_datasource.TFXReadOptions
 
 Pandas
 ------
