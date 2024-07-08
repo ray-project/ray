@@ -34,7 +34,9 @@ class PPOTorchRLModule(TorchRLModule, PPORLModule):
         inference_only: bool = False,
         **kwargs,
     ) -> StateDict:
-        state = super(PPOTorchRLModule, self).get_state(inference_only=inference_only)
+        state = super(PPOTorchRLModule, self).get_state(
+            components=components, not_components=not_components, **kwargs
+        )
         # If this module is not for inference, but the state dict is.
         # Note, for stateful modules, we need the full state dict.
         if not self.config.inference_only and not self.is_stateful() and inference_only:

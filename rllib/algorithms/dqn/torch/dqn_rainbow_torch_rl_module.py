@@ -1,4 +1,4 @@
-from typing import Any, Dict, Union
+from typing import Any, Collection, Dict, Optional, Union
 
 from ray.rllib.algorithms.dqn.dqn_rainbow_rl_module import (
     DQNRainbowRLModule,
@@ -19,7 +19,7 @@ from ray.rllib.core.rl_module.torch.torch_rl_module import TorchRLModule
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
-from ray.rllib.utils.typing import TensorType, TensorStructType
+from ray.rllib.utils.typing import StateDict, TensorType, TensorStructType
 
 torch, nn = try_import_torch()
 
@@ -47,16 +47,26 @@ class DQNRainbowTorchRLModule(TorchRLModule, DQNRainbowRLModule):
 
     # TODO (simon): Refactor to parent method.
     @override(TorchRLModule)
-    def get_state(self, inference_only: bool = False) -> Dict[str, Any]:
-        state_dict = self.state_dict()
+    @override(TorchRLModule)
+    def get_state(
+        self,
+        components: Optional[Union[str, Collection[str]]] = None,
+        *,
+        not_components: Optional[Union[str, Collection[str]]] = None,
+        inference_only: bool = False,
+        **kwargs,
+    ) -> StateDict:
+        state = super(DQNRainbowTorchRLModule, self).get_state(
+            components=components, not_components=not_components, **kwargs
+        )
         # If this module is not for inference, but the state dict is.
         if not self.config.inference_only and inference_only:
             # Call the local hook to remove or rename the parameters.
-            return self._inference_only_get_state_hook(state_dict)
+            return self._inference_only_get_state_hook(state)
         # Otherwise, the state dict is for checkpointing or saving the model.
         else:
             # Return the state dict as is.
-            return state_dict
+            return state
 
     @override(RLModule)
     def _forward_inference(self, batch: Dict[str, TensorType]) -> Dict[str, TensorType]:
