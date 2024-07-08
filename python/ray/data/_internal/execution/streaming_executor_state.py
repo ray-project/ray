@@ -192,9 +192,12 @@ class OpState:
         # Used for StreamingExecutor to signal exception or end of execution
         self._finished: bool = False
         self._exception: Optional[Exception] = None
+<<<<<<< HEAD
         self.last_update_time = -1
         self.start_time = time.time()
         self.output_budget = -1
+=======
+>>>>>>> upstream/master
         self._scheduling_status = OpSchedulingStatus()
 
     def __repr__(self):
@@ -677,50 +680,6 @@ def select_operator_to_run(
         topology[selected_op]._scheduling_status.selected = True
     autoscaler.try_trigger_scaling()
     return selected_op
-
-def _try_to_scale_up_cluster(topology: Topology, execution_id: str):
-    """Try to scale up the cluster to accomodate the provided in-progress workload.
-
-    This makes a resource request to Ray's autoscaler consisting of the current,
-    aggregate usage of all operators in the DAG + the incremental usage of all operators
-    that are ready for dispatch (i.e. that have inputs queued). If the autoscaler were
-    to grant this resource request, it would allow us to dispatch one task for every
-    ready operator.
-
-    Note that this resource request does not take the global resource limits or the
-    liveness policy into account; it only tries to make the existing resource usage +
-    one more task per ready operator feasible in the cluster.
-
-    Args:
-        topology: The execution state of the in-progress workload for which we wish to
-            request more resources.
-    """
-    # Get resource usage for all ops + additional resources needed to launch one more
-    # task for each ready op.
-    resource_request = []
-
-    def to_bundle(resource: ExecutionResources) -> Dict:
-        req = {}
-        if resource.cpu:
-            req["CPU"] = math.ceil(resource.cpu)
-        if resource.gpu:
-            req["GPU"] = math.ceil(resource.gpu)
-        return req
-
-    for op, state in topology.items():
-        per_task_resource = op.incremental_resource_usage()
-        task_bundle = to_bundle(per_task_resource)
-        resource_request.extend([task_bundle] * op.num_active_tasks())
-        # Only include incremental resource usage for ops that are ready for
-        # dispatch.
-        if state.num_queued() > 0:
-            # TODO(Clark): Scale up more aggressively by adding incremental resource
-            # usage for more than one bundle in the queue for this op?
-            resource_request.append(task_bundle)
-
-    # Make autoscaler resource request.
-    actor = get_or_create_autoscaling_requester_actor()
-    actor.request_resources.remote(resource_request, execution_id)
 
 
 
