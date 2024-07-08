@@ -2800,7 +2800,7 @@ py_test(
 # subdirectory: learners/
 # ....................................
 py_test(
-    name = "examples/learners/custom_loss_fn_simple.py",
+    name = "examples/learners/custom_loss_fn_simple",
     main = "examples/learners/custom_loss_fn_simple.py",
     tags = ["team:rllib", "examples"],
     size = "medium",
