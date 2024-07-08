@@ -1,24 +1,23 @@
 import logging
 import re
-
 from collections import defaultdict
-from typing import List, Optional, Dict, AsyncIterable, Tuple, Callable
+from typing import AsyncIterable, Callable, Dict, List, Optional, Tuple
 
-from ray.dashboard.modules.job.common import JOB_LOGS_PATH_TEMPLATE
-from ray.util.state.common import (
-    GetLogOptions,
-    protobuf_to_task_state_dict,
-    DEFAULT_RPC_TIMEOUT,
-)
-from ray.util.state.exception import DataSourceUnavailable
-from ray.util.state.state_manager import StateDataSourceClient
 from ray._private.pydantic_compat import BaseModel
-
-if BaseModel is None:
-    raise ModuleNotFoundError("Please install pydantic via `pip install pydantic`.")
 
 # TODO(sang): Remove the usage of this class.
 from ray.dashboard.datacenter import DataSource
+from ray.dashboard.modules.job.common import JOB_LOGS_PATH_TEMPLATE
+from ray.util.state.common import (
+    DEFAULT_RPC_TIMEOUT,
+    GetLogOptions,
+    protobuf_to_task_state_dict,
+)
+from ray.util.state.exception import DataSourceUnavailable
+from ray.util.state.state_manager import StateDataSourceClient
+
+if BaseModel is None:
+    raise ModuleNotFoundError("Please install pydantic via `pip install pydantic`.")
 
 
 logger = logging.getLogger(__name__)

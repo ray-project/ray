@@ -1,20 +1,20 @@
+import copy
 import logging
 import os
 import sys
-
-import requests
-import numpy as np
 import time
-import copy
-import pytest
 from collections import defaultdict
 from multiprocessing import Process
 from unittest.mock import MagicMock
+
+import numpy as np
+import pytest
+import requests
 from google.protobuf import text_format
 
-import psutil
-import ray
 from mock import patch
+
+import ray
 from ray._private import ray_constants
 from ray._private.metrics_agent import fix_grpc_metric
 from ray._private.test_utils import (
@@ -23,10 +23,12 @@ from ray._private.test_utils import (
     wait_for_condition,
     wait_until_server_available,
 )
+from ray.core.generated.metrics_pb2 import Metric
 from ray.dashboard.modules.reporter.reporter_agent import ReporterAgent
 from ray.dashboard.tests.conftest import *  # noqa
 from ray.dashboard.utils import Bunch
-from ray.core.generated.metrics_pb2 import Metric
+
+import psutil
 
 try:
     import prometheus_client

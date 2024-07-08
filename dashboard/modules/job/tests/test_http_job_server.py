@@ -3,16 +3,15 @@ import json
 import logging
 import os
 import shutil
+import subprocess
 import sys
 import tempfile
-from pathlib import Path
-import subprocess
 import time
+from pathlib import Path
 from typing import Optional
 from unittest.mock import patch
 
 import pytest
-from ray.runtime_env.runtime_env import RuntimeEnv, RuntimeEnvConfig
 import yaml
 
 import ray
@@ -23,13 +22,14 @@ from ray._private.test_utils import (
     wait_until_server_available,
 )
 from ray.dashboard.modules.dashboard_sdk import ClusterInfo, parse_cluster_info
-from ray.dashboard.modules.job.pydantic_models import JobDetails
 from ray.dashboard.modules.job.job_head import JobHead
+from ray.dashboard.modules.job.pydantic_models import JobDetails
+from ray.dashboard.modules.job.tests.test_cli_integration import set_env_var
 from ray.dashboard.modules.version import CURRENT_VERSION
 from ray.dashboard.tests.conftest import *  # noqa
 from ray.job_submission import JobStatus, JobSubmissionClient
+from ray.runtime_env.runtime_env import RuntimeEnv, RuntimeEnvConfig
 from ray.tests.conftest import _ray_start
-from ray.dashboard.modules.job.tests.test_cli_integration import set_env_var
 
 # This test requires you have AWS credentials set up (any AWS credentials will
 # do, this test only accesses a public bucket).

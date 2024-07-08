@@ -1,11 +1,14 @@
 import copy
-from dataclasses import asdict
 import json
 import os
+from dataclasses import asdict
 from typing import List, Tuple
 
 import ray
 from ray.dashboard.modules.metrics.dashboards.common import DashboardConfig, Panel
+from ray.dashboard.modules.metrics.dashboards.data_dashboard_panels import (
+    data_dashboard_config,
+)
 from ray.dashboard.modules.metrics.dashboards.default_dashboard_panels import (
     default_dashboard_config,
 )
@@ -15,10 +18,6 @@ from ray.dashboard.modules.metrics.dashboards.serve_dashboard_panels import (
 from ray.dashboard.modules.metrics.dashboards.serve_deployment_dashboard_panels import (
     serve_deployment_dashboard_config,
 )
-from ray.dashboard.modules.metrics.dashboards.data_dashboard_panels import (
-    data_dashboard_config,
-)
-
 
 METRICS_INPUT_ROOT = os.path.join(os.path.dirname(__file__), "export")
 GRAFANA_CONFIG_INPUT_PATH = os.path.join(METRICS_INPUT_ROOT, "grafana")
