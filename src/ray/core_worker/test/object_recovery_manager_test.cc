@@ -417,6 +417,8 @@ TEST_F(ObjectRecoveryManagerTest, TestReconstructionSkipped) {
   ASSERT_EQ(object_directory_->Flush(), 0);
   ASSERT_EQ(raylet_client_->Flush(), 0);
   ASSERT_EQ(task_resubmitter_->num_tasks_resubmitted, 0);
+  // The object should be added back to the memory store
+  // indicating the object is available again.
   bool in_plasma = false;
   ASSERT_TRUE(memory_store_->Contains(object_id, &in_plasma));
   ASSERT_TRUE(in_plasma);
