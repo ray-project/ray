@@ -2386,7 +2386,7 @@ def from_pandas(
        Create a Ray Dataset from a list of Pandas DataFrames.
 
         >>> ray.data.from_pandas([df, df])
-        MaterializedDataset(num_blocks=1, num_rows=6, schema={a: int64, b: int64})
+        MaterializedDataset(num_blocks=2, num_rows=6, schema={a: int64, b: int64})
 
     Args:
         dfs: A pandas dataframe or a list of pandas dataframes.
