@@ -21,8 +21,6 @@ from ray.data.block import Block, BlockMetadata, DataBatch
 from ray.data.context import DataContext
 from ray.types import ObjectRef
 
-from ray.util.metrics import Histogram
-from ray.serve._private.constants import DEFAULT_LATENCY_BUCKET_MS
 
 def iter_batches(
     block_refs: Iterator[Tuple[ObjectRef[Block], BlockMetadata]],
@@ -122,18 +120,6 @@ def iter_batches(
 
     eager_free = clear_block_after_read and DataContext.get_current().eager_free
 
-    block_size_metric = Histogram(
-        "data_output_block_size",
-        description=("Size in bytes of blocks"),
-        boundaries=DEFAULT_LATENCY_BUCKET_MS,
-    )
-
-    block_num_files_metric = Histogram(
-        "data_block_input_file_number",
-        description=("Number of files that make up an individual block"),
-        boundaries=[0.01, 1, 5, 10, 100],
-    )
-
     def _async_iter_batches(
         block_refs: Iterator[Tuple[ObjectRef[Block], BlockMetadata]],
     ) -> Iterator[DataBatch]:
@@ -142,8 +128,6 @@ def iter_batches(
             block_ref_iter=block_refs,
             prefetcher=prefetcher,
             num_batches_to_prefetch=prefetch_batches,
-            block_size_metric=block_size_metric,
-            block_num_files_metric=block_num_files_metric,
             batch_size=batch_size,
             eager_free=eager_free,
         )
@@ -248,8 +232,6 @@ def prefetch_batches_locally(
     block_ref_iter: Iterator[Tuple[ObjectRef[Block], BlockMetadata]],
     prefetcher: BlockPrefetcher,
     num_batches_to_prefetch: int,
-    block_size_metric: Optional[Histogram],
-    block_num_files_metric: Optional[Histogram],
     batch_size: Optional[int],
     eager_free: bool = False,
 ) -> Iterator[ObjectRef[Block]]:
@@ -305,11 +287,6 @@ def prefetch_batches_locally(
                 )
             except StopIteration:
                 pass
-        if block_size_metric and metadata.size_bytes:
-            block_size_metric.observe(metadata.size_bytes / 1024 / 1024) # In MB
-        if block_num_files_metric and metadata.input_files:
-            block_num_files_metric.observe(len(metadata.input_files)) 
-
         yield block_ref
         trace_deallocation(block_ref, loc="iter_batches", free=eager_free)
     prefetcher.stop()

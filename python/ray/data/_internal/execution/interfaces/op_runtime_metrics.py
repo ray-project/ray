@@ -274,46 +274,8 @@ class OpRuntimeMetrics:
         },
     )
 
-    # === Reservation Op Resource Allocator Metrics ===
-    reserved_memory: int = field(
-        default=0,
-        metadata={
-            "description": "Byte size of memory reserved for this operator by the reservation op resource allocator",
-            "metrics_group": "reservation_op_resource_allocator",
-        },
-    )
-    reserved_memory_for_outputs: int = field(
-        default=0,
-        metadata={
-            "description": "Byte size of memory reserved specifically for the output queue for this operator",
-            "metrics_group": "reservation_op_resource_allocator",
-        },
-    )
-    budgeted_memory: int = field(
-        default=0,
-        metadata={
-            "description": "Byte size of the total budgeted memory for this operator",
-            "metrics_group": "reservation_op_resource_allocator",
-        },
-    )
-    total_shared_memory: int = field(
-        default=0,
-        metadata={
-            "description": "Byte size of reservation-based allocator shared memory",
-            "metrics_group": "reservation_op_resource_allocator",
-        }
-    )
-    total_memory_usage: int = field(
-        default=0,
-        metadata={
-            "description": "Byte size of total memory usage per the resource manager",
-            "metrics_group": "reservation_op_resource_allocator",
-        }
-    )
-
     # === Miscellaneous metrics ===
     # Use "metrics_group: "misc" in the metadata for new metrics in this section.
-
 
     def __init__(self, op: "PhysicalOperator"):
         from ray.data._internal.execution.operators.map_operator import MapOperator

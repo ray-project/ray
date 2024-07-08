@@ -21,7 +21,7 @@ from ray.data._internal.execution.interfaces import (
     RefBundle,
 )
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
-from ray.data._internal.execution.resource_manager import ResourceManager, ReservationOpResourceAllocator
+from ray.data._internal.execution.resource_manager import ResourceManager
 from ray.data._internal.execution.streaming_executor_state import (
     AutoscalingState,
     OpState,
@@ -125,9 +125,7 @@ class StreamingExecutor(Executor, threading.Thread):
                 )
 
         # Setup the streaming DAG topology and start the runner thread.
-        logger.get_logger(log_to_stdout=False).info('Starting to create DAG topology')
         self._topology, _ = build_streaming_topology(dag, self._options)
-        logger.get_logger(log_to_stdout=False).info('Finished creating DAG topology')
         self._resource_manager = ResourceManager(self._topology, self._options)
         self._backpressure_policies = get_backpressure_policies(self._topology)
 
@@ -386,25 +384,6 @@ class StreamingExecutor(Executor, threading.Thread):
         }
 
     def _update_stats_metrics(self, state: str, force_update: bool = False):
-        # Update resource-based memory reservations here
-        if isinstance(self._resource_manager._op_resource_allocator, ReservationOpResourceAllocator):
-            allocator = self._resource_manager._op_resource_allocator
-            reservation_ops = allocator._get_eligible_ops()
-            for op in self._resource_manager._topology:
-                if op in reservation_ops:
-                    if op in allocator._op_budgets:
-                        op.metrics.budgeted_memory = allocator._op_budgets[op].object_store_memory
-                    if op in allocator._op_reserved:
-                        op.metrics.reserved_memory = allocator._op_reserved[op].object_store_memory
-                    if op in allocator._reserved_for_op_outputs:
-                        op.metrics.reserved_memory_for_outputs = allocator._reserved_for_op_outputs[op]
-                    
-                    if len(reservation_ops) == 1:
-                        op.metrics.total_shared_memory = allocator._total_shared
-                if op in self._resource_manager._op_usages:
-                    op.metrics.total_memory_usage = self._resource_manager._op_usages[op].object_store_memory
-
-
         StatsManager.update_execution_metrics(
             self._dataset_tag,
             [op.metrics for op in self._topology],

@@ -19,10 +19,6 @@ from ray.data._internal.execution.util import locality_string
 from ray.data.block import Block, BlockMetadata
 from ray.data.context import DataContext
 from ray.types import ObjectRef
-from ray.util.metrics import Histogram, Gauge
-from ray.serve._private.constants import DEFAULT_LATENCY_BUCKET_MS
-
-import time
 
 logger = DatasetLogger(__name__)
 
@@ -76,12 +72,6 @@ class ActorPoolMapOperator(MapOperator):
                 The actual rows passed may be less if the dataset is small.
             ray_remote_args: Customize the ray remote args for this op's tasks.
         """
-        self.actor_pool_creation_latency = Histogram(
-            "actor_pool_creation_latency",
-            boundaries=DEFAULT_LATENCY_BUCKET_MS,
-            description=("Time taken to create pool of actors when starting the dataset"),
-        )
-
         super().__init__(
             map_transformer,
             input_op,
@@ -136,7 +126,6 @@ class ActorPoolMapOperator(MapOperator):
         logger.get_logger(log_to_stdout=False).info(
             f"{self._name}: Waiting for {len(refs)} pool actors to start..."
         )
-        start = time.time()
         try:
             ray.get(refs, timeout=DEFAULT_WAIT_FOR_MIN_ACTORS_SEC)
         except ray.exceptions.GetTimeoutError:
@@ -145,9 +134,6 @@ class ActorPoolMapOperator(MapOperator):
                 "This may mean that the cluster does not have "
                 "enough resources for the requested actor pool."
             )
-        total_latency = time.time() - start
-        logger.get_logger().info(f"{self._name}: Took {total_latency} seconds to provision actors")
-        self.actor_pool_creation_latency.observe(total_latency * 1000)
 
     def should_add_input(self) -> bool:
         return self._actor_pool.num_free_slots() > 0
