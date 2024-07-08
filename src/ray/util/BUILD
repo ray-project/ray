@@ -40,5 +40,7 @@ cc_library(
         "@com_google_absl//absl/time",
         "@com_google_googletest//:gtest_main",
         "@nlohmann_json",
+        "@zstd//:libzstd",
     ],
 )
+
