@@ -99,7 +99,7 @@ class TrainHead(dashboard_utils.DashboardHeadModule):
             content_type="application/json",
         )
 
-    def _update_actor_status(self, train_runs):
+    def _add_actor_status(self, train_runs):
         actor_status_table = {actor.actor_id: actor.state for actor in list_actors()}
 
         for train_run in train_runs:
