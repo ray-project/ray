@@ -104,7 +104,7 @@ class LearnerGroup(Checkpointable):
             module_spec: If not already specified in `config`, a separate overriding
                 RLModuleSpec may be provided via this argument.
         """
-        self.config = config
+        self.config = config.copy(copy_frozen=False)
         self._module_spec = module_spec
 
         learner_class = self.config.learner_class
@@ -673,7 +673,6 @@ class LearnerGroup(Checkpointable):
         # Change our config (AlgorithmConfig) to contain the new Module.
         # TODO (sven): This is a hack to manipulate the AlgorithmConfig directly,
         #  but we'll deprecate config.policies soon anyway.
-        self.config._is_frozen = False
         self.config.policies[module_id] = PolicySpec()
         if config_overrides is not None:
             self.config.multi_agent(
@@ -682,7 +681,6 @@ class LearnerGroup(Checkpointable):
         self.config.rl_module(rl_module_spec=marl_spec)
         if new_should_module_be_updated is not None:
             self.config.multi_agent(policies_to_train=new_should_module_be_updated)
-        self.config.freeze()
 
         return marl_spec
 
@@ -724,13 +722,11 @@ class LearnerGroup(Checkpointable):
         # Change self.config to reflect the new architecture.
         # TODO (sven): This is a hack to manipulate the AlgorithmConfig directly,
         #  but we'll deprecate config.policies soon anyway.
-        self.config._is_frozen = False
         del self.config.policies[module_id]
         self.config.algorithm_config_overrides_per_module.pop(module_id, None)
         if new_should_module_be_updated is not None:
             self.config.multi_agent(policies_to_train=new_should_module_be_updated)
         self.config.rl_module(rl_module_spec=marl_spec)
-        self.config.freeze()
 
         return marl_spec
 
