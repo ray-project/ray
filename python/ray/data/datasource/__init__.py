@@ -39,8 +39,6 @@ __all__ = [
     "Connection",
     "Datasink",
     "Datasource",
-    "_SQLDatasink",
-    "SQLDatasource",
     "DeltaSharingDatasource",
     "DefaultFileMetadataProvider",
     "DummyOutputDatasink",

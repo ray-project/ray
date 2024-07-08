@@ -67,13 +67,6 @@ from ray.data.datasource import (
     Connection,
     Datasource,
     DeltaSharingDatasource,
-    ImageDatasource,
-    JSONDatasource,
-    LanceDatasource,
-    MongoDatasource,
-    NumpyDatasource,
-    ParquetBulkDatasource,
-    ParquetDatasource,
     ParquetMetadataProvider,
     PathPartitionFilter,
 )
