@@ -40,6 +40,7 @@ class PPOTorchRLModule(TorchRLModule, PPORLModule):
         if not self.config.inference_only and not self.is_stateful() and inference_only:
             # Call the local hook to remove parameters not needed in `inference_only`
             # mode.
+            self.config.inference_only = True
             state = self._inference_only_get_state_hook(state)
             return state
 

@@ -282,13 +282,14 @@ Getting and setting state
         Set/get the state dict of all learners through learner_group through
         :py:meth:`~ray.rllib.core.learner.learner_group.LearnerGroup.set_state` or 
         :py:meth:`~ray.rllib.core.learner.learner_group.LearnerGroup.get_state`. 
-        This includes all states including both neural network weights, 
-        and optimizer states on each learner. You can set and get the weights of 
-        the RLModule of all learners through learner_group through
-        :py:meth:`~ray.rllib.core.learner.learner_group.LearnerGroup.set_weights` or
-        :py:meth:`~ray.rllib.core.learner.learner_group.LearnerGroup.get_weights`. 
-        This does not include optimizer states.
-    
+        This includes all states including the neural network weights
+        and the optimizer states on each learner. For example an Adam optimizer's state
+        includes momentum information based on recently computed gradients.
+        If you only want to get or set the weights of the RLModules (neural networks) of
+        all Learners, you can do so through the LearnerGroup APIs
+        :py:meth:`~ray.rllib.core.learner.learner_group.LearnerGroup.get_weights` and
+        :py:meth:`~ray.rllib.core.learner.learner_group.LearnerGroup.set_weights`.
+
     .. tab-item:: Getting and Setting State for a Learner
 
         .. testcode::
@@ -297,9 +298,14 @@ Getting and setting state
 
             # Get the Learner's RLModule weights and optimizer states.
             state = learner.get_state()
+            # Note that `state` is now a dict:
+            # {
+            #    COMPONENT_RL_MODULE: [RLModule's state],
+            #    COMPONENT_OPTIMIZER: [Optimizer states],
+            # }
             learner.set_state(state)
 
-            # Only get the RLModule weights (as numpy arrays).
+            # Only get the RLModule weights (as numpy, not torch/tf).
             rl_module_only_state = learner.get_state(components=COMPONENT_RL_MODULE)
             # Note that `rl_module_only_state` is now a dict:
             # {COMPONENT_RL_MODULE: [RLModule's state]}

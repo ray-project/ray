@@ -2219,6 +2219,14 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
         Returns:
             The new MultiAgentRLModuleSpec after having added the RLModule.
         """
+        if not self.config.is_multi_agent():
+            raise RuntimeError(
+                "Can't add a new RLModule to a single-agent setup! Make sure that your "
+                "setup is already initially multi-agent by either defining >1 "
+                f"RLModules in your `rl_module_spec` or assigning a ModuleID other "
+                f"than {DEFAULT_MODULE_ID} to your (only) RLModule."
+            )
+
         validate_policy_id(module_id, error=True)
 
         # Create RLModule on the LearnerGroup.
@@ -2596,6 +2604,8 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
                 not_components=force_list(
                     self._get_subcomponents(COMPONENT_RL_MODULE, not_components)
                 )
+                # We don't want the RLModule state from the EnvRunners (it's
+                # `inference_only` anyway and already provided in full by the Learners).
                 + [COMPONENT_RL_MODULE],
                 **kwargs,
             )
@@ -2611,6 +2621,8 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
                 not_components=force_list(
                     self._get_subcomponents(COMPONENT_RL_MODULE, not_components)
                 )
+                # We don't want the RLModule state from the EnvRunners (it's
+                # `inference_only` anyway and already provided in full by the Learners).
                 + [COMPONENT_RL_MODULE],
                 **kwargs,
             )
