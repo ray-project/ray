@@ -572,7 +572,7 @@ def get_checkpoint_info(checkpoint: Union[str, Checkpoint]) -> Dict[str, Any]:
         for file in checkpoint.iterdir():
             path_file = checkpoint / file
             if path_file.is_file():
-                if re.match("checkpoint-\\d+", str(file)):
+                if re.match("checkpoint-\\d+", file.name):
                     info.update(
                         {
                             "checkpoint_version": version.Version("0.1"),

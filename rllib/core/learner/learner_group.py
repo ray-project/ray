@@ -941,7 +941,7 @@ class LearnerGroup(Checkpointable):
             else:
                 for module_id in modules_to_load:
                     self.restore_from_path(
-                        marl_module_ckpt_dir + "/" + module_id,
+                        marl_module_ckpt_dir / module_id,
                         component=(
                             COMPONENT_LEARNER
                             + "/"

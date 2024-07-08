@@ -125,7 +125,7 @@ class TestAlgorithmRLModuleRestore(unittest.TestCase):
             marl_module_spec = MultiAgentRLModuleSpec(module_specs=module_specs)
             marl_module = marl_module_spec.build()
             marl_checkpoint_path = tempfile.mkdtemp()
-            marl_module.save(marl_checkpoint_path)
+            marl_module.save_to_path(marl_checkpoint_path)
 
             # create a RLModule to load and override the "policy_1" module with
             module_to_swap_in = SingleAgentRLModuleSpec(
@@ -139,7 +139,7 @@ class TestAlgorithmRLModuleRestore(unittest.TestCase):
             ).build()
 
             module_to_swap_in_path = tempfile.mkdtemp()
-            module_to_swap_in.save(module_to_swap_in_path)
+            module_to_swap_in.save_to_path(module_to_swap_in_path)
 
             # create a new MARL_spec with the checkpoint from the marl_checkpoint
             # and the module_to_swap_in_checkpoint
@@ -210,7 +210,7 @@ class TestAlgorithmRLModuleRestore(unittest.TestCase):
             module = module_spec.build()
 
             module_ckpt_path = tempfile.mkdtemp()
-            module.save(module_ckpt_path)
+            module.save_to_path(module_ckpt_path)
 
             module_to_load_spec = SingleAgentRLModuleSpec(
                 module_class=module_class,
@@ -267,7 +267,7 @@ class TestAlgorithmRLModuleRestore(unittest.TestCase):
             marl_module_spec = MultiAgentRLModuleSpec(module_specs=module_specs)
             marl_module = marl_module_spec.build()
             marl_checkpoint_path = tempfile.mkdtemp()
-            marl_module.save(marl_checkpoint_path)
+            marl_module.save_to_path(marl_checkpoint_path)
 
             # create a RLModule to load and override the "policy_1" module with
             module_to_swap_in = SingleAgentRLModuleSpec(
@@ -281,7 +281,7 @@ class TestAlgorithmRLModuleRestore(unittest.TestCase):
             ).build()
 
             module_to_swap_in_path = tempfile.mkdtemp()
-            module_to_swap_in.save(module_to_swap_in_path)
+            module_to_swap_in.save_to_path(module_to_swap_in_path)
 
             # create a new MARL_spec with the checkpoint from the marl_checkpoint
             # and the module_to_swap_in_checkpoint
