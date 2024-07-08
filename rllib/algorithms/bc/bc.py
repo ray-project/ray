@@ -184,8 +184,6 @@ class BC(MARWIL):
             train_results = self.learner_group.update_from_batch(
                 batch=train_batch.as_multi_agent(
                     module_id=list(self.config.policies)[0]
-                    if self.config.policies
-                    else None
                 )
             )
             # TODO (sven): Use metrics API as soon as we moved to new API stack
