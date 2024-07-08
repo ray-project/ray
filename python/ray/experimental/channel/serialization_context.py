@@ -51,6 +51,7 @@ class _SerializationContext:
 
     def reset_data(self, channel_id: str) -> None:
         self.intra_process_channel_buffers.pop(channel_id, None)
+        self.channel_id_to_num_readers.pop(channel_id, None)
 
     def reset_tensors(self, tensors: List["torch.Tensor"]) -> List["torch.Tensor"]:
         prev_tensors = self.tensors

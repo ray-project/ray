@@ -17,12 +17,13 @@ class IntraProcessChannel(ChannelInterface):
     side effects.
 
     Args:
-        num_readers: The number of readers that will read from this channel.
+        num_readers: The number of readers that will read from this channel. Readers
+            can be the same method of the same actor.
     """
 
     def __init__(
         self,
-        num_readers: int = 0,
+        num_readers,
         _channel_id: Optional[str] = None,
     ):
         # Generate a unique ID for the channel. The writer and reader will use

@@ -1140,7 +1140,7 @@ def test_simulate_pipeline_parallelism(ray_start_regular_shared):
 
     Compared to reading data from shared memory channels for each forward pass, using
     `IntraProcessChannel` may be more efficient because it avoids the overhead of
-    context switching and deserialization for each forward pass.
+    deserialization for each forward pass.
     """
 
     @ray.remote
